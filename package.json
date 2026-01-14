@@ -1,0 +1,37 @@
+{
+  "name": "uniweb",
+  "version": "0.1.0",
+  "description": "CLI for the Uniweb Component Web Platform",
+  "type": "module",
+  "bin": {
+    "uniweb": "./src/index.js"
+  },
+  "files": [
+    "src"
+  ],
+  "keywords": [
+    "uniweb",
+    "cli",
+    "scaffold",
+    "foundation",
+    "components",
+    "vite"
+  ],
+  "author": "Proximify",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uniweb/cli.git"
+  },
+  "homepage": "https://github.com/uniweb/cli#readme",
+  "bugs": {
+    "url": "https://github.com/uniweb/cli/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@uniweb/build": "workspace:*",
+    "prompts": "^2.4.2"
+  }
+}
