@@ -260,6 +260,12 @@ dist
 *.local
 `)
 
+  // .npmrc - approve build scripts for known packages
+  writeFile(join(projectDir, '.npmrc'), `onlyBuiltDependencies:
+  - esbuild
+  - sharp
+`)
+
   // Create site package
   await createSite(join(projectDir, 'packages/site'), 'site', true)
 
