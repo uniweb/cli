@@ -300,16 +300,46 @@ async function createSite(projectDir, projectName, isWorkspace = false) {
     },
     devDependencies: {
       '@vitejs/plugin-react': '^4.2.1',
+      autoprefixer: '^10.4.18',
+      postcss: '^8.4.35',
       react: '^18.2.0',
       'react-dom': '^18.2.0',
       'react-router-dom': '^6.22.0',
+      tailwindcss: '^3.4.1',
       vite: '^5.1.0',
       'vite-plugin-svgr': '^4.2.0',
     },
   })
 
-  // vite.config.js
+  // Foundation import name
   const foundationImport = isWorkspace ? 'foundation' : 'foundation-example'
+
+  // tailwind.config.js - scan foundation components
+  const foundationPath = isWorkspace ? '../foundation' : `./node_modules/${foundationImport}`
+  writeFile(join(projectDir, 'tailwind.config.js'), `export default {
+  content: ['${foundationPath}/src/**/*.{js,jsx,ts,tsx}'],
+  theme: {
+    extend: {
+      colors: {
+        primary: '#3b82f6',
+        secondary: '#64748b',
+      },
+    },
+  },
+  plugins: [],
+}
+`)
+
+  // postcss.config.js
+  writeFile(join(projectDir, 'postcss.config.js'), `export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+`)
+
+  // vite.config.js
   writeFile(join(projectDir, 'vite.config.js'), `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import svgr from 'vite-plugin-svgr'
