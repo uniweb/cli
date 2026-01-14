@@ -414,6 +414,7 @@ async function createSite(projectDir, projectName, isWorkspace = false) {
     devDependencies: {
       '@vitejs/plugin-react': '^4.2.1',
       autoprefixer: '^10.4.18',
+      'js-yaml': '^4.1.0',
       postcss: '^8.4.35',
       react: '^18.2.0',
       'react-dom': '^18.2.0',
@@ -424,13 +425,24 @@ async function createSite(projectDir, projectName, isWorkspace = false) {
     },
   })
 
-  // Foundation import name
+  // Foundation import name (used for initial site.yml)
   const foundationImport = isWorkspace ? 'foundation' : 'foundation-example'
 
-  // tailwind.config.js - scan foundation components
-  const foundationPath = isWorkspace ? '../foundation' : `./node_modules/${foundationImport}`
-  writeFile(join(projectDir, 'tailwind.config.js'), `export default {
-  content: ['${foundationPath}/src/**/*.{js,jsx,ts,tsx}'],
+  // tailwind.config.js - reads foundation from site.yml
+  writeFile(join(projectDir, 'tailwind.config.js'), `import { readFileSync, existsSync } from 'fs'
+import yaml from 'js-yaml'
+
+// Read foundation from site.yml
+const siteConfig = yaml.load(readFileSync('./site.yml', 'utf8'))
+const foundation = siteConfig.foundation || 'foundation'
+
+// Resolve foundation path (workspace sibling or node_modules)
+const workspacePath = \`../\${foundation}/src/**/*.{js,jsx,ts,tsx}\`
+const npmPath = \`./node_modules/\${foundation}/src/**/*.{js,jsx,ts,tsx}\`
+const contentPath = existsSync(\`../\${foundation}\`) ? workspacePath : npmPath
+
+export default {
+  content: [contentPath],
   theme: {
     extend: {
       colors: {
@@ -452,15 +464,31 @@ async function createSite(projectDir, projectName, isWorkspace = false) {
 }
 `)
 
-  // vite.config.js
+  // vite.config.js - reads foundation from site.yml
   writeFile(join(projectDir, 'vite.config.js'), `import { defineConfig } from 'vite'
+import { readFileSync, existsSync } from 'fs'
+import yaml from 'js-yaml'
 import react from '@vitejs/plugin-react'
 import svgr from 'vite-plugin-svgr'
 import { siteContentPlugin, foundationPlugin } from '@uniweb/runtime/vite'
 
+// Read foundation from site.yml
+const siteConfig = yaml.load(readFileSync('./site.yml', 'utf8'))
+const foundation = siteConfig.foundation || 'foundation'
+
+// Check if foundation is a workspace sibling or npm package
+const isWorkspaceFoundation = existsSync(\`../\${foundation}\`)
+const foundationPath = isWorkspaceFoundation ? \`../\${foundation}\` : \`./node_modules/\${foundation}\`
+
 const useRuntimeLoading = process.env.VITE_FOUNDATION_MODE === 'runtime'
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // Alias #foundation to the actual foundation package
+      '#foundation': foundation,
+    },
+  },
   plugins: [
     react(),
     svgr(),
@@ -469,8 +497,8 @@ export default defineConfig({
       inject: true,
     }),
     useRuntimeLoading && foundationPlugin({
-      name: '${foundationImport}',
-      path: ${isWorkspace ? "'../foundation'" : "require.resolve('" + foundationImport + "').replace('/src/index.js', '')"},
+      name: foundation,
+      path: foundationPath,
       serve: '/foundation',
       watch: true,
     }),
@@ -503,7 +531,7 @@ export default defineConfig({
 </html>
 `)
 
-  // main.jsx
+  // main.jsx - uses #foundation alias (configured in vite.config.js from site.yml)
   writeFile(join(projectDir, 'src/main.jsx'), `import { initRuntime } from '@uniweb/runtime'
 
 const useRuntimeLoading = import.meta.env.VITE_FOUNDATION_MODE === 'runtime'
@@ -515,8 +543,9 @@ async function start() {
       cssUrl: '/foundation/assets/style.css'
     })
   } else {
-    const foundation = await import('${foundationImport}')
-    await import('${foundationImport}/styles')
+    // #foundation alias is resolved by Vite based on site.yml config
+    const foundation = await import('#foundation')
+    await import('#foundation/styles')
     initRuntime(foundation)
   }
 }
