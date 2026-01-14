@@ -246,6 +246,9 @@ async function createWorkspace(projectDir, projectName) {
       'build:foundation': 'pnpm --filter foundation build',
       build: 'pnpm build:foundation && pnpm --filter site build',
     },
+    pnpm: {
+      onlyBuiltDependencies: ['esbuild', 'sharp'],
+    },
   })
 
   // pnpm-workspace.yaml
@@ -258,12 +261,6 @@ async function createWorkspace(projectDir, projectName) {
 dist
 .DS_Store
 *.local
-`)
-
-  // .npmrc - approve build scripts for known packages
-  writeFile(join(projectDir, '.npmrc'), `onlyBuiltDependencies:
-  - esbuild
-  - sharp
 `)
 
   // Create site package
