@@ -361,7 +361,55 @@ defaultLanguage: en
 foundation: foundation    # References packages/foundation
 \`\`\`
 
-To add multiple sites or foundations, create new packages and update each site's \`site.yml\`.
+## Multiple Sites and Foundations
+
+This workspace supports multiple sites and foundations. The \`packages/*\` pattern includes any package you add.
+
+**Adding another foundation:**
+
+\`\`\`bash
+npx uniweb create packages/docs-foundation --template foundation
+\`\`\`
+
+**Adding another site:**
+
+\`\`\`bash
+npx uniweb create packages/docs-site --template site
+\`\`\`
+
+Then edit \`packages/docs-site/site.yml\` to use the new foundation:
+
+\`\`\`yaml
+foundation: docs-foundation
+\`\`\`
+
+**Running a specific site:**
+
+\`\`\`bash
+pnpm --filter docs-site dev
+\`\`\`
+
+## Sharing Components
+
+For components shared across multiple foundations, create a shared package:
+
+\`\`\`
+packages/
+├── shared/              # Shared React components
+│   ├── package.json
+│   └── src/
+│       └── Button.jsx
+├── marketing-foundation/
+├── docs-foundation/
+└── site/
+\`\`\`
+
+Foundations can import from the shared package:
+
+\`\`\`js
+// packages/marketing-foundation/src/components/Hero/index.jsx
+import { Button } from 'shared'
+\`\`\`
 
 ## What is Uniweb?
 
