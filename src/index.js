@@ -362,9 +362,6 @@ Learn more:
 - [CLI Documentation](https://github.com/uniweb/cli)
 - [uniweb.app](https://uniweb.app) — Full publishing platform
 
-## License
-
-MIT
 `)
 
   // Create site package
@@ -623,9 +620,6 @@ Output is in \`dist/\` — ready to deploy to any static host.
 - [Uniweb on GitHub](https://github.com/uniweb)
 - [uniweb.app](https://uniweb.app)
 
-## License
-
-MIT
 `)
   }
 
@@ -963,9 +957,6 @@ A Foundation defines the vocabulary for Uniweb sites:
 
 Learn more at [github.com/uniweb](https://github.com/uniweb)
 
-## License
-
-MIT
 `)
   }
 
