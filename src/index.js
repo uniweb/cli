@@ -351,6 +351,18 @@ subtitle: Your subtitle
 Optional body content here.
 \`\`\`
 
+## Configuration
+
+Each site has a \`site.yml\` that configures which foundation it uses:
+
+\`\`\`yaml
+name: site
+defaultLanguage: en
+foundation: foundation    # References packages/foundation
+\`\`\`
+
+To add multiple sites or foundations, create new packages and update each site's \`site.yml\`.
+
 ## What is Uniweb?
 
 Uniweb is a **Component Web Platform** that bridges content and components.
@@ -515,6 +527,9 @@ start().catch(console.error)
   // site.yml
   writeFile(join(projectDir, 'site.yml'), `name: ${projectName}
 defaultLanguage: en
+
+# Foundation to use for this site
+foundation: ${foundationImport}
 `)
 
   // pages/home/page.yml
@@ -593,19 +608,17 @@ Optional markdown content here.
 - The \`component\` field specifies which Foundation component renders the section
 - Other frontmatter fields become the component's content
 
-## Changing the Foundation
+## Configuration
 
-Edit \`package.json\` to use a different foundation:
+The \`site.yml\` file configures your site:
 
-\`\`\`json
-{
-  "dependencies": {
-    "@your-org/your-foundation": "^1.0.0"
-  }
-}
+\`\`\`yaml
+name: ${projectName}
+defaultLanguage: en
+foundation: ${foundationImport}    # Which foundation to use
 \`\`\`
 
-Then update imports in \`src/main.jsx\` and \`vite.config.js\`.
+To use a different foundation, update the \`foundation\` field and install the package.
 
 ## Building for Production
 
