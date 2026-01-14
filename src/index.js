@@ -188,7 +188,6 @@ async function main() {
   log(`  ${colors.cyan}pnpm install${colors.reset}`)
 
   if (templateType === 'workspace') {
-    log(`  ${colors.cyan}pnpm build:foundation${colors.reset}  ${colors.dim}# Build CSS once${colors.reset}`)
     log(`  ${colors.cyan}pnpm dev${colors.reset}`)
   } else if (templateType === 'site') {
     log(`  ${colors.cyan}pnpm dev${colors.reset}`)
@@ -371,7 +370,7 @@ async function start() {
     })
   } else {
     const foundation = await import('${foundationImport}')
-    await import('${foundationImport}/dist/styles')
+    await import('${foundationImport}/styles')
     initRuntime(foundation)
   }
 }
