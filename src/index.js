@@ -263,6 +263,110 @@ dist
 *.local
 `)
 
+  // README.md
+  writeFile(join(projectDir, 'README.md'), `# ${projectName}
+
+A Uniweb workspace with a site and foundation for co-development.
+
+## Quick Start
+
+\`\`\`bash
+pnpm install
+pnpm dev
+\`\`\`
+
+Open [http://localhost:3000](http://localhost:3000) to see your site.
+
+## Project Structure
+
+\`\`\`
+${projectName}/
+├── packages/
+│   ├── site/           # Your website
+│   │   ├── pages/      # Content pages (markdown + YAML)
+│   │   ├── src/        # Site entry point
+│   │   └── vite.config.js
+│   └── foundation/     # Your component library
+│       └── src/
+│           ├── components/   # React components
+│           ├── meta.js       # Foundation metadata
+│           └── styles.css    # Tailwind styles
+├── package.json
+└── pnpm-workspace.yaml
+\`\`\`
+
+## Development
+
+### Standard Mode (recommended)
+
+\`\`\`bash
+pnpm dev
+\`\`\`
+
+Edit components in \`packages/foundation/src/components/\` and see changes instantly via HMR.
+Edit content in \`packages/site/pages/\` to add or modify pages.
+
+### Runtime Loading Mode
+
+\`\`\`bash
+pnpm dev:runtime
+\`\`\`
+
+Tests production behavior where the foundation is loaded as a separate module.
+Use this to debug issues that only appear in production.
+
+## Building for Production
+
+\`\`\`bash
+# Build both foundation and site
+pnpm build
+\`\`\`
+
+Output:
+- \`packages/foundation/dist/\` — Bundled foundation (JS + CSS + schema)
+- \`packages/site/dist/\` — Production-ready site
+
+## Adding Components
+
+1. Create a new folder in \`packages/foundation/src/components/YourComponent/\`
+2. Add \`index.jsx\` with your React component
+3. Add \`meta.js\` describing the component's content slots and options
+4. Export from \`packages/foundation/src/index.js\`
+
+## Adding Pages
+
+1. Create a folder in \`packages/site/pages/your-page/\`
+2. Add \`page.yml\` with page metadata
+3. Add markdown files (\`1-section.md\`, \`2-section.md\`, etc.) for each section
+
+Each markdown file specifies which component to use:
+
+\`\`\`markdown
+---
+component: Hero
+title: Your Title
+subtitle: Your subtitle
+---
+
+Optional body content here.
+\`\`\`
+
+## What is Uniweb?
+
+Uniweb is a **Component Web Platform** that bridges content and components.
+Foundations define the vocabulary (available components, options, design rules).
+Sites provide content that flows through Foundations.
+
+Learn more:
+- [Uniweb on GitHub](https://github.com/uniweb)
+- [CLI Documentation](https://github.com/uniweb/cli)
+- [uniweb.app](https://uniweb.app) — Full publishing platform
+
+## License
+
+MIT
+`)
+
   // Create site package
   await createSite(join(projectDir, 'packages/site'), 'site', true)
 
@@ -432,6 +536,98 @@ ctaUrl: "#"
 
 Your content goes here.
 `)
+
+  // README.md (only for standalone site, not workspace)
+  if (!isWorkspace) {
+    writeFile(join(projectDir, 'README.md'), `# ${projectName}
+
+A Uniweb site — a content-driven website powered by a Foundation component library.
+
+## Quick Start
+
+\`\`\`bash
+pnpm install
+pnpm dev
+\`\`\`
+
+Open [http://localhost:3000](http://localhost:3000) to see your site.
+
+## Project Structure
+
+\`\`\`
+${projectName}/
+├── pages/              # Your content
+│   └── home/
+│       ├── page.yml    # Page metadata
+│       └── 1-hero.md   # Section content
+├── src/
+│   └── main.jsx        # Site entry point
+├── site.yml            # Site configuration
+├── vite.config.js
+└── package.json
+\`\`\`
+
+## Adding Pages
+
+1. Create a folder in \`pages/your-page/\`
+2. Add \`page.yml\`:
+
+\`\`\`yaml
+title: Your Page Title
+order: 2
+\`\`\`
+
+3. Add section files (\`1-hero.md\`, \`2-features.md\`, etc.):
+
+\`\`\`markdown
+---
+component: Hero
+title: Section Title
+subtitle: Section subtitle
+---
+
+Optional markdown content here.
+\`\`\`
+
+## How It Works
+
+- Each folder in \`pages/\` becomes a route (\`/home\`, \`/about\`, etc.)
+- Section files are numbered to control order (\`1-*.md\`, \`2-*.md\`)
+- The \`component\` field specifies which Foundation component renders the section
+- Other frontmatter fields become the component's content
+
+## Changing the Foundation
+
+Edit \`package.json\` to use a different foundation:
+
+\`\`\`json
+{
+  "dependencies": {
+    "@your-org/your-foundation": "^1.0.0"
+  }
+}
+\`\`\`
+
+Then update imports in \`src/main.jsx\` and \`vite.config.js\`.
+
+## Building for Production
+
+\`\`\`bash
+pnpm build
+\`\`\`
+
+Output is in \`dist/\` — ready to deploy to any static host.
+
+## Learn More
+
+- [Uniweb on GitHub](https://github.com/uniweb)
+- [uniweb.app](https://uniweb.app)
+
+## License
+
+MIT
+`)
+  }
 
   success(`Created site: ${projectName}`)
 }
@@ -676,6 +872,102 @@ export default {
   },
 }
 `)
+
+  // README.md (only for standalone foundation, not workspace)
+  if (!isWorkspace) {
+    writeFile(join(projectDir, 'README.md'), `# ${projectName}
+
+A Uniweb Foundation — a React component library for content-driven websites.
+
+## Quick Start
+
+\`\`\`bash
+pnpm install
+pnpm dev      # Start Vite dev server for component development
+pnpm build    # Build for production
+\`\`\`
+
+## Project Structure
+
+\`\`\`
+${projectName}/
+├── src/
+│   ├── components/       # Your components
+│   │   └── Hero/
+│   │       ├── index.jsx # React component
+│   │       └── meta.js   # Component metadata
+│   ├── meta.js           # Foundation metadata
+│   ├── index.js          # Exports
+│   └── styles.css        # Tailwind styles
+├── package.json
+├── vite.config.js
+└── tailwind.config.js
+\`\`\`
+
+## Adding Components
+
+1. Create \`src/components/YourComponent/index.jsx\`:
+
+\`\`\`jsx
+export function YourComponent({ content }) {
+  const { title, description } = content
+  return (
+    <section className="py-12 px-6">
+      <h2>{title}</h2>
+      <p>{description}</p>
+    </section>
+  )
+}
+
+export default YourComponent
+\`\`\`
+
+2. Create \`src/components/YourComponent/meta.js\`:
+
+\`\`\`js
+export default {
+  title: 'Your Component',
+  description: 'What this component does',
+  category: 'Content',
+  elements: {
+    title: { label: 'Title', required: true },
+    description: { label: 'Description' },
+  },
+}
+\`\`\`
+
+3. Export from \`src/index.js\`:
+
+\`\`\`js
+export { YourComponent } from './components/YourComponent/index.jsx'
+\`\`\`
+
+## Build Output
+
+After \`pnpm build\`:
+
+\`\`\`
+dist/
+├── foundation.js      # Bundled components
+├── assets/style.css   # Compiled Tailwind CSS
+└── schema.json        # Component metadata for editors
+\`\`\`
+
+## What is a Foundation?
+
+A Foundation defines the vocabulary for Uniweb sites:
+- **Components** — The building blocks creators can use
+- **Elements** — Content slots (title, description, images, etc.)
+- **Properties** — Configuration options exposed to creators
+- **Presets** — Pre-configured variations of components
+
+Learn more at [github.com/uniweb](https://github.com/uniweb)
+
+## License
+
+MIT
+`)
+  }
 
   success(`Created foundation: ${projectName}`)
 }
