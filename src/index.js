@@ -243,8 +243,7 @@ async function createWorkspace(projectDir, projectName) {
     scripts: {
       dev: 'pnpm --filter site dev',
       'dev:runtime': 'VITE_FOUNDATION_MODE=runtime pnpm --filter site dev',
-      'build:foundation': 'pnpm --filter foundation build',
-      build: 'pnpm build:foundation && pnpm --filter site build',
+      build: 'pnpm -r build',
     },
     pnpm: {
       onlyBuiltDependencies: ['esbuild', 'sharp'],
@@ -318,13 +317,20 @@ Use this to debug issues that only appear in production.
 ## Building for Production
 
 \`\`\`bash
-# Build both foundation and site
+# Build all packages (foundations and sites)
 pnpm build
+
+# Build a specific package
+pnpm --filter foundation build
+pnpm --filter site build
+
+# Build only certain packages
+pnpm --filter marketing-site --filter docs-site build
 \`\`\`
 
-Output:
-- \`packages/foundation/dist/\` — Bundled foundation (JS + CSS + schema)
-- \`packages/site/dist/\` — Production-ready site
+**Output:**
+- \`packages/[foundation]/dist/\` — Bundled components, CSS, and schema.json
+- \`packages/[site]/dist/\` — Production-ready static site
 
 ## Adding Components
 
