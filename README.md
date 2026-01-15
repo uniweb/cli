@@ -390,6 +390,14 @@ Astro is a static site generator. Uniweb is a content architecture that works wi
 
 No. Local markdown files work great for developer-managed sites. The platform adds dynamic content, visual editing, and team collaboration when you need it.
 
+**Is this SEO-friendly?**
+
+Yes. SPA by default for simplicity, but the architecture supports static generation (SSG) and server-side rendering (SSR).
+
+**What about dynamic routes?**
+
+Pages can define data sources that auto-generate subroutes. A `/blog` page can have an index (listing) and a `[slug]` template that renders each post. No manual folders for every entry.
+
 ## Related Packages
 
 - [`@uniweb/build`](https://github.com/uniweb/build) — Foundation build tooling
