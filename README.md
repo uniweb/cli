@@ -13,11 +13,11 @@ pnpm install
 pnpm dev
 ```
 
-You get a working Vite + React site with:
+You get a workspace with two packages:
 - **`site/`** — Content, pages, entry point
 - **`foundation/`** — Your React components
 
-Both are proper packages. Add dependencies where they belong. Scale when you need to.
+Content authors work in markdown. Component authors work in React. Neither can break the other's work, and component updates flow to every site using them. Start simple, scale to multi-site when needed.
 
 No framework to learn. Foundations are purpose-built component systems—React + Vite + Tailwind—designed for a specific domain (marketing, documentation, learning, etc.). Sites are Vite apps that load content from markdown files. The CLI handles the wiring.
 
