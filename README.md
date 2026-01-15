@@ -4,21 +4,22 @@ CLI for the Uniweb Component Web Platform.
 
 ## Quick Start
 
-Create a new Uniweb project with a starter template:
+Create a new Uniweb project:
 
 ```bash
-npx uniweb@latest create my-project --template workspace
-```
-
-This scaffolds a Vite project with everything wired—routing, state, and build pipeline ready. You get a site and a Foundation in a monorepo, pre-configured to work together.
-
-```bash
+npx uniweb@latest create my-project
 cd my-project
 pnpm install
 pnpm dev
 ```
 
-No heavy framework to learn. Foundations are React component libraries built with Vite and styled with Tailwind. Sites are Vite apps that load content from markdown files. The CLI handles the wiring.
+You get a working Vite + React site with:
+- **`site/`** — Content, pages, entry point
+- **`foundation/`** — Your React components
+
+Both are proper packages. Add dependencies where they belong. Scale when you need to.
+
+No framework to learn. Foundations are purpose-built component systems—React + Vite + Tailwind—designed for a specific domain (marketing, documentation, learning, etc.). Sites are Vite apps that load content from markdown files. The CLI handles the wiring.
 
 ## Installation
 
@@ -42,9 +43,9 @@ uniweb create [project-name] [options]
 
 **Options:**
 
-| Option              | Description                                            |
-| ------------------- | ------------------------------------------------------ |
-| `--template <type>` | Project template: `workspace`, `site`, or `foundation` |
+| Option              | Description                          |
+| ------------------- | ------------------------------------ |
+| `--template <type>` | Project template: `site` or `workspace` |
 
 **Examples:**
 
@@ -52,17 +53,14 @@ uniweb create [project-name] [options]
 # Interactive prompts
 uniweb create
 
-# Create with specific name
+# Create with specific name (defaults to site template)
 uniweb create my-project
 
-# Full workspace (site + foundation)
+# Single project with site + foundation
+uniweb create my-project --template site
+
+# Multi-site/foundation monorepo
 uniweb create my-workspace --template workspace
-
-# Standalone foundation
-uniweb create my-foundation --template foundation
-
-# Standalone site
-uniweb create my-site --template site
 ```
 
 ### `build`
@@ -78,6 +76,7 @@ uniweb build [options]
 | Option            | Description                                                           |
 | ----------------- | --------------------------------------------------------------------- |
 | `--target <type>` | Build target: `foundation` or `site` (auto-detected if not specified) |
+| `--platform <name>` | Deployment platform (e.g., `vercel`) for platform-specific output     |
 
 **Examples:**
 
@@ -90,56 +89,109 @@ uniweb build --target foundation
 
 # Explicitly build as site
 uniweb build --target site
+
+# Build for Vercel deployment
+uniweb build --platform vercel
 ```
 
 ## Project Templates
 
+### Site (Default)
+
+A minimal workspace with a site and foundation as sibling packages. This is the recommended starting point.
+
+```
+my-project/
+├── package.json              # Workspace root
+├── pnpm-workspace.yaml       # packages: ['site', 'foundation']
+│
+├── site/                     # Site package (content + entry)
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── index.html
+│   ├── site.yml
+│   ├── src/
+│   │   └── main.jsx          # Thin entry point
+│   ├── pages/                # Content structure
+│   │   └── home/
+│   │       ├── page.yml
+│   │       └── 1-hero.md
+│   ├── locales/              # i18n (mirrors pages/)
+│   │   └── es/
+│   │       └── home/
+│   └── public/               # Static assets
+│
+└── foundation/               # Foundation package (components)
+    ├── package.json
+    ├── vite.config.js
+    ├── src/
+    │   ├── index.js          # Component registry
+    │   ├── styles.css        # Tailwind
+    │   ├── meta.js           # Foundation metadata
+    │   └── components/
+    │       └── Hero/
+    │           ├── index.jsx
+    │           └── meta.js
+    └── ...
+```
+
+**Key characteristics:**
+
+- **Convention-compliant** — Each package has its own `src/`
+- **Clear dep boundaries** — Component libs → `foundation/package.json`, runtime → `site/package.json`
+- **Zero extraction** — `foundation/` is already a complete, publishable package
+- **Scales naturally** — Rename to `sites/marketing/` and `foundations/marketing/` when needed
+
 ### Workspace
 
-A monorepo with both a site and foundation for co-development.
+A monorepo for multi-site or multi-foundation development.
 
 ```
 my-workspace/
 ├── package.json
-├── pnpm-workspace.yaml
-└── packages/
-    ├── site/           # Website using the foundation
-    └── foundation/     # Component library
+├── pnpm-workspace.yaml       # packages: ['sites/*', 'foundations/*']
+│
+├── sites/
+│   ├── marketing/            # Main marketing site
+│   │   ├── package.json
+│   │   ├── site.yml
+│   │   ├── src/
+│   │   ├── pages/
+│   │   └── ...
+│   └── docs/                 # Documentation site
+│
+└── foundations/
+    ├── marketing/            # Marketing foundation
+    │   ├── package.json
+    │   ├── src/components/
+    │   └── ...
+    └── documentation/        # Documentation foundation
 ```
 
-### Site
+Use this when you need:
+- Multiple sites sharing foundations
+- Multiple foundations for different purposes
+- A testing site for foundation development
 
-A standalone site using an existing foundation.
+## Dependency Management
 
-```
-my-site/
-├── package.json
-├── vite.config.js
-├── site.yml
-├── src/
-│   └── main.jsx
-└── pages/
-    └── home/
-        ├── page.yml
-        └── 1-hero.md
-```
+Each package manages its own dependencies:
 
-### Foundation
+**`site/package.json`:**
+- `@uniweb/runtime`
+- `@my-project/foundation` (workspace link)
+- Vite, Tailwind (dev)
 
-A standalone component library.
+**`foundation/package.json`:**
+- Component libraries (carousel, icons, etc.)
+- React as peer dependency
 
-```
-my-foundation/
-├── package.json
-├── vite.config.js
-├── tailwind.config.js
-└── src/
-    ├── meta.js          # Foundation metadata
-    ├── styles.css
-    └── components/
-        └── Hero/
-            ├── index.jsx
-            └── meta.js
+```bash
+# Add component dependency
+cd foundation && pnpm add embla-carousel
+
+# Site references foundation via workspace
+# No path gymnastics needed
 ```
 
 ## Foundation Build Process
@@ -165,10 +217,42 @@ dist/
         └── [preset].webp
 ```
 
+## Migration: Site to Workspace
+
+When your project grows:
+
+```bash
+# Current structure
+my-project/
+├── site/
+└── foundation/
+
+# Becomes (name by purpose)
+my-project/
+├── sites/
+│   └── marketing/   # Renamed from site/
+└── foundations/
+    └── marketing/   # Renamed from foundation/
+```
+
+Update `pnpm-workspace.yaml` and package names. No code changes needed.
+
+## Publishing a Foundation
+
+Your `foundation/` folder is already a complete package:
+
+```bash
+cd foundation
+uniweb build
+npm publish
+```
+
+Other projects can use your components. Updates propagate automatically.
+
 ## Related Packages
 
-- [`@uniweb/build`](https://github.com/uniweb/build) - Foundation build tooling
-- [`@uniweb/runtime`](https://github.com/uniweb/runtime) - Runtime loader for sites
+- [`@uniweb/build`](https://github.com/uniweb/build) — Foundation build tooling
+- [`@uniweb/runtime`](https://github.com/uniweb/runtime) — Runtime loader for sites
 
 ## License
 
