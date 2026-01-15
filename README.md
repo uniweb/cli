@@ -352,8 +352,7 @@ mkdir -p foundations/documentation
 mv site sites/marketing
 mv foundation foundations/marketing
 
-# Update package names in each package.json
-# Update workspace:* references to new names
+# Update package names and dependencies in package.json files
 ```
 
 Both patterns work simultaneously—evolve gradually as needed.
