@@ -87,7 +87,7 @@ async function main() {
 
   // Parse arguments
   let projectName = args[1]
-  let templateType = null
+  let templateType = "single"; // or null for iteractive selection
 
   // Check for --template flag
   const templateIndex = args.indexOf('--template')
