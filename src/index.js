@@ -696,6 +696,9 @@ export default defineConfig({
     fs: { allow: ['..'] },
     port: 3000,
   },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-dom/client', 'react-router-dom'],
+  },
 })
 `)
 
