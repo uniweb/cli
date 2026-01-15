@@ -217,7 +217,7 @@ ${colors.bright}Templates:${colors.reset}
 async function createSiteProject(projectDir, projectName) {
   mkdirSync(projectDir, { recursive: true })
 
-  // Root package.json
+  // Root package.json (workspaces field for npm compatibility)
   writeJSON(join(projectDir, 'package.json'), {
     name: projectName,
     version: '0.1.0',
@@ -228,15 +228,23 @@ async function createSiteProject(projectDir, projectName) {
       'dev:runtime': 'VITE_FOUNDATION_MODE=runtime pnpm --filter site dev',
       build: 'pnpm -r build',
     },
+    workspaces: [
+      'site',
+      'foundation',
+      'sites/*',
+      'foundations/*',
+    ],
     pnpm: {
       onlyBuiltDependencies: ['esbuild', 'sharp'],
     },
   })
 
-  // pnpm-workspace.yaml
+  // pnpm-workspace.yaml (all patterns for seamless evolution)
   writeFile(join(projectDir, 'pnpm-workspace.yaml'), `packages:
   - 'site'
   - 'foundation'
+  - 'sites/*'
+  - 'foundations/*'
 `)
 
   // .gitignore
@@ -342,18 +350,27 @@ Your subtitle or description here.
 
 ## Scaling Up
 
-When your project grows to multiple sites or foundations, migrate to a workspace:
+The workspace is pre-configured for growth—no config changes needed.
+
+**Add a second site** (keep existing structure):
 
 \`\`\`bash
-# Rename folders (name by purpose)
+mkdir -p sites/docs
+# Create your docs site in sites/docs/
+\`\`\`
+
+**Or migrate to multi-site structure**:
+
+\`\`\`bash
+# Move and rename by purpose
 mv site sites/marketing
 mv foundation foundations/marketing
 
-# Update pnpm-workspace.yaml
-packages:
-  - 'sites/*'
-  - 'foundations/*'
+# Update package names in package.json files
+# Update dependencies to reference new names
 \`\`\`
+
+Both patterns work simultaneously—evolve gradually as needed.
 
 ## Publishing Your Foundation
 
@@ -400,7 +417,7 @@ Learn more:
 async function createMultiWorkspace(projectDir, projectName) {
   mkdirSync(projectDir, { recursive: true })
 
-  // Root package.json
+  // Root package.json (workspaces field for npm compatibility)
   writeJSON(join(projectDir, 'package.json'), {
     name: projectName,
     version: '0.1.0',
@@ -411,13 +428,21 @@ async function createMultiWorkspace(projectDir, projectName) {
       'dev:runtime': 'VITE_FOUNDATION_MODE=runtime pnpm --filter marketing dev',
       build: 'pnpm -r build',
     },
+    workspaces: [
+      'site',
+      'foundation',
+      'sites/*',
+      'foundations/*',
+    ],
     pnpm: {
       onlyBuiltDependencies: ['esbuild', 'sharp'],
     },
   })
 
-  // pnpm-workspace.yaml
+  // pnpm-workspace.yaml (all patterns for seamless evolution)
   writeFile(join(projectDir, 'pnpm-workspace.yaml'), `packages:
+  - 'site'
+  - 'foundation'
   - 'sites/*'
   - 'foundations/*'
 `)
