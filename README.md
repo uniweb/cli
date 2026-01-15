@@ -20,7 +20,80 @@ You get a workspace with two packages:
 
 Content authors work in markdown. Component authors work in React. Neither can break the other's work, and component updates flow to every site using them. Start simple, scale to multi-site when needed.
 
-No framework to learn. Foundations are purpose-built component systems—React + Vite + Tailwind—designed for a specific domain (marketing, documentation, learning, etc.). Sites are Vite apps that load content from markdown files. The CLI handles the wiring.
+## What You Get
+
+```
+my-project/
+├── site/                     # Content + configuration
+│   ├── pages/                # File-based routing
+│   │   └── home/
+│   │       ├── page.yml      # Page metadata
+│   │       └── 1-hero.md     # Section content
+│   ├── locales/              # i18n (mirrors pages/)
+│   │   └── es/
+│   └── public/               # Static assets
+│
+└── foundation/               # Your components
+    └── src/
+        └── components/
+            └── Hero/
+                └── index.jsx
+```
+
+**Pages are folders.** Create `pages/about/` with a markdown file inside → visit `/about`. That's the whole routing model.
+
+### Content as Markdown
+
+```markdown
+---
+component: Hero
+theme: dark
+---
+
+# Welcome
+
+Build something great.
+
+[Get Started](#)
+```
+
+Frontmatter specifies the component and configuration. The body contains the actual content—headings, paragraphs, links, images—which gets semantically parsed into structured data your component receives.
+
+### Components as React
+
+```jsx
+export function Hero({ content, params }) {
+  const { title } = content.main.header;
+  const { paragraphs, links } = content.main.body;
+  const { theme = 'light' } = params;
+
+  return (
+    <section className={`py-20 text-center ${theme === 'dark' ? 'bg-gray-900 text-white' : ''}`}>
+      <h1 className="text-4xl font-bold">{title}</h1>
+      <p className="text-xl text-gray-600">{paragraphs[0]}</p>
+      {links[0] && (
+        <a href={links[0].url} className="mt-8 px-6 py-3 bg-blue-600 text-white rounded inline-block">
+          {links[0].text}
+        </a>
+      )}
+    </section>
+  );
+}
+```
+
+Standard React. Standard Tailwind. No framework to learn—foundations are purpose-built component systems designed for a specific domain (marketing, documentation, learning, etc.). Sites are Vite apps that load content from markdown files. The CLI handles the wiring.
+
+## The Bigger Picture
+
+The structure you start with scales without rewrites:
+
+1. **Single project** — One site, one component library. Most projects stay here.
+2. **Multi-site** — One foundation powers multiple sites. Release it once, updates propagate automatically.
+3. **Full platform** — [uniweb.app](https://uniweb.app) adds visual editing, live content management, and team collaboration. Your foundation plugs in and its components become native to the editor.
+
+Start with local markdown files deployed to Vercel. Grow to a collaborative content platform when you need it.
+
+---
 
 ## Installation
 
