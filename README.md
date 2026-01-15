@@ -63,12 +63,14 @@ Frontmatter specifies the component and configuration. The body contains the act
 
 For content that doesn't fit markdown patterns—products, team members, events—use JSON blocks with schema tags:
 
+````markdown
 ```json #team-member
 {
   "name": "Sarah Chen",
   "role": "Lead Architect"
 }
 ```
+````
 
 Components receive validated, typed data. Natural content stays in markdown; structured data goes in JSON blocks.
 
