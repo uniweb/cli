@@ -102,8 +102,8 @@ A minimal workspace with a site and foundation as sibling packages. This is the 
 
 ```
 my-project/
-├── package.json              # Workspace root
-├── pnpm-workspace.yaml       # packages: ['site', 'foundation']
+├── package.json              # Workspace root (includes workspaces field for npm)
+├── pnpm-workspace.yaml       # Pre-configured for evolution (see below)
 │
 ├── site/                     # Site package (content + entry)
 │   ├── package.json
@@ -148,8 +148,8 @@ A monorepo for multi-site or multi-foundation development.
 
 ```
 my-workspace/
-├── package.json
-├── pnpm-workspace.yaml       # packages: ['sites/*', 'foundations/*']
+├── package.json              # Workspace root (includes workspaces field for npm)
+├── pnpm-workspace.yaml       # Same config as site template
 │
 ├── sites/
 │   ├── marketing/            # Main marketing site
@@ -217,25 +217,52 @@ dist/
         └── [preset].webp
 ```
 
-## Migration: Site to Workspace
+## Workspace Configuration
 
-When your project grows:
+Both templates use the same unified workspace configuration:
 
-```bash
-# Current structure
-my-project/
-├── site/
-└── foundation/
-
-# Becomes (name by purpose)
-my-project/
-├── sites/
-│   └── marketing/   # Renamed from site/
-└── foundations/
-    └── marketing/   # Renamed from foundation/
+```yaml
+# pnpm-workspace.yaml
+packages:
+  - 'site'
+  - 'foundation'
+  - 'sites/*'
+  - 'foundations/*'
 ```
 
-Update `pnpm-workspace.yaml` and package names. No code changes needed.
+```json
+// package.json (workspaces field for npm compatibility)
+{
+  "workspaces": ["site", "foundation", "sites/*", "foundations/*"]
+}
+```
+
+This means **no config changes when evolving your project**.
+
+## Evolving Your Project
+
+The workspace is pre-configured for growth. Choose your path:
+
+**Add alongside existing structure:**
+
+```bash
+# Keep site/ and foundation/, add more in sites/ and foundations/
+mkdir -p sites/docs
+mkdir -p foundations/documentation
+```
+
+**Or migrate to multi-site structure:**
+
+```bash
+# Move and rename by purpose
+mv site sites/marketing
+mv foundation foundations/marketing
+
+# Update package names in each package.json
+# Update workspace:* references to new names
+```
+
+Both patterns work simultaneously—evolve gradually as needed.
 
 ## Publishing a Foundation
 
