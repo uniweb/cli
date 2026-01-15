@@ -136,7 +136,17 @@ uniweb create [project-name] [options]
 
 | Option              | Description                           |
 | ------------------- | ------------------------------------- |
-| `--template <type>` | Project template: `single` or `multi` |
+| `--template <type>` | Project template (see below)          |
+
+**Template Sources:**
+
+| Source | Example | Description |
+| ------ | ------- | ----------- |
+| Built-in | `single`, `multi` | Minimal starter templates |
+| Official | `marketing` | Feature-rich showcase templates |
+| npm | `@org/my-template` | Published npm packages |
+| GitHub | `github:user/repo` | GitHub repositories |
+| GitHub URL | `https://github.com/user/repo` | Full GitHub URLs |
 
 **Examples:**
 
@@ -152,6 +162,15 @@ uniweb create my-project --template single
 
 # Multi-site/foundation monorepo
 uniweb create my-workspace --template multi
+
+# Official marketing template (landing pages, pricing, testimonials)
+uniweb create my-site --template marketing
+
+# From npm package
+uniweb create my-site --template @myorg/starter-template
+
+# From GitHub repository
+uniweb create my-site --template github:myorg/uniweb-template
 ```
 
 ### `build`
@@ -187,7 +206,9 @@ uniweb build --platform vercel
 
 ## Project Templates
 
-### Single (Default)
+### Built-in Templates
+
+#### Single (Default)
 
 A minimal workspace with a site and foundation as sibling packages. This is the recommended starting point.
 
@@ -233,7 +254,7 @@ my-project/
 - **Zero extraction** — `foundation/` is already a complete, publishable package
 - **Scales naturally** — Rename to `sites/marketing/` and `foundations/marketing/` when needed
 
-### Multi
+#### Multi
 
 A monorepo for multi-site or multi-foundation development.
 
@@ -264,6 +285,44 @@ Use this when you need:
 - Multiple sites sharing foundations
 - Multiple foundations for different purposes
 - A testing site for foundation development
+
+### Official Templates
+
+Feature-rich templates that demonstrate what's possible with Uniweb. These include real components, sample content, and production-ready structure.
+
+#### Marketing
+
+A complete marketing site with landing page components:
+
+```bash
+uniweb create my-site --template marketing
+```
+
+**Includes:**
+- **Hero** — Gradient/light/dark banner with CTAs
+- **Features** — Grid layout with icons
+- **Pricing** — Tiered pricing tables
+- **Testimonials** — Customer quotes
+- **CTA** — Call-to-action sections
+
+Perfect for product launches, SaaS websites, and business landing pages.
+
+### External Templates
+
+You can use templates from npm or GitHub:
+
+```bash
+# npm package
+uniweb create my-site --template @myorg/template-name
+
+# GitHub repository
+uniweb create my-site --template github:user/repo
+
+# GitHub with specific branch/tag
+uniweb create my-site --template github:user/repo#v1.0.0
+```
+
+External templates must follow the same structure as official templates. See [`@uniweb/templates`](https://github.com/uniweb/templates) for the template format specification.
 
 ## Dependency Management
 
@@ -401,6 +460,7 @@ Pages can define data sources that auto-generate subroutes. A `/blog` page can h
 
 - [`@uniweb/build`](https://github.com/uniweb/build) — Foundation build tooling
 - [`@uniweb/runtime`](https://github.com/uniweb/runtime) — Runtime loader for sites
+- [`@uniweb/templates`](https://github.com/uniweb/templates) — Official templates and template processing
 
 ## License
 
