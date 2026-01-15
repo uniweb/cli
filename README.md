@@ -355,7 +355,7 @@ uniweb publish        # Publishes the foundation in the current directory
 
 Each release creates a new version you can link to sites. You own your foundations and license them to sites—yours or your clients'. Content creators work on sites; when you release updates, linked sites receive them automatically.
 
-**For open source distribution**, you can also publish to npm:
+You can also publish to npm:
 
 ```bash
 npm publish
