@@ -376,6 +376,20 @@ You can also publish to npm:
 npm publish
 ```
 
+## FAQ
+
+**How is this different from MDX?**
+
+MDX blends markdown and JSX—content authors write code. Uniweb keeps them separate: content stays in markdown, components stay in React. Content authors can't break components, and component updates don't require content changes.
+
+**How is this different from Astro?**
+
+Astro is a static site generator. Uniweb is a content architecture that works with any deployment (static, SSR, or platform-managed). The Foundation model means components are reusable across sites and ready for visual editing.
+
+**Do I need uniweb.app?**
+
+No. Local markdown files work great for developer-managed sites. The platform adds dynamic content, visual editing, and team collaboration when you need it.
+
 ## Related Packages
 
 - [`@uniweb/build`](https://github.com/uniweb/build) — Foundation build tooling
