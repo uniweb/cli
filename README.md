@@ -72,7 +72,7 @@ For content that doesn't fit markdown patternsâ€”products, team members, eventsâ
 ```
 ````
 
-Components receive validated, typed data. Natural content stays in markdown; structured data goes in JSON blocks.
+Components receive validated, localized data. Natural content stays in markdown; structured data goes in JSON blocks.
 
 ### Components as React
 
