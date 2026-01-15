@@ -451,7 +451,7 @@ Learn more:
   // Update site to reference workspace foundation
   const sitePackageJson = join(projectDir, 'site/package.json')
   const sitePkg = JSON.parse(readFile(sitePackageJson))
-  sitePkg.dependencies['foundation'] = 'workspace:*'
+  sitePkg.dependencies['foundation'] = 'file:../foundation'
   writeJSON(sitePackageJson, sitePkg)
 
   success(`Created project: ${projectName}`)
@@ -566,7 +566,7 @@ pnpm --filter foundations/marketing build
   // Update site to reference workspace foundation
   const sitePackageJson = join(projectDir, 'sites/marketing/package.json')
   const sitePkg = JSON.parse(readFile(sitePackageJson))
-  sitePkg.dependencies['marketing'] = 'workspace:*'
+  sitePkg.dependencies['marketing'] = 'file:../../foundations/marketing'
   writeJSON(sitePackageJson, sitePkg)
 
   // Update site.yml to reference the marketing foundation
