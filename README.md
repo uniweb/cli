@@ -81,7 +81,9 @@ export function Hero({ content, params }) {
 }
 ```
 
-Standard React. Standard Tailwind. No framework to learn—foundations are purpose-built component systems designed for a specific domain (marketing, documentation, learning, etc.). Sites are Vite apps that load content from markdown files. The CLI handles the wiring.
+Standard React. Standard Tailwind. The `{ content, params }` interface is only for *exposed* components—the ones content creators select in markdown frontmatter. Internal components (the majority of your codebase) use regular React props.
+
+No framework to learn. Foundations are purpose-built component systems designed for a specific domain (marketing, documentation, learning, etc.). Sites are Vite apps that load content from markdown files. The CLI handles the wiring.
 
 ## The Bigger Picture
 
