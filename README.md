@@ -264,17 +264,23 @@ mv foundation foundations/marketing
 
 Both patterns work simultaneously—evolve gradually as needed.
 
-## Publishing a Foundation
+## Releasing a Foundation
 
-Your `foundation/` folder is already a complete package:
+Publish your foundation to [uniweb.app](https://uniweb.app) to make it available for your sites:
 
 ```bash
-cd foundation
+uniweb login          # First time only
 uniweb build
-npm publish
+uniweb publish        # Publishes the foundation in the current directory
 ```
 
-Other projects can use your components. Updates propagate automatically.
+Each release creates a new version you can link to sites. You own your foundations and license them to sites—yours or your clients'. Content creators work on sites; when you release updates, linked sites receive them automatically.
+
+**For open source distribution**, you can also publish to npm:
+
+```bash
+npm publish
+```
 
 ## Related Packages
 
