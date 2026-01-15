@@ -331,11 +331,13 @@ Each markdown file specifies which component to use:
 \`\`\`markdown
 ---
 component: Hero
-title: Your Title
-subtitle: Your subtitle
 ---
 
-Optional body content here.
+# Your Title
+
+Your subtitle or description here.
+
+[Get Started](#)
 \`\`\`
 
 ## Scaling Up
@@ -721,13 +723,13 @@ order: 1
   // pages/home/1-hero.md
   writeFile(join(projectDir, 'pages/home/1-hero.md'), `---
 component: Hero
-title: Welcome to ${projectName}
-subtitle: Built with Uniweb and Vite
-ctaText: Get Started
-ctaUrl: "#"
 ---
 
-Your content goes here.
+# Welcome to ${projectName}
+
+Built with Uniweb and Vite.
+
+[Get Started](#)
 `)
 
   // README.md (only for standalone site, not workspace)
@@ -775,19 +777,22 @@ order: 2
 \`\`\`markdown
 ---
 component: Hero
-title: Section Title
-subtitle: Section subtitle
+theme: dark
 ---
 
-Optional markdown content here.
+# Section Title
+
+Section description here.
+
+[Call to Action](#)
 \`\`\`
 
 ## How It Works
 
 - Each folder in \`pages/\` becomes a route (\`/home\`, \`/about\`, etc.)
 - Section files are numbered to control order (\`1-*.md\`, \`2-*.md\`)
-- The \`component\` field specifies which Foundation component renders the section
-- Other frontmatter fields become the component's content
+- Frontmatter specifies the component and configuration parameters
+- Content in the markdown body is semantically parsed into structured data
 
 ## Configuration
 
@@ -999,22 +1004,36 @@ export { default } from './index.js'
   // src/components/Hero/index.jsx
   writeFile(join(projectDir, 'src/components/Hero/index.jsx'), `import React from 'react'
 
-export function Hero({ content }) {
-  const { title, subtitle, ctaText, ctaUrl } = content
+export function Hero({ content, params }) {
+  // Extract from semantic parser structure
+  const { title } = content.main?.header || {}
+  const { paragraphs = [], links = [] } = content.main?.body || {}
+  const { theme = 'light' } = params || {}
+
+  const isDark = theme === 'dark'
+  const cta = links[0]
 
   return (
-    <section className="py-20 px-6 bg-gradient-to-br from-primary to-blue-700 text-white">
+    <section className={\`py-20 px-6 \${isDark ? 'bg-gradient-to-br from-primary to-blue-700 text-white' : 'bg-gray-50'}\`}>
       <div className="max-w-4xl mx-auto text-center">
-        <h1 className="text-4xl md:text-5xl font-bold mb-6">{title}</h1>
-        {subtitle && (
-          <p className="text-lg text-blue-100 mb-8">{subtitle}</p>
+        {title && (
+          <h1 className="text-4xl md:text-5xl font-bold mb-6">{title}</h1>
         )}
-        {ctaText && ctaUrl && (
+        {paragraphs[0] && (
+          <p className={\`text-lg mb-8 \${isDark ? 'text-blue-100' : 'text-gray-600'}\`}>
+            {paragraphs[0]}
+          </p>
+        )}
+        {cta && (
           <a
-            href={ctaUrl}
-            className="inline-block px-6 py-3 bg-white text-primary font-semibold rounded-lg hover:bg-blue-50 transition-colors"
+            href={cta.url}
+            className={\`inline-block px-6 py-3 font-semibold rounded-lg transition-colors \${
+              isDark
+                ? 'bg-white text-primary hover:bg-blue-50'
+                : 'bg-primary text-white hover:bg-blue-700'
+            }\`}
           >
-            {ctaText}
+            {cta.text}
           </a>
         )}
       </div>
@@ -1028,26 +1047,45 @@ export default Hero
   // src/components/Hero/meta.js
   writeFile(join(projectDir, 'src/components/Hero/meta.js'), `/**
  * Hero Component Metadata
+ *
+ * Content comes from the markdown body (parsed semantically):
+ * - H1 → title (content.main.header.title)
+ * - Paragraphs → description (content.main.body.paragraphs)
+ * - Links → CTA buttons (content.main.body.links)
  */
 export default {
   title: 'Hero Banner',
-  description: 'A prominent header section with headline, subtitle, and call-to-action',
+  description: 'A prominent header section with headline, description, and call-to-action',
   category: 'Headers',
 
+  // Content structure (informational - describes what the semantic parser provides)
   elements: {
     title: {
       label: 'Headline',
+      description: 'From H1 in markdown',
       required: true,
     },
-    subtitle: {
-      label: 'Subtitle',
+    paragraphs: {
+      label: 'Description',
+      description: 'From paragraphs in markdown',
     },
     links: {
       label: 'Call to Action',
+      description: 'From links in markdown',
     },
   },
 
+  // Configuration parameters (set in frontmatter)
   properties: {
+    theme: {
+      type: 'select',
+      label: 'Theme',
+      options: [
+        { value: 'light', label: 'Light' },
+        { value: 'dark', label: 'Dark' },
+      ],
+      default: 'light',
+    },
     alignment: {
       type: 'select',
       label: 'Text Alignment',
