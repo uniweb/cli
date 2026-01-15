@@ -1,6 +1,6 @@
 # uniweb
 
-CLI for the Uniweb Component Web Platform.
+Create a well-structured Vite + React site with content/code separation, file-based routing, localization, and semantic content parsing—out of the box. The architecture scales to multi-site scenarios and collaborative visual editing when you need it.
 
 ## Quick Start
 
@@ -14,6 +14,7 @@ pnpm dev
 ```
 
 You get a workspace with two packages:
+
 - **`site/`** — Content, pages, entry point
 - **`foundation/`** — Your React components
 
@@ -43,8 +44,8 @@ uniweb create [project-name] [options]
 
 **Options:**
 
-| Option              | Description                          |
-| ------------------- | ------------------------------------ |
+| Option              | Description                           |
+| ------------------- | ------------------------------------- |
 | `--template <type>` | Project template: `single` or `multi` |
 
 **Examples:**
@@ -73,9 +74,9 @@ uniweb build [options]
 
 **Options:**
 
-| Option            | Description                                                           |
-| ----------------- | --------------------------------------------------------------------- |
-| `--target <type>` | Build target: `foundation` or `site` (auto-detected if not specified) |
+| Option              | Description                                                           |
+| ------------------- | --------------------------------------------------------------------- |
+| `--target <type>`   | Build target: `foundation` or `site` (auto-detected if not specified) |
 | `--platform <name>` | Deployment platform (e.g., `vercel`) for platform-specific output     |
 
 **Examples:**
@@ -169,6 +170,7 @@ my-workspace/
 ```
 
 Use this when you need:
+
 - Multiple sites sharing foundations
 - Multiple foundations for different purposes
 - A testing site for foundation development
@@ -178,11 +180,13 @@ Use this when you need:
 Each package manages its own dependencies:
 
 **`site/package.json`:**
+
 - `@uniweb/runtime`
 - `@my-project/foundation` (workspace link)
 - Vite, Tailwind (dev)
 
 **`foundation/package.json`:**
+
 - Component libraries (carousel, icons, etc.)
 - React as peer dependency
 
@@ -224,10 +228,10 @@ Both templates use the same unified workspace configuration:
 ```yaml
 # pnpm-workspace.yaml
 packages:
-  - 'site'
-  - 'foundation'
-  - 'sites/*'
-  - 'foundations/*'
+  - "site"
+  - "foundation"
+  - "sites/*"
+  - "foundations/*"
 ```
 
 ```json
