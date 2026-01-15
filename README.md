@@ -1,6 +1,6 @@
 # uniweb
 
-Create a well-structured Vite + React site with content/code separation, file-based routing, localization, and semantic content parsing—out of the box. The architecture scales to multi-site scenarios and collaborative visual editing when you need it.
+Create a well-structured Vite + React site with content/code separation, file-based routing, localization, and structured content—out of the box. The architecture scales to dynamic content management and collaborative visual editing when you need it.
 
 ## Quick Start
 
