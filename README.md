@@ -93,7 +93,7 @@ The structure you start with scales without rewrites:
 2. **Multi-site** — One foundation powers multiple sites. Release it once, updates propagate automatically.
 3. **Full platform** — [uniweb.app](https://uniweb.app) adds visual editing, live content management, and team collaboration. Your foundation plugs in and its components become native to the editor.
 
-Start with local markdown files deployed to Vercel. Grow to a collaborative content platform when you need it.
+Start with local markdown files deployed anywhere. Connect to [uniweb.app](https://uniweb.app) when you're ready for dynamic content and team collaboration.
 
 ---
 
