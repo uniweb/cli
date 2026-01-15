@@ -18,7 +18,7 @@ You get a workspace with two packages:
 - **`site/`** — Content, pages, entry point
 - **`foundation/`** — Your React components
 
-Content authors work in markdown. Component authors work in React. Neither can break the other's work, and component updates flow to every site using them. Start simple, scale to multi-site when needed.
+Content authors work in markdown. Component authors work in React. Neither can break the other's work, and component updates flow to every site using them.
 
 ## What You Get
 
