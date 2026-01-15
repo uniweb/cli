@@ -240,7 +240,7 @@ A monorepo for multi-site or multi-foundation development.
 ```
 my-workspace/
 ├── package.json              # Workspace root (includes workspaces field for npm)
-├── pnpm-workspace.yaml       # Same config as site template
+├── pnpm-workspace.yaml       # Same config as single template
 │
 ├── sites/
 │   ├── marketing/            # Main marketing site
