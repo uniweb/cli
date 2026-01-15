@@ -7,9 +7,8 @@
  *
  * Usage:
  *   npx uniweb create [project-name]
- *   npx uniweb create --template site
- *   npx uniweb create --template foundation
- *   npx uniweb create --template workspace
+ *   npx uniweb create --template site        # site/ + foundation/ (default)
+ *   npx uniweb create --template workspace   # sites/* + foundations/*
  *   npx uniweb build
  *   npx uniweb build --target foundation
  */
@@ -51,17 +50,13 @@ function title(message) {
 
 // Template definitions
 const templates = {
-  workspace: {
-    name: 'Site + Foundation Workspace',
-    description: 'Monorepo with a site and foundation for co-development',
-  },
   site: {
-    name: 'Site Only',
-    description: 'A site that uses an existing foundation',
+    name: 'Site + Foundation Project',
+    description: 'Single project with site/ and foundation/ packages (recommended)',
   },
-  foundation: {
-    name: 'Foundation Only',
-    description: 'A standalone foundation package',
+  workspace: {
+    name: 'Multi-Site Workspace',
+    description: 'Monorepo with sites/ and foundations/ for larger projects',
   },
 }
 
@@ -126,19 +121,14 @@ async function main() {
       message: 'What would you like to create?',
       choices: [
         {
-          title: templates.workspace.name,
-          description: templates.workspace.description,
-          value: 'workspace',
-        },
-        {
           title: templates.site.name,
           description: templates.site.description,
           value: 'site',
         },
         {
-          title: templates.foundation.name,
-          description: templates.foundation.description,
-          value: 'foundation',
+          title: templates.workspace.name,
+          description: templates.workspace.description,
+          value: 'workspace',
         },
       ],
     },
@@ -169,14 +159,11 @@ async function main() {
 
   // Generate project based on template
   switch (templateType) {
-    case 'workspace':
-      await createWorkspace(projectDir, projectName)
-      break
     case 'site':
-      await createSite(projectDir, projectName)
+      await createSiteProject(projectDir, projectName)
       break
-    case 'foundation':
-      await createFoundation(projectDir, projectName)
+    case 'workspace':
+      await createMultiWorkspace(projectDir, projectName)
       break
   }
 
@@ -186,15 +173,7 @@ async function main() {
   log(`Next steps:\n`)
   log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
   log(`  ${colors.cyan}pnpm install${colors.reset}`)
-
-  if (templateType === 'workspace') {
-    log(`  ${colors.cyan}pnpm dev${colors.reset}`)
-  } else if (templateType === 'site') {
-    log(`  ${colors.cyan}pnpm dev${colors.reset}`)
-  } else {
-    log(`  ${colors.cyan}pnpm build${colors.reset}`)
-  }
-
+  log(`  ${colors.cyan}pnpm dev${colors.reset}`)
   log('')
 }
 
@@ -210,27 +189,32 @@ ${colors.bright}Commands:${colors.reset}
   build              Build the current project
 
 ${colors.bright}Create Options:${colors.reset}
-  --template <type>  Project template (workspace, site, foundation)
+  --template <type>  Project template (site, workspace)
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified
+  --platform <name>  Deployment platform (e.g., vercel) for platform-specific output
 
 ${colors.bright}Examples:${colors.reset}
   npx uniweb create my-project
-  npx uniweb create my-site --template site
-  npx uniweb create my-foundation --template foundation
+  npx uniweb create my-project --template site
+  npx uniweb create my-workspace --template workspace
   npx uniweb build
   npx uniweb build --target foundation
 
 ${colors.bright}Templates:${colors.reset}
-  workspace    Site + Foundation monorepo for co-development
-  site         Standalone site using an existing foundation
-  foundation   Standalone foundation package
+  site         Single project with site/ and foundation/ packages (default)
+  workspace    Multi-site/foundation monorepo with sites/ and foundations/
 `)
 }
 
 // Template generators
-async function createWorkspace(projectDir, projectName) {
+
+/**
+ * Creates a single project with site/ and foundation/ as sibling packages.
+ * This is the default template for new projects.
+ */
+async function createSiteProject(projectDir, projectName) {
   mkdirSync(projectDir, { recursive: true })
 
   // Root package.json
@@ -239,7 +223,6 @@ async function createWorkspace(projectDir, projectName) {
     version: '0.1.0',
     private: true,
     type: 'module',
-    workspaces: ['packages/*'],
     scripts: {
       dev: 'pnpm --filter site dev',
       'dev:runtime': 'VITE_FOUNDATION_MODE=runtime pnpm --filter site dev',
@@ -252,7 +235,8 @@ async function createWorkspace(projectDir, projectName) {
 
   // pnpm-workspace.yaml
   writeFile(join(projectDir, 'pnpm-workspace.yaml'), `packages:
-  - 'packages/*'
+  - 'site'
+  - 'foundation'
 `)
 
   // .gitignore
@@ -265,7 +249,7 @@ dist
   // README.md
   writeFile(join(projectDir, 'README.md'), `# ${projectName}
 
-A Uniweb workspace with a site and foundation for co-development.
+Structured Vite + React, ready to go.
 
 ## Quick Start
 
@@ -280,16 +264,21 @@ Open [http://localhost:3000](http://localhost:3000) to see your site.
 
 \`\`\`
 ${projectName}/
-├── packages/
-│   ├── site/           # Your website
-│   │   ├── pages/      # Content pages (markdown + YAML)
-│   │   ├── src/        # Site entry point
-│   │   └── vite.config.js
-│   └── foundation/     # Your component library
-│       └── src/
-│           ├── components/   # React components
-│           ├── meta.js       # Foundation metadata
-│           └── styles.css    # Tailwind styles
+├── site/                     # Content + configuration
+│   ├── pages/                # File-based routing
+│   │   └── home/
+│   │       ├── page.yml      # Page metadata
+│   │       └── 1-hero.md     # Section content
+│   ├── locales/              # i18n (mirrors pages/)
+│   ├── src/                  # Site entry point
+│   └── public/               # Static assets
+│
+├── foundation/               # Your components
+│   └── src/
+│       ├── components/       # React components
+│       ├── meta.js           # Foundation metadata
+│       └── styles.css        # Tailwind styles
+│
 ├── package.json
 └── pnpm-workspace.yaml
 \`\`\`
@@ -302,8 +291,8 @@ ${projectName}/
 pnpm dev
 \`\`\`
 
-Edit components in \`packages/foundation/src/components/\` and see changes instantly via HMR.
-Edit content in \`packages/site/pages/\` to add or modify pages.
+Edit components in \`foundation/src/components/\` and see changes instantly via HMR.
+Edit content in \`site/pages/\` to add or modify pages.
 
 ### Runtime Loading Mode
 
@@ -317,31 +306,23 @@ Use this to debug issues that only appear in production.
 ## Building for Production
 
 \`\`\`bash
-# Build all packages (foundations and sites)
 pnpm build
-
-# Build a specific package
-pnpm --filter foundation build
-pnpm --filter site build
-
-# Build only certain packages
-pnpm --filter marketing-site --filter docs-site build
 \`\`\`
 
 **Output:**
-- \`packages/[foundation]/dist/\` — Bundled components, CSS, and schema.json
-- \`packages/[site]/dist/\` — Production-ready static site
+- \`foundation/dist/\` — Bundled components, CSS, and schema.json
+- \`site/dist/\` — Production-ready static site
 
 ## Adding Components
 
-1. Create a new folder in \`packages/foundation/src/components/YourComponent/\`
+1. Create a new folder in \`foundation/src/components/YourComponent/\`
 2. Add \`index.jsx\` with your React component
 3. Add \`meta.js\` describing the component's content slots and options
-4. Export from \`packages/foundation/src/index.js\`
+4. Export from \`foundation/src/index.js\`
 
 ## Adding Pages
 
-1. Create a folder in \`packages/site/pages/your-page/\`
+1. Create a folder in \`site/pages/your-page/\`
 2. Add \`page.yml\` with page metadata
 3. Add markdown files (\`1-section.md\`, \`2-section.md\`, etc.) for each section
 
@@ -357,64 +338,29 @@ subtitle: Your subtitle
 Optional body content here.
 \`\`\`
 
-## Configuration
+## Scaling Up
 
-Each site has a \`site.yml\` that configures which foundation it uses:
-
-\`\`\`yaml
-name: site
-defaultLanguage: en
-foundation: foundation    # References packages/foundation
-\`\`\`
-
-## Multiple Sites and Foundations
-
-This workspace supports multiple sites and foundations. The \`packages/*\` pattern includes any package you add.
-
-**Adding another foundation:**
+When your project grows to multiple sites or foundations, migrate to a workspace:
 
 \`\`\`bash
-npx uniweb create packages/docs-foundation --template foundation
+# Rename folders (name by purpose)
+mv site sites/marketing
+mv foundation foundations/marketing
+
+# Update pnpm-workspace.yaml
+packages:
+  - 'sites/*'
+  - 'foundations/*'
 \`\`\`
 
-**Adding another site:**
+## Publishing Your Foundation
+
+Your \`foundation/\` is already a complete package:
 
 \`\`\`bash
-npx uniweb create packages/docs-site --template site
-\`\`\`
-
-Then edit \`packages/docs-site/site.yml\` to use the new foundation:
-
-\`\`\`yaml
-foundation: docs-foundation
-\`\`\`
-
-**Running a specific site:**
-
-\`\`\`bash
-pnpm --filter docs-site dev
-\`\`\`
-
-## Sharing Components
-
-For components shared across multiple foundations, create a shared package:
-
-\`\`\`
-packages/
-├── shared/              # Shared React components
-│   ├── package.json
-│   └── src/
-│       └── Button.jsx
-├── marketing-foundation/
-├── docs-foundation/
-└── site/
-\`\`\`
-
-Foundations can import from the shared package:
-
-\`\`\`js
-// packages/marketing-foundation/src/components/Hero/index.jsx
-import { Button } from 'shared'
+cd foundation
+npx uniweb build
+npm publish
 \`\`\`
 
 ## What is Uniweb?
@@ -426,21 +372,173 @@ Sites provide content that flows through Foundations.
 Learn more:
 - [Uniweb on GitHub](https://github.com/uniweb)
 - [CLI Documentation](https://github.com/uniweb/cli)
-- [uniweb.app](https://uniweb.app) — Full publishing platform
+- [uniweb.app](https://uniweb.app) — Visual editing platform
 
 `)
 
   // Create site package
-  await createSite(join(projectDir, 'packages/site'), 'site', true)
+  await createSite(join(projectDir, 'site'), 'site', true)
 
   // Create foundation package
-  await createFoundation(join(projectDir, 'packages/foundation'), 'foundation', true)
+  await createFoundation(join(projectDir, 'foundation'), 'foundation', true)
 
   // Update site to reference workspace foundation
-  const sitePackageJson = join(projectDir, 'packages/site/package.json')
+  const sitePackageJson = join(projectDir, 'site/package.json')
   const sitePkg = JSON.parse(readFile(sitePackageJson))
   sitePkg.dependencies['foundation'] = 'workspace:*'
   writeJSON(sitePackageJson, sitePkg)
+
+  success(`Created project: ${projectName}`)
+}
+
+/**
+ * Creates a multi-site/foundation workspace with sites/ and foundations/ directories.
+ * Used for larger projects with multiple sites sharing foundations.
+ */
+async function createMultiWorkspace(projectDir, projectName) {
+  mkdirSync(projectDir, { recursive: true })
+
+  // Root package.json
+  writeJSON(join(projectDir, 'package.json'), {
+    name: projectName,
+    version: '0.1.0',
+    private: true,
+    type: 'module',
+    scripts: {
+      dev: 'pnpm --filter marketing dev',
+      'dev:runtime': 'VITE_FOUNDATION_MODE=runtime pnpm --filter marketing dev',
+      build: 'pnpm -r build',
+    },
+    pnpm: {
+      onlyBuiltDependencies: ['esbuild', 'sharp'],
+    },
+  })
+
+  // pnpm-workspace.yaml
+  writeFile(join(projectDir, 'pnpm-workspace.yaml'), `packages:
+  - 'sites/*'
+  - 'foundations/*'
+`)
+
+  // .gitignore
+  writeFile(join(projectDir, '.gitignore'), `node_modules
+dist
+.DS_Store
+*.local
+`)
+
+  // README.md
+  writeFile(join(projectDir, 'README.md'), `# ${projectName}
+
+A Uniweb workspace for multiple sites and foundations.
+
+## Quick Start
+
+\`\`\`bash
+pnpm install
+pnpm dev
+\`\`\`
+
+Open [http://localhost:3000](http://localhost:3000) to see the marketing site.
+
+## Project Structure
+
+\`\`\`
+${projectName}/
+├── sites/
+│   └── marketing/            # Main marketing site
+│       ├── pages/            # Content pages
+│       ├── locales/          # i18n
+│       └── src/
+│
+├── foundations/
+│   └── marketing/            # Marketing foundation
+│       └── src/
+│           ├── components/   # React components
+│           └── styles.css    # Tailwind styles
+│
+├── package.json
+└── pnpm-workspace.yaml
+\`\`\`
+
+## Development
+
+\`\`\`bash
+# Run the marketing site (default)
+pnpm dev
+
+# Run a specific site
+pnpm --filter docs dev
+
+# Runtime loading mode (tests production behavior)
+pnpm dev:runtime
+\`\`\`
+
+## Adding More Sites
+
+Create a new site in \`sites/\`:
+
+\`\`\`bash
+mkdir -p sites/docs
+# Copy structure from sites/marketing or create manually
+\`\`\`
+
+Update \`sites/docs/site.yml\` to specify which foundation:
+
+\`\`\`yaml
+name: docs
+defaultLanguage: en
+foundation: documentation    # Or marketing, or any foundation
+\`\`\`
+
+## Adding More Foundations
+
+Create a new foundation in \`foundations/\`:
+
+\`\`\`bash
+mkdir -p foundations/documentation
+# Build components for documentation use case
+\`\`\`
+
+Name foundations by purpose: marketing, documentation, learning, etc.
+
+## Building for Production
+
+\`\`\`bash
+# Build everything
+pnpm build
+
+# Build specific packages
+pnpm --filter marketing build
+pnpm --filter foundations/marketing build
+\`\`\`
+
+## Learn More
+
+- [Uniweb on GitHub](https://github.com/uniweb)
+- [uniweb.app](https://uniweb.app) — Visual editing platform
+
+`)
+
+  // Create first site in sites/marketing
+  await createSite(join(projectDir, 'sites/marketing'), 'marketing', true)
+
+  // Create first foundation in foundations/marketing
+  await createFoundation(join(projectDir, 'foundations/marketing'), 'marketing', true)
+
+  // Update site to reference workspace foundation
+  const sitePackageJson = join(projectDir, 'sites/marketing/package.json')
+  const sitePkg = JSON.parse(readFile(sitePackageJson))
+  sitePkg.dependencies['marketing'] = 'workspace:*'
+  writeJSON(sitePackageJson, sitePkg)
+
+  // Update site.yml to reference the marketing foundation
+  writeFile(join(projectDir, 'sites/marketing/site.yml'), `name: marketing
+defaultLanguage: en
+
+# Foundation to use for this site
+foundation: marketing
+`)
 
   success(`Created workspace: ${projectName}`)
 }
