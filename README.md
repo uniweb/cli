@@ -59,6 +59,19 @@ Build something great.
 
 Frontmatter specifies the component and configuration. The body contains the actual content—headings, paragraphs, links, images—which gets semantically parsed into structured data your component receives.
 
+### Beyond Markdown
+
+For content that doesn't fit markdown patterns—products, team members, events—use JSON blocks with schema tags:
+
+```json #team-member
+{
+  "name": "Sarah Chen",
+  "role": "Lead Architect"
+}
+```
+
+Components receive validated, typed data. Natural content stays in markdown; structured data goes in JSON blocks.
+
 ### Components as React
 
 ```jsx
