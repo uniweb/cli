@@ -347,6 +347,7 @@ Each markdown file specifies which component to use:
 \`\`\`markdown
 ---
 component: Hero
+theme: dark
 ---
 
 # Your Title
@@ -719,6 +720,7 @@ order: 1
   // pages/home/1-hero.md
   writeFile(join(projectDir, 'pages/home/1-hero.md'), `---
 component: Hero
+theme: dark
 ---
 
 # Welcome to ${projectName}
