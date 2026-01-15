@@ -367,7 +367,7 @@ uniweb build
 uniweb publish        # Publishes the foundation in the current directory
 ```
 
-Each release creates a new version you can link to sites. You own your foundations and license them to sites—yours or your clients'. Content creators work on sites; when you release updates, linked sites receive them automatically.
+Each release creates a new version. Sites link to foundations at runtime and control their own update strategy—automatic, minor-only, patch-only, or pinned to a specific version. You own your foundations and license them to sites—yours or your clients'.
 
 You can also publish to npm:
 
