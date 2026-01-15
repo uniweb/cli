@@ -392,7 +392,7 @@ No. Local markdown files work great for developer-managed sites. The platform ad
 
 **Is this SEO-friendly?**
 
-Yes. SPA by default for simplicity, but the architecture supports static generation (SSG) and server-side rendering (SSR).
+Yes. Content is pre-embedded in the initial HTML—no fetch waterfalls, no layout shifts, instant interaction. Meta tags are generated per page for proper social sharing previews. SSG and SSR are also supported.
 
 **What about dynamic routes?**
 
