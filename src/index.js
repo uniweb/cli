@@ -18,6 +18,13 @@ import { resolve, join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import prompts from 'prompts'
 import { build } from './commands/build.js'
+import {
+  resolveTemplate,
+  applyExternalTemplate,
+  parseTemplateId,
+  listAvailableTemplates,
+  BUILTIN_TEMPLATES,
+} from './templates/index.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -93,9 +100,11 @@ async function main() {
   const templateIndex = args.indexOf('--template')
   if (templateIndex !== -1 && args[templateIndex + 1]) {
     templateType = args[templateIndex + 1]
-    if (!templates[templateType]) {
-      error(`Unknown template: ${templateType}`)
-      log(`Available templates: ${Object.keys(templates).join(', ')}`)
+    // Validate template identifier (will throw if invalid)
+    try {
+      parseTemplateId(templateType)
+    } catch (err) {
+      error(`Invalid template: ${err.message}`)
       process.exit(1)
     }
   }
@@ -155,16 +164,40 @@ async function main() {
     process.exit(1)
   }
 
-  log(`\nCreating ${templates[templateType].name.toLowerCase()}...`)
+  // Resolve and create project based on template
+  const parsed = parseTemplateId(templateType)
 
-  // Generate project based on template
-  switch (templateType) {
-    case 'single':
-      await createSingleProject(projectDir, projectName)
-      break
-    case 'multi':
-      await createMultiProject(projectDir, projectName)
-      break
+  if (parsed.type === 'builtin') {
+    log(`\nCreating ${templates[templateType].name.toLowerCase()}...`)
+
+    // Generate project based on built-in template
+    switch (templateType) {
+      case 'single':
+        await createSingleProject(projectDir, projectName)
+        break
+      case 'multi':
+        await createMultiProject(projectDir, projectName)
+        break
+    }
+  } else {
+    // External template (official, npm, or github)
+    log(`\nResolving template: ${templateType}...`)
+
+    try {
+      const resolved = await resolveTemplate(templateType, {
+        onProgress: (msg) => log(`  ${colors.dim}${msg}${colors.reset}`),
+      })
+
+      log(`\nCreating project from ${resolved.name || resolved.package || `${resolved.owner}/${resolved.repo}`}...`)
+
+      await applyExternalTemplate(resolved, projectDir, { projectName }, {
+        onProgress: (msg) => log(`  ${colors.dim}${msg}${colors.reset}`),
+        onWarning: (msg) => log(`  ${colors.yellow}Warning: ${msg}${colors.reset}`),
+      })
+    } catch (err) {
+      error(`Failed to apply template: ${err.message}`)
+      process.exit(1)
+    }
   }
 
   // Success message
@@ -189,22 +222,27 @@ ${colors.bright}Commands:${colors.reset}
   build              Build the current project
 
 ${colors.bright}Create Options:${colors.reset}
-  --template <type>  Project template (single, multi)
+  --template <type>  Project template
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified
   --platform <name>  Deployment platform (e.g., vercel) for platform-specific output
 
+${colors.bright}Template Types:${colors.reset}
+  single                        One site + one foundation (default)
+  multi                         Multiple sites and foundations
+  marketing                     Official marketing template
+  @scope/template-name          npm package
+  github:user/repo              GitHub repository
+  https://github.com/user/repo  GitHub URL
+
 ${colors.bright}Examples:${colors.reset}
   npx uniweb create my-project
   npx uniweb create my-project --template single
-  npx uniweb create my-workspace --template multi
+  npx uniweb create my-project --template marketing
+  npx uniweb create my-project --template github:myorg/template
   npx uniweb build
   npx uniweb build --target foundation
-
-${colors.bright}Templates:${colors.reset}
-  single       One site + one foundation in site/ and foundation/ (default)
-  multi        Multiple sites and foundations in sites/* and foundations/*
 `)
 }
 
