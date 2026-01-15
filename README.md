@@ -45,7 +45,7 @@ uniweb create [project-name] [options]
 
 | Option              | Description                          |
 | ------------------- | ------------------------------------ |
-| `--template <type>` | Project template: `site` or `workspace` |
+| `--template <type>` | Project template: `single` or `multi` |
 
 **Examples:**
 
@@ -53,14 +53,14 @@ uniweb create [project-name] [options]
 # Interactive prompts
 uniweb create
 
-# Create with specific name (defaults to site template)
+# Create with specific name (defaults to single template)
 uniweb create my-project
 
 # Single project with site + foundation
-uniweb create my-project --template site
+uniweb create my-project --template single
 
 # Multi-site/foundation monorepo
-uniweb create my-workspace --template workspace
+uniweb create my-workspace --template multi
 ```
 
 ### `build`
@@ -96,7 +96,7 @@ uniweb build --platform vercel
 
 ## Project Templates
 
-### Site (Default)
+### Single (Default)
 
 A minimal workspace with a site and foundation as sibling packages. This is the recommended starting point.
 
@@ -142,7 +142,7 @@ my-project/
 - **Zero extraction** — `foundation/` is already a complete, publishable package
 - **Scales naturally** — Rename to `sites/marketing/` and `foundations/marketing/` when needed
 
-### Workspace
+### Multi
 
 A monorepo for multi-site or multi-foundation development.
 

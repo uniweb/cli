@@ -7,8 +7,8 @@
  *
  * Usage:
  *   npx uniweb create [project-name]
- *   npx uniweb create --template site        # site/ + foundation/ (default)
- *   npx uniweb create --template workspace   # sites/* + foundations/*
+ *   npx uniweb create --template single      # site/ + foundation/ (default)
+ *   npx uniweb create --template multi       # sites/* + foundations/*
  *   npx uniweb build
  *   npx uniweb build --target foundation
  */
@@ -50,13 +50,13 @@ function title(message) {
 
 // Template definitions
 const templates = {
-  site: {
-    name: 'Site + Foundation Project',
-    description: 'Single project with site/ and foundation/ packages (recommended)',
+  single: {
+    name: 'Single Project',
+    description: 'One site + one foundation in site/ and foundation/ (recommended)',
   },
-  workspace: {
-    name: 'Multi-Site Workspace',
-    description: 'Monorepo with sites/ and foundations/ for larger projects',
+  multi: {
+    name: 'Multi-Site Project',
+    description: 'Multiple sites and foundations in sites/* and foundations/*',
   },
 }
 
@@ -121,14 +121,14 @@ async function main() {
       message: 'What would you like to create?',
       choices: [
         {
-          title: templates.site.name,
-          description: templates.site.description,
-          value: 'site',
+          title: templates.single.name,
+          description: templates.single.description,
+          value: 'single',
         },
         {
-          title: templates.workspace.name,
-          description: templates.workspace.description,
-          value: 'workspace',
+          title: templates.multi.name,
+          description: templates.multi.description,
+          value: 'multi',
         },
       ],
     },
@@ -159,11 +159,11 @@ async function main() {
 
   // Generate project based on template
   switch (templateType) {
-    case 'site':
-      await createSiteProject(projectDir, projectName)
+    case 'single':
+      await createSingleProject(projectDir, projectName)
       break
-    case 'workspace':
-      await createMultiWorkspace(projectDir, projectName)
+    case 'multi':
+      await createMultiProject(projectDir, projectName)
       break
   }
 
@@ -189,7 +189,7 @@ ${colors.bright}Commands:${colors.reset}
   build              Build the current project
 
 ${colors.bright}Create Options:${colors.reset}
-  --template <type>  Project template (site, workspace)
+  --template <type>  Project template (single, multi)
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified
@@ -197,24 +197,24 @@ ${colors.bright}Build Options:${colors.reset}
 
 ${colors.bright}Examples:${colors.reset}
   npx uniweb create my-project
-  npx uniweb create my-project --template site
-  npx uniweb create my-workspace --template workspace
+  npx uniweb create my-project --template single
+  npx uniweb create my-workspace --template multi
   npx uniweb build
   npx uniweb build --target foundation
 
 ${colors.bright}Templates:${colors.reset}
-  site         Single project with site/ and foundation/ packages (default)
-  workspace    Multi-site/foundation monorepo with sites/ and foundations/
+  single       One site + one foundation in site/ and foundation/ (default)
+  multi        Multiple sites and foundations in sites/* and foundations/*
 `)
 }
 
 // Template generators
 
 /**
- * Creates a single project with site/ and foundation/ as sibling packages.
- * This is the default template for new projects.
+ * Creates the common project base: package.json, pnpm-workspace.yaml, .gitignore
+ * Both single and multi templates share the same workspace configuration.
  */
-async function createSiteProject(projectDir, projectName) {
+function createProjectBase(projectDir, projectName, defaultFilter) {
   mkdirSync(projectDir, { recursive: true })
 
   // Root package.json (workspaces field for npm compatibility)
@@ -224,8 +224,8 @@ async function createSiteProject(projectDir, projectName) {
     private: true,
     type: 'module',
     scripts: {
-      dev: 'pnpm --filter site dev',
-      'dev:runtime': 'VITE_FOUNDATION_MODE=runtime pnpm --filter site dev',
+      dev: `pnpm --filter ${defaultFilter} dev`,
+      'dev:runtime': `VITE_FOUNDATION_MODE=runtime pnpm --filter ${defaultFilter} dev`,
       build: 'pnpm -r build',
     },
     workspaces: [
@@ -253,6 +253,14 @@ dist
 .DS_Store
 *.local
 `)
+}
+
+/**
+ * Creates a single project with site/ and foundation/ as sibling packages.
+ * This is the default template for new projects.
+ */
+async function createSingleProject(projectDir, projectName) {
+  createProjectBase(projectDir, projectName, 'site')
 
   // README.md
   writeFile(join(projectDir, 'README.md'), `# ${projectName}
@@ -414,45 +422,8 @@ Learn more:
  * Creates a multi-site/foundation workspace with sites/ and foundations/ directories.
  * Used for larger projects with multiple sites sharing foundations.
  */
-async function createMultiWorkspace(projectDir, projectName) {
-  mkdirSync(projectDir, { recursive: true })
-
-  // Root package.json (workspaces field for npm compatibility)
-  writeJSON(join(projectDir, 'package.json'), {
-    name: projectName,
-    version: '0.1.0',
-    private: true,
-    type: 'module',
-    scripts: {
-      dev: 'pnpm --filter marketing dev',
-      'dev:runtime': 'VITE_FOUNDATION_MODE=runtime pnpm --filter marketing dev',
-      build: 'pnpm -r build',
-    },
-    workspaces: [
-      'site',
-      'foundation',
-      'sites/*',
-      'foundations/*',
-    ],
-    pnpm: {
-      onlyBuiltDependencies: ['esbuild', 'sharp'],
-    },
-  })
-
-  // pnpm-workspace.yaml (all patterns for seamless evolution)
-  writeFile(join(projectDir, 'pnpm-workspace.yaml'), `packages:
-  - 'site'
-  - 'foundation'
-  - 'sites/*'
-  - 'foundations/*'
-`)
-
-  // .gitignore
-  writeFile(join(projectDir, '.gitignore'), `node_modules
-dist
-.DS_Store
-*.local
-`)
+async function createMultiProject(projectDir, projectName) {
+  createProjectBase(projectDir, projectName, 'marketing')
 
   // README.md
   writeFile(join(projectDir, 'README.md'), `# ${projectName}
