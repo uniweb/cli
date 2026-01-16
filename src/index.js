@@ -611,7 +611,7 @@ async function createSite(projectDir, projectName, isWorkspace = false) {
       postcss: '^8.4.35',
       react: '^18.2.0',
       'react-dom': '^18.2.0',
-      'react-router-dom': '^6.22.0',
+      'react-router-dom': '^7.0.0',
       tailwindcss: '^3.4.1',
       vite: '^7.0.0',
       'vite-plugin-svgr': '^4.2.0',
