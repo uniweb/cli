@@ -601,6 +601,7 @@ async function createSite(projectDir, projectName, isWorkspace = false) {
       ...(isWorkspace ? {} : { 'foundation-example': '^0.1.0' }),
     },
     devDependencies: {
+      '@uniweb/build': '^0.1.3',
       '@vitejs/plugin-react': '^5.0.0',
       autoprefixer: '^10.4.18',
       'js-yaml': '^4.1.0',
@@ -659,7 +660,8 @@ import { readFileSync, existsSync } from 'fs'
 import yaml from 'js-yaml'
 import react from '@vitejs/plugin-react'
 import svgr from 'vite-plugin-svgr'
-import { siteContentPlugin, foundationPlugin } from '@uniweb/runtime/vite'
+import { siteContentPlugin } from '@uniweb/build/site'
+import { foundationDevPlugin } from '@uniweb/build/dev'
 
 // Read foundation from site.yml
 const siteConfig = yaml.load(readFileSync('./site.yml', 'utf8'))
@@ -685,7 +687,7 @@ export default defineConfig({
       sitePath: './',
       inject: true,
     }),
-    useRuntimeLoading && foundationPlugin({
+    useRuntimeLoading && foundationDevPlugin({
       name: foundation,
       path: foundationPath,
       serve: '/foundation',
