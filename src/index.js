@@ -18,6 +18,7 @@ import { resolve, join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import prompts from 'prompts'
 import { build } from './commands/build.js'
+import { getVersionsForTemplates, getVersion } from './versions.js'
 import {
   resolveTemplate,
   applyExternalTemplate,
@@ -190,7 +191,10 @@ async function main() {
 
       log(`\nCreating project from ${resolved.name || resolved.package || `${resolved.owner}/${resolved.repo}`}...`)
 
-      await applyExternalTemplate(resolved, projectDir, { projectName }, {
+      await applyExternalTemplate(resolved, projectDir, {
+        projectName,
+        versions: getVersionsForTemplates(),
+      }, {
         onProgress: (msg) => log(`  ${colors.dim}${msg}${colors.reset}`),
         onWarning: (msg) => log(`  ${colors.yellow}Warning: ${msg}${colors.reset}`),
       })
@@ -600,11 +604,11 @@ async function createSite(projectDir, projectName, isWorkspace = false) {
       preview: 'vite preview',
     },
     dependencies: {
-      '@uniweb/runtime': '^0.1.0',
+      '@uniweb/runtime': getVersion('@uniweb/runtime'),
       ...(isWorkspace ? {} : { 'foundation-example': '^0.1.0' }),
     },
     devDependencies: {
-      '@uniweb/build': '^0.1.4',
+      '@uniweb/build': getVersion('@uniweb/build'),
       '@vitejs/plugin-react': '^5.0.0',
       autoprefixer: '^10.4.18',
       'js-yaml': '^4.1.0',
@@ -904,7 +908,7 @@ async function createFoundation(projectDir, projectName, isWorkspace = false) {
       react: '^18.2.0',
       'react-dom': '^18.2.0',
       tailwindcss: '^3.4.1',
-      uniweb: '^0.2.11',
+      uniweb: getVersion('uniweb'),
       vite: '^7.0.0',
       'vite-plugin-svgr': '^4.2.0',
     },
