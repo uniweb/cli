@@ -46,7 +46,7 @@ my-project/
 
 ```markdown
 ---
-component: Hero
+type: Hero
 theme: dark
 ---
 
@@ -57,7 +57,7 @@ Build something great.
 [Get Started](#)
 ```
 
-Frontmatter specifies the component and configuration. The body contains the actual content—headings, paragraphs, links, images—which gets semantically parsed into structured data your component receives.
+Frontmatter specifies the component type and configuration. The body contains the actual content—headings, paragraphs, links, images—which gets semantically parsed into structured data your component receives.
 
 ### Beyond Markdown
 

@@ -384,7 +384,7 @@ Each markdown file specifies which component to use:
 
 \`\`\`markdown
 ---
-component: Hero
+type: Hero
 theme: dark
 ---
 
@@ -762,7 +762,7 @@ order: 1
 
   // pages/home/1-hero.md
   writeFile(join(projectDir, 'pages/home/1-hero.md'), `---
-component: Hero
+type: Hero
 theme: dark
 ---
 
@@ -817,7 +817,7 @@ order: 2
 
 \`\`\`markdown
 ---
-component: Hero
+type: Hero
 theme: dark
 ---
 
