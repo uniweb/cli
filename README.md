@@ -459,7 +459,7 @@ Pages can define data sources that auto-generate subroutes. A `/blog` page can h
 ## Related Packages
 
 - [`@uniweb/build`](https://github.com/uniweb/build) — Foundation build tooling
-- [`@uniweb/runtime`](https://github.com/uniweb/runtime) — Runtime loader for sites
+- [`@uniweb/runtime`](https://github.com/uniweb/runtime) — Foundation loader and orchestrator for sites
 - [`@uniweb/templates`](https://github.com/uniweb/templates) — Official templates and template processing
 
 ## License

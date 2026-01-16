@@ -7,6 +7,7 @@
  *   uniweb build                    # Build current directory
  *   uniweb build --target foundation # Explicitly build as foundation
  *   uniweb build --target site       # Explicitly build as site
+ *   uniweb build --prerender         # Build site + pre-render to static HTML (SSG)
  */
 
 import { existsSync } from 'node:fs'
@@ -181,12 +182,47 @@ async function buildFoundation(projectDir, options = {}) {
  * Build a site
  */
 async function buildSite(projectDir, options = {}) {
+  const { prerender = false, foundationDir } = options
+
   info('Building site...')
 
-  // Just run vite build for sites
+  // Run vite build for sites
   await runCommand('npx', ['vite', 'build'], projectDir)
 
   success('Site build complete')
+
+  // Pre-render if requested
+  if (prerender) {
+    log('')
+    info('Pre-rendering pages to static HTML (SSG)...')
+
+    try {
+      const { prerenderSite } = await import('@uniweb/build/prerender')
+
+      const result = await prerenderSite(projectDir, {
+        foundationDir: foundationDir || join(projectDir, '..', 'foundation'),
+        onProgress: (msg) => log(`  ${colors.dim}${msg}${colors.reset}`)
+      })
+
+      success(`Pre-rendered ${result.pages} page${result.pages !== 1 ? 's' : ''} to static HTML`)
+
+      // Summary
+      log('')
+      log(`${colors.green}${colors.bright}SSG Build complete!${colors.reset}`)
+      log('')
+      log(`Output:`)
+      for (const file of result.files) {
+        const relativePath = file.replace(projectDir + '/', '')
+        log(`  ${colors.dim}${relativePath}${colors.reset}`)
+      }
+    } catch (err) {
+      error(`Pre-rendering failed: ${err.message}`)
+      if (process.env.DEBUG) {
+        console.error(err.stack)
+      }
+      process.exit(1)
+    }
+  }
 }
 
 /**
@@ -207,6 +243,16 @@ export async function build(args = []) {
     }
   }
 
+  // Check for --prerender flag (SSG)
+  const prerender = args.includes('--prerender')
+
+  // Check for --foundation-dir flag (for prerendering)
+  let foundationDir = null
+  const foundationDirIndex = args.indexOf('--foundation-dir')
+  if (foundationDirIndex !== -1 && args[foundationDirIndex + 1]) {
+    foundationDir = resolve(args[foundationDirIndex + 1])
+  }
+
   // Auto-detect project type if not specified
   if (!targetType) {
     targetType = detectProjectType(projectDir)
@@ -220,12 +266,18 @@ export async function build(args = []) {
     info(`Detected project type: ${targetType}`)
   }
 
+  // Validate prerender is only used with site target
+  if (prerender && targetType !== 'site') {
+    error('--prerender can only be used with site builds')
+    process.exit(1)
+  }
+
   // Run appropriate build
   try {
     if (targetType === 'foundation') {
       await buildFoundation(projectDir)
     } else {
-      await buildSite(projectDir)
+      await buildSite(projectDir, { prerender, foundationDir })
     }
   } catch (err) {
     error(err.message)

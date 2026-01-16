@@ -226,6 +226,8 @@ ${colors.bright}Create Options:${colors.reset}
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified
+  --prerender        Pre-render pages to static HTML (SSG) - site builds only
+  --foundation-dir   Path to foundation directory (for prerendering)
   --platform <name>  Deployment platform (e.g., vercel) for platform-specific output
 
 ${colors.bright}Template Types:${colors.reset}
@@ -243,6 +245,7 @@ ${colors.bright}Examples:${colors.reset}
   npx uniweb create my-project --template github:myorg/template
   npx uniweb build
   npx uniweb build --target foundation
+  npx uniweb build --prerender                         # Build site + pre-render to static HTML
 `)
 }
 
