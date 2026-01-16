@@ -604,7 +604,7 @@ async function createSite(projectDir, projectName, isWorkspace = false) {
       ...(isWorkspace ? {} : { 'foundation-example': '^0.1.0' }),
     },
     devDependencies: {
-      '@uniweb/build': '^0.1.3',
+      '@uniweb/build': '^0.1.4',
       '@vitejs/plugin-react': '^5.0.0',
       autoprefixer: '^10.4.18',
       'js-yaml': '^4.1.0',
@@ -904,7 +904,7 @@ async function createFoundation(projectDir, projectName, isWorkspace = false) {
       react: '^18.2.0',
       'react-dom': '^18.2.0',
       tailwindcss: '^3.4.1',
-      uniweb: '^0.2.0',
+      uniweb: '^0.2.11',
       vite: '^7.0.0',
       'vite-plugin-svgr': '^4.2.0',
     },
