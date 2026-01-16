@@ -28,7 +28,7 @@
     "url": "https://github.com/uniweb/cli/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19"
   },
   "dependencies": {
     "@uniweb/build": "^0.1.0",

@@ -601,7 +601,7 @@ async function createSite(projectDir, projectName, isWorkspace = false) {
       ...(isWorkspace ? {} : { 'foundation-example': '^0.1.0' }),
     },
     devDependencies: {
-      '@vitejs/plugin-react': '^4.2.1',
+      '@vitejs/plugin-react': '^5.0.0',
       autoprefixer: '^10.4.18',
       'js-yaml': '^4.1.0',
       postcss: '^8.4.35',
@@ -609,7 +609,7 @@ async function createSite(projectDir, projectName, isWorkspace = false) {
       'react-dom': '^18.2.0',
       'react-router-dom': '^6.22.0',
       tailwindcss: '^3.4.1',
-      vite: '^5.1.0',
+      vite: '^7.0.0',
       'vite-plugin-svgr': '^4.2.0',
     },
   })
@@ -893,14 +893,14 @@ async function createFoundation(projectDir, projectName, isWorkspace = false) {
       'react-dom': '^18.0.0',
     },
     devDependencies: {
-      '@vitejs/plugin-react': '^4.2.1',
+      '@vitejs/plugin-react': '^5.0.0',
       autoprefixer: '^10.4.18',
       postcss: '^8.4.35',
       react: '^18.2.0',
       'react-dom': '^18.2.0',
       tailwindcss: '^3.4.1',
       uniweb: '^0.2.0',
-      vite: '^5.1.0',
+      vite: '^7.0.0',
       'vite-plugin-svgr': '^4.2.0',
     },
   })
