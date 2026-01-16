@@ -726,7 +726,7 @@ export default defineConfig({
 `)
 
   // main.jsx - uses #foundation alias (configured in vite.config.js from site.yml)
-  writeFile(join(projectDir, 'src/main.jsx'), `import { initRuntime } from '@uniweb/runtime'
+  writeFile(join(projectDir, 'src/main.jsx'), `import initRuntime from '@uniweb/runtime'
 
 const useRuntimeLoading = import.meta.env.VITE_FOUNDATION_MODE === 'runtime'
 
