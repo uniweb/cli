@@ -110,6 +110,20 @@ async function main() {
     }
   }
 
+  // Check for --variant flag
+  let variant = null
+  const variantIndex = args.indexOf('--variant')
+  if (variantIndex !== -1 && args[variantIndex + 1]) {
+    variant = args[variantIndex + 1]
+  }
+
+  // Check for --name flag (used for project display name)
+  let displayName = null
+  const nameIndex = args.indexOf('--name')
+  if (nameIndex !== -1 && args[nameIndex + 1]) {
+    displayName = args[nameIndex + 1]
+  }
+
   // Interactive prompts
   const response = await prompts([
     {
@@ -192,9 +206,10 @@ async function main() {
       log(`\nCreating project from ${resolved.name || resolved.package || `${resolved.owner}/${resolved.repo}`}...`)
 
       await applyExternalTemplate(resolved, projectDir, {
-        projectName,
+        projectName: displayName || projectName,
         versions: getVersionsForTemplates(),
       }, {
+        variant,
         onProgress: (msg) => log(`  ${colors.dim}${msg}${colors.reset}`),
         onWarning: (msg) => log(`  ${colors.yellow}Warning: ${msg}${colors.reset}`),
       })
@@ -227,6 +242,8 @@ ${colors.bright}Commands:${colors.reset}
 
 ${colors.bright}Create Options:${colors.reset}
   --template <type>  Project template
+  --variant <name>   Template variant (e.g., tailwind3 for legacy)
+  --name <name>      Project display name
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified
@@ -246,6 +263,7 @@ ${colors.bright}Examples:${colors.reset}
   npx uniweb create my-project
   npx uniweb create my-project --template single
   npx uniweb create my-project --template marketing
+  npx uniweb create my-project --template marketing --variant tailwind3
   npx uniweb create my-project --template github:myorg/template
   npx uniweb build
   npx uniweb build --target foundation

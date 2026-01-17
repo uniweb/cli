@@ -141,7 +141,7 @@ async function resolveGitHubTemplate(parsed, options = {}) {
  * @param {Object} options - Apply options
  */
 export async function applyExternalTemplate(resolved, targetPath, data, options = {}) {
-  const { onProgress, onWarning } = options
+  const { variant, onProgress, onWarning } = options
 
   if (!templatesPackage) {
     throw new Error(
@@ -155,7 +155,7 @@ export async function applyExternalTemplate(resolved, targetPath, data, options 
       resolved.path,
       targetPath,
       data,
-      { onProgress, onWarning }
+      { variant, onProgress, onWarning }
     )
 
     return metadata
