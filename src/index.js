@@ -3,14 +3,13 @@
 /**
  * Uniweb CLI
  *
- * Scaffolds new Uniweb sites and foundations, and builds projects.
+ * Scaffolds new Uniweb sites and foundations, builds projects, and generates docs.
  *
  * Usage:
  *   npx uniweb create [project-name]
- *   npx uniweb create --template single      # site/ + foundation/ (default)
- *   npx uniweb create --template multi       # sites/* + foundations/*
+ *   npx uniweb create --template marketing
  *   npx uniweb build
- *   npx uniweb build --target foundation
+ *   npx uniweb docs                          # Generate COMPONENTS.md from schema
  */
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
@@ -18,6 +17,7 @@ import { resolve, join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import prompts from 'prompts'
 import { build } from './commands/build.js'
+import { docs } from './commands/docs.js'
 import { getVersionsForTemplates, getVersion } from './versions.js'
 import {
   resolveTemplate,
@@ -81,6 +81,12 @@ async function main() {
   // Handle build command
   if (command === 'build') {
     await build(args.slice(1))
+    return
+  }
+
+  // Handle docs command
+  if (command === 'docs') {
+    await docs(args.slice(1))
     return
   }
 
@@ -239,6 +245,7 @@ ${colors.bright}Usage:${colors.reset}
 ${colors.bright}Commands:${colors.reset}
   create [name]      Create a new project
   build              Build the current project
+  docs               Generate component documentation
 
 ${colors.bright}Create Options:${colors.reset}
   --template <type>  Project template
@@ -250,6 +257,10 @@ ${colors.bright}Build Options:${colors.reset}
   --prerender        Pre-render pages to static HTML (SSG) - site builds only
   --foundation-dir   Path to foundation directory (for prerendering)
   --platform <name>  Deployment platform (e.g., vercel) for platform-specific output
+
+${colors.bright}Docs Options:${colors.reset}
+  --output <file>    Output filename (default: COMPONENTS.md)
+  --from-source      Read meta.js files directly instead of schema.json
 
 ${colors.bright}Template Types:${colors.reset}
   single                        One site + one foundation (default)
@@ -268,6 +279,7 @@ ${colors.bright}Examples:${colors.reset}
   npx uniweb build
   npx uniweb build --target foundation
   npx uniweb build --prerender                         # Build site + pre-render to static HTML
+  cd foundation && npx uniweb docs                     # Generate COMPONENTS.md
 `)
 }
 
