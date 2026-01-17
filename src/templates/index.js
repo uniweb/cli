@@ -10,13 +10,22 @@ import { fileURLToPath } from 'node:url'
 import { parseTemplateId, getTemplateDisplayName, BUILTIN_TEMPLATES, OFFICIAL_TEMPLATES } from './resolver.js'
 import { fetchNpmTemplate } from './fetchers/npm.js'
 import { fetchGitHubTemplate } from './fetchers/github.js'
+import { validateTemplate } from './validator.js'
+import {
+  copyTemplateDirectory,
+  registerVersions,
+  getMissingVersions,
+  clearMissingVersions
+} from './processor.js'
 
-// Try to import from @uniweb/templates if available
-let templatesPackage = null
+// Path to bundled official templates (when @uniweb/templates is installed)
+// This will be replaced by GitHub releases fetching in Phase 2
+let officialTemplatesDir = null
 try {
-  templatesPackage = await import('@uniweb/templates')
+  const templatesPackage = await import('@uniweb/templates')
+  officialTemplatesDir = templatesPackage.getTemplatesDirectory()
 } catch {
-  // @uniweb/templates not installed - official templates won't be available locally
+  // @uniweb/templates not installed - official templates will need to be fetched
 }
 
 /**
@@ -55,28 +64,26 @@ export async function resolveTemplate(identifier, options = {}) {
 }
 
 /**
- * Resolve an official template from @uniweb/templates
+ * Resolve an official template
+ * Currently uses bundled templates from @uniweb/templates
+ * Will be updated in Phase 2 to fetch from GitHub releases
  */
 async function resolveOfficialTemplate(name, options = {}) {
   const { onProgress } = options
 
-  if (!templatesPackage) {
+  if (!officialTemplatesDir) {
     throw new Error(
       `Official template "${name}" requires @uniweb/templates package.\n` +
       `Install it with: npm install @uniweb/templates`
     )
   }
 
-  if (!templatesPackage.hasTemplate(name)) {
-    const available = await templatesPackage.listBuiltinTemplates()
-    const names = available.map(t => t.id).join(', ')
+  const templatePath = join(officialTemplatesDir, name)
+  if (!existsSync(join(templatePath, 'template.json'))) {
     throw new Error(
-      `Official template "${name}" not found.\n` +
-      `Available templates: ${names || 'none'}`
+      `Official template "${name}" not found.`
     )
   }
-
-  const templatePath = templatesPackage.getTemplatePath(name)
 
   onProgress?.(`Using official template: ${name}`)
 
@@ -133,6 +140,54 @@ async function resolveGitHubTemplate(parsed, options = {}) {
 }
 
 /**
+ * Apply a template to a target directory
+ *
+ * @param {string} templatePath - Path to the template root (contains template.json)
+ * @param {string} targetPath - Destination directory for the scaffolded project
+ * @param {Object} data - Template variables
+ * @param {Object} options - Apply options
+ * @param {string} options.variant - Template variant to use
+ * @param {string} options.uniwebVersion - Current Uniweb version for compatibility check
+ * @param {Function} options.onWarning - Warning callback
+ * @param {Function} options.onProgress - Progress callback
+ * @returns {Promise<Object>} Template metadata
+ */
+export async function applyTemplate(templatePath, targetPath, data = {}, options = {}) {
+  const { uniwebVersion, variant, onWarning, onProgress } = options
+
+  // Validate the template
+  const metadata = await validateTemplate(templatePath, { uniwebVersion })
+
+  // Register versions for the {{version}} helper
+  if (data.versions) {
+    registerVersions(data.versions)
+  }
+
+  // Apply default variables
+  const templateData = {
+    year: new Date().getFullYear(),
+    ...data
+  }
+
+  // Copy template files
+  await copyTemplateDirectory(
+    metadata.templateDir,
+    targetPath,
+    templateData,
+    { variant, onWarning, onProgress }
+  )
+
+  // Check for missing versions and warn
+  const missingVersions = getMissingVersions()
+  if (missingVersions.length > 0 && onWarning) {
+    onWarning(`Missing version data for packages: ${missingVersions.join(', ')}. Using fallback version.`)
+  }
+  clearMissingVersions()
+
+  return metadata
+}
+
+/**
  * Apply an external template to a target directory
  *
  * @param {Object} resolved - Resolved template from resolveTemplate()
@@ -143,15 +198,8 @@ async function resolveGitHubTemplate(parsed, options = {}) {
 export async function applyExternalTemplate(resolved, targetPath, data, options = {}) {
   const { variant, onProgress, onWarning } = options
 
-  if (!templatesPackage) {
-    throw new Error(
-      'External template application requires @uniweb/templates package.\n' +
-      'Install it with: npm install @uniweb/templates'
-    )
-  }
-
   try {
-    const metadata = await templatesPackage.applyTemplate(
+    const metadata = await applyTemplate(
       resolved.path,
       targetPath,
       data,
@@ -185,20 +233,25 @@ export async function listAvailableTemplates() {
     })
   }
 
-  // Official templates from @uniweb/templates
-  if (templatesPackage) {
-    try {
-      const official = await templatesPackage.listBuiltinTemplates()
-      for (const t of official) {
-        templates.push({
-          type: 'official',
-          id: t.id,
-          name: t.name,
-          description: t.description,
-        })
+  // Official templates - read from bundled templates if available
+  if (officialTemplatesDir) {
+    for (const name of OFFICIAL_TEMPLATES) {
+      const templatePath = join(officialTemplatesDir, name, 'template.json')
+      if (existsSync(templatePath)) {
+        try {
+          const { default: fs } = await import('node:fs/promises')
+          const content = await fs.readFile(templatePath, 'utf8')
+          const metadata = JSON.parse(content)
+          templates.push({
+            type: 'official',
+            id: name,
+            name: metadata.name || name,
+            description: metadata.description || '',
+          })
+        } catch {
+          // Skip if can't read
+        }
       }
-    } catch {
-      // Ignore errors listing official templates
     }
   }
 
