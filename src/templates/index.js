@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { parseTemplateId, getTemplateDisplayName, BUILTIN_TEMPLATES, OFFICIAL_TEMPLATES } from './resolver.js'
 import { fetchNpmTemplate } from './fetchers/npm.js'
 import { fetchGitHubTemplate } from './fetchers/github.js'
+import { fetchOfficialTemplate, listOfficialTemplates } from './fetchers/release.js'
 import { validateTemplate } from './validator.js'
 import {
   copyTemplateDirectory,
@@ -19,13 +20,13 @@ import {
 } from './processor.js'
 
 // Path to bundled official templates (when @uniweb/templates is installed)
-// This will be replaced by GitHub releases fetching in Phase 2
+// Used for local development; production fetches from GitHub releases
 let officialTemplatesDir = null
 try {
   const templatesPackage = await import('@uniweb/templates')
   officialTemplatesDir = templatesPackage.getTemplatesDirectory()
 } catch {
-  // @uniweb/templates not installed - official templates will need to be fetched
+  // @uniweb/templates not installed - will fetch from GitHub releases
 }
 
 /**
@@ -65,33 +66,38 @@ export async function resolveTemplate(identifier, options = {}) {
 
 /**
  * Resolve an official template
- * Currently uses bundled templates from @uniweb/templates
- * Will be updated in Phase 2 to fetch from GitHub releases
+ * Uses local templates for development, GitHub releases for production
  */
 async function resolveOfficialTemplate(name, options = {}) {
   const { onProgress } = options
 
-  if (!officialTemplatesDir) {
-    throw new Error(
-      `Official template "${name}" requires @uniweb/templates package.\n` +
-      `Install it with: npm install @uniweb/templates`
-    )
+  // Use local templates if available (development mode)
+  if (officialTemplatesDir) {
+    const templatePath = join(officialTemplatesDir, name)
+    if (existsSync(join(templatePath, 'template.json'))) {
+      onProgress?.(`Using official template: ${name}`)
+      return {
+        type: 'official',
+        name,
+        path: templatePath,
+        cleanup: async () => {}, // Nothing to clean up
+      }
+    }
   }
 
-  const templatePath = join(officialTemplatesDir, name)
-  if (!existsSync(join(templatePath, 'template.json'))) {
-    throw new Error(
-      `Official template "${name}" not found.`
-    )
-  }
+  // Fetch from GitHub releases (production mode)
+  const { tempDir, version } = await fetchOfficialTemplate(name, { onProgress })
 
-  onProgress?.(`Using official template: ${name}`)
+  onProgress?.(`Using official template: ${name} (${version})`)
 
   return {
     type: 'official',
     name,
-    path: templatePath,
-    cleanup: async () => {}, // Nothing to clean up
+    version,
+    path: tempDir,
+    cleanup: async () => {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {})
+    },
   }
 }
 
@@ -233,8 +239,9 @@ export async function listAvailableTemplates() {
     })
   }
 
-  // Official templates - read from bundled templates if available
+  // Official templates - try local first, then remote
   if (officialTemplatesDir) {
+    // Read from local templates
     for (const name of OFFICIAL_TEMPLATES) {
       const templatePath = join(officialTemplatesDir, name, 'template.json')
       if (existsSync(templatePath)) {
@@ -252,6 +259,21 @@ export async function listAvailableTemplates() {
           // Skip if can't read
         }
       }
+    }
+  } else {
+    // Fetch from GitHub releases
+    try {
+      const official = await listOfficialTemplates()
+      for (const t of official) {
+        templates.push({
+          type: 'official',
+          id: t.id,
+          name: t.name || t.id,
+          description: t.description || '',
+        })
+      }
+    } catch {
+      // Ignore errors - templates just won't be listed
     }
   }
 
