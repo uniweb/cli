@@ -72,6 +72,9 @@ export function getResolvedVersions() {
     '@uniweb/runtime': '^0.1.0',
     '@uniweb/core': '^0.1.0',
 
+    // Foundation utility library (used by official templates)
+    '@uniweb/kit': '^0.1.0',
+
     // CLI itself (use current version)
     'uniweb': `^${pkg.version}`,
   }
@@ -106,6 +109,7 @@ export function getVersionsForTemplates() {
     build: versions['@uniweb/build'],
     runtime: versions['@uniweb/runtime'],
     core: versions['@uniweb/core'],
+    kit: versions['@uniweb/kit'],
     templates: versions['@uniweb/templates'],
     cli: versions['uniweb'],
   }
