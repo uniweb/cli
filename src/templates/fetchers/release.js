@@ -144,11 +144,14 @@ export async function fetchOfficialTemplate(name, options = {}) {
     await pipeline(
       tarballResponse.body,
       createGunzip(),
-      tar.extract({ cwd: tempDir, strip: 0 }) // No strip - tarball contains template root
+      tar.extract({ cwd: tempDir, strip: 0 })
     )
 
+    // Tarball contains template in a subdirectory named after the template
+    // e.g., marketing.tar.gz extracts to marketing/template.json
     return {
-      tempDir,
+      tempDir: join(tempDir, name),
+      baseTempDir: tempDir, // For cleanup
       version: manifest.version,
       metadata: templateInfo,
     }
