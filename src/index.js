@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url'
 import prompts from 'prompts'
 import { build } from './commands/build.js'
 import { docs } from './commands/docs.js'
+import { i18n } from './commands/i18n.js'
 import { getVersionsForTemplates, getVersion } from './versions.js'
 import {
   resolveTemplate,
@@ -87,6 +88,12 @@ async function main() {
   // Handle docs command
   if (command === 'docs') {
     await docs(args.slice(1))
+    return
+  }
+
+  // Handle i18n command
+  if (command === 'i18n') {
+    await i18n(args.slice(1))
     return
   }
 
@@ -246,6 +253,7 @@ ${colors.bright}Commands:${colors.reset}
   create [name]      Create a new project
   build              Build the current project
   docs               Generate component documentation
+  i18n <cmd>         Internationalization (extract, sync, status)
 
 ${colors.bright}Create Options:${colors.reset}
   --template <type>  Project template
@@ -261,6 +269,11 @@ ${colors.bright}Build Options:${colors.reset}
 ${colors.bright}Docs Options:${colors.reset}
   --output <file>    Output filename (default: COMPONENTS.md)
   --from-source      Read meta.js files directly instead of schema.json
+
+${colors.bright}i18n Commands:${colors.reset}
+  extract            Extract translatable strings to manifest
+  sync               Update manifest with content changes
+  status             Show translation coverage per locale
 
 ${colors.bright}Template Types:${colors.reset}
   single                        One site + one foundation (default)
