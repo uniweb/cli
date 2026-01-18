@@ -101,17 +101,28 @@ async function findSiteRoot() {
 
 /**
  * Load site configuration
+ *
+ * Resolves locales from config:
+ * - undefined → all available locales (from locales/*.json)
+ * - '*' → explicitly all available locales
+ * - ['es', 'fr'] → only those specific locales
  */
 async function loadSiteConfig(siteRoot) {
   const configPath = join(siteRoot, 'site.yml')
   const content = await readFile(configPath, 'utf-8')
   const config = yaml.load(content) || {}
 
-  // Merge with i18n defaults
+  const localesDir = config.i18n?.localesDir || 'locales'
+  const localesPath = join(siteRoot, localesDir)
+
+  // Resolve locales (undefined/'*' → all available, array → specific)
+  const { resolveLocales } = await import('@uniweb/build/i18n')
+  const locales = await resolveLocales(config.i18n?.locales, localesPath)
+
   return {
     defaultLocale: config.defaultLanguage || 'en',
-    locales: config.i18n?.locales || [],
-    localesDir: config.i18n?.localesDir || 'locales',
+    locales,
+    localesDir,
     ...config.i18n,
   }
 }
@@ -153,10 +164,8 @@ async function runExtract(siteRoot, config, args) {
     log(`\nManifest written to: ${colors.dim}${config.localesDir}/manifest.json${colors.reset}`)
 
     if (config.locales.length === 0) {
-      warn('\nNo locales configured in site.yml. Add i18n.locales to enable translations.')
-      log(`\nExample site.yml:`)
-      log(`${colors.dim}  i18n:`)
-      log(`    locales: [es, fr, de]${colors.reset}`)
+      log(`\n${colors.dim}No translation files found in ${config.localesDir}/.`)
+      log(`After translating, create locale files like ${config.localesDir}/es.json${colors.reset}`)
     }
   } catch (err) {
     error(`Extraction failed: ${err.message}`)
@@ -230,10 +239,8 @@ async function runStatus(siteRoot, config, args) {
   }
 
   if (config.locales.length === 0) {
-    warn('No locales configured in site.yml.')
-    log(`\nAdd locales to site.yml:`)
-    log(`${colors.dim}  i18n:`)
-    log(`    locales: [es, fr, de]${colors.reset}`)
+    log(`${colors.dim}No translation files found in ${config.localesDir}/.`)
+    log(`Create locale files like ${config.localesDir}/es.json to add translations.${colors.reset}`)
     return
   }
 
@@ -283,11 +290,14 @@ ${colors.bright}Options:${colors.reset}
   --dry-run    (sync) Show changes without writing files
 
 ${colors.bright}Configuration:${colors.reset}
-  Add to site.yml:
+  Optional site.yml settings:
 
     i18n:
-      locales: [es, fr, de]      # Target locales
+      locales: [es, fr]          # Specific locales only (default: all available)
+      locales: '*'               # Explicitly all available locales
       localesDir: locales        # Directory for translation files (default: locales)
+
+  By default, all *.json files in locales/ are treated as translation targets.
 
 ${colors.bright}Workflow:${colors.reset}
   1. Build your site:           uniweb build

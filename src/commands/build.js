@@ -180,6 +180,11 @@ async function buildFoundation(projectDir, options = {}) {
 
 /**
  * Load site i18n configuration
+ *
+ * Resolves locales from config:
+ * - undefined → all available locales (from locales/*.json)
+ * - '*' → explicitly all available locales
+ * - ['es', 'fr'] → only those specific locales
  */
 async function loadI18nConfig(projectDir) {
   const siteYmlPath = join(projectDir, 'site.yml')
@@ -190,12 +195,19 @@ async function loadI18nConfig(projectDir) {
   const content = await readFile(siteYmlPath, 'utf-8')
   const config = yaml.load(content) || {}
 
-  if (!config.i18n?.locales?.length) return null
+  const localesDir = config.i18n?.localesDir || 'locales'
+  const localesPath = join(projectDir, localesDir)
+
+  // Resolve locales (undefined/'*' → all available, array → specific)
+  const { resolveLocales } = await import('@uniweb/build/i18n')
+  const locales = await resolveLocales(config.i18n?.locales, localesPath)
+
+  if (locales.length === 0) return null
 
   return {
     defaultLocale: config.defaultLanguage || 'en',
-    locales: config.i18n.locales,
-    localesDir: config.i18n.localesDir || 'locales',
+    locales,
+    localesDir,
   }
 }
 
