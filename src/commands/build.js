@@ -179,6 +179,100 @@ async function buildFoundation(projectDir, options = {}) {
 }
 
 /**
+ * Load site i18n configuration
+ */
+async function loadI18nConfig(projectDir) {
+  const siteYmlPath = join(projectDir, 'site.yml')
+  if (!existsSync(siteYmlPath)) return null
+
+  const { readFile } = await import('node:fs/promises')
+  const yaml = await import('js-yaml')
+  const content = await readFile(siteYmlPath, 'utf-8')
+  const config = yaml.load(content) || {}
+
+  if (!config.i18n?.locales?.length) return null
+
+  return {
+    defaultLocale: config.defaultLanguage || 'en',
+    locales: config.i18n.locales,
+    localesDir: config.i18n.localesDir || 'locales',
+  }
+}
+
+/**
+ * Build localized content for all configured locales
+ */
+async function buildLocalizedContent(projectDir, i18nConfig) {
+  const { buildLocalizedContent } = await import('@uniweb/build/i18n')
+
+  const outputs = await buildLocalizedContent(projectDir, {
+    localesDir: i18nConfig.localesDir,
+    locales: i18nConfig.locales,
+    outputDir: join(projectDir, 'dist'),
+    fallbackToSource: true,
+  })
+
+  return outputs
+}
+
+/**
+ * Generate index.html for each locale with hreflang tags
+ */
+async function generateLocalizedHtml(projectDir, i18nConfig) {
+  const { readFile, writeFile, mkdir, copyFile } = await import('node:fs/promises')
+  const distDir = join(projectDir, 'dist')
+  const baseHtmlPath = join(distDir, 'index.html')
+
+  if (!existsSync(baseHtmlPath)) {
+    return
+  }
+
+  let baseHtml = await readFile(baseHtmlPath, 'utf-8')
+
+  // Build hreflang tags
+  const hreflangTags = i18nConfig.locales.map(locale =>
+    `<link rel="alternate" hreflang="${locale}" href="/${locale}/" />`
+  ).join('\n    ')
+
+  const defaultHreflang = `<link rel="alternate" hreflang="x-default" href="/" />`
+  const allHreflangTags = `${hreflangTags}\n    ${defaultHreflang}`
+
+  // Add hreflang to base HTML (for default locale)
+  if (!baseHtml.includes('hreflang')) {
+    baseHtml = baseHtml.replace('</head>', `    ${allHreflangTags}\n  </head>`)
+    await writeFile(baseHtmlPath, baseHtml)
+  }
+
+  // Generate index.html for each locale
+  for (const locale of i18nConfig.locales) {
+    const localeDir = join(distDir, locale)
+    await mkdir(localeDir, { recursive: true })
+
+    // Read locale-specific site-content.json
+    const localeContentPath = join(localeDir, 'site-content.json')
+    let localeHtml = baseHtml
+
+    // Update html lang attribute
+    localeHtml = localeHtml.replace(/<html[^>]*lang="[^"]*"/, `<html lang="${locale}"`)
+    if (!localeHtml.includes('lang=')) {
+      localeHtml = localeHtml.replace('<html', `<html lang="${locale}"`)
+    }
+
+    // Update script src for locale-specific content if inlined
+    if (existsSync(localeContentPath)) {
+      const localeContent = await readFile(localeContentPath, 'utf-8')
+      // Replace the inlined content if present
+      localeHtml = localeHtml.replace(
+        /<script id="__SITE_CONTENT__"[^>]*>[\s\S]*?<\/script>/,
+        `<script id="__SITE_CONTENT__" type="application/json">${localeContent}</script>`
+      )
+    }
+
+    await writeFile(join(localeDir, 'index.html'), localeHtml)
+  }
+}
+
+/**
  * Build a site
  */
 async function buildSite(projectDir, options = {}) {
@@ -190,6 +284,35 @@ async function buildSite(projectDir, options = {}) {
   await runCommand('npx', ['vite', 'build'], projectDir)
 
   success('Site build complete')
+
+  // Check for i18n configuration
+  const i18nConfig = await loadI18nConfig(projectDir)
+
+  if (i18nConfig && i18nConfig.locales.length > 0) {
+    log('')
+    info(`Building localized content for: ${i18nConfig.locales.join(', ')}`)
+
+    try {
+      // Generate locale-specific site-content.json
+      const outputs = await buildLocalizedContent(projectDir, i18nConfig)
+
+      // Generate locale-specific index.html files
+      await generateLocalizedHtml(projectDir, i18nConfig)
+
+      success(`Generated ${Object.keys(outputs).length} locale(s)`)
+
+      for (const [locale, path] of Object.entries(outputs)) {
+        log(`  ${colors.dim}dist/${locale}/site-content.json${colors.reset}`)
+      }
+    } catch (err) {
+      error(`i18n build failed: ${err.message}`)
+      if (process.env.DEBUG) {
+        console.error(err.stack)
+      }
+      // Don't fail the build, just warn
+      log(`${colors.yellow}Continuing without localized content${colors.reset}`)
+    }
+  }
 
   // Pre-render if requested
   if (prerender) {
