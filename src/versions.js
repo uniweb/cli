@@ -67,11 +67,11 @@ export function getResolvedVersions() {
   // When publishing with pnpm, workspace:* gets resolved to actual versions.
   // Fallbacks are only used during local development.
   resolvedVersions = {
-    '@uniweb/build': resolveVersionSpec(deps['@uniweb/build'], '^0.1.0'),
-    '@uniweb/core': resolveVersionSpec(deps['@uniweb/core'], '^0.1.0'),
-    '@uniweb/kit': resolveVersionSpec(deps['@uniweb/kit'], '^0.1.0'),
-    '@uniweb/runtime': resolveVersionSpec(deps['@uniweb/runtime'], '^0.1.0'),
-    '@uniweb/templates': resolveVersionSpec(deps['@uniweb/templates'], '^0.1.0'),
+    '@uniweb/build': resolveVersionSpec(deps['@uniweb/build'], '^0.1.10'),
+    '@uniweb/core': resolveVersionSpec(deps['@uniweb/core'], '^0.1.6'),
+    '@uniweb/kit': resolveVersionSpec(deps['@uniweb/kit'], '^0.1.4'),
+    '@uniweb/runtime': resolveVersionSpec(deps['@uniweb/runtime'], '^0.2.3'),
+    '@uniweb/templates': resolveVersionSpec(deps['@uniweb/templates'], '^0.1.6'),
 
     // CLI itself (use current version)
     'uniweb': `^${pkg.version}`,
