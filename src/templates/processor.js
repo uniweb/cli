@@ -3,12 +3,18 @@
  */
 
 import fs from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import Handlebars from 'handlebars'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // Cache for compiled templates
 const templateCache = new Map()
+
+// Track if partials have been registered
+let partialsRegistered = false
 
 // Store for version data (set by registerVersions)
 let versionData = {}
@@ -43,6 +49,40 @@ export function getMissingVersions() {
  */
 export function clearMissingVersions() {
   missingVersions.clear()
+}
+
+/**
+ * Register Handlebars partials from the partials directory
+ * Partials are available as {{> partial-name}} in templates
+ */
+function registerPartials() {
+  if (partialsRegistered) return
+
+  const partialsDir = path.join(__dirname, '..', 'partials')
+
+  if (!existsSync(partialsDir)) {
+    partialsRegistered = true
+    return
+  }
+
+  try {
+    const files = readdirSync(partialsDir)
+
+    for (const file of files) {
+      if (file.endsWith('.hbs') || file.endsWith('.md')) {
+        const partialName = file.replace(/\.(hbs|md)$/, '')
+        const partialPath = path.join(partialsDir, file)
+        const partialContent = readFileSync(partialPath, 'utf8')
+
+        Handlebars.registerPartial(partialName, partialContent)
+      }
+    }
+
+    partialsRegistered = true
+  } catch (err) {
+    console.warn('Warning: Could not register partials:', err.message)
+    partialsRegistered = true
+  }
 }
 
 /**
@@ -99,6 +139,9 @@ function findUnresolvedPlaceholders(content) {
  * Load and compile a Handlebars template with caching
  */
 async function loadTemplate(templatePath) {
+  // Ensure partials are registered before first template load
+  registerPartials()
+
   if (templateCache.has(templatePath)) {
     return templateCache.get(templatePath)
   }

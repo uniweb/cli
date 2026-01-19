@@ -1,0 +1,110 @@
+## Search Functionality
+
+Uniweb sites support full-text search out of the box. Search indexes are generated automatically at build time.
+
+### Enabling Search in Your Foundation
+
+To add search to your site, your foundation needs the **Fuse.js** library:
+
+```bash
+cd foundation
+pnpm add fuse.js
+```
+
+Then use the search helpers from `@uniweb/kit`:
+
+```jsx
+import { useSearch } from '@uniweb/kit/search'
+
+function SearchComponent({ website }) {
+  const { query, results, isLoading, clear } = useSearch(website)
+
+  return (
+    <div>
+      <input
+        type="search"
+        placeholder="Search..."
+        onChange={e => query(e.target.value)}
+      />
+      {isLoading && <span>Searching...</span>}
+      <ul>
+        {results.map(result => (
+          <li key={result.id}>
+            <a href={result.href}>{result.title}</a>
+            <p dangerouslySetInnerHTML=\{{ __html: result.snippetHtml }} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+```
+
+### Search Configuration
+
+Search is enabled by default. To customize, add to `site/site.yml`:
+
+```yaml
+search:
+  enabled: true
+  exclude:
+    routes: [/admin, /private]    # Don't index these routes
+    components: [Debug]            # Don't index these component types
+```
+
+### How It Works
+
+1. **Build time**: Uniweb extracts text from all pages and sections
+2. **Output**: A `search-index.json` file is generated in `dist/`
+3. **Runtime**: Components fetch and search the index client-side
+4. **Multi-locale**: Each locale gets its own search index
+
+### Search API
+
+The `website` object provides these methods:
+
+```javascript
+// Check if search is available
+website.isSearchEnabled()      // Returns boolean
+
+// Get the URL for the search index
+website.getSearchIndexUrl()    // "/search-index.json" or "/es/search-index.json"
+
+// Get full search configuration
+website.getSearchConfig()      // { enabled, indexUrl, locale, include, exclude }
+```
+
+### Search Result Format
+
+Results from `useSearch()` include:
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique result identifier |
+| `type` | `"page"` or `"section"` |
+| `route` | Page route |
+| `href` | Full link including anchor |
+| `title` | Result title |
+| `pageTitle` | Parent page title (for sections) |
+| `snippetHtml` | Excerpt with `<mark>` highlighted matches |
+| `snippetText` | Plain text excerpt |
+
+### Without @uniweb/kit
+
+If you prefer not to use the kit helpers, you can fetch the index directly:
+
+```javascript
+// Fetch the search index
+const response = await fetch(website.getSearchIndexUrl())
+const index = await response.json()
+
+// Use with Fuse.js directly
+import Fuse from 'fuse.js'
+const fuse = new Fuse(index.entries, {
+  keys: ['title', 'content'],
+  threshold: 0.35,
+  includeMatches: true
+})
+
+const results = fuse.search('your query')
+```
