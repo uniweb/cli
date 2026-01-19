@@ -32,7 +32,7 @@ my-project/
 │   ├── locales/              # i18n (hash-based translations)
 │   │   ├── manifest.json     # Auto-extracted strings
 │   │   └── es.json           # Spanish translations
-│   ├── main.js               # 1-line entry point
+│   ├── main.js               # Entry point (~6 lines)
 │   ├── vite.config.js        # 3-line config
 │   └── public/               # Static assets
 │
@@ -226,7 +226,8 @@ uniweb build [options]
 | Option              | Description                                                           |
 | ------------------- | --------------------------------------------------------------------- |
 | `--target <type>`   | Build target: `foundation` or `site` (auto-detected if not specified) |
-| `--prerender`       | Pre-render pages to static HTML (SSG) - site builds only              |
+| `--prerender`       | Force pre-rendering (overrides site.yml)                              |
+| `--no-prerender`    | Skip pre-rendering (overrides site.yml)                               |
 | `--foundation-dir`  | Path to foundation directory (for prerendering)                       |
 | `--platform <name>` | Deployment platform (e.g., `vercel`) for platform-specific output     |
 
@@ -242,8 +243,11 @@ uniweb build --target foundation
 # Explicitly build as site
 uniweb build --target site
 
-# Build site with pre-rendering (SSG)
+# Build site with pre-rendering (SSG) - force on
 uniweb build --prerender
+
+# Skip pre-rendering even if enabled in site.yml
+uniweb build --no-prerender
 
 # Build for Vercel deployment
 uniweb build --platform vercel
@@ -251,7 +255,14 @@ uniweb build --platform vercel
 
 ### Pre-rendering (SSG)
 
-The `--prerender` flag generates static HTML for each page at build time. This is useful for:
+Pre-rendering generates static HTML for each page at build time. Enable it in `site.yml`:
+
+```yaml
+build:
+  prerender: true
+```
+
+Or use the `--prerender` flag to force it on (or `--no-prerender` to skip it). This is useful for:
 
 - **SEO**: Search engines see fully rendered content immediately
 - **Performance**: First contentful paint is instant (no JavaScript required)
@@ -275,11 +286,11 @@ The pre-rendered HTML includes a `<script id="__SITE_CONTENT__">` tag with the f
 **Usage:**
 
 ```bash
-# From site directory
+# From site directory (with build.prerender: true in site.yml)
 cd site
-pnpm build:ssg
+pnpm build
 
-# Or from workspace root
+# Or force pre-rendering via CLI flag
 cd site && uniweb build --prerender
 ```
 
@@ -300,7 +311,7 @@ my-project/
 │   ├── vite.config.js        # 3-line config
 │   ├── index.html
 │   ├── site.yml              # Site configuration (foundation, title, i18n)
-│   ├── main.js               # 1-line entry point
+│   ├── main.js               # Entry point (~6 lines)
 │   ├── pages/                # Content pages (file-based routing)
 │   │   └── home/
 │   │       ├── page.yml
@@ -343,7 +354,7 @@ my-workspace/
 │   │   ├── package.json
 │   │   ├── vite.config.js    # 3-line config
 │   │   ├── site.yml
-│   │   ├── main.js         # 1-line entry point
+│   │   ├── main.js           # Entry point (~6 lines)
 │   │   └── pages/
 │   └── docs/                 # Documentation site
 │
