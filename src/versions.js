@@ -63,17 +63,15 @@ export function getResolvedVersions() {
   const pkg = getCliPackageJson()
   const deps = { ...pkg.dependencies, ...pkg.devDependencies }
 
+  // All @uniweb/* packages are now direct dependencies of the CLI.
+  // When publishing with pnpm, workspace:* gets resolved to actual versions.
+  // Fallbacks are only used during local development.
   resolvedVersions = {
-    // Direct CLI dependencies - use fallbacks for workspace:* versions
-    '@uniweb/build': resolveVersionSpec(deps['@uniweb/build'], '^0.1.4'),
-    '@uniweb/templates': resolveVersionSpec(deps['@uniweb/templates'], '^0.1.6'),
-
-    // Runtime packages - keep in sync with current versions
-    '@uniweb/runtime': '^0.2.2',
-    '@uniweb/core': '^0.1.6',
-
-    // Foundation utility library (used by official templates)
-    '@uniweb/kit': '^0.1.3',
+    '@uniweb/build': resolveVersionSpec(deps['@uniweb/build'], '^0.1.0'),
+    '@uniweb/core': resolveVersionSpec(deps['@uniweb/core'], '^0.1.0'),
+    '@uniweb/kit': resolveVersionSpec(deps['@uniweb/kit'], '^0.1.0'),
+    '@uniweb/runtime': resolveVersionSpec(deps['@uniweb/runtime'], '^0.1.0'),
+    '@uniweb/templates': resolveVersionSpec(deps['@uniweb/templates'], '^0.1.0'),
 
     // CLI itself (use current version)
     'uniweb': `^${pkg.version}`,

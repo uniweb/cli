@@ -33,6 +33,9 @@
   },
   "dependencies": {
     "@uniweb/build": "workspace:*",
+    "@uniweb/core": "workspace:*",
+    "@uniweb/kit": "workspace:*",
+    "@uniweb/runtime": "workspace:*",
     "handlebars": "^4.7.8",
     "js-yaml": "^4.1.0",
     "prompts": "^2.4.2",
