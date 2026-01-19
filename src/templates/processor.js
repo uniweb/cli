@@ -172,8 +172,8 @@ async function processFile(sourcePath, targetPath, data, options = {}) {
     }
 
     await fs.writeFile(targetPath, content)
-  } else if (isTextFile && options.processAllText) {
-    // Optionally process non-hbs text files for simple replacements
+  } else if (isTextFile) {
+    // Process text files for simple variable replacements
     let content = await fs.readFile(sourcePath, 'utf8')
     // Simple {{var}} replacement without full Handlebars
     for (const [key, value] of Object.entries(data)) {
