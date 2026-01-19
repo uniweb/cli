@@ -32,8 +32,7 @@ my-project/
 │   ├── locales/              # i18n (hash-based translations)
 │   │   ├── manifest.json     # Auto-extracted strings
 │   │   └── es.json           # Spanish translations
-│   ├── src/
-│   │   └── main.jsx          # 1-line entry point
+│   ├── loader.js             # 1-line entry point
 │   ├── vite.config.js        # 3-line config
 │   └── public/               # Static assets
 │
@@ -240,8 +239,7 @@ my-project/
 │   ├── vite.config.js        # 3-line config
 │   ├── index.html
 │   ├── site.yml              # Site configuration (foundation, title, i18n)
-│   ├── src/
-│   │   └── main.jsx          # 1-line entry point
+│   ├── loader.js             # 1-line entry point
 │   ├── pages/                # Content pages (file-based routing)
 │   │   └── home/
 │   │       ├── page.yml
@@ -284,7 +282,7 @@ my-workspace/
 │   │   ├── package.json
 │   │   ├── vite.config.js    # 3-line config
 │   │   ├── site.yml
-│   │   ├── src/main.jsx      # 1-line entry point
+│   │   ├── loader.js         # 1-line entry point
 │   │   └── pages/
 │   └── docs/                 # Documentation site
 │
