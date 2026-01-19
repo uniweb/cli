@@ -68,12 +68,12 @@ export function getResolvedVersions() {
     '@uniweb/build': resolveVersionSpec(deps['@uniweb/build'], '^0.1.4'),
     '@uniweb/templates': resolveVersionSpec(deps['@uniweb/templates'], '^0.1.6'),
 
-    // These come from @uniweb/build's dependencies, use compatible versions
-    '@uniweb/runtime': '^0.1.0',
-    '@uniweb/core': '^0.1.0',
+    // Runtime packages - keep in sync with current versions
+    '@uniweb/runtime': '^0.2.2',
+    '@uniweb/core': '^0.1.6',
 
     // Foundation utility library (used by official templates)
-    '@uniweb/kit': '^0.1.0',
+    '@uniweb/kit': '^0.1.3',
 
     // CLI itself (use current version)
     'uniweb': `^${pkg.version}`,
