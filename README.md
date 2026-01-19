@@ -204,6 +204,8 @@ uniweb build [options]
 | Option              | Description                                                           |
 | ------------------- | --------------------------------------------------------------------- |
 | `--target <type>`   | Build target: `foundation` or `site` (auto-detected if not specified) |
+| `--prerender`       | Pre-render pages to static HTML (SSG) - site builds only              |
+| `--foundation-dir`  | Path to foundation directory (for prerendering)                       |
 | `--platform <name>` | Deployment platform (e.g., `vercel`) for platform-specific output     |
 
 **Examples:**
@@ -218,8 +220,45 @@ uniweb build --target foundation
 # Explicitly build as site
 uniweb build --target site
 
+# Build site with pre-rendering (SSG)
+uniweb build --prerender
+
 # Build for Vercel deployment
 uniweb build --platform vercel
+```
+
+### Pre-rendering (SSG)
+
+The `--prerender` flag generates static HTML for each page at build time. This is useful for:
+
+- **SEO**: Search engines see fully rendered content immediately
+- **Performance**: First contentful paint is instant (no JavaScript required)
+- **Hosting**: Deploy to any static host (GitHub Pages, Netlify, S3, etc.)
+
+**How it works:**
+
+1. The site build runs first, generating the JavaScript bundle and `site-content.json`
+2. The prerenderer loads the foundation and site content in Node.js
+3. Each page is rendered to HTML using React's `renderToString()`
+4. The HTML is injected into the shell with the site content embedded
+
+**Hydration:**
+
+The pre-rendered HTML includes a `<script id="__SITE_CONTENT__">` tag with the full site data. When the page loads in the browser:
+
+1. The static HTML displays immediately (no flash of loading state)
+2. React hydrates the existing DOM instead of replacing it
+3. The site becomes fully interactive with client-side routing
+
+**Usage:**
+
+```bash
+# From site directory
+cd site
+pnpm build:ssg
+
+# Or from workspace root
+cd site && uniweb build --prerender
 ```
 
 ## Built-in Templates
