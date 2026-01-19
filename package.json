@@ -1,13 +1,14 @@
 {
   "name": "uniweb",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "description": "Create structured Vite + React sites with content/code separation",
   "type": "module",
   "bin": {
     "uniweb": "src/index.js"
   },
   "files": [
-    "src"
+    "src",
+    "templates"
   ],
   "keywords": [
     "uniweb",
