@@ -5,8 +5,8 @@
 // Built-in templates (file-based in cli/templates/)
 export const BUILTIN_TEMPLATES = ['single', 'multi', 'template']
 
-// Official templates from @uniweb/templates package
-export const OFFICIAL_TEMPLATES = ['marketing', 'docs', 'learning']
+// Official templates from @uniweb/templates package (downloaded from GitHub releases)
+export const OFFICIAL_TEMPLATES = ['marketing', 'academic', 'docs']
 
 /**
  * Parse a template identifier and determine its source type
