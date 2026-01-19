@@ -2,8 +2,8 @@
  * Template resolver - parses template identifiers and determines source type
  */
 
-// Built-in templates that are generated programmatically
-export const BUILTIN_TEMPLATES = ['single', 'multi']
+// Built-in templates (file-based in cli/templates/)
+export const BUILTIN_TEMPLATES = ['single', 'multi', 'template']
 
 // Official templates from @uniweb/templates package
 export const OFFICIAL_TEMPLATES = ['marketing', 'docs', 'learning']

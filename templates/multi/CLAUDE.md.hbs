@@ -1,0 +1,85 @@
+# CLAUDE.md - AI Assistant Instructions
+
+This file provides guidance for AI assistants working with this Uniweb multi-site workspace.
+
+## Project Overview
+
+This is a **Uniweb multi-site workspace** - supporting multiple sites and foundations.
+
+```
+{{projectName}}/
+├── foundations/        # Shared component libraries
+│   └── default/        # Default foundation
+├── sites/              # Content sites
+│   └── main/           # Main site
+├── package.json        # Root workspace config
+└── pnpm-workspace.yaml
+```
+
+## Quick Commands
+
+```bash
+# Install dependencies
+pnpm install
+
+# Start main site development
+pnpm dev
+
+# Start all sites in parallel
+pnpm dev:all
+
+# Build main site
+pnpm build
+
+# Build all sites
+pnpm build:all
+```
+
+## Adding New Sites
+
+1. Copy an existing site directory:
+   ```bash
+   cp -r sites/main sites/newsite
+   ```
+
+2. Update `sites/newsite/package.json` with a unique name
+
+3. Update `sites/newsite/site.yml` with site configuration
+
+4. Run `pnpm install` to link the new site
+
+## Adding New Foundations
+
+1. Copy an existing foundation:
+   ```bash
+   cp -r foundations/default foundations/newfoundation
+   ```
+
+2. Update `foundations/newfoundation/package.json` with a unique name
+
+3. In your site's `site.yml`, reference the foundation:
+   ```yaml
+   foundation: newfoundation
+   ```
+
+4. In your site's `package.json`, add the dependency:
+   ```json
+   "dependencies": {
+     "newfoundation": "file:../../foundations/newfoundation"
+   }
+   ```
+
+## Architecture
+
+### Foundations (`/foundations/*`)
+
+Each foundation is a React component library. Sites can share foundations or have their own.
+
+### Sites (`/sites/*`)
+
+Each site contains content in markdown. A site references one foundation for its components.
+
+## Resources
+
+- [Uniweb Documentation](https://github.com/uniweb/uniweb)
+- [@uniweb/kit Documentation](https://www.npmjs.com/package/@uniweb/kit)

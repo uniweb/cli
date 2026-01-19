@@ -1,0 +1,24 @@
+{
+  "name": "@{{scope}}/template-{{templateName}}",
+  "version": "0.1.0",
+  "description": "{{templateDescription}}",
+  "type": "module",
+  "main": "template.json",
+  "files": [
+    "template.json",
+    "template/"
+  ],
+  "keywords": [
+    "uniweb",
+    "template",
+    "{{templateName}}"
+  ],
+  "scripts": {
+    "dev": "cd template && pnpm dev",
+    "build": "cd template && pnpm build",
+    "test": "node scripts/test-template.js"
+  },
+  "devDependencies": {
+    "uniweb": "{{version "uniweb"}}"
+  }
+}

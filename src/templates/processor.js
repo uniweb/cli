@@ -153,11 +153,17 @@ async function processFile(sourcePath, targetPath, data, options = {}) {
  * @param {Object} data - Template variables
  * @param {Object} options - Processing options
  * @param {string|null} options.variant - Template variant to use
+ * @param {string|null} options.basePath - Base template to merge with (files copied first)
  * @param {Function} options.onWarning - Warning callback
  * @param {Function} options.onProgress - Progress callback
  */
 export async function copyTemplateDirectory(sourcePath, targetPath, data, options = {}) {
-  const { variant = null, onWarning, onProgress } = options
+  const { variant = null, basePath = null, onWarning, onProgress } = options
+
+  // If a base template is specified, copy it first (without the basePath option to avoid recursion)
+  if (basePath && existsSync(basePath)) {
+    await copyTemplateDirectory(basePath, targetPath, data, { variant, onWarning, onProgress })
+  }
 
   await fs.mkdir(targetPath, { recursive: true })
   const entries = await fs.readdir(sourcePath, { withFileTypes: true })
@@ -172,6 +178,9 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
       }
     }
   }
+
+  // Options for recursive calls (without basePath to avoid re-copying base at each level)
+  const recursionOptions = { variant, onWarning, onProgress }
 
   for (const entry of entries) {
     const sourceName = entry.name
@@ -199,7 +208,7 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
         const sourceFullPath = path.join(sourcePath, sourceName)
         const targetFullPath = path.join(targetPath, baseName)
 
-        await copyTemplateDirectory(sourceFullPath, targetFullPath, data, options)
+        await copyTemplateDirectory(sourceFullPath, targetFullPath, data, recursionOptions)
       } else {
         // Regular directory - skip if a variant override exists and we're using that variant
         if (variant && variantBases.has(sourceName)) {
@@ -210,10 +219,15 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
         const sourceFullPath = path.join(sourcePath, sourceName)
         const targetFullPath = path.join(targetPath, sourceName)
 
-        await copyTemplateDirectory(sourceFullPath, targetFullPath, data, options)
+        await copyTemplateDirectory(sourceFullPath, targetFullPath, data, recursionOptions)
       }
     } else {
       // File processing
+      // Skip template.json as it's metadata for the template, not for the output
+      if (sourceName === 'template.json') {
+        continue
+      }
+
       // Remove .hbs extension for target filename
       const targetName = sourceName.endsWith('.hbs')
         ? sourceName.slice(0, -4)

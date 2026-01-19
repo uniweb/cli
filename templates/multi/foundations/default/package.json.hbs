@@ -1,0 +1,37 @@
+{
+  "name": "default",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./styles": "./src/styles.css",
+    "./dist": "./dist/foundation.js",
+    "./dist/styles": "./dist/assets/style.css"
+  },
+  "files": ["dist", "src"],
+  "scripts": {
+    "dev": "vite",
+    "build": "uniweb build",
+    "build:vite": "vite build",
+    "preview": "vite preview"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "dependencies": {
+    "@uniweb/core": "{{version "@uniweb/core"}}",
+    "@uniweb/kit": "{{version "@uniweb/kit"}}"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwindcss": "^4.0.0",
+    "uniweb": "{{version "uniweb"}}",
+    "vite": "^6.0.0",
+    "vite-plugin-svgr": "^4.2.0"
+  }
+}

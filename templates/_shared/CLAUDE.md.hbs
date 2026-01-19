@@ -1,0 +1,131 @@
+# CLAUDE.md - AI Assistant Instructions
+
+This file provides guidance for AI assistants working with this Uniweb project.
+
+## Project Overview
+
+This is a **Uniweb** project - a component web platform that separates content from code.
+
+```
+{{projectName}}/
+├── foundation/     # React component library (code)
+├── site/           # Content and pages (markdown)
+├── package.json    # Root workspace config
+└── pnpm-workspace.yaml
+```
+
+## Quick Commands
+
+```bash
+# Install dependencies
+pnpm install
+
+# Start development server
+pnpm dev
+
+# Build the foundation
+cd foundation && pnpm build
+
+# Build the site for production
+cd site && pnpm build
+```
+
+## Architecture
+
+### Foundation Package (`/foundation`)
+
+The **foundation** is a React component library. Each component:
+
+1. Receives structured content parsed from markdown
+2. Has configurable parameters (theme, layout, etc.)
+3. Renders the content according to its design
+
+**Key directories:**
+- `src/components/*/` - Component implementations
+- `src/components/*/meta.js` - Component metadata and schema
+- `src/styles.css` - Global Tailwind styles
+
+### Site Package (`/site`)
+
+The **site** contains content written in markdown. The runtime loads the foundation and renders content based on component selections.
+
+**Key directories:**
+- `pages/` - Content pages organized in folders
+- `pages/[page-name]/page.yml` - Page metadata
+- `pages/[page-name]/*.md` - Content sections
+
+## Content Authoring
+
+### Section File Format
+
+```markdown
+---
+type: ComponentName
+theme: dark
+layout: center
+---
+
+# Main Headline
+
+Description paragraph.
+
+[Call to Action](#link)
+```
+
+### Content Structure
+
+The semantic parser extracts content into:
+
+- **`content.main.header`**: title, pretitle, subtitle
+- **`content.main.body`**: paragraphs, links, imgs, lists
+- **`content.items`**: Content groups from H3 headings
+
+## Component Development
+
+### Component Interface
+
+```jsx
+function MyComponent({ content, params, block, website }) {
+  const { title } = content.main?.header || {}
+  const { paragraphs = [] } = content.main?.body || {}
+  // ...
+}
+```
+
+### Using @uniweb/kit
+
+```jsx
+import { H1, P, Link, cn } from '@uniweb/kit'
+```
+
+### Component Metadata (`meta.js`)
+
+```javascript
+export default {
+  title: 'Component Name',
+  description: 'What the component does',
+  category: 'Content',
+  elements: { /* content elements */ },
+  properties: { /* configurable params */ },
+}
+```
+
+## Tailwind CSS v4
+
+This project uses Tailwind CSS v4 with the Vite plugin.
+
+**Theme customization** (`foundation/src/styles.css`):
+
+```css
+@import "tailwindcss";
+@source "./components/**/*.{js,jsx}";
+@theme {
+  --color-primary: #3b82f6;
+}
+```
+
+## Resources
+
+- [Uniweb Documentation](https://github.com/uniweb/uniweb)
+- [@uniweb/kit Documentation](https://www.npmjs.com/package/@uniweb/kit)
+- [Tailwind CSS v4](https://tailwindcss.com/docs)
