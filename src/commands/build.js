@@ -22,6 +22,7 @@ import {
   discoverComponents,
   processAllPreviews,
 } from '@uniweb/build'
+import { readSiteConfig } from '@uniweb/build/site'
 
 // Colors for terminal output
 const colors = {
@@ -179,19 +180,6 @@ async function buildFoundation(projectDir, options = {}) {
 }
 
 /**
- * Load site configuration from site.yml
- */
-async function loadSiteConfig(projectDir) {
-  const siteYmlPath = join(projectDir, 'site.yml')
-  if (!existsSync(siteYmlPath)) return {}
-
-  const { readFile } = await import('node:fs/promises')
-  const yaml = await import('js-yaml')
-  const content = await readFile(siteYmlPath, 'utf-8')
-  return yaml.load(content) || {}
-}
-
-/**
  * Load site i18n configuration
  *
  * Resolves locales from config:
@@ -200,7 +188,7 @@ async function loadSiteConfig(projectDir) {
  * - ['es', 'fr'] → only those specific locales
  */
 async function loadI18nConfig(projectDir, siteConfig = null) {
-  const config = siteConfig || await loadSiteConfig(projectDir)
+  const config = siteConfig || readSiteConfig(projectDir)
 
   const localesDir = config.i18n?.localesDir || 'locales'
   const localesPath = join(projectDir, localesDir)
@@ -421,7 +409,7 @@ export async function build(args = []) {
       await buildFoundation(projectDir)
     } else {
       // For sites, read config to determine prerender default
-      const siteConfig = await loadSiteConfig(projectDir)
+      const siteConfig = readSiteConfig(projectDir)
       const configPrerender = siteConfig.build?.prerender === true
 
       // CLI flags override config: --prerender forces on, --no-prerender forces off
