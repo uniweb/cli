@@ -10,5 +10,14 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0"
+  },
+  "workspaces": [
+    "site",
+    "foundation",
+    "sites/*",
+    "foundations/*"
+  ],
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp"]
   }
 }

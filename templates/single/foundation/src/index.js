@@ -2,7 +2,7 @@
  * Foundation Entry Point
  *
  * Export all components from this file.
- * Components are discovered from src/components/*/meta.js during build.
+ * Components are discovered from src/components/{Name}/meta.js during build.
  */
 
 import Section from './components/Section/index.jsx'
