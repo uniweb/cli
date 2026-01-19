@@ -334,9 +334,12 @@ ${colors.bright}Create Options:${colors.reset}
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified
-  --prerender        Pre-render pages to static HTML (SSG) - site builds only
+  --prerender        Force pre-rendering (overrides site.yml)
+  --no-prerender     Skip pre-rendering (overrides site.yml)
   --foundation-dir   Path to foundation directory (for prerendering)
   --platform <name>  Deployment platform (e.g., vercel) for platform-specific output
+
+  Pre-rendering is enabled by default when build.prerender: true in site.yml
 
 ${colors.bright}Docs Options:${colors.reset}
   --output <file>    Output filename (default: COMPONENTS.md)
@@ -364,7 +367,8 @@ ${colors.bright}Examples:${colors.reset}
   npx uniweb create my-project --template github:myorg/template
   npx uniweb build
   npx uniweb build --target foundation
-  npx uniweb build --prerender                         # Build site + pre-render to static HTML
+  npx uniweb build                                     # Auto-prerenders if site.yml has build.prerender: true
+  npx uniweb build --no-prerender                      # Skip prerendering even if enabled in config
   cd foundation && npx uniweb docs                     # Generate COMPONENTS.md
 `)
 }

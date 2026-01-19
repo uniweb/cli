@@ -179,6 +179,19 @@ async function buildFoundation(projectDir, options = {}) {
 }
 
 /**
+ * Load site configuration from site.yml
+ */
+async function loadSiteConfig(projectDir) {
+  const siteYmlPath = join(projectDir, 'site.yml')
+  if (!existsSync(siteYmlPath)) return {}
+
+  const { readFile } = await import('node:fs/promises')
+  const yaml = await import('js-yaml')
+  const content = await readFile(siteYmlPath, 'utf-8')
+  return yaml.load(content) || {}
+}
+
+/**
  * Load site i18n configuration
  *
  * Resolves locales from config:
@@ -186,14 +199,8 @@ async function buildFoundation(projectDir, options = {}) {
  * - '*' → explicitly all available locales
  * - ['es', 'fr'] → only those specific locales
  */
-async function loadI18nConfig(projectDir) {
-  const siteYmlPath = join(projectDir, 'site.yml')
-  if (!existsSync(siteYmlPath)) return null
-
-  const { readFile } = await import('node:fs/promises')
-  const yaml = await import('js-yaml')
-  const content = await readFile(siteYmlPath, 'utf-8')
-  const config = yaml.load(content) || {}
+async function loadI18nConfig(projectDir, siteConfig = null) {
+  const config = siteConfig || await loadSiteConfig(projectDir)
 
   const localesDir = config.i18n?.localesDir || 'locales'
   const localesPath = join(projectDir, localesDir)
@@ -288,7 +295,7 @@ async function generateLocalizedHtml(projectDir, i18nConfig) {
  * Build a site
  */
 async function buildSite(projectDir, options = {}) {
-  const { prerender = false, foundationDir } = options
+  const { prerender = false, foundationDir, siteConfig = null } = options
 
   info('Building site...')
 
@@ -298,7 +305,7 @@ async function buildSite(projectDir, options = {}) {
   success('Site build complete')
 
   // Check for i18n configuration
-  const i18nConfig = await loadI18nConfig(projectDir)
+  const i18nConfig = await loadI18nConfig(projectDir, siteConfig)
 
   if (i18nConfig && i18nConfig.locales.length > 0) {
     log('')
@@ -378,8 +385,9 @@ export async function build(args = []) {
     }
   }
 
-  // Check for --prerender flag (SSG)
-  const prerender = args.includes('--prerender')
+  // Check for --prerender / --no-prerender flags
+  const prerenderFlag = args.includes('--prerender')
+  const noPrerenderFlag = args.includes('--no-prerender')
 
   // Check for --foundation-dir flag (for prerendering)
   let foundationDir = null
@@ -401,9 +409,9 @@ export async function build(args = []) {
     info(`Detected project type: ${targetType}`)
   }
 
-  // Validate prerender is only used with site target
-  if (prerender && targetType !== 'site') {
-    error('--prerender can only be used with site builds')
+  // Validate prerender flags are only used with site target
+  if ((prerenderFlag || noPrerenderFlag) && targetType !== 'site') {
+    error('--prerender/--no-prerender can only be used with site builds')
     process.exit(1)
   }
 
@@ -412,7 +420,16 @@ export async function build(args = []) {
     if (targetType === 'foundation') {
       await buildFoundation(projectDir)
     } else {
-      await buildSite(projectDir, { prerender, foundationDir })
+      // For sites, read config to determine prerender default
+      const siteConfig = await loadSiteConfig(projectDir)
+      const configPrerender = siteConfig.build?.prerender === true
+
+      // CLI flags override config: --prerender forces on, --no-prerender forces off
+      let prerender = configPrerender
+      if (prerenderFlag) prerender = true
+      if (noPrerenderFlag) prerender = false
+
+      await buildSite(projectDir, { prerender, foundationDir, siteConfig })
     }
   } catch (err) {
     error(err.message)
