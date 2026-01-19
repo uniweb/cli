@@ -29,8 +29,9 @@ my-project/
 │   │   └── home/
 │   │       ├── page.yml      # Page metadata
 │   │       └── 1-hero.md     # Section content
-│   ├── locales/              # i18n (mirrors pages/)
-│   │   └── es/
+│   ├── locales/              # i18n (hash-based translations)
+│   │   ├── manifest.json     # Auto-extracted strings
+│   │   └── es.json           # Spanish translations
 │   ├── src/
 │   │   └── main.jsx          # 1-line entry point
 │   ├── vite.config.js        # 3-line config
