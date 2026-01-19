@@ -87,14 +87,19 @@ Components receive validated, localized data. Natural content stays in markdown;
 export function Hero({ content, params }) {
   const { title } = content.main.header;
   const { paragraphs, links } = content.main.body;
-  const { theme = 'light' } = params;
+  const { theme = "light" } = params;
 
   return (
-    <section className={`py-20 text-center ${theme === 'dark' ? 'bg-gray-900 text-white' : ''}`}>
+    <section
+      className={`py-20 text-center ${theme === "dark" ? "bg-gray-900 text-white" : ""}`}
+    >
       <h1 className="text-4xl font-bold">{title}</h1>
       <p className="text-xl text-gray-600">{paragraphs[0]}</p>
       {links[0] && (
-        <a href={links[0].url} className="mt-8 px-6 py-3 bg-blue-600 text-white rounded inline-block">
+        <a
+          href={links[0].url}
+          className="mt-8 px-6 py-3 bg-blue-600 text-white rounded inline-block"
+        >
           {links[0].text}
         </a>
       )}
@@ -103,26 +108,9 @@ export function Hero({ content, params }) {
 }
 ```
 
-Standard React. Standard Tailwind. The `{ content, params }` interface is only for *exposed* components—the ones content creators select in markdown frontmatter. Internal components (the majority of your codebase) use regular React props.
+Standard React. Standard Tailwind. The `{ content, params }` interface is only for _exposed_ components—the ones content creators select in markdown frontmatter. Internal components (the majority of your codebase) use regular React props.
 
-No framework to learn. Foundations are purpose-built component systems designed for a specific domain (marketing, documentation, learning, etc.). Sites are Vite apps that load content from markdown files. Configuration is minimal—both site and foundation use 3-line Vite configs:
-
-```javascript
-// site/vite.config.js
-import { defineSiteConfig } from '@uniweb/build/site'
-export default defineSiteConfig()
-
-// foundation/vite.config.js
-import { defineFoundationConfig } from '@uniweb/build'
-export default defineFoundationConfig()
-```
-
-The site entry point is equally minimal:
-
-```javascript
-// site/src/main.jsx
-import 'virtual:uniweb-site-entry'
-```
+No framework to learn. Foundations are purpose-built component systems designed for a specific domain (marketing, documentation, learning, etc.). Sites are Vite apps that load content from markdown files.
 
 ## The Bigger Picture
 
@@ -147,6 +135,7 @@ npm install -g uniweb
 ```
 
 **Requirements:**
+
 - Node.js 20.19 or later
 - pnpm 9+ (recommended) or npm 10+
 
@@ -164,19 +153,19 @@ uniweb create [project-name] [options]
 
 **Options:**
 
-| Option              | Description                           |
-| ------------------- | ------------------------------------- |
-| `--template <type>` | Project template (see below)          |
+| Option              | Description                  |
+| ------------------- | ---------------------------- |
+| `--template <type>` | Project template (see below) |
 
 **Template Sources:**
 
-| Source | Example | Description |
-| ------ | ------- | ----------- |
-| Built-in | `single`, `multi` | Minimal starter templates |
-| Official | `marketing` | Feature-rich showcase templates |
-| npm | `@org/my-template` | Published npm packages |
-| GitHub | `github:user/repo` | GitHub repositories |
-| GitHub URL | `https://github.com/user/repo` | Full GitHub URLs |
+| Source     | Example                        | Description                     |
+| ---------- | ------------------------------ | ------------------------------- |
+| Built-in   | `single`, `multi`              | Minimal starter templates       |
+| Official   | `marketing`                    | Feature-rich showcase templates |
+| npm        | `@org/my-template`             | Published npm packages          |
+| GitHub     | `github:user/repo`             | GitHub repositories             |
+| GitHub URL | `https://github.com/user/repo` | Full GitHub URLs                |
 
 **Examples:**
 
@@ -234,11 +223,9 @@ uniweb build --target site
 uniweb build --platform vercel
 ```
 
-## Project Templates
+## Built-in Templates
 
-### Built-in Templates
-
-#### Single (Default)
+### Single (Default)
 
 A minimal workspace with a site and foundation as sibling packages. This is the recommended starting point.
 
@@ -250,11 +237,11 @@ my-project/
 │
 ├── site/                     # Site package (content + entry)
 │   ├── package.json
-│   ├── vite.config.js        # 3-line config using defineSiteConfig()
+│   ├── vite.config.js        # 3-line config
 │   ├── index.html
 │   ├── site.yml              # Site configuration (foundation, title, i18n)
 │   ├── src/
-│   │   └── main.jsx          # 1-line entry: import 'virtual:uniweb-site-entry'
+│   │   └── main.jsx          # 1-line entry point
 │   ├── pages/                # Content pages (file-based routing)
 │   │   └── home/
 │   │       ├── page.yml
@@ -263,7 +250,7 @@ my-project/
 │
 └── foundation/               # Foundation package (components)
     ├── package.json
-    ├── vite.config.js        # 3-line config using defineFoundationConfig()
+    ├── vite.config.js        # 3-line config
     └── src/
         ├── index.js          # Component exports
         ├── entry-runtime.js  # Runtime entry (imports styles + index)
@@ -282,7 +269,7 @@ my-project/
 - **Zero extraction** — `foundation/` is already a complete, publishable package
 - **Scales naturally** — Rename to `sites/marketing/` and `foundations/marketing/` when needed
 
-#### Multi
+### Multi
 
 A monorepo for multi-site or multi-foundation development.
 
@@ -297,7 +284,7 @@ my-workspace/
 │   │   ├── package.json
 │   │   ├── vite.config.js    # 3-line config
 │   │   ├── site.yml
-│   │   ├── src/main.jsx      # 1-line entry
+│   │   ├── src/main.jsx      # 1-line entry point
 │   │   └── pages/
 │   └── docs/                 # Documentation site
 │
@@ -315,11 +302,11 @@ Use this when you need:
 - Multiple foundations for different purposes
 - A testing site for foundation development
 
-### Official Templates
+## Official Templates
 
 Feature-rich templates that demonstrate what's possible with Uniweb. These include real components, sample content, and production-ready structure.
 
-#### Marketing
+### Marketing
 
 A complete marketing site with landing page components:
 
@@ -332,11 +319,12 @@ uniweb create my-site --template marketing
 Perfect for product launches, SaaS websites, and business landing pages.
 
 **Tailwind v3 variant:**
+
 ```bash
 uniweb create my-site --template marketing --variant tailwind3
 ```
 
-#### Academic
+### Academic
 
 A professional academic site for researchers, labs, and departments:
 
@@ -348,7 +336,7 @@ uniweb create my-site --template academic
 
 Perfect for researcher portfolios, lab websites, and academic department sites.
 
-#### Docs
+### Docs
 
 A documentation site with navigation levels:
 
@@ -360,7 +348,7 @@ uniweb create my-site --template docs
 
 Perfect for technical documentation, guides, and API references.
 
-### External Templates
+## External Templates
 
 You can use templates from npm or GitHub:
 
@@ -407,14 +395,14 @@ cd foundation && pnpm add embla-carousel
 The `defineSiteConfig()` function handles all Vite configuration for sites:
 
 ```javascript
-import { defineSiteConfig } from '@uniweb/build/site'
+import { defineSiteConfig } from "@uniweb/build/site";
 
 export default defineSiteConfig({
   // All options are optional
-  tailwind: true,        // Enable Tailwind CSS v4 (default: true)
-  plugins: [],           // Additional Vite plugins
+  tailwind: true, // Enable Tailwind CSS v4 (default: true)
+  plugins: [], // Additional Vite plugins
   // ...any other Vite config options
-})
+});
 ```
 
 ### Foundation Configuration
@@ -422,28 +410,28 @@ export default defineSiteConfig({
 The `defineFoundationConfig()` function handles all Vite configuration for foundations:
 
 ```javascript
-import { defineFoundationConfig } from '@uniweb/build'
+import { defineFoundationConfig } from "@uniweb/build";
 
 export default defineFoundationConfig({
   // All options are optional
-  entry: 'src/entry-runtime.js',     // Entry point path
-  fileName: 'foundation',             // Output file name
-  externals: [],                      // Additional packages to externalize
-  includeDefaultExternals: true,      // Include react, @uniweb/core, etc.
-  tailwind: true,                     // Enable Tailwind CSS v4 Vite plugin
-  sourcemap: true,                    // Generate sourcemaps
-  plugins: [],                        // Additional Vite plugins
-  build: {},                          // Additional Vite build options
+  entry: "src/entry-runtime.js", // Entry point path
+  fileName: "foundation", // Output file name
+  externals: [], // Additional packages to externalize
+  includeDefaultExternals: true, // Include react, @uniweb/core, etc.
+  tailwind: true, // Enable Tailwind CSS v4 Vite plugin
+  sourcemap: true, // Generate sourcemaps
+  plugins: [], // Additional Vite plugins
+  build: {}, // Additional Vite build options
   // ...any other Vite config options
-})
+});
 ```
 
 For Tailwind CSS v3 projects, set `tailwind: false` and use PostCSS:
 
 ```javascript
 export default defineFoundationConfig({
-  tailwind: false  // Uses PostCSS instead of Vite plugin
-})
+  tailwind: false, // Uses PostCSS instead of Vite plugin
+});
 ```
 
 ## Foundation Build Process
