@@ -20,15 +20,30 @@ This is a **Uniweb** project - a component web platform that separates content f
 # Install dependencies
 pnpm install
 
-# Start development server
+# Start development server (site with foundation)
 pnpm dev
 
-# Build the foundation
+# Build foundation (generates dist/foundation.js and schema.json)
 cd foundation && pnpm build
 
-# Build the site for production
+# Build site for production (outputs to site/dist/)
 cd site && pnpm build
 ```
+
+## Key Files
+
+**Site:**
+- `site/vite.config.js` - 3-line config using `defineSiteConfig()` from `@uniweb/build/site`
+- `site/src/main.jsx` - 1-line entry: `import 'virtual:uniweb-site-entry'`
+- `site/site.yml` - Site configuration (foundation path, title, i18n)
+- `site/pages/` - Content pages (file-based routing)
+
+**Foundation:**
+- `foundation/vite.config.js` - 3-line config using `defineFoundationConfig()` from `@uniweb/build`
+- `foundation/src/entry-runtime.js` - Runtime entry point (imports styles + components)
+- `foundation/src/index.js` - Component exports
+- `foundation/src/styles.css` - Tailwind CSS v4 theme
+- `foundation/src/components/*/meta.js` - Component metadata and schema
 
 ## Architecture
 

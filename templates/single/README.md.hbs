@@ -1,0 +1,101 @@
+# {{projectName}}
+
+A website built with [Uniweb](https://github.com/uniweb/uniweb) — a component web platform that separates content from code.
+
+## Quick Start
+
+```bash
+pnpm install    # Install dependencies
+pnpm dev        # Start development server
+```
+
+Visit `http://localhost:5173` to see your site.
+
+## Project Structure
+
+```
+{{projectName}}/
+├── foundation/          # React component library
+│   ├── src/
+│   │   ├── components/  # Your components
+│   │   └── styles.css   # Tailwind CSS v4 theme
+│   └── vite.config.js   # defineFoundationConfig()
+│
+├── site/                # Content (markdown)
+│   ├── pages/           # Content pages
+│   │   └── home/
+│   │       ├── page.yml
+│   │       └── 1-welcome.md
+│   ├── site.yml         # Site configuration
+│   └── vite.config.js   # defineSiteConfig()
+│
+└── CLAUDE.md            # AI assistant instructions
+```
+
+## Content Authoring
+
+Content lives in markdown files under `site/pages/`:
+
+```markdown
+---
+type: Section
+theme: light
+---
+
+# Welcome
+
+Your content here.
+
+[Call to Action](#)
+```
+
+**Page structure:**
+- Create folder: `site/pages/about/`
+- Add `page.yml` with title and metadata
+- Add sections: `1-intro.md`, `2-team.md`, etc.
+
+## Component Development
+
+Components live in `foundation/src/components/`:
+
+```jsx
+// foundation/src/components/Hero/index.jsx
+import { H1, P, cn } from '@uniweb/kit'
+
+export function Hero({ content, params }) {
+  const { title } = content.main?.header || {}
+  const { theme = 'light' } = params
+
+  return (
+    <section className={cn('py-20', theme === 'dark' && 'bg-gray-900')}>
+      <H1 text={title} />
+    </section>
+  )
+}
+
+export default Hero
+```
+
+Each component needs a `meta.js` file defining its schema.
+
+## Building
+
+```bash
+# Build foundation (generates dist/foundation.js)
+cd foundation && pnpm build
+
+# Build site for production
+cd site && pnpm build
+```
+
+Deploy `site/dist/` to any static host (Vercel, Netlify, Cloudflare Pages, etc.)
+
+## AI Assistance
+
+See [CLAUDE.md](./CLAUDE.md) for detailed instructions that AI assistants can use.
+
+## Learn More
+
+- [Uniweb Documentation](https://github.com/uniweb/uniweb)
+- [@uniweb/kit Components](https://www.npmjs.com/package/@uniweb/kit)
+- [Tailwind CSS v4](https://tailwindcss.com)

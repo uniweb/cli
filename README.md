@@ -31,13 +31,19 @@ my-project/
 │   │       └── 1-hero.md     # Section content
 │   ├── locales/              # i18n (mirrors pages/)
 │   │   └── es/
+│   ├── src/
+│   │   └── main.jsx          # 1-line entry point
+│   ├── vite.config.js        # 3-line config
 │   └── public/               # Static assets
 │
 └── foundation/               # Your components
-    └── src/
-        └── components/
-            └── Hero/
-                └── index.jsx
+    ├── src/
+    │   └── components/
+    │       └── Hero/
+    │           ├── index.jsx
+    │           └── meta.js
+    ├── vite.config.js        # 3-line config
+    └── dist/                 # Built output
 ```
 
 **Pages are folders.** Create `pages/about/` with markdown files inside → visit `/about`. That's the whole routing model.
@@ -98,7 +104,24 @@ export function Hero({ content, params }) {
 
 Standard React. Standard Tailwind. The `{ content, params }` interface is only for *exposed* components—the ones content creators select in markdown frontmatter. Internal components (the majority of your codebase) use regular React props.
 
-No framework to learn. Foundations are purpose-built component systems designed for a specific domain (marketing, documentation, learning, etc.). Sites are Vite apps that load content from markdown files. The CLI handles the wiring.
+No framework to learn. Foundations are purpose-built component systems designed for a specific domain (marketing, documentation, learning, etc.). Sites are Vite apps that load content from markdown files. Configuration is minimal—both site and foundation use 3-line Vite configs:
+
+```javascript
+// site/vite.config.js
+import { defineSiteConfig } from '@uniweb/build/site'
+export default defineSiteConfig()
+
+// foundation/vite.config.js
+import { defineFoundationConfig } from '@uniweb/build'
+export default defineFoundationConfig()
+```
+
+The site entry point is equally minimal:
+
+```javascript
+// site/src/main.jsx
+import 'virtual:uniweb-site-entry'
+```
 
 ## The Bigger Picture
 
@@ -121,6 +144,12 @@ npx uniweb@latest <command>
 # Or install globally
 npm install -g uniweb
 ```
+
+**Requirements:**
+- Node.js 20.19 or later
+- pnpm 9+ (recommended) or npm 10+
+
+Projects use Vite 7 and Tailwind CSS v4 by default.
 
 ## Commands
 
@@ -214,37 +243,35 @@ A minimal workspace with a site and foundation as sibling packages. This is the 
 
 ```
 my-project/
-├── package.json              # Workspace root (includes workspaces field for npm)
+├── package.json              # Workspace root (npm + pnpm compatible)
 ├── pnpm-workspace.yaml       # Pre-configured for evolution (see below)
+├── CLAUDE.md                 # AI assistant instructions
 │
 ├── site/                     # Site package (content + entry)
 │   ├── package.json
-│   ├── vite.config.js
+│   ├── vite.config.js        # 3-line config using defineSiteConfig()
 │   ├── index.html
-│   ├── site.yml
+│   ├── site.yml              # Site configuration (foundation, title, i18n)
 │   ├── src/
-│   │   └── main.jsx          # Thin entry point
-│   ├── pages/                # Content structure
+│   │   └── main.jsx          # 1-line entry: import 'virtual:uniweb-site-entry'
+│   ├── pages/                # Content pages (file-based routing)
 │   │   └── home/
 │   │       ├── page.yml
 │   │       └── 1-hero.md
-│   ├── locales/              # i18n (mirrors pages/)
-│   │   └── es/
-│   │       └── home/
 │   └── public/               # Static assets
 │
 └── foundation/               # Foundation package (components)
     ├── package.json
-    ├── vite.config.js
-    ├── src/
-    │   ├── index.js          # Component registry
-    │   ├── styles.css        # Tailwind
-    │   ├── meta.js           # Foundation metadata
-    │   └── components/
-    │       └── Hero/
-    │           ├── index.jsx
-    │           └── meta.js
-    └── ...
+    ├── vite.config.js        # 3-line config using defineFoundationConfig()
+    └── src/
+        ├── index.js          # Component exports
+        ├── entry-runtime.js  # Runtime entry (imports styles + index)
+        ├── styles.css        # Tailwind CSS v4
+        ├── meta.js           # Foundation metadata
+        └── components/
+            └── Section/
+                ├── index.jsx
+                └── meta.js
 ```
 
 **Key characteristics:**
@@ -260,23 +287,24 @@ A monorepo for multi-site or multi-foundation development.
 
 ```
 my-workspace/
-├── package.json              # Workspace root (includes workspaces field for npm)
+├── package.json              # Workspace root (npm + pnpm compatible)
 ├── pnpm-workspace.yaml       # Same config as single template
+├── CLAUDE.md                 # AI assistant instructions
 │
 ├── sites/
 │   ├── marketing/            # Main marketing site
 │   │   ├── package.json
+│   │   ├── vite.config.js    # 3-line config
 │   │   ├── site.yml
-│   │   ├── src/
-│   │   ├── pages/
-│   │   └── ...
+│   │   ├── src/main.jsx      # 1-line entry
+│   │   └── pages/
 │   └── docs/                 # Documentation site
 │
 └── foundations/
     ├── marketing/            # Marketing foundation
     │   ├── package.json
-    │   ├── src/components/
-    │   └── ...
+    │   ├── vite.config.js    # 3-line config
+    │   └── src/components/
     └── documentation/        # Documentation foundation
 ```
 
@@ -298,14 +326,38 @@ A complete marketing site with landing page components:
 uniweb create my-site --template marketing
 ```
 
-**Includes:**
-- **Hero** — Gradient/light/dark banner with CTAs
-- **Features** — Grid layout with icons
-- **Pricing** — Tiered pricing tables
-- **Testimonials** — Customer quotes
-- **CTA** — Call-to-action sections
+**Includes:** Hero, Features, Pricing, Testimonials, CTA, FAQ, Stats, LogoCloud, Video, Gallery, Team
 
 Perfect for product launches, SaaS websites, and business landing pages.
+
+**Tailwind v3 variant:**
+```bash
+uniweb create my-site --template marketing --variant tailwind3
+```
+
+#### Academic
+
+A professional academic site for researchers, labs, and departments:
+
+```bash
+uniweb create my-site --template academic
+```
+
+**Includes:** ProfileHero, PublicationList, ResearchAreas, TeamGrid, Timeline, ContactCard, Navbar, Footer
+
+Perfect for researcher portfolios, lab websites, and academic department sites.
+
+#### Docs
+
+A documentation site with navigation levels:
+
+```bash
+uniweb create my-site --template docs
+```
+
+**Includes:** Header, LeftPanel, DocSection, CodeBlock, Footer
+
+Perfect for technical documentation, guides, and API references.
 
 ### External Templates
 
@@ -345,6 +397,52 @@ cd foundation && pnpm add embla-carousel
 
 # Site references foundation via workspace
 # No path gymnastics needed
+```
+
+## Configuration
+
+### Site Configuration
+
+The `defineSiteConfig()` function handles all Vite configuration for sites:
+
+```javascript
+import { defineSiteConfig } from '@uniweb/build/site'
+
+export default defineSiteConfig({
+  // All options are optional
+  tailwind: true,        // Enable Tailwind CSS v4 (default: true)
+  plugins: [],           // Additional Vite plugins
+  // ...any other Vite config options
+})
+```
+
+### Foundation Configuration
+
+The `defineFoundationConfig()` function handles all Vite configuration for foundations:
+
+```javascript
+import { defineFoundationConfig } from '@uniweb/build'
+
+export default defineFoundationConfig({
+  // All options are optional
+  entry: 'src/entry-runtime.js',     // Entry point path
+  fileName: 'foundation',             // Output file name
+  externals: [],                      // Additional packages to externalize
+  includeDefaultExternals: true,      // Include react, @uniweb/core, etc.
+  tailwind: true,                     // Enable Tailwind CSS v4 Vite plugin
+  sourcemap: true,                    // Generate sourcemaps
+  plugins: [],                        // Additional Vite plugins
+  build: {},                          // Additional Vite build options
+  // ...any other Vite config options
+})
+```
+
+For Tailwind CSS v3 projects, set `tailwind: false` and use PostCSS:
+
+```javascript
+export default defineFoundationConfig({
+  tailwind: false  // Uses PostCSS instead of Vite plugin
+})
 ```
 
 ## Foundation Build Process

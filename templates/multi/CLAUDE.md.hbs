@@ -69,6 +69,20 @@ pnpm build:all
    }
    ```
 
+## Key Files
+
+**Sites:**
+- `sites/*/vite.config.js` - 3-line config using `defineSiteConfig()` from `@uniweb/build/site`
+- `sites/*/src/main.jsx` - 1-line entry: `import 'virtual:uniweb-site-entry'`
+- `sites/*/site.yml` - Site configuration (foundation reference, title, i18n)
+- `sites/*/pages/` - Content pages (file-based routing)
+
+**Foundations:**
+- `foundations/*/vite.config.js` - 3-line config using `defineFoundationConfig()` from `@uniweb/build`
+- `foundations/*/src/entry-runtime.js` - Runtime entry point
+- `foundations/*/src/styles.css` - Tailwind CSS v4 theme
+- `foundations/*/src/components/*/meta.js` - Component metadata
+
 ## Architecture
 
 ### Foundations (`/foundations/*`)
@@ -83,3 +97,4 @@ Each site contains content in markdown. A site references one foundation for its
 
 - [Uniweb Documentation](https://github.com/uniweb/uniweb)
 - [@uniweb/kit Documentation](https://www.npmjs.com/package/@uniweb/kit)
+- [Tailwind CSS v4](https://tailwindcss.com/docs)
