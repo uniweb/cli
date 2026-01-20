@@ -9,7 +9,7 @@ Uniweb projects have two structures. A single project can be converted to multi-
 **Single (one foundation, one site):**
 ```
 project/
-├── foundation/     # React component library
+├── foundation/     # Purpose-built component library (React)
 ├── site/           # Content (markdown pages)
 └── pnpm-workspace.yaml
 ```
@@ -17,10 +17,10 @@ project/
 **Multi-site (multiple foundations and sites):**
 ```
 project/
-├── foundations/        # Component libraries
-│   └── default/
+├── foundations/        # Purpose-built component libraries
+│   └── marketing/
 ├── sites/              # Content sites
-│   └── main/
+│   └── my-org/
 └── pnpm-workspace.yaml
 ```
 
@@ -107,6 +107,25 @@ site/pages/                    # or sites/*/pages/
     ├── page.yml               # title, description, order
     └── 1-section.md           # Numbered for ordering
 ```
+
+**page.yml options:**
+```yaml
+title: About Us
+description: Learn about our company
+order: 2                 # Sort order in navigation
+
+# Section ordering (optional)
+sections:
+  - hero
+  - features
+  - pricing
+```
+
+**Section ordering:**
+- Default: `.md` files discovered and sorted by numeric prefix (`1-`, `2-`, `2.5-`)
+- Explicit: Use `sections: [hero, features]` — no prefixes needed, easy reordering
+- Empty: `sections: []` or no `.md` files — pure route with no content
+- Wildcard: `sections: *` — explicitly use default behavior
 
 ## Component Development
 
