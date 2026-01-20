@@ -280,6 +280,46 @@ async function generateLocalizedHtml(projectDir, i18nConfig) {
 }
 
 /**
+ * Resolve foundation directory based on site config and project structure
+ *
+ * For single projects: ../foundation
+ * For multi projects: ../../foundations/{name}
+ */
+function resolveFoundationDir(projectDir, siteConfig) {
+  const foundationName = siteConfig?.foundation
+
+  // Check if we're in a multi-site structure (site is under sites/)
+  const parentDir = join(projectDir, '..')
+  const grandParentDir = join(projectDir, '..', '..')
+  const isMultiSite = parentDir.endsWith('/sites') || parentDir.endsWith('\\sites')
+
+  if (isMultiSite && foundationName) {
+    // Multi-site: look for foundations/{name}
+    const multiFoundationDir = join(grandParentDir, 'foundations', foundationName)
+    if (existsSync(multiFoundationDir)) {
+      return multiFoundationDir
+    }
+  }
+
+  // Single site: ../foundation
+  const singleFoundationDir = join(projectDir, '..', 'foundation')
+  if (existsSync(singleFoundationDir)) {
+    return singleFoundationDir
+  }
+
+  // Fallback: try to find by foundation name in parent
+  if (foundationName) {
+    const namedFoundationDir = join(parentDir, foundationName)
+    if (existsSync(namedFoundationDir)) {
+      return namedFoundationDir
+    }
+  }
+
+  // Ultimate fallback
+  return singleFoundationDir
+}
+
+/**
  * Build a site
  */
 async function buildSite(projectDir, options = {}) {
@@ -330,7 +370,7 @@ async function buildSite(projectDir, options = {}) {
       const { prerenderSite } = await import('@uniweb/build/prerender')
 
       const result = await prerenderSite(projectDir, {
-        foundationDir: foundationDir || join(projectDir, '..', 'foundation'),
+        foundationDir: foundationDir || resolveFoundationDir(projectDir, siteConfig),
         onProgress: (msg) => log(`  ${colors.dim}${msg}${colors.reset}`)
       })
 
