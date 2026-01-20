@@ -1,0 +1,29 @@
+### Adding a New Page
+
+1. Create a folder: `site/pages/my-page/`
+2. Add `page.yml`:
+   ```yaml
+   title: My Page
+   ```
+3. Add section files: `1-hero.md`, `2-content.md`, etc.
+
+### Section Ordering
+
+By default, sections are discovered from `.md` files and sorted by numeric prefix (`1-`, `2-`, `2.5-`).
+
+For more control, use the `sections` property in `page.yml`:
+
+```yaml
+title: My Page
+sections:
+  - hero
+  - features
+  - pricing
+```
+
+This approach makes reordering easy (just move lines) and allows temporarily removing sections by commenting them out.
+
+**Options:**
+- `sections: *` or omit — auto-discover and sort `.md` files (default)
+- `sections: [hero, features]` — explicit ordering, no numeric prefixes needed
+- `sections: []` or no `.md` files — pure route with no content sections
