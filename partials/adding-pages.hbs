@@ -9,9 +9,11 @@
 
 ### Section Ordering
 
-By default, sections are discovered from `.md` files and sorted by numeric prefix (`1-`, `2-`, `2.5-`).
+By default, sections are discovered from `.md` files and sorted by numeric prefix (`1-`, `2-`, `3-`).
 
-For more control, use the `sections` property in `page.yml`:
+**Decimal prefixes** allow inserting sections without renumbering: `2.5-` sorts between `2-` and `3-`.
+
+For explicit control, use the `sections` property in `page.yml`:
 
 ```yaml
 title: My Page
@@ -21,9 +23,26 @@ sections:
   - pricing
 ```
 
-This approach makes reordering easy (just move lines) and allows temporarily removing sections by commenting them out.
+This makes reordering easy (move lines) and allows commenting out sections temporarily.
 
 **Options:**
-- `sections: *` or omit — auto-discover and sort `.md` files (default)
-- `sections: [hero, features]` — explicit ordering, no numeric prefixes needed
-- `sections: []` or no `.md` files — pure route with no content sections
+- `sections: *` or omit — auto-discover and sort `.md` files by prefix (default)
+- `sections: [hero, features]` — explicit ordering, no prefixes needed
+- `sections: []` — pure route with no content sections
+
+### Section Hierarchy (Subsections)
+
+For parent-child relationships, use the explicit array with nesting:
+
+```yaml
+sections:
+  - hero
+  - features:
+      - logocloud
+      - stats
+  - pricing
+```
+
+This is clearer than prefix notation and easier to restructure.
+
+**Advanced:** Comma prefixes (`1,1-`, `1,2-`) also denote hierarchy, but explicit arrays are recommended for readability.

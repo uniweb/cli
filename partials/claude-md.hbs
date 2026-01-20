@@ -122,10 +122,21 @@ sections:
 ```
 
 **Section ordering:**
-- Default: `.md` files discovered and sorted by numeric prefix (`1-`, `2-`, `2.5-`)
+- Default: `.md` files discovered and sorted by numeric prefix (`1-`, `2-`, `3-`)
+- Decimals to insert: `2.5-` sorts between `2-` and `3-` (no renumbering needed)
 - Explicit: Use `sections: [hero, features]` — no prefixes needed, easy reordering
-- Empty: `sections: []` or no `.md` files — pure route with no content
+- Empty: `sections: []` — pure route with no content
 - Wildcard: `sections: *` — explicitly use default behavior
+
+**Section hierarchy:** For subsections, use explicit nesting in `page.yml`:
+```yaml
+sections:
+  - hero
+  - features:
+      - logocloud
+      - stats
+```
+This is clearer than prefix notation (`1,1-`, `1,2-`) and easier to restructure.
 
 ## Component Development
 
