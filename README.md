@@ -324,7 +324,7 @@ my-project/
     └── src/
         ├── styles.css        # Tailwind CSS v4
         ├── meta.js           # Foundation metadata
-        ├── runtime.js        # (optional) Custom Layout, props
+        ├── exports.js        # (optional) Custom Layout, props
         └── components/
             └── Section/
                 ├── index.jsx
