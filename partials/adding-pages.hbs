@@ -46,3 +46,32 @@ sections:
 This is clearer than prefix notation and easier to restructure.
 
 **Advanced:** Comma prefixes (`1,1-`, `1,2-`) also denote hierarchy, but explicit arrays are recommended for readability.
+
+### Page Ordering and Index Pages
+
+Parent controls which page is the "index" for its route. The index page gets the parent's route.
+
+**In `site.yml`** (for top-level pages):
+```yaml
+name: My Site
+pages: [home, about, features]  # First (home) is homepage at /
+# Or just name the homepage:
+index: home
+```
+
+**In `page.yml`** (for child pages):
+```yaml
+title: Documentation
+pages: [getting-started, installation, config]  # First is index for /docs
+# Or just name the index:
+index: getting-started
+```
+
+**How it works:**
+- `pages: [a, b, c]` — Explicit order, first item gets parent route
+- `index: name` — Just set the index, auto-discover the rest
+- Omit both — Sort by `order` prop, lowest becomes index
+
+**Example:** If `getting-started` is the index for `/docs`:
+- `pages/docs/getting-started/` → route `/docs`
+- `pages/docs/installation/` → route `/docs/installation`

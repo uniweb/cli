@@ -138,6 +138,20 @@ sections:
 ```
 This is clearer than prefix notation (`1,1-`, `1,2-`) and easier to restructure.
 
+**Page ordering:** Parent controls which page is the index for its route:
+```yaml
+# In site.yml (top-level pages)
+pages: [home, about, docs]  # First is homepage at /
+index: home                  # Or just name the homepage
+
+# In page.yml (child pages)
+pages: [getting-started, installation]  # First is index for this route
+index: getting-started                   # Or just name the index
+```
+- `pages: [a, b, c]` — First gets parent route (becomes index)
+- `index: name` — Just set index, auto-discover rest
+- Omit both — Sort by `order` prop, lowest becomes index
+
 ## Component Development
 
 ### Props Interface
