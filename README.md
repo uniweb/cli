@@ -142,25 +142,13 @@ Projects use Vite 7 and Tailwind CSS v4 by default.
 
 ### Setting up pnpm
 
-Uniweb projects use pnpm for dependency management. The easiest way to get pnpm is via **Corepack**, which ships with Node.js.
-
-**Enable Corepack (one-time setup):**
+We recommend pnpm for dependency management (npm also works). Install pnpm via npm:
 
 ```bash
-corepack enable
+npm install -g pnpm
 ```
 
-> **Node 25+**: Corepack is no longer bundled. Install it first:
-> ```bash
-> npm i -g corepack && corepack enable
-> ```
-
-**Troubleshooting:**
-
-- If `pnpm` isn't found after enabling Corepack, you may have a global pnpm installation shadowing it. Remove it with `npm uninstall -g pnpm`.
-- Alternatively, install pnpm directly: `npm install -g pnpm`
-
-Once Corepack is enabled, running `pnpm install` in a Uniweb project will automatically use the correct pnpm version specified in `package.json`.
+Or see the [official pnpm installation guide](https://pnpm.io/installation) for other options including Corepack, Homebrew, and more.
 
 ## Commands
 
