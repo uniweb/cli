@@ -1,0 +1,29 @@
+## Quick Commands
+
+```bash
+# Install dependencies
+pnpm install
+
+{{#if isMulti}}
+# Start main site development
+pnpm dev
+
+# Start all sites in parallel
+pnpm dev:all
+
+# Build main site
+pnpm build
+
+# Build all sites
+pnpm build:all
+{{else}}
+# Start development server (site with foundation)
+pnpm dev
+
+# Build foundation (generates dist/foundation.js and schema.json)
+cd foundation && pnpm build
+
+# Build site for production (outputs to site/dist/)
+cd site && pnpm build
+{{/if}}
+```

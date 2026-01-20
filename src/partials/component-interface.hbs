@@ -1,0 +1,59 @@
+## Component Interface
+
+Every exposed component receives these props:
+
+```jsx
+function MyComponent({ content, params, block, website }) {
+  // content - Structured content from markdown
+  // params  - Configuration from frontmatter
+  // block   - Runtime context (state, children, etc.)
+  // website - Site configuration and pages
+}
+```
+
+### Content Structure
+
+The semantic parser extracts markdown into:
+
+- **`content.main.header`**: title, pretitle (eyebrow), subtitle
+- **`content.main.body`**: paragraphs, links, imgs, lists
+- **`content.items`**: Content groups from H3 headings
+
+### Using @uniweb/kit
+
+```jsx
+import { H1, P, Link, Image, Section, cn } from '@uniweb/kit'
+
+function Hero({ content }) {
+  const { title, pretitle } = content.main?.header || {}
+  const { paragraphs = [], links = [] } = content.main?.body || {}
+
+  return (
+    <section className="py-20">
+      {pretitle && <span className="text-sm">{pretitle}</span>}
+      <H1 text={title} className="text-4xl font-bold" />
+      <P text={paragraphs[0]} className="text-lg text-gray-600" />
+      {links[0] && <Link href={links[0].url}>{links[0].text}</Link>}
+    </section>
+  )
+}
+```
+
+**Kit exports:**
+- `H1, H2, H3, P, Span` - Typography (handle arrays, filter empty)
+- `Link` - Smart links with routing
+- `Image` - Optimized images
+- `Section` - Layout wrapper
+- `cn` - Tailwind class merging
+
+### Component Metadata (`meta.js`)
+
+```javascript
+export default {
+  title: 'Component Name',
+  description: 'What the component does',
+  category: 'Content',
+  elements: { /* content elements */ },
+  properties: { /* configurable params */ },
+}
+```

@@ -2,38 +2,9 @@
 
 This file provides guidance for AI assistants working with this Uniweb multi-site workspace.
 
-## Project Overview
+{{> project-overview isMulti=true}}
 
-This is a **Uniweb multi-site workspace** - supporting multiple sites and foundations.
-
-```
-{{projectName}}/
-├── foundations/        # Shared component libraries
-│   └── default/        # Default foundation
-├── sites/              # Content sites
-│   └── main/           # Main site
-├── package.json        # Root workspace config
-└── pnpm-workspace.yaml
-```
-
-## Quick Commands
-
-```bash
-# Install dependencies
-pnpm install
-
-# Start main site development
-pnpm dev
-
-# Start all sites in parallel
-pnpm dev:all
-
-# Build main site
-pnpm build
-
-# Build all sites
-pnpm build:all
-```
+{{> quick-commands isMulti=true}}
 
 ## Adding New Sites
 
@@ -69,32 +40,14 @@ pnpm build:all
    }
    ```
 
-## Key Files
+{{> key-files isMulti=true}}
 
-**Sites:**
-- `sites/*/vite.config.js` - 3-line config using `defineSiteConfig()` from `@uniweb/build/site`
-- `sites/*/main.js` - Entry point using `start()` from `@uniweb/runtime`
-- `sites/*/site.yml` - Site configuration (foundation reference, title, i18n)
-- `sites/*/pages/` - Content pages (file-based routing)
+{{> content-authoring isMulti=true}}
 
-**Foundations:**
-- `foundations/*/vite.config.js` - 3-line config using `defineFoundationConfig()` from `@uniweb/build`
-- `foundations/*/src/styles.css` - Tailwind CSS v4 theme
-- `foundations/*/src/components/*/meta.js` - Component metadata (makes component exposed)
-- `foundations/*/src/runtime.js` - (optional) Custom Layout and foundation props
+{{> component-interface}}
 
-## Architecture
+{{> tailwind-setup isMulti=true}}
 
-### Foundations (`/foundations/*`)
+{{> troubleshooting isMulti=true}}
 
-Each foundation is a React component library. Sites can share foundations or have their own.
-
-### Sites (`/sites/*`)
-
-Each site contains content in markdown. A site references one foundation for its components.
-
-## Resources
-
-- [Uniweb Documentation](https://github.com/uniweb/uniweb)
-- [@uniweb/kit Documentation](https://www.npmjs.com/package/@uniweb/kit)
-- [Tailwind CSS v4](https://tailwindcss.com/docs)
+{{> resources}}

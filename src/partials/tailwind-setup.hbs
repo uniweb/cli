@@ -1,0 +1,25 @@
+## Tailwind CSS v4
+
+This project uses **Tailwind CSS v4** with the Vite plugin.
+
+{{#if isMulti}}
+**Theme customization** (`foundations/*/src/styles.css`):
+{{else}}
+**Theme customization** (`foundation/src/styles.css`):
+{{/if}}
+
+```css
+@import "tailwindcss";
+@source "./components/**/*.{js,jsx}";
+
+@theme {
+  --color-primary: #3b82f6;
+  --color-secondary: #64748b;
+}
+```
+
+**Using custom colors:**
+```jsx
+<div className="bg-primary text-white">
+<div className="bg-primary/10">  {/* 10% opacity */}
+```

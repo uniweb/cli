@@ -1,0 +1,28 @@
+## Project Overview
+
+This is a **Uniweb** project - a component web platform that separates content from code.
+
+{{#if isMulti}}
+```
+{{projectName}}/
+├── foundations/        # Shared component libraries
+│   └── default/        # Default foundation
+├── sites/              # Content sites
+│   └── main/           # Main site
+├── package.json        # Root workspace config
+└── pnpm-workspace.yaml
+```
+{{else}}
+```
+{{projectName}}/
+├── foundation/     # React component library (code)
+├── site/           # Content and pages (markdown)
+├── package.json    # Root workspace config
+└── pnpm-workspace.yaml
+```
+{{/if}}
+
+### Foundation vs Site
+
+- **Foundation**: A React component library. Components with `meta.js` are **exposed** to content authors.
+- **Site**: Content written in markdown. The runtime loads the foundation and renders content.
