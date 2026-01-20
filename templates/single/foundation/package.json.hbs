@@ -11,6 +11,7 @@
   },
   "files": ["dist", "src"],
   "scripts": {
+    "postinstall": "node scripts/generate-entry.js",
     "dev": "vite",
     "build": "uniweb build",
     "build:vite": "vite build",
