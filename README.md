@@ -322,10 +322,9 @@ my-project/
     ├── package.json
     ├── vite.config.js        # 3-line config
     └── src/
-        ├── index.js          # Component exports
-        ├── entry-runtime.js  # Runtime entry (imports styles + index)
         ├── styles.css        # Tailwind CSS v4
         ├── meta.js           # Foundation metadata
+        ├── runtime.js        # (optional) Custom Layout, props
         └── components/
             └── Section/
                 ├── index.jsx
@@ -483,8 +482,7 @@ The `defineFoundationConfig()` function handles all Vite configuration for found
 import { defineFoundationConfig } from "@uniweb/build";
 
 export default defineFoundationConfig({
-  // All options are optional
-  entry: "src/entry-runtime.js", // Entry point path
+  // All options are optional - entry is auto-generated
   fileName: "foundation", // Output file name
   externals: [], // Additional packages to externalize
   includeDefaultExternals: true, // Include react, @uniweb/core, etc.

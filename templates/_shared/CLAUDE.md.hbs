@@ -40,10 +40,10 @@ cd site && pnpm build
 
 **Foundation:**
 - `foundation/vite.config.js` - 3-line config using `defineFoundationConfig()` from `@uniweb/build`
-- `foundation/src/entry-runtime.js` - Runtime entry point (imports styles + components)
-- `foundation/src/index.js` - Component exports
 - `foundation/src/styles.css` - Tailwind CSS v4 theme
-- `foundation/src/components/*/meta.js` - Component metadata and schema
+- `foundation/src/components/*/meta.js` - Component metadata (makes component exposed)
+- `foundation/src/runtime.js` - (optional) Custom Layout and foundation props
+- `foundation/src/_entry.generated.js` - Auto-generated at build/dev time
 
 ## Architecture
 
