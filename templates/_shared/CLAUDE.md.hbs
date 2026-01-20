@@ -49,15 +49,17 @@ cd site && pnpm build
 
 ### Foundation Package (`/foundation`)
 
-The **foundation** is a React component library. Each component:
+The **foundation** is a React component library. Components with a `meta.js` file are **exposed** (available to content creators via `type:` in frontmatter). Exposed components:
 
-1. Receives structured content parsed from markdown
-2. Has configurable parameters (theme, layout, etc.)
-3. Renders the content according to its design
+1. Receive structured content parsed from markdown
+2. Have configurable parameters (theme, layout, etc.)
+3. Render content according to their design
+
+Internal components (no `meta.js`) are regular React components used within exposed components.
 
 **Key directories:**
 - `src/components/*/` - Component implementations
-- `src/components/*/meta.js` - Component metadata and schema
+- `src/components/*/meta.js` - Component metadata (makes component exposed)
 - `src/styles.css` - Global Tailwind styles
 
 ### Site Package (`/site`)
