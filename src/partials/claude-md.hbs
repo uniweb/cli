@@ -1,0 +1,207 @@
+# CLAUDE.md
+
+This file provides guidance for AI assistants working with this Uniweb project.
+
+## Project Structure
+
+Uniweb projects have two structures. A single project can be converted to multi-site:
+
+**Single (one foundation, one site):**
+```
+project/
+├── foundation/     # React component library
+├── site/           # Content (markdown pages)
+└── pnpm-workspace.yaml
+```
+
+**Multi-site (multiple foundations and sites):**
+```
+project/
+├── foundations/        # Component libraries
+│   └── default/
+├── sites/              # Content sites
+│   └── main/
+└── pnpm-workspace.yaml
+```
+
+- **Foundation**: React components. Components with `meta.js` are *exposed* to content authors.
+- **Site**: Markdown content. Each section references a component via `type:` in frontmatter.
+
+## Commands
+
+```bash
+pnpm install    # Install dependencies
+pnpm dev        # Start dev server (runs default/main site)
+pnpm build      # Build for production
+```
+
+Multi-site also supports:
+```bash
+pnpm dev:all    # Start all sites in parallel
+pnpm build:all  # Build all sites
+```
+
+## Discovering Components
+
+Exposed components live in `foundation/src/components/` (or `foundations/*/src/components/`).
+
+```bash
+# List exposed components (those with meta.js)
+ls foundation/src/components/*/meta.js
+```
+
+**Understanding a component:**
+
+1. **`meta.js`** - Defines the component's interface:
+   - `title`, `description` - What the component does
+   - `elements` - What content it expects (title, paragraphs, links, items, etc.)
+   - `properties` - Configurable parameters (theme, layout, etc.)
+   - `hidden: true` - Component exists but isn't selectable from frontmatter
+
+2. **`index.jsx`** - The React implementation
+
+3. **Existing content** - See how the component is used in `site/pages/`
+
+**Note:** Components without `meta.js` are internal helpers used by other components.
+
+## Content Authoring
+
+### Section Format
+
+Each section is a markdown file with YAML frontmatter:
+
+```markdown
+---
+type: ComponentName   # Must match an exposed component
+theme: dark           # Parameter from meta.js properties
+---
+
+### Eyebrow Text      # H3 before H1 → pretitle
+
+# Main Headline       # H1 → title
+
+## Subtitle           # H2 after H1 → subtitle
+
+Description paragraph.
+
+[Call to Action](#link)
+
+![Image](image.jpg)
+```
+
+### Content Structure
+
+The semantic parser extracts markdown into:
+
+- **`content.main.header`** - title, pretitle, subtitle
+- **`content.main.body`** - paragraphs, links, imgs, lists
+- **`content.items`** - Groups created by H3 headings (each with its own header/body)
+
+### Page Organization
+
+```
+site/pages/                    # or sites/*/pages/
+├── @header/                   # Rendered on all pages
+├── @footer/                   # Rendered on all pages
+└── [page-name]/
+    ├── page.yml               # title, description, order
+    └── 1-section.md           # Numbered for ordering
+```
+
+## Component Development
+
+### Props Interface
+
+```jsx
+function MyComponent({ content, params, block, website }) {
+  const { title, pretitle } = content.main?.header || {}
+  const { paragraphs = [], links = [] } = content.main?.body || {}
+  const items = content.items || []
+  // ...
+}
+```
+
+### Using @uniweb/kit
+
+```jsx
+import { H1, P, Link, Image, Section, cn } from '@uniweb/kit'
+```
+
+- `H1, H2, H3, P, Span` - Typography (handles arrays, filters empty)
+- `Link` - Smart routing
+- `Image` - Optimized images
+- `Section` - Layout wrapper
+- `cn()` - Tailwind class merging
+
+### Creating a New Component
+
+1. Create `foundation/src/components/NewComponent/index.jsx`
+2. Create `foundation/src/components/NewComponent/meta.js`
+3. Export from `foundation/src/index.js`
+4. Rebuild: `cd foundation && pnpm build`
+
+### meta.js Structure
+
+```javascript
+export default {
+  title: 'Component Name',
+  description: 'What it does',
+  // hidden: true,  // Uncomment to hide from content authors
+  elements: {
+    title: { label: 'Headline', required: true },
+    paragraphs: { label: 'Description' },
+    links: { label: 'Call to Action' },
+  },
+  properties: {
+    theme: {
+      type: 'select',
+      label: 'Theme',
+      options: [
+        { value: 'light', label: 'Light' },
+        { value: 'dark', label: 'Dark' },
+      ],
+      default: 'light',
+    },
+  },
+}
+```
+
+### Parameter Philosophy
+
+Design parameters that describe **intent**, not implementation:
+
+| Good | Bad |
+|------|-----|
+| `theme: "dark"` | `backgroundColor: "#1a1a1a"` |
+| `layout: "split"` | `gridTemplateColumns: "1fr 1fr"` |
+| `size: "large"` | `fontSize: "2rem"` |
+
+## Tailwind CSS v4
+
+Theme is defined in `foundation/src/styles.css`:
+
+```css
+@import "tailwindcss";
+@source "./components/**/*.{js,jsx}";
+
+@theme {
+  --color-primary: #3b82f6;
+}
+```
+
+Use with: `bg-primary`, `text-primary`, `bg-primary/10` (10% opacity)
+
+## Troubleshooting
+
+**"Could not load foundation"**
+- Single: Check `site/package.json` has `"foundation": "file:../foundation"`
+- Multi: Check `sites/*/package.json` has `"default": "file:../../foundations/default"`
+
+**Component not appearing**
+1. Verify `meta.js` exists and doesn't have `hidden: true`
+2. Check it's exported from `foundation/src/index.js`
+3. Rebuild: `cd foundation && pnpm build`
+
+**Styles not applying**
+1. Verify `@source` in styles.css includes your component path
+2. Check custom color names match `@theme` definitions
