@@ -58,7 +58,7 @@ export function clearMissingVersions() {
 function registerPartials() {
   if (partialsRegistered) return
 
-  const partialsDir = path.join(__dirname, '..', 'partials')
+  const partialsDir = path.join(__dirname, '..', '..', 'partials')
 
   if (!existsSync(partialsDir)) {
     partialsRegistered = true
