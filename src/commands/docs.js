@@ -7,15 +7,24 @@
  *   uniweb docs                    # Generate docs for current directory
  *   uniweb docs --output README.md # Custom output filename
  *   uniweb docs --from-source      # Build schema from source (no build required)
+ *   uniweb docs --target <path>    # Specify foundation directory explicitly
  *
  * When run from a site directory, automatically finds and documents the
  * linked foundation, placing COMPONENTS.md in the site folder.
+ *
+ * When run from workspace root, auto-detects foundations. If multiple exist,
+ * prompts for selection.
  */
 
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { resolve, join, dirname } from 'node:path'
 import { generateDocs } from '@uniweb/build'
+import {
+  isWorkspaceRoot,
+  findFoundations,
+  promptSelect,
+} from '../utils/workspace.js'
 
 // Colors for terminal output
 const colors = {
@@ -51,6 +60,7 @@ function parseArgs(args) {
   const options = {
     output: 'COMPONENTS.md',
     fromSource: false,
+    target: null,
   }
 
   for (let i = 0; i < args.length; i++) {
@@ -60,6 +70,8 @@ function parseArgs(args) {
       options.output = args[++i]
     } else if (arg === '--from-source' || arg === '-s') {
       options.fromSource = true
+    } else if (arg === '--target' || arg === '-t') {
+      options.target = args[++i]
     } else if (arg === '--help' || arg === '-h') {
       options.help = true
     }
@@ -79,16 +91,19 @@ ${colors.dim}Usage:${colors.reset}
   uniweb docs                         Generate COMPONENTS.md
   uniweb docs --output DOCS.md        Custom output filename
   uniweb docs --from-source           Build schema from source (no build required)
+  uniweb docs --target foundation     Specify foundation directory explicitly
 
 ${colors.dim}Options:${colors.reset}
   -o, --output <file>    Output filename (default: COMPONENTS.md)
   -s, --from-source      Read meta.js files directly instead of schema.json
+  -t, --target <path>    Foundation directory (auto-detected if not specified)
   -h, --help             Show this help message
 
 ${colors.dim}Notes:${colors.reset}
   Run from a foundation directory to generate docs there.
   Run from a site directory to auto-detect the linked foundation
   and generate docs in the site folder for convenience.
+  Run from workspace root to auto-detect foundations (prompts if multiple).
 `)
 }
 
@@ -157,8 +172,45 @@ export async function docs(args) {
   let foundationDir = projectDir
   let outputDir = projectDir
 
+  // If --target specified, use it directly
+  if (options.target) {
+    foundationDir = resolve(projectDir, options.target)
+    outputDir = foundationDir
+    if (!isFoundation(foundationDir)) {
+      error(`Target directory does not appear to be a foundation: ${options.target}`)
+      log(`${colors.dim}Foundations have a src/components/ directory.${colors.reset}`)
+      process.exit(1)
+    }
+    info(`Using foundation: ${options.target}`)
+  }
+  // Check if we're at workspace root
+  else if (isWorkspaceRoot(projectDir)) {
+    const foundations = await findFoundations(projectDir)
+
+    if (foundations.length === 0) {
+      error('No foundations found in this workspace.')
+      log(`${colors.dim}Foundations have @uniweb/build in devDependencies.${colors.reset}`)
+      process.exit(1)
+    }
+
+    let targetFoundation
+    if (foundations.length === 1) {
+      targetFoundation = foundations[0]
+      info(`Found foundation: ${targetFoundation}`)
+    } else {
+      log(`${colors.dim}Multiple foundations found in workspace.${colors.reset}\n`)
+      targetFoundation = await promptSelect('Select foundation:', foundations)
+      if (!targetFoundation) {
+        log('Cancelled.')
+        process.exit(0)
+      }
+    }
+
+    foundationDir = resolve(projectDir, targetFoundation)
+    outputDir = foundationDir
+  }
   // Check if we're in a site directory
-  if (isSite(projectDir)) {
+  else if (isSite(projectDir)) {
     const foundation = await resolveFoundationFromSite(projectDir)
     if (!foundation) {
       error('Could not find a linked foundation in this site.')

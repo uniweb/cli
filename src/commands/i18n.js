@@ -4,15 +4,24 @@
  * Commands for managing site content internationalization.
  *
  * Usage:
- *   uniweb i18n extract      Extract translatable strings to manifest
- *   uniweb i18n sync         Sync manifest with content changes
- *   uniweb i18n status       Show translation coverage per locale
+ *   uniweb i18n extract           Extract translatable strings to manifest
+ *   uniweb i18n sync              Sync manifest with content changes
+ *   uniweb i18n status            Show translation coverage per locale
+ *   uniweb i18n --target <path>   Specify site directory explicitly
+ *
+ * When run from workspace root, auto-detects sites. If multiple exist,
+ * prompts for selection.
  */
 
 import { resolve, join } from 'path'
 import { existsSync } from 'fs'
 import { readFile } from 'fs/promises'
 import yaml from 'js-yaml'
+import {
+  isWorkspaceRoot,
+  findSites,
+  promptSelect,
+} from '../utils/workspace.js'
 
 // Colors for terminal output
 const colors = {
@@ -42,6 +51,21 @@ function error(message) {
 }
 
 /**
+ * Parse --target option from args
+ */
+function parseTargetOption(args) {
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--target' || args[i] === '-t') {
+      return {
+        target: args[i + 1],
+        remainingArgs: [...args.slice(0, i), ...args.slice(i + 2)],
+      }
+    }
+  }
+  return { target: null, remainingArgs: args }
+}
+
+/**
  * Main i18n command handler
  * @param {string[]} args - Command arguments
  */
@@ -53,12 +77,16 @@ export async function i18n(args) {
     return
   }
 
+  // Parse --target option
+  const { target, remainingArgs } = parseTargetOption(args)
+
   // Default to 'sync' if no subcommand (or if first arg is an option)
-  const effectiveSubcommand = !subcommand || subcommand.startsWith('-') ? 'sync' : subcommand
-  const effectiveArgs = !subcommand || subcommand.startsWith('-') ? args : args.slice(1)
+  const firstArg = remainingArgs[0]
+  const effectiveSubcommand = !firstArg || firstArg.startsWith('-') ? 'sync' : firstArg
+  const effectiveArgs = !firstArg || firstArg.startsWith('-') ? remainingArgs : remainingArgs.slice(1)
 
   // Find site root
-  const siteRoot = await findSiteRoot()
+  const siteRoot = await findSiteRoot(target)
   if (!siteRoot) {
     error('Could not find site root. Make sure you are in a Uniweb site directory.')
     process.exit(1)
@@ -86,11 +114,52 @@ export async function i18n(args) {
 
 /**
  * Find site root by looking for site.yml
+ * Handles: explicit target, workspace root detection, or walking up directories
+ *
+ * @param {string|null} target - Explicit target path (from --target option)
  */
-async function findSiteRoot() {
-  let dir = process.cwd()
+async function findSiteRoot(target) {
+  const cwd = process.cwd()
 
-  // Check current directory and parents
+  // If explicit target specified, use it
+  if (target) {
+    const targetPath = resolve(cwd, target)
+    if (existsSync(join(targetPath, 'site.yml'))) {
+      return targetPath
+    }
+    error(`Target directory does not appear to be a site: ${target}`)
+    log(`${colors.dim}Sites have a site.yml file.${colors.reset}`)
+    process.exit(1)
+  }
+
+  // Check if we're at workspace root
+  if (isWorkspaceRoot(cwd)) {
+    const sites = await findSites(cwd)
+
+    if (sites.length === 0) {
+      error('No sites found in this workspace.')
+      log(`${colors.dim}Sites have @uniweb/runtime in dependencies.${colors.reset}`)
+      process.exit(1)
+    }
+
+    let targetSite
+    if (sites.length === 1) {
+      targetSite = sites[0]
+      log(`${colors.cyan}→${colors.reset} Found site: ${targetSite}`)
+    } else {
+      log(`${colors.dim}Multiple sites found in workspace.${colors.reset}\n`)
+      targetSite = await promptSelect('Select site:', sites)
+      if (!targetSite) {
+        log('Cancelled.')
+        process.exit(0)
+      }
+    }
+
+    return resolve(cwd, targetSite)
+  }
+
+  // Walk up directories looking for site.yml
+  let dir = cwd
   for (let i = 0; i < 5; i++) {
     if (existsSync(join(dir, 'site.yml'))) {
       return dir
@@ -291,8 +360,9 @@ ${colors.bright}Commands:${colors.reset}
   status       Show translation coverage per locale
 
 ${colors.bright}Options:${colors.reset}
-  --verbose    Show detailed output
-  --dry-run    (sync) Show changes without writing files
+  -t, --target <path>  Site directory (auto-detected if not specified)
+  --verbose            Show detailed output
+  --dry-run            (sync) Show changes without writing files
 
 ${colors.bright}Configuration:${colors.reset}
   Optional site.yml settings:
@@ -324,6 +394,11 @@ ${colors.bright}Examples:${colors.reset}
   uniweb i18n sync --dry-run       # Preview changes without writing
   uniweb i18n status               # Show coverage for all locales
   uniweb i18n status es            # Show coverage for Spanish only
+  uniweb i18n --target site        # Specify site directory explicitly
+
+${colors.bright}Notes:${colors.reset}
+  Run from a site directory to operate on that site.
+  Run from workspace root to auto-detect sites (prompts if multiple).
 `)
 }
 
