@@ -48,10 +48,14 @@ function error(message) {
 export async function i18n(args) {
   const subcommand = args[0]
 
-  if (!subcommand || subcommand === '--help' || subcommand === '-h') {
+  if (subcommand === '--help' || subcommand === '-h') {
     showHelp()
     return
   }
+
+  // Default to 'sync' if no subcommand (or if first arg is an option)
+  const effectiveSubcommand = !subcommand || subcommand.startsWith('-') ? 'sync' : subcommand
+  const effectiveArgs = !subcommand || subcommand.startsWith('-') ? args : args.slice(1)
 
   // Find site root
   const siteRoot = await findSiteRoot()
@@ -63,18 +67,18 @@ export async function i18n(args) {
   // Load site config for locale settings
   const config = await loadSiteConfig(siteRoot)
 
-  switch (subcommand) {
+  switch (effectiveSubcommand) {
     case 'extract':
-      await runExtract(siteRoot, config, args.slice(1))
+      await runExtract(siteRoot, config, effectiveArgs)
       break
     case 'sync':
-      await runSync(siteRoot, config, args.slice(1))
+      await runSync(siteRoot, config, effectiveArgs)
       break
     case 'status':
-      await runStatus(siteRoot, config, args.slice(1))
+      await runStatus(siteRoot, config, effectiveArgs)
       break
     default:
-      error(`Unknown subcommand: ${subcommand}`)
+      error(`Unknown subcommand: ${effectiveSubcommand}`)
       showHelp()
       process.exit(1)
   }
@@ -278,9 +282,10 @@ ${colors.cyan}${colors.bright}Uniweb i18n${colors.reset}
 Site content internationalization commands.
 
 ${colors.bright}Usage:${colors.reset}
-  uniweb i18n <command> [options]
+  uniweb i18n [command] [options]
 
 ${colors.bright}Commands:${colors.reset}
+  (default)    Same as sync - extract/update strings (runs if no command given)
   extract      Extract translatable strings to locales/manifest.json
   sync         Update manifest with content changes (detects moved/changed content)
   status       Show translation coverage per locale
@@ -301,7 +306,7 @@ ${colors.bright}Configuration:${colors.reset}
 
 ${colors.bright}Workflow:${colors.reset}
   1. Build your site:           uniweb build
-  2. Extract strings:           uniweb i18n extract
+  2. Extract strings:           uniweb i18n
   3. Translate locale files:    Edit locales/es.json, locales/fr.json, etc.
   4. Build with translations:   uniweb build (generates locale-specific output)
 
