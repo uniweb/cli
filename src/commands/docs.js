@@ -7,10 +7,14 @@
  *   uniweb docs                    # Generate docs for current directory
  *   uniweb docs --output README.md # Custom output filename
  *   uniweb docs --from-source      # Build schema from source (no build required)
+ *
+ * When run from a site directory, automatically finds and documents the
+ * linked foundation, placing COMPONENTS.md in the site folder.
  */
 
 import { existsSync } from 'node:fs'
-import { resolve, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { resolve, join, dirname } from 'node:path'
 import { generateDocs } from '@uniweb/build'
 
 // Colors for terminal output
@@ -72,7 +76,7 @@ function showHelp() {
 ${colors.bright}uniweb docs${colors.reset} - Generate component documentation
 
 ${colors.dim}Usage:${colors.reset}
-  uniweb docs                         Generate COMPONENTS.md from schema.json
+  uniweb docs                         Generate COMPONENTS.md
   uniweb docs --output DOCS.md        Custom output filename
   uniweb docs --from-source           Build schema from source (no build required)
 
@@ -82,8 +86,9 @@ ${colors.dim}Options:${colors.reset}
   -h, --help             Show this help message
 
 ${colors.dim}Notes:${colors.reset}
-  By default, docs are generated from dist/schema.json (requires build).
-  Use --from-source to generate without building first.
+  Run from a foundation directory to generate docs there.
+  Run from a site directory to auto-detect the linked foundation
+  and generate docs in the site folder for convenience.
 `)
 }
 
@@ -94,6 +99,47 @@ function isFoundation(dir) {
   const srcDir = join(dir, 'src')
   const componentsDir = join(srcDir, 'components')
   return existsSync(componentsDir)
+}
+
+/**
+ * Detect if current directory is a site
+ */
+function isSite(dir) {
+  return existsSync(join(dir, 'site.yml')) || existsSync(join(dir, 'site.yaml'))
+}
+
+/**
+ * Resolve foundation path from a site directory
+ * Reads package.json to find foundation dependency with file: protocol
+ */
+async function resolveFoundationFromSite(siteDir) {
+  const pkgPath = join(siteDir, 'package.json')
+  if (!existsSync(pkgPath)) {
+    return null
+  }
+
+  try {
+    const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies }
+
+    // Look for foundation dependency with file: protocol
+    // Common names: "foundation", or the foundation name from site.yml
+    for (const [name, version] of Object.entries(deps)) {
+      if (typeof version === 'string' && version.startsWith('file:')) {
+        const relativePath = version.slice(5) // Remove 'file:' prefix
+        const absolutePath = resolve(siteDir, relativePath)
+
+        // Check if this is actually a foundation
+        if (isFoundation(absolutePath)) {
+          return { name, path: absolutePath }
+        }
+      }
+    }
+  } catch {
+    // Ignore parse errors
+  }
+
+  return null
 }
 
 /**
@@ -108,19 +154,34 @@ export async function docs(args) {
   }
 
   const projectDir = resolve(process.cwd())
+  let foundationDir = projectDir
+  let outputDir = projectDir
 
-  // Verify this is a foundation
-  if (!isFoundation(projectDir)) {
-    error('This directory does not appear to be a foundation.')
-    log(`${colors.dim}Foundations have a src/components/ directory with component folders.${colors.reset}`)
+  // Check if we're in a site directory
+  if (isSite(projectDir)) {
+    const foundation = await resolveFoundationFromSite(projectDir)
+    if (!foundation) {
+      error('Could not find a linked foundation in this site.')
+      log(`${colors.dim}Make sure package.json has a foundation dependency like:${colors.reset}`)
+      log(`${colors.dim}  "foundation": "file:../foundation"${colors.reset}`)
+      process.exit(1)
+    }
+
+    foundationDir = foundation.path
+    outputDir = projectDir
+    info(`Found foundation: ${foundation.name} (${foundation.path})`)
+  } else if (!isFoundation(projectDir)) {
+    error('This directory does not appear to be a foundation or site.')
+    log(`${colors.dim}Foundations have a src/components/ directory.${colors.reset}`)
+    log(`${colors.dim}Sites have a site.yml file.${colors.reset}`)
     process.exit(1)
   }
 
   // Check if schema.json exists (if not using --from-source)
-  const schemaPath = join(projectDir, 'dist', 'schema.json')
+  const schemaPath = join(foundationDir, 'dist', 'schema.json')
   if (!options.fromSource && !existsSync(schemaPath)) {
-    log(`${colors.yellow}⚠${colors.reset} No dist/schema.json found.`)
-    log(`${colors.dim}Run 'uniweb build' first, or use '--from-source' to read meta.js files directly.${colors.reset}`)
+    log(`${colors.yellow}⚠${colors.reset} No dist/schema.json found in foundation.`)
+    log(`${colors.dim}Run 'uniweb build' in the foundation first, or use '--from-source'.${colors.reset}`)
     log('')
     info('Falling back to --from-source mode')
     options.fromSource = true
@@ -129,8 +190,8 @@ export async function docs(args) {
   try {
     info('Generating documentation...')
 
-    const result = await generateDocs(projectDir, {
-      output: options.output,
+    const result = await generateDocs(foundationDir, {
+      output: join(outputDir, options.output),
       fromSource: options.fromSource,
     })
 
