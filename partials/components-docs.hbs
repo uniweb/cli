@@ -3,13 +3,11 @@
 Generate up-to-date documentation for all foundation components:
 
 ```bash
-# From within the foundation directory
+# From foundation directory
 pnpm uniweb docs
+
+# Or from site directory (auto-detects linked foundation)
+cd site && pnpm uniweb docs
 ```
 
-This creates `COMPONENTS.md` with full details on each component's:
-- Content elements (title, paragraphs, links, images, items)
-- Parameters (theme, layout, columns, etc.)
-- Presets (pre-configured parameter combinations)
-
-The documentation is generated from component `meta.js` files, so it's always current.
+This creates `COMPONENTS.md` with details on each component's parameters, presets, and content elements. The documentation is generated from component `meta.js` files, so it's always current.
