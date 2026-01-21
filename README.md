@@ -18,6 +18,9 @@ The `marketing` template includes real components (Hero, Features, Pricing, Test
 **Other templates:**
 
 ```bash
+# Multilingual business site (English, Spanish, French)
+npx uniweb@latest create my-site --template international
+
 # Academic site (researcher portfolios, lab pages)
 npx uniweb@latest create my-site --template academic
 
@@ -370,6 +373,31 @@ uniweb create my-site --template docs
 **Includes:** Header, LeftPanel, DocSection, CodeBlock, Footer
 
 Perfect for technical documentation, guides, and API references.
+
+### International
+
+```bash
+uniweb create my-site --template international
+```
+
+**Includes:** Hero, Features, Team, CTA, Header (with language switcher), Footer (with language links)
+
+**Languages:** English (default), Spanish, French
+
+A multilingual business site demonstrating Uniweb's i18n capabilities. Includes pre-configured translation files and a complete localization workflow:
+
+```bash
+# Extract translatable strings
+uniweb i18n extract
+
+# Check translation coverage
+uniweb i18n status
+
+# Build generates locale-specific output (dist/es/, dist/fr/)
+uniweb build
+```
+
+Perfect for international businesses and learning the i18n workflow.
 
 ## External Templates
 
