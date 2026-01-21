@@ -3,7 +3,7 @@
   "description": "A minimal Uniweb project with one foundation and one site. The canonical starting point for any Uniweb project.",
   "base": "_shared",
   "structure": {
-    "root": ["package.json.hbs", "pnpm-workspace.yaml", ".gitignore", "CLAUDE.md.hbs"],
+    "root": ["package.json.hbs", "pnpm-workspace.yaml", ".gitignore", "AGENTS.md.hbs"],
     "foundation": ["package.json.hbs", "vite.config.js", ".gitignore", "src/"],
     "site": ["package.json.hbs", "vite.config.js", "index.html.hbs", "site.yml.hbs", "src/", "pages/"]
   }
