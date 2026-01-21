@@ -1,6 +1,8 @@
 # uniweb
 
-Create a well-structured Vite + React site with content/code separation, file-based routing, localization, and structured content—out of the box. The architecture scales to dynamic content management and collaborative visual editing when you need it.
+A component content architecture for React. Build sites where content authors and component developers can't break each other's work—and scale from local files to visual editing without rewrites.
+
+Create well-structured Vite + React projects with file-based routing, localization, and clean content/code separation out of the box.
 
 ## Quick Start
 
@@ -488,8 +490,9 @@ packages:
   - 'foundations/*'
 ```
 
+Also set in `package.json` for npm compatibility.
+
 ```json
-// package.json (workspaces field for npm compatibility)
 {
   "workspaces": ["site", "foundation", "sites/*", "foundations/*"]
 }
