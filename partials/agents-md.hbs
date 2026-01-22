@@ -217,7 +217,7 @@ import {
 - `Image` - Optimized images
 - `Section` - Layout wrapper
 - `SocialIcon` - SVG icons for 15+ social platforms
-- `SidebarLayout` - Ready-to-use layout with sidebar (see Custom Layouts below)
+- `SidebarLayout` - Ready-to-use layout with left/right sidebars (see Custom Layouts below)
 
 **Hooks:**
 - `useScrolled(threshold)` - Scroll detection (returns boolean)
@@ -352,7 +352,7 @@ function Footer({ links }) {
 
 ### Custom Layouts
 
-Foundations can provide a custom site Layout component via `src/exports.js`. The kit includes `SidebarLayout` for common single-sidebar layouts:
+Foundations can provide a custom site Layout component via `src/exports.js`. The kit includes `SidebarLayout` for common sidebar layouts:
 
 ```jsx
 // foundation/src/exports.js
@@ -364,9 +364,9 @@ export default {
 ```
 
 **SidebarLayout features:**
-- Single sidebar (left or right)
-- Mobile: slide-out drawer with floating action button
-- Desktop: inline sidebar at configurable breakpoint
+- Optional left and/or right sidebars (show whichever panels have content)
+- Desktop: sidebars appear inline at configurable breakpoints
+- Mobile: left panel in slide-out drawer with FAB, right panel hidden
 - Sticky header and sidebar options
 - Auto-close drawer on route change
 
@@ -378,12 +378,13 @@ function CustomLayout(props) {
   return (
     <SidebarLayout
       {...props}
-      side="left"              // 'left' or 'right'
-      sidebarWidth="w-64"      // Tailwind width class
+      leftWidth="w-64"         // Left sidebar width
+      rightWidth="w-64"        // Right sidebar width
       drawerWidth="w-72"       // Mobile drawer width
-      breakpoint="md"          // 'sm', 'md', 'lg', 'xl'
+      leftBreakpoint="md"      // Show left at md+
+      rightBreakpoint="xl"     // Show right at xl+
       stickyHeader={true}      // Sticky header
-      stickySidebar={true}     // Sticky sidebar
+      stickySidebar={true}     // Sticky sidebars
       maxWidth="max-w-7xl"     // Content area max width
     />
   )
@@ -396,12 +397,12 @@ export default { Layout: CustomLayout }
 - `header` - From `@header/` sections
 - `body` - Page content sections
 - `footer` - From `@footer/` sections
-- `left` / `leftPanel` - From `@left/` sections (used when `side="left"`)
-- `right` / `rightPanel` - From `@right/` sections (used when `side="right"`)
+- `left` / `leftPanel` - From `@left/` sections (navigation)
+- `right` / `rightPanel` - From `@right/` sections (TOC, contextual info)
 
 **When to use SidebarLayout vs custom:**
-- Use `SidebarLayout` for docs, dashboards, or any single-sidebar site
-- Build custom Layout when you need dual sidebars, complex responsive behavior, or prose styling
+- Use `SidebarLayout` for docs, dashboards, admin panels, or any sidebar site
+- Build custom Layout when you need complex responsive behavior or prose styling
 
 ### Website and Page APIs
 
