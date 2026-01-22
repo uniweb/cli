@@ -197,15 +197,16 @@ async function processFile(sourcePath, targetPath, data, options = {}) {
  * @param {Object} options - Processing options
  * @param {string|null} options.variant - Template variant to use
  * @param {string|null} options.basePath - Base template to merge with (files copied first)
+ * @param {boolean} options.isBase - Internal: true when processing base template (allows overwriting)
  * @param {Function} options.onWarning - Warning callback
  * @param {Function} options.onProgress - Progress callback
  */
 export async function copyTemplateDirectory(sourcePath, targetPath, data, options = {}) {
-  const { variant = null, basePath = null, onWarning, onProgress } = options
+  const { variant = null, basePath = null, isBase = false, onWarning, onProgress } = options
 
-  // If a base template is specified, copy it first (without the basePath option to avoid recursion)
+  // If a base template is specified, copy it first (with isBase=true so main can overwrite)
   if (basePath && existsSync(basePath)) {
-    await copyTemplateDirectory(basePath, targetPath, data, { variant, onWarning, onProgress })
+    await copyTemplateDirectory(basePath, targetPath, data, { variant, isBase: true, onWarning, onProgress })
   }
 
   await fs.mkdir(targetPath, { recursive: true })
@@ -223,7 +224,7 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
   }
 
   // Options for recursive calls (without basePath to avoid re-copying base at each level)
-  const recursionOptions = { variant, onWarning, onProgress }
+  const recursionOptions = { variant, isBase, onWarning, onProgress }
 
   for (const entry of entries) {
     const sourceName = entry.name
@@ -279,11 +280,9 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
       const sourceFullPath = path.join(sourcePath, sourceName)
       const targetFullPath = path.join(targetPath, targetName)
 
-      // Skip if target already exists (don't overwrite)
-      if (existsSync(targetFullPath)) {
-        if (onWarning) {
-          onWarning(`Skipping ${targetFullPath} - file already exists`)
-        }
+      // When processing base template, skip if target exists (main template files take precedence)
+      // When processing main template, overwrite any files from base
+      if (isBase && existsSync(targetFullPath)) {
         continue
       }
 
