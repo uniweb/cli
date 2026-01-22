@@ -479,8 +479,45 @@ function Navigation({ pages }) {
 
 1. Create `foundation/src/components/NewComponent/index.jsx`
 2. Create `foundation/src/components/NewComponent/meta.js`
-3. Export from `foundation/src/index.js`
-4. Rebuild: `cd foundation && pnpm build`
+3. Rebuild: `cd foundation && pnpm build`
+
+### Component Organization
+
+By default, exposed components (those with `meta.js`) live in `src/components/`:
+
+```
+foundation/src/
+├── components/          # Exposed components (auto-discovered)
+│   ├── Hero/
+│   │   ├── index.jsx
+│   │   └── meta.js      # Makes this component available to content
+│   └── Features/
+│       ├── index.jsx
+│       └── meta.js
+├── shared/              # Internal components (no meta.js)
+│   ├── Button/
+│   └── Card/
+└── styles.css
+```
+
+**Discovery rule:** A component is exposed if it has a `meta.js` file. Components without `meta.js` are internal helpers.
+
+**For complex projects**, you can organize exposed components in subdirectories:
+
+```js
+// vite.config.js
+import { defineFoundationConfig } from '@uniweb/build'
+
+export default defineFoundationConfig({
+  components: [
+    'components',           // src/components/*/meta.js
+    'components/marketing', // src/components/marketing/*/meta.js
+    'components/docs',      // src/components/docs/*/meta.js
+  ]
+})
+```
+
+This allows organizing exposed components by category while keeping internal components separate.
 
 ### meta.js Structure
 
