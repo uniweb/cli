@@ -217,6 +217,7 @@ import {
 - `Image` - Optimized images
 - `Section` - Layout wrapper
 - `SocialIcon` - SVG icons for 15+ social platforms
+- `SidebarLayout` - Ready-to-use layout with sidebar (see Custom Layouts below)
 
 **Hooks:**
 - `useScrolled(threshold)` - Scroll detection (returns boolean)
@@ -348,6 +349,59 @@ function Footer({ links }) {
 - Consistent behavior across components
 - SSG-safe (works during static generation)
 - Auto-close menus on navigation (better UX)
+
+### Custom Layouts
+
+Foundations can provide a custom site Layout component via `src/exports.js`. The kit includes `SidebarLayout` for common single-sidebar layouts:
+
+```jsx
+// foundation/src/exports.js
+import { SidebarLayout } from '@uniweb/kit'
+
+export default {
+  Layout: SidebarLayout,
+}
+```
+
+**SidebarLayout features:**
+- Single sidebar (left or right)
+- Mobile: slide-out drawer with floating action button
+- Desktop: inline sidebar at configurable breakpoint
+- Sticky header and sidebar options
+- Auto-close drawer on route change
+
+**Configuration props:**
+```jsx
+import { SidebarLayout } from '@uniweb/kit'
+
+function CustomLayout(props) {
+  return (
+    <SidebarLayout
+      {...props}
+      side="left"              // 'left' or 'right'
+      sidebarWidth="w-64"      // Tailwind width class
+      drawerWidth="w-72"       // Mobile drawer width
+      breakpoint="md"          // 'sm', 'md', 'lg', 'xl'
+      stickyHeader={true}      // Sticky header
+      stickySidebar={true}     // Sticky sidebar
+      maxWidth="max-w-7xl"     // Content area max width
+    />
+  )
+}
+
+export default { Layout: CustomLayout }
+```
+
+**Layout receives pre-rendered areas:**
+- `header` - From `@header/` sections
+- `body` - Page content sections
+- `footer` - From `@footer/` sections
+- `left` / `leftPanel` - From `@left/` sections (used when `side="left"`)
+- `right` / `rightPanel` - From `@right/` sections (used when `side="right"`)
+
+**When to use SidebarLayout vs custom:**
+- Use `SidebarLayout` for docs, dashboards, or any single-sidebar site
+- Build custom Layout when you need dual sidebars, complex responsive behavior, or prose styling
 
 ### Website and Page APIs
 
