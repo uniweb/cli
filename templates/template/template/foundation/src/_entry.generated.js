@@ -11,5 +11,5 @@ export { Features, Hero }
 
 export const capabilities = null
 
-// Runtime schema (per-component metadata)
-export const schema = {}
+// Per-component runtime metadata (from meta.js)
+export const meta = {}
