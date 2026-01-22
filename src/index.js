@@ -341,6 +341,12 @@ ${colors.bright}Build Options:${colors.reset}
 
   Pre-rendering is enabled by default when build.prerender: true in site.yml
 
+${colors.bright}Docs Subcommands:${colors.reset}
+  docs               Generate COMPONENTS.md from foundation schema
+  docs site          Show site.yml configuration reference
+  docs page          Show page.yml configuration reference
+  docs meta          Show component meta.js reference
+
 ${colors.bright}Docs Options:${colors.reset}
   --output <file>    Output filename (default: COMPONENTS.md)
   --from-source      Read meta.js files directly instead of schema.json
