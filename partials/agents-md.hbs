@@ -54,8 +54,9 @@ ls foundation/src/components/*/meta.js
 
 1. **`meta.js`** - Defines the component's interface:
    - `title`, `description` - What the component does
-   - `elements` - What content it expects (title, paragraphs, links, items, etc.)
-   - `properties` - Configurable parameters (theme, layout, etc.)
+   - `content` - What content it expects (title, paragraphs, links, items, etc.)
+   - `params` - Configurable parameters with types and defaults
+   - `presets` - Named combinations of param values
    - `hidden: true` - Component exists but isn't selectable from frontmatter
 
 2. **`index.jsx`** - The React implementation
@@ -156,14 +157,35 @@ index: getting-started                   # Or just name the index
 
 ### Props Interface
 
+The runtime provides **guarantees** for component props. No defensive null checks needed:
+
 ```jsx
 function MyComponent({ content, params, block, website }) {
-  const { title, pretitle } = content.main?.header || {}
-  const { paragraphs = [], links = [] } = content.main?.body || {}
-  const items = content.items || []
-  // ...
+  // Runtime guarantees these always exist:
+  const { title, pretitle, subtitle } = content.main.header
+  const { paragraphs, links, imgs } = content.main.body
+  const items = content.items  // Always an array (may be empty)
+
+  // params already has defaults from meta.js merged in:
+  const { theme, layout } = params
 }
 ```
+
+**Guaranteed content shape:**
+```js
+content = {
+  main: {
+    header: { title: '', pretitle: '', subtitle: '' },
+    body: { paragraphs: [], links: [], imgs: [], lists: [], icons: [] },
+  },
+  items: [],
+}
+```
+
+**Best practice:** Keep defaults in `meta.js`, not in component code. This ensures:
+- Documentation consistency (defaults defined once)
+- Cleaner, more readable component code
+- Easier maintenance (change defaults without touching JSX)
 
 ### Using @uniweb/kit
 
@@ -190,25 +212,47 @@ import { H1, P, Link, Image, Section, cn } from '@uniweb/kit'
 export default {
   title: 'Component Name',
   description: 'What it does',
-  // hidden: true,  // Uncomment to hide from content authors
-  elements: {
-    title: { label: 'Headline', required: true },
-    paragraphs: { label: 'Description' },
-    links: { label: 'Call to Action' },
+  category: 'marketing',         // For grouping in editors
+  // hidden: true,               // Uncomment to hide from content authors
+
+  // Document expected content (for editors/validation)
+  content: {
+    pretitle: 'Eyebrow text',
+    title: 'Headline',
+    paragraphs: 'Description [1-2]',
+    links: 'CTA buttons [1-2]',
   },
-  properties: {
+
+  // Configurable parameters with defaults
+  params: {
     theme: {
       type: 'select',
       label: 'Theme',
-      options: [
-        { value: 'light', label: 'Light' },
-        { value: 'dark', label: 'Dark' },
-      ],
-      default: 'light',
+      options: ['light', 'dark', 'gradient'],
+      default: 'light',           // Runtime applies this if not set
     },
+    columns: {
+      type: 'number',
+      label: 'Columns',
+      default: 3,
+    },
+    showIcon: {
+      type: 'boolean',
+      label: 'Show Icon',
+      default: true,
+    },
+  },
+
+  // Named presets (combinations of params)
+  presets: {
+    default: { label: 'Standard', params: { theme: 'light', columns: 3 } },
+    dark: { label: 'Dark Mode', params: { theme: 'dark', columns: 3 } },
+    compact: { label: 'Compact', params: { theme: 'light', columns: 4 } },
   },
 }
 ```
+
+**Key principle:** All defaults belong in `meta.js`. Component code should never have inline defaults like `theme || 'light'` or `columns ?? 3`.
 
 ### Parameter Philosophy
 
