@@ -211,12 +211,31 @@ import {
 } from '@uniweb/kit'
 ```
 
+**Tailwind-styled components** live in a separate subpath:
+
+```jsx
+import { SidebarLayout } from '@uniweb/kit/tailwind'
+```
+
+For Tailwind v4 projects, add the path to your `@source` directive:
+
+```css
+/* foundation/src/styles.css */
+@import "tailwindcss";
+@source "./components/**/*.jsx";
+@source "../node_modules/@uniweb/kit/src/tailwind/**/*.jsx";
+```
+
+This ensures Tailwind discovers the classes used in kit components.
+
 **Components:**
 - `H1, H2, H3, P, Span` - Typography (handles arrays, filters empty)
 - `Link` - Smart routing with proper handling
 - `Image` - Optimized images
 - `Section` - Layout wrapper
 - `SocialIcon` - SVG icons for 15+ social platforms
+
+**Tailwind components** (from `@uniweb/kit/tailwind`):
 - `SidebarLayout` - Ready-to-use layout with left/right sidebars (see Custom Layouts below)
 
 **Hooks:**
@@ -356,12 +375,14 @@ Foundations can provide a custom site Layout component via `src/exports.js`. The
 
 ```jsx
 // foundation/src/exports.js
-import { SidebarLayout } from '@uniweb/kit'
+import { SidebarLayout } from '@uniweb/kit/tailwind'
 
 export default {
   Layout: SidebarLayout,
 }
 ```
+
+**Note:** `SidebarLayout` uses Tailwind classes. Add the `@source` path in your styles.css (see "Using @uniweb/kit" above).
 
 **SidebarLayout features:**
 - Optional left and/or right sidebars (show whichever panels have content)
@@ -372,7 +393,7 @@ export default {
 
 **Configuration props:**
 ```jsx
-import { SidebarLayout } from '@uniweb/kit'
+import { SidebarLayout } from '@uniweb/kit/tailwind'
 
 function CustomLayout(props) {
   return (
