@@ -209,7 +209,7 @@ import {
 } from '@uniweb/kit'
 ```
 
-**Tailwind-styled components** (`@uniweb/kit/tailwind`):
+**Pre-styled components** (`@uniweb/kit/styled`):
 ```jsx
 import {
   // Layout
@@ -221,16 +221,16 @@ import {
   Disclaimer,
   Media,   // styled version with play button facade
   Asset,   // styled version with card preview
-} from '@uniweb/kit/tailwind'
+} from '@uniweb/kit/styled'
 ```
 
-For Tailwind v4 projects using `/tailwind` components, add the `@source` directive:
+Templates include an `@source` directive for kit components by default:
 
 ```css
 /* foundation/src/styles.css */
 @import "tailwindcss";
 @source "./components/**/*.jsx";
-@source "../node_modules/@uniweb/kit/src/tailwind/**/*.jsx";
+@source "../node_modules/@uniweb/kit/src/**/*.jsx";
 ```
 
 **Primitives** (from `@uniweb/kit`):
@@ -243,7 +243,7 @@ For Tailwind v4 projects using `/tailwind` components, add the `@source` directi
 - `FileLogo`, `MediaIcon` - File type icons
 - `SocialIcon` - SVG icons for 15+ social platforms
 
-**Styled components** (from `@uniweb/kit/tailwind`):
+**Styled components** (from `@uniweb/kit/styled`):
 - `SidebarLayout` - Layout with left/right sidebars (see Custom Layouts below)
 - `Section` - Rich content section with width/padding/columns
 - `Render` - ProseMirror content renderer
@@ -389,14 +389,12 @@ Foundations can provide a custom site Layout component via `src/exports.js`. The
 
 ```jsx
 // foundation/src/exports.js
-import { SidebarLayout } from '@uniweb/kit/tailwind'
+import { SidebarLayout } from '@uniweb/kit/styled'
 
 export default {
   Layout: SidebarLayout,
 }
 ```
-
-**Note:** `SidebarLayout` uses Tailwind classes. Add the `@source` path in your styles.css (see "Using @uniweb/kit" above).
 
 **SidebarLayout features:**
 - Optional left and/or right sidebars (show whichever panels have content)
@@ -407,7 +405,7 @@ export default {
 
 **Configuration props:**
 ```jsx
-import { SidebarLayout } from '@uniweb/kit/tailwind'
+import { SidebarLayout } from '@uniweb/kit/styled'
 
 function CustomLayout(props) {
   return (
