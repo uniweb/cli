@@ -470,10 +470,112 @@ export default {
     dark: { label: 'Dark Mode', params: { theme: 'dark', columns: 3 } },
     compact: { label: 'Compact', params: { theme: 'light', columns: 4 } },
   },
+
+  // Static capabilities for cross-block coordination (optional)
+  context: {
+    allowTranslucentTop: true,   // Header can overlay this section
+  },
+
+  // Initial values for mutable block state (optional)
+  initialState: {
+    expanded: false,
+  },
 }
 ```
 
 **Key principle:** All defaults belong in `meta.js`. Component code should never have inline defaults like `theme || 'light'` or `columns ?? 3`.
+
+### Cross-Block Communication
+
+Components can read information from neighboring blocks via `block.getNextBlockInfo()` or `block.page.getFirstBodyBlockInfo()`. This enables adaptive behavior like headers that become translucent over hero sections.
+
+**Block info structure:**
+```js
+{
+  type: 'Hero',           // Component type
+  theme: 'dark',          // Theme setting
+  state: { ... },         // Dynamic state (mutable at runtime)
+  context: { ... },       // Static context (from meta.js, immutable)
+}
+```
+
+**Key distinction:**
+- **`context`** — Static capabilities per component type. Defined in meta.js. "All Hero components support translucent navbar overlay."
+- **`state`** — Dynamic values per block instance. Can change via `useBlockState`. "This accordion has item 2 open."
+
+**Example: Header adapting to first section:**
+```jsx
+function Header({ content, params, block }) {
+  const firstBodyInfo = block.page.getFirstBodyBlockInfo()
+
+  // Use context (static) to check capability
+  const allowTranslucentTop = firstBodyInfo?.context?.allowTranslucentTop || false
+
+  // Use theme (from params) for color adaptation
+  const isDarkTheme = firstBodyInfo?.theme === 'dark'
+
+  return (
+    <header className={cn(
+      allowTranslucentTop ? 'absolute bg-transparent' : 'relative bg-white',
+      isDarkTheme ? 'text-white' : 'text-gray-900'
+    )}>
+      ...
+    </header>
+  )
+}
+```
+
+**Hero declaring its context:**
+```javascript
+// Hero/meta.js
+export default {
+  title: 'Hero Banner',
+  context: {
+    allowTranslucentTop: true,  // Header can overlay this section
+  },
+  params: { ... },
+}
+```
+
+### Block State
+
+Block state persists across renders and SPA page navigations. Use for UI state like accordion open/closed, tabs, form input.
+
+```jsx
+import { useState } from 'react'
+
+function Accordion({ content, params, block }) {
+  // Bridge pattern: pass useState to block
+  const [state, setState] = block.useBlockState(useState)
+
+  const toggle = (index) => {
+    setState({ ...state, openItem: state.openItem === index ? null : index })
+  }
+
+  return content.items.map((item, i) => (
+    <div key={i}>
+      <button onClick={() => toggle(i)}>{item.header.title}</button>
+      {state.openItem === i && <p>{item.body.paragraphs[0]}</p>}
+    </div>
+  ))
+}
+```
+
+**Initial state in meta.js:**
+```javascript
+// Accordion/meta.js
+export default {
+  title: 'Accordion',
+  initialState: {
+    openItem: null,
+  },
+  params: { ... },
+}
+```
+
+**When to use block state vs React state:**
+- **Block state** — UI state that should persist across SPA navigation (accordion position, form input)
+- **React state** — Temporary state that should reset on navigation (hover effects, animations)
 
 ### Parameter Philosophy
 
