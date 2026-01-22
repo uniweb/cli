@@ -1,0 +1,545 @@
+# Component Metadata Guide
+
+This guide explains how to write `meta.js` files for Uniweb components.
+
+## Overview
+
+Every exposed component has a `meta.js` file that describes:
+- What the component does (for documentation and editor UI)
+- What content it expects from markdown
+- What parameters content authors can configure
+- What presets are available for quick setup
+
+Components without `meta.js` are internal helpers—not selectable by content authors.
+
+---
+
+## Minimal Example
+
+The simplest valid meta.js:
+
+```javascript
+export default {
+  title: 'Text Section',
+  category: 'structure',
+}
+```
+
+That's it. Everything else is optional.
+
+---
+
+## What's Required vs Optional
+
+| Field | Required | Default |
+|-------|----------|---------|
+| `title` | Yes | — |
+| `category` | Yes | — |
+| `description` | No | — |
+| `purpose` | No | — |
+| `hidden` | No | `false` |
+| `background` | No | `false` |
+| `data` | No | — |
+| `content` | No | — |
+| `schemas` | No | — |
+| `params` | No | — |
+| `presets` | No | — |
+
+---
+
+## Full Example
+
+```javascript
+// components/Hero/meta.js
+export default {
+  title: 'Hero Banner',
+  description: 'Bold hero section with headline and call-to-action',
+  category: 'impact',
+  purpose: 'Impress',
+  background: true,
+
+  data: 'events:1',  // optional: dynamic data from CMS
+
+  content: {
+    title: 'Headline',
+    pretitle: 'Eyebrow',
+    paragraphs: 'Description [1-2]',
+    links: 'CTA buttons [1-2]',
+    image: 'Hero image [1]',
+  },
+
+  params: {
+    theme: {
+      type: 'select',
+      label: 'Theme',
+      options: ['gradient', 'glass', 'dark', 'light'],
+      default: 'gradient',
+    },
+    layout: {
+      type: 'select',
+      label: 'Layout',
+      options: [
+        'center',
+        'left',
+        { value: 'split-right', label: 'Split (image right)' },
+        { value: 'split-left', label: 'Split (image left)' },
+      ],
+      default: 'center',
+    },
+  },
+
+  presets: {
+    default: {
+      label: 'Centered Hero',
+      params: { theme: 'gradient', layout: 'center' },
+    },
+    split: {
+      label: 'Split Layout',
+      params: { theme: 'gradient', layout: 'split-right' },
+    },
+  },
+}
+```
+
+---
+
+## How Data Flows to Your Component
+
+The meta.js describes the contract. Here's what your component actually receives:
+
+```jsx
+function Hero({ content, params, block, website }) {
+  // ─── From markdown (content) ────────────────────────
+  const { title, pretitle, subtitle } = content.main.header
+  const { paragraphs, links, imgs } = content.main.body
+  const items = content.items
+
+  // ─── From frontmatter (params) ──────────────────────
+  const { theme, layout } = params
+
+  // ─── From CMS (data) ────────────────────────────────
+  const events = block.data?.events || []
+
+  // ─── From JSON blocks (schemas) ─────────────────────
+  const navLinks = block.data?.['nav-links'] || []
+
+  return (
+    <section className={theme}>
+      {pretitle && <span className="eyebrow">{pretitle}</span>}
+      {title && <H1>{title}</H1>}
+      {paragraphs?.map((p, i) => <P key={i}>{p}</P>)}
+    </section>
+  )
+}
+```
+
+**Runtime guarantees**: The runtime ensures `content.main.header`, `content.main.body`, and `content.items` always exist. You don't need defensive null checks for these structures—they're guaranteed by the runtime based on your meta.js declaration.
+
+| Source | Declared in | Accessed via |
+|--------|-------------|--------------|
+| Markdown content | `content: { ... }` | `content.main.header`, `content.main.body`, `content.items` |
+| Frontmatter params | `params: { ... }` | `params.paramName` |
+| CMS entities | `data: 'events:5'` | `block.data.events` |
+| JSON blocks | `schemas: { ... }` | `block.data['schema-name']` |
+
+---
+
+## Schema Reference
+
+### Identity Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | string | Display name in the editor |
+| `description` | string | What the component does |
+| `category` | string | Grouping: `impact`, `showcase`, or `structure` |
+| `purpose` | string | Single verb: Introduce, Express, Explain, etc. |
+| `hidden` | boolean | If true, component exists but isn't selectable |
+
+#### Categories
+
+| Category | Description | Examples |
+|----------|-------------|----------|
+| `impact` | High-impact elements to introduce and express ideas | Hero, CTA, Statement |
+| `showcase` | Explain value, provide evidence, answer questions | Features, Pricing, FAQ, Testimonials |
+| `structure` | Flexible functional elements for layouts | Header, Footer, Grid, Section, Gallery |
+
+---
+
+### Content
+
+The `content` object describes what markdown content the component uses.
+
+```javascript
+content: {
+  // String: label only, any count
+  title: 'Headline',
+
+  // String with count: label [count]
+  paragraphs: 'Description [1-2]',
+  links: 'CTA buttons [1-2]',
+  image: 'Hero image [1]',
+
+  // Object form: when you need a hint
+  items: {
+    label: 'Feature cards [3-6]',
+    hint: 'Each H3 becomes a card',
+  },
+}
+```
+
+#### Count Syntax
+
+Append count in brackets at the end of the label:
+
+| Syntax | Meaning |
+|--------|---------|
+| `'Label'` | Any count (default) |
+| `'Label [1]'` | Exactly 1 |
+| `'Label [1-3]'` | 1 to 3 |
+| `'Label [2+]'` | 2 or more |
+
+This is guidance for content authors, not validation.
+
+#### Standard Content Elements
+
+These names are a **fixed vocabulary**—they map to what the semantic parser extracts from markdown:
+
+| Element | Source | Description |
+|---------|--------|-------------|
+| `title` | H1 | Main headline |
+| `pretitle` | H3 before H1 | Eyebrow/kicker text |
+| `subtitle` | H2 after H1 | Secondary headline |
+| `paragraphs` | Body text | Description paragraphs |
+| `links` | `[text](url)` | Markdown links (become buttons/links) |
+| `lists` | `- item` | Bullet or numbered lists |
+| `items` | H3 sections | Content groups within the markdown |
+| `subsections` | Child files | Nested section files (for composition) |
+
+Use these exact names. The meta.js describes which of these your component uses—you're not inventing new names, you're declaring which parsed elements you consume.
+
+#### Image Roles
+
+Instead of generic `imgs`, use role-specific element names:
+
+| Element | Role | Description |
+|---------|------|-------------|
+| `image` | Content image | Photos, graphics alongside content |
+| `icon` | Small graphic | Icons, logos, avatars |
+| `thumbnail` | Preview | Small preview images |
+| `background` | Background | Handled by engine (see below) |
+
+```javascript
+content: {
+  image: 'Hero image [1]',
+  icon: 'Feature icon [1]',
+}
+```
+
+#### Background Images
+
+Background images are handled at the engine level so components don't repeat this logic. Use the top-level `background` field:
+
+```javascript
+export default {
+  title: 'Hero',
+  background: true,  // Engine renders background images
+
+  content: {
+    title: 'Headline',
+    image: 'Hero image [1]',
+  },
+}
+```
+
+| Value | Behavior |
+|-------|----------|
+| `true` or `'auto'` | Engine handles background |
+| `'manual'` | Component handles its own background |
+| `false` | No background support |
+
+---
+
+### Data
+
+The `data` field declares what dynamic/CMS entity types the component accepts:
+
+```javascript
+data: 'events',       // unlimited events
+data: 'articles:5',   // up to 5 articles
+data: 'project:1',    // exactly 1 project
+```
+
+#### Standard Entity Types
+
+| Type | Description |
+|------|-------------|
+| `articles` | Blog posts, news items |
+| `events` | Calendar events |
+| `projects` | Portfolio/case studies |
+| `publications` | Academic papers, research |
+| `opportunities` | Jobs, grants, calls |
+| `team` | Team members, people |
+| `products` | E-commerce products |
+
+#### Example: Event Listing
+
+```javascript
+export default {
+  title: 'Event Grid',
+  category: 'showcase',
+
+  data: 'events:6',
+
+  content: {
+    title: 'Section title',
+    paragraphs: 'Intro text [1]',
+  },
+
+  params: {
+    layout: {
+      type: 'select',
+      options: ['grid', 'list', 'calendar'],
+      default: 'grid',
+    },
+  },
+}
+```
+
+The component receives entities via props and renders them alongside markdown content.
+
+---
+
+### Params
+
+Parameters are configurable options set in frontmatter:
+
+```yaml
+---
+type: Hero
+theme: glass
+layout: split-right
+---
+```
+
+Define them in `params`:
+
+```javascript
+params: {
+  theme: {
+    type: 'select',
+    label: 'Theme',
+    hint: 'Affects background and text colors',  // optional guidance
+    options: ['gradient', 'glass', 'dark', 'light'],
+    default: 'gradient',
+  },
+  showPattern: {
+    type: 'boolean',
+    label: 'Show background pattern',
+    default: true,
+  },
+  maxItems: {
+    type: 'number',
+    label: 'Maximum items to display',
+    default: 6,
+  },
+  customClass: {
+    type: 'string',
+    label: 'Custom CSS class',
+    hint: 'Added to the section wrapper element',
+  },
+}
+```
+
+**Runtime guarantees**: Param defaults from meta.js are automatically applied by the runtime. Your component receives `params` with defaults already merged in—no need for `theme || 'gradient'` fallbacks.
+
+#### Param Types
+
+| Type | Editor UI | Value |
+|------|-----------|-------|
+| `select` | Dropdown | String from options |
+| `boolean` | Toggle | true/false |
+| `string` | Text input | Any string |
+| `number` | Number input | Numeric value |
+
+#### Options Shorthand
+
+When option value equals label, use strings:
+
+```javascript
+// Full form
+options: [
+  { value: 'dark', label: 'Dark' },
+  { value: 'light', label: 'Light' },
+]
+
+// Shorthand (value === label)
+options: ['dark', 'light']
+
+// Mixed
+options: [
+  'dark',
+  'light',
+  { value: 'glass', label: 'Glassmorphism' },
+]
+```
+
+---
+
+### Presets
+
+Presets are pre-configured parameter combinations:
+
+```javascript
+presets: {
+  default: {
+    label: 'Centered Hero',
+    params: { theme: 'gradient', layout: 'center' },
+  },
+  glass: {
+    label: 'Glassmorphism',
+    params: { theme: 'glass', layout: 'center' },
+  },
+  minimal: {
+    label: 'Minimal Light',
+    params: { theme: 'light', layout: 'left', showPattern: false },
+  },
+}
+```
+
+The preset name (key) is used in frontmatter:
+
+```yaml
+---
+type: Hero
+preset: glass
+---
+```
+
+---
+
+### Schemas (JSON Blocks)
+
+For structured data in markdown, define schemas:
+
+````markdown
+```json:nav-links
+[
+  { "label": "Home", "href": "/" },
+  { "label": "About", "href": "/about", "type": "button" }
+]
+```
+````
+
+Define the schema in meta.js:
+
+```javascript
+schemas: {
+  'nav-links': {
+    label: { type: 'string' },
+    href: { type: 'string' },
+    type: {
+      type: 'select',
+      options: ['plain', 'button', 'dropdown'],
+      default: 'plain',
+    },
+    icon: 'string',  // Shorthand for { type: 'string' }
+    children: { type: 'array', of: 'nav-links' },  // Recursive
+  },
+}
+```
+
+The validated data is available in the component props. The exact path depends on runtime implementation (e.g., `block.data['schema-name']` or similar).
+
+#### Schema Field Types
+
+```javascript
+// Full form
+field: { type: 'string', default: 'value' }
+
+// Shorthand
+field: 'string'
+field: 'number'
+field: 'boolean'
+
+// Select
+field: {
+  type: 'select',
+  options: ['a', 'b', 'c'],
+  default: 'a',
+}
+
+// Nested object
+field: {
+  type: 'object',
+  schema: { name: 'string', value: 'number' },
+}
+
+// Array
+field: { type: 'array', of: 'string' }
+field: { type: 'array', of: 'other-schema-name' }
+field: { type: 'array', of: { name: 'string' } }
+```
+
+---
+
+## Composition Components
+
+Some components arrange other components (like Grid). They accept child sections:
+
+```javascript
+// components/Grid/meta.js
+export default {
+  title: 'Grid',
+  description: 'Arrange components in a responsive layout',
+  category: 'structure',
+  purpose: 'Arrange',
+
+  content: {
+    title: 'Section title',
+    subsections: {
+      label: 'Grid items',
+      hint: 'Each child section becomes a grid cell. Use any component type.',
+    },
+  },
+
+  params: {
+    columns: {
+      type: 'select',
+      label: 'Columns',
+      options: ['2', '3', '4', 'auto'],
+      default: 'auto',
+    },
+  },
+}
+```
+
+In markdown, child sections are nested files:
+
+```
+pages/home/
+├── 1-intro.md          # type: Grid
+├── 1.1-text.md         # type: TextBox (child of Grid)
+├── 1.2-media.md        # type: Media (child of Grid)
+└── 2-features.md       # type: Features
+```
+
+Or using explicit hierarchy in page.yml:
+
+```yaml
+sections:
+  - intro:              # Grid
+      - text            # TextBox
+      - media           # Media
+  - features            # Features
+```
+
+---
+
+## Design Principles
+
+1. **Graceful degradation** — Components handle missing content without errors
+2. **Sensible defaults** — Every param should have a good default
+3. **Intent over implementation** — Params describe purpose (`theme: dark`) not CSS (`background: #1a1a1a`)
+4. **Minimal metadata** — Only include what the editor needs; implementation details stay in code
+5. **Composition over configuration** — Use Grid + simple components instead of mega-components with many options

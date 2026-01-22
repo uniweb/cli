@@ -1,0 +1,234 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://uniweb.app/schemas/component-meta.json",
+  "title": "Uniweb Component Metadata",
+  "description": "Schema for component meta.js files",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Display name in the editor"
+    },
+    "description": {
+      "type": "string",
+      "description": "What the component does"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["impact", "showcase", "structure"],
+      "description": "Component category for grouping"
+    },
+    "purpose": {
+      "type": "string",
+      "description": "Single-verb purpose: Introduce, Express, Explain, etc."
+    },
+    "hidden": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, component exists but isn't selectable from frontmatter"
+    },
+    "background": {
+      "description": "Background image handling",
+      "oneOf": [
+        { "type": "boolean" },
+        { "type": "string", "enum": ["auto", "manual"] }
+      ]
+    },
+    "data": {
+      "type": "string",
+      "description": "Dynamic data binding. Format: 'entityType' or 'entityType:limit'. Examples: 'events', 'articles:5', 'project:1'",
+      "pattern": "^[a-z]+(:([0-9]+))?$"
+    },
+    "content": {
+      "type": "object",
+      "description": "Content elements the component expects from markdown. String values are labels with optional [count] suffix.",
+      "additionalProperties": {
+        "$ref": "#/definitions/contentElement"
+      }
+    },
+    "params": {
+      "type": "object",
+      "description": "Configurable parameters set in frontmatter",
+      "additionalProperties": {
+        "$ref": "#/definitions/param"
+      }
+    },
+    "presets": {
+      "type": "object",
+      "description": "Pre-configured parameter combinations",
+      "additionalProperties": {
+        "$ref": "#/definitions/preset"
+      }
+    },
+    "schemas": {
+      "type": "object",
+      "description": "Schemas for JSON blocks in markdown",
+      "additionalProperties": {
+        "$ref": "#/definitions/jsonSchema"
+      }
+    }
+  },
+  "definitions": {
+    "contentElement": {
+      "description": "Content element definition. String form: 'Label' or 'Label [count]' where count is 1, 1-3, or 2+",
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Label with optional [count] suffix. Examples: 'Headline', 'Description [1-2]', 'Image [1]'",
+          "pattern": "^.+(\\s\\[\\d+(-\\d+|\\+)?\\])?$"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "label": {
+              "type": "string",
+              "description": "Display label with optional [count] suffix"
+            },
+            "hint": {
+              "type": "string",
+              "description": "Guidance for content authors"
+            }
+          }
+        }
+      ]
+    },
+    "param": {
+      "type": "object",
+      "description": "Parameter definition",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["select", "boolean", "string", "number"],
+          "description": "Parameter type"
+        },
+        "label": {
+          "type": "string",
+          "description": "Display label"
+        },
+        "hint": {
+          "type": "string",
+          "description": "Additional guidance shown in the editor"
+        },
+        "options": {
+          "type": "array",
+          "description": "Options for select type",
+          "items": {
+            "$ref": "#/definitions/option"
+          }
+        },
+        "default": {
+          "description": "Default value",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "boolean" },
+            { "type": "number" }
+          ]
+        },
+        "placeholder": {
+          "type": "string",
+          "description": "Placeholder text for string inputs"
+        }
+      }
+    },
+    "option": {
+      "description": "Select option",
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Simple option where value equals label"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "label"],
+          "properties": {
+            "value": {
+              "type": "string",
+              "description": "Option value"
+            },
+            "label": {
+              "type": "string",
+              "description": "Display label"
+            }
+          }
+        }
+      ]
+    },
+    "preset": {
+      "type": "object",
+      "description": "Preset definition",
+      "additionalProperties": false,
+      "required": ["label", "params"],
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "Display label for the preset"
+        },
+        "params": {
+          "type": "object",
+          "description": "Parameter values for this preset",
+          "additionalProperties": true
+        }
+      }
+    },
+    "jsonSchema": {
+      "type": "object",
+      "description": "Schema for JSON block items",
+      "additionalProperties": {
+        "$ref": "#/definitions/schemaField"
+      }
+    },
+    "schemaField": {
+      "description": "JSON schema field definition",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["string", "number", "boolean"],
+          "description": "Simple type shorthand"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["string", "number", "boolean", "select", "object", "array"],
+              "description": "Field type"
+            },
+            "default": {
+              "description": "Default value"
+            },
+            "options": {
+              "type": "array",
+              "description": "Options for select type",
+              "items": { "type": "string" }
+            },
+            "schema": {
+              "type": "object",
+              "description": "Nested schema for object type",
+              "additionalProperties": {
+                "$ref": "#/definitions/schemaField"
+              }
+            },
+            "of": {
+              "description": "Item type for array",
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "#/definitions/schemaField"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}
