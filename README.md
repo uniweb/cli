@@ -139,6 +139,38 @@ After creating your project:
 
 The `meta.js` file defines what content and parameters a component accepts. The runtime uses this metadata to apply defaults and guarantee content structure—no defensive null checks needed in your component code.
 
+### Your First Content Change
+
+Open `site/pages/home/1-hero.md` and edit the headline:
+
+```markdown
+---
+type: Hero
+---
+
+# Your New Headline Here
+
+Updated description text.
+
+[Get Started](/about)
+```
+
+Save and see the change instantly in your browser.
+
+### Your First Component Change
+
+Open `foundation/src/components/Hero/index.jsx`. The component receives parsed content:
+
+```jsx
+export function Hero({ content, params }) {
+  const { title } = content.main.header      // "Your New Headline Here"
+  const { paragraphs } = content.main.body   // ["Updated description text."]
+  // Edit the JSX below...
+}
+```
+
+Change the JSX, save, and the dev server hot-reloads your changes.
+
 ## Foundations Are Portable
 
 The `foundation/` folder ships with your project as a convenience, but a foundation is a self-contained artifact with no dependency on any specific site. Sites reference foundations by configuration, not by folder proximity.
