@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @source "./components/**/*.{js,jsx}";
+@source "../node_modules/@uniweb/kit/src/**/*.{js,jsx}";
 
 @theme {
   --color-primary: #3b82f6;

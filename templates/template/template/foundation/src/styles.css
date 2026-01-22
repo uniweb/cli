@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @source "./components/**/*.{js,jsx}";
+@source "../node_modules/@uniweb/kit/src/**/*.{js,jsx}";
 
 @theme {
   /* Customize your template's colors */
