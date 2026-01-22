@@ -10,4 +10,5 @@ export { Section }
 
 export const capabilities = null
 
-export const meta = {}
+// Runtime schema (per-component metadata)
+export const schema = {}

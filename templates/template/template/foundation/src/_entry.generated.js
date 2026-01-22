@@ -9,6 +9,7 @@ export const components = { Features, Hero }
 
 export { Features, Hero }
 
-export const runtime = null
+export const capabilities = null
 
-export const meta = {}
+// Runtime schema (per-component metadata)
+export const schema = {}
