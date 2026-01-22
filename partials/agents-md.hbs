@@ -189,15 +189,223 @@ content = {
 
 ### Using @uniweb/kit
 
+The kit provides components, hooks, and utilities that eliminate common boilerplate:
+
 ```jsx
-import { H1, P, Link, Image, Section, cn } from '@uniweb/kit'
+import {
+  // Typography
+  H1, H2, H3, P, Span,
+  // Navigation
+  Link, Image, Section,
+  // Utilities
+  cn,
+  // Hooks
+  useScrolled, useMobileMenu, useAccordion, useActiveRoute,
+  useGridLayout, getGridClasses,
+  useTheme, getThemeClasses, THEMES,
+  // Social
+  SocialIcon, getSocialPlatform, isSocialLink, filterSocialLinks,
+} from '@uniweb/kit'
 ```
 
+**Components:**
 - `H1, H2, H3, P, Span` - Typography (handles arrays, filters empty)
-- `Link` - Smart routing
+- `Link` - Smart routing with proper handling
 - `Image` - Optimized images
 - `Section` - Layout wrapper
+- `SocialIcon` - SVG icons for 15+ social platforms
+
+**Hooks:**
+- `useScrolled(threshold)` - Scroll detection (returns boolean)
+- `useMobileMenu()` - Mobile menu state with auto-close on route change
+- `useAccordion({ multiple, defaultOpen })` - Expand/collapse state
+- `useActiveRoute()` - SSG-safe route detection for navigation highlighting
+- `useGridLayout(columns, { gap })` - Responsive grid classes
+- `useTheme(name, overrides)` - Standardized theme classes
+
+**Utilities:**
 - `cn()` - Tailwind class merging
+- `getSocialPlatform(url)` - Detect platform from URL
+- `isSocialLink(url)` - Check if URL is a social platform
+- `filterSocialLinks(links)` - Filter array to social links only
+- `getGridClasses()` / `getThemeClasses()` - Non-hook versions
+
+### Kit Hook Examples
+
+**Scroll-based header styling:**
+```jsx
+import { useScrolled, cn } from '@uniweb/kit'
+
+function Header() {
+  const scrolled = useScrolled(20) // threshold in pixels
+
+  return (
+    <header className={cn(
+      'fixed top-0 transition-all',
+      scrolled ? 'bg-white shadow-lg' : 'bg-transparent'
+    )}>
+      ...
+    </header>
+  )
+}
+```
+
+**Mobile menu with auto-close:**
+```jsx
+import { useMobileMenu } from '@uniweb/kit'
+
+function Header() {
+  const { isOpen, toggle, close } = useMobileMenu()
+
+  // Menu automatically closes on route change
+  return (
+    <>
+      <button onClick={toggle}>Menu</button>
+      {isOpen && (
+        <nav>
+          <Link href="/about" onClick={close}>About</Link>
+        </nav>
+      )}
+    </>
+  )
+}
+```
+
+**Active route highlighting:**
+```jsx
+import { useActiveRoute, cn } from '@uniweb/kit'
+
+function Navigation({ pages }) {
+  const { isActiveOrAncestor } = useActiveRoute()
+
+  return pages.map(page => (
+    <Link
+      key={page.route}
+      href={page.navigableRoute}
+      className={cn(
+        'nav-link',
+        isActiveOrAncestor(page) && 'text-primary font-bold'
+      )}
+    >
+      {page.label}
+    </Link>
+  ))
+}
+```
+
+**Accordion/FAQ:**
+```jsx
+import { useAccordion } from '@uniweb/kit'
+
+function FAQ({ items }) {
+  const { isOpen, toggle } = useAccordion({ expandFirst: true })
+
+  return items.map((item, i) => (
+    <div key={i}>
+      <button onClick={() => toggle(i)}>{item.question}</button>
+      {isOpen(i) && <p>{item.answer}</p>}
+    </div>
+  ))
+}
+```
+
+**Responsive grid:**
+```jsx
+import { useGridLayout } from '@uniweb/kit'
+
+function Features({ items, params }) {
+  const gridClass = useGridLayout(params.columns, { gap: 8 })
+  // Returns: "grid gap-8 sm:grid-cols-2 lg:grid-cols-3" (for columns=3)
+
+  return <div className={gridClass}>{items.map(...)}</div>
+}
+```
+
+**Social icons:**
+```jsx
+import { SocialIcon, filterSocialLinks, Link } from '@uniweb/kit'
+
+function Footer({ links }) {
+  const socialLinks = filterSocialLinks(links)
+
+  return (
+    <div className="flex gap-4">
+      {socialLinks.map((link, i) => (
+        <Link key={i} href={link.href}>
+          <SocialIcon url={link.href} className="w-5 h-5" />
+        </Link>
+      ))}
+    </div>
+  )
+}
+```
+
+**Why use kit hooks:**
+- Eliminates boilerplate (scroll handlers, route effects, state management)
+- Consistent behavior across components
+- SSG-safe (works during static generation)
+- Auto-close menus on navigation (better UX)
+
+### Website and Page APIs
+
+Components receive `website` and `block` props with navigation and locale APIs:
+
+**Page hierarchy for navigation:**
+```jsx
+function Header({ website }) {
+  // Get pages for header navigation (respects hideInHeader)
+  const pages = website.getPageHierarchy({ for: 'header' })
+  // Returns: [{ route, navigableRoute, title, label, hasContent, children }]
+
+  return pages.map(page => (
+    <Link href={page.navigableRoute}>{page.label}</Link>
+  ))
+}
+
+function Footer({ website }) {
+  // Get pages for footer (respects hideInFooter)
+  const pages = website.getPageHierarchy({ for: 'footer' })
+}
+```
+
+**Key page info properties:**
+- `page.route` - The page's URL path
+- `page.navigableRoute` - URL to use for links (may differ if page has no content)
+- `page.label` - Short navigation label (falls back to title)
+- `page.hasContent` - Whether page has renderable sections
+- `page.children` - Nested child pages (if any)
+
+**Locale handling (for multilingual sites):**
+```jsx
+function Header({ website }) {
+  if (website.hasMultipleLocales()) {
+    const locales = website.getLocales() // [{code, label, isDefault}]
+    const active = website.getActiveLocale() // 'en'
+
+    return locales.map(locale => (
+      <a
+        key={locale.code}
+        href={website.getLocaleUrl(locale.code)}
+        className={locale.code === active ? 'font-bold' : ''}
+      >
+        {locale.label}
+      </a>
+    ))
+  }
+}
+```
+
+**Active route detection (SSG-safe):**
+```jsx
+import { useActiveRoute } from '@uniweb/kit'
+
+function Navigation({ pages }) {
+  const { route, isActiveOrAncestor } = useActiveRoute()
+
+  // route: current normalized route (e.g., 'docs/getting-started')
+  // isActiveOrAncestor(page): true if page matches or is parent of current route
+}
+```
 
 ### Creating a New Component
 
