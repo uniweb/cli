@@ -192,32 +192,39 @@ content = {
 
 ### Using @uniweb/kit
 
-The kit provides components, hooks, and utilities that eliminate common boilerplate:
+The kit is split into two paths: primitives (no Tailwind dependency) and styled components.
 
+**Primitives** (`@uniweb/kit`):
 ```jsx
 import {
   // Typography
-  H1, H2, H3, P, Span,
-  // Navigation
-  Link, Image, Section,
+  H1, H2, H3, P, Span, Text,
+  // Navigation & Media
+  Link, Image, Icon, Media, Asset,
   // Utilities
-  cn,
+  cn, FileLogo, MediaIcon, SocialIcon,
   // Hooks
   useScrolled, useMobileMenu, useAccordion, useActiveRoute,
-  useGridLayout, getGridClasses,
-  useTheme, getThemeClasses, THEMES,
-  // Social
-  SocialIcon, getSocialPlatform, isSocialLink, filterSocialLinks,
+  useGridLayout, useTheme,
 } from '@uniweb/kit'
 ```
 
-**Tailwind-styled components** live in a separate subpath:
-
+**Tailwind-styled components** (`@uniweb/kit/tailwind`):
 ```jsx
-import { SidebarLayout } from '@uniweb/kit/tailwind'
+import {
+  // Layout
+  SidebarLayout,
+  // Content rendering
+  Section, Render,
+  Code, Alert, Table, Details, Divider,
+  // UI
+  Disclaimer,
+  Media,   // styled version with play button facade
+  Asset,   // styled version with card preview
+} from '@uniweb/kit/tailwind'
 ```
 
-For Tailwind v4 projects, add the path to your `@source` directive:
+For Tailwind v4 projects using `/tailwind` components, add the `@source` directive:
 
 ```css
 /* foundation/src/styles.css */
@@ -226,17 +233,24 @@ For Tailwind v4 projects, add the path to your `@source` directive:
 @source "../node_modules/@uniweb/kit/src/tailwind/**/*.jsx";
 ```
 
-This ensures Tailwind discovers the classes used in kit components.
-
-**Components:**
-- `H1, H2, H3, P, Span` - Typography (handles arrays, filters empty)
-- `Link` - Smart routing with proper handling
-- `Image` - Optimized images
-- `Section` - Layout wrapper
+**Primitives** (from `@uniweb/kit`):
+- `H1`-`H6`, `P`, `Span`, `Text` - Typography (handles arrays, filters empty)
+- `Link` - Smart routing
+- `Image` - Optimized images with size presets
+- `Icon` - SVG icon loader
+- `Media` - Video player (YouTube, Vimeo, local) - plain version
+- `Asset` - File download link - plain version
+- `FileLogo`, `MediaIcon` - File type icons
 - `SocialIcon` - SVG icons for 15+ social platforms
 
-**Tailwind components** (from `@uniweb/kit/tailwind`):
-- `SidebarLayout` - Ready-to-use layout with left/right sidebars (see Custom Layouts below)
+**Styled components** (from `@uniweb/kit/tailwind`):
+- `SidebarLayout` - Layout with left/right sidebars (see Custom Layouts below)
+- `Section` - Rich content section with width/padding/columns
+- `Render` - ProseMirror content renderer
+- `Code`, `Alert`, `Table`, `Details`, `Divider` - Content block renderers
+- `Disclaimer` - Modal dialog for legal text
+- `Media` - Video with styled play button facade
+- `Asset` - File card with preview thumbnail and hover overlay
 
 **Hooks:**
 - `useScrolled(threshold)` - Scroll detection (returns boolean)
