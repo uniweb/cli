@@ -1,0 +1,67 @@
+## Configuration Reference
+
+### site.yml
+
+Site-wide configuration in `site/site.yml`:
+
+```yaml
+name: My Site                    # Site name
+defaultLanguage: en              # Default locale code
+foundation: foundation           # Foundation package name
+
+# Page ordering (controls top-level navigation)
+pages: [home, about, features]   # First is homepage at /
+# Or just name the homepage:
+index: home
+
+# Internationalization
+i18n:
+  locales: [es, fr]              # Non-default locales to build
+  localesDir: locales            # Translation files directory
+
+# Build options
+build:
+  prerender: true                # Enable static site generation
+```
+
+### page.yml
+
+Page-level configuration in `site/pages/[page]/page.yml`:
+
+```yaml
+title: About Us                  # Page title (used in <title> and nav)
+description: Learn about us      # Meta description
+label: About                     # Short nav label (optional)
+order: 2                         # Navigation sort order
+
+# Child page ordering
+pages: [intro, guide, reference] # First is index for this route
+index: intro                     # Or just name the index
+
+# Navigation visibility
+hidden: true                     # Hide from all navigation
+hideInHeader: true               # Hide from header only
+hideInFooter: true               # Hide from footer only
+
+# Layout overrides
+layout:
+  header: false                  # Don't render header
+  footer: false                  # Don't render footer
+
+# Section ordering
+sections:                        # Explicit section order
+  - hero
+  - features:                    # Nested = subsections
+      - logocloud
+      - stats
+  - pricing
+
+# SEO
+seo:
+  noindex: true
+  image: /og-image.png
+  changefreq: monthly
+  priority: 0.8
+```
+
+Run `pnpm uniweb docs site` or `pnpm uniweb docs page` for complete reference.

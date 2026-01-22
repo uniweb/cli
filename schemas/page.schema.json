@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://uniweb.app/schemas/page.json",
+  "title": "Uniweb Page Configuration",
+  "description": "Schema for page.yml files in Uniweb projects",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Page title used in browser tab, navigation, and SEO"
+    },
+    "description": {
+      "type": "string",
+      "description": "Meta description for SEO and social sharing"
+    },
+    "label": {
+      "type": "string",
+      "description": "Short navigation label. Defaults to title if not specified"
+    },
+    "order": {
+      "type": "number",
+      "description": "Sort order for navigation. Lower numbers appear first"
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Child page ordering. First item becomes the index page for this route"
+    },
+    "index": {
+      "type": "string",
+      "description": "Index page folder name. Alternative to 'pages' array"
+    },
+    "hidden": {
+      "type": "boolean",
+      "default": false,
+      "description": "Hide from all navigation (page still exists and is accessible)"
+    },
+    "hideInHeader": {
+      "type": "boolean",
+      "default": false,
+      "description": "Hide from header navigation only"
+    },
+    "hideInFooter": {
+      "type": "boolean",
+      "default": false,
+      "description": "Hide from footer navigation only"
+    },
+    "layout": {
+      "type": "object",
+      "description": "Layout area visibility overrides",
+      "additionalProperties": false,
+      "properties": {
+        "header": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to render the header on this page"
+        },
+        "footer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to render the footer on this page"
+        },
+        "leftPanel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to render the left sidebar on this page"
+        },
+        "rightPanel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to render the right sidebar on this page"
+        }
+      }
+    },
+    "sections": {
+      "description": "Section ordering. Use '*' to auto-discover, an array for explicit order, or nested arrays for hierarchy",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["*"],
+          "description": "Auto-discover sections from .md files, sort by numeric prefix"
+        },
+        {
+          "type": "array",
+          "description": "Explicit section ordering with optional nesting for subsections"
+        }
+      ]
+    },
+    "seo": {
+      "type": "object",
+      "description": "SEO configuration",
+      "additionalProperties": false,
+      "properties": {
+        "noindex": {
+          "type": "boolean",
+          "default": false,
+          "description": "Prevent search engines from indexing this page"
+        },
+        "image": {
+          "type": "string",
+          "description": "Open Graph image URL for social sharing"
+        },
+        "changefreq": {
+          "type": "string",
+          "enum": ["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"],
+          "description": "Sitemap change frequency hint"
+        },
+        "priority": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Sitemap priority (0.0 to 1.0)"
+        }
+      }
+    }
+  }
+}

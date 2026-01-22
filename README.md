@@ -125,6 +125,20 @@ export function Hero({ content, params }) {
 
 Standard React. Standard Tailwind. The `{ content, params }` interface is only for _exposed_ components—the ones content creators select in markdown frontmatter. Internal components use regular React props.
 
+## Next Steps
+
+After creating your project:
+
+1. **Explore the structure** — Browse `site/pages/` to see how content is organized. Each page folder contains `page.yml` (metadata) and `.md` files (sections).
+
+2. **Generate component docs** — Run `pnpm uniweb docs` to create `COMPONENTS.md` with all available components, their parameters, and presets.
+
+3. **Learn the configuration** — Run `uniweb docs site` or `uniweb docs page` for quick reference on configuration options.
+
+4. **Create a component** — Add a folder in `foundation/src/components/`, create `index.jsx` and `meta.js`, then rebuild. See the [meta.js guide](https://github.com/uniweb/cli/blob/main/docs/meta/README.md) for the full schema.
+
+The `meta.js` file defines what content and parameters a component accepts. The runtime uses this metadata to apply defaults and guarantee content structure—no defensive null checks needed in your component code.
+
 ## Foundations Are Portable
 
 The `foundation/` folder ships with your project as a convenience, but a foundation is a self-contained artifact with no dependency on any specific site. Sites reference foundations by configuration, not by folder proximity.

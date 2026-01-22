@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://uniweb.app/schemas/site.json",
+  "title": "Uniweb Site Configuration",
+  "description": "Schema for site.yml files in Uniweb projects",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Site name displayed in browser tab and metadata"
+    },
+    "defaultLanguage": {
+      "type": "string",
+      "default": "en",
+      "description": "Default locale code (e.g., 'en', 'es', 'fr')"
+    },
+    "foundation": {
+      "type": "string",
+      "description": "Foundation package name. Use 'foundation' for local sibling, or an npm package name"
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Top-level page ordering. First item becomes the homepage at '/'. Remaining items get their folder name as route"
+    },
+    "index": {
+      "type": "string",
+      "description": "Homepage folder name. Alternative to 'pages' array - just names the homepage, auto-discovers rest"
+    },
+    "i18n": {
+      "type": "object",
+      "description": "Internationalization configuration",
+      "additionalProperties": false,
+      "properties": {
+        "locales": {
+          "description": "Non-default locales to build. Use '*' to auto-discover from locales directory, or an array of locale codes",
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": ["*"],
+              "description": "Auto-discover all locales from locales directory"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Explicit list of locale codes (e.g., ['es', 'fr', 'de'])"
+            }
+          ]
+        },
+        "localesDir": {
+          "type": "string",
+          "default": "locales",
+          "description": "Directory containing translation files"
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "description": "Build configuration options",
+      "additionalProperties": false,
+      "properties": {
+        "prerender": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable static site generation (SSG). Generates static HTML for each page at build time"
+        }
+      }
+    }
+  }
+}
