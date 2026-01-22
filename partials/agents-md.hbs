@@ -160,7 +160,7 @@ index: getting-started                   # Or just name the index
 The runtime provides **guarantees** for component props. No defensive null checks needed:
 
 ```jsx
-function MyComponent({ content, params, block, website }) {
+function MyComponent({ content, params, block }) {
   // Runtime guarantees these always exist:
   const { title, pretitle, subtitle } = content.main.header
   const { paragraphs, links, imgs } = content.main.body
@@ -168,6 +168,9 @@ function MyComponent({ content, params, block, website }) {
 
   // params already has defaults from meta.js merged in:
   const { theme, layout } = params
+
+  // Access website and page via block or useWebsite() hook:
+  const { website } = useWebsite()  // or use block.website, block.page
 }
 ```
 
@@ -348,11 +351,15 @@ function Footer({ links }) {
 
 ### Website and Page APIs
 
-Components receive `website` and `block` props with navigation and locale APIs:
+Access `website` via `useWebsite()` hook or `block.website`. Access `page` via `block.page`:
 
 **Page hierarchy for navigation:**
 ```jsx
-function Header({ website }) {
+import { useWebsite, Link } from '@uniweb/kit'
+
+function Header({ content, params, block }) {
+  const { website } = useWebsite()
+
   // Get pages for header navigation (respects hideInHeader)
   const pages = website.getPageHierarchy({ for: 'header' })
   // Returns: [{ route, navigableRoute, title, label, hasContent, children }]
@@ -362,7 +369,9 @@ function Header({ website }) {
   ))
 }
 
-function Footer({ website }) {
+function Footer({ content, params }) {
+  const { website } = useWebsite()
+
   // Get pages for footer (respects hideInFooter)
   const pages = website.getPageHierarchy({ for: 'footer' })
 }
@@ -377,7 +386,11 @@ function Footer({ website }) {
 
 **Locale handling (for multilingual sites):**
 ```jsx
-function Header({ website }) {
+import { useWebsite } from '@uniweb/kit'
+
+function Header({ content, params }) {
+  const { website } = useWebsite()
+
   if (website.hasMultipleLocales()) {
     const locales = website.getLocales() // [{code, label, isDefault}]
     const active = website.getActiveLocale() // 'en'

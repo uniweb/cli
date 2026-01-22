@@ -39,10 +39,15 @@ pnpm build
 ## Component Interface
 
 ```jsx
-function MyComponent({ content, params, block, website }) {
-  const { title } = content.main?.header || {}
-  const { paragraphs = [] } = content.main?.body || {}
-  const items = content.items || []
+import { useWebsite } from '@uniweb/kit'
+
+function MyComponent({ content, params, block }) {
+  const { website } = useWebsite()
+
+  // Runtime guarantees: content.main.header/body exist, params have defaults
+  const { title } = content.main.header
+  const { paragraphs } = content.main.body
+  const items = content.items
   // ...
 }
 ```
