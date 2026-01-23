@@ -92,11 +92,100 @@ Description paragraph.
 
 ### Content Structure
 
-The semantic parser extracts markdown into:
+The semantic parser extracts markdown into a **flat structure**:
 
-- **`content.main.header`** - title, pretitle, subtitle
-- **`content.main.body`** - paragraphs, links, imgs, lists
-- **`content.items`** - Groups created by H3 headings (each with its own header/body)
+```js
+{
+  // Headers (from headings)
+  title: '',        // Main heading
+  pretitle: '',     // Heading before main title (auto-detected)
+  subtitle: '',     // Heading after main title
+  subtitle2: '',    // Third heading level
+
+  // Body content
+  paragraphs: [],   // Text blocks
+  links: [],        // All links (including buttons, documents)
+  imgs: [],         // Images (role: image, banner, gallery, background)
+  icons: [],        // Icons (role: icon)
+  videos: [],       // Videos (role: video)
+  lists: [],        // Bullet/ordered lists
+  quotes: [],       // Blockquotes
+  data: {},         // Structured data from tagged code blocks
+  headings: [],     // Overflow headings after title/subtitle/subtitle2
+
+  // Child content groups
+  items: [],        // Created by headings after content
+
+  // Document-order rendering
+  sequence: [],     // All elements in original order
+}
+```
+
+**Heading interpretation is semantic, not literal:**
+- `#` in markdown doesn't always become `<h1>` — the component decides
+- A pretitle is auto-detected when a heading precedes a more important one (H3→H1, H2→H1)
+- Items are created when any heading appears after body content
+
+### Attributes on Links and Media
+
+Both links and media support attributes using curly braces:
+
+```markdown
+[text](url){key=value .class #id booleanAttr}
+![alt](url){role=banner width=1200 loading=lazy}
+```
+
+**Links and buttons:**
+```markdown
+[Learn more](/about)                              <!-- Standard link -->
+[Get Started](button:/signup)                     <!-- Button (prefix) -->
+[Get Started](/signup){.button variant=primary}   <!-- Button (class) -->
+[Download](./report.pdf){download}                <!-- Download link -->
+```
+
+Links are unified in the `links` array with a `role` attribute:
+- `role: "link"` — Standard hyperlink (default)
+- `role: "button"` / `"button-primary"` — CTA buttons
+- `role: "document"` — Downloadable files (auto-detected from extension)
+
+**Media classification by role:**
+```markdown
+![Hero](./hero.jpg)                    <!-- imgs array (default) -->
+![Hero](./hero.jpg){role=banner}       <!-- imgs array with role -->
+![Logo](./logo.svg){role=icon}         <!-- icons array -->
+![Demo](./demo.mp4){role=video}        <!-- videos array -->
+```
+
+All use image syntax but `role` determines which array they go into.
+
+### Structured Data
+
+Tagged code blocks pass structured data to components via `content.data`:
+
+````markdown
+```yaml:form
+fields:
+  - name: email
+    type: email
+    required: true
+submitLabel: Send
+```
+````
+
+Access in component: `content.data?.form` → `{ fields: [...], submitLabel: "Send" }`
+
+Supported formats: `json:tag-name`, `yaml:tag-name`
+
+### Asset Paths
+
+Assets can use relative or absolute paths:
+
+```markdown
+![Photo](./photo.jpg)           <!-- Relative to markdown file -->
+![Hero](/images/hero.jpg)       <!-- From public/ or assets/ folder -->
+```
+
+Build optimizes images (PNG/JPG → WebP), generates content-hashed filenames, and auto-creates video posters and PDF previews when not explicitly provided.
 
 ### Page Organization
 
@@ -161,10 +250,8 @@ The runtime provides **guarantees** for component props. No defensive null check
 
 ```jsx
 function MyComponent({ content, params, block }) {
-  // Runtime guarantees these always exist:
-  const { title, pretitle, subtitle } = content.main.header
-  const { paragraphs, links, imgs } = content.main.body
-  const items = content.items  // Always an array (may be empty)
+  // Runtime guarantees these always exist (flat API):
+  const { title, pretitle, subtitle, paragraphs, links, imgs, items } = content
 
   // params already has defaults from meta.js merged in:
   const { theme, layout } = params
@@ -177,11 +264,21 @@ function MyComponent({ content, params, block }) {
 **Guaranteed content shape:**
 ```js
 content = {
-  main: {
-    header: { title: '', pretitle: '', subtitle: '' },
-    body: { paragraphs: [], links: [], imgs: [], lists: [], icons: [] },
-  },
-  items: [],
+  title: '',
+  pretitle: '',
+  subtitle: '',
+  subtitle2: '',
+  paragraphs: [],
+  links: [],
+  imgs: [],
+  icons: [],
+  videos: [],
+  lists: [],
+  quotes: [],
+  data: {},
+  headings: [],
+  items: [],      // Each item has the same flat structure
+  sequence: [],   // For document-order rendering
 }
 ```
 
@@ -679,8 +776,8 @@ function Accordion({ content, params, block }) {
 
   return content.items.map((item, i) => (
     <div key={i}>
-      <button onClick={() => toggle(i)}>{item.header.title}</button>
-      {state.openItem === i && <p>{item.body.paragraphs[0]}</p>}
+      <button onClick={() => toggle(i)}>{item.title}</button>
+      {state.openItem === i && <p>{item.paragraphs[0]}</p>}
     </div>
   ))
 }
