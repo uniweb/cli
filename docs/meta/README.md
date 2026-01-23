@@ -417,16 +417,17 @@ preset: glass
 
 ---
 
-### Schemas (JSON Blocks)
+### Schemas (Tagged Blocks)
 
-For structured data in markdown, define schemas:
+For structured data in markdown, use tagged code blocks:
 
 ````markdown
-```json:nav-links
-[
-  { "label": "Home", "href": "/" },
-  { "label": "About", "href": "/about", "type": "button" }
-]
+```yaml:nav-links
+- label: Home
+  href: /
+- label: About
+  href: /about
+  type: button
 ```
 ````
 
@@ -448,7 +449,7 @@ schemas: {
 }
 ```
 
-The parsed JSON is available in the content object at `content.data['schema-name']`:
+The parsed data is available at `content.data['tag-name']` (YAML or JSON both work):
 
 ```jsx
 function Header({ content }) {

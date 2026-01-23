@@ -83,18 +83,16 @@ Frontmatter specifies the component type and configuration. The body contains th
 
 ### Beyond Markdown
 
-For content that doesn't fit markdown patterns—products, team members, events—use JSON blocks with schema tags:
+For content that doesn't fit markdown patterns—products, team members, events—use tagged code blocks:
 
 ````markdown
-```json #team-member
-{
-  "name": "Sarah Chen",
-  "role": "Lead Architect"
-}
+```yaml:team-member
+name: Sarah Chen
+role: Lead Architect
 ```
 ````
 
-Components receive validated, localized data. Natural content stays in markdown; structured data goes in JSON blocks.
+Components receive validated, localized data. Natural content stays in markdown; structured data goes in tagged blocks (YAML or JSON).
 
 ### Components as React
 
