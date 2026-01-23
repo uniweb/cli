@@ -97,7 +97,7 @@ ${colors.bright}Example:${colors.reset}
   build:
     prerender: true${colors.reset}
 
-${colors.dim}Schema: https://raw.githubusercontent.com/uniweb/cli/main/schemas/site.schema.json${colors.reset}
+${colors.dim}Schema: https://raw.githubusercontent.com/uniweb/cli/main/docs/meta/site.schema.json${colors.reset}
 `
 
 const PAGE_REFERENCE = `
@@ -151,7 +151,7 @@ ${colors.bright}Example:${colors.reset}
   seo:
     image: /about-og.png${colors.reset}
 
-${colors.dim}Schema: https://raw.githubusercontent.com/uniweb/cli/main/schemas/page.schema.json${colors.reset}
+${colors.dim}Schema: https://raw.githubusercontent.com/uniweb/cli/main/docs/meta/page.schema.json${colors.reset}
 `
 
 const META_REFERENCE = `
