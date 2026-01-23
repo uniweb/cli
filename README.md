@@ -167,7 +167,7 @@ export function Hero({ content, params }) {
 }
 ```
 
-The parser extracts semantic elements from markdown—`title` from H1, `paragraphs` from body text, `links` from `[text](url)`, and so on. The `items` array contains child groups created from H3 headings (useful for features, pricing tiers, team members, etc.). See [Content Structure](./docs/content-structure.md) for details.
+The parser extracts semantic elements from markdown—`title` from the first heading, `paragraphs` from body text, `links` from `[text](url)`, and so on. The `items` array contains child groups created when headings appear after content (useful for features, pricing tiers, team members, etc.). See [Content Structure](./docs/content-structure.md) for details.
 
 Change the JSX, save, and the dev server hot-reloads your changes.
 

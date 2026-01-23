@@ -45,20 +45,22 @@ All content fields are available at the top level:
 
 | Field | Source | Description |
 |-------|--------|-------------|
-| `title` | H1 heading | Main headline |
-| `pretitle` | H3 before H1 | Eyebrow/kicker text |
-| `subtitle` | H2 after H1 | Secondary headline |
+| `title` | First heading | Main headline |
+| `pretitle` | Heading before title | Eyebrow/kicker text |
+| `subtitle` | Heading after title | Secondary headline |
 | `paragraphs` | Body text | Array of paragraph strings |
 | `links` | `[text](url)` | Array of `{ href, label }` |
 | `imgs` | `![alt](url)` | Array of `{ url, alt }` |
 | `lists` | `- item` | Bullet or numbered lists |
-| `items` | H3 sections | Child content groups (see below) |
+| `items` | Subsequent headings | Child content groups (see below) |
 
 ## Items: Child Content Groups
 
-The `items` array contains child content groups, typically created from H3 headings. Each item has the same field structure as the main content.
+The `items` array contains child content groups. A new item starts whenever a heading appears after other content (paragraphs, images, etc.). Each item has the same field structure as the main content.
 
-Use items when your component displays repeating content—feature cards, pricing tiers, team members, FAQ questions:
+Use items when your component displays repeating content—feature cards, pricing tiers, team members, FAQ questions.
+
+**Convention:** Use a higher-level heading for the main title and lower-level headings for items. This makes the structure clear, but the parser is flexible—any heading after content starts a new item.
 
 ```markdown
 # Pricing
@@ -78,6 +80,20 @@ $29/month
 For growing teams.
 
 [Get Started](/signup?plan=pro)
+```
+
+This also works with H2 for items:
+
+```markdown
+# Team
+
+Meet our leadership.
+
+## Sarah Chen
+CEO and Co-founder
+
+## Alex Rivera
+CTO and Co-founder
 ```
 
 ```js
@@ -136,7 +152,7 @@ There are two ways to create nested content:
 
 | Approach | When to use |
 |----------|-------------|
-| **Items** (H3 sections in one file) | Repeating content within a single section |
+| **Items** (headings in one file) | Repeating content within a single section |
 | **Subsections** (separate files) | When children need their own component types |
 
 Prefer items when possible—they're simpler for content authors. Use subsections when children are complex enough to warrant their own component selection.

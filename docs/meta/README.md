@@ -207,12 +207,12 @@ These names are a **fixed vocabulary**—they map to what the semantic parser ex
 | Element | Source | Description |
 |---------|--------|-------------|
 | `title` | H1 | Main headline |
-| `pretitle` | H3 before H1 | Eyebrow/kicker text |
-| `subtitle` | H2 after H1 | Secondary headline |
+| `pretitle` | Heading before title | Eyebrow/kicker text |
+| `subtitle` | Heading after title | Secondary headline |
 | `paragraphs` | Body text | Description paragraphs |
 | `links` | `[text](url)` | Markdown links (become buttons/links) |
 | `lists` | `- item` | Bullet or numbered lists |
-| `items` | H3 sections | Content groups within the markdown |
+| `items` | Subsequent headings | Content groups within the markdown |
 | `subsections` | Child files | Nested section files (for composition) |
 
 Use these exact names. The meta.js describes which of these your component uses—you're not inventing new names, you're declaring which parsed elements you consume.
