@@ -248,6 +248,66 @@ fetch:
 
 ---
 
+## Collection References
+
+If you're using [Content Collections](./content-collections.md), you can reference a collection directly instead of specifying a file path:
+
+```yaml
+# pages/home/1-teaser.md
+---
+type: ArticleTeaser
+fetch:
+  collection: articles   # Fetches from /data/articles.json
+  limit: 3               # Show only 3 items
+  sort: date desc        # Most recent first
+---
+
+# Latest Articles
+```
+
+This is equivalent to `path: /data/articles.json` but more intuitive for content authors.
+
+### Post-processing Options
+
+Collection references support filtering, sorting, and limiting:
+
+```yaml
+fetch:
+  collection: articles
+  filter: tags contains featured   # Only featured articles
+  sort: date desc                  # Newest first
+  limit: 3                         # Take first 3
+```
+
+These options also work with regular `path` or `url` fetches:
+
+```yaml
+fetch:
+  path: /data/articles.json
+  limit: 5
+  sort: date desc
+```
+
+### Post-processing Order
+
+1. **Filter** is applied first (reduces the dataset)
+2. **Sort** is applied second (orders the filtered data)
+3. **Limit** is applied last (takes first N items)
+
+### Filter Operators
+
+| Operator | Example | Description |
+|----------|---------|-------------|
+| `==` | `category == news` | Equal |
+| `!=` | `draft != true` | Not equal |
+| `>` | `date > 2025-01-01` | Greater than |
+| `<` | `price < 100` | Less than |
+| `>=` | `rating >= 4` | Greater than or equal |
+| `<=` | `order <= 10` | Less than or equal |
+| `contains` | `tags contains featured` | Array includes value |
+
+---
+
 ## Using Standard Schemas
 
 For validated, structured data, use `@uniweb/schemas`:
