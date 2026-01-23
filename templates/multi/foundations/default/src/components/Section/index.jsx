@@ -8,8 +8,8 @@ import { H1, H2, P, Link, cn } from '@uniweb/kit'
  * This is the default component for rendering markdown content.
  */
 export function Section({ content, params }) {
-  const { title, pretitle, subtitle } = content.main?.header || {}
-  const { paragraphs = [], links = [], imgs = [] } = content.main?.body || {}
+  // Flat content structure: title, pretitle, paragraphs, links, etc. at top level
+  const { title, pretitle, subtitle, paragraphs = [], links = [], imgs = [] } = content || {}
 
   const {
     theme = 'light',

@@ -100,8 +100,7 @@ Components receive validated, localized data. Natural content stays in markdown;
 
 ```jsx
 export function Hero({ content, params }) {
-  const { title } = content.main.header
-  const { paragraphs, links } = content.main.body
+  const { title, paragraphs, links } = content
   const { theme = 'light' } = params
 
   return (
@@ -163,8 +162,7 @@ Open `foundation/src/components/Hero/index.jsx`. The component receives parsed c
 
 ```jsx
 export function Hero({ content, params }) {
-  const { title } = content.main.header      // "Your New Headline Here"
-  const { paragraphs } = content.main.body   // ["Updated description text."]
+  const { title, paragraphs } = content  // Flat structure: title, paragraphs, links, imgs, etc.
   // Edit the JSX below...
 }
 ```
