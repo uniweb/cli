@@ -132,7 +132,7 @@ After creating your project:
 
 3. **Learn the configuration** — Run `uniweb docs site` or `uniweb docs page` for quick reference on configuration options.
 
-4. **Create a component** — Add a folder in `foundation/src/components/`, create `index.jsx` and `meta.js`, then rebuild. See the [meta.js guide](https://github.com/uniweb/cli/blob/main/docs/meta/README.md) for the full schema.
+4. **Create a component** — Add a folder in `foundation/src/components/`, create `index.jsx` and `meta.js`, then rebuild. See the [Component Metadata Guide](https://github.com/uniweb/cli/blob/main/docs/component-metadata.md) for the full schema.
 
 The `meta.js` file defines what content and parameters a component accepts. The runtime uses this metadata to apply defaults and guarantee content structure—no defensive null checks needed in your component code.
 
@@ -165,7 +165,12 @@ export function Hero({ content, params }) {
 }
 ```
 
-The parser extracts semantic elements from markdown—`title` from the first heading, `paragraphs` from body text, `links` from `[text](url)`, and so on. The `items` array contains child groups created when headings appear after content (useful for features, pricing tiers, team members, etc.). See [Content Structure](./docs/content-structure.md) for details.
+The parser extracts semantic elements from markdown—`title` from the first heading, `paragraphs` from body text, `links` from `[text](url)`, and so on. The `items` array contains child groups created when headings appear after content (useful for features, pricing tiers, team members, etc.).
+
+**Learn more:**
+- [Content Structure](./docs/content-structure.md) — How content is parsed and structured
+- [Component Metadata](./docs/component-metadata.md) — Full meta.js schema reference
+- [Data Fetching](./docs/data-fetching.md) — Load external data from files or APIs
 
 Change the JSX, save, and the dev server hot-reloads your changes.
 
