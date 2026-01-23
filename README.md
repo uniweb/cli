@@ -162,10 +162,12 @@ Open `foundation/src/components/Hero/index.jsx`. The component receives parsed c
 
 ```jsx
 export function Hero({ content, params }) {
-  const { title, paragraphs } = content  // Flat structure: title, paragraphs, links, imgs, etc.
+  const { title, paragraphs, links, imgs, items } = content
   // Edit the JSX below...
 }
 ```
+
+The parser extracts semantic elements from markdown—`title` from H1, `paragraphs` from body text, `links` from `[text](url)`, and so on. The `items` array contains child groups created from H3 headings (useful for features, pricing tiers, team members, etc.). See [Content Structure](./docs/content-structure.md) for details.
 
 Change the JSX, save, and the dev server hot-reloads your changes.
 

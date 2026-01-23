@@ -110,9 +110,8 @@ The meta.js describes the contract. Here's what your component actually receives
 ```jsx
 function Hero({ content, params, block, website }) {
   // ─── From markdown (content) ────────────────────────
-  const { title, pretitle, subtitle } = content.main.header
-  const { paragraphs, links, imgs } = content.main.body
-  const items = content.items
+  // Runtime guarantees all fields exist - no defensive checks needed
+  const { title, pretitle, subtitle, paragraphs, links, imgs, items } = content
 
   // ─── From frontmatter (params) ──────────────────────
   const { theme, layout } = params
@@ -127,17 +126,17 @@ function Hero({ content, params, block, website }) {
     <section className={theme}>
       {pretitle && <span className="eyebrow">{pretitle}</span>}
       {title && <H1>{title}</H1>}
-      {paragraphs?.map((p, i) => <P key={i}>{p}</P>)}
+      {paragraphs.map((p, i) => <P key={i}>{p}</P>)}
     </section>
   )
 }
 ```
 
-**Runtime guarantees**: The runtime ensures `content.main.header`, `content.main.body`, and `content.items` always exist. You don't need defensive null checks for these structures—they're guaranteed by the runtime based on your meta.js declaration.
+**Runtime guarantees**: The runtime ensures all content fields exist with sensible defaults (empty strings/arrays). You don't need defensive null checks—content structure is guaranteed.
 
 | Source | Declared in | Accessed via |
 |--------|-------------|--------------|
-| Markdown content | `content: { ... }` | `content.main.header`, `content.main.body`, `content.items` |
+| Markdown content | `content: { ... }` | `content.title`, `content.paragraphs`, `content.items` |
 | Frontmatter params | `params: { ... }` | `params.paramName` |
 | CMS entities | `data: 'events:5'` | `block.data.events` |
 | JSON blocks | `schemas: { ... }` | `block.data['schema-name']` |

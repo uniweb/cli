@@ -8,8 +8,7 @@ import { H2, H3, P, cn } from '@uniweb/kit'
  * from the markdown content.
  */
 export function Features({ content, params }) {
-  const { title, subtitle } = content.main?.header || {}
-  const items = content.items || []
+  const { title, subtitle, items = [] } = content || {}
 
   const {
     columns = 3,
@@ -50,15 +49,15 @@ export function Features({ content, params }) {
         <div className={cn('grid gap-8', gridCols[columns] || 'md:grid-cols-3')}>
           {items.map((item, index) => (
             <div key={index} className="text-center">
-              {item.header?.title && (
+              {item.title && (
                 <H3
-                  text={item.header.title}
+                  text={item.title}
                   className="text-xl font-semibold mb-3"
                 />
               )}
-              {item.body?.paragraphs?.[0] && (
+              {item.paragraphs?.[0] && (
                 <P
-                  text={item.body.paragraphs[0]}
+                  text={item.paragraphs[0]}
                   className={cn(
                     theme === 'light' || theme === 'gray' ? 'text-gray-600' : 'text-gray-300'
                   )}
