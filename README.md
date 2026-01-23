@@ -171,6 +171,7 @@ The parser extracts semantic elements from markdown—`title` from the first hea
 - [Content Structure](./docs/content-structure.md) — How content is parsed and structured
 - [Component Metadata](./docs/component-metadata.md) — Full meta.js schema reference
 - [Data Fetching](./docs/data-fetching.md) — Load external data from files or APIs
+- [Dynamic Routes](./docs/dynamic-routes.md) — Generate pages from data (blogs, catalogs)
 
 Change the JSX, save, and the dev server hot-reloads your changes.
 
