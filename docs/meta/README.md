@@ -448,7 +448,16 @@ schemas: {
 }
 ```
 
-The validated data is available in the component props. The exact path depends on runtime implementation (e.g., `block.data['schema-name']` or similar).
+The parsed JSON is available in the content object at `content.data['schema-name']`:
+
+```jsx
+function Header({ content }) {
+  const navLinks = content.data['nav-links'] || []
+  // [{ label: "Home", href: "/" }, { label: "About", href: "/about", type: "button" }]
+}
+```
+
+Schema validation (applying defaults, type checking) is a future enhancement. Currently the raw parsed JSON is passed through.
 
 #### Schema Field Types
 
