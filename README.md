@@ -168,12 +168,11 @@ export function Hero({ content, params }) {
 The parser extracts semantic elements from markdown—`title` from the first heading, `paragraphs` from body text, `links` from `[text](url)`, and so on. The `items` array contains child groups created when headings appear after content (useful for features, pricing tiers, team members, etc.).
 
 **Learn more:**
+
 - [Content Structure](./docs/content-structure.md) — How content is parsed and structured
 - [Component Metadata](./docs/component-metadata.md) — Full meta.js schema reference
 - [Data Fetching](./docs/data-fetching.md) — Load external data from files or APIs
 - [Dynamic Routes](./docs/dynamic-routes.md) — Generate pages from data (blogs, catalogs)
-
-Change the JSX, save, and the dev server hot-reloads your changes.
 
 ## Foundations Are Portable
 
