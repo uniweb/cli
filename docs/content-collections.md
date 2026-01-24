@@ -7,7 +7,7 @@ Author content in markdown and automatically generate JSON data files. Collectio
 Content collections separate **content authoring** from **page structure**:
 
 - **Pages** (in `pages/`) define what components render where
-- **Collections** (in `content/`) define data items as markdown files
+- **Collections** (in `library/`) define data items as markdown files
 - At build time, collections become JSON files in `public/data/`
 - Pages fetch the generated JSON using the existing `fetch:` syntax
 
@@ -21,7 +21,7 @@ This keeps content portable and component-independent.
 
 ```
 site/
-└── content/
+└── library/
     └── articles/
         ├── getting-started.md
         ├── design-patterns.md
@@ -52,7 +52,7 @@ First, create a new project...
 name: My Site
 collections:
   articles:
-    path: content/articles
+    path: library/articles
     sort: date desc
 ```
 
@@ -75,11 +75,11 @@ The build automatically generates `public/data/articles.json`.
 ```yaml
 collections:
   # Simple form (just path)
-  articles: content/articles
+  articles: library/articles
 
   # Extended form (with options)
   articles:
-    path: content/articles
+    path: library/articles
     sort: date desc           # Field + direction
     filter: published != false
     limit: 100                # Max items (0 = unlimited)
@@ -93,15 +93,15 @@ collections:
 ```yaml
 collections:
   articles:
-    path: content/articles
+    path: library/articles
     sort: date desc
 
   products:
-    path: content/products
+    path: library/products
     sort: price asc
 
   team:
-    path: content/team
+    path: library/team
     sort: order asc
 ```
 
@@ -154,7 +154,7 @@ Filter items using simple expressions:
 ```yaml
 collections:
   articles:
-    path: content/articles
+    path: library/articles
     filter: published != false
 ```
 
@@ -195,15 +195,15 @@ Sort by one or more fields:
 ```yaml
 collections:
   articles:
-    path: content/articles
+    path: library/articles
     sort: date desc         # Newest first
 
   products:
-    path: content/products
+    path: library/products
     sort: price asc         # Cheapest first
 
   team:
-    path: content/team
+    path: library/team
     sort: order asc, name asc  # By order, then alphabetically
 ```
 
@@ -222,7 +222,7 @@ Limit the number of items in the output:
 collections:
   # Latest 10 articles only
   articles:
-    path: content/articles
+    path: library/articles
     sort: date desc
     limit: 10
 ```
@@ -255,7 +255,7 @@ Excerpts are automatically generated from content:
 ```yaml
 collections:
   articles:
-    path: content/articles
+    path: library/articles
     excerpt:
       maxLength: 200        # Character limit (default: 160)
       field: description    # Prefer this frontmatter field
@@ -300,7 +300,7 @@ Or automatically extracted from:
 ```
 site/
 ├── site.yml
-├── content/
+├── library/
 │   └── articles/
 │       ├── getting-started.md
 │       ├── design-patterns.md
@@ -323,11 +323,11 @@ site/
 name: My Blog
 collections:
   articles:
-    path: content/articles
+    path: library/articles
     sort: date desc
 ```
 
-### content/articles/getting-started.md
+### library/articles/getting-started.md
 
 ```markdown
 ---
