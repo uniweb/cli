@@ -9,7 +9,7 @@ Content collections separate **content authoring** from **page structure**:
 - **Pages** (in `pages/`) define what components render where
 - **Collections** (in `library/`) define data items as markdown files
 - At build time, collections become JSON files in `public/data/`
-- Pages fetch the generated JSON using the existing `fetch:` syntax
+- Pages reference collections using `data: collection-name`
 
 This keeps content portable and component-independent.
 
@@ -56,15 +56,17 @@ collections:
     sort: date desc
 ```
 
-### 4. Fetch in pages
+### 4. Use in pages
 
 ```yaml
 # pages/blog/page.yml
 title: Blog
-fetch: /data/articles.json
+data: articles
 ```
 
-The build automatically generates `public/data/articles.json`.
+The build automatically generates `public/data/articles.json`, and `data: articles` makes it available to your components.
+
+For more control, use the full fetch syntax: `fetch: /data/articles.json` or `fetch: { collection: articles, limit: 10 }`.
 
 ---
 
@@ -356,7 +358,7 @@ Edit `site.yml` to set your site name...
 
 ```yaml
 title: Blog
-fetch: /data/articles.json
+data: articles
 ```
 
 ### Using with Dynamic Routes
@@ -374,7 +376,21 @@ See [Dynamic Routes](./dynamic-routes.md) for details.
 
 ### Referencing Collections in Other Pages
 
-Use collection references to fetch collection data anywhere in your site:
+Use the `data:` shorthand to fetch collection data anywhere in your site:
+
+```yaml
+# pages/home/1-teaser.md
+---
+type: ArticleTeaser
+data: articles
+---
+
+# Latest from the Blog
+```
+
+This fetches from `/data/articles.json` and makes it available as `content.data.articles`.
+
+For more control (filtering, sorting, limiting), use the full `fetch:` syntax:
 
 ```yaml
 # pages/home/1-teaser.md
@@ -388,8 +404,6 @@ fetch:
 
 # Latest from the Blog
 ```
-
-This is more intuitive than specifying `path: /data/articles.json` and supports post-processing (filter, sort, limit).
 
 See [Data Fetching](./data-fetching.md#collection-references) for details.
 
@@ -431,5 +445,5 @@ During production build (`pnpm build`):
 ## See Also
 
 - [Dynamic Routes](./dynamic-routes.md) — Generate pages from collection data
-- [Data Fetching](./data-fetching.md) — The `fetch:` syntax used to load collections
+- [Data Fetching](./data-fetching.md) — The `data:` shorthand and advanced `fetch:` syntax
 - [Content Structure](./content-structure.md) — How markdown content is parsed

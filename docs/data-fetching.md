@@ -250,7 +250,27 @@ fetch:
 
 ## Collection References
 
-If you're using [Content Collections](./content-collections.md), you can reference a collection directly instead of specifying a file path:
+If you're using [Content Collections](./content-collections.md), there are two ways to reference collection data.
+
+### The `data:` shorthand (recommended)
+
+The simplest way to use collection data:
+
+```yaml
+# pages/home/1-teaser.md
+---
+type: ArticleTeaser
+data: articles
+---
+
+# Latest Articles
+```
+
+This fetches from `/data/articles.json` and makes it available as `content.data.articles`. Clean and readable.
+
+### The `fetch:` syntax (advanced)
+
+For more control, use the full fetch syntax with post-processing options:
 
 ```yaml
 # pages/home/1-teaser.md
@@ -265,7 +285,16 @@ fetch:
 # Latest Articles
 ```
 
-This is equivalent to `path: /data/articles.json` but more intuitive for content authors.
+### When to use which
+
+| Syntax | Use case |
+|--------|----------|
+| `data: articles` | Simple collection reference, no filtering/sorting needed |
+| `fetch: { collection: articles, ... }` | Need limit, sort, filter, or other options |
+| `fetch: { path: /data/file.json }` | Non-collection JSON files |
+| `fetch: { url: https://... }` | Remote data sources |
+
+The `data:` shorthand is equivalent to `fetch: { collection: name }` but more compact.
 
 ### Post-processing Options
 

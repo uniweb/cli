@@ -50,16 +50,16 @@ pages/
 ]
 ```
 
-### 2. Set up the parent page with fetch
+### 2. Set up the parent page with data
 
 ```yaml
 # pages/blog/page.yml
 title: Blog
 description: Latest articles and tutorials
-fetch:
-  path: /data/articles.json
-  schema: articles
+data: articles
 ```
+
+This references the `articles` collection. You can also use the full fetch syntax: `fetch: { collection: articles }` or `fetch: /data/articles.json`.
 
 ### 3. Create the dynamic route folder
 
@@ -123,14 +123,14 @@ export function Article({ content }) {
 
 ### 1. Parent fetches data
 
-The parent page (`/blog`) fetches an array of items:
+The parent page (`/blog`) references collection data:
 
 ```yaml
 # pages/blog/page.yml
-fetch:
-  path: /data/articles.json
-  schema: articles
+data: articles
 ```
+
+This is equivalent to `fetch: { collection: articles }` or `fetch: /data/articles.json`. The schema is inferred from the collection name.
 
 ### 2. Dynamic folder detected
 
@@ -275,7 +275,7 @@ Dynamic pages automatically inherit metadata from the current item:
 
 ```
 pages/blog/
-├── page.yml          # fetch: /data/articles.json, schema: articles
+├── page.yml          # data: articles
 ├── 1-list.md         # type: BlogList
 └── [slug]/
     ├── page.yml
@@ -286,7 +286,7 @@ pages/blog/
 
 ```
 pages/products/
-├── page.yml          # fetch: /data/products.json, schema: products
+├── page.yml          # data: products
 ├── 1-grid.md         # type: ProductGrid
 └── [id]/
     ├── page.yml
@@ -297,7 +297,7 @@ pages/products/
 
 ```
 pages/team/
-├── page.yml          # fetch: /data/team.json, schema: people
+├── page.yml          # data: team (or data: people with schema override)
 ├── 1-overview.md     # type: TeamGrid
 └── [username]/
     ├── page.yml
@@ -308,7 +308,7 @@ pages/team/
 
 ```
 pages/docs/
-├── page.yml          # fetch: /data/docs.json, schema: sections
+├── page.yml          # data: docs (or fetch: { collection: docs, schema: sections })
 ├── 1-overview.md
 └── [slug]/
     ├── page.yml
