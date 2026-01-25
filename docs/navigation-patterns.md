@@ -350,6 +350,7 @@ const footerNav = content.data?.['footer-nav'] || []
 
 ### Header with Dropdown Menu
 
+````markdown
 ```yaml:nav
 - label: Products
   children:
@@ -364,6 +365,7 @@ const footerNav = content.data?.['footer-nav'] || []
 - label: About
   href: /about
 ```
+````
 
 ### Sidebar with Sections
 
@@ -386,6 +388,7 @@ const footerNav = content.data?.['footer-nav'] || []
 
 ### Social Links (Icon-Only)
 
+````markdown
 ```yaml:social
 - icon: /icons/twitter.svg
   label: Twitter
@@ -396,6 +399,7 @@ const footerNav = content.data?.['footer-nav'] || []
   href: https://github.com/example
   target: _blank
 ```
+````
 
 The `label` provides accessibility (screen readers) while only the icon is displayed visually.
 
