@@ -258,24 +258,24 @@ Foundations can define customizable CSS variables that sites override:
 
 ### Foundation Definition
 
-In `foundation/src/meta.js`:
+In `foundation/src/foundation.js`:
 
 ```js
-export default {
-  name: 'my-foundation',
-  themeVars: {
-    'header-height': {
-      default: '4rem',
-      description: 'Fixed header height',
-    },
-    'max-content-width': {
-      default: '80rem',
-      description: 'Maximum content width',
-    },
-    'section-padding-y': {
-      default: '5rem',
-      description: 'Vertical section padding',
-    },
+/**
+ * CSS custom properties that sites can override in theme.yml
+ */
+export const vars = {
+  'header-height': {
+    default: '4rem',
+    description: 'Fixed header height',
+  },
+  'max-content-width': {
+    default: '80rem',
+    description: 'Maximum content width',
+  },
+  'section-padding-y': {
+    default: '5rem',
+    description: 'Vertical section padding',
   },
 }
 ```
