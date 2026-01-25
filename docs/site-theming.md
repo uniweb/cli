@@ -51,6 +51,44 @@ Each color generates 11 shades:
 | 900 | 24% | Near-black |
 | 950 | 14% | Darkest |
 
+### Generation Modes
+
+Control how shades are generated with the `mode` option:
+
+```yaml
+colors:
+  primary:
+    base: "#3b82f6"
+    mode: natural     # 'fixed', 'natural', or 'vivid'
+```
+
+| Mode | Hue | Chroma | Best For |
+|------|-----|--------|----------|
+| `fixed` | Constant | Linear scaling | Design systems, accessibility |
+| `natural` | Temperature-aware shifts | Bézier curve (1.1x boost) | Organic, artistic palettes |
+| `vivid` | Subtle shifts | High boost (1.4x) | Bold marketing, gaming |
+
+**Fixed (default)**: Predictable results with constant hue across all shades. Best for design systems where consistent contrast ratios matter.
+
+**Natural**: Warmer colors (reds, oranges) shift cooler in light shades and warmer in dark shades. Cool colors do the opposite. Creates more organic-feeling palettes.
+
+**Vivid**: Maximum saturation with dramatic chroma curves. Colors stay vibrant even at light and dark extremes.
+
+See the [color modes visual comparison](./color-modes-example.html) for a side-by-side view.
+
+### Exact Brand Color Matching
+
+Guarantee your exact brand color appears at shade 500:
+
+```yaml
+colors:
+  brand:
+    base: "#E31937"
+    exactMatch: true   # Shade 500 = exact input
+```
+
+Without `exactMatch`, the algorithm calculates shade 500's lightness (55%), which may differ slightly from your input color.
+
 ### Using Colors
 
 **In CSS:**
