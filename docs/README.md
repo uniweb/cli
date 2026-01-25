@@ -1,53 +1,107 @@
 # Uniweb Developer Guide
 
-Build content-driven websites with React components and markdown. Uniweb handles the complexity so you can focus on what matters: your content and your design.
+You're starting a content-heavy project. You reach for Vite and React. Smart choice.
 
-## The Key Insight
+Then you hit the content question.
 
-**Content flows to components, already processed.**
+## The Problem You Keep Solving
 
-In Uniweb, you don't wire up data fetching, parse markdown, or manage state. You write markdown content, and your components receive it as structured props:
+Where does content live? How does it flow to components?
+
+- **Hardcoded in components.** Fast to start. Then someone needs to change a headline and they wait for you.
+- **JSON files.** Better. But now you're writing loaders, handling data flow, managing the mapping yourself.
+- **MDX.** Flexible. But content authors need to understand JSX, and your components couple to specific structures.
+- **Headless CMS.** Clean content modeling. But now you're building a separate frontend, wiring APIs, managing the gap.
+
+Each approach works. Each has tradeoffs. And each time, you're solving the same problem: *how does content become pages through components?*
+
+This is undifferentiated work. Infrastructure *around* your product, not your product.
+
+---
+
+## The Insight
+
+The relationship between content and components is an architectural concern—not something to solve ad-hoc in every project.
+
+What's missing is a system that manages the content–component binding for you. Still Vite. Still React. But with separation enforced by **architecture**, not discipline.
+
+---
+
+## What Uniweb Gives You
+
+Same tools you'd choose anyway:
+
+- **Vite** — same dev server, same build
+- **React** — same components, same ecosystem
+- **Tailwind** — works out of the box
+
+Plus architecture that handles the binding:
+
+```
+my-project/
+├── site/                 # Content
+│   └── pages/
+│       └── home/
+│           └── 1-hero.md
+└── foundation/           # Components
+    └── src/
+        └── components/
+            └── Hero/
+```
+
+**Content is markdown.** Authors write naturally:
+
+```markdown
+---
+type: Hero
+theme: dark
+---
+
+# Welcome
+
+Build something great.
+
+[Get Started](#)
+```
+
+**Components receive structured data.** The body gets semantically parsed—headings, paragraphs, links, images—organized and ready for your component:
 
 ```jsx
-// Your component receives content ready to render
-function Hero({ content, params }) {
-  const { title, paragraphs, links, imgs } = content
-  const { theme, layout } = params
+export function Hero({ content, params }) {
+  const { title, paragraphs, links } = content
+  const { theme } = params
 
   return (
-    <section className={theme}>
+    <section className={theme === 'dark' ? 'bg-gray-900 text-white' : ''}>
       <h1>{title}</h1>
-      {paragraphs.map((p, i) => <p key={i}>{p}</p>)}
+      <p>{paragraphs[0]}</p>
+      {links[0] && <a href={links[0].href}>{links[0].label}</a>}
     </section>
   )
 }
 ```
 
-No `useState`, no `useEffect`, no loading states. The runtime guarantees your content structure—empty arrays instead of null, defaults applied from your component's metadata.
+No parsing logic. No `useState`. No `useEffect`. No loading states. The runtime guarantees your content structure.
 
 This is the **Component Content Architecture (CCA)**: content is resolved before it reaches your components.
 
 ---
 
-## What This Means for You
+## What This Changes
 
-### Write content in markdown
-Authors work in familiar markdown with YAML frontmatter. No CMS training, no complex interfaces.
+**You're not the bottleneck.** Content authors work in markdown. They can't break your components. You don't block their changes.
 
-### Build components that just render
-Your React components receive props and render. No data fetching logic, no defensive null checks.
+**Code is policy.** You don't *hope* someone uses the right spacing—you define components where the spacing is already right. The architecture enforces what documentation cannot.
 
-### Get static HTML for free
-Every page pre-renders to HTML at build time. Fast loads, great SEO, works without JavaScript.
+**Multiple sites, one Foundation.** Build your component library once. Use it across projects. Improve a component, every site gets the update.
 
-### Localization without runtime overhead
-Multi-language content is resolved at build time. Components receive already-translated content—no `t()` functions, no translation lookups.
+**Localization without runtime overhead.** Content arrives already translated—no `t()` functions, no translation lookups. Each locale is a complete static build.
 
 ---
 
 ## Start Here
 
-If you're new to Uniweb, read these first:
+New to Uniweb? Read these first:
 
 | Guide | What You'll Learn |
 |-------|-------------------|
@@ -100,39 +154,33 @@ If you're new to Uniweb, read these first:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        AUTHOR LAYER                         │
-│  Markdown files with YAML frontmatter                       │
-│  pages/about/1-hero.md                                      │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼ (build time)
-┌─────────────────────────────────────────────────────────────┐
-│                       RUNTIME LAYER                         │
-│  Parses markdown → Applies defaults → Resolves locale       │
-│  Guarantees content shape                                   │
+│                     CONTENT (Meaning)                       │
+│  Markdown + YAML frontmatter                                │
+│  What authors write                                         │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                      COMPONENT LAYER                        │
-│  Receives { content, params, block }                        │
-│  Just renders—no fetching, no state management              │
+│                    THE BINDING (CCA)                        │
+│  Parsing → Defaults → Locale resolution                     │
+│  Managed by the runtime, not your code                      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   COMPONENTS (Language)                     │
+│  Receives { content, params }                               │
+│  Just renders—no fetching, no wiring                        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Key points:**
-
-1. **Authors** write content in markdown
-2. **Runtime** processes it (parsing, defaults, localization)
-3. **Components** receive clean, guaranteed props
-
-Your components never deal with the messy parts—that's Uniweb's job.
+The binding between content and components is a **first-class architectural layer**, not an implementation detail you solve yourself.
 
 ---
 
 ## Quick Patterns
 
-### Access site/page data in components
+### Access site/page data
 
 ```jsx
 import { useWebsite } from '@uniweb/kit'
@@ -165,7 +213,7 @@ function Nav() {
 }
 ```
 
-### Handle multi-language sites
+### Language switcher
 
 ```jsx
 function LanguageSwitcher() {
@@ -183,7 +231,18 @@ function LanguageSwitcher() {
 }
 ```
 
-Note: Components receive content already translated. No `t()` function needed—the content in `content.title` is already in the user's language.
+---
+
+## Try It
+
+```bash
+npx uniweb@latest create my-site --template marketing
+cd my-site
+pnpm install
+pnpm dev
+```
+
+A working site with real components. See how content flows to components. Modify a component, see it update. Change content, see it render.
 
 ---
 
