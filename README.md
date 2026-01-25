@@ -171,8 +171,10 @@ The parser extracts semantic elements from markdown—`title` from the first hea
 
 - [Content Structure](./docs/content-structure.md) — How content is parsed and structured
 - [Component Metadata](./docs/component-metadata.md) — Full meta.js schema reference
+- [Site Theming](./docs/site-theming.md) — Colors, typography, and dark mode
 - [Data Fetching](./docs/data-fetching.md) — Load external data from files or APIs
 - [Dynamic Routes](./docs/dynamic-routes.md) — Generate pages from data (blogs, catalogs)
+- [Content Collections](./docs/content-collections.md) — Manage articles, team members, and more
 
 ## Foundations Are Portable
 
