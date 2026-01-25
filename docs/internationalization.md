@@ -1,16 +1,17 @@
 # Internationalization (i18n)
 
-Build multi-language sites with locale-aware routing, content translation, and automatic language switching.
+Build multi-language sites with locale-aware routing and localized content.
 
 ## Overview
 
-Uniweb's i18n system provides:
+Uniweb uses a **Component Content Architecture (CCA)** where content arrives to components already localized. There is no runtime translation lookup—each locale is a complete static build.
+
+Key characteristics:
 
 - **Locale-prefixed URLs**: `/`, `/es/`, `/fr/` for different languages
-- **Translated content**: Separate markdown files per locale
-- **String translations**: JSON files for UI strings
-- **Language switcher**: Built-in API for navigation between locales
-- **SEO-friendly**: Proper `hreflang` tags and localized metadata
+- **Build-time translation**: Translations are merged during build, not runtime
+- **Full page reload for switching**: Navigating to `/es/about` loads Spanish content
+- **SEO-friendly**: Each locale generates separate static HTML with proper `hreflang` tags
 
 ---
 
@@ -25,49 +26,68 @@ i18n:
   locales: [en, es, fr]
 ```
 
-### 2. Create Translation Files
+### 2. Create Translated Content
+
+Content translation happens at build time. Provide translations via locale-specific files:
 
 ```
-site/
-└── locales/
-    ├── en.json
-    ├── es.json
-    └── fr.json
+pages/about/
+├── page.yml
+├── 1-intro.md           # Default locale (English)
+├── 1-intro.es.md        # Spanish
+└── 1-intro.fr.md        # French
 ```
 
-```json
-// locales/en.json
-{
-  "nav.home": "Home",
-  "nav.about": "About",
-  "footer.copyright": "© 2025 My Company"
-}
-```
-
-```json
-// locales/es.json
-{
-  "nav.home": "Inicio",
-  "nav.about": "Acerca de",
-  "footer.copyright": "© 2025 Mi Empresa"
-}
-```
-
-### 3. Use Translations in Components
+### 3. Build a Language Switcher
 
 ```jsx
-import { useLocale } from '@uniweb/kit'
+import { useWebsite } from '@uniweb/kit'
 
-function Footer() {
-  const { t } = useLocale()
+function LanguageSwitcher() {
+  const { website } = useWebsite()
+
+  if (!website.hasMultipleLocales()) return null
+
+  const locales = website.getLocales()
+  const active = website.getActiveLocale()
 
   return (
-    <footer>
-      <p>{t('footer.copyright')}</p>
-    </footer>
+    <div>
+      {locales.map(locale => (
+        <a
+          key={locale.code}
+          href={website.getLocaleUrl(locale.code)}
+          className={locale.code === active ? 'active' : ''}
+        >
+          {locale.label}
+        </a>
+      ))}
+    </div>
   )
 }
 ```
+
+---
+
+## How Content Arrives to Components
+
+**Components receive content already translated.** When a user visits `/es/about`, the component receives Spanish content in `content.title`, `content.paragraphs`, etc.—there's no translation function to call.
+
+```jsx
+// Component receives localized content directly
+function Hero({ content }) {
+  // content.title is already in the user's language
+  // No t() function, no translation lookup
+  return (
+    <section>
+      <h1>{content.title}</h1>
+      {content.paragraphs.map((p, i) => <p key={i}>{p}</p>)}
+    </section>
+  )
+}
+```
+
+This is the **Component Content Architecture (CCA)**—content is resolved before it reaches components.
 
 ---
 
@@ -125,102 +145,12 @@ The default locale never has a prefix. Other locales always have their code as a
 
 ---
 
-## Translation Files
-
-### Location
-
-```
-site/
-└── locales/
-    ├── en.json       # English translations
-    ├── es.json       # Spanish translations
-    └── fr.json       # French translations
-```
-
-### Format
-
-Flat key-value pairs:
-
-```json
-{
-  "site.title": "My Website",
-  "nav.home": "Home",
-  "nav.about": "About Us",
-  "nav.contact": "Contact",
-  "hero.title": "Welcome to Our Site",
-  "hero.subtitle": "Building the future",
-  "cta.getStarted": "Get Started",
-  "cta.learnMore": "Learn More",
-  "footer.copyright": "© 2025 My Company",
-  "footer.privacy": "Privacy Policy"
-}
-```
-
-Use dot notation to organize keys by feature or component.
-
-### Nested Structure (Also Supported)
-
-```json
-{
-  "nav": {
-    "home": "Home",
-    "about": "About Us"
-  },
-  "footer": {
-    "copyright": "© 2025 My Company"
-  }
-}
-```
-
-Access with dot notation: `t('nav.home')`.
-
----
-
-## Using Translations
-
-### The useLocale Hook
-
-```jsx
-import { useLocale } from '@uniweb/kit'
-
-function Header() {
-  const { t, locale, locales } = useLocale()
-
-  return (
-    <header>
-      <nav>
-        <a href="/">{t('nav.home')}</a>
-        <a href="/about">{t('nav.about')}</a>
-      </nav>
-      <span>Current: {locale}</span>
-    </header>
-  )
-}
-```
-
-### Hook Return Values
-
-| Value | Type | Description |
-|-------|------|-------------|
-| `t(key)` | function | Get translation for key |
-| `locale` | string | Current locale code |
-| `locales` | array | All available locales |
-| `isDefaultLocale` | boolean | Is current locale the default? |
-
-### Fallback Behavior
-
-If a translation key is missing:
-1. Returns the key itself (for debugging)
-2. Logs a warning in development
-
----
-
 ## Language Switcher
 
 ### Building a Switcher
 
 ```jsx
-import { useWebsite } from '@uniweb/kit'
+import { useWebsite, getLocaleLabel } from '@uniweb/kit'
 
 function LanguageSwitcher() {
   const { website } = useWebsite()
@@ -237,12 +167,13 @@ function LanguageSwitcher() {
     <select
       value={active}
       onChange={(e) => {
+        // Navigate triggers full page reload with new locale content
         window.location.href = website.getLocaleUrl(e.target.value)
       }}
     >
       {locales.map(locale => (
         <option key={locale.code} value={locale.code}>
-          {locale.label}
+          {getLocaleLabel(locale)}
         </option>
       ))}
     </select>
@@ -253,46 +184,50 @@ function LanguageSwitcher() {
 ### Website Locale API
 
 ```js
-const { website } = useWebsite()
+import { useWebsite } from '@uniweb/kit'
 
-// Check if site is multilingual
-website.hasMultipleLocales()  // boolean
+function MyComponent() {
+  const { website } = useWebsite()
 
-// Get all locales
-website.getLocales()
-// [{ code: 'en', label: 'English', isDefault: true }, ...]
+  // Check if site is multilingual
+  website.hasMultipleLocales()  // boolean
 
-// Get current locale
-website.getActiveLocale()  // 'en'
+  // Get all locales
+  website.getLocales()
+  // [{ code: 'en', label: 'English', isDefault: true }, ...]
 
-// Get URL for switching locales
-website.getLocaleUrl('es')  // '/es/about' (if currently on /about)
-```
+  // Get current locale
+  website.getActiveLocale()  // 'en'
 
-### Display Names
-
-When locales don't have explicit labels, use the kit utility:
-
-```jsx
-import { getLocaleLabel } from '@uniweb/kit'
-
-function LocaleOption({ locale }) {
-  // Returns: explicit label > built-in name > code.toUpperCase()
-  const label = getLocaleLabel(locale)
-
-  return <option value={locale.code}>{label}</option>
+  // Get URL for switching locales (from current page)
+  website.getLocaleUrl('es')  // '/es/about' (if currently on /about)
 }
 ```
 
-Built-in display names include common languages (English, Español, Français, Deutsch, etc.).
+### Display Names Utility
+
+When locales don't have explicit labels:
+
+```jsx
+import { getLocaleLabel, LOCALE_DISPLAY_NAMES } from '@uniweb/kit'
+
+// From locale object with label
+getLocaleLabel({ code: 'es', label: 'Spanish' })  // 'Spanish'
+
+// From locale object without label
+getLocaleLabel({ code: 'es' })  // 'Español' (built-in)
+
+// Access built-in names directly
+console.log(LOCALE_DISPLAY_NAMES.fr)  // 'Français'
+```
 
 ---
 
-## Localized Content
+## Providing Translated Content
 
-### Option 1: Separate Content Files
+### Option 1: Separate Content Files (Recommended)
 
-Create locale-specific markdown files:
+Create locale-specific markdown files using the `.{locale}.md` suffix:
 
 ```
 pages/about/
@@ -302,47 +237,112 @@ pages/about/
 └── 1-intro.fr.md        # French
 ```
 
-The system automatically serves the correct file based on the active locale.
-
-### Option 2: Single File with Frontmatter
-
-For simple pages, include all translations in one file:
+Each file contains the full content in that language:
 
 ```markdown
+<!-- 1-intro.md (English) -->
 ---
 type: Hero
-title: Welcome to Our Site
-title_es: Bienvenido a Nuestro Sitio
-title_fr: Bienvenue sur Notre Site
 ---
+
+# Welcome to Our Company
+
+We build amazing products.
 ```
 
-Access in components:
+```markdown
+<!-- 1-intro.es.md (Spanish) -->
+---
+type: Hero
+---
 
-```jsx
-function Hero({ content, block }) {
-  const locale = block.website.getActiveLocale()
-  const title = content[`title_${locale}`] || content.title
+# Bienvenido a Nuestra Empresa
 
-  return <h1>{title}</h1>
+Construimos productos increíbles.
+```
+
+The build system automatically serves the correct file based on the active locale.
+
+### Option 2: Localized Page Metadata
+
+For page-level metadata, use locale suffixes in `page.yml`:
+
+```yaml
+# pages/about/page.yml
+title: About Us
+title_es: Sobre Nosotros
+title_fr: À Propos
+
+description: Learn about our company
+description_es: Conozca nuestra empresa
+description_fr: Découvrez notre entreprise
+```
+
+---
+
+## Translation Workflow
+
+Uniweb uses a hash-based translation system for managing translations at scale.
+
+### 1. Extract Translatable Strings
+
+```bash
+uniweb i18n extract
+```
+
+Generates `locales/manifest.json` with all translatable content:
+
+```json
+{
+  "units": {
+    "a1b2c3d4": {
+      "source": "Welcome to Our Company",
+      "field": "title",
+      "contexts": [{ "page": "/about", "section": "intro" }]
+    }
+  }
 }
 ```
 
-### Option 3: Translation Keys in Content
+### 2. Provide Translations
 
-Reference translation keys in content:
+Create locale files with translations keyed by hash:
 
-```markdown
----
-type: Hero
----
-
-# {{t:hero.title}}
-
-{{t:hero.subtitle}}
+```json
+// locales/es.json
+{
+  "a1b2c3d4": "Bienvenido a Nuestra Empresa"
+}
 ```
 
-The runtime resolves `{{t:key}}` placeholders using the translation files.
+### 3. Build
+
+```bash
+uniweb build
+```
+
+The build merges translations and generates one `site-content.json` per locale:
+
+```
+dist/
+├── index.html              # English (default)
+├── site-content.json       # English content
+├── es/
+│   ├── index.html          # Spanish
+│   └── site-content.json   # Spanish content
+└── fr/
+    ├── index.html          # French
+    └── site-content.json   # French content
+```
+
+### 4. Sync Changes
+
+After content updates:
+
+```bash
+uniweb i18n sync    # Detect changes, update manifest
+uniweb i18n status  # Check translation coverage
+```
 
 ---
 
@@ -359,19 +359,12 @@ The build generates proper `hreflang` tags for each page:
 <link rel="alternate" hreflang="x-default" href="https://example.com/about" />
 ```
 
-### Localized Metadata
+### HTML lang Attribute
 
-Page metadata adapts to locale:
+Each locale's HTML includes the correct `lang` attribute:
 
-```yaml
-# pages/about/page.yml
-title: About Us
-title_es: Sobre Nosotros
-title_fr: À Propos
-
-description: Learn about our company
-description_es: Conozca nuestra empresa
-description_fr: Découvrez notre entreprise
+```html
+<html lang="es">
 ```
 
 ---
@@ -417,54 +410,21 @@ search:
   enabled: true
 ```
 
-### locales/en.json
-
-```json
-{
-  "site.tagline": "Building Tomorrow",
-  "nav.home": "Home",
-  "nav.products": "Products",
-  "nav.about": "About",
-  "nav.contact": "Contact",
-  "hero.cta": "Get Started",
-  "footer.copyright": "© 2025 Global Company. All rights reserved.",
-  "footer.privacy": "Privacy Policy",
-  "footer.terms": "Terms of Service"
-}
-```
-
-### locales/es.json
-
-```json
-{
-  "site.tagline": "Construyendo el Mañana",
-  "nav.home": "Inicio",
-  "nav.products": "Productos",
-  "nav.about": "Nosotros",
-  "nav.contact": "Contacto",
-  "hero.cta": "Comenzar",
-  "footer.copyright": "© 2025 Global Company. Todos los derechos reservados.",
-  "footer.privacy": "Política de Privacidad",
-  "footer.terms": "Términos de Servicio"
-}
-```
-
-### Header Component
+### Header with Language Switcher
 
 ```jsx
-import { useLocale, useWebsite } from '@uniweb/kit'
+import { useWebsite, getLocaleLabel } from '@uniweb/kit'
 
-function Header() {
-  const { t } = useLocale()
+export function Header({ content }) {
   const { website } = useWebsite()
 
   return (
     <header>
       <nav>
-        <a href="/">{t('nav.home')}</a>
-        <a href="/products">{t('nav.products')}</a>
-        <a href="/about">{t('nav.about')}</a>
-        <a href="/contact">{t('nav.contact')}</a>
+        {/* Links receive localized labels from content */}
+        {content.links.map(link => (
+          <a key={link.href} href={link.href}>{link.label}</a>
+        ))}
       </nav>
 
       {website.hasMultipleLocales() && (
@@ -487,7 +447,7 @@ function LocaleSwitcher() {
           href={website.getLocaleUrl(locale.code)}
           className={locale.code === active ? 'active' : ''}
         >
-          {locale.label}
+          {getLocaleLabel(locale)}
         </a>
       ))}
     </div>
@@ -497,24 +457,38 @@ function LocaleSwitcher() {
 
 ---
 
+## Key Concepts
+
+### No Runtime Translation Lookup
+
+Unlike traditional i18n libraries, there is no `t()` function or `useLocale` hook. Components receive content already translated via the `content` prop.
+
+### Full Page Reload for Switching
+
+When users switch languages, they navigate to a new URL (e.g., `/es/about`), which triggers a full page reload. This keeps the architecture simple and SEO-friendly.
+
+### Static Build Per Locale
+
+Each locale generates its own static HTML files with embedded content. There's no client-side translation—each page is pre-rendered in the correct language.
+
+---
+
 ## Best Practices
 
-1. **Use descriptive keys**: `nav.products` is better than `nav_item_2`
+1. **Write in default locale first**: Complete content in your default language, then translate
 
-2. **Keep translations in sync**: Missing keys show the key name, which is ugly
+2. **Use separate files for complex pages**: Locale-specific `.es.md` files are clearer than inline translations
 
-3. **Default locale first**: Write content in the default locale, then translate
+3. **Test all locales**: Check that layouts work with longer/shorter text in different languages
 
-4. **Test all locales**: Check that layouts work with longer/shorter text
+4. **Consider RTL**: For Arabic, Hebrew, etc., you may need additional CSS for right-to-left layout
 
-5. **Consider RTL**: For Arabic, Hebrew, etc., you may need additional CSS
-
-6. **SEO per locale**: Provide unique titles and descriptions per language
+5. **SEO per locale**: Provide unique titles and descriptions per language in `page.yml`
 
 ---
 
 ## See Also
 
 - [Site Configuration](./site-configuration.md) — i18n settings in site.yml
-- [Navigation Patterns](./navigation-patterns.md) — Building language-aware navigation
+- [Content Structure](./content-structure.md) — How content flows to components
 - [Site Search](./search.md) — Locale-specific search indexes

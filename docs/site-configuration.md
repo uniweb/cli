@@ -128,26 +128,17 @@ locales:
 locales: '*'
 ```
 
-### Locale Files
+### Translation Workflow
 
-Create `locales/{code}.json` for translations:
+Translations are extracted and managed through a hash-based system:
 
-```
-site/
-└── locales/
-    ├── en.json
-    ├── es.json
-    └── fr.json
+```bash
+uniweb i18n extract    # Extract translatable strings
+uniweb i18n sync       # Detect changes
+uniweb i18n status     # Check coverage
 ```
 
-```json
-// locales/en.json
-{
-  "nav.home": "Home",
-  "nav.about": "About",
-  "footer.copyright": "© 2025 My Company"
-}
-```
+This generates `locales/manifest.json` with all translatable content, and you provide translations in `locales/{locale}.json` keyed by content hash.
 
 ### Generated Routes
 

@@ -52,14 +52,17 @@ const { website } = useWebsite()
 
 ### useRouting
 
-Access routing information and navigation.
+SSG-safe access to routing functionality. Returns hook functions that you call to get routing data.
 
 ```jsx
 import { useRouting } from '@uniweb/kit'
 
 function NavLink({ href, children }) {
-  const { route, navigate } = useRouting()
-  const isActive = route === href || route.startsWith(href + '/')
+  const { useLocation, useNavigate } = useRouting()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  const isActive = location.pathname === href
 
   return (
     <a
@@ -80,25 +83,31 @@ function NavLink({ href, children }) {
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `route` | string | Current route path (e.g., `/about`) |
-| `navigate` | function | Navigate to a route programmatically |
-| `params` | object | Route parameters for dynamic routes |
+| `useLocation()` | function | Returns location object `{ pathname, search, hash }` |
+| `useParams()` | function | Returns route parameters for dynamic routes |
+| `useNavigate()` | function | Returns navigate function for programmatic navigation |
+| `Link` | component | Router Link component (or `'a'` fallback) |
+| `isRoutingAvailable()` | function | Check if router context is available |
 
-### useLocale
+**SSG Safety**: During SSG/prerender, these return sensible defaults (empty pathname, empty params, no-op navigate) instead of throwing errors.
 
-Access translations and locale information.
+### useActiveRoute
+
+Active route detection for navigation highlighting.
 
 ```jsx
-import { useLocale } from '@uniweb/kit'
+import { useActiveRoute } from '@uniweb/kit'
 
-function Footer() {
-  const { t, locale, locales } = useLocale()
+function NavItem({ page }) {
+  const { isActive, isActiveOrAncestor } = useActiveRoute()
 
   return (
-    <footer>
-      <p>{t('footer.copyright')}</p>
-      <p>Current language: {locale}</p>
-    </footer>
+    <a
+      href={page.route}
+      className={isActiveOrAncestor(page) ? 'active' : ''}
+    >
+      {page.label}
+    </a>
   )
 }
 ```
@@ -107,10 +116,12 @@ function Footer() {
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `t(key)` | function | Get translation for a key |
-| `locale` | string | Current locale code |
-| `locales` | array | All available locale objects |
-| `isDefaultLocale` | boolean | Is current locale the default? |
+| `route` | string | Current normalized route (e.g., `'docs/getting-started'`) |
+| `rootSegment` | string | First segment of route (e.g., `'docs'`) |
+| `isActive(pageOrRoute)` | function | Check exact match with current route |
+| `isActiveOrAncestor(pageOrRoute)` | function | Check if page or its children are active |
+
+Use `isActiveOrAncestor` for parent nav items that should highlight when child pages are active.
 
 ### useVersion
 
@@ -159,6 +170,7 @@ function VersionSwitcher() {
 | `isDeprecatedVersion` | boolean | Is current version deprecated? |
 | `getVersionUrl(id)` | function | Compute URL for a version |
 | `hasVersionedContent` | boolean | Does site have any versioned content? |
+| `versionedScopes` | object | Map of scope → `{ versions, latestId }` |
 
 ### useThemeData
 
@@ -289,11 +301,12 @@ function Header({ block }) {
   const pages = website.getPageHierarchy({ for: 'header' })
   const allPages = website.pages
 
-  // Locales
+  // Locales (for language switcher UI)
+  // Note: Content arrives already localized - no translation lookup needed
   if (website.hasMultipleLocales()) {
-    const locales = website.getLocales()
-    const active = website.getActiveLocale()
-    const url = website.getLocaleUrl('es')
+    const locales = website.getLocales()    // All locale objects
+    const active = website.getActiveLocale() // Current locale code
+    const url = website.getLocaleUrl('es')   // URL for switching
   }
 
   // Search
@@ -564,12 +577,14 @@ function Navigation() {
 ### From Hooks (Recommended)
 
 ```jsx
-import { useWebsite, useRouting, useLocale } from '@uniweb/kit'
+import { useWebsite, useRouting } from '@uniweb/kit'
 
 function MyComponent() {
   const { website } = useWebsite()
   const { route } = useRouting()
-  const { t, locale } = useLocale()
+
+  // Access locale via website
+  const locale = website.getActiveLocale()
 
   // Use hooks throughout the component
 }
@@ -602,5 +617,5 @@ function MyComponent({ block }) {
 - [Component Metadata](./component-metadata.md) — Defining component interfaces
 - [Content Structure](./content-structure.md) — Content shape and guarantees
 - [Site Theming](./site-theming.md) — Theme API and hooks
-- [Internationalization](./internationalization.md) — Locale hooks and API
+- [Internationalization](./internationalization.md) — Locale switching and build-time translation
 - [Versioning](./versioning.md) — Version hooks and API
