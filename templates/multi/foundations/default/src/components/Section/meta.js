@@ -1,66 +1,61 @@
+/**
+ * Section Component Metadata (v2)
+ *
+ * A versatile content section for headings, text, and links.
+ */
 export default {
   title: 'Section',
   description: 'A versatile content section for headings, text, and links',
-  category: 'Content',
+  category: 'content',
+  purpose: 'Inform',
 
-  elements: {
-    pretitle: {
-      label: 'Eyebrow',
-      description: 'Small text above the title (H3 before H1)',
-    },
-    title: {
-      label: 'Title',
-      description: 'Main heading (H1)',
-    },
-    subtitle: {
-      label: 'Subtitle',
-      description: 'Secondary heading (H2 after H1)',
-    },
-    paragraphs: {
-      label: 'Content',
-      description: 'Body text paragraphs',
-    },
-    links: {
-      label: 'Links',
-      description: 'Call-to-action buttons',
-    },
-    imgs: {
-      label: 'Images',
-      description: 'Section images',
-    },
+  content: {
+    pretitle: 'Eyebrow text',
+    title: 'Main heading',
+    subtitle: 'Secondary heading',
+    paragraphs: 'Body text',
+    links: 'Call-to-action buttons',
+    imgs: 'Section images',
   },
 
-  properties: {
+  params: {
     theme: {
       type: 'select',
       label: 'Theme',
-      options: [
-        { value: 'light', label: 'Light' },
-        { value: 'dark', label: 'Dark' },
-        { value: 'primary', label: 'Primary' },
-      ],
+      options: ['light', 'dark', 'primary'],
       default: 'light',
     },
     align: {
       type: 'select',
       label: 'Alignment',
-      options: [
-        { value: 'left', label: 'Left' },
-        { value: 'center', label: 'Center' },
-        { value: 'right', label: 'Right' },
-      ],
+      options: ['left', 'center', 'right'],
       default: 'center',
     },
     width: {
       type: 'select',
       label: 'Width',
       options: [
-        { value: 'narrow', label: 'Narrow' },
-        { value: 'default', label: 'Default' },
-        { value: 'wide', label: 'Wide' },
+        'narrow',
+        'default',
+        'wide',
         { value: 'full', label: 'Full Width' },
       ],
       default: 'default',
+    },
+  },
+
+  presets: {
+    default: {
+      label: 'Centered',
+      params: { theme: 'light', align: 'center' },
+    },
+    dark: {
+      label: 'Dark Theme',
+      params: { theme: 'dark', align: 'center' },
+    },
+    left: {
+      label: 'Left Aligned',
+      params: { theme: 'light', align: 'left' },
     },
   },
 }
