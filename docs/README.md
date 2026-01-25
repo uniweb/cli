@@ -146,6 +146,7 @@ New to Uniweb? Read these first:
 
 ### Reference
 
+- **[CLI Commands](./cli-commands.md)** — Complete reference for `uniweb create`, `build`, `docs`, `i18n`
 - **[Runtime API](./runtime-api.md)** — Hooks and objects available to components (`useWebsite`, `useVersion`, etc.)
 
 ---
