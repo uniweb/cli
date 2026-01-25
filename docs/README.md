@@ -101,10 +101,11 @@ This is the **Component Content Architecture (CCA)**: content is resolved before
 
 ## Start Here
 
-New to Uniweb? Read these first:
+New to Uniweb? Start with the quickstart, then explore the concepts:
 
 | Guide | What You'll Learn |
 |-------|-------------------|
+| [Quickstart](./quickstart.md) | Create a site in 5 minutes — hands-on tutorial |
 | [Content Structure](./content-structure.md) | How markdown becomes component props |
 | [Component Metadata](./component-metadata.md) | Defining what your components expect |
 | [Site Configuration](./site-configuration.md) | The `site.yml` file |
@@ -113,6 +114,10 @@ New to Uniweb? Read these first:
 ---
 
 ## All Guides
+
+### Getting Started
+
+- **[Quickstart](./quickstart.md)** — Create your first site in 5 minutes
 
 ### Core Concepts
 
