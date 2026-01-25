@@ -2,24 +2,13 @@
 
 This guide covers patterns for building navigation components—navbars, sidebars, menus, and other hierarchical link structures.
 
-## Two Approaches
+## Automatic Navigation
 
-There are two ways to define navigation in Uniweb:
+Foundation components have access to the complete page structure of the site. This means headers and footers can build their menus automatically from your page hierarchy—no content definition required.
 
-| Approach | Best For | Complexity |
-|----------|----------|------------|
-| **Markdown lists** | Simple flat or nested link lists | Low |
-| **Nav schema (tagged YAML)** | Rich navigation with icons, descriptions, metadata | Medium |
+### Using the Page Hierarchy
 
-Both approaches work. Choose based on how much structure your navigation needs.
-
-## Automatic vs Manual Navigation
-
-Foundation components have access to the complete page structure of the site. This means headers and footers can build their menus automatically—no content definition required.
-
-### Automatic Navigation
-
-Use the `useWebsite` hook to access the page hierarchy:
+Use the `useWebsite` hook to access pages:
 
 ```jsx
 import { useWebsite } from '@uniweb/kit'
@@ -31,14 +20,24 @@ function Header() {
   return (
     <nav>
       {pages.map(page => (
-        <a key={page.id} href={page.route}>{page.label || page.title}</a>
+        <a key={page.id} href={page.route}>
+          {page.label || page.title}
+        </a>
       ))}
     </nav>
   )
 }
 ```
 
-The `getPageHierarchy()` method returns pages with their children, respecting visibility settings.
+The `getPageHierarchy()` method returns pages with their nested children, respecting visibility settings. Each page object includes:
+
+| Field | Description |
+|-------|-------------|
+| `id` | Page identifier |
+| `route` | URL path |
+| `title` | Page title |
+| `label` | Short nav label (falls back to title) |
+| `children` | Nested child pages |
 
 ### Page Visibility Control
 
@@ -53,13 +52,13 @@ hideInFooter: true   # Don't show in footer navigation
 
 | Option | Effect |
 |--------|--------|
-| `hidden: true` | Hide from all navigation (page still accessible) |
+| `hidden: true` | Hide from all navigation (page still accessible via URL) |
 | `hideInHeader: true` | Hide from header nav only |
 | `hideInFooter: true` | Hide from footer nav only |
 
-### When to Use Manual Navigation
+## Manual Navigation
 
-Automatic navigation is convenient but limited. Use manual definitions when you need:
+Automatic navigation is convenient but limited. Define navigation manually when you need:
 
 - **Icons** alongside menu items
 - **Descriptions** or secondary text
@@ -67,7 +66,16 @@ Automatic navigation is convenient but limited. Use manual definitions when you 
 - **Custom grouping** different from the page hierarchy
 - **Mega menus** with rich content
 
-A well-designed header or footer component supports both modes:
+### Two Approaches for Manual Navigation
+
+| Approach | Best For | Complexity |
+|----------|----------|------------|
+| **Markdown lists** | Simple flat or nested links | Low |
+| **Nav schema (YAML)** | Icons, descriptions, metadata | Medium |
+
+### Supporting Both Modes
+
+A well-designed header or footer component supports both automatic and manual navigation:
 
 ```jsx
 function Header({ content }) {
@@ -89,11 +97,11 @@ function Header({ content }) {
 }
 ```
 
-This gives content authors flexibility—leave the header section empty for automatic nav, or provide a `nav` block for full control.
+This gives content authors flexibility—leave the header section empty for automatic nav, or provide a `nav` block for full control with icons and custom structure.
 
 ## Markdown Lists
 
-For simple navigation, markdown bullet lists work well. Each list item with a link becomes a navigation entry.
+For simple manual navigation, markdown bullet lists work well. Each list item with a link becomes a navigation entry.
 
 ### Flat Navigation
 
@@ -127,18 +135,12 @@ Your component receives:
 Nested lists create hierarchical navigation—perfect for dropdown menus:
 
 ```markdown
----
-type: Navbar
----
-
 - [Products](/products)
   - [Widgets](/products/widgets)
   - [Gadgets](/products/gadgets)
 - [Company](/company)
   - [About](/company/about)
   - [Careers](/company/careers)
-    - [Engineering](/company/careers/engineering)
-    - [Design](/company/careers/design)
 ```
 
 Each nested list becomes a `lists` array inside the parent item:
@@ -158,7 +160,7 @@ Each nested list becomes a `lists` array inside the parent item:
           ]
         }]
       },
-      // ... Company with nested items
+      // ...
     ]
   }]
 }
@@ -190,7 +192,7 @@ items: [
 
 ### Rendering Nested Lists
 
-Here's a simple recursive component:
+Here's a recursive component for nested navigation:
 
 ```jsx
 function NavList({ list, depth = 0 }) {
@@ -204,33 +206,23 @@ function NavList({ list, depth = 0 }) {
           {item.paragraphs?.[0] && (
             <span className="description">{item.paragraphs[0]}</span>
           )}
-          {item.lists?.map((sublist, j) => (
-            <NavList key={j} list={sublist} depth={depth + 1} />
+          {item.lists?.map((nested, j) => (
+            <NavList key={j} list={nested} depth={depth + 1} />
           ))}
         </li>
       ))}
     </ul>
   )
 }
-
-function Navbar({ content }) {
-  return (
-    <nav>
-      {content.lists.map((list, i) => (
-        <NavList key={i} list={list} />
-      ))}
-    </nav>
-  )
-}
 ```
 
 ## Nav Schema (Tagged YAML)
 
-For richer navigation with icons, targets, visibility flags, and deep nesting, use the `nav` schema via tagged YAML blocks:
+For richer navigation with icons, targets, and metadata, use the `nav` schema via tagged YAML blocks:
 
 ```markdown
 ---
-type: Sidebar
+type: Header
 ---
 
 ```yaml:nav
@@ -246,7 +238,7 @@ type: Sidebar
       text: Quick introduction
     - label: API Reference
       href: /docs/api
-      text: Complete API documentation
+      text: Complete API docs
 - icon: /icons/github.svg
   label: GitHub
   href: https://github.com/example
@@ -272,23 +264,23 @@ type: Sidebar
 
 Tagged YAML appears in `content.data`:
 
-```js
-function Sidebar({ content }) {
+```jsx
+function Header({ content }) {
   const nav = content.data?.nav || []
 
   return (
-    <aside>
+    <nav>
       {nav.map((item, i) => (
         <NavItem key={i} item={item} />
       ))}
-    </aside>
+    </nav>
   )
 }
 
 function NavItem({ item }) {
   return (
     <div className={item.current ? "active" : ""}>
-      {item.icon && <img src={item.icon} alt="" />}
+      {item.icon && <img src={item.icon} alt="" className="w-5 h-5" />}
       <a href={item.href} target={item.target}>
         {item.label}
       </a>
@@ -307,7 +299,7 @@ function NavItem({ item }) {
 
 ### Multiple Nav Blocks
 
-You can have multiple nav blocks with different tags:
+Use different tags for different navigation areas:
 
 ```markdown
 ```yaml:main-nav
@@ -332,32 +324,20 @@ const mainNav = content.data?.['main-nav'] || []
 const footerNav = content.data?.['footer-nav'] || []
 ```
 
-## Choosing Between Approaches
+## Choosing Your Approach
 
-### Use Markdown Lists When:
-
-- Navigation is simple (flat or one level of nesting)
-- You don't need icons or metadata
-- Content authors prefer writing markdown
-- Quick prototyping
-
-### Use Nav Schema When:
-
-- Navigation needs icons
-- Items have descriptions or secondary text
-- You need visibility control (`hidden`, `current`)
-- Deep nesting (3+ levels)
-- Multiple nav sections on one page
-- Consistent structure matters for component reuse
+| Scenario | Recommendation |
+|----------|----------------|
+| Simple site, few pages | Automatic navigation |
+| Need icons or descriptions | Nav schema (YAML) |
+| Quick prototype | Markdown lists |
+| Deep nesting (3+ levels) | Nav schema (YAML) |
+| Mix of internal + external links | Nav schema (YAML) |
+| Content authors prefer markdown | Markdown lists |
 
 ## Common Patterns
 
 ### Header with Dropdown Menu
-
-```markdown
----
-type: Header
----
 
 ```yaml:nav
 - label: Products
@@ -373,14 +353,8 @@ type: Header
 - label: About
   href: /about
 ```
-```
 
 ### Sidebar with Sections
-
-```markdown
----
-type: Sidebar
----
 
 ```yaml:nav
 - label: Getting Started
@@ -395,21 +369,9 @@ type: Sidebar
       href: /docs/components
     - label: Theming
       href: /docs/theming
-- label: API
-  children:
-    - label: Reference
-      href: /docs/api
-    - label: Examples
-      href: /docs/examples
-```
 ```
 
 ### Social Links (Icon-Only)
-
-```markdown
----
-type: Footer
----
 
 ```yaml:social
 - icon: /icons/twitter.svg
@@ -420,14 +382,9 @@ type: Footer
   label: GitHub
   href: https://github.com/example
   target: _blank
-- icon: /icons/linkedin.svg
-  label: LinkedIn
-  href: https://linkedin.com/company/example
-  target: _blank
-```
 ```
 
-The `label` provides accessibility (screen readers) while the icon is displayed visually.
+The `label` provides accessibility (screen readers) while only the icon is displayed visually.
 
 ### Table of Contents
 
