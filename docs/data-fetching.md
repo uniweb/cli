@@ -457,5 +457,6 @@ Components should always handle the case where data might be empty.
 ## See Also
 
 - [Dynamic Routes](./dynamic-routes.md) — Generate multiple pages from data (blogs, catalogs, etc.)
+- [Content Collections](./content-collections.md) — Markdown-based data collections
 - [Content Structure](./content-structure.md) — How content is parsed and structured
 - [Component Metadata](./component-metadata.md) — Full meta.js schema reference

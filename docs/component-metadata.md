@@ -593,3 +593,12 @@ sections:
 3. **Intent over implementation** — Params describe purpose (`theme: dark`) not CSS (`background: #1a1a1a`)
 4. **Minimal metadata** — Only include what the editor needs; implementation details stay in code
 5. **Composition over configuration** — Use Grid + simple components instead of mega-components with many options
+
+---
+
+## See Also
+
+- [Content Structure](./content-structure.md) — How content is parsed and structured
+- [Runtime API](./runtime-api.md) — Hooks and core objects available to components
+- [Foundation Configuration](./foundation-configuration.md) — CSS variables and custom Layout
+- [Data Fetching](./data-fetching.md) — Loading external data into components

@@ -173,8 +173,10 @@ The parser extracts semantic elements from markdown—`title` from the first hea
 - [Page Configuration](./docs/page-configuration.md) — Complete page.yml reference
 - [Content Structure](./docs/content-structure.md) — How content is parsed and structured
 - [Navigation Patterns](./docs/navigation-patterns.md) — Building navbars, menus, and sidebars
+- [Special Sections](./docs/special-sections.md) — @header, @footer, and sidebars
 - [Linking](./docs/linking.md) — Stable page references that survive reorganization
 - [Component Metadata](./docs/component-metadata.md) — Full meta.js schema reference
+- [Foundation Configuration](./docs/foundation-configuration.md) — CSS variables and custom Layout
 - [Site Theming](./docs/site-theming.md) — Colors, typography, and dark mode
 - [Internationalization](./docs/internationalization.md) — Multi-language sites
 - [Data Fetching](./docs/data-fetching.md) — Load external data from files or APIs
@@ -182,6 +184,7 @@ The parser extracts semantic elements from markdown—`title` from the first hea
 - [Content Collections](./docs/content-collections.md) — Manage articles, team members, and more
 - [Versioning](./docs/versioning.md) — Multi-version documentation
 - [Site Search](./docs/search.md) — Built-in full-text search
+- [Runtime API](./docs/runtime-api.md) — Hooks and core objects
 
 ## Foundations Are Portable
 
