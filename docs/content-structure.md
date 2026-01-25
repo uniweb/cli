@@ -228,9 +228,32 @@ The attribute syntax is more flexible—it allows combining role with other attr
 | `controls` | Show video controls |
 | `poster` | Poster/thumbnail image |
 
+### Clickable Images and Videos
+
+Images and videos can be links—clicking them navigates to the specified URL:
+
+```markdown
+![Product Screenshot](./screenshot.jpg){href=/products/details}
+![Demo Video](./demo.mp4){role=video href=/demo target=_blank}
+```
+
+```js
+imgs: [{ url: "./screenshot.jpg", alt: "Product Screenshot", href: "/products/details" }]
+videos: [{ src: "./demo.mp4", href: "/demo", target: "_blank" }]
+```
+
+Components can wrap the media in a link element when `href` is present:
+
+```jsx
+function Image({ src, alt, href, target }) {
+  const img = <img src={src} alt={alt} />
+  return href ? <a href={href} target={target}>{img}</a> : img
+}
+```
+
 ## Links and Buttons
 
-Links are collected in the `links` array. Attributes control behavior and styling:
+Links are collected in the `links` array. Attributes control behavior and styling.
 
 ### Basic Links
 
@@ -246,6 +269,100 @@ Links are collected in the `links` array. Attributes control behavior and stylin
 | `target` | `_blank`, `_self`, etc. |
 | `rel` | `noopener`, `noreferrer`, etc. |
 | `download` | Make it a download link |
+
+### Link Detection
+
+The parser intelligently handles links based on context:
+
+**Links in text** stay as paragraphs with inline HTML:
+
+```markdown
+Visit our [about page](/about) to learn more.
+```
+
+```js
+paragraphs: ["Visit our <a href=\"/about\">about page</a> to learn more."]
+```
+
+**Link-only paragraphs** become link objects—useful for CTAs and navigation:
+
+```markdown
+[Get Started](/signup)
+```
+
+```js
+links: [{ href: "/signup", label: "Get Started" }]
+```
+
+**Multiple links on consecutive lines** split into separate link objects:
+
+```markdown
+[Home](/)
+[About](/about)
+[Contact](/contact)
+```
+
+```js
+links: [
+  { href: "/", label: "Home" },
+  { href: "/about", label: "About" },
+  { href: "/contact", label: "Contact" }
+]
+```
+
+This makes it easy to create button groups or nav links without special syntax.
+
+### Links with Icons
+
+When a link-only paragraph contains an adjacent icon, the parser associates them:
+
+```markdown
+![](/icons/home.svg){role=icon} [Home](/)
+```
+
+```js
+links: [{
+  href: "/",
+  label: "Home",
+  iconBefore: { url: "/icons/home.svg" },
+  iconAfter: null
+}]
+```
+
+Icons can appear before or after the link text:
+
+```markdown
+[External Link](https://example.com) ![](/icons/external.svg){role=icon}
+```
+
+```js
+links: [{
+  href: "https://example.com",
+  label: "External Link",
+  iconBefore: null,
+  iconAfter: { url: "/icons/external.svg" }
+}]
+```
+
+**Note:** Icon association only works for single-link paragraphs where the relationship is unambiguous. In paragraphs with multiple links, icons are collected separately in the `icons` array.
+
+### Clickable Icons
+
+Icons can be links themselves—useful for social media buttons and icon-only navigation:
+
+```markdown
+![Twitter](/icons/twitter.svg){role=icon href="https://twitter.com/example" target=_blank}
+![GitHub](/icons/github.svg){role=icon href="https://github.com/example" target=_blank}
+```
+
+```js
+icons: [
+  { url: "/icons/twitter.svg", href: "https://twitter.com/example", target: "_blank" },
+  { url: "/icons/github.svg", href: "https://github.com/example", target: "_blank" }
+]
+```
+
+Components can check `icon.href` to render clickable icons differently from decorative ones.
 
 ### Creating Buttons
 
@@ -499,4 +616,8 @@ There are two ways to create nested content:
 
 Prefer items when possible—they're simpler for content authors. Use subsections when children are complex enough to warrant their own component selection.
 
-See [Component Metadata](./meta/README.md) for how to document what content your component expects.
+## See Also
+
+- [Navigation Patterns](./navigation-patterns.md) — Building navbars, menus, and sidebars
+- [Linking](./linking.md) — The `page:` protocol for stable internal links
+- [Component Metadata](./component-metadata.md) — Documenting what content your component expects

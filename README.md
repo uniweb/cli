@@ -170,6 +170,8 @@ The parser extracts semantic elements from markdown—`title` from the first hea
 **Learn more:**
 
 - [Content Structure](./docs/content-structure.md) — How content is parsed and structured
+- [Navigation Patterns](./docs/navigation-patterns.md) — Building navbars, menus, and sidebars
+- [Linking](./docs/linking.md) — Stable page references that survive reorganization
 - [Component Metadata](./docs/component-metadata.md) — Full meta.js schema reference
 - [Site Theming](./docs/site-theming.md) — Colors, typography, and dark mode
 - [Data Fetching](./docs/data-fetching.md) — Load external data from files or APIs
