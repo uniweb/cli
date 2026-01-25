@@ -13,6 +13,84 @@ There are two ways to define navigation in Uniweb:
 
 Both approaches work. Choose based on how much structure your navigation needs.
 
+## Automatic vs Manual Navigation
+
+Foundation components have access to the complete page structure of the site. This means headers and footers can build their menus automatically—no content definition required.
+
+### Automatic Navigation
+
+Use the `useWebsite` hook to access the page hierarchy:
+
+```jsx
+import { useWebsite } from '@uniweb/kit'
+
+function Header() {
+  const { website } = useWebsite()
+  const pages = website.getPageHierarchy({ for: 'header' })
+
+  return (
+    <nav>
+      {pages.map(page => (
+        <a key={page.id} href={page.route}>{page.label || page.title}</a>
+      ))}
+    </nav>
+  )
+}
+```
+
+The `getPageHierarchy()` method returns pages with their children, respecting visibility settings.
+
+### Page Visibility Control
+
+Pages can opt out of automatic navigation via `page.yml`:
+
+```yaml
+# pages/admin/page.yml
+title: Admin Dashboard
+hideInHeader: true   # Don't show in header navigation
+hideInFooter: true   # Don't show in footer navigation
+```
+
+| Option | Effect |
+|--------|--------|
+| `hidden: true` | Hide from all navigation (page still accessible) |
+| `hideInHeader: true` | Hide from header nav only |
+| `hideInFooter: true` | Hide from footer nav only |
+
+### When to Use Manual Navigation
+
+Automatic navigation is convenient but limited. Use manual definitions when you need:
+
+- **Icons** alongside menu items
+- **Descriptions** or secondary text
+- **External links** mixed with internal pages
+- **Custom grouping** different from the page hierarchy
+- **Mega menus** with rich content
+
+A well-designed header or footer component supports both modes:
+
+```jsx
+function Header({ content }) {
+  const { website } = useWebsite()
+
+  // Manual nav from content (if provided)
+  const manualNav = content.data?.nav
+
+  // Automatic nav from page structure (fallback)
+  const autoNav = website.getPageHierarchy({ for: 'header' })
+
+  const navItems = manualNav || autoNav.map(p => ({
+    label: p.label || p.title,
+    href: p.route,
+    children: p.children?.map(c => ({ label: c.label || c.title, href: c.route }))
+  }))
+
+  return <nav>{/* render navItems */}</nav>
+}
+```
+
+This gives content authors flexibility—leave the header section empty for automatic nav, or provide a `nav` block for full control.
+
 ## Markdown Lists
 
 For simple navigation, markdown bullet lists work well. Each list item with a link becomes a navigation entry.
