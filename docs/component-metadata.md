@@ -235,14 +235,14 @@ content: {
 }
 ```
 
-#### Background Images
+#### Background Media
 
-Background images are handled at the engine level so components don't repeat this logic. Use the top-level `background` field:
+Background images and videos are handled at the engine level so components don't repeat this logic. Use the top-level `background` field:
 
 ```javascript
 export default {
   title: 'Hero',
-  background: true,  // Engine renders background images
+  background: true,  // Engine renders background media
 
   content: {
     title: 'Headline',
@@ -256,6 +256,47 @@ export default {
 | `true` or `'auto'` | Engine handles background |
 | `'manual'` | Component handles its own background |
 | `false` | No background support |
+
+**Frontmatter Background Options**
+
+When a component has `background: true`, authors can configure backgrounds in section frontmatter:
+
+```yaml
+---
+type: Hero
+background:
+  # Image background
+  image: /images/hero.jpg
+  position: center          # CSS background-position
+  size: cover               # CSS background-size
+
+  # Video background (falls back to image on mobile or reduced-motion)
+  video: /videos/hero.mp4   # Auto-detects webm fallback if available
+  poster: /images/hero.jpg  # Shown while video loads
+
+  # Or provide explicit video sources
+  sources:
+    - src: /videos/hero.webm
+      type: video/webm
+    - src: /videos/hero.mp4
+      type: video/mp4
+
+  # Overlay on top of background
+  overlay:
+    enabled: true
+    type: dark              # 'dark' or 'light'
+    opacity: 0.5
+    # Or gradient overlay
+    gradient:
+      start: 'rgba(0,0,0,0.7)'
+      end: 'rgba(0,0,0,0)'
+      angle: 180
+---
+```
+
+**Accessibility**: Video backgrounds automatically respect `prefers-reduced-motion`. When users have reduced motion enabled, the poster image is shown instead of video.
+
+**Format Fallback**: When you provide a `.mp4` video, the engine automatically tries a `.webm` version first (better compression). Just ensure both formats exist at the same path.
 
 ---
 
