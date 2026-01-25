@@ -118,6 +118,7 @@ New to Uniweb? Start with the quickstart, then explore the concepts:
 ### Getting Started
 
 - **[Quickstart](./quickstart.md)** — Create your first site in 5 minutes
+- **[Deployment](./deployment.md)** — Deploy to Vercel, Netlify, Cloudflare, and more
 
 ### Core Concepts
 
