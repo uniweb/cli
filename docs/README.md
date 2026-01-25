@@ -124,6 +124,7 @@ New to Uniweb? Start with the quickstart, then explore the concepts:
 
 - **[Content Structure](./content-structure.md)** — How markdown is parsed into structured content (title, paragraphs, links, items)
 - **[Component Metadata](./component-metadata.md)** — The `meta.js` file: declaring content expectations, parameters, and presets
+- **[Creating Components](./creating-components.md)** — Build custom components for your foundation
 
 ### Configuration
 
