@@ -19,7 +19,7 @@ function Header() {
 
   return (
     <nav>
-      {pages.map(page => (
+      {pages.map((page) => (
         <a key={page.id} href={page.route}>
           {page.label || page.title}
         </a>
@@ -31,13 +31,13 @@ function Header() {
 
 The `getPageHierarchy()` method returns pages with their nested children, respecting visibility settings. Each page object includes:
 
-| Field | Description |
-|-------|-------------|
-| `id` | Page identifier |
-| `route` | URL path |
-| `title` | Page title |
-| `label` | Short nav label (falls back to title) |
-| `children` | Nested child pages |
+| Field      | Description                           |
+| ---------- | ------------------------------------- |
+| `id`       | Page identifier                       |
+| `route`    | URL path                              |
+| `title`    | Page title                            |
+| `label`    | Short nav label (falls back to title) |
+| `children` | Nested child pages                    |
 
 ### Page Visibility Control
 
@@ -46,15 +46,15 @@ Pages can opt out of automatic navigation via `page.yml`:
 ```yaml
 # pages/admin/page.yml
 title: Admin Dashboard
-hideInHeader: true   # Don't show in header navigation
-hideInFooter: true   # Don't show in footer navigation
+hideInHeader: true # Don't show in header navigation
+hideInFooter: true # Don't show in footer navigation
 ```
 
-| Option | Effect |
-|--------|--------|
-| `hidden: true` | Hide from all navigation (page still accessible via URL) |
-| `hideInHeader: true` | Hide from header nav only |
-| `hideInFooter: true` | Hide from footer nav only |
+| Option               | Effect                                                   |
+| -------------------- | -------------------------------------------------------- |
+| `hidden: true`       | Hide from all navigation (page still accessible via URL) |
+| `hideInHeader: true` | Hide from header nav only                                |
+| `hideInFooter: true` | Hide from footer nav only                                |
 
 ## Manual Navigation
 
@@ -68,10 +68,10 @@ Automatic navigation is convenient but limited. Define navigation manually when 
 
 ### Two Approaches for Manual Navigation
 
-| Approach | Best For | Complexity |
-|----------|----------|------------|
-| **Markdown lists** | Simple flat or nested links | Low |
-| **Nav schema (YAML)** | Icons, descriptions, metadata | Medium |
+| Approach              | Best For                      | Complexity |
+| --------------------- | ----------------------------- | ---------- |
+| **Markdown lists**    | Simple flat or nested links   | Low        |
+| **Nav schema (YAML)** | Icons, descriptions, metadata | Medium     |
 
 ### Supporting Both Modes
 
@@ -87,11 +87,16 @@ function Header({ content }) {
   // Automatic nav from page structure (fallback)
   const autoNav = website.getPageHierarchy({ for: 'header' })
 
-  const navItems = manualNav || autoNav.map(p => ({
-    label: p.label || p.title,
-    href: p.route,
-    children: p.children?.map(c => ({ label: c.label || c.title, href: c.route }))
-  }))
+  const navItems =
+    manualNav ||
+    autoNav.map((p) => ({
+      label: p.label || p.title,
+      href: p.route,
+      children: p.children?.map((c) => ({
+        label: c.label || c.title,
+        href: c.route,
+      })),
+    }))
 
   return <nav>{/* render navItems */}</nav>
 }
@@ -119,14 +124,16 @@ Your component receives:
 
 ```js
 {
-  lists: [{
-    style: "bullet",
-    items: [
-      { links: [{ href: "/", label: "Home" }] },
-      { links: [{ href: "/about", label: "About" }] },
-      { links: [{ href: "/contact", label: "Contact" }] }
-    ]
-  }]
+  lists: [
+    {
+      style: 'bullet',
+      items: [
+        { links: [{ href: '/', label: 'Home' }] },
+        { links: [{ href: '/about', label: 'About' }] },
+        { links: [{ href: '/contact', label: 'Contact' }] },
+      ],
+    },
+  ]
 }
 ```
 
@@ -147,22 +154,26 @@ Each nested list becomes a `lists` array inside the parent item:
 
 ```js
 {
-  lists: [{
-    style: "bullet",
-    items: [
-      {
-        links: [{ href: "/products", label: "Products" }],
-        lists: [{
-          style: "bullet",
-          items: [
-            { links: [{ href: "/products/widgets", label: "Widgets" }] },
-            { links: [{ href: "/products/gadgets", label: "Gadgets" }] }
-          ]
-        }]
-      },
-      // ...
-    ]
-  }]
+  lists: [
+    {
+      style: 'bullet',
+      items: [
+        {
+          links: [{ href: '/products', label: 'Products' }],
+          lists: [
+            {
+              style: 'bullet',
+              items: [
+                { links: [{ href: '/products/widgets', label: 'Widgets' }] },
+                { links: [{ href: '/products/gadgets', label: 'Gadgets' }] },
+              ],
+            },
+          ],
+        },
+        // ...
+      ],
+    },
+  ]
 }
 ```
 
@@ -183,8 +194,8 @@ Text after a link becomes a paragraph—useful for mega menus:
 ```js
 items: [
   {
-    links: [{ href: "/products/widgets", label: "Widgets" }],
-    paragraphs: ["Our award-winning widget collection."]
+    links: [{ href: '/products/widgets', label: 'Widgets' }],
+    paragraphs: ['Our award-winning widget collection.'],
   },
   // ...
 ]
@@ -197,7 +208,7 @@ Here's a recursive component for nested navigation:
 ```jsx
 function NavList({ list, depth = 0 }) {
   return (
-    <ul className={depth === 0 ? "nav-root" : "nav-submenu"}>
+    <ul className={depth === 0 ? 'nav-root' : 'nav-submenu'}>
       {list.items.map((item, i) => (
         <li key={i}>
           {item.links?.[0] && (
@@ -220,7 +231,7 @@ function NavList({ list, depth = 0 }) {
 
 For richer navigation with icons, targets, and metadata, use the `nav` schema via tagged YAML blocks:
 
-```markdown
+````markdown
 ---
 type: Header
 ---
@@ -244,21 +255,21 @@ type: Header
   href: https://github.com/example
   target: _blank
 ```
-```
+````
 
 ### Nav Schema Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `label` | string | **Required.** Display text |
-| `href` | string | Link destination |
-| `icon` | string | Path to icon file (e.g., `/icons/home.svg`) |
-| `text` | string | Secondary text (description, subtitle) |
-| `target` | string | Link target (`_self`, `_blank`) |
-| `children` | nav[] | Nested navigation items (recursive) |
-| `order` | number | Custom sort order |
-| `hidden` | boolean | Hide from display |
-| `current` | boolean | Mark as current/active page |
+| Field      | Type    | Description                                 |
+| ---------- | ------- | ------------------------------------------- |
+| `label`    | string  | **Required.** Display text                  |
+| `href`     | string  | Link destination                            |
+| `icon`     | string  | Path to icon file (e.g., `/icons/home.svg`) |
+| `text`     | string  | Secondary text (description, subtitle)      |
+| `target`   | string  | Link target (`_self`, `_blank`)             |
+| `children` | nav[]   | Nested navigation items (recursive)         |
+| `order`    | number  | Custom sort order                           |
+| `hidden`   | boolean | Hide from display                           |
+| `current`  | boolean | Mark as current/active page                 |
 
 ### Accessing Nav Data
 
@@ -279,7 +290,7 @@ function Header({ content }) {
 
 function NavItem({ item }) {
   return (
-    <div className={item.current ? "active" : ""}>
+    <div className={item.current ? 'active' : ''}>
       {item.icon && <img src={item.icon} alt="" className="w-5 h-5" />}
       <a href={item.href} target={item.target}>
         {item.label}
@@ -301,7 +312,7 @@ function NavItem({ item }) {
 
 Use different tags for different navigation areas:
 
-```markdown
+````markdown
 ```yaml:main-nav
 - label: Home
   href: /
@@ -315,7 +326,7 @@ Use different tags for different navigation areas:
 - label: Terms
   href: /terms
 ```
-```
+````
 
 Access them separately:
 
@@ -326,14 +337,14 @@ const footerNav = content.data?.['footer-nav'] || []
 
 ## Choosing Your Approach
 
-| Scenario | Recommendation |
-|----------|----------------|
-| Simple site, few pages | Automatic navigation |
-| Need icons or descriptions | Nav schema (YAML) |
-| Quick prototype | Markdown lists |
-| Deep nesting (3+ levels) | Nav schema (YAML) |
-| Mix of internal + external links | Nav schema (YAML) |
-| Content authors prefer markdown | Markdown lists |
+| Scenario                         | Recommendation       |
+| -------------------------------- | -------------------- |
+| Simple site, few pages           | Automatic navigation |
+| Need icons or descriptions       | Nav schema (YAML)    |
+| Quick prototype                  | Markdown lists       |
+| Deep nesting (3+ levels)         | Nav schema (YAML)    |
+| Mix of internal + external links | Nav schema (YAML)    |
+| Content authors prefer markdown  | Markdown lists       |
 
 ## Common Patterns
 
@@ -356,6 +367,7 @@ const footerNav = content.data?.['footer-nav'] || []
 
 ### Sidebar with Sections
 
+````markdown
 ```yaml:nav
 - label: Getting Started
   children:
@@ -370,6 +382,7 @@ const footerNav = content.data?.['footer-nav'] || []
     - label: Theming
       href: /docs/theming
 ```
+````
 
 ### Social Links (Icon-Only)
 
@@ -404,7 +417,7 @@ function NavLink({ href, label }) {
   return (
     <a
       href={href}
-      className={isActive ? "text-blue-600 font-semibold" : "text-gray-600"}
+      className={isActive ? 'text-blue-600 font-semibold' : 'text-gray-600'}
     >
       {label}
     </a>
@@ -417,5 +430,6 @@ For the nav schema, you can set `current: true` in the YAML, or compute it dynam
 ## See Also
 
 - [Content Structure](./content-structure.md) — Full content parsing reference
+- [Page Configuration](./page-configuration.md) — Navigation visibility options (hidden, hideInHeader, hideInFooter)
 - [Linking](./linking.md) — The `page:` protocol for stable internal links
 - [Component Metadata](./component-metadata.md) — Documenting nav expectations in meta.js

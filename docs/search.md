@@ -291,7 +291,8 @@ The academic template demonstrates search with:
 
 See `templates/academic/template/foundation/src/components/SearchModal/` for the complete implementation.
 
-## Related
+## See Also
 
 - [Site Configuration](./site-configuration.md) — Full site.yml reference
 - [Content Structure](./content-structure.md) — How content is organized
+- [Internationalization](./internationalization.md) — Locale-specific search indexes

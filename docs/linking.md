@@ -172,3 +172,12 @@ Sections render with `id="section-{stableId}"`. The `section-` prefix prevents c
 ### Locale Independence
 
 The `page:` protocol is locale-agnostic. `page:about#contact` resolves to `/about#section-contact` for English users and `/es/about#section-contact` for Spanish users automatically.
+
+---
+
+## See Also
+
+- [Page Configuration](./page-configuration.md) — Setting page IDs in page.yml
+- [Content Structure](./content-structure.md) — Section IDs from filenames
+- [Navigation Patterns](./navigation-patterns.md) — Building navigation with stable links
+- [Internationalization](./internationalization.md) — Locale-aware link resolution

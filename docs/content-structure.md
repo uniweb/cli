@@ -618,6 +618,7 @@ Prefer items when possible—they're simpler for content authors. Use subsection
 
 ## See Also
 
+- [Page Configuration](./page-configuration.md) — page.yml options for sections and ordering
 - [Navigation Patterns](./navigation-patterns.md) — Building navbars, menus, and sidebars
 - [Linking](./linking.md) — The `page:` protocol for stable internal links
 - [Component Metadata](./component-metadata.md) — Documenting what content your component expects

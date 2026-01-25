@@ -269,3 +269,11 @@ getVersionUrl('v1', '/docs/intro')
 getVersionUrl('v2', '/docs/v1/intro')
 // → '/docs/intro' (latest has no prefix)
 ```
+
+---
+
+## See Also
+
+- [Page Configuration](./page-configuration.md) — Version metadata in page.yml
+- [Linking](./linking.md) — Stable page references across versions
+- [Navigation Patterns](./navigation-patterns.md) — Building version-aware navigation

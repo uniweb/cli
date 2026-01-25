@@ -1,0 +1,330 @@
+# Site Configuration
+
+The `site.yml` file in your site root defines global settings, page ordering, internationalization, and feature toggles.
+
+## Quick Start
+
+A minimal site.yml:
+
+```yaml
+name: My Site
+```
+
+That's all you need to get started. Everything else has sensible defaults.
+
+## Full Reference
+
+```yaml
+# Identity
+name: My Site
+description: A brief description for SEO
+
+# Page Ordering
+pages: [home, about, docs, pricing]  # Explicit order (first is homepage)
+index: home                          # Or just name the homepage
+
+# Internationalization
+i18n:
+  defaultLocale: en
+  locales: [en, es, fr]              # Or '*' to auto-discover from locales/
+
+# Features
+search:
+  enabled: true
+
+# Build Options
+build:
+  prerender: true                    # Generate static HTML
+
+# Data Sources
+fetch:
+  path: /data/global.json
+  schema: siteConfig
+
+# Content Collections
+collections:
+  articles:
+    path: library/articles
+    sort: date desc
+```
+
+---
+
+## Identity
+
+```yaml
+name: My Site
+description: Build modern websites with components
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Site name (used in `<title>`, metadata) |
+| `description` | string | Default meta description |
+
+---
+
+## Page Ordering
+
+Control the order of top-level pages and designate your homepage.
+
+### Explicit Order
+
+```yaml
+pages: [home, about, docs, pricing]
+```
+
+- First item becomes the homepage (route `/`)
+- Other items get their folder name as route (`/about`, `/docs`, `/pricing`)
+- Pages not listed are still accessible but appear after listed pages
+
+### Just Set the Homepage
+
+```yaml
+index: home
+```
+
+Only specify which page is the homepage. Other pages are auto-discovered and sorted by their `order` property.
+
+### Auto-Discovery (Default)
+
+Omit both `pages` and `index` to auto-discover all pages. They're sorted by the `order` property in each page's `page.yml`, and the lowest `order` becomes the homepage.
+
+---
+
+## Internationalization (i18n)
+
+Enable multi-language support.
+
+```yaml
+i18n:
+  defaultLocale: en
+  locales: [en, es, fr]
+```
+
+### Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `defaultLocale` | string | Primary locale (no URL prefix) |
+| `locales` | array | Supported locales |
+
+### Locale Formats
+
+```yaml
+# Just codes (display names from @uniweb/kit)
+locales: [en, es, fr]
+
+# With custom labels
+locales:
+  - code: en
+    label: English
+  - code: es
+    label: Español
+  - code: fr
+    label: Français
+
+# Auto-discover from locales/ folder
+locales: '*'
+```
+
+### Locale Files
+
+Create `locales/{code}.json` for translations:
+
+```
+site/
+└── locales/
+    ├── en.json
+    ├── es.json
+    └── fr.json
+```
+
+```json
+// locales/en.json
+{
+  "nav.home": "Home",
+  "nav.about": "About",
+  "footer.copyright": "© 2025 My Company"
+}
+```
+
+### Generated Routes
+
+| Page | Default Locale | Other Locales |
+|------|----------------|---------------|
+| Home | `/` | `/es/`, `/fr/` |
+| About | `/about` | `/es/about`, `/fr/about` |
+
+See [Internationalization](./internationalization.md) for the full guide.
+
+---
+
+## Search
+
+Enable built-in full-text search.
+
+```yaml
+search:
+  enabled: true
+```
+
+### Full Options
+
+```yaml
+search:
+  enabled: true
+  include:
+    pages: true
+    sections: true
+    headings: true
+    paragraphs: true
+  exclude:
+    routes: [/admin, /draft]
+    components: [CodeBlock]
+```
+
+See [Site Search](./search.md) for details.
+
+---
+
+## Build Options
+
+Configure the production build.
+
+```yaml
+build:
+  prerender: true
+```
+
+### Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `prerender` | `true` | Generate static HTML for all pages (SSG) |
+
+When `prerender: true`:
+- All pages are rendered to HTML at build time
+- JavaScript hydrates for interactivity
+- Fast initial load, SEO-friendly
+- Pages work without JavaScript
+
+When `prerender: false`:
+- Single `index.html` with client-side rendering
+- Pages render in the browser
+- Smaller initial bundle
+
+---
+
+## Global Data Fetching
+
+Load data available to all pages.
+
+```yaml
+fetch:
+  path: /data/site-config.json
+  schema: config
+```
+
+Components with `inheritData: ['config']` in their meta.js receive this data.
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `path` | Local file in `public/` |
+| `url` | Remote URL |
+| `schema` | Key in `content.data` |
+| `prerender` | Build-time vs runtime fetch |
+
+See [Data Fetching](./data-fetching.md) for the full reference.
+
+---
+
+## Content Collections
+
+Define collections of markdown content that generate JSON data files.
+
+```yaml
+collections:
+  articles:
+    path: library/articles
+    sort: date desc
+    filter: published != false
+
+  team:
+    path: library/team
+    sort: order asc
+```
+
+### Collection Options
+
+| Option | Description |
+|--------|-------------|
+| `path` | Folder containing markdown files |
+| `sort` | Sort expression (`field asc/desc`) |
+| `filter` | Filter expression |
+| `limit` | Maximum items |
+| `excerpt.maxLength` | Auto-excerpt character limit |
+| `excerpt.field` | Frontmatter field for excerpt |
+
+Collections generate JSON files in `public/data/`. Use `data: collection-name` in pages to fetch them.
+
+See [Content Collections](./content-collections.md) for details.
+
+---
+
+## Complete Example
+
+```yaml
+# site.yml
+
+# Identity
+name: Acme Corp
+description: Building the future of widgets
+
+# Structure
+pages: [home, products, about, contact]
+
+# Internationalization
+i18n:
+  defaultLocale: en
+  locales:
+    - code: en
+      label: English
+    - code: es
+      label: Español
+
+# Features
+search:
+  enabled: true
+
+# Build
+build:
+  prerender: true
+
+# Global data
+fetch:
+  path: /data/site-config.json
+  schema: config
+
+# Collections
+collections:
+  articles:
+    path: library/articles
+    sort: date desc
+
+  products:
+    path: library/products
+    sort: name asc
+```
+
+---
+
+## See Also
+
+- [Page Configuration](./page-configuration.md) — page.yml reference
+- [Content Collections](./content-collections.md) — Markdown-based data
+- [Data Fetching](./data-fetching.md) — Loading external data
+- [Site Search](./search.md) — Full-text search setup
+- [Internationalization](./internationalization.md) — Multi-language sites

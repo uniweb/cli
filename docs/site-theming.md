@@ -488,8 +488,9 @@ vars:
 
 5. **Keep fonts minimal**: Load only weights you actually use to optimize performance
 
-## Related
+## See Also
 
+- [Site Configuration](./site-configuration.md) — Full site.yml reference
+- [Page Configuration](./page-configuration.md) — Section theme parameter
 - [Content Structure](./content-structure.md) — How content is parsed
 - [Component Metadata](./component-metadata.md) — Full meta.js schema
-- [Data Fetching](./data-fetching.md) — Load external data
