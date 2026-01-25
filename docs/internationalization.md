@@ -26,19 +26,43 @@ i18n:
   locales: [en, es, fr]
 ```
 
-### 2. Create Translated Content
+### 2. Extract Translatable Strings
 
-Content translation happens at build time. Provide translations via locale-specific files:
-
-```
-pages/about/
-├── page.yml
-├── 1-intro.md           # Default locale (English)
-├── 1-intro.es.md        # Spanish
-└── 1-intro.fr.md        # French
+```bash
+uniweb i18n extract
 ```
 
-### 3. Build a Language Switcher
+This scans your content and generates `locales/manifest.json` with all translatable strings keyed by content hash.
+
+### 3. Provide Translations
+
+Create translation files for each locale:
+
+```
+locales/
+├── manifest.json       # Auto-generated
+├── es.json             # Spanish translations
+└── fr.json             # French translations
+```
+
+Each locale file maps content hashes to translations:
+
+```json
+{
+  "a1b2c3d4": "Bienvenido a Nuestra Empresa",
+  "e5f6g7h8": "Aprende Más"
+}
+```
+
+### 4. Build
+
+```bash
+uniweb build
+```
+
+The build merges translations and generates locale-specific content.
+
+### 5. Build a Language Switcher
 
 ```jsx
 import { useWebsite } from '@uniweb/kit'
@@ -223,60 +247,17 @@ console.log(LOCALE_DISPLAY_NAMES.fr)  // 'Français'
 
 ---
 
-## Providing Translated Content
+## Content Structure
 
-### Option 1: Separate Content Files (Recommended)
-
-Create locale-specific markdown files using the `.{locale}.md` suffix:
+You write content once, in your default locale:
 
 ```
 pages/about/
 ├── page.yml
-├── 1-intro.md           # Default locale (English)
-├── 1-intro.es.md        # Spanish
-└── 1-intro.fr.md        # French
+└── 1-intro.md    # Content in default language
 ```
 
-Each file contains the full content in that language:
-
-```markdown
-<!-- 1-intro.md (English) -->
----
-type: Hero
----
-
-# Welcome to Our Company
-
-We build amazing products.
-```
-
-```markdown
-<!-- 1-intro.es.md (Spanish) -->
----
-type: Hero
----
-
-# Bienvenido a Nuestra Empresa
-
-Construimos productos increíbles.
-```
-
-The build system automatically serves the correct file based on the active locale.
-
-### Option 2: Localized Page Metadata
-
-For page-level metadata, use locale suffixes in `page.yml`:
-
-```yaml
-# pages/about/page.yml
-title: About Us
-title_es: Sobre Nosotros
-title_fr: À Propos
-
-description: Learn about our company
-description_es: Conozca nuestra empresa
-description_fr: Découvrez notre entreprise
-```
+The i18n system extracts translatable text from these files and merges translations at build time.
 
 ---
 
@@ -314,6 +295,21 @@ Create locale files with translations keyed by hash:
   "a1b2c3d4": "Bienvenido a Nuestra Empresa"
 }
 ```
+
+For strings that appear in multiple contexts and need different translations:
+
+```json
+{
+  "e5f6g7h8": {
+    "default": "Aprende Más",
+    "overrides": {
+      "/pricing:cta": "Ver Precios"
+    }
+  }
+}
+```
+
+Override keys use the format `{page}:{section}`.
 
 ### 3. Build
 
@@ -475,15 +471,15 @@ Each locale generates its own static HTML files with embedded content. There's n
 
 ## Best Practices
 
-1. **Write in default locale first**: Complete content in your default language, then translate
+1. **Write in default locale first**: Complete content in your default language, then extract and translate
 
-2. **Use separate files for complex pages**: Locale-specific `.es.md` files are clearer than inline translations
+2. **Use descriptive contexts**: The manifest shows where each string appears—use this to provide accurate translations
 
 3. **Test all locales**: Check that layouts work with longer/shorter text in different languages
 
 4. **Consider RTL**: For Arabic, Hebrew, etc., you may need additional CSS for right-to-left layout
 
-5. **SEO per locale**: Provide unique titles and descriptions per language in `page.yml`
+5. **Keep translations in sync**: Run `uniweb i18n sync` after content changes to update the manifest
 
 ---
 
