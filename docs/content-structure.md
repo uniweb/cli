@@ -595,6 +595,48 @@ items.forEach(tier => {
 })
 ```
 
+## Lists
+
+The `lists` field contains markdown bullet or numbered lists. Each list is an array of list items, and each list item has the same structure as content (paragraphs, links, nested lists, etc.):
+
+```markdown
+- First item with **bold** text
+- Second item with a [link](/path)
+  - Nested item
+- Third item
+```
+
+```js
+// lists is an array of lists (usually just one)
+// Each list is an array of list items
+// Each list item has: paragraphs, links, lists (nested), etc.
+
+const { lists } = content
+
+lists[0].forEach(item => {
+  console.log(item.paragraphs)  // ["First item with <strong>bold</strong> text"]
+  console.log(item.links)       // [{ href: "/path", label: "link" }] for second item
+  console.log(item.lists)       // Nested lists array (for items with sub-lists)
+})
+```
+
+**Structure:**
+```
+lists: [                           // Array of lists in the content
+  [                                // First list (array of list items)
+    {                              // First list item
+      paragraphs: string[],
+      links: Link[],
+      lists: [...],                // Nested sub-lists
+      ...                          // Same fields as content
+    },
+    ...
+  ]
+]
+```
+
+**Important:** List items are *not* plain strings. They're objects with the same structure as content, allowing rich formatting, links, and nested lists within each item.
+
 ## Structured Data
 
 Use tagged code blocks to pass structured data to components:
