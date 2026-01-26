@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url'
 import prompts from 'prompts'
 import { build } from './commands/build.js'
 import { docs } from './commands/docs.js'
+import { doctor } from './commands/doctor.js'
 import { i18n } from './commands/i18n.js'
 import { getVersionsForTemplates, getVersion } from './versions.js'
 import {
@@ -158,6 +159,12 @@ async function main() {
   // Handle i18n command
   if (command === 'i18n') {
     await i18n(args.slice(1))
+    return
+  }
+
+  // Handle doctor command
+  if (command === 'doctor') {
+    await doctor(args.slice(1))
     return
   }
 
@@ -321,6 +328,7 @@ ${colors.bright}Commands:${colors.reset}
   create [name]      Create a new project
   build              Build the current project
   docs               Generate component documentation
+  doctor             Diagnose project configuration issues
   i18n <cmd>         Internationalization (extract, sync, status)
 
 ${colors.bright}Create Options:${colors.reset}

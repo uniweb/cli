@@ -311,11 +311,38 @@ async function generateLocalizedHtml(projectDir, i18nConfig) {
 /**
  * Resolve foundation directory based on site config and project structure
  *
- * For single projects: ../foundation
- * For multi projects: ../../foundations/{name}
+ * Priority:
+ * 1. Read site's package.json to find foundation dependency path (most reliable)
+ * 2. Check foundations/{name} for multi-site projects
+ * 3. Check ../foundation for single-site projects
+ * 4. Check ../{name} as fallback
  */
 function resolveFoundationDir(projectDir, siteConfig) {
   const foundationName = siteConfig?.foundation
+
+  // First, try to resolve from site's package.json dependencies
+  // This is the most reliable method as it matches how Vite resolves imports
+  if (foundationName) {
+    const pkgPath = join(projectDir, 'package.json')
+    if (existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+        const deps = { ...pkg.dependencies, ...pkg.devDependencies }
+        const depValue = deps[foundationName]
+
+        // Check for file: protocol (local dependency)
+        if (depValue && depValue.startsWith('file:')) {
+          const relativePath = depValue.slice(5) // Remove 'file:' prefix
+          const resolvedPath = join(projectDir, relativePath)
+          if (existsSync(resolvedPath)) {
+            return resolvedPath
+          }
+        }
+      } catch {
+        // Ignore JSON parse errors, fall through to other methods
+      }
+    }
+  }
 
   // Check if we're in a multi-site structure (site is under sites/)
   const parentDir = join(projectDir, '..')
@@ -416,6 +443,20 @@ async function buildSite(projectDir, options = {}) {
       }
     } catch (err) {
       error(`Pre-rendering failed: ${err.message}`)
+
+      // Provide helpful guidance for common errors
+      if (err.message.includes('Foundation not found')) {
+        log('')
+        log(`${colors.yellow}This usually means:${colors.reset}`)
+        log(`  1. The foundation hasn't been built yet (run foundation build first)`)
+        log(`  2. The foundation name in site.yml doesn't match your setup`)
+        log('')
+        log(`${colors.dim}Check that:${colors.reset}`)
+        log(`  • site.yml 'foundation:' matches the package name in your foundation's package.json`)
+        log(`  • site's package.json has a dependency pointing to the correct foundation path`)
+        log(`  • The foundation's dist/foundation.js exists (build the foundation first)`)
+      }
+
       if (process.env.DEBUG) {
         console.error(err.stack)
       }
