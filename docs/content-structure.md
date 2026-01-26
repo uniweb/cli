@@ -753,6 +753,8 @@ pages/
 
 The `index:` setting in `site.yml` only controls which page becomes the root `/` route—it doesn't affect other pages or create any "container" behavior.
 
+> **Note for developers from other frameworks:** Unlike some static-site generators (Next.js, Astro, etc.), Uniweb does not treat child pages as replacements for parent folders. Each folder generates its own distinct output: `/docs` → `dist/docs/index.html`, `/docs/getting-started` → `dist/docs/getting-started/index.html`. No conflict, no overwriting—both pages exist independently.
+
 ## See Also
 
 - [Page Configuration](./page-configuration.md) — page.yml options for sections and ordering
