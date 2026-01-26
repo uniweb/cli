@@ -106,7 +106,16 @@ role: Lead Architect
 ```
 ````
 
-Components receive validated, localized data. Natural content stays in markdown; structured data goes in tagged blocks (YAML or JSON).
+Access the parsed data via `content.data`:
+
+```jsx
+function TeamCard({ content }) {
+  const member = content.data['team-member']
+  return <div>{member.name} — {member.role}</div>
+}
+```
+
+Natural content stays in markdown; structured data goes in tagged blocks (YAML or JSON).
 
 ### Components as React
 
@@ -647,6 +656,76 @@ Yes. Content is pre-embedded in the initial HTML—no fetch waterfalls, no layou
 **What about dynamic routes?**
 
 Pages can define data sources that auto-generate subroutes. A `/blog` page can have an index and a `[slug]` template that renders each post.
+
+## Common Gotchas
+
+### Homepage Configuration
+
+Set your homepage with `index:` in `site.yml`:
+
+```yaml
+# site.yml
+index: home  # The page folder that becomes /
+```
+
+The `index:` option tells the build which page folder becomes the root route (`/`). The page still exists in `pages/home/`, but visitors access it at `/`.
+
+Don't confuse this with `pages:` (which explicitly lists pages and hides any not listed).
+
+### Content Shapes
+
+Lists and items in markdown become **objects**, not strings. A bullet list:
+
+```markdown
+- First item
+- Second item
+```
+
+Becomes:
+
+```js
+content.items = [
+  { title: "First item", paragraphs: [], links: [], imgs: [] },
+  { title: "Second item", paragraphs: [], links: [], imgs: [] }
+]
+```
+
+Each item has the same structure as a content block. See [Content Structure](./docs/content-structure.md) for the full shape.
+
+### Tagged Data Blocks
+
+Tagged code blocks like:
+
+````markdown
+```yaml:team-member
+name: Sarah Chen
+role: Lead Architect
+```
+````
+
+Are accessible via `content.data`:
+
+```jsx
+function TeamMember({ content }) {
+  const member = content.data['team-member']
+  return <div>{member.name} - {member.role}</div>
+}
+```
+
+The tag name (after the colon) becomes the key in `content.data`.
+
+### Root vs Package Commands
+
+In a Uniweb workspace, commands run differently at different levels:
+
+| Location | Command | What it does |
+|----------|---------|--------------|
+| Project root | `pnpm build` | Builds all packages (foundation + site) |
+| Project root | `pnpm dev` | Starts dev server for site |
+| `foundation/` | `uniweb build` | Builds just the foundation |
+| `site/` | `uniweb build` | Builds just the site |
+
+For day-to-day development, run `pnpm dev` from the project root. The workspace scripts handle the rest.
 
 ## Related Packages
 
