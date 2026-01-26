@@ -705,16 +705,53 @@ paragraphs.forEach(p => console.log(p))
 items.map(item => <Card {...item} />)
 ```
 
-## Items vs Subsections
+## Nesting: Items, Subsections, and Child Pages
 
-There are two ways to create nested content:
+There are three ways to create nested content, each for a different purpose:
 
-| Approach | When to use |
-|----------|-------------|
-| **Items** (headings in one file) | Repeating content within a single section |
-| **Subsections** (separate files) | When children need their own component types |
+| Approach | What it is | When to use |
+|----------|------------|-------------|
+| **Items** | Headings in one markdown file | Repeating content within a single section (cards, features) |
+| **Subsections** | Separate section files in the same page folder | Complex sections needing their own component type |
+| **Child pages** | Subfolders in `pages/` | Separate pages with their own routes |
 
-Prefer items when possible—they're simpler for content authors. Use subsections when children are complex enough to warrant their own component selection.
+### Items (same section)
+
+Use items for repeating content that shares the same component—feature cards, pricing tiers, FAQ questions. Just use headings after content in your markdown file.
+
+### Subsections (same page, different sections)
+
+Use subsections when one page needs multiple sections with different component types. Create separate markdown files in the page folder:
+
+```
+pages/home/
+├── page.yml
+├── 1-hero.md        # type: Hero
+├── 2-features.md    # type: Features
+└── 3-cta.md         # type: CallToAction
+```
+
+Each section file can specify its own `type:` in frontmatter. The parent component renders child sections using `block.childBlocks`.
+
+### Child pages (separate routes)
+
+Subfolders create entirely separate pages with their own routes:
+
+```
+pages/
+├── docs/            → /docs
+│   ├── page.yml
+│   ├── intro.md
+│   ├── getting-started/   → /docs/getting-started
+│   │   └── ...
+│   └── api/               → /docs/api
+│       └── ...
+└── about/           → /about
+```
+
+**Key point:** Each folder is its own page with its own route. Parent and child folders don't conflict—`/docs` and `/docs/getting-started` are separate pages that both exist.
+
+The `index:` setting in `site.yml` only controls which page becomes the root `/` route—it doesn't affect other pages or create any "container" behavior.
 
 ## See Also
 
