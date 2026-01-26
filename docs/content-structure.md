@@ -251,6 +251,64 @@ function Image({ src, alt, href, target }) {
 }
 ```
 
+## Inline Text Styling
+
+Style inline text with semantic classes using bracketed spans—Pandoc-style syntax that works in both markdown files and the visual editor.
+
+### Basic Syntax
+
+```markdown
+[text]{.class}
+[text]{#id}
+[text]{.class #id key=value}
+```
+
+### Common Styles
+
+```markdown
+This has [highlighted text]{.highlight} for emphasis.
+
+Here's a [muted note]{.muted} that's less prominent.
+
+This is a [callout]{.callout} for important info.
+```
+
+Your component receives these as `<span>` elements in paragraph text:
+
+```js
+paragraphs: [
+  'This has <span class="highlight">highlighted text</span> for emphasis.'
+]
+```
+
+### Multiple Classes and Attributes
+
+```markdown
+[styled text]{.highlight .large}
+[anchor point]{#section-start}
+[tooltip text]{.info data-tooltip="More details here"}
+```
+
+### Combining with Other Formatting
+
+Spans work with bold, italic, and other inline formatting:
+
+```markdown
+This is [**bold and highlighted**]{.highlight} text.
+Check the [_italicized note_]{.muted} below.
+```
+
+### Use Cases
+
+| Class | Purpose |
+|-------|---------|
+| `.highlight` | Draw attention to key phrases |
+| `.muted` | De-emphasize secondary information |
+| `.callout` | Important notes or warnings |
+| `.code` | Inline code-like styling (alternative to backticks) |
+
+Your foundation defines what classes are available and how they're styled. The visual editor can provide a dropdown of predefined styles.
+
 ## Links and Buttons
 
 Links are collected in the `links` array. Attributes control behavior and styling.
