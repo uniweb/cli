@@ -418,8 +418,8 @@ function Hero({ content, params, block }) {
   const website = block.website
 
   // Block identity
-  console.log(block.id)        // 'hero'
-  console.log(block.component) // 'Hero'
+  console.log(block.id)   // 'hero'
+  console.log(block.type) // 'Hero'
 
   // Child blocks (for composition)
   if (block.hasChildBlocks()) {
@@ -434,7 +434,7 @@ function Hero({ content, params, block }) {
 | Property | Type | Description |
 |----------|------|-------------|
 | `id` | string | Section ID |
-| `component` | string | Component name |
+| `type` | string | Component name |
 | `page` | Page | Parent page |
 | `website` | Website | Parent website |
 | `childBlocks` | array | Nested blocks |
