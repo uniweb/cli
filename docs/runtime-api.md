@@ -454,7 +454,7 @@ function Hero({ content, params, block }) {
 Every foundation component receives these props:
 
 ```jsx
-function MyComponent({ content, params, block, input }) {
+function MyComponent({ content, params, block }) {
   // content - Parsed markdown content
   const { title, paragraphs, links, imgs, items, data } = content
 
@@ -464,8 +464,8 @@ function MyComponent({ content, params, block, input }) {
   // block - Block instance for navigation
   const { page, website } = block
 
-  // input - Form input data (optional)
-  const { email, message } = input || {}
+  // data - Form tagged blocks or dynamic content source (optional)
+  const { email, message } = data['schema-name'] || {}
 }
 ```
 
