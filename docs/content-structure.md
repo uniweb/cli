@@ -16,12 +16,15 @@ type: Features
 We built this for you.
 
 ### Fast
+
 Lightning quick response times.
 
 ### Secure
+
 Enterprise-grade security.
 
 ### Simple
+
 No configuration required.
 ```
 
@@ -43,23 +46,23 @@ Your component receives:
 
 All content fields are available at the top level:
 
-| Field | Source | Description |
-|-------|--------|-------------|
-| `title` | First heading | Main headline |
-| `pretitle` | Heading before title | Eyebrow/kicker text |
-| `subtitle` | Heading after title | Secondary headline |
-| `subtitle2` | Third heading | Tertiary headline |
-| `paragraphs` | Body text | Array of paragraph strings |
-| `links` | `[text](url)` | Array of link objects (see below) |
-| `imgs` | `![alt](url)` | Array of image objects |
-| `icons` | `![](icon:url)` | Array of icon objects |
-| `videos` | `![](url){role=video}` | Array of video objects |
-| `lists` | `- item` | Bullet or numbered lists |
-| `quotes` | `> text` | Blockquote content |
-| `data` | Tagged code blocks | Structured data (see below) |
-| `headings` | Overflow headings | Headings after title/subtitle/subtitle2 |
-| `items` | Subsequent headings | Child content groups |
-| `sequence` | All elements | Ordered array for document-order rendering |
+| Field        | Source                 | Description                                |
+| ------------ | ---------------------- | ------------------------------------------ |
+| `title`      | First heading          | Main headline                              |
+| `pretitle`   | Heading before title   | Eyebrow/kicker text                        |
+| `subtitle`   | Heading after title    | Secondary headline                         |
+| `subtitle2`  | Third heading          | Tertiary headline                          |
+| `paragraphs` | Body text              | Array of paragraph strings                 |
+| `links`      | `[text](url)`          | Array of link objects (see below)          |
+| `imgs`       | `![alt](url)`          | Array of image objects                     |
+| `icons`      | `![](icon:url)`        | Array of icon objects                      |
+| `videos`     | `![](url){role=video}` | Array of video objects                     |
+| `lists`      | `- item`               | Bullet or numbered lists                   |
+| `quotes`     | `> text`               | Blockquote content                         |
+| `data`       | Tagged code blocks     | Structured data (see below)                |
+| `headings`   | Overflow headings      | Headings after title/subtitle/subtitle2    |
+| `items`      | Subsequent headings    | Child content groups                       |
+| `sequence`   | All elements           | Ordered array for document-order rendering |
 
 ## Attribute Syntax
 
@@ -72,13 +75,13 @@ Both links and media (images, videos, icons) support attributes using curly brac
 
 ### Attribute Types
 
-| Syntax | Result | Example |
-|--------|--------|---------|
-| `key=value` | Named attribute | `width=800` |
+| Syntax        | Result                       | Example          |
+| ------------- | ---------------------------- | ---------------- |
+| `key=value`   | Named attribute              | `width=800`      |
 | `key="value"` | Quoted value (allows spaces) | `alt="My image"` |
-| `.className` | CSS class | `.featured` |
-| `#idName` | Element ID | `#hero-image` |
-| `booleanKey` | Boolean true | `autoplay` |
+| `.className`  | CSS class                    | `.featured`      |
+| `#idName`     | Element ID                   | `#hero-image`    |
+| `booleanKey`  | Boolean true                 | `autoplay`       |
 
 ```markdown
 ![Hero](./hero.jpg){role=banner width=1200 .featured #main-hero loading=lazy}
@@ -95,9 +98,9 @@ Assets (images, videos, PDFs) can be referenced using several path formats:
 Paths relative to the markdown file:
 
 ```markdown
-![Photo](./photo.jpg)           <!-- Same folder as the markdown file -->
-![Logo](../shared/logo.svg)     <!-- Parent folder -->
-![Team](./images/team.jpg)      <!-- Subfolder -->
+![Photo](./photo.jpg) <!-- Same folder as the markdown file -->
+![Logo](../shared/logo.svg) <!-- Parent folder -->
+![Team](./images/team.jpg) <!-- Subfolder -->
 ```
 
 ### Absolute Paths (Site Root)
@@ -105,8 +108,8 @@ Paths relative to the markdown file:
 Paths starting with `/` are resolved from the site's `public/` or `assets/` folder:
 
 ```markdown
-![Hero](/images/hero.jpg)       <!-- public/images/hero.jpg or assets/images/hero.jpg -->
-![Logo](/brand/logo.svg)        <!-- public/brand/logo.svg -->
+![Hero](/images/hero.jpg) <!-- public/images/hero.jpg or assets/images/hero.jpg -->
+![Logo](/brand/logo.svg) <!-- public/brand/logo.svg -->
 ```
 
 The build system checks `public/` first, then `assets/`.
@@ -131,6 +134,7 @@ During build, local assets are automatically processed:
 
 ```markdown
 ![Photo](./photo.jpg)
+
 <!-- Output: /assets/photo-a1b2c3d4.webp -->
 ```
 
@@ -140,6 +144,7 @@ Videos without an explicit `poster` attribute get an auto-generated poster image
 
 ```markdown
 ![Demo](./demo.mp4){role=video}
+
 <!-- Auto-generates: /assets/demo-poster-a1b2c3d4.webp -->
 ```
 
@@ -155,6 +160,7 @@ PDFs without an explicit `preview` attribute get an auto-generated preview thumb
 
 ```markdown
 ![Report](./report.pdf)
+
 <!-- Auto-generates: /assets/report-thumb-a1b2c3d4.webp -->
 ```
 
@@ -168,26 +174,28 @@ To use your own preview, specify it explicitly:
 
 Media uses the standard image syntax `![alt](url)` but the `role` attribute determines which content array it goes into:
 
-| Role | Output Array | Use Case |
-|------|--------------|----------|
-| `image` (default) | `imgs` | Content images |
-| `banner` | `imgs` | Hero/banner images |
-| `gallery` | `imgs` | Gallery images |
-| `background` | `imgs` | Background images |
-| `icon` | `icons` | Icons and small graphics |
-| `video` | `videos` | Video content |
+| Role              | Output Array | Use Case                 |
+| ----------------- | ------------ | ------------------------ |
+| `image` (default) | `imgs`       | Content images           |
+| `banner`          | `imgs`       | Hero/banner images       |
+| `gallery`         | `imgs`       | Gallery images           |
+| `background`      | `imgs`       | Background images        |
+| `icon`            | `icons`      | Icons and small graphics |
+| `video`           | `videos`     | Video content            |
 
 ### Setting the Role
 
 There are two ways to set the role:
 
 **1. Prefix syntax (legacy):**
+
 ```markdown
 ![Logo](icon:./logo.svg)
 ![Demo](video:./demo.mp4)
 ```
 
 **2. Attribute syntax (recommended):**
+
 ```markdown
 ![Logo](./logo.svg){role=icon}
 ![Demo](./demo.mp4){role=video}
@@ -206,13 +214,13 @@ The attribute syntax is more flexible—it allows combining role with other attr
 ![Alt text](./image.jpg){width=800 height=600 loading=lazy fit=cover}
 ```
 
-| Attribute | Description |
-|-----------|-------------|
-| `width` | Image width |
-| `height` | Image height |
-| `loading` | `lazy` or `eager` |
-| `fit` | CSS object-fit: `cover`, `contain`, etc. |
-| `position` | CSS object-position |
+| Attribute  | Description                              |
+| ---------- | ---------------------------------------- |
+| `width`    | Image width                              |
+| `height`   | Image height                             |
+| `loading`  | `lazy` or `eager`                        |
+| `fit`      | CSS object-fit: `cover`, `contain`, etc. |
+| `position` | CSS object-position                      |
 
 ### Video Attributes
 
@@ -220,13 +228,13 @@ The attribute syntax is more flexible—it allows combining role with other attr
 ![Demo](./video.mp4){role=video autoplay muted loop controls poster=./thumb.jpg}
 ```
 
-| Attribute | Description |
-|-----------|-------------|
-| `autoplay` | Auto-play on load |
-| `muted` | Start muted |
-| `loop` | Loop playback |
-| `controls` | Show video controls |
-| `poster` | Poster/thumbnail image |
+| Attribute  | Description            |
+| ---------- | ---------------------- |
+| `autoplay` | Auto-play on load      |
+| `muted`    | Start muted            |
+| `loop`     | Loop playback          |
+| `controls` | Show video controls    |
+| `poster`   | Poster/thumbnail image |
 
 ### Clickable Images and Videos
 
@@ -234,12 +242,18 @@ Images and videos can be links—clicking them navigates to the specified URL:
 
 ```markdown
 ![Product Screenshot](./screenshot.jpg){href=/products/details}
-![Demo Video](./demo.mp4){role=video href=/demo target=_blank}
+![Demo Video](./demo.mp4){role=video href=/demo target=\_blank}
 ```
 
 ```js
-imgs: [{ url: "./screenshot.jpg", alt: "Product Screenshot", href: "/products/details" }]
-videos: [{ src: "./demo.mp4", href: "/demo", target: "_blank" }]
+imgs: [
+  {
+    url: './screenshot.jpg',
+    alt: 'Product Screenshot',
+    href: '/products/details',
+  },
+]
+videos: [{ src: './demo.mp4', href: '/demo', target: '_blank' }]
 ```
 
 Components can wrap the media in a link element when `href` is present:
@@ -247,7 +261,13 @@ Components can wrap the media in a link element when `href` is present:
 ```jsx
 function Image({ src, alt, href, target }) {
   const img = <img src={src} alt={alt} />
-  return href ? <a href={href} target={target}>{img}</a> : img
+  return href ? (
+    <a href={href} target={target}>
+      {img}
+    </a>
+  ) : (
+    img
+  )
 }
 ```
 
@@ -277,7 +297,7 @@ Your component receives these as `<span>` elements in paragraph text:
 
 ```js
 paragraphs: [
-  'This has <span class="highlight">highlighted text</span> for emphasis.'
+  'This has <span class="highlight">highlighted text</span> for emphasis.',
 ]
 ```
 
@@ -300,12 +320,12 @@ Check the [_italicized note_]{.muted} below.
 
 ### Use Cases
 
-| Class | Purpose |
-|-------|---------|
-| `.highlight` | Draw attention to key phrases |
-| `.muted` | De-emphasize secondary information |
-| `.callout` | Important notes or warnings |
-| `.code` | Inline code-like styling (alternative to backticks) |
+| Class        | Purpose                                             |
+| ------------ | --------------------------------------------------- |
+| `.highlight` | Draw attention to key phrases                       |
+| `.muted`     | De-emphasize secondary information                  |
+| `.callout`   | Important notes or warnings                         |
+| `.code`      | Inline code-like styling (alternative to backticks) |
 
 Your foundation defines what classes are available and how they're styled. The visual editor can provide a dropdown of predefined styles.
 
@@ -317,16 +337,16 @@ Links are collected in the `links` array. Attributes control behavior and stylin
 
 ```markdown
 [Learn more](/about)
-[External](https://example.com){target=_blank}
+[External](https://example.com){target=\_blank}
 [Download](./report.pdf){download}
 [Download as](./report.pdf){download="annual-report.pdf"}
 ```
 
-| Attribute | Description |
-|-----------|-------------|
-| `target` | `_blank`, `_self`, etc. |
-| `rel` | `noopener`, `noreferrer`, etc. |
-| `download` | Make it a download link |
+| Attribute  | Description                    |
+| ---------- | ------------------------------ |
+| `target`   | `_blank`, `_self`, etc.        |
+| `rel`      | `noopener`, `noreferrer`, etc. |
+| `download` | Make it a download link        |
 
 ### Link Detection
 
@@ -339,7 +359,7 @@ Visit our [about page](/about) to learn more.
 ```
 
 ```js
-paragraphs: ["Visit our <a href=\"/about\">about page</a> to learn more."]
+paragraphs: ['Visit our <a href="/about">about page</a> to learn more.']
 ```
 
 **Link-only paragraphs** become link objects—useful for CTAs and navigation:
@@ -349,7 +369,7 @@ paragraphs: ["Visit our <a href=\"/about\">about page</a> to learn more."]
 ```
 
 ```js
-links: [{ href: "/signup", label: "Get Started" }]
+links: [{ href: '/signup', label: 'Get Started' }]
 ```
 
 **Multiple links on consecutive lines** split into separate link objects:
@@ -362,9 +382,9 @@ links: [{ href: "/signup", label: "Get Started" }]
 
 ```js
 links: [
-  { href: "/", label: "Home" },
-  { href: "/about", label: "About" },
-  { href: "/contact", label: "Contact" }
+  { href: '/', label: 'Home' },
+  { href: '/about', label: 'About' },
+  { href: '/contact', label: 'Contact' },
 ]
 ```
 
@@ -379,12 +399,14 @@ When a link-only paragraph contains an adjacent icon, the parser associates them
 ```
 
 ```js
-links: [{
-  href: "/",
-  label: "Home",
-  iconBefore: { url: "/icons/home.svg" },
-  iconAfter: null
-}]
+links: [
+  {
+    href: '/',
+    label: 'Home',
+    iconBefore: { url: '/icons/home.svg' },
+    iconAfter: null,
+  },
+]
 ```
 
 Icons can appear before or after the link text:
@@ -394,12 +416,14 @@ Icons can appear before or after the link text:
 ```
 
 ```js
-links: [{
-  href: "https://example.com",
-  label: "External Link",
-  iconBefore: null,
-  iconAfter: { url: "/icons/external.svg" }
-}]
+links: [
+  {
+    href: 'https://example.com',
+    label: 'External Link',
+    iconBefore: null,
+    iconAfter: { url: '/icons/external.svg' },
+  },
+]
 ```
 
 **Note:** Icon association only works for single-link paragraphs where the relationship is unambiguous. In paragraphs with multiple links, icons are collected separately in the `icons` array.
@@ -409,14 +433,22 @@ links: [{
 Icons can be links themselves—useful for social media buttons and icon-only navigation:
 
 ```markdown
-![Twitter](/icons/twitter.svg){role=icon href="https://twitter.com/example" target=_blank}
-![GitHub](/icons/github.svg){role=icon href="https://github.com/example" target=_blank}
+![Twitter](/icons/twitter.svg){role=icon href="https://twitter.com/example" target=\_blank}
+![GitHub](/icons/github.svg){role=icon href="https://github.com/example" target=\_blank}
 ```
 
 ```js
 icons: [
-  { url: "/icons/twitter.svg", href: "https://twitter.com/example", target: "_blank" },
-  { url: "/icons/github.svg", href: "https://github.com/example", target: "_blank" }
+  {
+    url: '/icons/twitter.svg',
+    href: 'https://twitter.com/example',
+    target: '_blank',
+  },
+  {
+    url: '/icons/github.svg',
+    href: 'https://github.com/example',
+    target: '_blank',
+  },
 ]
 ```
 
@@ -427,28 +459,31 @@ Components can check `icon.href` to render clickable icons differently from deco
 Links become buttons with a `role` attribute or the `.button` class:
 
 **Prefix syntax:**
+
 ```markdown
 [Get Started](button:/signup)
 ```
 
 **Class syntax:**
+
 ```markdown
 [Get Started](/signup){.button}
 [Secondary](/learn){.button variant=secondary}
 ```
 
 **Attribute syntax:**
+
 ```markdown
 [Get Started](/signup){role=button variant=primary size=lg}
 ```
 
 ### Button Attributes
 
-| Attribute | Values | Description |
-|-----------|--------|-------------|
-| `variant` | `primary`, `secondary`, `outline`, `ghost` | Visual style |
-| `size` | `sm`, `md`, `lg` | Button size |
-| `icon` | Icon name | Icon to display |
+| Attribute | Values                                     | Description     |
+| --------- | ------------------------------------------ | --------------- |
+| `variant` | `primary`, `secondary`, `outline`, `ghost` | Visual style    |
+| `size`    | `sm`, `md`, `lg`                           | Button size     |
+| `icon`    | Icon name                                  | Icon to display |
 
 ### Link Roles
 
@@ -457,15 +492,15 @@ The `role` attribute distinguishes link types in your component:
 ```js
 const { links } = content
 
-links.forEach(link => {
-  console.log(link.role)  // "link", "button", "button-primary", "document"
+links.forEach((link) => {
+  console.log(link.role) // "link", "button", "button-primary", "document"
   console.log(link.href)
   console.log(link.label)
 })
 
 // Filter by role
-const buttons = links.filter(l => l.role?.startsWith('button'))
-const downloads = links.filter(l => l.role === 'document')
+const buttons = links.filter((l) => l.role?.startsWith('button'))
+const downloads = links.filter((l) => l.role === 'document')
 ```
 
 File links (`.pdf`, `.doc`, etc.) automatically get `role: "document"` and `download: true`.
@@ -479,7 +514,7 @@ The `sequence` array provides all elements in their original order:
 ```js
 const { sequence } = content
 
-sequence.forEach(element => {
+sequence.forEach((element) => {
   switch (element.type) {
     case 'heading':
       return <Heading level={element.level}>{element.text}</Heading>
@@ -492,7 +527,9 @@ sequence.forEach(element => {
     case 'blockquote':
       return <Blockquote>{element.children}</Blockquote>
     case 'codeBlock':
-      return <CodeBlock language={element.attrs.language}>{element.text}</CodeBlock>
+      return (
+        <CodeBlock language={element.attrs.language}>{element.text}</CodeBlock>
+      )
     // ... other types
   }
 })
@@ -500,39 +537,42 @@ sequence.forEach(element => {
 
 **When to use which:**
 
-| Approach | Use Case | Example Components |
-|----------|----------|-------------------|
-| Semantic fields | Structured layouts with specific slots | Hero, Features, Pricing, Team |
-| `sequence` | Document-order flow | Article, Blog Post, Documentation |
+| Approach        | Use Case                               | Example Components                |
+| --------------- | -------------------------------------- | --------------------------------- |
+| Semantic fields | Structured layouts with specific slots | Hero, Features, Pricing, Team     |
+| `sequence`      | Document-order flow                    | Article, Blog Post, Documentation |
 
 You can also combine both—use semantic fields for the header area and sequence for the body.
 
 ## Semantic Heading Interpretation
 
-**Important:** Heading levels in markdown are *relative*, not absolute. A `#` (H1) in your markdown doesn't necessarily become an `<h1>` in the final HTML.
+**Important:** Heading levels in markdown are _relative_, not absolute. A `#` (H1) in your markdown doesn't necessarily become an `<h1>` in the final HTML.
 
-The parser interprets headings based on their *relationship* to each other:
+The parser interprets headings based on their _relationship_ to each other:
 
 ```markdown
-## Welcome          ← This becomes `title` (it's the first/main heading)
+## Welcome ← This becomes `title` (it's the first/main heading)
+
 ### Getting Started ← This becomes `subtitle` (it's after the title)
 
 Some content here.
 
-### Features        ← This starts an `item` (heading after content)
+### Features ← This starts an `item` (heading after content)
 ```
 
 The same semantic structure can be expressed with different heading levels:
 
 ```markdown
-# Welcome           ← title
-## Getting Started  ← subtitle
+# Welcome ← title
+
+## Getting Started ← subtitle
 ```
 
 or:
 
 ```markdown
-### Welcome         ← title
+### Welcome ← title
+
 #### Getting Started ← subtitle
 ```
 
@@ -540,15 +580,18 @@ Both produce the same `content.title` and `content.subtitle`. The component deci
 
 ### Pretitle Detection
 
-Any heading followed by a *more important* heading automatically becomes a pretitle:
+Any heading followed by a _more important_ heading automatically becomes a pretitle:
 
 ```markdown
-### Welcome to       ← pretitle (H3 before H1)
-# Acme Corp          ← title
-## Build faster      ← subtitle
+### Welcome to ← pretitle (H3 before H1)
+
+# Acme Corp ← title
+
+## Build faster ← subtitle
 ```
 
 This works at any level:
+
 - H3 → H1 = pretitle
 - H2 → H1 = pretitle
 - H4 → H2 = pretitle
@@ -570,6 +613,7 @@ Use items when your component displays repeating content—feature cards, pricin
 Choose your plan.
 
 ### Starter
+
 $9/month
 
 Perfect for individuals.
@@ -577,6 +621,7 @@ Perfect for individuals.
 [Get Started](/signup?plan=starter){.button}
 
 ### Pro
+
 $29/month
 
 For growing teams.
@@ -588,10 +633,10 @@ For growing teams.
 // In your Pricing component
 const { title, paragraphs, items } = content
 
-items.forEach(tier => {
-  console.log(tier.title)       // "Starter", "Pro"
-  console.log(tier.paragraphs)  // ["$9/month", "Perfect for..."], ...
-  console.log(tier.links)       // [{ href: "/signup?plan=starter", role: "button", ... }]
+items.forEach((tier) => {
+  console.log(tier.title) // "Starter", "Pro"
+  console.log(tier.paragraphs) // ["$9/month", "Perfect for..."], ...
+  console.log(tier.links) // [{ href: "/signup?plan=starter", role: "button", ... }]
 })
 ```
 
@@ -613,14 +658,15 @@ The `lists` field contains markdown bullet or numbered lists. Each list is an ar
 
 const { lists } = content
 
-lists[0].forEach(item => {
-  console.log(item.paragraphs)  // ["First item with <strong>bold</strong> text"]
-  console.log(item.links)       // [{ href: "/path", label: "link" }] for second item
-  console.log(item.lists)       // Nested lists array (for items with sub-lists)
+lists[0].forEach((item) => {
+  console.log(item.paragraphs) // ["First item with <strong>bold</strong> text"]
+  console.log(item.links) // [{ href: "/path", label: "link" }] for second item
+  console.log(item.lists) // Nested lists array (for items with sub-lists)
 })
 ```
 
 **Structure:**
+
 ```
 lists: [                           // Array of lists in the content
   [                                // First list (array of list items)
@@ -635,7 +681,7 @@ lists: [                           // Array of lists in the content
 ]
 ```
 
-**Important:** List items are *not* plain strings. They're objects with the same structure as content, allowing rich formatting, links, and nested lists within each item.
+**Important:** List items are _not_ plain strings. They're objects with the same structure as content, allowing rich formatting, links, and nested lists within each item.
 
 ## Structured Data
 
@@ -661,6 +707,7 @@ const formConfig = content.data?.form || {}
 ```
 
 **Supported formats:**
+
 - `json:tag-name` — Parsed as JSON
 - `yaml:tag-name` — Parsed as YAML
 
@@ -701,19 +748,19 @@ The runtime guarantees all fields exist—you don't need defensive null checks:
 const { title, paragraphs, links, imgs, items, data } = content
 
 // Safe to use directly
-paragraphs.forEach(p => console.log(p))
-items.map(item => <Card {...item} />)
+paragraphs.forEach((p) => console.log(p))
+items.map((item) => <Card {...item} />)
 ```
 
 ## Nesting: Items, Subsections, and Child Pages
 
 There are three ways to create nested content, each for a different purpose:
 
-| Approach | What it is | When to use |
-|----------|------------|-------------|
-| **Items** | Headings in one markdown file | Repeating content within a single section (cards, features) |
-| **Subsections** | Separate section files in the same page folder | Complex sections needing their own component type |
-| **Child pages** | Subfolders in `pages/` | Separate pages with their own routes |
+| Approach        | What it is                                     | When to use                                                 |
+| --------------- | ---------------------------------------------- | ----------------------------------------------------------- |
+| **Items**       | Headings in one markdown file                  | Repeating content within a single section (cards, features) |
+| **Subsections** | Separate section files in the same page folder | Complex sections needing their own component type           |
+| **Child pages** | Subfolders in `pages/`                         | Separate pages with their own routes                        |
 
 ### Items (same section)
 
@@ -756,8 +803,8 @@ The `index:` setting in `site.yml` only controls which page becomes the root `/`
 > **Note for developers coming from other site frameworks:**
 > Uniweb treats every page folder as a distinct route. Nested pages do **not** replace or "take over" their parent folder.
 >
-> * `/docs` builds to `dist/docs/index.html`
-> * `/docs/getting-started` builds to `dist/docs/getting-started/index.html`
+> - `/docs` builds to `dist/docs/index.html` _(when prerendering is enabled)_
+> - `/docs/getting-started` builds to `dist/docs/getting-started/index.html`
 >
 > Both pages exist independently—no conflict, no overwriting.
 
