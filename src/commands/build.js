@@ -10,7 +10,7 @@
  *   uniweb build --prerender         # Build site + pre-render to static HTML (SSG)
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { writeFile, mkdir } from 'node:fs/promises'
@@ -53,20 +53,49 @@ function info(message) {
 
 /**
  * Detect project type based on directory contents
+ *
+ * Detection priority:
+ * 1. foundation.js → foundation
+ * 2. site.yml → site
+ * 3. src/components/ → foundation (fallback)
+ * 4. pages/ → site (fallback)
+ * 5. pnpm-workspace.yaml or package.json workspaces → workspace
  */
 function detectProjectType(projectDir) {
-  const srcDir = join(projectDir, 'src')
-  const componentsDir = join(srcDir, 'components')
-  const pagesDir = join(projectDir, 'pages')
-
-  // Foundation: has src/components/ with component folders containing meta.js
-  if (existsSync(componentsDir)) {
+  // Primary detection: config files
+  if (existsSync(join(projectDir, 'src', 'foundation.js'))) {
     return 'foundation'
   }
 
-  // Site: has pages/ directory
-  if (existsSync(pagesDir)) {
+  if (existsSync(join(projectDir, 'site.yml'))) {
     return 'site'
+  }
+
+  // Fallback detection: directory structure
+  if (existsSync(join(projectDir, 'src', 'components'))) {
+    return 'foundation'
+  }
+
+  if (existsSync(join(projectDir, 'pages'))) {
+    return 'site'
+  }
+
+  // Workspace: has pnpm-workspace.yaml or package.json with workspaces
+  if (existsSync(join(projectDir, 'pnpm-workspace.yaml'))) {
+    return 'workspace'
+  }
+
+  // Check package.json for workspaces field
+  const packageJsonPath = join(projectDir, 'package.json')
+  if (existsSync(packageJsonPath)) {
+    try {
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'))
+      if (packageJson.workspaces) {
+        return 'workspace'
+      }
+    } catch {
+      // Ignore parse errors
+    }
   }
 
   return null
@@ -396,6 +425,123 @@ async function buildSite(projectDir, options = {}) {
 }
 
 /**
+ * Check if a directory is a foundation
+ */
+function isFoundation(dir) {
+  // Primary: has foundation.js config
+  if (existsSync(join(dir, 'src', 'foundation.js'))) return true
+  // Fallback: has src/components/
+  if (existsSync(join(dir, 'src', 'components'))) return true
+  return false
+}
+
+/**
+ * Check if a directory is a site
+ */
+function isSite(dir) {
+  // Primary: has site.yml config
+  if (existsSync(join(dir, 'site.yml'))) return true
+  // Fallback: has pages/
+  if (existsSync(join(dir, 'pages'))) return true
+  return false
+}
+
+/**
+ * Discover workspace packages based on workspace config
+ */
+function discoverWorkspacePackages(workspaceDir) {
+  const foundations = []
+  const sites = []
+
+  // Check standard locations
+  const standardFoundation = join(workspaceDir, 'foundation')
+  const standardSite = join(workspaceDir, 'site')
+
+  if (existsSync(standardFoundation) && isFoundation(standardFoundation)) {
+    foundations.push({ name: 'foundation', path: standardFoundation })
+  }
+
+  if (existsSync(standardSite) && isSite(standardSite)) {
+    sites.push({ name: 'site', path: standardSite })
+  }
+
+  // Check multi-site locations (foundations/*, sites/*)
+  const foundationsDir = join(workspaceDir, 'foundations')
+  const sitesDir = join(workspaceDir, 'sites')
+
+  if (existsSync(foundationsDir)) {
+    for (const name of readdirSync(foundationsDir)) {
+      const path = join(foundationsDir, name)
+      if (isFoundation(path)) {
+        foundations.push({ name, path })
+      }
+    }
+  }
+
+  if (existsSync(sitesDir)) {
+    for (const name of readdirSync(sitesDir)) {
+      const path = join(sitesDir, name)
+      if (isSite(path)) {
+        sites.push({ name, path })
+      }
+    }
+  }
+
+  return { foundations, sites }
+}
+
+/**
+ * Build all packages in a workspace
+ */
+async function buildWorkspace(workspaceDir, options = {}) {
+  const { prerenderFlag, noPrerenderFlag } = options
+
+  log(`${colors.cyan}${colors.bright}Building workspace...${colors.reset}`)
+  log('')
+
+  const { foundations, sites } = discoverWorkspacePackages(workspaceDir)
+
+  if (foundations.length === 0 && sites.length === 0) {
+    error('No foundations or sites found in workspace')
+    log('')
+    log('Expected structure:')
+    log('  foundation/     or  foundations/*/')
+    log('  site/           or  sites/*/')
+    process.exit(1)
+  }
+
+  // Build foundations first (sites depend on them)
+  for (const foundation of foundations) {
+    log(`${colors.bright}[${foundation.name}]${colors.reset}`)
+    await buildFoundation(foundation.path)
+    log('')
+  }
+
+  // Build sites
+  for (const site of sites) {
+    log(`${colors.bright}[${site.name}]${colors.reset}`)
+
+    const siteConfig = readSiteConfig(site.path)
+    const configPrerender = siteConfig.build?.prerender === true
+
+    let prerender = configPrerender
+    if (prerenderFlag) prerender = true
+    if (noPrerenderFlag) prerender = false
+
+    // Resolve foundation directory for this site
+    const foundationDir = resolveFoundationDir(site.path, siteConfig)
+
+    await buildSite(site.path, { prerender, foundationDir, siteConfig })
+    log('')
+  }
+
+  // Summary
+  log(`${colors.green}${colors.bright}Workspace build complete!${colors.reset}`)
+  log('')
+  log(`Built ${foundations.length} foundation(s) and ${sites.length} site(s)`)
+}
+
+/**
  * Main build command handler
  */
 export async function build(args = []) {
@@ -430,22 +576,26 @@ export async function build(args = []) {
 
     if (!targetType) {
       error('Could not detect project type')
-      log('Use --target foundation or --target site')
+      log('Use --target foundation or --target site, or run from workspace root')
       process.exit(1)
     }
 
-    info(`Detected project type: ${targetType}`)
+    if (targetType !== 'workspace') {
+      info(`Detected project type: ${targetType}`)
+    }
   }
 
-  // Validate prerender flags are only used with site target
-  if ((prerenderFlag || noPrerenderFlag) && targetType !== 'site') {
-    error('--prerender/--no-prerender can only be used with site builds')
+  // Validate prerender flags are only used with site/workspace target
+  if ((prerenderFlag || noPrerenderFlag) && targetType === 'foundation') {
+    error('--prerender/--no-prerender can only be used with site or workspace builds')
     process.exit(1)
   }
 
   // Run appropriate build
   try {
-    if (targetType === 'foundation') {
+    if (targetType === 'workspace') {
+      await buildWorkspace(projectDir, { prerenderFlag, noPrerenderFlag })
+    } else if (targetType === 'foundation') {
       await buildFoundation(projectDir)
     } else {
       // For sites, read config to determine prerender default

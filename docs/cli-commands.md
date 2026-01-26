@@ -43,7 +43,6 @@ uniweb create [name] [options]
 |----------|-------------|
 | `single` | One site + one foundation (default, recommended) |
 | `multi` | Multiple sites and foundations workspace |
-| `template` | Starter for creating shareable templates |
 
 **Official templates:**
 
@@ -83,17 +82,33 @@ uniweb create my-site --template github:myorg/custom-template
 uniweb create my-site --template marketing --variant tailwind3
 ```
 
+### Troubleshooting Template Downloads
+
+Official templates (like `marketing`) are fetched from GitHub Releases. If download fails:
+
+1. **Check network access** — Corporate networks may block GitHub API
+2. **Use built-in template** — Run `uniweb create my-site` (no `--template`) to use the local `single` template
+3. **Check rate limits** — GitHub API has rate limits for unauthenticated requests
+
 ---
 
 ## uniweb build
 
-Build the current project (foundation or site).
+Build the current project (foundation, site, or workspace).
 
 ```bash
 uniweb build [options]
 ```
 
-The CLI auto-detects whether you're in a foundation (`src/components/`) or site (`pages/`) directory.
+The CLI auto-detects the project type:
+
+| Indicator | Type |
+|-----------|------|
+| `src/foundation.js` or `src/components/` | Foundation |
+| `site.yml` or `pages/` | Site |
+| `pnpm-workspace.yaml` | Workspace (builds all) |
+
+When run at workspace root, builds all foundations first, then all sites.
 
 ### Options
 
@@ -160,7 +175,10 @@ dist/
 ### Examples
 
 ```bash
-# Build foundation
+# Build entire workspace (from root)
+uniweb build
+
+# Build foundation only
 cd foundation && uniweb build
 
 # Build site with prerendering

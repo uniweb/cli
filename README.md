@@ -13,6 +13,20 @@ pnpm install
 pnpm dev
 ```
 
+Open http://localhost:5173 to see your site. Edit files in `site/pages/` and `foundation/src/components/` to see changes instantly.
+
+### Development Commands
+
+Run these from the **project root** (where `pnpm-workspace.yaml` is):
+
+```bash
+pnpm dev        # Start development server
+pnpm build      # Build foundation + site for production
+pnpm preview    # Preview the production build
+```
+
+The `build` command generates static HTML in `site/dist/`. Open those files to verify your output before deploying.
+
 The `marketing` template includes real components (Hero, Features, Pricing, Testimonials, FAQ, and more) with sample content—a working site you can explore and modify.
 
 **Other templates:**

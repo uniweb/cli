@@ -68,10 +68,6 @@ const templates = {
     name: 'Multi-Site Workspace',
     description: 'Multiple sites and foundations in sites/* and foundations/*',
   },
-  template: {
-    name: 'Template Starter',
-    description: 'Create a shareable Uniweb template for npm or GitHub',
-  },
 }
 
 /**
@@ -235,11 +231,6 @@ async function main() {
           description: templates.multi.description,
           value: 'multi',
         },
-        {
-          title: templates.template.name,
-          description: templates.template.description,
-          value: 'template',
-        },
       ],
     },
   ], {
@@ -300,6 +291,11 @@ async function main() {
       })
     } catch (err) {
       error(`Failed to apply template: ${err.message}`)
+      log('')
+      log(`${colors.yellow}Troubleshooting:${colors.reset}`)
+      log(`  • Check your network connection`)
+      log(`  • Official templates require GitHub access (may be blocked by corporate networks)`)
+      log(`  • Try the built-in template instead: ${colors.cyan}uniweb create ${projectName}${colors.reset}`)
       process.exit(1)
     }
   }
@@ -339,6 +335,7 @@ ${colors.bright}Build Options:${colors.reset}
   --foundation-dir   Path to foundation directory (for prerendering)
   --platform <name>  Deployment platform (e.g., vercel) for platform-specific output
 
+  At workspace root, builds all foundations first, then all sites.
   Pre-rendering is enabled by default when build.prerender: true in site.yml
 
 ${colors.bright}Docs Subcommands:${colors.reset}
@@ -359,7 +356,6 @@ ${colors.bright}i18n Commands:${colors.reset}
 ${colors.bright}Template Types:${colors.reset}
   single                        One site + one foundation (default)
   multi                         Multiple sites and foundations
-  template                      Starter for creating shareable templates
   marketing                     Official marketing template
   @scope/template-name          npm package
   github:user/repo              GitHub repository

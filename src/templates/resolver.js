@@ -3,7 +3,7 @@
  */
 
 // Built-in templates (file-based in cli/templates/)
-export const BUILTIN_TEMPLATES = ['single', 'multi', 'template']
+export const BUILTIN_TEMPLATES = ['single', 'multi']
 
 // Official templates from @uniweb/templates package (downloaded from GitHub releases)
 export const OFFICIAL_TEMPLATES = ['marketing', 'academic', 'docs', 'international']
