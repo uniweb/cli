@@ -113,7 +113,11 @@ Access the parsed data via `content.data`:
 ```jsx
 function TeamCard({ content }) {
   const member = content.data['team-member']
-  return <div>{member.name} — {member.role}</div>
+  return (
+    <div>
+      {member.name} — {member.role}
+    </div>
+  )
 }
 ```
 
@@ -247,17 +251,24 @@ Start with local files deployed anywhere. The same foundation works across all t
 
 ---
 
-## Installation
+## Create a Project
 
 ```bash
-# Create a new project (recommended)
-pnpm create uniweb my-site
+# pnpm (recommended)
+pnpm create uniweb my-site --template marketing
 
-# Or use npx directly
-npx uniweb@latest create my-site
+# npm (use -- before options)
+npm create uniweb@latest my-site -- --template marketing
 
-# Or install globally
+# npx
+npx uniweb@latest create my-site --template marketing
+```
+
+Alternatively, install the CLI globally:
+
+```bash
 npm install -g uniweb
+uniweb create my-site --template marketing
 ```
 
 **Requirements:**
@@ -281,7 +292,7 @@ Or see the [official pnpm installation guide](https://pnpm.io/installation) for 
 
 ### `create`
 
-Create a new Uniweb project.
+Create a new Uniweb project. See [Create a Project](#create-a-project) for usage examples.
 
 ```bash
 uniweb create [project-name] [options]
@@ -302,31 +313,6 @@ uniweb create [project-name] [options]
 | npm        | `@org/my-template`             | Published npm packages          |
 | GitHub     | `github:user/repo`             | GitHub repositories             |
 | GitHub URL | `https://github.com/user/repo` | Full GitHub URLs                |
-
-**Examples:**
-
-```bash
-# Interactive prompts
-pnpm create uniweb
-
-# Create with specific name (defaults to single template)
-pnpm create uniweb my-project
-
-# Single project with site + foundation
-pnpm create uniweb my-project --template single
-
-# Multi-site/foundation monorepo
-pnpm create uniweb my-workspace --template multi
-
-# Official marketing template (landing pages, pricing, testimonials)
-pnpm create uniweb my-site --template marketing
-
-# From npm package
-pnpm create uniweb my-site --template @myorg/starter-template
-
-# From GitHub repository
-pnpm create uniweb my-site --template github:myorg/uniweb-template
-```
 
 ### `build`
 
@@ -670,7 +656,7 @@ Set your homepage with `index:` in `site.yml`:
 
 ```yaml
 # site.yml
-index: home  # The page folder that becomes /
+index: home # The page folder that becomes /
 ```
 
 The `index:` option tells the build which page folder becomes the root route (`/`). The page still exists in `pages/home/`, but visitors access it at `/`.
@@ -690,8 +676,8 @@ Becomes:
 
 ```js
 content.items = [
-  { title: "First item", paragraphs: [], links: [], imgs: [] },
-  { title: "Second item", paragraphs: [], links: [], imgs: [] }
+  { title: 'First item', paragraphs: [], links: [], imgs: [] },
+  { title: 'Second item', paragraphs: [], links: [], imgs: [] },
 ]
 ```
 
@@ -713,7 +699,11 @@ Are accessible via `content.data`:
 ```jsx
 function TeamMember({ content }) {
   const member = content.data['team-member']
-  return <div>{member.name} - {member.role}</div>
+  return (
+    <div>
+      {member.name} - {member.role}
+    </div>
+  )
 }
 ```
 
@@ -723,12 +713,12 @@ The tag name (after the colon) becomes the key in `content.data`.
 
 In a Uniweb workspace, commands run differently at different levels:
 
-| Location | Command | What it does |
-|----------|---------|--------------|
-| Project root | `pnpm build` | Builds all packages (foundation + site) |
-| Project root | `pnpm dev` | Starts dev server for site |
-| `foundation/` | `uniweb build` | Builds just the foundation |
-| `site/` | `uniweb build` | Builds just the site |
+| Location      | Command        | What it does                            |
+| ------------- | -------------- | --------------------------------------- |
+| Project root  | `pnpm build`   | Builds all packages (foundation + site) |
+| Project root  | `pnpm dev`     | Starts dev server for site              |
+| `foundation/` | `uniweb build` | Builds just the foundation              |
+| `site/`       | `uniweb build` | Builds just the site                    |
 
 For day-to-day development, run `pnpm dev` from the project root. The workspace scripts handle the rest.
 
