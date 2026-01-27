@@ -236,6 +236,50 @@ The attribute syntax is more flexible—it allows combining role with other attr
 | `controls` | Show video controls    |
 | `poster`   | Poster/thumbnail image |
 
+### Icons
+
+Icons can be referenced in three ways:
+
+**1. URL-based icons (any SVG file):**
+
+```markdown
+![Logo](./logo.svg){role=icon}
+![Logo](icon:./logo.svg)
+```
+
+**2. Named icons from icon libraries:**
+
+```markdown
+![check](lucide:check)
+![arrow](lucide:arrow-right){size=20}
+![heart](lucide:heart){size=24 color=red}
+```
+
+Supported icon library prefixes:
+
+| Prefix | Library |
+| ------ | ------- |
+| `lucide:` | [Lucide](https://lucide.dev) |
+| `heroicons:` | [Heroicons](https://heroicons.com) |
+| `phosphor:` | [Phosphor](https://phosphoricons.com) |
+| `tabler:` | [Tabler Icons](https://tabler.io/icons) |
+| `feather:` | [Feather](https://feathericons.com) |
+
+**Icon attributes:**
+
+| Attribute | Description |
+| --------- | ----------- |
+| `size` | Icon size in pixels (default: 24) |
+| `color` | Icon color (CSS color value) |
+
+**Important:** Named icons require foundation support. The foundation must include the icon library to render named icons. See [Foundation Configuration](./foundation-configuration.md#icon-libraries) for setup instructions.
+
+If your foundation doesn't include an icon library, use URL-based icons instead:
+
+```markdown
+![check](/icons/check.svg){role=icon}
+```
+
 ### Clickable Images and Videos
 
 Images and videos can be links—clicking them navigates to the specified URL:

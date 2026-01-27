@@ -295,6 +295,107 @@ Or automatically extracted from:
 
 ---
 
+## Co-located Assets
+
+Collection items can reference assets stored alongside their markdown files using relative paths. This keeps related content together and makes it easy to manage.
+
+### Directory Structure
+
+```
+site/
+└── library/
+    └── articles/
+        ├── getting-started.md
+        ├── getting-started-diagram.svg    # Co-located with article
+        ├── design-patterns.md
+        └── design-patterns-architecture.png
+```
+
+### Referencing Co-located Assets
+
+Use `./` to reference files in the same folder:
+
+```markdown
+---
+title: Getting Started
+---
+
+Here's how the architecture works:
+
+![Architecture Diagram](./getting-started-diagram.svg)
+
+The system consists of three main parts...
+```
+
+### Build Processing
+
+At build time, the collection processor:
+
+1. **Detects relative paths** — Any `./` or `../` path in the content
+2. **Copies assets** — Files are copied to `public/library/<collection>/`
+3. **Updates paths** — References become site-root-relative (`/library/articles/diagram.svg`)
+
+This means your content stays portable—move an article and its assets together, and everything still works.
+
+### Supported Asset Types
+
+Co-located assets work for all media types:
+
+```markdown
+<!-- Images -->
+![Diagram](./architecture.svg)
+![Photo](./team-photo.jpg)
+
+<!-- Videos -->
+![Demo](./demo.mp4){role=video poster=./demo-poster.jpg}
+
+<!-- Documents -->
+![Download](./whitepaper.pdf){role=document preview=./whitepaper-preview.png}
+```
+
+### Path Resolution
+
+| Path Format | Resolution |
+|-------------|------------|
+| `./file.jpg` | Same folder as the markdown file |
+| `../shared/logo.svg` | Parent folder |
+| `/images/hero.jpg` | Site's `public/` folder (unchanged) |
+| `https://...` | External URL (unchanged) |
+
+### Output Location
+
+Co-located assets are copied to `public/library/<collection-name>/`:
+
+```
+public/
+└── library/
+    └── articles/
+        ├── getting-started-diagram.svg
+        └── design-patterns-architecture.png
+```
+
+The JSON output references these processed paths:
+
+```json
+{
+  "slug": "getting-started",
+  "content": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "image",
+        "attrs": {
+          "src": "/library/articles/getting-started-diagram.svg",
+          "alt": "Architecture Diagram"
+        }
+      }
+    ]
+  }
+}
+```
+
+---
+
 ## Complete Example: Blog
 
 ### Directory structure
