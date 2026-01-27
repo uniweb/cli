@@ -13,7 +13,7 @@ pnpm install
 pnpm dev
 ```
 
-Open http://localhost:3000 to see your site. Edit files in `site/pages/` and `foundation/src/components/` to see changes instantly.
+Open http://localhost:5173 to see your site. Edit files in `site/pages/` and `foundation/src/components/` to see changes instantly.
 
 ### Development Commands
 
