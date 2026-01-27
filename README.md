@@ -7,7 +7,7 @@ Create well-structured Vite + React projects with file-based routing, localizati
 ## Quick Start
 
 ```bash
-npx uniweb@latest create my-site --template marketing
+pnpm create uniweb my-site --template marketing
 cd my-site
 pnpm install
 pnpm dev
@@ -33,16 +33,16 @@ The `marketing` template includes real components (Hero, Features, Pricing, Test
 
 ```bash
 # Multilingual business site (English, Spanish, French)
-npx uniweb@latest create my-site --template international
+pnpm create uniweb my-site --template international
 
 # Academic site (researcher portfolios, lab pages)
-npx uniweb@latest create my-site --template academic
+pnpm create uniweb my-site --template academic
 
 # Documentation site
-npx uniweb@latest create my-site --template docs
+pnpm create uniweb my-site --template docs
 
 # Minimal starter (build from scratch)
-npx uniweb@latest create my-site
+pnpm create uniweb my-site
 ```
 
 Every project is a workspace with two packages:
@@ -248,8 +248,11 @@ Start with local files deployed anywhere. The same foundation works across all t
 ## Installation
 
 ```bash
-# Use directly with npx (recommended)
-npx uniweb@latest <command>
+# Create a new project (recommended)
+pnpm create uniweb my-site
+
+# Or use npx directly
+npx uniweb@latest create my-site
 
 # Or install globally
 npm install -g uniweb
@@ -302,25 +305,25 @@ uniweb create [project-name] [options]
 
 ```bash
 # Interactive prompts
-uniweb create
+pnpm create uniweb
 
 # Create with specific name (defaults to single template)
-uniweb create my-project
+pnpm create uniweb my-project
 
 # Single project with site + foundation
-uniweb create my-project --template single
+pnpm create uniweb my-project --template single
 
 # Multi-site/foundation monorepo
-uniweb create my-workspace --template multi
+pnpm create uniweb my-workspace --template multi
 
 # Official marketing template (landing pages, pricing, testimonials)
-uniweb create my-site --template marketing
+pnpm create uniweb my-site --template marketing
 
 # From npm package
-uniweb create my-site --template @myorg/starter-template
+pnpm create uniweb my-site --template @myorg/starter-template
 
 # From GitHub repository
-uniweb create my-site --template github:myorg/uniweb-template
+pnpm create uniweb my-site --template github:myorg/uniweb-template
 ```
 
 ### `build`
@@ -425,7 +428,7 @@ Feature-rich templates with real components and sample content.
 ### Marketing
 
 ```bash
-uniweb create my-site --template marketing
+pnpm create uniweb my-site --template marketing
 ```
 
 **Includes:** Hero, Features, Pricing, Testimonials, CTA, FAQ, Stats, LogoCloud, Video, Gallery, Team
@@ -435,13 +438,13 @@ Perfect for product launches, SaaS websites, and business landing pages.
 **Tailwind v3 variant:**
 
 ```bash
-uniweb create my-site --template marketing --variant tailwind3
+pnpm create uniweb my-site --template marketing --variant tailwind3
 ```
 
 ### Academic
 
 ```bash
-uniweb create my-site --template academic
+pnpm create uniweb my-site --template academic
 ```
 
 **Includes:** ProfileHero, PublicationList, ResearchAreas, TeamGrid, Timeline, ContactCard, Navbar, Footer
@@ -451,7 +454,7 @@ Perfect for researcher portfolios, lab websites, and academic department sites.
 ### Docs
 
 ```bash
-uniweb create my-site --template docs
+pnpm create uniweb my-site --template docs
 ```
 
 **Includes:** Header, LeftPanel, DocSection, CodeBlock, Footer
@@ -461,7 +464,7 @@ Perfect for technical documentation, guides, and API references.
 ### International
 
 ```bash
-uniweb create my-site --template international
+pnpm create uniweb my-site --template international
 ```
 
 **Includes:** Hero, Features, Team, CTA, Header (with language switcher), Footer (with language links)
@@ -489,13 +492,13 @@ Use templates from npm or GitHub:
 
 ```bash
 # npm package
-uniweb create my-site --template @myorg/template-name
+pnpm create uniweb my-site --template @myorg/template-name
 
 # GitHub repository
-uniweb create my-site --template github:user/repo
+pnpm create uniweb my-site --template github:user/repo
 
 # GitHub with specific branch/tag
-uniweb create my-site --template github:user/repo#v1.0.0
+pnpm create uniweb my-site --template github:user/repo#v1.0.0
 ```
 
 ## Dependency Management
