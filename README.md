@@ -6,6 +6,8 @@ Create well-structured Vite + React projects with file-based routing, localizati
 
 ## Quick Start
 
+> **Need pnpm?** Run `npm install -g pnpm` or see [pnpm installation](https://pnpm.io/installation).
+
 ```bash
 pnpm create uniweb my-site --template marketing
 cd my-site
