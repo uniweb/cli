@@ -241,6 +241,52 @@ code {
 }
 ```
 
+## Code Block Syntax Highlighting
+
+Code blocks in markdown content are automatically syntax-highlighted using [Shiki](https://shiki.style). Customize the colors via the `code` section:
+
+```yaml
+code:
+  background: "#1e1e2e"     # Code block background
+  foreground: "#cdd6f4"     # Default text color
+
+  # Syntax highlighting colors
+  keyword: "#cba6f7"        # Keywords (if, else, function)
+  string: "#a6e3a1"         # String literals
+  number: "#fab387"         # Numbers
+  comment: "#6c7086"        # Comments
+  function: "#89b4fa"       # Function names
+  variable: "#f5e0dc"       # Variables
+  operator: "#89dceb"       # Operators
+  type: "#f9e2af"           # Type names
+  constant: "#f38ba8"       # Constants
+  property: "#94e2d5"       # Object properties
+  tag: "#89b4fa"            # HTML/JSX tags
+  attribute: "#f9e2af"      # HTML attributes
+```
+
+### Default Theme
+
+If you don't customize `code`, Uniweb uses a dark theme inspired by Catppuccin Mocha—a popular color scheme that's easy on the eyes.
+
+### How It Works
+
+1. **Lazy loading**: Shiki is only loaded when a page contains code blocks
+2. **Tree-shaking**: If your foundation doesn't render code blocks, Shiki isn't bundled
+3. **Runtime injection**: CSS variables are injected when the first code block renders
+4. **Dynamic content**: Works with both static pages and API-loaded content
+
+Shiki is included with `@uniweb/kit` - no additional installation needed.
+
+### Supported Languages
+
+Common languages are loaded by default:
+- JavaScript, TypeScript, JSX, TSX
+- JSON, YAML, HTML, CSS
+- Markdown, Python, Bash
+
+Other languages are loaded on-demand when encountered.
+
 ## Appearance (Light/Dark Mode)
 
 Control site-wide color scheme preferences:
