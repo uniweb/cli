@@ -47,6 +47,8 @@ pnpm create uniweb my-site --template docs
 pnpm create uniweb my-site
 ```
 
+**See them live:** [View all template demos](https://uniweb.github.io/templates/)
+
 Every project is a workspace with two packages:
 
 - **`site/`** — Content, pages, entry point
