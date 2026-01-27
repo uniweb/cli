@@ -407,6 +407,31 @@ async function buildSite(projectDir, options = {}) {
       for (const [locale, path] of Object.entries(outputs)) {
         log(`  ${colors.dim}dist/${locale}/site-content.json${colors.reset}`)
       }
+
+      // Translate collections if they exist
+      try {
+        const { buildLocalizedCollections } = await import('@uniweb/build/i18n')
+
+        const collectionOutputs = await buildLocalizedCollections(projectDir, {
+          locales: i18nConfig.locales,
+          outputDir: join(projectDir, 'dist'),
+          collectionsLocalesDir: join(projectDir, i18nConfig.localesDir, 'collections')
+        })
+
+        // Count collections translated
+        const collectionCount = Object.values(collectionOutputs).reduce(
+          (sum, localeOutputs) => sum + Object.keys(localeOutputs).length, 0
+        )
+
+        if (collectionCount > 0) {
+          success(`Translated collections for ${Object.keys(collectionOutputs).length} locale(s)`)
+        }
+      } catch (err) {
+        // Collection translation is optional, don't fail build
+        if (process.env.DEBUG) {
+          console.error('Collection translation:', err.message)
+        }
+      }
     } catch (err) {
       error(`i18n build failed: ${err.message}`)
       if (process.env.DEBUG) {
