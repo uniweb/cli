@@ -192,22 +192,33 @@ Useful for combining data from multiple sources.
 
 ## Local Files
 
-Place data files in `public/`:
+**Prefer collections over manual JSON files.** Collections provide:
+- Markdown-based authoring with frontmatter
+- Automatic i18n support
+- Better content management
+
+See [Content Collections](./content-collections.md) for the recommended approach.
+
+### Manual JSON files (when needed)
+
+For configuration data or integration with external tools that generate JSON, you can place files in `public/data/`:
 
 ```
 site/
 ├── public/
 │   └── data/
-│       ├── team.json
-│       ├── config.yaml
-│       └── events.yml
+│       └── config.json    # For config/integration data
+├── library/
+│   └── team/              # Prefer: markdown collection
+│       ├── alice.md
+│       └── bob.md
 └── pages/
 ```
 
-Reference them with paths starting with `/`:
+Reference with paths starting with `/`:
 
 ```yaml
-fetch: /data/team.json
+fetch: /data/config.json
 ```
 
 Both JSON and YAML are supported.

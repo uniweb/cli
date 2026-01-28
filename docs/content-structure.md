@@ -498,56 +498,44 @@ icons: [
 
 Components can check `icon.href` to render clickable icons differently from decorative ones.
 
-### Creating Buttons
+### Link Attributes
 
-Links become buttons with a `role` attribute or the `.button` class:
-
-**Prefix syntax:**
+Links can include optional attributes that components may use as rendering hints:
 
 ```markdown
-[Get Started](button:/signup)
+[Get Started](/signup){variant=primary size=lg}
+[Learn More](/docs){target=_blank}
+[Download PDF](/file.pdf)
 ```
 
-**Class syntax:**
+**Available attributes:**
 
-```markdown
-[Get Started](/signup){.button}
-[Secondary](/learn){.button variant=secondary}
-```
+| Attribute | Values                                     | Description                |
+| --------- | ------------------------------------------ | -------------------------- |
+| `role`    | Any string (e.g., `button`, `nav`)         | Hint for component styling |
+| `variant` | `primary`, `secondary`, `outline`, `ghost` | Visual style hint          |
+| `size`    | `sm`, `md`, `lg`                           | Size hint                  |
+| `target`  | `_blank`, `_self`, etc.                    | Link target                |
 
-**Attribute syntax:**
+**Important:** These attributes are hints—components decide how to render links. A Hero component might render all links as buttons regardless of attributes, while a Footer component might render them as plain links.
 
-```markdown
-[Get Started](/signup){role=button variant=primary size=lg}
-```
+### Link Types
 
-### Button Attributes
-
-| Attribute | Values                                     | Description     |
-| --------- | ------------------------------------------ | --------------- |
-| `variant` | `primary`, `secondary`, `outline`, `ghost` | Visual style    |
-| `size`    | `sm`, `md`, `lg`                           | Button size     |
-| `icon`    | Icon name                                  | Icon to display |
-
-### Link Roles
-
-The `role` attribute distinguishes link types in your component:
+Components receive all links in the `content.links` array:
 
 ```js
 const { links } = content
 
 links.forEach((link) => {
-  console.log(link.role) // "link", "button", "button-primary", "document"
   console.log(link.href)
   console.log(link.label)
+  console.log(link.role)     // Optional hint from author
+  console.log(link.variant)  // Optional styling hint
+  console.log(link.target)   // Link target
 })
-
-// Filter by role
-const buttons = links.filter((l) => l.role?.startsWith('button'))
-const downloads = links.filter((l) => l.role === 'document')
 ```
 
-File links (`.pdf`, `.doc`, etc.) automatically get `role: "document"` and `download: true`.
+File links (`.pdf`, `.doc`, etc.) automatically include `download: true` for browser handling.
 
 ## Document-Order Rendering with Sequence
 

@@ -28,27 +28,35 @@ pages/
 
 ## Quick Start
 
-### 1. Create your data file
+### 1. Create a collection
 
-```json
-// public/data/articles.json
-[
-  {
-    "slug": "getting-started",
-    "title": "Getting Started with Uniweb",
-    "excerpt": "Learn the basics...",
-    "author": "Jane Doe",
-    "date": "2025-01-15"
-  },
-  {
-    "slug": "advanced-features",
-    "title": "Advanced Features",
-    "excerpt": "Deep dive into...",
-    "author": "John Smith",
-    "date": "2025-01-20"
-  }
-]
+Create markdown files in `library/articles/`:
+
+```markdown
+<!-- library/articles/getting-started.md -->
+---
+title: Getting Started with Uniweb
+excerpt: Learn the basics...
+author: Jane Doe
+date: 2025-01-15
+---
+
+Your article content here...
 ```
+
+```markdown
+<!-- library/articles/advanced-features.md -->
+---
+title: Advanced Features
+excerpt: Deep dive into...
+author: John Smith
+date: 2025-01-20
+---
+
+Your article content here...
+```
+
+The filename becomes the `slug` (e.g., `getting-started`).
 
 ### 2. Set up the parent page with data
 
@@ -59,7 +67,7 @@ description: Latest articles and tutorials
 data: articles
 ```
 
-This references the `articles` collection. You can also use the full fetch syntax: `fetch: { collection: articles }` or `fetch: /data/articles.json`.
+This references the `articles` collection. The build generates JSON automatically from your markdown files.
 
 ### 3. Create the dynamic route folder
 
