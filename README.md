@@ -6,8 +6,6 @@ Create well-structured Vite + React projects with file-based routing, localizati
 
 ## Quick Start
 
-> **Need pnpm?** Run `npm install -g pnpm` or see [pnpm installation](https://pnpm.io/installation).
-
 ```bash
 pnpm create uniweb my-site --template marketing
 cd my-site
@@ -16,6 +14,8 @@ pnpm dev
 ```
 
 Open http://localhost:5173 to see your site. Edit files in `site/pages/` and `foundation/src/components/` to see changes instantly.
+
+> **Need pnpm?** Run `npm install -g pnpm` or see [pnpm installation](https://pnpm.io/installation).
 
 ### Development Commands
 
@@ -49,14 +49,14 @@ pnpm create uniweb my-site
 
 **See them live:** [View all template demos](https://uniweb.github.io/templates/)
 
+## What You Get
+
 Every project is a workspace with two packages:
 
 - **`site/`** — Content, pages, entry point
 - **`foundation/`** — React components
 
 Content authors work in markdown. Component authors work in React. Neither can break the other's work.
-
-## What You Get
 
 ```
 my-project/
