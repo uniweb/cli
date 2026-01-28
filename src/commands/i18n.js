@@ -13,9 +13,9 @@
  * prompts for selection.
  */
 
-import { resolve, join } from 'path'
+import { resolve, join, dirname, basename, relative } from 'path'
 import { existsSync } from 'fs'
-import { readFile } from 'fs/promises'
+import { readFile, writeFile, mkdir, readdir, unlink, rename } from 'fs/promises'
 import yaml from 'js-yaml'
 import {
   isWorkspaceRoot,
@@ -107,6 +107,22 @@ export async function i18n(args) {
       break
     case 'audit':
       await runAudit(siteRoot, config, effectiveArgs)
+      break
+    // Free-form translation commands
+    case 'init-freeform':
+      await runInitFreeform(siteRoot, config, effectiveArgs)
+      break
+    case 'update-hash':
+      await runUpdateHash(siteRoot, config, effectiveArgs)
+      break
+    case 'move':
+      await runMove(siteRoot, config, effectiveArgs)
+      break
+    case 'rename':
+      await runRename(siteRoot, config, effectiveArgs)
+      break
+    case 'prune':
+      await runPrune(siteRoot, config, effectiveArgs)
       break
     default:
       error(`Unknown subcommand: ${effectiveSubcommand}`)
@@ -352,6 +368,7 @@ async function runSync(siteRoot, config, args) {
 async function runStatus(siteRoot, config, args) {
   const locale = args.find(a => !a.startsWith('-'))
   const showMissing = args.includes('--missing')
+  const showFreeform = args.includes('--freeform')
   const outputJson = args.includes('--json')
   const byPage = args.includes('--by-page')
 
@@ -366,6 +383,12 @@ async function runStatus(siteRoot, config, args) {
   // For --missing mode, use auditLocale which returns detailed missing info
   if (showMissing) {
     await runStatusMissing(siteRoot, config, locale, { outputJson, byPage })
+    return
+  }
+
+  // For --freeform mode, show free-form translation status
+  if (showFreeform) {
+    await runStatusFreeform(siteRoot, config, locale, { outputJson })
     return
   }
 
@@ -406,6 +429,143 @@ async function runStatus(siteRoot, config, args) {
     if (hasMissing) {
       log(`\n${colors.dim}To translate missing strings, edit the locale files in ${config.localesDir}/`)
       log(`Or use: uniweb i18n status --missing --json > missing.json${colors.reset}`)
+    }
+  } catch (err) {
+    error(`Status check failed: ${err.message}`)
+    process.exit(1)
+  }
+}
+
+/**
+ * Status --freeform mode - show free-form translation status
+ */
+async function runStatusFreeform(siteRoot, config, locale, options = {}) {
+  const { outputJson = false } = options
+  const localesPath = join(siteRoot, config.localesDir)
+  const freeformPath = join(localesPath, 'freeform')
+
+  if (!existsSync(freeformPath)) {
+    if (outputJson) {
+      log(JSON.stringify({ error: 'No free-form translations found', locales: {} }, null, 2))
+    } else {
+      log(`${colors.dim}No free-form translations found in ${config.localesDir}/freeform/.${colors.reset}`)
+    }
+    return
+  }
+
+  if (!outputJson) {
+    log(`\n${colors.cyan}Free-form Translation Status${colors.reset}\n`)
+  }
+
+  try {
+    // Load site content for source hashes
+    const siteContentPath = join(siteRoot, 'dist', 'site-content.json')
+    if (!existsSync(siteContentPath)) {
+      error('Site content not found. Run "uniweb build" first.')
+      process.exit(1)
+    }
+
+    const siteContentRaw = await readFile(siteContentPath, 'utf-8')
+    const siteContent = JSON.parse(siteContentRaw)
+
+    const {
+      discoverFreeformTranslations,
+      buildFreeformPath,
+      computeSourceHash,
+      getStaleTranslations,
+      getOrphanedTranslations
+    } = await import('@uniweb/build/i18n')
+
+    // Build source hashes
+    const sourceHashes = {}
+    const validPaths = new Set()
+    for (const page of siteContent.pages || []) {
+      for (const section of page.sections || []) {
+        if (section.stableId && section.content) {
+          const path = buildFreeformPath(section, page)
+          if (path) {
+            validPaths.add(path)
+            sourceHashes[path] = computeSourceHash(section.content)
+          }
+        }
+      }
+    }
+
+    // Find all locales
+    const entries = await readdir(freeformPath, { withFileTypes: true })
+    const locales = entries.filter(e => e.isDirectory()).map(e => e.name)
+    const localesToCheck = locale ? [locale] : locales
+
+    const results = {}
+
+    for (const loc of localesToCheck) {
+      const localeDir = join(freeformPath, loc)
+      if (!existsSync(localeDir)) continue
+
+      // Discover translations
+      const discovered = await discoverFreeformTranslations(loc, localesPath)
+      const allPaths = [...discovered.pages, ...discovered.pageIds, ...discovered.collections]
+
+      // Check staleness
+      const stale = await getStaleTranslations(localeDir, sourceHashes)
+      const orphaned = await getOrphanedTranslations(localeDir, validPaths)
+
+      const upToDate = allPaths.filter(p =>
+        !stale.some(s => s.path === p) &&
+        !orphaned.some(o => o.path === p)
+      )
+
+      results[loc] = {
+        total: allPaths.length,
+        upToDate: upToDate.length,
+        stale: stale.map(s => ({ path: s.path, recordedDate: s.recordedDate })),
+        orphaned: orphaned.map(o => ({ path: o.path, recordedDate: o.recordedDate }))
+      }
+    }
+
+    if (outputJson) {
+      log(JSON.stringify({ locales: results }, null, 2))
+      return
+    }
+
+    // Human-readable output
+    for (const [loc, info] of Object.entries(results)) {
+      log(`${colors.bright}${loc}:${colors.reset}`)
+
+      if (info.total === 0) {
+        log(`  ${colors.dim}No free-form translations${colors.reset}`)
+        log('')
+        continue
+      }
+
+      // Group by path prefix (pages, page-ids, collections)
+      if (info.stale.length > 0) {
+        log(`  ${colors.yellow}Stale (source changed):${colors.reset}`)
+        for (const item of info.stale) {
+          log(`    ${colors.yellow}⚠${colors.reset} ${item.path} ${colors.dim}(${item.recordedDate})${colors.reset}`)
+        }
+      }
+
+      if (info.orphaned.length > 0) {
+        log(`  ${colors.red}Orphaned (source not found):${colors.reset}`)
+        for (const item of info.orphaned) {
+          log(`    ${colors.red}✗${colors.reset} ${item.path}`)
+        }
+      }
+
+      log(`  ${colors.dim}Summary: ${info.upToDate} up to date, ${info.stale.length} stale, ${info.orphaned.length} orphaned${colors.reset}`)
+      log('')
+    }
+
+    // Show next steps
+    const hasStale = Object.values(results).some(r => r.stale.length > 0)
+    const hasOrphaned = Object.values(results).some(r => r.orphaned.length > 0)
+
+    if (hasStale) {
+      log(`${colors.dim}Run 'uniweb i18n update-hash <locale> --all-stale' to update hashes after reviewing.${colors.reset}`)
+    }
+    if (hasOrphaned) {
+      log(`${colors.dim}Run 'uniweb i18n prune --freeform' to remove orphaned translations.${colors.reset}`)
     }
   } catch (err) {
     error(`Status check failed: ${err.message}`)
@@ -609,6 +769,569 @@ async function runAudit(siteRoot, config, args) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Free-form Translation Commands
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Initialize a free-form translation file
+ *
+ * Usage:
+ *   uniweb i18n init-freeform es pages/about hero
+ *   uniweb i18n init-freeform es page-ids/installation intro
+ *   uniweb i18n init-freeform es collections/articles getting-started
+ */
+async function runInitFreeform(siteRoot, config, args) {
+  const locale = args[0]
+  const pathType = args[1] // pages/about, page-ids/installation, collections/articles
+  const sectionId = args[2] // hero, intro, getting-started
+
+  if (!locale || !pathType || !sectionId) {
+    error('Usage: uniweb i18n init-freeform <locale> <path> <section-id>')
+    log(`${colors.dim}Examples:`)
+    log('  uniweb i18n init-freeform es pages/about hero')
+    log('  uniweb i18n init-freeform es page-ids/installation intro')
+    log(`  uniweb i18n init-freeform es collections/articles getting-started${colors.reset}`)
+    process.exit(1)
+  }
+
+  const localesPath = join(siteRoot, config.localesDir)
+  const freeformDir = join(localesPath, 'freeform', locale)
+
+  // Determine target file path
+  const relativePath = `${pathType}/${sectionId}.md`
+  const targetPath = join(freeformDir, relativePath)
+
+  // Check if already exists
+  if (existsSync(targetPath)) {
+    error(`Translation already exists: ${relativePath}`)
+    log(`${colors.dim}Edit it directly or use 'update-hash' after changes.${colors.reset}`)
+    process.exit(1)
+  }
+
+  try {
+    // Load site content to get source
+    const siteContentPath = join(siteRoot, 'dist', 'site-content.json')
+    if (!existsSync(siteContentPath)) {
+      error('Site content not found. Run "uniweb build" first.')
+      process.exit(1)
+    }
+
+    const siteContentRaw = await readFile(siteContentPath, 'utf-8')
+    const siteContent = JSON.parse(siteContentRaw)
+
+    // Find the source content
+    let sourceContent = null
+    let sourceHash = null
+
+    if (pathType.startsWith('pages/') || pathType.startsWith('page-ids/')) {
+      // Find section in pages
+      const isPageId = pathType.startsWith('page-ids/')
+      const pageIdentifier = pathType.replace(/^(pages|page-ids)\//, '')
+
+      for (const page of siteContent.pages || []) {
+        const match = isPageId
+          ? page.id === pageIdentifier
+          : normalizeRoute(page.route) === pageIdentifier
+
+        if (match) {
+          for (const section of page.sections || []) {
+            if (section.stableId === sectionId) {
+              sourceContent = section.content
+              break
+            }
+          }
+          if (sourceContent) break
+        }
+      }
+    } else if (pathType.startsWith('collections/')) {
+      // Find item in collection data
+      const collectionName = pathType.replace('collections/', '')
+      const dataPath = join(siteRoot, 'public', 'data', `${collectionName}.json`)
+
+      if (existsSync(dataPath)) {
+        const dataRaw = await readFile(dataPath, 'utf-8')
+        const items = JSON.parse(dataRaw)
+
+        for (const item of items) {
+          if (item.slug === sectionId) {
+            sourceContent = item.content
+            break
+          }
+        }
+      }
+    }
+
+    if (!sourceContent) {
+      error(`Source content not found for: ${pathType}/${sectionId}`)
+      process.exit(1)
+    }
+
+    // Convert ProseMirror to markdown (simplified - just extract text)
+    const markdown = proseMirrorToMarkdown(sourceContent)
+
+    // Create directory structure
+    await mkdir(dirname(targetPath), { recursive: true })
+
+    // Write translation file
+    await writeFile(targetPath, markdown)
+
+    // Record hash in manifest
+    const { computeSourceHash, recordHash } = await import('@uniweb/build/i18n')
+    sourceHash = computeSourceHash(sourceContent)
+    await recordHash(freeformDir, relativePath, sourceHash)
+
+    success(`Created free-form translation: ${relativePath}`)
+    log(`${colors.dim}Edit the file, then run 'update-hash' when source changes.${colors.reset}`)
+  } catch (err) {
+    error(`Failed to initialize free-form translation: ${err.message}`)
+    process.exit(1)
+  }
+}
+
+/**
+ * Normalize route for comparison (remove leading/trailing slashes)
+ */
+function normalizeRoute(route) {
+  return route.replace(/^\/|\/$/g, '')
+}
+
+/**
+ * Convert ProseMirror document to markdown (simplified)
+ */
+function proseMirrorToMarkdown(doc) {
+  if (!doc || !doc.content) return ''
+
+  const lines = []
+
+  for (const node of doc.content) {
+    if (node.type === 'heading') {
+      const level = node.attrs?.level || 1
+      const prefix = '#'.repeat(level)
+      const text = extractText(node)
+      lines.push(`${prefix} ${text}`)
+      lines.push('')
+    } else if (node.type === 'paragraph') {
+      const text = extractText(node)
+      if (text) lines.push(text)
+      lines.push('')
+    } else if (node.type === 'bulletList') {
+      for (const item of node.content || []) {
+        const text = extractText(item)
+        if (text) lines.push(`- ${text}`)
+      }
+      lines.push('')
+    } else if (node.type === 'orderedList') {
+      let num = 1
+      for (const item of node.content || []) {
+        const text = extractText(item)
+        if (text) lines.push(`${num}. ${text}`)
+        num++
+      }
+      lines.push('')
+    } else if (node.type === 'codeBlock') {
+      const lang = node.attrs?.language || ''
+      const text = extractText(node)
+      lines.push('```' + lang)
+      lines.push(text)
+      lines.push('```')
+      lines.push('')
+    } else if (node.type === 'blockquote') {
+      const text = extractText(node)
+      lines.push(`> ${text}`)
+      lines.push('')
+    }
+  }
+
+  return lines.join('\n').trim() + '\n'
+}
+
+/**
+ * Extract text from a ProseMirror node
+ */
+function extractText(node) {
+  if (!node) return ''
+  if (node.type === 'text') return node.text || ''
+  if (!node.content) return ''
+  return node.content.map(extractText).join('')
+}
+
+/**
+ * Update the hash for a free-form translation
+ *
+ * Usage:
+ *   uniweb i18n update-hash es pages/about hero
+ *   uniweb i18n update-hash es --all-stale
+ */
+async function runUpdateHash(siteRoot, config, args) {
+  const locale = args[0]
+  const allStale = args.includes('--all-stale')
+
+  if (!locale) {
+    error('Usage: uniweb i18n update-hash <locale> [path] [section-id]')
+    log(`${colors.dim}Or: uniweb i18n update-hash <locale> --all-stale${colors.reset}`)
+    process.exit(1)
+  }
+
+  const localesPath = join(siteRoot, config.localesDir)
+  const freeformDir = join(localesPath, 'freeform', locale)
+
+  if (!existsSync(freeformDir)) {
+    error(`No free-form translations found for locale: ${locale}`)
+    process.exit(1)
+  }
+
+  try {
+    // Load site content
+    const siteContentPath = join(siteRoot, 'dist', 'site-content.json')
+    if (!existsSync(siteContentPath)) {
+      error('Site content not found. Run "uniweb build" first.')
+      process.exit(1)
+    }
+
+    const siteContentRaw = await readFile(siteContentPath, 'utf-8')
+    const siteContent = JSON.parse(siteContentRaw)
+
+    const {
+      computeSourceHash,
+      updateHash,
+      buildFreeformPath,
+      getStaleTranslations
+    } = await import('@uniweb/build/i18n')
+
+    // Build source hashes map
+    const sourceHashes = buildSourceHashMap(siteContent, buildFreeformPath, computeSourceHash)
+
+    if (allStale) {
+      // Update all stale translations
+      const stale = await getStaleTranslations(freeformDir, sourceHashes)
+
+      if (stale.length === 0) {
+        log(`${colors.dim}No stale translations found.${colors.reset}`)
+        return
+      }
+
+      for (const item of stale) {
+        await updateHash(freeformDir, item.path, item.currentHash)
+        success(`Updated hash: ${item.path}`)
+      }
+
+      log(`\nUpdated ${stale.length} translation hashes.`)
+    } else {
+      // Update specific translation
+      const pathType = args[1]
+      const sectionId = args[2]
+
+      if (!pathType || !sectionId) {
+        error('Usage: uniweb i18n update-hash <locale> <path> <section-id>')
+        process.exit(1)
+      }
+
+      const relativePath = `${pathType}/${sectionId}.md`
+      const currentHash = sourceHashes[relativePath]
+
+      if (!currentHash) {
+        error(`Source not found for: ${relativePath}`)
+        process.exit(1)
+      }
+
+      await updateHash(freeformDir, relativePath, currentHash)
+      success(`Updated hash: ${relativePath}`)
+    }
+  } catch (err) {
+    error(`Failed to update hash: ${err.message}`)
+    process.exit(1)
+  }
+}
+
+/**
+ * Build a map of relative paths to source hashes
+ */
+function buildSourceHashMap(siteContent, buildFreeformPath, computeSourceHash) {
+  const sourceHashes = {}
+
+  for (const page of siteContent.pages || []) {
+    for (const section of page.sections || []) {
+      if (section.stableId && section.content) {
+        const path = buildFreeformPath(section, page)
+        if (path) {
+          sourceHashes[path] = computeSourceHash(section.content)
+        }
+      }
+    }
+  }
+
+  return sourceHashes
+}
+
+/**
+ * Move free-form translations when pages are reorganized
+ *
+ * Usage:
+ *   uniweb i18n move pages/docs/setup pages/getting-started
+ */
+async function runMove(siteRoot, config, args) {
+  const oldPath = args[0]
+  const newPath = args[1]
+
+  if (!oldPath || !newPath) {
+    error('Usage: uniweb i18n move <old-path> <new-path>')
+    log(`${colors.dim}Example: uniweb i18n move pages/docs/setup pages/getting-started${colors.reset}`)
+    process.exit(1)
+  }
+
+  const localesPath = join(siteRoot, config.localesDir)
+  const freeformPath = join(localesPath, 'freeform')
+
+  if (!existsSync(freeformPath)) {
+    log(`${colors.dim}No free-form translations found.${colors.reset}`)
+    return
+  }
+
+  try {
+    const { renameManifestEntries } = await import('@uniweb/build/i18n')
+
+    // Find all locales with free-form translations
+    const entries = await readdir(freeformPath, { withFileTypes: true })
+    const locales = entries.filter(e => e.isDirectory()).map(e => e.name)
+
+    let totalMoved = 0
+
+    for (const locale of locales) {
+      const localeDir = join(freeformPath, locale)
+      const oldDir = join(localeDir, oldPath)
+
+      if (!existsSync(oldDir)) continue
+
+      const newDir = join(localeDir, newPath)
+
+      // Move all files
+      const files = await discoverFiles(oldDir)
+      const oldPaths = []
+      const newPaths = []
+
+      for (const file of files) {
+        const relOld = relative(localeDir, file)
+        const relNew = relOld.replace(oldPath, newPath)
+        oldPaths.push(relOld)
+        newPaths.push(relNew)
+
+        // Create target directory
+        await mkdir(dirname(join(localeDir, relNew)), { recursive: true })
+
+        // Move file
+        await rename(file, join(localeDir, relNew))
+        totalMoved++
+      }
+
+      // Update manifest
+      if (oldPaths.length > 0) {
+        await renameManifestEntries(localeDir, oldPaths, newPaths)
+      }
+    }
+
+    if (totalMoved > 0) {
+      success(`Moved ${totalMoved} translation file(s) across ${locales.length} locale(s)`)
+    } else {
+      log(`${colors.dim}No translations found at: ${oldPath}${colors.reset}`)
+    }
+  } catch (err) {
+    error(`Failed to move translations: ${err.message}`)
+    process.exit(1)
+  }
+}
+
+/**
+ * Rename free-form translation files
+ *
+ * Usage:
+ *   uniweb i18n rename pages/about hero welcome
+ */
+async function runRename(siteRoot, config, args) {
+  const path = args[0]
+  const oldName = args[1]
+  const newName = args[2]
+
+  if (!path || !oldName || !newName) {
+    error('Usage: uniweb i18n rename <path> <old-name> <new-name>')
+    log(`${colors.dim}Example: uniweb i18n rename pages/about hero welcome${colors.reset}`)
+    process.exit(1)
+  }
+
+  const localesPath = join(siteRoot, config.localesDir)
+  const freeformPath = join(localesPath, 'freeform')
+
+  if (!existsSync(freeformPath)) {
+    log(`${colors.dim}No free-form translations found.${colors.reset}`)
+    return
+  }
+
+  try {
+    const { renameManifestEntries } = await import('@uniweb/build/i18n')
+
+    // Find all locales with free-form translations
+    const entries = await readdir(freeformPath, { withFileTypes: true })
+    const locales = entries.filter(e => e.isDirectory()).map(e => e.name)
+
+    let totalRenamed = 0
+
+    for (const locale of locales) {
+      const localeDir = join(freeformPath, locale)
+      const oldFile = join(localeDir, path, `${oldName}.md`)
+      const newFile = join(localeDir, path, `${newName}.md`)
+
+      if (!existsSync(oldFile)) continue
+
+      // Rename file
+      await rename(oldFile, newFile)
+
+      // Update manifest
+      const oldRelPath = `${path}/${oldName}.md`
+      const newRelPath = `${path}/${newName}.md`
+      await renameManifestEntries(localeDir, [oldRelPath], [newRelPath])
+
+      totalRenamed++
+    }
+
+    if (totalRenamed > 0) {
+      success(`Renamed translation in ${totalRenamed} locale(s)`)
+    } else {
+      log(`${colors.dim}No translations found: ${path}/${oldName}.md${colors.reset}`)
+    }
+  } catch (err) {
+    error(`Failed to rename translation: ${err.message}`)
+    process.exit(1)
+  }
+}
+
+/**
+ * Prune orphaned free-form translations
+ *
+ * Usage:
+ *   uniweb i18n prune --freeform [--dry-run]
+ */
+async function runPrune(siteRoot, config, args) {
+  const freeformMode = args.includes('--freeform')
+  const dryRun = args.includes('--dry-run')
+
+  if (!freeformMode) {
+    error('Usage: uniweb i18n prune --freeform [--dry-run]')
+    process.exit(1)
+  }
+
+  const localesPath = join(siteRoot, config.localesDir)
+  const freeformPath = join(localesPath, 'freeform')
+
+  if (!existsSync(freeformPath)) {
+    log(`${colors.dim}No free-form translations found.${colors.reset}`)
+    return
+  }
+
+  log(`\n${colors.cyan}Pruning orphaned free-form translations${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`)
+
+  try {
+    // Load site content
+    const siteContentPath = join(siteRoot, 'dist', 'site-content.json')
+    if (!existsSync(siteContentPath)) {
+      error('Site content not found. Run "uniweb build" first.')
+      process.exit(1)
+    }
+
+    const siteContentRaw = await readFile(siteContentPath, 'utf-8')
+    const siteContent = JSON.parse(siteContentRaw)
+
+    const {
+      buildFreeformPath,
+      getOrphanedTranslations,
+      removeManifestEntries,
+      discoverFreeformTranslations
+    } = await import('@uniweb/build/i18n')
+
+    // Build set of valid paths
+    const validPaths = new Set()
+    for (const page of siteContent.pages || []) {
+      for (const section of page.sections || []) {
+        if (section.stableId) {
+          const path = buildFreeformPath(section, page)
+          if (path) validPaths.add(path)
+        }
+      }
+    }
+
+    // Find all locales
+    const entries = await readdir(freeformPath, { withFileTypes: true })
+    const locales = entries.filter(e => e.isDirectory()).map(e => e.name)
+
+    let totalPruned = 0
+
+    for (const locale of locales) {
+      const localeDir = join(freeformPath, locale)
+
+      // Get orphaned translations
+      const orphaned = await getOrphanedTranslations(localeDir, validPaths)
+
+      if (orphaned.length === 0) continue
+
+      log(`${locale}:`)
+
+      for (const item of orphaned) {
+        log(`  ${colors.red}✗${colors.reset} ${item.path}`)
+
+        if (!dryRun) {
+          // Delete file
+          const filePath = join(localeDir, item.path)
+          if (existsSync(filePath)) {
+            await unlink(filePath)
+          }
+        }
+
+        totalPruned++
+      }
+
+      // Update manifest
+      if (!dryRun && orphaned.length > 0) {
+        const paths = orphaned.map(o => o.path)
+        await removeManifestEntries(localeDir, paths)
+      }
+    }
+
+    if (totalPruned > 0) {
+      if (dryRun) {
+        log(`\n${colors.dim}Would remove ${totalPruned} orphaned translation(s). Run without --dry-run to delete.${colors.reset}`)
+      } else {
+        success(`\nRemoved ${totalPruned} orphaned translation(s)`)
+      }
+    } else {
+      log(`${colors.dim}No orphaned translations found.${colors.reset}`)
+    }
+  } catch (err) {
+    error(`Failed to prune translations: ${err.message}`)
+    process.exit(1)
+  }
+}
+
+/**
+ * Recursively discover all files in a directory
+ */
+async function discoverFiles(dir) {
+  const files = []
+
+  if (!existsSync(dir)) return files
+
+  const entries = await readdir(dir, { withFileTypes: true })
+
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      files.push(...await discoverFiles(fullPath))
+    } else {
+      files.push(fullPath)
+    }
+  }
+
+  return files
+}
+
 /**
  * Show help for i18n commands
  */
@@ -622,22 +1345,32 @@ ${colors.bright}Usage:${colors.reset}
   uniweb i18n [command] [options]
 
 ${colors.bright}Commands:${colors.reset}
+  ${colors.dim}# Hash-based (granular) translation${colors.reset}
   (default)    Same as sync - extract/update strings (runs if no command given)
   extract      Extract translatable strings to locales/manifest.json
   sync         Update manifest with content changes (detects moved/changed content)
   status       Show translation coverage per locale
   audit        Find stale translations (no longer in manifest) and missing ones
 
+  ${colors.dim}# Free-form (complete replacement) translation${colors.reset}
+  init-freeform <locale> <path> <id>   Create free-form translation from source
+  update-hash <locale> [<path> <id>]   Update hash after reviewing source changes
+  move <old-path> <new-path>           Move translations when pages reorganize
+  rename <path> <old-id> <new-id>      Rename translation file
+  prune --freeform                     Remove orphaned free-form translations
+
 ${colors.bright}Options:${colors.reset}
   -t, --target <path>  Site directory (auto-detected if not specified)
   --verbose            Show detailed output
-  --dry-run            (sync) Show changes without writing files
+  --dry-run            (sync/prune) Show changes without writing files
   --clean              (audit) Remove stale entries from locale files
   --missing            (status) List all missing strings instead of summary
+  --freeform           (status/prune) Include free-form translation status
   --json               (status) Output as JSON for translation tools
   --by-page            (status --missing) Group missing strings by page
   --collections        (extract/status/audit) Process only collections
   --with-collections   (extract/status/audit) Include collections with pages
+  --all-stale          (update-hash) Update all stale translations at once
 
 ${colors.bright}Configuration:${colors.reset}
   Optional site.yml settings:
@@ -658,24 +1391,36 @@ ${colors.bright}Workflow:${colors.reset}
 ${colors.bright}File Structure:${colors.reset}
   locales/
     manifest.json     Auto-generated: source strings + hashes + contexts
-    es.json           Translations for Spanish
-    fr.json           Translations for French
+    es.json           Translations for Spanish (hash-based)
+    fr.json           Translations for French (hash-based)
     _memory.json      Optional: translation memory for reuse
+    freeform/         Free-form translations (complete content replacement)
+      es/
+        .manifest.json       Staleness tracking
+        pages/about/hero.md  Translated content for /about page, hero section
+        page-ids/install/intro.md  Translated content by page ID
+        collections/articles/getting-started.md
 
 ${colors.bright}Examples:${colors.reset}
+  ${colors.dim}# Hash-based workflow${colors.reset}
   uniweb i18n extract              # Extract all translatable strings
   uniweb i18n extract --verbose    # Show extracted strings
   uniweb i18n extract --with-collections  # Extract pages + collections
-  uniweb i18n extract --collections       # Extract collections only
   uniweb i18n sync                 # Update manifest after content changes
-  uniweb i18n sync --dry-run       # Preview changes without writing
   uniweb i18n status               # Show coverage for all locales
   uniweb i18n status es            # Show coverage for Spanish only
-  uniweb i18n status --missing     # List all missing strings
   uniweb i18n status es --missing --json  # Export missing for AI translation
-  uniweb i18n status --missing --by-page  # Group missing by page
   uniweb i18n audit                # Find stale and missing translations
   uniweb i18n audit --clean        # Remove stale entries
+
+  ${colors.dim}# Free-form workflow (complete section replacement)${colors.reset}
+  uniweb i18n init-freeform es pages/about hero
+  uniweb i18n init-freeform es page-ids/installation intro
+  uniweb i18n init-freeform es collections/articles getting-started
+  uniweb i18n status --freeform    # Show free-form translation status
+  uniweb i18n update-hash es --all-stale  # Update hashes after review
+  uniweb i18n move pages/docs/setup pages/getting-started
+  uniweb i18n prune --freeform --dry-run  # Preview orphan cleanup
   uniweb i18n --target site        # Specify site directory explicitly
 
 ${colors.bright}Notes:${colors.reset}
