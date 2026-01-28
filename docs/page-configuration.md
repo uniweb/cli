@@ -108,7 +108,29 @@ Control where the page appears in navigation.
 order: 2
 ```
 
-Lower numbers appear first. Pages without `order` are sorted after those with it, alphabetically by folder name.
+**Sorting rules:**
+1. Pages with explicit `order` are sorted by that number (lower first)
+2. Decimals are allowed: `order: 1.5` sorts between 1 and 2
+3. Pages without `order` appear after all ordered pages
+4. Ties are broken alphabetically by title
+
+**Example:**
+
+```yaml
+# pages/about/page.yml
+order: 1    # Appears first
+
+# pages/research/page.yml
+order: 2    # Appears second
+
+# pages/blog/page.yml
+order: 3    # Appears third
+
+# pages/legal/page.yml
+# No order - appears after ordered pages, sorted by title
+```
+
+This also affects index page selection: when no explicit `index` is set, the page with the lowest `order` becomes the index for that level.
 
 ---
 
