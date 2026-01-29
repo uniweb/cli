@@ -90,16 +90,6 @@ Use standard markdown image syntax:
 
 That's all you need. The section type decides how to size, position, and display your images.
 
-### Image roles
-
-Sometimes you need to tell the site what an image is *for*. Use the `role` attribute:
-
-```markdown
-![Skyline](./skyline.jpg){role=background}
-```
-
-The most common role is `background` — it tells the section to use the image as a background rather than displaying it inline. Other roles depend on the section type.
-
 ### Clickable images
 
 Make an image link to somewhere:
