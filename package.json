@@ -6,6 +6,9 @@
   "bin": {
     "uniweb": "src/index.js"
   },
+  "exports": {
+    "./processor": "./src/templates/processor.js"
+  },
   "files": [
     "src",
     "templates",
