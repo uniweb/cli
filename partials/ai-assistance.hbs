@@ -1,3 +1,26 @@
 ## AI Assistance
 
-See [AGENTS.md](./AGENTS.md) for detailed instructions that AI assistants can use.
+This project includes an [AGENTS.md](./AGENTS.md) file with detailed instructions for AI coding assistants (Claude Code, Cursor, Copilot, etc.).
+
+### Example Prompts
+
+**Converting an existing design:**
+```
+I have a landing page design in `homepage.jsx`. Convert it into this Uniweb
+project. Decompose each visual section into a foundation component and extract
+all text content into markdown files in site/pages/home/. The final page
+should render identically to the original. See AGENTS.md for the full guide.
+```
+
+**Adding a new component:**
+```
+Create a Pricing component with 3-column cards. It should support light and
+dark themes. Use content.items for the pricing tiers — each item has a title,
+paragraph (price), and links (CTA button).
+```
+
+**Adding a new page:**
+```
+Add a /contact page with a hero section and a form section. Reuse the Hero
+component from the homepage. Create a new ContactForm component for the form.
+```

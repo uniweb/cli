@@ -824,6 +824,149 @@ Theme is defined in `foundation/src/styles.css`:
 
 Use with: `bg-primary`, `text-primary`, `bg-primary/10` (10% opacity)
 
+## Converting an Existing Design
+
+When given a monolithic React/JSX file (e.g., a landing page built with an AI tool) to convert into a Uniweb project, follow this approach.
+
+### Mindset
+
+The goal is a page that **renders identically** to the original, but the implementation logic changes. You are not porting code line-by-line — you are decomposing a monolithic design into the Uniweb content/component architecture.
+
+**Don't preserve source component names.** A monolithic file might have components named after specific content (e.g., `Institutions`, `ProximifyCTA`). Uniweb foundation components are **generic rendering agencies named for purpose**, not for the content they happen to display. A section showing an institutional quote is rendered by a component like `Testimonial` or `Quote` — something reusable for any quote, not tied to one client.
+
+### Step 1: Identify Sections
+
+Each visually distinct block in the design becomes:
+- An **exposed component** in `foundation/src/components/` (with `meta.js`)
+- A **markdown file** in `site/pages/` (with `type:` referencing that component)
+
+Look for natural section boundaries — full-width blocks separated by spacing, background changes, or horizontal rules.
+
+### Step 2: Separate Content from Code
+
+For each section, ask: **what is content and what is design?**
+
+| In the JSX source | In Uniweb |
+|---|---|
+| Hardcoded heading text | `# Heading` in markdown → `content.title` |
+| Hardcoded paragraph text | Paragraph in markdown → `content.paragraphs[]` |
+| Hardcoded link/button text and URLs | `[Label](url)` in markdown → `content.links[]` |
+| Hardcoded images | `![Alt](path)` in markdown → `content.imgs[]` |
+| Repeating card/item structures | H3 groups in markdown → `content.items[]` |
+| Icon references (e.g., `lucide-react`) | `![](lu-iconname)` in markdown → `content.icons[]` |
+| Layout, spacing, colors, animations | Component JSX + Tailwind classes |
+| Visual elements with no content (diagrams, decorations) | Component JSX only — no markdown equivalent |
+
+### Step 3: Name Components for Purpose
+
+Choose names that describe **what the component does**, not what content it currently shows:
+
+| Source name | Better Uniweb name | Why |
+|---|---|---|
+| `ProximifyCTA` | `CallToAction` | Renders any CTA, not just one brand's |
+| `Institutions` | `Testimonial` or `Quote` | Renders any testimonial |
+| `WorkModes` | `FeatureColumns` | Renders any set of features in columns |
+| `TheModel` | `SplitContent` | Text on one side, visual on the other |
+
+### Step 4: Design Params Beyond the Original
+
+Exposed components should define **params in `meta.js`** that make them flexible, even if the original design only uses one variant. For example:
+
+```javascript
+// A component that's always "dark" in the source design
+// should still support theme switching
+params: {
+  theme: {
+    type: 'select',
+    options: ['light', 'dark'],
+    default: 'dark',  // Matches the original design
+  },
+  align: {
+    type: 'select',
+    options: ['left', 'center'],
+    default: 'center',
+  },
+}
+```
+
+The original design becomes the **default preset**. But a content author can reconfigure.
+
+### Step 5: Create Internal Components
+
+Not every React component in the source becomes an exposed Uniweb component. Shared UI elements like buttons, cards, and badges are **internal components** — they live in `foundation/src/shared/` (or similar) with **no `meta.js`**:
+
+```
+foundation/src/
+├── components/          # Exposed (with meta.js) — selectable from markdown
+│   ├── Hero/
+│   ├── FeatureGrid/
+│   └── CallToAction/
+├── shared/              # Internal (no meta.js) — used by exposed components
+│   ├── Button.jsx
+│   ├── Badge.jsx
+│   └── SectionWrapper.jsx
+└── styles.css
+```
+
+Internal components are imported by exposed components but are invisible to content authors. This is normal and encouraged — it keeps the content interface clean.
+
+### Step 6: Map Special Sections
+
+| Source pattern | Uniweb equivalent |
+|---|---|
+| Navigation / navbar | `@header/` special page with a Header component |
+| Footer | `@footer/` special page with a Footer component |
+| Sticky/fixed elements | Header component using `useScrolled()` hook |
+| Mobile menu toggle | Header component using `useMobileMenu()` hook |
+
+### Step 7: Extract Design Tokens
+
+Colors, fonts, and spacing from the source become Tailwind theme variables:
+
+```css
+/* foundation/src/styles.css */
+@import "tailwindcss";
+@source "./components/**/*.jsx";
+@source "./shared/**/*.jsx";
+@source "../node_modules/@uniweb/kit/src/**/*.jsx";
+
+@theme {
+  --color-primary: #0f172a;      /* From the source's main color */
+  --color-accent: #10b981;       /* From the source's accent color */
+}
+```
+
+### Example: Converting a Landing Page
+
+Given a file with `Nav`, `Hero`, `Features`, `Testimonial`, `CTA`, `Footer`:
+
+**Foundation components created:**
+- `Hero/` — full-width hero with heading, text, buttons
+- `FeatureGrid/` — grid of feature cards with icons
+- `Testimonial/` — quote with attribution
+- `CallToAction/` — dark-background CTA section
+- `Header/` — navigation bar (for `@header`)
+- `Footer/` — site footer (for `@footer`)
+
+**Internal helpers:**
+- `shared/Button.jsx` — reusable button styles
+- `shared/SectionWrapper.jsx` — consistent section padding/width
+
+**Site content:**
+```
+site/pages/
+├── @header/
+│   └── 1-nav.md           # type: Header
+├── @footer/
+│   └── 1-footer.md        # type: Footer (links as markdown)
+└── home/
+    ├── page.yml
+    ├── 1-hero.md           # type: Hero
+    ├── 2-features.md       # type: FeatureGrid (items from H3 groups)
+    ├── 3-testimonial.md    # type: Testimonial
+    └── 4-cta.md            # type: CallToAction
+```
+
 ## Troubleshooting
 
 **"Could not load foundation"**
