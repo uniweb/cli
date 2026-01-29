@@ -5,6 +5,7 @@
  *
  * Usage:
  *   uniweb i18n extract           Extract translatable strings to manifest
+ *   uniweb i18n init [locales]    Generate starter locale files from manifest
  *   uniweb i18n sync              Sync manifest with content changes
  *   uniweb i18n status            Show translation coverage per locale
  *   uniweb i18n --target <path>   Specify site directory explicitly
@@ -98,6 +99,9 @@ export async function i18n(args) {
   switch (effectiveSubcommand) {
     case 'extract':
       await runExtract(siteRoot, config, effectiveArgs)
+      break
+    case 'init':
+      await runInit(siteRoot, config, effectiveArgs)
       break
     case 'sync':
       await runSync(siteRoot, config, effectiveArgs)
@@ -311,6 +315,113 @@ async function runExtract(siteRoot, config, args) {
       if (collectionsOnly) process.exit(1)
     }
   }
+}
+
+/**
+ * Init command - generate starter translation files from manifest
+ *
+ * Usage:
+ *   uniweb i18n init es fr         Initialize specific locales
+ *   uniweb i18n init               Initialize all configured locales
+ *   uniweb i18n init --empty       Use empty strings instead of source text
+ *   uniweb i18n init --force       Overwrite existing files entirely
+ */
+async function runInit(siteRoot, config, args) {
+  const useEmpty = args.includes('--empty')
+  const force = args.includes('--force')
+
+  // Collect locale codes from positional args (skip flags)
+  const positionalLocales = args.filter(a => !a.startsWith('-'))
+
+  // Read manifest
+  const localesPath = join(siteRoot, config.localesDir)
+  const manifestPath = join(localesPath, 'manifest.json')
+
+  if (!existsSync(manifestPath)) {
+    error('No manifest found. Run "uniweb i18n extract" first to generate one.')
+    process.exit(1)
+  }
+
+  const manifestRaw = await readFile(manifestPath, 'utf-8')
+  const manifest = JSON.parse(manifestRaw)
+  const units = manifest.units || {}
+  const unitCount = Object.keys(units).length
+
+  if (unitCount === 0) {
+    warn('Manifest has no translatable strings. Nothing to initialize.')
+    return
+  }
+
+  // Determine target locales
+  let targetLocales = positionalLocales.length > 0
+    ? positionalLocales
+    : config.locales
+
+  if (!targetLocales || targetLocales.length === 0) {
+    error('No target locales specified.')
+    log(`${colors.dim}Specify locales as arguments (e.g., "uniweb i18n init es fr")`)
+    log(`or configure them in site.yml under i18n.locales.${colors.reset}`)
+    process.exit(1)
+  }
+
+  log(`\n${colors.cyan}Initializing translation files...${colors.reset}\n`)
+
+  await mkdir(localesPath, { recursive: true })
+
+  for (const locale of targetLocales) {
+    // Skip default locale
+    if (locale === config.defaultLocale) {
+      warn(`Skipped ${locale} (default locale)`)
+      continue
+    }
+
+    const localePath = join(localesPath, `${locale}.json`)
+
+    if (existsSync(localePath) && !force) {
+      // Merge mode: add only missing keys
+      const existingRaw = await readFile(localePath, 'utf-8')
+      let existing
+      try {
+        existing = JSON.parse(existingRaw)
+      } catch {
+        warn(`${locale}.json has invalid JSON, skipping (use --force to overwrite)`)
+        continue
+      }
+
+      const existingKeys = new Set(Object.keys(existing))
+      let added = 0
+
+      for (const [hash, unit] of Object.entries(units)) {
+        if (!existingKeys.has(hash)) {
+          existing[hash] = useEmpty ? '' : unit.source
+          added++
+        }
+      }
+
+      if (added > 0) {
+        await writeFile(localePath, JSON.stringify(existing, null, 2) + '\n')
+        const alreadyCount = existingKeys.size
+        success(`Updated ${locale}.json (${added} new string${added !== 1 ? 's' : ''} added, ${alreadyCount} already translated)`)
+      } else {
+        success(`${locale}.json already has all ${unitCount} strings`)
+      }
+    } else {
+      // Create new file (or overwrite with --force)
+      const localeData = {}
+
+      for (const [hash, unit] of Object.entries(units)) {
+        localeData[hash] = useEmpty ? '' : unit.source
+      }
+
+      await writeFile(localePath, JSON.stringify(localeData, null, 2) + '\n')
+      success(`Created ${locale}.json (${unitCount} string${unitCount !== 1 ? 's' : ''})`)
+    }
+  }
+
+  log(`\n${colors.dim}Next steps:`)
+  log(`  1. Edit locale files to add translations`)
+  log(`  2. Run 'uniweb build' to build with translations`)
+  log(`  3. Run 'uniweb i18n status' to check coverage${colors.reset}`)
 }
 
 /**
@@ -1348,6 +1459,7 @@ ${colors.bright}Commands:${colors.reset}
   ${colors.dim}# Hash-based (granular) translation${colors.reset}
   (default)    Same as sync - extract/update strings (runs if no command given)
   extract      Extract translatable strings to locales/manifest.json
+  init         Generate starter locale files from manifest keys
   sync         Update manifest with content changes (detects moved/changed content)
   status       Show translation coverage per locale
   audit        Find stale translations (no longer in manifest) and missing ones
@@ -1363,6 +1475,8 @@ ${colors.bright}Options:${colors.reset}
   -t, --target <path>  Site directory (auto-detected if not specified)
   --verbose            Show detailed output
   --dry-run            (sync/prune) Show changes without writing files
+  --empty              (init) Use empty strings instead of source text
+  --force              (init) Overwrite existing locale files entirely
   --clean              (audit) Remove stale entries from locale files
   --missing            (status) List all missing strings instead of summary
   --freeform           (status/prune) Include free-form translation status
@@ -1384,9 +1498,10 @@ ${colors.bright}Configuration:${colors.reset}
 
 ${colors.bright}Workflow:${colors.reset}
   1. Build your site:           uniweb build
-  2. Extract strings:           uniweb i18n
-  3. Translate locale files:    Edit locales/es.json, locales/fr.json, etc.
-  4. Build with translations:   uniweb build (generates locale-specific output)
+  2. Extract strings:           uniweb i18n extract
+  3. Initialize locale files:   uniweb i18n init es fr
+  4. Translate locale files:    Edit locales/es.json, locales/fr.json, etc.
+  5. Build with translations:   uniweb build (generates locale-specific output)
 
 ${colors.bright}File Structure:${colors.reset}
   locales/
@@ -1406,6 +1521,9 @@ ${colors.bright}Examples:${colors.reset}
   uniweb i18n extract              # Extract all translatable strings
   uniweb i18n extract --verbose    # Show extracted strings
   uniweb i18n extract --with-collections  # Extract pages + collections
+  uniweb i18n init es fr           # Create starter files for Spanish and French
+  uniweb i18n init --empty         # Create files with empty values (for translators)
+  uniweb i18n init --force         # Overwrite existing locale files
   uniweb i18n sync                 # Update manifest after content changes
   uniweb i18n status               # Show coverage for all locales
   uniweb i18n status es            # Show coverage for Spanish only

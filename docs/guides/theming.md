@@ -395,4 +395,5 @@ If something doesn't look right, it's usually better to adjust your colors and f
 ## What's Next?
 
 - **[Writing Content](./writing-content.md)** — How to write content for sections
+- **[Translating Your Site](./translating-your-site.md)** — Add multiple languages
 - **[Recipes](./recipes.md)** — Copy-paste solutions for common patterns

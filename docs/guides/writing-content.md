@@ -549,5 +549,6 @@ If your section doesn't have images, that's fine. If it doesn't have links, that
 ## What's Next?
 
 - **[Recipes](./recipes.md)** — Copy-paste solutions for common content patterns
+- **[Translating Your Site](./translating-your-site.md)** — Add multiple languages
 - **[Linking](../linking.md)** — Stable internal links with the `page:` protocol
 - **[Search](../search.md)** — Adding search to your site

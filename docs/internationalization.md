@@ -26,26 +26,31 @@ i18n:
   locales: [en, es, fr]
 ```
 
-### 2. Extract Translatable Strings
+### 2. Build Your Site
+
+```bash
+uniweb build
+```
+
+### 3. Extract Translatable Strings
 
 ```bash
 uniweb i18n extract
 ```
 
-This scans your content and generates `locales/manifest.json` with all translatable strings keyed by content hash.
+This scans your built content and generates `locales/manifest.json` with all translatable strings keyed by content hash.
 
-### 3. Provide Translations
+### 4. Initialize Locale Files
 
-Create translation files for each locale:
-
-```
-locales/
-├── manifest.json       # Auto-generated
-├── es.json             # Spanish translations
-└── fr.json             # French translations
+```bash
+uniweb i18n init es fr
 ```
 
-Each locale file maps content hashes to translations:
+Creates `locales/es.json` and `locales/fr.json` pre-populated with all manifest keys. Values default to source text so translators can see what to translate.
+
+### 5. Translate
+
+Edit the generated locale files, replacing source text with translations:
 
 ```json
 {
@@ -54,64 +59,13 @@ Each locale file maps content hashes to translations:
 }
 ```
 
-### 4. Build
+### 6. Build with Translations
 
 ```bash
 uniweb build
 ```
 
-The build merges translations and generates locale-specific content.
-
-### 5. Build a Language Switcher
-
-```jsx
-import { useWebsite } from '@uniweb/kit'
-
-function LanguageSwitcher() {
-  const { website } = useWebsite()
-
-  if (!website.hasMultipleLocales()) return null
-
-  const locales = website.getLocales()
-  const active = website.getActiveLocale()
-
-  return (
-    <div>
-      {locales.map(locale => (
-        <a
-          key={locale.code}
-          href={website.getLocaleUrl(locale.code)}
-          className={locale.code === active ? 'active' : ''}
-        >
-          {locale.label}
-        </a>
-      ))}
-    </div>
-  )
-}
-```
-
----
-
-## How Content Arrives to Components
-
-**Components receive content already translated.** When a user visits `/es/about`, the component receives Spanish content in `content.title`, `content.paragraphs`, etc.—there's no translation function to call.
-
-```jsx
-// Component receives localized content directly
-function Hero({ content }) {
-  // content.title is already in the user's language
-  // No t() function, no translation lookup
-  return (
-    <section>
-      <h1>{content.title}</h1>
-      {content.paragraphs.map((p, i) => <p key={i}>{p}</p>)}
-    </section>
-  )
-}
-```
-
-This is the **Component Content Architecture (CCA)**—content is resolved before it reaches components.
+The build merges translations and generates locale-specific output.
 
 ---
 
@@ -152,7 +106,36 @@ i18n:
   locales: '*'
 ```
 
-Automatically discovers locales from the `locales/` folder.
+Automatically discovers locales from the `locales/` folder. Any `.json` file in the locales directory (other than `manifest.json` and `_memory.json`) is treated as a locale.
+
+### Custom Locales Directory
+
+```yaml
+i18n:
+  localesDir: translations   # Default: locales
+```
+
+---
+
+## How Content Arrives to Components
+
+**Components receive content already translated.** When a user visits `/es/about`, the component receives Spanish content in `content.title`, `content.paragraphs`, etc.—there's no translation function to call.
+
+```jsx
+// Component receives localized content directly
+function Hero({ content }) {
+  // content.title is already in the user's language
+  // No t() function, no translation lookup
+  return (
+    <section>
+      <h1>{content.title}</h1>
+      {content.paragraphs.map((p, i) => <p key={i}>{p}</p>)}
+    </section>
+  )
+}
+```
+
+This is the **Component Content Architecture (CCA)**—content is resolved before it reaches components.
 
 ---
 
@@ -247,25 +230,11 @@ console.log(LOCALE_DISPLAY_NAMES.fr)  // 'Français'
 
 ---
 
-## Content Structure
-
-You write content once, in your default locale:
-
-```
-pages/about/
-├── page.yml
-└── 1-intro.md    # Content in default language
-```
-
-The i18n system extracts translatable text from these files and merges translations at build time.
-
----
-
 ## Translation Workflow
 
 Uniweb uses a hash-based translation system for managing translations at scale.
 
-### 1. Extract Translatable Strings
+### Extract Strings
 
 ```bash
 uniweb i18n extract
@@ -275,6 +244,9 @@ Generates `locales/manifest.json` with all translatable content:
 
 ```json
 {
+  "version": "1.0",
+  "defaultLocale": "en",
+  "extracted": "2025-01-29T...",
   "units": {
     "a1b2c3d4": {
       "source": "Welcome to Our Company",
@@ -285,18 +257,55 @@ Generates `locales/manifest.json` with all translatable content:
 }
 ```
 
-### 2. Provide Translations
+Each unit is keyed by a hash of the source string. The `contexts` array shows where the string appears, and `field` indicates the content type (title, paragraph, link label, etc.).
 
-Create locale files with translations keyed by hash:
+**Options:**
+- `--verbose` — Show extracted strings in output
+- `--collections` — Extract only collection content
+- `--with-collections` — Extract pages and collections together
+
+### Initialize Locale Files
+
+```bash
+uniweb i18n init es fr
+```
+
+Creates starter locale files pre-populated with all manifest keys. By default, values are set to the source text so translators can see what needs translating.
+
+**Behavior:**
+- **File doesn't exist**: Creates it with all manifest keys
+- **File exists** (no `--force`): Merges — adds only missing keys, preserves existing translations
+- **File exists with `--force`**: Overwrites entirely
+
+**Options:**
+- `--empty` — Use empty strings instead of source text as placeholder values
+- `--force` — Overwrite existing files entirely
+
+If no locale codes are specified, initializes all locales configured in `site.yml`.
+
+```bash
+# Create files with source text as placeholders
+uniweb i18n init es fr
+
+# Create files with empty values (useful for translation tools)
+uniweb i18n init --empty
+
+# Overwrite existing files from scratch
+uniweb i18n init es --force
+```
+
+### Translate
+
+Edit locale files, replacing source text (or empty strings) with translations:
 
 ```json
-// locales/es.json
 {
-  "a1b2c3d4": "Bienvenido a Nuestra Empresa"
+  "a1b2c3d4": "Bienvenido a Nuestra Empresa",
+  "e5f6g7h8": "Aprende Más"
 }
 ```
 
-For strings that appear in multiple contexts and need different translations:
+For strings that appear in multiple contexts and need different translations, use the override format:
 
 ```json
 {
@@ -311,7 +320,12 @@ For strings that appear in multiple contexts and need different translations:
 
 Override keys use the format `{page}:{section}`.
 
-### 3. Build
+**Tips:**
+- Use `uniweb i18n status --missing --json` to export untranslated strings for translation tools
+- The manifest's `contexts` array helps translators understand where each string appears
+- Group your translation effort by page using `uniweb i18n status --missing --by-page`
+
+### Build
 
 ```bash
 uniweb build
@@ -331,14 +345,153 @@ dist/
     └── site-content.json   # French content
 ```
 
-### 4. Sync Changes
+### Sync Changes
 
-After content updates:
+After content updates, sync the manifest to detect additions, removals, and changes:
 
 ```bash
-uniweb i18n sync    # Detect changes, update manifest
-uniweb i18n status  # Check translation coverage
+uniweb i18n sync
 ```
+
+Reports what changed (new strings, removed strings, modified strings). Use `--dry-run` to preview without writing changes.
+
+---
+
+## Translation Status and Auditing
+
+### Status
+
+Check translation coverage for all locales or a specific one:
+
+```bash
+uniweb i18n status            # All locales
+uniweb i18n status es         # Spanish only
+uniweb i18n status --json     # Machine-readable output
+```
+
+**Additional options:**
+- `--missing` — List all untranslated strings instead of just a summary
+- `--missing --by-page` — Group missing strings by page
+- `--missing --json` — Export missing strings as JSON (useful for translation tools or AI translation)
+- `--freeform` — Show free-form translation status (staleness, orphans)
+
+### Audit
+
+Find stale translations (hashes no longer in manifest) and missing ones:
+
+```bash
+uniweb i18n audit             # Show stale and missing entries
+uniweb i18n audit es          # Audit Spanish only
+uniweb i18n audit --clean     # Remove stale entries from locale files
+uniweb i18n audit --verbose   # Show detailed output
+```
+
+---
+
+## Free-Form Translations
+
+For sections that need complete content replacement (different structure, images, or layout per locale) rather than string-by-string translation, use free-form translations.
+
+### Overview
+
+Free-form translations replace an entire section's content with a locale-specific markdown file. This is useful for:
+- Content that needs different structure per locale
+- Sections with locale-specific images or media
+- Marketing copy that should be rewritten, not translated
+
+### File Structure
+
+```
+locales/
+├── manifest.json
+├── es.json
+├── freeform/
+│   └── es/
+│       ├── .manifest.json                  # Staleness tracking (auto-managed)
+│       ├── pages/about/hero.md             # By page route
+│       ├── page-ids/installation/intro.md  # By page ID
+│       └── collections/articles/getting-started.md
+```
+
+### Initialize a Free-Form Translation
+
+```bash
+uniweb i18n init-freeform es pages/about hero
+uniweb i18n init-freeform es page-ids/installation intro
+uniweb i18n init-freeform es collections/articles getting-started
+```
+
+Creates a markdown file pre-populated with the source content, ready for translation. Also records a source hash for staleness detection.
+
+### Staleness Detection
+
+When the source content changes, free-form translations become stale. Check status with:
+
+```bash
+uniweb i18n status --freeform
+```
+
+After reviewing changes, update the recorded hash:
+
+```bash
+uniweb i18n update-hash es pages/about hero       # Specific section
+uniweb i18n update-hash es --all-stale             # All stale at once
+```
+
+### Move and Rename
+
+When pages are reorganized:
+
+```bash
+uniweb i18n move pages/docs/setup pages/getting-started
+uniweb i18n rename pages/about hero welcome
+```
+
+These commands update all locales and their manifests.
+
+### Prune Orphaned Translations
+
+Remove free-form translations whose source content no longer exists:
+
+```bash
+uniweb i18n prune --freeform --dry-run   # Preview what would be removed
+uniweb i18n prune --freeform             # Remove orphaned files
+```
+
+---
+
+## Collections i18n
+
+Collections (data files in `public/data/`) can also be translated.
+
+### Extract Collection Strings
+
+```bash
+uniweb i18n extract --collections        # Collections only
+uniweb i18n extract --with-collections   # Pages + collections
+```
+
+Collection strings are stored in a separate manifest at `locales/collections/manifest.json`.
+
+---
+
+## Context-Specific Overrides
+
+When the same source string appears in multiple places and needs different translations depending on context, use the override format:
+
+```json
+{
+  "e5f6g7h8": {
+    "default": "Learn More",
+    "overrides": {
+      "/pricing:cta": "See Pricing",
+      "/about:intro": "Discover Our Story"
+    }
+  }
+}
+```
+
+The `default` value is used everywhere except the specified overrides. Override keys use the format `{page}:{section}` matching the `contexts` in the manifest.
 
 ---
 
@@ -382,109 +535,54 @@ The search client automatically uses the correct index for the active locale.
 
 ---
 
-## Complete Example
+## CLI Reference
 
-### site.yml
+| Command | Description |
+|---------|-------------|
+| `uniweb i18n extract` | Extract translatable strings to `manifest.json` |
+| `uniweb i18n init [locales]` | Generate starter locale files from manifest |
+| `uniweb i18n sync` | Update manifest with content changes |
+| `uniweb i18n status [locale]` | Show translation coverage |
+| `uniweb i18n audit [locale]` | Find stale and missing translations |
+| `uniweb i18n init-freeform <locale> <path> <id>` | Create free-form translation |
+| `uniweb i18n update-hash <locale> [<path> <id>]` | Update hash after source changes |
+| `uniweb i18n move <old> <new>` | Move free-form translations |
+| `uniweb i18n rename <path> <old-id> <new-id>` | Rename free-form translation |
+| `uniweb i18n prune --freeform` | Remove orphaned free-form translations |
 
-```yaml
-name: Global Company
-description: Serving customers worldwide
-
-i18n:
-  defaultLocale: en
-  locales:
-    - code: en
-      label: English
-    - code: es
-      label: Español
-    - code: fr
-      label: Français
-
-pages: [home, products, about, contact]
-
-search:
-  enabled: true
-```
-
-### Header with Language Switcher
-
-```jsx
-import { useWebsite, getLocaleLabel } from '@uniweb/kit'
-
-export function Header({ content }) {
-  const { website } = useWebsite()
-
-  return (
-    <header>
-      <nav>
-        {/* Links receive localized labels from content */}
-        {content.links.map(link => (
-          <a key={link.href} href={link.href}>{link.label}</a>
-        ))}
-      </nav>
-
-      {website.hasMultipleLocales() && (
-        <LocaleSwitcher />
-      )}
-    </header>
-  )
-}
-
-function LocaleSwitcher() {
-  const { website } = useWebsite()
-  const locales = website.getLocales()
-  const active = website.getActiveLocale()
-
-  return (
-    <div className="locale-switcher">
-      {locales.map(locale => (
-        <a
-          key={locale.code}
-          href={website.getLocaleUrl(locale.code)}
-          className={locale.code === active ? 'active' : ''}
-        >
-          {getLocaleLabel(locale)}
-        </a>
-      ))}
-    </div>
-  )
-}
-```
-
----
-
-## Key Concepts
-
-### No Runtime Translation Lookup
-
-Unlike traditional i18n libraries, there is no `t()` function or `useLocale` hook. Components receive content already translated via the `content` prop.
-
-### Full Page Reload for Switching
-
-When users switch languages, they navigate to a new URL (e.g., `/es/about`), which triggers a full page reload. This keeps the architecture simple and SEO-friendly.
-
-### Static Build Per Locale
-
-Each locale generates its own static HTML files with embedded content. There's no client-side translation—each page is pre-rendered in the correct language.
+| Option | Applies to | Description |
+|--------|-----------|-------------|
+| `-t, --target <path>` | All | Specify site directory |
+| `--verbose` | extract, sync, audit | Detailed output |
+| `--dry-run` | sync, prune | Preview without writing |
+| `--empty` | init | Empty strings instead of source text |
+| `--force` | init | Overwrite existing files |
+| `--clean` | audit | Remove stale entries |
+| `--missing` | status | List missing strings |
+| `--by-page` | status --missing | Group by page |
+| `--freeform` | status, prune | Free-form translation mode |
+| `--json` | status | Machine-readable output |
+| `--collections` | extract | Collections only |
+| `--with-collections` | extract | Pages + collections |
+| `--all-stale` | update-hash | Update all stale hashes |
 
 ---
 
 ## Best Practices
 
 1. **Write in default locale first**: Complete content in your default language, then extract and translate
-
-2. **Use descriptive contexts**: The manifest shows where each string appears—use this to provide accurate translations
-
-3. **Test all locales**: Check that layouts work with longer/shorter text in different languages
-
-4. **Consider RTL**: For Arabic, Hebrew, etc., you may need additional CSS for right-to-left layout
-
+2. **Use `init` for new locales**: Run `uniweb i18n init` after extracting to get pre-populated files
+3. **Use descriptive contexts**: The manifest shows where each string appears—use this to provide accurate translations
+4. **Test all locales**: Check that layouts work with longer/shorter text in different languages
 5. **Keep translations in sync**: Run `uniweb i18n sync` after content changes to update the manifest
+6. **Use `--missing --json` for AI translation**: Export untranslated strings for batch translation with AI tools
+7. **Consider RTL**: For Arabic, Hebrew, etc., you may need additional CSS for right-to-left layout
 
 ---
 
 ## See Also
 
+- [Translating Your Site](./guides/translating-your-site.md) — Content author guide (no coding required)
 - [Site Configuration](./site-configuration.md) — i18n settings in site.yml
 - [Content Structure](./content-structure.md) — How content flows to components
 - [Site Search](./search.md) — Locale-specific search indexes
