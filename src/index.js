@@ -13,6 +13,7 @@
  */
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { resolve, join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import prompts from 'prompts'
@@ -208,6 +209,9 @@ async function main() {
     displayName = args[nameIndex + 1]
   }
 
+  // Check for --no-git flag
+  const noGit = args.includes('--no-git')
+
   // Interactive prompts
   const response = await prompts([
     {
@@ -307,6 +311,24 @@ async function main() {
     }
   }
 
+  // Initialize git repository
+  if (!noGit) {
+    try {
+      execSync('git --version', { stdio: 'ignore' })
+      try {
+        execSync('git init', { cwd: projectDir, stdio: 'ignore' })
+        execSync('git add -A', { cwd: projectDir, stdio: 'ignore' })
+        execSync('git commit -m "Initial commit from uniweb"', { cwd: projectDir, stdio: 'ignore' })
+        success('Git repository initialized')
+      } catch {
+        log(`  ${colors.yellow}Warning: Git repository initialized but initial commit failed${colors.reset}`)
+        log(`  ${colors.dim}Run 'git commit -m "Initial commit"' after configuring git${colors.reset}`)
+      }
+    } catch {
+      // git not available — skip silently
+    }
+  }
+
   // Success message
   title('Project created successfully!')
 
@@ -335,6 +357,7 @@ ${colors.bright}Create Options:${colors.reset}
   --template <type>  Project template
   --variant <name>   Template variant (e.g., tailwind3 for legacy)
   --name <name>      Project display name
+  --no-git             Skip git repository initialization
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified
