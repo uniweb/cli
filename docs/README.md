@@ -113,6 +113,17 @@ New to Uniweb? Start with the quickstart, then explore the concepts:
 
 ---
 
+## Practical Guides
+
+Hands-on guides for getting things done:
+
+| Guide | What You'll Learn |
+|-------|-------------------|
+| [Writing Content](./guides/writing-content.md) | How to write content for your Uniweb site — headings, images, links, icons, items |
+| [Recipes](./guides/recipes.md) | Copy-paste solutions for heroes, features, FAQs, pricing, blogs, and more |
+
+---
+
 ## All Guides
 
 ### Getting Started

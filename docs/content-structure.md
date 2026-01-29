@@ -255,15 +255,27 @@ Icons can be referenced in three ways:
 ![heart](lucide:heart){size=24 color=red}
 ```
 
-Supported icon library prefixes:
+Supported icon library prefixes (browse icons visually at [react-icons.github.io/react-icons](https://react-icons.github.io/react-icons/)):
 
-| Prefix | Library |
-| ------ | ------- |
-| `lucide:` | [Lucide](https://lucide.dev) |
-| `heroicons:` | [Heroicons](https://heroicons.com) |
-| `phosphor:` | [Phosphor](https://phosphoricons.com) |
-| `tabler:` | [Tabler Icons](https://tabler.io/icons) |
-| `feather:` | [Feather](https://feathericons.com) |
+| Prefix (friendly name) | Short code | Library |
+| ---------------------- | ---------- | ------- |
+| `lucide:` | `lu` | [Lucide](https://lucide.dev) |
+| `heroicons:` | `hi` | [Heroicons v1](https://heroicons.com) |
+| `heroicons2:` | `hi2` | [Heroicons v2](https://heroicons.com) |
+| `feather:` | `fi` | [Feather](https://feathericons.com) |
+| `phosphor:` | `pi` | [Phosphor](https://phosphoricons.com) |
+| `tabler:` | `tb` | [Tabler Icons](https://tabler-icons.io) |
+| `bootstrap:` | `bs` | [Bootstrap Icons](https://icons.getbootstrap.com) |
+| `material-design:` | `md` | [Material Design](https://fonts.google.com/icons) |
+| `ant-design:` | `ai` | [Ant Design Icons](https://ant.design/components/icon/) |
+| `remix:` | `ri` | [Remix Icon](https://remixicon.com) |
+| `simple-icons:` | `si` | [Simple Icons](https://simpleicons.org) |
+| `ionicons:` | `io5` | [Ionicons 5](https://ionicons.com) |
+| `boxicons:` | `bi` | [Boxicons](https://boxicons.com) |
+| `vscode:` | `vsc` | [VS Code Codicons](https://github.com/microsoft/vscode-codicons) |
+| `weather:` | `wi` | [Weather Icons](https://erikflowers.github.io/weather-icons/) |
+| `game:` | `gi` | [Game Icons](https://game-icons.net) |
+| `fa:` / `fa6:` | `fa` / `fa6` | [Font Awesome 5 & 6](https://fontawesome.com) |
 
 **Icon attributes:**
 
