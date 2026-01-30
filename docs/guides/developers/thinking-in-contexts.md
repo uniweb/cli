@@ -109,14 +109,17 @@ The naming is yours to choose. These names (`surface`, `edge`, `heading`, `muted
 
 ## The Brand Palette
 
-Beyond semantic tokens, the build also generates a full color palette from `theme.yml`:
+Beyond semantic tokens, the build also generates color palettes from `theme.yml`. Four color roles are supported:
 
 ```yaml
 colors:
-  primary: "#047857"
+  primary: "#047857"      # Main brand color (buttons, links, accents)
+  secondary: "#78716c"    # Supporting color
+  accent: "#d97706"       # Highlight color (badges, callouts, special emphasis)
+  neutral: "#57534e"      # Drives all context tokens (bg, text, borders)
 ```
 
-That single line produces eleven shades: `--primary-50` through `--primary-950`. You can map these to Tailwind too:
+Each color produces eleven shades: `--primary-50` through `--primary-950`, and the same for secondary, accent, and neutral. You map them to Tailwind in `styles.css`:
 
 ```css
 @theme inline {
@@ -124,10 +127,14 @@ That single line produces eleven shades: `--primary-50` through `--primary-950`.
   --color-primary-100: var(--primary-100);
   /* ... through 950 ... */
   --color-primary: var(--primary-500);
+
+  --color-accent-50: var(--accent-50);
+  /* ... same pattern ... */
+  --color-accent: var(--accent-500);
 }
 ```
 
-Use palette colors for intentional brand accents — icon containers, tag badges, active indicators — where you want a specific shade regardless of context:
+Use palette colors for intentional brand touches — icon containers, tag badges, active indicators — where you want a specific shade regardless of context:
 
 ```jsx
 {/* Brand accent — always primary, in any context */}
@@ -139,9 +146,16 @@ Use palette colors for intentional brand accents — icon containers, tag badges
 <span className="bg-primary-50 text-primary-700 rounded px-2 py-1">
   {tag}
 </span>
+
+{/* Special callout — using accent color */}
+<span className="bg-accent-100 text-accent-700 rounded px-2 py-1">
+  New
+</span>
 ```
 
-The palette adapts when the site changes its primary color. A conservation site with green branding and a fintech site with blue branding both get correct, harmonious shades — without touching component code.
+The palettes adapt when the site changes its colors. A conservation site with green primary and amber accent, and a fintech site with blue primary and violet accent, both get correct, harmonious shades — without touching component code.
+
+**Primary vs accent:** Primary is your workhorse brand color — buttons, links, active states. Accent is for moments that need to stand out *from* the brand — callouts, highlights, "new" badges. Not every foundation needs to use accent, but the palette is there if you map it.
 
 ---
 
@@ -155,6 +169,7 @@ The site's `theme.yml` controls:
 colors:
   primary: "#047857"      # Brand color → generates full palette
   secondary: "#78716c"    # Supporting color
+  accent: "#d97706"       # Highlight color
   neutral: "#57534e"      # Drives all context tokens (bg, text, borders)
 
 fonts:
