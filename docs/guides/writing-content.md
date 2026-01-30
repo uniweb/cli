@@ -497,21 +497,58 @@ What settings are available depends entirely on the section type. The best way t
 
 ### Background settings
 
-Some section types support background images or videos:
+Any section can have a background image or video. The simplest way is to provide a URL:
+
+```yaml
+---
+type: Hero
+theme: dark
+background: /images/hero.jpg
+---
+```
+
+The site automatically detects whether the URL is an image or video (by file extension).
+
+For more control, use the full syntax with an overlay to keep text readable:
 
 ```yaml
 ---
 type: Hero
 theme: dark
 background:
-  image: /images/hero.jpg
+  image:
+    src: /images/hero.jpg
+    position: center top
   overlay:
+    enabled: true
     type: dark
     opacity: 0.5
 ---
 ```
 
-Whether backgrounds are supported depends on the section type. Check your template's existing sections for examples.
+**Video backgrounds** work the same way:
+
+```yaml
+---
+type: Hero
+theme: dark
+background:
+  video:
+    src: /videos/hero.mp4
+    poster: /images/hero-poster.jpg
+  overlay:
+    enabled: true
+    type: dark
+    opacity: 0.5
+---
+```
+
+- Video backgrounds automatically show a still image for users who prefer reduced motion.
+- The poster image shows while the video loads.
+
+**Overlays** add a semi-transparent layer between the background and your content, making text easier to read over busy images. Use `type: dark` for light text on dark overlay, or `type: light` for dark text on light overlay. Adjust `opacity` (0 to 1) to control how strong the overlay is.
+
+> **Note:** A few section types may render their own background (for example, sections with special visual effects). In those cases, the section type's built-in background takes priority. Your template's documentation will mention this if it applies.
 
 ---
 

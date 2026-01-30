@@ -626,15 +626,34 @@ See the [Search guide](../search.md) for full configuration options.
 
 ### Hero with Background Image
 
-Use frontmatter `background:` instead of an inline image:
+Any section can have a background image — just add `background:` to the frontmatter. The simplest form is a URL:
+
+```markdown
+---
+type: Hero
+theme: dark
+background: /images/hero-bg.jpg
+---
+
+# Transform Your Business
+
+Start building with modern tools today.
+
+[Get Started](/signup)
+```
+
+For busy images, add an overlay to keep text readable:
 
 ```markdown
 ---
 type: Hero
 theme: dark
 background:
-  image: /images/hero-bg.jpg
+  image:
+    src: /images/hero-bg.jpg
+    position: center
   overlay:
+    enabled: true
     type: dark
     opacity: 0.6
 ---
@@ -646,8 +665,9 @@ Start building with modern tools today.
 [Get Started](/signup)
 ```
 
-- Background images appear behind the content, with an overlay to keep text readable.
-- Whether a section type supports backgrounds depends on the template.
+- Background images appear behind the content, covering the full section.
+- Overlays add a semi-transparent layer so text stays readable. Use `type: dark` or `type: light`.
+- Adjust `opacity` (0 to 1) — higher values make the overlay stronger.
 
 ---
 
@@ -658,9 +678,11 @@ Start building with modern tools today.
 type: Hero
 theme: dark
 background:
-  video: /videos/hero.mp4
-  poster: /images/hero-poster.jpg
+  video:
+    src: /videos/hero.mp4
+    poster: /images/hero-poster.jpg
   overlay:
+    enabled: true
     type: dark
     opacity: 0.5
 ---
@@ -674,6 +696,7 @@ Watch how easy it is to get started.
 
 - Video backgrounds automatically show a still image for users who prefer reduced motion.
 - The poster image shows while the video loads.
+- You can also use the simple form: `background: /videos/hero.mp4` (video detected by extension).
 
 ---
 
