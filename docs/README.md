@@ -119,6 +119,7 @@ Hands-on guides for getting things done:
 
 | Guide | What You'll Learn |
 |-------|-------------------|
+| [Site Setup](./guides/site-setup.md) | Configure your site — name, pages, languages, search, deployment |
 | [Writing Content](./guides/writing-content.md) | How to write content for your Uniweb site — headings, images, links, icons, items |
 | [Recipes](./guides/recipes.md) | Copy-paste solutions for heroes, features, FAQs, pricing, blogs, and more |
 | [Theming](./guides/theming.md) | Customize colors, fonts, dark mode, and section themes |
