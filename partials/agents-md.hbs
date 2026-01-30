@@ -90,6 +90,53 @@ Description paragraph.
 ![Image](image.jpg)
 ```
 
+### Section Backgrounds
+
+The runtime provides automatic background rendering for any section. Set `background` in frontmatter — no component changes needed.
+
+**Simple syntax** — just a URL (image or video auto-detected by extension):
+
+```yaml
+---
+type: Hero
+theme: dark
+background: /images/hero.jpg
+---
+```
+
+**Full syntax** — explicit mode with overlay for text readability:
+
+```yaml
+---
+type: Hero
+theme: dark
+background:
+  image:
+    src: /images/hero.jpg
+    position: center top
+    size: cover
+  overlay:
+    enabled: true
+    type: dark
+    opacity: 0.5
+---
+```
+
+**Supported modes:**
+
+| Mode | Example | Notes |
+|------|---------|-------|
+| Image | `background: /img.jpg` | CSS background-image, cover by default |
+| Video | `background: /bg.mp4` | webm/mp4 fallback, respects `prefers-reduced-motion` |
+| Gradient | `background: { gradient: { start, end, angle } }` | CSS linear-gradient |
+| Color | `background: { color: '#1a1a2e' }` | Solid color |
+
+**Overlays** — use when background images make text hard to read:
+- **Solid**: `overlay: { enabled: true, type: dark, opacity: 0.5 }` — `dark` or `light` scrim
+- **Gradient**: `overlay: { enabled: true, gradient: { start: 'rgba(0,0,0,0.7)', end: 'rgba(0,0,0,0)' } }`
+
+**Component opt-out**: Components that render their own background (solid colors, glassmorphism, insets) should declare `background: 'self'` in `meta.js` so the runtime skips its background layer. See meta.js Structure below.
+
 ### Content Structure
 
 The semantic parser extracts markdown into a **flat structure**:
@@ -657,6 +704,7 @@ export default {
   description: 'What it does',
   category: 'marketing',         // For grouping in editors
   // hidden: true,               // Uncomment to hide from content authors
+  // background: 'self',         // Uncomment if component renders its own background
 
   // Document expected content (for editors/validation)
   content: {
