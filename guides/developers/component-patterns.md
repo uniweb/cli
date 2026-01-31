@@ -107,147 +107,112 @@ CCA doesn't constrain your import graph. Import from `components/`, from npm pac
 
 ## The Dispatcher
 
-The most common CCA pattern is a content interface that exposes a single `layout` or `style` param and delegates to completely different rendering strategies based on its value. The entry file is a facade — it reads params and dispatches. The real rendering happens in plain React components alongside it.
+You have a Gallery component that needs to render images three different ways: a CSS grid, a masonry layout, and a horizontal carousel. Or a Hero that looks completely different on the homepage versus the pricing page. The content is the same — images with alt text, or a heading with a paragraph and links — but the rendering is structurally different. Different DOM, different CSS strategies, different interaction models.
 
-Here's the Gallery component from the marketing template. Content authors choose between three layouts:
-
-```js
-// meta.js
-params: {
-  layout: {
-    type: 'select',
-    label: 'Layout',
-    options: ['grid', 'masonry', 'carousel'],
-    default: 'grid',
-  },
-}
-```
-
-And the component dispatches:
-
-```jsx
-export function Gallery({ content, params }) {
-  const { layout, columns } = params
-  const { imgs } = content
-
-  const gridCols = {
-    2: 'sm:grid-cols-2',
-    3: 'sm:grid-cols-2 lg:grid-cols-3',
-    4: 'sm:grid-cols-2 lg:grid-cols-4',
-  }
-
-  const masonryCols = {
-    2: 'sm:columns-2',
-    3: 'sm:columns-2 lg:columns-3',
-    4: 'sm:columns-2 lg:columns-4',
-  }
-
-  return (
-    <div className="max-w-6xl mx-auto">
-      {layout === 'masonry' ? (
-        <div className={cn('gap-4', masonryCols[columns])}>
-          {imgs.map((img, i) => (
-            <div key={i} className="break-inside-avoid mb-4">
-              <img src={img.url} alt={img.alt} className="w-full rounded-xl" />
-            </div>
-          ))}
-        </div>
-      ) : layout === 'carousel' ? (
-        <div className="overflow-x-auto">
-          <div className="flex gap-4" style={{ width: 'max-content' }}>
-            {imgs.map((img, i) => (
-              <div key={i} className="w-80 flex-shrink-0">
-                <img src={img.url} alt={img.alt} className="w-full h-60 object-cover rounded-xl" />
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className={cn('grid gap-4', gridCols[columns])}>
-          {imgs.map((img, i) => (
-            <div key={i} className="aspect-video">
-              <img src={img.url} alt={img.alt} className="w-full h-full object-cover rounded-xl" />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-```
-
-Three completely different CSS strategies — grid, CSS columns, and horizontal scroll — behind one component name with one param. The content author writes the same markdown in every case: just images with alt text. The `layout` param changes everything about how those images appear.
-
-The Features component does the same thing with a `style` param — cards, minimal, or list — where each style gets its own class map:
-
-```jsx
-const styles = {
-  cards: {
-    container: cn('p-6 rounded-xl', t.card),
-    iconWrapper: cn('w-12 h-12 rounded-lg flex items-center justify-center mb-4', t.iconBg),
-  },
-  minimal: {
-    container: 'text-center',
-    iconWrapper: cn('w-14 h-14 rounded-xl flex items-center justify-center mb-4 mx-auto', t.iconBg),
-  },
-  list: {
-    container: 'flex gap-4',
-    iconWrapper: cn('w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0', t.iconBg),
-  },
-}
-
-const s = styles[style] || styles.cards
-```
-
-**When this pattern emerges:** You notice that a component needs to render the same content in structurally different ways — not just different colors or spacing, but different CSS layouts, different DOM structures, different interaction models. That's a dispatcher.
-
-### Don't over-abstract the variant names
-
-Here's a situation you'll encounter in practice. You're converting an existing site — or designing a foundation for a site concept with several pages — and you notice the hero sections across pages are similar but not the same. The homepage hero has a two-column layout with a browser mockup. The pricing page hero is centered text. The agencies page hero is minimal, left-aligned, text-only. The login page has a split-screen with a form on one side.
-
-The CCA instinct says: these should all be one Hero component. And that's correct — one Hero with variants is better than `HeroHomepage`, `HeroPricing`, `HeroDirectory`, `HeroLogin`. But the next instinct is where things go wrong: trying to find clever, purpose-based param names that abstractly describe each variant. "What *is* the homepage layout, really? It's a... split-media? A content-with-aside?"
-
-Don't do that. The Dispatcher pattern doesn't require elegant abstraction. It requires consolidation.
-
-```js
-// meta.js — and this is fine
-params: {
-  variant: {
-    type: 'select',
-    label: 'Layout',
-    options: ['homepage', 'centered', 'directory', 'split-form'],
-    default: 'homepage',
-  },
-}
-```
-
-Those option names came from where the variants were found. That's fine. They're meaningful to a content author building this site — "I want the hero to look like the homepage" is a perfectly good selection criterion. You're not shipping an open-source component library where `homepage` would be meaningless. You're shipping a foundation for a site (or family of sites) where these names map to real, tested layouts.
-
-The same applies to any section type. If you have a Testimonial component and one variant came from a page about institutional partnerships, `variant: "institution"` is a legitimate option. It dispatches to an internal `InstitutionLayout` component that renders the look you want. The content author sees a layout that works. The code is clean. CCA is not violated — the content is still in markdown, the component is still reusable across pages, the theme still adapts to the site.
-
-The win is consolidation: one component name, one meta.js, one place to add future variants. Not five components with five names polluting the component palette.
-
-(For more on how section types get named during conversion, see [Converting Existing Designs](./converting-existing-designs.md) — especially the table on renaming components by purpose.)
-
-### The dispatcher is thin
-
-The dispatcher reads params and delegates. Adding a new variant means adding a new code path, not modifying existing ones. The content stays the same — the component transforms it differently.
-
-When variants get large enough to extract, put them alongside the entry file:
+The Dispatcher pattern handles this. The section type is a thin entry file that reads a param and delegates to separate renderer components. Each renderer is plain React — it doesn't know about CCA. The dispatcher is the only file that touches params and content structure.
 
 ```
 src/sections/
 └── Gallery/
-    ├── meta.js           # Content interface
-    ├── Gallery.jsx       # Dispatcher — reads params, delegates
-    ├── Grid.jsx          # Renderer: CSS grid layout
+    ├── meta.js           # Content interface — declares layout param
+    ├── Gallery.jsx       # Dispatcher — reads param, delegates
+    ├── Grid.jsx          # Renderer: CSS grid
     ├── Masonry.jsx       # Renderer: CSS columns
-    └── Carousel.jsx      # Renderer: scroll-snap
+    └── Carousel.jsx      # Renderer: horizontal scroll-snap
 ```
 
-The dispatcher imports `./Grid`, `./Masonry`, `./Carousel` — standard React. The renderers are plain components that receive normalized props; they don't know about CCA. The dispatcher is the only file that reads params and content structure.
+The meta.js declares the choice:
 
-These renderer files are invisible to the build — they're nested inside a section type folder without their own `meta.js`. They're ordinary React modules — no folder requirements, no naming conventions, no special status.
+```js
+// meta.js
+export default {
+  params: {
+    layout: {
+      type: 'select',
+      label: 'Layout',
+      options: ['grid', 'masonry', 'carousel'],
+      default: 'grid',
+    },
+  },
+}
+```
+
+And the entry file dispatches:
+
+```jsx
+// Gallery.jsx
+import Grid from './Grid'
+import Masonry from './Masonry'
+import Carousel from './Carousel'
+
+const layouts = { grid: Grid, masonry: Masonry, carousel: Carousel }
+
+export default function Gallery({ content, params }) {
+  const Layout = layouts[params.layout] || Grid
+  return <Layout imgs={content.imgs} columns={params.columns} />
+}
+```
+
+That's the entire dispatcher — six lines of logic. Each renderer receives normalized props and renders one way. `Grid.jsx` knows about CSS grid. `Masonry.jsx` knows about CSS columns. `Carousel.jsx` knows about scroll-snap. None of them know about CCA params or content structure. Adding a fourth layout means adding a file and a key to the map, without touching the existing renderers.
+
+The renderer files are invisible to the build — they're nested inside a section type folder without their own `meta.js`. They're ordinary React modules.
+
+The content author writes the same markdown in every case — just images with alt text. The `layout` param changes everything about how those images appear. One component name, one content structure, three completely different visual results.
+
+### When the variants are lighter
+
+Not every dispatcher needs separate files. When variants differ in styling but share the same DOM structure, a class map inside the entry file is enough:
+
+```jsx
+// Features.jsx — variants differ in class sets, not structure
+const styles = {
+  cards: {
+    container: 'p-6 rounded-xl bg-surface',
+    icon: 'w-12 h-12 rounded-lg flex items-center justify-center mb-4',
+  },
+  minimal: {
+    container: 'text-center',
+    icon: 'w-14 h-14 rounded-xl flex items-center justify-center mb-4 mx-auto',
+  },
+  list: {
+    container: 'flex gap-4',
+    icon: 'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
+  },
+}
+
+export default function Features({ content, params }) {
+  const s = styles[params.style] || styles.cards
+  // ... render items using s.container, s.icon
+}
+```
+
+This is a lighter form of the same pattern — the entry file reads a param and selects a rendering strategy. The difference is that the strategies are class maps rather than separate components. Use separate files when variants have different DOM structures or interaction logic; use inline maps when they share the same JSX and only differ in classes. (See [Static Class Maps](#static-class-maps) for more on how these maps work with Tailwind.)
+
+### Variant naming
+
+The instinct when consolidating similar components is to find clever, abstract names for each variant. "What *is* the homepage hero, really? A split-media? A content-with-aside?"
+
+Don't do that. The dispatcher pattern doesn't require elegant abstraction. It requires consolidation.
+
+```js
+// meta.js — and this is fine
+export default {
+  params: {
+    variant: {
+      type: 'select',
+      label: 'Layout',
+      options: ['homepage', 'centered', 'directory', 'split-form'],
+      default: 'homepage',
+    },
+  },
+}
+```
+
+Those names came from where the variants were found. That's fine — "I want the hero to look like the homepage" is a perfectly good selection criterion. You're not shipping an open-source component library where `homepage` would be meaningless. You're shipping a foundation for a site (or family of sites) where these names map to real, tested layouts.
+
+The win is consolidation: one component name, one meta.js, one place to add future variants. Not five components with five names in the content author's palette. The variant vocabulary can evolve later — start with names that are meaningful now.
+
+(If you're consolidating variants from an existing site or AI-generated pages, see [Converting Existing Designs](./converting-existing-designs.md) for the staged migration approach — including how to keep legacy implementations untouched in `components/` while the section type dispatches to them.)
 
 ---
 
