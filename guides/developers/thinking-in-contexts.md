@@ -220,9 +220,10 @@ my-project/
 │           └── hero.md
 └── foundation/
     └── src/
-        └── components/
+        └── sections/
             └── Hero/
-                └── index.jsx
+                ├── meta.js
+                └── Hero.jsx
 ```
 
 The site might be purely a testbed — throwaway content, a quick `theme.yml` with a single primary color. That's fine. Its job during development is to give the build system something to generate CSS from. Later, a real site with real content and real branding will use your foundation, and every semantic token will resolve to *that* site's colors instead.

@@ -4,13 +4,13 @@ This guide explains how to write `meta.js` files for Uniweb components.
 
 ## Overview
 
-Every exposed component has a `meta.js` file that describes:
+Every section type has a `meta.js` file that describes:
 - What the component does (for documentation and editor UI)
 - What content it expects from markdown
 - What parameters content authors can configure
 - What presets are available for quick setup
 
-Components without `meta.js` are internal helpers—not selectable by content authors.
+Components without `meta.js` are ordinary React components — not selectable by content authors, but the foundation's actual rendering workhorses.
 
 ---
 

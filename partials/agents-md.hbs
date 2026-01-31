@@ -13,8 +13,8 @@ project/
 
 Multi-site variant uses `foundations/` and `sites/` (plural) folders.
 
-- **Foundation**: React components. Those with `meta.js` are *exposed* — selectable by content authors via `type:` in frontmatter.
-- **Site**: Markdown content + configuration. Each section file references an exposed component.
+- **Foundation**: React components. Those with `meta.js` are *section types* — selectable by content authors via `type:` in frontmatter. Everything else is ordinary React.
+- **Site**: Markdown content + configuration. Each section file references a section type.
 
 ## Commands
 
@@ -277,24 +277,25 @@ All defaults belong in `meta.js`, not inline in component code.
 
 **Utilities:** `cn()` (Tailwind class merge), `filterSocialLinks(links)`, `getSocialPlatform(url)`
 
-### Component Organization
+### Foundation Organization
 
 ```
 foundation/src/
-├── components/          # Exposed (auto-discovered via meta.js)
+├── sections/            # Section types (auto-discovered via meta.js)
 │   ├── Hero/
-│   │   ├── index.jsx
+│   │   ├── Hero.jsx     # Entry — or index.jsx, both work
 │   │   └── meta.js
 │   └── Features/
-│       ├── index.jsx
+│       ├── Features.jsx
 │       └── meta.js
-├── shared/              # Internal helpers (no meta.js, not selectable)
-│   ├── Button.jsx
+├── components/          # Your React components (no meta.js, not selectable)
+│   ├── ui/              # shadcn-compatible primitives
+│   │   └── button.jsx
 │   └── Card.jsx
 └── styles.css
 ```
 
-Components without `meta.js` are internal — imported by exposed components but invisible to content authors.
+Only folders with `meta.js` in `sections/` (or `components/` for older foundations) become section types. Everything else is ordinary React — organize however you like.
 
 ### Website and Page APIs
 
@@ -341,7 +342,7 @@ When given a monolithic React file (AI-generated or hand-built), don't port line
 1. **Name by purpose** — `Institutions` → `Testimonial`, `WorkModes` → `FeatureColumns`. Components render a *kind* of content, not specific content.
 2. **Separate content from code** — Hardcoded strings → markdown. Layout/styling stays in JSX. Content authors edit words without touching code.
 3. **Use semantic tokens** — Replace `text-slate-900` with `text-heading`, `bg-white` with `bg-surface`. Component works in any context and any brand.
-4. **Shared UI → `shared/`** — Buttons, badges, cards become internal components (no `meta.js`).
+4. **UI components → `components/`** — Buttons, badges, cards go in `src/components/` (no `meta.js` needed).
 
 You don't have to convert everything at once. Each section is independent — one can use hardcoded content while another reads from markdown. See the [Converting Existing Designs](./guides/developers/converting-existing-designs.md) guide for the full walkthrough.
 

@@ -151,7 +151,7 @@ export function Hero({ content, params }) {
 }
 ```
 
-Standard React. Standard Tailwind. The `{ content, params }` interface is only for _exposed_ components—the ones content creators select in markdown frontmatter. Internal components use regular React props.
+Standard React. Standard Tailwind. The `{ content, params }` interface is only for _section types_ — components with `meta.js` that content creators select in markdown frontmatter. Everything else uses regular React props.
 
 ## Next Steps
 
@@ -623,7 +623,7 @@ No. Local markdown files work great for developer-managed sites. The platform ad
 
 **Can I use an existing component library?**
 
-Yes. Foundations are standard React. Import any library into your foundation components. The `{ content, params }` interface only applies to exposed components—internal components use regular props.
+Yes. Foundations are standard React. Import any library into your foundation components. The `{ content, params }` interface only applies to section types (components with `meta.js`) — everything else uses regular React props.
 
 **Is this SEO-friendly?**
 

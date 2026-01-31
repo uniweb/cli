@@ -18,7 +18,7 @@ You have an AI-generated landing page or an existing React project. How to bring
 
 ### [CCA Component Patterns](./component-patterns.md)
 
-Patterns that give you cleaner component interfaces and less code. The Dispatcher (one component instead of five), Building Blocks (layout containers with child sections), Multi-Source Rendering (markdown or API data), and the constraints that produce tighter, more reusable components.
+How to organize a foundation's `src/` directory — `sections/` for content interfaces, `components/` for your React code (shadcn-compatible), `hooks/` for hooks. Plus the patterns that emerge from CCA's content/component separation: the Dispatcher, Building Blocks, Multi-Source Rendering, and the constraints that produce tighter components.
 
 ---
 

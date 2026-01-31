@@ -8,9 +8,98 @@ If you're coming from a traditional React project — especially one with multip
 
 ---
 
+## Organizing a Foundation
+
+A foundation is a React project. Most of its code is ordinary React components — cards, buttons, layout helpers, renderers — with no special requirements. They live wherever makes sense: `ui/`, `lib/`, inline in the same file, npm packages. CCA doesn't know or care about them.
+
+The only special thing in a foundation is the **content interface**: the small number of section types that content authors can reference by name in frontmatter (`type: Hero`, `type: Features`). These are identified by a `meta.js` file, which declares what content the section expects and what params it exposes. The build system scans `src/sections/` for folders containing `meta.js` — that's the only convention it enforces.
+
+```
+src/
+├── sections/                # Content interfaces — section types (has meta.js)
+│   ├── Hero/
+│   │   ├── meta.js          # Content interface declaration
+│   │   ├── Hero.jsx         # Entry — or index.jsx, both work
+│   │   ├── Centered.jsx     # Internal variant
+│   │   └── SplitForm.jsx    # Internal variant
+│   ├── Gallery/
+│   │   ├── meta.js
+│   │   ├── Gallery.jsx
+│   │   ├── Grid.jsx         # Internal renderer
+│   │   └── Masonry.jsx      # Internal renderer
+│   └── Header/
+│       ├── meta.js
+│       └── Header.jsx
+├── components/              # React components (shadcn-compatible, yours, etc.)
+│   ├── ui/                  # shadcn primitives
+│   │   ├── button.jsx
+│   │   ├── card.jsx
+│   │   └── badge.jsx
+│   ├── TeamCard.jsx
+│   └── PricingTier.jsx
+├── hooks/                   # Custom React hooks
+│   └── useScrollPosition.js
+├── styles.css
+└── foundation.js
+```
+
+`sections/` contains the content interfaces — the things content authors select by name. `components/` is where your React components live, organized however you like. `hooks/` is for custom React hooks. The build only scans `sections/` for `meta.js` (and falls back to `components/` for existing foundations that use the older convention). Everything else is standard React — create whatever folders describe what's in them.
+
+### Entry file conventions
+
+The build supports two naming conventions for the entry file in a content interface folder:
+
+- **Named file**: `Hero/Hero.jsx` — clearer in editor tabs when you have many open
+- **Index file**: `Hero/index.jsx` — the traditional React convention
+
+Named files are checked first, so if both exist, `Hero.jsx` wins. Use whichever convention your team prefers.
+
+### Your components live in `components/`
+
+The `components/` folder is yours — organize it however makes sense for your project. A `components/ui/` subfolder follows the [shadcn/ui](https://ui.shadcn.com) convention (shadcn's CLI installs there by default). Section types import from them like any other module:
+
+```jsx
+// sections/Features/Features.jsx
+import { Card, CardContent } from '../../components/ui/card'
+
+export function Features({ content, params }) {
+  return (
+    <div className="grid md:grid-cols-3 gap-6">
+      {content.items.map((item, i) => (
+        <Card key={i}>
+          <CardContent>
+            <h3 style={{ color: 'var(--heading)' }}>{item.title}</h3>
+            <p style={{ color: 'var(--text)' }}>{item.paragraphs[0]}</p>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+}
+```
+
+CCA doesn't constrain your import graph. Import from `components/`, from npm packages, from `hooks/`, from sibling files inside the section folder — whatever your rendering needs.
+
+### Custom discovery paths
+
+By default, the build scans `src/sections/` one level deep for `meta.js` files (falling back to `src/components/` for older foundations). If your foundation grows to need subcategories, you can configure additional paths:
+
+```js
+// vite.config.js
+import { defineFoundationConfig } from '@uniweb/build'
+
+export default defineFoundationConfig({
+  components: ['sections', 'sections/marketing', 'sections/docs']
+})
+```
+
+Each path is scanned one level deep. A content interface's name comes from its folder name, so names must be unique across all paths.
+
+---
+
 ## The Dispatcher
 
-The most common CCA pattern is a component that exposes a single `layout` or `style` param and delegates to completely different rendering strategies based on its value. The exposed component is a facade — it reads params and dispatches. The real rendering happens in specialized code paths.
+The most common CCA pattern is a content interface that exposes a single `layout` or `style` param and delegates to completely different rendering strategies based on its value. The entry file is a facade — it reads params and dispatches. The real rendering happens in plain React components alongside it.
 
 Here's the Gallery component from the marketing template. Content authors choose between three layouts:
 
@@ -134,23 +223,23 @@ The win is consolidation: one component name, one meta.js, one place to add futu
 
 ### The dispatcher is thin
 
-The dispatcher reads params and delegates. Adding a new variant means adding a new code path (or a new worker component in a shared folder), not modifying existing ones. The content stays the same — the component transforms it differently.
+The dispatcher reads params and delegates. Adding a new variant means adding a new code path, not modifying existing ones. The content stays the same — the component transforms it differently.
 
-**For larger foundations**, consider extracting workers to a shared folder:
+When variants get large enough to extract, put them alongside the entry file:
 
 ```
-foundation/src/
-├── components/
-│   └── Gallery/          # Exposed — the dispatcher
-│       ├── index.jsx     # Reads params, delegates
-│       └── meta.js       # Declares layout options
-└── shared/
-    ├── GalleryGrid.jsx       # Worker: CSS grid
-    ├── GalleryMasonry.jsx    # Worker: CSS columns
-    └── GalleryCarousel.jsx   # Worker: scroll-snap
+src/sections/
+└── Gallery/
+    ├── meta.js           # Content interface
+    ├── Gallery.jsx       # Dispatcher — reads params, delegates
+    ├── Grid.jsx          # Renderer: CSS grid layout
+    ├── Masonry.jsx       # Renderer: CSS columns
+    └── Carousel.jsx      # Renderer: scroll-snap
 ```
 
-This separates the CCA interface (meta.js, dispatcher) from the rendering implementations. The workers are plain React components that receive normalized props — they don't know they're in CCA. The dispatcher is the only file that knows about params and content structure.
+The dispatcher imports `./Grid`, `./Masonry`, `./Carousel` — standard React. The renderers are plain components that receive normalized props; they don't know about CCA. The dispatcher is the only file that reads params and content structure.
+
+The build only looks for `meta.js` in direct children of `sections/`, so these renderer files are invisible to discovery. They're ordinary React modules — no folder requirements, no naming conventions, no special status.
 
 ---
 

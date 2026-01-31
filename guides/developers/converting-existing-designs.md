@@ -39,18 +39,18 @@ If you squint at this, it's already a page with sections. The `App` function is 
 
 ## Level 0: CCA as Routing
 
-The minimum viable migration. You create a Uniweb project, paste the entire original file into one exposed component, and let the site handle routing. Nothing is decomposed — all the original components, content, and styling stay exactly where they are.
+The minimum viable migration. You create a Uniweb project, paste the entire original file into one section type, and let the site handle routing. Nothing is decomposed — all the original components, content, and styling stay exactly where they are.
 
 **Foundation:**
 
 ```
-foundation/src/components/
+foundation/src/sections/
 └── App/
-    ├── index.jsx       ← paste the entire file: Nav, Hero, Footer, everything
-    └── meta.js         ← minimal: { title: 'App' }
+    ├── meta.js         ← minimal: { title: 'App' }
+    └── App.jsx         ← paste the entire file: Nav, Hero, Footer, everything
 ```
 
-That's one exposed component. Everything else in the original file — `Nav`, `Hero`, `TheModel`, `Button`, `Badge`, `Section`, `Footer` — lives inside `index.jsx` as local functions. They don't need their own folders. They don't need `meta.js`. They're just internal code inside the one component that CCA knows about.
+That's one section type. Everything else in the original file — `Nav`, `Hero`, `TheModel`, `Button`, `Badge`, `Section`, `Footer` — lives inside `App.jsx` as local functions. They don't need their own folders. They don't need `meta.js`. They're just internal code inside the one section type that CCA knows about.
 
 **Site:**
 
@@ -81,19 +81,19 @@ This level is useful when you need to get something live quickly and plan to imp
 
 ## Level 1: Decompose and Name by Purpose
 
-This is where you break the monolith into separate exposed components — one per section — and give them names that describe what they _render_ rather than what they _say_. Each gets its own folder and `meta.js`. The content is still hardcoded in JSX, but the components are now independent and reusable.
+This is where you break the monolith into separate section types — one per section — and give them names that describe what they _render_ rather than what they _say_. Each gets its own folder and `meta.js`. The content is still hardcoded in JSX, but the sections are now independent and reusable.
 
-Shared helpers like `Button`, `Badge`, `Section` move to `foundation/src/shared/` — internal components with no `meta.js`, imported by exposed components.
+Shared helpers like `Button`, `Badge`, `Section` move to `foundation/src/components/` — ordinary React components, imported by section types.
 
 ```
 foundation/src/
-├── components/          # Exposed (with meta.js)
+├── sections/            # Content interfaces (with meta.js)
 │   ├── Hero/
 │   ├── SplitContent/
 │   ├── FeatureCards/
 │   ├── Header/
 │   └── Footer/
-└── shared/              # Internal (no meta.js)
+└── components/          # React components (no meta.js)
     ├── Button.jsx
     ├── Badge.jsx
     └── SectionWrapper.jsx

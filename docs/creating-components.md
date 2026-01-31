@@ -4,16 +4,16 @@ Build custom components for your foundation.
 
 ## Component Structure
 
-Each component lives in its own folder under `foundation/src/components/`:
+Each section type lives in its own folder under `foundation/src/sections/`:
 
 ```
-foundation/src/components/
+foundation/src/sections/
 └── FeatureCard/
-    ├── index.jsx      # The React component
-    └── meta.js        # Metadata for content authors
+    ├── FeatureCard.jsx   # The React component (or index.jsx — both work)
+    └── meta.js           # Content interface declaration
 ```
 
-The `meta.js` file makes a component "exposed"—selectable via `type:` in content. Components without `meta.js` are internal helpers.
+The `meta.js` file makes a component a section type — selectable via `type:` in content. Components without `meta.js` are ordinary React components that live wherever makes sense (typically `src/components/`).
 
 ---
 
@@ -62,7 +62,7 @@ Built for speed with optimized loading and caching.
 
 ## Component Props
 
-Every exposed component receives:
+Every section type receives:
 
 ```jsx
 function MyComponent({ content, params, block }) {
