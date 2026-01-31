@@ -8,6 +8,10 @@ If you're looking for content authoring (markdown, frontmatter, site configurati
 
 ## Guides
 
+### [Building with Uniweb](./building-with-uniweb.md)
+
+What a Uniweb project looks like and why almost everything in it is standard React and Vite. The project structure defines the architecture — `sections/` is the component catalog, `pages/` is the routing table, and markdown frontmatter connects them. Start here if you're new to the framework.
+
 ### [Thinking in Contexts](./thinking-in-contexts.md)
 
 How semantic theming replaces hardcoded color maps. Why you write less code and get a more portable foundation. When the rules apply — and the two cases where they don't.
