@@ -1,6 +1,6 @@
 # Building with Uniweb
 
-You know how to build a React app. You pick a bundler (Vite), write components, set up routes, and wire everything together. A typical SPA needs a router config, lazy imports, maybe a layout system. In Uniweb, the wiring is the file structure itself — markdown files name the components they want, folders define routes, and the build connects them.
+You know how to build a React app. You pick a bundler (Vite), write components, set up routes, and wire everything together. A typical single-page application (SPA) needs a router config, lazy imports, maybe a layout system. In Uniweb, the wiring is the file structure itself — markdown files name the components they want, folders define routes, and the build connects them.
 
 This guide shows what a Uniweb project looks like and why almost everything in it is standard React and Vite. The unfamiliar part is small and mechanical.
 
@@ -44,7 +44,10 @@ export default function Hero({ content }) {
       <h1 className="text-4xl font-bold">{content.title}</h1>
       <p className="text-xl mt-4">{content.paragraphs[0]}</p>
       {content.links[0] && (
-        <a href={content.links[0].href} className="inline-block mt-8 px-6 py-3 bg-blue-600 text-white rounded-lg">
+        <a
+          href={content.links[0].href}
+          className="inline-block mt-8 px-6 py-3 bg-blue-600 text-white rounded-lg"
+        >
           {content.links[0].label}
         </a>
       )}
@@ -69,11 +72,11 @@ Create something great with less effort.
 
 **What arrives in `content`:**
 
-| Markdown element         | Content field          | Value                              |
-| ------------------------ | ---------------------- | ---------------------------------- |
-| `# Welcome to...`       | `content.title`        | `"Welcome to Our Product"`         |
-| Paragraph text           | `content.paragraphs[0]`| `"Create something great..."` |
-| `[Get Started](/about)`  | `content.links[0]`     | `{ href: "/about", label: "Get Started" }` |
+| Markdown element        | Content field           | Value                                      |
+| ----------------------- | ----------------------- | ------------------------------------------ |
+| `# Welcome to...`       | `content.title`         | `"Welcome to Our Product"`                 |
+| Paragraph text          | `content.paragraphs[0]` | `"Create something great..."`              |
+| `[Get Started](/about)` | `content.links[0]`      | `{ href: "/about", label: "Get Started" }` |
 
 The parser extracts semantic elements from markdown — headings become titles, paragraph text becomes `paragraphs`, links become `links`, images become `imgs`. Your component reads the structure it needs and ignores the rest. See [Content Structure](../../docs/content-structure.md) for the full mapping.
 
@@ -168,7 +171,11 @@ export default function Hero({ content, params }) {
           <p className="text-xl mt-4">{content.paragraphs[0]}</p>
         </div>
         {content.imgs[0] && (
-          <img src={content.imgs[0].src} alt={content.imgs[0].alt} className="rounded-lg" />
+          <img
+            src={content.imgs[0].src}
+            alt={content.imgs[0].alt}
+            className="rounded-lg"
+          />
         )}
       </div>
     )

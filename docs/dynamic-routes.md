@@ -87,7 +87,7 @@ type: Article
 ### 4. Create your component with inheritData
 
 ```js
-// foundation/src/components/Article/meta.js
+// foundation/src/sections/Article/meta.js
 export default {
   title: 'Article',
   inheritData: ['article', 'articles'],  // Receives current + all items
@@ -95,7 +95,7 @@ export default {
 ```
 
 ```jsx
-// foundation/src/components/Article/index.jsx
+// foundation/src/sections/Article/index.jsx
 export function Article({ content }) {
   const article = content.data.article
   const allArticles = content.data.articles || []

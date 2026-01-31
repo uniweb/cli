@@ -106,7 +106,7 @@ Data flows from site → page → section. Components must opt in to receive cas
 ### Component opt-in (meta.js)
 
 ```js
-// foundation/src/components/TeamGrid/meta.js
+// foundation/src/sections/TeamGrid/meta.js
 export default {
   title: 'Team Grid',
 
@@ -357,7 +357,7 @@ pnpm add @uniweb/schemas
 ```
 
 ```js
-// foundation/src/components/TeamGrid/meta.js
+// foundation/src/sections/TeamGrid/meta.js
 import { person } from '@uniweb/schemas'
 
 export default {
