@@ -1,1031 +1,370 @@
 # AGENTS.md
 
-This file provides guidance for AI assistants working with this Uniweb project.
+Guidance for AI agents working with this Uniweb project. For deeper reference, see the [developer guides](./guides/developers/) and [content author guides](./guides/authors/).
 
 ## Project Structure
 
-Uniweb projects have two structures. A single project can be converted to multi-site:
-
-**Single (one foundation, one site):**
 ```
 project/
-├── foundation/     # Purpose-built component library (React)
+├── foundation/     # React component library
 ├── site/           # Content (markdown pages)
 └── pnpm-workspace.yaml
 ```
 
-**Multi-site (multiple foundations and sites):**
-```
-project/
-├── foundations/        # Purpose-built component libraries
-│   └── marketing/
-├── sites/              # Content sites
-│   └── my-org/
-└── pnpm-workspace.yaml
-```
+Multi-site variant uses `foundations/` and `sites/` (plural) folders.
 
-- **Foundation**: React components. Components with `meta.js` are *exposed* to content authors.
-- **Site**: Markdown content. Each section references a component via `type:` in frontmatter.
+- **Foundation**: React components. Those with `meta.js` are *exposed* — selectable by content authors via `type:` in frontmatter.
+- **Site**: Markdown content + configuration. Each section file references an exposed component.
 
 ## Commands
 
 ```bash
 pnpm install    # Install dependencies
-pnpm dev        # Start dev server (runs default/main site)
+pnpm dev        # Start dev server
 pnpm build      # Build for production
 ```
-
-Multi-site also supports:
-```bash
-pnpm dev:all    # Start all sites in parallel
-pnpm build:all  # Build all sites
-```
-
-## Discovering Components
-
-Exposed components live in `foundation/src/components/` (or `foundations/*/src/components/`).
-
-```bash
-# List exposed components (those with meta.js)
-ls foundation/src/components/*/meta.js
-```
-
-**Understanding a component:**
-
-1. **`meta.js`** - Defines the component's interface:
-   - `title`, `description` - What the component does
-   - `content` - What content it expects (title, paragraphs, links, items, etc.)
-   - `params` - Configurable parameters with types and defaults
-   - `presets` - Named combinations of param values
-   - `hidden: true` - Component exists but isn't selectable from frontmatter
-
-2. **`index.jsx`** - The React implementation
-
-3. **Existing content** - See how the component is used in `site/pages/`
-
-**Note:** Components without `meta.js` are internal helpers used by other components.
 
 ## Content Authoring
 
 ### Section Format
 
-Each section is a markdown file with YAML frontmatter:
+Each `.md` file is a section. Frontmatter on top, content below:
 
 ```markdown
 ---
-type: ComponentName   # Must match an exposed component
-theme: dark           # Parameter from meta.js properties
+type: Hero
+theme: dark
 ---
 
-### Eyebrow Text      # H3 before H1 → pretitle
+### Eyebrow Text        ← pretitle (heading before a more important one)
 
-# Main Headline       # H1 → title
+# Main Headline         ← title
 
-## Subtitle           # H2 after H1 → subtitle
+## Subtitle             ← subtitle
 
 Description paragraph.
 
-[Call to Action](#link)
+[Call to Action](/link)
 
-![Image](image.jpg)
+![Image](./image.jpg)
 ```
 
-### Section Backgrounds
+### Content Shape
 
-The runtime provides automatic background rendering for any section. Set `background` in frontmatter — no component changes needed.
-
-**Simple syntax** — just a URL (image or video auto-detected by extension):
-
-```yaml
----
-type: Hero
-theme: dark
-background: /images/hero.jpg
----
-```
-
-**Full syntax** — explicit mode with overlay for text readability:
-
-```yaml
----
-type: Hero
-theme: dark
-background:
-  image:
-    src: /images/hero.jpg
-    position: center top
-    size: cover
-  overlay:
-    enabled: true
-    type: dark
-    opacity: 0.5
----
-```
-
-**Supported modes:**
-
-| Mode | Example | Notes |
-|------|---------|-------|
-| Image | `background: /img.jpg` | CSS background-image, cover by default |
-| Video | `background: /bg.mp4` | webm/mp4 fallback, respects `prefers-reduced-motion` |
-| Gradient | `background: { gradient: { start, end, angle } }` | CSS linear-gradient |
-| Color | `background: { color: '#1a1a2e' }` | Solid color |
-
-**Overlays** — use when background images make text hard to read:
-- **Solid**: `overlay: { enabled: true, type: dark, opacity: 0.5 }` — `dark` or `light` scrim
-- **Gradient**: `overlay: { enabled: true, gradient: { start: 'rgba(0,0,0,0.7)', end: 'rgba(0,0,0,0)' } }`
-
-**Component opt-out**: Components that render their own background (solid colors, glassmorphism, insets) should declare `background: 'self'` in `meta.js` so the runtime skips its background layer. See meta.js Structure below.
-
-### Content Structure
-
-The semantic parser extracts markdown into a **flat structure**:
+The semantic parser extracts markdown into a flat, guaranteed structure. No null checks needed — empty strings/arrays if content is absent:
 
 ```js
-{
-  // Headers (from headings)
+content = {
   title: '',        // Main heading
   pretitle: '',     // Heading before main title (auto-detected)
-  subtitle: '',     // Heading after main title
-  subtitle2: '',    // Third heading level
-
-  // Body content
+  subtitle: '',     // Heading after title
+  subtitle2: '',    // Third-level heading
   paragraphs: [],   // Text blocks
-  links: [],        // All links (including buttons, documents)
-  imgs: [],         // Images (role: image, banner, gallery, background)
-  icons: [],        // Icons (role: icon)
-  videos: [],       // Videos (role: video)
+  links: [],        // { href, label, role } — standalone links become buttons
+  imgs: [],         // { src, alt, role }
+  icons: [],        // { library, name, role }
+  videos: [],       // Video embeds
   lists: [],        // Bullet/ordered lists
   quotes: [],       // Blockquotes
-  data: {},         // Structured data from tagged code blocks
-  headings: [],     // Overflow headings after title/subtitle/subtitle2
-
-  // Child content groups
-  items: [],        // Created by headings after content
-
-  // Document-order rendering
-  sequence: [],     // All elements in original order
+  data: {},         // From tagged code blocks (```yaml:tagname)
+  headings: [],     // Overflow headings after subtitle2
+  items: [],        // Each has the same flat structure — from headings after body content
+  sequence: [],     // All elements in document order
 }
 ```
 
-**Heading interpretation is semantic, not literal:**
-- `#` in markdown doesn't always become `<h1>` — the component decides
-- A pretitle is auto-detected when a heading precedes a more important one (H3→H1, H2→H1)
-- Items are created when any heading appears after body content
-
-### Attributes on Links and Media
-
-Both links and media support attributes using curly braces:
+**Items** are repeating content groups (cards, features, FAQ entries). Created when a heading appears after body content:
 
 ```markdown
-[text](url){key=value .class #id booleanAttr}
-![alt](url){role=banner width=1200 loading=lazy}
+# Our Features          ← title
+
+We built this for you.  ← paragraph
+
+### Fast                ← items[0].title
+Lightning quick.        ← items[0].paragraphs[0]
+
+### Secure              ← items[1].title
+Enterprise-grade.       ← items[1].paragraphs[0]
 ```
 
-**Links and buttons:**
+### Icons
+
+Use image syntax with library prefix: `![](lu-house)`. Supported libraries: `lu` (Lucide), `hi2` (Heroicons), `fi` (Feather), `pi` (Phosphor), `tb` (Tabler), `bs` (Bootstrap), `md` (Material), `fa6` (Font Awesome 6), and others. Browse at [react-icons.github.io/react-icons](https://react-icons.github.io/react-icons/).
+
+Custom SVGs: `![Logo](./logo.svg){role=icon}`
+
+### Links and Media Attributes
+
 ```markdown
-[Learn more](/about)                              <!-- Standard link -->
-[Get Started](button:/signup)                     <!-- Button (prefix) -->
-[Get Started](/signup){.button variant=primary}   <!-- Button (class) -->
-[Download](./report.pdf){download}                <!-- Download link -->
+[text](url){target=_blank}              <!-- Open in new tab -->
+[text](./file.pdf){download}            <!-- Download -->
+![alt](./img.jpg){role=banner}          <!-- Role determines array: imgs, icons, or videos -->
 ```
 
-Links are unified in the `links` array with a `role` attribute:
-- `role: "link"` — Standard hyperlink (default)
-- `role: "button"` / `"button-primary"` — CTA buttons
-- `role: "document"` — Downloadable files (auto-detected from extension)
-
-**Media classification by role:**
-```markdown
-![Hero](./hero.jpg)                    <!-- imgs array (default) -->
-![Hero](./hero.jpg){role=banner}       <!-- imgs array with role -->
-![Logo](./logo.svg){role=icon}         <!-- icons array -->
-![Demo](./demo.mp4){role=video}        <!-- videos array -->
-```
-
-All use image syntax but `role` determines which array they go into.
+Standalone links (alone on a line) become buttons. Inline links stay as text links.
 
 ### Structured Data
 
-Tagged code blocks pass structured data to components via `content.data`:
+Tagged code blocks pass structured data via `content.data`:
 
 ````markdown
 ```yaml:form
 fields:
   - name: email
     type: email
-    required: true
 submitLabel: Send
 ```
 ````
 
-Access in component: `content.data?.form` → `{ fields: [...], submitLabel: "Send" }`
+Access: `content.data?.form` → `{ fields: [...], submitLabel: "Send" }`
 
-Supported formats: `json:tag-name`, `yaml:tag-name`
+### Section Backgrounds
 
-### Asset Paths
+Set `background` in frontmatter — the runtime renders it automatically:
 
-Assets can use relative or absolute paths:
-
-```markdown
-![Photo](./photo.jpg)           <!-- Relative to markdown file -->
-![Hero](/images/hero.jpg)       <!-- From public/ or assets/ folder -->
+```yaml
+---
+type: Hero
+theme: dark
+background: /images/hero.jpg              # Simple: URL (image or video auto-detected)
+---
 ```
 
-Build optimizes images (PNG/JPG → WebP), generates content-hashed filenames, and auto-creates video posters and PDF previews when not explicitly provided.
+Full syntax supports `image`, `video`, `gradient`, `color` modes plus overlays:
+
+```yaml
+background:
+  image: { src: /img.jpg, position: center top }
+  overlay: { enabled: true, type: dark, opacity: 0.5 }
+```
+
+Components that render their own background declare `background: 'self'` in `meta.js`.
 
 ### Page Organization
 
 ```
-site/pages/                    # or sites/*/pages/
-├── @header/                   # Rendered on all pages
-├── @footer/                   # Rendered on all pages
-└── [page-name]/
-    ├── page.yml               # title, description, order
-    └── 1-section.md           # Numbered for ordering
+site/pages/
+├── @header/                # Rendered on every page
+│   └── header.md           # type: Header
+├── @footer/                # Rendered on every page
+│   └── footer.md           # type: Footer
+└── home/
+    ├── page.yml            # title, description, order
+    ├── hero.md             # Single section — no prefix needed
+    └── (or for multi-section pages:)
+    ├── 1-hero.md           # Numeric prefix sets order
+    ├── 2-features.md
+    └── 3-cta.md
 ```
 
-**page.yml options:**
+Decimals insert between: `2.5-testimonials.md` goes between `2-` and `3-`.
+
+**page.yml:**
 ```yaml
 title: About Us
 description: Learn about our company
-order: 2                 # Sort order in navigation
-
-# Section ordering (optional)
-sections:
-  - hero
-  - features
-  - pricing
+order: 2                    # Navigation sort order
+index: getting-started      # Which child page is the index
 ```
 
-**Section ordering:**
-- Default: `.md` files discovered and sorted by numeric prefix (`1-`, `2-`, `3-`)
-- Decimals to insert: `2.5-` sorts between `2-` and `3-` (no renumbering needed)
-- Explicit: Use `sections: [hero, features]` — no prefixes needed, easy reordering
-- Empty: `sections: []` — pure route with no content
-- Wildcard: `sections: *` — explicitly use default behavior
-
-**Section hierarchy:** For subsections, use explicit nesting in `page.yml`:
+**site.yml:**
 ```yaml
-sections:
-  - hero
-  - features:
-      - logocloud
-      - stats
+index: home                 # Which page folder is the homepage
 ```
-This is clearer than prefix notation (`1,1-`, `1,2-`) and easier to restructure.
 
-**Page ordering:** Parent controls which page is the index for its route:
-```yaml
-# In site.yml (top-level pages)
-pages: [home, about, docs]  # First is homepage at /
-index: home                  # Or just name the homepage
+Use `index:` rather than `pages: [...]` — listing pages explicitly hides auto-discovered ones.
 
-# In page.yml (child pages)
-pages: [getting-started, installation]  # First is index for this route
-index: getting-started                   # Or just name the index
+## Semantic Theming
+
+CCA separates theme from code. Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter.
+
+```jsx
+// ❌ Hardcoded — breaks in dark context, locked to one palette
+<h2 className="text-slate-900">...</h2>
+
+// ✅ Semantic — adapts to any context and brand automatically
+<h2 className="text-heading">...</h2>
 ```
-- `pages: [a, b, c]` — First gets parent route (becomes index)
-- `index: name` — Just set index, auto-discover rest
-- Omit both — Sort by `order` prop, lowest becomes index
+
+**Core tokens** (available as Tailwind classes):
+
+| Token | Purpose |
+|-------|---------|
+| `text-heading` | Headings |
+| `text-body` | Body text |
+| `text-muted` | Secondary text |
+| `bg-surface` | Section background |
+| `bg-surface-subtle` | Slightly offset surface |
+| `border-edge` | Borders |
+| `border-edge-muted` | Subtle borders |
+| `text-link` | Link color |
+| `text-on-primary` | Text on primary-colored backgrounds |
+| `bg-primary` | Brand primary color |
+
+**Content authors control context** in frontmatter:
+
+```markdown
+---
+type: Testimonial
+theme: dark           ← sets context-dark, all tokens resolve to dark values
+---
+```
+
+**Site controls the palette** in `theme.yml`. The same foundation looks different across sites because tokens resolve from the site's color configuration, not from component code.
+
+**When to break the rules:** Header/footer components that float over content may need direct color logic (reading the first section's theme). Decorative elements with fixed branding (logos) use literal colors. See the [Thinking in Contexts](./guides/developers/thinking-in-contexts.md) guide.
 
 ## Component Development
 
 ### Props Interface
 
-The runtime provides **guarantees** for component props. No defensive null checks needed:
-
 ```jsx
 function MyComponent({ content, params, block }) {
-  // Runtime guarantees these always exist (flat API):
-  const { title, pretitle, subtitle, paragraphs, links, imgs, items } = content
-
-  // params already has defaults from meta.js merged in:
-  const { theme, layout } = params
-
-  // Access website and page via block or useWebsite() hook:
-  const { website } = useWebsite()  // or use block.website, block.page
+  const { title, paragraphs, links, items } = content  // Guaranteed shape
+  const { theme, columns } = params                     // Defaults from meta.js
+  const { website } = useWebsite()                      // Or block.website
 }
 ```
-
-**Guaranteed content shape:**
-```js
-content = {
-  title: '',
-  pretitle: '',
-  subtitle: '',
-  subtitle2: '',
-  paragraphs: [],
-  links: [],
-  imgs: [],
-  icons: [],
-  videos: [],
-  lists: [],
-  quotes: [],
-  data: {},
-  headings: [],
-  items: [],      // Each item has the same flat structure
-  sequence: [],   // For document-order rendering
-}
-```
-
-**Best practice:** Keep defaults in `meta.js`, not in component code. This ensures:
-- Documentation consistency (defaults defined once)
-- Cleaner, more readable component code
-- Easier maintenance (change defaults without touching JSX)
-
-### Using @uniweb/kit
-
-The kit is split into two paths: primitives (no Tailwind dependency) and styled components.
-
-**Primitives** (`@uniweb/kit`):
-```jsx
-import {
-  // Typography
-  H1, H2, H3, P, Span, Text,
-  // Navigation & Media
-  Link, Image, Icon, Media, Asset,
-  // Utilities
-  cn, FileLogo, MediaIcon, SocialIcon,
-  // Hooks
-  useScrolled, useMobileMenu, useAccordion, useActiveRoute,
-  useGridLayout, useTheme,
-} from '@uniweb/kit'
-```
-
-**Pre-styled components** (`@uniweb/kit/styled`):
-```jsx
-import {
-  // Layout
-  SidebarLayout,
-  // Content rendering
-  Section, Render,
-  Code, Alert, Table, Details, Divider,
-  // UI
-  Disclaimer,
-  Media,   // styled version with play button facade
-  Asset,   // styled version with card preview
-} from '@uniweb/kit/styled'
-```
-
-Templates include an `@source` directive for kit components by default:
-
-```css
-/* foundation/src/styles.css */
-@import "tailwindcss";
-@source "./components/**/*.jsx";
-@source "../node_modules/@uniweb/kit/src/**/*.jsx";
-```
-
-**Primitives** (from `@uniweb/kit`):
-- `H1`-`H6`, `P`, `Span`, `Text` - Typography (handles arrays, filters empty)
-- `Link` - Smart routing
-- `Image` - Optimized images with size presets
-- `Icon` - SVG icon loader
-- `Media` - Video player (YouTube, Vimeo, local) - plain version
-- `Asset` - File download link - plain version
-- `FileLogo`, `MediaIcon` - File type icons
-- `SocialIcon` - SVG icons for 15+ social platforms
-
-**Styled components** (from `@uniweb/kit/styled`):
-- `SidebarLayout` - Layout with left/right sidebars (see Custom Layouts below)
-- `Section` - Rich content section with width/padding/columns
-- `Render` - ProseMirror content renderer
-- `Code`, `Alert`, `Table`, `Details`, `Divider` - Content block renderers
-- `Disclaimer` - Modal dialog for legal text
-- `Media` - Video with styled play button facade
-- `Asset` - File card with preview thumbnail and hover overlay
-
-**Hooks:**
-- `useScrolled(threshold)` - Scroll detection (returns boolean)
-- `useMobileMenu()` - Mobile menu state with auto-close on route change
-- `useAccordion({ multiple, defaultOpen })` - Expand/collapse state
-- `useActiveRoute()` - SSG-safe route detection for navigation highlighting
-- `useGridLayout(columns, { gap })` - Responsive grid classes
-- `useTheme(name, overrides)` - Standardized theme classes
-
-**Utilities:**
-- `cn()` - Tailwind class merging
-- `getSocialPlatform(url)` - Detect platform from URL
-- `isSocialLink(url)` - Check if URL is a social platform
-- `filterSocialLinks(links)` - Filter array to social links only
-- `getGridClasses()` / `getThemeClasses()` - Non-hook versions
-
-### Kit Hook Examples
-
-**Scroll-based header styling:**
-```jsx
-import { useScrolled, cn } from '@uniweb/kit'
-
-function Header() {
-  const scrolled = useScrolled(20) // threshold in pixels
-
-  return (
-    <header className={cn(
-      'fixed top-0 transition-all',
-      scrolled ? 'bg-white shadow-lg' : 'bg-transparent'
-    )}>
-      ...
-    </header>
-  )
-}
-```
-
-**Mobile menu with auto-close:**
-```jsx
-import { useMobileMenu } from '@uniweb/kit'
-
-function Header() {
-  const { isOpen, toggle, close } = useMobileMenu()
-
-  // Menu automatically closes on route change
-  return (
-    <>
-      <button onClick={toggle}>Menu</button>
-      {isOpen && (
-        <nav>
-          <Link href="/about" onClick={close}>About</Link>
-        </nav>
-      )}
-    </>
-  )
-}
-```
-
-**Active route highlighting:**
-```jsx
-import { useActiveRoute, cn } from '@uniweb/kit'
-
-function Navigation({ pages }) {
-  const { isActiveOrAncestor } = useActiveRoute()
-
-  return pages.map(page => (
-    <Link
-      key={page.route}
-      href={page.navigableRoute}
-      className={cn(
-        'nav-link',
-        isActiveOrAncestor(page) && 'text-primary font-bold'
-      )}
-    >
-      {page.label}
-    </Link>
-  ))
-}
-```
-
-**Accordion/FAQ:**
-```jsx
-import { useAccordion } from '@uniweb/kit'
-
-function FAQ({ items }) {
-  const { isOpen, toggle } = useAccordion({ expandFirst: true })
-
-  return items.map((item, i) => (
-    <div key={i}>
-      <button onClick={() => toggle(i)}>{item.question}</button>
-      {isOpen(i) && <p>{item.answer}</p>}
-    </div>
-  ))
-}
-```
-
-**Responsive grid:**
-```jsx
-import { useGridLayout } from '@uniweb/kit'
-
-function Features({ items, params }) {
-  const gridClass = useGridLayout(params.columns, { gap: 8 })
-  // Returns: "grid gap-8 sm:grid-cols-2 lg:grid-cols-3" (for columns=3)
-
-  return <div className={gridClass}>{items.map(...)}</div>
-}
-```
-
-**Social icons:**
-```jsx
-import { SocialIcon, filterSocialLinks, Link } from '@uniweb/kit'
-
-function Footer({ links }) {
-  const socialLinks = filterSocialLinks(links)
-
-  return (
-    <div className="flex gap-4">
-      {socialLinks.map((link, i) => (
-        <Link key={i} href={link.href}>
-          <SocialIcon url={link.href} className="w-5 h-5" />
-        </Link>
-      ))}
-    </div>
-  )
-}
-```
-
-**Why use kit hooks:**
-- Eliminates boilerplate (scroll handlers, route effects, state management)
-- Consistent behavior across components
-- SSG-safe (works during static generation)
-- Auto-close menus on navigation (better UX)
-
-### Custom Layouts
-
-Foundations can provide a custom site Layout component via `src/exports.js`. The kit includes `SidebarLayout` for common sidebar layouts:
-
-```jsx
-// foundation/src/exports.js
-import { SidebarLayout } from '@uniweb/kit/styled'
-
-export default {
-  Layout: SidebarLayout,
-}
-```
-
-**SidebarLayout features:**
-- Optional left and/or right sidebars (show whichever panels have content)
-- Desktop: sidebars appear inline at configurable breakpoints
-- Mobile: left panel in slide-out drawer with FAB, right panel hidden
-- Sticky header and sidebar options
-- Auto-close drawer on route change
-
-**Configuration props:**
-```jsx
-import { SidebarLayout } from '@uniweb/kit/styled'
-
-function CustomLayout(props) {
-  return (
-    <SidebarLayout
-      {...props}
-      leftWidth="w-64"         // Left sidebar width
-      rightWidth="w-64"        // Right sidebar width
-      drawerWidth="w-72"       // Mobile drawer width
-      leftBreakpoint="md"      // Show left at md+
-      rightBreakpoint="xl"     // Show right at xl+
-      stickyHeader={true}      // Sticky header
-      stickySidebar={true}     // Sticky sidebars
-      maxWidth="max-w-7xl"     // Content area max width
-    />
-  )
-}
-
-export default { Layout: CustomLayout }
-```
-
-**Layout receives pre-rendered areas:**
-- `header` - From `@header/` sections
-- `body` - Page content sections
-- `footer` - From `@footer/` sections
-- `left` / `leftPanel` - From `@left/` sections (navigation)
-- `right` / `rightPanel` - From `@right/` sections (TOC, contextual info)
-
-**When to use SidebarLayout vs custom:**
-- Use `SidebarLayout` for docs, dashboards, admin panels, or any sidebar site
-- Build custom Layout when you need complex responsive behavior or prose styling
-
-### Website and Page APIs
-
-Access `website` via `useWebsite()` hook or `block.website`. Access `page` via `block.page`:
-
-**Page hierarchy for navigation:**
-```jsx
-import { useWebsite, Link } from '@uniweb/kit'
-
-function Header({ content, params, block }) {
-  const { website } = useWebsite()
-
-  // Get pages for header navigation (respects hideInHeader)
-  const pages = website.getPageHierarchy({ for: 'header' })
-  // Returns: [{ route, navigableRoute, title, label, hasContent, children }]
-
-  return pages.map(page => (
-    <Link href={page.navigableRoute}>{page.label}</Link>
-  ))
-}
-
-function Footer({ content, params }) {
-  const { website } = useWebsite()
-
-  // Get pages for footer (respects hideInFooter)
-  const pages = website.getPageHierarchy({ for: 'footer' })
-}
-```
-
-**Key page info properties:**
-- `page.route` - The page's URL path
-- `page.navigableRoute` - URL to use for links (may differ if page has no content)
-- `page.label` - Short navigation label (falls back to title)
-- `page.hasContent` - Whether page has renderable sections
-- `page.children` - Nested child pages (if any)
-
-**Locale handling (for multilingual sites):**
-```jsx
-import { useWebsite } from '@uniweb/kit'
-
-function Header({ content, params }) {
-  const { website } = useWebsite()
-
-  if (website.hasMultipleLocales()) {
-    const locales = website.getLocales() // [{code, label, isDefault}]
-    const active = website.getActiveLocale() // 'en'
-
-    return locales.map(locale => (
-      <a
-        key={locale.code}
-        href={website.getLocaleUrl(locale.code)}
-        className={locale.code === active ? 'font-bold' : ''}
-      >
-        {locale.label}
-      </a>
-    ))
-  }
-}
-```
-
-**Active route detection (SSG-safe):**
-```jsx
-import { useActiveRoute } from '@uniweb/kit'
-
-function Navigation({ pages }) {
-  const { route, isActiveOrAncestor } = useActiveRoute()
-
-  // route: current normalized route (e.g., 'docs/getting-started')
-  // isActiveOrAncestor(page): true if page matches or is parent of current route
-}
-```
-
-### Creating a New Component
-
-1. Create `foundation/src/components/NewComponent/index.jsx`
-2. Create `foundation/src/components/NewComponent/meta.js`
-3. Rebuild: `cd foundation && pnpm build`
-
-### Component Organization
-
-By default, exposed components (those with `meta.js`) live in `src/components/`:
-
-```
-foundation/src/
-├── components/          # Exposed components (auto-discovered)
-│   ├── Hero/
-│   │   ├── index.jsx
-│   │   └── meta.js      # Makes this component available to content
-│   └── Features/
-│       ├── index.jsx
-│       └── meta.js
-├── shared/              # Internal components (no meta.js)
-│   ├── Button/
-│   └── Card/
-└── styles.css
-```
-
-**Discovery rule:** A component is exposed if it has a `meta.js` file. Components without `meta.js` are internal helpers.
-
-**For complex projects**, you can organize exposed components in subdirectories:
-
-```js
-// vite.config.js
-import { defineFoundationConfig } from '@uniweb/build'
-
-export default defineFoundationConfig({
-  components: [
-    'components',           // src/components/*/meta.js
-    'components/marketing', // src/components/marketing/*/meta.js
-    'components/docs',      // src/components/docs/*/meta.js
-  ]
-})
-```
-
-This allows organizing exposed components by category while keeping internal components separate.
 
 ### meta.js Structure
 
 ```javascript
 export default {
-  title: 'Component Name',
-  description: 'What it does',
-  category: 'marketing',         // For grouping in editors
-  // hidden: true,               // Uncomment to hide from content authors
-  // background: 'self',         // Uncomment if component renders its own background
+  title: 'Feature Grid',
+  description: 'Grid of feature cards with icons',
+  category: 'marketing',
+  // hidden: true,          // Hide from content authors
+  // background: 'self',    // Component renders its own background
 
-  // Document expected content (for editors/validation)
   content: {
-    pretitle: 'Eyebrow text',
-    title: 'Headline',
-    paragraphs: 'Description [1-2]',
-    links: 'CTA buttons [1-2]',
+    title: 'Section heading',
+    paragraphs: 'Introduction [0-1]',
+    items: 'Feature cards with icon, title, description',
   },
 
-  // Configurable parameters with defaults
   params: {
-    theme: {
-      type: 'select',
-      label: 'Theme',
-      options: ['light', 'dark', 'gradient'],
-      default: 'light',           // Runtime applies this if not set
-    },
-    columns: {
-      type: 'number',
-      label: 'Columns',
-      default: 3,
-    },
-    showIcon: {
-      type: 'boolean',
-      label: 'Show Icon',
-      default: true,
-    },
+    columns: { type: 'number', default: 3 },
+    theme: { type: 'select', options: ['light', 'dark'], default: 'light' },
   },
 
-  // Named presets (combinations of params)
   presets: {
-    default: { label: 'Standard', params: { theme: 'light', columns: 3 } },
-    dark: { label: 'Dark Mode', params: { theme: 'dark', columns: 3 } },
-    compact: { label: 'Compact', params: { theme: 'light', columns: 4 } },
+    default: { label: 'Standard', params: { columns: 3 } },
+    compact: { label: 'Compact', params: { columns: 4 } },
   },
 
-  // Static capabilities for cross-block coordination (optional)
-  context: {
-    allowTranslucentTop: true,   // Header can overlay this section
-  },
-
-  // Initial values for mutable block state (optional)
-  initialState: {
-    expanded: false,
-  },
-}
-```
-
-**Key principle:** All defaults belong in `meta.js`. Component code should never have inline defaults like `theme || 'light'` or `columns ?? 3`.
-
-### Cross-Block Communication
-
-Components can read information from neighboring blocks via `block.getNextBlockInfo()` or `block.page.getFirstBodyBlockInfo()`. This enables adaptive behavior like headers that become translucent over hero sections.
-
-**Block info structure:**
-```js
-{
-  type: 'Hero',           // Component type
-  theme: 'dark',          // Theme setting
-  state: { ... },         // Dynamic state (mutable at runtime)
-  context: { ... },       // Static context (from meta.js, immutable)
-}
-```
-
-**Key distinction:**
-- **`context`** — Static capabilities per component type. Defined in meta.js. "All Hero components support translucent navbar overlay."
-- **`state`** — Dynamic values per block instance. Can change via `useBlockState`. "This accordion has item 2 open."
-
-**Example: Header adapting to first section:**
-```jsx
-function Header({ content, params, block }) {
-  const firstBodyInfo = block.page.getFirstBodyBlockInfo()
-
-  // Use context (static) to check capability
-  const allowTranslucentTop = firstBodyInfo?.context?.allowTranslucentTop || false
-
-  // Use theme (from params) for color adaptation
-  const isDarkTheme = firstBodyInfo?.theme === 'dark'
-
-  return (
-    <header className={cn(
-      allowTranslucentTop ? 'absolute bg-transparent' : 'relative bg-white',
-      isDarkTheme ? 'text-white' : 'text-gray-900'
-    )}>
-      ...
-    </header>
-  )
-}
-```
-
-**Hero declaring its context:**
-```javascript
-// Hero/meta.js
-export default {
-  title: 'Hero Banner',
+  // Static capabilities for cross-block coordination
   context: {
     allowTranslucentTop: true,  // Header can overlay this section
   },
-  params: { ... },
 }
 ```
 
-### Block State
+All defaults belong in `meta.js`, not inline in component code.
 
-Block state persists across renders and SPA page navigations. Use for UI state like accordion open/closed, tabs, form input.
+### @uniweb/kit
+
+**Primitives** (`@uniweb/kit`): `H1`–`H6`, `P`, `Span`, `Text`, `Link`, `Image`, `Icon`, `Media`, `Asset`, `SocialIcon`, `FileLogo`, `cn()`
+
+**Styled** (`@uniweb/kit/styled`): `Section`, `Render`, `SidebarLayout`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
+
+**Hooks:**
+- `useScrolled(threshold)` → boolean for scroll-based header styling
+- `useMobileMenu()` → `{ isOpen, toggle, close }` with auto-close on navigation
+- `useAccordion({ multiple, defaultOpen })` → `{ isOpen, toggle }` for expand/collapse
+- `useActiveRoute()` → `{ route, isActiveOrAncestor(page) }` for nav highlighting (SSG-safe)
+- `useGridLayout(columns, { gap })` → responsive grid class string
+- `useTheme(name)` → standardized theme classes
+
+**Utilities:** `cn()` (Tailwind class merge), `filterSocialLinks(links)`, `getSocialPlatform(url)`
+
+### Component Organization
+
+```
+foundation/src/
+├── components/          # Exposed (auto-discovered via meta.js)
+│   ├── Hero/
+│   │   ├── index.jsx
+│   │   └── meta.js
+│   └── Features/
+│       ├── index.jsx
+│       └── meta.js
+├── shared/              # Internal helpers (no meta.js, not selectable)
+│   ├── Button.jsx
+│   └── Card.jsx
+└── styles.css
+```
+
+Components without `meta.js` are internal — imported by exposed components but invisible to content authors.
+
+### Website and Page APIs
 
 ```jsx
-import { useState } from 'react'
+const { website } = useWebsite()
 
-function Accordion({ content, params, block }) {
-  // Bridge pattern: pass useState to block
-  const [state, setState] = block.useBlockState(useState)
+// Navigation
+const pages = website.getPageHierarchy({ for: 'header' })  // or 'footer'
+// → [{ route, navigableRoute, label, hasContent, children }]
 
-  const toggle = (index) => {
-    setState({ ...state, openItem: state.openItem === index ? null : index })
-  }
-
-  return content.items.map((item, i) => (
-    <div key={i}>
-      <button onClick={() => toggle(i)}>{item.title}</button>
-      {state.openItem === i && <p>{item.paragraphs[0]}</p>}
-    </div>
-  ))
-}
+// Locale
+website.hasMultipleLocales()
+website.getLocales()        // [{ code, label, isDefault }]
+website.getActiveLocale()   // 'en'
+website.getLocaleUrl('es')
 ```
 
-**Initial state in meta.js:**
-```javascript
-// Accordion/meta.js
-export default {
-  title: 'Accordion',
-  initialState: {
-    openItem: null,
-  },
-  params: { ... },
-}
+### Cross-Block Communication
+
+Components read neighboring blocks for adaptive behavior (e.g., translucent header over hero):
+
+```jsx
+const firstBody = block.page.getFirstBodyBlockInfo()
+// → { type, theme, context: { allowTranslucentTop }, state }
+
+// context = static (from meta.js), state = dynamic (from useBlockState)
 ```
 
-**When to use block state vs React state:**
-- **Block state** — UI state that should persist across SPA navigation (accordion position, form input)
-- **React state** — Temporary state that should reset on navigation (hover effects, animations)
+### Custom Layouts
 
-### Parameter Philosophy
+Export a Layout from `foundation/src/exports.js`. Kit provides `SidebarLayout` for sidebar-based sites (docs, dashboards):
 
-Design parameters that describe **intent**, not implementation:
+```jsx
+import { SidebarLayout } from '@uniweb/kit/styled'
+export default { Layout: SidebarLayout }
+```
 
-| Good | Bad |
-|------|-----|
-| `theme: "dark"` | `backgroundColor: "#1a1a1a"` |
-| `layout: "split"` | `gridTemplateColumns: "1fr 1fr"` |
-| `size: "large"` | `fontSize: "2rem"` |
+Layout receives pre-rendered areas: `header`, `body`, `footer`, `left`/`leftPanel`, `right`/`rightPanel`.
+
+## Converting Existing Designs
+
+When given a monolithic React file (AI-generated or hand-built), don't port line-by-line. Decompose into CCA architecture:
+
+1. **Name by purpose** — `Institutions` → `Testimonial`, `WorkModes` → `FeatureColumns`. Components render a *kind* of content, not specific content.
+2. **Separate content from code** — Hardcoded strings → markdown. Layout/styling stays in JSX. Content authors edit words without touching code.
+3. **Use semantic tokens** — Replace `text-slate-900` with `text-heading`, `bg-white` with `bg-surface`. Component works in any context and any brand.
+4. **Shared UI → `shared/`** — Buttons, badges, cards become internal components (no `meta.js`).
+
+You don't have to convert everything at once. Each section is independent — one can use hardcoded content while another reads from markdown. See the [Converting Existing Designs](./guides/developers/converting-existing-designs.md) guide for the full walkthrough.
 
 ## Tailwind CSS v4
 
-Theme is defined in `foundation/src/styles.css`:
+Theme defined in `foundation/src/styles.css`:
 
 ```css
 @import "tailwindcss";
 @source "./components/**/*.{js,jsx}";
+@source "../node_modules/@uniweb/kit/src/**/*.jsx";
 
 @theme {
   --color-primary: #3b82f6;
 }
 ```
 
-Use with: `bg-primary`, `text-primary`, `bg-primary/10` (10% opacity)
-
-## Converting an Existing Design
-
-When given a monolithic React/JSX file (e.g., a landing page built with an AI tool) to convert into a Uniweb project, follow this approach.
-
-### Mindset
-
-The goal is a page that **renders identically** to the original, but the implementation logic changes. You are not porting code line-by-line — you are decomposing a monolithic design into the Uniweb content/component architecture.
-
-**Don't preserve source component names.** A monolithic file might have components named after specific content (e.g., `Institutions`, `ProximifyCTA`). Uniweb foundation components are **generic rendering agencies named for purpose**, not for the content they happen to display. A section showing an institutional quote is rendered by a component like `Testimonial` or `Quote` — something reusable for any quote, not tied to one client.
-
-### Step 1: Identify Sections
-
-Each visually distinct block in the design becomes:
-- An **exposed component** in `foundation/src/components/` (with `meta.js`)
-- A **markdown file** in `site/pages/` (with `type:` referencing that component)
-
-Look for natural section boundaries — full-width blocks separated by spacing, background changes, or horizontal rules.
-
-### Step 2: Separate Content from Code
-
-For each section, ask: **what is content and what is design?**
-
-| In the JSX source | In Uniweb |
-|---|---|
-| Hardcoded heading text | `# Heading` in markdown → `content.title` |
-| Hardcoded paragraph text | Paragraph in markdown → `content.paragraphs[]` |
-| Hardcoded link/button text and URLs | `[Label](url)` in markdown → `content.links[]` |
-| Hardcoded images | `![Alt](path)` in markdown → `content.imgs[]` |
-| Repeating card/item structures | H3 groups in markdown → `content.items[]` |
-| Icon references (e.g., `lucide-react`) | `![](lu-iconname)` in markdown → `content.icons[]` |
-| Layout, spacing, colors, animations | Component JSX + Tailwind classes |
-| Visual elements with no content (diagrams, decorations) | Component JSX only — no markdown equivalent |
-
-### Step 3: Name Components for Purpose
-
-Choose names that describe **what the component does**, not what content it currently shows:
-
-| Source name | Better Uniweb name | Why |
-|---|---|---|
-| `ProximifyCTA` | `CallToAction` | Renders any CTA, not just one brand's |
-| `Institutions` | `Testimonial` or `Quote` | Renders any testimonial |
-| `WorkModes` | `FeatureColumns` | Renders any set of features in columns |
-| `TheModel` | `SplitContent` | Text on one side, visual on the other |
-
-### Step 4: Design Params Beyond the Original
-
-Exposed components should define **params in `meta.js`** that make them flexible, even if the original design only uses one variant. For example:
-
-```javascript
-// A component that's always "dark" in the source design
-// should still support theme switching
-params: {
-  theme: {
-    type: 'select',
-    options: ['light', 'dark'],
-    default: 'dark',  // Matches the original design
-  },
-  align: {
-    type: 'select',
-    options: ['left', 'center'],
-    default: 'center',
-  },
-}
-```
-
-The original design becomes the **default preset**. But a content author can reconfigure.
-
-### Step 5: Create Internal Components
-
-Not every React component in the source becomes an exposed Uniweb component. Shared UI elements like buttons, cards, and badges are **internal components** — they live in `foundation/src/shared/` (or similar) with **no `meta.js`**:
-
-```
-foundation/src/
-├── components/          # Exposed (with meta.js) — selectable from markdown
-│   ├── Hero/
-│   ├── FeatureGrid/
-│   └── CallToAction/
-├── shared/              # Internal (no meta.js) — used by exposed components
-│   ├── Button.jsx
-│   ├── Badge.jsx
-│   └── SectionWrapper.jsx
-└── styles.css
-```
-
-Internal components are imported by exposed components but are invisible to content authors. This is normal and encouraged — it keeps the content interface clean.
-
-### Step 6: Map Special Sections
-
-| Source pattern | Uniweb equivalent |
-|---|---|
-| Navigation / navbar | `@header/` special page with a Header component |
-| Footer | `@footer/` special page with a Footer component |
-| Sticky/fixed elements | Header component using `useScrolled()` hook |
-| Mobile menu toggle | Header component using `useMobileMenu()` hook |
-
-### Step 7: Extract Design Tokens
-
-Colors, fonts, and spacing from the source become Tailwind theme variables:
-
-```css
-/* foundation/src/styles.css */
-@import "tailwindcss";
-@source "./components/**/*.jsx";
-@source "./shared/**/*.jsx";
-@source "../node_modules/@uniweb/kit/src/**/*.jsx";
-
-@theme {
-  --color-primary: #0f172a;      /* From the source's main color */
-  --color-accent: #10b981;       /* From the source's accent color */
-}
-```
-
-### Example: Converting a Landing Page
-
-Given a file with `Nav`, `Hero`, `Features`, `Testimonial`, `CTA`, `Footer`:
-
-**Foundation components created:**
-- `Hero/` — full-width hero with heading, text, buttons
-- `FeatureGrid/` — grid of feature cards with icons
-- `Testimonial/` — quote with attribution
-- `CallToAction/` — dark-background CTA section
-- `Header/` — navigation bar (for `@header`)
-- `Footer/` — site footer (for `@footer`)
-
-**Internal helpers:**
-- `shared/Button.jsx` — reusable button styles
-- `shared/SectionWrapper.jsx` — consistent section padding/width
-
-**Site content:**
-```
-site/pages/
-├── @header/
-│   └── 1-nav.md           # type: Header
-├── @footer/
-│   └── 1-footer.md        # type: Footer (links as markdown)
-└── home/
-    ├── page.yml
-    ├── 1-hero.md           # type: Hero
-    ├── 2-features.md       # type: FeatureGrid (items from H3 groups)
-    ├── 3-testimonial.md    # type: Testimonial
-    └── 4-cta.md            # type: CallToAction
-```
+Use with: `bg-primary`, `text-primary`, `bg-primary/10`
 
 ## Troubleshooting
 
-**"Could not load foundation"**
-- Single: Check `site/package.json` has `"foundation": "file:../foundation"`
-- Multi: Check `sites/*/package.json` has `"default": "file:../../foundations/default"`
+**"Could not load foundation"** — Check `site/package.json` has `"foundation": "file:../foundation"` (or `"default": "file:../../foundations/default"` for multi-site).
 
-**Component not appearing**
-1. Verify `meta.js` exists and doesn't have `hidden: true`
-2. Check it's exported from `foundation/src/index.js`
-3. Rebuild: `cd foundation && pnpm build`
+**Component not appearing** — Verify `meta.js` exists and doesn't have `hidden: true`. Rebuild: `cd foundation && pnpm build`.
 
-**Styles not applying**
-1. Verify `@source` in styles.css includes your component path
-2. Check custom color names match `@theme` definitions
+**Styles not applying** — Verify `@source` in `styles.css` includes your component paths. Check custom colors match `@theme` definitions.

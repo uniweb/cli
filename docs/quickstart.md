@@ -32,7 +32,7 @@ Open http://localhost:5173. You'll see a working marketing site with Hero, Featu
 
 ## How It Works
 
-Open `site/pages/home/1-hero.md`:
+Open `site/pages/home/hero.md`:
 
 ```markdown
 ---
@@ -57,7 +57,7 @@ This content renders through the `Hero` component in `foundation/src/components/
 
 ## Edit Content
 
-Change the headline in `1-hero.md`:
+Change the headline in `hero.md`:
 
 ```markdown
 # Your New Headline Here
@@ -95,7 +95,7 @@ title: Contact Us
 description: Get in touch
 ```
 
-Create `site/pages/contact/1-hero.md`:
+Create `site/pages/contact/hero.md`:
 
 ```markdown
 ---
@@ -114,7 +114,7 @@ Visit http://localhost:5173/contact. Your new page is live.
 
 ## Add a Section
 
-Add another section to the contact page. Create `site/pages/contact/2-form.md`:
+Add another section to the contact page. Create `site/pages/contact/2-form.md` (the numeric prefix controls ordering when a page has multiple sections):
 
 ```markdown
 ---
@@ -128,7 +128,7 @@ Fill out the form below and we'll get back to you within 24 hours.
 Our team is available Monday through Friday, 9am to 5pm.
 ```
 
-Sections render in order by their numeric prefix (`1-`, `2-`, etc.).
+When a page has multiple sections, they render in order by their numeric prefix (`1-`, `2-`, etc.). Single-section pages don't need a prefix — `hero.md` works fine on its own. You can rename the first section to `1-hero.md` later if you add more.
 
 ## Understand the Content Flow
 

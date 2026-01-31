@@ -10,10 +10,10 @@ Dynamic routes use a special `[param]` folder naming convention. At build time, 
 pages/
 └── blog/
     ├── page.yml              # Fetches articles data
-    ├── 1-list.md             # Blog listing page
+    ├── list.md               # Blog listing page
     └── [slug]/               # Dynamic route → expands to /blog/post-1, /blog/post-2, etc.
         ├── page.yml
-        └── 1-article.md      # Article template
+        └── article.md        # Article template
 ```
 
 **Result after build:**
@@ -78,7 +78,7 @@ description: Blog article
 ```
 
 ```markdown
-<!-- pages/blog/[slug]/1-article.md -->
+<!-- pages/blog/[slug]/article.md -->
 ---
 type: Article
 ---
@@ -284,10 +284,10 @@ Dynamic pages automatically inherit metadata from the current item:
 ```
 pages/blog/
 ├── page.yml          # data: articles
-├── 1-list.md         # type: BlogList
+├── list.md           # type: BlogList
 └── [slug]/
     ├── page.yml
-    └── 1-article.md  # type: Article
+    └── article.md    # type: Article
 ```
 
 ### Product catalog
@@ -295,10 +295,10 @@ pages/blog/
 ```
 pages/products/
 ├── page.yml          # data: products
-├── 1-grid.md         # type: ProductGrid
+├── grid.md           # type: ProductGrid
 └── [id]/
     ├── page.yml
-    └── 1-detail.md   # type: ProductDetail
+    └── detail.md     # type: ProductDetail
 ```
 
 ### Team directory
@@ -306,10 +306,10 @@ pages/products/
 ```
 pages/team/
 ├── page.yml          # data: team (or data: people with schema override)
-├── 1-overview.md     # type: TeamGrid
+├── overview.md       # type: TeamGrid
 └── [username]/
     ├── page.yml
-    └── 1-profile.md  # type: PersonProfile
+    └── profile.md    # type: PersonProfile
 ```
 
 ### Documentation with sections
@@ -317,10 +317,10 @@ pages/team/
 ```
 pages/docs/
 ├── page.yml          # data: docs (or fetch: { collection: docs, schema: sections })
-├── 1-overview.md
+├── overview.md
 └── [slug]/
     ├── page.yml
-    └── 1-content.md  # type: DocPage
+    └── content.md    # type: DocPage
 ```
 
 ---

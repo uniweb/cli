@@ -12,6 +12,10 @@ If you're looking for content authoring (markdown, frontmatter, site configurati
 
 How semantic theming replaces hardcoded color maps. Why you write less code and get a more portable foundation. When the rules apply — and the two cases where they don't.
 
+### [Converting Existing Designs](./converting-existing-designs.md)
+
+You have an AI-generated landing page or an existing React project. How to bring it into a Uniweb project gradually — from "paste and route" to full content separation and semantic theming. Four natural stopping points, each independently useful.
+
 ---
 
 ## What's Coming

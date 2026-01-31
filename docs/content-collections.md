@@ -411,10 +411,10 @@ site/
 ├── pages/
 │   └── blog/
 │       ├── page.yml
-│       ├── 1-list.md
+│       ├── list.md
 │       └── [slug]/
 │           ├── page.yml
-│           └── 1-article.md
+│           └── article.md
 └── public/
     └── data/
         └── articles.json  # Auto-generated
@@ -480,7 +480,7 @@ See [Dynamic Routes](./dynamic-routes.md) for details.
 Use the `data:` shorthand to fetch collection data anywhere in your site:
 
 ```yaml
-# pages/home/1-teaser.md
+# pages/home/teaser.md
 ---
 type: ArticleTeaser
 data: articles
@@ -494,7 +494,7 @@ This fetches from `/data/articles.json` and makes it available as `content.data.
 For more control (filtering, sorting, limiting), use the full `fetch:` syntax:
 
 ```yaml
-# pages/home/1-teaser.md
+# pages/home/teaser.md
 ---
 type: ArticleTeaser
 fetch:

@@ -64,7 +64,7 @@ my-project/
 │   ├── pages/                # File-based routing
 │   │   └── home/
 │   │       ├── page.yml      # Page metadata
-│   │       └── 1-hero.md     # Section content
+│   │       └── hero.md       # Section content
 │   ├── locales/              # i18n (hash-based translations)
 │   ├── main.js               # Entry point (~6 lines)
 │   ├── vite.config.js        # 3-line config
@@ -169,7 +169,7 @@ The `meta.js` file defines what content and parameters a component accepts. The 
 
 ### Your First Content Change
 
-Open `site/pages/home/1-hero.md` and edit the headline:
+Open `site/pages/home/hero.md` and edit the headline:
 
 ```markdown
 ---

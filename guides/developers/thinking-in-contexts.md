@@ -217,7 +217,7 @@ my-project/
 │   ├── theme.yml       ← this is what makes your tokens work
 │   └── pages/
 │       └── home/
-│           └── 1-hero.md
+│           └── hero.md
 └── foundation/
     └── src/
         └── components/

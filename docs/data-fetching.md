@@ -268,7 +268,7 @@ If you're using [Content Collections](./content-collections.md), there are two w
 The simplest way to use collection data:
 
 ```yaml
-# pages/home/1-teaser.md
+# pages/home/teaser.md
 ---
 type: ArticleTeaser
 data: articles
@@ -284,7 +284,7 @@ This fetches from `/data/articles.json` and makes it available as `content.data.
 For more control, use the full fetch syntax with post-processing options:
 
 ```yaml
-# pages/home/1-teaser.md
+# pages/home/teaser.md
 ---
 type: ArticleTeaser
 fetch:

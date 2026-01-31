@@ -42,7 +42,7 @@ my-project/
 ├── site/                 # Content
 │   └── pages/
 │       └── home/
-│           └── 1-hero.md
+│           └── hero.md
 └── foundation/           # Components
     └── src/
         └── components/

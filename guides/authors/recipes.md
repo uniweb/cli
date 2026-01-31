@@ -378,7 +378,7 @@ successMessage: Thanks! We'll be in touch soon.
 
 ### Header with Navigation
 
-Site-wide header. This lives in `pages/@header/1-header.md`.
+Site-wide header. This lives in `pages/@header/header.md`.
 
 ```markdown
 ---
@@ -404,7 +404,7 @@ type: Header
 
 ### Footer with Link Columns
 
-Site-wide footer. This lives in `pages/@footer/1-footer.md`.
+Site-wide footer. This lives in `pages/@footer/footer.md`.
 
 ```markdown
 ---
@@ -456,7 +456,7 @@ pages/
 ├── home/
 ├── about/
 └── pricing/          ← new page
-    └── 1-content.md
+    └── content.md
 ```
 
 ```markdown
@@ -551,7 +551,7 @@ Welcome to our blog! Here's what we've been building...
 ```
 pages/blog/
 ├── page.yml
-└── 1-list.md
+└── list.md
 ```
 
 ```yaml
@@ -561,7 +561,7 @@ data: articles
 ```
 
 ```markdown
-<!-- pages/blog/1-list.md -->
+<!-- pages/blog/list.md -->
 ---
 type: ArticleList
 ---
@@ -576,13 +576,13 @@ The latest from our team.
 ```
 pages/blog/
 ├── page.yml
-├── 1-list.md
+├── list.md
 └── [slug]/
-    └── 1-article.md
+    └── article.md
 ```
 
 ```markdown
-<!-- pages/blog/[slug]/1-article.md -->
+<!-- pages/blog/[slug]/article.md -->
 ---
 type: Article
 ---

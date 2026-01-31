@@ -9,15 +9,15 @@ Special sections are folders in `pages/` that start with `@`:
 ```
 pages/
 ├── @header/              # Renders at top of every page
-│   └── 1-header.md
+│   └── header.md
 ├── @footer/              # Renders at bottom of every page
-│   └── 1-footer.md
+│   └── footer.md
 ├── @left/                # Left sidebar (if foundation supports)
-│   └── 1-sidebar.md
+│   └── sidebar.md
 ├── @right/               # Right sidebar (if foundation supports)
-│   └── 1-sidebar.md
+│   └── sidebar.md
 └── home/                 # Regular page
-    └── 1-hero.md
+    └── hero.md
 ```
 
 Unlike regular pages, special sections:
@@ -39,7 +39,7 @@ Renders at the top of every page, typically containing:
 - Dark mode toggle
 
 ```markdown
-<!-- pages/@header/1-header.md -->
+<!-- pages/@header/header.md -->
 ---
 type: Header
 sticky: true
@@ -62,7 +62,7 @@ Renders at the bottom of every page, typically containing:
 - Copyright notice
 
 ```markdown
-<!-- pages/@footer/1-footer.md -->
+<!-- pages/@footer/footer.md -->
 ---
 type: Footer
 ---
@@ -88,7 +88,7 @@ type: Footer
 Side panels for documentation sites, dashboards, or complex layouts:
 
 ```markdown
-<!-- pages/@left/1-sidebar.md -->
+<!-- pages/@left/sidebar.md -->
 ---
 type: Sidebar
 ---

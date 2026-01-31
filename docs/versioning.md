@@ -60,17 +60,17 @@ pages/docs/
 ├── v1/
 │   ├── intro/
 │   │   ├── page.yml
-│   │   └── 1-content.md
+│   │   └── content.md
 │   └── api/
 │       ├── page.yml
-│       └── 1-reference.md
+│       └── reference.md
 └── v2/
     ├── intro/
     │   ├── page.yml
-    │   └── 1-content.md
+    │   └── content.md
     └── api/
         ├── page.yml
-        └── 1-reference.md
+        └── reference.md
 ```
 
 ### Generated Routes

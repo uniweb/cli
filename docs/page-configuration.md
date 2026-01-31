@@ -368,7 +368,7 @@ pages/blog/
 ├── page.yml              # data: articles
 └── [slug]/               # Dynamic route
     ├── page.yml
-    └── 1-article.md
+    └── article.md
 ```
 
 The child `page.yml` is minimal:

@@ -412,11 +412,11 @@ pages/home/
 └── 3-cta.md            ← third section
 ```
 
-The number before the dash sets the display order. Sections appear top to bottom.
+When a page has multiple sections, the number before the dash sets the display order. Sections appear top to bottom. If a page has only one section, no prefix is needed — just `hero.md` is fine.
 
 Need to add a section between existing ones? Use decimals — `2.5-testimonials.md` goes between `2-features.md` and `3-cta.md` without renaming anything.
 
-The number prefix doesn't appear anywhere on your site. It's just for ordering.
+The number prefix doesn't appear anywhere on your site. It's only for ordering.
 
 ## Pages with Child Pages
 
@@ -425,11 +425,11 @@ A folder can have both its own content (`.md` files) *and* child pages (subfolde
 ```
 pages/docs/
 ├── page.yml            ← the /docs page settings
-├── 1-intro.md          ← sections on /docs
+├── intro.md            ← section on /docs
 ├── getting-started/    ← child page at /docs/getting-started
-│   └── 1-guide.md
+│   └── guide.md
 └── api/                ← child page at /docs/api
-    └── 1-reference.md
+    └── reference.md
 ```
 
 Both `/docs` and `/docs/getting-started` exist as independent pages — they don't conflict.
@@ -442,9 +442,9 @@ A page folder doesn't need any `.md` files. A folder without `.md` files acts as
 pages/docs/
 ├── page.yml
 ├── getting-started/
-│   └── 1-guide.md
+│   └── guide.md
 └── api/
-    └── 1-reference.md
+    └── reference.md
 ```
 
 When someone visits `/docs`, the site shows one of the child pages (by default, the first one). You can choose which one by setting `index:` in `page.yml`:
