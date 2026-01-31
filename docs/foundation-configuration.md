@@ -133,8 +133,8 @@ Without a custom Layout, the runtime uses a simple wrapper:
 
 ```jsx
 // Default layout
-function Layout({ children }) {
-  return <>{children}</>
+function Layout({ body }) {
+  return <>{body}</>
 }
 ```
 
@@ -153,7 +153,7 @@ export const vars = {
 
 ```jsx
 // foundation/src/Layout.jsx
-export default function Layout({ header, footer, left, right, children }) {
+export default function Layout({ header, footer, left, right, body }) {
   return (
     <div className="min-h-screen flex flex-col">
       {header}
@@ -166,7 +166,7 @@ export default function Layout({ header, footer, left, right, children }) {
         )}
 
         <main className="flex-1">
-          {children}
+          {body}
         </main>
 
         {right && (
@@ -190,7 +190,7 @@ export default function Layout({ header, footer, left, right, children }) {
 | `footer` | ReactNode | Rendered `@footer` sections (or null) |
 | `left` | ReactNode | Rendered `@left` sections (or null) |
 | `right` | ReactNode | Rendered `@right` sections (or null) |
-| `children` | ReactNode | Page content sections |
+| `body` | ReactNode | Page content sections |
 | `page` | Page | Current page instance |
 | `website` | Website | Website instance |
 
@@ -199,7 +199,7 @@ export default function Layout({ header, footer, left, right, children }) {
 Check page layout flags before rendering special sections:
 
 ```jsx
-export default function Layout({ header, footer, left, right, children, page }) {
+export default function Layout({ header, footer, left, right, body, page }) {
   return (
     <div className="min-h-screen flex flex-col">
       {page.hasHeader() && header}
@@ -209,7 +209,7 @@ export default function Layout({ header, footer, left, right, children, page }) 
           <aside className="w-64">{left}</aside>
         )}
 
-        <main className="flex-1">{children}</main>
+        <main className="flex-1">{body}</main>
 
         {page.hasRightPanel() && right && (
           <aside className="w-64">{right}</aside>
@@ -229,7 +229,7 @@ Handle mobile layouts:
 ```jsx
 import { useState } from 'react'
 
-export default function Layout({ header, footer, left, children, page }) {
+export default function Layout({ header, footer, left, body, page }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
@@ -260,7 +260,7 @@ export default function Layout({ header, footer, left, children, page }) {
         )}
 
         <main className="flex-1 p-4">
-          {children}
+          {body}
         </main>
       </div>
 
@@ -373,7 +373,7 @@ export { default as Layout } from './Layout.jsx'
 
 ```jsx
 // foundation/src/Layout.jsx
-export default function Layout({ header, footer, left, right, children, page }) {
+export default function Layout({ header, footer, left, right, body, page }) {
   const hasLeft = page.hasLeftPanel() && left
   const hasRight = page.hasRightPanel() && right
 
@@ -395,7 +395,7 @@ export default function Layout({ header, footer, left, right, children, page }) 
         )}
 
         <main className="flex-1 min-w-0">
-          {children}
+          {body}
         </main>
 
         {hasRight && (

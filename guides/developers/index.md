@@ -24,6 +24,10 @@ You have an AI-generated landing page or an existing React project. How to bring
 
 How to organize a foundation's `src/` directory — `sections/` for content interfaces, `components/` for your React code (shadcn-compatible), `hooks/` for hooks. Plus the patterns that emerge from CCA's content/component separation: the Dispatcher, Building Blocks, Multi-Source Rendering, and the constraints that produce tighter components.
 
+### [Custom Layouts](./custom-layouts.md)
+
+How to build a Layout component that controls page structure — sticky headers, sidebars, mobile drawers, responsive panels. When you need one, what the runtime gives you, and why Layout components are responsible for semantic HTML wrappers.
+
 ---
 
 ## What's Coming

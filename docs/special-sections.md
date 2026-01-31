@@ -130,13 +130,13 @@ The foundation's Layout component controls where special sections appear:
 
 ```jsx
 // foundation/src/Layout.jsx
-export default function Layout({ header, footer, left, right, children }) {
+export default function Layout({ header, footer, left, right, body }) {
   return (
     <div className="layout">
       {header}
       <div className="main">
         {left && <aside className="left">{left}</aside>}
-        <main>{children}</main>
+        <main>{body}</main>
         {right && <aside className="right">{right}</aside>}
       </div>
       {footer}
