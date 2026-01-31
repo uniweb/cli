@@ -418,7 +418,7 @@ export default {
 
 ## Accessing Context
 
-Use hooks for site-wide data:
+Use hooks from `@uniweb/kit` to access site context — navigation, routing, theming, and locale:
 
 ```jsx
 import { useWebsite, useActiveRoute } from '@uniweb/kit'
@@ -448,7 +448,7 @@ function Header({ content }) {
 }
 ```
 
-See [Runtime API](./runtime-api.md) for all available hooks.
+See [Kit Reference](./kit-reference.md) for all available hooks.
 
 ---
 
@@ -498,5 +498,5 @@ This creates documentation with each component's:
 
 - [Component Metadata](./component-metadata.md) — Full meta.js reference
 - [Content Structure](./content-structure.md) — How content is parsed
-- [Runtime API](./runtime-api.md) — Hooks and objects
+- [Kit Reference](./kit-reference.md) — Hooks, components, and utilities
 - [Foundation Configuration](./foundation-configuration.md) — CSS variables and Layout

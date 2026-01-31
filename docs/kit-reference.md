@@ -1,21 +1,12 @@
-# Runtime API Reference
+# Kit & Core Reference
 
-This guide covers the runtime objects and React hooks available to foundation components.
+`@uniweb/kit` is the developer-facing API for Uniweb foundations. It provides React hooks for accessing site context, primitive components (Link, Image, Icon), and utility functions. When you need something from the framework, you import it from kit.
 
-## Overview
-
-The Uniweb runtime provides a layered API:
-
-| Layer | Package | Purpose |
-|-------|---------|---------|
-| **Core** | `@uniweb/core` | Data classes (Website, Page, Block, Theme) |
-| **Kit** | `@uniweb/kit` | React hooks and utilities |
-
-Components typically use hooks from `@uniweb/kit`. The underlying classes from `@uniweb/core` are available for advanced use cases.
+The data classes underneath — Website, Page, Block from `@uniweb/core` — are documented below for reference. You access them through hooks and the `block` prop, not by importing core directly.
 
 ---
 
-## React Hooks
+## Hooks
 
 ### useWebsite
 
@@ -283,7 +274,9 @@ function LazyImage({ src, alt }) {
 
 ---
 
-## Core Objects
+## Data Classes (from @uniweb/core)
+
+You typically access these through `useWebsite()` or the `block` prop. Direct import from `@uniweb/core` is rarely needed.
 
 ### Website
 
@@ -527,7 +520,7 @@ function Grid({ params }) {
 
 ---
 
-## Utility Functions
+## Utilities
 
 ### getLocaleLabel
 

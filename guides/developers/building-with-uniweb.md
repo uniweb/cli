@@ -233,6 +233,40 @@ vars:
 
 Components use `var(--header-height)` and adapt automatically. The [Thinking in Contexts](./thinking-in-contexts.md) guide covers the full theming system — semantic tokens, context classes, and how components adapt to light/dark/medium contexts without hardcoding colors.
 
+### Site-aware components with kit
+
+When a component needs site context — navigation, locale, routing — you import hooks from `@uniweb/kit`:
+
+```jsx
+import { useWebsite, useActiveRoute } from '@uniweb/kit'
+
+function Header({ content }) {
+  const { website } = useWebsite()
+  const { isActiveOrAncestor } = useActiveRoute()
+
+  const pages = website.getPageHierarchy({ for: 'header' })
+
+  return (
+    <header>
+      <span>{website.name}</span>
+      <nav>
+        {pages.map(page => (
+          <a
+            key={page.id}
+            href={page.route}
+            className={isActiveOrAncestor(page) ? 'active' : ''}
+          >
+            {page.label}
+          </a>
+        ))}
+      </nav>
+    </header>
+  )
+}
+```
+
+Kit provides hooks (`useWebsite`, `useActiveRoute`, `useVersion`, `useAppearance`), primitive components (`Link`, `Image`, `Icon`), and utilities (`getLocaleLabel`). The data classes underneath — Website, Page, Block from `@uniweb/core` — are what hooks return. You access them through kit, not by importing core directly. See [Kit Reference](../../docs/kit-reference.md) for the full API.
+
 ### Variants and the Dispatcher
 
 When one section type needs multiple layouts (a homepage hero vs. a pricing hero), the Dispatcher pattern keeps a single section type with a `variant` param that delegates to different renderers. One component in the author's palette, multiple implementations underneath. See [Component Patterns](./component-patterns.md) for the full pattern.

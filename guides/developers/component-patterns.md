@@ -486,4 +486,4 @@ This guide will grow as those patterns become clear. If you discover something t
 - [Converting Existing Designs](./converting-existing-designs.md) — Bringing existing React code into CCA
 - [Content Structure](../../docs/content-structure.md) — How markdown becomes `content.items`, `content.data`, and `content.sequence`
 - [Component Metadata](../../docs/component-metadata.md) — The full `meta.js` API
-- [Runtime API](../../docs/runtime-api.md) — Block, Page, Website objects and hooks
+- [Kit Reference](../../docs/kit-reference.md) — Hooks, data classes, and utilities from @uniweb/kit

@@ -236,25 +236,22 @@ Start with local files deployed anywhere. The same foundation works across all t
 
 ## Guides and Documentation
 
-**Developer Guides** — Building foundations and components:
-[`./guides/developers/`](./guides/developers/) — Converting designs, component patterns, theming contexts
+[Developer Guides](./guides/developers/) — Building foundations and components, converting designs, component patterns, theming contexts
 
-**Content Author Guides** — Writing pages in markdown:
-[`./guides/authors/`](./guides/authors/) — Writing content, site setup, theming, recipes
+[Content Author Guides](./guides/authors/) — Writing pages in markdown, writing dynamic content, site setup, theming, recipes
 
-**Reference Docs** — Configuration and API:
-[`./docs/`](./docs/) — Full reference for all configuration, commands, and runtime API
+[Reference Docs](./docs/) — Full reference for all configuration, commands, and framework
 
 ### Quick Reference
 
-| Topic | Guide |
-|-------|-------|
-| Content Structure | [How markdown becomes component props](./docs/content-structure.md) |
-| Component Metadata | [The meta.js schema](./docs/component-metadata.md) |
-| Site Configuration | [site.yml reference](./docs/site-configuration.md) |
-| CLI Commands | [create, build, docs, i18n](./docs/cli-commands.md) |
-| Templates | [Built-in, official, and external templates](./docs/templates.md) |
-| Deployment | [Vercel, Netlify, Cloudflare, and more](./docs/deployment.md) |
+| Topic              | Guide                                                               |
+| ------------------ | ------------------------------------------------------------------- |
+| Content Structure  | [How markdown becomes component props](./docs/content-structure.md) |
+| Component Metadata | [The meta.js schema](./docs/component-metadata.md)                  |
+| Site Configuration | [site.yml reference](./docs/site-configuration.md)                  |
+| CLI Commands       | [create, build, docs, i18n](./docs/cli-commands.md)                 |
+| Templates          | [Built-in, official, and external templates](./docs/templates.md)   |
+| Deployment         | [Vercel, Netlify, Cloudflare, and more](./docs/deployment.md)       |
 
 ---
 

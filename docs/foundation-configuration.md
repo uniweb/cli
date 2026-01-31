@@ -636,4 +636,4 @@ Once your foundation includes an icon library, content authors can use named ico
 - [Site Theming](./site-theming.md) — Site-level theme customization
 - [Special Sections](./special-sections.md) — @header, @footer, @left, @right
 - [Component Metadata](./component-metadata.md) — Component meta.js schema
-- [Runtime API](./runtime-api.md) — Accessing theme data in components
+- [Kit Reference](./kit-reference.md) — Accessing theme data in components

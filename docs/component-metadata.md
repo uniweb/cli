@@ -609,6 +609,6 @@ sections:
 ## See Also
 
 - [Content Structure](./content-structure.md) — How content is parsed and structured
-- [Runtime API](./runtime-api.md) — Hooks and core objects available to components
+- [Kit Reference](./kit-reference.md) — Hooks, components, and utilities from @uniweb/kit
 - [Foundation Configuration](./foundation-configuration.md) — CSS variables and custom Layout
 - [Data Fetching](./data-fetching.md) — Loading external data into components

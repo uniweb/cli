@@ -404,4 +404,4 @@ export default {
 - [Page Configuration](./page-configuration.md) — Layout options (header, footer, leftPanel, rightPanel)
 - [Navigation Patterns](./navigation-patterns.md) — Building menus and navigation
 - [Foundation Configuration](./foundation-configuration.md) — Custom Layout component
-- [Runtime API](./runtime-api.md) — Hooks for accessing page/website data
+- [Kit Reference](./kit-reference.md) — Hooks for accessing page/website data
