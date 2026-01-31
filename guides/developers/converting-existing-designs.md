@@ -81,7 +81,7 @@ This level is useful when you need to get something live quickly and plan to imp
 
 ## Level 1: Decompose and Name by Purpose
 
-This is where you break the monolith into separate exposed components — one per section — and give them names that describe what they *render* rather than what they *say*. Each gets its own folder and `meta.js`. The content is still hardcoded in JSX, but the components are now independent and reusable.
+This is where you break the monolith into separate exposed components — one per section — and give them names that describe what they _render_ rather than what they _say_. Each gets its own folder and `meta.js`. The content is still hardcoded in JSX, but the components are now independent and reusable.
 
 Shared helpers like `Button`, `Badge`, `Section` move to `foundation/src/shared/` — internal components with no `meta.js`, imported by exposed components.
 
@@ -117,27 +117,27 @@ site/pages/
 
 Now look at the names. The AI-generated file has components named after their content:
 
-| AI name | What it actually does |
-|---------|----------------------|
-| `TheModel` | Text on one side, video/visual on the other |
-| `TwoWaysIn` | Two feature cards side by side |
-| `WorkModes` | Three-column feature grid |
-| `Multilingual` | Centered text in a card |
-| `Institutions` | Quote with attribution and dark background |
-| `OpenArchitecture` | Centered icon, heading, paragraph, link |
-| `FinalCTA` | Call to action with heading and button |
+| AI name            | What it actually does                       |
+| ------------------ | ------------------------------------------- |
+| `TheModel`         | Text on one side, video/visual on the other |
+| `TwoWaysIn`        | Two feature cards side by side              |
+| `WorkModes`        | Three-column feature grid                   |
+| `Multilingual`     | Centered text in a card                     |
+| `Institutions`     | Quote with attribution and dark background  |
+| `OpenArchitecture` | Centered icon, heading, paragraph, link     |
+| `FinalCTA`         | Call to action with heading and button      |
 
-Rename them by what they *render*, not what they *say*:
+Rename them by what they _render_, not what they _say_:
 
-| AI name | CCA name | Why |
-|---------|----------|-----|
-| `TheModel` | `SplitContent` | Text + visual, either side |
-| `TwoWaysIn` | `FeatureCards` | N cards with icon, title, list, CTA |
-| `WorkModes` | `FeatureColumns` | N columns with icon, title, description |
-| `Multilingual` | `Highlight` | Centered callout in a card |
-| `Institutions` | `Testimonial` | Quote + attribution |
-| `OpenArchitecture` | `CenteredCTA` | Icon, heading, text, link |
-| `FinalCTA` | `CallToAction` | Heading, text, button |
+| AI name            | CCA name         | Why                                     |
+| ------------------ | ---------------- | --------------------------------------- |
+| `TheModel`         | `SplitContent`   | Text + visual, either side              |
+| `TwoWaysIn`        | `FeatureCards`   | N cards with icon, title, list, CTA     |
+| `WorkModes`        | `FeatureColumns` | N columns with icon, title, description |
+| `Multilingual`     | `Highlight`      | Centered callout in a card              |
+| `Institutions`     | `Testimonial`    | Quote + attribution                     |
+| `OpenArchitecture` | `CenteredCTA`    | Icon, heading, text, link               |
+| `FinalCTA`         | `CallToAction`   | Heading, text, button                   |
 
 Why this matters: `Institutions` can only ever be the institutions section. `Testimonial` can render any quote — a customer review, a partner endorsement, an internal praise. The same component, freed from its birth content, becomes reusable. If you later add a `/customers` page, `Testimonial` is already there.
 
@@ -163,7 +163,9 @@ const Hero = () => (
       You choose a collection—or commission a custom one. ...
     </p>
     <Button variant="primary">Start from a Template</Button>
-    <Button variant="secondary"><Download size={16} /> Get the App</Button>
+    <Button variant="secondary">
+      <Download size={16} /> Get the App
+    </Button>
   </Section>
 )
 ```
@@ -190,7 +192,11 @@ export function Hero({ content }) {
       )}
       <div className="flex gap-4 mt-12">
         {links.map((link, i) => (
-          <Button key={i} variant={i === 0 ? 'primary' : 'secondary'} href={link.href}>
+          <Button
+            key={i}
+            variant={i === 0 ? 'primary' : 'secondary'}
+            href={link.href}
+          >
             {link.label}
           </Button>
         ))}
@@ -221,14 +227,14 @@ You choose a collection — or commission a custom one. You arrange, decorate, a
 
 **What moved where:**
 
-| Was in JSX | Now in markdown | Accessed via |
-|------------|-----------------|-------------|
-| `"The Component Content System"` | `### ... ` (pretitle) | `content.pretitle` |
-| `"Manage how content..."` | `# ...` (title) | `content.title` |
-| `"You choose a collection..."` | Paragraph text | `content.paragraphs[0]` |
-| `"Start from a Template"` + URL | `[Start from a Template](/templates)` | `content.links[0]` |
-| `<Download size={16} />` | `![](lu-download)` next to link | `content.links[1].icon` |
-| Hero image | `![Hero illustration](./hero.jpg)` | `content.imgs[0]` |
+| Was in JSX                       | Now in markdown                       | Accessed via            |
+| -------------------------------- | ------------------------------------- | ----------------------- |
+| `"The Component Content System"` | `### ... ` (pretitle)                 | `content.pretitle`      |
+| `"Manage how content..."`        | `# ...` (title)                       | `content.title`         |
+| `"You choose a collection..."`   | Paragraph text                        | `content.paragraphs[0]` |
+| `"Start from a Template"` + URL  | `[Start from a Template](/templates)` | `content.links[0]`      |
+| `<Download size={16} />`         | `![](lu-download)` next to link       | `content.links[1].icon` |
+| Hero image                       | `![Hero illustration](./hero.jpg)`    | `content.imgs[0]`       |
 
 **What stayed in JSX:** Layout (`pt-32 md:pt-48`), the badge styling, the button variants, the grid structure, the font choices. These are design decisions — they belong in the component.
 
@@ -270,7 +276,7 @@ At this level, a content author can change every word on the page without openin
 
 ## Level 3: Semantic Theming
 
-This is where [Thinking in Contexts](./thinking-in-contexts.md) connects. Level 2 separated content from code. This level separates *theme from code*.
+This is where [Thinking in Contexts](./thinking-in-contexts.md) connects. Level 2 separated content from code. This level separates _theme from code_.
 
 Look at the colors in the AI-generated Hero:
 
@@ -361,12 +367,12 @@ The architecture doesn't enforce a particular order. Once you've decomposed (Lev
 
 ## What Changes at Each Level
 
-| | Structure | Content in... | Colors in... | Reusable? | Themeable? |
-|---|---|---|---|---|---|
-| **Level 0** | One component | JSX | JSX | No | No |
-| **Level 1** | Decomposed | JSX | JSX | By name, not yet by content | No |
-| **Level 2** | Decomposed | Markdown | JSX | Yes — any content | No |
-| **Level 3** | Decomposed | Markdown | Site's theme.yml | Yes — any content, any brand | Yes |
+|             | Structure     | Content in... | Colors in...     | Reusable?                    | Themeable? |
+| ----------- | ------------- | ------------- | ---------------- | ---------------------------- | ---------- |
+| **Level 0** | One component | JSX           | JSX              | No                           | No         |
+| **Level 1** | Decomposed    | JSX           | JSX              | By name, not yet by content  | No         |
+| **Level 2** | Decomposed    | Markdown      | JSX              | Yes — any content            | No         |
+| **Level 3** | Decomposed    | Markdown      | Site's theme.yml | Yes — any content, any brand | Yes        |
 
 Each level reduces the coupling between the component and its birth context. By Level 3, the component has no memory of the site it was designed for.
 
@@ -374,7 +380,7 @@ Each level reduces the coupling between the component and its birth context. By 
 
 ## The Practical Reality
 
-AI tools generate impressive-looking pages. But the output is always monolithic — content baked into code, colors hardcoded, component names describing what they say rather than what they do. That's not a criticism of the AI. It's generating a *page*, not an *architecture*.
+AI tools generate impressive-looking pages. But the output is often monolithic — content baked into code, colors hardcoded, component names describing what they say rather than what they do. That's not a criticism of the AI. It's generating a _page_, not an _architecture_.
 
 The value of converting isn't aesthetic — the page already looks good. The value is operational:
 
@@ -383,6 +389,12 @@ The value of converting isn't aesthetic — the page already looks good. The val
 - **The foundation works for more than one site.** At Level 3, the same components adapt to different brands via `theme.yml`.
 
 You don't need all of this on day one. Start where you are, convert what's worth converting, and stop when the return on effort drops. A Level 2 foundation with one hardcoded Footer is better than a Level 0 monolith or an overengineered Level 3 conversion of a section that changes once a year.
+
+### AI as a collaborator
+
+The conversion can be done by hand or with AI — and CCA's architecture makes AI particularly effective at both sides. The site package is markdown and YAML: structured enough for AI to author confidently, flexible enough that it doesn't need to understand rendering. The foundation package is standard React with a clear contract (`meta.js` declares what the component expects, `content` delivers it). Every Uniweb project includes an `AGENTS.md` file with the patterns and conventions an AI agent needs to work as a sophisticated content author on the site side and as a component developer on the foundation side.
+
+In practice, this means you can hand an AI a monolithic page and ask it to decompose it into CCA — or you can work at Level 0 yourself and let AI handle the Level 2 content extraction later. The separation of concerns that makes CCA good for teams of humans makes it equally good for teams that include AI.
 
 ---
 
