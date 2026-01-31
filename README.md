@@ -27,7 +27,7 @@ pnpm build      # Build foundation + site for production
 pnpm preview    # Preview the production build
 ```
 
-The `build` command generates static HTML in `site/dist/`. Open those files to verify your output before deploying.
+The `build` command outputs to `site/dist/`. With pre-rendering enabled (the default for official templates), you get static HTML files ready to deploy anywhere.
 
 The `marketing` template includes real components (Hero, Features, Pricing, Testimonials, FAQ, and more) with sample content—a working site you can explore and modify.
 
@@ -163,7 +163,7 @@ After creating your project:
 
 3. **Learn the configuration** — Run `uniweb docs site` or `uniweb docs page` for quick reference on configuration options.
 
-4. **Create a section type** — Add a file to `foundation/src/sections/` (e.g., `Banner.jsx`) and rebuild. Bare files at the root are discovered automatically — no `meta.js` needed. Add `meta.js` when you want to declare params or presets. See the [Component Metadata Guide](https://github.com/uniweb/cli/blob/main/docs/component-metadata.md) for the full schema.
+4. **Create a section type** — Add a file to `foundation/src/sections/` (e.g., `Banner.jsx`) and rebuild. Bare files at the root are discovered automatically — no `meta.js` needed. Add `meta.js` when you want to declare params or presets. See the [Component Metadata Guide](./docs/component-metadata.md) for the full schema.
 
 The `meta.js` file defines what content and parameters a component accepts. The runtime uses this metadata to apply defaults and guarantee content structure—no defensive null checks needed in your component code.
 
@@ -303,7 +303,7 @@ export default defineFoundationConfig({
 })
 ```
 
-## Workspace Configuration
+### Workspace Configuration
 
 Both templates use the same unified workspace configuration:
 

@@ -104,7 +104,7 @@ The CLI auto-detects the project type:
 
 | Indicator | Type |
 |-----------|------|
-| `src/foundation.js` or `src/components/` | Foundation |
+| `src/sections/`, `src/components/`, or `src/foundation.js` | Foundation |
 | `site.yml` or `pages/` | Site |
 | `pnpm-workspace.yaml` | Workspace (builds all) |
 
@@ -352,7 +352,7 @@ The CLI expects these project structures:
 my-project/
 ├── foundation/          # React components
 │   ├── src/
-│   │   └── components/
+│   │   └── sections/
 │   ├── package.json
 │   └── vite.config.js
 ├── site/                # Content
@@ -385,7 +385,7 @@ The CLI auto-detects context:
 
 | Directory Contains | Detected As |
 |-------------------|-------------|
-| `src/components/` | Foundation |
+| `src/sections/` or `src/components/` | Foundation |
 | `pages/` | Site |
 | `pnpm-workspace.yaml` + `sites/` | Multi-site workspace |
 

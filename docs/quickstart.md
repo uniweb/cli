@@ -231,4 +231,4 @@ npx uniweb create my-project --template single
 npx uniweb create my-workspace --template multi
 ```
 
-See [CLI Commands](./cli-commands.md) for all options.
+See [Templates](./templates.md) for all options.
