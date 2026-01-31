@@ -13,7 +13,7 @@ pnpm install
 pnpm dev
 ```
 
-Open http://localhost:5173 to see your site. Edit files in `site/pages/` and `foundation/src/components/` to see changes instantly.
+Open http://localhost:5173 to see your site. Edit files in `site/pages/` and `foundation/src/sections/` to see changes instantly.
 
 > **Need pnpm?** Run `npm install -g pnpm` or see [pnpm installation](https://pnpm.io/installation).
 
@@ -72,10 +72,13 @@ my-project/
 │
 └── foundation/               # Your components
     ├── src/
-    │   └── components/
-    │       └── Hero/
-    │           ├── index.jsx
-    │           └── meta.js
+    │   ├── sections/         # Section types (addressable from markdown)
+    │   │   ├── Hero.jsx      # Bare file → section type (no meta.js needed)
+    │   │   └── Features/
+    │   │       ├── meta.js   # Content interface (params, presets)
+    │   │       └── Features.jsx
+    │   └── components/       # Regular React components
+    │       └── Button.jsx
     ├── vite.config.js        # 3-line config
     └── dist/                 # Built output
 ```
@@ -128,22 +131,20 @@ Natural content stays in markdown; structured data goes in tagged blocks (YAML o
 ### Components as React
 
 ```jsx
-export function Hero({ content, params }) {
+export default function Hero({ content }) {
   const { title, paragraphs, links } = content
-  const { theme = 'light' } = params
 
   return (
-    <section
-      className={`py-20 text-center ${theme === 'dark' ? 'bg-gray-900 text-white' : ''}`}
-    >
-      <h1 className="text-4xl font-bold">{title}</h1>
-      <p className="text-xl text-gray-600">{paragraphs[0]}</p>
+    <section className="py-20 text-center">
+      <h1 className="text-4xl font-bold" style={{ color: 'var(--heading)' }}>{title}</h1>
+      <p className="text-xl" style={{ color: 'var(--text)' }}>{paragraphs[0]}</p>
       {links[0] && (
         <a
-          href={links[0].url}
-          className="mt-8 px-6 py-3 bg-blue-600 text-white rounded inline-block"
+          href={links[0].href}
+          className="mt-8 px-6 py-3 rounded inline-block"
+          style={{ backgroundColor: 'var(--link)', color: 'white' }}
         >
-          {links[0].text}
+          {links[0].label}
         </a>
       )}
     </section>
@@ -151,7 +152,7 @@ export function Hero({ content, params }) {
 }
 ```
 
-Standard React. Standard Tailwind. The `{ content, params }` interface is only for _section types_ — components with `meta.js` that content creators select in markdown frontmatter. Everything else uses regular React props.
+Standard React. Semantic CSS variables (`var(--heading)`, `var(--text)`) adapt automatically when content authors set `theme: dark` in frontmatter — no conditional logic needed. The `{ content, params }` interface is only for _section types_ — components that content creators select in markdown frontmatter. Everything else uses regular React props.
 
 ## Next Steps
 
@@ -163,7 +164,7 @@ After creating your project:
 
 3. **Learn the configuration** — Run `uniweb docs site` or `uniweb docs page` for quick reference on configuration options.
 
-4. **Create a component** — Add a folder in `foundation/src/components/`, create `index.jsx` and `meta.js`, then rebuild. See the [Component Metadata Guide](https://github.com/uniweb/cli/blob/main/docs/component-metadata.md) for the full schema.
+4. **Create a section type** — Add a file to `foundation/src/sections/` (e.g., `Banner.jsx`) and rebuild. Bare files at the root are discovered automatically — no `meta.js` needed. Add `meta.js` when you want to declare params or presets. See the [Component Metadata Guide](https://github.com/uniweb/cli/blob/main/docs/component-metadata.md) for the full schema.
 
 The `meta.js` file defines what content and parameters a component accepts. The runtime uses this metadata to apply defaults and guarantee content structure—no defensive null checks needed in your component code.
 
@@ -187,10 +188,10 @@ Save and see the change instantly in your browser.
 
 ### Your First Component Change
 
-Open `foundation/src/components/Hero/index.jsx`. The component receives parsed content:
+Open `foundation/src/sections/Hero.jsx`. The component receives parsed content:
 
 ```jsx
-export function Hero({ content, params }) {
+export default function Hero({ content }) {
   const { title, paragraphs, links, imgs, items } = content
   // Edit the JSX below...
 }
@@ -198,17 +199,36 @@ export function Hero({ content, params }) {
 
 The parser extracts semantic elements from markdown—`title` from the first heading, `paragraphs` from body text, `links` from `[text](url)`, and so on. The `items` array contains child groups created when headings appear after content (useful for features, pricing tiers, team members, etc.).
 
-**Learn more:**
+## Guides
 
+**For developers** (building foundations and components):
+- [Building with Uniweb](./guides/developers/building-with-uniweb.md) — How the project structure works
+- [Converting Existing Designs](./guides/developers/converting-existing-designs.md) — Bringing React code into a foundation
+- [Component Patterns](./guides/developers/component-patterns.md) — Dispatcher, Building Blocks, organization
+- [Thinking in Contexts](./guides/developers/thinking-in-contexts.md) — Semantic theming
+
+**For content authors** (writing pages in markdown):
+- [Writing Content](./guides/authors/writing-content.md) — Headings, items, links, images
+- [Site Setup](./guides/authors/site-setup.md) — Pages, navigation, configuration
+- [Theming](./guides/authors/theming.md) — Colors, contexts, backgrounds
+- [Recipes](./guides/authors/recipes.md) — Common patterns and solutions
+
+**Reference docs:**
+
+_Content & Configuration_
+- [Content Structure](./docs/content-structure.md) — How content is parsed and structured
 - [Site Configuration](./docs/site-configuration.md) — Complete site.yml reference
 - [Page Configuration](./docs/page-configuration.md) — Complete page.yml reference
-- [Content Structure](./docs/content-structure.md) — How content is parsed and structured
-- [Navigation Patterns](./docs/navigation-patterns.md) — Building navbars, menus, and sidebars
-- [Special Sections](./docs/special-sections.md) — @header, @footer, and sidebars
 - [Linking](./docs/linking.md) — Stable page references that survive reorganization
+
+_Components & Foundations_
 - [Component Metadata](./docs/component-metadata.md) — Full meta.js schema reference
 - [Foundation Configuration](./docs/foundation-configuration.md) — CSS variables and custom Layout
 - [Site Theming](./docs/site-theming.md) — Colors, typography, and dark mode
+- [Navigation Patterns](./docs/navigation-patterns.md) — Building navbars, menus, and sidebars
+- [Special Sections](./docs/special-sections.md) — @header, @footer, and sidebars
+
+_Advanced_
 - [Internationalization](./docs/internationalization.md) — Multi-language sites
 - [Data Fetching](./docs/data-fetching.md) — Load external data from files or APIs
 - [Dynamic Routes](./docs/dynamic-routes.md) — Generate pages from data (blogs, catalogs)
@@ -392,7 +412,7 @@ my-project/
 └── foundation/
     ├── package.json
     ├── vite.config.js
-    └── src/components/
+    └── src/sections/
 ```
 
 ### Multi
@@ -546,7 +566,7 @@ export default defineFoundationConfig({
 
 When you run `uniweb build` on a foundation:
 
-1. **Discovers** components from `src/components/*/meta.js`
+1. **Discovers** section types from `src/sections/` (bare files at root are implicit; nested paths require `meta.js`) and `src/components/` (requires `meta.js`)
 2. **Generates** entry point (`_entry.generated.js`)
 3. **Runs** Vite build
 4. **Processes** preview images (converts to WebP)
@@ -650,23 +670,35 @@ Don't confuse this with `pages:` (which explicitly lists pages and hides any not
 
 ### Content Shapes
 
-Lists and items in markdown become **objects**, not strings. A bullet list:
+Items come from **headings after body content**, not bullet lists. When H3 headings appear after the main content, they create `content.items`:
 
 ```markdown
-- First item
-- Second item
+---
+type: Features
+---
+
+# Our Features
+
+Leading paragraph.
+
+### Fast
+
+Lightning quick performance.
+
+### Secure
+
+Enterprise-grade security.
 ```
 
 Becomes:
 
 ```js
-content.items = [
-  { title: 'First item', paragraphs: [], links: [], imgs: [] },
-  { title: 'Second item', paragraphs: [], links: [], imgs: [] },
-]
+content.title    // "Our Features"
+content.items[0] // { title: 'Fast', paragraphs: ['Lightning quick performance.'], ... }
+content.items[1] // { title: 'Secure', paragraphs: ['Enterprise-grade security.'], ... }
 ```
 
-Each item has the same structure as a content block. See [Content Structure](./docs/content-structure.md) for the full shape.
+Each item has the same structure as the main content (title, paragraphs, links, imgs, etc.). Bullet lists become `content.lists`, not items. See [Content Structure](./docs/content-structure.md) for the full shape.
 
 ### Tagged Data Blocks
 

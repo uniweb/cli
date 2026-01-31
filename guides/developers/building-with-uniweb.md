@@ -81,9 +81,9 @@ The component is a regular React function. It receives `content` (parsed markdow
 
 ---
 
-## That's CCA
+## That's Component Content Architecture
 
-The architecture is the file structure. There's no component registry to maintain. No router config to update. No mapping between URLs and components.
+Uniweb calls this pattern **Component Content Architecture** (CCA) — components and content are separate artifacts connected by convention, not code. The architecture is the file structure. There's no component registry to maintain. No router config to update. No mapping between URLs and components.
 
 - **`sections/`** is the component catalog. The build discovers every `.jsx` file and folder at the root automatically. A file named `Hero.jsx` becomes a section type called "Hero" — content authors reference it with `type: Hero` in frontmatter.
 
