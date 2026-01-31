@@ -199,7 +199,7 @@ collections:
 
 Each markdown file in `library/articles/` becomes an item in the `articles` collection, sorted by date. Pages can then display this data using their template's components.
 
-For the full guide on collections, see [Content Collections](../content-collections.md).
+For the full guide, see [Collections](./collections.md). For technical details, see [Content Collections](../../docs/content-collections.md).
 
 ---
 
@@ -361,5 +361,6 @@ If adding translations, get one additional language working before adding more. 
 - **[Writing Content](./writing-content.md)** — How to write sections in markdown
 - **[Theming](./theming.md)** — Customize colors, fonts, and dark mode
 - **[Translating Your Site](./translating-your-site.md)** — Full translation workflow
+- **[Collections](./collections.md)** — Blog posts, team members, products, and other repeating content
 - **[Recipes](./recipes.md)** — Copy-paste solutions for common patterns
 - **[Deployment](../deployment.md)** — Deploy to Vercel, Netlify, GitHub Pages, and more

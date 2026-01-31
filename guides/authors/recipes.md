@@ -767,4 +767,5 @@ Browse all icons visually at [react-icons.github.io/react-icons](https://react-i
 - **[Writing Content](./writing-content.md)** — Full guide to writing content
 - **[Special Sections](../special-sections.md)** — Header, footer, and sidebar details
 - **[Linking](../linking.md)** — Stable `page:` links
+- **[Collections](./collections.md)** — How collections work, the library/ folder, and detail pages
 - **[Search](../search.md)** — Search configuration

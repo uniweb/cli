@@ -24,6 +24,10 @@ How to write sections using markdown — headings, paragraphs, images, links, ic
 
 Copy-paste patterns for common sections: hero banners, feature grids, FAQs, team pages, testimonials, and more. Find the layout you want and adapt the content.
 
+### [Collections](./collections.md)
+
+Manage repeating content — blog posts, team members, products — as markdown files. Connect them to pages and create detail pages for each item.
+
 ### [Site Setup](./site-setup.md)
 
 Configure your site — `site.yml`, page structure, locales, search, and collections. Everything that shapes how your site is organized.

@@ -44,7 +44,7 @@ Reference documentation for the Uniweb component content architecture.
 ## Reference
 
 - **[CLI Commands](./cli-commands.md)** — Complete reference for `uniweb create`, `build`, `docs`, `i18n`
-- **[Runtime API](./runtime-api.md)** — Hooks and objects available to components (`useWebsite`, `useVersion`, etc.)
+- **[Kit Reference](./kit-reference.md)** — Hooks, components, and utilities from `@uniweb/kit` (`useWebsite`, `useVersion`, `Link`, etc.)
 
 ---
 
@@ -63,6 +63,7 @@ Narrative guides with worked examples and deeper explanations:
 - [Site Setup](../guides/authors/site-setup.md)
 - [Theming](../guides/authors/theming.md)
 - [Recipes](../guides/authors/recipes.md)
+- [Collections](../guides/authors/collections.md)
 
 ---
 
