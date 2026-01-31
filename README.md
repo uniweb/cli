@@ -131,7 +131,7 @@ Natural content stays in markdown; structured data goes in tagged blocks (YAML o
 ### Components as React
 
 ```jsx
-export default function Hero({ content }) {
+export default function Hero({ content, params }) {
   const { title, paragraphs, links } = content
 
   return (
@@ -201,12 +201,14 @@ The parser extracts semantic elements from markdown—`title` from the first hea
 ## Guides
 
 **For developers** (building foundations and components):
+
 - [Building with Uniweb](./guides/developers/building-with-uniweb.md) — How the project structure works
 - [Converting Existing Designs](./guides/developers/converting-existing-designs.md) — Bringing React code into a foundation
 - [Component Patterns](./guides/developers/component-patterns.md) — Dispatcher, Building Blocks, organization
 - [Thinking in Contexts](./guides/developers/thinking-in-contexts.md) — Semantic theming
 
 **For content authors** (writing pages in markdown):
+
 - [Writing Content](./guides/authors/writing-content.md) — Headings, items, links, images
 - [Site Setup](./guides/authors/site-setup.md) — Pages, navigation, configuration
 - [Theming](./guides/authors/theming.md) — Colors, contexts, backgrounds
@@ -215,12 +217,14 @@ The parser extracts semantic elements from markdown—`title` from the first hea
 **Reference docs:**
 
 _Content & Configuration_
+
 - [Content Structure](./docs/content-structure.md) — How content is parsed and structured
 - [Site Configuration](./docs/site-configuration.md) — Complete site.yml reference
 - [Page Configuration](./docs/page-configuration.md) — Complete page.yml reference
 - [Linking](./docs/linking.md) — Stable page references that survive reorganization
 
 _Components & Foundations_
+
 - [Component Metadata](./docs/component-metadata.md) — Full meta.js schema reference
 - [Foundation Configuration](./docs/foundation-configuration.md) — CSS variables and custom Layout
 - [Site Theming](./docs/site-theming.md) — Colors, typography, and dark mode
@@ -228,6 +232,7 @@ _Components & Foundations_
 - [Special Sections](./docs/special-sections.md) — @header, @footer, and sidebars
 
 _Advanced_
+
 - [Internationalization](./docs/internationalization.md) — Multi-language sites
 - [Data Fetching](./docs/data-fetching.md) — Load external data from files or APIs
 - [Dynamic Routes](./docs/dynamic-routes.md) — Generate pages from data (blogs, catalogs)
@@ -692,7 +697,7 @@ Enterprise-grade security.
 Becomes:
 
 ```js
-content.title    // "Our Features"
+content.title // "Our Features"
 content.items[0] // { title: 'Fast', paragraphs: ['Lightning quick performance.'], ... }
 content.items[1] // { title: 'Secure', paragraphs: ['Enterprise-grade security.'], ... }
 ```

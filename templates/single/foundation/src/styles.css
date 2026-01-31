@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-@source "./components/**/*.{js,jsx}";
+@source "./sections/**/*.{js,jsx}";
 @source "../node_modules/@uniweb/kit/src/**/*.{js,jsx}";
 
 @theme {

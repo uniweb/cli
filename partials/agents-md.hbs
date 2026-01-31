@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for AI agents working with this Uniweb project. For deeper reference, see the [developer guides](./guides/developers/) and [content author guides](./guides/authors/).
+Guidance for AI agents working with this Uniweb project.
 
 ## Project Structure
 
@@ -212,7 +212,7 @@ theme: dark           ← sets context-dark, all tokens resolve to dark values
 
 **Site controls the palette** in `theme.yml`. The same foundation looks different across sites because tokens resolve from the site's color configuration, not from component code.
 
-**When to break the rules:** Header/footer components that float over content may need direct color logic (reading the first section's theme). Decorative elements with fixed branding (logos) use literal colors. See the [Thinking in Contexts](./guides/developers/thinking-in-contexts.md) guide.
+**When to break the rules:** Header/footer components that float over content may need direct color logic (reading the first section's theme). Decorative elements with fixed branding (logos) use literal colors.
 
 ## Component Development
 
@@ -326,7 +326,7 @@ const firstBody = block.page.getFirstBodyBlockInfo()
 
 ### Custom Layouts
 
-Export a Layout from `foundation/src/exports.js`. Kit provides `SidebarLayout` for sidebar-based sites (docs, dashboards):
+Export a Layout from `foundation/src/foundation.js`. Kit provides `SidebarLayout` for sidebar-based sites (docs, dashboards):
 
 ```jsx
 import { SidebarLayout } from '@uniweb/kit/styled'
@@ -344,7 +344,7 @@ When given a monolithic React file (AI-generated or hand-built), don't port line
 3. **Use semantic tokens** — Replace `text-slate-900` with `text-heading`, `bg-white` with `bg-surface`. Component works in any context and any brand.
 4. **UI components → `components/`** — Buttons, badges, cards go in `src/components/` (no `meta.js` needed).
 
-You don't have to convert everything at once. Each section is independent — one can use hardcoded content while another reads from markdown. See the [Converting Existing Designs](./guides/developers/converting-existing-designs.md) guide for the full walkthrough.
+You don't have to convert everything at once. Each section is independent — one can use hardcoded content while another reads from markdown.
 
 ## Tailwind CSS v4
 
@@ -352,7 +352,7 @@ Theme defined in `foundation/src/styles.css`:
 
 ```css
 @import "tailwindcss";
-@source "./components/**/*.{js,jsx}";
+@source "./sections/**/*.{js,jsx}";
 @source "../node_modules/@uniweb/kit/src/**/*.jsx";
 
 @theme {
