@@ -106,12 +106,18 @@ Without extra configuration, a Uniweb project gives you:
 
 - **File-based routing** — folder = route, no `react-router` config needed
 - **Hot reload** on both content and component changes
-- **Production build** with pre-rendered static HTML for every page
-- **Adding a page** = creating a folder with a markdown file
+- **Pre-rendered static HTML** for every page, with client-side hydration
+- **Localization** — locale detection, locale-aware URLs, translation extraction and matching
+- **Dynamic routes** — `[slug]` folders expand into concrete pages from collection data
+- **Content collections** — markdown files in `library/` become structured JSON, with automatic i18n support
+- **Media processing** — image optimization, video poster generation, PDF preview thumbnails
+- **Search indexing** — content is indexed at build time for client-side search
+- **Section backgrounds** — image, video, gradient, and color backgrounds rendered by the engine (components don't repeat this logic)
+- **Semantic theming** — CSS tokens that resolve per-section based on context, controlled by the site
 
-In a plain Vite + React app, you'd install react-router, write route definitions, create lazy imports for code splitting, set up an SSG pipeline if you want static HTML, and build a system to connect content to components. Uniweb handles all of this through project structure — the conventions replace the configuration.
+In a plain Vite + React app, you'd wire each of these yourself: install a router, write route definitions, set up lazy imports, build an SSG pipeline, add an i18n library, write slug-based route expansion, set up image processing, integrate a search engine. Uniweb handles all of this through project structure and build conventions — you opt into features by using them, not by configuring them.
 
-You still write React. You still use Tailwind (or CSS, or whatever you prefer). You still structure your components however makes sense. The framework handles routing, content delivery, and the build pipeline. Your job is the components.
+You still write React. You still use Tailwind (or CSS, or whatever you prefer). You still structure your components however makes sense. The framework handles the infrastructure. Your job is the components.
 
 ---
 
