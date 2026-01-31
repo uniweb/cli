@@ -16,6 +16,10 @@ How semantic theming replaces hardcoded color maps. Why you write less code and 
 
 You have an AI-generated landing page or an existing React project. How to bring it into a Uniweb project gradually — from "paste and route" to full content separation and semantic theming. Four natural stopping points, each independently useful.
 
+### [CCA Component Patterns](./component-patterns.md)
+
+Composition and interface patterns that emerge from CCA's content/component separation. The Dispatcher (one component, many layouts), Building Blocks (layout containers with child sections), Multi-Source Rendering (markdown or API data), and the constraints that shape better interfaces.
+
 ---
 
 ## What's Coming
@@ -23,7 +27,6 @@ You have an AI-generated landing page or an existing React project. How to bring
 These guides will grow as we convert more foundations and discover more patterns. Future topics may include:
 
 - **The Content Contract** — How `meta.js` declares what a component needs, and why `prepare-props` means you never write null checks
-- **Component Anatomy** — What CCA components receive, what they render, and what they leave to the runtime
 - **Data and Collections** — Working with fetched data, collection items, and the boundary between static and dynamic content
 - **Portability in Practice** — Shipping a foundation that works across organizations with different branding, content, and locales
 
