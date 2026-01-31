@@ -4,37 +4,45 @@ This guide explains how to write `meta.js` files for Uniweb components.
 
 ## Overview
 
-Every section type has a `meta.js` file that describes:
+A `meta.js` file declares a section type's content interface:
 - What the component does (for documentation and editor UI)
 - What content it expects from markdown
 - What parameters content authors can configure
 - What presets are available for quick setup
 
-Components without `meta.js` are ordinary React components — not selectable by content authors, but the foundation's actual rendering workhorses.
+**In `src/sections/`**, `meta.js` is optional at the root level. A bare file (`Hero.jsx`) or folder (`Hero/Hero.jsx`) is automatically an addressable section type with an implicit empty content interface. Add `meta.js` when you need params, content expectations, or presets. Deeper nesting within `src/sections/` and other locations (like `src/components/`) require `meta.js` for a component to be addressable.
+
+Components without `meta.js` (outside of `src/sections/` root) are ordinary React components — not selectable by content authors, but the foundation's actual rendering workhorses.
 
 ---
 
-## Minimal Example
+## Minimal Examples
 
-The simplest valid meta.js:
+The simplest section type — no `meta.js` at all:
+
+```
+src/sections/TextSection.jsx    ← addressable, title inferred as "Text Section"
+```
+
+When you need params or content expectations, add a `meta.js`:
 
 ```javascript
 export default {
-  title: 'Text Section',
+  title: 'Text Section',    // Optional — inferred from component name if omitted
   category: 'structure',
 }
 ```
-
-That's it. Everything else is optional.
 
 ---
 
 ## What's Required vs Optional
 
+When `meta.js` is present:
+
 | Field | Required | Default |
 |-------|----------|---------|
-| `title` | Yes | — |
-| `category` | Yes | — |
+| `title` | No | Inferred from component name (`TeamRoster` → "Team Roster") |
+| `category` | No | — |
 | `description` | No | — |
 | `purpose` | No | — |
 | `hidden` | No | `false` |
@@ -45,12 +53,14 @@ That's it. Everything else is optional.
 | `params` | No | — |
 | `presets` | No | — |
 
+When `meta.js` is absent (only at root of `src/sections/`), the section type has no params, no content expectations, and a title inferred from the file or folder name.
+
 ---
 
 ## Full Example
 
 ```javascript
-// components/Hero/meta.js
+// sections/Hero/meta.js
 export default {
   title: 'Hero Banner',
   description: 'Bold hero section with headline and call-to-action',
@@ -149,7 +159,7 @@ function Hero({ content, params, block, website }) {
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `title` | string | Display name in the editor |
+| `title` | string | Display name in the editor. If omitted, inferred from component name (`TeamRoster` → "Team Roster") |
 | `description` | string | What the component does |
 | `category` | string | Grouping: `impact`, `showcase`, or `structure` |
 | `purpose` | string | Single verb: Introduce, Express, Explain, etc. |
@@ -538,7 +548,7 @@ field: { type: 'array', of: { name: 'string' } }
 Some components arrange other components (like Grid). They accept child sections:
 
 ```javascript
-// components/Grid/meta.js
+// sections/Grid/meta.js
 export default {
   title: 'Grid',
   description: 'Arrange components in a responsive layout',

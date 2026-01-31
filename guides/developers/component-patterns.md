@@ -12,24 +12,30 @@ If you're coming from a traditional React project — especially one with multip
 
 A foundation is a React project. Most of its code is ordinary React components — cards, buttons, layout helpers, renderers — with no special requirements. They live wherever makes sense: `ui/`, `lib/`, inline in the same file, npm packages. CCA doesn't know or care about them.
 
-The only special thing in a foundation is the **content interface**: the small number of section types that content authors can reference by name in frontmatter (`type: Hero`, `type: Features`). These are identified by a `meta.js` file, which declares what content the section expects and what params it exposes. The build system scans `src/sections/` for folders containing `meta.js` — that's the only convention it enforces.
+The only special thing in a foundation is the **content interface**: the small number of section types that content authors can reference by name in frontmatter (`type: Hero`, `type: Features`). These live in `src/sections/`, which is the foundation's **addressable zone** — the build treats everything at the root of this folder as a section type, whether it's a bare file or a folder.
 
 ```
 src/
-├── sections/                # Content interfaces — section types (has meta.js)
+├── sections/                # Addressable zone — section types
+│   ├── CTA.jsx              # Bare file → section type (no meta.js needed)
 │   ├── Hero/
-│   │   ├── meta.js          # Content interface declaration
+│   │   ├── meta.js          # Explicit content interface (params, presets)
 │   │   ├── Hero.jsx         # Entry — or index.jsx, both work
-│   │   ├── Centered.jsx     # Internal variant
+│   │   ├── Centered.jsx     # Internal variant (not addressable)
 │   │   └── SplitForm.jsx    # Internal variant
 │   ├── Gallery/
 │   │   ├── meta.js
 │   │   ├── Gallery.jsx
 │   │   ├── Grid.jsx         # Internal renderer
 │   │   └── Masonry.jsx      # Internal renderer
-│   └── Header/
+│   ├── Header/
+│   │   └── Header.jsx       # Folder at root → section type (implicit meta)
+│   └── Tabs/
 │       ├── meta.js
-│       └── Header.jsx
+│       ├── Tabs.jsx
+│       └── Tab/             # Nested child — meta.js required
+│           ├── meta.js
+│           └── Tab.jsx
 ├── components/              # React components (shadcn-compatible, yours, etc.)
 │   ├── ui/                  # shadcn primitives
 │   │   ├── button.jsx
@@ -43,16 +49,33 @@ src/
 └── foundation.js
 ```
 
-`sections/` contains the content interfaces — the things content authors select by name. `components/` is where your React components live, organized however you like. `hooks/` is for custom React hooks. The build only scans `sections/` for `meta.js` (and falls back to `components/` for existing foundations that use the older convention). Everything else is standard React — create whatever folders describe what's in them.
+### How discovery works
+
+At the **root of `sections/`**, location is the marker. Any file or folder there is a section type — no `meta.js` needed:
+
+- `CTA.jsx` → section type "CTA" with an implicit empty content interface
+- `Header/Header.jsx` → section type "Header" with an implicit empty content interface
+- `Hero/meta.js` + `Hero.jsx` → section type "Hero" with explicit params and presets
+
+When `meta.js` is absent, the title is inferred from the component name by splitting PascalCase: `TeamRoster` → "Team Roster", `CTA` → "CTA". Add `meta.js` when you need params, content expectations, or a custom title.
+
+**Deeper nesting** requires explicit `meta.js` — because a nested file could be a helper, a variant, or anything else. This enables two useful patterns:
+
+- **Child section types**: `Tabs/Tab/meta.js` — a section type co-located with its parent, expressing the relationship in the file system
+- **Organizational subfolders**: `marketing/Hero/meta.js` — grouping section types by category in large foundations
+
+Files without `meta.js` at nested levels are private implementation — invisible to the build.
+
+`components/` is where your React components live, organized however you like. `hooks/` is for custom React hooks. Everything outside `sections/` is standard React. (The build also falls back to scanning `src/components/` for `meta.js`, so older foundations that put section types there continue to work.)
 
 ### Entry file conventions
 
-The build supports two naming conventions for the entry file in a content interface folder:
+The build supports two naming conventions for the entry file in a section type folder:
 
 - **Named file**: `Hero/Hero.jsx` — clearer in editor tabs when you have many open
 - **Index file**: `Hero/index.jsx` — the traditional React convention
 
-Named files are checked first, so if both exist, `Hero.jsx` wins. Use whichever convention your team prefers.
+Named files are checked first, so if both exist, `Hero.jsx` wins. At the root of `sections/`, bare files like `CTA.jsx` are always named — `index.jsx` at the root has no meaning (there's no "default section type").
 
 ### Your components live in `components/`
 
@@ -79,21 +102,6 @@ export function Features({ content, params }) {
 ```
 
 CCA doesn't constrain your import graph. Import from `components/`, from npm packages, from `hooks/`, from sibling files inside the section folder — whatever your rendering needs.
-
-### Custom discovery paths
-
-By default, the build scans `src/sections/` one level deep for `meta.js` files (falling back to `src/components/` for older foundations). If your foundation grows to need subcategories, you can configure additional paths:
-
-```js
-// vite.config.js
-import { defineFoundationConfig } from '@uniweb/build'
-
-export default defineFoundationConfig({
-  components: ['sections', 'sections/marketing', 'sections/docs']
-})
-```
-
-Each path is scanned one level deep. A content interface's name comes from its folder name, so names must be unique across all paths.
 
 ---
 
@@ -239,7 +247,7 @@ src/sections/
 
 The dispatcher imports `./Grid`, `./Masonry`, `./Carousel` — standard React. The renderers are plain components that receive normalized props; they don't know about CCA. The dispatcher is the only file that reads params and content structure.
 
-The build only looks for `meta.js` in direct children of `sections/`, so these renderer files are invisible to discovery. They're ordinary React modules — no folder requirements, no naming conventions, no special status.
+These renderer files are invisible to the build — they're nested inside a section type folder without their own `meta.js`. They're ordinary React modules — no folder requirements, no naming conventions, no special status.
 
 ---
 

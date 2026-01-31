@@ -46,11 +46,10 @@ The minimum viable migration. You create a Uniweb project, paste the entire orig
 ```
 foundation/src/sections/
 └── App/
-    ├── meta.js         ← minimal: { title: 'App' }
     └── App.jsx         ← paste the entire file: Nav, Hero, Footer, everything
 ```
 
-That's one section type. Everything else in the original file — `Nav`, `Hero`, `TheModel`, `Button`, `Badge`, `Section`, `Footer` — lives inside `App.jsx` as local functions. They don't need their own folders. They don't need `meta.js`. They're just internal code inside the one section type that CCA knows about.
+That's one section type. No `meta.js` needed — a folder at the root of `sections/` is automatically addressable. The title "App" is inferred from the folder name. Everything else in the original file — `Nav`, `Hero`, `TheModel`, `Button`, `Badge`, `Section`, `Footer` — lives inside `App.jsx` as local functions. They don't need their own folders. They're just internal code inside the one section type that CCA knows about.
 
 **Site:**
 
@@ -87,17 +86,19 @@ Shared helpers like `Button`, `Badge`, `Section` move to `foundation/src/compone
 
 ```
 foundation/src/
-├── sections/            # Content interfaces (with meta.js)
+├── sections/            # Addressable — section types
 │   ├── Hero/
 │   ├── SplitContent/
 │   ├── FeatureCards/
 │   ├── Header/
 │   └── Footer/
-└── components/          # React components (no meta.js)
+└── components/          # React components
     ├── Button.jsx
     ├── Badge.jsx
     └── SectionWrapper.jsx
 ```
+
+At this level, the section types don't need `meta.js` — they're at the root of `sections/`, so they're addressable by default. Add `meta.js` later when you need params or content expectations.
 
 The site now has a section per component, with `@header` and `@footer` split out:
 

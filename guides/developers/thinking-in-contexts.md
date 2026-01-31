@@ -222,11 +222,10 @@ my-project/
     └── src/
         └── sections/
             └── Hero/
-                ├── meta.js
-                └── Hero.jsx
+                └── Hero.jsx    ← no meta.js needed to start
 ```
 
-The site might be purely a testbed — throwaway content, a quick `theme.yml` with a single primary color. That's fine. Its job during development is to give the build system something to generate CSS from. Later, a real site with real content and real branding will use your foundation, and every semantic token will resolve to *that* site's colors instead.
+The site might be purely a testbed — throwaway content, a quick `theme.yml` with a single primary color. That's fine. Its job during development is to give the build system something to generate CSS from. The Hero folder doesn't even need a `meta.js` yet — a folder at the root of `sections/` is a section type by default. Add `meta.js` when you need params or content expectations. Later, a real site with real content and real branding will use your foundation, and every semantic token will resolve to *that* site's colors instead.
 
 Think of it this way: you're not building components that *have* colors. You're building components that *receive* colors from whatever site adopts them. The development site is how you see that contract in action.
 
