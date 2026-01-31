@@ -198,49 +198,6 @@ export default function Hero({ content }) {
 
 The parser extracts semantic elements from markdown—`title` from the first heading, `paragraphs` from body text, `links` from `[text](url)`, and so on. The `items` array contains child groups created when headings appear after content (useful for features, pricing tiers, team members, etc.).
 
-## Guides
-
-**For developers** (building foundations and components):
-
-- [Building with Uniweb](./guides/developers/building-with-uniweb.md) — How the project structure works
-- [Converting Existing Designs](./guides/developers/converting-existing-designs.md) — Bringing React code into a foundation
-- [Component Patterns](./guides/developers/component-patterns.md) — Dispatcher, Building Blocks, organization
-- [Thinking in Contexts](./guides/developers/thinking-in-contexts.md) — Semantic theming
-
-**For content authors** (writing pages in markdown):
-
-- [Writing Content](./guides/authors/writing-content.md) — Headings, items, links, images
-- [Site Setup](./guides/authors/site-setup.md) — Pages, navigation, configuration
-- [Theming](./guides/authors/theming.md) — Colors, contexts, backgrounds
-- [Recipes](./guides/authors/recipes.md) — Common patterns and solutions
-
-**Reference docs:**
-
-_Content & Configuration_
-
-- [Content Structure](./docs/content-structure.md) — How content is parsed and structured
-- [Site Configuration](./docs/site-configuration.md) — Complete site.yml reference
-- [Page Configuration](./docs/page-configuration.md) — Complete page.yml reference
-- [Linking](./docs/linking.md) — Stable page references that survive reorganization
-
-_Components & Foundations_
-
-- [Component Metadata](./docs/component-metadata.md) — Full meta.js schema reference
-- [Foundation Configuration](./docs/foundation-configuration.md) — CSS variables and custom Layout
-- [Site Theming](./docs/site-theming.md) — Colors, typography, and dark mode
-- [Navigation Patterns](./docs/navigation-patterns.md) — Building navbars, menus, and sidebars
-- [Special Sections](./docs/special-sections.md) — @header, @footer, and sidebars
-
-_Advanced_
-
-- [Internationalization](./docs/internationalization.md) — Multi-language sites
-- [Data Fetching](./docs/data-fetching.md) — Load external data from files or APIs
-- [Dynamic Routes](./docs/dynamic-routes.md) — Generate pages from data (blogs, catalogs)
-- [Content Collections](./docs/content-collections.md) — Manage articles, team members, and more
-- [Versioning](./docs/versioning.md) — Multi-version documentation
-- [Site Search](./docs/search.md) — Built-in full-text search
-- [Runtime API](./docs/runtime-api.md) — Hooks and core objects
-
 ## Foundations Are Portable
 
 The `foundation/` folder ships with your project as a convenience, but a foundation is a self-contained artifact with no dependency on any specific site. Sites reference foundations by configuration, not by folder proximity.
@@ -277,249 +234,29 @@ Start with local files deployed anywhere. The same foundation works across all t
 
 ---
 
-## Create a Project
+## Guides and Documentation
 
-```bash
-# pnpm (recommended)
-pnpm create uniweb my-site --template marketing
+**Developer Guides** — Building foundations and components:
+[`./guides/developers/`](./guides/developers/) — Converting designs, component patterns, theming contexts
 
-# npm (use -- before options)
-npm create uniweb@latest my-site -- --template marketing
+**Content Author Guides** — Writing pages in markdown:
+[`./guides/authors/`](./guides/authors/) — Writing content, site setup, theming, recipes
 
-# npx
-npx uniweb@latest create my-site --template marketing
-```
+**Reference Docs** — Configuration and API:
+[`./docs/`](./docs/) — Full reference for all configuration, commands, and runtime API
 
-Alternatively, install the CLI globally:
+### Quick Reference
 
-```bash
-npm install -g uniweb
-uniweb create my-site --template marketing
-```
+| Topic | Guide |
+|-------|-------|
+| Content Structure | [How markdown becomes component props](./docs/content-structure.md) |
+| Component Metadata | [The meta.js schema](./docs/component-metadata.md) |
+| Site Configuration | [site.yml reference](./docs/site-configuration.md) |
+| CLI Commands | [create, build, docs, i18n](./docs/cli-commands.md) |
+| Templates | [Built-in, official, and external templates](./docs/templates.md) |
+| Deployment | [Vercel, Netlify, Cloudflare, and more](./docs/deployment.md) |
 
-**Requirements:**
-
-- Node.js 20.19 or later
-- pnpm 10+ (recommended) or npm 10+
-
-Projects use Vite 7 and Tailwind CSS v4 by default.
-
-### Setting up pnpm
-
-We recommend pnpm for dependency management (npm also works). Install pnpm via npm:
-
-```bash
-npm install -g pnpm
-```
-
-Or see the [official pnpm installation guide](https://pnpm.io/installation) for other options including Corepack, Homebrew, and more.
-
-## Commands
-
-### `create`
-
-Create a new Uniweb project. See [Create a Project](#create-a-project) for usage examples.
-
-```bash
-uniweb create [project-name] [options]
-```
-
-**Options:**
-
-| Option              | Description                  |
-| ------------------- | ---------------------------- |
-| `--template <type>` | Project template (see below) |
-
-**Template Sources:**
-
-| Source     | Example                        | Description                     |
-| ---------- | ------------------------------ | ------------------------------- |
-| Built-in   | `single`, `multi`              | Minimal starter templates       |
-| Official   | `marketing`                    | Feature-rich showcase templates |
-| npm        | `@org/my-template`             | Published npm packages          |
-| GitHub     | `github:user/repo`             | GitHub repositories             |
-| GitHub URL | `https://github.com/user/repo` | Full GitHub URLs                |
-
-### `build`
-
-Build the current project.
-
-```bash
-uniweb build [options]
-```
-
-**Options:**
-
-| Option              | Description                                                           |
-| ------------------- | --------------------------------------------------------------------- |
-| `--target <type>`   | Build target: `foundation` or `site` (auto-detected if not specified) |
-| `--prerender`       | Force pre-rendering (overrides site.yml)                              |
-| `--no-prerender`    | Skip pre-rendering (overrides site.yml)                               |
-| `--foundation-dir`  | Path to foundation directory (for prerendering)                       |
-| `--platform <name>` | Deployment platform (e.g., `vercel`) for platform-specific output     |
-
-**Examples:**
-
-```bash
-# Auto-detect and build
-uniweb build
-
-# Explicitly build as foundation
-uniweb build --target foundation
-
-# Explicitly build as site
-uniweb build --target site
-
-# Build site with pre-rendering (SSG) - force on
-uniweb build --prerender
-
-# Skip pre-rendering even if enabled in site.yml
-uniweb build --no-prerender
-
-# Build for Vercel deployment
-uniweb build --platform vercel
-```
-
-### Pre-rendering (SSG)
-
-Pre-rendering generates static HTML for each page at build time. Enable it in `site.yml`:
-
-```yaml
-build:
-  prerender: true
-```
-
-Or use the `--prerender` flag. This gives you:
-
-- **SEO**: Search engines see fully rendered content immediately
-- **Performance**: First contentful paint is instant
-- **Hosting**: Deploy to any static host (GitHub Pages, Netlify, S3, etc.)
-
-The pre-rendered HTML includes embedded site content. When the page loads, React hydrates the existing DOM—no flash of loading state, then full client-side interactivity.
-
-## Built-in Templates
-
-### Single (Default)
-
-A minimal workspace with a site and foundation as sibling packages. The recommended starting point.
-
-```
-my-project/
-├── package.json              # Workspace root
-├── pnpm-workspace.yaml
-├── site/
-│   ├── package.json
-│   ├── vite.config.js
-│   ├── site.yml
-│   ├── main.js
-│   └── pages/
-└── foundation/
-    ├── package.json
-    ├── vite.config.js
-    └── src/sections/
-```
-
-### Multi
-
-A monorepo for foundation development or multi-site projects.
-
-```
-my-workspace/
-├── sites/
-│   ├── marketing/            # Main site or test site
-│   └── docs/                 # Additional site
-└── foundations/
-    ├── marketing/            # Primary foundation
-    └── documentation/        # Additional foundation
-```
-
-Use this when you need multiple sites sharing foundations, multiple foundations for different purposes, or test sites for foundation development.
-
-## Official Templates
-
-Feature-rich templates with real components and sample content. **[View all demos](https://uniweb.github.io/templates/)**
-
-### Marketing
-
-[**Live Demo**](https://uniweb.github.io/templates/marketing/) · `pnpm create uniweb my-site --template marketing`
-
-**Includes:** Hero, Features, Pricing, Testimonials, CTA, FAQ, Stats, LogoCloud, Video, Gallery, Team
-
-Perfect for product launches, SaaS websites, and business landing pages.
-
-**Tailwind v3 variant:** `--variant tailwind3`
-
-### Academic
-
-[**Live Demo**](https://uniweb.github.io/templates/academic/) · `pnpm create uniweb my-site --template academic`
-
-**Includes:** ProfileHero, PublicationList, ResearchAreas, TeamGrid, Timeline, ContactCard, Navbar, Footer
-
-Perfect for researcher portfolios, lab websites, and academic department sites.
-
-### Docs
-
-[**Live Demo**](https://uniweb.github.io/templates/docs/) · `pnpm create uniweb my-site --template docs`
-
-**Includes:** Header, LeftPanel, DocSection, CodeBlock, Footer
-
-Perfect for technical documentation, guides, and API references.
-
-### International
-
-[**Live Demo**](https://uniweb.github.io/templates/international/) · `pnpm create uniweb my-site --template international`
-
-**Includes:** Hero, Features, Team, CTA, Header (with language switcher), Footer (with language links)
-
-**Languages:** English (default), Spanish, French
-
-A multilingual business site demonstrating Uniweb's i18n capabilities. Includes pre-configured translation files and a complete localization workflow:
-
-```bash
-uniweb i18n extract   # Extract translatable strings
-uniweb i18n status    # Check translation coverage
-uniweb build          # Generates dist/es/, dist/fr/
-```
-
-Perfect for international businesses and learning the i18n workflow.
-
-## External Templates
-
-Use templates from npm or GitHub:
-
-```bash
-# npm package
-pnpm create uniweb my-site --template @myorg/template-name
-
-# GitHub repository
-pnpm create uniweb my-site --template github:user/repo
-
-# GitHub with specific branch/tag
-pnpm create uniweb my-site --template github:user/repo#v1.0.0
-```
-
-## Dependency Management
-
-Each package manages its own dependencies:
-
-**`site/package.json`:**
-
-- `@uniweb/runtime`
-- `@my-project/foundation` (workspace link)
-- Vite, Tailwind (dev)
-
-**`foundation/package.json`:**
-
-- Component libraries (carousel, icons, etc.)
-- React as peer dependency
-
-```bash
-# Add component dependency
-cd foundation && pnpm add embla-carousel
-
-# Site references foundation via workspace
-# No path gymnastics needed
-```
+---
 
 ## Configuration
 
@@ -566,29 +303,6 @@ export default defineFoundationConfig({
 })
 ```
 
-## Foundation Build Process
-
-When you run `uniweb build` on a foundation:
-
-1. **Discovers** section types from `src/sections/` (bare files at root are implicit; nested paths require `meta.js`) and `src/components/` (requires `meta.js`)
-2. **Generates** entry point (`_entry.generated.js`)
-3. **Runs** Vite build
-4. **Processes** preview images (converts to WebP)
-5. **Generates** `schema.json` with full metadata
-
-**Output:**
-
-```
-dist/
-├── foundation.js       # Bundled components
-├── foundation.js.map   # Source map
-├── schema.json         # Component metadata
-└── assets/
-    ├── style.css       # Compiled CSS
-    └── [Component]/    # Preview images
-        └── [preset].webp
-```
-
 ## Workspace Configuration
 
 Both templates use the same unified workspace configuration:
@@ -611,25 +325,6 @@ Also set in `package.json` for npm compatibility.
 ```
 
 This means no config changes when evolving from single to multi-site.
-
-## Releasing a Foundation
-
-Publish your foundation to npm:
-
-```bash
-cd foundation
-npm publish
-```
-
-Or to [uniweb.app](https://uniweb.app) for use with platform-managed sites:
-
-```bash
-uniweb login          # First time only
-uniweb build
-uniweb publish
-```
-
-Sites control their own update strategy—automatic, minor-only, patch-only, or pinned to a specific version.
 
 ## FAQ
 
@@ -656,92 +351,6 @@ Yes. Content is pre-embedded in the initial HTML—no fetch waterfalls, no layou
 **What about dynamic routes?**
 
 Pages can define data sources that auto-generate subroutes. A `/blog` page can have an index and a `[slug]` template that renders each post.
-
-## Common Gotchas
-
-### Homepage Configuration
-
-Set your homepage with `index:` in `site.yml`:
-
-```yaml
-# site.yml
-index: home # The page folder that becomes /
-```
-
-The `index:` option tells the build which page folder becomes the root route (`/`). The page still exists in `pages/home/`, but visitors access it at `/`.
-
-Don't confuse this with `pages:` (which explicitly lists pages and hides any not listed).
-
-### Content Shapes
-
-Items come from **headings after body content**, not bullet lists. When H3 headings appear after the main content, they create `content.items`:
-
-```markdown
----
-type: Features
----
-
-# Our Features
-
-Leading paragraph.
-
-### Fast
-
-Lightning quick performance.
-
-### Secure
-
-Enterprise-grade security.
-```
-
-Becomes:
-
-```js
-content.title // "Our Features"
-content.items[0] // { title: 'Fast', paragraphs: ['Lightning quick performance.'], ... }
-content.items[1] // { title: 'Secure', paragraphs: ['Enterprise-grade security.'], ... }
-```
-
-Each item has the same structure as the main content (title, paragraphs, links, imgs, etc.). Bullet lists become `content.lists`, not items. See [Content Structure](./docs/content-structure.md) for the full shape.
-
-### Tagged Data Blocks
-
-Tagged code blocks like:
-
-````markdown
-```yaml:team-member
-name: Sarah Chen
-role: Lead Architect
-```
-````
-
-Are accessible via `content.data`:
-
-```jsx
-function TeamMember({ content }) {
-  const member = content.data['team-member']
-  return (
-    <div>
-      {member.name} - {member.role}
-    </div>
-  )
-}
-```
-
-The tag name (after the colon) becomes the key in `content.data`.
-
-### Root vs Package Commands
-
-In a Uniweb workspace, commands run differently at different levels:
-
-| Location      | Command        | What it does                            |
-| ------------- | -------------- | --------------------------------------- |
-| Project root  | `pnpm build`   | Builds all packages (foundation + site) |
-| Project root  | `pnpm dev`     | Starts dev server for site              |
-| `foundation/` | `uniweb build` | Builds just the foundation              |
-| `site/`       | `uniweb build` | Builds just the site                    |
-
-For day-to-day development, run `pnpm dev` from the project root. The workspace scripts handle the rest.
 
 ## Related Packages
 

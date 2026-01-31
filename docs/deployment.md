@@ -344,7 +344,40 @@ Configure your server to serve `.gz` or `.br` files when available.
 
 ---
 
+## Publishing a Foundation
+
+Foundations are portable — you can publish them for other sites to consume.
+
+### To npm
+
+```bash
+cd foundation
+uniweb build
+npm publish
+```
+
+Other projects can then install your foundation as a dependency:
+
+```bash
+pnpm add @acme/foundation
+```
+
+### To uniweb.app
+
+For use with platform-managed sites and visual editing:
+
+```bash
+uniweb login          # First time only
+uniweb build
+uniweb publish
+```
+
+Sites control their own update strategy — automatic, minor-only, patch-only, or pinned to a specific version.
+
+---
+
 ## See Also
 
 - [CLI Commands](./cli-commands.md) — Build command options
 - [Site Configuration](./site-configuration.md) — Pre-render settings
+- [Templates](./templates.md) — Project templates

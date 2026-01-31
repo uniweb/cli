@@ -127,8 +127,21 @@ When run in a foundation directory:
 1. Discovers section types from `src/sections/` and `src/components/` (with `meta.js`)
 2. Generates entry point (`_entry.generated.js`)
 3. Runs Vite build
-4. Processes preview images to WebP
-5. Outputs `dist/foundation.js` and `dist/schema.json`
+4. Processes preview images (converts to WebP)
+5. Generates `schema.json` with full metadata
+
+**Output:**
+
+```
+dist/
+├── foundation.js       # Bundled components
+├── foundation.js.map   # Source map
+├── schema.json         # Component metadata
+└── assets/
+    ├── style.css       # Compiled CSS
+    └── [Component]/    # Preview images
+        └── [preset].webp
+```
 
 ```bash
 cd foundation

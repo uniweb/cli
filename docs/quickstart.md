@@ -2,6 +2,16 @@
 
 Create your first Uniweb site in 5 minutes.
 
+## Prerequisites
+
+- **Node.js 20.19** or later
+- **pnpm 10+** (recommended) or npm 10+
+
+```bash
+# Install pnpm if you don't have it
+npm install -g pnpm
+```
+
 ## Create a Project
 
 ```bash
@@ -15,7 +25,7 @@ This creates a workspace with:
 ```
 my-site/
 ├── foundation/          # Your React components
-│   └── src/components/
+│   └── src/sections/
 ├── site/                # Your content
 │   ├── pages/
 │   └── site.yml
@@ -48,7 +58,7 @@ Create stunning websites with components and markdown.
 [Learn More](/about)
 ```
 
-This content renders through the `Hero` component in `foundation/src/components/Hero/`.
+This content renders through the `Hero` component in `foundation/src/sections/Hero/`.
 
 **The pattern:**
 - `type: Hero` — Which component renders this section
@@ -67,7 +77,7 @@ Save. The page updates instantly.
 
 ## Edit a Component
 
-Open `foundation/src/components/Hero/index.jsx`. The component receives:
+Open `foundation/src/sections/Hero/index.jsx`. The component receives:
 
 ```jsx
 export function Hero({ content, params }) {
