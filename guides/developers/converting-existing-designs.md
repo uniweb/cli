@@ -392,9 +392,11 @@ You don't need all of this on day one. Start where you are, convert what's worth
 
 ### AI as a collaborator
 
-The conversion can be done by hand or with AI — and CCA's architecture makes AI particularly effective at both sides. The site package is markdown and YAML: structured enough for AI to author confidently, flexible enough that it doesn't need to understand rendering. The foundation package is standard React with a clear contract (`meta.js` declares what the component expects, `content` delivers it). Every Uniweb project includes an `AGENTS.md` file with the patterns and conventions an AI agent needs to work as a sophisticated content author on the site side and as a component developer on the foundation side.
+The original monolithic page might come from a chat-based AI — ChatGPT, Gemini, Claude — where you describe what you want and get back a complete React file. That's a fine way to start a design. But a chat agent generates a *page*, not a *project*. It doesn't know your routing, your content model, or your theming system.
 
-In practice, this means you can hand an AI a monolithic page and ask it to decompose it into CCA — or you can work at Level 0 yourself and let AI handle the Level 2 content extraction later. The separation of concerns that makes CCA good for teams of humans makes it equally good for teams that include AI.
+The conversion into CCA can be done by hand or with a coding agent like Claude Code or ChatGPT Codex — tools that work inside your project, see your files, and understand the codebase. CCA's architecture makes these agents particularly effective at both sides. The site package is markdown and YAML: structured enough for AI to author confidently, flexible enough that it doesn't need to understand rendering. The foundation package is standard React with a clear contract (`meta.js` declares what the component expects, `content` delivers it). Every Uniweb project includes an `AGENTS.md` file with the patterns and conventions a coding agent needs to work as a sophisticated content author on the site side and as a component developer on the foundation side.
+
+In practice, this means you can generate a landing page in a chat, paste it at Level 0, and then let a coding agent handle the decomposition and content extraction. The separation of concerns that makes CCA good for teams of humans makes it equally good for teams that include AI.
 
 ---
 
