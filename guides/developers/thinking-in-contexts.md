@@ -198,7 +198,7 @@ This gives the section a green background with light text. The component just re
 
 ## You Always Need a Site
 
-If you're coming from other frameworks, you might expect to develop a component library in isolation — render components in a storybook, pass them props, see what they look like. In CCA, that doesn't quite work. Your components use semantic tokens like `text-heading` and `bg-surface-subtle`, and those tokens are empty until a site activates the theming pipeline.
+If you're coming from other frameworks, you might expect to develop a component library in isolation — render components in a storybook, pass them props, see what they look like. In CCA, there's one extra requirement: your components use semantic tokens like `text-heading` and `bg-surface-subtle`, and those tokens need a site to activate the theming pipeline.
 
 The chain looks like this:
 
@@ -316,13 +316,13 @@ When the content author *does* set a background (via the `background:` frontmatt
 
 After converting a foundation to semantic theming, the typical component goes from ~50 lines to ~30. But the line count isn't the point. The real gains:
 
-**Foundations become portable.** The same foundation works for a conservation organization (warm greens), a law firm (navy and slate), and a startup (bright violet) — the site's `theme.yml` controls the identity, and every component adapts without modification.
+**You stop making color decisions.** The hardest part of the old approach wasn't writing the theme map — it was deciding that `text-gray-600` was the right muted color, and that `text-gray-300` was its dark equivalent, and keeping those decisions consistent across twelve components. With semantic tokens, you make that decision once (in the build system), and every component inherits it.
 
-**Content authors get real control.** Setting `theme: dark` on any section inverts the entire visual context. Adding `background: { color: var(--primary-600) }` brands a section. These are meaningful design tools, not developer toggles.
+**Foundations become portable.** The same foundation works for a conservation organization (warm greens), a law firm (navy and slate), and a startup (bright violet) — the site's `theme.yml` controls the identity, and every component adapts without modification.
 
 **New contexts work immediately.** If the build system adds a `context-accent` in the future, every semantic-token-using component supports it without changes. The components don't know what contexts exist — they just use tokens that resolve.
 
-**You stop making color decisions.** The hardest part of the old approach wasn't writing the theme map — it was deciding that `text-gray-600` was the right muted color, and that `text-gray-300` was its dark equivalent, and keeping those decisions consistent across twelve components. With semantic tokens, you make that decision once (in the build system), and every component inherits it.
+**You don't build theme-switching logic.** Content authors set `theme: dark` on any section in frontmatter, and the entire visual context inverts. `background: { color: var(--primary-600) }` brands a section. These controls work without any conditional logic in your component — the tokens handle it.
 
 ---
 

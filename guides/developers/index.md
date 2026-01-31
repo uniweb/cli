@@ -18,7 +18,7 @@ You have an AI-generated landing page or an existing React project. How to bring
 
 ### [CCA Component Patterns](./component-patterns.md)
 
-Composition and interface patterns that emerge from CCA's content/component separation. The Dispatcher (one component, many layouts), Building Blocks (layout containers with child sections), Multi-Source Rendering (markdown or API data), and the constraints that shape better interfaces.
+Patterns that give you cleaner component interfaces and less code. The Dispatcher (one component instead of five), Building Blocks (layout containers with child sections), Multi-Source Rendering (markdown or API data), and the constraints that produce tighter, more reusable components.
 
 ---
 
@@ -34,6 +34,6 @@ These guides will grow as we convert more foundations and discover more patterns
 
 ## The Philosophy
 
-CCA separates concerns that traditional frameworks tangle together. Content authors write markdown. Site owners set brand identity in `theme.yml`. Foundation developers build components that adapt to both — without knowing what the content says or what the colors are.
+Less code, not more abstraction. A typical CCA component drops from ~50 lines to ~30 when you remove the theme maps, the null checks, and the color decisions that the system handles for you. The separation of content, theming, and code isn't overhead — it eliminates work that traditional components duplicate.
 
-The result is less code, not more abstraction. A typical component drops from 50 lines to 30 when you remove the theme maps, the null checks, and the color decisions that the system handles for you. The guides in this series show how to lean into that separation and what to do in the cases where you can't.
+CCA separates concerns that most frameworks tangle together. Content lives in markdown. Brand identity lives in `theme.yml`. Components adapt to both — without knowing what the content says or what the colors are. The result is components that are shorter, more portable, and more reusable. The guides in this series show how to lean into that separation and what to do in the cases where you can't.

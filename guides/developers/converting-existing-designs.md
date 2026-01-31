@@ -141,6 +141,8 @@ Rename them by what they _render_, not what they _say_:
 
 Why this matters: `Institutions` can only ever be the institutions section. `Testimonial` can render any quote — a customer review, a partner endorsement, an internal praise. The same component, freed from its birth content, becomes reusable. If you later add a `/customers` page, `Testimonial` is already there.
 
+And when you find that several pages have similar-but-different heroes or CTAs? That's one component with a `variant` param — the Dispatcher pattern. See [CCA Component Patterns](./component-patterns.md) for how to consolidate similar sections without over-engineering the abstraction.
+
 At this level you also get header/footer separation (renders on every page), so adding a second page is just a new folder with markdown files.
 
 ---
@@ -270,7 +272,7 @@ Devs commit to git. Content teams use the visual app.
 
 The component reads `content.items` — each item has its own `title`, `paragraphs`, `icons`. No hardcoded strings, no fixed number of columns.
 
-At this level, a content author can change every word on the page without opening a `.jsx` file. They can add a fourth column to FeatureColumns by adding another `###` heading. They can swap the hero image. They can rewrite the testimonial quote. The design stays intact because the component controls the layout and the content author controls the words.
+At this level, you're no longer the bottleneck for text changes. A content author can change every word on the page without opening a `.jsx` file — add a fourth column to FeatureColumns with another `###` heading, swap the hero image, rewrite the testimonial quote. Your design stays intact because the component controls the layout. The content lives in markdown where it's easy to edit, translate, and version.
 
 ---
 
@@ -310,7 +312,7 @@ Now the component works in any context — `theme: light`, `theme: dark`, `theme
 </div>
 ```
 
-With semantic theming, the content author controls this:
+With semantic theming, you don't build any of that. The component uses tokens and the frontmatter handles the rest:
 
 ```markdown
 ---
@@ -384,9 +386,9 @@ AI tools generate impressive-looking pages. But the output is often monolithic �
 
 The value of converting isn't aesthetic — the page already looks good. The value is operational:
 
-- **Content authors can make changes.** At Level 0, every text change requires a developer. At Level 2, content authors edit markdown.
-- **The foundation works for more than one page.** At Level 1, `Testimonial` serves any quote, not just one client's.
-- **The foundation works for more than one site.** At Level 3, the same components adapt to different brands via `theme.yml`.
+- **You stop being the bottleneck for text changes.** At Level 0, every word change requires a developer. At Level 2, content lives in markdown — anyone can edit it.
+- **Your components become reusable.** At Level 1, `Testimonial` serves any quote, not just one client's. One component, many pages.
+- **Your foundation works across sites.** At Level 3, the same components adapt to different brands via `theme.yml`. Ship once, theme anywhere.
 
 You don't need all of this on day one. Start where you are, convert what's worth converting, and stop when the return on effort drops. A Level 2 foundation with one hardcoded Footer is better than a Level 0 monolith or an overengineered Level 3 conversion of a section that changes once a year.
 

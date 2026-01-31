@@ -1,8 +1,8 @@
 # CCA Component Patterns
 
-When you build components for a CCA foundation, you're doing something that doesn't have a direct analogue in traditional React development. You're not building a site — the content author does that. You're not building a component library — there's no consuming developer calling your API. You're exposing a language of purpose and configuration to people who compose with it visually or through markdown.
+CCA components tend to be shorter, more reusable, and more composable than their traditional React equivalents. That's not because of extra abstraction — it's because CCA's separation of content, theming, and code removes entire categories of work from the component. No theme maps. No null checks. No hardcoded strings. What's left is the actual rendering logic.
 
-This creates a new design dimension: interfacing code with non-technical authorship and branding. The patterns in this guide are what's emerged from that dimension so far. More will surface as foundations get more ambitious.
+But the separation also introduces a design question that doesn't come up in traditional React: how do you shape a component's interface when the people using it aren't developers? The params you expose, the content structure you expect, the variants you support — these form a vocabulary that content authors compose with. Getting that vocabulary right produces tighter components and fewer edge cases. The patterns in this guide are what's emerged from that work so far. More will surface as foundations get more ambitious.
 
 If you're coming from a traditional React project — especially one with multiple pages that have similar-but-different sections — you'll want to read [Converting Existing Designs](./converting-existing-designs.md) first. That guide shows how to decompose pages into CCA components. This guide picks up where it leaves off: once you've identified the components, how do you design their interfaces?
 
@@ -398,9 +398,9 @@ One `theme` param, four coordinated maps. Every value scannable. Every combinati
 
 This has been covered elsewhere (see [Thinking in Contexts](./thinking-in-contexts.md) and [Converting Existing Designs](./converting-existing-designs.md)), but it's worth reinforcing here because the component patterns above depend on it.
 
-Params describe purpose, not CSS. The vocabulary is for content authors — people who think in terms of "layout", "style", "spacing", "columns", not `grid-cols-3` or `py-8 lg:py-16`. A `spacing: comfortable` param isn't a CSS shortcut; it's a semantic choice that the foundation designer maps to whatever values serve the design.
+Params describe purpose, not CSS. A `spacing: comfortable` param isn't a CSS shortcut; it's a semantic choice that the foundation designer maps to whatever values serve the design. `layout: masonry` isn't `columns: 3` with extra steps; it's a named rendering strategy that encapsulates responsive behavior, gap logic, and break-inside rules.
 
-The constraint is generative. When you can't expose `className` or `style` directly, you're forced to ask: what are the *meaningful* variations of this component? What does a content author actually need to control? This produces a better interface than "pass whatever CSS you want" — because the answers become the param options, and those options are all tested, all responsive, all compatible with the foundation's design system.
+The constraint is generative — like writing testable code. When you can't expose `className` or `style` directly, you're forced to ask: what are the *meaningful* variations of this component? The answers become the param options, and those options are all tested, all responsive, all compatible with the foundation's design system. You end up with a tighter interface than "pass whatever CSS you want" — fewer invalid states, less surface area to maintain.
 
 But — as discussed in the [Dispatcher](#the-dispatcher) section — "purpose-based" doesn't mean "abstractly named." A Gallery's `layout: masonry` is purpose-based: the author wants a masonry look. A Hero's `variant: homepage` is also purpose-based: the author wants the homepage look. Both are meaningful to the person choosing them. The line is between intent ("I want this layout") and implementation ("give me `grid-cols-3` and `py-8`"). Variant names that came from real pages in a real site are intent — the author recognizes them. CSS fragments are implementation — the author shouldn't see them.
 
