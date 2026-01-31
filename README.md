@@ -136,13 +136,12 @@ export default function Hero({ content }) {
 
   return (
     <section className="py-20 text-center">
-      <h1 className="text-4xl font-bold" style={{ color: 'var(--heading)' }}>{title}</h1>
-      <p className="text-xl" style={{ color: 'var(--text)' }}>{paragraphs[0]}</p>
+      <h1 className="text-4xl font-bold">{title}</h1>
+      <p className="text-xl text-gray-600">{paragraphs[0]}</p>
       {links[0] && (
         <a
           href={links[0].href}
-          className="mt-8 px-6 py-3 rounded inline-block"
-          style={{ backgroundColor: 'var(--link)', color: 'white' }}
+          className="mt-8 px-6 py-3 bg-blue-600 text-white rounded inline-block"
         >
           {links[0].label}
         </a>
@@ -152,7 +151,7 @@ export default function Hero({ content }) {
 }
 ```
 
-Standard React. Semantic CSS variables (`var(--heading)`, `var(--text)`) adapt automatically when content authors set `theme: dark` in frontmatter — no conditional logic needed. The `{ content, params }` interface is only for _section types_ — components that content creators select in markdown frontmatter. Everything else uses regular React props.
+Standard React. Standard Tailwind. The `{ content, params }` interface is only for _section types_ — components that content creators select in markdown frontmatter. Everything else uses regular React props.
 
 ## Next Steps
 
