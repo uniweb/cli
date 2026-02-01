@@ -49,7 +49,6 @@ When `meta.js` is present:
 | `background` | No | `false` |
 | `data` | No | — |
 | `content` | No | — |
-| `schemas` | No | — |
 | `params` | No | — |
 | `presets` | No | — |
 
@@ -68,7 +67,9 @@ export default {
   purpose: 'Impress',
   background: true,
 
-  data: 'events:1',  // optional: dynamic data from CMS
+  data: {
+    entity: 'events:1',  // optional: dynamic data from CMS
+  },
 
   content: {
     title: 'Headline',
@@ -148,8 +149,8 @@ function Hero({ content, params, block, website }) {
 |--------|-------------|--------------|
 | Markdown content | `content: { ... }` | `content.title`, `content.paragraphs`, `content.items` |
 | Frontmatter params | `params: { ... }` | `params.paramName` |
-| CMS entities | `data: 'events:5'` | `block.data.events` |
-| JSON blocks | `schemas: { ... }` | `block.data['schema-name']` |
+| CMS entities | `data: { entity: 'events:5' }` | `block.data.events` |
+| JSON blocks | `data: { schemas: { ... } }` | `block.data['schema-name']` |
 
 ---
 
@@ -312,12 +313,26 @@ background:
 
 ### Data
 
-The `data` field declares what dynamic/CMS entity types the component accepts:
+The `data` field groups all data-related configuration: CMS entity binding, schemas for tagged blocks, and cascading control.
 
 ```javascript
-data: 'events',       // unlimited events
-data: 'articles:5',   // up to 5 articles
-data: 'project:1',    // exactly 1 project
+data: {
+  entity: 'events:6',           // CMS entity type and limit
+  schemas: { ... },             // Structure for tagged code blocks
+  inherit: ['team'],            // Accept cascaded data from page/site fetches
+}
+```
+
+All subfields are optional — include only what your component needs.
+
+#### Entity binding
+
+Declares what CMS entity types the component works with:
+
+```javascript
+data: { entity: 'events' }       // unlimited events
+data: { entity: 'articles:5' }   // up to 5 articles
+data: { entity: 'project:1' }    // exactly 1 project
 ```
 
 #### Standard Entity Types
@@ -339,7 +354,9 @@ export default {
   title: 'Event Grid',
   category: 'showcase',
 
-  data: 'events:6',
+  data: {
+    entity: 'events:6',
+  },
 
   content: {
     title: 'Section title',
@@ -482,20 +499,22 @@ For structured data in markdown, use tagged code blocks:
 ```
 ````
 
-Define the schema in meta.js:
+Define the schema inside the `data` field in meta.js:
 
 ```javascript
-schemas: {
-  'nav-links': {
-    label: { type: 'string' },
-    href: { type: 'string' },
-    type: {
-      type: 'select',
-      options: ['plain', 'button', 'dropdown'],
-      default: 'plain',
+data: {
+  schemas: {
+    'nav-links': {
+      label: { type: 'string' },
+      href: { type: 'string' },
+      type: {
+        type: 'select',
+        options: ['plain', 'button', 'dropdown'],
+        default: 'plain',
+      },
+      icon: 'string',  // Shorthand for { type: 'string' }
+      children: { type: 'array', of: 'nav-links' },  // Recursive
     },
-    icon: 'string',  // Shorthand for { type: 'string' }
-    children: { type: 'array', of: 'nav-links' },  // Recursive
   },
 }
 ```

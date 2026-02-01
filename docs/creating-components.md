@@ -404,11 +404,13 @@ export default {
   title: 'Pricing Table',
   category: 'showcase',
 
-  schemas: {
-    plans: {
-      name: 'string',
-      price: 'number',
-      features: { type: 'array', of: 'string' },
+  data: {
+    schemas: {
+      plans: {
+        name: 'string',
+        price: 'number',
+        features: { type: 'array', of: 'string' },
+      },
     },
   },
 }

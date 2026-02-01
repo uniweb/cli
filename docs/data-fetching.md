@@ -12,7 +12,7 @@ The `fetch` property lets you load structured data into `content.data`. It works
 | **Page** | `page.yml` | Cascaded to all sections on that page |
 | **Site** | `site.yml` | Cascaded to all pages and sections |
 
-Data cascades down: site → page → section. Components opt into receiving cascaded data via `inheritData` in their `meta.js`.
+Data cascades down: site → page → section. Components opt into receiving cascaded data via `data.inherit` in their `meta.js`.
 
 ---
 
@@ -110,11 +110,13 @@ Data flows from site → page → section. Components must opt in to receive cas
 export default {
   title: 'Team Grid',
 
-  // Accept all cascaded data
-  inheritData: true,
+  data: {
+    // Accept all cascaded data
+    inherit: true,
 
-  // Or be selective
-  inheritData: ['person', 'config'],
+    // Or be selective
+    inherit: ['person', 'config'],
+  },
 }
 ```
 
@@ -362,10 +364,12 @@ import { person } from '@uniweb/schemas'
 
 export default {
   title: 'Team Grid',
-  schemas: {
-    team: person,  // Validate fetched data against person schema
+  data: {
+    schemas: {
+      team: person,  // Validate fetched data against person schema
+    },
+    inherit: ['team'],
   },
-  inheritData: ['team'],
 }
 ```
 
@@ -418,7 +422,9 @@ type: TeamGrid
 // meta.js
 export default {
   title: 'Team Grid',
-  inheritData: true,
+  data: {
+    inherit: true,
+  },
 }
 ```
 
@@ -445,7 +451,7 @@ fetch:
 ```
 
 ```js
-// Any component with inheritData: ['config']
+// Any component with data: { inherit: ['config'] }
 export function Footer({ content }) {
   const config = content.data.config || {}
   return <footer>{config.copyright}</footer>
