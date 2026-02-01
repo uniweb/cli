@@ -320,7 +320,6 @@ data: {
   entity: 'events:6',           // CMS entity type and limit
   schemas: { ... },             // Structure for tagged code blocks
   inherit: ['team'],            // Accept cascaded data from page/site fetches
-  eager: true,                  // Render before data arrives (see below)
 }
 ```
 
@@ -376,16 +375,9 @@ export default {
 
 The component receives entities via props and renders them alongside markdown content.
 
-#### Eager rendering
+#### Loading states
 
-When a data fetch runs at runtime (`prerender: false`), the component normally waits for data before rendering. With `eager: true`, the component renders immediately — static content (title, paragraphs, items) is available on first render, while `content.data` starts empty and fills in when the fetch completes.
-
-```javascript
-data: {
-  entity: 'articles:6',
-  eager: true,
-}
-```
+When a data fetch runs at runtime (`prerender: false`), the component renders immediately — static content (title, paragraphs, items) is available on first render, while `content.data` populates when the fetch completes.
 
 The component checks `block.dataLoading` to know whether a fetch is still in progress:
 

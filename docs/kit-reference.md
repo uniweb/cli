@@ -294,7 +294,7 @@ function ArticleList({ content, block }) {
 | `true` | A runtime fetch is in progress |
 | `false` / `undefined` | Data is available (or no fetch configured) |
 
-This hook watches `block.dataLoading` and triggers a re-render when the fetch completes. Use it with section types that declare `eager: true` in their `data` field — see [Component Metadata](./component-metadata.md#eager-rendering).
+This hook watches `block.dataLoading` and triggers a re-render when the fetch completes. See [Component Metadata](./component-metadata.md#loading-states) for details.
 
 ---
 

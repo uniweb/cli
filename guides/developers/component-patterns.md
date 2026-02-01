@@ -359,14 +359,13 @@ The component handles both. The rendering code after normalization is identical 
 
 ## Loading States
 
-When a section type fetches data at runtime (`prerender: false`), there's a gap between the first render and data arrival. Without handling it, the page collapses — header and footer slam together while the section has nothing to show. With `eager: true` in the data field, the component renders immediately and controls its own loading UI.
+When a section type fetches data at runtime (`prerender: false`), there's a gap between the first render and data arrival. Without handling it, the page collapses — header and footer slam together while the section has nothing to show. The component renders immediately and controls its own loading UI.
 
 ```js
 // meta.js
 export default {
   data: {
     entity: 'articles:6',
-    eager: true,
   },
 }
 ```
