@@ -290,7 +290,7 @@ The Hero has a "gradient" variant that renders its own background — a gradient
 The solution is for the Hero to set its own context:
 
 ```jsx
-const isGradient = variant === 'gradient' && !_hasBackground
+const isGradient = variant === 'gradient' && !block.hasBackground
 
 return (
   <div className={cn(
@@ -308,7 +308,7 @@ Adding `context-dark` on the component's own root element overrides the wrapper'
 
 This is justified, but it's exceptional. Most components should never set their own context — that's the content author's job via `theme:` in frontmatter. The Hero does it because the gradient *is* visual context, and it would be wrong to force content authors to remember "if you set variant to gradient, also set theme to dark."
 
-When the content author *does* set a background (via the `background:` frontmatter), the Hero skips the gradient entirely — `_hasBackground` is true, the engine's Background component handles the visual, and the `theme:` frontmatter controls the context as usual.
+When the content author *does* set a background (via the `background:` frontmatter), the Hero skips the gradient entirely — `block.hasBackground` is true, the engine's Background component handles the visual, and the `theme:` frontmatter controls the context as usual.
 
 ---
 
