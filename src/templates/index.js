@@ -2,8 +2,10 @@
  * Template resolution and application for the CLI
  */
 
-import { rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { readFile, rm } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
+import { homedir } from 'node:os'
 
 import { parseTemplateId, getTemplateDisplayName, BUILTIN_TEMPLATES, OFFICIAL_TEMPLATES } from './resolver.js'
 import { fetchNpmTemplate } from './fetchers/npm.js'
@@ -46,6 +48,9 @@ export async function resolveTemplate(identifier, options = {}) {
 
     case 'github':
       return resolveGitHubTemplate(parsed, options)
+
+    case 'local':
+      return resolveLocalTemplate(parsed.path, options)
 
     default:
       throw new Error(`Unknown template type: ${parsed.type}`)
@@ -115,6 +120,46 @@ async function resolveGitHubTemplate(parsed, options = {}) {
     cleanup: async () => {
       await rm(tempDir, { recursive: true, force: true }).catch(() => {})
     },
+  }
+}
+
+/**
+ * Resolve a local template from a filesystem path
+ */
+async function resolveLocalTemplate(templatePath, options = {}) {
+  const { onProgress } = options
+
+  // Expand ~ to home directory
+  let resolvedPath = templatePath.startsWith('~')
+    ? templatePath.replace(/^~/, homedir())
+    : templatePath
+
+  // Resolve to absolute path
+  resolvedPath = resolve(resolvedPath)
+
+  if (!existsSync(resolvedPath)) {
+    throw new Error(`Local template not found: ${resolvedPath}`)
+  }
+
+  onProgress?.(`Using local template: ${resolvedPath}`)
+
+  // Read template.json for name
+  const metaPath = join(resolvedPath, 'template.json')
+  let name = templatePath
+  if (existsSync(metaPath)) {
+    try {
+      const meta = JSON.parse(await readFile(metaPath, 'utf-8'))
+      name = meta.name || templatePath
+    } catch {
+      // Use path as name if template.json can't be parsed
+    }
+  }
+
+  return {
+    type: 'local',
+    name,
+    path: resolvedPath,
+    cleanup: null,
   }
 }
 

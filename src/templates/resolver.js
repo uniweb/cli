@@ -6,7 +6,7 @@
 export const BUILTIN_TEMPLATES = ['single', 'multi']
 
 // Official templates from @uniweb/templates package (downloaded from GitHub releases)
-export const OFFICIAL_TEMPLATES = ['marketing', 'academic', 'docs', 'international']
+export const OFFICIAL_TEMPLATES = ['marketing', 'academic', 'docs', 'international', 'dynamic']
 
 /**
  * Parse a template identifier and determine its source type
@@ -70,6 +70,15 @@ export function parseTemplateId(identifier) {
     }
   }
 
+  // Local path (relative, absolute, or home directory)
+  if (identifier.startsWith('./') || identifier.startsWith('../') ||
+      identifier.startsWith('/') || identifier.startsWith('~')) {
+    return {
+      type: 'local',
+      path: identifier,
+    }
+  }
+
   // Unscoped name - assume it's an npm package with @uniweb/template- prefix
   // This allows users to type `uniweb create foo --template blog` for @uniweb/template-blog
   return {
@@ -110,6 +119,8 @@ export function getTemplateDisplayName(parsed) {
       return parsed.package
     case 'github':
       return `${parsed.owner}/${parsed.repo}${parsed.ref ? `#${parsed.ref}` : ''}`
+    case 'local':
+      return `Local: ${parsed.path}`
     default:
       return 'Unknown'
   }

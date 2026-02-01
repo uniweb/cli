@@ -388,6 +388,7 @@ ${colors.bright}Template Types:${colors.reset}
   single                        One site + one foundation (default)
   multi                         Multiple sites and foundations
   marketing                     Official marketing template
+  ./path/to/template            Local directory
   @scope/template-name          npm package
   github:user/repo              GitHub repository
   https://github.com/user/repo  GitHub URL
@@ -397,6 +398,7 @@ ${colors.bright}Examples:${colors.reset}
   npx uniweb create my-project --template single
   npx uniweb create my-project --template marketing
   npx uniweb create my-project --template marketing --variant tailwind3
+  npx uniweb create my-project --template ./my-template
   npx uniweb create my-project --template github:myorg/template
   npx uniweb build
   npx uniweb build --target foundation
