@@ -319,11 +319,23 @@ The `data` field groups all data-related configuration: CMS entity binding, sche
 data: {
   entity: 'events:6',           // CMS entity type and limit
   schemas: { ... },             // Structure for tagged code blocks
-  inherit: ['team'],            // Accept cascaded data from page/site fetches
+  inherit: ['team'],            // Accept cascaded data from page/site fetches (optional)
 }
 ```
 
 All subfields are optional — include only what your component needs.
+
+**Auto-derived inheritance:** When you declare `entity`, the build automatically derives `inherit` from the entity type. You don't need both:
+
+```javascript
+// ✅ Just declare entity — inherit is auto-derived as ['articles']
+data: { entity: 'articles:6' }
+
+// ❌ Redundant — inherit is already implied by entity
+data: { entity: 'articles:6', inherit: ['articles'] }
+```
+
+Use explicit `inherit` only when you need to override the default — for example, `inherit: false` to opt out, `inherit: true` to inherit all data, or `inherit: ['articles', 'featured']` when you need additional schemas beyond the entity type.
 
 #### Entity binding
 
