@@ -12,6 +12,10 @@ If you're looking for content authoring (markdown, frontmatter, site configurati
 
 What a Uniweb project looks like and why almost everything in it is standard React and Vite. The project structure defines the architecture — `sections/` is the component catalog, `pages/` is the routing table, and markdown frontmatter connects them. Start here if you're new to the framework.
 
+### [Foundation Categories](./foundation-categories.md)
+
+Foundations range from bundled (standard React patterns, coupled to one site) to portable (site controls data and theming, foundation works everywhere). Most land in between. This guide names the trade-offs and helps you decide how far along the spectrum to go — and when to move further.
+
 ### [Thinking in Contexts](./thinking-in-contexts.md)
 
 How semantic theming replaces hardcoded color maps. Why you write less code and get a more portable foundation. When the rules apply — and the two cases where they don't.
@@ -39,7 +43,6 @@ How data flows from fetch configs to components without hooks or loading logic. 
 These guides will grow as we convert more foundations and discover more patterns. Future topics may include:
 
 - **The Content Contract** — How `meta.js` declares what a component needs, and why `prepare-props` means you never write null checks
-- **Portability in Practice** — Shipping a foundation that works across organizations with different branding, content, and locales
 
 ---
 

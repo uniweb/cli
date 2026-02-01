@@ -4,6 +4,8 @@ Your components need data — articles from a CMS, team members from JSON, produ
 
 This guide covers how data flows from a fetch config to your components, how auto-wiring saves you from repeating yourself, and how detail queries avoid fetching a full collection when you only need one item.
 
+> This guide describes the **portable** approach to data — where the site declares data sources and the foundation reads from `content.data`. If your foundation is bundled or partially bundled, standard React data fetching (`useEffect` + `fetch()`) still works. See [Foundation Categories](./foundation-categories.md) for when each approach makes sense.
+
 ---
 
 ## The Basics: A Page That Fetches Data

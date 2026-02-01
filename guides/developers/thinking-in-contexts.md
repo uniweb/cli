@@ -4,6 +4,8 @@ When you build components for a Uniweb foundation, you'll notice something is mi
 
 This guide explains how CCA's semantic theming works, what it gives you, and the rare cases where you need to step outside it.
 
+> This guide describes the **portable** approach to theming — where the site controls colors via `theme.yml` and components use semantic CSS tokens. Bundled foundations can hardcode Tailwind color classes directly. Semantic theming is less code either way, but it's a choice. See [Foundation Categories](./foundation-categories.md) for the trade-offs.
+
 ---
 
 ## The Old Way
