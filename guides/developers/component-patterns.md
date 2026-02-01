@@ -357,6 +357,55 @@ The component handles both. The rendering code after normalization is identical 
 
 ---
 
+## Loading States
+
+When a section type fetches data at runtime (`prerender: false`), there's a gap between the first render and data arrival. Without handling it, the page collapses — header and footer slam together while the section has nothing to show. With `eager: true` in the data field, the component renders immediately and controls its own loading UI.
+
+```js
+// meta.js
+export default {
+  data: {
+    entity: 'articles:6',
+    eager: true,
+  },
+}
+```
+
+The component checks `block.dataLoading` to decide what to render:
+
+```jsx
+import { useDataLoading, DataPlaceholder } from '@uniweb/kit'
+
+export function ArticleList({ content, block, params }) {
+  const { loading } = useDataLoading(block)
+
+  if (loading) {
+    return (
+      <section>
+        <h2 style={{ color: 'var(--heading)' }}>{content.title}</h2>
+        <DataPlaceholder lines={4} />
+      </section>
+    )
+  }
+
+  const articles = content.data.articles || []
+  return (
+    <section>
+      <h2 style={{ color: 'var(--heading)' }}>{content.title}</h2>
+      <div className="grid md:grid-cols-2 gap-6">
+        {articles.map((a, i) => <ArticleCard key={i} article={a} />)}
+      </div>
+    </section>
+  )
+}
+```
+
+Static content — title, paragraphs, items from markdown — is available on the first render. Only the fetched data in `content.data` is pending. That's why the example renders the title immediately and only wraps the data-dependent part in a loading check. The component holds its space, the page doesn't jump, and the content author's headline is visible from the start.
+
+`DataPlaceholder` is a convenience — animated pulse bars from kit. If the design calls for a custom skeleton, use `block.dataLoading` directly or the `useDataLoading` hook and render whatever fits.
+
+---
+
 ## Conditional Properties
 
 When a component has many params, the author's editing UI can become cluttered with options that aren't relevant. Conditional properties hide params based on the current value of other params.

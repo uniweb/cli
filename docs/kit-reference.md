@@ -272,6 +272,33 @@ function LazyImage({ src, alt }) {
 | `triggerOnce` | boolean | `false` | Only trigger once |
 | `rootMargin` | string | `'0px'` | Margin around root |
 
+### useDataLoading
+
+Track whether a block's runtime data fetch is in progress.
+
+```jsx
+import { useDataLoading } from '@uniweb/kit'
+
+function ArticleList({ content, block }) {
+  const { loading } = useDataLoading(block)
+
+  if (loading) {
+    return <DataPlaceholder lines={4} />
+  }
+
+  const articles = content.data.articles || []
+  return <ArticleGrid articles={articles} />
+}
+```
+
+#### Return Value
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `loading` | boolean | `true` while a runtime fetch is in progress |
+
+This hook watches `block.dataLoading` and triggers a re-render when the fetch completes. Use it with section types that declare `eager: true` in their `data` field — see [Component Metadata](./component-metadata.md#eager-rendering).
+
 ---
 
 ## Data Classes (from @uniweb/core)
@@ -432,6 +459,10 @@ function Hero({ content, params, block }) {
 | `website` | Website | Parent website |
 | `childBlocks` | array | Nested blocks |
 | `data` | object | Fetched/cascaded data |
+| `dataLoading` | boolean | Runtime data fetch in progress |
+| `hasBackground` | boolean | Engine renders a background behind this section |
+| `themeName` | string | Color context (`light`, `medium`, `dark`) |
+| `state` | any | Persistent component state |
 
 #### Methods
 
@@ -517,6 +548,33 @@ function Grid({ params }) {
   // columns = 3 if not specified
 }
 ```
+
+### DataPlaceholder
+
+A ready-made loading placeholder for sections waiting on runtime data. Renders animated pulse bars.
+
+```jsx
+import { DataPlaceholder } from '@uniweb/kit'
+
+function EventGrid({ content, block }) {
+  const { loading } = useDataLoading(block)
+
+  if (loading) {
+    return <DataPlaceholder lines={5} />
+  }
+
+  return <div>{/* render events */}</div>
+}
+```
+
+#### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `lines` | number | `3` | Number of placeholder bars to render |
+| `className` | string | `''` | Additional CSS classes |
+
+Uses `animate-pulse` and the `--border` CSS variable for styling. Includes `role="status"` and `aria-label="Loading"` for accessibility.
 
 ---
 
