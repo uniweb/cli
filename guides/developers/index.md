@@ -28,6 +28,10 @@ How to organize a foundation's `src/` directory — `sections/` for content inte
 
 How to build a Layout component that controls page structure — sticky headers, sidebars, mobile drawers, responsive panels. When you need one, what the runtime gives you, and why Layout components are responsible for semantic HTML wrappers.
 
+### [Working with Data](./working-with-data.md)
+
+How data flows from fetch configs to components without hooks or loading logic. Auto-wiring resolves data for template pages by checking the parent. Detail queries avoid fetching a full collection when a user lands directly on a detail page. The cache makes SPA navigation cheap.
+
 ---
 
 ## What's Coming
@@ -35,7 +39,6 @@ How to build a Layout component that controls page structure — sticky headers,
 These guides will grow as we convert more foundations and discover more patterns. Future topics may include:
 
 - **The Content Contract** — How `meta.js` declares what a component needs, and why `prepare-props` means you never write null checks
-- **Data and Collections** — Working with fetched data, collection items, and the boundary between static and dynamic content
 - **Portability in Practice** — Shipping a foundation that works across organizations with different branding, content, and locales
 
 ---
