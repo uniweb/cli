@@ -75,6 +75,7 @@ fetch:
   prerender: true            # Build-time fetch (default: true)
   merge: false               # Replace existing data (default: false)
   transform: data.items      # Extract nested path from response
+  detail: rest               # Single-entity fetch for dynamic routes (optional)
 ```
 
 ### Options
@@ -87,6 +88,7 @@ fetch:
 | `prerender` | `true` | Fetch at build time (SSG) vs runtime |
 | `merge` | `false` | Combine with existing data vs replace |
 | `transform` | — | Dot-path to extract from response (e.g., `data.items`) |
+| `detail` | — | How to fetch a single entity on [dynamic routes](./dynamic-routes.md#detail-queries). Values: `rest`, `query`, or a custom URL pattern |
 
 ### Schema inference
 

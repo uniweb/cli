@@ -399,6 +399,79 @@ dist/
 
 ---
 
+## Detail Queries
+
+When a user navigates from a list page to a detail page (e.g., `/blog` → `/blog/my-post`), the collection data is already cached from the list page. The runtime extracts the matching item — no extra fetch needed.
+
+But when a user **lands directly** on a detail page (e.g., bookmarked `/blog/my-post`), the collection isn't cached. By default, the runtime fetches the full collection just to extract one item. For large collections or expensive API calls, this is wasteful.
+
+The `detail` field on a fetch config tells the runtime how to fetch just the single entity:
+
+```yaml
+# pages/blog/page.yml
+title: Blog
+fetch:
+  url: https://api.example.com/articles
+  schema: articles
+  detail: rest
+```
+
+### Conventions
+
+| Value | URL derived | Example for slug=`my-post` |
+|-------|------------|---------------------------|
+| `rest` | `{url}/{value}` | `https://api.example.com/articles/my-post` |
+| `query` | `{url}?{param}={value}` | `https://api.example.com/articles?slug=my-post` |
+| Custom pattern | Replace `{param}` placeholder | `https://api.example.com/article/{slug}` → `.../article/my-post` |
+
+### Resolution order
+
+1. Collection already cached? → extract item locally. No fetch needed.
+2. `detail` defined? → fetch just the one entity.
+3. No `detail`? → fetch the full collection, cache it, extract the item.
+
+### What the component receives
+
+From a detail query, the component receives only the singular key:
+
+```js
+content.data.article   // { slug: 'my-post', title: '...' }
+content.data.articles  // undefined (no collection fetched)
+```
+
+From a cached collection (the normal SPA navigation case), both are available:
+
+```js
+content.data.article   // { slug: 'my-post', title: '...' }
+content.data.articles  // [...all items...]
+```
+
+Components that already handle `if (!article) return ...` work in both cases.
+
+### Examples
+
+```yaml
+# REST convention — GET /api/articles/{slug}
+fetch:
+  url: https://api.example.com/articles
+  schema: articles
+  detail: rest
+
+# Query param — GET /api/articles?slug={slug}
+fetch:
+  url: https://api.example.com/articles
+  schema: articles
+  detail: query
+
+# Custom URL pattern
+fetch:
+  url: https://api.example.com/articles
+  schema: articles
+  detail: https://api.example.com/article/{slug}
+```
+
+---
+
 ## Troubleshooting
 
 ### "No data found for dynamic page"
