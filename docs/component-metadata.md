@@ -400,7 +400,7 @@ function ArticleList({ content, block }) {
 }
 ```
 
-This prevents layout shifts — instead of the page collapsing while data loads, the component holds its space with a placeholder. See [Kit Reference](./kit-reference.md) for `useDataLoading` and `DataPlaceholder`.
+This prevents layout shifts — instead of the page collapsing while data loads, the component holds its space with a placeholder. See [Kit Reference](./kit-reference.md) for `block.dataLoading` and `DataPlaceholder`.
 
 ---
 

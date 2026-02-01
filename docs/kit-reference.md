@@ -272,17 +272,15 @@ function LazyImage({ src, alt }) {
 | `triggerOnce` | boolean | `false` | Only trigger once |
 | `rootMargin` | string | `'0px'` | Margin around root |
 
-### useDataLoading
+### block.dataLoading
 
-Track whether a block's runtime data fetch is in progress.
+Check whether a block's runtime data fetch is in progress. This is a boolean property on the `block` instance, set by the runtime's `BlockRenderer`.
 
 ```jsx
-import { useDataLoading } from '@uniweb/kit'
+import { DataPlaceholder } from '@uniweb/kit'
 
 function ArticleList({ content, block }) {
-  const { loading } = useDataLoading(block)
-
-  if (loading) {
+  if (block.dataLoading) {
     return <DataPlaceholder lines={4} />
   }
 
@@ -291,11 +289,10 @@ function ArticleList({ content, block }) {
 }
 ```
 
-#### Return Value
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `loading` | boolean | `true` while a runtime fetch is in progress |
+| Value | Meaning |
+|-------|---------|
+| `true` | A runtime fetch is in progress |
+| `false` / `undefined` | Data is available (or no fetch configured) |
 
 This hook watches `block.dataLoading` and triggers a re-render when the fetch completes. Use it with section types that declare `eager: true` in their `data` field — see [Component Metadata](./component-metadata.md#eager-rendering).
 
@@ -557,9 +554,7 @@ A ready-made loading placeholder for sections waiting on runtime data. Renders a
 import { DataPlaceholder } from '@uniweb/kit'
 
 function EventGrid({ content, block }) {
-  const { loading } = useDataLoading(block)
-
-  if (loading) {
+  if (block.dataLoading) {
     return <DataPlaceholder lines={5} />
   }
 

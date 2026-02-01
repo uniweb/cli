@@ -374,12 +374,10 @@ export default {
 The component checks `block.dataLoading` to decide what to render:
 
 ```jsx
-import { useDataLoading, DataPlaceholder } from '@uniweb/kit'
+import { DataPlaceholder } from '@uniweb/kit'
 
 export function ArticleList({ content, block, params }) {
-  const { loading } = useDataLoading(block)
-
-  if (loading) {
+  if (block.dataLoading) {
     return (
       <section>
         <h2 style={{ color: 'var(--heading)' }}>{content.title}</h2>
@@ -402,7 +400,7 @@ export function ArticleList({ content, block, params }) {
 
 Static content — title, paragraphs, items from markdown — is available on the first render. Only the fetched data in `content.data` is pending. That's why the example renders the title immediately and only wraps the data-dependent part in a loading check. The component holds its space, the page doesn't jump, and the content author's headline is visible from the start.
 
-`DataPlaceholder` is a convenience — animated pulse bars from kit. If the design calls for a custom skeleton, use `block.dataLoading` directly or the `useDataLoading` hook and render whatever fits.
+`DataPlaceholder` is a convenience — animated pulse bars from kit. If the design calls for a custom skeleton, read `block.dataLoading` directly and render whatever fits.
 
 ---
 
