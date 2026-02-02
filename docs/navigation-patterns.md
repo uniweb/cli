@@ -409,27 +409,54 @@ For auto-generated tables of contents from page headings, see the [Content Struc
 
 ## Active State Detection
 
-Components often need to highlight the current page in navigation. Use the routing hooks from `@uniweb/kit`:
+Components often need to highlight the current page in navigation. Use `useActiveRoute` from `@uniweb/kit`:
 
 ```jsx
-import { useRouting } from '@uniweb/kit'
+import { useActiveRoute, Link } from '@uniweb/kit'
 
 function NavLink({ href, label }) {
-  const { route } = useRouting()
-  const isActive = route === href || route.startsWith(href + '/')
+  const { isActive, isActiveOrAncestor } = useActiveRoute()
+
+  // Exact match for home, ancestor match for everything else
+  const active = href === '/' ? isActive(href) : isActiveOrAncestor(href)
 
   return (
-    <a
-      href={href}
-      className={isActive ? 'text-blue-600 font-semibold' : 'text-gray-600'}
-    >
+    <Link href={href} className={active ? 'text-blue-600 font-semibold' : 'text-gray-600'}>
       {label}
-    </a>
+    </Link>
   )
 }
 ```
 
-For the nav schema, you can set `current: true` in the YAML, or compute it dynamically in the component.
+Both `isActive` and `isActiveOrAncestor` accept page objects or route strings:
+
+```jsx
+isActive(page)                   // page object from getPageHierarchy()
+isActive('/blog')                // route string — same logic
+isActiveOrAncestor('/research')  // matches /research, /research/papers, etc.
+```
+
+This matters because headers often mix automatic pages (objects from `getPageHierarchy()`) with manual nav items (strings from `content.data`). With `useActiveRoute`, both work without branching:
+
+```jsx
+const renderNavItem = (item) => {
+  const href = item.href || item.navigableRoute
+  const label = item.label || item.title
+  const active = href === '/'
+    ? isActive(href)
+    : isActiveOrAncestor(href)
+
+  return <Link href={href} className={active ? 'active' : ''}>{label}</Link>
+}
+```
+
+**Why `useActiveRoute` over manual comparison:** Three things you'd otherwise have to handle yourself:
+
+1. **Route normalization and base path** — `isActiveOrAncestor` delegates to `Website.isRouteActiveOrAncestor()`, which normalizes slashes and handles subdirectory deployments (`base:` in `site.yml`). A raw `startsWith` comparison breaks when the site is deployed at `/docs/`.
+
+2. **Reactive during navigation** — The hook reads from React Router's `useLocation()`, which updates synchronously when the user clicks a link. `website.activePage` is a property on a vanilla JS singleton — it's correct but doesn't trigger React re-renders on its own. If you read `website.activePage` during render, you may see the previous page until the next render cycle.
+
+3. **Consistent API** — The same `isActive(pageOrString)` call works whether the nav item came from `getPageHierarchy()` (page objects) or from a `yaml:nav` block (plain strings with `href`). No branching on `item.route ? ... : ...` needed.
 
 ## See Also
 

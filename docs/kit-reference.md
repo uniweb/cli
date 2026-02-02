@@ -112,7 +112,17 @@ function NavItem({ page }) {
 | `isActive(pageOrRoute)` | function | Check exact match with current route |
 | `isActiveOrAncestor(pageOrRoute)` | function | Check if page or its children are active |
 
+Both `isActive` and `isActiveOrAncestor` accept a **page object** or a **route string**:
+
+```jsx
+isActive(page)          // page object with .route property
+isActive('/blog')       // route string — same comparison logic
+isActiveOrAncestor('/research')  // matches /research, /research/papers, etc.
+```
+
 Use `isActiveOrAncestor` for parent nav items that should highlight when child pages are active.
+
+**Why `useActiveRoute` instead of `website.activePage`:** The hook reads from React Router's location, which updates synchronously during navigation. `website.activePage` is a property on a vanilla JS singleton — it's always correct but isn't reactive in the React sense, so it won't trigger re-renders on its own. The hook also delegates route comparison to `Website.isRouteActive()`, which handles normalization and base path, and accepts both page objects and strings without branching.
 
 ### useVersion
 
