@@ -101,6 +101,8 @@ Every row is optional. You can use semantic theming without the data layer, or t
 
 The developer guides in this series focus primarily on portable patterns — semantic theming, CCA data fetching, meta.js params — because those are the conventions that need explaining. Standard React patterns don't need a Uniweb guide.
 
+To see these patterns in practice, the [Template Tour](./template-tour.md) maps each official template to its position on the spectrum — what conventions it adopts, what it keeps bundled, and why.
+
 When a guide describes a CCA convention (like declaring data sources in `page.yml` instead of calling `fetch()` directly), it's describing the portable approach. If your foundation is bundled or partially bundled, the standard React way still works. The runtime doesn't enforce portability — it enables it.
 
 ---
@@ -111,3 +113,4 @@ When a guide describes a CCA convention (like declaring data sources in `page.ym
 - [Working with Data](./working-with-data.md) — The portable data layer: fetch configs, auto-wiring, detail queries
 - [Thinking in Contexts](./thinking-in-contexts.md) — Semantic theming and how components adapt to any brand
 - [Converting Existing Designs](./converting-existing-designs.md) — Bringing existing React components into a foundation (the gradual migration from bundled to portable)
+- [Template Tour](./template-tour.md) — What each official template demonstrates and where it sits on the portability spectrum

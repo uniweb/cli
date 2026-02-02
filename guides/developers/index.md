@@ -16,6 +16,10 @@ What a Uniweb project looks like and why almost everything in it is standard Rea
 
 Foundations range from bundled (standard React patterns, coupled to one site) to portable (site controls data and theming, foundation works everywhere). Most land in between. This guide names the trade-offs and helps you decide how far along the spectrum to go — and when to move further.
 
+### [Template Tour](./template-tour.md)
+
+The official templates aren't just starter projects — they're worked examples of different positions on the portability spectrum. A matrix of what each template uses (and skips), with file paths for the patterns worth studying.
+
 ### [Thinking in Contexts](./thinking-in-contexts.md)
 
 How semantic theming replaces hardcoded color maps. Why you write less code and get a more portable foundation. When the rules apply — and the two cases where they don't.
