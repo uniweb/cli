@@ -757,6 +757,8 @@ const formConfig = content.data?.form || {}
 
 **Untagged code blocks** are not parsed—they stay as display-only code in the content sequence.
 
+For structured data served as JSON collections (blog posts, team members, events), see [Content Collections](./content-collections.md). That guide covers markdown collections, static JSON files, and runtime data — including how to choose the right approach for i18n.
+
 ## Dividers as Separators
 
 You can also use horizontal rules (`---`) to separate items instead of headings:

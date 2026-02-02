@@ -2,6 +2,37 @@
 
 Author content in markdown and automatically generate JSON data files. Collections let you maintain blog posts, team members, products, or any structured data as markdown files with frontmatter metadata.
 
+## Choosing Your Data Approach
+
+Uniweb supports three ways to bring structured data into components:
+
+**Markdown collections** (`library/` folders) — Best for content that authors write and
+maintain. Each item is a `.md` file with frontmatter metadata and rich body content. The
+build converts these to JSON with ProseMirror content. i18n extraction, freeform
+translation, co-located assets, and excerpt generation all work automatically.
+
+Use this for: blog posts, team members, case studies, event descriptions, FAQ items —
+anything where the content itself needs translation.
+
+**Static JSON files** (`public/data/`) — Best for structural data, demo/placeholder content,
+or data that mirrors what a CMS API would return. i18n extraction uses heuristics or an
+optional companion schema to identify translatable fields (see [i18n for JSON Data](#i18n-for-json-data) below).
+
+Use this for: template demo data, configuration-like data, or when prototyping a CMS
+integration.
+
+**Runtime data** (API fetch) — Best for production sites where a CMS or backend manages
+content and localization. The CMS serves pre-localized data. Components receive it the
+same way as static data (via `content.data`).
+
+Use this for: production sites with a CMS backend.
+
+**Rule of thumb:** If the data contains human-readable text that needs translation, prefer
+markdown collections. If it's structural or comes from an external system, use JSON or
+runtime fetch.
+
+---
+
 ## Overview
 
 Content collections separate **content authoring** from **page structure**:
@@ -540,6 +571,78 @@ During production build (`pnpm build`):
 | Unpublished items | Excluded from output |
 | No date field with date sort | Items sorted by filename |
 | Nested folders | Not supported (flat structure only) |
+
+---
+
+## i18n for JSON Data
+
+When collections are stored as static JSON in `public/data/`, the i18n extraction pipeline identifies translatable strings using one of two strategies:
+
+### Schema-guided extraction
+
+Provide a companion schema file alongside your JSON data. The schema tells the extractor exactly which fields contain translatable text:
+
+```
+public/data/
+├── events.json
+└── events.schema.js    # Companion schema
+```
+
+```js
+// events.schema.js
+export default {
+  name: 'event',
+  fields: {
+    title: { type: 'string' },                    // Extracted (string → translatable by default)
+    description: { type: 'markdown' },             // Extracted (markdown → always translatable)
+    slug: { type: 'string', translatable: false },  // Skipped (explicit opt-out)
+    type: { type: 'string', enum: ['workshop', 'talk'] },  // Skipped (enum → not translatable)
+    startDate: { type: 'datetime' },               // Skipped (datetime → never translatable)
+    location: {
+      type: 'object',
+      fields: {
+        name: { type: 'string' },                  // Extracted (nested string)
+        url: { type: 'url' },                      // Skipped (url → never translatable)
+      }
+    },
+    tags: {
+      type: 'array',
+      items: { type: 'string' }                    // Extracted (array of strings)
+    },
+  }
+}
+```
+
+**Type-based defaults:**
+
+| Type | Default | Override with |
+|------|---------|--------------|
+| `string` | translatable | `translatable: false` to skip |
+| `string` + `enum` | NOT translatable | `translatable: true` to include |
+| `markdown` | always translatable | — |
+| `number`, `boolean`, `date`, `datetime` | never | — |
+| `url`, `email`, `image` | never | — |
+| `object` | recurse into `fields` | — |
+| `array` | recurse into `items` | — |
+
+**Schema discovery order:**
+
+1. Companion file: `public/data/<name>.schema.js`
+2. Standard schema: matching name in `@uniweb/schemas` (with automatic singularization — `events` matches the `event` schema)
+3. No schema found → heuristic fallback
+
+### Heuristic extraction (no schema)
+
+When no schema is found, the extractor recursively walks the JSON data and extracts all strings that look like human-readable text. It skips:
+
+- **Structural field names** — `slug`, `id`, `type`, `status`, `href`, `url`, `email`, `icon`, `target`, dates, etc.
+- **Structural string patterns** — URLs, email addresses, ISO dates, hex colors, file paths, currency codes, plain numbers
+
+This works well for most data but may occasionally include strings you don't want translated (or miss strings you do). For precise control, provide a companion schema.
+
+### Item identification
+
+Collection items are identified by `slug`, `id`, or `name` (checked in that order). If none is found, the item is labeled `unknown` in the manifest. Make sure your JSON items have at least one of these fields for clear translation context.
 
 ---
 
