@@ -598,6 +598,63 @@ getLocaleLabel({ code: 'xx' })  // 'XX'
 console.log(LOCALE_DISPLAY_NAMES.fr)  // 'Français'
 ```
 
+### Icon Component
+
+Renders icons from multiple sources: library icons, URLs, direct SVG, or built-in icons.
+
+```jsx
+import { Icon } from '@uniweb/kit'
+
+// String ref (recommended for library icons)
+<Icon icon="lu-house" />         // dash format
+<Icon icon="lu:house" />         // colon format
+<Icon icon="lucide:house" />     // full library name
+
+// Explicit library + name
+<Icon library="lucide" name="house" />
+
+// From URL
+<Icon url="/icons/custom.svg" />
+
+// Direct SVG content
+<Icon svg="<svg>...</svg>" />
+
+// Built-in icons (no library needed)
+<Icon name="check" />
+<Icon name="close" />
+```
+
+#### Props
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `icon` | string/object | — | String ref (`"lu-house"`), URL, or `{ library, name }` object |
+| `library` | string | — | Icon library shortcode (`lu`, `hi`, `fi`, etc.) |
+| `name` | string | — | Icon name within the library |
+| `url` | string | — | URL to fetch SVG from |
+| `svg` | string | — | Direct SVG content |
+| `size` | string | `'24'` | Icon size in pixels |
+| `color` | string | — | Icon color (defaults to `currentColor`) |
+| `preserveColors` | boolean | `false` | Keep original SVG colors instead of using `currentColor` |
+| `className` | string | — | Additional CSS classes |
+
+The string `icon` prop is the most concise way to use library icons. The same string formats work in markdown (`![](lu-house)`), in YAML data (`icon: lu:house`), and in JSX (`<Icon icon="lu-house" />`).
+
+### parseIconRef
+
+Parse an icon string reference into its library and name parts.
+
+```jsx
+import { parseIconRef } from '@uniweb/kit'
+
+parseIconRef('lu-house')       // { library: 'lu', name: 'house' }
+parseIconRef('lu:house')       // { library: 'lu', name: 'house' }
+parseIconRef('lucide:house')   // { library: 'lucide', name: 'house' }
+parseIconRef('not-an-icon')    // null (prefix not a known library)
+```
+
+Useful when you receive icon strings from structured data (`content.data`) and need to pass them to components that expect separate library/name props.
+
 ### Link Component
 
 Client-side navigation with `page:` protocol support.

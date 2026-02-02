@@ -235,7 +235,7 @@ export function Hero({ content }) {
   const { pretitle, title, paragraphs, links, imgs } = content
 
   return (
-    <div className="pt-32 md:pt-48 max-w-7xl mx-auto px-6">
+    <div className="max-w-7xl mx-auto px-6">
       {pretitle && (
         <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold border tracking-wider uppercase mb-6 bg-stone-100 text-stone-700 border-stone-300">
           {pretitle}
@@ -263,6 +263,8 @@ export function Hero({ content }) {
     </div>
   )
 }
+
+Hero.className = 'pt-32 md:pt-48'
 ```
 
 And the markdown becomes real content:
@@ -283,6 +285,8 @@ You choose a collection — or commission a custom one. You arrange, decorate, a
 
 ![Hero illustration](./hero.jpg)
 ```
+
+Notice `Hero.className = 'pt-32 md:pt-48'` at the bottom. The runtime wraps every component in a `<section>` element — `Component.className` puts classes directly on that wrapper. Section-level styles like vertical padding, borders, and background color belong on the wrapper; the component's JSX only needs a content-constraint div (`max-w-7xl mx-auto px-6`). You can also change the wrapper element with `Component.as = 'nav'` (useful for headers and footers).
 
 **What moved where:**
 
@@ -391,7 +395,7 @@ export function Testimonial({ content }) {
   const { title, quotes, links } = content
 
   return (
-    <div className="bg-surface rounded-xl p-12">
+    <div className="max-w-4xl mx-auto px-6">
       <h2 className="text-heading text-3xl font-serif">{title}</h2>
       {quotes[0] && (
         <blockquote className="text-body text-lg font-serif italic border-l-2 border-edge pl-6">
@@ -406,6 +410,8 @@ export function Testimonial({ content }) {
     </div>
   )
 }
+
+Testimonial.className = 'py-16 md:py-24 rounded-xl'
 ```
 
 Set `theme: dark` and it's a dark card. Set `theme: light` and it's a light card. Set `theme: medium` and it's a gray card. Change the primary color in `theme.yml` and the accent colors shift everywhere. The component doesn't know or care.

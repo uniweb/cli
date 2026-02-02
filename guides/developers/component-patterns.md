@@ -103,6 +103,39 @@ export function Features({ content, params }) {
 
 CCA doesn't constrain your import graph. Import from `components/`, from npm packages, from `hooks/`, from sibling files inside the section folder — whatever your rendering needs.
 
+### Section-level styles with `Component.className`
+
+The runtime wraps every component in a `<section>` element (with context classes for theming). Section-level styles — vertical padding, borders, background color — go on this wrapper via `Component.className`, not as an extra wrapping div inside your component:
+
+```jsx
+export function Features({ content, params }) {
+  return (
+    <div className="max-w-6xl mx-auto px-4">
+      {/* ... content rendering ... */}
+    </div>
+  )
+}
+
+Features.className = 'py-16 md:py-24 border-b border-edge'
+```
+
+The component's JSX only needs the content-constraint div (`max-w-6xl mx-auto px-4`). The runtime produces:
+
+```html
+<section class="context-light py-16 md:py-24 border-b border-edge">
+  <div class="max-w-6xl mx-auto px-4">
+    ...
+  </div>
+</section>
+```
+
+You can also change the wrapper element with `Component.as`:
+
+```jsx
+Header.as = 'nav'       // wraps in <nav> instead of <section>
+Footer.as = 'footer'    // wraps in <footer>
+```
+
 ---
 
 ## The Dispatcher
@@ -614,6 +647,40 @@ export default Header
 ```
 
 Now the runtime wraps this component in `<nav>` instead of `<section>`. This is purely semantic — use it when the HTML element matters (`nav` for navigation, `article` for blog posts, `aside` for sidebars).
+
+### Header positioning: sticky vs fixed
+
+The natural approach for a sticky header is `sticky top-0` — the header stays in the document flow and sticks when you scroll. This is what most designs need:
+
+```jsx
+function Header({ content, params }) {
+  // ... rendering
+}
+
+Header.as = 'nav'
+Header.className = 'sticky top-0 z-30 bg-white/95 backdrop-blur'
+```
+
+A `fixed` header (out of the document flow, always at the top) is an unusual choice that requires a spacer div to push body content down. If your design needs it, make it a param so content authors can opt in — don't make it the default:
+
+```js
+// meta.js
+export default {
+  params: {
+    floating: {
+      type: 'boolean',
+      label: 'Float over content',
+      default: false,
+    },
+  },
+}
+```
+
+```jsx
+Header.className = params.floating ? 'fixed top-0 inset-x-0 z-50' : 'sticky top-0 z-30'
+```
+
+Prefer `sticky` as the default — it's simpler, doesn't need spacers, and matches what most designs expect.
 
 ### Custom Layouts
 

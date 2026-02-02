@@ -671,6 +671,50 @@ Start building with modern tools today.
 
 ---
 
+### Section with Background Color
+
+Any section can use a solid color as its background:
+
+```markdown
+---
+type: CTA
+theme: dark
+background: "#1e1e2e"
+---
+
+# Ready to Get Started?
+
+Join thousands of teams already using our platform.
+
+[Sign Up Free](/signup)
+```
+
+- You can use hex colors (`#1e1e2e`), CSS color names (`navy`), or theme variables (`var(--primary-900)`).
+- When using a dark background color, set `theme: dark` so the text colors adapt.
+
+---
+
+### Section with Gradient Background
+
+```markdown
+---
+type: Hero
+theme: dark
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%)
+---
+
+# Build Something Beautiful
+
+Modern tools for modern teams.
+
+[Get Started](/signup)
+```
+
+- Any CSS gradient works: `linear-gradient(...)`, `radial-gradient(...)`, `conic-gradient(...)`.
+- Combine with `theme: dark` for light text on dark gradients.
+
+---
+
 ### Hero with Background Video
 
 ```markdown

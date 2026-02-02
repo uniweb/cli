@@ -235,21 +235,43 @@ If you want to verify that your components truly adapt, try changing the primary
 
 ---
 
-## Components Don't Render `<section>`
+## The Runtime Wrapper
 
-One detail that's easy to miss: your component's root element should be a `<div>`, not a `<section>`. The runtime's BlockRenderer already wraps your component:
+One detail that's easy to miss: the runtime wraps your component in a `<section>` element with context classes. Your component doesn't render its own `<section>` — it renders the inner content:
 
 ```html
 <!-- BlockRenderer output -->
-<section class="context-dark" id="section-cta">
+<section class="context-dark py-16 md:py-24" id="section-cta">
   <!-- Your component renders here -->
-  <div class="py-16 px-6">
+  <div class="max-w-6xl mx-auto px-6">
     <h2 class="text-heading">...</h2>
   </div>
 </section>
 ```
 
-If your component also renders `<section>`, you get nested sections — semantically wrong and potentially competing for background/padding control. Render a `<div>`, a `<footer>`, an `<article>` — whatever is semantically appropriate for your content, but not `<section>`.
+Section-level styles — vertical padding, borders, background color — go on the wrapper via `Component.className`. The component's JSX only needs a content-constraint div:
+
+```jsx
+export function CTA({ content }) {
+  return (
+    <div className="max-w-6xl mx-auto px-6 text-center">
+      <h2 className="text-heading text-3xl font-bold">{content.title}</h2>
+      <p className="text-muted mt-4">{content.paragraphs[0]}</p>
+    </div>
+  )
+}
+
+CTA.className = 'py-16 md:py-24 border-b border-edge'
+```
+
+You can also change the wrapper element with `Component.as`:
+
+```jsx
+Header.as = 'nav'      // <nav> instead of <section>
+Footer.as = 'footer'   // <footer> instead of <section>
+```
+
+If your component also renders `<section>`, you get nested sections — semantically wrong and potentially competing for background/padding control.
 
 ---
 

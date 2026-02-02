@@ -252,6 +252,63 @@ Your template handles the dark mode toggle UI. Most templates show a sun/moon bu
 
 ---
 
+## Page Background
+
+By default, the page background is white. Many designs use a tinted background — a light gray, a warm off-white, or a subtle color wash. Set it in `theme.yml`:
+
+```yaml
+background: var(--neutral-100)
+```
+
+This accepts any CSS background value:
+
+```yaml
+# Solid color
+background: "#f8f9fa"
+
+# Theme variable
+background: var(--neutral-100)
+
+# Gradient
+background: linear-gradient(180deg, white, var(--neutral-50))
+```
+
+The page background shows through between sections and behind sections that use the default light theme. Sections with their own `theme:` or `background:` in frontmatter render on top of it.
+
+---
+
+## Inline Text Styles
+
+You can define named styles for inline text — accent colors, highlights, callouts — so content authors can use them without knowing CSS:
+
+```yaml
+inline:
+  accent:
+    color: var(--primary-600)
+  muted:
+    color: var(--text-muted)
+  callout:
+    color: var(--accent-600)
+    font-weight: 600
+  highlight:
+    background: var(--primary-100)
+    color: var(--primary-900)
+```
+
+Content authors use them with bracket syntax:
+
+```markdown
+Get [real-time data]{accent} from our [secure API]{muted}.
+
+This is [important]{callout} — please read carefully.
+
+The [key finding]{highlight} was confirmed by three studies.
+```
+
+Each name you define becomes available as an inline style. Because the values can reference theme variables (like `var(--primary-600)`), the styles adapt automatically when you change your brand colors or when text appears inside a dark section.
+
+---
+
 ## Code Block Colors
 
 If your site displays code examples, you can customize how they look:
@@ -303,6 +360,9 @@ colors:
   accent: "#dc2626"
   neutral: "#64748b"
 
+# Page background
+background: var(--neutral-100)
+
 # Section color contexts
 contexts:
   light:
@@ -320,6 +380,14 @@ fonts:
   heading: "Inter, sans-serif"
   import:
     - url: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700"
+
+# Inline text styles
+inline:
+  accent:
+    color: var(--primary-600)
+  highlight:
+    background: var(--primary-100)
+    color: var(--primary-900)
 
 # Dark mode support
 appearance:
