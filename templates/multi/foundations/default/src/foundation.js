@@ -1,5 +1,5 @@
 /**
- * {{projectName}} Default Foundation Configuration
+ * Default Foundation Configuration
  *
  * This file defines foundation-level configuration:
  * - vars: CSS custom properties that sites can override in theme.yml
