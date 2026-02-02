@@ -330,23 +330,77 @@ After converting a foundation to semantic theming, the typical component goes fr
 
 ## Quick Reference
 
-| Intent | Class | Token |
-|--------|-------|-------|
+### Semantic tokens
+
+These adapt automatically to the current context (light, medium, dark). Use these for everything that should respond to `theme:` in frontmatter.
+
+**Text:**
+
+| Intent | Tailwind class | CSS variable |
+|--------|---------------|-------------|
 | Primary heading | `text-heading` | `--heading` |
 | Body text | `text-body` | `--text` |
 | Secondary text | `text-muted` | `--text-muted` |
 | Tertiary/hint text | `text-subtle` | `--text-subtle` |
+
+**Surfaces:**
+
+| Intent | Tailwind class | CSS variable |
+|--------|---------------|-------------|
 | Section background | `bg-surface` | `--bg` |
 | Card/well background | `bg-surface-subtle` | `--bg-subtle` |
 | Hover/zebra background | `bg-surface-muted` | `--bg-muted` |
+
+**Borders:**
+
+| Intent | Tailwind class | CSS variable |
+|--------|---------------|-------------|
 | Primary border | `border-edge` | `--border` |
 | Subtle border | `border-edge-muted` | `--border-muted` |
+| Focus ring | `ring-ring` | `--ring` |
+
+**Links:**
+
+| Intent | Tailwind class | CSS variable |
+|--------|---------------|-------------|
 | Link text | `text-link` | `--link` |
 | Link hover | `hover:text-link-hover` | `--link-hover` |
+
+**Buttons:**
+
+| Intent | Tailwind class | CSS variable |
+|--------|---------------|-------------|
 | Primary button bg | `bg-btn-primary` | `--btn-primary-bg` |
 | Primary button text | `text-btn-primary-text` | `--btn-primary-text` |
 | Primary button hover | `hover:bg-btn-primary-hover` | `--btn-primary-hover` |
 | Secondary button bg | `bg-btn-secondary` | `--btn-secondary-bg` |
 | Secondary button text | `text-btn-secondary-text` | `--btn-secondary-text` |
-| Brand accent (specific shade) | `text-primary-600` | `--primary-600` |
+| Secondary button hover | `hover:bg-btn-secondary-hover` | `--btn-secondary-hover` |
+
+### Brand palette tokens
+
+These are fixed colors that don't change with context. Use them for intentional brand touches — icon containers, badges, active indicators.
+
+| Intent | Tailwind class | CSS variable |
+|--------|---------------|-------------|
+| Brand accent (any shade) | `text-primary-600` | `--primary-600` |
 | Brand badge | `bg-primary-100 text-primary-700` | palette shades |
+| Accent callout | `bg-accent-100 text-accent-700` | palette shades |
+
+Four palette roles are available: `primary`, `secondary`, `accent`, `neutral`. Each generates shades `50` through `950` (50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950).
+
+### How context values change
+
+| Token | `context-light` | `context-medium` | `context-dark` |
+|-------|-----------------|-------------------|----------------|
+| `--bg` | neutral-50 | neutral-100 | neutral-900 |
+| `--bg-subtle` | neutral-100 | neutral-200 | neutral-800 |
+| `--text` | neutral-950 | neutral-950 | neutral-50 |
+| `--text-muted` | neutral-600 | neutral-700 | neutral-300 |
+| `--heading` | neutral-900 | neutral-900 | white |
+| `--link` | primary-600 | primary-600 | primary-400 |
+| `--border` | neutral-200 | neutral-300 | neutral-700 |
+| `--btn-primary-bg` | primary-600 | primary-600 | primary-500 |
+| `--btn-primary-text` | white | white | white |
+
+Sites can override any of these mappings in `theme.yml` under the `contexts:` key.

@@ -218,15 +218,13 @@ The win is consolidation: one component name, one meta.js, one place to add futu
 
 ## Building Blocks
 
-Some components don't render content at all. They arrange other components.
+In CCA, each section on a page renders top-to-bottom — one after another. But some designs need sections *side by side*. A "Research & Data" page with two panels in a 2:1 split. A dashboard with three cards across. A comparison layout with two section types next to each other.
 
-In CCA, a page is a sequence of sections, each rendered by its own component. But sometimes you need a section that *contains* other sections — a two-column layout where each column is its own component, or a grid where each cell renders a different section type.
-
-This is what `block.childBlocks` and the `ChildBlocks` renderer are for.
+You can't get there by making each panel its own top-level section — the runtime renders sections sequentially. The solution is a **Grid** component that arranges child sections within a single grid layout. The Grid is a known, abstract concept — content authors understand "put these things in a grid" even if they don't know CSS. We've found that this level of composition works well without confusing authors, while more exotic composition patterns tend to be harder to explain.
 
 ### How child blocks work
 
-In the page folder, you nest section files inside a parent section:
+The content author nests sections inside a Grid in `page.yml`:
 
 ```yaml
 # pages/home/page.yml
@@ -237,8 +235,8 @@ sections:
     params:
       columns: 2
     sections:
-      - type: Features
-      - type: Testimonial
+      - type: FieldNotes
+      - type: Sightings
 ```
 
 The Grid component receives `block.childBlocks` — an array of Block instances, each with its own type, content, and params. The component controls the container; the children control themselves:
@@ -257,36 +255,111 @@ export function Grid({ block, params }) {
 
   return (
     <div className={cn('grid gap-6', gridCols[columns])}>
-      <ChildBlocks from={block} />
+      <ChildBlocks from={block} pure />
     </div>
   )
 }
 ```
 
-That's it. `ChildBlocks` renders each child block through the same BlockRenderer pipeline — the children get their own component, their own context class, their own backgrounds. The Grid only controls the grid.
+`ChildBlocks` renders each child block through the same BlockRenderer pipeline that renders top-level sections. The `pure` prop is important here — see below.
 
-You can also use the block's method directly:
+### The `pure` prop
+
+By default, `ChildBlocks` wraps each child in its own element with context classes, background rendering, and section ID — the same treatment top-level sections get. For grid cells, this is usually wrong: each child gets its own background layer, padding context, and wrapper element inside your grid cell, fighting with the grid's layout.
+
+Pass `pure` to strip all of that:
 
 ```jsx
-export function Grid({ block, params }) {
-  if (block.hasChildBlocks()) {
-    const ChildBlocks = block.getChildBlockRenderer()
-    return (
-      <div className="grid md:grid-cols-2 gap-6">
-        <ChildBlocks />
-      </div>
-    )
-  }
+<ChildBlocks from={block} pure />
+```
+
+With `pure`, each child renders as just the component — no wrapper element, no context class, no background layer. The Grid controls the container entirely; the children render their content directly into the grid cells.
+
+Use `pure` when children are **visual parts of the parent** — grid cells, tab panels, carousel slides. Omit it when children are **independent sections** that should carry their own theming and backgrounds (rare for grid layouts, but possible for more advanced composition).
+
+You can also control the wrapper element type with `as`:
+
+```jsx
+{/* Each child wrapped in <article> instead of the default <div> */}
+<ChildBlocks from={block} as="article" />
+
+{/* No wrapper at all */}
+<ChildBlocks from={block} as={false} />
+```
+
+### Container queries
+
+Container queries make Grid composition powerful. A Features component that renders a 3-column card grid at full width can drop to a single column when it's inside a 2-column Grid cell — without knowing anything about the Grid. The component queries its own container's width, not the viewport:
+
+```css
+@container (min-width: 40rem) {
+  .feature-grid { grid-template-columns: repeat(3, 1fr); }
 }
 ```
 
+This means the same component works at full width on one page and inside a grid cell on another — adapting its internal layout to however much space it has. Content authors get flexible composition without components needing to know about each other.
+
 ### Why this matters
 
-With one Grid component and a `columns` param, content authors can create any layout without individual components needing complex arrangement logic. A Features component renders features. A Testimonial component renders a testimonial. Neither knows it's inside a grid cell — and neither should.
+With one Grid component and a `columns` param, content authors can create any side-by-side layout. A FieldNotes component renders field notes. A Sightings component renders sightings. Neither knows it's inside a grid cell — and neither should. Adding a third column means changing `columns: 3` in the page configuration, not touching any component code.
 
-Container queries let children adapt to the cell size they end up in. A Features component that shows 3 columns at full width can drop to 1 column when it's inside a 2-column Grid cell, without knowing anything about the Grid.
+**The key insight:** Grid components separate *arrangement* from *content*. The Grid controls the container. The content components control themselves. Content authors compose the two by nesting sections in page configuration.
 
-**The key insight:** Building Block components separate *arrangement* from *content*. The arrangement component controls the container. The content components control themselves. Content authors compose the two by nesting sections in page configuration.
+---
+
+## Structured Data in Components
+
+Content authors pass structured data to components using tagged code blocks in markdown:
+
+````markdown
+```yaml:nav
+items:
+  - label: Overview
+    icon: lu:layout-grid
+    href: "#overview"
+  - label: Documentation
+    icon: lu:book-open
+    href: "#docs"
+```
+````
+
+The tag after the colon (`nav`) routes the parsed YAML to `content.data.nav`. Your component reads it:
+
+```jsx
+import { Icon } from '@uniweb/kit'
+
+export function Sidebar({ content }) {
+  const navItems = content.data?.nav?.items || []
+
+  return (
+    <nav>
+      {navItems.map((item, i) => (
+        <a key={i} href={item.href} className="flex items-center gap-2 text-body hover:text-link">
+          <Icon icon={item.icon} size="18" />
+          <span>{item.label}</span>
+        </a>
+      ))}
+    </nav>
+  )
+}
+```
+
+### How it works
+
+1. Content author writes `` ```yaml:tag `` in their markdown
+2. The content reader parses the YAML and stores it keyed by tag
+3. The semantic parser passes it through to `content.data`
+4. Your component reads `content.data.tag`
+
+Multiple tagged blocks accumulate — `` ```yaml:nav `` and `` ```yaml:config `` in the same file produce `content.data.nav` and `content.data.config`. Both YAML and JSON formats work (`` ```json:tag ``).
+
+### When to use structured data vs content items
+
+Use **`content.items`** (heading-separated content) when the data is presentational — cards, team members, FAQ entries — where each item has a natural title, description, image, and links.
+
+Use **`content.data`** (tagged code blocks) when the data is configuration — form field definitions, chart datasets, navigation structures, pricing tier metadata — that doesn't map to the heading/paragraph/image content model.
+
+Some components use both: a Pricing section might use `content.items` for the tier cards (title, price, feature list, CTA link) and `content.data.pricing` for billing toggle configuration.
 
 ---
 
@@ -511,6 +584,88 @@ Params describe purpose, not CSS. A `spacing: comfortable` param isn't a CSS sho
 The constraint is generative — like writing testable code. When you can't expose `className` or `style` directly, you're forced to ask: what are the *meaningful* variations of this component? The answers become the param options, and those options are all tested, all responsive, all compatible with the foundation's design system. You end up with a tighter interface than "pass whatever CSS you want" — fewer invalid states, less surface area to maintain.
 
 But — as discussed in the [Dispatcher](#the-dispatcher) section — "purpose-based" doesn't mean "abstractly named." A Gallery's `layout: masonry` is purpose-based: the author wants a masonry look. A Hero's `variant: homepage` is also purpose-based: the author wants the homepage look. Both are meaningful to the person choosing them. The line is between intent ("I want this layout") and implementation ("give me `grid-cols-3` and `py-8`"). Variant names that came from real pages in a real site are intent — the author recognizes them. CSS fragments are implementation — the author shouldn't see them.
+
+---
+
+## Page Layout
+
+The runtime's default Layout renders every page as three areas — `<header>`, `<main>`, `<footer>` — stacked vertically. Sections within each area render sequentially. This is what you get without any configuration:
+
+```html
+<header>  <!-- @header sections (0 or more) -->
+<main>    <!-- page body sections (0 or more) -->
+<footer>  <!-- @footer sections (0 or more) -->
+```
+
+Header and footer content comes from the special `@header` and `@footer` page folders. The default Layout ignores left and right panel content (`@left`, `@right`).
+
+### `Component.as` — controlling the wrapper tag
+
+By default, the runtime wraps each section in a `<section>` element. Components can change this with the `Component.as` static prop:
+
+```jsx
+function Header({ content, params }) {
+  // ... header rendering
+}
+
+Header.as = 'nav'
+
+export default Header
+```
+
+Now the runtime wraps this component in `<nav>` instead of `<section>`. This is purely semantic — use it when the HTML element matters (`nav` for navigation, `article` for blog posts, `aside` for sidebars).
+
+### Custom Layouts
+
+The default header/body/footer stack works for most sites. When you need sidebars, panels, or a non-standard page structure, the foundation provides a custom Layout via `src/exports.js`:
+
+```jsx
+// foundation/src/exports.js
+import { SidebarLayout } from '@uniweb/kit'
+
+export default {
+  Layout: SidebarLayout,
+}
+```
+
+A Layout component receives pre-rendered areas as props:
+
+```jsx
+function CustomLayout({ page, website, header, body, footer, left, right }) {
+  return (
+    <div className="min-h-screen flex flex-col">
+      <header className="sticky top-0 z-30">{header}</header>
+      <div className="flex flex-1">
+        {left && <aside className="w-64 hidden md:block">{left}</aside>}
+        <main className="flex-1">{body}</main>
+        {right && <aside className="w-64 hidden xl:block">{right}</aside>}
+      </div>
+      <footer>{footer}</footer>
+    </div>
+  )
+}
+```
+
+Kit provides `SidebarLayout` — a ready-made layout with responsive left/right panels, a mobile slide-out drawer for the left panel, sticky header support, and configurable breakpoints. Use it directly or wrap it with custom props:
+
+```jsx
+import { SidebarLayout } from '@uniweb/kit'
+
+function DocsLayout(props) {
+  return (
+    <SidebarLayout
+      {...props}
+      leftBreakpoint="lg"
+      rightBreakpoint="xl"
+      leftWidth="w-72"
+    />
+  )
+}
+
+export default { Layout: DocsLayout }
+```
+
+Panel content comes from special page folders — `pages/@left/` and `pages/@right/` — following the same pattern as `@header` and `@footer`.
 
 ---
 

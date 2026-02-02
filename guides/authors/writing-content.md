@@ -365,17 +365,21 @@ This is `inline code` for technical terms.
 
 ### Inline text styling
 
-You can tag a piece of text with a style using brackets and curly braces:
+You can style a piece of text using brackets and curly braces:
 
 ```markdown
-This has [highlighted text]{.highlight} for emphasis.
-
-Here's a [less prominent note]{.muted} alongside regular text.
+Get [real-time data]{accent} from our [secure API]{muted}.
 ```
 
-The syntax is `[your text]{.stylename}`. You can combine multiple styles: `[important]{.callout .bold}`.
+The syntax is `[your text]{stylename}`. What style names are available depends on your template — common ones include `accent`, `muted`, `subtle`, `callout`, and `highlight`.
 
-What styles are available and how they look depends on your template.
+You can also set colors directly when needed:
+
+```markdown
+This word is [red]{color=red} and this has a [yellow background]{bg=#ffe0e0}.
+```
+
+The `color` and `bg` attributes accept any CSS color value. Use the named styles when possible — they adapt to your site's theme automatically.
 
 ---
 
