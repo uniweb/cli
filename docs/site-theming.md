@@ -12,18 +12,20 @@ colors:
   secondary: "#64748b"
 ```
 
-That's it. Your site now has a complete color palette with 11 shades for each color, accessible via CSS variables like `var(--color-primary-500)` or Tailwind classes like `bg-primary-500`.
+That's it. Your site now has a complete color palette with 11 shades for each color, semantic tokens that adapt per-section, and Tailwind utility classes like `bg-primary-500` and `text-heading` ready to use.
 
 ## How It Works
 
-1. **Build time**: The build reads `theme.yml` and generates CSS custom properties
-2. **Color generation**: Each base color generates 11 perceptually-uniform shades using OKLCH
-3. **CSS injection**: Generated CSS is injected into `<head>` (works with SSG)
-4. **Foundation integration**: Components reference theme variables for consistent styling
+1. **You define colors** in `theme.yml` (one hex value per palette)
+2. **Build generates CSS** — 11 perceptually-uniform shades per color (OKLCH), semantic tokens for light/medium/dark contexts, font variables
+3. **CSS is injected** into `<head>` at runtime (works with SSG — zero FOUC)
+4. **Content authors control sections** — `theme: dark` in frontmatter applies a context class, and all semantic tokens resolve accordingly
+
+The key insight: **components don't manage their own colors**. They use semantic tokens (`text-heading`, `bg-surface`, `border-edge`) that resolve differently depending on the section's context. A content author writes `theme: dark` on a hero section, and every component inside it automatically gets light text on a dark background — no conditional logic in the component.
 
 ## Color Palettes
 
-Define brand colors with a single hex value—shades are auto-generated:
+Define brand colors with a single hex value — shades are auto-generated:
 
 ```yaml
 colors:
@@ -35,7 +37,7 @@ colors:
 
 ### Generated Shades
 
-Each color generates 11 shades:
+Each color generates 11 shades as CSS variables (`--primary-50` through `--primary-950`):
 
 | Shade | Lightness | Use Case |
 |-------|-----------|----------|
@@ -91,18 +93,20 @@ Without `exactMatch`, the algorithm calculates shade 500's lightness (55%), whic
 
 ### Using Colors
 
-**In CSS:**
+Palette colors are available as both CSS variables and Tailwind classes.
+
+**CSS variables** (short names, set by the build):
 ```css
 .my-button {
-  background: var(--color-primary-600);
+  background: var(--primary-600);
   color: white;
 }
 .my-button:hover {
-  background: var(--color-primary-700);
+  background: var(--primary-700);
 }
 ```
 
-**In Tailwind** (requires foundation setup):
+**Tailwind classes** (via `theme-tokens.css` bridge):
 ```jsx
 <button className="bg-primary-600 hover:bg-primary-700 text-white">
   Click me
@@ -131,7 +135,7 @@ colors:
 
 ## Color Contexts
 
-Contexts define semantic color tokens for different section backgrounds. Apply them via the `theme` frontmatter parameter:
+Contexts define semantic color tokens for different section backgrounds. Content authors apply them via the `theme` frontmatter parameter:
 
 ```markdown
 ---
@@ -150,6 +154,23 @@ Three contexts are available by default:
 | `medium` | Light gray | Dark gray | Alternating sections |
 | `dark` | Dark gray | White | Hero sections, footers |
 
+### Semantic Tokens
+
+Each context defines CSS variables that components use instead of hardcoded colors:
+
+| Token | Purpose | Tailwind Class |
+|-------|---------|---------------|
+| `--heading` | Heading text | `text-heading` |
+| `--text` | Body text | `text-body` |
+| `--text-muted` | Secondary text | `text-muted` |
+| `--bg` | Section background | `bg-surface` |
+| `--bg-subtle` | Card backgrounds | `bg-surface-subtle` |
+| `--border` | Primary borders | `border-edge` |
+| `--link` | Link text | `text-link` |
+| `--btn-primary-bg` | Primary button | `bg-btn-primary` |
+
+Components using these tokens adapt automatically when a content author changes the section's `theme:` in frontmatter. No conditional logic needed in the component — the CSS cascade handles it.
+
 ### Customizing Contexts
 
 Override semantic tokens per context:
@@ -158,47 +179,74 @@ Override semantic tokens per context:
 contexts:
   light:
     bg: white
-    fg: var(--color-neutral-900)
-    muted: var(--color-neutral-500)
-    link: var(--color-primary-600)
-    border: var(--color-neutral-200)
-
-  medium:
-    bg: var(--color-neutral-100)
-    fg: var(--color-neutral-900)
-    muted: var(--color-neutral-600)
-    link: var(--color-primary-600)
-    border: var(--color-neutral-300)
+    link: var(--primary-600)
+    border: var(--neutral-200)
 
   dark:
-    bg: var(--color-neutral-900)
-    fg: white
-    muted: var(--color-neutral-400)
-    link: var(--color-primary-400)
-    border: var(--color-neutral-700)
+    bg: var(--primary-900)         # Use primary color instead of neutral
+    link: var(--accent-300)        # Use accent for links in dark sections
 ```
 
-### Using Context Tokens
+### Per-Section Token Overrides
 
-Components can reference semantic tokens that adapt to context:
+The `theme:` frontmatter supports an extended object format that lets content authors override specific tokens for a single section. Use `mode` to set the context (light/medium/dark), and add any token names alongside it:
 
-```css
-.card {
-  background: var(--bg);
-  color: var(--fg);
-  border: 1px solid var(--border);
-}
-
-.card a {
-  color: var(--link);
-}
-
-.card .subtitle {
-  color: var(--muted);
-}
+```yaml
+---
+type: Header
+theme:
+  mode: light
+  btn-primary-bg: var(--neutral-900)
+  btn-primary-hover: var(--neutral-800)
+---
 ```
 
-The same component renders appropriately in any context without conditional styling.
+This keeps the light context for text and backgrounds, but gives the primary button a dark appearance — just for this section. Any token from the semantic token table above can be overridden this way.
+
+The overrides are applied as inline CSS custom properties on the section wrapper, so they take precedence over the context class values. Components don't need to know about the overrides — they just use `bg-btn-primary` and get the overridden value.
+
+For simple string usage, `theme: dark` is equivalent to `theme: { mode: dark }`.
+
+### Section Backgrounds
+
+Sections can also declare a background in frontmatter, independent of the theme context:
+
+```yaml
+---
+type: CTA
+theme: dark
+background:
+  color: var(--primary-600)
+---
+```
+
+This gives the section a branded background with all the dark context's text and link colors. The runtime renders the background behind the component — the component doesn't need to know about it.
+
+Background accepts several formats:
+
+```yaml
+# Solid color
+background:
+  color: var(--primary-600)
+
+# Gradient
+background:
+  gradient: linear-gradient(135deg, var(--primary-600), var(--primary-800))
+
+# Image (shorthand — a path or URL is treated as an image)
+background: /images/hero.jpg
+
+# Image with overlay
+background:
+  image: /images/hero.jpg
+  overlay: 0.5
+
+# Video (autoplays muted, loops)
+background:
+  video: /videos/hero.mp4
+```
+
+Video backgrounds autoplay muted and loop. If you provide an `.mp4`, the runtime also tries `.webm` for better compression where supported.
 
 ## Typography
 
@@ -215,29 +263,13 @@ fonts:
     - url: "https://fonts.googleapis.com/css2?family=Poppins:wght@600;700"
 ```
 
-### Generated CSS Variables
+Generated CSS variables:
 
 ```css
 :root {
   --font-body: Inter, system-ui, sans-serif;
   --font-heading: Poppins, system-ui, sans-serif;
   --font-mono: Fira Code, monospace;
-}
-```
-
-### Using Fonts
-
-```css
-body {
-  font-family: var(--font-body);
-}
-
-h1, h2, h3 {
-  font-family: var(--font-heading);
-}
-
-code {
-  font-family: var(--font-mono);
 }
 ```
 
@@ -265,27 +297,7 @@ code:
   attribute: "#f9e2af"      # HTML attributes
 ```
 
-### Default Theme
-
-If you don't customize `code`, Uniweb uses a dark theme inspired by Catppuccin Mocha—a popular color scheme that's easy on the eyes.
-
-### How It Works
-
-1. **Lazy loading**: Shiki is only loaded when a page contains code blocks
-2. **Tree-shaking**: If your foundation doesn't render code blocks, Shiki isn't bundled
-3. **Runtime injection**: CSS variables are injected when the first code block renders
-4. **Dynamic content**: Works with both static pages and API-loaded content
-
-Shiki is included with `@uniweb/kit` - no additional installation needed.
-
-### Supported Languages
-
-Common languages are loaded by default:
-- JavaScript, TypeScript, JSX, TSX
-- JSON, YAML, HTML, CSS
-- Markdown, Python, Bash
-
-Other languages are loaded on-demand when encountered.
+If you don't customize `code`, Uniweb uses a dark theme inspired by Catppuccin Mocha. Shiki is lazy-loaded — only downloaded when a page contains code blocks.
 
 ## Appearance (Light/Dark Mode)
 
@@ -299,15 +311,6 @@ appearance:
   schemes: [light, dark]      # Available schemes
 ```
 
-### Appearance Options
-
-| Option | Values | Description |
-|--------|--------|-------------|
-| `default` | `light`, `dark`, `system` | Initial color scheme |
-| `allowToggle` | `true`, `false` | Show mode toggle UI |
-| `respectSystemPreference` | `true`, `false` | Honor `prefers-color-scheme` |
-| `schemes` | Array | Which schemes to support |
-
 ### Simple Shorthand
 
 For simple cases, use a string:
@@ -318,21 +321,15 @@ appearance: dark     # Fixed dark mode, no toggle
 appearance: system   # Follow system preference
 ```
 
-### React Hook for Toggle
+Components use the `useAppearance()` hook if they need to render a toggle:
 
 ```jsx
 import { useAppearance } from '@uniweb/kit'
 
 function DarkModeToggle() {
   const { scheme, toggle, canToggle } = useAppearance()
-
   if (!canToggle) return null
-
-  return (
-    <button onClick={toggle}>
-      {scheme === 'dark' ? '☀️ Light' : '🌙 Dark'}
-    </button>
-  )
+  return <button onClick={toggle}>{scheme === 'dark' ? 'Light' : 'Dark'}</button>
 }
 ```
 
@@ -345,9 +342,6 @@ Foundations can define customizable CSS variables that sites override:
 In `foundation/src/foundation.js`:
 
 ```js
-/**
- * CSS custom properties that sites can override in theme.yml
- */
 export const vars = {
   'header-height': {
     default: '4rem',
@@ -356,10 +350,6 @@ export const vars = {
   'max-content-width': {
     default: '80rem',
     description: 'Maximum content width',
-  },
-  'section-padding-y': {
-    default: '5rem',
-    description: 'Vertical section padding',
   },
 }
 ```
@@ -374,100 +364,35 @@ vars:
   max-content-width: 72rem
 ```
 
-### Using Foundation Variables
+## Tailwind Integration
 
-```css
-.header {
-  height: var(--header-height);
-}
-
-.container {
-  max-width: var(--max-content-width);
-  margin: 0 auto;
-}
-
-section {
-  padding: var(--section-padding-y) 1.5rem;
-}
-```
-
-## Tailwind CSS v4 Integration
-
-For foundations using Tailwind CSS v4, map theme colors in `styles.css`:
+Foundations using Tailwind CSS v4 import a bridge file that maps theme variables to Tailwind's namespace:
 
 ```css
 @import "tailwindcss";
 @import "@uniweb/kit/theme-tokens.css";
 ```
 
-Now Tailwind classes work with theme colors:
+This single import registers both semantic tokens and palette shades as Tailwind utilities. The build system generates short CSS variable names (`--primary-600`, `--heading`, `--bg`), and `theme-tokens.css` bridges them to Tailwind's `--color-*` namespace so that classes like `bg-primary-600`, `text-heading`, and `bg-surface` work.
+
+**Why is this bridge needed?** Tailwind v4 builds at compile time, but theme values arrive at runtime (from `theme.yml`). The bridge file registers variable names with fallback defaults so Tailwind can generate the utility classes. At runtime, the real values from the theme CSS override the fallbacks.
+
+Foundations that want different Tailwind names can skip the import and declare their own `@theme inline` block.
+
+## Programmatic Access
+
+Kit provides hooks for rare cases where components need runtime access to theme data — color pickers, theme previews, or dynamic style computation:
 
 ```jsx
-<button className="bg-primary-600 hover:bg-primary-700">
-  Theme-aware button
-</button>
+import { useThemeData, useThemeColor, useThemeColorVar, useColorContext, useAppearance } from '@uniweb/kit'
+
+const theme = useThemeData()                    // Full Theme object
+const primaryColor = useThemeColor('primary', 600) // Actual oklch value
+const primaryVar = useThemeColorVar('primary', 500) // 'var(--primary-500)'
+const context = useColorContext(block)             // 'light', 'medium', or 'dark'
 ```
 
-## Runtime Access
-
-Access theme data programmatically in components:
-
-### useThemeData
-
-```jsx
-import { useThemeData } from '@uniweb/kit'
-
-function ColorPicker() {
-  const theme = useThemeData()
-
-  if (!theme) return null
-
-  const colors = theme.getPaletteNames() // ['primary', 'secondary', ...]
-  const primary500 = theme.getColor('primary', 500)
-
-  return (
-    <div style={{ color: primary500 }}>
-      Available: {colors.join(', ')}
-    </div>
-  )
-}
-```
-
-### useThemeColor
-
-```jsx
-import { useThemeColor, useThemeColorVar } from '@uniweb/kit'
-
-function Badge() {
-  // Get actual color value
-  const accentColor = useThemeColor('accent', 600)
-
-  // Get CSS variable reference
-  const primaryVar = useThemeColorVar('primary', 500) // 'var(--color-primary-500)'
-
-  return (
-    <span style={{ background: accentColor, color: primaryVar }}>
-      New
-    </span>
-  )
-}
-```
-
-### useColorContext
-
-```jsx
-import { useColorContext } from '@uniweb/kit'
-
-function Card({ block }) {
-  const context = useColorContext(block) // 'light', 'medium', or 'dark'
-
-  return (
-    <div className={`card card--${context}`}>
-      {/* ... */}
-    </div>
-  )
-}
-```
+Most components don't need these hooks. Semantic tokens and Tailwind classes cover the common cases.
 
 ## Complete Example
 
@@ -476,21 +401,19 @@ function Card({ block }) {
 
 # Brand colors
 colors:
-  primary: "#0066cc"      # Blue
-  secondary: "#475569"    # Slate
-  accent: "#dc2626"       # Red for CTAs
-  neutral: "#64748b"      # Gray scale
+  primary: "#0066cc"
+  secondary: "#475569"
+  accent: "#dc2626"
+  neutral: "#64748b"
 
 # Section contexts
 contexts:
   light:
     bg: white
-    fg: var(--color-neutral-900)
-    link: var(--color-primary-600)
+    link: var(--primary-600)
   dark:
-    bg: var(--color-primary-900)
-    fg: white
-    link: var(--color-primary-300)
+    bg: var(--primary-900)
+    link: var(--primary-300)
 
 # Typography
 fonts:
@@ -514,19 +437,17 @@ vars:
 
 ## Best Practices
 
-1. **Start with primary**: Define at least a `primary` color—it's the foundation of your palette
+1. **Start with primary**: Define at least a `primary` color — it's the foundation of your palette
 
-2. **Use semantic tokens**: Reference context tokens (`--bg`, `--fg`, `--link`) in components instead of specific colors for automatic dark mode support
+2. **Use semantic tokens**: Reference context tokens (`text-heading`, `bg-surface`, `border-edge`) in components instead of hardcoded colors. They adapt automatically to section themes and site-wide appearance.
 
-3. **Leverage generated shades**: Use lighter shades for backgrounds (50-200) and darker shades for text/accents (600-900)
+3. **Leverage frontmatter**: Section appearance is controlled by content authors through `theme:` and `background:` in frontmatter, not by component params. Components render; the runtime applies context.
 
-4. **Test both schemes**: If enabling dark mode, verify all contexts look good in both light and dark schemes
-
-5. **Keep fonts minimal**: Load only weights you actually use to optimize performance
+4. **Keep fonts minimal**: Load only weights you actually use to optimize performance
 
 ## See Also
 
 - [Site Configuration](./site-configuration.md) — Full site.yml reference
 - [Page Configuration](./page-configuration.md) — Section theme parameter
-- [Content Structure](./content-structure.md) — How content is parsed
+- [Thinking in Contexts](../guides/developers/thinking-in-contexts.md) — Deep dive into semantic theming for component developers
 - [Component Metadata](./component-metadata.md) — Full meta.js schema

@@ -81,7 +81,7 @@ A marketing site with hero sections, feature grids, blog with dynamic routes, pr
 
 **Dynamic routes for blog.** The `site/pages/blog/[slug]/` folder creates dynamic routes for individual blog posts. `BlogList` fetches the article collection via `content.data` and renders the list page. This is the clearest example of the list-page + dynamic-route pattern described in the site configuration docs.
 
-**Frontmatter-driven theming.** The marketing template demonstrates how content authors control section appearance through frontmatter rather than component params. Hero sections use `theme: dark` with `background: { gradient: ... }`, stats sections use `background: { color: var(--color-primary-600) }`, and testimonials use `theme: medium` for a subtle background. Components simply render with semantic tokens — the runtime handles context classes.
+**Frontmatter-driven theming.** The marketing template demonstrates how content authors control section appearance through frontmatter rather than component params. Hero sections use `theme: dark` with `background: { gradient: ... }`, stats sections use `background: { color: var(--primary-600) }`, and testimonials use `theme: medium` for a subtle background. Components simply render with semantic tokens — the runtime handles context classes.
 
 ---
 

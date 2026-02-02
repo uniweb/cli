@@ -90,7 +90,7 @@ export function Section({ content, params }) {
                 className={cn(
                   'inline-flex items-center px-6 py-3 font-medium rounded-lg transition-colors',
                   index === 0
-                    ? 'bg-primary text-white hover:bg-primary-dark'
+                    ? 'bg-primary-600 text-white hover:bg-primary-700'
                     : 'border border-current hover:bg-gray-100'
                 )}
               >

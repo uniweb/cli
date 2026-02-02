@@ -121,13 +121,13 @@ colors:
   neutral: "#57534e"      # Drives all context tokens (bg, text, borders)
 ```
 
-Each color produces eleven shades: `--color-primary-50` through `--color-primary-950`, and the same for secondary, accent, and neutral. You map them to Tailwind in `styles.css`:
+Each color produces eleven shades: `--primary-50` through `--primary-950`, and the same for secondary, accent, and neutral. You map them to Tailwind in `styles.css`:
 
 ```css
 @import "@uniweb/kit/theme-tokens.css";
 ```
 
-This single import registers all palette variables (`--color-primary-50` through `--color-primary-950`, and the same for secondary, accent, neutral) as Tailwind theme colors.
+This single import registers all palette variables (`--primary-50` through `--primary-950`, and the same for secondary, accent, neutral) as Tailwind theme colors.
 
 Use palette colors for intentional brand touches — icon containers, tag badges, active indicators — where you want a specific shade regardless of context:
 
@@ -183,7 +183,7 @@ Content authors control *which context* each section uses, in frontmatter:
 type: CTA
 theme: dark
 background:
-  color: var(--color-primary-600)
+  color: var(--primary-600)
 ---
 ```
 
@@ -201,7 +201,7 @@ The chain looks like this:
 site/theme.yml  →  build generates palette + context CSS  →  tokens resolve  →  your components have colors
 ```
 
-No site, no `theme.yml`, no colors. Your `text-heading` class targets `var(--heading)`, which is set by `.context-light { --heading: var(--color-neutral-900) }`, which depends on `--color-neutral-900` existing, which comes from the palette generated from `theme.yml`'s `neutral` color. Remove any link in that chain and you're styling against undefined variables.
+No site, no `theme.yml`, no colors. Your `text-heading` class targets `var(--heading)`, which is set by `.context-light { --heading: var(--neutral-900) }`, which depends on `--neutral-900` existing, which comes from the palette generated from `theme.yml`'s `neutral` color. Remove any link in that chain and you're styling against undefined variables.
 
 This is why even the simplest Uniweb project starts with two packages — a site and a foundation:
 
@@ -338,7 +338,7 @@ After converting a foundation to semantic theming, the typical component goes fr
 
 **New contexts work immediately.** If the build system adds a `context-accent` in the future, every semantic-token-using component supports it without changes. The components don't know what contexts exist — they just use tokens that resolve.
 
-**You don't build theme-switching logic.** Content authors set `theme: dark` on any section in frontmatter, and the entire visual context inverts. `background: { color: var(--color-primary-600) }` brands a section. These controls work without any conditional logic in your component — the tokens handle it.
+**You don't build theme-switching logic.** Content authors set `theme: dark` on any section in frontmatter, and the entire visual context inverts. `background: { color: var(--primary-600) }` brands a section. These controls work without any conditional logic in your component — the tokens handle it.
 
 ---
 
@@ -397,7 +397,7 @@ These are fixed colors that don't change with context. Use them for intentional 
 
 | Intent | Tailwind class | CSS variable |
 |--------|---------------|-------------|
-| Brand accent (any shade) | `text-primary-600` | `--color-primary-600` |
+| Brand accent (any shade) | `text-primary-600` | `--primary-600` |
 | Brand badge | `bg-primary-100 text-primary-700` | palette shades |
 | Accent callout | `bg-accent-100 text-accent-700` | palette shades |
 

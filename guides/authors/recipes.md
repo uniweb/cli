@@ -689,7 +689,7 @@ Join thousands of teams already using our platform.
 [Sign Up Free](/signup)
 ```
 
-- You can use hex colors (`#1e1e2e`), CSS color names (`navy`), or theme variables (`var(--color-primary-900)`).
+- You can use hex colors (`#1e1e2e`), CSS color names (`navy`), or theme variables (`var(--primary-900)`).
 - When using a dark background color, set `theme: dark` so the text colors adapt.
 
 ---
