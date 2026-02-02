@@ -1,22 +1,22 @@
 # Content Collections
 
-Author content in markdown or YAML and automatically generate JSON data files. Collections let you maintain blog posts, team members, schedules, or any structured data as individual files in a folder — `.md` for rich content with body text, `.yml`/`.yaml` for pure structural data.
+Author content in markdown, YAML, or JSON and automatically generate data files. Collections let you maintain blog posts, team members, schedules, or any structured data as individual files in a `library/` folder — `.md` for rich content with body text, `.yml`/`.yaml` for pure structural data, `.json` for existing JSON data or API responses.
 
-## The Data Layer: `public/data/`
+## The Data Layer
 
-All structured data lives in `public/data/` as JSON files. This is the unified data layer — components fetch from `/data/*.json` regardless of how the data got there. The i18n system translates everything in this directory the same way.
+Collections are authored in `library/` folders and referenced from pages with `data: collection-name`. The build converts them to JSON in `public/data/`, which is an output directory — you don't need to interact with it directly.
 
-There are three ways to populate it:
+There are three ways to provide data to components:
 
-**Markdown collections** (`library/` folders) — Author content as `.md` or `.yml` files. The build converts them to JSON in `public/data/`. Markdown items get ProseMirror content bodies, excerpts, and co-located assets automatically. YAML items pass through as-is. Use `.md` for content with body text (blog posts, case studies, team bios), `.yml` for purely structural data (schedules, pricing tiers).
-
-**Hand-written JSON** (`public/data/` directly) — Place JSON files directly in the data directory. Useful for template demo data, configuration-like data, or prototyping a CMS integration. Provide a companion `.schema.js` for precise control over which fields the i18n system extracts; otherwise it uses heuristics.
+**Collections** (`library/` folders) — Author content as `.md`, `.yml`, or `.json` files. The build converts them to JSON. Markdown items get ProseMirror content bodies, excerpts, and co-located assets automatically. YAML and JSON items pass through as-is. Use `.md` for content with body text (blog posts, case studies), `.yml` or `.json` for purely structural data (schedules, pricing tiers).
 
 **Runtime data** (API fetch) — For production sites where a CMS or backend manages content and serves pre-localized data. Components receive it the same way as static data (via `content.data`).
 
-Both markdown collections and hand-written JSON get the same i18n treatment — `uniweb i18n extract` processes all JSON files in `public/data/` by default, using schema-guided or heuristic field detection.
+**Hand-written JSON** (`public/data/` directly) — Power-user pattern for template demo data, configuration-like data, or external tool integration. Provide a companion `.schema.js` for precise control over which fields the i18n system extracts; otherwise it uses heuristics.
 
-**Rule of thumb:** If authors maintain the content and it needs translation, use markdown collections. If it's structural or comes from an external system, use hand-written JSON or runtime fetch.
+Both collections and hand-written JSON get the same i18n treatment — `uniweb i18n extract` processes all JSON files in `public/data/` by default.
+
+**Rule of thumb:** If authors maintain the content and it needs translation, use collections in `library/`. If it's structural or comes from an external system, use runtime fetch.
 
 ---
 
@@ -131,7 +131,7 @@ Each collection generates its own JSON file: `/data/articles.json`, `/data/produ
 
 ## Content Item Fields
 
-Each `.md` file in a collection becomes a JSON object with the following fields. For `.yml`/`.yaml` files, see [Data Items (YAML)](#data-items-yaml) — they produce only `slug` plus whatever fields you declare.
+Each `.md` file in a collection becomes a JSON object with the following fields. For `.yml`/`.yaml` and `.json` files, see [Data Items (YAML)](#data-items-yaml) and [Data Items (JSON)](#data-items-json) — they produce only `slug` plus whatever fields you declare.
 
 | Field | Source | Notes |
 |-------|--------|-------|
@@ -175,6 +175,7 @@ For collections where items are pure structural data — no body text, no excerp
 |-----------|---------------|--------|
 | `.md` | Content item (article-like) | slug + frontmatter + body + content + excerpt + image + lastModified |
 | `.yml`/`.yaml` | Data item (structural) | slug + YAML fields only |
+| `.json` | Data item or multi-item file | Object → slug + JSON fields. Array → all items directly |
 
 A YAML item skips ProseMirror conversion, body extraction, excerpt generation, image detection, and file stat — its output is just `slug` plus the fields you declare.
 
@@ -215,9 +216,9 @@ Generated JSON:
 
 No `body`, `content`, `excerpt`, `image`, or `lastModified` — just the data you declared.
 
-### Mixing markdown and YAML items
+### Mixing file types
 
-A single collection can contain both `.md` and `.yml` files. This is useful when some items need rich body content and others are purely structural:
+A single collection can contain `.md`, `.yml`, and `.json` files together. This is useful when some items need rich body content and others are purely structural:
 
 ```
 site/
@@ -239,6 +240,45 @@ Just like markdown items, YAML items with `published: false` are excluded from t
 published: false
 title: Coming Soon
 ```
+
+---
+
+## Data Items (JSON)
+
+For existing JSON data — API responses, exports from other tools, or data you already have in JSON format — place `.json` files in the collection folder. JSON items work like YAML items: pure data, no ProseMirror conversion.
+
+### Single-item files
+
+A `.json` file containing an object is treated as a single item. The slug comes from the filename:
+
+```json
+// library/team/alice.json
+{
+  "name": "Alice",
+  "role": "Engineer",
+  "avatar": "/images/alice.jpg"
+}
+```
+
+Output: `{ "slug": "alice", "name": "Alice", "role": "Engineer", ... }`
+
+### Multi-item files
+
+A `.json` file containing an array contributes all items directly — useful for importing existing datasets or API responses:
+
+```json
+// library/products/catalog.json
+[
+  { "slug": "widget-a", "name": "Widget A", "price": 29 },
+  { "slug": "widget-b", "name": "Widget B", "price": 49 }
+]
+```
+
+Both items are added to the collection. Array items should include their own `slug` field since there's no filename to infer it from.
+
+### `published: false`
+
+Single-item JSON files with `published: false` are excluded, just like YAML items. For array items, filtering is not applied per-item — use the collection's `filter` option instead.
 
 ---
 
@@ -631,16 +671,17 @@ During production build (`pnpm build`):
 | Empty collection | Empty array `[]` generated |
 | Invalid frontmatter (`.md`) | Error with filename, file skipped |
 | Invalid YAML (`.yml`) | Error with filename, file skipped |
-| Unpublished items | Excluded from output (both `.md` and `.yml`) |
+| Invalid JSON (`.json`) | Error with filename, file skipped |
+| Unpublished items | Excluded from output (`.md`, `.yml`, and single-object `.json`) |
 | No date field with date sort | Items sorted by filename |
-| Mixed `.md` and `.yml` files | Both processed; same filtering/sorting/limiting applies |
+| Mixed `.md`, `.yml`, and `.json` files | All processed; same filtering/sorting/limiting applies |
 | Nested folders | Not supported (flat structure only) |
 
 ---
 
 ## i18n for JSON Data
 
-When collections are stored as static JSON in `public/data/`, the i18n extraction pipeline identifies translatable strings using one of two strategies:
+The i18n extraction pipeline identifies translatable strings in collection data using one of two strategies:
 
 ### Schema-guided extraction
 

@@ -20,12 +20,12 @@ Data cascades down: site → page → section. Components opt into receiving cas
 
 ### Section-level fetch
 
-The simplest form—load data for a specific section:
+The simplest form—load collection data for a specific section:
 
 ```markdown
 ---
 type: TeamGrid
-fetch: /data/team.json
+data: team
 ---
 
 # Our Team
@@ -33,7 +33,7 @@ fetch: /data/team.json
 Meet the people behind the project.
 ```
 
-The component receives the data in `content.data.team` (key inferred from filename).
+The component receives the data in `content.data.team` (key inferred from collection name).
 
 ### Page-level fetch
 
@@ -42,9 +42,7 @@ Load data once, share with all sections on a page:
 ```yaml
 # pages/about/page.yml
 title: About Us
-fetch:
-  path: /data/team.json
-  schema: people
+data: team
 ```
 
 All sections on `/about` can access `content.data.people` if they opt in.
@@ -72,7 +70,7 @@ fetch:
   url: https://api.example.com/team  # Remote URL
 
   schema: person             # Key in content.data (default: inferred from filename)
-  prerender: true            # Build-time fetch (default: true)
+  prerender: true            # Default: true for path, false for url
   merge: false               # Replace existing data (default: false)
   transform: data.items      # Extract nested path from response
   detail: rest               # Single-entity fetch for dynamic routes (optional)
@@ -85,7 +83,7 @@ fetch:
 | `path` | — | Local file path relative to `public/` |
 | `url` | — | Remote URL (mutually exclusive with `path`) |
 | `schema` | *filename* | Key under `content.data` where data is stored |
-| `prerender` | `true` | Fetch at build time (SSG) vs runtime |
+| `prerender` | `true` for `path`, `false` for `url` | Fetch at build time (SSG) vs runtime |
 | `merge` | `false` | Combine with existing data vs replace |
 | `transform` | — | Dot-path to extract from response (e.g., `data.items`) |
 | `detail` | — | How to fetch a single entity on [dynamic routes](./dynamic-routes.md#detail-queries). Values: `rest`, `query`, or a custom URL pattern |
@@ -138,12 +136,17 @@ If a section has `yaml:team` and the page also fetches `team`, the tagged block 
 
 ## Build-time vs Runtime
 
-### Build-time (default)
+The `prerender` option controls when data is fetched. The default depends on the fetch type:
+
+- **Local paths** (`path:`) default to `prerender: true` — the file is always available at build time
+- **Remote URLs** (`url:`) default to `prerender: false` — remote fetches that fail at build time break the build; runtime fetches degrade gracefully
+
+### Build-time
 
 ```yaml
 fetch:
   path: /data/team.json
-  prerender: true  # default
+  # prerender: true (default for local paths)
 ```
 
 - Data fetched during `uniweb build`
@@ -155,14 +158,17 @@ fetch:
 
 ```yaml
 fetch:
-  url: https://api.example.com/team
-  prerender: false
+  url: https://jsonplaceholder.typicode.com/posts?_limit=5
+  schema: posts
+  # prerender: false (default for remote URLs)
 ```
 
 - Data fetched when page loads in browser
 - Always fresh
 - Requires JavaScript
 - Good for frequently changing data
+
+To force a remote URL to be fetched at build time, set `prerender: true` explicitly.
 
 ---
 
@@ -197,31 +203,18 @@ Useful for combining data from multiple sources.
 ## Local Files
 
 **Prefer collections over manual JSON files.** Collections provide:
-- Markdown-based authoring with frontmatter
+- Markdown, YAML, and JSON authoring
 - Automatic i18n support
 - Better content management
 
 See [Content Collections](./content-collections.md) for the recommended approach.
 
-### Manual JSON files (when needed)
+### Manual JSON files (power users)
 
-For configuration data or integration with external tools that generate JSON, you can place files in `public/data/`:
-
-```
-site/
-├── public/
-│   └── data/
-│       └── config.json    # For config/integration data
-├── library/
-│   └── team/              # Prefer: markdown collection
-│       ├── alice.md
-│       └── bob.md
-└── pages/
-```
-
-Reference with paths starting with `/`:
+For configuration data, companion schemas, or integration with external tools that generate JSON, you can place files directly in `public/data/`. Most users should use `library/` collections instead.
 
 ```yaml
+# Reference a manual JSON file
 fetch: /data/config.json
 ```
 
@@ -235,7 +228,7 @@ Fetch from any URL:
 
 ```yaml
 fetch:
-  url: https://api.example.com/v1/team
+  url: https://jsonplaceholder.typicode.com/users
   schema: team
   transform: data.members
 ```
@@ -304,10 +297,10 @@ fetch:
 
 | Syntax | Use case |
 |--------|----------|
-| `data: articles` | Simple collection reference, no filtering/sorting needed |
-| `fetch: { collection: articles, ... }` | Need limit, sort, filter, or other options |
-| `fetch: { path: /data/file.json }` | Non-collection JSON files |
+| `data: articles` | Collection reference — the recommended default |
+| `fetch: { collection: articles, ... }` | Collection with limit, sort, filter, or other options |
 | `fetch: { url: https://... }` | Remote data sources |
+| `fetch: { path: /data/file.json }` | Manual JSON files (power-user pattern) |
 
 The `data:` shorthand is equivalent to `fetch: { collection: name }` but more compact.
 
@@ -404,12 +397,12 @@ export function TeamGrid({ content, params }) {
 
 ## Examples
 
-### Team page with local data
+### Team page with collection data
 
 ```yaml
 # pages/team/page.yml
 title: Our Team
-fetch: /data/team.json
+data: team
 ```
 
 ```markdown
@@ -439,7 +432,7 @@ fetch:
   url: https://api.myblog.com/posts
   schema: posts
   transform: data.articles
-  prerender: false  # Always fresh
+  # prerender: false (default for remote URLs)
 ```
 
 ### Site-wide config

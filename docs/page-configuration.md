@@ -44,9 +44,9 @@ layout:
 sections: '*'                   # Auto-discover (default)
 
 # Data
-data: articles                  # Shorthand for collection fetch
-fetch:                          # Full fetch config
-  path: /data/team.json
+data: articles                  # Collection reference (recommended)
+fetch:                          # Advanced: full fetch config
+  url: https://api.example.com/team
   schema: team
 
 # SEO

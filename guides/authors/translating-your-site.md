@@ -296,7 +296,7 @@ Most sites won't need free-form translations. They're for the special cases wher
 
 ## Translating Collections
 
-If your site has collections (blog posts, team members, product listings stored in `public/data/`), those are extracted automatically alongside page content:
+If your site has collections (blog posts, team members, product listings), those are extracted automatically alongside page content:
 
 ```bash
 uniweb i18n extract

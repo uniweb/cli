@@ -138,7 +138,7 @@ The parent page (`/blog`) references collection data:
 data: articles
 ```
 
-This is equivalent to `fetch: { collection: articles }` or `fetch: /data/articles.json`. The schema is inferred from the collection name.
+This is equivalent to `fetch: { collection: articles }`. The schema is inferred from the collection name.
 
 ### 2. Dynamic folder detected
 
@@ -367,9 +367,7 @@ Sections can have their own fetches that merge with cascaded data:
 ```markdown
 ---
 type: Article
-fetch:
-  path: /data/comments.json
-  schema: comments
+data: comments
 ---
 ```
 
@@ -478,12 +476,10 @@ fetch:
 
 **Cause:** Parent page doesn't have a `fetch` config or the fetch returned empty data.
 
-**Fix:** Ensure the parent `page.yml` has a valid fetch configuration:
+**Fix:** Ensure the parent `page.yml` references the collection data:
 
 ```yaml
-fetch:
-  path: /data/articles.json
-  schema: articles
+data: articles
 ```
 
 ### Items missing from output

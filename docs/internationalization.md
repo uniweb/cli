@@ -462,7 +462,7 @@ uniweb i18n prune --freeform             # Remove orphaned files
 
 ## Collections i18n
 
-Collections (data files in `public/data/`) are translated alongside page content by default. The `extract` command processes both pages and all JSON files in `public/data/` — whether generated from `library/` collections or hand-written.
+Collection data is translated alongside page content by default. The `extract` command processes both pages and all collection JSON — whether generated from `library/` collections or hand-written.
 
 ### Extract Collection Strings
 
@@ -472,7 +472,7 @@ uniweb i18n extract --collections-only   # Collections only
 uniweb i18n extract --no-collections     # Pages only
 ```
 
-Collection strings are stored in a separate manifest at `locales/collections/manifest.json`. Extraction covers all JSON files in `public/data/` using schema-guided or heuristic field detection. Provide a companion `.schema.js` file for precise control over which fields are translatable.
+Collection strings are stored in a separate manifest at `locales/collections/manifest.json`. Extraction covers all collection data using schema-guided or heuristic field detection. Provide a companion `.schema.js` file for precise control over which fields are translatable.
 
 ---
 
