@@ -653,24 +653,9 @@ The runtime wraps header sections in a bare `<header>` element (a semantic zone 
 
 There are two clean approaches:
 
-**Approach 1: CSS on the zone wrapper**
+**Approach 1: Fixed positioning + placeholder (recommended)**
 
-The simplest option. Target the runtime's `<header>` element directly in your foundation's stylesheet:
-
-```css
-/* foundation/src/styles.css */
-header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-}
-```
-
-This lets `sticky` work naturally — the `<header>` itself becomes the sticky element. Your component doesn't need to know about zone wrappers at all. This is a good reminder that CSS gives foundations full control over the runtime's HTML structure, even elements the framework generates.
-
-**Approach 2: Fixed positioning + placeholder**
-
-Use `fixed` inside the component. Fixed positioning is relative to the viewport, so it ignores the zone wrapper entirely. The tradeoff is a placeholder div to reserve space:
+Use `fixed` inside the component. Fixed positioning is relative to the viewport, so it bypasses the zone wrapper entirely. A placeholder div reserves space in the document flow:
 
 ```jsx
 function Header({ content, params }) {
@@ -689,9 +674,22 @@ function Header({ content, params }) {
 Header.as = 'nav'
 ```
 
-This approach is self-contained — the component manages its own positioning without external CSS. It also supports a `floating` param where the header overlaps the hero content (no placeholder, transparent background until scroll).
+This is the recommended approach because real-world headers almost always have parameterized behavior — a `floating` mode that overlaps the hero, transparent-to-solid transitions on scroll, show/hide based on scroll direction. All of that lives naturally in the component when positioning is `fixed`. The placeholder is conditional: present for normal headers, absent for floating headers that overlap content.
 
-**Which to choose?** The CSS approach is simpler for standard sticky headers. The fixed approach is better when you need scroll-dependent behavior (transparent-to-solid transitions, show/hide on scroll direction, floating over hero content).
+**Approach 2: CSS on the zone wrapper**
+
+For headers with no scroll-dependent behavior, target the runtime's `<header>` element directly in your foundation's stylesheet:
+
+```css
+/* foundation/src/styles.css */
+header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+```
+
+This lets `sticky` work naturally — the `<header>` itself becomes the sticky element. The component doesn't need to know about zone wrappers at all. This is a good reminder that CSS gives foundations full control over the runtime's HTML structure, even elements the framework generates. The limitation is that it's static — the component can't toggle it based on params or scroll state.
 
 **Custom layouts** are a third option: when a foundation exports its own Layout component, it renders the `<header>` element directly and can add `sticky` to it. See [Custom Layouts](custom-layouts.md) for details.
 
