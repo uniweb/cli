@@ -250,7 +250,7 @@ See [Page Configuration](./page-configuration.md) for all visibility options.
 // foundation/src/components/Header/index.jsx
 import { useWebsite } from '@uniweb/kit'
 
-export function Header({ content }) {
+export default function Header({ content }) {
   const { website } = useWebsite()
 
   // Manual nav from content (if provided)
@@ -286,7 +286,7 @@ export function Header({ content }) {
 // foundation/src/components/Footer/index.jsx
 import { useWebsite, getLocaleLabel } from '@uniweb/kit'
 
-export function Footer({ content }) {
+export default function Footer({ content }) {
   const { website } = useWebsite()
 
   return (
@@ -319,7 +319,7 @@ export function Footer({ content }) {
 // foundation/src/components/Sidebar/index.jsx
 import { useVersion } from '@uniweb/kit'
 
-export function Sidebar({ content }) {
+export default function Sidebar({ content }) {
   const { isVersioned, currentVersion, isDeprecatedVersion } = useVersion()
 
   return (
@@ -355,7 +355,7 @@ sticky: true
 The foundation component handles the sticky behavior:
 
 ```jsx
-export function Header({ content, params }) {
+export default function Header({ content, params }) {
   const { sticky = false } = params
 
   return (

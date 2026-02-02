@@ -85,7 +85,7 @@ The `components/` folder is yours — organize it however makes sense for your p
 // sections/Features/Features.jsx
 import { Card, CardContent } from '../../components/ui/card'
 
-export function Features({ content, params }) {
+export default function Features({ content, params }) {
   return (
     <div className="grid md:grid-cols-3 gap-6">
       {content.items.map((item, i) => (
@@ -108,7 +108,7 @@ CCA doesn't constrain your import graph. Import from `components/`, from npm pac
 The runtime wraps every component in a `<section>` element (with context classes for theming). Section-level styles — vertical padding, borders, background color — go on this wrapper via `Component.className`, not as an extra wrapping div inside your component:
 
 ```jsx
-export function Features({ content, params }) {
+function Features({ content, params }) {
   return (
     <div className="max-w-6xl mx-auto px-4">
       {/* ... content rendering ... */}
@@ -117,6 +117,8 @@ export function Features({ content, params }) {
 }
 
 Features.className = 'py-16 md:py-24 border-b border-edge'
+
+export default Features
 ```
 
 The component's JSX only needs the content-constraint div (`max-w-6xl mx-auto px-4`). The runtime produces:
@@ -276,7 +278,7 @@ The Grid component receives `block.childBlocks` — an array of Block instances,
 ```jsx
 import { ChildBlocks } from '@uniweb/runtime'
 
-export function Grid({ block, params }) {
+export default function Grid({ block, params }) {
   const { columns } = params
 
   const gridCols = {
@@ -360,7 +362,7 @@ The tag after the colon (`nav`) routes the parsed YAML to `content.data.nav`. Yo
 ```jsx
 import { Icon } from '@uniweb/kit'
 
-export function Sidebar({ content }) {
+export default function Sidebar({ content }) {
   const navItems = content.data?.nav?.items || []
 
   return (
@@ -402,7 +404,7 @@ CCA components can receive content from markdown items *or* from external data (
 The Team component from the marketing template shows this clearly:
 
 ```jsx
-export function Team({ content, params }) {
+export default function Team({ content, params }) {
   // Support both fetched data and markdown items
   const rawMembers = content.data.team || content.items || []
 
@@ -480,7 +482,7 @@ The component checks `block.dataLoading` to decide what to render:
 ```jsx
 import { DataPlaceholder } from '@uniweb/kit'
 
-export function ArticleList({ content, block, params }) {
+export default function ArticleList({ content, block, params }) {
   if (block.dataLoading) {
     return (
       <section>

@@ -53,7 +53,7 @@ The runtime wraps your component in a `<section class="context-medium">`. Inside
 Your component never checks which context it's in. It uses semantic classes and they resolve automatically:
 
 ```jsx
-export function Features({ content, params }) {
+export default function Features({ content, params }) {
   const { title, items } = content
 
   return (
@@ -245,7 +245,7 @@ One detail that's easy to miss: the runtime wraps your component in a `<section>
 Section-level styles — vertical padding, borders, background color — go on the wrapper via `Component.className`. The component's JSX only needs a content-constraint div:
 
 ```jsx
-export function CTA({ content }) {
+function CTA({ content }) {
   return (
     <div className="max-w-6xl mx-auto px-6 text-center">
       <h2 className="text-heading text-3xl font-bold">{content.title}</h2>
@@ -255,6 +255,8 @@ export function CTA({ content }) {
 }
 
 CTA.className = 'py-16 md:py-24 border-b border-edge'
+
+export default CTA
 ```
 
 You can also change the wrapper element with `Component.as`:

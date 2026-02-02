@@ -375,7 +375,7 @@ The runtime applies defaults from the schema and ensures data structure.
 ## Component Usage
 
 ```jsx
-export function TeamGrid({ content, params }) {
+export default function TeamGrid({ content, params }) {
   // Data from fetch, tagged blocks, or cascaded from page/site
   const team = content.data.team || []
 
@@ -447,7 +447,7 @@ fetch:
 
 ```js
 // Any component with data: { inherit: ['config'] }
-export function Footer({ content }) {
+export default function Footer({ content }) {
   const config = content.data.config || {}
   return <footer>{config.copyright}</footer>
 }

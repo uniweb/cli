@@ -80,7 +80,7 @@ Save. The page updates instantly.
 Open `foundation/src/sections/Hero/index.jsx`. The component receives:
 
 ```jsx
-export function Hero({ content, params }) {
+export default function Hero({ content, params }) {
   // content.title = "Your New Headline Here"
   // content.paragraphs = ["Create stunning websites..."]
   // content.links = [{ href: "/docs", label: "Get Started" }, ...]

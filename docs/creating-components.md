@@ -31,7 +31,7 @@ export default {
 ### index.jsx
 
 ```jsx
-export function FeatureCard({ content, params }) {
+export default function FeatureCard({ content, params }) {
   const { title, paragraphs, imgs } = content
 
   return (

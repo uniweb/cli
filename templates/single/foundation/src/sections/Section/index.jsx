@@ -7,7 +7,7 @@ import { H1, H2, P, Link, cn } from '@uniweb/kit'
  * A versatile content section that handles headings, text, and links.
  * This is the default component for rendering markdown content.
  */
-export function Section({ content, params }) {
+function Section({ content, params }) {
   // Content fields: title, pretitle, subtitle, paragraphs, links, imgs, items
   const { title, pretitle, subtitle, paragraphs = [], links = [], imgs = [] } = content || {}
 

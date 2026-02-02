@@ -96,7 +96,7 @@ export default {
 
 ```jsx
 // foundation/src/sections/Article/index.jsx
-export function Article({ content }) {
+export default function Article({ content }) {
   const article = content.data.article
   const allArticles = content.data.articles || []
 
@@ -235,7 +235,7 @@ export default {
 ### Accessing the data
 
 ```jsx
-export function Article({ content }) {
+export default function Article({ content }) {
   // Current item for this page
   const article = content.data.article
 

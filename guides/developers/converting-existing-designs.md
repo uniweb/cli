@@ -231,7 +231,7 @@ const Hero = () => (
 
 ```jsx
 // AFTER: content from markdown
-export function Hero({ content }) {
+function Hero({ content }) {
   const { pretitle, title, paragraphs, links, imgs } = content
 
   return (
@@ -265,6 +265,8 @@ export function Hero({ content }) {
 }
 
 Hero.className = 'pt-32 md:pt-48'
+
+export default Hero
 ```
 
 And the markdown becomes real content:
@@ -391,7 +393,7 @@ theme: dark
 The component just uses tokens:
 
 ```jsx
-export function Testimonial({ content }) {
+function Testimonial({ content }) {
   const { title, quotes, links } = content
 
   return (
@@ -412,6 +414,8 @@ export function Testimonial({ content }) {
 }
 
 Testimonial.className = 'py-16 md:py-24 rounded-xl'
+
+export default Testimonial
 ```
 
 Set `theme: dark` and it's a dark card. Set `theme: light` and it's a light card. Set `theme: medium` and it's a gray card. Change the primary color in `theme.yml` and the accent colors shift everywhere. The component doesn't know or care.
