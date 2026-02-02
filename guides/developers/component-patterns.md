@@ -765,6 +765,6 @@ This guide will grow as those patterns become clear. If you discover something t
 
 - [Thinking in Contexts](./thinking-in-contexts.md) — Semantic theming and when to break the rules
 - [Converting Existing Designs](./converting-existing-designs.md) — Bringing existing React code into CCA
-- [Content Structure](../../docs/content-structure.md) — How markdown becomes `content.items`, `content.data`, and `content.sequence`
+- [Content Structure](../../docs/content-structure.md) — How markdown becomes `content.items`, `content.data`, and `content.sequence` (includes how attributes flow to components and the foundation's role as gatekeeper)
 - [Component Metadata](../../docs/component-metadata.md) — The full `meta.js` API
 - [Kit Reference](../../docs/kit-reference.md) — Hooks, data classes, and utilities from @uniweb/kit

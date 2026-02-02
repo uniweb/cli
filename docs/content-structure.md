@@ -852,6 +852,128 @@ The `index:` setting in `site.yml` only controls which page becomes the root `/`
 >
 > Both pages exist independently—no conflict, no overwriting.
 
+## How Attributes Reach Components
+
+Attributes written in markdown flow through the entire pipeline without filtering. Understanding how they arrive helps you decide what to use and what to ignore.
+
+### Two Channels
+
+Attributes reach components through two distinct channels depending on the content type:
+
+**1. Object properties** — on `imgs[]`, `links[]`, `icons[]`
+
+When a content author writes `![Logo](./logo.svg){role=icon color=red}`, the parser extracts attributes into an object. Your component receives:
+
+```js
+content.icons[0]
+// { library: undefined, name: undefined, src: './logo.svg', role: 'icon', color: 'red' }
+```
+
+Kit components like `<Icon>`, `<Link>`, and `<Image>` destructure the properties they understand and spread the rest onto the DOM element via `...props`. So `color=red` becomes an HTML attribute on the `<svg>`.
+
+**2. Inline HTML** — in `title`, `paragraphs[]`, `items[].title`, etc.
+
+When attributes appear on inline text or within paragraph content, they're serialized as HTML before reaching the component. For example:
+
+```markdown
+This has [important]{.callout color=red} information.
+```
+
+Your component receives:
+
+```js
+content.paragraphs[0]
+// 'This has <span class="callout" style="color: red;">important</span> information.'
+```
+
+Kit's `<Text>`, `<H1>`, `<H2>`, and `<P>` components render these strings with `dangerouslySetInnerHTML`, so the span and its attributes appear in the DOM as-is.
+
+### What Survives the Pipeline
+
+Nothing is filtered. Every attribute the content author writes reaches the component:
+
+| Stage | What happens |
+|-------|-------------|
+| **Markdown** | `{key=value .class #id}` parsed into object |
+| **Content reader** | Stored in ProseMirror node attrs |
+| **Semantic parser** | Spread onto content objects (imgs, links) or serialized as HTML (text) |
+| **prepare-props** | Passed through — only guarantees structure, doesn't filter |
+| **Component** | Receives everything — decides what to use |
+
+Known attributes like `width`, `height`, `loading`, `target`, `role` are extracted by name during parsing and placed in predictable fields. Unknown attributes are preserved alongside them — nothing is discarded.
+
+### The Foundation as Gatekeeper
+
+This creates a deliberate design choice for foundations: how much control do you give content authors?
+
+**Permissive** — spread everything onto the DOM:
+
+```jsx
+function FeatureCard({ icon, title, paragraphs }) {
+  return (
+    <div>
+      <Icon {...icon} />  {/* All icon attributes reach the <svg> */}
+      <H1 text={title} /> {/* Inline HTML rendered as-is */}
+    </div>
+  )
+}
+```
+
+This is what Kit components do by default. Content authors can add `color`, `class`, `data-*`, `aria-*` attributes and they all work. It's a useful escape hatch — a content author can write `![](lu-star){color=var(--primary-600)}` to tint an icon without the foundation needing a `color` param.
+
+**Restrictive** — pick only what you support:
+
+```jsx
+function FeatureCard({ icon, title, paragraphs }) {
+  // Only pass the attributes this foundation supports
+  const { library, name, size } = icon
+  return (
+    <div>
+      <Icon library={library} name={name} size={size} />
+      <H1 text={title} />
+    </div>
+  )
+}
+```
+
+Here, `color=red` on an icon is silently ignored. The foundation preserves its branding because it controls exactly which properties reach the DOM.
+
+Both are valid. A design-system foundation serving multiple sites might be strict to enforce brand consistency. A personal site foundation might be permissive because the content author and developer are the same person.
+
+### Transforming Inline HTML
+
+Since text fields (`paragraphs`, `title`, etc.) arrive as HTML strings, a foundation that wants to intercept inline attributes needs to parse the HTML. `DOMParser` works for this:
+
+```jsx
+function StyledParagraph({ text }) {
+  // Transform inline attributes before rendering
+  const transformed = useMemo(() => {
+    const doc = new DOMParser().parseFromString(text, 'text/html')
+
+    // Example: remap color values to design tokens
+    doc.querySelectorAll('span[style]').forEach(span => {
+      const color = span.style.color
+      if (color && !color.startsWith('var(')) {
+        // Replace raw colors with the nearest design token
+        span.style.color = `var(--primary-600)`
+      }
+    })
+
+    // Example: strip classes the foundation doesn't support
+    doc.querySelectorAll('[class]').forEach(el => {
+      const allowed = ['highlight', 'muted', 'callout']
+      el.className = [...el.classList].filter(c => allowed.includes(c)).join(' ')
+    })
+
+    return doc.body.innerHTML
+  }, [text])
+
+  return <p dangerouslySetInnerHTML={{ __html: transformed }} />
+}
+```
+
+This is an advanced technique — most foundations won't need it. But it's available when a foundation needs to enforce constraints on inline styling while still allowing authors to use the attribute syntax.
+
 ## See Also
 
 - [Page Configuration](./page-configuration.md) — page.yml options for sections and ordering
