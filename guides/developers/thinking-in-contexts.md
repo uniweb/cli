@@ -48,7 +48,7 @@ The runtime wraps your component in a `<section class="context-medium">`. Inside
 | `--bg` | white | light gray | dark gray |
 | `--bg-subtle` | off-white | slightly darker | slightly lighter |
 | `--border` | light line | slightly darker line | dark line |
-| `--link` | primary-600 | primary-600 | primary-400 |
+| `--link` | color-primary-600 | color-primary-600 | color-primary-400 |
 
 Your component never checks which context it's in. It uses semantic classes and they resolve automatically:
 
@@ -121,20 +121,13 @@ colors:
   neutral: "#57534e"      # Drives all context tokens (bg, text, borders)
 ```
 
-Each color produces eleven shades: `--primary-50` through `--primary-950`, and the same for secondary, accent, and neutral. You map them to Tailwind in `styles.css`:
+Each color produces eleven shades: `--color-primary-50` through `--color-primary-950`, and the same for secondary, accent, and neutral. You map them to Tailwind in `styles.css`:
 
 ```css
-@theme inline {
-  --color-primary-50: var(--primary-50);
-  --color-primary-100: var(--primary-100);
-  /* ... through 950 ... */
-  --color-primary: var(--primary-500);
-
-  --color-accent-50: var(--accent-50);
-  /* ... same pattern ... */
-  --color-accent: var(--accent-500);
-}
+@import "@uniweb/kit/theme-tokens.css";
 ```
+
+This single import registers all palette variables (`--color-primary-50` through `--color-primary-950`, and the same for secondary, accent, neutral) as Tailwind theme colors.
 
 Use palette colors for intentional brand touches — icon containers, tag badges, active indicators — where you want a specific shade regardless of context:
 
@@ -190,7 +183,7 @@ Content authors control *which context* each section uses, in frontmatter:
 type: CTA
 theme: dark
 background:
-  color: var(--primary-600)
+  color: var(--color-primary-600)
 ---
 ```
 
@@ -208,7 +201,7 @@ The chain looks like this:
 site/theme.yml  →  build generates palette + context CSS  →  tokens resolve  →  your components have colors
 ```
 
-No site, no `theme.yml`, no colors. Your `text-heading` class targets `var(--heading)`, which is set by `.context-light { --heading: var(--neutral-900) }`, which depends on `--neutral-900` existing, which comes from the palette generated from `theme.yml`'s `neutral` color. Remove any link in that chain and you're styling against undefined variables.
+No site, no `theme.yml`, no colors. Your `text-heading` class targets `var(--heading)`, which is set by `.context-light { --heading: var(--color-neutral-900) }`, which depends on `--color-neutral-900` existing, which comes from the palette generated from `theme.yml`'s `neutral` color. Remove any link in that chain and you're styling against undefined variables.
 
 This is why even the simplest Uniweb project starts with two packages — a site and a foundation:
 
@@ -345,7 +338,7 @@ After converting a foundation to semantic theming, the typical component goes fr
 
 **New contexts work immediately.** If the build system adds a `context-accent` in the future, every semantic-token-using component supports it without changes. The components don't know what contexts exist — they just use tokens that resolve.
 
-**You don't build theme-switching logic.** Content authors set `theme: dark` on any section in frontmatter, and the entire visual context inverts. `background: { color: var(--primary-600) }` brands a section. These controls work without any conditional logic in your component — the tokens handle it.
+**You don't build theme-switching logic.** Content authors set `theme: dark` on any section in frontmatter, and the entire visual context inverts. `background: { color: var(--color-primary-600) }` brands a section. These controls work without any conditional logic in your component — the tokens handle it.
 
 ---
 
@@ -404,7 +397,7 @@ These are fixed colors that don't change with context. Use them for intentional 
 
 | Intent | Tailwind class | CSS variable |
 |--------|---------------|-------------|
-| Brand accent (any shade) | `text-primary-600` | `--primary-600` |
+| Brand accent (any shade) | `text-primary-600` | `--color-primary-600` |
 | Brand badge | `bg-primary-100 text-primary-700` | palette shades |
 | Accent callout | `bg-accent-100 text-accent-700` | palette shades |
 
@@ -414,14 +407,14 @@ Four palette roles are available: `primary`, `secondary`, `accent`, `neutral`. E
 
 | Token | `context-light` | `context-medium` | `context-dark` |
 |-------|-----------------|-------------------|----------------|
-| `--bg` | neutral-50 | neutral-100 | neutral-900 |
-| `--bg-subtle` | neutral-100 | neutral-200 | neutral-800 |
-| `--text` | neutral-950 | neutral-950 | neutral-50 |
-| `--text-muted` | neutral-600 | neutral-700 | neutral-300 |
-| `--heading` | neutral-900 | neutral-900 | white |
-| `--link` | primary-600 | primary-600 | primary-400 |
-| `--border` | neutral-200 | neutral-300 | neutral-700 |
-| `--btn-primary-bg` | primary-600 | primary-600 | primary-500 |
+| `--bg` | color-neutral-50 | color-neutral-100 | color-neutral-900 |
+| `--bg-subtle` | color-neutral-100 | color-neutral-200 | color-neutral-800 |
+| `--text` | color-neutral-950 | color-neutral-950 | color-neutral-50 |
+| `--text-muted` | color-neutral-600 | color-neutral-700 | color-neutral-300 |
+| `--heading` | color-neutral-900 | color-neutral-900 | white |
+| `--link` | color-primary-600 | color-primary-600 | color-primary-400 |
+| `--border` | color-neutral-200 | color-neutral-300 | color-neutral-700 |
+| `--btn-primary-bg` | color-primary-600 | color-primary-600 | color-primary-500 |
 | `--btn-primary-text` | white | white | white |
 
 Sites can override any of these mappings in `theme.yml` under the `contexts:` key.

@@ -12,7 +12,7 @@ colors:
   secondary: "#64748b"
 ```
 
-That's it. Your site now has a complete color palette with 11 shades for each color, accessible via CSS variables like `var(--primary-500)` or Tailwind classes like `bg-primary-500`.
+That's it. Your site now has a complete color palette with 11 shades for each color, accessible via CSS variables like `var(--color-primary-500)` or Tailwind classes like `bg-primary-500`.
 
 ## How It Works
 
@@ -94,11 +94,11 @@ Without `exactMatch`, the algorithm calculates shade 500's lightness (55%), whic
 **In CSS:**
 ```css
 .my-button {
-  background: var(--primary-600);
+  background: var(--color-primary-600);
   color: white;
 }
 .my-button:hover {
-  background: var(--primary-700);
+  background: var(--color-primary-700);
 }
 ```
 
@@ -158,24 +158,24 @@ Override semantic tokens per context:
 contexts:
   light:
     bg: white
-    fg: var(--neutral-900)
-    muted: var(--neutral-500)
-    link: var(--primary-600)
-    border: var(--neutral-200)
+    fg: var(--color-neutral-900)
+    muted: var(--color-neutral-500)
+    link: var(--color-primary-600)
+    border: var(--color-neutral-200)
 
   medium:
-    bg: var(--neutral-100)
-    fg: var(--neutral-900)
-    muted: var(--neutral-600)
-    link: var(--primary-600)
-    border: var(--neutral-300)
+    bg: var(--color-neutral-100)
+    fg: var(--color-neutral-900)
+    muted: var(--color-neutral-600)
+    link: var(--color-primary-600)
+    border: var(--color-neutral-300)
 
   dark:
-    bg: var(--neutral-900)
+    bg: var(--color-neutral-900)
     fg: white
-    muted: var(--neutral-400)
-    link: var(--primary-400)
-    border: var(--neutral-700)
+    muted: var(--color-neutral-400)
+    link: var(--color-primary-400)
+    border: var(--color-neutral-700)
 ```
 
 ### Using Context Tokens
@@ -397,17 +397,7 @@ For foundations using Tailwind CSS v4, map theme colors in `styles.css`:
 
 ```css
 @import "tailwindcss";
-
-@theme inline {
-  /* Map theme palette to Tailwind */
-  --color-primary-50: var(--primary-50);
-  --color-primary-100: var(--primary-100);
-  /* ... all shades ... */
-  --color-primary-950: var(--primary-950);
-
-  /* Semantic aliases */
-  --color-primary: var(--primary-500);
-}
+@import "@uniweb/kit/theme-tokens.css";
 ```
 
 Now Tailwind classes work with theme colors:
@@ -453,7 +443,7 @@ function Badge() {
   const accentColor = useThemeColor('accent', 600)
 
   // Get CSS variable reference
-  const primaryVar = useThemeColorVar('primary', 500) // 'var(--primary-500)'
+  const primaryVar = useThemeColorVar('primary', 500) // 'var(--color-primary-500)'
 
   return (
     <span style={{ background: accentColor, color: primaryVar }}>
@@ -495,12 +485,12 @@ colors:
 contexts:
   light:
     bg: white
-    fg: var(--neutral-900)
-    link: var(--primary-600)
+    fg: var(--color-neutral-900)
+    link: var(--color-primary-600)
   dark:
-    bg: var(--primary-900)
+    bg: var(--color-primary-900)
     fg: white
-    link: var(--primary-300)
+    link: var(--color-primary-300)
 
 # Typography
 fonts:

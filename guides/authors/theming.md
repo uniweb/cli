@@ -257,7 +257,7 @@ Your template handles the dark mode toggle UI. Most templates show a sun/moon bu
 By default, the page background is white. Many designs use a tinted background — a light gray, a warm off-white, or a subtle color wash. Set it in `theme.yml`:
 
 ```yaml
-background: var(--neutral-100)
+background: var(--color-neutral-100)
 ```
 
 This accepts any CSS background value:
@@ -267,10 +267,10 @@ This accepts any CSS background value:
 background: "#f8f9fa"
 
 # Theme variable
-background: var(--neutral-100)
+background: var(--color-neutral-100)
 
 # Gradient
-background: linear-gradient(180deg, white, var(--neutral-50))
+background: linear-gradient(180deg, white, var(--color-neutral-50))
 ```
 
 The page background shows through between sections and behind sections that use the default light theme. Sections with their own `theme:` or `background:` in frontmatter render on top of it.
@@ -284,15 +284,15 @@ You can define named styles for inline text — accent colors, highlights, callo
 ```yaml
 inline:
   accent:
-    color: var(--primary-600)
+    color: var(--color-primary-600)
   muted:
     color: var(--text-muted)
   callout:
-    color: var(--accent-600)
+    color: var(--color-accent-600)
     font-weight: 600
   highlight:
-    background: var(--primary-100)
-    color: var(--primary-900)
+    background: var(--color-primary-100)
+    color: var(--color-primary-900)
 ```
 
 Content authors use them with bracket syntax:
@@ -305,7 +305,7 @@ This is [important]{callout} — please read carefully.
 The [key finding]{highlight} was confirmed by three studies.
 ```
 
-Each name you define becomes available as an inline style. Because the values can reference theme variables (like `var(--primary-600)`), the styles adapt automatically when you change your brand colors or when text appears inside a dark section.
+Each name you define becomes available as an inline style. Because the values can reference theme variables (like `var(--color-primary-600)`), the styles adapt automatically when you change your brand colors or when text appears inside a dark section.
 
 ---
 
@@ -361,7 +361,7 @@ colors:
   neutral: "#64748b"
 
 # Page background
-background: var(--neutral-100)
+background: var(--color-neutral-100)
 
 # Section color contexts
 contexts:
@@ -384,10 +384,10 @@ fonts:
 # Inline text styles
 inline:
   accent:
-    color: var(--primary-600)
+    color: var(--color-primary-600)
   highlight:
-    background: var(--primary-100)
-    color: var(--primary-900)
+    background: var(--color-primary-100)
+    color: var(--color-primary-900)
 
 # Dark mode support
 appearance:
