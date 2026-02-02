@@ -649,37 +649,53 @@ Now the runtime wraps this component in `<nav>` instead of `<section>`. This is 
 
 ### Header positioning: sticky vs fixed
 
-The natural approach for a sticky header is `sticky top-0` — the header stays in the document flow and sticks when you scroll. This is what most designs need:
+The runtime wraps header sections in a bare `<header>` element (a semantic zone wrapper). Your component renders _inside_ this wrapper. This matters for CSS positioning because `sticky` only works relative to the nearest scrolling ancestor — and the `<header>` wrapper sits between your component and the scroll container.
+
+There are two clean approaches:
+
+**Approach 1: CSS on the zone wrapper**
+
+The simplest option. Target the runtime's `<header>` element directly in your foundation's stylesheet:
+
+```css
+/* foundation/src/styles.css */
+header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+```
+
+This lets `sticky` work naturally — the `<header>` itself becomes the sticky element. Your component doesn't need to know about zone wrappers at all. This is a good reminder that CSS gives foundations full control over the runtime's HTML structure, even elements the framework generates.
+
+**Approach 2: Fixed positioning + placeholder**
+
+Use `fixed` inside the component. Fixed positioning is relative to the viewport, so it ignores the zone wrapper entirely. The tradeoff is a placeholder div to reserve space:
 
 ```jsx
 function Header({ content, params }) {
-  // ... rendering
+  const isFloating = params.floating
+
+  return (
+    <>
+      <div className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur ...">
+        <nav className="max-w-6xl mx-auto px-4">...</nav>
+      </div>
+      {!isFloating && <div className="h-16" />}
+    </>
+  )
 }
 
 Header.as = 'nav'
-Header.className = 'sticky top-0 z-30 bg-white/95 backdrop-blur'
 ```
 
-A `fixed` header (out of the document flow, always at the top) is an unusual choice that requires a spacer div to push body content down. If your design needs it, make it a param so content authors can opt in — don't make it the default:
+This approach is self-contained — the component manages its own positioning without external CSS. It also supports a `floating` param where the header overlaps the hero content (no placeholder, transparent background until scroll).
 
-```js
-// meta.js
-export default {
-  params: {
-    floating: {
-      type: 'boolean',
-      label: 'Float over content',
-      default: false,
-    },
-  },
-}
-```
+**Which to choose?** The CSS approach is simpler for standard sticky headers. The fixed approach is better when you need scroll-dependent behavior (transparent-to-solid transitions, show/hide on scroll direction, floating over hero content).
 
-```jsx
-Header.className = params.floating ? 'fixed top-0 inset-x-0 z-50' : 'sticky top-0 z-30'
-```
+**Custom layouts** are a third option: when a foundation exports its own Layout component, it renders the `<header>` element directly and can add `sticky` to it. See [Custom Layouts](custom-layouts.md) for details.
 
-Prefer `sticky` as the default — it's simpler, doesn't need spacers, and matches what most designs expect.
+> **Note:** `Component.className` and `Component.as` control the _section_ wrapper (the element immediately around your component), not the _zone_ wrapper (`<header>`, `<main>`, `<footer>`). Putting `sticky top-0` on `Component.className` won't make the header stick — the zone wrapper is the element that needs to be sticky.
 
 ### Custom Layouts
 
