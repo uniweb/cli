@@ -261,8 +261,8 @@ Each unit is keyed by a hash of the source string. The `contexts` array shows wh
 
 **Options:**
 - `--verbose` — Show extracted strings in output
-- `--collections` — Extract only collection content
-- `--with-collections` — Extract pages and collections together
+- `--collections-only` — Extract only collection content (skip pages)
+- `--no-collections` — Skip collections (pages only)
 
 ### Initialize Locale Files
 
@@ -462,16 +462,17 @@ uniweb i18n prune --freeform             # Remove orphaned files
 
 ## Collections i18n
 
-Collections (data files in `public/data/`) can also be translated.
+Collections (data files in `public/data/`) are translated alongside page content by default. The `extract` command processes both pages and all JSON files in `public/data/` — whether generated from `library/` collections or hand-written.
 
 ### Extract Collection Strings
 
 ```bash
-uniweb i18n extract --collections        # Collections only
-uniweb i18n extract --with-collections   # Pages + collections
+uniweb i18n extract                      # Pages + collections (default)
+uniweb i18n extract --collections-only   # Collections only
+uniweb i18n extract --no-collections     # Pages only
 ```
 
-Collection strings are stored in a separate manifest at `locales/collections/manifest.json`.
+Collection strings are stored in a separate manifest at `locales/collections/manifest.json`. Extraction covers all JSON files in `public/data/` using schema-guided or heuristic field detection. Provide a companion `.schema.js` file for precise control over which fields are translatable.
 
 ---
 
@@ -562,8 +563,8 @@ The search client automatically uses the correct index for the active locale.
 | `--by-page` | status --missing | Group by page |
 | `--freeform` | status, prune | Free-form translation mode |
 | `--json` | status | Machine-readable output |
-| `--collections` | extract | Collections only |
-| `--with-collections` | extract | Pages + collections |
+| `--collections-only` | extract | Collections only |
+| `--no-collections` | extract | Skip collections (pages only) |
 | `--all-stale` | update-hash | Update all stale hashes |
 
 ---

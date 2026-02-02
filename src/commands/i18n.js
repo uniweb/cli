@@ -228,10 +228,11 @@ async function loadSiteConfig(siteRoot) {
  */
 async function runExtract(siteRoot, config, args) {
   const verbose = args.includes('--verbose') || args.includes('-v')
-  const collectionsOnly = args.includes('--collections')
-  const withCollections = args.includes('--with-collections')
+  const collectionsOnly = args.includes('--collections-only') || args.includes('--collections')
+  const noCollections = args.includes('--no-collections')
+  // --with-collections is now a no-op (collections are included by default)
 
-  // Extract page content (unless --collections only)
+  // Extract page content (unless --collections-only)
   if (!collectionsOnly) {
     log(`\n${colors.cyan}Extracting translatable content...${colors.reset}\n`)
 
@@ -274,8 +275,8 @@ async function runExtract(siteRoot, config, args) {
     }
   }
 
-  // Extract collection content (if --collections or --with-collections)
-  if (collectionsOnly || withCollections) {
+  // Extract collection content (by default, skip with --no-collections)
+  if (!noCollections) {
     log(`\n${colors.cyan}Extracting collection content...${colors.reset}\n`)
 
     // Check if collections exist
@@ -1482,8 +1483,8 @@ ${colors.bright}Options:${colors.reset}
   --freeform           (status/prune) Include free-form translation status
   --json               (status) Output as JSON for translation tools
   --by-page            (status --missing) Group missing strings by page
-  --collections        (extract/status/audit) Process only collections
-  --with-collections   (extract/status/audit) Include collections with pages
+  --collections-only   (extract/status/audit) Process only collections
+  --no-collections     (extract/status/audit) Skip collections (pages only)
   --all-stale          (update-hash) Update all stale translations at once
 
 ${colors.bright}Configuration:${colors.reset}
@@ -1520,7 +1521,7 @@ ${colors.bright}Examples:${colors.reset}
   ${colors.dim}# Hash-based workflow${colors.reset}
   uniweb i18n extract              # Extract all translatable strings
   uniweb i18n extract --verbose    # Show extracted strings
-  uniweb i18n extract --with-collections  # Extract pages + collections
+  uniweb i18n extract --no-collections    # Pages only (skip collections)
   uniweb i18n init es fr           # Create starter files for Spanish and French
   uniweb i18n init --empty         # Create files with empty values (for translators)
   uniweb i18n init --force         # Overwrite existing locale files

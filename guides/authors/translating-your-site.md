@@ -296,18 +296,18 @@ Most sites won't need free-form translations. They're for the special cases wher
 
 ## Translating Collections
 
-If your site has collections (blog posts, team members, product listings stored in `public/data/`), those can be translated too:
+If your site has collections (blog posts, team members, product listings stored in `public/data/`), those are extracted automatically alongside page content:
 
 ```bash
-uniweb i18n extract --with-collections
+uniweb i18n extract
 ```
 
-This extracts collection strings alongside your page content. They get their own manifest at `locales/collections/manifest.json` and follow the same translate-and-build workflow.
+Collection strings get their own manifest at `locales/collections/manifest.json` and follow the same translate-and-build workflow.
 
-To extract only collection strings:
+To extract only collection strings (skipping pages):
 
 ```bash
-uniweb i18n extract --collections
+uniweb i18n extract --collections-only
 ```
 
 ---

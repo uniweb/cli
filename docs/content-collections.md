@@ -1,35 +1,22 @@
 # Content Collections
 
-Author content in markdown and automatically generate JSON data files. Collections let you maintain blog posts, team members, products, or any structured data as markdown files with frontmatter metadata.
+Author content in markdown or YAML and automatically generate JSON data files. Collections let you maintain blog posts, team members, schedules, or any structured data as individual files in a folder — `.md` for rich content with body text, `.yml`/`.yaml` for pure structural data.
 
-## Choosing Your Data Approach
+## The Data Layer: `public/data/`
 
-Uniweb supports three ways to bring structured data into components:
+All structured data lives in `public/data/` as JSON files. This is the unified data layer — components fetch from `/data/*.json` regardless of how the data got there. The i18n system translates everything in this directory the same way.
 
-**Markdown collections** (`library/` folders) — Best for content that authors write and
-maintain. Each item is a `.md` file with frontmatter metadata and rich body content. The
-build converts these to JSON with ProseMirror content. i18n extraction, freeform
-translation, co-located assets, and excerpt generation all work automatically.
+There are three ways to populate it:
 
-Use this for: blog posts, team members, case studies, event descriptions, FAQ items —
-anything where the content itself needs translation.
+**Markdown collections** (`library/` folders) — Author content as `.md` or `.yml` files. The build converts them to JSON in `public/data/`. Markdown items get ProseMirror content bodies, excerpts, and co-located assets automatically. YAML items pass through as-is. Use `.md` for content with body text (blog posts, case studies, team bios), `.yml` for purely structural data (schedules, pricing tiers).
 
-**Static JSON files** (`public/data/`) — Best for structural data, demo/placeholder content,
-or data that mirrors what a CMS API would return. i18n extraction uses heuristics or an
-optional companion schema to identify translatable fields (see [i18n for JSON Data](#i18n-for-json-data) below).
+**Hand-written JSON** (`public/data/` directly) — Place JSON files directly in the data directory. Useful for template demo data, configuration-like data, or prototyping a CMS integration. Provide a companion `.schema.js` for precise control over which fields the i18n system extracts; otherwise it uses heuristics.
 
-Use this for: template demo data, configuration-like data, or when prototyping a CMS
-integration.
+**Runtime data** (API fetch) — For production sites where a CMS or backend manages content and serves pre-localized data. Components receive it the same way as static data (via `content.data`).
 
-**Runtime data** (API fetch) — Best for production sites where a CMS or backend manages
-content and localization. The CMS serves pre-localized data. Components receive it the
-same way as static data (via `content.data`).
+Both markdown collections and hand-written JSON get the same i18n treatment — `uniweb i18n extract` processes all JSON files in `public/data/` by default, using schema-guided or heuristic field detection.
 
-Use this for: production sites with a CMS backend.
-
-**Rule of thumb:** If the data contains human-readable text that needs translation, prefer
-markdown collections. If it's structural or comes from an external system, use JSON or
-runtime fetch.
+**Rule of thumb:** If authors maintain the content and it needs translation, use markdown collections. If it's structural or comes from an external system, use hand-written JSON or runtime fetch.
 
 ---
 
@@ -38,7 +25,7 @@ runtime fetch.
 Content collections separate **content authoring** from **page structure**:
 
 - **Pages** (in `pages/`) define what components render where
-- **Collections** (in `library/`) define data items as markdown files
+- **Collections** (in `library/`) define data items as markdown or YAML files
 - At build time, collections become JSON files in `public/data/`
 - Pages reference collections using `data: collection-name`
 
@@ -144,7 +131,7 @@ Each collection generates its own JSON file: `/data/articles.json`, `/data/produ
 
 ## Content Item Fields
 
-Each markdown file in a collection becomes a JSON object:
+Each `.md` file in a collection becomes a JSON object with the following fields. For `.yml`/`.yaml` files, see [Data Items (YAML)](#data-items-yaml) — they produce only `slug` plus whatever fields you declare.
 
 | Field | Source | Notes |
 |-------|--------|-------|
@@ -176,6 +163,81 @@ Each markdown file in a collection becomes a JSON object:
     "lastModified": "2025-01-15T10:30:00.000Z"
   }
 ]
+```
+
+---
+
+## Data Items (YAML)
+
+For collections where items are pure structural data — no body text, no excerpts, no images — use `.yml` or `.yaml` files instead of markdown. The file extension signals intent:
+
+| File type | What it means | Output |
+|-----------|---------------|--------|
+| `.md` | Content item (article-like) | slug + frontmatter + body + content + excerpt + image + lastModified |
+| `.yml`/`.yaml` | Data item (structural) | slug + YAML fields only |
+
+A YAML item skips ProseMirror conversion, body extraction, excerpt generation, image detection, and file stat — its output is just `slug` plus the fields you declare.
+
+### Example: Conference schedule
+
+```
+site/
+└── library/
+    └── schedule/
+        ├── keynote.yml
+        ├── workshop-react.yml
+        └── panel-ai.yml
+```
+
+```yaml
+# library/schedule/keynote.yml
+title: Opening Keynote
+speaker: Ada Lovelace
+time: "09:00"
+room: Main Hall
+track: general
+```
+
+Generated JSON:
+
+```json
+[
+  {
+    "slug": "keynote",
+    "title": "Opening Keynote",
+    "speaker": "Ada Lovelace",
+    "time": "09:00",
+    "room": "Main Hall",
+    "track": "general"
+  }
+]
+```
+
+No `body`, `content`, `excerpt`, `image`, or `lastModified` — just the data you declared.
+
+### Mixing markdown and YAML items
+
+A single collection can contain both `.md` and `.yml` files. This is useful when some items need rich body content and others are purely structural:
+
+```
+site/
+└── library/
+    └── team/
+        ├── alice.md       # Has a bio (rich content)
+        ├── bob.md         # Has a bio
+        └── vacant.yml     # Open position — just metadata
+```
+
+Filtering, sorting, and limiting work identically across both file types.
+
+### `published: false`
+
+Just like markdown items, YAML items with `published: false` are excluded from the output:
+
+```yaml
+# Excluded from generated JSON
+published: false
+title: Coming Soon
 ```
 
 ---
@@ -567,9 +629,11 @@ During production build (`pnpm build`):
 |-----------|----------|
 | Missing collection folder | Warning logged, empty array generated |
 | Empty collection | Empty array `[]` generated |
-| Invalid frontmatter | Error with filename, file skipped |
-| Unpublished items | Excluded from output |
+| Invalid frontmatter (`.md`) | Error with filename, file skipped |
+| Invalid YAML (`.yml`) | Error with filename, file skipped |
+| Unpublished items | Excluded from output (both `.md` and `.yml`) |
 | No date field with date sort | Items sorted by filename |
+| Mixed `.md` and `.yml` files | Both processed; same filtering/sorting/limiting applies |
 | Nested folders | Not supported (flat structure only) |
 
 ---
