@@ -267,8 +267,7 @@ CTA.className = 'py-16 md:py-24 border-b border-edge'
 You can also change the wrapper element with `Component.as`:
 
 ```jsx
-Header.as = 'nav'      // <nav> instead of <section>
-Footer.as = 'footer'   // <footer> instead of <section>
+Header.as = 'nav'      // <nav> inside <header> — semantically correct
 ```
 
 If your component also renders `<section>`, you get nested sections — semantically wrong and potentially competing for background/padding control.

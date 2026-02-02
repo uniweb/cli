@@ -133,7 +133,6 @@ You can also change the wrapper element with `Component.as`:
 
 ```jsx
 Header.as = 'nav'       // wraps in <nav> instead of <section>
-Footer.as = 'footer'    // wraps in <footer>
 ```
 
 ---
