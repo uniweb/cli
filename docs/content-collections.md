@@ -1,14 +1,14 @@
 # Content Collections
 
-Author content in markdown, YAML, or JSON and automatically generate data files. Collections let you maintain blog posts, team members, schedules, or any structured data as individual files in a `library/` folder — `.md` for rich content with body text, `.yml`/`.yaml` for pure structural data, `.json` for existing JSON data or API responses.
+Author content in markdown, YAML, or JSON and automatically generate data files. Collections let you maintain blog posts, team members, schedules, or any structured data as individual files in a `collections/` folder — `.md` for rich content with body text, `.yml`/`.yaml` for pure structural data, `.json` for existing JSON data or API responses.
 
 ## The Data Layer
 
-Collections are authored in `library/` folders and referenced from pages with `data: collection-name`. The build converts them to JSON in `public/data/`, which is an output directory — you don't need to interact with it directly.
+Collections are authored in `collections/` folders and referenced from pages with `data: collection-name`. The build converts them to JSON in `public/data/`, which is an output directory — you don't need to interact with it directly.
 
 There are three ways to provide data to components:
 
-**Collections** (`library/` folders) — Author content as `.md`, `.yml`, or `.json` files. The build converts them to JSON. Markdown items get ProseMirror content bodies, excerpts, and co-located assets automatically. YAML and JSON items pass through as-is. Use `.md` for content with body text (blog posts, case studies), `.yml` or `.json` for purely structural data (schedules, pricing tiers).
+**Collections** (`collections/` folders) — Author content as `.md`, `.yml`, or `.json` files. The build converts them to JSON. Markdown items get ProseMirror content bodies, excerpts, and co-located assets automatically. YAML and JSON items pass through as-is. Use `.md` for content with body text (blog posts, case studies), `.yml` or `.json` for purely structural data (schedules, pricing tiers).
 
 **Runtime data** (API fetch) — For production sites where a CMS or backend manages content and serves pre-localized data. Components receive it the same way as static data (via `content.data`).
 
@@ -16,7 +16,7 @@ There are three ways to provide data to components:
 
 Both collections and hand-written JSON get the same i18n treatment — `uniweb i18n extract` processes all JSON files in `public/data/` by default.
 
-**Rule of thumb:** If authors maintain the content and it needs translation, use collections in `library/`. If it's structural or comes from an external system, use runtime fetch.
+**Rule of thumb:** If authors maintain the content and it needs translation, use collections in `collections/`. If it's structural or comes from an external system, use runtime fetch.
 
 ---
 
@@ -25,7 +25,7 @@ Both collections and hand-written JSON get the same i18n treatment — `uniweb i
 Content collections separate **content authoring** from **page structure**:
 
 - **Pages** (in `pages/`) define what components render where
-- **Collections** (in `library/`) define data items as markdown or YAML files
+- **Collections** (in `collections/`) define data items as markdown or YAML files
 - At build time, collections become JSON files in `public/data/`
 - Pages reference collections using `data: collection-name`
 
@@ -39,7 +39,7 @@ This keeps content portable and component-independent.
 
 ```
 site/
-└── library/
+└── collections/
     └── articles/
         ├── getting-started.md
         ├── design-patterns.md
@@ -70,7 +70,7 @@ First, create a new project...
 name: My Site
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc
 ```
 
@@ -95,11 +95,11 @@ For more control, use the full fetch syntax: `fetch: /data/articles.json` or `fe
 ```yaml
 collections:
   # Simple form (just path)
-  articles: library/articles
+  articles: collections/articles
 
   # Extended form (with options)
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc           # Field + direction
     filter: published != false
     limit: 100                # Max items (0 = unlimited)
@@ -113,15 +113,15 @@ collections:
 ```yaml
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc
 
   products:
-    path: library/products
+    path: collections/products
     sort: price asc
 
   team:
-    path: library/team
+    path: collections/team
     sort: order asc
 ```
 
@@ -183,7 +183,7 @@ A YAML item skips ProseMirror conversion, body extraction, excerpt generation, i
 
 ```
 site/
-└── library/
+└── collections/
     └── schedule/
         ├── keynote.yml
         ├── workshop-react.yml
@@ -191,7 +191,7 @@ site/
 ```
 
 ```yaml
-# library/schedule/keynote.yml
+# collections/schedule/keynote.yml
 title: Opening Keynote
 speaker: Ada Lovelace
 time: "09:00"
@@ -222,7 +222,7 @@ A single collection can contain `.md`, `.yml`, and `.json` files together. This 
 
 ```
 site/
-└── library/
+└── collections/
     └── team/
         ├── alice.md       # Has a bio (rich content)
         ├── bob.md         # Has a bio
@@ -252,7 +252,7 @@ For existing JSON data — API responses, exports from other tools, or data you 
 A `.json` file containing an object is treated as a single item. The slug comes from the filename:
 
 ```json
-// library/team/alice.json
+// collections/team/alice.json
 {
   "name": "Alice",
   "role": "Engineer",
@@ -267,7 +267,7 @@ Output: `{ "slug": "alice", "name": "Alice", "role": "Engineer", ... }`
 A `.json` file containing an array contributes all items directly — useful for importing existing datasets or API responses:
 
 ```json
-// library/products/catalog.json
+// collections/products/catalog.json
 [
   { "slug": "widget-a", "name": "Widget A", "price": 29 },
   { "slug": "widget-b", "name": "Widget B", "price": 49 }
@@ -289,7 +289,7 @@ Filter items using simple expressions:
 ```yaml
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     filter: published != false
 ```
 
@@ -330,15 +330,15 @@ Sort by one or more fields:
 ```yaml
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc         # Newest first
 
   products:
-    path: library/products
+    path: collections/products
     sort: price asc         # Cheapest first
 
   team:
-    path: library/team
+    path: collections/team
     sort: order asc, name asc  # By order, then alphabetically
 ```
 
@@ -357,7 +357,7 @@ Limit the number of items in the output:
 collections:
   # Latest 10 articles only
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc
     limit: 10
 ```
@@ -390,7 +390,7 @@ Excerpts are automatically generated from content:
 ```yaml
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     excerpt:
       maxLength: 200        # Character limit (default: 160)
       field: description    # Prefer this frontmatter field
@@ -436,7 +436,7 @@ Collection items can reference assets stored alongside their markdown files usin
 
 ```
 site/
-└── library/
+└── collections/
     └── articles/
         ├── getting-started.md
         ├── getting-started-diagram.svg    # Co-located with article
@@ -465,8 +465,8 @@ The system consists of three main parts...
 At build time, the collection processor:
 
 1. **Detects relative paths** — Any `./` or `../` path in the content
-2. **Copies assets** — Files are copied to `public/library/<collection>/`
-3. **Updates paths** — References become site-root-relative (`/library/articles/diagram.svg`)
+2. **Copies assets** — Files are copied to `public/collections/<collection>/`
+3. **Updates paths** — References become site-root-relative (`/collections/articles/diagram.svg`)
 
 This means your content stays portable—move an article and its assets together, and everything still works.
 
@@ -497,11 +497,11 @@ Co-located assets work for all media types:
 
 ### Output Location
 
-Co-located assets are copied to `public/library/<collection-name>/`:
+Co-located assets are copied to `public/collections/<collection-name>/`:
 
 ```
 public/
-└── library/
+└── collections/
     └── articles/
         ├── getting-started-diagram.svg
         └── design-patterns-architecture.png
@@ -518,7 +518,7 @@ The JSON output references these processed paths:
       {
         "type": "image",
         "attrs": {
-          "src": "/library/articles/getting-started-diagram.svg",
+          "src": "/collections/articles/getting-started-diagram.svg",
           "alt": "Architecture Diagram"
         }
       }
@@ -536,7 +536,7 @@ The JSON output references these processed paths:
 ```
 site/
 ├── site.yml
-├── library/
+├── collections/
 │   └── articles/
 │       ├── getting-started.md
 │       ├── design-patterns.md
@@ -559,11 +559,11 @@ site/
 name: My Blog
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc
 ```
 
-### library/articles/getting-started.md
+### collections/articles/getting-started.md
 
 ```markdown
 ---

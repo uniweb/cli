@@ -44,7 +44,7 @@ fetch:
 # Content Collections
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc
 ```
 
@@ -239,12 +239,12 @@ Define collections of markdown content that generate JSON data files.
 ```yaml
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc
     filter: published != false
 
   team:
-    path: library/team
+    path: collections/team
     sort: order asc
 ```
 
@@ -302,11 +302,11 @@ fetch:
 # Collections
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc
 
   products:
-    path: library/products
+    path: collections/products
     sort: name asc
 ```
 

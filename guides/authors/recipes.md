@@ -520,14 +520,14 @@ Set up a blog with a list page and individual article pages.
 ```yaml
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc
 ```
 
-**2. Add article files** in `library/articles/`:
+**2. Add article files** in `collections/articles/`:
 
 ```
-library/articles/
+collections/articles/
 ├── hello-world.md
 ├── new-feature.md
 └── tips-and-tricks.md
@@ -811,5 +811,5 @@ Browse all icons visually at [react-icons.github.io/react-icons](https://react-i
 - **[Writing Content](./writing-content.md)** — Full guide to writing content
 - **[Special Sections](../special-sections.md)** — Header, footer, and sidebar details
 - **[Linking](../linking.md)** — Stable `page:` links
-- **[Collections](./collections.md)** — How collections work, the library/ folder, and detail pages
+- **[Collections](./collections.md)** — How collections work, the collections/ folder, and detail pages
 - **[Search](../search.md)** — Search configuration

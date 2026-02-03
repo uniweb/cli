@@ -8,9 +8,9 @@ This guide covers everything you need to know as a content author. No coding req
 
 ## What Collections Are
 
-Most of your content lives in `pages/` — one folder per page, with markdown files for each section. Collections are different. They live in `library/` and hold **items that share the same structure**.
+Most of your content lives in `pages/` — one folder per page, with markdown files for each section. Collections are different. They live in `collections/` and hold **items that share the same structure**.
 
-Think of it like a filing cabinet. Pages are the rooms of your site. The library is where you keep organized sets of things — articles, team bios, products — that pages can pull from.
+Think of it like a filing cabinet. Pages are the rooms of your site. The collections folder is where you keep organized sets of things — articles, team bios, products — that pages can pull from.
 
 ```
 site/
@@ -18,7 +18,7 @@ site/
 │   ├── home/
 │   ├── about/
 │   └── blog/
-├── library/           ← Your collections
+├── collections/           ← Your collections
 │   ├── articles/
 │   │   ├── getting-started.md
 │   │   ├── design-tips.md
@@ -136,10 +136,10 @@ If you just need to point to a folder:
 
 ```yaml
 collections:
-  articles: library/articles
+  articles: collections/articles
 ```
 
-That's it. Every markdown file in `library/articles/` becomes an item in the `articles` collection.
+That's it. Every markdown file in `collections/articles/` becomes an item in the `articles` collection.
 
 ### With options
 
@@ -148,7 +148,7 @@ For more control, use the extended form:
 ```yaml
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc
     filter: published != false
     limit: 100
@@ -156,7 +156,7 @@ collections:
 
 | Option | What it does | Example |
 |--------|-------------|---------|
-| `path` | Folder containing the markdown files | `library/articles` |
+| `path` | Folder containing the markdown files | `collections/articles` |
 | `sort` | Order items by a field | `date desc` (newest first) |
 | `filter` | Include only matching items | `published != false` |
 | `limit` | Maximum number of items | `100` |
@@ -183,15 +183,15 @@ A site can have as many collections as it needs:
 ```yaml
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc
 
   team:
-    path: library/team
+    path: collections/team
     sort: order asc
 
   products:
-    path: library/products
+    path: collections/products
     sort: title asc
 ```
 
@@ -257,7 +257,7 @@ title: Blog
 data: articles
 ```
 
-The `[slug]` folder tells the site: "For each item in the collection, create a page." The article at `library/articles/design-tips.md` becomes the page `/blog/design-tips`. The one at `library/articles/getting-started.md` becomes `/blog/getting-started`.
+The `[slug]` folder tells the site: "For each item in the collection, create a page." The article at `collections/articles/design-tips.md` becomes the page `/blog/design-tips`. The one at `collections/articles/getting-started.md` becomes `/blog/getting-started`.
 
 The section inside `[slug]/` receives the individual item's content automatically. You don't need to do anything special in the markdown file — just set the section type:
 
@@ -305,7 +305,7 @@ When you're ready to publish, change `published: false` to `published: true` or 
 You can store images and other files right next to your markdown files. This keeps everything for one item in the same place.
 
 ```
-library/articles/
+collections/articles/
 ├── design-tips.md
 ├── design-tips-cover.jpg     ← Cover image for the article
 ├── spacing-diagram.svg       ← Diagram used in the article
@@ -337,7 +337,7 @@ Collections work for any repeating content, not just articles. Here are a few co
 ### Team directory
 
 ```
-library/team/
+collections/team/
 ├── alice-park.md
 ├── bob-silva.md
 └── carol-wu.md
@@ -358,14 +358,14 @@ Alice leads the design team with a focus on accessibility and design systems.
 # site.yml
 collections:
   team:
-    path: library/team
+    path: collections/team
     sort: order asc
 ```
 
 ### Product catalog
 
 ```
-library/products/
+collections/products/
 ├── starter-plan.md
 ├── pro-plan.md
 └── enterprise-plan.md
@@ -387,14 +387,14 @@ Everything you need to grow. Includes all Starter features plus priority support
 # site.yml
 collections:
   products:
-    path: library/products
+    path: collections/products
     sort: order asc
 ```
 
 ### Case studies
 
 ```
-library/cases/
+collections/cases/
 ├── acme-corp.md
 ├── globex.md
 └── initech.md
@@ -427,7 +427,7 @@ We built a multilingual site with dynamic routing for each region.
 # site.yml
 collections:
   cases:
-    path: library/cases
+    path: collections/cases
     sort: date desc
 ```
 
@@ -455,7 +455,7 @@ You can also configure excerpt behavior in `site.yml`:
 ```yaml
 collections:
   articles:
-    path: library/articles
+    path: collections/articles
     sort: date desc
     excerpt:
       maxLength: 200          # Characters (default: 160)
@@ -470,7 +470,7 @@ collections:
 
 - **Filenames become URLs.** The file `design-tips.md` creates the slug `design-tips`, which becomes part of the URL (`/blog/design-tips`). Use lowercase, hyphen-separated names.
 
-- **Keep collections flat.** Put all items directly in the collection folder — don't create subfolders. `library/articles/design-tips.md` works. `library/articles/2025/design-tips.md` does not.
+- **Keep collections flat.** Put all items directly in the collection folder — don't create subfolders. `collections/articles/design-tips.md` works. `collections/articles/2025/design-tips.md` does not.
 
 - **Items vs. collections — a rule of thumb.** If you're writing content that fits naturally in one section (a few feature cards, a short FAQ), use items in a single markdown file. If the content is a growing catalog (blog posts, team members, products), use a collection.
 
@@ -484,7 +484,7 @@ collections:
 
 | What you want to do | How to do it |
 |---------------------|-------------|
-| Create a collection | Add markdown files to a folder in `library/` |
+| Create a collection | Add markdown files to a folder in `collections/` |
 | Declare it | Add a `collections:` entry in `site.yml` |
 | Sort items | `sort: date desc` or `sort: title asc` in `site.yml` |
 | Filter items | `filter: published != false` in `site.yml` |
