@@ -15,7 +15,7 @@ Each template adopts a different subset of CCA conventions. A dash means the tem
 | **Params / presets**            | yes               | yes (extensive) | yes (extensive) | yes               | yes             |
 | **content.items**               | yes               | yes             | yes             | yes               | —               |
 | **content.data**                | yes (API schemas) | —               | yes             | yes               | yes (live APIs) |
-| **Dynamic routes**              | —                 | —               | yes             | yes               | —               |
+| **Dynamic routes**              | —                 | —               | yes             | yes               | yes             |
 | **Semantic CSS tokens**         | —                 | —               | yes             | yes               | yes             |
 | **theme.yml**                   | —                 | —               | yes             | yes               | yes             |
 | **Per-section theme overrides** | —                 | —               | yes             | yes               | yes             |
@@ -131,6 +131,8 @@ The component doesn't fetch data, manage cache, or handle errors — the runtime
 
 **Per-section data fetching.** Each section's markdown frontmatter declares its own fetch config. The hero fetches weather data, sightings fetches from iNaturalist, publications fetches from a research API. The runtime resolves each independently. Check `site/pages/home/1-hero.md` and `site/pages/home/3-sightings.md` for the frontmatter fetch configs.
 
+**Dynamic routes with detail queries.** The `blog/[id]` folder creates dynamic routes for individual field notes. The parent `blog/page.yml` fetches from JSONPlaceholder with `detail: rest` — when a user navigates from the list, the cached collection provides the item; when they land directly on `/blog/5`, the runtime fetches `https://jsonplaceholder.typicode.com/posts/5` as a single REST call instead of fetching all 12 posts. This is the only template that combines dynamic routes with live API data and loading states.
+
 ### Why it's the portability reference
 
 Every section type in this foundation could serve a completely different site — different APIs, different colors, different content. The components know how to render data, not where data comes from. They know how to apply tokens, not what colors those tokens resolve to. Swap the `theme.yml` and every component rebrands. Swap the page configs and every component reads new APIs. That's what portable means in practice.
@@ -146,7 +148,7 @@ Start from what you're trying to learn:
 - **"How do I use the CCA data layer?"** — dynamic (any data section, `Publications` is the clearest) or international (`ArticleList` with data inheritance)
 - **"How does i18n work?"** — international (the only template with translations)
 - **"How do I use content.items for repeating content?"** — academic `PublicationList` (complex parsing) or marketing `Features` (simpler pattern)
-- **"How do dynamic routes work?"** — marketing `blog/[slug]` or international `blog/[slug]`
+- **"How do dynamic routes work?"** — marketing `blog/[slug]` or international `blog/[slug]`; dynamic `blog/[id]` adds `detail: rest` for single-entity fetching
 - **"How do loading states work?"** — dynamic (7 sections demonstrate the pattern)
 - **"How do section backgrounds work?"** — marketing (gradients, solid colors via frontmatter `background:`) or dynamic (per-section data with backgrounds)
 
