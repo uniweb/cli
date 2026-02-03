@@ -156,9 +156,21 @@ index: getting-started
 
 Designate which child page is the index. Others are auto-discovered.
 
+### Non-Strict Ordering
+
+```yaml
+order: [getting-started, guides]
+```
+
+Lists children in priority order without hiding unlisted pages. Named pages appear first in that order; unlisted pages appear after, sorted by their `order` property or alphabetically.
+
+Unlike `pages:` (which hides unlisted children), `order:` is additive — every child page is included.
+
+**Note:** When `order` is an array, it controls child ordering. When `order` is a number (e.g., `order: 2`), it sets this page's position among its siblings. Both can coexist in different page.yml files.
+
 ### Auto-Discovery (Default)
 
-Omit both to auto-discover children. They're sorted by their `order` property, and the lowest becomes the index.
+Omit `pages`, `index`, and `order` to auto-discover children. They're sorted by their `order` property, and the lowest becomes the index.
 
 ---
 

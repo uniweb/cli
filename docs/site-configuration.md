@@ -22,6 +22,7 @@ description: A brief description for SEO
 # Page Ordering
 pages: [home, about, docs, pricing]  # Explicit order (first is homepage)
 index: home                          # Or just name the homepage
+order: [home, docs, about]           # Non-strict order (unlisted pages appear after)
 
 # Internationalization
 i18n:
@@ -92,9 +93,94 @@ index: home
 
 Only specify which page is the homepage. Other pages are auto-discovered and sorted by their `order` property.
 
+### Non-Strict Ordering
+
+```yaml
+order: [home, docs, about]
+```
+
+Lists pages in priority order without hiding unlisted pages. Pages named in the array appear first in that order; all other pages appear after, sorted by their `order` property or alphabetically.
+
+Unlike `pages:` (which hides unlisted pages from navigation), `order:` is additive — every page is always included.
+
 ### Auto-Discovery (Default)
 
-Omit both `pages` and `index` to auto-discover all pages. They're sorted by the `order` property in each page's `page.yml`, and the lowest `order` becomes the homepage.
+Omit `pages`, `index`, and `order` to auto-discover all pages. They're sorted by the `order` property in each page's `page.yml`, and the lowest `order` becomes the homepage.
+
+---
+
+## Content Mode
+
+By default, `.md` files in a folder are sections of a single page. By placing a `folder.yml` in a directory, you switch it to **pages mode** — where each `.md` file becomes its own page with a single section.
+
+| Config file | Mode | `.md` files are... |
+|------------|------|-------------------|
+| `page.yml` | sections | Sections of the containing page (default) |
+| `folder.yml` | pages | Individual child pages, each with one section |
+
+### Pages Mode
+
+Ideal for documentation sites where each file is a standalone article:
+
+```
+pages/docs/
+├── folder.yml               # Activates pages mode
+├── getting-started.md       # → /docs/getting-started
+├── configuration.md         # → /docs/configuration
+└── advanced/
+    ├── folder.yml
+    ├── plugins.md           # → /docs/advanced/plugins
+    └── themes.md            # → /docs/advanced/themes
+```
+
+Page titles come from the H1 heading in each markdown file. Frontmatter remains section configuration (`type:`, `background:`, etc.).
+
+To activate pages mode for the entire site, place a `folder.yml` in the `pages/` directory itself.
+
+### Mode Cascade
+
+The mode set by `folder.yml` or `page.yml` cascades to descendant folders:
+
+1. `folder.yml` in a directory → pages mode for that folder and all descendants
+2. `page.yml` in a directory → sections mode for that folder and all descendants
+3. Neither → inherit from parent (default: sections)
+
+A single `folder.yml` at the top of a docs tree applies pages mode to the entire tree. A subfolder can override back to sections mode with a `page.yml`.
+
+### folder.yml
+
+The configuration file for container folders in pages mode. Analogous to `page.yml` but signals that `.md` files are pages, not sections:
+
+```yaml
+# folder.yml
+title: Documentation
+description: API reference and guides
+order: [getting-started, configuration]
+index: getting-started
+label: Docs
+layout:
+  left: true
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | string | Container title (for navigation, breadcrumbs) |
+| `description` | string | Meta description |
+| `order` | array | Non-strict ordering of child pages |
+| `index` | string | Which child becomes the index page |
+| `label` | string | Short navigation label |
+| `hidden` | boolean | Hide from navigation |
+| `layout` | object | Layout panel overrides |
+| `seo` | object | SEO overrides |
+| `id` | string | Stable ID for `page:` links |
+
+### Ordering in Pages Mode
+
+Child pages are ordered by:
+
+1. `order:` array in `folder.yml` (listed items first, in that order)
+2. Numeric file prefix (`1-intro.md` before `2-setup.md`)
+3. Alphabetical by filename
 
 ---
 
