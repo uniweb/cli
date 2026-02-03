@@ -221,7 +221,7 @@ Pages are weighted higher in search results than sections.
 
 The following are automatically excluded:
 
-- Special routes (`/@header`, `/@footer`)
+- Layout panels (header, footer, sidebars)
 - Pages marked with `seo.noindex: true`
 - Routes and components in `search.exclude`
 

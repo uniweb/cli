@@ -27,11 +27,11 @@ function DefaultLayout({ header, body, footer }) {
 
 | Prop | Source | What it contains |
 |------|--------|-----------------|
-| `header` | `@header` folder | Pre-rendered React elements (or null) |
+| `header` | `layout/header/` folder | Pre-rendered React elements (or null) |
 | `body` | Page content files | Pre-rendered React elements (or null) |
-| `footer` | `@footer` folder | Pre-rendered React elements (or null) |
-| `left` | `@left` folder | Pre-rendered React elements (or null) |
-| `right` | `@right` folder | Pre-rendered React elements (or null) |
+| `footer` | `layout/footer/` folder | Pre-rendered React elements (or null) |
+| `left` | `layout/left/` folder | Pre-rendered React elements (or null) |
+| `right` | `layout/right/` folder | Pre-rendered React elements (or null) |
 | `page` | Runtime | Current Page instance |
 | `website` | Runtime | Website instance |
 
@@ -41,38 +41,40 @@ The key insight: by the time your Layout receives these props, the sections are 
 
 ## Layout Areas Are Like Pages
 
-Each `@` folder can contain multiple sections, just like a regular page folder:
+Each layout folder can contain multiple sections, just like a regular page folder:
 
 ```
-site/pages/
-├── @header/
-│   ├── page.yml
-│   ├── 1-topbar.md        ← Announcement bar
-│   └── 2-navbar.md         ← Main navigation
-├── @footer/
-│   ├── page.yml
-│   ├── 1-footer.md         ← Footer links
-│   └── 2-copyright.md      ← Copyright bar
-├── @left/
-│   ├── page.yml
-│   └── sidebar-nav.md      ← Sidebar navigation
-└── home/
+site/
+├── layout/
+│   ├── header/
+│   │   ├── page.yml
+│   │   ├── 1-topbar.md        ← Announcement bar
+│   │   └── 2-navbar.md         ← Main navigation
+│   ├── footer/
+│   │   ├── page.yml
+│   │   ├── 1-footer.md         ← Footer links
+│   │   └── 2-copyright.md      ← Copyright bar
+│   └── left/
+│       ├── page.yml
+│       └── sidebar-nav.md      ← Sidebar navigation
+├── pages/
+│   └── home/
     ├── page.yml
     └── hero.md
 ```
 
-The runtime renders all sections in `@header` into a single React element and passes that as the `header` prop. Your Layout wraps that element in a `<header>` tag — that's where the semantic HTML comes from. Section components themselves render `<div>`s. They don't know whether they'll end up in a header, sidebar, or main content area.
+The runtime renders all sections in `layout/header/` into a single React element and passes that as the `header` prop. Your Layout wraps that element in a `<header>` tag — that's where the semantic HTML comes from. Section components themselves render `<div>`s. They don't know whether they'll end up in a header, sidebar, or main content area.
 
 ```
 ┌─────────────────────────────────────┐
-│           @header                   │
+│           header                    │
 ├──────────┬─────────────┬────────────┤
 │          │             │            │
-│  @left   │   Page      │  @right    │
+│  left    │   Page      │  right     │
 │          │   Content   │            │
 │          │             │            │
 ├──────────┴─────────────┴────────────┤
-│           @footer                   │
+│           footer                    │
 └─────────────────────────────────────┘
 ```
 
@@ -178,7 +180,7 @@ export default function Layout({ header, body, footer, left, right, page }) {
 }
 ```
 
-The `page.hasHeader()` / `page.hasFooter()` / `page.hasLeftPanel()` / `page.hasRightPanel()` methods return whether the page wants that area. Checking both the flag and the prop (`page.hasHeader() && header`) means you handle the case where the page wants a header but the site hasn't defined `@header` content.
+The `page.hasHeader()` / `page.hasFooter()` / `page.hasLeftPanel()` / `page.hasRightPanel()` methods return whether the page wants that area. Checking both the flag and the prop (`page.hasHeader() && header`) means you handle the case where the page wants a header but the site hasn't defined header layout panel content.
 
 ---
 
@@ -363,7 +365,7 @@ Section components render `<div>`s. They don't add `<header>` or `<main>` wrappe
 
 - **Close mobile drawers on route change.** SPA navigation doesn't trigger a page reload, so drawers stay open unless you close them explicitly. The docs template watches `page.route` in a `useEffect`.
 
-- **Test with and without panels.** Some pages may not have `@left` or `@right` content. Your Layout should handle null gracefully — check before rendering, and consider adjusting the main content width when panels are absent.
+- **Test with and without panels.** Some pages may not have `layout/left/` or `layout/right/` content. Your Layout should handle null gracefully — check before rendering, and consider adjusting the main content width when panels are absent.
 
 - **The `left`/`leftPanel` prop aliases.** The runtime passes both `left` and `leftPanel` (same for `right`/`rightPanel`) for backwards compatibility. Use whichever name you prefer, or accept both like the docs template does: `const leftContent = left || leftPanel`.
 
@@ -372,5 +374,5 @@ Section components render `<div>`s. They don't add `<header>` or `<main>` wrappe
 ## See Also
 
 - [Foundation Configuration](../../docs/foundation-configuration.md) — CSS variables, Layout export, complete reference
-- [Special Sections](../../docs/special-sections.md) — How `@header`, `@footer`, `@left`, `@right` folders work
+- [Layout Panels](../../docs/special-sections.md) — How `layout/header/`, `layout/footer/`, `layout/left/`, `layout/right/` folders work
 - [CCA Component Patterns](./component-patterns.md) — Section type organization and common patterns

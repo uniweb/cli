@@ -1,35 +1,37 @@
-# Special Sections
+# Layout Panels
 
-Special sections like `@header` and `@footer` render on every page. They provide site-wide navigation, branding, and persistent UI elements.
+Layout panels (header, footer, left, right) render on every page. They provide site-wide navigation, branding, and persistent UI elements.
 
 ## Overview
 
-Special sections are folders in `pages/` that start with `@`:
+Layout panels live in the `layout/` directory, parallel to `pages/`:
 
 ```
-pages/
-├── @header/              # Renders at top of every page
-│   └── header.md
-├── @footer/              # Renders at bottom of every page
-│   └── footer.md
-├── @left/                # Left sidebar (if foundation supports)
-│   └── sidebar.md
-├── @right/               # Right sidebar (if foundation supports)
-│   └── sidebar.md
-└── home/                 # Regular page
-    └── hero.md
+site/
+├── layout/
+│   ├── header/               # Renders at top of every page
+│   │   └── header.md
+│   ├── footer/               # Renders at bottom of every page
+│   │   └── footer.md
+│   ├── left/                 # Left sidebar (if foundation supports)
+│   │   └── sidebar.md
+│   └── right/                # Right sidebar (if foundation supports)
+│       └── sidebar.md
+├── pages/
+│   └── home/                 # Regular page
+│       └── hero.md
 ```
 
-Unlike regular pages, special sections:
-- Don't create routes (no `/header` or `/footer` URL)
+Unlike regular pages, layout panels:
+- Don't create navigable routes
 - Render on all pages automatically
 - Can be suppressed per-page via layout options
 
 ---
 
-## Built-in Special Sections
+## Built-in Panels
 
-### @header
+### header
 
 Renders at the top of every page, typically containing:
 - Logo and site name
@@ -39,7 +41,7 @@ Renders at the top of every page, typically containing:
 - Dark mode toggle
 
 ```markdown
-<!-- pages/@header/header.md -->
+<!-- layout/header/header.md -->
 ---
 type: Header
 sticky: true
@@ -53,7 +55,7 @@ sticky: true
 - [Contact](/contact)
 ```
 
-### @footer
+### footer
 
 Renders at the bottom of every page, typically containing:
 - Site links organized by category
@@ -62,7 +64,7 @@ Renders at the bottom of every page, typically containing:
 - Copyright notice
 
 ```markdown
-<!-- pages/@footer/footer.md -->
+<!-- layout/footer/footer.md -->
 ---
 type: Footer
 ---
@@ -83,12 +85,12 @@ type: Footer
 © 2025 Acme Corp. All rights reserved.
 ```
 
-### @left / @right
+### left / right
 
 Side panels for documentation sites, dashboards, or complex layouts:
 
 ```markdown
-<!-- pages/@left/sidebar.md -->
+<!-- layout/left/sidebar.md -->
 ---
 type: Sidebar
 ---
@@ -115,18 +117,18 @@ type: Sidebar
 
 ```
 ┌─────────────────────────────────────┐
-│           @header                   │
+│           header                    │
 ├──────────┬─────────────┬────────────┤
 │          │             │            │
-│  @left   │   Page      │  @right    │
+│  left    │   Page      │  right     │
 │          │   Content   │            │
 │          │             │            │
 ├──────────┴─────────────┴────────────┤
-│           @footer                   │
+│           footer                    │
 └─────────────────────────────────────┘
 ```
 
-The foundation's Layout component controls where special sections appear:
+The foundation's Layout component controls where panels appear:
 
 ```jsx
 // foundation/src/Layout.jsx
@@ -147,7 +149,7 @@ export default function Layout({ header, footer, left, right, body }) {
 
 ### Content Flow
 
-1. Site build collects special sections from `pages/@*/`
+1. Site build collects layout panels from `layout/`
 2. Runtime loads them alongside the active page
 3. Foundation Layout receives them as props
 4. Each page's layout options control visibility
@@ -156,10 +158,10 @@ export default function Layout({ header, footer, left, right, body }) {
 
 ## Multiple Sections
 
-Special section folders can contain multiple `.md` files:
+Panel folders can contain multiple `.md` files:
 
 ```
-pages/@header/
+layout/header/
 ├── 1-topbar.md       # Announcement bar
 └── 2-navbar.md       # Main navigation
 ```
@@ -171,7 +173,7 @@ Both render in order, giving you flexibility for complex headers:
 ---
 type: TopBar
 ---
-🎉 New feature released! [Learn more](/blog/new-feature)
+New feature released! [Learn more](/blog/new-feature)
 
 // 2-navbar.md
 ---
@@ -185,7 +187,7 @@ sticky: true
 
 ## Per-Page Layout Control
 
-Pages can disable special sections via `layout` in `page.yml`:
+Pages can disable panels via `layout` in `page.yml`:
 
 ```yaml
 # pages/landing/page.yml
@@ -223,7 +225,7 @@ function Page({ block }) {
 
 ## Navigation Visibility
 
-Special sections often build navigation from the page hierarchy. Pages can opt out:
+Layout panels often build navigation from the page hierarchy. Pages can opt out:
 
 ```yaml
 # pages/admin/page.yml
@@ -385,15 +387,15 @@ export default {
 
 ## Best Practices
 
-1. **Keep content minimal**: Special sections render on every page—keep them lightweight
+1. **Keep content minimal**: Layout panels render on every page—keep them lightweight
 
 2. **Support both modes**: Allow both automatic (from page hierarchy) and manual (from content) navigation
 
 3. **Respect layout flags**: Always check `page.hasHeader()` etc. in your Layout component
 
-4. **Handle empty states**: Special sections might not exist in all sites
+4. **Handle empty states**: Layout panels might not exist in all sites
 
-5. **Consider mobile**: Special sections often need responsive behavior (hamburger menus, collapsible sidebars)
+5. **Consider mobile**: Layout panels often need responsive behavior (hamburger menus, collapsible sidebars)
 
 6. **Version awareness**: In docs sites, show version context in headers/sidebars
 

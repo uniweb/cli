@@ -378,7 +378,7 @@ successMessage: Thanks! We'll be in touch soon.
 
 ### Header with Navigation
 
-Site-wide header. This lives in `pages/@header/header.md`.
+Site-wide header. This lives in `layout/header/header.md`.
 
 ```markdown
 ---
@@ -394,7 +394,7 @@ type: Header
 [Contact](/contact)
 ```
 
-- The `@header` folder makes this appear on every page.
+- The `layout/header/` folder makes this appear on every page.
 - The icon with `role=icon` becomes the site logo.
 - Standalone links become navigation items.
 
@@ -404,7 +404,7 @@ type: Header
 
 ### Footer with Link Columns
 
-Site-wide footer. This lives in `pages/@footer/footer.md`.
+Site-wide footer. This lives in `layout/footer/footer.md`.
 
 ```markdown
 ---

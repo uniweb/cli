@@ -626,12 +626,12 @@ But — as discussed in the [Dispatcher](#the-dispatcher) section — "purpose-b
 The runtime's default Layout renders every page as three areas — `<header>`, `<main>`, `<footer>` — stacked vertically. Sections within each area render sequentially. This is what you get without any configuration:
 
 ```html
-<header>  <!-- @header sections (0 or more) -->
+<header>  <!-- layout/header/ sections (0 or more) -->
 <main>    <!-- page body sections (0 or more) -->
-<footer>  <!-- @footer sections (0 or more) -->
+<footer>  <!-- layout/footer/ sections (0 or more) -->
 ```
 
-Header and footer content comes from the special `@header` and `@footer` page folders. The default Layout ignores left and right panel content (`@left`, `@right`).
+Header and footer content comes from the `layout/header/` and `layout/footer/` folders. The default Layout ignores left and right panel content (`layout/left/`, `layout/right/`).
 
 ### `Component.as` — controlling the wrapper tag
 
@@ -747,7 +747,7 @@ function DocsLayout(props) {
 export default { Layout: DocsLayout }
 ```
 
-Panel content comes from special page folders — `pages/@left/` and `pages/@right/` — following the same pattern as `@header` and `@footer`.
+Panel content comes from the layout folders — `layout/left/` and `layout/right/` — following the same pattern as `layout/header/` and `layout/footer/`.
 
 ---
 

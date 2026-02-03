@@ -99,15 +99,17 @@ foundation/src/
 
 At this level, everything is a bare file — no folders, no `meta.js`. A `.jsx` file at the root of `sections/` is automatically a section type. The title is inferred from the filename: `SplitContent.jsx` becomes "Split Content" in the editor. Promote a bare file to a folder when it grows — when you add variants, sub-components, or need `meta.js` for params.
 
-The site now has a section per component, with `@header` and `@footer` split out:
+The site now has a section per component, with header and footer split out into layout folders:
 
 ```
-site/pages/
-├── @header/
-│   └── header.md          # type: Header
-├── @footer/
-│   └── footer.md          # type: Footer
-└── home/
+site/
+├── layout/
+│   ├── header/
+│   │   └── header.md          # type: Header
+│   └── footer/
+│       └── footer.md          # type: Footer
+├── pages/
+│   └── home/
     ├── page.yml
     ├── 1-hero.md           # type: Hero
     ├── 2-model.md          # type: SplitContent

@@ -186,10 +186,10 @@ export default function Layout({ header, footer, left, right, body }) {
 
 | Prop | Type | Description |
 |------|------|-------------|
-| `header` | ReactNode | Rendered `@header` sections (or null) |
-| `footer` | ReactNode | Rendered `@footer` sections (or null) |
-| `left` | ReactNode | Rendered `@left` sections (or null) |
-| `right` | ReactNode | Rendered `@right` sections (or null) |
+| `header` | ReactNode | Rendered header layout panel (or null) |
+| `footer` | ReactNode | Rendered footer layout panel (or null) |
+| `left` | ReactNode | Rendered left layout panel (or null) |
+| `right` | ReactNode | Rendered right layout panel (or null) |
 | `body` | ReactNode | Page content sections |
 | `page` | Page | Current page instance |
 | `website` | Website | Website instance |
@@ -634,6 +634,6 @@ Once your foundation includes an icon library, content authors can use named ico
 ## See Also
 
 - [Site Theming](./site-theming.md) — Site-level theme customization
-- [Special Sections](./special-sections.md) — @header, @footer, @left, @right
+- [Layout Panels](./special-sections.md) — Header, footer, left, right panels
 - [Component Metadata](./component-metadata.md) — Component meta.js schema
 - [Kit Reference](./kit-reference.md) — Accessing theme data in components

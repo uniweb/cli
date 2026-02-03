@@ -32,7 +32,7 @@ Reference documentation for the Uniweb component content architecture.
 
 - **[Linking](./linking.md)** — Stable `page:` links that survive restructuring
 - **[Navigation Patterns](./navigation-patterns.md)** — Building menus, breadcrumbs, and navigation from page hierarchy
-- **[Special Sections](./special-sections.md)** — Site-wide header, footer, and sidebars (`@header`, `@footer`, `@left`, `@right`)
+- **[Layout Panels](./special-sections.md)** — Site-wide header, footer, and sidebars (`layout/header`, `layout/footer`, `layout/left`, `layout/right`)
 
 ## Features
 
