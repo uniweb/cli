@@ -127,8 +127,6 @@ const loading = block.dataLoading
 
 The component doesn't fetch data, manage cache, or handle errors — the runtime does all of that. The component reads `content.data` and shows a loading state when `block.dataLoading` is true. See `Publications/Publications.jsx:17`, `Hero/Hero.jsx:9`, `Sightings/Sightings.jsx:24` for examples.
 
-**Manual refresh.** `Publications/Publications.jsx` uses `block.refetch?.()` to let users manually refresh live data. This is the only template that demonstrates the refetch pattern.
-
 **Per-section data fetching.** Each section's markdown frontmatter declares its own fetch config. The hero fetches weather data, sightings fetches from iNaturalist, publications fetches from a research API. The runtime resolves each independently. Check `site/pages/home/1-hero.md` and `site/pages/home/3-sightings.md` for the frontmatter fetch configs.
 
 **Dynamic routes with detail queries.** The `blog/[id]` folder creates dynamic routes for individual field notes. The parent `blog/page.yml` fetches from JSONPlaceholder with `detail: rest` — when a user navigates from the list, the cached collection provides the item; when they land directly on `/blog/5`, the runtime fetches `https://jsonplaceholder.typicode.com/posts/5` as a single REST call instead of fetching all 12 posts. This is the only template that combines dynamic routes with live API data and loading states.
