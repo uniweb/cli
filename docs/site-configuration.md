@@ -48,9 +48,10 @@ collections:
     sort: date desc
 
 # Custom Content Paths (optional, for external content)
-pagesDir: ../docs/pages           # Default: pages/
-layoutDir: ../docs/layout          # Default: layout/
-collectionsDir: ../content         # Default: (site root)
+paths:
+  pages: ../docs/pages             # Default: pages/
+  layout: ../docs/layout           # Default: layout/
+  collections: ../content          # Default: (site root)
 ```
 
 ---
@@ -272,12 +273,13 @@ See [Content Collections](./content-collections.md) for details.
 
 ## Custom Content Paths
 
-By default, site content is read from standard directories relative to the site root: `pages/`, `layout/`, and `collections/`. You can override these locations to point to external directories:
+By default, site content is read from standard directories relative to the site root: `pages/`, `layout/`, and `collections/`. You can override these locations using the `paths:` group in `site.yml`:
 
 ```yaml
-pagesDir: ../shared-content/pages
-layoutDir: ../shared-content/layout
-collectionsDir: ../shared-content/collections
+paths:
+  pages: ../shared-content/pages
+  layout: ../shared-content/layout
+  collections: ../shared-content/collections
 ```
 
 Paths are resolved relative to the site root. Absolute paths are also supported.
@@ -287,7 +289,7 @@ Paths are resolved relative to the site root. Absolute paths are also supported.
 - **Shared content** — Multiple sites reading from the same pages or collections
 - **Existing docs** — Point `pagesDir` at an existing folder of markdown files
 
-When `collectionsDir` is set, per-collection `path` values in `collections:` are resolved relative to it instead of the site root.
+When `paths.collections` is set, per-collection `path` values in `collections:` are resolved relative to it instead of the site root.
 
 **Note:** Changing these paths during dev mode requires restarting the dev server — file watchers are configured at startup.
 
