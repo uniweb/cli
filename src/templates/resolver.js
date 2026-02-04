@@ -6,7 +6,7 @@
 export const BUILTIN_TEMPLATES = ['single', 'multi']
 
 // Official templates from @uniweb/templates package (downloaded from GitHub releases)
-export const OFFICIAL_TEMPLATES = ['marketing', 'academic', 'docs', 'international', 'dynamic', 'store']
+export const OFFICIAL_TEMPLATES = ['marketing', 'academic', 'docs', 'international', 'dynamic', 'store', 'extensions']
 
 /**
  * Parse a template identifier and determine its source type
