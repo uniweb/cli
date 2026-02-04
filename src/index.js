@@ -21,9 +21,6 @@ import { build } from './commands/build.js'
 import { docs } from './commands/docs.js'
 import { doctor } from './commands/doctor.js'
 import { i18n } from './commands/i18n.js'
-import { login } from './commands/login.js'
-import { publish } from './commands/publish.js'
-import { serve } from './commands/serve.js'
 import { getVersionsForTemplates, getVersion } from './versions.js'
 import {
   resolveTemplate,
@@ -169,24 +166,6 @@ async function main() {
   // Handle doctor command
   if (command === 'doctor') {
     await doctor(args.slice(1))
-    return
-  }
-
-  // Handle login command
-  if (command === 'login') {
-    await login()
-    return
-  }
-
-  // Handle publish command
-  if (command === 'publish') {
-    await publish()
-    return
-  }
-
-  // Handle serve command
-  if (command === 'serve') {
-    await serve(args.slice(1))
     return
   }
 
@@ -373,9 +352,6 @@ ${colors.bright}Commands:${colors.reset}
   docs               Generate component documentation
   doctor             Diagnose project configuration issues
   i18n <cmd>         Internationalization (extract, sync, status)
-  login              Authenticate with Unicloud
-  publish            Publish foundation to the registry
-  serve              Start local registry server
 
 ${colors.bright}Create Options:${colors.reset}
   --template <type>  Project template
@@ -389,6 +365,7 @@ ${colors.bright}Build Options:${colors.reset}
   --no-prerender     Skip pre-rendering (overrides site.yml)
   --foundation-dir   Path to foundation directory (for prerendering)
   --platform <name>  Deployment platform (e.g., vercel) for platform-specific output
+  --shell            Build site without embedded content (for dynamic backend serving)
 
   At workspace root, builds all foundations first, then all sites.
   Pre-rendering is enabled by default when build.prerender: true in site.yml
@@ -429,14 +406,6 @@ ${colors.bright}Examples:${colors.reset}
   npx uniweb build                                     # Auto-prerenders if site.yml has build.prerender: true
   npx uniweb build --no-prerender                      # Skip prerendering even if enabled in config
   cd foundation && npx uniweb docs                     # Generate COMPONENTS.md
-
-${colors.bright}Serve Options:${colors.reset}
-  --port <number>    Port for the registry server (default: 4000)
-
-${colors.bright}Publish Workflow:${colors.reset}
-  uniweb login                             # Authenticate (once)
-  cd foundation && uniweb publish          # Publish foundation to local registry
-  cd .. && uniweb serve                    # Start registry server on :4000
 `)
 }
 

@@ -625,6 +625,9 @@ export async function build(args = []) {
     }
   }
 
+  // Check for --shell flag (shell mode: no embedded content, for dynamic backend)
+  const shellFlag = args.includes('--shell')
+
   // Check for --prerender / --no-prerender flags
   const prerenderFlag = args.includes('--prerender')
   const noPrerenderFlag = args.includes('--no-prerender')
@@ -657,6 +660,12 @@ export async function build(args = []) {
     process.exit(1)
   }
 
+  // Validate --shell is only used with site target
+  if (shellFlag && targetType !== 'site') {
+    error('--shell can only be used with site builds')
+    process.exit(1)
+  }
+
   // Run appropriate build
   try {
     if (targetType === 'workspace') {
@@ -673,7 +682,21 @@ export async function build(args = []) {
       if (prerenderFlag) prerender = true
       if (noPrerenderFlag) prerender = false
 
+      // Shell mode: set env var for Vite config, force no prerender
+      if (shellFlag) {
+        process.env.UNIWEB_SHELL = 'true'
+        prerender = false
+        info('Building in shell mode (no embedded content)')
+      }
+
       await buildSite(projectDir, { prerender, foundationDir, siteConfig })
+
+      if (shellFlag) {
+        log('')
+        log(`${colors.green}${colors.bright}Shell build complete!${colors.reset}`)
+        log(`  The shell contains no embedded content.`)
+        log(`  Use ${colors.cyan}node scripts/platform/serve.js${colors.reset} to serve with dynamic content.`)
+      }
     }
   } catch (err) {
     error(err.message)
