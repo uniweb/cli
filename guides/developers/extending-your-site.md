@@ -65,6 +65,9 @@ export default defineSiteConfig({
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        navigateFallback: null,  // Required for localized sites (see below)
+      },
       manifest: {
         name: 'My Site',
         short_name: 'MySite',
@@ -117,6 +120,16 @@ Open DevTools → Application → Manifest to confirm the manifest loaded. The S
 `vite-plugin-pwa` has options for workbox strategies (cache-first vs network-first), custom service worker code, and update prompts. See the [vite-plugin-pwa documentation](https://vite-pwa-org.netlify.app/) for the full API. Everything it supports works inside `defineSiteConfig()` — there's nothing Uniweb-specific to account for.
 
 If your site uses a base path for subdirectory deployment (`base: /docs/` in `site.yml`), the plugin picks it up automatically from the Vite config. No extra configuration needed.
+
+### Localized sites: disable navigateFallback
+
+If your site uses multiple locales (`i18n:` in `site.yml`), you need `navigateFallback: null` in the workbox config — this is already included in the example above.
+
+Without it, the service worker intercepts every navigation request and returns the root `index.html`. That breaks localized routes: `/fr/about`, `/es/contact`, and any direct navigation to a non-default locale will 404 or load the wrong language. The symptom is that language switching stops working after the service worker installs (typically on the second visit).
+
+Setting `navigateFallback: null` tells the service worker to stay out of navigation. Static assets are still cached for offline use — only the navigation interception is disabled.
+
+If you've already deployed without this setting, returning visitors may have a cached service worker. They'll need to clear it: DevTools → Application → Service Workers → Unregister, then hard refresh.
 
 ---
 
