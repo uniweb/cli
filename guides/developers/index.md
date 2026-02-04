@@ -40,6 +40,10 @@ How to build a Layout component that controls page structure — sticky headers,
 
 How data flows from fetch configs to components without hooks or loading logic. Auto-wiring resolves data for template pages by checking the parent. Detail queries avoid fetching a full collection when a user lands directly on a detail page. The cache makes SPA navigation cheap.
 
+### [Extending Your Site](./extending-your-site.md)
+
+How to add capabilities beyond what Uniweb provides out of the box — Vite plugins for build-time features (PWA, sitemaps, compression), `head.html` for external scripts, extensions for additional section types, and foundation dependencies for component libraries. Includes a step-by-step PWA walkthrough.
+
 ---
 
 ## What's Coming
