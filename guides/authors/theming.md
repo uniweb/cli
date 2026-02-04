@@ -141,6 +141,8 @@ fonts:
 
 Only load the font weights you actually use. Each weight adds to your page load time.
 
+> **Automatic optimization:** When you use Google Fonts (or any external font provider), the build automatically adds preconnect hints so the browser starts connecting to the font server earlier. You don't need to do anything extra — just list your imports and the optimization happens for you.
+
 ### Using system fonts
 
 If you don't specify fonts, the site uses the visitor's system fonts — which load instantly and look native to each operating system. This is a perfectly good choice:

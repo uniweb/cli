@@ -263,6 +263,8 @@ fonts:
     - url: "https://fonts.googleapis.com/css2?family=Poppins:wght@600;700"
 ```
 
+When font imports are present, the build automatically injects `<link rel="preconnect">` tags for each import origin. For Google Fonts specifically, it also preconnects to `fonts.gstatic.com` (where font files are served from, separate from the CSS endpoint). This eliminates the DNS/TLS round-trip delay that would otherwise occur when the browser first encounters the `@import` in the theme CSS.
+
 Generated CSS variables:
 
 ```css

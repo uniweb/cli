@@ -806,6 +806,45 @@ Browse all icons visually at [react-icons.github.io/react-icons](https://react-i
 
 ---
 
+## Analytics & Third-Party Scripts
+
+To add Google Analytics, tracking pixels, or any other service that asks you to "paste this code into your site's `<head>`":
+
+1. Create a file called `head.html` in your site folder (next to `site.yml`)
+2. Paste the code the service gives you
+
+That's it. The build injects it into every page automatically.
+
+### Google Analytics
+
+```html
+<!-- site/head.html -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-XXXXXXXXXX');
+</script>
+```
+
+Replace `G-XXXXXXXXXX` with your Measurement ID (found in Google Analytics → Admin → Data Streams).
+
+### Multiple scripts
+
+You can put as many scripts as you need in `head.html`. Just paste them one after another:
+
+```html
+<!-- Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script>/* ... */</script>
+
+<!-- Cookie consent -->
+<script src="https://cdn.example.com/consent.js"></script>
+```
+
+---
+
 ## See Also
 
 - **[Writing Content](./writing-content.md)** — Full guide to writing content

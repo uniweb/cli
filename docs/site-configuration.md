@@ -381,6 +381,47 @@ When `paths.collections` is set, per-collection `path` values in `collections:` 
 
 ---
 
+## Custom Head Injection
+
+Place a `head.html` file in your site root to inject HTML into `<head>` on every page. The file contents are inserted verbatim — no processing, no YAML wrapping.
+
+```
+site/
+├── site.yml
+├── theme.yml
+├── head.html      ← optional, injected into <head>
+├── pages/
+└── layout/
+```
+
+**Common uses:** analytics (Google Analytics, Plausible), tag managers, error monitoring (Sentry), cookie consent scripts, custom meta tags, font preconnects.
+
+### Example: Google Analytics
+
+```html
+<!-- site/head.html -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-XXXXXXXXXX');
+</script>
+```
+
+Replace `G-XXXXXXXXXX` with your Measurement ID from Google Analytics.
+
+### How it works
+
+- The build reads `head.html` and injects it before all other head content (theme CSS, SEO tags, site data).
+- In dev mode, changes to `head.html` trigger a page reload automatically.
+- In production, the content is baked into every pre-rendered HTML file.
+- If the file doesn't exist, nothing is injected — there's no error.
+
+**Note:** For Google Fonts, you don't need to add preconnect links manually. When your `theme.yml` includes font imports, the build injects `<link rel="preconnect">` tags automatically. See [Site Theming → Typography](./site-theming.md#typography).
+
+---
+
 ## Complete Example
 
 ```yaml
