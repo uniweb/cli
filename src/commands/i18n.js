@@ -249,9 +249,8 @@ async function runExtract(siteRoot, config, args) {
       const manifestPath = join(siteRoot, config.localesDir, 'manifest.json')
       const isUpdate = existsSync(manifestPath)
 
-      const { manifest, report } = await extractManifest(siteRoot, {
+      const { manifest, report } = await extractManifest(siteRoot, siteContent, {
         localesDir: config.localesDir,
-        siteContent,
         verbose,
         dryRun,
       })
