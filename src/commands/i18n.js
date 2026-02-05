@@ -338,13 +338,13 @@ async function runExtract(siteRoot, config, args) {
 }
 
 /**
- * Init command - generate starter translation files from manifest
+ * Generate command - generate starter translation files from manifest
  *
  * Usage:
- *   uniweb i18n init es fr         Initialize specific locales
- *   uniweb i18n init               Initialize all configured locales
- *   uniweb i18n init --empty       Use empty strings instead of source text
- *   uniweb i18n init --force       Overwrite existing files entirely
+ *   uniweb i18n generate es fr     Generate specific locales
+ *   uniweb i18n generate           Generate all configured locales
+ *   uniweb i18n generate --empty   Use empty strings instead of source text
+ *   uniweb i18n generate --force   Overwrite existing files entirely
  */
 async function runInit(siteRoot, config, args) {
   const useEmpty = args.includes('--empty')
@@ -379,7 +379,7 @@ async function runInit(siteRoot, config, args) {
 
   if (!targetLocales || targetLocales.length === 0) {
     error('No target locales specified.')
-    log(`${colors.dim}Specify locales as arguments (e.g., "uniweb i18n init es fr")`)
+    log(`${colors.dim}Specify locales as arguments (e.g., "uniweb i18n generate es fr")`)
     log(`or configure them in site.yml under i18n.locales.${colors.reset}`)
     process.exit(1)
   }
