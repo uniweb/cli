@@ -352,6 +352,10 @@ Yes. Content is pre-embedded in the initial HTML—no fetch waterfalls, no layou
 
 Pages can define data sources that auto-generate subroutes. A `/blog` page can have an index and a `[slug]` template that renders each post.
 
+**Is Uniweb good for documentation sites?**
+
+Yes — documentation is a natural fit. Content stays in markdown (easy to version, review, and contribute to), while the foundation handles navigation, search, and rendering. [Uniweb's own docs](https://github.com/uniweb/docs) use this pattern: pure markdown in a public repo, rendered by a separate foundation.
+
 ## Related Packages
 
 - [`@uniweb/build`](https://github.com/uniweb/build) — Foundation build tooling
