@@ -4,11 +4,12 @@
  * Commands for managing site content internationalization.
  *
  * Usage:
- *   uniweb i18n extract           Extract translatable strings to manifest
- *   uniweb i18n init [locales]    Generate starter locale files from manifest
- *   uniweb i18n sync              Sync manifest with content changes
- *   uniweb i18n status            Show translation coverage per locale
- *   uniweb i18n --target <path>   Specify site directory explicitly
+ *   uniweb i18n extract             Extract/update translatable strings (default)
+ *   uniweb i18n generate [locales]  Generate starter locale files from manifest
+ *   uniweb i18n status              Show translation coverage per locale
+ *   uniweb i18n --target <path>     Specify site directory explicitly
+ *
+ * Aliases: sync → extract, init → generate
  *
  * When run from workspace root, auto-detects sites. If multiple exist,
  * prompts for selection.
@@ -81,9 +82,9 @@ export async function i18n(args) {
   // Parse --target option
   const { target, remainingArgs } = parseTargetOption(args)
 
-  // Default to 'sync' if no subcommand (or if first arg is an option)
+  // Default to 'extract' if no subcommand (or if first arg is an option)
   const firstArg = remainingArgs[0]
-  const effectiveSubcommand = !firstArg || firstArg.startsWith('-') ? 'sync' : firstArg
+  const effectiveSubcommand = !firstArg || firstArg.startsWith('-') ? 'extract' : firstArg
   const effectiveArgs = !firstArg || firstArg.startsWith('-') ? remainingArgs : remainingArgs.slice(1)
 
   // Find site root
@@ -98,13 +99,12 @@ export async function i18n(args) {
 
   switch (effectiveSubcommand) {
     case 'extract':
+    case 'sync':
       await runExtract(siteRoot, config, effectiveArgs)
       break
+    case 'generate':
     case 'init':
       await runInit(siteRoot, config, effectiveArgs)
-      break
-    case 'sync':
-      await runSync(siteRoot, config, effectiveArgs)
       break
     case 'status':
       await runStatus(siteRoot, config, effectiveArgs)
@@ -228,13 +228,14 @@ async function loadSiteConfig(siteRoot) {
  */
 async function runExtract(siteRoot, config, args) {
   const verbose = args.includes('--verbose') || args.includes('-v')
+  const dryRun = args.includes('--dry-run')
   const collectionsOnly = args.includes('--collections-only') || args.includes('--collections')
   const noCollections = args.includes('--no-collections')
   // --with-collections is now a no-op (collections are included by default)
 
   // Extract page content (unless --collections-only)
   if (!collectionsOnly) {
-    log(`\n${colors.cyan}Extracting translatable content...${colors.reset}\n`)
+    log(`\n${colors.cyan}Extracting translatable content${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`)
 
     // Check if site has been built
     const siteContentPath = join(siteRoot, 'dist', 'site-content.json')
@@ -247,22 +248,32 @@ async function runExtract(siteRoot, config, args) {
       // Dynamic import to avoid loading at CLI startup
       const { extractManifest, formatSyncReport } = await import('@uniweb/build/i18n')
 
+      // Check if this is a first-time extract (no previous manifest)
+      const manifestPath = join(siteRoot, config.localesDir, 'manifest.json')
+      const isUpdate = existsSync(manifestPath)
+
       const { manifest, report } = await extractManifest(siteRoot, {
         localesDir: config.localesDir,
         siteContentPath,
         verbose,
+        dryRun,
       })
 
       // Show results
       const unitCount = Object.keys(manifest.units).length
       success(`Extracted ${unitCount} translatable strings`)
 
-      if (report) {
+      // Show sync report for updates (skip on first extract — everything would be "added")
+      if (report && isUpdate) {
         log('')
         log(formatSyncReport(report))
       }
 
-      log(`\nManifest written to: ${colors.dim}${config.localesDir}/manifest.json${colors.reset}`)
+      if (dryRun) {
+        log(`\n${colors.dim}Dry run — no files were modified.${colors.reset}`)
+      } else {
+        log(`\nManifest written to: ${colors.dim}${config.localesDir}/manifest.json${colors.reset}`)
+      }
 
       if (config.locales.length === 0) {
         log(`\n${colors.dim}No translation files found in ${config.localesDir}/.`)
@@ -277,7 +288,7 @@ async function runExtract(siteRoot, config, args) {
 
   // Extract collection content (by default, skip with --no-collections)
   if (!noCollections) {
-    log(`\n${colors.cyan}Extracting collection content...${colors.reset}\n`)
+    log(`\n${colors.cyan}Extracting collection content${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`)
 
     // Check if collections exist
     const dataDir = join(siteRoot, 'public', 'data')
@@ -293,20 +304,28 @@ async function runExtract(siteRoot, config, args) {
     try {
       const { extractCollectionManifest, formatSyncReport } = await import('@uniweb/build/i18n')
 
+      const collectionsManifestPath = join(siteRoot, config.localesDir, 'collections', 'manifest.json')
+      const isUpdate = existsSync(collectionsManifestPath)
+
       const { manifest, report } = await extractCollectionManifest(siteRoot, {
         localesDir: config.localesDir,
+        dryRun,
       })
 
       const unitCount = Object.keys(manifest.units).length
       if (unitCount > 0) {
         success(`Extracted ${unitCount} translatable strings from collections`)
 
-        if (report) {
+        if (report && isUpdate) {
           log('')
           log(formatSyncReport(report))
         }
 
-        log(`\nManifest written to: ${colors.dim}${config.localesDir}/collections/manifest.json${colors.reset}`)
+        if (dryRun) {
+          log(`\n${colors.dim}Dry run — no files were modified.${colors.reset}`)
+        } else {
+          log(`\nManifest written to: ${colors.dim}${config.localesDir}/collections/manifest.json${colors.reset}`)
+        }
       } else {
         log(`${colors.dim}No translatable content found in collections.${colors.reset}`)
       }
@@ -423,55 +442,6 @@ async function runInit(siteRoot, config, args) {
   log(`  1. Edit locale files to add translations`)
   log(`  2. Run 'uniweb build' to build with translations`)
   log(`  3. Run 'uniweb i18n status' to check coverage${colors.reset}`)
-}
-
-/**
- * Sync command - detect changes and update manifest
- */
-async function runSync(siteRoot, config, args) {
-  const verbose = args.includes('--verbose') || args.includes('-v')
-  const dryRun = args.includes('--dry-run')
-
-  log(`\n${colors.cyan}Syncing i18n manifest...${colors.reset}\n`)
-
-  // Check if site has been built
-  const siteContentPath = join(siteRoot, 'dist', 'site-content.json')
-  if (!existsSync(siteContentPath)) {
-    error('Site content not found. Run "uniweb build" first.')
-    process.exit(1)
-  }
-
-  // Check if manifest exists
-  const manifestPath = join(siteRoot, config.localesDir, 'manifest.json')
-  if (!existsSync(manifestPath)) {
-    warn('No existing manifest found. Running extract instead.')
-    return runExtract(siteRoot, config, args)
-  }
-
-  try {
-    const { extractManifest, formatSyncReport } = await import('@uniweb/build/i18n')
-
-    if (dryRun) {
-      log(`${colors.dim}(dry run - no files will be modified)${colors.reset}\n`)
-    }
-
-    const { manifest, report } = await extractManifest(siteRoot, {
-      localesDir: config.localesDir,
-      siteContentPath,
-      verbose,
-      dryRun,
-    })
-
-    log(formatSyncReport(report))
-
-    if (!dryRun) {
-      success('\nManifest updated')
-    }
-  } catch (err) {
-    error(`Sync failed: ${err.message}`)
-    if (verbose) console.error(err)
-    process.exit(1)
-  }
 }
 
 /**
@@ -1458,10 +1428,8 @@ ${colors.bright}Usage:${colors.reset}
 
 ${colors.bright}Commands:${colors.reset}
   ${colors.dim}# Hash-based (granular) translation${colors.reset}
-  (default)    Same as sync - extract/update strings (runs if no command given)
-  extract      Extract translatable strings to locales/manifest.json
-  init         Generate starter locale files from manifest keys
-  sync         Update manifest with content changes (detects moved/changed content)
+  extract      Extract/update translatable strings (default if no command given)
+  generate     Generate starter locale files from manifest keys
   status       Show translation coverage per locale
   audit        Find stale translations (no longer in manifest) and missing ones
 
@@ -1475,9 +1443,9 @@ ${colors.bright}Commands:${colors.reset}
 ${colors.bright}Options:${colors.reset}
   -t, --target <path>  Site directory (auto-detected if not specified)
   --verbose            Show detailed output
-  --dry-run            (sync/prune) Show changes without writing files
-  --empty              (init) Use empty strings instead of source text
-  --force              (init) Overwrite existing locale files entirely
+  --dry-run            (extract/prune) Preview changes without writing files
+  --empty              (generate) Use empty strings instead of source text
+  --force              (generate) Overwrite existing locale files entirely
   --clean              (audit) Remove stale entries from locale files
   --missing            (status) List all missing strings instead of summary
   --freeform           (status/prune) Include free-form translation status
@@ -1500,7 +1468,7 @@ ${colors.bright}Configuration:${colors.reset}
 ${colors.bright}Workflow:${colors.reset}
   1. Build your site:           uniweb build
   2. Extract strings:           uniweb i18n extract
-  3. Initialize locale files:   uniweb i18n init es fr
+  3. Generate locale files:     uniweb i18n generate es fr
   4. Translate locale files:    Edit locales/es.json, locales/fr.json, etc.
   5. Build with translations:   uniweb build (generates locale-specific output)
 
@@ -1519,18 +1487,18 @@ ${colors.bright}File Structure:${colors.reset}
 
 ${colors.bright}Examples:${colors.reset}
   ${colors.dim}# Hash-based workflow${colors.reset}
-  uniweb i18n extract              # Extract all translatable strings
-  uniweb i18n extract --verbose    # Show extracted strings
+  uniweb i18n extract                     # Extract all translatable strings
+  uniweb i18n extract --dry-run           # Preview without writing
+  uniweb i18n extract --verbose           # Show extracted strings
   uniweb i18n extract --no-collections    # Pages only (skip collections)
-  uniweb i18n init es fr           # Create starter files for Spanish and French
-  uniweb i18n init --empty         # Create files with empty values (for translators)
-  uniweb i18n init --force         # Overwrite existing locale files
-  uniweb i18n sync                 # Update manifest after content changes
-  uniweb i18n status               # Show coverage for all locales
-  uniweb i18n status es            # Show coverage for Spanish only
+  uniweb i18n generate es fr              # Create starter files for Spanish and French
+  uniweb i18n generate --empty            # Create files with empty values (for translators)
+  uniweb i18n generate --force            # Overwrite existing locale files
+  uniweb i18n status                      # Show coverage for all locales
+  uniweb i18n status es                   # Show coverage for Spanish only
   uniweb i18n status es --missing --json  # Export missing for AI translation
-  uniweb i18n audit                # Find stale and missing translations
-  uniweb i18n audit --clean        # Remove stale entries
+  uniweb i18n audit                       # Find stale and missing translations
+  uniweb i18n audit --clean               # Remove stale entries
 
   ${colors.dim}# Free-form workflow (complete section replacement)${colors.reset}
   uniweb i18n init-freeform es pages/about hero
@@ -1541,6 +1509,10 @@ ${colors.bright}Examples:${colors.reset}
   uniweb i18n move pages/docs/setup pages/getting-started
   uniweb i18n prune --freeform --dry-run  # Preview orphan cleanup
   uniweb i18n --target site        # Specify site directory explicitly
+
+${colors.bright}Aliases:${colors.reset}
+  sync → extract   (backward-compatible)
+  init → generate  (backward-compatible)
 
 ${colors.bright}Notes:${colors.reset}
   Run from a site directory to operate on that site.
