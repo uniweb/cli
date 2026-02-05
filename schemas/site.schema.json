@@ -30,13 +30,6 @@
       "type": "string",
       "description": "Homepage folder name. Alternative to 'pages' array - just names the homepage, auto-discovers rest"
     },
-    "order": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "Legacy non-strict page ordering. Prefer 'pages' with '...' wildcard instead. Listed pages appear first, unlisted appear after"
-    },
     "i18n": {
       "type": "object",
       "description": "Internationalization configuration",
