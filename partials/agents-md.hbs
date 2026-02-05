@@ -167,16 +167,19 @@ Decimals insert between: `2.5-testimonials.md` goes between `2-` and `3-`.
 ```yaml
 title: About Us
 description: Learn about our company
-order: 2                    # Navigation sort order
+order: 2                    # Navigation sort position
+pages: [team, history, ...] # Child page order (... = rest). Without ... = strict (hides unlisted)
 index: getting-started      # Which child page is the index
 ```
 
 **site.yml:**
 ```yaml
-index: home                 # Which page folder is the homepage
+index: home                         # Just set the homepage
+pages: [home, about, ...]           # Order pages (... = rest, first = homepage)
+pages: [home, about]                # Strict: only listed pages in nav
 ```
 
-Use `index:` rather than `pages: [...]` — listing pages explicitly hides auto-discovered ones.
+Use `pages:` with `...` for ordering, without `...` for strict visibility control. Use `index:` for simple homepage selection.
 
 ## Semantic Theming
 

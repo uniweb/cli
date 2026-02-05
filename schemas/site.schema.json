@@ -24,11 +24,18 @@
       "items": {
         "type": "string"
       },
-      "description": "Top-level page ordering. First item becomes the homepage at '/'. Remaining items get their folder name as route"
+      "description": "Top-level page ordering. Use '...' for rest-of-pages wildcard: [home, about, ...] = home first (homepage), about second, rest after. Without '...' = strict (unlisted hidden from nav). First item becomes homepage"
     },
     "index": {
       "type": "string",
       "description": "Homepage folder name. Alternative to 'pages' array - just names the homepage, auto-discovers rest"
+    },
+    "order": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Legacy non-strict page ordering. Prefer 'pages' with '...' wildcard instead. Listed pages appear first, unlisted appear after"
     },
     "i18n": {
       "type": "object",

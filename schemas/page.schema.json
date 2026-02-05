@@ -20,14 +20,14 @@
     },
     "order": {
       "type": "number",
-      "description": "Sort order for navigation. Lower numbers appear first"
+      "description": "Sort position among siblings. Lower numbers appear first. Decimals allowed (e.g., 1.5)"
     },
     "pages": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "Child page ordering. First item becomes the index page for this route"
+      "description": "Child page ordering. Use '...' for rest-of-pages wildcard: [a, b, ...] = a first, b second, rest after. Without '...' = strict (unlisted hidden from nav). First item becomes the index page"
     },
     "index": {
       "type": "string",
@@ -76,7 +76,7 @@
       }
     },
     "sections": {
-      "description": "Section ordering. Use '*' to auto-discover, an array for explicit order, or nested arrays for hierarchy",
+      "description": "Section ordering. Use '*' to auto-discover, or an array with optional '...' wildcard: [hero, ..., cta] = hero first, cta last, rest in middle. Without '...' = strict (only listed sections). Supports nesting for subsections",
       "oneOf": [
         {
           "type": "string",
@@ -85,7 +85,7 @@
         },
         {
           "type": "array",
-          "description": "Explicit section ordering with optional nesting for subsections"
+          "description": "Section ordering with optional '...' wildcard and nesting for subsections. Section names resolve by stable name (ignoring numeric prefix)"
         }
       ]
     },
