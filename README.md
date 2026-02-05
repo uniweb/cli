@@ -163,7 +163,7 @@ After creating your project:
 
 3. **Learn the configuration** — Run `uniweb docs site` or `uniweb docs page` for quick reference on configuration options.
 
-4. **Create a section type** — Add a file to `foundation/src/sections/` (e.g., `Banner.jsx`) and rebuild. Bare files at the root are discovered automatically — no `meta.js` needed. Add `meta.js` when you want to declare params or presets. See the [Component Metadata Guide](./docs/component-metadata.md) for the full schema.
+4. **Create a section type** — Add a file to `foundation/src/sections/` (e.g., `Banner.jsx`) and rebuild. Bare files at the root are discovered automatically — no `meta.js` needed. Add `meta.js` when you want to declare params or presets. See the [Component Metadata Reference](https://github.com/uniweb/docs/blob/main/reference/component-metadata.md) for the full schema.
 
 The `meta.js` file defines what content and parameters a component accepts. The runtime uses this metadata to apply defaults and guarantee content structure—no defensive null checks needed in your component code.
 
@@ -234,24 +234,27 @@ Start with local files deployed anywhere. The same foundation works across all t
 
 ---
 
-## Guides and Documentation
+## Documentation
 
-[Developer Guides](./guides/developers/) — Building foundations and components, converting designs, component patterns, theming contexts
+Full documentation is available at **[github.com/uniweb/docs](https://github.com/uniweb/docs)**:
 
-[Content Author Guides](./guides/authors/) — Writing pages in markdown, writing dynamic content, site setup, theming, recipes
-
-[Reference Docs](./docs/) — Full reference for all configuration, commands, and framework
+| Section | Topics |
+| ------- | ------ |
+| [Getting Started](https://github.com/uniweb/docs/tree/main/getting-started) | Introduction, quickstart, templates |
+| [Authoring](https://github.com/uniweb/docs/tree/main/authoring) | Writing content, site setup, theming, collections, translations |
+| [Development](https://github.com/uniweb/docs/tree/main/development) | Building foundations, component patterns, data fetching, layouts |
+| [Reference](https://github.com/uniweb/docs/tree/main/reference) | Configuration files, kit API, CLI commands, deployment |
 
 ### Quick Reference
 
 | Topic              | Guide                                                               |
 | ------------------ | ------------------------------------------------------------------- |
-| Content Structure  | [How markdown becomes component props](./docs/content-structure.md) |
-| Component Metadata | [The meta.js schema](./docs/component-metadata.md)                  |
-| Site Configuration | [site.yml reference](./docs/site-configuration.md)                  |
-| CLI Commands       | [create, build, docs, i18n](./docs/cli-commands.md)                 |
-| Templates          | [Built-in, official, and external templates](./docs/templates.md)   |
-| Deployment         | [Vercel, Netlify, Cloudflare, and more](./docs/deployment.md)       |
+| Content Structure  | [How markdown becomes component props](https://github.com/uniweb/docs/blob/main/reference/content-structure.md) |
+| Component Metadata | [The meta.js schema](https://github.com/uniweb/docs/blob/main/reference/component-metadata.md) |
+| Site Configuration | [site.yml reference](https://github.com/uniweb/docs/blob/main/reference/site-configuration.md) |
+| CLI Commands       | [create, build, docs, i18n](https://github.com/uniweb/docs/blob/main/reference/cli-commands.md) |
+| Templates          | [Built-in, official, and external templates](https://github.com/uniweb/docs/blob/main/getting-started/templates.md) |
+| Deployment         | [Vercel, Netlify, Cloudflare, and more](https://github.com/uniweb/docs/blob/main/reference/deployment.md) |
 
 ---
 
