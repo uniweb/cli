@@ -85,6 +85,8 @@ my-project/
 
 **Pages are folders.** Create `pages/about/` with markdown files inside → visit `/about`. That's the whole routing model.
 
+**Batteries included:** File-based routing, pre-rendering, localization, dynamic routes, media processing, search indexing, and more. See [Building with Uniweb](https://github.com/uniweb/docs/blob/main/development/building-with-uniweb.md) for the full list.
+
 ### Content as Markdown
 
 ```markdown
