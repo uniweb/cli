@@ -237,16 +237,13 @@ async function runExtract(siteRoot, config, args) {
   if (!collectionsOnly) {
     log(`\n${colors.cyan}Extracting translatable content${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`)
 
-    // Check if site has been built
-    const siteContentPath = join(siteRoot, 'dist', 'site-content.json')
-    if (!existsSync(siteContentPath)) {
-      error('Site content not found. Run "uniweb build" first.')
-      process.exit(1)
-    }
-
     try {
-      // Dynamic import to avoid loading at CLI startup
+      // Collect site content directly from source files (no build required)
+      const { collectSiteContent } = await import('@uniweb/build/site')
       const { extractManifest, formatSyncReport } = await import('@uniweb/build/i18n')
+
+      log(`${colors.dim}Collecting site content...${colors.reset}`)
+      const siteContent = await collectSiteContent(siteRoot)
 
       // Check if this is a first-time extract (no previous manifest)
       const manifestPath = join(siteRoot, config.localesDir, 'manifest.json')
@@ -254,7 +251,7 @@ async function runExtract(siteRoot, config, args) {
 
       const { manifest, report } = await extractManifest(siteRoot, {
         localesDir: config.localesDir,
-        siteContentPath,
+        siteContent,
         verbose,
         dryRun,
       })
@@ -1466,11 +1463,10 @@ ${colors.bright}Configuration:${colors.reset}
   By default, all *.json files in locales/ are treated as translation targets.
 
 ${colors.bright}Workflow:${colors.reset}
-  1. Build your site:           uniweb build
-  2. Extract strings:           uniweb i18n extract
-  3. Generate locale files:     uniweb i18n generate es fr
-  4. Translate locale files:    Edit locales/es.json, locales/fr.json, etc.
-  5. Build with translations:   uniweb build (generates locale-specific output)
+  1. Extract strings:           uniweb i18n extract
+  2. Generate locale files:     uniweb i18n generate es fr
+  3. Translate locale files:    Edit locales/es.json, locales/fr.json, etc.
+  4. Build with translations:   uniweb build (generates locale-specific output)
 
 ${colors.bright}File Structure:${colors.reset}
   locales/
