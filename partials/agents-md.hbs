@@ -369,3 +369,23 @@ Use with: `bg-primary`, `text-primary`, `bg-primary/10`
 **Component not appearing** — Verify `meta.js` exists and doesn't have `hidden: true`. Rebuild: `cd foundation && pnpm build`.
 
 **Styles not applying** — Verify `@source` in `styles.css` includes your component paths. Check custom colors match `@theme` definitions.
+
+## Further Documentation
+
+Full Uniweb documentation is available at **https://github.com/uniweb/docs** — raw markdown files you can fetch directly.
+
+| Section | Path | Topics |
+|---------|------|--------|
+| **Getting Started** | `getting-started/` | What is Uniweb, quickstart guide, templates overview |
+| **Authoring** | `authoring/` | Writing content, site setup, collections, theming, linking, search, recipes, translations |
+| **Development** | `development/` | Building foundations, component patterns, data fetching, custom layouts, i18n, converting existing designs |
+| **Reference** | `reference/` | site.yml, page.yml, content structure, meta.js, kit hooks/components, theming tokens, CLI commands, deployment |
+
+**Quick access pattern:** `https://raw.githubusercontent.com/uniweb/docs/main/{section}/{page}.md`
+
+Examples:
+- Content structure details: `reference/content-structure.md`
+- Component metadata (meta.js): `reference/component-metadata.md`
+- Kit hooks and components: `reference/kit-reference.md`
+- Theming tokens: `reference/site-theming.md`
+- Data fetching patterns: `reference/data-fetching.md`
