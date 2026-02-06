@@ -338,7 +338,11 @@ Layouts live in `foundation/src/layouts/` and are auto-discovered. Set the defau
 
 ```js
 // foundation/src/foundation.js
-export default { defaultLayout: 'DocsLayout' }
+export default {
+  name: 'My Template',              // Display name (falls back to package.json name)
+  description: 'A brief description', // Falls back to package.json description
+  defaultLayout: 'DocsLayout',
+}
 ```
 
 ```jsx
