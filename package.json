@@ -1,6 +1,6 @@
 {
   "name": "uniweb",
-  "version": "0.6.23",
+  "version": "0.6.24",
   "description": "Create structured Vite + React sites with content/code separation",
   "type": "module",
   "bin": {
