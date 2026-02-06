@@ -49,31 +49,34 @@
       "description": "Hide from footer navigation only"
     },
     "layout": {
-      "type": "object",
-      "description": "Layout area visibility overrides",
-      "additionalProperties": false,
-      "properties": {
-        "header": {
-          "type": "boolean",
-          "default": true,
-          "description": "Whether to render the header on this page"
+      "description": "Layout selection and configuration. Can be a string (layout name) or an object with name, hide, and params",
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Layout name (e.g., 'MarketingLayout')"
         },
-        "footer": {
-          "type": "boolean",
-          "default": true,
-          "description": "Whether to render the footer on this page"
-        },
-        "leftPanel": {
-          "type": "boolean",
-          "default": true,
-          "description": "Whether to render the left sidebar on this page"
-        },
-        "rightPanel": {
-          "type": "boolean",
-          "default": true,
-          "description": "Whether to render the right sidebar on this page"
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Layout name from the foundation's src/layouts/"
+            },
+            "hide": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Area names to suppress on this page (e.g., ['header', 'footer'] or ['left', 'right'])"
+            },
+            "params": {
+              "type": "object",
+              "description": "Layout-specific parameters (merged with meta.js defaults)"
+            }
+          }
         }
-      }
+      ]
     },
     "sections": {
       "description": "Section ordering. Use '*' to auto-discover, or an array with optional '...' wildcard: [hero, ..., cta] = hero first, cta last, rest in middle. Without '...' = strict (only listed sections). Supports nesting for subsections",

@@ -3,13 +3,13 @@
  *
  * This file defines foundation-level configuration:
  * - vars: CSS custom properties that sites can override in theme.yml
- * - Layout: Custom page layout component (optional)
+ * - defaultLayout: Name of the default layout from src/layouts/ (optional)
  * - props: Foundation-wide props accessible via website.foundationProps
  *
  * Identity (name, version, description) comes from package.json.
  */
 
-// import Layout from './sections/Layout'
+// Create a layout at src/layouts/MyLayout/index.jsx
 
 /**
  * CSS custom properties that sites can override in theme.yml
@@ -30,18 +30,19 @@ export const vars = {
 }
 
 /**
- * Runtime exports (Layout and props)
+ * Runtime exports
  *
- * The Layout component receives pre-rendered page areas as props:
- * - page, website: Runtime context
+ * Layout components live in src/layouts/ and are auto-discovered.
+ * Each layout receives pre-rendered page areas as props:
+ * - page, website, params: Runtime context
  * - header, body, footer: Core page regions (pre-rendered React elements)
- * - left/leftPanel, right/rightPanel: Sidebar panels
+ * - Plus any custom areas declared in the layout's meta.js
  *
- * If no Layout is provided, the runtime uses a default layout.
+ * If no layouts exist, the runtime uses a default layout.
  */
 export default {
-  // Uncomment to use a custom page layout:
-  // Layout,
+  // Optional: Create custom layouts in src/layouts/
+  // Then set defaultLayout: 'MyLayout' below
 
   // Foundation-wide props (accessible via website.foundationProps):
   props: {},

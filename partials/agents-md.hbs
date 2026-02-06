@@ -146,7 +146,7 @@ Components that render their own background declare `background: 'self'` in `met
 site/layout/
 ├── header.md               # type: Header — rendered on every page
 ├── footer.md               # type: Footer — rendered on every page
-└── left.md                 # type: LeftPanel — optional sidebar
+└── left.md                 # type: Sidebar — optional sidebar
 
 site/pages/
 └── home/
@@ -334,14 +334,37 @@ const firstBody = block.page.getFirstBodyBlockInfo()
 
 ### Custom Layouts
 
-Export a Layout from `foundation/src/foundation.js`. Kit provides `SidebarLayout` for sidebar-based sites (docs, dashboards):
+Layouts live in `foundation/src/layouts/` and are auto-discovered. Set the default in `foundation.js`:
 
-```jsx
-import { SidebarLayout } from '@uniweb/kit/styled'
-export default { Layout: SidebarLayout }
+```js
+// foundation/src/foundation.js
+export default { defaultLayout: 'DocsLayout' }
 ```
 
-Layout receives pre-rendered areas: `header`, `body`, `footer`, `left`/`leftPanel`, `right`/`rightPanel`.
+```jsx
+// foundation/src/layouts/DocsLayout/index.jsx
+export default function DocsLayout({ header, body, footer, left, right, params }) {
+  return (
+    <div className="min-h-screen flex flex-col">
+      {header && <header>{header}</header>}
+      <div className="flex-1 flex">
+        {left && <aside className="w-64">{left}</aside>}
+        <main className="flex-1">{body}</main>
+        {right && <aside className="w-64">{right}</aside>}
+      </div>
+      {footer && <footer>{footer}</footer>}
+    </div>
+  )
+}
+```
+
+Layout receives pre-rendered areas as props: `header`, `body`, `footer`, `left`, `right` (or any custom area names declared in `meta.js`), plus `params`, `page`, and `website`. Pages select layouts and hide areas in `page.yml`:
+
+```yaml
+layout:
+  name: MarketingLayout
+  hide: [left, right]
+```
 
 ## Converting Existing Designs
 

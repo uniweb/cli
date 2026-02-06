@@ -9,7 +9,7 @@
  * Identity (name, version, description) comes from package.json.
  */
 
-// import Layout from './sections/Layout'
+// Create a layout at src/layouts/MyLayout/index.jsx
 
 /**
  * CSS custom properties that sites can override in theme.yml
@@ -33,8 +33,8 @@ export const vars = {
  * Runtime exports (Layout and props)
  */
 export default {
-  // Uncomment to use a custom page layout:
-  // Layout,
+  // Optional: Create custom layouts in src/layouts/
+  // Then set defaultLayout: 'MyLayout' below
 
   // Foundation-wide props (accessible via website.foundationProps):
   props: {},

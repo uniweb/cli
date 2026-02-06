@@ -121,11 +121,13 @@ ${colors.bright}Navigation Visibility:${colors.reset}
   ${colors.cyan}hideInHeader${colors.reset}      Hide from header nav only
   ${colors.cyan}hideInFooter${colors.reset}      Hide from footer nav only
 
-${colors.bright}Layout Overrides:${colors.reset}
-  ${colors.cyan}layout.header${colors.reset}     Show header on this page (default: true)
-  ${colors.cyan}layout.footer${colors.reset}     Show footer on this page (default: true)
-  ${colors.cyan}layout.leftPanel${colors.reset}  Show left sidebar (default: true)
-  ${colors.cyan}layout.rightPanel${colors.reset} Show right sidebar (default: true)
+${colors.bright}Layout Options:${colors.reset}
+  ${colors.cyan}layout${colors.reset}            Layout name or object with name, hide, params
+                    String: layout name (e.g., MarketingLayout)
+                    Object: { name, hide: [areas], params: {...} }
+  ${colors.cyan}layout.hide${colors.reset}       Array of area names to suppress on this page
+                    Example: [header, footer] or [left, right]
+  ${colors.cyan}layout.params${colors.reset}     Layout-specific parameters (merged with meta.js defaults)
 
 ${colors.bright}Section Control:${colors.reset}
   ${colors.cyan}sections${colors.reset}          "*" for auto-discover, or explicit array
@@ -147,7 +149,7 @@ ${colors.bright}Example:${colors.reset}
   order: 2
   hideInFooter: true
   layout:
-    rightPanel: false
+    hide: [right]
   seo:
     image: /about-og.png${colors.reset}
 
