@@ -34,7 +34,52 @@ function isSite(dir) {
  * Check if a directory is a foundation
  */
 function isFoundation(dir) {
-  return existsSync(join(dir, 'src', 'components'))
+  // Primary: has foundation.js config
+  if (existsSync(join(dir, 'src', 'foundation.js'))) return true
+  // Fallback: has src/sections/
+  if (existsSync(join(dir, 'src', 'sections'))) return true
+  // Legacy fallback: has src/components/
+  if (existsSync(join(dir, 'src', 'components'))) return true
+  return false
+}
+
+/**
+ * Load foundation.js config from a directory
+ * Returns the default export, or null if not found/loadable
+ */
+function loadFoundationJs(dir) {
+  const filePath = join(dir, 'src', 'foundation.js')
+  if (!existsSync(filePath)) return null
+  try {
+    const content = readFileSync(filePath, 'utf8')
+    // Simple extraction: check for extension: true
+    return { extension: /extension\s*:\s*true/.test(content) }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Load built schema.json from a directory
+ */
+function loadSchemaJson(dir) {
+  const schemaPath = join(dir, 'dist', 'schema.json')
+  if (!existsSync(schemaPath)) return null
+  try {
+    return JSON.parse(readFileSync(schemaPath, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Check if a foundation is an extension (via schema.json or foundation.js)
+ */
+function isExtensionPackage(dir) {
+  const schema = loadSchemaJson(dir)
+  if (schema?._self?.role === 'extension') return true
+  const config = loadFoundationJs(dir)
+  return config?.extension === true
 }
 
 /**
@@ -85,7 +130,8 @@ export async function doctor(args = []) {
     }
   } else if (isFoundation(projectDir)) {
     workspaceDir = dirname(projectDir)
-    if (basename(workspaceDir) === 'foundations') {
+    const parentName = basename(workspaceDir)
+    if (parentName === 'foundations' || parentName === 'extensions') {
       workspaceDir = dirname(workspaceDir)
     }
   }
@@ -140,6 +186,31 @@ export async function doctor(args = []) {
     }
   }
 
+  // Discover extensions
+  const extensions = []
+
+  const extensionsDir = join(workspaceDir, 'extensions')
+  if (existsSync(extensionsDir)) {
+    try {
+      const entries = readdirSync(extensionsDir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          const extensionPath = join(extensionsDir, entry.name)
+          if (isFoundation(extensionPath)) {
+            const pkg = loadPackageJson(extensionPath)
+            extensions.push({
+              path: extensionPath,
+              name: pkg?.name || entry.name,
+              folderName: entry.name
+            })
+          }
+        }
+      }
+    } catch {
+      // Ignore errors
+    }
+  }
+
   if (foundations.length === 0) {
     warn('No foundations found')
   } else {
@@ -147,6 +218,15 @@ export async function doctor(args = []) {
     for (const f of foundations) {
       const nameMismatch = f.name !== f.folderName ? ` ${colors.dim}(folder: ${f.folderName}/)${colors.reset}` : ''
       log(`    • ${f.name}${nameMismatch}`)
+    }
+  }
+
+  if (extensions.length > 0) {
+    log('')
+    success(`Found ${extensions.length} extension(s):`)
+    for (const e of extensions) {
+      const nameMismatch = e.name !== e.folderName ? ` ${colors.dim}(folder: ${e.folderName}/)${colors.reset}` : ''
+      log(`    • ${e.name}${nameMismatch}`)
     }
   }
 
@@ -302,6 +382,105 @@ export async function doctor(args = []) {
       log(`  ${colors.dim}Run: pnpm --filter ${matchingFoundation.name} build${colors.reset}`)
     } else {
       success(`Foundation built: dist/foundation.js exists`)
+    }
+  }
+
+  // Check extensions
+  for (const ext of extensions) {
+    log('')
+    info(`Checking extension: ${ext.name}`)
+
+    // Check if it declares extension: true
+    if (!isExtensionPackage(ext.path)) {
+      issues.push({
+        type: 'warn',
+        message: `Extension "${ext.name}" in extensions/ doesn't declare extension: true in foundation.js`
+      })
+      warn(`Missing extension identity`)
+      log(`  ${colors.dim}Add to src/foundation.js:${colors.reset}`)
+      log(`    export default { extension: true }`)
+    } else {
+      success(`Extension identity: extension: true`)
+    }
+
+    // Check for vars or layouts
+    const config = loadFoundationJs(ext.path)
+    const schema = loadSchemaJson(ext.path)
+
+    if (schema?._self?.vars && Object.keys(schema._self.vars).length > 0) {
+      issues.push({
+        type: 'warn',
+        message: `Extension "${ext.name}" declares theme variables (vars). Extensions don't define theme variables.`
+      })
+      warn(`Extension declares vars — these won't take effect`)
+    }
+
+    if (schema?._layouts && Object.keys(schema._layouts).length > 0) {
+      issues.push({
+        type: 'warn',
+        message: `Extension "${ext.name}" provides layouts. Extensions don't provide layouts.`
+      })
+      warn(`Extension provides layouts — these won't take effect`)
+    }
+
+    // Check if built
+    const extensionDist = join(ext.path, 'dist', 'foundation.js')
+    if (!existsSync(extensionDist)) {
+      issues.push({
+        type: 'warn',
+        message: `Extension not built: ${ext.name}`
+      })
+      warn(`Extension not built yet`)
+      log(`  ${colors.dim}Run: pnpm --filter ${ext.name} build${colors.reset}`)
+    } else {
+      success(`Extension built: dist/foundation.js exists`)
+    }
+  }
+
+  // Check if any foundation with extension: true is wired as a primary foundation
+  for (const f of foundations) {
+    if (isExtensionPackage(f.path)) {
+      const sitesUsingAsPrimary = sites.filter(s => {
+        const siteYml = loadSiteYml(s.path)
+        return siteYml?.foundation === f.name
+      })
+      for (const site of sitesUsingAsPrimary) {
+        issues.push({
+          type: 'warn',
+          site: site.name,
+          message: `Foundation "${f.name}" declares extension: true but is wired as the primary foundation. It should be in extensions: instead.`
+        })
+        warn(`"${f.name}" is an extension but used as primary foundation in site "${site.name}"`)
+        log(`  ${colors.dim}Move it to extensions: in site.yml instead of foundation:${colors.reset}`)
+      }
+    }
+  }
+
+  // Validate extension URLs in site.yml
+  for (const site of sites) {
+    const siteYml = loadSiteYml(site.path)
+    if (!siteYml?.extensions || !Array.isArray(siteYml.extensions)) continue
+
+    for (const extUrl of siteYml.extensions) {
+      if (typeof extUrl !== 'string') continue
+
+      // Skip remote URLs — can't validate those
+      if (extUrl.startsWith('http://') || extUrl.startsWith('https://')) continue
+
+      // Local extension URL: check if it maps to a known extension
+      // URLs like /effects/foundation.js or /extensions/effects/foundation.js
+      const urlParts = extUrl.replace(/^\//, '').split('/')
+      const extName = urlParts.length >= 2 ? urlParts[urlParts.length - 2] : urlParts[0]
+
+      // Check if a matching extension exists and is built
+      const matchingExt = extensions.find(e => e.folderName === extName || e.name === extName)
+      if (matchingExt && !existsSync(join(matchingExt.path, 'dist', 'foundation.js'))) {
+        issues.push({
+          type: 'warn',
+          site: site.name,
+          message: `Extension "${extName}" referenced in site.yml is not built`
+        })
+      }
     }
   }
 

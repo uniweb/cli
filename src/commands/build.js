@@ -496,9 +496,25 @@ async function buildSite(projectDir, options = {}) {
 function isFoundation(dir) {
   // Primary: has foundation.js config
   if (existsSync(join(dir, 'src', 'foundation.js'))) return true
-  // Fallback: has src/components/
+  // Fallback: has src/sections/
+  if (existsSync(join(dir, 'src', 'sections'))) return true
+  // Legacy fallback: has src/components/
   if (existsSync(join(dir, 'src', 'components'))) return true
   return false
+}
+
+/**
+ * Check if a foundation directory declares extension: true in foundation.js
+ */
+function isExtensionDir(dir) {
+  const filePath = join(dir, 'src', 'foundation.js')
+  if (!existsSync(filePath)) return false
+  try {
+    const content = readFileSync(filePath, 'utf8')
+    return /extension\s*:\s*true/.test(content)
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -517,6 +533,7 @@ function isSite(dir) {
  */
 function discoverWorkspacePackages(workspaceDir) {
   const foundations = []
+  const extensions = []
   const sites = []
 
   // Check standard locations
@@ -553,7 +570,18 @@ function discoverWorkspacePackages(workspaceDir) {
     }
   }
 
-  return { foundations, sites }
+  // Check extensions/*
+  const extensionsDir = join(workspaceDir, 'extensions')
+  if (existsSync(extensionsDir)) {
+    for (const name of readdirSync(extensionsDir)) {
+      const path = join(extensionsDir, name)
+      if (isFoundation(path)) {
+        extensions.push({ name, path })
+      }
+    }
+  }
+
+  return { foundations, extensions, sites }
 }
 
 /**
@@ -565,13 +593,14 @@ async function buildWorkspace(workspaceDir, options = {}) {
   log(`${colors.cyan}${colors.bright}Building workspace...${colors.reset}`)
   log('')
 
-  const { foundations, sites } = discoverWorkspacePackages(workspaceDir)
+  const { foundations, extensions, sites } = discoverWorkspacePackages(workspaceDir)
 
-  if (foundations.length === 0 && sites.length === 0) {
-    error('No foundations or sites found in workspace')
+  if (foundations.length === 0 && extensions.length === 0 && sites.length === 0) {
+    error('No foundations, extensions, or sites found in workspace')
     log('')
     log('Expected structure:')
     log('  foundation/     or  foundations/*/')
+    log('  extensions/*/')
     log('  site/           or  sites/*/')
     process.exit(1)
   }
@@ -580,6 +609,14 @@ async function buildWorkspace(workspaceDir, options = {}) {
   for (const foundation of foundations) {
     log(`${colors.bright}[${foundation.name}]${colors.reset}`)
     await buildFoundation(foundation.path)
+    log('')
+  }
+
+  // Build extensions (they are foundations, but logged distinctly)
+  for (const extension of extensions) {
+    const label = isExtensionDir(extension.path) ? 'extension' : 'foundation'
+    log(`${colors.bright}[${extension.name}]${colors.reset} ${colors.dim}(${label})${colors.reset}`)
+    await buildFoundation(extension.path)
     log('')
   }
 
@@ -602,9 +639,15 @@ async function buildWorkspace(workspaceDir, options = {}) {
   }
 
   // Summary
+  const totalBuilt = foundations.length + extensions.length + sites.length
+  const parts = []
+  if (foundations.length > 0) parts.push(`${foundations.length} foundation(s)`)
+  if (extensions.length > 0) parts.push(`${extensions.length} extension(s)`)
+  if (sites.length > 0) parts.push(`${sites.length} site(s)`)
+
   log(`${colors.green}${colors.bright}Workspace build complete!${colors.reset}`)
   log('')
-  log(`Built ${foundations.length} foundation(s) and ${sites.length} site(s)`)
+  log(`Built ${parts.join(', ')}`)
 }
 
 /**
