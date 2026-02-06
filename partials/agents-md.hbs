@@ -143,11 +143,12 @@ Components that render their own background declare `background: 'self'` in `met
 ### Page Organization
 
 ```
+site/layout/
+├── header.md               # type: Header — rendered on every page
+├── footer.md               # type: Footer — rendered on every page
+└── left.md                 # type: LeftPanel — optional sidebar
+
 site/pages/
-├── @header/                # Rendered on every page
-│   └── header.md           # type: Header
-├── @footer/                # Rendered on every page
-│   └── footer.md           # type: Footer
 └── home/
     ├── page.yml            # title, description, order
     ├── hero.md             # Single section — no prefix needed
