@@ -40,6 +40,19 @@ const colors = {
   red: '\x1b[31m',
 }
 
+// Template choices for interactive prompt
+const TEMPLATE_CHOICES = [
+  { title: 'Starter', value: 'starter', description: 'Foundation + site + sample content' },
+  { title: 'Blank', value: 'blank', description: 'Empty workspace — grow with uniweb add' },
+  { title: 'Marketing', value: 'marketing', description: 'Landing page, features, pricing, testimonials' },
+  { title: 'Docs', value: 'docs', description: 'Documentation with sidebar and search' },
+  { title: 'Academic', value: 'academic', description: 'Research site with publications and team' },
+  { title: 'Dynamic', value: 'dynamic', description: 'Live API data fetching with loading states' },
+  { title: 'International', value: 'international', description: 'Multilingual site with i18n and blog' },
+  { title: 'Store', value: 'store', description: 'E-commerce with product grid' },
+  { title: 'Extensions', value: 'extensions', description: 'Multi-foundation with visual effects extension' },
+]
+
 function log(message) {
   console.log(message)
 }
@@ -383,6 +396,22 @@ async function main() {
     process.exit(1)
   }
 
+  // Prompt for template if not specified via --template
+  if (!templateType) {
+    const templateResponse = await prompts({
+      type: 'select',
+      name: 'template',
+      message: 'Template:',
+      choices: TEMPLATE_CHOICES,
+    }, {
+      onCancel: () => {
+        log('\nScaffolding cancelled.')
+        process.exit(0)
+      },
+    })
+    templateType = templateResponse.template
+  }
+
   const effectiveName = displayName || projectName
 
   // Create project directory
@@ -404,8 +433,8 @@ async function main() {
       onProgress: progressCb,
       onWarning: warningCb,
     })
-  } else if (!templateType) {
-    // Default flow (package templates + starter)
+  } else if (templateType === 'starter') {
+    // Starter: foundation + site + sample content
     log('\nCreating project...')
     await createFromPackageTemplates(projectDir, effectiveName, {
       onProgress: progressCb,
@@ -439,7 +468,7 @@ async function main() {
       log(`${colors.yellow}Troubleshooting:${colors.reset}`)
       log(`  • Check your network connection`)
       log(`  • Official templates require GitHub access (may be blocked by corporate networks)`)
-      log(`  • Try the default template instead: ${colors.cyan}uniweb create ${projectName}${colors.reset}`)
+      log(`  • Try the starter template instead: ${colors.cyan}uniweb create ${projectName} --template starter${colors.reset}`)
       process.exit(1)
     }
   }
@@ -468,8 +497,8 @@ async function main() {
   if (templateType === 'blank') {
     log(`Next steps:\n`)
     log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
-    log(`  ${colors.cyan}uniweb add foundation${colors.reset}`)
-    log(`  ${colors.cyan}uniweb add site${colors.reset}`)
+    log(`  ${colors.cyan}npx uniweb add foundation${colors.reset}`)
+    log(`  ${colors.cyan}npx uniweb add site${colors.reset}`)
     log(`  ${colors.cyan}pnpm install${colors.reset}`)
     log(`  ${colors.cyan}pnpm dev${colors.reset}`)
   } else {
@@ -497,7 +526,7 @@ ${colors.bright}Commands:${colors.reset}
   i18n <cmd>         Internationalization (extract, sync, status)
 
 ${colors.bright}Create Options:${colors.reset}
-  --template <type>  Project template (default: creates foundation + site + starter)
+  --template <type>  Project template (prompts if not specified)
   --name <name>      Project display name
   --no-git           Skip git repository initialization
 
@@ -533,6 +562,7 @@ ${colors.bright}i18n Commands:${colors.reset}
   status             Show translation coverage per locale
 
 ${colors.bright}Template Types:${colors.reset}
+  starter                       Foundation + site + sample content (default)
   blank                         Empty workspace (grow with 'add')
   marketing                     Official marketing template
   ./path/to/template            Local directory
@@ -541,7 +571,8 @@ ${colors.bright}Template Types:${colors.reset}
   https://github.com/user/repo  GitHub URL
 
 ${colors.bright}Examples:${colors.reset}
-  npx uniweb create my-project                           # Default (foundation + site + starter)
+  npx uniweb create my-project                           # Interactive (prompts for template)
+  npx uniweb create my-project --template starter        # Foundation + site + starter content
   npx uniweb create my-project --template blank          # Blank workspace
   npx uniweb create my-project --template marketing      # Official template
   npx uniweb create my-project --template ./my-template  # Local template

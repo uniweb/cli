@@ -53,7 +53,7 @@ pnpm create uniweb my-site --template dynamic
 pnpm create uniweb my-site --template extensions
 
 # Default starter (foundation + site + sample content)
-pnpm create uniweb my-site
+pnpm create uniweb my-site --template starter
 
 # Blank workspace (grow with `add`)
 pnpm create uniweb my-site --template blank
@@ -260,8 +260,8 @@ The workspace grows organically. `add` handles placement, wires dependencies, up
 ```bash
 pnpm create uniweb acme --template blank
 cd acme
-uniweb add foundation
-uniweb add site
+npx uniweb add foundation
+npx uniweb add site
 pnpm install && pnpm dev
 ```
 
