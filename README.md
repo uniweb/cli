@@ -250,6 +250,8 @@ npx uniweb add site main --from marketing --foundation marketing
 
 The workspace grows organically. `add` handles placement, wires dependencies, updates workspace globs, and generates root scripts. Use `--path` to override default placement, or `--project` for co-located layouts (e.g., `marketing/foundation/` + `marketing/site/`).
 
+> `npx uniweb` works before and after install. Once dependencies are installed, you can also use `pnpm uniweb` directly since `uniweb` is a project dependency.
+
 **Or start blank and build up:**
 
 ```bash
