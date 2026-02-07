@@ -7,15 +7,42 @@ Create well-structured Vite + React projects with file-based routing, localizati
 ## Quick Start
 
 ```bash
-pnpm create uniweb my-site --template marketing
-cd my-site
+pnpm create uniweb
+```
+
+The interactive prompt asks for a project name and template. Pick one, then:
+
+```bash
+cd my-project
 pnpm install
 pnpm dev
 ```
 
 Open http://localhost:5173 to see your site. Edit files in `site/pages/` and `foundation/src/sections/` to see changes instantly.
 
-> **Need pnpm?** Run `npm install -g pnpm` or see [pnpm installation](https://pnpm.io/installation).
+> **Need pnpm?** Run `npm install -g pnpm` or see [pnpm installation](https://pnpm.io/installation). You can also use `npm create uniweb`.
+
+### Templates
+
+| Template | Description |
+| --- | --- |
+| **Starter** | Foundation + site + sample content (default) |
+| **Marketing** | Landing page, features, pricing, testimonials |
+| **Docs** | Documentation with sidebar and search |
+| **Academic** | Research site with publications and team |
+| **International** | Multilingual site with i18n and blog |
+| **Dynamic** | Live API data fetching with loading states |
+| **Store** | E-commerce with product grid |
+| **Extensions** | Multi-foundation with visual effects extension |
+| **Blank** | Empty workspace — grow with `uniweb add` |
+
+**See them live:** [View all template demos](https://uniweb.github.io/templates/)
+
+You can also skip the interactive prompt with `--template`:
+
+```bash
+pnpm create uniweb my-site --template docs
+```
 
 ### Development Commands
 
@@ -28,38 +55,6 @@ pnpm preview    # Preview the production build
 ```
 
 The `build` command outputs to `site/dist/`. With pre-rendering enabled (the default for official templates), you get static HTML files ready to deploy anywhere.
-
-The `marketing` template includes real components (Hero, Features, Pricing, Testimonials, FAQ, and more) with sample content—a working site you can explore and modify.
-
-**Other templates:**
-
-```bash
-# Multilingual business site (English, Spanish, French)
-pnpm create uniweb my-site --template international
-
-# Academic site (researcher portfolios, lab pages)
-pnpm create uniweb my-site --template academic
-
-# Documentation site
-pnpm create uniweb my-site --template docs
-
-# Online store
-pnpm create uniweb my-site --template store
-
-# Dynamic content (data sources, API-driven pages)
-pnpm create uniweb my-site --template dynamic
-
-# Extensions demo (primary foundation + effects extension)
-pnpm create uniweb my-site --template extensions
-
-# Default starter (foundation + site + sample content)
-pnpm create uniweb my-site --template starter
-
-# Blank workspace (grow with `add`)
-pnpm create uniweb my-site --template blank
-```
-
-**See them live:** [View all template demos](https://uniweb.github.io/templates/)
 
 ## What You Get
 
