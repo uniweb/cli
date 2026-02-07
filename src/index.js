@@ -512,10 +512,6 @@ async function main() {
     log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
     log(`  ${colors.cyan}${runCmd(pm, 'dev')}${colors.reset}`)
   }
-  if (pm === 'npm') {
-    log('')
-    log(`${colors.dim}Tip: pnpm is recommended for workspaces. See https://pnpm.io/installation${colors.reset}`)
-  }
   log('')
 }
 

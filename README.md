@@ -10,7 +10,7 @@ Create well-structured Vite + React projects with file-based routing, localizati
 npm create uniweb
 ```
 
-> **Using pnpm?** `pnpm create uniweb` works too and is recommended for workspaces.
+> **pnpm ready** — `pnpm create uniweb` works out of the box. Projects include both `pnpm-workspace.yaml` and npm workspaces.
 
 The interactive prompt asks for a project name and template. Pick one, then:
 
@@ -20,7 +20,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 to see your site. Edit files in `site/pages/` and `foundation/src/sections/` to see changes instantly.
+Edit files in `site/pages/` and `foundation/src/sections/` to see changes instantly.
 
 ### Templates
 
