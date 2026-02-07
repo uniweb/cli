@@ -60,11 +60,12 @@ export async function addWorkspaceGlob(rootDir, glob) {
 
   // Sync workspaces array in package.json (for npm compatibility)
   const pkg = await readRootPackageJson(rootDir)
-  if (pkg.workspaces) {
-    if (!pkg.workspaces.includes(glob)) {
-      pkg.workspaces.push(glob)
-      await writeRootPackageJson(rootDir, pkg)
-    }
+  if (!pkg.workspaces) {
+    pkg.workspaces = []
+  }
+  if (!pkg.workspaces.includes(glob)) {
+    pkg.workspaces.push(glob)
+    await writeRootPackageJson(rootDir, pkg)
   }
 }
 

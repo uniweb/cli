@@ -10,8 +10,6 @@ Create well-structured Vite + React projects with file-based routing, localizati
 npm create uniweb
 ```
 
-> **pnpm ready** — `pnpm create uniweb` works out of the box. Projects include both `pnpm-workspace.yaml` and npm workspaces.
-
 The interactive prompt asks for a project name and template. Pick one, then:
 
 ```bash
@@ -21,6 +19,8 @@ npm run dev
 ```
 
 Edit files in `site/pages/` and `foundation/src/sections/` to see changes instantly.
+
+> **pnpm ready** — `pnpm create uniweb` works out of the box. Projects include both `pnpm-workspace.yaml` and npm workspaces.
 
 ### Templates
 
@@ -42,6 +42,12 @@ You can also skip the interactive prompt with `--template`:
 
 ```bash
 npm create uniweb my-site -- --template docs
+```
+
+or
+
+```bash
+pnpm create uniweb my-site --template docs
 ```
 
 ### Development Commands

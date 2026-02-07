@@ -178,7 +178,11 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
         process.exit(0)
       },
     })
-    name = response.name
+    // Only set name if user chose something other than the default —
+    // null name tells resolveFoundationTarget to use default placement (./foundation/)
+    if (!hasDefault || response.name !== 'foundation') {
+      name = response.name
+    }
   }
 
   const target = await resolveFoundationTarget(rootDir, name, opts)
@@ -242,7 +246,11 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
         process.exit(0)
       },
     })
-    name = response.name
+    // Only set name if user chose something other than the default —
+    // null name tells resolveSiteTarget to use default placement (./site/)
+    if (!hasDefault || response.name !== 'site') {
+      name = response.name
+    }
   }
 
   const target = await resolveSiteTarget(rootDir, name, opts)
