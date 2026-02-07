@@ -261,7 +261,12 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
         }
 
         const sourceFullPath = path.join(sourcePath, sourceName)
-        const targetFullPath = path.join(targetPath, sourceName)
+        // Rename _prefix directories to .prefix (e.g., _vscode → .vscode)
+        // This allows dotfile directories to be committed without being gitignored
+        const targetName = sourceName.startsWith('_') && !sourceName.startsWith('__')
+          ? `.${sourceName.slice(1)}`
+          : sourceName
+        const targetFullPath = path.join(targetPath, targetName)
 
         await copyTemplateDirectory(sourceFullPath, targetFullPath, data, recursionOptions)
       }

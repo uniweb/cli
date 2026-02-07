@@ -12,7 +12,8 @@
   "files": [
     "src",
     "templates",
-    "partials"
+    "partials",
+    "starter"
   ],
   "keywords": [
     "uniweb",
