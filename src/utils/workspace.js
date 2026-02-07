@@ -1,24 +1,45 @@
 /**
  * Workspace Detection Utilities
  *
- * Detects pnpm workspace structure and classifies packages as foundations or sites.
+ * Detects workspace structure (pnpm-workspace.yaml or package.json workspaces)
+ * and classifies packages as foundations or sites.
  * Used by commands to auto-detect targets when run from workspace root.
  */
 
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { resolve, dirname, join } from 'node:path'
 import yaml from 'js-yaml'
 
 /**
- * Find workspace root by looking for pnpm-workspace.yaml
+ * Check if a directory is a workspace root.
+ * Recognizes pnpm-workspace.yaml or package.json with workspaces field.
+ * @param {string} dir - Directory to check
+ * @returns {boolean}
+ */
+function hasWorkspaceConfig(dir) {
+  if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return true
+  const pkgPath = join(dir, 'package.json')
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+      if (Array.isArray(pkg.workspaces)) return true
+    } catch {
+      // ignore
+    }
+  }
+  return false
+}
+
+/**
+ * Find workspace root by looking for pnpm-workspace.yaml or package.json workspaces
  * @param {string} startDir - Directory to start searching from
  * @returns {string|null} - Workspace root path or null
  */
 export function findWorkspaceRoot(startDir = process.cwd()) {
   let dir = startDir
   while (dir !== dirname(dir)) {
-    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) {
+    if (hasWorkspaceConfig(dir)) {
       return dir
     }
     dir = dirname(dir)
@@ -71,20 +92,35 @@ function resolvePatterns(patterns, workspaceRoot) {
 }
 
 /**
- * Get workspace packages from pnpm-workspace.yaml
+ * Get workspace packages from pnpm-workspace.yaml or package.json workspaces
  * @param {string} workspaceRoot
  * @returns {Promise<string[]>} - Array of package directories (relative paths)
  */
 export async function getWorkspacePackages(workspaceRoot) {
+  // Try pnpm-workspace.yaml first
   const configPath = join(workspaceRoot, 'pnpm-workspace.yaml')
-  const content = await readFile(configPath, 'utf-8')
-  const config = yaml.load(content)
-
-  if (!config?.packages || !Array.isArray(config.packages)) {
-    return []
+  if (existsSync(configPath)) {
+    const content = await readFile(configPath, 'utf-8')
+    const config = yaml.load(content)
+    if (config?.packages && Array.isArray(config.packages)) {
+      return resolvePatterns(config.packages, workspaceRoot)
+    }
   }
 
-  return resolvePatterns(config.packages, workspaceRoot)
+  // Fall back to package.json workspaces
+  const pkgPath = join(workspaceRoot, 'package.json')
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
+      if (Array.isArray(pkg.workspaces)) {
+        return resolvePatterns(pkg.workspaces, workspaceRoot)
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return []
 }
 
 /**
@@ -166,7 +202,7 @@ export async function findSites(workspaceRoot) {
  * @returns {boolean}
  */
 export function isWorkspaceRoot(dir = process.cwd()) {
-  return existsSync(join(dir, 'pnpm-workspace.yaml'))
+  return hasWorkspaceConfig(dir)
 }
 
 /**

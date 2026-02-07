@@ -23,6 +23,7 @@ import {
   updateRootScripts,
 } from '../utils/config.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
+import { detectPackageManager, filterCmd, installCmd } from '../utils/pm.js'
 import { resolveTemplate } from '../templates/index.js'
 import { validateTemplate } from '../templates/validator.js'
 import { getVersionsForTemplates } from '../versions.js'
@@ -90,12 +91,12 @@ function parseArgs(args) {
  * Main add command handler
  */
 export async function add(args) {
-  if (!args.length || args[0] === '--help' || args[0] === '-h') {
+  if (args[0] === '--help' || args[0] === '-h') {
     showAddHelp()
     return
   }
 
-  const parsed = parseArgs(args)
+  const pm = detectPackageManager()
 
   // Find workspace root
   const rootDir = findWorkspaceRoot()
@@ -103,6 +104,29 @@ export async function add(args) {
     error('Not in a Uniweb workspace. Run this command from a project directory.')
     error('Use "uniweb create" to create a new project first.')
     process.exit(1)
+  }
+
+  // Interactive subcommand chooser when no args given
+  let parsed
+  if (!args.length || (args[0] && args[0].startsWith('--'))) {
+    const response = await prompts({
+      type: 'select',
+      name: 'subcommand',
+      message: 'What would you like to add?',
+      choices: [
+        { title: 'Foundation', value: 'foundation', description: 'Component library' },
+        { title: 'Site', value: 'site', description: 'Content site' },
+        { title: 'Extension', value: 'extension', description: 'Additional component package' },
+      ],
+    }, {
+      onCancel: () => {
+        log('\nCancelled.')
+        process.exit(0)
+      },
+    })
+    parsed = parseArgs([response.subcommand, ...args])
+  } else {
+    parsed = parseArgs(args)
   }
 
   // Read root package.json for project name
@@ -113,13 +137,13 @@ export async function add(args) {
 
   switch (parsed.subcommand) {
     case 'foundation':
-      await addFoundation(rootDir, projectName, parsed)
+      await addFoundation(rootDir, projectName, parsed, pm)
       break
     case 'site':
-      await addSite(rootDir, projectName, parsed)
+      await addSite(rootDir, projectName, parsed, pm)
       break
     case 'extension':
-      await addExtension(rootDir, projectName, parsed)
+      await addExtension(rootDir, projectName, parsed, pm)
       break
     default:
       error(`Unknown subcommand: ${parsed.subcommand}`)
@@ -131,8 +155,32 @@ export async function add(args) {
 /**
  * Add a foundation to the workspace
  */
-async function addFoundation(rootDir, projectName, opts) {
-  const name = opts.name
+async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
+  let name = opts.name
+
+  // Interactive name prompt when name not provided and no --path
+  if (!name && !opts.path) {
+    const foundations = await discoverFoundations(rootDir)
+    const hasDefault = foundations.length === 0 && !existsSync(join(rootDir, 'foundation'))
+    const response = await prompts({
+      type: 'text',
+      name: 'name',
+      message: 'Foundation name:',
+      initial: hasDefault ? 'foundation' : undefined,
+      validate: (value) => {
+        if (!value) return 'Name is required'
+        if (!/^[a-z0-9-]+$/.test(value)) return 'Use lowercase letters, numbers, and hyphens'
+        return true
+      },
+    }, {
+      onCancel: () => {
+        log('\nCancelled.')
+        process.exit(0)
+      },
+    })
+    name = response.name
+  }
+
   const target = await resolveFoundationTarget(rootDir, name, opts)
   const fullPath = join(rootDir, target)
 
@@ -161,18 +209,42 @@ async function addFoundation(rootDir, projectName, opts) {
 
   // Update root scripts
   const sites = await discoverSites(rootDir)
-  await updateRootScripts(rootDir, sites)
+  await updateRootScripts(rootDir, sites, pm)
 
   success(`Created foundation '${name || 'foundation'}' at ${target}/`)
   log('')
-  log(`Next: ${colors.cyan}pnpm install${colors.reset}`)
+  log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}`)
 }
 
 /**
  * Add a site to the workspace
  */
-async function addSite(rootDir, projectName, opts) {
-  const name = opts.name
+async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
+  let name = opts.name
+
+  // Interactive name prompt when name not provided and no --path
+  if (!name && !opts.path) {
+    const existingSites = await discoverSites(rootDir)
+    const hasDefault = existingSites.length === 0 && !existsSync(join(rootDir, 'site'))
+    const response = await prompts({
+      type: 'text',
+      name: 'name',
+      message: 'Site name:',
+      initial: hasDefault ? 'site' : undefined,
+      validate: (value) => {
+        if (!value) return 'Name is required'
+        if (!/^[a-z0-9-]+$/.test(value)) return 'Use lowercase letters, numbers, and hyphens'
+        return true
+      },
+    }, {
+      onCancel: () => {
+        log('\nCancelled.')
+        process.exit(0)
+      },
+    })
+    name = response.name
+  }
+
   const target = await resolveSiteTarget(rootDir, name, opts)
   const fullPath = join(rootDir, target)
 
@@ -183,25 +255,34 @@ async function addSite(rootDir, projectName, opts) {
 
   // Resolve foundation
   const foundation = await resolveFoundation(rootDir, opts.foundation)
-  if (!foundation) {
-    error('No foundation found. Add a foundation first: uniweb add foundation')
-    process.exit(1)
-  }
-
-  // Compute relative path from site to foundation
-  const foundationPath = computeFoundationPath(target, foundation.path)
   const siteName = name || 'site'
 
-  // Scaffold
-  await scaffoldSite(fullPath, {
-    name: siteName,
-    projectName,
-    foundationName: foundation.name,
-    foundationPath,
-    foundationRef: foundation.name,
-  }, {
-    onProgress: (msg) => info(`  ${msg}`),
-  })
+  if (foundation) {
+    // Compute relative path from site to foundation
+    const foundationPath = computeFoundationPath(target, foundation.path)
+
+    // Scaffold
+    await scaffoldSite(fullPath, {
+      name: siteName,
+      projectName,
+      foundationName: foundation.name,
+      foundationPath,
+      foundationRef: foundation.name,
+    }, {
+      onProgress: (msg) => info(`  ${msg}`),
+    })
+  } else {
+    // No foundation — scaffold without wiring
+    await scaffoldSite(fullPath, {
+      name: siteName,
+      projectName,
+      foundationName: '',
+      foundationPath: '',
+    }, {
+      onProgress: (msg) => info(`  ${msg}`),
+    })
+    log(`  ${colors.yellow}⚠ No foundation wired. Add one later with: npx uniweb add foundation${colors.reset}`)
+  }
 
   // Apply template content if --from specified
   if (opts.from) {
@@ -218,22 +299,41 @@ async function addSite(rootDir, projectName, opts) {
   if (!sites.find(s => s.path === target)) {
     sites.push({ name: siteName, path: target })
   }
-  await updateRootScripts(rootDir, sites)
+  await updateRootScripts(rootDir, sites, pm)
 
-  success(`Created site '${siteName}' at ${target}/ → foundation '${foundation.name}'`)
+  if (foundation) {
+    success(`Created site '${siteName}' at ${target}/ → foundation '${foundation.name}'`)
+  } else {
+    success(`Created site '${siteName}' at ${target}/`)
+  }
   log('')
-  log(`Next: ${colors.cyan}pnpm install && pnpm --filter ${siteName} dev${colors.reset}`)
+  log(`Next: ${colors.cyan}${installCmd(pm)} && ${filterCmd(pm, siteName, 'dev')}${colors.reset}`)
 }
 
 /**
  * Add an extension to the workspace
  */
-async function addExtension(rootDir, projectName, opts) {
-  const name = opts.name
+async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
+  let name = opts.name
 
+  // Interactive name prompt when name not provided
   if (!name) {
-    error('Extension name is required: uniweb add extension <name>')
-    process.exit(1)
+    const response = await prompts({
+      type: 'text',
+      name: 'name',
+      message: 'Extension name:',
+      validate: (value) => {
+        if (!value) return 'Name is required'
+        if (!/^[a-z0-9-]+$/.test(value)) return 'Use lowercase letters, numbers, and hyphens'
+        return true
+      },
+    }, {
+      onCancel: () => {
+        log('\nCancelled.')
+        process.exit(0)
+      },
+    })
+    name = response.name
   }
 
   // Determine target
@@ -281,7 +381,7 @@ async function addExtension(rootDir, projectName, opts) {
 
   // Update root scripts
   const sites = await discoverSites(rootDir)
-  await updateRootScripts(rootDir, sites)
+  await updateRootScripts(rootDir, sites, pm)
 
   let msg = `Created extension '${name}' at ${target}/`
   if (wiredSite) {
@@ -289,7 +389,7 @@ async function addExtension(rootDir, projectName, opts) {
   }
   success(msg)
   log('')
-  log(`Next: ${colors.cyan}pnpm install${colors.reset}`)
+  log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}`)
 }
 
 /**
@@ -367,6 +467,19 @@ async function resolveFoundation(rootDir, foundationFlag) {
   }
 
   if (foundations.length === 0) {
+    const response = await prompts({
+      type: 'select',
+      name: 'choice',
+      message: 'No foundations found. Proceed without one?',
+      choices: [
+        { title: 'None', value: 'none', description: 'Proceed without a foundation' },
+      ],
+    }, {
+      onCancel: () => {
+        log('\nCancelled.')
+        process.exit(0)
+      },
+    })
     return null
   }
 

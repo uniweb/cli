@@ -28,6 +28,7 @@ import {
 } from './templates/index.js'
 import { validateTemplate } from './templates/validator.js'
 import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemplateDependencies } from './utils/scaffold.js'
+import { detectPackageManager, filterCmd, installCmd, runCmd } from './utils/pm.js'
 
 // Colors for terminal output
 const colors = {
@@ -73,7 +74,7 @@ function title(message) {
  * Create a project using the new package template flow (default)
  */
 async function createFromPackageTemplates(projectDir, projectName, options = {}) {
-  const { onProgress, onWarning } = options
+  const { onProgress, onWarning, pm = 'pnpm' } = options
 
   onProgress?.('Setting up workspace...')
 
@@ -82,9 +83,9 @@ async function createFromPackageTemplates(projectDir, projectName, options = {})
     projectName,
     workspaceGlobs: ['foundation', 'site'],
     scripts: {
-      dev: 'pnpm --filter site dev',
+      dev: filterCmd(pm, 'site', 'dev'),
       build: 'uniweb build',
-      preview: 'pnpm --filter site preview',
+      preview: filterCmd(pm, 'site', 'preview'),
     },
   }, { onProgress, onWarning })
 
@@ -138,7 +139,7 @@ async function createBlankWorkspace(projectDir, projectName, options = {}) {
  * content (sections, pages, theme) from the content template.
  */
 async function createFromContentTemplate(projectDir, projectName, metadata, templateRootPath, options = {}) {
-  const { onProgress, onWarning } = options
+  const { onProgress, onWarning, pm = 'pnpm' } = options
 
   // Determine packages to create
   const packages = metadata.packages || [
@@ -156,17 +157,17 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
     build: 'uniweb build',
   }
   if (sites.length === 1) {
-    scripts.dev = `pnpm --filter ${sites[0].name} dev`
-    scripts.preview = `pnpm --filter ${sites[0].name} preview`
+    scripts.dev = filterCmd(pm, sites[0].name, 'dev')
+    scripts.preview = filterCmd(pm, sites[0].name, 'preview')
   } else {
     for (const s of sites) {
-      scripts[`dev:${s.name}`] = `pnpm --filter ${s.name} dev`
-      scripts[`preview:${s.name}`] = `pnpm --filter ${s.name} preview`
+      scripts[`dev:${s.name}`] = filterCmd(pm, s.name, 'dev')
+      scripts[`preview:${s.name}`] = filterCmd(pm, s.name, 'preview')
     }
     // First site gets unqualified aliases
     if (sites.length > 0) {
-      scripts.dev = `pnpm --filter ${sites[0].name} dev`
-      scripts.preview = `pnpm --filter ${sites[0].name} preview`
+      scripts.dev = filterCmd(pm, sites[0].name, 'dev')
+      scripts.preview = filterCmd(pm, sites[0].name, 'preview')
     }
   }
 
@@ -289,6 +290,7 @@ function computeFoundationFilePath(sitePath, foundationPath) {
 async function main() {
   const args = process.argv.slice(2)
   const command = args[0]
+  const pm = detectPackageManager()
 
   // Show help
   if (!command || command === '--help' || command === '-h') {
@@ -439,6 +441,7 @@ async function main() {
     await createFromPackageTemplates(projectDir, effectiveName, {
       onProgress: progressCb,
       onWarning: warningCb,
+      pm,
     })
   } else {
     // External: official/npm/github/local
@@ -458,6 +461,7 @@ async function main() {
         await createFromContentTemplate(projectDir, effectiveName, metadata, resolved.path, {
           onProgress: progressCb,
           onWarning: warningCb,
+          pm,
         })
       } finally {
         if (resolved.cleanup) await resolved.cleanup()
@@ -497,15 +501,20 @@ async function main() {
   if (templateType === 'blank') {
     log(`Next steps:\n`)
     log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
+    log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
     log(`  ${colors.cyan}npx uniweb add foundation${colors.reset}`)
     log(`  ${colors.cyan}npx uniweb add site${colors.reset}`)
-    log(`  ${colors.cyan}pnpm install${colors.reset}`)
-    log(`  ${colors.cyan}pnpm dev${colors.reset}`)
+    log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
+    log(`  ${colors.cyan}${runCmd(pm, 'dev')}${colors.reset}`)
   } else {
     log(`Next steps:\n`)
     log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
-    log(`  ${colors.cyan}pnpm install${colors.reset}`)
-    log(`  ${colors.cyan}pnpm dev${colors.reset}`)
+    log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
+    log(`  ${colors.cyan}${runCmd(pm, 'dev')}${colors.reset}`)
+  }
+  if (pm === 'npm') {
+    log('')
+    log(`${colors.dim}Tip: pnpm is recommended for workspaces. See https://pnpm.io/installation${colors.reset}`)
   }
   log('')
 }

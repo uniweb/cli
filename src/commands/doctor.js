@@ -379,7 +379,7 @@ export async function doctor(args = []) {
         message: `Foundation not built: ${matchingFoundation.name}`
       })
       warn(`Foundation not built yet`)
-      log(`  ${colors.dim}Run: pnpm --filter ${matchingFoundation.name} build${colors.reset}`)
+      log(`  ${colors.dim}Run: npx uniweb build${colors.reset}`)
     } else {
       success(`Foundation built: dist/foundation.js exists`)
     }
@@ -431,7 +431,7 @@ export async function doctor(args = []) {
         message: `Extension not built: ${ext.name}`
       })
       warn(`Extension not built yet`)
-      log(`  ${colors.dim}Run: pnpm --filter ${ext.name} build${colors.reset}`)
+      log(`  ${colors.dim}Run: npx uniweb build${colors.reset}`)
     } else {
       success(`Extension built: dist/foundation.js exists`)
     }

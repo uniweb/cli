@@ -9,20 +9,30 @@ import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
+import { filterCmd } from './pm.js'
 
 /**
- * Read pnpm-workspace.yaml
+ * Read workspace package globs.
+ * Tries pnpm-workspace.yaml first, falls back to package.json workspaces.
  * @param {string} rootDir - Workspace root directory
  * @returns {Promise<{packages: string[]}>}
  */
 export async function readWorkspaceConfig(rootDir) {
+  // Try pnpm-workspace.yaml first
   const configPath = join(rootDir, 'pnpm-workspace.yaml')
-  if (!existsSync(configPath)) {
-    return { packages: [] }
+  if (existsSync(configPath)) {
+    const content = await readFile(configPath, 'utf-8')
+    const config = yaml.load(content)
+    return { packages: config?.packages || [] }
   }
-  const content = await readFile(configPath, 'utf-8')
-  const config = yaml.load(content)
-  return { packages: config?.packages || [] }
+
+  // Fall back to package.json workspaces
+  const pkg = await readRootPackageJson(rootDir)
+  if (Array.isArray(pkg.workspaces)) {
+    return { packages: pkg.workspaces }
+  }
+
+  return { packages: [] }
 }
 
 /**
@@ -46,6 +56,15 @@ export async function addWorkspaceGlob(rootDir, glob) {
   if (!config.packages.includes(glob)) {
     config.packages.push(glob)
     await writeWorkspaceConfig(rootDir, config)
+  }
+
+  // Sync workspaces array in package.json (for npm compatibility)
+  const pkg = await readRootPackageJson(rootDir)
+  if (pkg.workspaces) {
+    if (!pkg.workspaces.includes(glob)) {
+      pkg.workspaces.push(glob)
+      await writeRootPackageJson(rootDir, pkg)
+    }
   }
 }
 
@@ -75,9 +94,10 @@ export async function writeRootPackageJson(rootDir, pkg) {
 /**
  * Compute root scripts based on discovered sites
  * @param {Array<{name: string, path: string}>} sites - Discovered sites
+ * @param {'pnpm' | 'npm'} [pm='pnpm'] - Package manager
  * @returns {Object} Scripts object for package.json
  */
-export function computeRootScripts(sites) {
+export function computeRootScripts(sites, pm = 'pnpm') {
   const scripts = {
     build: 'uniweb build',
   }
@@ -87,17 +107,17 @@ export function computeRootScripts(sites) {
   }
 
   if (sites.length === 1) {
-    scripts.dev = `pnpm --filter ${sites[0].name} dev`
-    scripts.preview = `pnpm --filter ${sites[0].name} preview`
+    scripts.dev = filterCmd(pm, sites[0].name, 'dev')
+    scripts.preview = filterCmd(pm, sites[0].name, 'preview')
   } else {
     // First site gets unqualified dev/preview
-    scripts.dev = `pnpm --filter ${sites[0].name} dev`
-    scripts.preview = `pnpm --filter ${sites[0].name} preview`
+    scripts.dev = filterCmd(pm, sites[0].name, 'dev')
+    scripts.preview = filterCmd(pm, sites[0].name, 'preview')
 
     // Subsequent sites get qualified dev:{name}/preview:{name}
     for (let i = 1; i < sites.length; i++) {
-      scripts[`dev:${sites[i].name}`] = `pnpm --filter ${sites[i].name} dev`
-      scripts[`preview:${sites[i].name}`] = `pnpm --filter ${sites[i].name} preview`
+      scripts[`dev:${sites[i].name}`] = filterCmd(pm, sites[i].name, 'dev')
+      scripts[`preview:${sites[i].name}`] = filterCmd(pm, sites[i].name, 'preview')
     }
   }
 
@@ -108,16 +128,17 @@ export function computeRootScripts(sites) {
  * Update root scripts after adding a new site
  * @param {string} rootDir - Workspace root directory
  * @param {Array<{name: string, path: string}>} sites - All sites (including new one)
+ * @param {'pnpm' | 'npm'} [pm='pnpm'] - Package manager
  */
-export async function updateRootScripts(rootDir, sites) {
+export async function updateRootScripts(rootDir, sites, pm = 'pnpm') {
   const pkg = await readRootPackageJson(rootDir)
-  const newScripts = computeRootScripts(sites)
+  const newScripts = computeRootScripts(sites, pm)
 
   // If we're adding a second site, rename existing dev/preview to dev:{firstName}
   if (sites.length === 2 && pkg.scripts?.dev) {
     const firstName = sites[0].name
-    // Only rename if the existing dev matches the first site
-    if (pkg.scripts.dev === `pnpm --filter ${firstName} dev`) {
+    // Only rename if the existing dev script references the first site's name
+    if (pkg.scripts.dev.includes(firstName)) {
       pkg.scripts[`dev:${firstName}`] = pkg.scripts.dev
       pkg.scripts[`preview:${firstName}`] = pkg.scripts.preview
     }

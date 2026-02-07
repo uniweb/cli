@@ -7,20 +7,20 @@ Create well-structured Vite + React projects with file-based routing, localizati
 ## Quick Start
 
 ```bash
-pnpm create uniweb
+npm create uniweb
 ```
+
+> **Using pnpm?** `pnpm create uniweb` works too and is recommended for workspaces.
 
 The interactive prompt asks for a project name and template. Pick one, then:
 
 ```bash
 cd my-project
-pnpm install
-pnpm dev
+npm install
+npm run dev
 ```
 
 Open http://localhost:5173 to see your site. Edit files in `site/pages/` and `foundation/src/sections/` to see changes instantly.
-
-> **Need pnpm?** Run `npm install -g pnpm` or see [pnpm installation](https://pnpm.io/installation). You can also use `npm create uniweb`.
 
 ### Templates
 
@@ -41,17 +41,17 @@ Open http://localhost:5173 to see your site. Edit files in `site/pages/` and `fo
 You can also skip the interactive prompt with `--template`:
 
 ```bash
-pnpm create uniweb my-site --template docs
+npm create uniweb my-site -- --template docs
 ```
 
 ### Development Commands
 
-Run these from the **project root** (where `pnpm-workspace.yaml` is):
+Run these from the **project root**:
 
 ```bash
-pnpm dev        # Start development server
-pnpm build      # Build foundation + site for production
-pnpm preview    # Preview the production build
+npm run dev        # Start development server
+npm run build      # Build foundation + site for production
+npm run preview    # Preview the production build
 ```
 
 The `build` command outputs to `site/dist/`. With pre-rendering enabled (the default for official templates), you get static HTML files ready to deploy anywhere.
@@ -168,7 +168,7 @@ After creating your project:
 
 1. **Explore the structure** — Browse `site/pages/` to see how content is organized. Each page folder contains `page.yml` (metadata) and `.md` files (sections).
 
-2. **Generate component docs** — Run `pnpm uniweb docs` to create `COMPONENTS.md` with all available components, their parameters, and presets.
+2. **Generate component docs** — Run `npx uniweb docs` to create `COMPONENTS.md` with all available components, their parameters, and presets.
 
 3. **Learn the configuration** — Run `uniweb docs site` or `uniweb docs page` for quick reference on configuration options.
 
@@ -216,7 +216,7 @@ The `foundation/` folder ships with your project as a convenience, but a foundat
 | Mode             | How it works                       | Best for                                           |
 | ---------------- | ---------------------------------- | -------------------------------------------------- |
 | **Local folder** | Foundation lives in your workspace | Developing site and components together            |
-| **npm package**  | `pnpm add @acme/foundation`        | Distributing via standard package tooling          |
+| **npm package**  | `npm add @acme/foundation`         | Distributing via standard package tooling          |
 | **Runtime link** | Foundation loads from a URL        | Independent release cycles, platform-managed sites |
 
 You can delete the `foundation/` folder entirely and point your site at a published foundation. Or develop a foundation locally, then publish it for other sites to consume. The site doesn't care where its components come from.
@@ -253,11 +253,13 @@ The workspace grows organically. `add` handles placement, wires dependencies, up
 **Or start blank and build up:**
 
 ```bash
-pnpm create uniweb acme --template blank
+npm create uniweb acme -- --template blank
 cd acme
+npm install
 npx uniweb add foundation
 npx uniweb add site
-pnpm install && pnpm dev
+npm install
+npm run dev
 ```
 
 ## The Bigger Picture
@@ -347,7 +349,7 @@ export default defineFoundationConfig({
 
 ### Workspace Configuration
 
-A default project has two packages:
+A default project has two packages, listed in both `pnpm-workspace.yaml` and `package.json`:
 
 ```yaml
 # pnpm-workspace.yaml
@@ -356,7 +358,14 @@ packages:
   - site
 ```
 
-When you `add` more packages, the CLI adds the appropriate globs automatically:
+```json
+// package.json (for npm compatibility)
+{
+  "workspaces": ["foundation", "site"]
+}
+```
+
+When you `add` more packages, the CLI adds the appropriate globs to both files automatically:
 
 ```yaml
 # After: uniweb add foundation blog → adds foundations/*
@@ -367,8 +376,6 @@ packages:
   - foundations/*
   - extensions/*
 ```
-
-The `package.json` `workspaces` field is kept in sync for npm compatibility.
 
 ## FAQ
 
