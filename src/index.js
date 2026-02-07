@@ -27,7 +27,7 @@ import {
   parseTemplateId,
 } from './templates/index.js'
 import { validateTemplate } from './templates/validator.js'
-import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent, applyStarter } from './utils/scaffold.js'
+import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemplateDependencies } from './utils/scaffold.js'
 
 // Colors for terminal output
 const colors = {
@@ -201,6 +201,14 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
     if (contentDir) {
       onProgress?.(`Applying ${metadata.name} content to ${pkg.name}...`)
       await applyContent(contentDir.dir, fullPath, { projectName }, { onProgress, onWarning })
+    }
+
+    // Merge template dependencies into package.json
+    if (metadata.dependencies) {
+      const deps = metadata.dependencies[pkg.name] || metadata.dependencies[pkg.type]
+      if (deps) {
+        await mergeTemplateDependencies(join(fullPath, 'package.json'), deps)
+      }
     }
   }
 

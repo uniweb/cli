@@ -14,7 +14,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import prompts from 'prompts'
 import yaml from 'js-yaml'
-import { scaffoldFoundation, scaffoldSite, applyContent } from '../utils/scaffold.js'
+import { scaffoldFoundation, scaffoldSite, applyContent, mergeTemplateDependencies } from '../utils/scaffold.js'
 import {
   readWorkspaceConfig,
   addWorkspaceGlob,
@@ -468,6 +468,14 @@ async function applyFromTemplate(templateId, packageType, targetDir, projectName
       }, {
         onProgress: (msg) => info(`  ${msg}`),
       })
+
+      // Merge template dependencies
+      if (metadata.dependencies) {
+        const deps = metadata.dependencies[packageType] || metadata.dependencies[match?.name]
+        if (deps) {
+          await mergeTemplateDependencies(join(targetDir, 'package.json'), deps)
+        }
+      }
 
       // If site content applied, inform about expected section types
       if (packageType === 'site' && metadata.components) {

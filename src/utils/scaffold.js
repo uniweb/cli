@@ -173,3 +173,24 @@ export async function applyStarter(projectDir, context, options = {}) {
   const siteTargetDir = join(projectDir, siteDir)
   await applyContent(siteContentDir, siteTargetDir, context, options)
 }
+
+/**
+ * Merge additional dependencies from a content template into a scaffolded package.json
+ *
+ * Reads the package.json at the given path, adds any deps not already present
+ * (in either dependencies or devDependencies), and writes it back.
+ *
+ * @param {string} packageJsonPath - Absolute path to package.json
+ * @param {Object} deps - Dependencies to merge (name → version)
+ */
+export async function mergeTemplateDependencies(packageJsonPath, deps) {
+  if (!deps || Object.keys(deps).length === 0) return
+  const pkg = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'))
+  if (!pkg.dependencies) pkg.dependencies = {}
+  for (const [name, version] of Object.entries(deps)) {
+    if (!pkg.dependencies[name] && !pkg.devDependencies?.[name]) {
+      pkg.dependencies[name] = version
+    }
+  }
+  await fs.writeFile(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n')
+}
