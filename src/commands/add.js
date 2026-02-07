@@ -316,6 +316,11 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
   }
   log('')
   log(`Next: ${colors.cyan}${installCmd(pm)} && ${filterCmd(pm, siteName, 'dev')}${colors.reset}`)
+  if (!opts.from) {
+    log('')
+    log(`${colors.dim}To add your first page, create ${target}/pages/home/page.yml and a .md file.${colors.reset}`)
+    log(`${colors.dim}Or use --from to start with template content: uniweb add site --from starter${colors.reset}`)
+  }
 }
 
 /**
@@ -475,19 +480,6 @@ async function resolveFoundation(rootDir, foundationFlag) {
   }
 
   if (foundations.length === 0) {
-    const response = await prompts({
-      type: 'select',
-      name: 'choice',
-      message: 'No foundations found. Proceed without one?',
-      choices: [
-        { title: 'None', value: 'none', description: 'Proceed without a foundation' },
-      ],
-    }, {
-      onCancel: () => {
-        log('\nCancelled.')
-        process.exit(0)
-      },
-    })
     return null
   }
 

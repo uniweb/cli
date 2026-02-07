@@ -38,13 +38,7 @@ Edit files in `site/pages/` and `foundation/src/sections/` to see changes instan
 
 **See them live:** [View all template demos](https://uniweb.github.io/templates/)
 
-You can also skip the interactive prompt with `--template`:
-
-```bash
-npm create uniweb my-site -- --template docs
-```
-
-or
+Or skip the interactive prompt:
 
 ```bash
 pnpm create uniweb my-site --template docs
@@ -259,13 +253,13 @@ The workspace grows organically. `add` handles placement, wires dependencies, up
 **Or start blank and build up:**
 
 ```bash
-npm create uniweb acme -- --template blank
+pnpm create uniweb acme --template blank
 cd acme
-npm install
+pnpm install
 npx uniweb add foundation
 npx uniweb add site
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 ## The Bigger Picture
@@ -364,8 +358,9 @@ packages:
   - site
 ```
 
+In `package.json` (for npm compatibility):
+
 ```json
-// package.json (for npm compatibility)
 {
   "workspaces": ["foundation", "site"]
 }
