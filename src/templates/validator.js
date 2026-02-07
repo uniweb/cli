@@ -91,7 +91,6 @@ export class ValidationError extends Error {
 export const ErrorCodes = {
   MISSING_TEMPLATE_JSON: 'MISSING_TEMPLATE_JSON',
   INVALID_TEMPLATE_JSON: 'INVALID_TEMPLATE_JSON',
-  MISSING_TEMPLATE_DIR: 'MISSING_TEMPLATE_DIR',
   MISSING_CONTENT_DIR: 'MISSING_CONTENT_DIR',
   MISSING_REQUIRED_FIELD: 'MISSING_REQUIRED_FIELD',
   VERSION_MISMATCH: 'VERSION_MISMATCH',
@@ -152,42 +151,21 @@ export async function validateTemplate(templateRoot, options = {}) {
     }
   }
 
-  const format = metadata.format || 1
+  // Format 2: content template — foundation/ and/or site/ directories alongside template.json
+  const contentDirs = resolveContentDirs(templateRoot, metadata)
 
-  if (format === 2) {
-    // Format 2: content template — no template/ directory required
-    const contentDirs = resolveContentDirs(templateRoot, metadata)
-
-    if (contentDirs.length === 0) {
-      throw new ValidationError(
-        `No content directories found in ${templateRoot}. Format 2 templates need foundation/ and/or site/ directories.`,
-        ErrorCodes.MISSING_CONTENT_DIR,
-        { path: templateRoot }
-      )
-    }
-
-    return {
-      ...metadata,
-      format: 2,
-      contentDirs,
-      metadataPath
-    }
-  }
-
-  // Format 1: full-project template — require template/ directory
-  const templateDir = path.join(templateRoot, 'template')
-  if (!existsSync(templateDir)) {
+  if (contentDirs.length === 0) {
     throw new ValidationError(
-      `Missing template/ directory in ${templateRoot}`,
-      ErrorCodes.MISSING_TEMPLATE_DIR,
+      `No content directories found in ${templateRoot}. Templates need foundation/ and/or site/ directories alongside template.json.`,
+      ErrorCodes.MISSING_CONTENT_DIR,
       { path: templateRoot }
     )
   }
 
   return {
     ...metadata,
-    format: 1,
-    templateDir,
+    format: 2,
+    contentDirs,
     metadataPath
   }
 }

@@ -19,9 +19,6 @@ let partialsRegistered = false
 // Store for version data (set by registerVersions)
 let versionData = {}
 
-// Track missing versions during processing
-const missingVersions = new Set()
-
 // Default fallback version when a package version is unknown
 const DEFAULT_FALLBACK_VERSION = '^0.1.0'
 
@@ -32,23 +29,6 @@ const DEFAULT_FALLBACK_VERSION = '^0.1.0'
  */
 export function registerVersions(versions) {
   versionData = versions || {}
-  missingVersions.clear()
-}
-
-/**
- * Get the list of missing versions encountered during processing
- *
- * @returns {string[]} Array of package names that were missing versions
- */
-export function getMissingVersions() {
-  return [...missingVersions]
-}
-
-/**
- * Clear the missing versions set
- */
-export function clearMissingVersions() {
-  missingVersions.clear()
 }
 
 /**
@@ -100,8 +80,6 @@ Handlebars.registerHelper('version', function(packageName) {
     return versionData[`@uniweb/${packageName}`]
   }
 
-  // Track the missing version and return a fallback
-  missingVersions.add(packageName)
   return DEFAULT_FALLBACK_VERSION
 })
 
@@ -195,83 +173,29 @@ async function processFile(sourcePath, targetPath, data, options = {}) {
  * @param {string} targetPath - Destination directory
  * @param {Object} data - Template variables
  * @param {Object} options - Processing options
- * @param {string|null} options.variant - Template variant to use
- * @param {string|null} options.basePath - Base template to merge with (files copied first)
- * @param {boolean} options.isBase - Internal: true when processing base template (allows overwriting)
  * @param {Function} options.onWarning - Warning callback
  * @param {Function} options.onProgress - Progress callback
  */
 export async function copyTemplateDirectory(sourcePath, targetPath, data, options = {}) {
-  const { variant = null, basePath = null, isBase = false, onWarning, onProgress } = options
-
-  // If a base template is specified, copy it first (with isBase=true so main can overwrite)
-  if (basePath && existsSync(basePath)) {
-    await copyTemplateDirectory(basePath, targetPath, data, { variant, isBase: true, onWarning, onProgress })
-  }
+  const { onWarning, onProgress } = options
 
   await fs.mkdir(targetPath, { recursive: true })
   const entries = await fs.readdir(sourcePath, { withFileTypes: true })
 
-  // Build a set of base names that have variant-specific directories
-  const variantBases = new Set()
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      const variantMatch = entry.name.match(/^(.+)\.([^.]+)$/)
-      if (variantMatch) {
-        variantBases.add(variantMatch[1]) // e.g., 'foundation' from 'foundation.tailwind4'
-      }
-    }
-  }
-
-  // Options for recursive calls (without basePath to avoid re-copying base at each level)
-  const recursionOptions = { variant, isBase, onWarning, onProgress }
-
   for (const entry of entries) {
     const sourceName = entry.name
 
-    // Check if this is a variant-specific item (e.g., "dir.variant")
-    const variantMatch = entry.isDirectory()
-      ? sourceName.match(/^(.+)\.([^.]+)$/)
-      : null
-
     if (entry.isDirectory()) {
-      if (variantMatch) {
-        const [, baseName, dirVariant] = variantMatch
+      const sourceFullPath = path.join(sourcePath, sourceName)
+      // Rename _prefix directories to .prefix (e.g., _vscode → .vscode)
+      // This allows dotfile directories to be committed without being gitignored
+      const targetName = sourceName.startsWith('_') && !sourceName.startsWith('__')
+        ? `.${sourceName.slice(1)}`
+        : sourceName
+      const targetFullPath = path.join(targetPath, targetName)
 
-        // When no variant is specified, skip all variant directories
-        if (!variant) {
-          continue
-        }
-
-        // When variant is specified, skip directories that don't match
-        if (dirVariant !== variant) {
-          continue
-        }
-
-        // Use the base name without variant suffix for the target
-        const sourceFullPath = path.join(sourcePath, sourceName)
-        const targetFullPath = path.join(targetPath, baseName)
-
-        await copyTemplateDirectory(sourceFullPath, targetFullPath, data, recursionOptions)
-      } else {
-        // Regular directory - skip if a variant override exists and we're using that variant
-        if (variant && variantBases.has(sourceName)) {
-          // Skip this directory because a variant-specific version exists
-          continue
-        }
-
-        const sourceFullPath = path.join(sourcePath, sourceName)
-        // Rename _prefix directories to .prefix (e.g., _vscode → .vscode)
-        // This allows dotfile directories to be committed without being gitignored
-        const targetName = sourceName.startsWith('_') && !sourceName.startsWith('__')
-          ? `.${sourceName.slice(1)}`
-          : sourceName
-        const targetFullPath = path.join(targetPath, targetName)
-
-        await copyTemplateDirectory(sourceFullPath, targetFullPath, data, recursionOptions)
-      }
+      await copyTemplateDirectory(sourceFullPath, targetFullPath, data, { onWarning, onProgress })
     } else {
-      // File processing
       // Skip template.json as it's metadata for the template, not for the output
       if (sourceName === 'template.json') {
         continue
@@ -284,12 +208,6 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
 
       const sourceFullPath = path.join(sourcePath, sourceName)
       const targetFullPath = path.join(targetPath, targetName)
-
-      // When processing base template, skip if target exists (main template files take precedence)
-      // When processing main template, overwrite any files from base
-      if (isBase && existsSync(targetFullPath)) {
-        continue
-      }
 
       if (onProgress) {
         onProgress(`Creating ${targetName}`)

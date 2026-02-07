@@ -12,12 +12,6 @@ import { fetchNpmTemplate } from './fetchers/npm.js'
 import { fetchGitHubTemplate } from './fetchers/github.js'
 import { fetchOfficialTemplate, listOfficialTemplates } from './fetchers/release.js'
 import { validateTemplate } from './validator.js'
-import {
-  copyTemplateDirectory,
-  registerVersions,
-  getMissingVersions,
-  clearMissingVersions
-} from './processor.js'
 
 /**
  * Resolve a template identifier and return the template path
@@ -164,98 +158,10 @@ async function resolveLocalTemplate(templatePath, options = {}) {
 }
 
 /**
- * Apply a template to a target directory
- *
- * @param {string} templatePath - Path to the template root (contains template.json)
- * @param {string} targetPath - Destination directory for the scaffolded project
- * @param {Object} data - Template variables
- * @param {Object} options - Apply options
- * @param {string} options.variant - Template variant to use
- * @param {string} options.uniwebVersion - Current Uniweb version for compatibility check
- * @param {Function} options.onWarning - Warning callback
- * @param {Function} options.onProgress - Progress callback
- * @returns {Promise<Object>} Template metadata
- */
-export async function applyTemplate(templatePath, targetPath, data = {}, options = {}) {
-  const { uniwebVersion, variant, onWarning, onProgress } = options
-
-  // Validate the template
-  const metadata = await validateTemplate(templatePath, { uniwebVersion })
-
-  // Register versions for the {{version}} helper
-  if (data.versions) {
-    registerVersions(data.versions)
-  }
-
-  // Apply default variables
-  const templateData = {
-    year: new Date().getFullYear(),
-    ...data
-  }
-
-  // Copy template files
-  await copyTemplateDirectory(
-    metadata.templateDir,
-    targetPath,
-    templateData,
-    { variant, onWarning, onProgress }
-  )
-
-  // Check for missing versions and warn
-  const missingVersions = getMissingVersions()
-  if (missingVersions.length > 0 && onWarning) {
-    onWarning(`Missing version data for packages: ${missingVersions.join(', ')}. Using fallback version.`)
-  }
-  clearMissingVersions()
-
-  return metadata
-}
-
-/**
- * Apply an external template to a target directory
- *
- * @param {Object} resolved - Resolved template from resolveTemplate()
- * @param {string} targetPath - Target directory
- * @param {Object} data - Template variables
- * @param {Object} options - Apply options
- */
-export async function applyExternalTemplate(resolved, targetPath, data, options = {}) {
-  const { variant, onProgress, onWarning } = options
-
-  try {
-    const metadata = await applyTemplate(
-      resolved.path,
-      targetPath,
-      data,
-      { variant, onProgress, onWarning }
-    )
-
-    return metadata
-  } finally {
-    // Clean up temp directory if there is one
-    if (resolved.cleanup) {
-      await resolved.cleanup()
-    }
-  }
-}
-
-/**
  * List all available templates
  */
 export async function listAvailableTemplates() {
   const templates = []
-
-  // Built-in templates
-  for (const name of BUILTIN_TEMPLATES) {
-    templates.push({
-      type: 'builtin',
-      id: name,
-      name: name.charAt(0).toUpperCase() + name.slice(1),
-      description: name === 'single'
-        ? 'One site + one foundation'
-        : 'Multiple sites and foundations',
-    })
-  }
 
   // Official templates from GitHub releases
   try {

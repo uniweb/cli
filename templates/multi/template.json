@@ -1,5 +1,0 @@
-{
-  "name": "Multi-Site Workspace",
-  "description": "A Uniweb workspace supporting multiple sites and foundations. Use this when you need to manage several related sites or share foundations across projects.",
-  "base": "_shared"
-}

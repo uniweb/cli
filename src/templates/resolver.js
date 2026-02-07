@@ -2,8 +2,8 @@
  * Template resolver - parses template identifiers and determines source type
  */
 
-// Built-in templates (file-based in cli/templates/)
-export const BUILTIN_TEMPLATES = ['single', 'multi', 'blank']
+// Built-in templates (programmatic, not file-based)
+export const BUILTIN_TEMPLATES = ['blank']
 
 // Official templates from @uniweb/templates package (downloaded from GitHub releases)
 export const OFFICIAL_TEMPLATES = ['marketing', 'academic', 'docs', 'international', 'dynamic', 'store', 'extensions']
@@ -11,7 +11,7 @@ export const OFFICIAL_TEMPLATES = ['marketing', 'academic', 'docs', 'internation
 /**
  * Parse a template identifier and determine its source type
  *
- * @param {string} identifier - Template identifier (e.g., 'single', 'marketing', 'github:user/repo')
+ * @param {string} identifier - Template identifier (e.g., 'blank', 'marketing', 'github:user/repo')
  * @returns {Object} Parsed template info
  */
 export function parseTemplateId(identifier) {

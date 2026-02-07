@@ -13,28 +13,21 @@
  *   npx uniweb docs                          # Generate COMPONENTS.md from schema
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { execSync } from 'node:child_process'
-import { resolve, join, dirname, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve, join, relative } from 'node:path'
 import prompts from 'prompts'
 import { build } from './commands/build.js'
 import { docs } from './commands/docs.js'
 import { doctor } from './commands/doctor.js'
 import { i18n } from './commands/i18n.js'
 import { add } from './commands/add.js'
-import { getVersionsForTemplates } from './versions.js'
 import {
   resolveTemplate,
-  applyExternalTemplate,
   parseTemplateId,
-  BUILTIN_TEMPLATES,
 } from './templates/index.js'
 import { validateTemplate } from './templates/validator.js'
-import { copyTemplateDirectory, registerVersions } from './templates/processor.js'
 import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent, applyStarter } from './utils/scaffold.js'
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
 
 // Colors for terminal output
 const colors = {
@@ -61,74 +54,6 @@ function error(message) {
 
 function title(message) {
   console.log(`\n${colors.cyan}${colors.bright}${message}${colors.reset}\n`)
-}
-
-// Legacy built-in template definitions (metadata for display)
-const legacyTemplates = {
-  single: {
-    name: 'Single Project',
-    description: 'One site + one foundation in site/ and foundation/',
-  },
-  multi: {
-    name: 'Multi-Site Workspace',
-    description: 'Multiple sites and foundations in sites/* and foundations/*',
-  },
-}
-
-/**
- * Get the path to a built-in template
- */
-function getBuiltinTemplatePath(templateName) {
-  return join(__dirname, '..', 'templates', templateName)
-}
-
-/**
- * Apply a legacy built-in template using file-based templates (single/multi)
- */
-async function applyBuiltinTemplate(templateName, targetPath, options = {}) {
-  const { projectName, variant, onProgress, onWarning } = options
-
-  const templatePath = getBuiltinTemplatePath(templateName)
-
-  // Load template.json for metadata
-  let templateConfig = {}
-  const configPath = join(templatePath, 'template.json')
-  if (existsSync(configPath)) {
-    templateConfig = JSON.parse(readFileSync(configPath, 'utf8'))
-  }
-
-  // Determine base template path if specified
-  let basePath = null
-  if (templateConfig.base) {
-    basePath = join(__dirname, '..', 'templates', templateConfig.base)
-    if (!existsSync(basePath)) {
-      if (onWarning) {
-        onWarning(`Base template '${templateConfig.base}' not found at ${basePath}`)
-      }
-      basePath = null
-    }
-  }
-
-  // Register versions for Handlebars templates
-  registerVersions(getVersionsForTemplates())
-
-  // Prepare template data
-  const templateData = {
-    projectName: projectName || 'my-project',
-    templateName: templateName,
-    templateTitle: projectName || 'My Project',
-    templateDescription: templateConfig.description || 'A Uniweb project',
-  }
-
-  // Copy template files
-  await copyTemplateDirectory(templatePath, targetPath, templateData, {
-    variant,
-    basePath,
-    onProgress,
-    onWarning,
-  })
-
-  success(`Created project: ${projectName || 'my-project'}`)
 }
 
 /**
@@ -406,13 +331,6 @@ async function main() {
     }
   }
 
-  // Check for --variant flag
-  let variant = null
-  const variantIndex = args.indexOf('--variant')
-  if (variantIndex !== -1 && args[variantIndex + 1]) {
-    variant = args[variantIndex + 1]
-  }
-
   // Check for --name flag (used for project display name)
   let displayName = null
   const nameIndex = args.indexOf('--name')
@@ -472,77 +390,49 @@ async function main() {
   const warningCb = (msg) => log(`  ${colors.yellow}Warning: ${msg}${colors.reset}`)
 
   if (templateType === 'blank') {
-    // New: blank workspace
+    // Blank workspace
     log('\nCreating blank workspace...')
     await createBlankWorkspace(projectDir, effectiveName, {
       onProgress: progressCb,
       onWarning: warningCb,
     })
   } else if (!templateType) {
-    // New: default flow (package templates + starter)
+    // Default flow (package templates + starter)
     log('\nCreating project...')
     await createFromPackageTemplates(projectDir, effectiveName, {
       onProgress: progressCb,
       onWarning: warningCb,
     })
   } else {
-    const parsed = parseTemplateId(templateType)
+    // External: official/npm/github/local
+    log(`\nResolving template: ${templateType}...`)
 
-    if (parsed.type === 'builtin' && (templateType === 'single' || templateType === 'multi')) {
-      // Legacy: single/multi
-      const templateMeta = legacyTemplates[templateType]
-      log(`\nCreating ${templateMeta ? templateMeta.name.toLowerCase() : templateType}...`)
-
-      await applyBuiltinTemplate(templateType, projectDir, {
-        projectName: effectiveName,
-        variant,
+    try {
+      const resolved = await resolveTemplate(templateType, {
         onProgress: progressCb,
-        onWarning: warningCb,
       })
-    } else {
-      // External: official/npm/github/local
-      log(`\nResolving template: ${templateType}...`)
+
+      log(`\nCreating project from ${resolved.name || resolved.package || `${resolved.owner}/${resolved.repo}`}...`)
+
+      // Validate and apply as format 2 content template
+      const metadata = await validateTemplate(resolved.path, {})
 
       try {
-        const resolved = await resolveTemplate(templateType, {
+        await createFromContentTemplate(projectDir, effectiveName, metadata, resolved.path, {
           onProgress: progressCb,
+          onWarning: warningCb,
         })
-
-        log(`\nCreating project from ${resolved.name || resolved.package || `${resolved.owner}/${resolved.repo}`}...`)
-
-        // Validate and check format
-        const metadata = await validateTemplate(resolved.path, {})
-
-        if (metadata.format === 2) {
-          // Format 2: content template — scaffold structure + overlay content
-          try {
-            await createFromContentTemplate(projectDir, effectiveName, metadata, resolved.path, {
-              onProgress: progressCb,
-              onWarning: warningCb,
-            })
-          } finally {
-            if (resolved.cleanup) await resolved.cleanup()
-          }
-        } else {
-          // Format 1: full-project template (applyExternalTemplate handles cleanup)
-          await applyExternalTemplate(resolved, projectDir, {
-            projectName: effectiveName,
-            versions: getVersionsForTemplates(),
-          }, {
-            variant,
-            onProgress: progressCb,
-            onWarning: warningCb,
-          })
-        }
-      } catch (err) {
-        error(`Failed to apply template: ${err.message}`)
-        log('')
-        log(`${colors.yellow}Troubleshooting:${colors.reset}`)
-        log(`  • Check your network connection`)
-        log(`  • Official templates require GitHub access (may be blocked by corporate networks)`)
-        log(`  • Try the default template instead: ${colors.cyan}uniweb create ${projectName}${colors.reset}`)
-        process.exit(1)
+      } finally {
+        if (resolved.cleanup) await resolved.cleanup()
       }
+    } catch (err) {
+      error(`Failed to apply template: ${err.message}`)
+      log('')
+      log(`${colors.yellow}Troubleshooting:${colors.reset}`)
+      log(`  • Check your network connection`)
+      log(`  • Official templates require GitHub access (may be blocked by corporate networks)`)
+      log(`  • Try the default template instead: ${colors.cyan}uniweb create ${projectName}${colors.reset}`)
+      process.exit(1)
     }
   }
 
@@ -636,8 +526,6 @@ ${colors.bright}i18n Commands:${colors.reset}
 
 ${colors.bright}Template Types:${colors.reset}
   blank                         Empty workspace (grow with 'add')
-  single                        Legacy: one site + one foundation
-  multi                         Legacy: multiple sites and foundations
   marketing                     Official marketing template
   ./path/to/template            Local directory
   @scope/template-name          npm package

@@ -452,23 +452,12 @@ async function applyFromTemplate(templateId, packageType, targetDir, projectName
   try {
     const metadata = await validateTemplate(resolved.path, {})
 
+    // Look in contentDirs for matching package type
     let contentDir = null
-
-    if (metadata.format === 2) {
-      // Format 2: look in contentDirs for matching package type
-      const match = metadata.contentDirs.find(d => d.type === packageType) ||
-                    metadata.contentDirs.find(d => d.name === packageType)
-      if (match) {
-        contentDir = match.dir
-      }
-    } else {
-      // Format 1: look inside template/{packageType}/
-      // For extensions, look for the extension type under template/
-      const typeDir = packageType === 'extension' ? 'foundation' : packageType
-      const candidateDir = join(metadata.templateDir, typeDir)
-      if (existsSync(candidateDir)) {
-        contentDir = candidateDir
-      }
+    const match = metadata.contentDirs.find(d => d.type === packageType) ||
+                  metadata.contentDirs.find(d => d.name === packageType)
+    if (match) {
+      contentDir = match.dir
     }
 
     if (contentDir) {
