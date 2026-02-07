@@ -501,7 +501,6 @@ async function main() {
   if (templateType === 'blank') {
     log(`Next steps:\n`)
     log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
-    log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
     log(`  ${colors.cyan}npx uniweb add foundation${colors.reset}`)
     log(`  ${colors.cyan}npx uniweb add site${colors.reset}`)
     log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)

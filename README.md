@@ -255,7 +255,6 @@ The workspace grows organically. `add` handles placement, wires dependencies, up
 ```bash
 pnpm create uniweb acme --template blank
 cd acme
-pnpm install
 npx uniweb add foundation
 npx uniweb add site
 pnpm install
