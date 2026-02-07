@@ -43,20 +43,32 @@ pnpm create uniweb my-site --template academic
 # Documentation site
 pnpm create uniweb my-site --template docs
 
-# Minimal starter (build from scratch)
+# Online store
+pnpm create uniweb my-site --template store
+
+# Dynamic content (data sources, API-driven pages)
+pnpm create uniweb my-site --template dynamic
+
+# Extensions demo (primary foundation + effects extension)
+pnpm create uniweb my-site --template extensions
+
+# Default starter (foundation + site + sample content)
 pnpm create uniweb my-site
+
+# Blank workspace (grow with `add`)
+pnpm create uniweb my-site --template blank
 ```
 
 **See them live:** [View all template demos](https://uniweb.github.io/templates/)
 
 ## What You Get
 
-Every project is a workspace with two packages:
+Every project starts as a workspace with two packages:
 
 - **`site/`** — Content, pages, entry point
 - **`foundation/`** — React components
 
-Content authors work in markdown. Component authors work in React. Neither can break the other's work.
+Content authors work in markdown. Component authors work in React. Neither can break the other's work. As your project grows, use `uniweb add` to add more foundations, sites, and extensions.
 
 ```
 my-project/
@@ -218,7 +230,40 @@ You can delete the `foundation/` folder entirely and point your site at a publis
 
 _Site-first_ — You're building a website. The foundation is your component library, co-developed with the site. This is the common case.
 
-_Foundation-first_ — You're building a component system. The site is a test harness with sample content. The real sites live elsewhere—other repositories, other teams, or managed on [uniweb.app](https://uniweb.app). The `multi` template supports this workflow with multiple test sites exercising a shared foundation.
+_Foundation-first_ — You're building a component system. The site is a test harness with sample content. The real sites live elsewhere—other repositories, other teams, or managed on [uniweb.app](https://uniweb.app). Use `uniweb add site` to add multiple test sites exercising a shared foundation.
+
+## Growing Your Project
+
+Start simple. Add what you need, when you need it:
+
+```bash
+cd my-site
+
+# Add a second foundation
+uniweb add foundation blog
+
+# Add a site wired to the blog foundation
+uniweb add site blog --foundation blog
+
+# Add an extension (auto-wired to the only site)
+uniweb add extension effects
+
+# Scaffold + apply content from an official template
+uniweb add foundation marketing --from marketing
+uniweb add site main --from marketing --foundation marketing
+```
+
+The workspace grows organically. `add` handles placement, wires dependencies, updates workspace globs, and generates root scripts. Use `--path` to override default placement, or `--project` for co-located layouts (e.g., `marketing/foundation/` + `marketing/site/`).
+
+**Or start blank and build up:**
+
+```bash
+pnpm create uniweb acme --template blank
+cd acme
+uniweb add foundation
+uniweb add site
+pnpm install && pnpm dev
+```
 
 ## The Bigger Picture
 
@@ -254,7 +299,7 @@ Full documentation is available at **[github.com/uniweb/docs](https://github.com
 | Content Structure  | [How markdown becomes component props](https://github.com/uniweb/docs/blob/main/reference/content-structure.md) |
 | Component Metadata | [The meta.js schema](https://github.com/uniweb/docs/blob/main/reference/component-metadata.md) |
 | Site Configuration | [site.yml reference](https://github.com/uniweb/docs/blob/main/reference/site-configuration.md) |
-| CLI Commands       | [create, build, docs, i18n](https://github.com/uniweb/docs/blob/main/reference/cli-commands.md) |
+| CLI Commands       | [create, add, build, docs, doctor, i18n](https://github.com/uniweb/docs/blob/main/reference/cli-commands.md) |
 | Templates          | [Built-in, official, and external templates](https://github.com/uniweb/docs/blob/main/getting-started/templates.md) |
 | Deployment         | [Vercel, Netlify, Cloudflare, and more](https://github.com/uniweb/docs/blob/main/reference/deployment.md) |
 
@@ -307,26 +352,28 @@ export default defineFoundationConfig({
 
 ### Workspace Configuration
 
-Both templates use the same unified workspace configuration:
+A default project has two packages:
 
 ```yaml
 # pnpm-workspace.yaml
 packages:
-  - 'site'
-  - 'foundation'
-  - 'sites/*'
-  - 'foundations/*'
+  - foundation
+  - site
 ```
 
-Also set in `package.json` for npm compatibility.
+When you `add` more packages, the CLI adds the appropriate globs automatically:
 
-```json
-{
-  "workspaces": ["site", "foundation", "sites/*", "foundations/*"]
-}
+```yaml
+# After: uniweb add foundation blog → adds foundations/*
+# After: uniweb add extension effects → adds extensions/*
+packages:
+  - foundation
+  - site
+  - foundations/*
+  - extensions/*
 ```
 
-This means no config changes when evolving from single to multi-site.
+The `package.json` `workspaces` field is kept in sync for npm compatibility.
 
 ## FAQ
 
@@ -362,7 +409,7 @@ Yes — documentation is a natural fit. Content stays in markdown (easy to versi
 
 - [`@uniweb/build`](https://github.com/uniweb/build) — Foundation build tooling
 - [`@uniweb/runtime`](https://github.com/uniweb/runtime) — Foundation loader and orchestrator for sites
-- [`@uniweb/templates`](https://github.com/uniweb/templates) — Official templates and template processing
+- [`@uniweb/templates`](https://github.com/uniweb/templates) — Official project templates (content only, CLI provides structure)
 
 ## License
 
