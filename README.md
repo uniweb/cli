@@ -240,17 +240,17 @@ Start simple. Add what you need, when you need it:
 cd my-site
 
 # Add a second foundation
-uniweb add foundation blog
+npx uniweb add foundation blog
 
 # Add a site wired to the blog foundation
-uniweb add site blog --foundation blog
+npx uniweb add site blog --foundation blog
 
 # Add an extension (auto-wired to the only site)
-uniweb add extension effects
+npx uniweb add extension effects
 
 # Scaffold + apply content from an official template
-uniweb add foundation marketing --from marketing
-uniweb add site main --from marketing --foundation marketing
+npx uniweb add foundation marketing --from marketing
+npx uniweb add site main --from marketing --foundation marketing
 ```
 
 The workspace grows organically. `add` handles placement, wires dependencies, updates workspace globs, and generates root scripts. Use `--path` to override default placement, or `--project` for co-located layouts (e.g., `marketing/foundation/` + `marketing/site/`).
