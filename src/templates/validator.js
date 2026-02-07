@@ -92,6 +92,7 @@ export const ErrorCodes = {
   MISSING_TEMPLATE_JSON: 'MISSING_TEMPLATE_JSON',
   INVALID_TEMPLATE_JSON: 'INVALID_TEMPLATE_JSON',
   MISSING_TEMPLATE_DIR: 'MISSING_TEMPLATE_DIR',
+  MISSING_CONTENT_DIR: 'MISSING_CONTENT_DIR',
   MISSING_REQUIRED_FIELD: 'MISSING_REQUIRED_FIELD',
   VERSION_MISMATCH: 'VERSION_MISMATCH',
 }
@@ -139,7 +140,41 @@ export async function validateTemplate(templateRoot, options = {}) {
     )
   }
 
-  // Check for template/ directory
+  // Check version compatibility (support both `compatible` and `uniweb` fields)
+  const versionRange = metadata.compatible || metadata.uniweb
+  if (uniwebVersion && versionRange) {
+    if (!satisfiesVersion(uniwebVersion, versionRange)) {
+      throw new ValidationError(
+        `Template requires Uniweb ${versionRange}, but current version is ${uniwebVersion}`,
+        ErrorCodes.VERSION_MISMATCH,
+        { required: versionRange, current: uniwebVersion }
+      )
+    }
+  }
+
+  const format = metadata.format || 1
+
+  if (format === 2) {
+    // Format 2: content template — no template/ directory required
+    const contentDirs = resolveContentDirs(templateRoot, metadata)
+
+    if (contentDirs.length === 0) {
+      throw new ValidationError(
+        `No content directories found in ${templateRoot}. Format 2 templates need foundation/ and/or site/ directories.`,
+        ErrorCodes.MISSING_CONTENT_DIR,
+        { path: templateRoot }
+      )
+    }
+
+    return {
+      ...metadata,
+      format: 2,
+      contentDirs,
+      metadataPath
+    }
+  }
+
+  // Format 1: full-project template — require template/ directory
   const templateDir = path.join(templateRoot, 'template')
   if (!existsSync(templateDir)) {
     throw new ValidationError(
@@ -149,22 +184,51 @@ export async function validateTemplate(templateRoot, options = {}) {
     )
   }
 
-  // Check version compatibility
-  if (uniwebVersion && metadata.uniweb) {
-    if (!satisfiesVersion(uniwebVersion, metadata.uniweb)) {
-      throw new ValidationError(
-        `Template requires Uniweb ${metadata.uniweb}, but current version is ${uniwebVersion}`,
-        ErrorCodes.VERSION_MISMATCH,
-        { required: metadata.uniweb, current: uniwebVersion }
-      )
-    }
-  }
-
   return {
     ...metadata,
+    format: 1,
     templateDir,
     metadataPath
   }
+}
+
+/**
+ * Resolve content directories from a format 2 template
+ *
+ * @param {string} templateRoot - Root of the template (contains template.json)
+ * @param {Object} metadata - Parsed template.json
+ * @returns {Array<Object>} Content directories: [{ type, name, dir, foundation? }]
+ */
+export function resolveContentDirs(templateRoot, metadata) {
+  const dirs = []
+
+  if (metadata.packages) {
+    // Multi-package template: iterate declared packages
+    for (const pkg of metadata.packages) {
+      const dir = path.join(templateRoot, pkg.name)
+      if (existsSync(dir)) {
+        dirs.push({
+          type: pkg.type,
+          name: pkg.name,
+          dir,
+          ...(pkg.foundation ? { foundation: pkg.foundation } : {}),
+        })
+      }
+    }
+  } else {
+    // Standard template: look for foundation/ and site/
+    const foundationDir = path.join(templateRoot, 'foundation')
+    if (existsSync(foundationDir)) {
+      dirs.push({ type: 'foundation', name: 'foundation', dir: foundationDir })
+    }
+
+    const siteDir = path.join(templateRoot, 'site')
+    if (existsSync(siteDir)) {
+      dirs.push({ type: 'site', name: 'site', dir: siteDir })
+    }
+  }
+
+  return dirs
 }
 
 /**

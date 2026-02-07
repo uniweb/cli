@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
-import { resolve, join, dirname } from 'node:path'
+import { resolve, join, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import prompts from 'prompts'
 import { build } from './commands/build.js'
@@ -30,8 +30,9 @@ import {
   parseTemplateId,
   BUILTIN_TEMPLATES,
 } from './templates/index.js'
+import { validateTemplate } from './templates/validator.js'
 import { copyTemplateDirectory, registerVersions } from './templates/processor.js'
-import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyStarter } from './utils/scaffold.js'
+import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent, applyStarter } from './utils/scaffold.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -190,6 +191,153 @@ async function createBlankWorkspace(projectDir, projectName, options = {}) {
   }, { onProgress, onWarning })
 
   success(`Created blank workspace: ${projectName}`)
+}
+
+/**
+ * Create a project from a format 2 content template
+ *
+ * Scaffolds workspace structure from package templates, then overlays
+ * content (sections, pages, theme) from the content template.
+ */
+async function createFromContentTemplate(projectDir, projectName, metadata, templateRootPath, options = {}) {
+  const { onProgress, onWarning } = options
+
+  // Determine packages to create
+  const packages = metadata.packages || [
+    { type: 'foundation', name: 'foundation' },
+    { type: 'site', name: 'site', foundation: 'foundation' },
+  ]
+
+  // Compute placement for each package
+  const placed = computePlacement(packages)
+
+  // Compute workspace globs and scripts from placement
+  const workspaceGlobs = placed.map(p => p.relativePath)
+  const sites = placed.filter(p => p.type === 'site')
+  const scripts = {
+    build: 'uniweb build',
+  }
+  if (sites.length === 1) {
+    scripts.dev = `pnpm --filter ${sites[0].name} dev`
+    scripts.preview = `pnpm --filter ${sites[0].name} preview`
+  } else {
+    for (const s of sites) {
+      scripts[`dev:${s.name}`] = `pnpm --filter ${s.name} dev`
+      scripts[`preview:${s.name}`] = `pnpm --filter ${s.name} preview`
+    }
+    // First site gets unqualified aliases
+    if (sites.length > 0) {
+      scripts.dev = `pnpm --filter ${sites[0].name} dev`
+      scripts.preview = `pnpm --filter ${sites[0].name} preview`
+    }
+  }
+
+  // 1. Scaffold workspace
+  onProgress?.('Setting up workspace...')
+  await scaffoldWorkspace(projectDir, {
+    projectName,
+    workspaceGlobs,
+    scripts,
+  }, { onProgress, onWarning })
+
+  // 2. Scaffold and apply content for each package
+  for (const pkg of placed) {
+    const fullPath = join(projectDir, pkg.relativePath)
+
+    if (pkg.type === 'foundation' || pkg.type === 'extension') {
+      onProgress?.(`Creating ${pkg.type}: ${pkg.name}...`)
+      await scaffoldFoundation(fullPath, {
+        name: pkg.name,
+        projectName,
+        isExtension: pkg.type === 'extension',
+      }, { onProgress, onWarning })
+    } else if (pkg.type === 'site') {
+      // Find the foundation this site wires to
+      const foundationName = pkg.foundation || 'foundation'
+      const foundationPkg = placed.find(p =>
+        (p.type === 'foundation') && (p.name === foundationName)
+      )
+      const foundationPath = foundationPkg
+        ? computeFoundationFilePath(pkg.relativePath, foundationPkg.relativePath)
+        : 'file:../foundation'
+
+      onProgress?.(`Creating site: ${pkg.name}...`)
+      await scaffoldSite(fullPath, {
+        name: pkg.name,
+        projectName,
+        foundationName,
+        foundationPath,
+        foundationRef: foundationName !== 'foundation' ? foundationName : undefined,
+      }, { onProgress, onWarning })
+    }
+
+    // Apply content from the matching content directory
+    const contentDir = findContentDirFor(metadata.contentDirs, pkg)
+    if (contentDir) {
+      onProgress?.(`Applying ${metadata.name} content to ${pkg.name}...`)
+      await applyContent(contentDir.dir, fullPath, { projectName }, { onProgress, onWarning })
+    }
+  }
+
+  success(`Created project: ${projectName}`)
+}
+
+/**
+ * Compute placement (relative paths) for packages
+ *
+ * Rules:
+ * - 1 foundation named "foundation" → foundation/
+ * - Multiple foundations → foundations/{name}/
+ * - Extensions → extensions/{name}/
+ * - 1 site named "site" → site/
+ * - Multiple sites → sites/{name}/
+ */
+function computePlacement(packages) {
+  const foundations = packages.filter(p => p.type === 'foundation')
+  const extensions = packages.filter(p => p.type === 'extension')
+  const sites = packages.filter(p => p.type === 'site')
+
+  const placed = []
+
+  for (const f of foundations) {
+    if (foundations.length === 1 && f.name === 'foundation') {
+      placed.push({ ...f, relativePath: 'foundation' })
+    } else {
+      placed.push({ ...f, relativePath: `foundations/${f.name}` })
+    }
+  }
+
+  for (const e of extensions) {
+    placed.push({ ...e, relativePath: `extensions/${e.name}` })
+  }
+
+  for (const s of sites) {
+    if (sites.length === 1 && s.name === 'site') {
+      placed.push({ ...s, relativePath: 'site' })
+    } else {
+      placed.push({ ...s, relativePath: `sites/${s.name}` })
+    }
+  }
+
+  return placed
+}
+
+/**
+ * Find the content directory that matches a placed package
+ */
+function findContentDirFor(contentDirs, pkg) {
+  if (!contentDirs) return null
+  // Match by name first, then by type
+  return contentDirs.find(d => d.name === pkg.name) ||
+         contentDirs.find(d => d.type === pkg.type && d.name === pkg.type)
+}
+
+/**
+ * Compute relative file: path from site to foundation
+ */
+function computeFoundationFilePath(sitePath, foundationPath) {
+  const rel = relative(sitePath, foundationPath)
+  return `file:${rel}`
 }
 
 async function main() {
@@ -362,14 +510,30 @@ async function main() {
 
         log(`\nCreating project from ${resolved.name || resolved.package || `${resolved.owner}/${resolved.repo}`}...`)
 
-        await applyExternalTemplate(resolved, projectDir, {
-          projectName: effectiveName,
-          versions: getVersionsForTemplates(),
-        }, {
-          variant,
-          onProgress: progressCb,
-          onWarning: warningCb,
-        })
+        // Validate and check format
+        const metadata = await validateTemplate(resolved.path, {})
+
+        if (metadata.format === 2) {
+          // Format 2: content template — scaffold structure + overlay content
+          try {
+            await createFromContentTemplate(projectDir, effectiveName, metadata, resolved.path, {
+              onProgress: progressCb,
+              onWarning: warningCb,
+            })
+          } finally {
+            if (resolved.cleanup) await resolved.cleanup()
+          }
+        } else {
+          // Format 1: full-project template (applyExternalTemplate handles cleanup)
+          await applyExternalTemplate(resolved, projectDir, {
+            projectName: effectiveName,
+            versions: getVersionsForTemplates(),
+          }, {
+            variant,
+            onProgress: progressCb,
+            onWarning: warningCb,
+          })
+        }
       } catch (err) {
         error(`Failed to apply template: ${err.message}`)
         log('')
@@ -440,9 +604,9 @@ ${colors.bright}Create Options:${colors.reset}
   --no-git           Skip git repository initialization
 
 ${colors.bright}Add Subcommands:${colors.reset}
-  add foundation [name]   Add a foundation (--path, --project)
-  add site [name]         Add a site (--foundation, --path, --project)
-  add extension <name>    Add an extension (--site, --path)
+  add foundation [name]   Add a foundation (--from, --path, --project)
+  add site [name]         Add a site (--from, --foundation, --path, --project)
+  add extension <name>    Add an extension (--from, --site, --path)
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified
@@ -488,7 +652,9 @@ ${colors.bright}Examples:${colors.reset}
 
   cd my-project
   npx uniweb add foundation marketing                    # Add foundations/marketing/
+  npx uniweb add foundation marketing --from marketing   # Scaffold + marketing sections
   npx uniweb add site blog --foundation marketing        # Add sites/blog/ wired to marketing
+  npx uniweb add site blog --from docs --foundation blog # Scaffold + docs pages
   npx uniweb add extension effects --site site           # Add extensions/effects/
 
   npx uniweb build

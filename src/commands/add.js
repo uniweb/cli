@@ -4,9 +4,9 @@
  * Adds foundations, sites, or extensions to an existing workspace.
  *
  * Usage:
- *   uniweb add foundation [name] [--path <dir>] [--project <name>]
- *   uniweb add site [name] [--foundation <name>] [--path <dir>] [--project <name>]
- *   uniweb add extension [name] [--site <name>] [--path <dir>]
+ *   uniweb add foundation [name] [--from <template>] [--path <dir>] [--project <name>]
+ *   uniweb add site [name] [--from <template>] [--foundation <name>] [--path <dir>] [--project <name>]
+ *   uniweb add extension [name] [--from <template>] [--site <name>] [--path <dir>]
  */
 
 import { existsSync } from 'node:fs'
@@ -14,7 +14,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import prompts from 'prompts'
 import yaml from 'js-yaml'
-import { scaffoldFoundation, scaffoldSite } from '../utils/scaffold.js'
+import { scaffoldFoundation, scaffoldSite, applyContent } from '../utils/scaffold.js'
 import {
   readWorkspaceConfig,
   addWorkspaceGlob,
@@ -23,6 +23,9 @@ import {
   updateRootScripts,
 } from '../utils/config.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
+import { resolveTemplate } from '../templates/index.js'
+import { validateTemplate } from '../templates/validator.js'
+import { getVersionsForTemplates } from '../versions.js'
 
 // Colors for terminal output
 const colors = {
@@ -51,6 +54,7 @@ function parseArgs(args) {
     project: null,
     foundation: null,
     site: null,
+    from: null,
   }
 
   // Find positional name (first arg after subcommand that's not a flag)
@@ -74,6 +78,8 @@ function parseArgs(args) {
       result.foundation = args[++i]
     } else if (args[i] === '--site' && args[i + 1]) {
       result.site = args[++i]
+    } else if (args[i] === '--from' && args[i + 1]) {
+      result.from = args[++i]
     }
   }
 
@@ -144,6 +150,11 @@ async function addFoundation(rootDir, projectName, opts) {
     onProgress: (msg) => info(`  ${msg}`),
   })
 
+  // Apply template content if --from specified
+  if (opts.from) {
+    await applyFromTemplate(opts.from, 'foundation', fullPath, projectName)
+  }
+
   // Update workspace globs
   const glob = computeGlob(target, 'foundation')
   await addWorkspaceGlob(rootDir, glob)
@@ -191,6 +202,11 @@ async function addSite(rootDir, projectName, opts) {
   }, {
     onProgress: (msg) => info(`  ${msg}`),
   })
+
+  // Apply template content if --from specified
+  if (opts.from) {
+    await applyFromTemplate(opts.from, 'site', fullPath, projectName)
+  }
 
   // Update workspace globs
   const glob = computeGlob(target, 'site')
@@ -243,6 +259,11 @@ async function addExtension(rootDir, projectName, opts) {
   }, {
     onProgress: (msg) => info(`  ${msg}`),
   })
+
+  // Apply template content if --from specified
+  if (opts.from) {
+    await applyFromTemplate(opts.from, 'extension', fullPath, projectName)
+  }
 
   // Update workspace globs
   await addWorkspaceGlob(rootDir, 'extensions/*')
@@ -414,6 +435,66 @@ function computeGlob(target, type) {
 }
 
 /**
+ * Apply content from a template to a scaffolded package
+ *
+ * @param {string} templateId - Template identifier (official name, local path, npm, github)
+ * @param {string} packageType - 'foundation', 'site', or 'extension'
+ * @param {string} targetDir - Absolute path to the scaffolded package
+ * @param {string} projectName - Project name for template context
+ */
+async function applyFromTemplate(templateId, packageType, targetDir, projectName) {
+  info(`Resolving template: ${templateId}...`)
+
+  const resolved = await resolveTemplate(templateId, {
+    onProgress: (msg) => info(`  ${msg}`),
+  })
+
+  try {
+    const metadata = await validateTemplate(resolved.path, {})
+
+    let contentDir = null
+
+    if (metadata.format === 2) {
+      // Format 2: look in contentDirs for matching package type
+      const match = metadata.contentDirs.find(d => d.type === packageType) ||
+                    metadata.contentDirs.find(d => d.name === packageType)
+      if (match) {
+        contentDir = match.dir
+      }
+    } else {
+      // Format 1: look inside template/{packageType}/
+      // For extensions, look for the extension type under template/
+      const typeDir = packageType === 'extension' ? 'foundation' : packageType
+      const candidateDir = join(metadata.templateDir, typeDir)
+      if (existsSync(candidateDir)) {
+        contentDir = candidateDir
+      }
+    }
+
+    if (contentDir) {
+      info(`Applying ${metadata.name} content...`)
+      await applyContent(contentDir, targetDir, {
+        projectName,
+        versions: getVersionsForTemplates(),
+      }, {
+        onProgress: (msg) => info(`  ${msg}`),
+      })
+
+      // If site content applied, inform about expected section types
+      if (packageType === 'site' && metadata.components) {
+        log('')
+        info(`This template expects section types: ${metadata.components.join(', ')}`)
+        info(`Make sure your foundation provides them.`)
+      }
+    } else {
+      info(`Template '${metadata.name}' has no ${packageType} content to apply.`)
+    }
+  } finally {
+    if (resolved.cleanup) await resolved.cleanup()
+  }
+}
+
+/**
  * Wire an extension URL to a site's site.yml
  */
 async function wireExtensionToSite(rootDir, siteName, extensionName, extensionPath) {
@@ -466,25 +547,28 @@ ${colors.bright}Usage:${colors.reset}
   uniweb add site [name] [options]
   uniweb add extension <name> [options]
 
+${colors.bright}Common Options:${colors.reset}
+  --from <template>  Apply content from a template after scaffolding
+  --path <dir>       Custom directory for the package
+
 ${colors.bright}Foundation Options:${colors.reset}
-  --path <dir>       Custom directory for the foundation
   --project <name>   Group under a project directory (co-located layout)
 
 ${colors.bright}Site Options:${colors.reset}
   --foundation <n>   Foundation to wire to (prompted if multiple exist)
-  --path <dir>       Custom directory for the site
   --project <name>   Group under a project directory (co-located layout)
 
 ${colors.bright}Extension Options:${colors.reset}
   --site <name>      Site to wire extension URL into
-  --path <dir>       Custom directory for the extension
 
 ${colors.bright}Examples:${colors.reset}
-  uniweb add foundation                      # Create ./foundation/
-  uniweb add foundation marketing            # Create ./foundations/marketing/
-  uniweb add site blog --foundation marketing # Create ./sites/blog/ wired to marketing
-  uniweb add extension effects --site site    # Create ./extensions/effects/
-  uniweb add foundation --project docs        # Create ./docs/foundation/ (co-located)
-  uniweb add site --project docs              # Create ./docs/site/ (co-located)
+  uniweb add foundation                                # Create ./foundation/
+  uniweb add foundation marketing                      # Create ./foundations/marketing/
+  uniweb add foundation marketing --from marketing     # Scaffold + marketing sections
+  uniweb add site blog --foundation marketing          # Create ./sites/blog/ wired to marketing
+  uniweb add site blog --from docs --foundation blog   # Scaffold + docs pages
+  uniweb add extension effects --site site             # Create ./extensions/effects/
+  uniweb add foundation --project docs                 # Create ./docs/foundation/ (co-located)
+  uniweb add site --project docs                       # Create ./docs/site/ (co-located)
 `)
 }
