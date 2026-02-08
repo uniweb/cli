@@ -200,14 +200,19 @@ CCA separates theme from code. Components use **semantic CSS tokens** instead of
 |-------|---------|
 | `text-heading` | Headings |
 | `text-body` | Body text |
-| `text-muted` | Secondary text |
-| `bg-surface` | Section background |
-| `bg-surface-subtle` | Slightly offset surface |
-| `border-edge` | Borders |
-| `border-edge-muted` | Subtle borders |
+| `text-subtle` | Secondary/de-emphasized text |
+| `bg-section` | Section background |
+| `bg-card` | Card/panel background |
+| `bg-muted` | Hover states, zebra rows |
+| `border-border` | Borders |
 | `text-link` | Link color |
-| `text-on-primary` | Text on primary-colored backgrounds |
-| `bg-primary` | Brand primary color |
+| `bg-primary` | Primary action background |
+| `text-primary-foreground` | Text on primary background |
+| `bg-secondary` | Secondary action background |
+| `text-success` / `bg-success-subtle` | Status: success |
+| `text-error` / `bg-error-subtle` | Status: error |
+| `text-warning` / `bg-warning-subtle` | Status: warning |
+| `text-info` / `bg-info-subtle` | Status: info |
 
 **Content authors control context** in frontmatter:
 
@@ -376,7 +381,7 @@ When given a monolithic React file (AI-generated or hand-built), don't port line
 
 1. **Name by purpose** — `Institutions` → `Testimonial`, `WorkModes` → `FeatureColumns`. Components render a *kind* of content, not specific content.
 2. **Separate content from code** — Hardcoded strings → markdown. Layout/styling stays in JSX. Content authors edit words without touching code.
-3. **Use semantic tokens** — Replace `text-slate-900` with `text-heading`, `bg-white` with `bg-surface`. Component works in any context and any brand.
+3. **Use semantic tokens** — Replace `text-slate-900` with `text-heading`, `bg-white` with `bg-section`. Component works in any context and any brand.
 4. **UI components → `components/`** — Buttons, badges, cards go in `src/components/` (no `meta.js` needed).
 
 You don't have to convert everything at once. Each section is independent — one can use hardcoded content while another reads from markdown.
