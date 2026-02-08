@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for AI agents working with this Uniweb project.
+Uniweb is a Component Content Architecture (CCA). Content lives in markdown, code lives in React components, and a runtime connects them. The runtime handles section wrapping, background rendering, context theming, and token resolution — components receive pre-parsed content and render it with semantic tokens. Understanding what the runtime does (and therefore what components should *not* do) is the key to working effectively in this architecture.
 
 ## Project Structure
 
@@ -321,7 +321,7 @@ Does the content author write content *inside* the nested component? **Yes** →
 
 ## Semantic Theming
 
-CCA (Component Content Architecture) separates theme from code. Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter.
+CCA separates theme from code. Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter.
 
 ```jsx
 // ❌ Hardcoded — breaks in dark context, locked to one palette
@@ -450,10 +450,32 @@ Sites override them in `theme.yml` under `vars:`. Components use them as `var(--
 ```jsx
 function MyComponent({ content, params, block }) {
   const { title, paragraphs, links, items } = content  // Guaranteed shape
-  const { theme, columns } = params                     // Defaults from meta.js
+  const { columns, variant } = params                    // Defaults from meta.js
   const { website } = useWebsite()                      // Or block.website
 }
 ```
+
+### Section Wrapper
+
+The runtime wraps every section type in a `<section>` element with context class, background, and semantic tokens. Use static properties to customize this wrapper:
+
+```jsx
+function Hero({ content, params }) {
+  return (
+    <div className="max-w-7xl mx-auto px-6">
+      <h1 className="text-heading text-5xl font-bold">{content.title}</h1>
+    </div>
+  )
+}
+
+Hero.className = 'pt-32 md:pt-48'   // Classes on the <section> wrapper
+Hero.as = 'div'                      // Change wrapper element (default: 'section')
+
+export default Hero
+```
+
+- `Component.className` — adds classes to the runtime's wrapper. Use for section-level padding, borders, overflow. The component's own JSX handles inner layout only (`max-w-7xl mx-auto px-6`).
+- `Component.as` — changes the wrapper element. Use `'nav'` for headers, `'footer'` for footers, `'div'` when `<section>` isn't semantically appropriate.
 
 ### meta.js Structure
 
@@ -476,7 +498,7 @@ export default {
 
   params: {
     columns: { type: 'number', default: 3 },
-    theme: { type: 'select', options: ['light', 'dark'], default: 'light' },
+    variant: { type: 'select', options: ['default', 'centered', 'split'], default: 'default' },
   },
 
   presets: {
@@ -699,19 +721,21 @@ Uniweb section types do more with less because the framework handles concerns th
 
 ## Tailwind CSS v4
 
-Theme defined in `foundation/src/styles.css`:
+Foundation styles in `foundation/src/styles.css`:
 
 ```css
 @import "tailwindcss";
+@import "@uniweb/kit/theme-tokens.css";           /* Semantic tokens from theme.yml */
 @source "./sections/**/*.{js,jsx}";
 @source "../node_modules/@uniweb/kit/src/**/*.jsx";
 
 @theme {
-  --color-primary: #3b82f6;
+  /* Additional custom values — NOT for colors already in theme.yml */
+  --breakpoint-xs: 30rem;
 }
 ```
 
-Use with: `bg-primary`, `text-primary`, `bg-primary/10`
+Semantic color tokens (`text-heading`, `bg-section`, `bg-primary`, etc.) come from `theme-tokens.css` — which the runtime populates from the site's `theme.yml`. Don't redefine colors here that belong in `theme.yml`. Use `@theme` only for values the token system doesn't cover (custom breakpoints, animations, shadows).
 
 ## Troubleshooting
 
