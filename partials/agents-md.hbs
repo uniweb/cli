@@ -64,6 +64,7 @@ content = {
   imgs: [],         // { src, alt, role }
   icons: [],        // { library, name, role }
   videos: [],       // Video embeds
+  insets: [],       // Inline @Component references — { refId }
   lists: [],        // Bullet/ordered lists
   quotes: [],       // Blockquotes
   data: {},         // From tagged code blocks (```yaml:tagname)
@@ -92,6 +93,28 @@ Enterprise-grade.       ← items[1].paragraphs[0]
 Use image syntax with library prefix: `![](lu-house)`. Supported libraries: `lu` (Lucide), `hi2` (Heroicons), `fi` (Feather), `pi` (Phosphor), `tb` (Tabler), `bs` (Bootstrap), `md` (Material), `fa6` (Font Awesome 6), and others. Browse at [react-icons.github.io/react-icons](https://react-icons.github.io/react-icons/).
 
 Custom SVGs: `![Logo](./logo.svg){role=icon}`
+
+### Insets (Component References)
+
+Place a foundation component inline within content using `@` syntax:
+
+```markdown
+![description](@ComponentName)
+![description](@ComponentName){param=value other=thing}
+```
+
+The three parts carry distinct information:
+- `[description]` — text passed to the component as `block.content.title`
+- `(@Name)` — foundation component to render
+- `{params}` — configuration attributes passed as `block.properties`
+
+```markdown
+![Architecture diagram](@NetworkDiagram){variant=compact}
+![Cache metrics](@PerformanceChart){period=30d}
+![](@GradientBlob){position=top-right}
+```
+
+Inset components must declare `inset: true` in their `meta.js`. They render at the exact position in the content flow where the author placed them. See meta.js section below for details.
 
 ### Links and Media Attributes
 
@@ -248,6 +271,9 @@ export default {
   category: 'marketing',
   // hidden: true,          // Hide from content authors
   // background: 'self',    // Component renders its own background
+  // inset: true,           // Available for @ComponentName references in markdown
+  // visuals: 1,            // Expects 1 visual (image, video, or inset)
+  // children: true,        // Accepts file-based child sections
 
   content: {
     title: 'Section heading',
@@ -278,7 +304,7 @@ All defaults belong in `meta.js`, not inline in component code.
 
 **Primitives** (`@uniweb/kit`): `H1`–`H6`, `P`, `Span`, `Text`, `Link`, `Image`, `Icon`, `Media`, `Asset`, `SocialIcon`, `FileLogo`, `cn()`
 
-**Styled** (`@uniweb/kit/styled`): `Section`, `Render`, `SidebarLayout`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
+**Styled** (`@uniweb/kit/styled`): `Section`, `Render`, `Visual`, `SidebarLayout`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
 **Hooks:**
 - `useScrolled(threshold)` → boolean for scroll-based header styling
@@ -324,6 +350,42 @@ website.hasMultipleLocales()
 website.getLocales()        // [{ code, label, isDefault }]
 website.getActiveLocale()   // 'en'
 website.getLocaleUrl('es')
+```
+
+### Insets and the Visual Component
+
+Components access inline `@` references via `block.insets` (separate from `block.childBlocks`):
+
+```jsx
+import { Visual } from '@uniweb/kit/styled'
+
+// Visual renders the first visual: inset > video > image
+function SplitContent({ content, block, params }) {
+  return (
+    <div className="flex gap-12">
+      <div className="flex-1">
+        <h2 className="text-heading">{content.title}</h2>
+      </div>
+      <Visual content={content} block={block} className="flex-1 rounded-lg" />
+    </div>
+  )
+}
+```
+
+- `block.insets` — array of Block instances from `@` references
+- `block.getInset(refId)` — lookup by refId (used by sequential renderers)
+- `content.insets` — flat array of `{ refId }` entries (parallel to `content.imgs`)
+- `<Visual>` — renders first inset > video > image from content (from `@uniweb/kit/styled`)
+
+Inset components declare `inset: true` in meta.js. Use `hidden: true` for inset-only components:
+
+```js
+// sections/insets/NetworkDiagram/meta.js
+export default {
+  inset: true,
+  hidden: true,
+  params: { variant: { type: 'select', options: ['full', 'compact'], default: 'full' } },
+}
 ```
 
 ### Cross-Block Communication
