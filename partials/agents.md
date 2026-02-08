@@ -319,6 +319,8 @@ This is functional composition applied to content: small, focused section types 
 
 Does the content author write content *inside* the nested component? **Yes** → child sections. **No** (self-contained, driven by params/data) → insets. Repeating groups within one section → items. These patterns compose: a child section can contain insets, and items work inside children.
 
+**Inset rule of thumb:** If the same interactive widget or self-contained visual appears inside multiple different sections (a copy-able command block, a chart, a demo player), make it an inset. The content author places it with `![](@CommandBlock)` wherever it's needed — no prop drilling, no imports.
+
 ## Semantic Theming
 
 CCA separates theme from code. Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter.
@@ -603,6 +605,43 @@ export default {
 }
 ```
 
+### Dispatcher Pattern
+
+One section type with a `variant` param replaces multiple near-duplicates. Instead of `HeroLeft`, `HeroCentered`, `HeroSplit` — one `Hero` with `variant: left | centered | split`:
+
+```jsx
+function SplitContent({ content, block, params }) {
+  const flipped = params.variant === 'flipped'
+  return (
+    <div className={`flex gap-16 items-center ${flipped ? 'flex-row-reverse' : ''}`}>
+      <div className="flex-1">
+        {content.pretitle && (
+          <p className="text-xs font-bold uppercase tracking-widest text-subtle mb-4">
+            {content.pretitle}
+          </p>
+        )}
+        <h2 className="text-heading text-3xl font-bold">{content.title}</h2>
+        <p className="text-body mt-4">{content.paragraphs[0]}</p>
+      </div>
+      <Visual content={content} block={block} className="flex-1 rounded-2xl" />
+    </div>
+  )
+}
+```
+
+```js
+// meta.js
+export default {
+  title: 'Split Content',
+  content: { pretitle: 'Eyebrow label', title: 'Section heading', paragraphs: 'Description' },
+  params: {
+    variant: { type: 'select', options: ['default', 'flipped'], default: 'default' },
+  },
+}
+```
+
+Content authors choose the variant in frontmatter (`variant: flipped`), or the site can alternate it across sections. One component serves every "text + visual" layout on the site.
+
 ### Cross-Block Communication
 
 Components read neighboring blocks for adaptive behavior (e.g., translucent header over hero):
@@ -727,6 +766,7 @@ Foundation styles in `foundation/src/styles.css`:
 @import "tailwindcss";
 @import "@uniweb/kit/theme-tokens.css";           /* Semantic tokens from theme.yml */
 @source "./sections/**/*.{js,jsx}";
+@source "./components/**/*.{js,jsx}";             /* UI helpers (Button, Card, etc.) */
 @source "../node_modules/@uniweb/kit/src/**/*.jsx";
 
 @theme {
@@ -736,6 +776,8 @@ Foundation styles in `foundation/src/styles.css`:
 ```
 
 Semantic color tokens (`text-heading`, `bg-section`, `bg-primary`, etc.) come from `theme-tokens.css` — which the runtime populates from the site's `theme.yml`. Don't redefine colors here that belong in `theme.yml`. Use `@theme` only for values the token system doesn't cover (custom breakpoints, animations, shadows).
+
+**Custom CSS is fine alongside Tailwind.** Animations, keyframes, gradients with masks, always-dark code blocks, and other effects that aren't expressible as utility classes can go directly in `styles.css`. Tailwind handles layout and spacing; custom CSS handles visual effects.
 
 ## Troubleshooting
 
