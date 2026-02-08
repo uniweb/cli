@@ -273,9 +273,9 @@ nest:
 Components receive children via `block.childBlocks`:
 
 ```jsx
-export default function Grid({ block }) {
+export default function Grid({ block, params }) {
   return (
-    <div className="grid grid-cols-2">
+    <div className={`grid grid-cols-${params.columns || 2} gap-6`}>
       {block.childBlocks.map(child => {
         const Comp = child.initComponent()
         return Comp ? <Comp key={child.id} block={child} /> : null
@@ -285,7 +285,31 @@ export default function Grid({ block }) {
 }
 ```
 
-### When to Use Which Pattern
+### Composition in practice
+
+Section nesting and insets together give content authors significant layout power without requiring new components. A single Grid section type composes *any* combination of children — each child is its own section type with its own content:
+
+```
+pages/home/
+├── page.yml
+├── 1-hero.md
+├── 2-highlights.md          # type: Grid, columns: 3
+├── 3-cta.md
+├── @stats.md                # type: StatCard — numbers and labels
+├── @testimonial.md          # type: Testimonial — quote with attribution
+└── @demo.md                 # type: SplitContent — text + ![](@LiveDemo) inset
+```
+
+```yaml
+nest:
+  highlights: [stats, testimonial, demo]
+```
+
+The content author chose three different section types as children, arranged them in a grid, and embedded an interactive component inside one of them — all through markdown and YAML. The developer wrote one Grid component, a few card-level section types, and an inset. No bespoke "highlights" component needed.
+
+This is functional composition applied to content: small, focused section types that combine into richer layouts. The developer builds reusable pieces (Grid, StatCard, Testimonial, SplitContent); the content author composes them. Adding a fourth card means creating one `@`-prefixed file and adding its name to the `nest:` array.
+
+### When to use which pattern
 
 | Pattern | Authoring | Use when |
 |---------|-----------|----------|
@@ -293,7 +317,7 @@ export default function Grid({ block }) {
 | **Insets** (`block.insets`) | `![](@Component)` in markdown | Embedding a self-contained visual (chart, diagram, widget) |
 | **Child sections** (`block.childBlocks`) | `@`-prefixed `.md` files + `nest:` | Children with rich authored content (testimonials, carousel slides) |
 
-Does the content author write content *inside* the nested component? **Yes** → child sections. **No** (self-contained, driven by params/data) → insets. Repeating groups within one section → items.
+Does the content author write content *inside* the nested component? **Yes** → child sections. **No** (self-contained, driven by params/data) → insets. Repeating groups within one section → items. These patterns compose: a child section can contain insets, and items work inside children.
 
 ## Semantic Theming
 
@@ -326,6 +350,35 @@ CCA (Component Content Architecture) separates theme from code. Components use *
 | `text-error` / `bg-error-subtle` | Status: error |
 | `text-warning` / `bg-warning-subtle` | Status: warning |
 | `text-info` / `bg-info-subtle` | Status: info |
+
+### What the runtime handles (don't write this yourself)
+
+The runtime does significant work that other frameworks push onto components. Understanding this prevents writing unnecessary code:
+
+1. **Section backgrounds** — The runtime renders image, video, gradient, color, and overlay backgrounds from frontmatter. Components never set their own section background.
+2. **Context classes** — The runtime wraps every section in `<section class="context-{theme}">`, which auto-applies `background-color: var(--section)` and sets all token values.
+3. **Token resolution** — All 24+ semantic tokens resolve automatically per context. A component using `text-heading` gets dark text in light context, white text in dark context — zero conditional logic.
+4. **Colored section backgrounds** — Content authors create tinted sections via frontmatter, not component code:
+   ```yaml
+   ---
+   type: Features
+   theme: light
+   background:
+     color: var(--primary-50)       # Light blue tint with light-context tokens
+   ---
+   ```
+
+**What components should NOT contain:**
+
+| Don't write | Why |
+|-------------|-----|
+| `bg-white` or `bg-gray-900` on section wrapper | Engine applies `bg-section` via context class |
+| `const themes = { light: {...}, dark: {...} }` | Context system replaces theme maps entirely |
+| `isDark ? 'text-white' : 'text-gray-900'` | Just write `text-heading` — it adapts |
+| Background rendering code | Declare `background:` in frontmatter instead |
+| Color constants / tokens files | Colors come from `theme.yml` |
+
+**What to hardcode** (not semantic — same in every context): layout (`grid`, `flex`, `max-w-6xl`), spacing (`p-6`, `gap-8`), typography scale (`text-3xl`, `font-bold`), animations, border-radius.
 
 **Content authors control context** in frontmatter:
 
