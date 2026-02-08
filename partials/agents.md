@@ -605,16 +605,44 @@ layout:
   hide: [left, right]
 ```
 
-## Converting Existing Designs
+## Migrating From Other Frameworks
 
-When given a monolithic React file (AI-generated or hand-built), don't port line-by-line. Decompose into CCA architecture:
+Don't port line-by-line. Study the original implementation, then plan a new one in Uniweb from first principles. Other frameworks produce far more components than Uniweb needs — expect consolidation, not 1:1 correspondence.
 
-1. **Name by purpose** — `Institutions` → `Testimonial`, `WorkModes` → `FeatureColumns`. Components render a *kind* of content, not specific content.
-2. **Separate content from code** — Hardcoded strings → markdown. Layout/styling stays in JSX. Content authors edit words without touching code.
-3. **Use semantic tokens** — Replace `text-slate-900` with `text-heading`, `bg-white` with `bg-section`. Component works in any context and any brand.
-4. **UI components → `components/`** — Buttons, badges, cards go in `src/components/` (no `meta.js` needed).
+### Why fewer components
 
-You don't have to convert everything at once. Each section is independent — one can use hardcoded content while another reads from markdown.
+Uniweb section types do more with less because the framework handles concerns that other frameworks push onto components:
+
+- **Dispatcher pattern** — one section type with a `variant` param replaces multiple near-duplicate components (`HeroHomepage` + `HeroPricing` → `Hero` with `variant: homepage | pricing`)
+- **Section nesting** — `@`-prefixed child files replace wrapper components that exist only to arrange children
+- **Insets** — `![](@ComponentName)` replaces prop-drilling of visual components into containers
+- **Visual component** — `<Visual>` renders image/video/inset from content, replacing manual media handling
+- **Semantic theming** — the runtime orchestrates context classes and token resolution, replacing per-component dark mode logic
+- **Engine backgrounds** — the runtime renders section backgrounds from frontmatter, replacing background-handling code in every section
+- **Rich params** — `meta.js` params with types, defaults, and presets replace config objects and conditional logic
+
+### Migration approach
+
+1. **Start with a blank workspace** (unless adding to an existing one):
+   ```bash
+   pnpm create uniweb my-project --template blank
+   ```
+
+2. **Choose the workspace structure** — single (one foundation + one site), segregated (shared foundation, multiple sites), or co-located (independent projects grouped by directory). See the docs for workspace recipes.
+
+3. **Use named layouts** for different page groups — a marketing layout for landing pages, a docs layout for `/docs/*`. One site, multiple layouts, each with its own header/footer/sidebar content.
+
+4. **Dump legacy components under `src/components/`** — they're not section types. Import them from section types as needed during the transition.
+
+5. **Create section types one at a time.** Each is independent — one can use hardcoded content while another reads from markdown. Staged migration levels:
+   - **Level 0**: Paste the whole original file as one section type. You get routing and dev tooling immediately.
+   - **Level 1**: Decompose into section types. Name by purpose (`Institutions` → `Testimonial`). Consolidate duplicates via dispatcher pattern.
+   - **Level 2**: Move content from JSX to markdown. Components read from `content` instead of hardcoded strings. Content authors can now edit without touching code.
+   - **Level 3**: Replace hardcoded Tailwind colors with semantic tokens. Components work in any context and any brand.
+
+6. **Name by purpose, not by content** — `TheModel` → `SplitContent`, `WorkModes` → `FeatureColumns`, `FinalCTA` → `CallToAction`. Components render a *kind* of content, not specific content.
+
+7. **UI helpers → `components/`** — Buttons, badges, cards go in `src/components/` (no `meta.js` needed, not selectable by content authors).
 
 ## Tailwind CSS v4
 
