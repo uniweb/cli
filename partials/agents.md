@@ -297,7 +297,7 @@ Does the content author write content *inside* the nested component? **Yes** →
 
 ## Semantic Theming
 
-CCA separates theme from code. Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter.
+CCA (Component Content Architecture) separates theme from code. Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter.
 
 ```jsx
 // ❌ Hardcoded — breaks in dark context, locked to one palette
