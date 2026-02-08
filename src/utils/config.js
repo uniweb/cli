@@ -208,7 +208,7 @@ export async function discoverSites(rootDir) {
 }
 
 // Resolve a workspace glob pattern to actual directories
-async function resolveGlob(rootDir, pattern) {
+export async function resolveGlob(rootDir, pattern) {
   const clean = pattern.replace(/^["']|["']$/g, '')
 
   if (clean.endsWith('/*')) {

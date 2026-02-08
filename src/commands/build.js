@@ -10,7 +10,7 @@
  *   uniweb build --prerender         # Build site + pre-render to static HTML (SSG)
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { writeFile, mkdir } from 'node:fs/promises'
@@ -23,6 +23,7 @@ import {
   processAllPreviews,
 } from '@uniweb/build'
 import { readSiteConfig } from '@uniweb/build/site'
+import { readWorkspaceConfig, resolveGlob } from '../utils/config.js'
 
 // Colors for terminal output
 const colors = {
@@ -529,54 +530,29 @@ function isSite(dir) {
 }
 
 /**
- * Discover workspace packages based on workspace config
+ * Discover workspace packages based on workspace config (pnpm-workspace.yaml globs)
  */
-function discoverWorkspacePackages(workspaceDir) {
+async function discoverWorkspacePackages(workspaceDir) {
   const foundations = []
   const extensions = []
   const sites = []
 
-  // Check standard locations
-  const standardFoundation = join(workspaceDir, 'foundation')
-  const standardSite = join(workspaceDir, 'site')
+  const { packages } = await readWorkspaceConfig(workspaceDir)
 
-  if (existsSync(standardFoundation) && isFoundation(standardFoundation)) {
-    foundations.push({ name: 'foundation', path: standardFoundation })
-  }
+  for (const pattern of packages) {
+    const dirs = await resolveGlob(workspaceDir, pattern)
+    for (const dir of dirs) {
+      const fullPath = join(workspaceDir, dir)
+      const name = dir.split('/').pop()
 
-  if (existsSync(standardSite) && isSite(standardSite)) {
-    sites.push({ name: 'site', path: standardSite })
-  }
-
-  // Check multi-site locations (foundations/*, sites/*)
-  const foundationsDir = join(workspaceDir, 'foundations')
-  const sitesDir = join(workspaceDir, 'sites')
-
-  if (existsSync(foundationsDir)) {
-    for (const name of readdirSync(foundationsDir)) {
-      const path = join(foundationsDir, name)
-      if (isFoundation(path)) {
-        foundations.push({ name, path })
-      }
-    }
-  }
-
-  if (existsSync(sitesDir)) {
-    for (const name of readdirSync(sitesDir)) {
-      const path = join(sitesDir, name)
-      if (isSite(path)) {
-        sites.push({ name, path })
-      }
-    }
-  }
-
-  // Check extensions/*
-  const extensionsDir = join(workspaceDir, 'extensions')
-  if (existsSync(extensionsDir)) {
-    for (const name of readdirSync(extensionsDir)) {
-      const path = join(extensionsDir, name)
-      if (isFoundation(path)) {
-        extensions.push({ name, path })
+      if (isFoundation(fullPath)) {
+        if (isExtensionDir(fullPath)) {
+          extensions.push({ name, path: fullPath })
+        } else {
+          foundations.push({ name, path: fullPath })
+        }
+      } else if (isSite(fullPath)) {
+        sites.push({ name, path: fullPath })
       }
     }
   }
@@ -593,15 +569,16 @@ async function buildWorkspace(workspaceDir, options = {}) {
   log(`${colors.cyan}${colors.bright}Building workspace...${colors.reset}`)
   log('')
 
-  const { foundations, extensions, sites } = discoverWorkspacePackages(workspaceDir)
+  const { foundations, extensions, sites } = await discoverWorkspacePackages(workspaceDir)
 
   if (foundations.length === 0 && extensions.length === 0 && sites.length === 0) {
     error('No foundations, extensions, or sites found in workspace')
     log('')
-    log('Expected structure:')
-    log('  foundation/     or  foundations/*/')
+    log('Expected structure (matching pnpm-workspace.yaml globs):')
+    log('  foundation/       or  foundations/*/')
+    log('  site/             or  sites/*/')
+    log('  */foundation      +  */site          (co-located)')
     log('  extensions/*/')
-    log('  site/           or  sites/*/')
     process.exit(1)
   }
 

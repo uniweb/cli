@@ -195,7 +195,7 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Scaffold
   await scaffoldFoundation(fullPath, {
-    name: name || 'foundation',
+    name: name || opts.project || 'foundation',
     projectName,
     isExtension: false,
   }, {
@@ -263,7 +263,13 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Resolve foundation
   const foundation = await resolveFoundation(rootDir, opts.foundation)
-  const siteName = name || 'site'
+  let siteName
+  if (opts.project) {
+    // Co-located: convention is {project}-site (e.g., io-site)
+    siteName = (!name || name === opts.project) ? `${opts.project}-site` : name
+  } else {
+    siteName = name || 'site'
+  }
 
   if (foundation) {
     // Compute relative path from site to foundation
