@@ -205,6 +205,51 @@ pages: [home, about]                # Strict: only listed pages in nav
 
 Use `pages:` with `...` for ordering, without `...` for strict visibility control. Use `index:` for simple homepage selection.
 
+### Section Nesting (Child Sections)
+
+Some section types need children — a Grid that arranges cards, a TabGroup that holds panels. Use the `@` prefix and `nest:` property:
+
+```
+pages/home/
+├── page.yml
+├── 1-hero.md
+├── 2-features.md        # Parent section (type: Grid)
+├── 3-cta.md
+├── @card-a.md           # Child of features (@ = not top-level)
+├── @card-b.md
+└── @card-c.md
+```
+
+```yaml
+# page.yml
+nest:
+  features: [card-a, card-b, card-c]
+```
+
+**Rules:**
+- `@`-prefixed files are excluded from the top-level section list
+- `nest:` declares parent-child relationships (parent name → array of child names)
+- Child files **must** use the `@` prefix — the filename and YAML must agree
+- `@@` prefix signals deeper nesting (e.g., `@@sub-item.md` for grandchildren)
+- `nest:` is flat — each key is a parent: `nest: { features: [a, b], a: [sub-1] }`
+- Children are ordered by their position in the `nest:` array
+- Orphaned `@` files (no parent in `nest:`) appear at top-level with a warning
+
+Components receive children via `block.childBlocks`:
+
+```jsx
+export default function Grid({ block }) {
+  return (
+    <div className="grid grid-cols-2">
+      {block.childBlocks.map(child => {
+        const Comp = child.initComponent()
+        return Comp ? <Comp key={child.id} block={child} /> : null
+      })}
+    </div>
+  )
+}
+```
+
 ## Semantic Theming
 
 CCA separates theme from code. Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter.
