@@ -225,7 +225,7 @@ submitLabel: Send
 
 Access: `content.data?.form` → `{ fields: [...], submitLabel: "Send" }`
 
-**Code blocks need tags too.** Untagged code blocks (plain `````js```) are only visible to sequential-rendering components like Article or DocSection. If a component needs to access code blocks by name, tag them:
+**Code blocks need tags too.** Untagged code blocks (plain ```js) are only visible to sequential-rendering components like Article or DocSection. If a component needs to access code blocks by name, tag them:
 
 ````markdown
 ```jsx:before
@@ -493,18 +493,17 @@ Each color generates 11 OKLCH shades (50–950). The `neutral` palette is specia
 
 ### Foundation variables
 
-Foundations declare customizable layout/spacing values in `foundation.js`:
+Foundations declare customizable layout/spacing values in `foundation.js`. The starter includes:
 
 ```js
-export default {
-  vars: {
-    'header-height': { default: '4rem' },
-    'sidebar-width': { default: '280px' },
-  },
+export const vars = {
+  'header-height': { default: '4rem', description: 'Fixed header height' },
+  'max-content-width': { default: '80rem', description: 'Maximum content width' },
+  'section-padding-y': { default: '5rem', description: 'Vertical padding for sections' },
 }
 ```
 
-Sites override them in `theme.yml` under `vars:`. Components use them as `var(--header-height)`.
+Sites override them in `theme.yml` under `vars:`. Components use them via Tailwind arbitrary values or CSS: `py-[var(--section-padding-y)]`, `h-[var(--header-height)]`, etc. Use `section-padding-y` for consistent section spacing instead of hardcoding padding in each component.
 
 **When to break the rules:** Header/footer components that float over content may need direct color logic (reading the first section's theme). Decorative elements with fixed branding (logos) use literal colors.
 
@@ -533,13 +532,13 @@ function Hero({ content, params }) {
   )
 }
 
-Hero.className = 'pt-32 md:pt-48'   // Classes on the <section> wrapper
+Hero.className = 'pt-32 md:pt-48'   // Override spacing for hero (more top padding)
 Hero.as = 'div'                      // Change wrapper element (default: 'section')
 
 export default Hero
 ```
 
-- `Component.className` — adds classes to the runtime's wrapper. Use for section-level padding, borders, overflow. The component's own JSX handles inner layout only (`max-w-7xl mx-auto px-6`).
+- `Component.className` — adds classes to the runtime's wrapper. Use for section-level spacing, borders, overflow. Set `py-[var(--section-padding-y)]` for consistent spacing from the theme variable, or override for specific sections (e.g., hero needs extra top padding). The component's own JSX handles inner layout only (`max-w-7xl mx-auto px-6`).
 - `Component.as` — changes the wrapper element. Use `'nav'` for headers, `'footer'` for footers, `'div'` when `<section>` isn't semantically appropriate.
 
 ### meta.js Structure
