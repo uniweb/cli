@@ -29,6 +29,7 @@ import {
 import { validateTemplate } from './templates/validator.js'
 import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemplateDependencies } from './utils/scaffold.js'
 import { detectPackageManager, filterCmd, installCmd, runCmd } from './utils/pm.js'
+import { isNonInteractive, getCliPrefix, stripNonInteractiveFlag, formatOptions } from './utils/interactive.js'
 
 // Colors for terminal output
 const colors = {
@@ -288,7 +289,9 @@ function computeFoundationFilePath(sitePath, foundationPath) {
 }
 
 async function main() {
-  const args = process.argv.slice(2)
+  const rawArgs = process.argv.slice(2)
+  const nonInteractive = isNonInteractive(rawArgs)
+  const args = stripNonInteractiveFlag(rawArgs)
   const command = args[0]
   const pm = detectPackageManager()
 
@@ -367,6 +370,26 @@ async function main() {
   // Skip positional name if it starts with -- (it's a flag, not a name)
   if (projectName && projectName.startsWith('--')) {
     projectName = null
+  }
+
+  const prefix = getCliPrefix()
+
+  // Non-interactive: fail with actionable message instead of prompting
+  if (nonInteractive && !projectName) {
+    error(`Missing project name.\n`)
+    log(`Usage: ${prefix} create <project-name> [--template <name>]`)
+    process.exit(1)
+  }
+
+  if (nonInteractive && !templateType) {
+    error(`Missing --template flag. Available templates:\n`)
+    log(formatOptions(TEMPLATE_CHOICES.map(c => ({
+      label: c.value,
+      description: c.description,
+    }))))
+    log('')
+    log(`Usage: ${prefix} create ${projectName || '<project-name>'} --template <name>`)
+    process.exit(1)
   }
 
   // Interactive prompts
@@ -538,6 +561,10 @@ ${colors.bright}Add Subcommands:${colors.reset}
   add foundation [name]   Add a foundation (--from, --path, --project)
   add site [name]         Add a site (--from, --foundation, --path, --project)
   add extension <name>    Add an extension (--from, --site, --path)
+
+${colors.bright}Global Options:${colors.reset}
+  --non-interactive    Fail with usage info instead of prompting
+                       Auto-detected when CI=true or no TTY (pipes, agents)
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified

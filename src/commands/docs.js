@@ -29,6 +29,7 @@ import {
   findFoundations,
   promptSelect,
 } from '../utils/workspace.js'
+import { isNonInteractive, getCliPrefix, formatOptions } from '../utils/interactive.js'
 
 // Colors for terminal output
 const colors = {
@@ -394,6 +395,12 @@ async function generateComponentDocs(args) {
     if (foundations.length === 1) {
       targetFoundation = foundations[0]
       info(`Found foundation: ${targetFoundation}`)
+    } else if (isNonInteractive(process.argv)) {
+      error(`Multiple foundations found. Specify which to target:\n`)
+      log(formatOptions(foundations.map(f => ({ label: f, description: '' }))))
+      log('')
+      log(`Usage: ${getCliPrefix()} docs --target <path>`)
+      process.exit(1)
     } else {
       log(`${colors.dim}Multiple foundations found in workspace.${colors.reset}\n`)
       targetFoundation = await promptSelect('Select foundation:', foundations)

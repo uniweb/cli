@@ -25,6 +25,7 @@ import {
 import { validatePackageName, getExistingPackageNames, resolveUniqueName } from '../utils/names.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { detectPackageManager, filterCmd, installCmd } from '../utils/pm.js'
+import { isNonInteractive, getCliPrefix, stripNonInteractiveFlag, formatOptions } from '../utils/interactive.js'
 import { resolveTemplate } from '../templates/index.js'
 import { validateTemplate } from '../templates/validator.js'
 import { getVersionsForTemplates } from '../versions.js'
@@ -91,13 +92,17 @@ function parseArgs(args) {
 /**
  * Main add command handler
  */
-export async function add(args) {
+export async function add(rawArgs) {
+  const nonInteractive = isNonInteractive(rawArgs)
+  const args = stripNonInteractiveFlag(rawArgs)
+
   if (args[0] === '--help' || args[0] === '-h') {
     showAddHelp()
     return
   }
 
   const pm = detectPackageManager()
+  const prefix = getCliPrefix()
 
   // Find workspace root
   const rootDir = findWorkspaceRoot()
@@ -110,6 +115,18 @@ export async function add(args) {
   // Interactive subcommand chooser when no args given
   let parsed
   if (!args.length || (args[0] && args[0].startsWith('--'))) {
+    if (nonInteractive) {
+      error(`Missing subcommand.\n`)
+      log(formatOptions([
+        { label: 'foundation', description: 'Component library' },
+        { label: 'site', description: 'Content site' },
+        { label: 'extension', description: 'Additional component package' },
+      ]))
+      log('')
+      log(`Usage: ${prefix} add <foundation|site|extension> [name]`)
+      process.exit(1)
+    }
+
     const response = await prompts({
       type: 'select',
       name: 'subcommand',
@@ -171,6 +188,12 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Interactive name prompt when name not provided and no --path
   if (!name && !opts.path) {
+    if (isNonInteractive(process.argv)) {
+      error(`Missing foundation name.\n`)
+      log(`Usage: ${getCliPrefix()} add foundation <name>`)
+      process.exit(1)
+    }
+
     const foundations = await discoverFoundations(rootDir)
     const hasDefault = foundations.length === 0 && !existsSync(join(rootDir, 'foundation'))
     const response = await prompts({
@@ -251,6 +274,12 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Interactive name prompt when name not provided and no --path
   if (!name && !opts.path) {
+    if (isNonInteractive(process.argv)) {
+      error(`Missing site name.\n`)
+      log(`Usage: ${getCliPrefix()} add site <name>`)
+      process.exit(1)
+    }
+
     const existingSites = await discoverSites(rootDir)
     const hasDefault = existingSites.length === 0 && !existsSync(join(rootDir, 'site'))
     const response = await prompts({
@@ -371,6 +400,12 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Interactive name prompt when name not provided
   if (!name) {
+    if (isNonInteractive(process.argv)) {
+      error(`Missing extension name.\n`)
+      log(`Usage: ${getCliPrefix()} add extension <name>`)
+      process.exit(1)
+    }
+
     const response = await prompts({
       type: 'text',
       name: 'name',
@@ -529,7 +564,18 @@ async function resolveFoundation(rootDir, foundationFlag) {
     return foundations[0]
   }
 
-  // Multiple foundations — prompt
+  // Multiple foundations — prompt (or fail in non-interactive mode)
+  if (isNonInteractive(process.argv)) {
+    error(`Multiple foundations found. Specify which to use:\n`)
+    log(formatOptions(foundations.map(f => ({
+      label: f.name,
+      description: f.path,
+    }))))
+    log('')
+    log(`Usage: ${getCliPrefix()} add site <name> --foundation <name>`)
+    process.exit(1)
+  }
+
   const response = await prompts({
     type: 'select',
     name: 'foundation',
