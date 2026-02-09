@@ -2,4 +2,5 @@
 @import "@uniweb/kit/theme-tokens.css";
 
 @source "./sections/**/*.{js,jsx}";
+@source "./layouts/**/*.{js,jsx}";
 @source "../node_modules/@uniweb/kit/src/**/*.{js,jsx}";

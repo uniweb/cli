@@ -570,10 +570,10 @@ import { H2, P, Span } from '@uniweb/kit'
 
 Don't render content strings with `{content.paragraphs[0]}` in JSX — that shows HTML tags as visible text. Use `<P>`, `<H2>`, `<Span>`, etc. for content strings.
 
-**Rendering full content** (`@uniweb/kit/styled`):
+**Rendering full content** (`@uniweb/kit`):
 
 ```jsx
-import { Section, Render } from '@uniweb/kit/styled'
+import { Section, Render } from '@uniweb/kit'
 
 <Render content={block.parsedContent} block={block} />   // ProseMirror nodes → React
 <Section block={block} width="lg" padding="md" />         // Render + prose styling + layout
@@ -581,13 +581,13 @@ import { Section, Render } from '@uniweb/kit/styled'
 
 `Render` processes ProseMirror nodes into React elements — paragraphs, headings, images, code blocks, lists, tables, alerts, and insets. `Section` wraps `Render` with prose typography and layout options. Use these when rendering a block's complete content. Use `P`, `H2`, etc. when you extract specific fields and arrange them with custom layout.
 
-**Rendering visuals** (`@uniweb/kit/styled`):
+**Rendering visuals** (`@uniweb/kit`):
 
 `<Visual>` renders the first visual from content (inset > video > image). See Insets section below.
 
 **Other primitives** (`@uniweb/kit`): `Link`, `Image`, `Icon`, `Media`, `Asset`, `SafeHtml`, `SocialIcon`, `FileLogo`, `cn()`
 
-**Other styled** (`@uniweb/kit/styled`): `SidebarLayout`, `Prose`, `Article`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
+**Other styled** (`@uniweb/kit`): `SidebarLayout`, `Prose`, `Article`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
 **Hooks:**
 - `useScrolled(threshold)` → boolean for scroll-based header styling
@@ -640,7 +640,7 @@ website.getLocaleUrl('es')
 Components access inline `@` references via `block.insets` (separate from `block.childBlocks`):
 
 ```jsx
-import { Visual } from '@uniweb/kit/styled'
+import { Visual } from '@uniweb/kit'
 
 // Visual renders the first visual: inset > video > image
 function SplitContent({ content, block, params }) {
@@ -658,7 +658,7 @@ function SplitContent({ content, block, params }) {
 - `block.insets` — array of Block instances from `@` references
 - `block.getInset(refId)` — lookup by refId (used by sequential renderers)
 - `content.insets` — flat array of `{ refId }` entries (parallel to `content.imgs`)
-- `<Visual>` — renders first inset > video > image from content (from `@uniweb/kit/styled`)
+- `<Visual>` — renders first inset > video > image from content (from `@uniweb/kit`)
 
 Inset components declare `inset: true` in meta.js. Use `hidden: true` for inset-only components:
 
