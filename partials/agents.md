@@ -1052,7 +1052,8 @@ Only folders with `meta.js` in `sections/` (or `components/` for older foundatio
 ### Website and Page APIs
 
 ```jsx
-const { website } = useWebsite()
+const { website } = useWebsite()  // or block.website
+const page = website.activePage   // or block.page 
 
 // Navigation
 const pages = website.getPageHierarchy({ for: 'header' })  // or 'footer'
