@@ -482,8 +482,8 @@ theme: dark
 ```yaml
 theme:
   mode: light
-  primary: var(--neutral-900)        # Dark buttons in a light section
-  primary-hover: var(--neutral-800)
+  primary: neutral-900               # Dark buttons in a light section
+  primary-hover: neutral-800
 ```
 
 Any semantic token (`section`, `heading`, `body`, `primary`, `link`, etc.) can be overridden this way. The overrides are applied as inline CSS custom properties on the section wrapper — components don't need to know about them.

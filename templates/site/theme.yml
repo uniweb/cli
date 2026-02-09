@@ -59,7 +59,7 @@ colors:
 #   light:
 #     section: white
 #   medium:
-#     section: 'var(--neutral-100)'
+#     section: neutral-100
 #   dark:
 #     heading: white
 
