@@ -241,23 +241,25 @@ Access: `content.data?.before`, `content.data?.after` → raw code strings.
 
 ### Section Backgrounds
 
-Set `background` in frontmatter — the runtime renders it automatically:
+Set `background` in frontmatter — the runtime renders it automatically. The string form auto-detects the type:
 
 ```yaml
----
-type: Hero
-theme: dark
-background: /images/hero.jpg              # Simple: URL (image or video auto-detected)
----
+background: /images/hero.jpg                             # Image (by extension)
+background: /videos/hero.mp4                             # Video (by extension)
+background: linear-gradient(135deg, #667eea, #764ba2)    # CSS gradient
+background: '#1a1a2e'                                    # Color (hex — quote in YAML)
+background: var(--primary-900)                            # Color (CSS variable)
 ```
 
-Full syntax supports `image`, `video`, `gradient`, `color` modes plus overlays:
+The object form gives more control:
 
 ```yaml
 background:
   image: { src: /img.jpg, position: center top }
   overlay: { enabled: true, type: dark, opacity: 0.5 }
 ```
+
+Overlay shorthand — `overlay: 0.5` is equivalent to `{ enabled: true, type: dark, opacity: 0.5 }`.
 
 Components that render their own background declare `background: 'self'` in `meta.js`.
 
