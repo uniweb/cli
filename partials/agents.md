@@ -1033,13 +1033,15 @@ import { Section, Render } from '@uniweb/kit'
 
 ```
 foundation/src/
-├── sections/            # Section types (auto-discovered via meta.js)
-│   ├── Hero/
-│   │   ├── Hero.jsx     # Entry — or index.jsx, both work
+├── sections/            # Section types (auto-discovered)
+│   ├── Hero.jsx         # Bare file — simple components need no folder
+│   ├── Features/        # Folder — when you need meta.js, helpers, etc.
+│   │   ├── index.jsx
 │   │   └── meta.js
-│   └── Features/
-│       ├── Features.jsx
-│       └── meta.js
+│   └── insets/          # Organizational subdirectory (lowercase)
+│       └── Diagram/     # Nested section type — meta.js required
+│           ├── index.jsx
+│           └── meta.js
 ├── components/          # Your React components (no meta.js, not selectable)
 │   ├── ui/              # shadcn-compatible primitives
 │   │   └── button.jsx
@@ -1047,7 +1049,14 @@ foundation/src/
 └── styles.css
 ```
 
-Only folders with `meta.js` in `sections/` (or `components/` for older foundations) become section types. Everything else is ordinary React — organize however you like.
+**Discovery rules for `sections/`:**
+
+- **Root level** — PascalCase bare files (`Hero.jsx`) and folders (`Features/`) are addressable by default. No `meta.js` required (an implicit one is generated with an inferred title).
+- **Root level with meta.js** — Folder has `meta.js` → uses explicit meta (params, inset, children, etc.).
+- **Nested levels** — `meta.js` required for addressability. Lowercase directories like `insets/`, `utilities/` are organizational — they're recursed into but not registered as section types themselves.
+- **Hidden** — `hidden: true` in meta.js excludes a component from discovery entirely.
+
+Everything outside `sections/` is ordinary React — organize however you like.
 
 ### Website and Page APIs
 
@@ -1114,7 +1123,7 @@ function SplitContent({ content, block }) {
 - `block.getInset(refId)` — lookup by refId (used by sequential renderers)
 - `content.insets` — flat array of `{ refId }` entries (parallel to `content.imgs`)
 
-**SSG and hooks:** Inset components that use React hooks (useState, useEffect) will trigger prerender warnings during `pnpm build`. This is expected — the SSG pipeline cannot render hooks due to dual React instances in the build. The warnings are informational; the page renders correctly client-side. If you see `"Skipped SSG for /..."` or `"Invalid hook call"`, this is the cause.
+**SSG:** Insets, child blocks (`<ChildBlocks>`), and `<Visual>` all render correctly during prerender (SSG). The prerender pipeline provides an inline `childBlockRenderer` that handles these without React hooks. However, inset components that use React hooks internally (useState, useEffect) will still trigger prerender warnings — the component itself can't use hooks in the SSG pipeline due to dual React instances. The warnings are informational; the page renders correctly client-side.
 
 Inset components declare `inset: true` in meta.js:
 
