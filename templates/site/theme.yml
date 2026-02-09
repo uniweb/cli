@@ -64,12 +64,12 @@ colors:
 #     heading: white
 
 # ─── Inline Text Styles ───────────────────────────────────────────────────────
-# Named styles for inline text in markdown: [text]{emphasis}
+# Named styles for inline text in markdown: [text]{accent}
 # Each name maps to CSS properties.
-# Defaults: emphasis (colored + bold), muted (subtle).
+# Defaults: accent (colored + bold), muted (subtle).
 
 # inline:
-#   emphasis:
+#   accent:
 #     color: 'var(--link)'
 #     font-weight: '600'
 #   muted:

@@ -282,6 +282,46 @@ Links mixed with non-link text stay as inline `<a>` tags within `content.paragra
 Check out [this](/a) and [that](/b).   ← inline links in paragraph text, NOT in content.links[]
 ```
 
+### Inline Text Styling
+
+Style specific words or phrases using bracketed spans with boolean attributes:
+
+```markdown
+# Build [faster]{accent} with structure
+
+This is [less important]{muted} context.
+```
+
+The framework provides two defaults: `accent` (colored + bold) and `muted` (subtle). These adapt to context automatically — in dark sections, `accent` resolves to a lighter shade.
+
+**What you write → what components receive:**
+
+| Markdown | HTML in content string |
+|----------|----------------------|
+| `[text]{accent}` | `<span accent="true">text</span>` |
+| `[text]{muted}` | `<span muted="true">text</span>` |
+| `[text]{color=red}` | `<span style="color: red">text</span>` |
+
+CSS is generated from `theme.yml`'s `inline:` section using attribute selectors (`span[accent] { ... }`). Sites can define additional named styles:
+
+```yaml
+inline:
+  accent:
+    color: var(--link)
+    font-weight: '600'
+  callout:
+    color: var(--accent-600)
+    font-style: italic
+```
+
+**Common pattern — accented hero heading:**
+```markdown
+# Build the future
+# [with confidence]{accent}
+```
+
+Components receive HTML strings with the spans already applied. Kit's `<H1>`, `<P>`, etc. render them correctly via `dangerouslySetInnerHTML`.
+
 ### Structured Data
 
 Tagged code blocks pass structured data via `content.data`:
@@ -623,7 +663,7 @@ fonts:
   body: "'Inter', system-ui, sans-serif"
 
 inline:
-  emphasis:                 # For [text]{emphasis} in markdown
+  accent:                   # For [text]{accent} in markdown
     color: var(--link)
     font-weight: '600'
 
