@@ -70,6 +70,8 @@ pnpm build      # Build for production
 pnpm preview    # Preview production build (SSG + SPA)
 ```
 
+> **npm works too.** Projects include both `pnpm-workspace.yaml` and npm workspaces. Replace `pnpm` with `npm` in any command above.
+
 ## Content Authoring
 
 ### Section Format
@@ -114,6 +116,7 @@ content = {
   lists: [],        // [[{ paragraphs, links, lists, ... }]] — each list item is an object, not a string
   quotes: [],       // Blockquotes
   data: {},         // From tagged code blocks (```yaml:tagname)
+  // Untagged code blocks appear in `sequence` only — not in any flat field
   headings: [],     // Overflow headings after subtitle2
   items: [],        // Each has the same flat structure — from headings after body content
   sequence: [],     // All elements in document order
@@ -128,11 +131,15 @@ content = {
 We built this for you.  ← paragraph
 
 ### Fast                ← items[0].title
+![](lu-zap)             ← items[0].icons[0]
 Lightning quick.        ← items[0].paragraphs[0]
 
 ### Secure              ← items[1].title
+![](lu-shield)          ← items[1].icons[0]
 Enterprise-grade.       ← items[1].paragraphs[0]
 ```
+
+Each item has the same content shape as the top level — `title`, `paragraphs`, `icons`, `links`, `lists`, etc. are all available per item.
 
 **Lists** contain bullet or ordered list items. Each list item is an object with the same content shape — not a plain string:
 
@@ -581,6 +588,8 @@ import { H2, P, Span } from '@uniweb/kit'
 <Text text={content.title} as="h2" className="..." />  // explicit tag
 ```
 
+These components render their own HTML tag — don't wrap them in a matching tag. `<h2><H2 text={...} /></h2>` creates a nested `<h2><h2>...</h2></h2>`, which is invalid HTML. Just use `<H2 text={...} />` directly.
+
 Don't render content strings with `{content.paragraphs[0]}` in JSX — that shows HTML tags as visible text. Use `<P>`, `<H2>`, `<Span>`, etc. for content strings.
 
 **Rendering full content** (`@uniweb/kit`):
@@ -866,6 +875,8 @@ Semantic color tokens (`text-heading`, `bg-section`, `bg-primary`, etc.) come fr
 **Component not appearing** — Verify `meta.js` exists and doesn't have `hidden: true`. Rebuild: `cd foundation && pnpm build`.
 
 **Styles not applying** — Verify `@source` in `styles.css` includes your component paths. Check custom colors match `@theme` definitions.
+
+**Prerender warnings about hooks/useState** — During `pnpm build`, you may see `Warning: Failed to render /: Cannot read properties of null (reading 'useState')` for pages. This is a known limitation of the SSG pipeline (dual React instances in development). The site works correctly client-side — these warnings only affect the static HTML preview, not functionality.
 
 ## Further Documentation
 
