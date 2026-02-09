@@ -738,12 +738,10 @@ Uniweb section types do more with less because the framework handles concerns th
 
 ### Migration approach
 
-1. **Start with a blank workspace** (unless adding to an existing one):
+1. **Check if you're inside an existing Uniweb workspace** (look for `pnpm-workspace.yaml` and a `package.json` with `uniweb` as a dependency). If yes, use `pnpm uniweb add` to create projects inside it. If no, create a new workspace:
    ```bash
    pnpm create uniweb my-project --template blank
    ```
-
-2. **Choose the workspace structure** — single (one foundation + one site), segregated (shared foundation, multiple sites), or co-located (independent projects grouped by directory). See the docs for workspace recipes.
 
 3. **Use named layouts** for different page groups — a marketing layout for landing pages, a docs layout for `/docs/*`. One site, multiple layouts, each with its own header/footer/sidebar content.
 
