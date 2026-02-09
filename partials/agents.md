@@ -105,11 +105,11 @@ type: Hero
 theme: dark
 ---
 
-### Eyebrow Text        ← pretitle (heading before a more important one)
+### V1.0.0 IS OUT         ← pretitle (small label above the title)
 
-# Main Headline         ← title
+# Build the system.       ← title (the big headline)
 
-## Subtitle             ← subtitle
+## Not every page.         ← subtitle
 
 Description paragraph.
 
@@ -117,6 +117,8 @@ Description paragraph.
 
 ![Image](./image.jpg)
 ```
+
+Content authors don't need to understand *why* `###` means pretitle — just that putting a smaller heading before the main heading creates a small label above it. Heading levels set *structure* (pretitle, title, subtitle), not font size — the component controls visual sizing.
 
 ### Content Shape
 
