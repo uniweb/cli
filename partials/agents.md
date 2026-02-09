@@ -490,18 +490,14 @@ Any semantic token (`section`, `heading`, `body`, `primary`, `link`, etc.) can b
 ```yaml
 # site/theme.yml
 colors:
-  primary:
-    base: '#3b82f6'
-    exactMatch: true        # Use this exact hex at the 500 shade
+  primary: '#3b82f6'          # Your exact hex appears at shade 500
   secondary: '#64748b'
   accent: '#8b5cf6'
-  neutral: stone            # Named preset: stone, zinc, gray, slate, neutral
+  neutral: stone              # Named preset: stone, zinc, gray, slate, neutral
 
 contexts:
   light:
-    section: '#fafaf9'      # Override individual tokens per context
-    primary: var(--primary-500)
-    primary-hover: var(--primary-600)
+    section: '#fafaf9'        # Override individual tokens per context
 
 fonts:
   import:
@@ -519,6 +515,39 @@ vars:                       # Override foundation-declared variables
 ```
 
 Each color generates 11 OKLCH shades (50–950). The `neutral` palette is special — use a named preset (`stone` for warm) rather than a hex value. Three contexts are built-in: `light` (default), `medium`, `dark`. Context override keys match token names — `section:` not `bg:`, `primary:` not `btn-primary-bg:`.
+
+### How colors reach components
+
+Your hex color → 11 shades (50–950) → semantic tokens → components.
+
+**Shade 500 = your exact input color.** The build generates lighter shades (50–400) above it and darker shades (600–950) below it, redistributing lightness proportionally to maintain a smooth scale. Set `exactMatch: false` on a color to opt out and use fixed lightness values instead.
+
+Semantic tokens map shades to roles. The defaults for light/medium contexts:
+
+| Token | Shade | Purpose |
+|-------|-------|---------|
+| `--primary` | 600 | Button background |
+| `--primary-hover` | 700 | Button hover |
+| `--link` | 600 | Link color |
+| `--ring` | 500 | Focus ring |
+
+In dark contexts, `--primary` uses shade 500 and `--link` uses shade 400.
+
+**Buttons and links use shade 600 — darker than your input.** This is an accessibility choice: shade 600 provides better contrast with white button text. For medium-bright brand colors like orange, buttons will be noticeably darker than the brand color.
+
+**Recipe — brand-exact buttons:**
+
+```yaml
+colors:
+  primary: "#E35D25"
+
+contexts:
+  light:
+    primary: primary-500         # Your exact color on buttons
+    primary-hover: primary-600   # Darker on hover
+```
+
+> **Contrast warning:** Bright brand colors (orange, yellow, light green) at shade 500 may not meet WCAG contrast (4.5:1) with white foreground text. Test buttons for readability — if contrast is insufficient, keep the default shade 600 mapping or darken your base color.
 
 ### Foundation variables
 
