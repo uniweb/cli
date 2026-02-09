@@ -115,8 +115,7 @@ content = {
   insets: [],       // Inline @Component references — { refId }
   lists: [],        // [[{ paragraphs, links, lists, ... }]] — each list item is an object, not a string
   quotes: [],       // Blockquotes
-  data: {},         // From tagged code blocks (```yaml:tagname)
-  // Untagged code blocks appear in `sequence` only — not in any flat field
+  data: {},         // From tagged code blocks (```yaml:tagname) and (```js:tagname)
   headings: [],     // Overflow headings after subtitle2
   items: [],        // Each has the same flat structure — from headings after body content
   sequence: [],     // All elements in document order
@@ -225,6 +224,20 @@ submitLabel: Send
 ````
 
 Access: `content.data?.form` → `{ fields: [...], submitLabel: "Send" }`
+
+**Code blocks need tags too.** Untagged code blocks (plain `````js```) are only visible to sequential-rendering components like Article or DocSection. If a component needs to access code blocks by name, tag them:
+
+````markdown
+```jsx:before
+const old = fetch('/api')
+```
+
+```jsx:after
+const data = useData()
+```
+````
+
+Access: `content.data?.before`, `content.data?.after` → raw code strings.
 
 ### Section Backgrounds
 
