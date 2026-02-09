@@ -137,9 +137,9 @@ The semantic parser extracts markdown into a flat, guaranteed structure. No null
 
 ```js
 content = {
-  title: '',        // Main heading
+  title: '',        // Main heading (string or string[] for multi-line)
   pretitle: '',     // Heading before main title (auto-detected)
-  subtitle: '',     // Heading after title
+  subtitle: '',     // Heading after title (string or string[] for multi-line)
   subtitle2: '',    // Third-level heading
   paragraphs: [],   // Text blocks
   links: [],        // { href, label, role } — standalone links become buttons
@@ -195,6 +195,55 @@ Enterprise-grade security.     │  content.items[1].paragraphs[0] = "Enterprise
 ```
 
 Headings before the main title become `pretitle`. Headings after the main title at a lower importance become `subtitle`. Headings that appear after body content (paragraphs, links, images) start the `items` array.
+
+### Multi-Line Headings
+
+Consecutive headings at the same level merge into a title array — a single heading split across visual lines:
+
+```markdown
+# Build the future              │  content.title = ["Build the future", "with confidence"]
+# with confidence               │
+```
+
+Kit's `<H1>`, `<H2>`, etc. render arrays as a single tag with line breaks. This is how you create dramatic multi-line hero headlines.
+
+**Works with accent styling:**
+
+```markdown
+# Build the future              │  content.title = [
+# [with confidence]{accent}     │    "Build the future",
+                                │    "<span accent=\"true\">with confidence</span>"
+                                │  ]
+```
+
+**Works at any heading slot** — title, subtitle, items:
+
+```markdown
+### Our Mission                 │  content.pretitle = "Our Mission"
+# Build the future              │  content.title = ["Build the future",
+# with confidence               │                   "with confidence"]
+## The platform for             │  content.subtitle = ["The platform for",
+## modern teams                 │                      "modern teams"]
+```
+
+**Rule:** Same-level continuation only applies before going deeper. Once a subtitle level is reached, same-level headings start new items instead of merging:
+
+```markdown
+# Features                      │  title = "Features"
+                                │
+We built this for you.          │  paragraph
+                                │
+### Fast                        │  items[0].title = "Fast"
+### Secure                      │  items[1].title = "Secure" ← new item, not merged
+```
+
+Use `---` to force separate items when same-level headings would otherwise merge:
+
+```markdown
+# Line one                      │  title = "Line one"
+---                             │  ← divider forces split
+# Line two                      │  items[0].title = "Line two"
+```
 
 **Lists** contain bullet or ordered list items. Each list item is an object with the same content shape — not a plain string:
 
@@ -314,11 +363,14 @@ inline:
     font-style: italic
 ```
 
-**Common pattern — accented hero heading:**
+**Common pattern — accented multi-line hero heading:**
+
 ```markdown
 # Build the future
 # [with confidence]{accent}
 ```
+
+This produces `content.title = ["Build the future", "<span accent=\"true\">with confidence</span>"]` — an array rendered as a single `<h1>` with visual line breaks. See [Multi-Line Headings](#multi-line-headings) for details.
 
 Components receive HTML strings with the spans already applied. Kit's `<H1>`, `<P>`, etc. render them correctly via `dangerouslySetInnerHTML`.
 
@@ -914,11 +966,13 @@ Content fields (`title`, `pretitle`, `paragraphs[]`, list item text) are **HTML 
 **Rendering text** (`@uniweb/kit`):
 
 ```jsx
-import { H2, P, Span } from '@uniweb/kit'
+import { H1, H2, P, Span } from '@uniweb/kit'
 
-<H2 text={content.title} className="text-heading text-3xl font-bold" />
-<P text={content.paragraphs[0]} className="text-body" />
-<P text={content.paragraphs} />   // array → each string becomes its own <p>
+<H1 text={content.title} className="text-heading text-5xl font-bold" />
+  // string → single <h1>, array → single <h1> with line breaks (multi-line headings)
+<H2 text={content.subtitle} className="text-heading text-3xl font-bold" />
+<P text={content.paragraphs} className="text-body" />
+  // array → each string becomes its own <p>
 <Span text={listItem.paragraphs[0]} className="text-subtle" />
 ```
 
