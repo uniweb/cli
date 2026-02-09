@@ -692,6 +692,14 @@ These compose with semantic tokens — they adapt per context because they refer
 
 **The priority:** Design quality > portability > configurability. It's better to ship a foundation with beautiful, detailed design that's less configurable than to ship a generic one that looks flat. A foundation that looks great for one site is more valuable than one that looks mediocre for any site.
 
+**Text tones beyond the 3-token set.** Source designs often have 4+ text tones (primary, secondary, tertiary, disabled). Uniweb provides 3 (`text-heading`, `text-body`, `text-subtle`). Don't collapse the extras — create them with `color-mix()` so they still adapt per context:
+
+```css
+/* foundation/src/styles.css */
+.text-tertiary { color: color-mix(in oklch, var(--body), var(--subtle) 50%); }
+.text-disabled { color: color-mix(in oklch, var(--subtle), transparent 40%); }
+```
+
 **When migrating from an existing design**, map every visual detail — not just the ones that have a semantic token. Shadow systems, border hierarchies, custom hover effects, accent tints: create CSS classes or Tailwind utilities in `styles.css` for anything the original has that tokens don't cover. Use palette shades directly (`var(--primary-300)`, `bg-neutral-200`) for fine-grained color control beyond the semantic tokens.
 
 ## Component Development
@@ -735,6 +743,79 @@ function Header({ content, block }) { /* ... */ }
 Header.className = 'p-0'
 Header.as = 'header'
 export default Header
+```
+
+### Content Patterns for Header and Footer
+
+Header and Footer are the hardest components to content-model because they combine several content categories. Use different parts of the content shape for each role:
+
+**Header** — title for logo, list for nav links, standalone link for CTA, tagged YAML for metadata:
+
+````markdown
+---
+type: Header
+---
+
+# Acme Inc
+
+- ![](lu-search) [How It Works](/how-it-works)
+- ![](lu-users) [For Teams](/for-teams)
+- ![](lu-book) [Docs](/docs)
+
+[Get Started](/docs/quickstart)
+
+```yaml:config
+github: https://github.com/acme
+version: v2.1.0
+```
+````
+
+```jsx
+function Header({ content, block }) {
+  const logo = content.title                    // "Acme Inc"
+  const navItems = content.lists[0] || []       // [{icons, links}, ...]
+  const cta = content.links[0]                  // {href, label}
+  const config = content.data?.config           // {github, version}
+  // ...
+}
+```
+
+**Footer** — paragraph for tagline, nested list for grouped columns, tagged YAML for legal:
+
+````markdown
+---
+type: Footer
+---
+
+Build something great.
+
+- Product
+  - [Features](/features)
+  - [Pricing](/pricing)
+- Developers
+  - [Docs](/docs)
+  - [GitHub](https://github.com/acme){target=_blank}
+- Community
+  - [Discord](#)
+  - [Blog](/blog)
+
+```yaml:legal
+copyright: © 2025 Acme Inc
+```
+````
+
+```jsx
+function Footer({ content, block }) {
+  const tagline = content.paragraphs[0]         // "Build something great."
+  const columns = content.lists[0] || []        // [{paragraphs, lists}, ...]
+  const legal = content.data?.legal             // {copyright}
+
+  // Each column: group.paragraphs[0] = label, group.lists[0] = links
+  columns.map(group => ({
+    label: group.paragraphs[0],
+    links: group.lists[0]?.map(item => item.links[0])
+  }))
+}
 ```
 
 ### meta.js Structure
