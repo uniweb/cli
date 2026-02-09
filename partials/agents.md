@@ -928,7 +928,7 @@ export default {
   title: 'Feature Grid',
   description: 'Grid of feature cards with icons',
   category: 'marketing',
-  // hidden: true,          // Hide from content authors
+  // hidden: true,          // Exclude from export (internal/helper component)
   // background: 'self',    // Component renders its own background
   // inset: true,           // Available for @ComponentName references in markdown
   // visuals: 1,            // Expects 1 visual (image, video, or inset)
@@ -1115,16 +1115,17 @@ function SplitContent({ content, block }) {
 
 **SSG and hooks:** Inset components that use React hooks (useState, useEffect) will trigger prerender warnings during `pnpm build`. This is expected — the SSG pipeline cannot render hooks due to dual React instances in the build. The warnings are informational; the page renders correctly client-side. If you see `"Skipped SSG for /..."` or `"Invalid hook call"`, this is the cause.
 
-Inset components declare `inset: true` in meta.js. Use `hidden: true` for inset-only components:
+Inset components declare `inset: true` in meta.js:
 
 ```js
 // sections/insets/NetworkDiagram/meta.js
 export default {
   inset: true,
-  hidden: true,
   params: { variant: { type: 'select', options: ['full', 'compact'], default: 'full' } },
 }
 ```
+
+Whether an inset appears in a section palette is a concern of the parent component (via `children` and `insets` in its meta.js), not a property of the inset itself. Don't use `hidden: true` on insets — `hidden` means "don't export this component at all" (internal helpers, not-yet-ready components).
 
 ### Dispatcher Pattern
 
@@ -1304,7 +1305,7 @@ Semantic color tokens (`text-heading`, `bg-section`, `bg-primary`, etc.) come fr
 
 **"Could not load foundation"** — Check `site/package.json` has `"foundation": "file:../foundation"` (or `"default": "file:../../foundations/default"` for multi-site).
 
-**Component not appearing** — Verify `meta.js` exists and doesn't have `hidden: true`. Rebuild: `cd foundation && pnpm build`.
+**Component not appearing** — Verify `meta.js` exists. Check for `hidden: true` (means component is excluded from export — only use for internal helpers). Rebuild: `cd foundation && pnpm build`.
 
 **Styles not applying** — Verify `@source` in `styles.css` includes your component paths. Check custom colors match `@theme` definitions.
 
