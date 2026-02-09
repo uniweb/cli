@@ -379,6 +379,7 @@ The runtime does significant work that other frameworks push onto components. Un
 | `isDark ? 'text-white' : 'text-gray-900'` | Just write `text-heading` — it adapts |
 | Background rendering code | Declare `background:` in frontmatter instead |
 | Color constants / tokens files | Colors come from `theme.yml` |
+| Custom CSS variables for colors (`--ink`, `--paper`, `--accent`) in `styles.css` | Map source colors to `theme.yml` colors/neutral. The build generates `--primary-50` through `--primary-950`, `--neutral-50` through `--neutral-950`, etc. Components use semantic tokens (`text-heading`, `bg-section`) that resolve from these palettes per context. A parallel color system bypasses all of this. |
 
 **What to hardcode** (not semantic — same in every context): layout (`grid`, `flex`, `max-w-6xl`), spacing (`p-6`, `gap-8`), typography scale (`text-3xl`, `font-bold`), animations, border-radius.
 
@@ -754,9 +755,11 @@ Uniweb section types do more with less because the framework handles concerns th
    - **Level 2**: Move content from JSX to markdown. Components read from `content` instead of hardcoded strings. Content authors can now edit without touching code.
    - **Level 3**: Replace hardcoded Tailwind colors with semantic tokens. Components work in any context and any brand.
 
-6. **Name by purpose, not by content** — `TheModel` → `SplitContent`, `WorkModes` → `FeatureColumns`, `FinalCTA` → `CallToAction`. Components render a *kind* of content, not specific content.
+6. **Map source colors to `theme.yml`, not to foundation CSS.** The most common migration mistake is recreating the source site's color tokens as CSS custom properties in `styles.css` (e.g., `--ink`, `--paper`, `--accent`). This creates a parallel color system that bypasses CCA's semantic tokens, context classes, and site-level theming entirely. Instead: identify the source's primary color → set it as `colors.primary` in theme.yml. Identify the neutral tone → set it as `colors.neutral` (e.g., `stone` for warm). Identify context needs → use `theme:` frontmatter per section. Components use `text-heading`, `bg-section`, `bg-card` — never custom color variables.
 
-7. **UI helpers → `components/`** — Buttons, badges, cards go in `src/components/` (no `meta.js` needed, not selectable by content authors).
+7. **Name by purpose, not by content** — `TheModel` → `SplitContent`, `WorkModes` → `FeatureColumns`, `FinalCTA` → `CallToAction`. Components render a *kind* of content, not specific content.
+
+8. **UI helpers → `components/`** — Buttons, badges, cards go in `src/components/` (no `meta.js` needed, not selectable by content authors).
 
 ## Tailwind CSS v4
 
