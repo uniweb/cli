@@ -2,6 +2,27 @@
 
 Uniweb is a Component Content Architecture (CCA). Content lives in markdown, code lives in React components, and a runtime connects them. The runtime handles section wrapping, background rendering, context theming, and token resolution — components receive pre-parsed content and render it with semantic tokens. Understanding what the runtime does (and therefore what components should *not* do) is the key to working effectively in this architecture.
 
+## Documentation
+
+This project was created with [Uniweb](https://github.com/uniweb/cli). Full documentation (markdown, fetchable): https://github.com/uniweb/docs
+
+**To read a specific page:** `https://raw.githubusercontent.com/uniweb/docs/main/{section}/{page}.md`
+
+**By task:**
+
+| Task | Doc page |
+|------|----------|
+| Writing page content | `authoring/writing-content.md` |
+| Theming and styling | `authoring/theming.md` |
+| Building components | `development/creating-components.md` |
+| Kit API (hooks, components) | `reference/kit-reference.md` |
+| Site configuration | `reference/site-configuration.md` |
+| Content shape reference | `reference/content-structure.md` |
+| Component metadata (meta.js) | `reference/component-metadata.md` |
+| Migrating existing designs | `development/converting-existing.md` |
+
+> **npm registry:** Use `https://registry.npmjs.org/uniweb` for package metadata — the npmjs.com website blocks automated requests.
+
 ## Project Structure
 
 ```
