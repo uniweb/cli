@@ -1,8 +1,3 @@
-/**
- * Section Component Metadata (v2)
- *
- * A versatile content section for headings, text, and links.
- */
 export default {
   title: 'Section',
   description: 'A versatile content section for headings, text, and links',
@@ -19,12 +14,6 @@ export default {
   },
 
   params: {
-    theme: {
-      type: 'select',
-      label: 'Theme',
-      options: ['light', 'dark', 'primary'],
-      default: 'light',
-    },
     align: {
       type: 'select',
       label: 'Alignment',
@@ -47,15 +36,11 @@ export default {
   presets: {
     default: {
       label: 'Centered',
-      params: { theme: 'light', align: 'center' },
-    },
-    dark: {
-      label: 'Dark Theme',
-      params: { theme: 'dark', align: 'center' },
+      params: { align: 'center' },
     },
     left: {
       label: 'Left Aligned',
-      params: { theme: 'light', align: 'left' },
+      params: { align: 'left' },
     },
   },
 }
