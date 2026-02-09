@@ -100,7 +100,7 @@ content = {
   icons: [],        // { library, name, role }
   videos: [],       // Video embeds
   insets: [],       // Inline @Component references — { refId }
-  lists: [],        // Bullet/ordered lists
+  lists: [],        // [[{ paragraphs, links, lists, ... }]] — each list item is an object, not a string
   quotes: [],       // Blockquotes
   data: {},         // From tagged code blocks (```yaml:tagname)
   headings: [],     // Overflow headings after subtitle2
@@ -121,6 +121,35 @@ Lightning quick.        ← items[0].paragraphs[0]
 
 ### Secure              ← items[1].title
 Enterprise-grade.       ← items[1].paragraphs[0]
+```
+
+**Lists** contain bullet or ordered list items. Each list item is an object with the same content shape — not a plain string:
+
+```markdown
+# Features               ← title
+
+- Fast builds             ← lists[0][0].paragraphs[0]
+- **Hot** reload          ← lists[0][1].paragraphs[0]  (HTML: "<strong>Hot</strong> reload")
+```
+
+Items can contain lists:
+
+```markdown
+### Starter               ← items[0].title
+$9/month                  ← items[0].paragraphs[0]
+
+- Feature A               ← items[0].lists[0][0].paragraphs[0]
+- Feature B               ← items[0].lists[0][1].paragraphs[0]
+```
+
+Render list item text with kit components (see [kit section](#uniwebkit) below):
+
+```jsx
+import { Span } from '@uniweb/kit'
+
+content.lists[0]?.map((listItem, i) => (
+  <li key={i}><Span text={listItem.paragraphs[0]} /></li>
+))
 ```
 
 ### Icons
@@ -520,9 +549,45 @@ All defaults belong in `meta.js`, not inline in component code.
 
 ### @uniweb/kit
 
-**Primitives** (`@uniweb/kit`): `H1`–`H6`, `P`, `Span`, `Text`, `Link`, `Image`, `Icon`, `Media`, `Asset`, `SocialIcon`, `FileLogo`, `cn()`
+Content fields (`title`, `pretitle`, `paragraphs[]`, list item text) are **HTML strings** — they contain markup like `<strong>`, `<em>`, `<a>` from the author's markdown. The kit provides components to render them correctly.
 
-**Styled** (`@uniweb/kit/styled`): `Section`, `Render`, `Visual`, `SidebarLayout`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
+**Rendering text** (`@uniweb/kit`):
+
+```jsx
+import { H2, P, Span } from '@uniweb/kit'
+
+<H2 text={content.title} className="text-heading text-3xl font-bold" />
+<P text={content.paragraphs[0]} className="text-body" />
+<P text={content.paragraphs} />   // array → each string becomes its own <p>
+<Span text={listItem.paragraphs[0]} className="text-subtle" />
+```
+
+`H1`–`H6`, `P`, `Span`, `Div` are all wrappers around `Text` with a preset tag:
+
+```jsx
+<Text text={content.title} as="h2" className="..." />  // explicit tag
+```
+
+Don't render content strings with `{content.paragraphs[0]}` in JSX — that shows HTML tags as visible text. Use `<P>`, `<H2>`, `<Span>`, etc. for content strings.
+
+**Rendering full content** (`@uniweb/kit/styled`):
+
+```jsx
+import { Section, Render } from '@uniweb/kit/styled'
+
+<Render content={block.parsedContent} block={block} />   // ProseMirror nodes → React
+<Section block={block} width="lg" padding="md" />         // Render + prose styling + layout
+```
+
+`Render` processes ProseMirror nodes into React elements — paragraphs, headings, images, code blocks, lists, tables, alerts, and insets. `Section` wraps `Render` with prose typography and layout options. Use these when rendering a block's complete content. Use `P`, `H2`, etc. when you extract specific fields and arrange them with custom layout.
+
+**Rendering visuals** (`@uniweb/kit/styled`):
+
+`<Visual>` renders the first visual from content (inset > video > image). See Insets section below.
+
+**Other primitives** (`@uniweb/kit`): `Link`, `Image`, `Icon`, `Media`, `Asset`, `SafeHtml`, `SocialIcon`, `FileLogo`, `cn()`
+
+**Other styled** (`@uniweb/kit/styled`): `SidebarLayout`, `Prose`, `Article`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
 **Hooks:**
 - `useScrolled(threshold)` → boolean for scroll-based header styling

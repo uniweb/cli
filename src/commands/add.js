@@ -22,6 +22,7 @@ import {
   discoverSites,
   updateRootScripts,
 } from '../utils/config.js'
+import { validatePackageName, getExistingPackageNames, resolveUniqueName } from '../utils/names.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { detectPackageManager, filterCmd, installCmd } from '../utils/pm.js'
 import { resolveTemplate } from '../templates/index.js'
@@ -157,6 +158,16 @@ export async function add(args) {
  */
 async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   let name = opts.name
+  const existingNames = await getExistingPackageNames(rootDir)
+
+  // Reject reserved names (format + reserved check only — collisions handled at package name level)
+  if (name) {
+    const valid = validatePackageName(name)
+    if (valid !== true) {
+      error(valid)
+      process.exit(1)
+    }
+  }
 
   // Interactive name prompt when name not provided and no --path
   if (!name && !opts.path) {
@@ -167,11 +178,7 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
       name: 'name',
       message: 'Foundation name:',
       initial: hasDefault ? 'foundation' : undefined,
-      validate: (value) => {
-        if (!value) return 'Name is required'
-        if (!/^[a-z0-9-]+$/.test(value)) return 'Use lowercase letters, numbers, and hyphens'
-        return true
-      },
+      validate: (value) => validatePackageName(value),
     }, {
       onCancel: () => {
         log('\nCancelled.')
@@ -193,9 +200,15 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
     process.exit(1)
   }
 
+  // Compute package name — auto-suffix if it collides with an existing package
+  let packageName = name || opts.project || 'foundation'
+  if (existingNames.has(packageName)) {
+    packageName = resolveUniqueName(packageName, '-foundation', existingNames)
+  }
+
   // Scaffold
   await scaffoldFoundation(fullPath, {
-    name: name || opts.project || 'foundation',
+    name: packageName,
     projectName,
     isExtension: false,
   }, {
@@ -215,7 +228,7 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   const sites = await discoverSites(rootDir)
   await updateRootScripts(rootDir, sites, pm)
 
-  success(`Created foundation '${name || 'foundation'}' at ${target}/`)
+  success(`Created foundation '${packageName}' at ${target}/`)
   log('')
   log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}`)
 }
@@ -225,6 +238,16 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
  */
 async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
   let name = opts.name
+  const existingNames = await getExistingPackageNames(rootDir)
+
+  // Reject reserved names (format + reserved check only — collisions handled at package name level)
+  if (name) {
+    const valid = validatePackageName(name)
+    if (valid !== true) {
+      error(valid)
+      process.exit(1)
+    }
+  }
 
   // Interactive name prompt when name not provided and no --path
   if (!name && !opts.path) {
@@ -235,11 +258,7 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
       name: 'name',
       message: 'Site name:',
       initial: hasDefault ? 'site' : undefined,
-      validate: (value) => {
-        if (!value) return 'Name is required'
-        if (!/^[a-z0-9-]+$/.test(value)) return 'Use lowercase letters, numbers, and hyphens'
-        return true
-      },
+      validate: (value) => validatePackageName(value),
     }, {
       onCancel: () => {
         log('\nCancelled.')
@@ -269,6 +288,11 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
     siteName = (!name || name === opts.project) ? `${opts.project}-site` : name
   } else {
     siteName = name || 'site'
+  }
+
+  // Auto-suffix package name if it collides with an existing package
+  if (existingNames.has(siteName)) {
+    siteName = resolveUniqueName(siteName, '-site', existingNames)
   }
 
   if (foundation) {
@@ -334,6 +358,16 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
  */
 async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   let name = opts.name
+  const existingNames = await getExistingPackageNames(rootDir)
+
+  // Reject reserved names (format + reserved check only — collisions handled at package name level)
+  if (name) {
+    const valid = validatePackageName(name)
+    if (valid !== true) {
+      error(valid)
+      process.exit(1)
+    }
+  }
 
   // Interactive name prompt when name not provided
   if (!name) {
@@ -341,11 +375,7 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
       type: 'text',
       name: 'name',
       message: 'Extension name:',
-      validate: (value) => {
-        if (!value) return 'Name is required'
-        if (!/^[a-z0-9-]+$/.test(value)) return 'Use lowercase letters, numbers, and hyphens'
-        return true
-      },
+      validate: (value) => validatePackageName(value),
     }, {
       onCancel: () => {
         log('\nCancelled.')
@@ -354,6 +384,11 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
     })
     name = response.name
   }
+
+  // Auto-suffix package name if it collides with an existing package
+  const extensionPackageName = existingNames.has(name)
+    ? resolveUniqueName(name, '-ext', existingNames)
+    : name
 
   // Determine target
   let target
@@ -372,7 +407,7 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Scaffold foundation with extension flag
   await scaffoldFoundation(fullPath, {
-    name,
+    name: extensionPackageName,
     projectName,
     isExtension: true,
   }, {
