@@ -583,6 +583,7 @@ ${colors.bright}Add Subcommands:${colors.reset}
   add foundation [name]   Add a foundation (--from, --path, --project)
   add site [name]         Add a site (--from, --foundation, --path, --project)
   add extension <name>    Add an extension (--from, --site, --path)
+  add section <name>      Add a section type to a foundation (--foundation)
 
 ${colors.bright}Global Options:${colors.reset}
   --non-interactive    Fail with usage info instead of prompting

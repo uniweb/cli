@@ -70,6 +70,15 @@ pnpm uniweb add site blog            # Named → ./blog/
 
 The name is both the directory name and the package name. Use `--project <name>` to co-locate under a project directory (e.g., `--project docs` → `docs/foundation/`).
 
+### Adding section types
+
+```bash
+pnpm uniweb add section Hero
+pnpm uniweb add section Hero --foundation ui   # When multiple foundations exist
+```
+
+Creates `src/sections/Hero/index.jsx` and `meta.js` with a minimal CCA-proper starter. The dev server picks it up automatically — no build or install needed.
+
 ### What the CLI generates
 
 **Foundation** (`vite.config.js`, `package.json`, `src/foundation.js`, `src/styles.css`):

@@ -1,17 +1,18 @@
 /**
  * Add Command
  *
- * Adds foundations, sites, extensions, or co-located projects to an existing workspace.
+ * Adds foundations, sites, extensions, section types, or co-located projects to an existing workspace.
  *
  * Usage:
  *   uniweb add project [name] [--from <template>]
  *   uniweb add foundation [name] [--from <template>] [--path <dir>] [--project <name>]
  *   uniweb add site [name] [--from <template>] [--foundation <name>] [--path <dir>] [--project <name>]
  *   uniweb add extension [name] [--from <template>] [--site <name>] [--path <dir>]
+ *   uniweb add section <name> [--foundation <name>]
  */
 
 import { existsSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import prompts from 'prompts'
 import yaml from 'js-yaml'
@@ -123,9 +124,10 @@ export async function add(rawArgs) {
         { label: 'foundation', description: 'Component library' },
         { label: 'site', description: 'Content site' },
         { label: 'extension', description: 'Additional component package' },
+        { label: 'section', description: 'Section type in a foundation' },
       ]))
       log('')
-      log(`Usage: ${prefix} add <project|foundation|site|extension> [name]`)
+      log(`Usage: ${prefix} add <project|foundation|site|extension|section> [name]`)
       process.exit(1)
     }
 
@@ -138,6 +140,7 @@ export async function add(rawArgs) {
         { title: 'Foundation', value: 'foundation', description: 'Component library' },
         { title: 'Site', value: 'site', description: 'Content site' },
         { title: 'Extension', value: 'extension', description: 'Additional component package' },
+        { title: 'Section', value: 'section', description: 'Section type in a foundation' },
       ],
     }, {
       onCancel: () => {
@@ -169,9 +172,12 @@ export async function add(rawArgs) {
     case 'extension':
       await addExtension(rootDir, projectName, parsed, pm)
       break
+    case 'section':
+      await addSection(rootDir, parsed)
+      break
     default:
       error(`Unknown subcommand: ${parsed.subcommand}`)
-      log(`Valid subcommands: project, foundation, site, extension`)
+      log(`Valid subcommands: project, foundation, site, extension, section`)
       process.exit(1)
   }
 }
@@ -876,19 +882,152 @@ async function wireExtensionToSite(rootDir, siteName, extensionName, extensionPa
 }
 
 /**
+ * Add a section type to a foundation
+ */
+async function addSection(rootDir, opts) {
+  let name = opts.name
+
+  // Interactive name prompt when not provided
+  if (!name) {
+    if (isNonInteractive(process.argv)) {
+      error(`Missing section name.\n`)
+      log(`Usage: ${getCliPrefix()} add section <Name>`)
+      log(`\nSection names use PascalCase: Hero, FeatureGrid, CallToAction`)
+      process.exit(1)
+    }
+
+    const response = await prompts({
+      type: 'text',
+      name: 'name',
+      message: 'Section name (PascalCase):',
+      validate: (value) => /^[A-Z][a-zA-Z0-9]*$/.test(value) || 'Use PascalCase: Hero, FeatureGrid, CallToAction',
+    }, {
+      onCancel: () => {
+        log('\nCancelled.')
+        process.exit(0)
+      },
+    })
+    name = response.name
+  }
+
+  // Validate PascalCase
+  if (!/^[A-Z][a-zA-Z0-9]*$/.test(name)) {
+    error(`Section name must be PascalCase (e.g., Hero, FeatureGrid, CallToAction).`)
+    process.exit(1)
+  }
+
+  // Find the foundation
+  const foundations = await discoverFoundations(rootDir)
+  let foundation
+
+  if (foundations.length === 0) {
+    error('No foundation found in this workspace.')
+    log(`Create one first: ${getCliPrefix()} add foundation`)
+    process.exit(1)
+  } else if (foundations.length === 1) {
+    foundation = foundations[0]
+  } else if (opts.foundation) {
+    foundation = foundations.find(f => f.name === opts.foundation)
+    if (!foundation) {
+      error(`Foundation '${opts.foundation}' not found.`)
+      log(`Available: ${foundations.map(f => f.name).join(', ')}`)
+      process.exit(1)
+    }
+  } else if (isNonInteractive(process.argv)) {
+    error(`Multiple foundations found. Specify which to use:\n`)
+    log(formatOptions(foundations.map(f => ({ label: f.name, description: f.path }))))
+    log('')
+    log(`Usage: ${getCliPrefix()} add section ${name} --foundation <name>`)
+    process.exit(1)
+  } else {
+    const response = await prompts({
+      type: 'select',
+      name: 'foundation',
+      message: 'Which foundation?',
+      choices: foundations.map(f => ({ title: f.name, description: f.path, value: f })),
+    }, {
+      onCancel: () => {
+        log('\nCancelled.')
+        process.exit(0)
+      },
+    })
+    foundation = response.foundation
+  }
+
+  // Resolve sections directory
+  const sectionsDir = join(rootDir, foundation.path, 'src', 'sections')
+  const sectionDir = join(sectionsDir, name)
+
+  if (existsSync(sectionDir)) {
+    error(`Section '${name}' already exists at ${foundation.path}/src/sections/${name}/`)
+    process.exit(1)
+  }
+
+  // Create section directory and files
+  await mkdir(sectionDir, { recursive: true })
+
+  const componentContent = `import { H2, P, Link, cn } from '@uniweb/kit'
+
+export default function ${name}({ content, params }) {
+  const { title, paragraphs = [], links = [] } = content || {}
+
+  return (
+    <div className="max-w-4xl mx-auto px-6">
+      {title && <H2 text={title} className="text-heading text-3xl font-bold" />}
+      <P text={paragraphs} className="text-body mt-4" />
+      {links.length > 0 && (
+        <div className="mt-6 flex gap-3 flex-wrap">
+          {links.map((link, i) => (
+            <Link key={i} to={link.href} className={cn(
+              'px-5 py-2.5 rounded-lg font-medium transition-colors',
+              i === 0
+                ? 'bg-primary text-primary-foreground hover:bg-primary-hover'
+                : 'bg-secondary text-secondary-foreground hover:bg-secondary-hover'
+            )}>
+              {link.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+`
+
+  const metaContent = `export default {
+  title: '${name}',
+  description: '',
+  params: {},
+}
+`
+
+  await writeFile(join(sectionDir, 'index.jsx'), componentContent)
+  await writeFile(join(sectionDir, 'meta.js'), metaContent)
+
+  success(`Created section '${name}' at ${foundation.path}/src/sections/${name}/`)
+  log(`  ${colors.dim}index.jsx${colors.reset}  — component (customize the JSX)`)
+  log(`  ${colors.dim}meta.js${colors.reset}    — metadata (add content expectations, params, presets)`)
+  if (foundations.length === 1) {
+    log('')
+    log(`${colors.dim}The dev server will pick it up automatically.${colors.reset}`)
+  }
+}
+
+/**
  * Show help for the add command
  */
 function showAddHelp() {
   log(`
 ${colors.cyan}${colors.bright}Uniweb Add${colors.reset}
 
-Add projects, foundations, sites, or extensions to your workspace.
+Add projects, foundations, sites, extensions, or section types to your workspace.
 
 ${colors.bright}Usage:${colors.reset}
   uniweb add project [name] [options]
   uniweb add foundation [name] [options]
   uniweb add site [name] [options]
   uniweb add extension <name> [options]
+  uniweb add section <name> [options]
 
 ${colors.bright}Common Options:${colors.reset}
   --from <template>  Apply content from a template after scaffolding
@@ -904,6 +1043,9 @@ ${colors.bright}Site Options:${colors.reset}
 ${colors.bright}Extension Options:${colors.reset}
   --site <name>      Site to wire extension URL into
 
+${colors.bright}Section Options:${colors.reset}
+  --foundation <n>   Foundation to add section to (prompted if multiple exist)
+
 ${colors.bright}Examples:${colors.reset}
   uniweb add project docs                              # Create docs/foundation/ + docs/site/
   uniweb add project docs --from academic              # Co-located pair + academic content
@@ -912,6 +1054,8 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add site                                      # Create ./site/ at root
   uniweb add site blog --foundation marketing          # Create ./blog/ wired to marketing
   uniweb add extension effects --site site             # Create ./extensions/effects/
+  uniweb add section Hero                              # Create Hero section type
+  uniweb add section Hero --foundation ui              # Target specific foundation
   uniweb add foundation --project docs                 # Create ./docs/foundation/ (co-located)
   uniweb add site --project docs                       # Create ./docs/site/ (co-located)
 `)
