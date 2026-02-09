@@ -51,8 +51,8 @@ colors:
 #   Text:      body, heading, subtle
 #   Border:    border, ring
 #   Links:     link, link-hover
-#   Actions:   primary, primary-foreground, primary-hover
-#              secondary, secondary-foreground, secondary-hover
+#   Actions:   primary, primary-foreground, primary-hover, primary-border
+#              secondary, secondary-foreground, secondary-hover, secondary-border
 #   Status:    success, warning, error, info (+ -subtle variants)
 
 # contexts:

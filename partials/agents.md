@@ -411,7 +411,12 @@ CCA separates theme from code. Components use **semantic CSS tokens** instead of
 | `text-link` | Link color |
 | `bg-primary` | Primary action background |
 | `text-primary-foreground` | Text on primary background |
+| `hover:bg-primary-hover` | Primary hover state |
+| `border-primary-border` | Primary border (transparent by default) |
 | `bg-secondary` | Secondary action background |
+| `text-secondary-foreground` | Text on secondary background |
+| `hover:bg-secondary-hover` | Secondary hover state |
+| `border-secondary-border` | Secondary border |
 | `text-success` / `bg-success-subtle` | Status: success |
 | `text-error` / `bg-error-subtle` | Status: error |
 | `text-warning` / `bg-warning-subtle` | Status: warning |
