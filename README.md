@@ -27,6 +27,7 @@ Edit files in `site/pages/` and `foundation/src/sections/` to see changes instan
 | Template | Description |
 | --- | --- |
 | **Starter** | Foundation + site + sample content (default) |
+| **None** | Foundation + site with no content |
 | **Marketing** | Landing page, features, pricing, testimonials |
 | **Docs** | Documentation with sidebar and search |
 | **Academic** | Research site with publications and team |
@@ -34,7 +35,8 @@ Edit files in `site/pages/` and `foundation/src/sections/` to see changes instan
 | **Dynamic** | Live API data fetching with loading states |
 | **Store** | E-commerce with product grid |
 | **Extensions** | Multi-foundation with visual effects extension |
-| **Blank** | Empty workspace — grow with `uniweb add` |
+
+Use `--blank` for an empty workspace (no packages) — grow with `uniweb add`.
 
 **See them live:** [View all template demos](https://uniweb.github.io/templates/)
 
@@ -234,31 +236,32 @@ Start simple. Add what you need, when you need it:
 ```bash
 cd my-site
 
-# Add a second foundation
-npx uniweb add foundation blog
+# Add a co-located foundation + site pair
+npx uniweb add project blog
 
-# Add a site wired to the blog foundation
-npx uniweb add site blog --foundation blog
+# Add a second foundation at root
+npx uniweb add foundation ui
+
+# Add a site wired to a specific foundation
+npx uniweb add site docs --foundation ui
 
 # Add an extension (auto-wired to the only site)
 npx uniweb add extension effects
 
 # Scaffold + apply content from an official template
-npx uniweb add foundation marketing --from marketing
-npx uniweb add site main --from marketing --foundation marketing
+npx uniweb add project marketing --from marketing
 ```
 
-The workspace grows organically. `add` handles placement, wires dependencies, updates workspace globs, and generates root scripts. Use `--path` to override default placement, or `--project` for co-located layouts (e.g., `marketing/foundation/` + `marketing/site/`).
+The workspace grows organically. `add` handles placement, wires dependencies, updates workspace globs, and generates root scripts. The name you provide becomes both the directory name and the package name. Use `--path` to override default placement, or `--project` for explicit co-located layouts.
 
 > `npx uniweb` works before and after install. Once dependencies are installed, you can also use `pnpm uniweb` directly since `uniweb` is a project dependency.
 
 **Or start blank and build up:**
 
 ```bash
-pnpm create uniweb acme --template blank
+pnpm create uniweb acme --blank
 cd acme
-npx uniweb add foundation
-npx uniweb add site
+npx uniweb add project main
 pnpm install
 pnpm dev
 ```

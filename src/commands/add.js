@@ -1,9 +1,10 @@
 /**
  * Add Command
  *
- * Adds foundations, sites, or extensions to an existing workspace.
+ * Adds foundations, sites, extensions, or co-located projects to an existing workspace.
  *
  * Usage:
+ *   uniweb add project [name] [--from <template>]
  *   uniweb add foundation [name] [--from <template>] [--path <dir>] [--project <name>]
  *   uniweb add site [name] [--from <template>] [--foundation <name>] [--path <dir>] [--project <name>]
  *   uniweb add extension [name] [--from <template>] [--site <name>] [--path <dir>]
@@ -14,7 +15,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import prompts from 'prompts'
 import yaml from 'js-yaml'
-import { scaffoldFoundation, scaffoldSite, applyContent, mergeTemplateDependencies } from '../utils/scaffold.js'
+import { scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemplateDependencies } from '../utils/scaffold.js'
 import {
   readWorkspaceConfig,
   addWorkspaceGlob,
@@ -118,12 +119,13 @@ export async function add(rawArgs) {
     if (nonInteractive) {
       error(`Missing subcommand.\n`)
       log(formatOptions([
+        { label: 'project', description: 'Co-located foundation + site pair' },
         { label: 'foundation', description: 'Component library' },
         { label: 'site', description: 'Content site' },
         { label: 'extension', description: 'Additional component package' },
       ]))
       log('')
-      log(`Usage: ${prefix} add <foundation|site|extension> [name]`)
+      log(`Usage: ${prefix} add <project|foundation|site|extension> [name]`)
       process.exit(1)
     }
 
@@ -132,6 +134,7 @@ export async function add(rawArgs) {
       name: 'subcommand',
       message: 'What would you like to add?',
       choices: [
+        { title: 'Project', value: 'project', description: 'Co-located foundation + site pair' },
         { title: 'Foundation', value: 'foundation', description: 'Component library' },
         { title: 'Site', value: 'site', description: 'Content site' },
         { title: 'Extension', value: 'extension', description: 'Additional component package' },
@@ -154,6 +157,9 @@ export async function add(rawArgs) {
   const projectName = rootPkg.name || 'my-project'
 
   switch (parsed.subcommand) {
+    case 'project':
+      await addProject(rootDir, projectName, parsed, pm)
+      break
     case 'foundation':
       await addFoundation(rootDir, projectName, parsed, pm)
       break
@@ -165,7 +171,7 @@ export async function add(rawArgs) {
       break
     default:
       error(`Unknown subcommand: ${parsed.subcommand}`)
-      log(`Valid subcommands: foundation, site, extension`)
+      log(`Valid subcommands: project, foundation, site, extension`)
       process.exit(1)
   }
 }
@@ -188,31 +194,28 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Interactive name prompt when name not provided and no --path
   if (!name && !opts.path) {
-    if (isNonInteractive(process.argv)) {
-      error(`Missing foundation name.\n`)
-      log(`Usage: ${getCliPrefix()} add foundation <name>`)
-      process.exit(1)
+    if (!isNonInteractive(process.argv)) {
+      const foundations = await discoverFoundations(rootDir)
+      const hasDefault = foundations.length === 0 && !existsSync(join(rootDir, 'foundation'))
+      const response = await prompts({
+        type: 'text',
+        name: 'name',
+        message: 'Foundation name:',
+        initial: hasDefault ? 'foundation' : undefined,
+        validate: (value) => validatePackageName(value),
+      }, {
+        onCancel: () => {
+          log('\nCancelled.')
+          process.exit(0)
+        },
+      })
+      // Only set name if user chose something other than the default —
+      // null name tells resolveFoundationTarget to use default placement (./foundation/)
+      if (!hasDefault || response.name !== 'foundation') {
+        name = response.name
+      }
     }
-
-    const foundations = await discoverFoundations(rootDir)
-    const hasDefault = foundations.length === 0 && !existsSync(join(rootDir, 'foundation'))
-    const response = await prompts({
-      type: 'text',
-      name: 'name',
-      message: 'Foundation name:',
-      initial: hasDefault ? 'foundation' : undefined,
-      validate: (value) => validatePackageName(value),
-    }, {
-      onCancel: () => {
-        log('\nCancelled.')
-        process.exit(0)
-      },
-    })
-    // Only set name if user chose something other than the default —
-    // null name tells resolveFoundationTarget to use default placement (./foundation/)
-    if (!hasDefault || response.name !== 'foundation') {
-      name = response.name
-    }
+    // Non-interactive without name: defaults to 'foundation' — resolveFoundationTarget handles it
   }
 
   const target = await resolveFoundationTarget(rootDir, name, opts)
@@ -223,10 +226,12 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
     process.exit(1)
   }
 
-  // Compute package name — auto-suffix if it collides with an existing package
-  let packageName = name || opts.project || 'foundation'
+  // Package name = name or 'foundation'
+  const packageName = name || 'foundation'
   if (existingNames.has(packageName)) {
-    packageName = resolveUniqueName(packageName, '-foundation', existingNames)
+    error(`Package name '${packageName}' already exists in this workspace.`)
+    log(`Choose a different name: ${getCliPrefix()} add foundation <name>`)
+    process.exit(1)
   }
 
   // Scaffold
@@ -274,31 +279,28 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Interactive name prompt when name not provided and no --path
   if (!name && !opts.path) {
-    if (isNonInteractive(process.argv)) {
-      error(`Missing site name.\n`)
-      log(`Usage: ${getCliPrefix()} add site <name>`)
-      process.exit(1)
+    if (!isNonInteractive(process.argv)) {
+      const existingSites = await discoverSites(rootDir)
+      const hasDefault = existingSites.length === 0 && !existsSync(join(rootDir, 'site'))
+      const response = await prompts({
+        type: 'text',
+        name: 'name',
+        message: 'Site name:',
+        initial: hasDefault ? 'site' : undefined,
+        validate: (value) => validatePackageName(value),
+      }, {
+        onCancel: () => {
+          log('\nCancelled.')
+          process.exit(0)
+        },
+      })
+      // Only set name if user chose something other than the default —
+      // null name tells resolveSiteTarget to use default placement (./site/)
+      if (!hasDefault || response.name !== 'site') {
+        name = response.name
+      }
     }
-
-    const existingSites = await discoverSites(rootDir)
-    const hasDefault = existingSites.length === 0 && !existsSync(join(rootDir, 'site'))
-    const response = await prompts({
-      type: 'text',
-      name: 'name',
-      message: 'Site name:',
-      initial: hasDefault ? 'site' : undefined,
-      validate: (value) => validatePackageName(value),
-    }, {
-      onCancel: () => {
-        log('\nCancelled.')
-        process.exit(0)
-      },
-    })
-    // Only set name if user chose something other than the default —
-    // null name tells resolveSiteTarget to use default placement (./site/)
-    if (!hasDefault || response.name !== 'site') {
-      name = response.name
-    }
+    // Non-interactive without name: defaults to 'site' — resolveSiteTarget handles it
   }
 
   const target = await resolveSiteTarget(rootDir, name, opts)
@@ -311,17 +313,13 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Resolve foundation
   const foundation = await resolveFoundation(rootDir, opts.foundation)
-  let siteName
-  if (opts.project) {
-    // Co-located: convention is {project}-site (e.g., io-site)
-    siteName = (!name || name === opts.project) ? `${opts.project}-site` : name
-  } else {
-    siteName = name || 'site'
-  }
 
-  // Auto-suffix package name if it collides with an existing package
+  // Package name = name or 'site'
+  const siteName = name || 'site'
   if (existingNames.has(siteName)) {
-    siteName = resolveUniqueName(siteName, '-site', existingNames)
+    error(`Package name '${siteName}' already exists in this workspace.`)
+    log(`Choose a different name: ${getCliPrefix()} add site <name>`)
+    process.exit(1)
   }
 
   if (foundation) {
@@ -482,7 +480,116 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
 }
 
 /**
+ * Add a co-located foundation + site pair to the workspace
+ */
+async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
+  let name = opts.name
+  const existingNames = await getExistingPackageNames(rootDir)
+
+  // Validate name format
+  if (name) {
+    const valid = validatePackageName(name)
+    if (valid !== true) {
+      error(valid)
+      process.exit(1)
+    }
+  }
+
+  // Interactive name prompt when name not provided
+  if (!name) {
+    if (isNonInteractive(process.argv)) {
+      error(`Missing project name.\n`)
+      log(`Usage: ${getCliPrefix()} add project <name>`)
+      process.exit(1)
+    }
+
+    const response = await prompts({
+      type: 'text',
+      name: 'name',
+      message: 'Project name:',
+      validate: (value) => validatePackageName(value),
+    }, {
+      onCancel: () => {
+        log('\nCancelled.')
+        process.exit(0)
+      },
+    })
+    name = response.name
+  }
+
+  // Check directory doesn't already exist
+  const projectDir = join(rootDir, name)
+  if (existsSync(projectDir)) {
+    error(`Directory already exists: ${name}/`)
+    process.exit(1)
+  }
+
+  // Compute package names
+  const foundationPkgName = `${name}-foundation`
+  const sitePkgName = `${name}-site`
+
+  // Check package name collisions
+  for (const pkgName of [foundationPkgName, sitePkgName]) {
+    if (existingNames.has(pkgName)) {
+      error(`Package name '${pkgName}' already exists in this workspace.`)
+      process.exit(1)
+    }
+  }
+
+  const progressCb = (msg) => info(`  ${msg}`)
+
+  // Scaffold foundation
+  info(`Creating foundation: ${foundationPkgName}...`)
+  await scaffoldFoundation(join(projectDir, 'foundation'), {
+    name: foundationPkgName,
+    projectName,
+    isExtension: false,
+  }, { onProgress: progressCb })
+
+  // Scaffold site
+  info(`Creating site: ${sitePkgName}...`)
+  await scaffoldSite(join(projectDir, 'site'), {
+    name: sitePkgName,
+    projectName,
+    foundationName: foundationPkgName,
+    foundationPath: 'file:../foundation',
+    foundationRef: foundationPkgName,
+  }, { onProgress: progressCb })
+
+  // Apply template content if --from specified
+  if (opts.from) {
+    await applyFromTemplate(opts.from, 'foundation', join(projectDir, 'foundation'), projectName)
+    await applyFromTemplate(opts.from, 'site', join(projectDir, 'site'), projectName)
+  }
+
+  // Update workspace globs for co-located layout
+  await addWorkspaceGlob(rootDir, '*/foundation')
+  await addWorkspaceGlob(rootDir, '*/site')
+
+  // Update root scripts
+  const sites = await discoverSites(rootDir)
+  if (!sites.find(s => s.path === `${name}/site`)) {
+    sites.push({ name: sitePkgName, path: `${name}/site` })
+  }
+  await updateRootScripts(rootDir, sites, pm)
+
+  success(`Created project '${name}' at ${name}/`)
+  log(`  ${colors.dim}Foundation: ${name}/foundation/ (${foundationPkgName})${colors.reset}`)
+  log(`  ${colors.dim}Site: ${name}/site/ (${sitePkgName})${colors.reset}`)
+  log('')
+  log(`Next: ${colors.cyan}${installCmd(pm)} && ${filterCmd(pm, sitePkgName, 'dev')}${colors.reset}`)
+}
+
+/**
  * Resolve placement for a foundation
+ *
+ * Rules:
+ * - --path: use it directly
+ * - --project: {project}/foundation (co-located)
+ * - Existing co-located glob: follow pattern
+ * - Existing segregated glob: follow pattern
+ * - First foundation: dir name is the name (default: 'foundation')
+ * - Already have one: error in non-interactive, ask in interactive
  */
 async function resolveFoundationTarget(rootDir, name, opts) {
   if (opts.path) return opts.path
@@ -495,23 +602,43 @@ async function resolveFoundationTarget(rootDir, name, opts) {
   const { packages } = await readWorkspaceConfig(rootDir)
   const hasColocated = packages.some(p => p.includes('*/foundation'))
   const hasFoundationsGlob = packages.some(p => p.startsWith('foundations/'))
-  const hasSingleFoundation = existsSync(join(rootDir, 'foundation'))
 
-  if (hasColocated && opts.project) {
-    return `${opts.project}/foundation`
+  // Respect existing co-located layout
+  if (hasColocated && name) {
+    return `${name}/foundation`
   }
 
-  // No name and no foundations exist → ./foundation/
-  if (!name && !hasSingleFoundation && !hasFoundationsGlob) {
-    return 'foundation'
+  // Respect existing segregated layout
+  if (hasFoundationsGlob) {
+    return `foundations/${name || 'foundation'}`
   }
 
-  // Named foundation or existing foundation → ./foundations/{name}/
-  return `foundations/${name || 'foundation'}`
+  // dir name = name or 'foundation'
+  const dirName = name || 'foundation'
+
+  // Check if target already exists
+  if (!existsSync(join(rootDir, dirName))) {
+    return dirName
+  }
+
+  // Already have one at the target path — error with guidance
+  if (isNonInteractive(process.argv)) {
+    error(`Directory '${dirName}' already exists.`)
+    log(`\nTo add another foundation, specify a name:`)
+    log(`  ${getCliPrefix()} add foundation <name>`)
+    log(`\nOr use --path for explicit placement:`)
+    log(`  ${getCliPrefix()} add foundation --path <dir>`)
+    process.exit(1)
+  }
+
+  // Interactive: the existsSync check in addFoundation will catch it
+  return dirName
 }
 
 /**
  * Resolve placement for a site
+ *
+ * Same rules as resolveFoundationTarget, adapted for sites.
  */
 async function resolveSiteTarget(rootDir, name, opts) {
   if (opts.path) return opts.path
@@ -523,19 +650,37 @@ async function resolveSiteTarget(rootDir, name, opts) {
   const { packages } = await readWorkspaceConfig(rootDir)
   const hasColocated = packages.some(p => p.includes('*/site'))
   const hasSitesGlob = packages.some(p => p.startsWith('sites/'))
-  const hasSingleSite = existsSync(join(rootDir, 'site'))
 
-  if (hasColocated && opts.project) {
-    return `${opts.project}/site`
+  // Respect existing co-located layout
+  if (hasColocated && name) {
+    return `${name}/site`
   }
 
-  // No name and no sites exist → ./site/
-  if (!name && !hasSingleSite && !hasSitesGlob) {
-    return 'site'
+  // Respect existing segregated layout
+  if (hasSitesGlob) {
+    return `sites/${name || 'site'}`
   }
 
-  // Named site or existing site → ./sites/{name}/
-  return `sites/${name || 'site'}`
+  // dir name = name or 'site'
+  const dirName = name || 'site'
+
+  // Check if target already exists
+  if (!existsSync(join(rootDir, dirName))) {
+    return dirName
+  }
+
+  // Already have one at the target path — error with guidance
+  if (isNonInteractive(process.argv)) {
+    error(`Directory '${dirName}' already exists.`)
+    log(`\nTo add another site, specify a name:`)
+    log(`  ${getCliPrefix()} add site <name>`)
+    log(`\nOr use --path for explicit placement:`)
+    log(`  ${getCliPrefix()} add site --path <dir>`)
+    process.exit(1)
+  }
+
+  // Interactive: the existsSync check in addSite will catch it
+  return dirName
 }
 
 /**
@@ -737,9 +882,10 @@ function showAddHelp() {
   log(`
 ${colors.cyan}${colors.bright}Uniweb Add${colors.reset}
 
-Add foundations, sites, or extensions to your workspace.
+Add projects, foundations, sites, or extensions to your workspace.
 
 ${colors.bright}Usage:${colors.reset}
+  uniweb add project [name] [options]
   uniweb add foundation [name] [options]
   uniweb add site [name] [options]
   uniweb add extension <name> [options]
@@ -759,11 +905,12 @@ ${colors.bright}Extension Options:${colors.reset}
   --site <name>      Site to wire extension URL into
 
 ${colors.bright}Examples:${colors.reset}
-  uniweb add foundation                                # Create ./foundation/
-  uniweb add foundation marketing                      # Create ./foundations/marketing/
-  uniweb add foundation marketing --from marketing     # Scaffold + marketing sections
-  uniweb add site blog --foundation marketing          # Create ./sites/blog/ wired to marketing
-  uniweb add site blog --from docs --foundation blog   # Scaffold + docs pages
+  uniweb add project docs                              # Create docs/foundation/ + docs/site/
+  uniweb add project docs --from academic              # Co-located pair + academic content
+  uniweb add foundation                                # Create ./foundation/ at root
+  uniweb add foundation ui                             # Create ./ui/ at root
+  uniweb add site                                      # Create ./site/ at root
+  uniweb add site blog --foundation marketing          # Create ./blog/ wired to marketing
   uniweb add extension effects --site site             # Create ./extensions/effects/
   uniweb add foundation --project docs                 # Create ./docs/foundation/ (co-located)
   uniweb add site --project docs                       # Create ./docs/site/ (co-located)

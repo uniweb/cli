@@ -44,8 +44,8 @@ const colors = {
 
 // Template choices for interactive prompt
 const TEMPLATE_CHOICES = [
+  { title: 'None', value: 'none', description: 'Foundation + site with no content' },
   { title: 'Starter', value: 'starter', description: 'Foundation + site + sample content' },
-  { title: 'Blank', value: 'blank', description: 'Empty workspace — grow with uniweb add' },
   { title: 'Marketing', value: 'marketing', description: 'Landing page, features, pricing, testimonials' },
   { title: 'Docs', value: 'docs', description: 'Documentation with sidebar and search' },
   { title: 'Academic', value: 'academic', description: 'Research site with publications and team' },
@@ -53,6 +53,7 @@ const TEMPLATE_CHOICES = [
   { title: 'International', value: 'international', description: 'Multilingual site with i18n and blog' },
   { title: 'Store', value: 'store', description: 'E-commerce with product grid' },
   { title: 'Extensions', value: 'extensions', description: 'Multi-foundation with visual effects extension' },
+  { title: 'Blank workspace', value: 'blank', description: 'Empty workspace — grow with uniweb add' },
 ]
 
 function log(message) {
@@ -75,7 +76,7 @@ function title(message) {
  * Create a project using the new package template flow (default)
  */
 async function createFromPackageTemplates(projectDir, projectName, options = {}) {
-  const { onProgress, onWarning, pm = 'pnpm' } = options
+  const { onProgress, onWarning, pm = 'pnpm', includeStarter = true } = options
 
   onProgress?.('Setting up workspace...')
 
@@ -107,9 +108,11 @@ async function createFromPackageTemplates(projectDir, projectName, options = {})
     foundationPath: 'file:../foundation',
   }, { onProgress, onWarning })
 
-  // 4. Apply starter content
-  onProgress?.('Adding starter content...')
-  await applyStarter(projectDir, { projectName }, { onProgress, onWarning })
+  // 4. Apply starter content (unless creating a "none" project)
+  if (includeStarter) {
+    onProgress?.('Adding starter content...')
+    await applyStarter(projectDir, { projectName }, { onProgress, onWarning })
+  }
 
   success(`Created project: ${projectName}`)
 }
@@ -364,6 +367,15 @@ async function main() {
     displayName = args[nameIndex + 1]
   }
 
+  // Check for --blank flag
+  let isBlank = args.includes('--blank')
+
+  // Handle --template blank as alias for --blank
+  if (templateType === 'blank') {
+    isBlank = true
+    templateType = null
+  }
+
   // Check for --no-git flag
   const noGit = args.includes('--no-git')
 
@@ -377,19 +389,13 @@ async function main() {
   // Non-interactive: fail with actionable message instead of prompting
   if (nonInteractive && !projectName) {
     error(`Missing project name.\n`)
-    log(`Usage: ${prefix} create <project-name> [--template <name>]`)
+    log(`Usage: ${prefix} create <project-name> [--template <name>] [--blank]`)
     process.exit(1)
   }
 
-  if (nonInteractive && !templateType) {
-    error(`Missing --template flag. Available templates:\n`)
-    log(formatOptions(TEMPLATE_CHOICES.map(c => ({
-      label: c.value,
-      description: c.description,
-    }))))
-    log('')
-    log(`Usage: ${prefix} create ${projectName || '<project-name>'} --template <name>`)
-    process.exit(1)
+  // Non-interactive: default to starter when no template specified
+  if (nonInteractive && !templateType && !isBlank) {
+    templateType = 'starter'
   }
 
   // Interactive prompts
@@ -421,13 +427,14 @@ async function main() {
     process.exit(1)
   }
 
-  // Prompt for template if not specified via --template
-  if (!templateType) {
+  // Prompt for template if not specified via --template or --blank
+  if (!templateType && !isBlank) {
     const templateResponse = await prompts({
       type: 'select',
       name: 'template',
       message: 'Template:',
       choices: TEMPLATE_CHOICES,
+      initial: 1,
     }, {
       onCancel: () => {
         log('\nScaffolding cancelled.')
@@ -435,6 +442,11 @@ async function main() {
       },
     })
     templateType = templateResponse.template
+    // Handle "blank" selection from interactive prompt
+    if (templateType === 'blank') {
+      isBlank = true
+      templateType = null
+    }
   }
 
   const effectiveName = displayName || projectName
@@ -451,12 +463,21 @@ async function main() {
   const progressCb = (msg) => log(`  ${colors.dim}${msg}${colors.reset}`)
   const warningCb = (msg) => log(`  ${colors.yellow}Warning: ${msg}${colors.reset}`)
 
-  if (templateType === 'blank') {
-    // Blank workspace
+  if (isBlank) {
+    // Blank workspace (--blank or --template blank)
     log('\nCreating blank workspace...')
     await createBlankWorkspace(projectDir, effectiveName, {
       onProgress: progressCb,
       onWarning: warningCb,
+    })
+  } else if (templateType === 'none') {
+    // Foundation + site with no content
+    log('\nCreating project...')
+    await createFromPackageTemplates(projectDir, effectiveName, {
+      onProgress: progressCb,
+      onWarning: warningCb,
+      pm,
+      includeStarter: false,
     })
   } else if (templateType === 'starter') {
     // Starter: foundation + site + sample content
@@ -521,11 +542,10 @@ async function main() {
   // Success message
   title('Project created successfully!')
 
-  if (templateType === 'blank') {
+  if (isBlank) {
     log(`Next steps:\n`)
     log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
-    log(`  ${colors.cyan}npx uniweb add foundation${colors.reset}`)
-    log(`  ${colors.cyan}npx uniweb add site${colors.reset}`)
+    log(`  ${colors.cyan}${prefix} add project${colors.reset}`)
     log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
     log(`  ${colors.cyan}${runCmd(pm, 'dev')}${colors.reset}`)
   } else {
@@ -553,11 +573,13 @@ ${colors.bright}Commands:${colors.reset}
   i18n <cmd>         Internationalization (extract, sync, status)
 
 ${colors.bright}Create Options:${colors.reset}
-  --template <type>  Project template (prompts if not specified)
+  --template <type>  Project template (default: starter)
+  --blank            Create an empty workspace (grow with uniweb add)
   --name <name>      Project display name
   --no-git           Skip git repository initialization
 
 ${colors.bright}Add Subcommands:${colors.reset}
+  add project [name]      Add a co-located foundation + site pair
   add foundation [name]   Add a foundation (--from, --path, --project)
   add site [name]         Add a site (--from, --foundation, --path, --project)
   add extension <name>    Add an extension (--from, --site, --path)
@@ -594,7 +616,7 @@ ${colors.bright}i18n Commands:${colors.reset}
 
 ${colors.bright}Template Types:${colors.reset}
   starter                       Foundation + site + sample content (default)
-  blank                         Empty workspace (grow with 'add')
+  none                          Foundation + site with no content
   marketing                     Official marketing template
   ./path/to/template            Local directory
   @scope/template-name          npm package
@@ -602,17 +624,17 @@ ${colors.bright}Template Types:${colors.reset}
   https://github.com/user/repo  GitHub URL
 
 ${colors.bright}Examples:${colors.reset}
-  npx uniweb create my-project                           # Interactive (prompts for template)
-  npx uniweb create my-project --template starter        # Foundation + site + starter content
-  npx uniweb create my-project --template blank          # Blank workspace
+  npx uniweb create my-project                           # Foundation + site + starter content
+  npx uniweb create my-project --template none           # Foundation + site, no content
+  npx uniweb create my-project --blank                   # Empty workspace
   npx uniweb create my-project --template marketing      # Official template
   npx uniweb create my-project --template ./my-template  # Local template
 
   cd my-project
-  npx uniweb add foundation marketing                    # Add foundations/marketing/
-  npx uniweb add foundation marketing --from marketing   # Scaffold + marketing sections
-  npx uniweb add site blog --foundation marketing        # Add sites/blog/ wired to marketing
-  npx uniweb add site blog --from docs --foundation blog # Scaffold + docs pages
+  npx uniweb add project docs                            # Add docs/foundation/ + docs/site/
+  npx uniweb add project docs --from academic            # Co-located pair + academic content
+  npx uniweb add foundation                              # Add foundation at root
+  npx uniweb add site blog --foundation marketing        # Add site wired to marketing
   npx uniweb add extension effects --site site           # Add extensions/effects/
 
   npx uniweb build

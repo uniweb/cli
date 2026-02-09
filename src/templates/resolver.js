@@ -3,7 +3,7 @@
  */
 
 // Built-in templates (programmatic, not file-based)
-export const BUILTIN_TEMPLATES = ['blank', 'starter']
+export const BUILTIN_TEMPLATES = ['blank', 'starter', 'none']
 
 // Official templates from @uniweb/templates package (downloaded from GitHub releases)
 export const OFFICIAL_TEMPLATES = ['marketing', 'academic', 'docs', 'international', 'dynamic', 'store', 'extensions']

@@ -27,17 +27,27 @@ pnpm create uniweb my-project
 cd my-project && pnpm install
 ```
 
-Use `--template blank` for an empty workspace, or `--template <name>` for an official template (`marketing`, `docs`, `academic`, etc.).
+This creates a workspace with foundation + site + starter content — two commands to a dev server. Use `--template <name>` for an official template (`marketing`, `docs`, `academic`, etc.), `--template none` for foundation + site with no content, or `--blank` for an empty workspace.
 
-### Adding to an existing workspace
+### Adding a co-located project
 
 ```bash
-pnpm uniweb add foundation myname --project myname
-pnpm uniweb add site myname --project myname
+pnpm uniweb add project docs
 pnpm install
 ```
 
-The `--project` flag co-locates foundation and site under `myname/`. The CLI names them `myname` (foundation) and `myname-site` (site) to avoid workspace name collisions.
+This creates `docs/foundation/` + `docs/site/` with package names `docs-foundation` and `docs-site`. Use `--from <template>` to apply template content to both packages.
+
+### Adding individual packages
+
+```bash
+pnpm uniweb add foundation           # First foundation → ./foundation/
+pnpm uniweb add foundation ui        # Named → ./ui/
+pnpm uniweb add site                 # First site → ./site/
+pnpm uniweb add site blog            # Named → ./blog/
+```
+
+The name is both the directory name and the package name. Use `--project <name>` to co-locate under a project directory (e.g., `--project docs` → `docs/foundation/`).
 
 ### What the CLI generates
 
@@ -805,7 +815,7 @@ Uniweb section types do more with less because the framework handles concerns th
 
 1. **Check if you're inside an existing Uniweb workspace** (look for `pnpm-workspace.yaml` and a `package.json` with `uniweb` as a dependency). If yes, use `pnpm uniweb add` to create projects inside it. If no, create a new workspace:
    ```bash
-   pnpm create uniweb my-project --template blank
+   pnpm create uniweb my-project --template none
    ```
 
 3. **Use named layouts** for different page groups — a marketing layout for landing pages, a docs layout for `/docs/*`. One site, multiple layouts, each with its own header/footer/sidebar content.
