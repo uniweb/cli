@@ -1,1 +1,99 @@
-primary: '#3b82f6'
+# Theme Configuration
+# Controls colors, typography, and visual style for the site.
+# Only set what you want to change — everything has sensible defaults.
+
+# ─── Colors ────────────────────────────────────────────────────────────────────
+# Palette colors generate shades (50–950) used by semantic tokens.
+# Values: any CSS color (hex, rgb, hsl, oklch).
+
+colors:
+  primary: '#3b82f6'        # Brand color — buttons, links, focus rings
+  # secondary: '#64748b'    # Secondary actions
+  # accent: '#8b5cf6'       # Highlights, decorative elements
+  # neutral: stone           # Gray family — stone, zinc, gray, slate, neutral
+
+# ─── Fonts ─────────────────────────────────────────────────────────────────────
+# Font families for text, headings, and code blocks.
+# Default: system-ui stack. Uncomment to use custom fonts.
+
+# fonts:
+#   heading: '"Inter", system-ui, sans-serif'
+#   body: '"Inter", system-ui, sans-serif'
+#   mono: '"JetBrains Mono", ui-monospace, monospace'
+#   import:
+#     - url: https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap
+#     - url: https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap
+
+# ─── Page Background ──────────────────────────────────────────────────────────
+# Background applied to the page body. Any CSS background value.
+
+# background: '#fafaf9'
+# background: 'linear-gradient(to bottom, #fafaf9, white)'
+
+# ─── Appearance ────────────────────────────────────────────────────────────────
+# Color scheme support. Simple value: light, dark, or system.
+# Or use the expanded form for more control.
+
+# appearance: light
+# appearance:
+#   default: light
+#   schemes: [light, dark]
+#   allowToggle: true
+#   respectSystemPreference: true
+
+# ─── Context Overrides ─────────────────────────────────────────────────────────
+# Sections declare a context (light, medium, dark) in frontmatter.
+# Each context maps semantic tokens to palette values.
+# Override individual tokens here — unlisted tokens keep their defaults.
+#
+# Available tokens:
+#   Surfaces:  section, card, muted
+#   Text:      body, heading, subtle
+#   Border:    border, ring
+#   Links:     link, link-hover
+#   Actions:   primary, primary-foreground, primary-hover
+#              secondary, secondary-foreground, secondary-hover
+#   Status:    success, warning, error, info (+ -subtle variants)
+
+# contexts:
+#   light:
+#     section: white
+#   medium:
+#     section: 'var(--neutral-100)'
+#   dark:
+#     heading: white
+
+# ─── Inline Text Styles ───────────────────────────────────────────────────────
+# Named styles for inline text in markdown: [text]{emphasis}
+# Each name maps to CSS properties.
+# Defaults: emphasis (colored + bold), muted (subtle).
+
+# inline:
+#   emphasis:
+#     color: 'var(--link)'
+#     font-weight: '600'
+#   muted:
+#     color: 'var(--subtle)'
+
+# ─── Code Blocks ───────────────────────────────────────────────────────────────
+# Syntax highlighting colors for code blocks (uses Shiki).
+
+# code:
+#   background: '#1e1e2e'
+#   foreground: '#cdd6f4'
+#   keyword: '#cba6f7'
+#   string: '#a6e3a1'
+#   number: '#fab387'
+#   comment: '#6c7086'
+#   function: '#89b4fa'
+#   variable: '#f5e0dc'
+#   type: '#f9e2af'
+#   property: '#94e2d5'
+#   tag: '#89b4fa'
+
+# ─── Foundation Variables ──────────────────────────────────────────────────────
+# Override variables declared by the foundation (e.g., header-height, max-width).
+# Available variables depend on the foundation — check its foundation.js.
+
+# vars:
+#   header-height: 5rem
