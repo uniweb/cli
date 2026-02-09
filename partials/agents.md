@@ -1,5 +1,7 @@
 # AGENTS.md
 
+> A comprehensive guide to building with Uniweb — for developers and AI assistants alike.
+
 Uniweb is a Component Content Architecture (CCA). Content lives in markdown, code lives in React components, and a runtime connects them. The runtime handles section wrapping, background rendering, context theming, and token resolution — components receive pre-parsed content and render it with semantic tokens. Understanding what the runtime does (and therefore what components should *not* do) is the key to working effectively in this architecture.
 
 ## Documentation

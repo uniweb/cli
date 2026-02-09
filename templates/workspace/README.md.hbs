@@ -10,7 +10,7 @@ A website built with [Uniweb](https://github.com/uniweb/cli) — a component web
 {{projectName}}/
 ├── foundation/          # React component library
 │   ├── src/
-│   │   ├── components/  # Your components
+│   │   ├── sections/    # Section types (selectable by content authors)
 │   │   └── styles.css   # Tailwind CSS v4 theme
 │   └── vite.config.js   # defineFoundationConfig()
 │
@@ -22,7 +22,7 @@ A website built with [Uniweb](https://github.com/uniweb/cli) — a component web
 │   ├── site.yml         # Site configuration
 │   └── vite.config.js   # defineSiteConfig()
 │
-└── AGENTS.md            # AI assistant instructions
+└── AGENTS.md            # Developer guide (human + AI)
 ```
 
 ## Content Authoring
@@ -46,27 +46,25 @@ Your content here.
 
 ## Component Development
 
-Components live in `foundation/src/components/`:
+Section types live in `foundation/src/sections/`. Each is a folder with an `index.jsx` and a `meta.js`:
 
 ```jsx
-// foundation/src/components/Hero/index.jsx
-import { H1, P, cn } from '@uniweb/kit'
+// foundation/src/sections/Hero/index.jsx
+import { H1, P } from '@uniweb/kit'
 
-export function Hero({ content, params }) {
-  const { title } = content.main?.header || {}
-  const { theme = 'light' } = params
+export default function Hero({ content }) {
+  const { title, paragraphs = [] } = content || {}
 
   return (
-    <section className={cn('py-20', theme === 'dark' && 'bg-gray-900')}>
-      <H1 text={title} />
-    </section>
+    <div className="max-w-4xl mx-auto px-6">
+      <H1 text={title} className="text-heading text-4xl font-bold" />
+      <P text={paragraphs} className="text-body mt-4" />
+    </div>
   )
 }
-
-export default Hero
 ```
 
-Exposed components (selectable via `type:` in frontmatter) need a `meta.js` file.
+Components receive parsed content from markdown. Classes like `text-heading` and `text-body` are semantic tokens — the site controls their actual colors through theming, so the same component adapts to any context automatically.
 
 {{> components-docs}}
 
