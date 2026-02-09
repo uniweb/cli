@@ -499,11 +499,13 @@ Foundations declare customizable layout/spacing values in `foundation.js`. The s
 export const vars = {
   'header-height': { default: '4rem', description: 'Fixed header height' },
   'max-content-width': { default: '80rem', description: 'Maximum content width' },
-  'section-padding-y': { default: '5rem', description: 'Vertical padding for sections' },
+  'section-padding-y': { default: 'clamp(4rem, 6vw, 7rem)', description: 'Vertical padding for sections' },
 }
 ```
 
-Sites override them in `theme.yml` under `vars:`. Components use them via Tailwind arbitrary values or CSS: `py-[var(--section-padding-y)]`, `h-[var(--header-height)]`, etc. Use `section-padding-y` for consistent section spacing instead of hardcoding padding in each component.
+Sites override them in `theme.yml` under `vars:`. Components use them via Tailwind arbitrary values or CSS: `py-[var(--section-padding-y)]`, `h-[var(--header-height)]`, etc.
+
+The `section-padding-y` default uses `clamp()` for fluid spacing — tighter on mobile, more breathing room on large screens. Use this variable for consistent section spacing instead of hardcoding padding in each component. Sites can override to a fixed value (`section-padding-y: 3rem`) or a different clamp in `theme.yml`.
 
 **When to break the rules:** Header/footer components that float over content may need direct color logic (reading the first section's theme). Decorative elements with fixed branding (logos) use literal colors.
 
