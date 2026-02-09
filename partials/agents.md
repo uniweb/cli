@@ -443,7 +443,7 @@ The runtime does significant work that other frameworks push onto components. Un
 | `isDark ? 'text-white' : 'text-gray-900'` | Just write `text-heading` — it adapts |
 | Background rendering code | Declare `background:` in frontmatter instead |
 | Color constants / tokens files | Colors come from `theme.yml` |
-| Custom CSS variables for colors (`--ink`, `--paper`, `--accent`) in `styles.css` | Map source colors to `theme.yml` colors/neutral. The build generates `--primary-50` through `--primary-950`, `--neutral-50` through `--neutral-950`, etc. Components use semantic tokens (`text-heading`, `bg-section`) that resolve from these palettes per context. A parallel color system bypasses all of this. |
+| Parallel color system (`--ink`, `--paper`) that duplicates what tokens already provide | Map source color roles to `theme.yml` colors/neutral. The build generates `--primary-50` through `--primary-950`, `--neutral-50` through `--neutral-950`, etc. Use palette shades directly (`var(--primary-300)`) for specific tones. Additive design classes that BUILD ON tokens are fine — a parallel system that REPLACES them bypasses context adaptation. |
 
 **What to hardcode** (not semantic — same in every context): layout (`grid`, `flex`, `max-w-6xl`), spacing (`p-6`, `gap-8`), typography scale (`text-3xl`, `font-bold`), animations, border-radius.
 
@@ -566,6 +566,27 @@ Sites override them in `theme.yml` under `vars:`. Components use them via Tailwi
 The `section-padding-y` default uses `clamp()` for fluid spacing — tighter on mobile, more breathing room on large screens. Use this variable for consistent section spacing instead of hardcoding padding in each component. Sites can override to a fixed value (`section-padding-y: 3rem`) or a different clamp in `theme.yml`.
 
 **When to break the rules:** Header/footer components that float over content may need direct color logic (reading the first section's theme). Decorative elements with fixed branding (logos) use literal colors.
+
+### Design richness beyond tokens
+
+Semantic tokens handle context adaptation — the hard problem of making colors work in light, medium, and dark sections. **They are a floor, not a ceiling.** A great foundation adds its own design vocabulary on top.
+
+The token set is deliberately small (24 tokens). It covers the dimensions that change per context. Everything that stays constant across contexts — border weights, shadow depth, radius scales, gradient angles, accent borders, glassmorphism, elevation layers — belongs in your foundation's `styles.css` or component code.
+
+**Don't flatten a rich design to fit the token set.** If a source design has 4 border tones, create them:
+
+```css
+/* foundation/src/styles.css */
+.border-subtle { border-color: color-mix(in oklch, var(--border), transparent 50%); }
+.border-strong { border-color: color-mix(in oklch, var(--border), var(--heading) 30%); }
+.border-accent { border-color: var(--primary-300); }
+```
+
+These compose with semantic tokens — they adapt per context because they reference `--border`, `--heading`, or palette shades. But they add design nuance the token set alone doesn't provide.
+
+**The priority:** Design quality > portability > configurability. It's better to ship a foundation with beautiful, detailed design that's less configurable than to ship a generic one that looks flat. A foundation that looks great for one site is more valuable than one that looks mediocre for any site.
+
+**When migrating from an existing design**, map every visual detail — not just the ones that have a semantic token. Shadow systems, border hierarchies, custom hover effects, accent tints: create CSS classes or Tailwind utilities in `styles.css` for anything the original has that tokens don't cover. Use palette shades directly (`var(--primary-300)`, `bg-neutral-200`) for fine-grained color control beyond the semantic tokens.
 
 ## Component Development
 
@@ -938,7 +959,7 @@ Foundation styles in `foundation/src/styles.css`:
 
 Semantic color tokens (`text-heading`, `bg-section`, `bg-primary`, etc.) come from `theme-tokens.css` — which the runtime populates from the site's `theme.yml`. Don't redefine colors here that belong in `theme.yml`. Use `@theme` only for values the token system doesn't cover (custom breakpoints, animations, shadows).
 
-**Custom CSS is fine alongside Tailwind.** Animations, keyframes, gradients with masks, always-dark code blocks, and other effects that aren't expressible as utility classes can go directly in `styles.css`. Tailwind handles layout and spacing; custom CSS handles visual effects.
+**Custom CSS is expected alongside Tailwind.** Your foundation's `styles.css` is the design layer — shadow systems, border hierarchies, gradient effects, accent treatments, elevation scales, glassmorphism. If the source design has a visual detail, create a class for it. Tailwind handles layout and spacing; semantic tokens handle context adaptation; `styles.css` handles everything else that makes the design rich and distinctive.
 
 ## Troubleshooting
 
