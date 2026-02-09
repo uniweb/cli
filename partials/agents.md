@@ -454,6 +454,33 @@ theme: dark           ← sets context-dark, all tokens resolve to dark values
 ---
 ```
 
+Alternate between `light` (default), `medium`, and `dark` across sections for visual rhythm — no CSS needed. A typical marketing page:
+
+```markdown
+<!-- 1-hero.md -->
+theme: dark
+
+<!-- 2-features.md -->
+(no theme — defaults to light)
+
+<!-- 3-testimonials.md -->
+theme: medium
+
+<!-- 4-cta.md -->
+theme: dark
+```
+
+**Per-section token overrides** — the object form lets authors fine-tune individual tokens for a specific section:
+
+```yaml
+theme:
+  mode: light
+  primary: var(--neutral-900)        # Dark buttons in a light section
+  primary-hover: var(--neutral-800)
+```
+
+Any semantic token (`section`, `heading`, `body`, `primary`, `link`, etc.) can be overridden this way. The overrides are applied as inline CSS custom properties on the section wrapper — components don't need to know about them.
+
 **Site controls the palette** in `theme.yml`. The same foundation looks different across sites because tokens resolve from the site's color configuration, not from component code.
 
 ### theme.yml
