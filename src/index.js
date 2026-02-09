@@ -21,6 +21,7 @@ import { build } from './commands/build.js'
 import { docs } from './commands/docs.js'
 import { doctor } from './commands/doctor.js'
 import { i18n } from './commands/i18n.js'
+import { inspect } from './commands/inspect.js'
 import { add } from './commands/add.js'
 import {
   resolveTemplate,
@@ -328,6 +329,12 @@ async function main() {
     return
   }
 
+  // Handle inspect command
+  if (command === 'inspect') {
+    await inspect(args.slice(1))
+    return
+  }
+
   // Handle add command
   if (command === 'add') {
     await add(args.slice(1))
@@ -568,6 +575,7 @@ ${colors.bright}Commands:${colors.reset}
   create [name]      Create a new project
   add <type> [name]  Add a foundation, site, or extension to a project
   build              Build the current project
+  inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   doctor             Diagnose project configuration issues
   i18n <cmd>         Internationalization (extract, sync, status)

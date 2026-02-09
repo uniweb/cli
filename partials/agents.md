@@ -172,7 +172,16 @@ Lightning quick.        ← items[0].paragraphs[0]
 Enterprise-grade.       ← items[1].paragraphs[0]
 ```
 
-Each item has the same content shape as the top level — `title`, `paragraphs`, `icons`, `links`, `lists`, etc. are all available per item.
+Each item has the same content shape as the top level — `title`, `pretitle`, `subtitle`, `paragraphs`, `icons`, `links`, `lists`, etc. are all available per item. Heading hierarchy within items follows the same rules:
+
+```markdown
+### Fast                ← items[0].title
+#### Built with Rust    ← items[0].subtitle
+Lightning quick.        ← items[0].paragraphs[0]
+
+### Secure              ← items[1].title
+Enterprise-grade.       ← items[1].paragraphs[0]
+```
 
 **Complete example — markdown and resulting content shape side by side:**
 
@@ -263,6 +272,18 @@ $9/month                  ← items[0].paragraphs[0]
 - Feature A               ← items[0].lists[0][0].paragraphs[0]
 - Feature B               ← items[0].lists[0][1].paragraphs[0]
 ```
+
+Items can contain tagged data:
+
+````markdown
+### Starter               ← items[0].title
+$9/month                  ← items[0].paragraphs[0]
+
+```yaml:details
+trial: 14 days
+seats: 1
+```                        ← items[0].data.details = { trial: "14 days", seats: 1 }
+````
 
 Render list item text with kit components (see [kit section](#uniwebkit) below):
 
@@ -591,7 +612,7 @@ Does the content author write content *inside* the nested component? **Yes** →
 
 ## Semantic Theming
 
-CCA separates theme from code. Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter.
+CCA separates theme from code. Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter. The `theme` value is also available as `params.theme` — useful when a component needs conditional logic beyond CSS tokens (e.g., switching between a light and dark logo).
 
 ```jsx
 // ❌ Hardcoded — breaks in dark context, locked to one palette
@@ -817,6 +838,22 @@ function MyComponent({ content, params, block }) {
 }
 ```
 
+All non-reserved frontmatter fields become `params`. Reserved fields (`type`, `preset`, `input`, `data`, `id`, `background`, `theme`) are consumed by the runtime. Everything else (`columns: 3`, `variant: centered`) flows to the component as `params.columns`, `params.variant`.
+
+### block properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `block.page` | Page | Parent page |
+| `block.website` | Website | Site-level data and navigation |
+| `block.type` | string | Component type name |
+| `block.childBlocks` | Block[] | File-based child sections (`@`-prefixed files + `nest:`) |
+| `block.insets` | Block[] | Inline `@Component` references |
+| `block.getInset(refId)` | Block | Lookup inset by refId |
+| `block.properties` | object | Raw frontmatter (prefer `params` from destructuring) |
+| `block.themeName` | string | Resolved theme: `"light"`, `"medium"`, `"dark"` |
+| `block.stableId` | string | Stable ID from filename or frontmatter `id:` |
+
 ### Section Wrapper
 
 The runtime wraps every section type in a `<section>` element with context class, background, and semantic tokens. Use static properties to customize this wrapper:
@@ -913,7 +950,9 @@ function Footer({ content, block }) {
   const columns = content.lists[0] || []        // [{paragraphs, lists}, ...]
   const legal = content.data?.legal             // {copyright}
 
-  // Each column: group.paragraphs[0] = label, group.lists[0] = links
+  // Each top-level list item has the full content shape.
+  // Bare text ("Product") → paragraphs[0]. Nested list → lists[0].
+  // group.paragraphs[0] = column label, group.lists[0] = column links.
   columns.map(group => ({
     label: group.paragraphs[0],
     links: group.lists[0]?.map(item => item.links[0])
@@ -1321,13 +1360,15 @@ Semantic color tokens (`text-heading`, `bg-section`, `bg-primary`, etc.) come fr
 
 **Prerender warnings about hooks/useState** — Components with React hooks (useState/useEffect) — especially insets — will show SSG warnings during `pnpm build`. This is expected and harmless; see the note in the Insets section above.
 
-**Content not appearing as expected?** In dev mode, open the browser console and inspect the parsed content shape your component receives:
+**Content not appearing as expected?** Inspect the parsed content shape to see exactly what your component receives:
 
-```js
-globalThis.uniweb.activeWebsite.activePage.bodyBlocks[0].parsedContent
+```bash
+uniweb inspect pages/home/hero.md         # Single section
+uniweb inspect pages/home/                 # Whole page
+uniweb inspect pages/home/hero.md --raw    # ProseMirror AST
 ```
 
-Compare with the Content Shape table above to identify mapping issues (e.g., headings becoming items instead of title, links inline in paragraphs instead of in `links[]`).
+Compare with the Content Shape section above to identify mapping issues (e.g., headings becoming items instead of title, links inline in paragraphs instead of in `links[]`).
 
 ## Further Documentation
 
