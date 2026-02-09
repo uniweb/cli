@@ -140,6 +140,28 @@ Enterprise-grade.       ← items[1].paragraphs[0]
 
 Each item has the same content shape as the top level — `title`, `paragraphs`, `icons`, `links`, `lists`, etc. are all available per item.
 
+**Complete example — markdown and resulting content shape side by side:**
+
+```markdown
+### Eyebrow                    │  content.pretitle = "Eyebrow"
+# Our Features                 │  content.title = "Our Features"
+## Build better products       │  content.subtitle = "Build better products"
+                               │
+We help teams ship faster.     │  content.paragraphs[0] = "We help teams..."
+                               │
+[Get Started](/start)          │  content.links[0] = { href: "/start", label: "Get Started" }
+                               │
+### Fast                       │  content.items[0].title = "Fast"
+![](lu-zap)                    │  content.items[0].icons[0] = { library: "lu", name: "zap" }
+Lightning quick.               │  content.items[0].paragraphs[0] = "Lightning quick."
+                               │
+### Secure                     │  content.items[1].title = "Secure"
+![](lu-shield)                 │  content.items[1].icons[0] = { library: "lu", name: "shield" }
+Enterprise-grade security.     │  content.items[1].paragraphs[0] = "Enterprise-grade..."
+```
+
+Headings before the main title become `pretitle`. Headings after the main title at a lower importance become `subtitle`. Headings that appear after body content (paragraphs, links, images) start the `items` array.
+
 **Lists** contain bullet or ordered list items. Each list item is an object with the same content shape — not a plain string:
 
 ```markdown
@@ -210,6 +232,22 @@ Inset components must declare `inset: true` in their `meta.js`. They render at t
 
 Standalone links (alone on a line) become buttons. Inline links stay as text links.
 
+**Standalone links** — paragraphs that contain *only* links (no other text) are promoted to `content.links[]`. This works for single links and for multiple links sharing a paragraph:
+
+```markdown
+[Primary](/start)              ← standalone → content.links[0]
+
+[Secondary](/learn)            ← standalone → content.links[1]
+
+[One](/a) [Two](/b)            ← links-only paragraph → content.links[0], content.links[1]
+```
+
+Links mixed with non-link text stay as inline `<a>` tags within `content.paragraphs[]`:
+
+```markdown
+Check out [this](/a) and [that](/b).   ← inline links in paragraph text, NOT in content.links[]
+```
+
 ### Structured Data
 
 Tagged code blocks pass structured data via `content.data`:
@@ -238,6 +276,46 @@ const data = useData()
 ````
 
 Access: `content.data?.before`, `content.data?.after` → raw code strings.
+
+### Lists as Navigation Menus
+
+Markdown lists are ideal for navigation, menus, and grouped link structures. Each list item is a full content object with `paragraphs`, `links`, `icons`, and nested `lists`.
+
+**Header nav — flat list with icons and links:**
+
+```markdown
+- ![](lu-home) [Home](/)
+- ![](lu-book) [Docs](/docs)
+- ![](lu-mail) [Contact](/contact)
+```
+
+Access: `content.lists[0]` — each item has `item.links[0]` (href + label) and `item.icons[0]` (icon).
+
+**Footer — nested list for grouped links:**
+
+```markdown
+- Product
+  - [Features](/features)
+  - [Pricing](/pricing)
+- Company
+  - [About](/about)
+  - [Careers](/careers)
+```
+
+Access: `content.lists[0]` — each top-level item has `item.paragraphs[0]` (group label) and `item.lists[0]` (array of sub-items, each with `subItem.links[0]`).
+
+```jsx
+content.lists[0]?.map((group, i) => (
+  <div key={i}>
+    <Span text={group.paragraphs[0]} className="font-semibold text-heading" />
+    <ul>
+      {group.lists[0]?.map((subItem, j) => (
+        <li key={j}><Link to={subItem.links[0]?.href}>{subItem.links[0]?.label}</Link></li>
+      ))}
+    </ul>
+  </div>
+))
+```
 
 ### Section Backgrounds
 
@@ -627,6 +705,15 @@ export default Hero
 - `Component.className` — adds classes to the runtime's wrapper. Use for section-level spacing, borders, overflow. Set `py-[var(--section-padding-y)]` for consistent spacing from the theme variable, or override for specific sections (e.g., hero needs extra top padding). The component's own JSX handles inner layout only (`max-w-7xl mx-auto px-6`).
 - `Component.as` — changes the wrapper element. Use `'nav'` for headers, `'footer'` for footers, `'div'` when `<section>` isn't semantically appropriate.
 
+**Layout components** (Header, Footer) typically need `Component.className = 'p-0'` to suppress the runtime's default section padding, since they control their own padding. Also set `Component.as = 'header'` or `'footer'` for semantic HTML:
+
+```jsx
+function Header({ content, block }) { /* ... */ }
+Header.className = 'p-0'
+Header.as = 'header'
+export default Header
+```
+
 ### meta.js Structure
 
 ```javascript
@@ -707,15 +794,29 @@ import { Section, Render } from '@uniweb/kit'
 
 **Other primitives** (`@uniweb/kit`): `Link`, `Image`, `Icon`, `Media`, `Asset`, `SafeHtml`, `SocialIcon`, `FileLogo`, `cn()`
 
+`Link` props: `to` (or `href`), `target`, `reload`, `download`, `className`, `children`:
+
+```jsx
+<Link to="/about">About</Link>            // SPA navigation via React Router
+<Link to="page:about">About</Link>        // Resolves page ID to route
+<Link reload href={localeUrl}>ES</Link>    // Full page reload, prepends basePath
+// External URLs auto-get target="_blank" and rel="noopener noreferrer"
+```
+
 **Other styled** (`@uniweb/kit`): `SidebarLayout`, `Prose`, `Article`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
 **Hooks:**
 - `useScrolled(threshold)` → boolean for scroll-based header styling
 - `useMobileMenu()` → `{ isOpen, toggle, close }` with auto-close on navigation
 - `useAccordion({ multiple, defaultOpen })` → `{ isOpen, toggle }` for expand/collapse
-- `useActiveRoute()` → `{ route, isActiveOrAncestor(page) }` for nav highlighting (SSG-safe)
+- `useActiveRoute()` → `{ route, rootSegment, isActive(page), isActiveOrAncestor(page) }` for nav highlighting (SSG-safe)
 - `useGridLayout(columns, { gap })` → responsive grid class string
 - `useTheme(name)` → standardized theme classes
+- `useAppearance()` → `{ scheme, toggle, canToggle, setScheme, schemes }` — light/dark mode control with localStorage persistence
+- `useRouting()` → `{ useLocation, useParams, useNavigate, Link, isRoutingAvailable }` — SSG-safe routing access (returns no-op fallbacks during prerender)
+- `useWebsite()` → `{ website, localize, makeHref, getLanguage, getLanguages, getRoutingComponents }` — primary runtime hook
+- `useThemeData()` → Theme instance for programmatic color access (`getColor(name, shade)`, `getPalette(name)`)
+- `useColorContext(block)` → `'light' | 'medium' | 'dark'` — current section's color context
 
 **Utilities:** `cn()` (Tailwind class merge), `filterSocialLinks(links)`, `getSocialPlatform(url)`
 
@@ -753,6 +854,28 @@ website.hasMultipleLocales()
 website.getLocales()        // [{ code, label, isDefault }]
 website.getActiveLocale()   // 'en'
 website.getLocaleUrl('es')
+
+// Core properties
+website.name              // Site name from site.yml
+website.basePath          // Deployment base path (e.g., '/docs/')
+
+// Route detection
+const { isActive, isActiveOrAncestor } = useActiveRoute()
+isActive(page)            // Exact match
+isActiveOrAncestor(page)  // Ancestor match (for parent highlighting in nav)
+
+// Appearance (light/dark mode)
+const { scheme, toggle, canToggle } = useAppearance()
+
+// Page properties
+page.title                // Page title
+page.label                // Short label for nav (falls back to title)
+page.route                // Route path
+page.isHidden()           // Hidden from navigation
+page.showInHeader()       // Visible in header nav
+page.showInFooter()       // Visible in footer nav
+page.hasChildren()        // Has child pages
+page.children             // Array of child Page objects
 ```
 
 ### Insets and the Visual Component
@@ -780,6 +903,8 @@ function SplitContent({ content, block }) {
 - `block.insets` — array of Block instances from `@` references
 - `block.getInset(refId)` — lookup by refId (used by sequential renderers)
 - `content.insets` — flat array of `{ refId }` entries (parallel to `content.imgs`)
+
+**SSG and hooks:** Inset components that use React hooks (useState, useEffect) will trigger prerender warnings during `pnpm build`. This is expected — the SSG pipeline cannot render hooks due to dual React instances in the build. The warnings are informational; the page renders correctly client-side. If you see `"Skipped SSG for /..."` or `"Invalid hook call"`, this is the cause.
 
 Inset components declare `inset: true` in meta.js. Use `hidden: true` for inset-only components:
 
@@ -974,7 +1099,15 @@ Semantic color tokens (`text-heading`, `bg-section`, `bg-primary`, etc.) come fr
 
 **Styles not applying** — Verify `@source` in `styles.css` includes your component paths. Check custom colors match `@theme` definitions.
 
-**Prerender warnings about hooks/useState** — During `pnpm build`, you may see `Warning: Failed to render /: Cannot read properties of null (reading 'useState')` for pages. This is a known limitation of the SSG pipeline (dual React instances in development). The site works correctly client-side — these warnings only affect the static HTML preview, not functionality.
+**Prerender warnings about hooks/useState** — Components with React hooks (useState/useEffect) — especially insets — will show SSG warnings during `pnpm build`. This is expected and harmless; see the note in the Insets section above.
+
+**Content not appearing as expected?** In dev mode, open the browser console and inspect the parsed content shape your component receives:
+
+```js
+globalThis.uniweb.activeWebsite.activePage.bodyBlocks[0].parsedContent
+```
+
+Compare with the Content Shape table above to identify mapping issues (e.g., headings becoming items instead of title, links inline in paragraphs instead of in `links[]`).
 
 ## Further Documentation
 
