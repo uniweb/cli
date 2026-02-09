@@ -299,16 +299,15 @@ nest:
 - Children are ordered by their position in the `nest:` array
 - Orphaned `@` files (no parent in `nest:`) appear at top-level with a warning
 
-Components receive children via `block.childBlocks`:
+Components receive children via `block.childBlocks`. Use `ChildBlocks` from kit to render them — the runtime handles component resolution:
 
 ```jsx
+import { ChildBlocks } from '@uniweb/kit'
+
 export default function Grid({ block, params }) {
   return (
     <div className={`grid grid-cols-${params.columns || 2} gap-6`}>
-      {block.childBlocks.map(child => {
-        const Comp = child.initComponent()
-        return Comp ? <Comp key={child.id} block={child} /> : null
-      })}
+      <ChildBlocks from={block} />
     </div>
   )
 }
@@ -583,7 +582,7 @@ import { Section, Render } from '@uniweb/kit'
 
 **Rendering visuals** (`@uniweb/kit`):
 
-`<Visual>` renders the first visual from content (inset > video > image). See Insets section below.
+`<Visual>` renders the first non-empty candidate from the props you pass (inset, video, image). See Insets section below.
 
 **Other primitives** (`@uniweb/kit`): `Link`, `Image`, `Icon`, `Media`, `Asset`, `SafeHtml`, `SocialIcon`, `FileLogo`, `cn()`
 
@@ -642,23 +641,24 @@ Components access inline `@` references via `block.insets` (separate from `block
 ```jsx
 import { Visual } from '@uniweb/kit'
 
-// Visual renders the first visual: inset > video > image
-function SplitContent({ content, block, params }) {
+// Visual renders the first non-empty candidate: inset > video > image
+function SplitContent({ content, block }) {
   return (
     <div className="flex gap-12">
       <div className="flex-1">
         <h2 className="text-heading">{content.title}</h2>
       </div>
-      <Visual content={content} block={block} className="flex-1 rounded-lg" />
+      <Visual inset={block.insets[0]} video={content.videos[0]} image={content.imgs[0]} className="flex-1 rounded-lg" />
     </div>
   )
 }
 ```
 
+- `<Visual>` — renders first non-empty candidate from the props you pass (`inset`, `video`, `image`)
+- `<Render>` / `<Section>` — automatically handles `@Component` references placed in content flow
 - `block.insets` — array of Block instances from `@` references
 - `block.getInset(refId)` — lookup by refId (used by sequential renderers)
 - `content.insets` — flat array of `{ refId }` entries (parallel to `content.imgs`)
-- `<Visual>` — renders first inset > video > image from content (from `@uniweb/kit`)
 
 Inset components declare `inset: true` in meta.js. Use `hidden: true` for inset-only components:
 
@@ -689,7 +689,7 @@ function SplitContent({ content, block, params }) {
         <h2 className="text-heading text-3xl font-bold">{content.title}</h2>
         <p className="text-body mt-4">{content.paragraphs[0]}</p>
       </div>
-      <Visual content={content} block={block} className="flex-1 rounded-2xl" />
+      <Visual inset={block.insets[0]} video={content.videos[0]} image={content.imgs[0]} className="flex-1 rounded-2xl" />
     </div>
   )
 }
@@ -796,7 +796,7 @@ Uniweb section types do more with less because the framework handles concerns th
 - **Dispatcher pattern** — one section type with a `variant` param replaces multiple near-duplicate components (`HeroHomepage` + `HeroPricing` → `Hero` with `variant: homepage | pricing`)
 - **Section nesting** — `@`-prefixed child files replace wrapper components that exist only to arrange children
 - **Insets** — `![](@ComponentName)` replaces prop-drilling of visual components into containers
-- **Visual component** — `<Visual>` renders image/video/inset from content, replacing manual media handling
+- **Visual component** — `<Visual>` renders the first non-empty visual from explicit candidates (inset, video, image), replacing manual media handling
 - **Semantic theming** — the runtime orchestrates context classes and token resolution, replacing per-component dark mode logic
 - **Engine backgrounds** — the runtime renders section backgrounds from frontmatter, replacing background-handling code in every section
 - **Rich params** — `meta.js` params with types, defaults, and presets replace config objects and conditional logic
