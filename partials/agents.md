@@ -67,6 +67,7 @@ The name is both the directory name and the package name. Use `--project <name>`
 pnpm install    # Install dependencies
 pnpm dev        # Start dev server
 pnpm build      # Build for production
+pnpm preview    # Preview production build (SSG + SPA)
 ```
 
 ## Content Authoring
@@ -186,6 +187,7 @@ The three parts carry distinct information:
 ![Architecture diagram](@NetworkDiagram){variant=compact}
 ![Cache metrics](@PerformanceChart){period=30d}
 ![](@GradientBlob){position=top-right}
+![npm create uniweb](@CommandBlock){note="Vite + React + Routing — ready to go"}
 ```
 
 Inset components must declare `inset: true` in their `meta.js`. They render at the exact position in the content flow where the author placed them. See meta.js section below for details.
@@ -197,6 +199,8 @@ Inset components must declare `inset: true` in their `meta.js`. They render at t
 [text](./file.pdf){download}            <!-- Download -->
 ![alt](./img.jpg){role=banner}          <!-- Role determines array: imgs, icons, or videos -->
 ```
+
+**Quote values that contain spaces:** `{note="Ready to go"}` not `{note=Ready to go}`. Unquoted values end at the first space.
 
 Standalone links (alone on a line) become buttons. Inline links stay as text links.
 
