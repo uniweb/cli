@@ -916,8 +916,16 @@ export default {
     compact: { label: 'Compact', params: { columns: 4 } },
   },
 
+  // context and initialState: keys are developer-defined, not framework fields.
+  // Design your own names for your foundation's cross-block communication.
   context: {
-    allowTranslucentTop: true,
+    // Example: a Hero might declare this so a Header knows it can float.
+    // allowTranslucentTop: true,
+  },
+
+  initialState: {
+    // Example: a collapsible section's starting state.
+    // expanded: false,
   },
 }
 ```
@@ -1027,10 +1035,64 @@ page.hasChildren(), page.children
 
 ### Cross-Block Communication
 
+Section types sometimes need to coordinate. The typical case: a Header needs to know whether the section below it supports a floating translucent overlay — a Hero with a full-bleed background does, a plain text section doesn't. The section that **owns the capability declares it**; the section that **needs to adapt reads it**.
+
+`getBlockInfo()` exposes two channels:
+
+- **`context`** — Static capabilities from `meta.js`. Never changes. The declaring section type always has this capability.
+- **`state`** — Dynamic runtime state via `useBlockState()`. Can change based on component logic. Initial value comes from `initialState` in `meta.js`.
+
 ```jsx
-const firstBody = block.page.getFirstBodyBlockInfo()
-// → { type, theme, context: { allowTranslucentTop }, state }
+// Header reads the next section's info to decide how to render
+const nextBlockInfo = block.getNextBlockInfo()
+// nextBlockInfo.context  → static (meta.js)
+// nextBlockInfo.state    → dynamic (useBlockState)
 ```
+
+**Static context** — Hero declares a permanent capability, Header reads it:
+
+```js
+// Hero/meta.js — "I always support a translucent header over me"
+export default {
+  context: { allowTranslucentTop: true },
+}
+```
+
+```jsx
+// Header/index.jsx — adapts based on what's below
+const nextBlockInfo = block.getNextBlockInfo()
+const isFloating = nextBlockInfo?.context?.allowTranslucentTop || false
+```
+
+**Dynamic state** — Hero declares an initial value but can change it at runtime:
+
+```js
+// Hero/meta.js — starts as true, but component logic may change it
+export default {
+  initialState: { allowTranslucentTop: true },
+}
+```
+
+```jsx
+// Hero/index.jsx — conditionally updates
+function Hero({ content, block }) {
+  const [state, setState] = block.useBlockState(useState)
+  // state.allowTranslucentTop is true initially (from meta.js)
+  // Component logic can change it: setState({ allowTranslucentTop: false })
+}
+```
+
+```jsx
+// Header/index.jsx — reads dynamic state, falls back to static context
+const nextBlockInfo = block.getNextBlockInfo()
+const isFloating = nextBlockInfo?.state?.allowTranslucentTop
+  ?? nextBlockInfo?.context?.allowTranslucentTop
+  ?? false
+```
+
+The key names (`allowTranslucentTop`, `expanded`, etc.) are yours to design — they're not framework fields. Define whatever protocol your foundation's sections need.
+
+Other navigation methods: `block.getPrevBlockInfo()`, `block.page.getFirstBodyBlockInfo()`.
 
 ### Custom Layouts
 
