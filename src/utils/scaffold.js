@@ -9,6 +9,7 @@ import fs from 'node:fs/promises'
 import { existsSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import yaml from 'js-yaml'
 import { copyTemplateDirectory, registerVersions } from '../templates/processor.js'
 import { getVersionsForTemplates } from '../versions.js'
 
@@ -103,13 +104,19 @@ export async function applyContent(contentDir, targetDir, context, options = {})
     '.gitignore',
   ])
 
-  await copyContentRecursive(contentDir, targetDir, context, STRUCTURAL_FILES, options)
+  // Config files that should be merged, not overwritten.
+  // Keys listed here are preserved from the scaffolded version.
+  const MERGE_FILES = {
+    'site.yml': ['name', 'foundation'],
+  }
+
+  await copyContentRecursive(contentDir, targetDir, context, STRUCTURAL_FILES, MERGE_FILES, options)
 }
 
 /**
  * Recursively copy content files, skipping structural files
  */
-async function copyContentRecursive(sourceDir, targetDir, context, structuralFiles, options) {
+async function copyContentRecursive(sourceDir, targetDir, context, structuralFiles, mergeFiles, options) {
   await fs.mkdir(targetDir, { recursive: true })
 
   const entries = readdirSync(sourceDir, { withFileTypes: true })
@@ -119,7 +126,7 @@ async function copyContentRecursive(sourceDir, targetDir, context, structuralFil
 
     if (entry.isDirectory()) {
       const targetSubDir = join(targetDir, entry.name)
-      await copyContentRecursive(sourcePath, targetSubDir, context, structuralFiles, options)
+      await copyContentRecursive(sourcePath, targetSubDir, context, structuralFiles, mergeFiles, options)
     } else {
       // Determine the output filename (strip .hbs extension)
       const outputName = entry.name.endsWith('.hbs')
@@ -131,13 +138,30 @@ async function copyContentRecursive(sourceDir, targetDir, context, structuralFil
 
       const targetPath = join(targetDir, outputName)
 
+      // Get new content (process .hbs or read as-is)
+      let newContent
       if (entry.name.endsWith('.hbs')) {
-        // Process through Handlebars
         const Handlebars = (await import('handlebars')).default
-        const content = await fs.readFile(sourcePath, 'utf-8')
-        const template = Handlebars.compile(content)
-        const result = template(context)
-        await fs.writeFile(targetPath, result)
+        const raw = await fs.readFile(sourcePath, 'utf-8')
+        const template = Handlebars.compile(raw)
+        newContent = template(context)
+      }
+
+      // Merge config files instead of overwriting
+      const preserveKeys = mergeFiles[outputName]
+      if (preserveKeys && existsSync(targetPath)) {
+        const existingContent = await fs.readFile(targetPath, 'utf-8')
+        const existing = yaml.load(existingContent) || {}
+        const incoming = yaml.load(newContent || await fs.readFile(sourcePath, 'utf-8')) || {}
+
+        // Template values as base, preserve specified keys from scaffolded version
+        const merged = { ...incoming }
+        for (const key of preserveKeys) {
+          if (existing[key] !== undefined) merged[key] = existing[key]
+        }
+        await fs.writeFile(targetPath, yaml.dump(merged, { lineWidth: -1 }))
+      } else if (newContent !== undefined) {
+        await fs.writeFile(targetPath, newContent)
       } else {
         // Copy as-is
         await fs.copyFile(sourcePath, targetPath)

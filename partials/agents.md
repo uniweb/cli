@@ -1159,6 +1159,36 @@ uniweb inspect pages/home/                 # Whole page
 uniweb inspect pages/home/hero.md --raw    # ProseMirror AST
 ```
 
+## Learning from Official Templates
+
+When you're unsure how to implement a pattern — data fetching, i18n, layouts, insets, theming — install an official template as a reference project in your workspace:
+
+```bash
+uniweb add project marketing --from marketing
+pnpm install
+```
+
+This creates `marketing/foundation/` + `marketing/site/` alongside your existing project. You don't need to build or run it — just read the source files to see how working components handle content, params, theming, and data.
+
+**What to study:**
+- `{name}/foundation/src/sections/` — components with meta.js (content expectations, params, presets)
+- `{name}/site/pages/` — real content files showing markdown → component mapping
+- `{name}/site/theme.yml` + `site.yml` — theming and configuration patterns
+
+**Available templates:**
+
+| Template | Demonstrates |
+|----------|-------------|
+| `marketing` | Semantic tokens, insets, grids, multi-line headings, inline styling |
+| `docs` | Sidebar navigation, navigation levels, code highlighting |
+| `dynamic` | Live API data fetching, loading states, transforms |
+| `international` | i18n, blog with collections, multi-locale routing |
+| `store` | Product grid, collections, e-commerce patterns |
+| `academic` | Publications, team grid, timeline, math |
+| `extensions` | Multi-foundation architecture, runtime loading |
+
+You can install multiple templates. Each becomes an independent project in the workspace.
+
 ## Further Documentation
 
 Full documentation: **https://github.com/uniweb/docs**
