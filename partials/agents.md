@@ -1,8 +1,23 @@
 # AGENTS.md
 
-> A comprehensive guide to building with Uniweb — for developers and AI assistants alike.
+## Why This Architecture Exists
 
-Uniweb is a Component Content Architecture (CCA). Content lives in markdown, code lives in React components, and a runtime connects them. The runtime handles section wrapping, background rendering, context theming, and token resolution — components receive pre-parsed content and render it with semantic tokens. Understanding what the runtime does (and therefore what components should *not* do) is the key to working effectively in this architecture.
+A Uniweb project has two audiences: **content authors** who compose pages, and **component developers** who build reusable section types. Neither touches the other's files. Neither can break the other's work.
+
+Content authors write markdown, set frontmatter params (`columns: 3`, `theme: dark`), choose section types (`type: Hero`), arrange page order, and compose layouts from available sections — all without opening a code file. Component developers build section types that receive pre-parsed content and render it with semantic tokens — without knowing what content will fill them.
+
+Every pattern in this guide serves that separation:
+
+- **Markdown** — because content authors edit it directly
+- **Frontmatter params** — because `variant: centered` is something an author can change; a JSX prop isn't
+- **`meta.js`** — declares what the author can configure; it's the contract between the two roles
+- **Semantic tokens** — because the author controls `theme: dark` and the component must adapt without code changes
+- **Tagged data blocks** (`yaml:nav`, `yaml:legal`) — because structured data (nav items, pricing tiers, legal text) still belongs to the content author
+- **Section nesting** — because the author composes layouts from available section types, not the developer
+
+The decision rule is simple: **would a content author need to change this?** Yes → it belongs in markdown, frontmatter, or a tagged data block. No → it belongs in component code.
+
+The runtime handles section wrapping, background rendering, context theming, and token resolution — components receive content and render it. Understanding what the runtime does (and therefore what components should *not* do) is the key to working effectively.
 
 ## Documentation
 
@@ -29,15 +44,15 @@ This project was created with [Uniweb](https://github.com/uniweb/cli). Full docu
 
 ```
 project/
-├── foundation/     # React component library
-├── site/           # Content (markdown pages)
+├── foundation/     # Component developer's domain
+├── site/           # Content author's domain
 └── pnpm-workspace.yaml
 ```
 
 Multi-site variant uses `foundations/` and `sites/` (plural) folders.
 
-- **Foundation**: React components. Those with `meta.js` are *section types* — selectable by content authors via `type:` in frontmatter. Everything else is ordinary React.
-- **Site**: Markdown content + configuration. Each section file references a section type.
+- **Foundation** (developer): React components. Those with `meta.js` are *section types* — selectable by content authors via `type:` in frontmatter. Everything else is ordinary React.
+- **Site** (content author): Markdown content + configuration. Each section file references a section type. Authors work here without touching foundation code.
 
 ## Project Setup
 
