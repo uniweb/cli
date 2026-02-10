@@ -431,6 +431,13 @@ Does the content author write content *inside* the nested element? **Yes** → c
 
 Inset components declare `inset: true` in meta.js. Don't use `hidden: true` on insets — `hidden` means "don't export this component at all" (for internal helpers), while `inset: true` means "available for `@Component` references in markdown."
 
+**What inset components receive:** Insets are full section types — they get `{ content, params, block }` like any other section. The alt text becomes `content.title`, and attributes become `params`:
+
+```markdown
+![npm create uniweb](@CommandBlock){note="Ready to go"}
+```
+→ CommandBlock receives `content.title = "npm create uniweb"` and `params.note = "Ready to go"`.
+
 **SSG:** Insets, `<ChildBlocks>`, and `<Visual>` all render correctly during prerender. Inset components that use React hooks internally (useState, useEffect) will trigger prerender warnings — this is expected and harmless; the page renders correctly client-side.
 
 ### Section Nesting Details
@@ -601,21 +608,27 @@ Components use **semantic CSS tokens** instead of hardcoded colors. The runtime 
 <h2 className="text-heading">...</h2>
 ```
 
-**Core tokens** (available as Tailwind classes):
+**Semantic tokens** (available as Tailwind classes — `text-*`, `bg-*`, `border-*`):
 
 | Token | Purpose |
 |-------|---------|
-| `text-heading` | Headings |
-| `text-body` | Body text |
-| `text-subtle` | Secondary/de-emphasized text |
-| `bg-section` | Section background |
-| `bg-card` | Card/panel background |
-| `bg-muted` | Hover states, zebra rows |
-| `border-border` | Borders |
-| `text-link` | Link color |
-| `bg-primary` / `text-primary-foreground` / `hover:bg-primary-hover` | Primary actions |
-| `bg-secondary` / `text-secondary-foreground` / `hover:bg-secondary-hover` | Secondary actions |
-| `text-success` / `text-error` / `text-warning` / `text-info` | Status colors |
+| `heading` | Heading text |
+| `body` | Body text |
+| `subtle` | Secondary/de-emphasized text |
+| `section` | Section background |
+| `card` | Card/panel/well background |
+| `muted` | Hover states, zebra rows |
+| `border` | Lines, dividers |
+| `ring` | Focus indicators |
+| `link` / `link-hover` | Link colors |
+| `primary` / `primary-foreground` / `primary-hover` / `primary-border` | Primary actions |
+| `secondary` / `secondary-foreground` / `secondary-hover` / `secondary-border` | Secondary actions |
+| `success` / `warning` / `error` / `info` | Status colors |
+| `success-subtle` / `warning-subtle` / `error-subtle` / `info-subtle` | Status backgrounds (alerts) |
+
+Use with any Tailwind prefix: `text-heading`, `bg-section`, `border-border`, `bg-primary`, `text-primary-foreground`, `hover:bg-primary-hover`, `bg-error-subtle`, etc.
+
+**Palette shades** are also available: `text-primary-600`, `bg-neutral-100`, `border-accent-300` — 11 shades (50–950) for each palette color (primary, secondary, accent, neutral). See `theme-tokens.css` for the complete mapping.
 
 **Content authors control context** in frontmatter:
 
@@ -787,14 +800,16 @@ Content fields are **HTML strings** — they contain `<strong>`, `<em>`, `<a>` f
 **Extracted fields** (most common — custom layout with content from markdown):
 
 ```jsx
-import { H1, H2, P, Span } from '@uniweb/kit'
+import { H1, H2, H3, P, Span } from '@uniweb/kit'
 
 <H1 text={content.title} className="text-heading text-5xl font-bold" />
+<H2 text={content.subtitle} className="text-heading text-2xl" />
+<H3 text={item.title} className="text-heading text-lg font-semibold" />
 <P text={content.paragraphs} className="text-body" />
 <Span text={listItem.paragraphs[0]} className="text-subtle" />
 ```
 
-These render their own HTML tag — don't wrap: `<H2 text={...} />` not `<h2><H2 text={...} /></h2>`.
+Kit provides `H1` through `H6` — use the appropriate level for semantic hierarchy. These render their own HTML tag — don't wrap: `<H2 text={...} />` not `<h2><H2 text={...} /></h2>`.
 
 **Full content rendering** (article/docs sections where the author controls the flow):
 
@@ -823,17 +838,45 @@ import { Visual } from '@uniweb/kit'
 
 **Navigation and routing:** `Link` (`to`/`href`, `to="page:about"` for page ID resolution, auto `target="_blank"` for external, `reload` for full page reload), `useActiveRoute()`, `useWebsite()`, `useRouting()`
 
-**Header and layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()` (light/dark mode)
+**Header and layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()`
 
 **Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`, `useTheme(name)`
 
 **Data and theming:** `useThemeData()` (programmatic color access), `useColorContext(block)`
 
-**Utilities:** `cn()` (Tailwind class merge), `Link`, `Image`, `Asset`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`
+**Utilities:** `cn()` (Tailwind class merge — `cn('px-4', condition && 'bg-primary')` resolves conflicts), `Link`, `Image`, `Asset`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`
 
 **Other styled:** `SidebarLayout`, `Prose`, `Article`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
+### Hook Signatures
+
+```js
+useActiveRoute()    → { route, rootSegment, isActive(pageOrRoute), isActiveOrAncestor(pageOrRoute) }
+useMobileMenu()     → { isOpen, open, close, toggle }  // auto-closes on route change
+useScrolled(threshold?) → boolean                       // true when scrolled past threshold (px)
+useAppearance()     → { scheme, setScheme, toggle, canToggle, schemes }
+useWebsite()        → { website }                       // the Website object
+useThemeData()      → Theme                             // programmatic color access
+useColorContext(block) → 'light' | 'medium' | 'dark'   // current section context
+```
+
+`isActive` and `isActiveOrAncestor` accept a Page object or a route string. `useAppearance` reads `appearance:` from `theme.yml` — `scheme` is `'light'`|`'dark'`, `canToggle` reflects `allowToggle` config. Stores preference in localStorage, respects system preference.
+
+### Icon Component
+
+The `<Icon>` renders icons from content or explicit props. The simplest usage — spread an icon object from content:
+
+```jsx
+{content.icons.map((icon, i) => <Icon key={i} {...icon} />)}
+```
+
+Props: `library` + `name` (from content), `svg` (direct SVG string), `url` (fetch from URL), `size` (default `'24'`), `className`. The legacy `icon` prop accepts shorthand strings (`"lu-house"`) or objects.
+
+Built-in icons (no library needed): `check`, `close`, `menu`, `chevronDown`, `chevronRight`, `externalLink`, `download`, `play`, and a few others.
+
 ### Content Patterns for Header and Footer
+
+Layout sections (`header.md`, `footer.md`) are regular section types — they support the full content shape including tagged data blocks, lists, links, icons, and items. The only difference is they render on every page instead of one.
 
 Header and Footer combine several content categories. Use different parts of the content shape for each role:
 
