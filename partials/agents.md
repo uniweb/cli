@@ -464,6 +464,24 @@ content.lists[0]?.map((group, i) => (
 ))
 ```
 
+**For richer navigation with icons, descriptions, or hierarchy**, use `yaml:nav` tagged blocks instead of markdown lists:
+
+````markdown
+```yaml:nav
+- label: Dashboard
+  href: /
+  icon: lu:layout-grid
+- label: Docs
+  href: /docs
+  icon: lu:book-open
+  children:
+    - label: Getting Started
+      href: /docs/quickstart
+```
+````
+
+Access: `content.data?.nav` — array of `{ label, href, icon, text, children, target }`. Components can support both modes: use `content.data?.nav` when provided, fall back to `website.getPageHierarchy()` for automatic nav. See `reference/navigation-patterns.md` for the full pattern.
+
 ### Section Backgrounds
 
 Set `background` in frontmatter — the runtime renders it automatically. The string form auto-detects the type:
