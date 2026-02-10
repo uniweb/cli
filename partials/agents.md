@@ -1,27 +1,39 @@
 # AGENTS.md
 
-## Why This Architecture Exists
+## The Architecture in One Sentence
 
-A Uniweb project has two audiences: **content authors** who compose pages, and **component developers** who build reusable section types. Neither touches the other's files. Neither can break the other's work.
+A Uniweb project separates **what the site says** from **how it's built**. Content authors write markdown — choosing section types, setting params, composing layouts. Component developers build reusable section types that receive pre-parsed content and render it. Neither touches the other's files. Neither can break the other's work.
 
-Content authors write markdown, set frontmatter params (`columns: 3`, `theme: dark`), choose section types (`type: Hero`), arrange page order, and compose layouts from available sections — all without opening a code file. Component developers build section types that receive pre-parsed content and render it with semantic tokens — without knowing what content will fill them.
+Every pattern in this guide serves that separation: markdown for content, frontmatter for configuration, `meta.js` for the contract between the two roles, semantic tokens for context adaptation, and a runtime that handles section wrapping, backgrounds, theming, and token resolution so components don't have to.
 
-Every pattern in this guide serves that separation:
+Once the runtime parses content and hands it to your component as `{ content, params }`, **it's standard React.** Standard Tailwind. Standard anything — import any library, use any pattern, build any UI. The `{ content, params }` interface is only for section types (components that content authors select in markdown). Everything else in your foundation is ordinary React with ordinary props. The framework handles the content pipeline and the boilerplate; you handle the design and interaction.
 
-- **Markdown** — because content authors edit it directly
-- **Frontmatter params** — because `variant: centered` is something an author can change; a JSX prop isn't
-- **`meta.js`** — declares what the author can configure; it's the contract between the two roles
-- **Semantic tokens** — because the author controls `theme: dark` and the component must adapt without code changes
-- **Tagged data blocks** (`yaml:nav`, `yaml:legal`) — because structured data (nav items, pricing tiers, legal text) still belongs to the content author
-- **Section nesting** — because the author composes layouts from available section types, not the developer
+### What this replaces
 
-The decision rule is simple: **would a content author need to change this?** Yes → it belongs in markdown, frontmatter, or a tagged data block. No → it belongs in component code.
+In conventional React, content lives in JSX or ad-hoc data files. Theming means conditional logic in every component. Dark mode means `isDark ? 'text-white' : 'text-gray-900'` scattered everywhere. Each component handles its own background, its own null checks, its own i18n wrapping. A "simple" marketing page becomes hundreds of lines of undifferentiated boilerplate — and when a non-developer needs to change a headline, they open a pull request into code they don't understand.
 
-The runtime handles section wrapping, background rendering, context theming, and token resolution — components receive content and render it. Understanding what the runtime does (and therefore what components should *not* do) is the key to working effectively.
+Uniweb eliminates these categories of work. The runtime handles theming, backgrounds, and context adaptation. Components receive guaranteed content shapes — empty strings and arrays, never null. You build a *system* of section types, not individual pages. Authors compose pages from your system. That's what makes i18n, theming, and multi-site tractable: they're properties of the system, not things bolted onto individual components.
+
+### Before you start: what the runtime already does
+
+The most common mistake is reimplementing what the framework provides for free. Check this before writing any component logic:
+
+| The runtime handles | So components should NOT contain |
+|---|---|
+| Section backgrounds (image, video, gradient, color, overlay) from `background:` | Background rendering code, `bg-white`/`bg-gray-900` on wrapper |
+| Context classes (`context-light`/`medium`/`dark`) on every section | Theme maps: `const themes = { light: {...}, dark: {...} }` |
+| Token resolution — `text-heading` adapts automatically | Conditionals: `isDark ? 'text-white' : 'text-gray-900'` |
+| Content parsing with guaranteed shape | Defensive null checks on content fields |
+| Section wrapping in `<section>` with context class | Outer `<section>` with background/theme classes |
+| i18n via locale-specific content directories | String wrapping with `t()` or `<Trans>` |
+
+Components *should* contain: layout (`grid`, `flex`, `max-w-7xl`), spacing (`p-6`, `gap-8`), typography scale (`text-3xl`, `font-bold`), animations, border-radius — anything that stays the same regardless of theme context.
+
+---
 
 ## Documentation
 
-This project was created with [Uniweb](https://github.com/uniweb/cli). Full documentation (markdown, fetchable): https://github.com/uniweb/docs
+This project was created with [Uniweb CLI](https://github.com/uniweb/cli). Full documentation (markdown, fetchable): https://github.com/uniweb/docs
 
 **To read a specific page:** `https://raw.githubusercontent.com/uniweb/docs/main/{section}/{page}.md`
 
@@ -65,7 +77,7 @@ pnpm create uniweb my-project
 cd my-project && pnpm install
 ```
 
-This creates a workspace with foundation + site + starter content — two commands to a dev server. Use `--template <name>` for an official template (`marketing`, `docs`, `academic`, etc.), `--template none` for foundation + site with no content, or `--blank` for an empty workspace.
+This creates a workspace with foundation + site + starter content — two commands to a dev server. Use `--template <n>` for an official template (`marketing`, `docs`, `academic`, etc.), `--template none` for foundation + site with no content, or `--blank` for an empty workspace.
 
 ### Adding a co-located project
 
@@ -85,7 +97,7 @@ pnpm uniweb add site                 # First site → ./site/
 pnpm uniweb add site blog            # Named → ./blog/
 ```
 
-The name is both the directory name and the package name. Use `--project <name>` to co-locate under a project directory (e.g., `--project docs` → `docs/foundation/`).
+The name is both the directory name and the package name. Use `--project <n>` to co-locate under a project directory (e.g., `--project docs` → `docs/foundation/`).
 
 ### Adding section types
 
@@ -119,7 +131,13 @@ pnpm preview    # Preview production build (SSG + SPA)
 
 > **npm works too.** Projects include both `pnpm-workspace.yaml` and npm workspaces. Replace `pnpm` with `npm` in any command above.
 
+---
+
 ## Content Authoring
+
+The decision rule: **would a content author need to change this?** Yes → it belongs in markdown, frontmatter, or a tagged data block. No → it belongs in component code.
+
+Start with the content, not the component. Write the markdown a content author would naturally write, check what content shape the parser produces, *then* build the component to receive it.
 
 ### Section Format
 
@@ -187,16 +205,28 @@ Lightning quick.        ← items[0].paragraphs[0]
 Enterprise-grade.       ← items[1].paragraphs[0]
 ```
 
-Each item has the same content shape as the top level — `title`, `pretitle`, `subtitle`, `paragraphs`, `icons`, `links`, `lists`, etc. are all available per item. Heading hierarchy within items follows the same rules:
+**Items have the full content shape** — this is the most commonly overlooked feature. Each item has `title`, `pretitle`, `subtitle`, `paragraphs`, `links`, `icons`, `lists`, and even `data` (tagged blocks). You don't need workarounds for structured content within items:
 
 ```markdown
-### Fast                ← items[0].title
-#### Built with Rust    ← items[0].subtitle
-Lightning quick.        ← items[0].paragraphs[0]
+### The Problem                ← items[0].pretitle
+## Content gets trapped        ← items[0].title
+Body text here.                ← items[0].paragraphs[0]
 
-### Secure              ← items[1].title
-Enterprise-grade.       ← items[1].paragraphs[0]
+### The Solution               ← items[1].pretitle
+## Separate content from code  ← items[1].title
 ```
+
+If you need an eyebrow label above an item's title, that's `pretitle` — the same heading hierarchy as the top level. Heading hierarchy within items follows the same rules — `####` within a `###` item becomes `items[0].subtitle`. If you need metadata per item, use a tagged block inside the item:
+
+````markdown
+### Starter               ← items[0].title
+$9/month                  ← items[0].paragraphs[0]
+
+```yaml:details
+trial: 14 days
+seats: 1
+```                        ← items[0].data.details = { trial: "14 days", seats: 1 }
+````
 
 **Complete example — markdown and resulting content shape side by side:**
 
@@ -220,6 +250,44 @@ Enterprise-grade security.     │  content.items[1].paragraphs[0] = "Enterprise
 
 Headings before the main title become `pretitle`. Headings after the main title at a lower importance become `subtitle`. Headings that appear after body content (paragraphs, links, images) start the `items` array.
 
+### Choosing how to model content
+
+You have three layers. Most of the design skill is choosing between them:
+
+**Pure markdown** — headings, paragraphs, links, images, lists, items. This is the default. If the content reads naturally as markdown and the parser's semantic structure captures it, stop here. Most sections live entirely in this layer.
+
+**Frontmatter params** — `columns: 3`, `variant: centered`, `theme: dark`. Configuration that an author might change but that isn't *content*. Would changing this value change the section's *meaning*, or just its *presentation*? Presentation → param. Meaning → content.
+
+**Tagged data blocks** — for content that doesn't fit markdown patterns. Products with SKUs, team members with roles, event schedules, pricing metadata, form definitions. When the information is genuinely structured data that a content author still owns, a well-named tagged block (`yaml:pricing`, `yaml:speakers`, `yaml:config`) is clearer than contorting markdown into a data format.
+
+Read the markdown out loud. If a content author would understand what every line does and how to edit it, you've chosen the right layer. The moment markdown feels like it's encoding data rather than expressing content, step up to a tagged block — that's fine. A well-documented `yaml:pricing` block is better than a markdown structure that puzzles the author.
+
+**You are designing these, not choosing from a menu.** The examples in this guide illustrate patterns, not exhaustive inventories. Any param name works in `meta.js`. Any tag name works for data blocks. Any section type name works. The framework has fixed mechanisms (the content shape, the context modes, the token system); nearly everything else is yours to define.
+
+```js
+// You design this — it's not a fixed schema
+export default {
+  params: {
+    columns: { type: 'number', default: 3 },
+    cardStyle: { type: 'select', options: ['minimal', 'bordered', 'elevated'], default: 'minimal' },
+    showIcon: { type: 'boolean', default: true },
+    maxItems: { type: 'number', default: 6 },
+  }
+}
+```
+
+````markdown
+<!-- You invent the tag name — the framework parses it -->
+```yaml:speakers
+- name: Ada Lovelace
+  role: Keynote
+  topic: The Future of Computing
+```
+````
+Access: `content.data?.speakers` — an array of objects. You defined this. The framework parsed it.
+
+**Parameter naming matters.** Would an author understand the param without reading code? `columns: 3` yes. `gridCols: 3` no. `variant: centered` yes. `renderMode: flex-center` no. `align: left` yes. `contentAlignment: flex-start` no.
+
 ### Multi-Line Headings
 
 Consecutive headings at the same level merge into a title array — a single heading split across visual lines:
@@ -240,104 +308,13 @@ Kit's `<H1>`, `<H2>`, etc. render arrays as a single tag with line breaks. This 
                                 │  ]
 ```
 
-**Works at any heading slot** — title, subtitle, items:
-
-```markdown
-### Our Mission                 │  content.pretitle = "Our Mission"
-# Build the future              │  content.title = ["Build the future",
-# with confidence               │                   "with confidence"]
-## The platform for             │  content.subtitle = ["The platform for",
-## modern teams                 │                      "modern teams"]
-```
-
-**Rule:** Same-level continuation only applies before going deeper. Once a subtitle level is reached, same-level headings start new items instead of merging:
-
-```markdown
-# Features                      │  title = "Features"
-                                │
-We built this for you.          │  paragraph
-                                │
-### Fast                        │  items[0].title = "Fast"
-### Secure                      │  items[1].title = "Secure" ← new item, not merged
-```
-
-Use `---` to force separate items when same-level headings would otherwise merge:
-
-```markdown
-# Line one                      │  title = "Line one"
----                             │  ← divider forces split
-# Line two                      │  items[0].title = "Line two"
-```
-
-**Lists** contain bullet or ordered list items. Each list item is an object with the same content shape — not a plain string:
-
-```markdown
-# Features               ← title
-
-- Fast builds             ← lists[0][0].paragraphs[0]
-- **Hot** reload          ← lists[0][1].paragraphs[0]  (HTML: "<strong>Hot</strong> reload")
-```
-
-Items can contain lists:
-
-```markdown
-### Starter               ← items[0].title
-$9/month                  ← items[0].paragraphs[0]
-
-- Feature A               ← items[0].lists[0][0].paragraphs[0]
-- Feature B               ← items[0].lists[0][1].paragraphs[0]
-```
-
-Items can contain tagged data:
-
-````markdown
-### Starter               ← items[0].title
-$9/month                  ← items[0].paragraphs[0]
-
-```yaml:details
-trial: 14 days
-seats: 1
-```                        ← items[0].data.details = { trial: "14 days", seats: 1 }
-````
-
-Render list item text with kit components (see [kit section](#uniwebkit) below):
-
-```jsx
-import { Span } from '@uniweb/kit'
-
-content.lists[0]?.map((listItem, i) => (
-  <li key={i}><Span text={listItem.paragraphs[0]} /></li>
-))
-```
+**Rule:** Same-level continuation only applies before going deeper. Once a subtitle level is reached, same-level headings start new items instead of merging. Use `---` to force separate items when same-level headings would otherwise merge.
 
 ### Icons
 
 Use image syntax with library prefix: `![](lu-house)`. Supported libraries: `lu` (Lucide), `hi2` (Heroicons), `fi` (Feather), `pi` (Phosphor), `tb` (Tabler), `bs` (Bootstrap), `md` (Material), `fa6` (Font Awesome 6), and others. Browse at [react-icons.github.io/react-icons](https://react-icons.github.io/react-icons/).
 
 Custom SVGs: `![Logo](./logo.svg){role=icon}`
-
-### Insets (Component References)
-
-Place a foundation component inline within content using `@` syntax:
-
-```markdown
-![description](@ComponentName)
-![description](@ComponentName){param=value other=thing}
-```
-
-The three parts carry distinct information:
-- `[description]` — text passed to the component as `block.content.title`
-- `(@Name)` — foundation component to render
-- `{params}` — configuration attributes passed as `block.properties`
-
-```markdown
-![Architecture diagram](@NetworkDiagram){variant=compact}
-![Cache metrics](@PerformanceChart){period=30d}
-![](@GradientBlob){position=top-right}
-![npm create uniweb](@CommandBlock){note="Vite + React + Routing — ready to go"}
-```
-
-Inset components must declare `inset: true` in their `meta.js`. They render at the exact position in the content flow where the author placed them. See meta.js section below for details.
 
 ### Links and Media Attributes
 
@@ -349,66 +326,24 @@ Inset components must declare `inset: true` in their `meta.js`. They render at t
 
 **Quote values that contain spaces:** `{note="Ready to go"}` not `{note=Ready to go}`. Unquoted values end at the first space.
 
-Standalone links (alone on a line) become buttons. Inline links stay as text links.
-
-**Standalone links** — paragraphs that contain *only* links (no other text) are promoted to `content.links[]`. This works for single links and for multiple links sharing a paragraph:
+Standalone links (alone on a line) become buttons in `content.links[]`. Inline links stay as `<a>` tags within `content.paragraphs[]`. Multiple links sharing a paragraph are all promoted to `content.links[]`:
 
 ```markdown
 [Primary](/start)              ← standalone → content.links[0]
-
-[Secondary](/learn)            ← standalone → content.links[1]
-
-[One](/a) [Two](/b)            ← links-only paragraph → content.links[0], content.links[1]
-```
-
-Links mixed with non-link text stay as inline `<a>` tags within `content.paragraphs[]`:
-
-```markdown
-Check out [this](/a) and [that](/b).   ← inline links in paragraph text, NOT in content.links[]
+[One](/a) [Two](/b)            ← links-only paragraph → both in content.links[]
+Check out [this](/a) link.     ← inline → stays in paragraphs as <a> tag
 ```
 
 ### Inline Text Styling
 
-Style specific words or phrases using bracketed spans with boolean attributes:
-
 ```markdown
 # Build [faster]{accent} with structure
-
 This is [less important]{muted} context.
 ```
 
-The framework provides two defaults: `accent` (colored + bold) and `muted` (subtle). These adapt to context automatically — in dark sections, `accent` resolves to a lighter shade.
+`accent` (colored + bold) and `muted` (subtle) adapt to context automatically. Components receive HTML strings with spans applied: `<span accent="true">faster</span>`.
 
-**What you write → what components receive:**
-
-| Markdown | HTML in content string |
-|----------|----------------------|
-| `[text]{accent}` | `<span accent="true">text</span>` |
-| `[text]{muted}` | `<span muted="true">text</span>` |
-| `[text]{color=red}` | `<span style="color: red">text</span>` |
-
-CSS is generated from `theme.yml`'s `inline:` section using attribute selectors (`span[accent] { ... }`). Sites can define additional named styles:
-
-```yaml
-inline:
-  accent:
-    color: var(--link)
-    font-weight: '600'
-  callout:
-    color: var(--accent-600)
-    font-style: italic
-```
-
-**Common pattern — accented multi-line hero heading:**
-
-```markdown
-# Build the future
-# [with confidence]{accent}
-```
-
-This produces `content.title = ["Build the future", "<span accent=\"true\">with confidence</span>"]` — an array rendered as a single `<h1>` with visual line breaks. See [Multi-Line Headings](#multi-line-headings) for details.
-
-Components receive HTML strings with the spans already applied. Kit's `<H1>`, `<P>`, etc. render them correctly via `dangerouslySetInnerHTML`.
+Sites can define additional named styles in `theme.yml`'s `inline:` section.
 
 ### Structured Data
 
@@ -425,147 +360,66 @@ submitLabel: Send
 
 Access: `content.data?.form` → `{ fields: [...], submitLabel: "Send" }`
 
-**Code blocks need tags too.** Untagged code blocks (plain ```js) are only visible to sequential-rendering components like Article or DocSection. If a component needs to access code blocks by name, tag them:
+**Untagged code blocks** (plain ``` js) are only visible to sequential-rendering components. If a component needs to access code blocks by name, tag them (`jsx:before`, `jsx:after` → `content.data?.before`, `content.data?.after`).
 
-````markdown
-```jsx:before
-const old = fetch('/api')
-```
+### Composition: Nesting and Embedding
 
-```jsx:after
-const data = useData()
-```
-````
+Pages are sequences of sections — that's the obvious composition layer. But the framework supports real nesting: sections containing other sections, and sections containing embedded components. And it does this without leaving markdown.
 
-Access: `content.data?.before`, `content.data?.after` → raw code strings.
+**Insets — embedding components in content.** Many section types need a "visual" — a hero's illustration, a split-content section's media. The classic is an image or video. But what if it's a JSX + SVG diagram? A ThreeJS animation? An interactive code playground?
 
-### Lists as Navigation Menus
-
-Markdown lists are ideal for navigation, menus, and grouped link structures. Each list item is a full content object with `paragraphs`, `links`, `icons`, and nested `lists`.
-
-**Header nav — flat list with icons and links:**
+In other frameworks, this is where you'd reach for MDX, or prop-drill a component. In Uniweb, the content author writes:
 
 ```markdown
-- ![](lu-home) [Home](/)
-- ![](lu-book) [Docs](/docs)
-- ![](lu-mail) [Contact](/contact)
+![Architecture overview](@NetworkDiagram){variant=compact}
 ```
 
-Access: `content.lists[0]` — each item has `item.links[0]` (href + label) and `item.icons[0]` (icon).
-
-**Footer — nested list for grouped links:**
-
-```markdown
-- Product
-  - [Features](/features)
-  - [Pricing](/pricing)
-- Company
-  - [About](/about)
-  - [Careers](/careers)
-```
-
-Access: `content.lists[0]` — each top-level item has `item.paragraphs[0]` (group label) and `item.lists[0]` (array of sub-items, each with `subItem.links[0]`).
+Standard markdown image syntax — `![alt](@Component){attributes}`. The content author placed a full React component with content and params, and it looks like an image reference. The developer builds `NetworkDiagram` as an ordinary React component with `inset: true` in its `meta.js`. The kit's `<Visual>` component renders the first non-empty candidate — so the same section type works whether the author provides a static image, a video, or an interactive component:
 
 ```jsx
-content.lists[0]?.map((group, i) => (
-  <div key={i}>
-    <Span text={group.paragraphs[0]} className="font-semibold text-heading" />
-    <ul>
-      {group.lists[0]?.map((subItem, j) => (
-        <li key={j}><Link to={subItem.links[0]?.href}>{subItem.links[0]?.label}</Link></li>
-      ))}
-    </ul>
-  </div>
-))
+<Visual inset={block.insets[0]} video={content.videos[0]} image={content.imgs[0]} className="rounded-2xl" />
 ```
 
-**For richer navigation with icons, descriptions, or hierarchy**, use `yaml:nav` tagged blocks instead of markdown lists:
+The content author controls what goes in the visual slot. The developer's component doesn't need to know or care whether it's rendering an image or a ThreeJS scene.
 
-````markdown
-```yaml:nav
-- label: Dashboard
-  href: /
-  icon: lu:layout-grid
-- label: Docs
-  href: /docs
-  icon: lu:book-open
-  children:
-    - label: Getting Started
-      href: /docs/quickstart
+**Child sections — composing layouts from reusable pieces.** You encounter a complex layout — a 2:1 split with a panel and a main area, or a grid with different card types in each cell. Your instinct says: build a specialized component. But step back.
+
+The panel? A reusable section type. The main area? Another one. The split? A Grid with `columns: "1fr 2fr"`. And your child components already adapt to narrow containers — container queries handle that.
+
+But if you hardcode which components go where, the author can't rearrange or swap them. This is where child sections solve it:
+
 ```
-````
-
-Access: `content.data?.nav` — array of `{ label, href, icon, text, children, target }`. Components can support both modes: use `content.data?.nav` when provided, fall back to `website.getPageHierarchy()` for automatic nav. See `reference/navigation-patterns.md` for the full pattern.
-
-### Section Backgrounds
-
-Set `background` in frontmatter — the runtime renders it automatically. The string form auto-detects the type:
+pages/home/
+├── 2-dashboard.md          # type: Grid, columns: "1fr 2fr"
+├── @sidebar-stats.md       # type: StatPanel
+└── @main-chart.md          # type: PerformanceChart
+```
 
 ```yaml
-background: /images/hero.jpg                             # Image (by extension)
-background: /videos/hero.mp4                             # Video (by extension)
-background: linear-gradient(135deg, #667eea, #764ba2)    # CSS gradient
-background: '#1a1a2e'                                    # Color (hex — quote in YAML)
-background: var(--primary-900)                            # Color (CSS variable)
+# page.yml
+nest:
+  dashboard: [sidebar-stats, main-chart]
 ```
 
-The object form gives more control:
+Each child is a regular section with its own type, params, and content. The Grid renders them with `<ChildBlocks from={block} />` — and you're in the middle: you can wrap each child, filter by type, reorder, add container classes. The author decides *what* goes in the grid; your component decides *how* it's rendered.
 
-```yaml
-background:
-  image: { src: /img.jpg, position: center top }
-  overlay: { enabled: true, type: dark, opacity: 0.5 }
-```
+The author can swap a child for a different section type tomorrow without the developer changing a line of code. And the developer's components are reusable wherever child sections are accepted, not locked to this one layout.
 
-Overlay shorthand — `overlay: 0.5` is equivalent to `{ enabled: true, type: dark, opacity: 0.5 }`.
+**Choosing the right pattern:**
 
-Components that render their own background declare `background: 'self'` in `meta.js`.
+| Pattern | How authored | Use when |
+|---|---|---|
+| **Items** (`content.items`) | Heading groups within one `.md` file | Repeating content within one section: cards, features, FAQ entries |
+| **Child sections** (`block.childBlocks`) | `@`-prefixed `.md` files + `nest:` | Children that need their own section type, rich content, or independent editing |
+| **Insets** (`block.insets`) | `![](@Component)` in markdown | Self-contained visuals/widgets: charts, diagrams, code demos |
 
-### Page Organization
+Does the content author write content *inside* the nested element? **Yes** → child sections. **No** (self-contained, param-driven) → inset. Repeating same-structure groups within one section → items. These compose: a child section can contain insets, items work inside children.
 
-```
-site/layout/
-├── header.md               # type: Header — rendered on every page
-├── footer.md               # type: Footer — rendered on every page
-└── left.md                 # type: Sidebar — optional sidebar
+Inset components declare `inset: true` in meta.js. Don't use `hidden: true` on insets — `hidden` means "don't export this component at all" (for internal helpers), while `inset: true` means "available for `@Component` references in markdown."
 
-site/pages/
-└── home/
-    ├── page.yml            # title, description, order
-    ├── hero.md             # Single section — no prefix needed
-    └── (or for multi-section pages:)
-    ├── 1-hero.md           # Numeric prefix sets order
-    ├── 2-features.md
-    └── 3-cta.md
-```
+**SSG:** Insets, `<ChildBlocks>`, and `<Visual>` all render correctly during prerender. Inset components that use React hooks internally (useState, useEffect) will trigger prerender warnings — this is expected and harmless; the page renders correctly client-side.
 
-Decimals insert between: `2.5-testimonials.md` goes between `2-` and `3-`.
-
-**Ignored files/folders:**
-- `README.md` — repo documentation, not site content
-- `_*.md` or `_*/` — drafts and private content (e.g., `_drafts/`, `_old-hero.md`)
-
-**page.yml:**
-```yaml
-title: About Us
-description: Learn about our company
-order: 2                    # Navigation sort position
-pages: [team, history, ...] # Child page order (... = rest). Without ... = strict (hides unlisted)
-index: getting-started      # Which child page is the index
-```
-
-**site.yml:**
-```yaml
-index: home                         # Just set the homepage
-pages: [home, about, ...]           # Order pages (... = rest, first = homepage)
-pages: [home, about]                # Strict: only listed pages in nav
-```
-
-Use `pages:` with `...` for ordering, without `...` for strict visibility control. Use `index:` for simple homepage selection.
-
-### Section Nesting (Child Sections)
-
-Some section types need children — a Grid that arranges cards, a TabGroup that holds panels. Use the `@` prefix and `nest:` property:
+### Section Nesting Details
 
 ```
 pages/home/
@@ -586,14 +440,10 @@ nest:
 
 **Rules:**
 - `@`-prefixed files are excluded from the top-level section list
-- `nest:` declares parent-child relationships (parent name → array of child names)
-- Child files **must** use the `@` prefix — the filename and YAML must agree
-- `@@` prefix signals deeper nesting (e.g., `@@sub-item.md` for grandchildren)
-- `nest:` is flat — each key is a parent: `nest: { features: [a, b], a: [sub-1] }`
-- Children are ordered by their position in the `nest:` array
-- Orphaned `@` files (no parent in `nest:`) appear at top-level with a warning
-
-Components receive children via `block.childBlocks`. Use `ChildBlocks` from kit to render them — the runtime handles component resolution:
+- `nest:` declares parent-child relationships (parent name → child names)
+- `@@` prefix for deeper nesting (grandchildren)
+- `nest:` is flat: `{ features: [a, b], a: [sub-1] }`
+- Children ordered by position in the `nest:` array
 
 ```jsx
 import { ChildBlocks } from '@uniweb/kit'
@@ -607,51 +457,133 @@ export default function Grid({ block, params }) {
 }
 ```
 
-### Composition in practice
+### Section Backgrounds
 
-Section nesting and insets together give content authors significant layout power without requiring new components. A single Grid section type composes *any* combination of children — each child is its own section type with its own content:
-
-```
-pages/home/
-├── page.yml
-├── 1-hero.md
-├── 2-highlights.md          # type: Grid, columns: 3
-├── 3-cta.md
-├── @stats.md                # type: StatCard — numbers and labels
-├── @testimonial.md          # type: Testimonial — quote with attribution
-└── @demo.md                 # type: SplitContent — text + ![](@LiveDemo) inset
-```
+Set `background` in frontmatter — the runtime renders it automatically:
 
 ```yaml
-nest:
-  highlights: [stats, testimonial, demo]
+background: /images/hero.jpg                             # Image
+background: /videos/hero.mp4                             # Video
+background: linear-gradient(135deg, #667eea, #764ba2)    # Gradient
+background: '#1a1a2e'                                    # Color (hex — quote in YAML)
+background: var(--primary-900)                            # CSS variable
 ```
 
-The content author chose three different section types as children, arranged them in a grid, and embedded an interactive component inside one of them — all through markdown and YAML. The developer wrote one Grid component, a few card-level section types, and an inset. No bespoke "highlights" component needed.
+Object form for more control:
 
-This is functional composition applied to content: small, focused section types that combine into richer layouts. The developer builds reusable pieces (Grid, StatCard, Testimonial, SplitContent); the content author composes them. Adding a fourth card means creating one `@`-prefixed file and adding its name to the `nest:` array.
+```yaml
+background:
+  image: { src: /img.jpg, position: center top }
+  overlay: { enabled: true, type: dark, opacity: 0.5 }
+```
 
-### When to use which pattern
+Components that render their own background declare `background: 'self'` in `meta.js`.
 
-| Pattern | Authoring | Use when |
-|---------|-----------|----------|
-| **Items** (`content.items`) | Heading groups in one `.md` file | Repeating content within one section (cards, FAQ entries) |
-| **Insets** (`block.insets`) | `![](@Component)` in markdown | Embedding a self-contained visual (chart, diagram, widget) |
-| **Child sections** (`block.childBlocks`) | `@`-prefixed `.md` files + `nest:` | Children with rich authored content (testimonials, carousel slides) |
+### Page Organization
 
-Does the content author write content *inside* the nested component? **Yes** → child sections. **No** (self-contained, driven by params/data) → insets. Repeating groups within one section → items. These patterns compose: a child section can contain insets, and items work inside children.
+```
+site/layout/
+├── header.md               # type: Header — rendered on every page
+├── footer.md               # type: Footer — rendered on every page
+└── left.md                 # type: Sidebar — optional sidebar
 
-**Inset rule of thumb:** If the same interactive widget or self-contained visual appears inside multiple different sections (a copy-able command block, a chart, a demo player), make it an inset. The content author places it with `![](@CommandBlock)` wherever it's needed — no prop drilling, no imports.
+site/pages/
+└── home/
+    ├── page.yml            # title, description, order
+    ├── hero.md             # Single section
+    └── (or for multi-section pages:)
+    ├── 1-hero.md           # Numeric prefix sets order
+    ├── 2-features.md
+    └── 3-cta.md
+```
+
+Decimals insert between: `2.5-testimonials.md` goes between `2-` and `3-`.
+
+**Ignored:** `README.md` (repo docs), `_*.md` or `_*/` (drafts/private).
+
+**page.yml:**
+```yaml
+title: About Us
+description: Learn about our company
+order: 2                    # Navigation sort position
+pages: [team, history, ...] # Child page order (... = rest). Without ... = strict (hides unlisted)
+index: getting-started      # Which child page is the index
+```
+
+**site.yml:**
+```yaml
+index: home                         # Just set the homepage
+pages: [home, about, ...]           # Order pages (... = rest, first = homepage)
+pages: [home, about]                # Strict: only listed pages in nav
+```
+
+### Lists as Navigation Menus
+
+Markdown lists model nav, menus, and grouped links. Each list item is a full content object with `paragraphs`, `links`, `icons`, and nested `lists`.
+
+**Header nav:**
+```markdown
+- ![](lu-home) [Home](/)
+- ![](lu-book) [Docs](/docs)
+- ![](lu-mail) [Contact](/contact)
+```
+Access: `content.lists[0]` — each item has `item.links[0]` and `item.icons[0]`.
+
+**Footer columns:**
+```markdown
+- Product
+  - [Features](/features)
+  - [Pricing](/pricing)
+- Company
+  - [About](/about)
+  - [Careers](/careers)
+```
+Access: `content.lists[0]` — `group.paragraphs[0]` (label), `group.lists[0]` (sub-items with `subItem.links[0]`).
+
+Render list item text with Kit components — list items contain HTML strings, not plain text:
+
+```jsx
+content.lists[0]?.map((group, i) => (
+  <div key={i}>
+    <Span text={group.paragraphs[0]} className="font-semibold text-heading" />
+    <ul>
+      {group.lists[0]?.map((subItem, j) => (
+        <li key={j}><Link to={subItem.links[0]?.href}>{subItem.links[0]?.label}</Link></li>
+      ))}
+    </ul>
+  </div>
+))
+```
+
+**For richer navigation with icons, descriptions, or hierarchy**, use `yaml:nav` tagged blocks:
+
+````markdown
+```yaml:nav
+- label: Dashboard
+  href: /
+  icon: lu:layout-grid
+- label: Docs
+  href: /docs
+  icon: lu:book-open
+  children:
+    - label: Getting Started
+      href: /docs/quickstart
+```
+````
+
+Access: `content.data?.nav` — array of `{ label, href, icon, text, children, target }`. Components can support both modes: use `content.data?.nav` when provided, fall back to `website.getPageHierarchy()` for automatic nav. See `reference/navigation-patterns.md` for the full pattern.
+
+---
 
 ## Semantic Theming
 
-CCA separates theme from code. Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter. The `theme` value is also available as `params.theme` — useful when a component needs conditional logic beyond CSS tokens (e.g., switching between a light and dark logo).
+Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter. The `theme` value is also available as `params.theme` — useful when a component needs conditional logic beyond CSS tokens (e.g., switching between a light and dark logo).
 
 ```jsx
-// ❌ Hardcoded — breaks in dark context, locked to one palette
+// ❌ Hardcoded — breaks in dark context
 <h2 className="text-slate-900">...</h2>
 
-// ✅ Semantic — adapts to any context and brand automatically
+// ✅ Semantic — adapts to any context and brand
 <h2 className="text-heading">...</h2>
 ```
 
@@ -667,48 +599,9 @@ CCA separates theme from code. Components use **semantic CSS tokens** instead of
 | `bg-muted` | Hover states, zebra rows |
 | `border-border` | Borders |
 | `text-link` | Link color |
-| `bg-primary` | Primary action background |
-| `text-primary-foreground` | Text on primary background |
-| `hover:bg-primary-hover` | Primary hover state |
-| `border-primary-border` | Primary border (transparent by default) |
-| `bg-secondary` | Secondary action background |
-| `text-secondary-foreground` | Text on secondary background |
-| `hover:bg-secondary-hover` | Secondary hover state |
-| `border-secondary-border` | Secondary border |
-| `text-success` / `bg-success-subtle` | Status: success |
-| `text-error` / `bg-error-subtle` | Status: error |
-| `text-warning` / `bg-warning-subtle` | Status: warning |
-| `text-info` / `bg-info-subtle` | Status: info |
-
-### What the runtime handles (don't write this yourself)
-
-The runtime does significant work that other frameworks push onto components. Understanding this prevents writing unnecessary code:
-
-1. **Section backgrounds** — The runtime renders image, video, gradient, color, and overlay backgrounds from frontmatter. Components never set their own section background.
-2. **Context classes** — The runtime wraps every section in `<section class="context-{theme}">`, which auto-applies `background-color: var(--section)` and sets all token values.
-3. **Token resolution** — All 24+ semantic tokens resolve automatically per context. A component using `text-heading` gets dark text in light context, white text in dark context — zero conditional logic.
-4. **Colored section backgrounds** — Content authors create tinted sections via frontmatter, not component code:
-   ```yaml
-   ---
-   type: Features
-   theme: light
-   background:
-     color: var(--primary-50)       # Light blue tint with light-context tokens
-   ---
-   ```
-
-**What components should NOT contain:**
-
-| Don't write | Why |
-|-------------|-----|
-| `bg-white` or `bg-gray-900` on section wrapper | Engine applies `bg-section` via context class |
-| `const themes = { light: {...}, dark: {...} }` | Context system replaces theme maps entirely |
-| `isDark ? 'text-white' : 'text-gray-900'` | Just write `text-heading` — it adapts |
-| Background rendering code | Declare `background:` in frontmatter instead |
-| Color constants / tokens files | Colors come from `theme.yml` |
-| Parallel color system (`--ink`, `--paper`) that duplicates what tokens already provide | Map source color roles to `theme.yml` colors/neutral. The build generates `--primary-50` through `--primary-950`, `--neutral-50` through `--neutral-950`, etc. Use palette shades directly (`var(--primary-300)`) for specific tones. Additive design classes that BUILD ON tokens are fine — a parallel system that REPLACES them bypasses context adaptation. |
-
-**What to hardcode** (not semantic — same in every context): layout (`grid`, `flex`, `max-w-6xl`), spacing (`p-6`, `gap-8`), typography scale (`text-3xl`, `font-bold`), animations, border-radius.
+| `bg-primary` / `text-primary-foreground` / `hover:bg-primary-hover` | Primary actions |
+| `bg-secondary` / `text-secondary-foreground` / `hover:bg-secondary-hover` | Secondary actions |
+| `text-success` / `text-error` / `text-warning` / `text-info` | Status colors |
 
 **Content authors control context** in frontmatter:
 
@@ -719,41 +612,19 @@ theme: dark           ← sets context-dark, all tokens resolve to dark values
 ---
 ```
 
-Alternate between `light` (default), `medium`, and `dark` across sections for visual rhythm — no CSS needed. A typical marketing page:
+Alternate between `light` (default), `medium`, and `dark` across sections for visual rhythm.
 
-```markdown
-<!-- 1-hero.md -->
-theme: dark
-
-<!-- 2-features.md -->
-(no theme — defaults to light)
-
-<!-- 3-testimonials.md -->
-theme: medium
-
-<!-- 4-cta.md -->
-theme: dark
-```
-
-**Per-section token overrides** — the object form lets authors fine-tune individual tokens for a specific section:
+**But the three presets aren't the limit.** The object form gives fine-grained control per section:
 
 ```yaml
 theme:
   mode: light
-  primary: neutral-900               # Dark buttons in a light section
-  primary-hover: neutral-800
+  section: neutral-100               # Subtle off-white surface
+  card: neutral-50                   # Cards lighter than surface
+  primary: neutral-900               # Dark buttons instead of brand color
 ```
 
-```yaml
-theme:
-  mode: light
-  section: neutral-100               # Custom surface color (subtle off-white)
-  card: neutral-50                   # Cards lighter than background
-```
-
-Any semantic token (`section`, `heading`, `body`, `card`, `primary`, `link`, etc.) can be overridden this way. Values can be hex colors, palette shades (`primary-200`, `neutral-100`), or CSS variables. The overrides are applied as inline CSS custom properties on the section wrapper — components don't need to know about them.
-
-**Site controls the palette** in `theme.yml`. The same foundation looks different across sites because tokens resolve from the site's color configuration, not from component code.
+Any semantic token can be overridden. And `background:` accepts CSS variables and hex colors, so authors can alternate between `var(--neutral-50)`, `var(--neutral-100)`, and `var(--primary-50)` surfaces — all without component code. If a source design uses subtle surface variations (e.g., `--surface-base` vs `--surface-sunken`), map those to specific backgrounds or token overrides in frontmatter, not to component code.
 
 ### theme.yml
 
@@ -776,97 +647,69 @@ fonts:
   body: "'Inter', system-ui, sans-serif"
 
 inline:
-  accent:                   # For [text]{accent} in markdown
+  accent:
     color: var(--link)
     font-weight: '600'
 
-vars:                       # Override foundation-declared variables
+vars:
   header-height: 5rem
 ```
 
-Each color generates 11 OKLCH shades (50–950). The `neutral` palette is special — use a named preset (`stone` for warm) rather than a hex value. Three contexts are built-in: `light` (default), `medium`, `dark`. Context override keys match token names — `section:` not `bg:`, `primary:` not `btn-primary-bg:`.
+Each color generates 11 OKLCH shades (50–950). `neutral` uses a named preset rather than hex. Shade 500 = your exact input color. Context override keys match token names: `section:` not `bg:`, `primary:` not `btn-primary-bg:`.
 
 ### How colors reach components
 
-Your hex color → 11 shades (50–950) → semantic tokens → components.
+Your hex → 11 shades (50–950) → semantic tokens → components.
 
-**Shade 500 = your exact input color.** The build generates lighter shades (50–400) above it and darker shades (600–950) below it, redistributing lightness proportionally to maintain a smooth scale. Set `exactMatch: false` on a color to opt out and use fixed lightness values instead.
+Semantic tokens map shades to roles. In light/medium: `--primary` uses shade 600, `--link` uses 600, `--ring` uses 500. In dark: `--primary` uses 500, `--link` uses 400.
 
-Semantic tokens map shades to roles. The defaults for light/medium contexts:
-
-| Token | Shade | Purpose |
-|-------|-------|---------|
-| `--primary` | 600 | Button background |
-| `--primary-hover` | 700 | Button hover |
-| `--link` | 600 | Link color |
-| `--ring` | 500 | Focus ring |
-
-In dark contexts, `--primary` uses shade 500 and `--link` uses shade 400.
-
-**Buttons and links use shade 600 — darker than your input.** This is an accessibility choice: shade 600 provides better contrast with white button text. For medium-bright brand colors like orange, buttons will be noticeably darker than the brand color.
-
-**Recipe — brand-exact buttons:**
+**Buttons use shade 600 — darker than your input color.** This is an accessibility choice for contrast with white text. For brand-exact buttons:
 
 ```yaml
 colors:
   primary: "#E35D25"
-
 contexts:
   light:
     primary: primary-500         # Your exact color on buttons
-    primary-hover: primary-600   # Darker on hover
+    primary-hover: primary-600
 ```
 
-> **Contrast warning:** Bright brand colors (orange, yellow, light green) at shade 500 may not meet WCAG contrast (4.5:1) with white foreground text. Test buttons for readability — if contrast is insufficient, keep the default shade 600 mapping or darken your base color.
+> **Contrast warning:** Bright brand colors (orange, yellow, light green) at shade 500 may not meet WCAG contrast (4.5:1) with white foreground text. Test buttons for readability — if contrast is insufficient, keep the default shade 600 mapping.
 
 ### Foundation variables
 
-Foundations declare customizable layout/spacing values in `foundation.js`. The starter includes:
+Foundations declare customizable layout values in `foundation.js`:
 
 ```js
 export const vars = {
   'header-height': { default: '4rem', description: 'Fixed header height' },
   'max-content-width': { default: '80rem', description: 'Maximum content width' },
-  'section-padding-y': { default: 'clamp(4rem, 6vw, 7rem)', description: 'Vertical padding for sections' },
+  'section-padding-y': { default: 'clamp(4rem, 6vw, 7rem)', description: 'Vertical section padding' },
 }
 ```
 
-Sites override them in `theme.yml` under `vars:`. Components use them via Tailwind arbitrary values or CSS: `py-[var(--section-padding-y)]`, `h-[var(--header-height)]`, etc.
-
-The `section-padding-y` default uses `clamp()` for fluid spacing — tighter on mobile, more breathing room on large screens. Use this variable for consistent section spacing instead of hardcoding padding in each component. Sites can override to a fixed value (`section-padding-y: 3rem`) or a different clamp in `theme.yml`.
-
-**When to break the rules:** Header/footer components that float over content may need direct color logic (reading the first section's theme). Decorative elements with fixed branding (logos) use literal colors.
+Sites override in `theme.yml` under `vars:`. Components use: `py-[var(--section-padding-y)]`, `h-[var(--header-height)]`.
 
 ### Design richness beyond tokens
 
-Semantic tokens handle context adaptation — the hard problem of making colors work in light, medium, and dark sections. **They are a floor, not a ceiling.** A great foundation adds its own design vocabulary on top.
-
-The token set is deliberately small (24 tokens). It covers the dimensions that change per context. Everything that stays constant across contexts — border weights, shadow depth, radius scales, gradient angles, accent borders, glassmorphism, elevation layers — belongs in your foundation's `styles.css` or component code.
-
-**Don't flatten a rich design to fit the token set.** If a source design has 4 border tones, create them:
+Tokens handle context adaptation — the hard problem. **They are a floor, not a ceiling.** A great foundation adds design vocabulary on top:
 
 ```css
 /* foundation/src/styles.css */
 .border-subtle { border-color: color-mix(in oklch, var(--border), transparent 50%); }
 .border-strong { border-color: color-mix(in oklch, var(--border), var(--heading) 30%); }
-.border-accent { border-color: var(--primary-300); }
-```
-
-These compose with semantic tokens — they adapt per context because they reference `--border`, `--heading`, or palette shades. But they add design nuance the token set alone doesn't provide.
-
-**The priority:** Design quality > portability > configurability. It's better to ship a foundation with beautiful, detailed design that's less configurable than to ship a generic one that looks flat. A foundation that looks great for one site is more valuable than one that looks mediocre for any site.
-
-**Text tones beyond the 3-token set.** Source designs often have 4+ text tones (primary, secondary, tertiary, disabled). Uniweb provides 3 (`text-heading`, `text-body`, `text-subtle`). Don't collapse the extras — create them with `color-mix()` so they still adapt per context:
-
-```css
-/* foundation/src/styles.css */
 .text-tertiary { color: color-mix(in oklch, var(--body), var(--subtle) 50%); }
-.text-disabled { color: color-mix(in oklch, var(--subtle), transparent 40%); }
 ```
 
-**When migrating from an existing design**, map every visual detail — not just the ones that have a semantic token. Shadow systems, border hierarchies, custom hover effects, accent tints: create CSS classes or Tailwind utilities in `styles.css` for anything the original has that tokens don't cover. Use palette shades directly (`var(--primary-300)`, `bg-neutral-200`) for fine-grained color control beyond the semantic tokens.
+These compose with tokens — they adapt per context because they reference token variables. But they add nuance the 24-token set doesn't provide. Use palette shades directly (`var(--primary-300)`, `bg-neutral-200`) for fine-grained color control.
+
+**The priority:** Design quality > portability > configurability. A beautiful foundation for one site is more valuable than a generic one that looks flat.
+
+---
 
 ## Component Development
+
+You're not building pages — you're building a **system** of section types that content authors compose into pages. Name by purpose, not content: `Testimonial` not `WhatClientsSay`, `SplitContent` not `AboutSection`. Expect consolidation: a React site with 30+ components typically maps to 8–15 Uniweb section types.
 
 ### Props Interface
 
@@ -878,7 +721,7 @@ function MyComponent({ content, params, block }) {
 }
 ```
 
-All non-reserved frontmatter fields become `params`. Reserved fields (`type`, `preset`, `input`, `data`, `id`, `background`, `theme`) are consumed by the runtime. Everything else (`columns: 3`, `variant: centered`) flows to the component as `params.columns`, `params.variant`.
+All non-reserved frontmatter fields become `params`. Reserved: `type`, `preset`, `input`, `data`, `id`, `background`, `theme`. Everything else flows to the component.
 
 ### block properties
 
@@ -887,16 +730,16 @@ All non-reserved frontmatter fields become `params`. Reserved fields (`type`, `p
 | `block.page` | Page | Parent page |
 | `block.website` | Website | Site-level data and navigation |
 | `block.type` | string | Component type name |
-| `block.childBlocks` | Block[] | File-based child sections (`@`-prefixed files + `nest:`) |
+| `block.childBlocks` | Block[] | File-based child sections |
 | `block.insets` | Block[] | Inline `@Component` references |
 | `block.getInset(refId)` | Block | Lookup inset by refId |
-| `block.properties` | object | Raw frontmatter (prefer `params` from destructuring) |
-| `block.themeName` | string | Resolved theme: `"light"`, `"medium"`, `"dark"` |
-| `block.stableId` | string | Stable ID from filename or frontmatter `id:` |
+| `block.properties` | object | Raw frontmatter |
+| `block.themeName` | string | `"light"`, `"medium"`, `"dark"` |
+| `block.stableId` | string | Stable ID from filename or `id:` |
 
 ### Section Wrapper
 
-The runtime wraps every section type in a `<section>` element with context class, background, and semantic tokens. Use static properties to customize this wrapper:
+The runtime wraps every section in `<section>` with context class and background. Customize with static properties:
 
 ```jsx
 function Hero({ content, params }) {
@@ -907,29 +750,80 @@ function Hero({ content, params }) {
   )
 }
 
-Hero.className = 'pt-32 md:pt-48'   // Override spacing for hero (more top padding)
-Hero.as = 'div'                      // Change wrapper element (default: 'section')
+Hero.className = 'pt-32 md:pt-48'   // Override spacing
+Hero.as = 'div'                      // Change wrapper element
 
 export default Hero
 ```
 
-- `Component.className` — adds classes to the runtime's wrapper. Use for section-level spacing, borders, overflow. Set `py-[var(--section-padding-y)]` for consistent spacing from the theme variable, or override for specific sections (e.g., hero needs extra top padding). The component's own JSX handles inner layout only (`max-w-7xl mx-auto px-6`).
-- `Component.as` — changes the wrapper element. Use `'nav'` for headers, `'footer'` for footers, `'div'` when `<section>` isn't semantically appropriate.
+- `Component.className` — adds classes to the runtime wrapper. Section-level spacing, borders, overflow.
+- `Component.as` — changes wrapper element: `'nav'` for headers, `'footer'` for footers.
 
-**Layout components** (Header, Footer) typically need `Component.className = 'p-0'` to suppress the runtime's default section padding, since they control their own padding. Also set `Component.as = 'header'` or `'footer'` for semantic HTML:
+**Layout components** typically need `p-0` to suppress default padding:
 
 ```jsx
-function Header({ content, block }) { /* ... */ }
 Header.className = 'p-0'
 Header.as = 'header'
-export default Header
 ```
+
+### Rendering Content with Kit
+
+Content fields are **HTML strings** — they contain `<strong>`, `<em>`, `<a>` from markdown. Never render them with raw `{content.title}` in JSX — that shows HTML tags as visible text. Use Kit components:
+
+**Extracted fields** (most common — custom layout with content from markdown):
+
+```jsx
+import { H1, H2, P, Span } from '@uniweb/kit'
+
+<H1 text={content.title} className="text-heading text-5xl font-bold" />
+<P text={content.paragraphs} className="text-body" />
+<Span text={listItem.paragraphs[0]} className="text-subtle" />
+```
+
+These render their own HTML tag — don't wrap: `<H2 text={...} />` not `<h2><H2 text={...} /></h2>`.
+
+**Full content rendering** (article/docs sections where the author controls the flow):
+
+```jsx
+import { Section, Render } from '@uniweb/kit'
+
+<Section block={block} width="lg" padding="md" />
+<Render content={block.parsedContent} block={block} />
+```
+
+**Visuals:**
+
+```jsx
+import { Visual } from '@uniweb/kit'
+
+<Visual inset={block.insets[0]} video={content.videos[0]} image={content.imgs[0]} className="rounded-2xl" />
+```
+
+### Kit API by Use Case
+
+**Rendering text:** `H1`–`H6`, `P`, `Span`, `Div`, `Text` (with `as` prop)
+
+**Rendering content:** `Section` (Render + prose + layout), `Render` (ProseMirror → React), `ChildBlocks` (render child sections)
+
+**Rendering media:** `Visual` (first non-empty: inset/video/image), `Image`, `Media`, `Icon`
+
+**Navigation and routing:** `Link` (`to`/`href`, `to="page:about"` for page ID resolution, auto `target="_blank"` for external, `reload` for full page reload), `useActiveRoute()`, `useWebsite()`, `useRouting()`
+
+**Header and layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()` (light/dark mode)
+
+**Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`, `useTheme(name)`
+
+**Data and theming:** `useThemeData()` (programmatic color access), `useColorContext(block)`
+
+**Utilities:** `cn()` (Tailwind class merge), `Link`, `Image`, `Asset`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`
+
+**Other styled:** `SidebarLayout`, `Prose`, `Article`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
 ### Content Patterns for Header and Footer
 
-Header and Footer are the hardest components to content-model because they combine several content categories. Use different parts of the content shape for each role:
+Header and Footer combine several content categories. Use different parts of the content shape for each role:
 
-**Header** — title for logo, list for nav links, standalone link for CTA, tagged YAML for metadata:
+**Header** — title for logo, list for nav, standalone link for CTA:
 
 ````markdown
 ---
@@ -952,15 +846,14 @@ version: v2.1.0
 
 ```jsx
 function Header({ content, block }) {
-  const logo = content.title                    // "Acme Inc"
-  const navItems = content.lists[0] || []       // [{icons, links}, ...]
-  const cta = content.links[0]                  // {href, label}
-  const config = content.data?.config           // {github, version}
-  // ...
+  const logo = content.title
+  const navItems = content.lists[0] || []
+  const cta = content.links[0]
+  const config = content.data?.config
 }
 ```
 
-**Footer** — paragraph for tagline, nested list for grouped columns, tagged YAML for legal:
+**Footer** — paragraph for tagline, nested list for columns, YAML for legal:
 
 ````markdown
 ---
@@ -975,9 +868,6 @@ Build something great.
 - Developers
   - [Docs](/docs)
   - [GitHub](https://github.com/acme){target=_blank}
-- Community
-  - [Discord](#)
-  - [Blog](/blog)
 
 ```yaml:legal
 copyright: © 2025 Acme Inc
@@ -985,14 +875,11 @@ copyright: © 2025 Acme Inc
 ````
 
 ```jsx
-function Footer({ content, block }) {
-  const tagline = content.paragraphs[0]         // "Build something great."
-  const columns = content.lists[0] || []        // [{paragraphs, lists}, ...]
-  const legal = content.data?.legal             // {copyright}
+function Footer({ content }) {
+  const tagline = content.paragraphs[0]
+  const columns = content.lists[0] || []
+  const legal = content.data?.legal
 
-  // Each top-level list item has the full content shape.
-  // Bare text ("Product") → paragraphs[0]. Nested list → lists[0].
-  // group.paragraphs[0] = column label, group.lists[0] = column links.
   columns.map(group => ({
     label: group.paragraphs[0],
     links: group.lists[0]?.map(item => item.links[0])
@@ -1007,11 +894,11 @@ export default {
   title: 'Feature Grid',
   description: 'Grid of feature cards with icons',
   category: 'marketing',
-  // hidden: true,          // Exclude from export (internal/helper component)
+  // hidden: true,          // Exclude from export
   // background: 'self',    // Component renders its own background
-  // inset: true,           // Available for @ComponentName references in markdown
-  // visuals: 1,            // Expects 1 visual (image, video, or inset)
-  // children: true,        // Accepts file-based child sections
+  // inset: true,           // Available for @ComponentName in markdown
+  // visuals: 1,            // Expects 1 visual
+  // children: true,        // Accepts child sections
 
   content: {
     title: 'Section heading',
@@ -1029,250 +916,131 @@ export default {
     compact: { label: 'Compact', params: { columns: 4 } },
   },
 
-  // Static capabilities for cross-block coordination
   context: {
-    allowTranslucentTop: true,  // Header can overlay this section
+    allowTranslucentTop: true,
   },
 }
 ```
 
 All defaults belong in `meta.js`, not inline in component code.
 
-### @uniweb/kit
+### The Front Desk Pattern
 
-Content fields (`title`, `pretitle`, `paragraphs[]`, list item text) are **HTML strings** — they contain markup like `<strong>`, `<em>`, `<a>` from the author's markdown. The kit provides components to render them correctly.
+Section types naturally use params to adjust their own rendering — `variant: flipped` reverses a flex direction, `columns: 3` sets a grid. That's not a pattern, that's the baseline.
 
-**Rendering text** (`@uniweb/kit`):
-
-```jsx
-import { H1, H2, P, Span } from '@uniweb/kit'
-
-<H1 text={content.title} className="text-heading text-5xl font-bold" />
-  // string → single <h1>, array → single <h1> with line breaks (multi-line headings)
-<H2 text={content.subtitle} className="text-heading text-3xl font-bold" />
-<P text={content.paragraphs} className="text-body" />
-  // array → each string becomes its own <p>
-<Span text={listItem.paragraphs[0]} className="text-subtle" />
-```
-
-`H1`–`H6`, `P`, `Span`, `Div` are all wrappers around `Text` with a preset tag:
+The **Front Desk pattern** is when a section type does virtually no rendering itself. It reads the author's params, picks the right helper component from `src/components/`, and translates author-friendly vocabulary into developer-oriented props. The section type is a front desk — it greets the request and routes it to the right specialist:
 
 ```jsx
-<Text text={content.title} as="h2" className="..." />  // explicit tag
+// sections/Features/index.jsx — the front desk
+import { CardGrid } from '../../components/CardGrid'
+import { CardList } from '../../components/CardList'
+import { ComparisonTable } from '../../components/ComparisonTable'
+
+const variants = { grid: CardGrid, list: CardList, comparison: ComparisonTable }
+
+export default function Features({ content, block, params }) {
+  const Layout = variants[params.variant] || CardGrid
+
+  return (
+    <Layout
+      title={content.title}
+      subtitle={content.paragraphs[0]}
+      items={content.items}
+      block={block}
+      columns={params.columns}
+      showIcons={params.showIcon !== false}
+      compact={params.density === 'compact'}
+    />
+  )
+}
 ```
 
-These components render their own HTML tag — don't wrap them in a matching tag. `<h2><H2 text={...} /></h2>` creates a nested `<h2><h2>...</h2></h2>`, which is invalid HTML. Just use `<H2 text={...} />` directly.
-
-Don't render content strings with `{content.paragraphs[0]}` in JSX — that shows HTML tags as visible text. Use `<P>`, `<H2>`, `<Span>`, etc. for content strings.
-
-**Rendering full content** (`@uniweb/kit`):
-
-```jsx
-import { Section, Render } from '@uniweb/kit'
-
-<Render content={block.parsedContent} block={block} />   // ProseMirror nodes → React
-<Section block={block} width="lg" padding="md" />         // Render + prose styling + layout
+```js
+// meta.js — author-friendly language
+export default {
+  params: {
+    variant: { type: 'select', options: ['grid', 'list', 'comparison'], default: 'grid' },
+    columns: { type: 'number', default: 3 },
+    showIcon: { type: 'boolean', default: true },
+    density: { type: 'select', options: ['default', 'compact'], default: 'default' },
+  }
+}
 ```
 
-`Render` processes ProseMirror nodes into React elements — paragraphs, headings, images, code blocks, lists, tables, alerts, and insets. `Section` wraps `Render` with prose typography and layout options. Use these when rendering a block's complete content. Use `P`, `H2`, etc. when you extract specific fields and arrange them with custom layout.
+The content author writes `variant: comparison` — they don't know or care about `ComparisonTable`. The section type translates `density: compact` into a `compact={true}` prop. `CardGrid`, `CardList`, `ComparisonTable` live in `src/components/` — ordinary React, reusable across multiple section types, testable independently.
 
-**Rendering visuals** (`@uniweb/kit`):
-
-`<Visual>` renders the first non-empty candidate from the props you pass (inset, video, image). See Insets section below.
-
-**Other primitives** (`@uniweb/kit`): `Link`, `Image`, `Icon`, `Media`, `Asset`, `SafeHtml`, `SocialIcon`, `FileLogo`, `cn()`
-
-`Link` props: `to` (or `href`), `target`, `reload`, `download`, `className`, `children`:
-
-```jsx
-<Link to="/about">About</Link>            // SPA navigation via React Router
-<Link to="page:about">About</Link>        // Resolves page ID to route
-<Link reload href={localeUrl}>ES</Link>    // Full page reload, prepends basePath
-// External URLs auto-get target="_blank" and rel="noopener noreferrer"
-```
-
-**Other styled** (`@uniweb/kit`): `SidebarLayout`, `Prose`, `Article`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
-
-**Hooks:**
-- `useScrolled(threshold)` → boolean for scroll-based header styling
-- `useMobileMenu()` → `{ isOpen, toggle, close }` with auto-close on navigation
-- `useAccordion({ multiple, defaultOpen })` → `{ isOpen, toggle }` for expand/collapse
-- `useActiveRoute()` → `{ route, rootSegment, isActive(page), isActiveOrAncestor(page) }` for nav highlighting (SSG-safe)
-- `useGridLayout(columns, { gap })` → responsive grid class string
-- `useTheme(name)` → standardized theme classes
-- `useAppearance()` → `{ scheme, toggle, canToggle, setScheme, schemes }` — light/dark mode control with localStorage persistence
-- `useRouting()` → `{ useLocation, useParams, useNavigate, Link, isRoutingAvailable }` — SSG-safe routing access (returns no-op fallbacks during prerender)
-- `useWebsite()` → `{ website, localize, makeHref, getLanguage, getLanguages, getRoutingComponents }` — primary runtime hook
-- `useThemeData()` → Theme instance for programmatic color access (`getColor(name, shade)`, `getPalette(name)`)
-- `useColorContext(block)` → `'light' | 'medium' | 'dark'` — current section's color context
-
-**Utilities:** `cn()` (Tailwind class merge), `filterSocialLinks(links)`, `getSocialPlatform(url)`
+This is the system-building pattern at its clearest: **section types are the public interface** to your content system (author-friendly names, documented in `meta.js`). **Helper components are the implementation** (developer-friendly APIs, ordinary React props). The section type is the thin translation layer that connects the two worlds.
 
 ### Foundation Organization
 
 ```
 foundation/src/
 ├── sections/            # Section types (auto-discovered)
-│   ├── Hero.jsx         # Bare file — simple components need no folder
-│   ├── Features/        # Folder — when you need meta.js, helpers, etc.
+│   ├── Hero.jsx         # Bare file — no folder needed
+│   ├── Features/        # Folder when you need meta.js
 │   │   ├── index.jsx
 │   │   └── meta.js
 │   └── insets/          # Organizational subdirectory (lowercase)
-│       └── Diagram/     # Nested section type — meta.js required
+│       └── Diagram/
 │           ├── index.jsx
 │           └── meta.js
 ├── components/          # Your React components (no meta.js, not selectable)
-│   ├── ui/              # shadcn-compatible primitives
+│   ├── ui/
 │   │   └── button.jsx
 │   └── Card.jsx
 └── styles.css
 ```
 
-**Discovery rules for `sections/`:**
-
-- **Root level** — PascalCase bare files (`Hero.jsx`) and folders (`Features/`) are addressable by default. No `meta.js` required (an implicit one is generated with an inferred title).
-- **Root level with meta.js** — Folder has `meta.js` → uses explicit meta (params, inset, children, etc.).
-- **Nested levels** — `meta.js` required for addressability. Lowercase directories like `insets/`, `utilities/` are organizational — they're recursed into but not registered as section types themselves.
-- **Hidden** — `hidden: true` in meta.js excludes a component from discovery entirely.
-
-Everything outside `sections/` is ordinary React — organize however you like.
+**Discovery:** PascalCase files/folders at root of `sections/` are auto-discovered. Nested levels require `meta.js`. Lowercase directories are organizational only. `hidden: true` excludes a component entirely. Everything outside `sections/` is ordinary React.
 
 ### Website and Page APIs
 
 ```jsx
-const { website } = useWebsite()  // or block.website
-const page = website.activePage   // or block.page 
+const { website } = useWebsite()
+const page = website.activePage
 
 // Navigation
-const pages = website.getPageHierarchy({ for: 'header' })  // or 'footer'
+website.getPageHierarchy({ for: 'header' })
 // → [{ route, navigableRoute, label, hasContent, children }]
-
-// Locale
-website.hasMultipleLocales()
-website.getLocales()        // [{ code, label, isDefault }]
-website.getActiveLocale()   // 'en'
-website.getLocaleUrl('es')
 
 // Core properties
 website.name              // Site name from site.yml
 website.basePath          // Deployment base path (e.g., '/docs/')
 
+// Locale
+website.hasMultipleLocales()
+website.getLocales()        // [{ code, label, isDefault }]
+website.getActiveLocale()
+website.getLocaleUrl('es')
+
 // Route detection
 const { isActive, isActiveOrAncestor } = useActiveRoute()
-isActive(page)            // Exact match
-isActiveOrAncestor(page)  // Ancestor match (for parent highlighting in nav)
 
-// Appearance (light/dark mode)
+// Appearance
 const { scheme, toggle, canToggle } = useAppearance()
 
 // Page properties
-page.title                // Page title
-page.label                // Short label for nav (falls back to title)
-page.route                // Route path
-page.isHidden()           // Hidden from navigation
-page.showInHeader()       // Visible in header nav
-page.showInFooter()       // Visible in footer nav
-page.hasChildren()        // Has child pages
-page.children             // Array of child Page objects
+page.title, page.label, page.route
+page.isHidden(), page.showInHeader(), page.showInFooter()
+page.hasChildren(), page.children
 ```
-
-### Insets and the Visual Component
-
-Components access inline `@` references via `block.insets` (separate from `block.childBlocks`):
-
-```jsx
-import { Visual } from '@uniweb/kit'
-
-// Visual renders the first non-empty candidate: inset > video > image
-function SplitContent({ content, block }) {
-  return (
-    <div className="flex gap-12">
-      <div className="flex-1">
-        <h2 className="text-heading">{content.title}</h2>
-      </div>
-      <Visual inset={block.insets[0]} video={content.videos[0]} image={content.imgs[0]} className="flex-1 rounded-lg" />
-    </div>
-  )
-}
-```
-
-- `<Visual>` — renders first non-empty candidate from the props you pass (`inset`, `video`, `image`)
-- `<Render>` / `<Section>` — automatically handles `@Component` references placed in content flow
-- `block.insets` — array of Block instances from `@` references
-- `block.getInset(refId)` — lookup by refId (used by sequential renderers)
-- `content.insets` — flat array of `{ refId }` entries (parallel to `content.imgs`)
-
-**SSG:** Insets, child blocks (`<ChildBlocks>`), and `<Visual>` all render correctly during prerender (SSG). The prerender pipeline provides an inline `childBlockRenderer` that handles these without React hooks. However, inset components that use React hooks internally (useState, useEffect) will still trigger prerender warnings — the component itself can't use hooks in the SSG pipeline due to dual React instances. The warnings are informational; the page renders correctly client-side.
-
-Inset components declare `inset: true` in meta.js:
-
-```js
-// sections/insets/NetworkDiagram/meta.js
-export default {
-  inset: true,
-  params: { variant: { type: 'select', options: ['full', 'compact'], default: 'full' } },
-}
-```
-
-Whether an inset appears in a section palette is a concern of the parent component (via `children` and `insets` in its meta.js), not a property of the inset itself. Don't use `hidden: true` on insets — `hidden` means "don't export this component at all" (internal helpers, not-yet-ready components).
-
-### Dispatcher Pattern
-
-One section type with a `variant` param replaces multiple near-duplicates. Instead of `HeroLeft`, `HeroCentered`, `HeroSplit` — one `Hero` with `variant: left | centered | split`:
-
-```jsx
-function SplitContent({ content, block, params }) {
-  const flipped = params.variant === 'flipped'
-  return (
-    <div className={`flex gap-16 items-center ${flipped ? 'flex-row-reverse' : ''}`}>
-      <div className="flex-1">
-        {content.pretitle && (
-          <p className="text-xs font-bold uppercase tracking-widest text-subtle mb-4">
-            {content.pretitle}
-          </p>
-        )}
-        <h2 className="text-heading text-3xl font-bold">{content.title}</h2>
-        <p className="text-body mt-4">{content.paragraphs[0]}</p>
-      </div>
-      <Visual inset={block.insets[0]} video={content.videos[0]} image={content.imgs[0]} className="flex-1 rounded-2xl" />
-    </div>
-  )
-}
-```
-
-```js
-// meta.js
-export default {
-  title: 'Split Content',
-  content: { pretitle: 'Eyebrow label', title: 'Section heading', paragraphs: 'Description' },
-  params: {
-    variant: { type: 'select', options: ['default', 'flipped'], default: 'default' },
-  },
-}
-```
-
-Content authors choose the variant in frontmatter (`variant: flipped`), or the site can alternate it across sections. One component serves every "text + visual" layout on the site.
 
 ### Cross-Block Communication
-
-Components read neighboring blocks for adaptive behavior (e.g., translucent header over hero):
 
 ```jsx
 const firstBody = block.page.getFirstBodyBlockInfo()
 // → { type, theme, context: { allowTranslucentTop }, state }
-
-// context = static (from meta.js), state = dynamic (from useBlockState)
 ```
 
 ### Custom Layouts
 
-Layouts live in `foundation/src/layouts/` and are auto-discovered. Set the default in `foundation.js`:
+Layouts live in `foundation/src/layouts/` and are auto-discovered:
 
 ```js
 // foundation/src/foundation.js
 export default {
-  name: 'My Template',              // Display name (falls back to package.json name)
-  description: 'A brief description', // Falls back to package.json description
+  name: 'My Template',
+  description: 'A brief description',
   defaultLayout: 'DocsLayout',
 }
 ```
@@ -1294,80 +1062,67 @@ export default function DocsLayout({ header, body, footer, left, right, params }
 }
 ```
 
-Layout receives pre-rendered areas as props plus `params`, `page`, and `website`. The `body` area is always implicit.
+**Layout meta.js** declares areas: `{ areas: ['header', 'footer', 'left'] }`. Area names are arbitrary.
 
-**Layout meta.js** declares which areas the layout renders:
-
-```js
-// foundation/src/layouts/DocsLayout/meta.js
-export default {
-  areas: ['header', 'footer', 'left'],
-}
-```
-
-Area names are arbitrary strings — `header`, `footer`, `left`, `right` are conventional, but a dashboard layout could use `topbar`, `sidebar`, `statusbar`.
-
-**Site-side layout content** — each layout can have its own section files:
+**Layout content** — each layout has section files in `site/layout/`:
 
 ```
 site/layout/
-├── header.md              # Default layout sections
+├── header.md              # Default layout
 ├── footer.md
-├── left.md
-└── marketing/             # Sections for the "marketing" layout
-    ├── header.md          # Different header for marketing pages
+└── marketing/             # Named layout sections
+    ├── header.md
     └── footer.md
 ```
 
-Named subdirectories are self-contained — no inheritance from the root. If `marketing/` has no `left.md`, marketing pages have no left panel.
+Named subdirectories are self-contained — no inheritance. Layout cascade: `page.yml` → `folder.yml` → `site.yml` → foundation `defaultLayout` → `"default"`.
 
-**Layout cascade** (first match wins): `page.yml` → `folder.yml` → `site.yml` → foundation `defaultLayout` → `"default"`.
-
-```yaml
-# page.yml — select layout and hide areas
-layout:
-  name: MarketingLayout
-  hide: [left, right]
-```
+---
 
 ## Migrating From Other Frameworks
 
-Don't port line-by-line. Study the original implementation, then plan a new one in Uniweb from first principles. Other frameworks produce far more components than Uniweb needs — expect consolidation, not 1:1 correspondence.
+Don't port line-by-line. Study the source, then rebuild from first principles. Other frameworks produce far more components than Uniweb needs — expect consolidation, not 1:1 correspondence.
 
-### Why fewer components
+### The mental model shift
 
-Uniweb section types do more with less because the framework handles concerns that other frameworks push onto components:
-
-- **Dispatcher pattern** — one section type with a `variant` param replaces multiple near-duplicate components (`HeroHomepage` + `HeroPricing` → `Hero` with `variant: homepage | pricing`)
-- **Section nesting** — `@`-prefixed child files replace wrapper components that exist only to arrange children
-- **Insets** — `![](@ComponentName)` replaces prop-drilling of visual components into containers
-- **Visual component** — `<Visual>` renders the first non-empty visual from explicit candidates (inset, video, image), replacing manual media handling
-- **Semantic theming** — the runtime orchestrates context classes and token resolution, replacing per-component dark mode logic
-- **Engine backgrounds** — the runtime renders section backgrounds from frontmatter, replacing background-handling code in every section
-- **Rich params** — `meta.js` params with types, defaults, and presets replace config objects and conditional logic
+| React / conventional | Uniweb equivalent |
+|---|---|
+| Props with typed data | Frontmatter params + `meta.js` |
+| Component variants via props | `variant` param in frontmatter; Front Desk pattern for complex routing |
+| Context / ThemeProvider | `theme:` frontmatter + semantic tokens (automatic) |
+| Wrapper/layout components | Section nesting or custom layouts |
+| Prop-drilling visuals into containers | Insets — `![](@Component)` rendered via `<Visual>` |
+| Content in JSX or `.js` data files | Markdown → parser → `content` prop |
+| CSS color tokens / design systems | `theme.yml` → palette shades + semantic tokens |
+| `isDark ? ... : ...` conditionals | `text-heading` — context classes handle it |
+| Per-component backgrounds | `background:` in frontmatter |
+| Multiple near-identical components | One section type + `variant` param, or Front Desk pattern |
+| i18n wrapping (`t()` / `<Trans>`) | Locale-specific content directories |
 
 ### Migration approach
 
-1. **Check if you're inside an existing Uniweb workspace** (look for `pnpm-workspace.yaml` and a `package.json` with `uniweb` as a dependency). If yes, use `pnpm uniweb add` to create projects inside it. If no, create a new workspace:
+1. **Scaffold the workspace:**
    ```bash
    pnpm create uniweb my-project --template none
    ```
 
-3. **Use named layouts** for different page groups — a marketing layout for landing pages, a docs layout for `/docs/*`. One site, multiple layouts, each with its own header/footer/sidebar content.
+2. **Use named layouts** for different page groups — marketing layout for landing pages, docs layout for `/docs/*`.
 
-4. **Dump legacy components under `src/components/`** — they're not section types. Import them from section types as needed during the transition.
+3. **Dump legacy components under `src/components/`** — they're not section types. Import from section types during transition.
 
-5. **Create section types one at a time.** Each is independent — one can use hardcoded content while another reads from markdown. Staged migration levels:
-   - **Level 0**: Paste the whole original file as one section type. You get routing and dev tooling immediately.
-   - **Level 1**: Decompose into section types. Name by purpose (`Institutions` → `Testimonial`). Consolidate duplicates via dispatcher pattern.
-   - **Level 2**: Move content from JSX to markdown. Components read from `content` instead of hardcoded strings. Content authors can now edit without touching code.
-   - **Level 3**: Replace hardcoded Tailwind colors with semantic tokens. Components work in any context and any brand.
+4. **Create section types one at a time.** Migration levels:
+   - **Level 0**: Paste the original as one section type. Routing and dev tooling work immediately.
+   - **Level 1**: Decompose into section types. Consolidate duplicates — use `variant` params or the Front Desk pattern.
+   - **Level 2**: Move content from JSX to markdown. Authors can now edit without code.
+   - **Level 3**: Replace hardcoded colors with semantic tokens. Components work in any context.
 
-6. **Map source colors to `theme.yml`, not to foundation CSS.** The most common migration mistake is recreating the source site's color tokens as CSS custom properties in `styles.css` (e.g., `--ink`, `--paper`, `--accent`). This creates a parallel color system that bypasses CCA's semantic tokens, context classes, and site-level theming entirely. Instead: identify the source's primary color → set it as `colors.primary` in theme.yml. Identify the neutral tone → set it as `colors.neutral` (e.g., `stone` for warm). Identify context needs → use `theme:` frontmatter per section. Components use `text-heading`, `bg-section`, `bg-card` — never custom color variables.
+5. **Map source colors to `theme.yml`.** The most common mistake is recreating source colors as CSS custom properties — this bypasses the token system. Instead: primary color → `colors.primary` in theme.yml. Neutral tone → `colors.neutral`. Context needs → `theme:` frontmatter.
 
-7. **Name by purpose, not by content** — `TheModel` → `SplitContent`, `WorkModes` → `FeatureColumns`, `FinalCTA` → `CallToAction`. Components render a *kind* of content, not specific content.
+6. **Name by purpose, not content** — `TheModel` → `SplitContent`, `WorkModes` → `FeatureColumns`.
 
-8. **UI helpers → `components/`** — Buttons, badges, cards go in `src/components/` (no `meta.js` needed, not selectable by content authors).
+7. **UI helpers → `components/`** — Buttons, badges, cards in `src/components/` (no `meta.js`, not selectable by authors).
+
+---
 
 ## Tailwind CSS v4
 
@@ -1375,57 +1130,44 @@ Foundation styles in `foundation/src/styles.css`:
 
 ```css
 @import "tailwindcss";
-@import "@uniweb/kit/theme-tokens.css";           /* Semantic tokens from theme.yml */
+@import "@uniweb/kit/theme-tokens.css";
 @source "./sections/**/*.{js,jsx}";
-@source "./components/**/*.{js,jsx}";             /* UI helpers (Button, Card, etc.) */
+@source "./components/**/*.{js,jsx}";
 @source "../node_modules/@uniweb/kit/src/**/*.jsx";
 
 @theme {
-  /* Additional custom values — NOT for colors already in theme.yml */
   --breakpoint-xs: 30rem;
 }
 ```
 
-Semantic color tokens (`text-heading`, `bg-section`, `bg-primary`, etc.) come from `theme-tokens.css` — which the runtime populates from the site's `theme.yml`. Don't redefine colors here that belong in `theme.yml`. Use `@theme` only for values the token system doesn't cover (custom breakpoints, animations, shadows).
-
-**Custom CSS is expected alongside Tailwind.** Your foundation's `styles.css` is the design layer — shadow systems, border hierarchies, gradient effects, accent treatments, elevation scales, glassmorphism. If the source design has a visual detail, create a class for it. Tailwind handles layout and spacing; semantic tokens handle context adaptation; `styles.css` handles everything else that makes the design rich and distinctive.
+Semantic tokens come from `theme-tokens.css` (populated from `theme.yml`). Use `@theme` only for values tokens don't cover. **Custom CSS is expected alongside Tailwind** — shadow systems, border hierarchies, gradients, glassmorphism. Tailwind handles layout; tokens handle context; `styles.css` handles everything else.
 
 ## Troubleshooting
 
-**"Could not load foundation"** — Check `site/package.json` has `"foundation": "file:../foundation"` (or `"default": "file:../../foundations/default"` for multi-site).
+**"Could not load foundation"** — Check `site/package.json` has `"foundation": "file:../foundation"`.
 
-**Component not appearing** — Verify `meta.js` exists. Check for `hidden: true` (means component is excluded from export — only use for internal helpers). Rebuild: `cd foundation && pnpm build`.
+**Component not appearing** — Verify `meta.js` exists. Check for `hidden: true`. Rebuild: `cd foundation && pnpm build`.
 
-**Styles not applying** — Verify `@source` in `styles.css` includes your component paths. Check custom colors match `@theme` definitions.
+**Styles not applying** — Verify `@source` includes your component paths.
 
-**Prerender warnings about hooks/useState** — Components with React hooks (useState/useEffect) — especially insets — will show SSG warnings during `pnpm build`. This is expected and harmless; see the note in the Insets section above.
+**Prerender warnings about hooks** — Components with useState/useEffect show SSG warnings during build. Expected and harmless.
 
-**Content not appearing as expected?** Inspect the parsed content shape to see exactly what your component receives:
-
+**Content not appearing as expected?**
 ```bash
 uniweb inspect pages/home/hero.md         # Single section
 uniweb inspect pages/home/                 # Whole page
 uniweb inspect pages/home/hero.md --raw    # ProseMirror AST
 ```
 
-Compare with the Content Shape section above to identify mapping issues (e.g., headings becoming items instead of title, links inline in paragraphs instead of in `links[]`).
-
 ## Further Documentation
 
-Full Uniweb documentation is available at **https://github.com/uniweb/docs** — raw markdown files you can fetch directly.
+Full documentation: **https://github.com/uniweb/docs**
 
 | Section | Path | Topics |
 |---------|------|--------|
-| **Getting Started** | `getting-started/` | What is Uniweb, quickstart guide, templates overview |
-| **Authoring** | `authoring/` | Writing content, site setup, collections, theming, linking, search, recipes, translations |
-| **Development** | `development/` | Building foundations, component patterns, data fetching, custom layouts, i18n, converting existing designs |
-| **Reference** | `reference/` | site.yml, page.yml, content structure, meta.js, kit hooks/components, theming tokens, CLI commands, deployment |
+| **Getting Started** | `getting-started/` | What is Uniweb, quickstart, templates |
+| **Authoring** | `authoring/` | Writing content, site setup, collections, theming, translations |
+| **Development** | `development/` | Foundations, component patterns, data fetching, layouts, i18n |
+| **Reference** | `reference/` | site.yml, page.yml, content structure, meta.js, kit API, CLI, deployment |
 
-**Quick access pattern:** `https://raw.githubusercontent.com/uniweb/docs/main/{section}/{page}.md`
-
-Examples:
-- Content structure details: `reference/content-structure.md`
-- Component metadata (meta.js): `reference/component-metadata.md`
-- Kit hooks and components: `reference/kit-reference.md`
-- Theming tokens: `reference/site-theming.md`
-- Data fetching patterns: `reference/data-fetching.md`
+**Quick access:** `https://raw.githubusercontent.com/uniweb/docs/main/{section}/{page}.md`
