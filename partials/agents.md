@@ -729,7 +729,14 @@ theme:
   primary-hover: neutral-800
 ```
 
-Any semantic token (`section`, `heading`, `body`, `primary`, `link`, etc.) can be overridden this way. The overrides are applied as inline CSS custom properties on the section wrapper — components don't need to know about them.
+```yaml
+theme:
+  mode: light
+  section: neutral-100               # Custom surface color (subtle off-white)
+  card: neutral-50                   # Cards lighter than background
+```
+
+Any semantic token (`section`, `heading`, `body`, `card`, `primary`, `link`, etc.) can be overridden this way. Values can be hex colors, palette shades (`primary-200`, `neutral-100`), or CSS variables. The overrides are applied as inline CSS custom properties on the section wrapper — components don't need to know about them.
 
 **Site controls the palette** in `theme.yml`. The same foundation looks different across sites because tokens resolve from the site's color configuration, not from component code.
 
