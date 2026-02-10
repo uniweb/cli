@@ -175,13 +175,13 @@ content = {
   subtitle2: '',    // Third-level heading
   paragraphs: [],   // Text blocks
   links: [],        // { href, label, role } — standalone links become buttons
-  images: [],         // { src, alt, role }
+  images: [],       // { src, alt, role }
   icons: [],        // { library, name, role }
   videos: [],       // Video embeds
   insets: [],       // Inline @Component references — { refId }
   lists: [],        // [[{ paragraphs, links, lists, ... }]] — each list item is an object, not a string
   quotes: [],       // Blockquotes
-  snippets: [],     // Fenced code — [{ language, text }]
+  snippets: [],     // Fenced code — [{ language, code }]
   data: {},         // From tagged data blocks (```yaml:tagname, ```json:tagname)
   headings: [],     // Overflow headings after subtitle2
   items: [],        // Each has the same flat structure — from headings after body content
@@ -362,7 +362,7 @@ submitLabel: Send
 
 Access: `content.data?.form` → `{ fields: [...], submitLabel: "Send" }`. Supported formats: `yaml` (or `yml`) and `json`.
 
-**Code snippets** — display content with a language for syntax highlighting. Available in `content.snippets` as `[{ language, text }]`:
+**Code snippets** — display content with a language for syntax highlighting. Available in `content.snippets` as `[{ language, code }]`:
 
 ````markdown
 ```jsx
@@ -372,9 +372,9 @@ function Hello() {
 ```
 ````
 
-Access: `content.snippets[0]` → `{ language: 'jsx', text: 'function Hello() {...}' }`. The `language` attribute is a display hint for syntax highlighting, not a parsing format. Filter by language: `content.snippets.filter(s => s.language === 'css')`.
+Access: `content.snippets[0]` → `{ language: 'jsx', code: 'function Hello() {...}' }`. The `language` attribute is a display hint for syntax highlighting, not a parsing format. Filter by language: `content.snippets.filter(s => s.language === 'css')`.
 
-Both appear in `content.sequence` for document-order rendering. The difference: tagged data blocks are parsed and extracted to `content.data`; code snippets are preserved as text and collected in `content.snippets`.
+Both appear in `content.sequence` for document-order rendering. The difference: tagged data blocks are parsed and extracted to `content.data`; code snippets are preserved and collected in `content.snippets`.
 
 ### Composition: Nesting and Embedding
 
