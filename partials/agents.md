@@ -943,46 +943,52 @@ All defaults belong in `meta.js`, not inline in component code.
 
 Section types naturally use params to adjust their own rendering — `variant: flipped` reverses a flex direction, `columns: 3` sets a grid. That's not a pattern, that's the baseline.
 
-The **Front Desk pattern** is when a section type does virtually no rendering itself. It reads the author's params, picks the right helper component from `src/components/`, and translates author-friendly vocabulary into developer-oriented props. The section type is a front desk — it greets the request and routes it to the right specialist:
+The **Front Desk pattern** is when a section type does virtually no rendering itself. It reads the author's params, picks the right helper component, and translates author-friendly vocabulary into developer-oriented props. The section type is a front desk — it greets the request and routes it to the right specialist.
+
+The workers behind the front desk don't need to share the same interface. A `Hero` might delegate to a `SliderHero` that renders an image carousel and a `ContactHero` that renders a quote request form. They expect different content and different props — that's fine. The front desk declares the **union** of all content its workers might need. Some content won't be used for a given variant, and that's perfectly normal in CCA — params change behavior, and that includes not rendering some content:
+
+```js
+// meta.js — the union of all variants' needs
+export default {
+  params: {
+    variant: { type: 'select', options: ['slider', 'contact'], default: 'slider' },
+    slideInterval: { type: 'number', default: 5 },
+    density: { type: 'select', options: ['default', 'compact'], default: 'default' },
+    style: { type: 'select', options: ['default', 'dramatic'], default: 'default' },
+  }
+}
+```
 
 ```jsx
-// sections/Features/index.jsx — the front desk
-import { CardGrid } from '../../components/CardGrid'
-import { CardList } from '../../components/CardList'
-import { ComparisonTable } from '../../components/ComparisonTable'
+// sections/Hero/index.jsx — the front desk
+import { SliderHero } from '../../components/SliderHero'
+import { ContactHero } from '../../components/ContactHero'
 
-const variants = { grid: CardGrid, list: CardList, comparison: ComparisonTable }
+const variants = { slider: SliderHero, contact: ContactHero }
 
-export default function Features({ content, block, params }) {
-  const Layout = variants[params.variant] || CardGrid
+export default function Hero({ content, block, params }) {
+  const Variant = variants[params.variant] || SliderHero
 
   return (
-    <Layout
+    <Variant
+      // Shared — every variant gets these
       title={content.title}
       subtitle={content.paragraphs[0]}
-      items={content.items}
+      links={content.links}
       block={block}
-      columns={params.columns}
-      showIcons={params.showIcon !== false}
+      // Content that only some variants use
+      images={content.imgs}
+      formData={content.data?.quote}
+      // Translated params — author vocabulary → developer props
+      interval={params.slideInterval}
       compact={params.density === 'compact'}
+      transition={params.style === 'dramatic' ? 'zoom' : 'fade'}
     />
   )
 }
 ```
 
-```js
-// meta.js — author-friendly language
-export default {
-  params: {
-    variant: { type: 'select', options: ['grid', 'list', 'comparison'], default: 'grid' },
-    columns: { type: 'number', default: 3 },
-    showIcon: { type: 'boolean', default: true },
-    density: { type: 'select', options: ['default', 'compact'], default: 'default' },
-  }
-}
-```
-
-The content author writes `variant: comparison` — they don't know or care about `ComparisonTable`. The section type translates `density: compact` into a `compact={true}` prop. `CardGrid`, `CardList`, `ComparisonTable` live in `src/components/` — ordinary React, reusable across multiple section types, testable independently.
+`SliderHero` uses `images`, `interval`, and `transition`; it ignores `formData` and `compact`. `ContactHero` uses `formData` and `compact`; it ignores `images` and `interval`. Each worker takes what it needs. Some params only matter for certain variants (`slideInterval` for slider, `density` for contact). Some are high-level names that the front desk translates into developer-oriented values (`style: dramatic` → `transition="zoom"`). The content author writes `variant: contact` — they don't know or care about `ContactHero`.
 
 This is the system-building pattern at its clearest: **section types are the public interface** to your content system (author-friendly names, documented in `meta.js`). **Helper components are the implementation** (developer-friendly APIs, ordinary React props). The section type is the thin translation layer that connects the two worlds.
 
