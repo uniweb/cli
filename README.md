@@ -202,7 +202,7 @@ Open `foundation/src/sections/Hero.jsx`. The component receives parsed content:
 
 ```jsx
 export default function Hero({ content }) {
-  const { title, paragraphs, links, imgs, items } = content
+  const { title, paragraphs, links, images, items } = content
   // Edit the JSX below...
 }
 ```

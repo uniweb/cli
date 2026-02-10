@@ -7,7 +7,7 @@ import { H1, H2, P, Link, cn } from '@uniweb/kit'
  * Uses semantic tokens so it adapts to any theme context automatically.
  */
 export default function Section({ content, params }) {
-  const { title, pretitle, subtitle, paragraphs = [], links = [], imgs = [] } = content || {}
+  const { title, pretitle, subtitle, paragraphs = [], links = [], images = [] } = content || {}
 
   const {
     align = 'center',
@@ -77,9 +77,9 @@ export default function Section({ content, params }) {
           </div>
         )}
 
-        {imgs.length > 0 && (
+        {images.length > 0 && (
           <div className="mt-8">
-            {imgs.map((img, index) => (
+            {images.map((img, index) => (
               <img
                 key={index}
                 src={img.url || img.src}

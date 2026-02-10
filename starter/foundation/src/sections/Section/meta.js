@@ -10,7 +10,7 @@ export default {
     subtitle: 'Secondary heading',
     paragraphs: 'Body text',
     links: 'Call-to-action buttons',
-    imgs: 'Section images',
+    images: 'Section images',
   },
 
   params: {

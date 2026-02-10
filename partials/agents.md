@@ -175,7 +175,7 @@ content = {
   subtitle2: '',    // Third-level heading
   paragraphs: [],   // Text blocks
   links: [],        // { href, label, role } — standalone links become buttons
-  imgs: [],         // { src, alt, role }
+  images: [],         // { src, alt, role }
   icons: [],        // { library, name, role }
   videos: [],       // Video embeds
   insets: [],       // Inline @Component references — { refId }
@@ -321,7 +321,7 @@ Custom SVGs: `![Logo](./logo.svg){role=icon}`
 ```markdown
 [text](url){target=_blank}              <!-- Open in new tab -->
 [text](./file.pdf){download}            <!-- Download -->
-![alt](./img.jpg){role=banner}          <!-- Role determines array: imgs, icons, or videos -->
+![alt](./img.jpg){role=banner}          <!-- Role determines array: images, icons, or videos -->
 ```
 
 **Quote values that contain spaces:** `{note="Ready to go"}` not `{note=Ready to go}`. Unquoted values end at the first space.
@@ -391,7 +391,7 @@ In other frameworks, this is where you'd reach for MDX, or prop-drill a componen
 Standard markdown image syntax — `![alt](@Component){attributes}`. The content author placed a full React component with content and params, and it looks like an image reference. The developer builds `NetworkDiagram` as an ordinary React component with `inset: true` in its `meta.js`. The kit's `<Visual>` component renders the first non-empty candidate — so the same section type works whether the author provides a static image, a video, or an interactive component:
 
 ```jsx
-<Visual inset={block.insets[0]} video={content.videos[0]} image={content.imgs[0]} className="rounded-2xl" />
+<Visual inset={block.insets[0]} video={content.videos[0]} image={content.images[0]} className="rounded-2xl" />
 ```
 
 The content author controls what goes in the visual slot. The developer's component doesn't need to know or care whether it's rendering an image or a ThreeJS scene.
@@ -812,7 +812,7 @@ import { Section, Render } from '@uniweb/kit'
 ```jsx
 import { Visual } from '@uniweb/kit'
 
-<Visual inset={block.insets[0]} video={content.videos[0]} image={content.imgs[0]} className="rounded-2xl" />
+<Visual inset={block.insets[0]} video={content.videos[0]} image={content.images[0]} className="rounded-2xl" />
 ```
 
 ### Kit API by Use Case
@@ -990,7 +990,7 @@ export default function Hero({ content, block, params }) {
       links={content.links}
       block={block}
       // Content that only some variants use
-      images={content.imgs}
+      images={content.images}
       formData={content.data?.quote}
       // Translated params — author vocabulary → developer props
       interval={params.slideInterval}
