@@ -411,7 +411,7 @@ async function main() {
       type: projectName ? null : 'text',
       name: 'projectName',
       message: 'Project name:',
-      initial: 'my-uniweb-project',
+      initial: 'website',
       validate: (value) => {
         if (!value) return 'Project name is required'
         if (!/^[a-z0-9-]+$/.test(value)) {
