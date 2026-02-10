@@ -33,7 +33,7 @@ Components *should* contain: layout (`grid`, `flex`, `max-w-7xl`), spacing (`p-6
 
 ## Documentation
 
-This project was created with [Uniweb](https://github.com/uniweb/cli). Full documentation (markdown, fetchable): https://github.com/uniweb/docs
+This project was created with [Uniweb CLI](https://github.com/uniweb/cli). Full documentation (markdown, fetchable): https://github.com/uniweb/docs
 
 **To read a specific page:** `https://raw.githubusercontent.com/uniweb/docs/main/{section}/{page}.md`
 
@@ -216,7 +216,17 @@ Body text here.                ← items[0].paragraphs[0]
 ## Separate content from code  ← items[1].title
 ```
 
-If you need an eyebrow label above an item's title, that's `pretitle` — the same heading hierarchy as the top level. If you need metadata per item, use a tagged block inside the item — `items[0].data.details`.
+If you need an eyebrow label above an item's title, that's `pretitle` — the same heading hierarchy as the top level. Heading hierarchy within items follows the same rules — `####` within a `###` item becomes `items[0].subtitle`. If you need metadata per item, use a tagged block inside the item:
+
+````markdown
+### Starter               ← items[0].title
+$9/month                  ← items[0].paragraphs[0]
+
+```yaml:details
+trial: 14 days
+seats: 1
+```                        ← items[0].data.details = { trial: "14 days", seats: 1 }
+````
 
 **Complete example — markdown and resulting content shape side by side:**
 
@@ -405,6 +415,10 @@ The author can swap a child for a different section type tomorrow without the de
 
 Does the content author write content *inside* the nested element? **Yes** → child sections. **No** (self-contained, param-driven) → inset. Repeating same-structure groups within one section → items. These compose: a child section can contain insets, items work inside children.
 
+Inset components declare `inset: true` in meta.js. Don't use `hidden: true` on insets — `hidden` means "don't export this component at all" (for internal helpers), while `inset: true` means "available for `@Component` references in markdown."
+
+**SSG:** Insets, `<ChildBlocks>`, and `<Visual>` all render correctly during prerender. Inset components that use React hooks internally (useState, useEffect) will trigger prerender warnings — this is expected and harmless; the page renders correctly client-side.
+
 ### Section Nesting Details
 
 ```
@@ -526,13 +540,44 @@ Access: `content.lists[0]` — each item has `item.links[0]` and `item.icons[0]`
 ```
 Access: `content.lists[0]` — `group.paragraphs[0]` (label), `group.lists[0]` (sub-items with `subItem.links[0]`).
 
-For richer navigation with icons, descriptions, or hierarchy, use `yaml:nav` tagged blocks.
+Render list item text with Kit components — list items contain HTML strings, not plain text:
+
+```jsx
+content.lists[0]?.map((group, i) => (
+  <div key={i}>
+    <Span text={group.paragraphs[0]} className="font-semibold text-heading" />
+    <ul>
+      {group.lists[0]?.map((subItem, j) => (
+        <li key={j}><Link to={subItem.links[0]?.href}>{subItem.links[0]?.label}</Link></li>
+      ))}
+    </ul>
+  </div>
+))
+```
+
+**For richer navigation with icons, descriptions, or hierarchy**, use `yaml:nav` tagged blocks:
+
+````markdown
+```yaml:nav
+- label: Dashboard
+  href: /
+  icon: lu:layout-grid
+- label: Docs
+  href: /docs
+  icon: lu:book-open
+  children:
+    - label: Getting Started
+      href: /docs/quickstart
+```
+````
+
+Access: `content.data?.nav` — array of `{ label, href, icon, text, children, target }`. Components can support both modes: use `content.data?.nav` when provided, fall back to `website.getPageHierarchy()` for automatic nav. See `reference/navigation-patterns.md` for the full pattern.
 
 ---
 
 ## Semantic Theming
 
-Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter.
+Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter. The `theme` value is also available as `params.theme` — useful when a component needs conditional logic beyond CSS tokens (e.g., switching between a light and dark logo).
 
 ```jsx
 // ❌ Hardcoded — breaks in dark context
@@ -628,6 +673,8 @@ contexts:
     primary: primary-500         # Your exact color on buttons
     primary-hover: primary-600
 ```
+
+> **Contrast warning:** Bright brand colors (orange, yellow, light green) at shade 500 may not meet WCAG contrast (4.5:1) with white foreground text. Test buttons for readability — if contrast is insufficient, keep the default shade 600 mapping.
 
 ### Foundation variables
 
@@ -760,7 +807,7 @@ import { Visual } from '@uniweb/kit'
 
 **Rendering media:** `Visual` (first non-empty: inset/video/image), `Image`, `Media`, `Icon`
 
-**Navigation and routing:** `Link` (`to`/`href`, auto `target="_blank"` for external), `useActiveRoute()`, `useWebsite()`, `useRouting()`
+**Navigation and routing:** `Link` (`to`/`href`, `to="page:about"` for page ID resolution, auto `target="_blank"` for external, `reload` for full page reload), `useActiveRoute()`, `useWebsite()`, `useRouting()`
 
 **Header and layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()` (light/dark mode)
 
@@ -956,10 +1003,15 @@ const page = website.activePage
 website.getPageHierarchy({ for: 'header' })
 // → [{ route, navigableRoute, label, hasContent, children }]
 
+// Core properties
+website.name              // Site name from site.yml
+website.basePath          // Deployment base path (e.g., '/docs/')
+
 // Locale
 website.hasMultipleLocales()
 website.getLocales()        // [{ code, label, isDefault }]
 website.getActiveLocale()
+website.getLocaleUrl('es')
 
 // Route detection
 const { isActive, isActiveOrAncestor } = useActiveRoute()
