@@ -475,14 +475,12 @@ export default function Grid({ block, params }) {
 
 Set `background` in frontmatter — the runtime renders it automatically:
 
-> **FIXME:** var(--primary-900) should be primary-900, right?
-
 ```yaml
 background: /images/hero.jpg                             # Image
 background: /videos/hero.mp4                             # Video
 background: linear-gradient(135deg, #667eea, #764ba2)    # Gradient
 background: '#1a1a2e'                                    # Color (hex — quote in YAML)
-background: var(--primary-900)                            # CSS variable
+background: primary-900                                   # Palette token (bare name or var())
 ```
 
 Object form for more control:
