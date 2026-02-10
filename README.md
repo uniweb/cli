@@ -115,7 +115,7 @@ Frontmatter specifies the component type and configuration. The body contains th
 
 ### Beyond Markdown
 
-For content that doesn't fit markdown patterns—products, team members, events—use tagged code blocks:
+For content that doesn't fit markdown patterns—products, team members, events—use tagged data blocks:
 
 ````markdown
 ```yaml:team-member

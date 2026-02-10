@@ -181,7 +181,8 @@ content = {
   insets: [],       // Inline @Component references — { refId }
   lists: [],        // [[{ paragraphs, links, lists, ... }]] — each list item is an object, not a string
   quotes: [],       // Blockquotes
-  data: {},         // From tagged code blocks (```yaml:tagname) and (```js:tagname)
+  snippets: [],     // Fenced code — [{ language, text }]
+  data: {},         // From tagged data blocks (```yaml:tagname, ```json:tagname)
   headings: [],     // Overflow headings after subtitle2
   items: [],        // Each has the same flat structure — from headings after body content
   sequence: [],     // All elements in document order
@@ -204,7 +205,7 @@ Lightning quick.        ← items[0].paragraphs[0]
 Enterprise-grade.       ← items[1].paragraphs[0]
 ```
 
-**Items have the full content shape** — this is the most commonly overlooked feature. Each item has `title`, `pretitle`, `subtitle`, `paragraphs`, `links`, `icons`, `lists`, and even `data` (tagged blocks). You don't need workarounds for structured content within items:
+**Items have the full content shape** — this is the most commonly overlooked feature. Each item has `title`, `pretitle`, `subtitle`, `paragraphs`, `links`, `icons`, `lists`, `snippets`, and even `data` (tagged data blocks). You don't need workarounds for structured content within items:
 
 ```markdown
 ### The Problem                ← items[0].pretitle
@@ -257,7 +258,7 @@ You have three layers. Most of the design skill is choosing between them:
 
 **Frontmatter params** — `columns: 3`, `variant: centered`, `theme: dark`. Configuration that an author might change but that isn't *content*. Would changing this value change the section's *meaning*, or just its *presentation*? Presentation → param. Meaning → content.
 
-**Tagged data blocks** — for content that doesn't fit markdown patterns. Products with SKUs, team members with roles, event schedules, pricing metadata, form definitions. When the information is genuinely structured data that a content author still owns, a well-named tagged block (`yaml:pricing`, `yaml:speakers`, `yaml:config`) is clearer than contorting markdown into a data format.
+**Tagged data blocks** — for content that doesn't fit markdown patterns. Products with SKUs, team members with roles, event schedules, pricing metadata, form definitions. When the information is genuinely structured data that a content author still owns, a well-named tagged block (`yaml:pricing`, `yaml:speakers`, `yaml:config`) is clearer than contorting markdown into a data format. Supported formats: `yaml` and `json`. The format is a serialization format (how to parse the data), not a language for display. Tagged blocks are parsed at build time into JS objects and delivered as `content.data.tagName`.
 
 Read the markdown out loud. If a content author would understand what every line does and how to edit it, you've chosen the right layer. The moment markdown feels like it's encoding data rather than expressing content, step up to a tagged block — that's fine. A well-documented `yaml:pricing` block is better than a markdown structure that puzzles the author.
 
@@ -344,9 +345,11 @@ This is [less important]{muted} context.
 
 Sites can define additional named styles in `theme.yml`'s `inline:` section.
 
-### Structured Data
+### Fenced Code in Content
 
-Tagged code blocks pass structured data via `content.data`:
+Fenced code in markdown serves two distinct purposes depending on whether it has a tag:
+
+**Tagged data blocks** — structured data parsed into JS objects. The format (`yaml`/`json`) is a serialization format, not a display language. The tag is the key in `content.data`:
 
 ````markdown
 ```yaml:form
@@ -357,11 +360,21 @@ submitLabel: Send
 ```
 ````
 
-Access: `content.data?.form` → `{ fields: [...], submitLabel: "Send" }`
+Access: `content.data?.form` → `{ fields: [...], submitLabel: "Send" }`. Supported formats: `yaml` (or `yml`) and `json`.
 
-> **FIXME:** The claim below is wrong. I think tagged blocks an only be YAML/JSON. We could add regular code blocks to the parsed content as an array of code blocks or "pre" elements.
+**Code snippets** — display content with a language for syntax highlighting. Available in `content.snippets` as `[{ language, text }]`:
 
-**Untagged code blocks** are only visible to sequential-rendering components. If a component needs to access code blocks by name, tag them (`jsx:before`, `jsx:after` → `content.data?.before`, `content.data?.after`).
+````markdown
+```jsx
+function Hello() {
+  return <h1>Hello world</h1>
+}
+```
+````
+
+Access: `content.snippets[0]` → `{ language: 'jsx', text: 'function Hello() {...}' }`. The `language` attribute is a display hint for syntax highlighting, not a parsing format. Filter by language: `content.snippets.filter(s => s.language === 'css')`.
+
+Both appear in `content.sequence` for document-order rendering. The difference: tagged data blocks are parsed and extracted to `content.data`; code snippets are preserved as text and collected in `content.snippets`.
 
 ### Composition: Nesting and Embedding
 
