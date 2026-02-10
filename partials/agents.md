@@ -918,11 +918,15 @@ export default {
 
   // context and initialState: keys are developer-defined, not framework fields.
   // Design your own names for your foundation's cross-block communication.
+
+  // Static — neighbors read via getNextBlockInfo().context
   context: {
     // Example: a Hero might declare this so a Header knows it can float.
     // allowTranslucentTop: true,
   },
 
+  // Dynamic — neighbors read via getNextBlockInfo().state
+  // Component can update with useBlockState()
   initialState: {
     // Example: Hero starts translucent-ready, but component logic may disable it.
     // allowTranslucentTop: true,
