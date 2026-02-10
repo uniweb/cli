@@ -175,9 +175,9 @@ content = {
   subtitle2: '',    // Third-level heading
   paragraphs: [],   // Text blocks
   links: [],        // { href, label, role } — standalone links become buttons
-  images: [],       // { src, alt, role }
+  images: [],       // { src, alt, role, href }
   icons: [],        // { library, name, role }
-  videos: [],       // Video embeds
+  videos: [],       // { src, alt, role, poster, href }
   insets: [],       // Inline @Component references — { refId }
   lists: [],        // [[{ paragraphs, links, lists, ... }]] — each list item is an object, not a string
   quotes: [],       // Blockquotes
