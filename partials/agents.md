@@ -50,9 +50,9 @@ This project was created with [Uniweb CLI](https://github.com/uniweb/cli). Full 
 | Component metadata (meta.js) | `reference/component-metadata.md` |
 | Migrating existing designs | `development/converting-existing.md` |
 
-> **npm registry:** Use `https://registry.npmjs.org/uniweb` for package metadata — the npmjs.com website blocks automated requests.
-
 ## Project Structure
+
+Most projects start as a workspace with two packages:
 
 ```
 project/
@@ -61,23 +61,24 @@ project/
 └── pnpm-workspace.yaml
 ```
 
-Multi-site variant uses `foundations/` and `sites/` (plural) folders.
+- **Foundation** (developer): React components. Those in `src/sections` and `src/layouts` are *section types* — selectable by content authors via `type:` in frontmatter, or used for site-level layout areas (header, footer, panel). Most have an a `meta.js` with metadata in them. Everything in `src/components` (or elsewhere) is ordinary React.
+- **Site** (content author): Markdown content + configuration. Each section file references a section type. Authors work here without touching foundation code. It may also contain collections of structured content and/or references to external data sources.
 
-- **Foundation** (developer): React components. Those with `meta.js` are *section types* — selectable by content authors via `type:` in frontmatter. Everything else is ordinary React.
-- **Site** (content author): Markdown content + configuration. Each section file references a section type. Authors work here without touching foundation code.
+> Multi-site projects use sub-folders with site/foundation pairs in them, or segregate foundations and sites into separate folders (`foundations/`, `sites/`).
 
 ## Project Setup
 
 Always use the CLI to scaffold projects — never write `package.json`, `vite.config.js`, `main.js`, or `index.html` manually. The CLI resolves correct versions and structure.
 
+**npm or pnpm.** Projects include both `pnpm-workspace.yaml` and npm workspaces. Replace `pnpm` with `npm` in any command below.
+
 ### New workspace
 
 ```bash
-pnpm create uniweb my-project
+pnpm create uniweb my-project --template <n>
 cd my-project && pnpm install
 ```
-
-This creates a workspace with foundation + site + starter content — two commands to a dev server. Use `--template <n>` for an official template (`marketing`, `docs`, `academic`, etc.), `--template none` for foundation + site with no content, or `--blank` for an empty workspace.
+Use `--template <n>` for an official template (`none`, `starter`, `marketing`, `docs`, `academic`, etc.), `--template none` for foundation + site with no content, or `--blank` for an empty workspace.
 
 ### Adding a co-located project
 
@@ -128,8 +129,6 @@ pnpm dev        # Start dev server
 pnpm build      # Build for production
 pnpm preview    # Preview production build (SSG + SPA)
 ```
-
-> **npm works too.** Projects include both `pnpm-workspace.yaml` and npm workspaces. Replace `pnpm` with `npm` in any command above.
 
 ---
 
@@ -360,7 +359,9 @@ submitLabel: Send
 
 Access: `content.data?.form` → `{ fields: [...], submitLabel: "Send" }`
 
-**Untagged code blocks** (plain ``` js) are only visible to sequential-rendering components. If a component needs to access code blocks by name, tag them (`jsx:before`, `jsx:after` → `content.data?.before`, `content.data?.after`).
+> **FIXME:** The claim below is wrong. I think tagged blocks an only be YAML/JSON. We could add regular code blocks to the parsed content as an array of code blocks or "pre" elements.
+
+**Untagged code blocks** are only visible to sequential-rendering components. If a component needs to access code blocks by name, tag them (`jsx:before`, `jsx:after` → `content.data?.before`, `content.data?.after`).
 
 ### Composition: Nesting and Embedding
 
@@ -460,6 +461,8 @@ export default function Grid({ block, params }) {
 ### Section Backgrounds
 
 Set `background` in frontmatter — the runtime renders it automatically:
+
+> **FIXME:** var(--primary-900) should be primary-900, right?
 
 ```yaml
 background: /images/hero.jpg                             # Image
@@ -1220,9 +1223,9 @@ Semantic tokens come from `theme-tokens.css` (populated from `theme.yml`). Use `
 
 **Content not appearing as expected?**
 ```bash
-uniweb inspect pages/home/hero.md         # Single section
-uniweb inspect pages/home/                 # Whole page
-uniweb inspect pages/home/hero.md --raw    # ProseMirror AST
+pnpm uniweb inspect pages/home/hero.md         # Single section
+pnpm uniweb inspect pages/home/                 # Whole page
+pnpm uniweb inspect pages/home/hero.md --raw    # ProseMirror AST
 ```
 
 ## Learning from Official Templates
@@ -1230,7 +1233,7 @@ uniweb inspect pages/home/hero.md --raw    # ProseMirror AST
 When you're unsure how to implement a pattern — data fetching, i18n, layouts, insets, theming — install an official template as a reference project in your workspace:
 
 ```bash
-uniweb add project marketing --from marketing
+pnpm uniweb add project marketing --from marketing
 pnpm install
 ```
 
