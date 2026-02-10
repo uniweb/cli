@@ -1187,7 +1187,7 @@ This creates `marketing/foundation/` + `marketing/site/` alongside your existing
 | `academic` | Publications, team grid, timeline, math |
 | `extensions` | Multi-foundation architecture, runtime loading |
 
-You can install multiple templates. Each becomes an independent project in the workspace.
+You can install multiple templates. Each becomes an independent project in the workspace. To run one in dev: `cd {name}/site && pnpm dev`
 
 ## Further Documentation
 
