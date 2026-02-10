@@ -172,7 +172,6 @@ content = {
   title: '',        // Main heading (string or string[] for multi-line)
   pretitle: '',     // Heading before main title (auto-detected)
   subtitle: '',     // Heading after title (string or string[] for multi-line)
-  subtitle2: '',    // Third-level heading
   paragraphs: [],   // Text blocks
   links: [],        // { href, label, role } — standalone links become buttons
   images: [],       // { src, alt, role, href }
@@ -183,7 +182,7 @@ content = {
   quotes: [],       // Blockquotes
   snippets: [],     // Fenced code — [{ language, code }]
   data: {},         // From tagged data blocks (```yaml:tagname, ```json:tagname)
-  headings: [],     // Overflow headings after subtitle2
+  headings: [],     // Headings after subtitle, in document order
   items: [],        // Each has the same flat structure — from headings after body content
   sequence: [],     // All elements in document order
 }
