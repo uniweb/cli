@@ -1,3 +1,6 @@
+# Site Configuration
+# Full reference: uniweb docs site  |  Schema: schemas/site.schema.json
+
 name: {{projectName}}
 
 {{#if foundationRef}}
@@ -5,6 +8,38 @@ foundation: {{foundationRef}}
 
 {{/if}}
 index: home
+
+# ─── Page Ordering ─────────────────────────────────────────────────────────────
+# Control which pages appear in navigation and in what order.
+# pages: [home, about, ...]        # home first, about second, rest auto-discovered
+# pages: [home, ..., contact]      # home first, contact last, rest in middle
+# pages: [home, about]             # Strict: only these pages in nav (others still built)
+# Or just set the homepage and auto-discover the rest:
+# index: home
+
+# ─── Content Paths ─────────────────────────────────────────────────────────────
+# Mount external content directories into your site's page tree.
+# Paths resolve relative to this file.
+#
+# paths:
+#   pages/docs: ../../../docs       # Mount docs repo at /docs route
+#   pages/blog: ../../blog-content  # Mount blog content at /blog route
+#   layout: ./custom-layout         # Custom layout directory
+#   collections: ./data             # Collections directory
+
+# ─── Extensions ────────────────────────────────────────────────────────────────
+# Load additional foundations (section types) via URL.
+# extensions:
+#   - https://cdn.example.com/effects/foundation.js
+
+# ─── Layout ────────────────────────────────────────────────────────────────────
+# Override the foundation's default layout per-site.
+# layout: DocsLayout
+# Or per-page in page.yml:  layout: { name: MarketingLayout, hide: [left] }
+
+# ─── Base Path ─────────────────────────────────────────────────────────────────
+# For subdirectory deployments (e.g., https://example.com/docs/).
+# base: /docs/
 
 build:
   prerender: true

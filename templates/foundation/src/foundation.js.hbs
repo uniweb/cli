@@ -1,7 +1,29 @@
+// Foundation Configuration
+// Schema: schemas/foundation.schema.json
+//
+// ─── CSS Custom Properties ──────────────────────────────────────────────────────
+// Export `vars` to declare CSS custom properties that sites can override in theme.yml:
+//
+// export const vars = {
+//   'header-height': { default: '4rem', description: 'Fixed header height' },
+//   'max-content-width': { default: '80rem', description: 'Max content width' },
+// }
+//
+// Sites override in theme.yml:  vars: { header-height: 5rem }
+// Components use:               height: var(--header-height)
+
 {{#if isExtension}}
 export default {
   extension: true,
 }
 {{else}}
-export default {}
+export default {
+  // ─── Layout ─────────────────────────────────────────────────────────────────
+  // Create layouts in src/layouts/MyLayout/index.jsx (auto-discovered).
+  // defaultLayout: 'MyLayout',
+
+  // ─── Props ──────────────────────────────────────────────────────────────────
+  // Foundation-wide data accessible via website.foundationProps in components.
+  // props: {},
+}
 {{/if}}
