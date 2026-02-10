@@ -924,8 +924,8 @@ export default {
   },
 
   initialState: {
-    // Example: a collapsible section's starting state.
-    // expanded: false,
+    // Example: Hero starts translucent-ready, but component logic may disable it.
+    // allowTranslucentTop: true,
   },
 }
 ```
