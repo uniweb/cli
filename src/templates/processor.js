@@ -177,7 +177,7 @@ async function processFile(sourcePath, targetPath, data, options = {}) {
  * @param {Function} options.onProgress - Progress callback
  */
 export async function copyTemplateDirectory(sourcePath, targetPath, data, options = {}) {
-  const { onWarning, onProgress } = options
+  const { onWarning, onProgress, skip } = options
 
   await fs.mkdir(targetPath, { recursive: true })
   const entries = await fs.readdir(sourcePath, { withFileTypes: true })
@@ -194,10 +194,16 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
         : sourceName
       const targetFullPath = path.join(targetPath, targetName)
 
-      await copyTemplateDirectory(sourceFullPath, targetFullPath, data, { onWarning, onProgress })
+      await copyTemplateDirectory(sourceFullPath, targetFullPath, data, { onWarning, onProgress, skip })
     } else {
       // Skip template.json as it's metadata for the template, not for the output
       if (sourceName === 'template.json') {
+        continue
+      }
+
+      // Determine the output filename (strip .hbs extension) for skip check
+      const outputName = sourceName.endsWith('.hbs') ? sourceName.slice(0, -4) : sourceName
+      if (skip?.includes(outputName)) {
         continue
       }
 

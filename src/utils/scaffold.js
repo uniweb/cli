@@ -30,10 +30,17 @@ const STARTER_DIR = join(__dirname, '..', '..', 'starter')
 export async function scaffoldWorkspace(targetDir, context, options = {}) {
   registerVersions(getVersionsForTemplates())
 
+  // Skip pnpm-workspace.yaml for blank workspaces (no packages yet).
+  // The `add` command creates it on demand via addWorkspaceGlob().
+  // Without this, pnpm fails with ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND
+  // because an empty packages: [] makes pnpm search parent directories.
+  const skip = context.workspaceGlobs?.length ? [] : ['pnpm-workspace.yaml']
+
   const templatePath = join(TEMPLATES_DIR, 'workspace')
   await copyTemplateDirectory(templatePath, targetDir, context, {
     onProgress: options.onProgress,
     onWarning: options.onWarning,
+    skip,
   })
 }
 
