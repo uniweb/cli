@@ -225,7 +225,7 @@ async function loadI18nConfig(projectDir, siteConfig = null) {
 
   // Resolve locales (undefined/'*' → all available, array → specific)
   const { resolveLocales } = await import('@uniweb/build/i18n')
-  const locales = await resolveLocales(config.i18n?.locales, localesPath)
+  const locales = await resolveLocales(config.languages, localesPath)
 
   if (locales.length === 0) return null
 

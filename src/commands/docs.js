@@ -80,7 +80,7 @@ ${colors.bright}Page Ordering:${colors.reset}
                     Rest are auto-discovered
 
 ${colors.bright}Internationalization:${colors.reset}
-  ${colors.cyan}i18n.locales${colors.reset}      Locales to build (array or "*" for all)
+  ${colors.cyan}languages${colors.reset}         Languages to build (array or "*" for all)
                     Example: [es, fr, de]
   ${colors.cyan}i18n.localesDir${colors.reset}   Translation files directory (default: "locales")
 

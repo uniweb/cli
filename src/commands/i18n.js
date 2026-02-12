@@ -213,7 +213,7 @@ async function loadSiteConfig(siteRoot) {
 
   // Resolve locales (undefined/'*' → all available, array → specific)
   const { resolveLocales } = await import('@uniweb/build/i18n')
-  const locales = await resolveLocales(config.i18n?.locales, localesPath)
+  const locales = await resolveLocales(config.languages, localesPath)
 
   return {
     defaultLocale: config.defaultLanguage || 'en',
@@ -376,7 +376,7 @@ async function runInit(siteRoot, config, args) {
   if (!targetLocales || targetLocales.length === 0) {
     error('No target locales specified.')
     log(`${colors.dim}Specify locales as arguments (e.g., "uniweb i18n generate es fr")`)
-    log(`or configure them in site.yml under i18n.locales.${colors.reset}`)
+    log(`or configure them in site.yml under languages.${colors.reset}`)
     process.exit(1)
   }
 
@@ -1454,10 +1454,10 @@ ${colors.bright}Options:${colors.reset}
 ${colors.bright}Configuration:${colors.reset}
   Optional site.yml settings:
 
+    languages: [es, fr]           # Languages to build (default: all available)
+
     i18n:
-      locales: [es, fr]          # Specific locales only (default: all available)
-      locales: '*'               # Explicitly all available locales
-      localesDir: locales        # Directory for translation files (default: locales)
+      localesDir: locales          # Directory for translation files (default: locales)
 
   By default, all *.json files in locales/ are treated as translation targets.
 
