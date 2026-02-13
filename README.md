@@ -164,6 +164,36 @@ export default function Hero({ content, params }) {
 
 Standard React. Standard Tailwind. The `{ content, params }` interface is only for _section types_ — components that content creators select in markdown frontmatter. Everything else uses regular React props.
 
+### Composition
+
+Sections aren't limited to flat content. Content authors can embed interactive React components using markdown image syntax:
+
+```markdown
+---
+type: SplitContent
+---
+
+# See it in action
+
+The architecture handles the hard parts so you can focus on what matters.
+
+![Live metrics](@PerformanceChart){period=30d}
+```
+
+`@PerformanceChart` is a full React component — a ThreeJS animation, an interactive diagram, a live data visualization — placed by the content author, rendered in the component's visual slot via `<Visual>`. It looks like an image reference, but it can be anything.
+
+Authors can also compose layouts from reusable section types using child sections:
+
+```
+pages/home/
+├── 2-highlights.md          # type: Grid, columns: 3
+├── @stats.md                # type: StatCard
+├── @testimonial.md          # type: Testimonial
+└── @demo.md                 # type: SplitContent (with an embedded @LiveDemo inset)
+```
+
+Three different section types, arranged in a grid, one with an interactive component inside it — all authored in markdown. The developer builds reusable pieces; the content author composes them. See the [Component Patterns guide](https://github.com/uniweb/docs/blob/main/development/component-patterns.md) for the full composition model.
+
 ## Next Steps
 
 After creating your project:
@@ -386,7 +416,7 @@ packages:
 
 **How is this different from MDX?**
 
-MDX blends markdown and JSX—content authors write code. Uniweb keeps them separate: content stays in markdown, components stay in React. Content authors can't break components, and component updates don't require content changes.
+MDX blends markdown and JSX—content authors write code. Uniweb keeps them separate: content stays in markdown, components stay in React. Authors can still embed interactive components (via `![](@Component)` syntax), but they never see JSX. Component updates don't require content changes, and content changes can't break components.
 
 **How is this different from Astro?**
 
