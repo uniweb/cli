@@ -36,9 +36,9 @@ Edit files in `site/pages/` and `foundation/src/sections/` to see changes instan
 | **Store** | E-commerce with product grid |
 | **Extensions** | Multi-foundation with visual effects extension |
 
-Use `--blank` for an empty workspace (no packages) — grow with `uniweb add`.
-
 **See them live:** [View all template demos](https://uniweb.github.io/templates/)
+
+Use `--blank` for an empty workspace (no packages) — grow with `uniweb add`.
 
 Or skip the interactive prompt:
 
