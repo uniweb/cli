@@ -186,7 +186,7 @@ Authors can also compose layouts from reusable section types using child section
 
 ```
 pages/home/
-├── 2-highlights.md          # type: Grid, columns: 3
+├── highlights.md            # type: Grid, columns: 3
 ├── @stats.md                # type: StatCard
 ├── @testimonial.md          # type: Testimonial
 └── @demo.md                 # type: SplitContent (with an embedded @LiveDemo inset)
