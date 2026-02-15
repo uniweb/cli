@@ -489,6 +489,8 @@ async function buildSite(projectDir, options = {}) {
       process.exit(1)
     }
   }
+
+  showDeployHint()
 }
 
 /**
@@ -625,6 +627,21 @@ async function buildWorkspace(workspaceDir, options = {}) {
   log(`${colors.green}${colors.bright}Workspace build complete!${colors.reset}`)
   log('')
   log(`Built ${parts.join(', ')}`)
+
+  if (sites.length > 0) {
+    showDeployHint()
+  }
+}
+
+/**
+ * Show deploy hint after site builds
+ */
+function showDeployHint() {
+  log('')
+  log(`${colors.bright}Deploy:${colors.reset}`)
+  log(`  ${colors.bright}uniweb deploy${colors.reset}    Uniweb hosting`)
+  log(`  ${colors.bright}vercel${colors.reset}           Vercel`)
+  log(`  Or upload ${colors.cyan}dist/${colors.reset} to any static host`)
 }
 
 /**

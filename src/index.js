@@ -23,6 +23,9 @@ import { doctor } from './commands/doctor.js'
 import { i18n } from './commands/i18n.js'
 import { inspect } from './commands/inspect.js'
 import { add } from './commands/add.js'
+import { login } from './commands/login.js'
+import { publish } from './commands/publish.js'
+import { deploy } from './commands/deploy.js'
 import {
   resolveTemplate,
   parseTemplateId,
@@ -341,6 +344,24 @@ async function main() {
     return
   }
 
+  // Handle publish command
+  if (command === 'publish') {
+    await publish(args.slice(1))
+    return
+  }
+
+  // Handle deploy command
+  if (command === 'deploy') {
+    await deploy(args.slice(1))
+    return
+  }
+
+  // Handle login command
+  if (command === 'login') {
+    await login(args.slice(1))
+    return
+  }
+
   // Handle create command
   if (command !== 'create') {
     error(`Unknown command: ${command}`)
@@ -575,10 +596,13 @@ ${colors.bright}Commands:${colors.reset}
   create [name]      Create a new project
   add <type> [name]  Add a foundation, site, or extension to a project
   build              Build the current project
+  deploy             Deploy a site to Uniweb hosting
+  publish            Share a foundation with content authors
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   doctor             Diagnose project configuration issues
   i18n <cmd>         Internationalization (extract, sync, status)
+  login              Log in to your Uniweb account
 
 ${colors.bright}Create Options:${colors.reset}
   --template <type>  Project template (default: starter)
@@ -596,6 +620,14 @@ ${colors.bright}Add Subcommands:${colors.reset}
 ${colors.bright}Global Options:${colors.reset}
   --non-interactive    Fail with usage info instead of prompting
                        Auto-detected when CI=true or no TTY (pipes, agents)
+
+${colors.bright}Publish Options:${colors.reset}
+  --local            Publish to the local registry (.unicloud/) instead of Uniweb Registry
+  --dry-run          Show what would be published without uploading
+
+${colors.bright}Deploy Options:${colors.reset}
+  --prod             Deploy to production (default: preview URL)
+  --dry-run          Show what would be deployed without uploading
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified
