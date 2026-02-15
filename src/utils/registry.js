@@ -18,8 +18,8 @@
  */
 
 import { existsSync } from 'node:fs'
-import { readFile, writeFile, mkdir, cp } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
+import { readFile, writeFile, readdir, mkdir, cp } from 'node:fs/promises'
+import { join, dirname, relative } from 'node:path'
 
 import { findWorkspaceRoot } from './workspace.js'
 
@@ -130,4 +130,104 @@ export class LocalRegistry {
  */
 export function createLocalRegistry(startDir) {
   return new LocalRegistry(startDir)
+}
+
+/**
+ * Remote registry — publishes foundations to a cloud server via HTTP.
+ */
+export class RemoteRegistry {
+  /**
+   * @param {string} apiUrl - Registry server URL (e.g. "http://localhost:4001")
+   * @param {string} [token] - Bearer token for authentication
+   */
+  constructor(apiUrl, token) {
+    this.apiUrl = apiUrl.replace(/\/$/, '')
+    this.token = token
+  }
+
+  /**
+   * Fetch the registry index from the server.
+   * @returns {Promise<Object>}
+   */
+  async _fetchIndex() {
+    const res = await fetch(`${this.apiUrl}/`)
+    if (!res.ok) throw new Error(`Registry request failed: ${res.status}`)
+    return res.json()
+  }
+
+  /**
+   * Check if a specific version exists on the remote.
+   * @param {string} name
+   * @param {string} version
+   * @returns {Promise<boolean>}
+   */
+  async exists(name, version) {
+    try {
+      const index = await this._fetchIndex()
+      return !!index[name]?.versions?.[version]
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Get all published versions for a package.
+   * @param {string} name
+   * @returns {Promise<Object>}
+   */
+  async getVersions(name) {
+    const index = await this._fetchIndex()
+    return index[name]?.versions || {}
+  }
+
+  /**
+   * Publish a foundation to the remote registry.
+   * Reads files from distDir, encodes as base64, and POSTs to the server.
+   *
+   * @param {string} name
+   * @param {string} version
+   * @param {string} distDir - Path to the foundation's dist/ directory
+   * @param {Object} [metadata] - Additional metadata
+   * @returns {Promise<{ name: string, version: string, filesCount: number }>}
+   */
+  async publish(name, version, distDir, metadata = {}) {
+    // Walk distDir recursively and encode files as base64
+    const files = {}
+    const entries = await readdir(distDir, { withFileTypes: true, recursive: true })
+
+    for (const entry of entries) {
+      if (!entry.isFile()) continue
+      const fullPath = join(entry.parentPath || entry.path, entry.name)
+      const relPath = relative(distDir, fullPath)
+      const content = await readFile(fullPath)
+      files[relPath] = content.toString('base64')
+    }
+
+    const payload = { name, version, files, metadata }
+
+    const headers = { 'Content-Type': 'application/json' }
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`
+    }
+
+    const res = await fetch(`${this.apiUrl}/foundations`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    })
+
+    const body = await res.json()
+
+    if (!res.ok) {
+      if (res.status === 409) {
+        throw Object.assign(new Error(body.error || `${name}@${version} already exists`), { code: 'CONFLICT' })
+      }
+      if (res.status === 401) {
+        throw Object.assign(new Error(body.error || 'Unauthorized'), { code: 'UNAUTHORIZED' })
+      }
+      throw new Error(body.error || `Server error (${res.status})`)
+    }
+
+    return body
+  }
 }

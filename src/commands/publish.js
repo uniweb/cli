@@ -4,9 +4,10 @@
  * Publishes a foundation to a registry so content authors can use it.
  *
  * Usage:
- *   uniweb publish              # Publish to Uniweb Registry (coming soon)
- *   uniweb publish --local      # Publish to local registry (.unicloud/)
- *   uniweb publish --dry-run    # Show what would be published
+ *   uniweb publish                          # Publish to remote registry
+ *   uniweb publish --local                  # Publish to local registry (.unicloud/)
+ *   uniweb publish --registry <url>         # Publish to a specific registry URL
+ *   uniweb publish --dry-run                # Show what would be published
  */
 
 import { existsSync } from 'node:fs'
@@ -14,7 +15,8 @@ import { readFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 
-import { createLocalRegistry } from '../utils/registry.js'
+import { createLocalRegistry, RemoteRegistry } from '../utils/registry.js'
+import { readAuth, isExpired } from '../utils/auth.js'
 import { findWorkspaceRoot, findFoundations, findSites, classifyPackage, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
@@ -77,7 +79,7 @@ async function resolveFoundationDir(args) {
         error('Multiple foundations found. Specify which one to publish.')
         console.log('')
         for (const f of foundations) {
-          console.log(`  ${colors.cyan}cd ${f} && ${prefix} publish --local${colors.reset}`)
+          console.log(`  ${colors.cyan}cd ${f} && ${prefix} publish${colors.reset}`)
         }
         process.exit(1)
       }
@@ -103,20 +105,23 @@ async function resolveFoundationDir(args) {
 }
 
 /**
+ * Parse --registry <url> from args.
+ * @param {string[]} args
+ * @returns {string|null}
+ */
+function parseRegistryUrl(args) {
+  const idx = args.indexOf('--registry')
+  if (idx === -1 || !args[idx + 1]) return null
+  return args[idx + 1]
+}
+
+/**
  * Main publish command handler
  */
 export async function publish(args = []) {
   const isLocal = args.includes('--local')
   const isDryRun = args.includes('--dry-run')
-
-  // Remote publishing not yet available
-  if (!isLocal) {
-    console.log(`${colors.yellow}Remote publishing is coming soon.${colors.reset}`)
-    console.log('')
-    console.log(`  Use ${colors.cyan}--local${colors.reset} to publish to the local registry:`)
-    console.log(`    ${colors.cyan}${getCliPrefix()} publish --local${colors.reset}`)
-    return
-  }
+  const registryUrl = parseRegistryUrl(args)
 
   // 1. Resolve foundation directory
   const foundationDir = await resolveFoundationDir(args)
@@ -165,9 +170,36 @@ export async function publish(args = []) {
     process.exit(1)
   }
 
-  // 4. Check for duplicates
-  const registry = createLocalRegistry(foundationDir)
+  // 4. Create registry (local or remote)
+  const isRemote = !isLocal
+  let registry
 
+  if (isLocal) {
+    registry = createLocalRegistry(foundationDir)
+  } else {
+    // Remote publish — check auth
+    const auth = await readAuth()
+    if (!auth || !auth.token) {
+      error('Not logged in.')
+      console.log('')
+      console.log(`  Run ${colors.cyan}${getCliPrefix()} login${colors.reset} first, then try again.`)
+      process.exit(1)
+    }
+
+    if (isExpired(auth)) {
+      error('Session expired.')
+      console.log('')
+      console.log(`  Run ${colors.cyan}${getCliPrefix()} login${colors.reset} to refresh your credentials.`)
+      process.exit(1)
+    }
+
+    const url = registryUrl || process.env.UNIWEB_REGISTRY_URL || 'http://localhost:4001'
+    registry = new RemoteRegistry(url, auth.token)
+  }
+
+  const registryLabel = isLocal ? 'local registry' : `registry`
+
+  // 5. Check for duplicates
   if (await registry.exists(name, version)) {
     console.log('')
     error(`${colors.bright}${name}@${version}${colors.reset} is already published.`)
@@ -177,21 +209,39 @@ export async function publish(args = []) {
     process.exit(1)
   }
 
-  // 5. Dry-run check
+  // 6. Dry-run check
   if (isDryRun) {
     console.log('')
-    info(`Would publish ${colors.bright}${name}@${version}${colors.reset} to local registry`)
+    info(`Would publish ${colors.bright}${name}@${version}${colors.reset} to ${registryLabel}`)
     console.log(`  ${colors.dim}Source: ${distDir}${colors.reset}`)
-    console.log(`  ${colors.dim}Target: ${registry.getPackagePath(name, version)}${colors.reset}`)
+    if (isLocal) {
+      console.log(`  ${colors.dim}Target: ${registry.getPackagePath(name, version)}${colors.reset}`)
+    } else {
+      console.log(`  ${colors.dim}Target: ${registry.apiUrl}${colors.reset}`)
+    }
     return
   }
 
-  // 6. Publish
-  info(`Publishing ${colors.bright}${name}@${version}${colors.reset} to local registry...`)
+  // 7. Publish
+  info(`Publishing ${colors.bright}${name}@${version}${colors.reset} to ${registryLabel}...`)
 
-  await registry.publish(name, version, distDir, {
-    publishedBy: 'local',
-  })
+  try {
+    await registry.publish(name, version, distDir, {
+      publishedBy: isLocal ? 'local' : 'cli',
+    })
+  } catch (err) {
+    if (err.code === 'CONFLICT') {
+      error(`${colors.bright}${name}@${version}${colors.reset} already exists on the registry.`)
+      console.log(`  Bump the version in foundation.js to publish an update.`)
+      process.exit(1)
+    }
+    if (err.code === 'UNAUTHORIZED') {
+      error('Authentication failed.')
+      console.log(`  Run ${colors.cyan}${getCliPrefix()} login${colors.reset} to refresh your credentials.`)
+      process.exit(1)
+    }
+    throw err
+  }
 
   console.log('')
   success(`Published ${colors.bright}${name}@${version}${colors.reset}`)
