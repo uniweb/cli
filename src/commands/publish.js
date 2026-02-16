@@ -1,7 +1,7 @@
 /**
  * Publish Command
  *
- * Publishes a foundation to a registry so content authors can use it.
+ * Publishes a foundation to the Uniweb Registry.
  *
  * Usage:
  *   uniweb publish                          # Publish to remote registry
@@ -16,7 +16,7 @@ import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 
 import { createLocalRegistry, RemoteRegistry } from '../utils/registry.js'
-import { readAuth, isExpired } from '../utils/auth.js'
+import { ensureAuth } from '../utils/auth.js'
 import { findWorkspaceRoot, findFoundations, findSites, classifyPackage, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
@@ -96,8 +96,8 @@ async function resolveFoundationDir(args) {
   // No foundation found — educational error
   error('No foundation found in this workspace.')
   console.log('')
-  console.log(`  ${colors.dim}\`publish\` shares your foundation with content authors so they can${colors.reset}`)
-  console.log(`  ${colors.dim}create and edit sites in the Uniweb app — no code required.${colors.reset}`)
+  console.log(`  ${colors.dim}\`publish\` registers your foundation to the Uniweb Registry so you${colors.reset}`)
+  console.log(`  ${colors.dim}can create and deploy sites with it.${colors.reset}`)
   console.log('')
   console.log(`  ${colors.dim}To publish, run this command from a foundation directory, or from a${colors.reset}`)
   console.log(`  ${colors.dim}workspace root that contains a foundation.${colors.reset}`)
@@ -177,24 +177,11 @@ export async function publish(args = []) {
   if (isLocal) {
     registry = createLocalRegistry(foundationDir)
   } else {
-    // Remote publish — check auth
-    const auth = await readAuth()
-    if (!auth || !auth.token) {
-      error('Not logged in.')
-      console.log('')
-      console.log(`  Run ${colors.cyan}${getCliPrefix()} login${colors.reset} first, then try again.`)
-      process.exit(1)
-    }
-
-    if (isExpired(auth)) {
-      error('Session expired.')
-      console.log('')
-      console.log(`  Run ${colors.cyan}${getCliPrefix()} login${colors.reset} to refresh your credentials.`)
-      process.exit(1)
-    }
+    // Remote publish — ensure authenticated (inline login if needed)
+    const token = await ensureAuth({ command: 'Publishing' })
 
     const url = registryUrl || process.env.UNIWEB_REGISTRY_URL || 'http://localhost:4001'
-    registry = new RemoteRegistry(url, auth.token)
+    registry = new RemoteRegistry(url, token)
   }
 
   const registryLabel = isLocal ? 'local registry' : `registry`
@@ -245,6 +232,8 @@ export async function publish(args = []) {
 
   console.log('')
   success(`Published ${colors.bright}${name}@${version}${colors.reset}`)
+  console.log('')
+  console.log(`  ${colors.dim}You can now create and deploy sites with this foundation.${colors.reset}`)
 
   // Cross-promotion: if workspace has a site, tip about deploy
   const workspaceRoot = findWorkspaceRoot(foundationDir)

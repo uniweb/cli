@@ -597,7 +597,7 @@ ${colors.bright}Commands:${colors.reset}
   add <type> [name]  Add a foundation, site, or extension to a project
   build              Build the current project
   deploy             Deploy a site to Uniweb hosting
-  publish            Share a foundation with content authors
+  publish            Publish a foundation to the Uniweb Registry
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   doctor             Diagnose project configuration issues

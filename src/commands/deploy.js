@@ -16,7 +16,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import { resolve, join, basename, relative } from 'node:path'
 import { execSync } from 'node:child_process'
 
-import { readAuth, isExpired } from '../utils/auth.js'
+import { ensureAuth } from '../utils/auth.js'
 import { findWorkspaceRoot, findSites, findFoundations, classifyPackage, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
@@ -169,22 +169,7 @@ export async function deploy(args = []) {
   // 2. Check auth (unless --local)
   let token = null
   if (!isLocal) {
-    const auth = await readAuth()
-    if (!auth || !auth.token) {
-      error('Not logged in.')
-      console.log('')
-      console.log(`  Run ${colors.cyan}${prefix} login${colors.reset} first, then try again.`)
-      process.exit(1)
-    }
-
-    if (isExpired(auth)) {
-      error('Session expired.')
-      console.log('')
-      console.log(`  Run ${colors.cyan}${prefix} login${colors.reset} to refresh your credentials.`)
-      process.exit(1)
-    }
-
-    token = auth.token
+    token = await ensureAuth({ command: 'Deploying' })
   }
 
   // 3. Auto-build if dist/ is missing
@@ -281,7 +266,7 @@ export async function deploy(args = []) {
     const foundations = await findFoundations(workspaceRoot)
     if (foundations.length > 0) {
       console.log('')
-      console.log(`  ${colors.dim}Tip: Run \`${prefix} publish\` to share your foundation with content authors.${colors.reset}`)
+      console.log(`  ${colors.dim}Tip: Run \`${prefix} publish\` to register your foundation on the Uniweb Registry.${colors.reset}`)
     }
   }
 }
