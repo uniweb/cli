@@ -95,6 +95,9 @@ async function resolveFoundationDir(args) {
 
   error('No foundation found in this workspace.')
   console.log('')
+  console.log(`  ${colors.dim}\`invite\` lets you authorize a client to create sites with your${colors.reset}`)
+  console.log(`  ${colors.dim}foundation — they get their own site, set up automatically.${colors.reset}`)
+  console.log('')
   console.log(`  ${colors.dim}Run this command from a foundation directory or workspace root.${colors.reset}`)
   process.exit(1)
 }
@@ -267,6 +270,8 @@ async function handleCreate(args, email) {
     console.log(`  ${colors.dim}Uses:${colors.reset}     ${invite.maxUses}`)
     console.log(`  ${colors.dim}Expires:${colors.reset}  ${new Date(invite.expiresAt).toLocaleDateString()}`)
     console.log('')
+    console.log(`  ${colors.dim}When ${invite.email} creates a site with ${name}${colors.reset}`)
+    console.log(`  ${colors.dim}on uniweb.app or Studio, it will be authorized automatically.${colors.reset}`)
   } catch (err) {
     error(err.message)
     process.exit(1)

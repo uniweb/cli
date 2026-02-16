@@ -266,7 +266,7 @@ export async function deploy(args = []) {
     const foundations = await findFoundations(workspaceRoot)
     if (foundations.length > 0) {
       console.log('')
-      console.log(`  ${colors.dim}Tip: Run \`${prefix} publish\` to register your foundation on the Uniweb Registry.${colors.reset}`)
+      console.log(`  ${colors.dim}Tip: Run \`${prefix} publish\` to register your foundation and invite clients.${colors.reset}`)
     }
   }
 }

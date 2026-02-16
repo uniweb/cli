@@ -97,8 +97,8 @@ async function resolveFoundationDir(args) {
   // No foundation found — educational error
   error('No foundation found in this workspace.')
   console.log('')
-  console.log(`  ${colors.dim}\`publish\` registers your foundation to the Uniweb Registry so you${colors.reset}`)
-  console.log(`  ${colors.dim}can create and deploy sites with it.${colors.reset}`)
+  console.log(`  ${colors.dim}\`publish\` registers your foundation so clients you invite can${colors.reset}`)
+  console.log(`  ${colors.dim}create and manage their own sites with it.${colors.reset}`)
   console.log('')
   console.log(`  ${colors.dim}To publish, run this command from a foundation directory, or from a${colors.reset}`)
   console.log(`  ${colors.dim}workspace root that contains a foundation.${colors.reset}`)
@@ -255,21 +255,26 @@ export async function publish(args = []) {
     throw err
   }
 
+  const prefix = getCliPrefix()
   console.log('')
   success(`Published ${colors.bright}${name}@${version}${colors.reset}`)
   if (editAccess) {
     console.log(`  ${colors.dim}Edit access: ${editAccess}${colors.reset}`)
   }
   console.log('')
-  console.log(`  ${colors.dim}You can now create and deploy sites with this foundation.${colors.reset}`)
+  console.log(`  ${colors.dim}Your foundation is registered. Clients you invite can create${colors.reset}`)
+  console.log(`  ${colors.dim}sites with it on uniweb.app or Studio.${colors.reset}`)
 
-  // Cross-promotion: if workspace has a site, tip about deploy
+  // Cross-promotion: invite tip for remote publishes, deploy tip if workspace has a site
+  if (isRemote) {
+    console.log('')
+    console.log(`  ${colors.dim}Tip: Run \`${prefix} invite <email>\` to authorize a client.${colors.reset}`)
+  }
   const workspaceRoot = findWorkspaceRoot(foundationDir)
   if (workspaceRoot) {
     const sites = await findSites(workspaceRoot)
     if (sites.length > 0) {
-      console.log('')
-      console.log(`  ${colors.dim}Tip: Run \`${getCliPrefix()} deploy\` to deploy your site.${colors.reset}`)
+      console.log(`  ${colors.dim}Tip: Run \`${prefix} deploy\` to deploy your site.${colors.reset}`)
     }
   }
 }
