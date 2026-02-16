@@ -7,6 +7,7 @@
  *   uniweb publish                          # Publish to remote registry
  *   uniweb publish --local                  # Publish to local registry (.unicloud/)
  *   uniweb publish --registry <url>         # Publish to a specific registry URL
+ *   uniweb publish --edit-access open       # Anyone can edit in Studio (default: restricted)
  *   uniweb publish --dry-run                # Show what would be published
  */
 
@@ -16,7 +17,7 @@ import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 
 import { createLocalRegistry, RemoteRegistry } from '../utils/registry.js'
-import { ensureAuth } from '../utils/auth.js'
+import { ensureAuth, readAuth } from '../utils/auth.js'
 import { findWorkspaceRoot, findFoundations, findSites, classifyPackage, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
@@ -116,12 +117,29 @@ function parseRegistryUrl(args) {
 }
 
 /**
+ * Parse --edit-access <policy> from args.
+ * @param {string[]} args
+ * @returns {'open'|'restricted'|null}
+ */
+function parseEditAccess(args) {
+  const idx = args.indexOf('--edit-access')
+  if (idx === -1 || !args[idx + 1]) return null
+  const value = args[idx + 1]
+  if (value !== 'open' && value !== 'restricted') {
+    error(`Invalid --edit-access value: "${value}". Must be "open" or "restricted".`)
+    process.exit(1)
+  }
+  return value
+}
+
+/**
  * Main publish command handler
  */
 export async function publish(args = []) {
   const isLocal = args.includes('--local')
   const isDryRun = args.includes('--dry-run')
   const registryUrl = parseRegistryUrl(args)
+  const editAccess = parseEditAccess(args)
 
   // 1. Resolve foundation directory
   const foundationDir = await resolveFoundationDir(args)
@@ -212,10 +230,17 @@ export async function publish(args = []) {
   // 7. Publish
   info(`Publishing ${colors.bright}${name}@${version}${colors.reset} to ${registryLabel}...`)
 
+  // Resolve the publisher's identity
+  const auth = isLocal ? null : await readAuth()
+  const publishMetadata = {
+    publishedBy: auth?.email || (isLocal ? 'local' : 'cli'),
+  }
+  if (editAccess) {
+    publishMetadata.editAccess = editAccess
+  }
+
   try {
-    await registry.publish(name, version, distDir, {
-      publishedBy: isLocal ? 'local' : 'cli',
-    })
+    await registry.publish(name, version, distDir, publishMetadata)
   } catch (err) {
     if (err.code === 'CONFLICT') {
       error(`${colors.bright}${name}@${version}${colors.reset} already exists on the registry.`)
@@ -232,6 +257,9 @@ export async function publish(args = []) {
 
   console.log('')
   success(`Published ${colors.bright}${name}@${version}${colors.reset}`)
+  if (editAccess) {
+    console.log(`  ${colors.dim}Edit access: ${editAccess}${colors.reset}`)
+  }
   console.log('')
   console.log(`  ${colors.dim}You can now create and deploy sites with this foundation.${colors.reset}`)
 

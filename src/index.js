@@ -623,6 +623,7 @@ ${colors.bright}Global Options:${colors.reset}
 
 ${colors.bright}Publish Options:${colors.reset}
   --local            Publish to the local registry (.unicloud/) instead of Uniweb Registry
+  --edit-access <p>  Set edit access policy: "open" or "restricted" (default: restricted)
   --dry-run          Show what would be published without uploading
 
 ${colors.bright}Deploy Options:${colors.reset}

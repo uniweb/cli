@@ -203,7 +203,11 @@ export class RemoteRegistry {
       files[relPath] = content.toString('base64')
     }
 
-    const payload = { name, version, files, metadata }
+    const { editAccess, ...restMetadata } = metadata
+    const payload = { name, version, files, metadata: restMetadata }
+    if (editAccess) {
+      payload.editAccess = editAccess
+    }
 
     const headers = { 'Content-Type': 'application/json' }
     if (this.token) {
