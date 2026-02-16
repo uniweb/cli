@@ -266,15 +266,15 @@ export async function publish(args = []) {
   if (isRemote) {
     console.log('')
     console.log(`  ${colors.bright}Working with clients:${colors.reset}`)
-    console.log(`    ${colors.bright}${prefix} invite <email>${colors.reset}   Client creates their own site`)
-    console.log(`    ${colors.dim}Create on uniweb.app${colors.reset}      Build a site and hand it off`)
+    console.log(`    ${colors.bright}${prefix} invite <email>${colors.reset}    Client creates their own site with your foundation`)
+    console.log(`    ${colors.bright}${prefix} handoff <email>${colors.reset}   Create a web or local site and hand it off to a client`)
   }
   const workspaceRoot = findWorkspaceRoot(foundationDir)
   if (workspaceRoot) {
     const sites = await findSites(workspaceRoot)
     if (sites.length > 0) {
       console.log('')
-      console.log(`  ${colors.dim}Tip: Run \`${prefix} deploy\` to deploy your own site.${colors.reset}`)
+      console.log(`  ${colors.dim}Tip: Run \`${prefix} deploy\` for a conventional static bundle deployment.${colors.reset}`)
     }
   }
 }
