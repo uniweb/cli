@@ -256,8 +256,9 @@ export async function publish(args = []) {
   }
 
   const prefix = getCliPrefix()
+  const isExtension = schema._self?.role === 'extension'
   console.log('')
-  success(`Published ${colors.bright}${name}@${version}${colors.reset}`)
+  success(`Published ${colors.bright}${name}@${version}${colors.reset}${isExtension ? '  (extension)' : ''}`)
   if (editAccess) {
     console.log(`  ${colors.dim}Edit access: ${editAccess}${colors.reset}`)
   }
@@ -265,9 +266,14 @@ export async function publish(args = []) {
   // Cross-promotion: working with clients (remote only), deploy (if workspace has a site)
   if (isRemote) {
     console.log('')
-    console.log(`  ${colors.bright}Working with clients:${colors.reset}`)
-    console.log(`    ${colors.bright}${prefix} invite <email>${colors.reset}    Client creates their own site with your foundation`)
-    console.log(`    ${colors.bright}${prefix} handoff <email>${colors.reset}   Create a web or local site and hand it off to a client`)
+    if (isExtension) {
+      console.log(`  ${colors.bright}Authorize a client to use this extension:${colors.reset}`)
+      console.log(`    ${colors.bright}${prefix} invite <email>${colors.reset}    Client adds this extension to their site`)
+    } else {
+      console.log(`  ${colors.bright}Working with clients:${colors.reset}`)
+      console.log(`    ${colors.bright}${prefix} invite <email>${colors.reset}    Client creates their own site with your foundation`)
+      console.log(`    ${colors.bright}${prefix} handoff <email>${colors.reset}   Create a web or local site and hand it off to a client`)
+    }
   }
   const workspaceRoot = findWorkspaceRoot(foundationDir)
   if (workspaceRoot) {

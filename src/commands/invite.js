@@ -135,7 +135,7 @@ async function readSchema(foundationDir) {
       process.exit(1)
     }
 
-    return { name, version }
+    return { name, version, role: schema._self?.role }
   } catch (err) {
     error(`Failed to read dist/meta/schema.json: ${err.message}`)
     process.exit(1)
@@ -231,7 +231,7 @@ async function handleResend(args, inviteId) {
  */
 async function handleCreate(args, email) {
   const foundationDir = await resolveFoundationDir(args)
-  const { name, version } = await readSchema(foundationDir)
+  const { name, version, role } = await readSchema(foundationDir)
   const registry = await createRegistry(args)
 
   // Parse options
@@ -261,18 +261,25 @@ async function handleCreate(args, email) {
       expiresInDays,
     })
 
+    const isExtension = role === 'extension'
+
     console.log('')
     success(`Invite created`)
     console.log('')
     console.log(`  ${colors.dim}ID:${colors.reset}       ${invite.inviteId}`)
     console.log(`  ${colors.dim}To:${colors.reset}       ${invite.email}`)
-    console.log(`  ${colors.dim}For:${colors.reset}      ${name} v${invite.majorVersion}`)
+    console.log(`  ${colors.dim}For:${colors.reset}      ${name} v${invite.majorVersion}${isExtension ? '  (extension)' : ''}`)
     console.log(`  ${colors.dim}Uses:${colors.reset}     ${invite.maxUses}`)
     console.log(`  ${colors.dim}Expires:${colors.reset}  ${new Date(invite.expiresAt).toLocaleDateString()}`)
     console.log(`  ${colors.dim}Link:${colors.reset}     ${colors.cyan}${registry.apiUrl}/invite/${invite.inviteId}${colors.reset}`)
     console.log('')
-    console.log(`  ${colors.dim}When ${invite.email} creates a site with ${name}${colors.reset}`)
-    console.log(`  ${colors.dim}on uniweb.app or Studio, it will be authorized automatically.${colors.reset}`)
+    if (isExtension) {
+      console.log(`  ${colors.dim}When ${invite.email} adds ${name} to their site${colors.reset}`)
+      console.log(`  ${colors.dim}on uniweb.app or Studio, it will be authorized automatically.${colors.reset}`)
+    } else {
+      console.log(`  ${colors.dim}When ${invite.email} creates a site with ${name}${colors.reset}`)
+      console.log(`  ${colors.dim}on uniweb.app or Studio, it will be authorized automatically.${colors.reset}`)
+    }
   } catch (err) {
     error(err.message)
     process.exit(1)
