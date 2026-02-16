@@ -269,6 +269,7 @@ async function handleCreate(args, email) {
     console.log(`  ${colors.dim}For:${colors.reset}      ${name} v${invite.majorVersion}`)
     console.log(`  ${colors.dim}Uses:${colors.reset}     ${invite.maxUses}`)
     console.log(`  ${colors.dim}Expires:${colors.reset}  ${new Date(invite.expiresAt).toLocaleDateString()}`)
+    console.log(`  ${colors.dim}Link:${colors.reset}     ${colors.cyan}${registry.apiUrl}/invite/${invite.inviteId}${colors.reset}`)
     console.log('')
     console.log(`  ${colors.dim}When ${invite.email} creates a site with ${name}${colors.reset}`)
     console.log(`  ${colors.dim}on uniweb.app or Studio, it will be authorized automatically.${colors.reset}`)
