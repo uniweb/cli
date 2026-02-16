@@ -28,6 +28,7 @@ import { publish } from './commands/publish.js'
 import { deploy } from './commands/deploy.js'
 import { invite } from './commands/invite.js'
 import { handoff } from './commands/handoff.js'
+import { template } from './commands/template.js'
 import {
   resolveTemplate,
   parseTemplateId,
@@ -376,6 +377,12 @@ async function main() {
     return
   }
 
+  // Handle template command
+  if (command === 'template') {
+    await template(args.slice(1))
+    return
+  }
+
   // Handle create command
   if (command !== 'create') {
     error(`Unknown command: ${command}`)
@@ -618,6 +625,7 @@ ${colors.bright}Commands:${colors.reset}
   docs               Generate component documentation
   doctor             Diagnose project configuration issues
   i18n <cmd>         Internationalization (extract, sync, status)
+  template publish   Publish a site as a cloud template
   login              Log in to your Uniweb account
 
 ${colors.bright}Create Options:${colors.reset}
@@ -653,6 +661,12 @@ ${colors.bright}Invite Options:${colors.reset}
 ${colors.bright}Handoff Options:${colors.reset}
   --site <id>        Site identifier (default: auto-generated)
   --web              Show web-based handoff instructions instead
+
+${colors.bright}Template Options:${colors.reset}
+  --name <name>      Template registry name (overrides site.yml template: field)
+  --title <title>    Display title (overrides site.yml name: field)
+  --description <t>  Description
+  --registry <url>   Registry URL (default: http://localhost:4001)
 
 ${colors.bright}Deploy Options:${colors.reset}
   --prod             Deploy to production (default: preview URL)
