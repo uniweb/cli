@@ -170,8 +170,9 @@ async function buildFoundation(projectDir, options = {}) {
   log(`${colors.green}${colors.bright}Build complete!${colors.reset}`)
 
   log('')
-  log(`${colors.bright}Next:${colors.reset}`)
-  log(`  ${colors.bright}uniweb publish${colors.reset}    Register your foundation on the Uniweb Registry`)
+  log(`${colors.bright}Share with clients:${colors.reset}`)
+  log(`  ${colors.bright}uniweb publish${colors.reset}              Register your foundation (one-time setup)`)
+  log(`  ${colors.bright}uniweb handoff <email>${colors.reset}      Hand off a site to a client`)
 }
 
 /**
@@ -602,13 +603,14 @@ async function buildWorkspace(workspaceDir, options = {}) {
 function showNextSteps(hasFoundations, hasSites) {
   if (hasFoundations) {
     log('')
-    log(`${colors.bright}Publish:${colors.reset}`)
-    log(`  ${colors.bright}uniweb publish${colors.reset}    Register your foundation — lets you invite clients`)
+    log(`${colors.bright}Share with clients:${colors.reset}`)
+    log(`  ${colors.bright}uniweb publish${colors.reset}              Register your foundation (one-time setup)`)
+    log(`  ${colors.bright}uniweb handoff <email>${colors.reset}      Hand off a site to a client`)
   }
   if (hasSites) {
     log('')
     log(`${colors.bright}Deploy:${colors.reset}`)
-    log(`  ${colors.bright}uniweb deploy${colors.reset}    Uniweb hosting`)
+    log(`  ${colors.bright}uniweb deploy${colors.reset}     Uniweb hosting`)
     log(`  Or upload ${colors.cyan}dist/${colors.reset} to any static host`)
   }
 }
