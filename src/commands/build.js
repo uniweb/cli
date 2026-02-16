@@ -18,9 +18,7 @@ import { writeFile, mkdir } from 'node:fs/promises'
 // Import build utilities from @uniweb/build
 import {
   generateEntryPoint,
-  buildSchema,
   discoverComponents,
-  processAllPreviews,
 } from '@uniweb/build'
 import { readSiteConfig } from '@uniweb/build/site'
 import { readWorkspaceConfig, resolveGlob } from '../utils/config.js'
@@ -130,7 +128,6 @@ function runCommand(command, args, cwd) {
  */
 async function buildFoundation(projectDir, options = {}) {
   const srcDir = join(projectDir, 'src')
-  const distDir = join(projectDir, 'dist')
 
   info('Building foundation...')
 
@@ -163,50 +160,14 @@ async function buildFoundation(projectDir, options = {}) {
   // For now, just run the standard vite build
   await runCommand('npx', ['vite', 'build'], projectDir)
 
+  // Vite's foundation plugin generates dist/meta/schema.json
+  // and processes preview images during the build.
+
   success('Vite build complete')
-
-  // 4. Generate schema.json
-  log('')
-  info('Generating schema.json...')
-  let schema = await buildSchema(srcDir)
-
-  await mkdir(distDir, { recursive: true })
-
-  // 5. Process preview images
-  log('')
-  info('Processing preview images...')
-  const isProduction = process.env.NODE_ENV === 'production' || !process.env.NODE_ENV
-  const { schema: updatedSchema, totalImages } = await processAllPreviews(
-    srcDir,
-    distDir,
-    schema,
-    isProduction
-  )
-  schema = updatedSchema
-
-  if (totalImages > 0) {
-    success(`Processed ${totalImages} preview image${totalImages > 1 ? 's' : ''} (converted to webp)`)
-  } else {
-    log(`  ${colors.dim}No preview images found${colors.reset}`)
-  }
-
-  // 6. Write schema.json
-  const schemaPath = join(distDir, 'schema.json')
-  await writeFile(schemaPath, JSON.stringify(schema, null, 2), 'utf-8')
-
-  success(`Generated schema.json with ${componentNames.length} components`)
 
   // Summary
   log('')
   log(`${colors.green}${colors.bright}Build complete!${colors.reset}`)
-  log('')
-  log(`Output:`)
-  log(`  ${colors.dim}dist/foundation.js${colors.reset}    - Bundled components`)
-  log(`  ${colors.dim}dist/assets/style.css${colors.reset} - Compiled CSS`)
-  log(`  ${colors.dim}dist/meta/schema.json${colors.reset}  - Component schemas`)
-  if (totalImages > 0) {
-    log(`  ${colors.dim}dist/assets/[component]/${colors.reset} - Preview images`)
-  }
 
   log('')
   log(`${colors.bright}Next:${colors.reset}`)
