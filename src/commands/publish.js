@@ -261,20 +261,20 @@ export async function publish(args = []) {
   if (editAccess) {
     console.log(`  ${colors.dim}Edit access: ${editAccess}${colors.reset}`)
   }
-  console.log('')
-  console.log(`  ${colors.dim}Your foundation is registered. Clients you invite can create${colors.reset}`)
-  console.log(`  ${colors.dim}sites with it on uniweb.app or Studio.${colors.reset}`)
 
-  // Cross-promotion: invite tip for remote publishes, deploy tip if workspace has a site
+  // Cross-promotion: working with clients (remote only), deploy (if workspace has a site)
   if (isRemote) {
     console.log('')
-    console.log(`  ${colors.dim}Tip: Run \`${prefix} invite <email>\` to authorize a client.${colors.reset}`)
+    console.log(`  ${colors.bright}Working with clients:${colors.reset}`)
+    console.log(`    ${colors.bright}${prefix} invite <email>${colors.reset}   Client creates their own site`)
+    console.log(`    ${colors.dim}Create on uniweb.app${colors.reset}      Build a site and hand it off`)
   }
   const workspaceRoot = findWorkspaceRoot(foundationDir)
   if (workspaceRoot) {
     const sites = await findSites(workspaceRoot)
     if (sites.length > 0) {
-      console.log(`  ${colors.dim}Tip: Run \`${prefix} deploy\` to deploy your site.${colors.reset}`)
+      console.log('')
+      console.log(`  ${colors.dim}Tip: Run \`${prefix} deploy\` to deploy your own site.${colors.reset}`)
     }
   }
 }
