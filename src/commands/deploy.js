@@ -98,10 +98,8 @@ async function resolveSiteDir(args) {
   console.log('')
   console.log(`  ${colors.dim}\`deploy\` uploads your built site to Uniweb hosting.${colors.reset}`)
   console.log('')
-  console.log(`  ${colors.dim}To deploy to other platforms:${colors.reset}`)
-  console.log(`    ${colors.bright}vercel${colors.reset}               Vercel`)
-  console.log(`    ${colors.bright}netlify deploy${colors.reset}       Netlify`)
-  console.log(`    Or upload ${colors.cyan}dist/${colors.reset} to any static host`)
+  console.log(`  ${colors.dim}The site is a standard Vite build — you can also upload dist/${colors.reset}`)
+  console.log(`  ${colors.dim}to any static host.${colors.reset}`)
   process.exit(1)
 }
 

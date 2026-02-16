@@ -648,7 +648,6 @@ function showNextSteps(hasFoundations, hasSites) {
     log('')
     log(`${colors.bright}Deploy:${colors.reset}`)
     log(`  ${colors.bright}uniweb deploy${colors.reset}    Uniweb hosting`)
-    log(`  ${colors.bright}vercel${colors.reset}           Vercel`)
     log(`  Or upload ${colors.cyan}dist/${colors.reset} to any static host`)
   }
 }
