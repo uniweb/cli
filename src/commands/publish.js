@@ -135,7 +135,7 @@ export async function publish(args = []) {
   // 2. Auto-build if dist/ is missing
   const distDir = join(foundationDir, 'dist')
   const foundationJs = join(distDir, 'foundation.js')
-  const schemaJson = join(distDir, 'schema.json')
+  const schemaJson = join(distDir, 'meta', 'schema.json')
 
   if (!existsSync(foundationJs) || !existsSync(schemaJson)) {
     console.log(`${colors.yellow}⚠${colors.reset} No build found. Building foundation...`)
@@ -147,17 +147,17 @@ export async function publish(args = []) {
     console.log('')
 
     if (!existsSync(foundationJs) || !existsSync(schemaJson)) {
-      error('Build did not produce dist/foundation.js and dist/schema.json')
+      error('Build did not produce dist/foundation.js and dist/meta/schema.json')
       process.exit(1)
     }
   }
 
-  // 3. Read name and version from schema.json
+  // 3. Read name and version from meta/schema.json
   let schema
   try {
     schema = JSON.parse(await readFile(schemaJson, 'utf8'))
   } catch (err) {
-    error(`Failed to read dist/schema.json: ${err.message}`)
+    error(`Failed to read dist/meta/schema.json: ${err.message}`)
     process.exit(1)
   }
 
@@ -165,7 +165,7 @@ export async function publish(args = []) {
   const version = schema._self?.version
 
   if (!name || !version) {
-    error('dist/schema.json missing _self.name or _self.version')
+    error('dist/meta/schema.json missing _self.name or _self.version')
     console.log(`${colors.dim}  Ensure your package.json has "name" and "version" fields.${colors.reset}`)
     process.exit(1)
   }
