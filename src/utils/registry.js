@@ -234,4 +234,89 @@ export class RemoteRegistry {
 
     return body
   }
+
+  /**
+   * Common fetch helper with auth headers.
+   * @param {string} url
+   * @param {Object} [options]
+   * @returns {Promise<Response>}
+   */
+  _authHeaders() {
+    const headers = { 'Content-Type': 'application/json' }
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`
+    }
+    return headers
+  }
+
+  /**
+   * Create a foundation invite.
+   * @param {string} foundationName
+   * @param {Object} payload - { email, majorVersion, maxUses?, expiresInDays? }
+   * @returns {Promise<Object>}
+   */
+  async createInvite(foundationName, payload) {
+    const res = await fetch(`${this.apiUrl}/api/foundations/${foundationName}/invites`, {
+      method: 'POST',
+      headers: this._authHeaders(),
+      body: JSON.stringify(payload),
+    })
+    const body = await res.json()
+    if (!res.ok) {
+      throw Object.assign(new Error(body.error || `Server error (${res.status})`), { statusCode: res.status })
+    }
+    return body
+  }
+
+  /**
+   * List invites for a foundation.
+   * @param {string} foundationName
+   * @returns {Promise<Array>}
+   */
+  async listInvites(foundationName) {
+    const res = await fetch(`${this.apiUrl}/api/foundations/${foundationName}/invites`, {
+      headers: this._authHeaders(),
+    })
+    const body = await res.json()
+    if (!res.ok) {
+      throw Object.assign(new Error(body.error || `Server error (${res.status})`), { statusCode: res.status })
+    }
+    return body.invites || []
+  }
+
+  /**
+   * Revoke a foundation invite.
+   * @param {string} foundationName
+   * @param {string} inviteId
+   * @returns {Promise<Object>}
+   */
+  async revokeInvite(foundationName, inviteId) {
+    const res = await fetch(`${this.apiUrl}/api/foundations/${foundationName}/invites/${inviteId}`, {
+      method: 'DELETE',
+      headers: this._authHeaders(),
+    })
+    const body = await res.json()
+    if (!res.ok) {
+      throw Object.assign(new Error(body.error || `Server error (${res.status})`), { statusCode: res.status })
+    }
+    return body
+  }
+
+  /**
+   * Resend a foundation invite.
+   * @param {string} foundationName
+   * @param {string} inviteId
+   * @returns {Promise<Object>}
+   */
+  async resendInvite(foundationName, inviteId) {
+    const res = await fetch(`${this.apiUrl}/api/foundations/${foundationName}/invites/${inviteId}/resend`, {
+      method: 'POST',
+      headers: this._authHeaders(),
+    })
+    const body = await res.json()
+    if (!res.ok) {
+      throw Object.assign(new Error(body.error || `Server error (${res.status})`), { statusCode: res.status })
+    }
+    return body
+  }
 }

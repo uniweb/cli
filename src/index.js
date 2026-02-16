@@ -26,6 +26,7 @@ import { add } from './commands/add.js'
 import { login } from './commands/login.js'
 import { publish } from './commands/publish.js'
 import { deploy } from './commands/deploy.js'
+import { invite } from './commands/invite.js'
 import {
   resolveTemplate,
   parseTemplateId,
@@ -362,6 +363,12 @@ async function main() {
     return
   }
 
+  // Handle invite command
+  if (command === 'invite') {
+    await invite(args.slice(1))
+    return
+  }
+
   // Handle create command
   if (command !== 'create') {
     error(`Unknown command: ${command}`)
@@ -598,6 +605,7 @@ ${colors.bright}Commands:${colors.reset}
   build              Build the current project
   deploy             Deploy a site to Uniweb hosting
   publish            Publish a foundation to the Uniweb Registry
+  invite <email>     Create a foundation invite for a client
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   doctor             Diagnose project configuration issues
@@ -625,6 +633,14 @@ ${colors.bright}Publish Options:${colors.reset}
   --local            Publish to the local registry (.unicloud/) instead of Uniweb Registry
   --edit-access <p>  Set edit access policy: "open" or "restricted" (default: restricted)
   --dry-run          Show what would be published without uploading
+
+${colors.bright}Invite Options:${colors.reset}
+  --uses <n>         Max sites per invite (default: 1)
+  --expires <days>   Days until expiry (default: 30)
+  --version <n>      Major version to license (default: current)
+  --list             List invites for your foundation
+  --revoke <id>      Revoke an invite
+  --resend <id>      Resend an invite
 
 ${colors.bright}Deploy Options:${colors.reset}
   --prod             Deploy to production (default: preview URL)
