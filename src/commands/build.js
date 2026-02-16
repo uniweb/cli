@@ -203,7 +203,7 @@ async function buildFoundation(projectDir, options = {}) {
   log(`Output:`)
   log(`  ${colors.dim}dist/foundation.js${colors.reset}    - Bundled components`)
   log(`  ${colors.dim}dist/assets/style.css${colors.reset} - Compiled CSS`)
-  log(`  ${colors.dim}dist/schema.json${colors.reset}      - Component schemas`)
+  log(`  ${colors.dim}dist/meta/schema.json${colors.reset}  - Component schemas`)
   if (totalImages > 0) {
     log(`  ${colors.dim}dist/assets/[component]/${colors.reset} - Preview images`)
   }
