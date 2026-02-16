@@ -207,6 +207,10 @@ async function buildFoundation(projectDir, options = {}) {
   if (totalImages > 0) {
     log(`  ${colors.dim}dist/assets/[component]/${colors.reset} - Preview images`)
   }
+
+  log('')
+  log(`${colors.bright}Next:${colors.reset}`)
+  log(`  ${colors.bright}uniweb publish${colors.reset}    Register your foundation on the Uniweb Registry`)
 }
 
 /**
@@ -490,7 +494,7 @@ async function buildSite(projectDir, options = {}) {
     }
   }
 
-  showDeployHint()
+  showNextSteps(false, true)
 }
 
 /**
@@ -628,20 +632,25 @@ async function buildWorkspace(workspaceDir, options = {}) {
   log('')
   log(`Built ${parts.join(', ')}`)
 
-  if (sites.length > 0) {
-    showDeployHint()
-  }
+  showNextSteps(foundations.length > 0, sites.length > 0)
 }
 
 /**
- * Show deploy hint after site builds
+ * Show next-step hints after workspace build
  */
-function showDeployHint() {
-  log('')
-  log(`${colors.bright}Deploy:${colors.reset}`)
-  log(`  ${colors.bright}uniweb deploy${colors.reset}    Uniweb hosting`)
-  log(`  ${colors.bright}vercel${colors.reset}           Vercel`)
-  log(`  Or upload ${colors.cyan}dist/${colors.reset} to any static host`)
+function showNextSteps(hasFoundations, hasSites) {
+  if (hasFoundations) {
+    log('')
+    log(`${colors.bright}Publish:${colors.reset}`)
+    log(`  ${colors.bright}uniweb publish${colors.reset}    Register your foundation — lets you invite clients`)
+  }
+  if (hasSites) {
+    log('')
+    log(`${colors.bright}Deploy:${colors.reset}`)
+    log(`  ${colors.bright}uniweb deploy${colors.reset}    Uniweb hosting`)
+    log(`  ${colors.bright}vercel${colors.reset}           Vercel`)
+    log(`  Or upload ${colors.cyan}dist/${colors.reset} to any static host`)
+  }
 }
 
 /**

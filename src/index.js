@@ -27,6 +27,7 @@ import { login } from './commands/login.js'
 import { publish } from './commands/publish.js'
 import { deploy } from './commands/deploy.js'
 import { invite } from './commands/invite.js'
+import { handoff } from './commands/handoff.js'
 import {
   resolveTemplate,
   parseTemplateId,
@@ -369,6 +370,12 @@ async function main() {
     return
   }
 
+  // Handle handoff command
+  if (command === 'handoff') {
+    await handoff(args.slice(1))
+    return
+  }
+
   // Handle create command
   if (command !== 'create') {
     error(`Unknown command: ${command}`)
@@ -606,6 +613,7 @@ ${colors.bright}Commands:${colors.reset}
   deploy             Deploy a site to Uniweb hosting
   publish            Publish a foundation to the Uniweb Registry
   invite <email>     Create a foundation invite for a client
+  handoff <email>    Hand off a site to a client
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   doctor             Diagnose project configuration issues
@@ -641,6 +649,10 @@ ${colors.bright}Invite Options:${colors.reset}
   --list             List invites for your foundation
   --revoke <id>      Revoke an invite
   --resend <id>      Resend an invite
+
+${colors.bright}Handoff Options:${colors.reset}
+  --site <id>        Site identifier (default: auto-generated)
+  --web              Show web-based handoff instructions instead
 
 ${colors.bright}Deploy Options:${colors.reset}
   --prod             Deploy to production (default: preview URL)

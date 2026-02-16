@@ -319,4 +319,43 @@ export class RemoteRegistry {
     }
     return body
   }
+
+  /**
+   * Create a site record on Unicloud.
+   * @param {string} siteId
+   * @param {Object} options
+   * @param {Object} options.foundation - { name }
+   * @returns {Promise<Object>}
+   */
+  async createSite(siteId, { foundation }) {
+    const res = await fetch(`${this.apiUrl}/api/sites`, {
+      method: 'POST',
+      headers: this._authHeaders(),
+      body: JSON.stringify({ siteId, foundation }),
+    })
+    const body = await res.json()
+    if (!res.ok) {
+      throw Object.assign(new Error(body.error || `Server error (${res.status})`), { statusCode: res.status })
+    }
+    return body
+  }
+
+  /**
+   * Transfer site ownership.
+   * @param {string} siteId
+   * @param {string} newOwner - Email of the new owner
+   * @returns {Promise<Object>}
+   */
+  async transferSiteOwnership(siteId, newOwner) {
+    const res = await fetch(`${this.apiUrl}/api/sites/${siteId}/owner`, {
+      method: 'PATCH',
+      headers: this._authHeaders(),
+      body: JSON.stringify({ newOwner }),
+    })
+    const body = await res.json()
+    if (!res.ok) {
+      throw Object.assign(new Error(body.error || `Server error (${res.status})`), { statusCode: res.status })
+    }
+    return body
+  }
 }
