@@ -37,6 +37,7 @@ import { validateTemplate } from './templates/validator.js'
 import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemplateDependencies } from './utils/scaffold.js'
 import { detectPackageManager, filterCmd, installCmd, runCmd } from './utils/pm.js'
 import { isNonInteractive, getCliPrefix, stripNonInteractiveFlag, formatOptions } from './utils/interactive.js'
+import { findWorkspaceRoot } from './utils/workspace.js'
 
 // Colors for terminal output
 const colors = {
@@ -391,6 +392,17 @@ async function main() {
   }
 
   title('Uniweb Project Generator')
+
+  // Guard: prevent creating nested workspaces
+  const existingRoot = findWorkspaceRoot(process.cwd())
+  if (existingRoot) {
+    error(`Already inside a Uniweb workspace: ${existingRoot}`)
+    log(`\nTo add packages to this workspace, use:`)
+    log(`  ${colors.cyan}uniweb add foundation [name]${colors.reset}`)
+    log(`  ${colors.cyan}uniweb add site [name]${colors.reset}`)
+    log(`  ${colors.cyan}uniweb add foundation --from <template>${colors.reset}\n`)
+    process.exit(1)
+  }
 
   // Parse arguments
   let projectName = args[1]
