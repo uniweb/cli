@@ -121,7 +121,7 @@ export async function add(rawArgs) {
       error(`Missing subcommand.\n`)
       log(formatOptions([
         { label: 'project', description: 'Co-located foundation + site pair' },
-        { label: 'foundation', description: 'Component library' },
+        { label: 'foundation', description: 'Component system for content authors' },
         { label: 'site', description: 'Content site' },
         { label: 'extension', description: 'Additional component package' },
         { label: 'section', description: 'Section type in a foundation' },
@@ -137,7 +137,7 @@ export async function add(rawArgs) {
       message: 'What would you like to add?',
       choices: [
         { title: 'Project', value: 'project', description: 'Co-located foundation + site pair' },
-        { title: 'Foundation', value: 'foundation', description: 'Component library' },
+        { title: 'Foundation', value: 'foundation', description: 'Component system for content authors' },
         { title: 'Site', value: 'site', description: 'Content site' },
         { title: 'Extension', value: 'extension', description: 'Additional component package' },
         { title: 'Section', value: 'section', description: 'Section type in a foundation' },
@@ -594,7 +594,8 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
  * - --project: {project}/foundation (co-located)
  * - Existing co-located glob: follow pattern
  * - Existing segregated glob: follow pattern
- * - First foundation: dir name is the name (default: 'foundation')
+ * - Named (e.g., "marketing"): segregated at foundations/{name}
+ * - Unnamed: root-level 'foundation'
  * - Already have one: error in non-interactive, ask in interactive
  */
 async function resolveFoundationTarget(rootDir, name, opts) {
@@ -619,8 +620,13 @@ async function resolveFoundationTarget(rootDir, name, opts) {
     return `foundations/${name || 'foundation'}`
   }
 
-  // dir name = name or 'foundation'
-  const dirName = name || 'foundation'
+  // Named foundation → segregated layout (foundations/{name})
+  if (name) {
+    return `foundations/${name}`
+  }
+
+  // Unnamed → root-level 'foundation'
+  const dirName = 'foundation'
 
   // Check if target already exists
   if (!existsSync(join(rootDir, dirName))) {
@@ -667,8 +673,13 @@ async function resolveSiteTarget(rootDir, name, opts) {
     return `sites/${name || 'site'}`
   }
 
-  // dir name = name or 'site'
-  const dirName = name || 'site'
+  // Named site → segregated layout (sites/{name})
+  if (name) {
+    return `sites/${name}`
+  }
+
+  // Unnamed → root-level 'site'
+  const dirName = 'site'
 
   // Check if target already exists
   if (!existsSync(join(rootDir, dirName))) {
@@ -1050,9 +1061,9 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add project docs                              # Create docs/foundation/ + docs/site/
   uniweb add project docs --from academic              # Co-located pair + academic content
   uniweb add foundation                                # Create ./foundation/ at root
-  uniweb add foundation ui                             # Create ./ui/ at root
+  uniweb add foundation ui                             # Create ./foundations/ui/
   uniweb add site                                      # Create ./site/ at root
-  uniweb add site blog --foundation marketing          # Create ./blog/ wired to marketing
+  uniweb add site blog --foundation marketing          # Create ./sites/blog/ wired to marketing
   uniweb add extension effects --site site             # Create ./extensions/effects/
   uniweb add section Hero                              # Create Hero section type
   uniweb add section Hero --foundation ui              # Target specific foundation
