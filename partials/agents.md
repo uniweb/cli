@@ -340,9 +340,9 @@ Check out [this](/a) link.     ← inline → stays in paragraphs as <a> tag
 This is [less important]{muted} context.
 ```
 
-`accent` (colored + bold) and `muted` (subtle) adapt to context automatically. Components receive HTML strings with spans applied: `<span accent="true">faster</span>`.
+`accent` (link-colored + bold), `callout` (accent-colored + bold), and `muted` (subtle) are built-in defaults that adapt to context automatically. Components receive HTML strings with spans applied: `<span accent="true">faster</span>`.
 
-Sites can define additional named styles in `theme.yml`'s `inline:` section.
+Sites can override these or define additional named styles in `theme.yml`'s `inline:` section.
 
 ### Fenced Code in Content
 
@@ -675,6 +675,9 @@ fonts:
 inline:
   accent:
     color: var(--link)
+    font-weight: '600'
+  callout:
+    color: var(--accent)
     font-weight: '600'
 
 vars:
