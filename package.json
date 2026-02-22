@@ -1,6 +1,6 @@
 {
   "name": "uniweb",
-  "version": "0.8.15",
+  "version": "0.8.16",
   "description": "Create structured Vite + React sites with content/code separation",
   "type": "module",
   "bin": {
@@ -51,8 +51,14 @@
     "@uniweb/semantic-parser": "workspace:*"
   },
   "peerDependenciesMeta": {
-    "@uniweb/build": { "optional": true },
-    "@uniweb/content-reader": { "optional": true },
-    "@uniweb/semantic-parser": { "optional": true }
+    "@uniweb/build": {
+      "optional": true
+    },
+    "@uniweb/content-reader": {
+      "optional": true
+    },
+    "@uniweb/semantic-parser": {
+      "optional": true
+    }
   }
 }
