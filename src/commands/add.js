@@ -352,7 +352,7 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
     }, {
       onProgress: (msg) => info(`  ${msg}`),
     })
-    log(`  ${colors.yellow}⚠ No foundation wired. Add one later with: npx uniweb add foundation${colors.reset}`)
+    log(`  ${colors.yellow}⚠ No foundation wired. Add one later with: uniweb add foundation${colors.reset}`)
   }
 
   // Apply template content if --from specified

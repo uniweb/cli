@@ -83,7 +83,7 @@ Use `--template <n>` for an official template (`none`, `starter`, `marketing`, `
 ### Adding a co-located project
 
 ```bash
-pnpm uniweb add project docs
+uniweb add project docs
 pnpm install
 ```
 
@@ -92,10 +92,10 @@ This creates `docs/foundation/` + `docs/site/` with package names `docs-foundati
 ### Adding individual packages
 
 ```bash
-pnpm uniweb add foundation           # First foundation → ./foundation/
-pnpm uniweb add foundation ui        # Named → ./ui/
-pnpm uniweb add site                 # First site → ./site/
-pnpm uniweb add site blog            # Named → ./blog/
+uniweb add foundation           # First foundation → ./foundation/
+uniweb add foundation ui        # Named → ./ui/
+uniweb add site                 # First site → ./site/
+uniweb add site blog            # Named → ./blog/
 ```
 
 The name is both the directory name and the package name. Use `--project <n>` to co-locate under a project directory (e.g., `--project docs` → `docs/foundation/`).
@@ -103,8 +103,8 @@ The name is both the directory name and the package name. Use `--project <n>` to
 ### Adding section types
 
 ```bash
-pnpm uniweb add section Hero
-pnpm uniweb add section Hero --foundation ui   # When multiple foundations exist
+uniweb add section Hero
+uniweb add section Hero --foundation ui   # When multiple foundations exist
 ```
 
 Creates `src/sections/Hero/index.jsx` and `meta.js` with a minimal CCA-proper starter. The dev server picks it up automatically — no build or install needed.
@@ -1285,9 +1285,9 @@ Semantic tokens come from `theme-tokens.css` (populated from `theme.yml`). Use `
 
 **Content not appearing as expected?**
 ```bash
-pnpm uniweb inspect pages/home/hero.md         # Single section
-pnpm uniweb inspect pages/home/                 # Whole page
-pnpm uniweb inspect pages/home/hero.md --raw    # ProseMirror AST
+uniweb inspect pages/home/hero.md         # Single section
+uniweb inspect pages/home/                 # Whole page
+uniweb inspect pages/home/hero.md --raw    # ProseMirror AST
 ```
 
 ## Learning from Official Templates
@@ -1295,7 +1295,7 @@ pnpm uniweb inspect pages/home/hero.md --raw    # ProseMirror AST
 When you're unsure how to implement a pattern — data fetching, i18n, layouts, insets, theming — install an official template as a reference project in your workspace:
 
 ```bash
-pnpm uniweb add project marketing --from marketing
+uniweb add project marketing --from marketing
 pnpm install
 ```
 

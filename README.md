@@ -200,7 +200,7 @@ After creating your project:
 
 1. **Explore the structure** — Browse `site/pages/` to see how content is organized. Each page folder contains `page.yml` (metadata) and `.md` files (sections).
 
-2. **Generate component docs** — Run `npx uniweb docs` to create `COMPONENTS.md` with all available components, their parameters, and presets.
+2. **Generate component docs** — Run `uniweb docs` to create `COMPONENTS.md` with all available components, their parameters, and presets.
 
 3. **Learn the configuration** — Run `uniweb docs site` or `uniweb docs page` for quick reference on configuration options.
 
@@ -267,31 +267,31 @@ Start simple. Add what you need, when you need it:
 cd my-site
 
 # Add a co-located foundation + site pair
-npx uniweb add project blog
+uniweb add project blog
 
 # Add a second foundation at root
-npx uniweb add foundation ui
+uniweb add foundation ui
 
 # Add a site wired to a specific foundation
-npx uniweb add site docs --foundation ui
+uniweb add site docs --foundation ui
 
 # Add an extension (auto-wired to the only site)
-npx uniweb add extension effects
+uniweb add extension effects
 
 # Scaffold + apply content from an official template
-npx uniweb add project marketing --from marketing
+uniweb add project marketing --from marketing
 ```
 
 The workspace grows organically. `add` handles placement, wires dependencies, updates workspace globs, and generates root scripts. The name you provide becomes both the directory name and the package name. Use `--path` to override default placement, or `--project` for explicit co-located layouts.
 
-> `npx uniweb` works before and after install. Once dependencies are installed, you can also use `pnpm uniweb` directly since `uniweb` is a project dependency.
+> **Install the CLI globally** with `npm i -g uniweb` for the best experience. You can also use `npx uniweb` or `pnpm uniweb` without a global install.
 
 **Or start blank and build up:**
 
 ```bash
 pnpm create uniweb acme --blank
 cd acme
-npx uniweb add project main
+uniweb add project main
 pnpm install
 pnpm dev
 ```
