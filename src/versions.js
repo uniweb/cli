@@ -61,7 +61,7 @@ export function getResolvedVersions() {
   if (resolvedVersions) return resolvedVersions
 
   const pkg = getCliPackageJson()
-  const deps = { ...pkg.dependencies, ...pkg.devDependencies }
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies }
 
   // All @uniweb/* packages are now direct dependencies of the CLI.
   // When publishing with pnpm, workspace:* gets resolved to actual versions.

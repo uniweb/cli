@@ -5,20 +5,27 @@
  *
  * Scaffolds new Uniweb sites and foundations, builds projects, and generates docs.
  *
+ * Install globally:
+ *   npm i -g uniweb
+ *
  * Usage:
- *   npx uniweb create [project-name]
- *   npx uniweb create --template marketing
- *   npx uniweb add foundation [name]
- *   npx uniweb build
- *   npx uniweb docs                          # Generate COMPONENTS.md from schema
+ *   uniweb create [project-name]
+ *   uniweb create --template marketing
+ *   uniweb add foundation [name]
+ *   uniweb build
+ *   uniweb docs
+ *
+ * Global install delegation:
+ *   When installed globally, project-bound commands (build, docs, etc.) are
+ *   delegated to the project-local CLI if one exists in node_modules. This
+ *   ensures version alignment between the CLI and @uniweb/build.
  */
 
-import { existsSync } from 'node:fs'
-import { execSync } from 'node:child_process'
-import { resolve, join, relative } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { execSync, spawn as spawnChild } from 'node:child_process'
+import { resolve, join, relative, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import prompts from 'prompts'
-import { build } from './commands/build.js'
-import { docs } from './commands/docs.js'
 import { doctor } from './commands/doctor.js'
 import { i18n } from './commands/i18n.js'
 import { inspect } from './commands/inspect.js'
@@ -78,6 +85,94 @@ function error(message) {
 
 function title(message) {
   console.log(`\n${colors.cyan}${colors.bright}${message}${colors.reset}\n`)
+}
+
+// CLI version (read once, lazily)
+const __dirname = dirname(fileURLToPath(import.meta.url))
+let _cliVersion = null
+function getCliVersion() {
+  if (!_cliVersion) {
+    const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'))
+    _cliVersion = pkg.version
+  }
+  return _cliVersion
+}
+
+/**
+ * Commands that always run from the global CLI (no project context needed)
+ */
+const STANDALONE_COMMANDS = new Set([
+  'create', '--help', '-h', '--version', '-v', 'login',
+])
+
+/**
+ * Check if this CLI is running from a global install.
+ * When installed globally, process.argv[1] points outside any node_modules.
+ * When run via npx or as a local dependency, it's inside node_modules.
+ */
+function isGlobalInstall() {
+  const scriptPath = process.argv[1]
+  if (!scriptPath) return false
+  // Normalize path separators for Windows compatibility
+  return !scriptPath.split('/').includes('node_modules') &&
+         !scriptPath.split('\\').includes('node_modules')
+}
+
+/**
+ * Find the project-local CLI entry point, if one exists.
+ * Walks up from cwd looking for node_modules/uniweb/src/index.js.
+ */
+function findLocalCli() {
+  let dir = process.cwd()
+  while (true) {
+    const localCli = join(dir, 'node_modules', 'uniweb', 'src', 'index.js')
+    if (existsSync(localCli)) return localCli
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return null
+}
+
+/**
+ * Delegate execution to the project-local CLI.
+ * Spawns the local CLI with the same arguments and inherits stdio.
+ */
+function delegateToLocal(localCliPath) {
+  return new Promise((resolve, reject) => {
+    const child = spawnChild(
+      process.execPath,
+      [localCliPath, ...process.argv.slice(2)],
+      { stdio: 'inherit' }
+    )
+    child.on('close', (code) => process.exit(code ?? 0))
+    child.on('error', reject)
+  })
+}
+
+/**
+ * Import a command module that may depend on @uniweb/build.
+ * Provides a helpful error when the dependency can't be resolved
+ * (e.g., running a project-bound command from a global install
+ * outside a project directory).
+ */
+async function importProjectCommand(modulePath) {
+  try {
+    return await import(modulePath)
+  } catch (err) {
+    if (err.code === 'ERR_MODULE_NOT_FOUND' && err.message?.includes('@uniweb/')) {
+      error('This command must be run from inside a Uniweb project.')
+      log('')
+      log(`Make sure you're in a project directory with dependencies installed:`)
+      log(`  ${colors.cyan}cd your-project${colors.reset}`)
+      log(`  ${colors.cyan}npm install${colors.reset}`)
+      log('')
+      log(`Or create a new project:`)
+      log(`  ${colors.cyan}uniweb create my-project${colors.reset}`)
+      process.exit(1)
+    }
+    throw err
+  }
 }
 
 /**
@@ -306,21 +401,55 @@ async function main() {
   const command = args[0]
   const pm = detectPackageManager()
 
+  // Handle --version / -v
+  if (command === '--version' || command === '-v') {
+    console.log(`uniweb ${getCliVersion()}`)
+    return
+  }
+
+  // Global install launcher: delegate project-bound commands to local CLI
+  const global = isGlobalInstall()
+  if (global && command && !STANDALONE_COMMANDS.has(command)) {
+    const localCli = findLocalCli()
+    if (localCli) {
+      await delegateToLocal(localCli)
+      return
+    }
+    // No local CLI found — fall through and try to run the command directly.
+    // Commands that need @uniweb/build will get a helpful error via importProjectCommand().
+  }
+
+  // Start non-blocking update check for global installs
+  let showUpdateNotification = () => {}
+  if (global) {
+    try {
+      const { startUpdateCheck } = await import('./utils/update-check.js')
+      showUpdateNotification = startUpdateCheck(getCliVersion())
+    } catch {
+      // Update check is optional — don't fail if the module is missing
+    }
+  }
+
   // Show help
   if (!command || command === '--help' || command === '-h') {
     showHelp()
+    await showUpdateNotification()
     return
   }
 
-  // Handle build command
+  // Handle build command (dynamic import — depends on @uniweb/build)
   if (command === 'build') {
+    const { build } = await importProjectCommand('./commands/build.js')
     await build(args.slice(1))
+    await showUpdateNotification()
     return
   }
 
-  // Handle docs command
+  // Handle docs command (dynamic import — depends on @uniweb/build)
   if (command === 'docs') {
+    const { docs } = await importProjectCommand('./commands/docs.js')
     await docs(args.slice(1))
+    await showUpdateNotification()
     return
   }
 
@@ -616,14 +745,16 @@ async function main() {
     log(`  ${colors.cyan}${runCmd(pm, 'dev')}${colors.reset}`)
   }
   log('')
+
+  await showUpdateNotification()
 }
 
 function showHelp() {
   log(`
-${colors.cyan}${colors.bright}Uniweb CLI${colors.reset}
+${colors.cyan}${colors.bright}Uniweb CLI${colors.reset} ${colors.dim}v${getCliVersion()}${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
-  npx uniweb <command> [options]
+  uniweb <command> [options]
 
 ${colors.bright}Commands:${colors.reset}
   create [name]      Create a new project
@@ -654,6 +785,7 @@ ${colors.bright}Add Subcommands:${colors.reset}
   add section <name>      Add a section type to a foundation (--foundation)
 
 ${colors.bright}Global Options:${colors.reset}
+  --version, -v        Show version
   --non-interactive    Fail with usage info instead of prompting
                        Auto-detected when CI=true or no TTY (pipes, agents)
 
@@ -720,22 +852,26 @@ ${colors.bright}Template Types:${colors.reset}
   https://github.com/user/repo  GitHub URL
 
 ${colors.bright}Examples:${colors.reset}
-  npx uniweb create my-project                           # Foundation + site + starter content
-  npx uniweb create my-project --template none           # Foundation + site, no content
-  npx uniweb create my-project --blank                   # Empty workspace
-  npx uniweb create my-project --template marketing      # Official template
-  npx uniweb create my-project --template ./my-template  # Local template
+  uniweb create my-project                           # Foundation + site + starter content
+  uniweb create my-project --template none           # Foundation + site, no content
+  uniweb create my-project --blank                   # Empty workspace
+  uniweb create my-project --template marketing      # Official template
+  uniweb create my-project --template ./my-template  # Local template
 
   cd my-project
-  npx uniweb add project docs                            # Add docs/foundation/ + docs/site/
-  npx uniweb add project docs --from academic            # Co-located pair + academic content
-  npx uniweb add foundation                              # Add foundation at root
-  npx uniweb add site blog --foundation marketing        # Add site wired to marketing
-  npx uniweb add extension effects --site site           # Add extensions/effects/
+  uniweb add project docs                            # Add docs/foundation/ + docs/site/
+  uniweb add project docs --from academic            # Co-located pair + academic content
+  uniweb add foundation                              # Add foundation at root
+  uniweb add site blog --foundation marketing        # Add site wired to marketing
+  uniweb add extension effects --site site           # Add extensions/effects/
 
-  npx uniweb build
-  npx uniweb build --target foundation
-  cd foundation && npx uniweb docs                       # Generate COMPONENTS.md
+  uniweb build
+  uniweb build --target foundation
+  cd foundation && uniweb docs                       # Generate COMPONENTS.md
+
+${colors.bright}Install:${colors.reset}
+  npm i -g uniweb          Global install (recommended)
+  npx uniweb <command>     Run without installing
 `)
 }
 

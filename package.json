@@ -37,15 +37,22 @@
     "node": ">=20.19"
   },
   "dependencies": {
-    "@uniweb/build": "workspace:*",
-    "@uniweb/content-reader": "workspace:*",
     "@uniweb/core": "workspace:*",
     "@uniweb/kit": "workspace:*",
     "@uniweb/runtime": "workspace:*",
-    "@uniweb/semantic-parser": "workspace:*",
     "handlebars": "^4.7.8",
     "js-yaml": "^4.1.0",
     "prompts": "^2.4.2",
     "tar": "^7.0.0"
+  },
+  "peerDependencies": {
+    "@uniweb/build": "workspace:*",
+    "@uniweb/content-reader": "workspace:*",
+    "@uniweb/semantic-parser": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@uniweb/build": { "optional": true },
+    "@uniweb/content-reader": { "optional": true },
+    "@uniweb/semantic-parser": { "optional": true }
   }
 }
