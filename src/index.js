@@ -137,8 +137,22 @@ function findLocalCli() {
 /**
  * Delegate execution to the project-local CLI.
  * Spawns the local CLI with the same arguments and inherits stdio.
+ * Warns if the local version differs from the global version.
  */
 function delegateToLocal(localCliPath) {
+  // Check for version mismatch between global and local CLI
+  try {
+    const localPkgPath = join(dirname(localCliPath), '..', 'package.json')
+    const localPkg = JSON.parse(readFileSync(localPkgPath, 'utf8'))
+    const globalVersion = getCliVersion()
+    if (localPkg.version && localPkg.version !== globalVersion) {
+      const yellow = '\x1b[33m'
+      const dim = '\x1b[2m'
+      const reset = '\x1b[0m'
+      console.error(`${yellow}Note:${reset} Global CLI is ${dim}${globalVersion}${reset}, project has ${dim}${localPkg.version}${reset} ${dim}(using project version)${reset}`)
+    }
+  } catch { /* ignore — version check is best-effort */ }
+
   return new Promise((resolve, reject) => {
     const child = spawnChild(
       process.execPath,
