@@ -261,40 +261,37 @@ _Foundation-first_ — You're building a component system. The site is a test ha
 
 ## Growing Your Project
 
+> **Install the CLI globally** with `npm i -g uniweb` for the best experience. You can also use `npx uniweb` or `pnpm uniweb` without a global install.
+
 Start simple. Add what you need, when you need it:
 
 ```bash
-cd my-site
+# Create a blank workspace
+uniweb create my-workspace --blank
+
+cd my-workspace
 
 # Add a co-located foundation + site pair
 uniweb add project blog
 
 # Add a second foundation at root
-uniweb add foundation ui
+uniweb add foundation DocKit
 
 # Add a site wired to a specific foundation
-uniweb add site docs --foundation ui
+uniweb add site docs --foundation DocKit
 
 # Add an extension (auto-wired to the only site)
 uniweb add extension effects
 
 # Scaffold + apply content from an official template
 uniweb add project marketing --from marketing
+
+# Install dependencies and run in dev mode
+pnpm install # or npm install
+pnpm dev     # or npm run dev
 ```
 
 The workspace grows organically. `add` handles placement, wires dependencies, updates workspace globs, and generates root scripts. The name you provide becomes both the directory name and the package name. Use `--path` to override default placement, or `--project` for explicit co-located layouts.
-
-> **Install the CLI globally** with `npm i -g uniweb` for the best experience. You can also use `npx uniweb` or `pnpm uniweb` without a global install.
-
-**Or start blank and build up:**
-
-```bash
-pnpm create uniweb acme --blank
-cd acme
-uniweb add project main
-pnpm install
-pnpm dev
-```
 
 ## The Bigger Picture
 
