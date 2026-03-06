@@ -525,6 +525,7 @@ Decimals insert between: `2.5-testimonials.md` goes between `2-` and `3-`.
 ```yaml
 title: About Us
 description: Learn about our company
+id: about                   # Stable identity (for page: links, survives moves)
 order: 2                    # Navigation sort position
 pages: [team, history, ...] # Child page order (... = rest). Without ... = strict (hides unlisted)
 index: getting-started      # Which child page is the index
