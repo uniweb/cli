@@ -18,6 +18,7 @@ import { execSync } from 'node:child_process'
 
 import { createLocalRegistry, RemoteRegistry } from '../utils/registry.js'
 import { ensureAuth, readAuth } from '../utils/auth.js'
+import { getRegistryUrl } from '../utils/config.js'
 import { findWorkspaceRoot, findFoundations, findSites, classifyPackage, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
@@ -198,7 +199,7 @@ export async function publish(args = []) {
     // Remote publish — ensure authenticated (inline login if needed)
     const token = await ensureAuth({ command: 'Publishing' })
 
-    const url = registryUrl || process.env.UNIWEB_REGISTRY_URL || 'http://localhost:4001'
+    const url = registryUrl || getRegistryUrl()
     registry = new RemoteRegistry(url, token)
   }
 

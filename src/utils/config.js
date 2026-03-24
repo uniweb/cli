@@ -5,11 +5,69 @@
  * Used by both `create` and `add` commands.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 import yaml from 'js-yaml'
 import { filterCmd } from './pm.js'
+
+// ── Platform URLs ──────────────────────────────────────────────
+
+// Production defaults — regular users get these out of the box
+const PRODUCTION_BACKEND_URL = 'https://uniweb.app'
+const PRODUCTION_REGISTRY_URL = 'https://site-router.uniweb-edge.workers.dev'
+
+/**
+ * Read ~/.uniweb/config.json for persistent URL overrides.
+ * Platform developers use this to point CLI to local servers.
+ *
+ * Example ~/.uniweb/config.json:
+ *   { "backendUrl": "http://127.0.0.1:8002", "registryUrl": "http://localhost:4001" }
+ *
+ * @returns {{ backendUrl?: string, registryUrl?: string }}
+ */
+let _cliConfig = undefined
+function readCliConfig() {
+  if (_cliConfig !== undefined) return _cliConfig
+
+  try {
+    const configPath = join(homedir(), '.uniweb', 'config.json')
+    if (existsSync(configPath)) {
+      _cliConfig = JSON.parse(readFileSync(configPath, 'utf8'))
+      return _cliConfig
+    }
+  } catch {
+    // ignore
+  }
+
+  _cliConfig = {}
+  return _cliConfig
+}
+
+/**
+ * Get the PHP backend URL.
+ *
+ * Priority: env var > ~/.uniweb/config.json > production default
+ * @returns {string}
+ */
+export function getBackendUrl() {
+  return process.env.UNIWEB_BACKEND_URL
+    || readCliConfig().backendUrl
+    || PRODUCTION_BACKEND_URL
+}
+
+/**
+ * Get the registry API URL (Cloudflare Worker or local unicloud).
+ *
+ * Priority: env var > ~/.uniweb/config.json > production default
+ * @returns {string}
+ */
+export function getRegistryUrl() {
+  return process.env.UNIWEB_REGISTRY_URL
+    || readCliConfig().registryUrl
+    || PRODUCTION_REGISTRY_URL
+}
 
 /**
  * Read workspace package globs.

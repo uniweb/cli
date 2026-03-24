@@ -3,15 +3,21 @@
  *
  * Authenticates with the Uniweb platform. Stores credentials at ~/.uniweb/auth.json.
  *
- * Phase 1: Token-paste flow only.
- * Phase 2: Browser-based OAuth with token-paste fallback.
+ * Flow:
+ *   1. Start a temporary HTTP server on a random port
+ *   2. Open the browser to {backend}/cli-auth.php?action=login&callback=http://localhost:{port}/callback
+ *   3. PHP authenticates the user, signs a JWT, redirects to the callback
+ *   4. CLI receives the token and stores it at ~/.uniweb/auth.json
+ *   5. Falls back to token-paste if browser fails
  *
  * Usage:
  *   uniweb login
+ *   uniweb login --token-paste    # Skip browser, use token paste
  */
 
-import prompts from 'prompts'
+import { createServer } from 'node:http'
 import { writeAuth, readAuth, isExpired } from '../utils/auth.js'
+import { getBackendUrl } from '../utils/config.js'
 
 // Colors for terminal output
 const colors = {
@@ -33,21 +39,119 @@ function error(message) {
 }
 
 /**
- * Main login command handler
+ * Try to open a URL in the default browser.
+ * @param {string} url
+ * @returns {Promise<boolean>} Whether the browser was opened
  */
-export async function login(args = []) {
-  // Check if already logged in
-  const existing = await readAuth()
-  if (existing && !isExpired(existing)) {
-    console.log(`Already logged in as ${colors.bright}${existing.email}${colors.reset}`)
-    console.log(`${colors.dim}Run \`uniweb login\` again to switch accounts.${colors.reset}`)
-    console.log('')
-  }
+async function openBrowser(url) {
+  try {
+    const { exec } = await import('node:child_process')
+    const cmd = process.platform === 'darwin'
+      ? `open "${url}"`
+      : process.platform === 'win32'
+        ? `start "" "${url}"`
+        : `xdg-open "${url}"`
 
-  console.log('Log in to your Uniweb account at uniweb.app.')
+    return new Promise((resolve) => {
+      exec(cmd, (err) => resolve(!err))
+    })
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Browser-based login flow.
+ *
+ * Starts a temp HTTP server, opens the browser to the PHP login page,
+ * waits for the callback with the JWT token.
+ *
+ * @param {string} backendUrl - PHP backend URL
+ * @param {number} [timeoutMs=120000] - Timeout in ms
+ * @returns {Promise<{ token: string, email: string } | null>}
+ */
+function browserLogin(backendUrl, timeoutMs = 120000) {
+  return new Promise((resolve) => {
+    const server = createServer((req, res) => {
+      const url = new URL(req.url, `http://localhost`)
+      if (url.pathname !== '/callback') {
+        res.writeHead(404)
+        res.end('Not found')
+        return
+      }
+
+      const token = url.searchParams.get('token')
+      const email = url.searchParams.get('email')
+
+      if (!token) {
+        res.writeHead(400, { 'Content-Type': 'text/html' })
+        res.end('<h2>Login failed</h2><p>No token received. Please try again.</p>')
+        cleanup()
+        resolve(null)
+        return
+      }
+
+      res.writeHead(200, { 'Content-Type': 'text/html' })
+      res.end(`
+        <html>
+          <body style="font-family: system-ui, sans-serif; text-align: center; padding: 60px;">
+            <h2 style="color: #16a34a;">Login successful!</h2>
+            <p>You can close this window and return to your terminal.</p>
+          </body>
+        </html>
+      `)
+      cleanup()
+      resolve({ token, email: email || '' })
+    })
+
+    let timeout
+
+    function cleanup() {
+      clearTimeout(timeout)
+      server.close()
+    }
+
+    // Listen on a random port
+    server.listen(0, '127.0.0.1', async () => {
+      const port = server.address().port
+      const callbackUrl = `http://localhost:${port}/callback`
+      const loginUrl = `${backendUrl}/cli-auth.php?action=login&callback=${encodeURIComponent(callbackUrl)}`
+
+      console.log(`${colors.cyan}→${colors.reset} Opening browser for login...`)
+      console.log(`  ${colors.dim}${loginUrl}${colors.reset}`)
+      console.log('')
+
+      const opened = await openBrowser(loginUrl)
+      if (!opened) {
+        console.log(`${colors.yellow}⚠${colors.reset} Could not open browser.`)
+        console.log(`  Open this URL manually: ${colors.cyan}${loginUrl}${colors.reset}`)
+      }
+
+      console.log(`${colors.dim}Waiting for login... (${timeoutMs / 1000}s timeout)${colors.reset}`)
+    })
+
+    // Timeout
+    timeout = setTimeout(() => {
+      server.close()
+      resolve(null)
+    }, timeoutMs)
+
+    server.on('error', () => {
+      resolve(null)
+    })
+  })
+}
+
+/**
+ * Token-paste login flow (fallback).
+ * @returns {Promise<{ token: string, email: string } | null>}
+ */
+async function tokenPasteLogin() {
+  const prompts = (await import('prompts')).default
+
+  console.log('Paste your token from the Uniweb login page.')
   console.log('')
 
-  // Phase 1: token-paste flow
   const response = await prompts([
     {
       type: 'text',
@@ -58,7 +162,7 @@ export async function login(args = []) {
     {
       type: 'password',
       name: 'token',
-      message: 'Token (from uniweb.app/cli-login):',
+      message: 'Token:',
       validate: (v) => (v ? true : 'Token is required'),
     },
   ], {
@@ -69,19 +173,58 @@ export async function login(args = []) {
   })
 
   if (!response.email || !response.token) {
+    return null
+  }
+
+  return { token: response.token, email: response.email }
+}
+
+/**
+ * Main login command handler
+ */
+export async function login(args = []) {
+  const forceTokenPaste = args.includes('--token-paste')
+
+  // Check if already logged in
+  const existing = await readAuth()
+  if (existing && !isExpired(existing)) {
+    console.log(`Already logged in as ${colors.bright}${existing.email}${colors.reset}`)
+    console.log(`${colors.dim}Continuing will replace the existing session.${colors.reset}`)
+    console.log('')
+  }
+
+  const backendUrl = getBackendUrl()
+  let result = null
+
+  if (!forceTokenPaste) {
+    // Try browser-based login
+    result = await browserLogin(backendUrl)
+
+    if (!result) {
+      console.log('')
+      console.log(`${colors.yellow}⚠${colors.reset} Browser login timed out or failed.`)
+      console.log(`  Falling back to token paste...`)
+      console.log('')
+      result = await tokenPasteLogin()
+    }
+  } else {
+    result = await tokenPasteLogin()
+  }
+
+  if (!result) {
     error('Login cancelled.')
     process.exit(1)
   }
 
-  // Store credentials
+  // Store credentials (JWT has 30-day expiry)
   await writeAuth({
-    token: response.token,
-    email: response.email,
+    token: result.token,
+    email: result.email,
     expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
   })
 
   console.log('')
-  success(`Logged in as ${colors.bright}${response.email}${colors.reset}`)
+  success(`Logged in as ${colors.bright}${result.email}${colors.reset}`)
 }
 
 export default login

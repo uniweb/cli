@@ -88,63 +88,21 @@ export async function ensureAuth({ command = 'This command' } = {}) {
     return auth.token
   }
 
-  // Need to log in
-  const prompts = (await import('prompts')).default
-
+  // Need to log in — delegate to the login command
   if (auth && isExpired(auth)) {
     console.log(`\x1b[33mSession expired.\x1b[0m ${command} requires a Uniweb account.\n`)
   } else {
     console.log(`${command} requires a Uniweb account.\n`)
   }
 
-  const { action } = await prompts({
-    type: 'select',
-    name: 'action',
-    message: 'What would you like to do?',
-    choices: [
-      { title: 'Log in (paste token from uniweb.app/cli-login)', value: 'login' },
-      { title: 'Cancel', value: 'cancel' },
-    ],
-  }, {
-    onCancel: () => {
-      process.exit(0)
-    },
-  })
+  const { login } = await import('../commands/login.js')
+  await login([])
 
-  if (action !== 'login') {
-    process.exit(0)
-  }
-
-  const response = await prompts([
-    {
-      type: 'text',
-      name: 'email',
-      message: 'Email:',
-      validate: (v) => (v && v.includes('@') ? true : 'Enter a valid email'),
-    },
-    {
-      type: 'password',
-      name: 'token',
-      message: 'Token:',
-      validate: (v) => (v ? true : 'Token is required'),
-    },
-  ], {
-    onCancel: () => {
-      process.exit(0)
-    },
-  })
-
-  if (!response.email || !response.token) {
+  // Re-read auth after login
+  const newAuth = await readAuth()
+  if (!newAuth?.token) {
     process.exit(1)
   }
 
-  await writeAuth({
-    token: response.token,
-    email: response.email,
-    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-  })
-
-  console.log(`\n\x1b[32m✓\x1b[0m Logged in as \x1b[1m${response.email}\x1b[0m\n`)
-
-  return response.token
+  return newAuth.token
 }
