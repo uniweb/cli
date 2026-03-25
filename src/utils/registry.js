@@ -256,7 +256,7 @@ export class RemoteRegistry {
    * @returns {Promise<Object>}
    */
   async createInvite(foundationName, payload) {
-    const res = await fetch(`${this.apiUrl}/api/foundations/${foundationName}/invites`, {
+    const res = await fetch(`${this.apiUrl}/api/foundations/${encodeURIComponent(foundationName)}/invites`, {
       method: 'POST',
       headers: this._authHeaders(),
       body: JSON.stringify(payload),
@@ -274,7 +274,7 @@ export class RemoteRegistry {
    * @returns {Promise<Array>}
    */
   async listInvites(foundationName) {
-    const res = await fetch(`${this.apiUrl}/api/foundations/${foundationName}/invites`, {
+    const res = await fetch(`${this.apiUrl}/api/foundations/${encodeURIComponent(foundationName)}/invites`, {
       headers: this._authHeaders(),
     })
     const body = await res.json()
@@ -291,7 +291,7 @@ export class RemoteRegistry {
    * @returns {Promise<Object>}
    */
   async revokeInvite(foundationName, inviteId) {
-    const res = await fetch(`${this.apiUrl}/api/foundations/${foundationName}/invites/${inviteId}`, {
+    const res = await fetch(`${this.apiUrl}/api/foundations/${encodeURIComponent(foundationName)}/invites/${inviteId}`, {
       method: 'DELETE',
       headers: this._authHeaders(),
     })
@@ -309,7 +309,7 @@ export class RemoteRegistry {
    * @returns {Promise<Object>}
    */
   async resendInvite(foundationName, inviteId) {
-    const res = await fetch(`${this.apiUrl}/api/foundations/${foundationName}/invites/${inviteId}/resend`, {
+    const res = await fetch(`${this.apiUrl}/api/foundations/${encodeURIComponent(foundationName)}/invites/${inviteId}/resend`, {
       method: 'POST',
       headers: this._authHeaders(),
     })
