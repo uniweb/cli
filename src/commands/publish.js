@@ -118,6 +118,17 @@ function parseRegistryUrl(args) {
 }
 
 /**
+ * Parse --namespace <handle> from args.
+ * @param {string[]} args
+ * @returns {string|null}
+ */
+function parseNamespace(args) {
+  const idx = args.indexOf('--namespace')
+  if (idx === -1 || !args[idx + 1]) return null
+  return args[idx + 1]
+}
+
+/**
  * Parse --edit-access <policy> from args.
  * @param {string[]} args
  * @returns {'open'|'restricted'|null}
@@ -141,6 +152,7 @@ export async function publish(args = []) {
   const isDryRun = args.includes('--dry-run')
   const registryUrl = parseRegistryUrl(args)
   const editAccess = parseEditAccess(args)
+  const namespaceFlag = parseNamespace(args)
 
   // 1. Resolve foundation directory
   const foundationDir = await resolveFoundationDir(args)
@@ -180,13 +192,54 @@ export async function publish(args = []) {
     process.exit(1)
   }
 
-  const name = schema._self?.name
+  const rawName = schema._self?.name
   const version = schema._self?.version
 
-  if (!name || !version) {
+  if (!rawName || !version) {
     error('dist/meta/schema.json missing _self.name or _self.version')
     console.log(`${colors.dim}  Ensure your package.json has "name" and "version" fields.${colors.reset}`)
     process.exit(1)
+  }
+
+  // 3b. Resolve namespace (priority: --namespace flag > package.json uniweb.namespace > scoped name)
+  const pkg = JSON.parse(await readFile(join(foundationDir, 'package.json'), 'utf8'))
+  const uniwebNamespace = pkg.uniweb?.namespace
+  const scopedMatch = rawName.match(/^@([a-z0-9_-]+)\//)
+  const namespace = namespaceFlag || uniwebNamespace || scopedMatch?.[1]
+
+  if (!namespace) {
+    error('Namespace is required for publishing.')
+    console.log('')
+    console.log(`  ${colors.dim}Use one of:${colors.reset}`)
+    console.log(`    ${colors.cyan}uniweb publish --namespace <org-handle>${colors.reset}`)
+    console.log(`    ${colors.dim}Add ${colors.reset}"uniweb": { "namespace": "<org-handle>" }${colors.dim} to package.json${colors.reset}`)
+    console.log(`    ${colors.dim}Or use a scoped name: ${colors.reset}"name": "@org/foundation"${colors.dim} in package.json${colors.reset}`)
+    process.exit(1)
+  }
+
+  // Construct scoped name: @namespace/foundationName
+  const foundationName = scopedMatch ? rawName.slice(scopedMatch[0].length) : rawName
+  const name = `@${namespace}/${foundationName}`
+
+  // 3c. Advisory namespace check (Worker enforces — this is for early UX feedback)
+  if (!isLocal) {
+    const auth = await readAuth()
+    if (auth?.token) {
+      try {
+        const payload = JSON.parse(atob(auth.token.split('.')[1]))
+        if (payload.namespaces && !payload.namespaces.includes(namespace)) {
+          error(`You don't have publish access to namespace "${colors.bright}@${namespace}${colors.reset}"`)
+          if (payload.namespaces.length > 0) {
+            console.log(`  ${colors.dim}Your namespaces: ${payload.namespaces.map(n => '@' + n).join(', ')}${colors.reset}`)
+          } else {
+            console.log(`  ${colors.dim}You don't belong to any organizations. Ask an admin to add you.${colors.reset}`)
+          }
+          process.exit(1)
+        }
+      } catch {
+        // JWT decode failed — let the Worker validate
+      }
+    }
   }
 
   // 4. Create registry (local or remote)
