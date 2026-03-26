@@ -42,7 +42,8 @@ export function getRegistryDir(startDir = process.cwd()) {
  * @returns {string}
  */
 function sanitizeName(name) {
-  return name.replace(/\//g, '__')
+  // Strip leading @ for directory structure: @org/name → org/name
+  return name.startsWith('@') ? name.slice(1) : name
 }
 
 /**
