@@ -1194,7 +1194,7 @@ export default function DocsLayout({ header, body, footer, left, right, params }
 }
 ```
 
-**Layout meta.js** declares areas: `{ areas: ['header', 'footer', 'left'] }`. Area names are arbitrary.
+**Layout meta.js** declares areas and optional scroll behavior: `{ areas: ['header', 'footer', 'left'], scroll: 'self' }`. Area names are arbitrary. The `scroll` property controls how the runtime manages scroll restoration: not set = runtime manages on `window` (default), `'self'` = layout handles its own scrolling, or a CSS selector (e.g. `'main'`) = runtime manages scroll on that element.
 
 **Layout content** — each layout has section files in `site/layout/`:
 
