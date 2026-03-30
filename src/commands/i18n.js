@@ -841,6 +841,16 @@ async function runAudit(siteRoot, config, args) {
         log(`\n${colors.dim}Run with --clean to remove stale entries.${colors.reset}`)
       }
     }
+
+    // Report entries that need inline tag updates
+    const needsTagsTotal = results.reduce((sum, r) => sum + (r.needsTags?.length || 0), 0)
+    if (needsTagsTotal > 0) {
+      log(`\n${colors.yellow}${needsTagsTotal} translation(s) have inline marks in the source but not in the translation.`)
+      log(`These translations won't preserve accent/span styling.${colors.reset}`)
+      if (!verbose) {
+        log(`${colors.dim}Run with --verbose to see which entries are affected.${colors.reset}`)
+      }
+    }
   } catch (err) {
     error(`Audit failed: ${err.message}`)
     process.exit(1)
