@@ -266,8 +266,8 @@ async function generateLocalizedHtml(projectDir, i18nConfig) {
       const localeContent = await readFile(localeContentPath, 'utf-8')
       // Replace the inlined content if present
       localeHtml = localeHtml.replace(
-        /<script id="__SITE_CONTENT__"[^>]*>[\s\S]*?<\/script>/,
-        `<script id="__SITE_CONTENT__" type="application/json">${localeContent}</script>`
+        /<script[^>]*id="__SITE_CONTENT__"[^>]*>[\s\S]*?<\/script>/,
+        `<script type="application/json" id="__SITE_CONTENT__">${localeContent}</script>`
       )
     }
 
