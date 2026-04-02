@@ -554,6 +554,7 @@ id: about                   # Stable identity (for page: links, survives moves)
 order: 2                    # Navigation sort position
 pages: [team, history, ...] # Child page order (... = rest). Without ... = strict (hides unlisted)
 index: getting-started      # Which child page is the index
+redirect: academic          # Redirect to child page (relative or absolute path, or URL)
 ```
 
 **site.yml:**
