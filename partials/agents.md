@@ -746,6 +746,8 @@ export const vars = {
 
 Sites override in `theme.yml` under `vars:`. Components use: `py-[var(--section-padding-y)]`, `h-[var(--header-height)]`.
 
+Tailwind v4 also supports a shorthand: `py-(--section-padding-y)`. This requires registering the variable in `styles.css` via `@theme inline { --section-padding-y: <default>; }`. Use the shorthand for vars referenced across many components; otherwise the bracket syntax works without registration.
+
 ### Design richness beyond tokens
 
 Tokens handle context adaptation — the hard problem. **They are a floor, not a ceiling.** A great foundation adds design vocabulary on top:
