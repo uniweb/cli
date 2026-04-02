@@ -258,6 +258,20 @@ Enterprise-grade security.     │  content.items[1].paragraphs[0] = "Enterprise
 
 Headings before the main title become `pretitle`. Headings after the main title at a lower importance become `subtitle`. Headings that appear after body content (paragraphs, links, images) start the `items` array.
 
+**Subtitle vs items:** A heading immediately after the title (no body content between them) becomes `subtitle`, not an item. If you want items without a subtitle, use a `---` divider or a paragraph to close the title group:
+
+```markdown
+# Our Stats                       │  content.title = "Our Stats"
+---                                │  ← divider closes the title group
+## 15,000+                        │  content.items[0].title = "15,000+"
+Students from 90 countries        │  content.items[0].paragraphs[0]
+                                   │
+## 200+                           │  content.items[1].title = "200+"
+Programs offered                  │  content.items[1].paragraphs[0]
+```
+
+Without the `---`, `## 15,000+` would become `content.subtitle` instead of an item.
+
 ### Choosing how to model content
 
 You have three layers. Most of the design skill is choosing between them:
