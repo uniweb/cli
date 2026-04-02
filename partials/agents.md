@@ -764,6 +764,7 @@ All non-reserved frontmatter fields become `params`. Reserved: `type`, `preset`,
 | `block.insets` | Block[] | Inline `@Component` references |
 | `block.getInset(refId)` | Block | Lookup inset by refId |
 | `block.properties` | object | Raw frontmatter |
+| `block.rawContent` | object | ProseMirror document — passed internally when using `<Article block={block} />` |
 | `block.themeName` | string | `"light"`, `"medium"`, `"dark"` |
 | `block.stableId` | string | Stable ID from filename or `id:` |
 
@@ -817,10 +818,10 @@ Kit provides `H1` through `H6` — use the appropriate level for semantic hierar
 **Full content rendering** (article/docs sections where the author controls the flow):
 
 ```jsx
-import { Section, Render } from '@uniweb/kit'
+import { Section, Article } from '@uniweb/kit'
 
 <Section block={block} width="lg" padding="md" />
-<Render content={block.parsedContent} block={block} />
+<Article block={block} />
 ```
 
 **Visuals:**
@@ -835,7 +836,7 @@ import { Visual } from '@uniweb/kit'
 
 **Rendering text:** `H1`–`H6`, `P`, `Span`, `Div`, `Text` (with `as` prop)
 
-**Rendering content:** `Section` (Render + prose + layout), `Render` (ProseMirror → React), `ChildBlocks` (render child sections)
+**Rendering content:** `Section` (full section with prose + layout), `Article` (prose content from `block.rawContent`), `Render` (ProseMirror nodes → React), `ChildBlocks` (render child sections)
 
 **Rendering media:** `Visual` (first non-empty: inset/video/image), `Image`, `Media`, `Icon`
 
@@ -867,15 +868,20 @@ useColorContext(block) → 'light' | 'medium' | 'dark'   // current section cont
 
 ### Icon Component
 
-The `<Icon>` renders icons from content or explicit props. The simplest usage — spread an icon object from content:
+The `<Icon>` renders icons from content or explicit props:
 
 ```jsx
-{content.icons.map((icon, i) => <Icon key={i} {...icon} />)}
+{content.icons.map((icon, i) => <Icon key={i} {...icon} />)}   // From content
+<Icon name="search" />                                          // Lucide (default)
+<Icon name="hi2-arrow-right" />                                 // Other library
+<Icon name="close" />                                           // Built-in (no network)
 ```
 
-Props: `library` + `name` (from content), `svg` (direct SVG string), `url` (fetch from URL), `size` (default `'24'`), `className`. The legacy `icon` prop accepts shorthand strings (`"lu-house"`) or objects.
+The `name` prop handles everything: built-in names, Lucide icons (default when no library prefix), and other libraries via prefix (`hi2-arrow-right`, `tb-star`). From content, spread the icon object which has `library` + `name` fields.
 
-Built-in icons (no library needed): `check`, `close`, `menu`, `chevronDown`, `chevronRight`, `externalLink`, `download`, `play`, and a few others.
+Other props: `svg` (direct SVG string), `url` (fetch from URL), `size` (default `'24'`), `className`.
+
+Built-in icons (instant, no network): `check`, `close`, `menu`, `chevronDown`, `chevronRight`, `externalLink`, `download`, `play`, and a few others.
 
 ### Content Patterns for Header and Footer
 

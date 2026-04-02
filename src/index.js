@@ -727,19 +727,32 @@ async function main() {
 
   // Initialize git repository
   if (!noGit) {
+    // Skip git init if already inside a git repo (common for monorepos/workspaces)
+    let insideGitRepo = false
     try {
-      execSync('git --version', { stdio: 'ignore' })
-      try {
-        execSync('git init', { cwd: projectDir, stdio: 'ignore' })
-        execSync('git add -A', { cwd: projectDir, stdio: 'ignore' })
-        execSync('git commit -m "Initial commit from uniweb"', { cwd: projectDir, stdio: 'ignore' })
-        success('Git repository initialized')
-      } catch {
-        log(`  ${colors.yellow}Warning: Git repository initialized but initial commit failed${colors.reset}`)
-        log(`  ${colors.dim}Run 'git commit -m "Initial commit"' after configuring git${colors.reset}`)
-      }
+      execSync('git rev-parse --is-inside-work-tree', { cwd: projectDir, stdio: 'ignore' })
+      insideGitRepo = true
     } catch {
-      // git not available — skip silently
+      // Not inside a git repo — proceed with init
+    }
+
+    if (insideGitRepo) {
+      log(`  ${colors.dim}Skipping git init — already inside a git repository${colors.reset}`)
+    } else {
+      try {
+        execSync('git --version', { stdio: 'ignore' })
+        try {
+          execSync('git init', { cwd: projectDir, stdio: 'ignore' })
+          execSync('git add -A', { cwd: projectDir, stdio: 'ignore' })
+          execSync('git commit -m "Initial commit from uniweb"', { cwd: projectDir, stdio: 'ignore' })
+          success('Git repository initialized')
+        } catch {
+          log(`  ${colors.yellow}Warning: Git repository initialized but initial commit failed${colors.reset}`)
+          log(`  ${colors.dim}Run 'git commit -m "Initial commit"' after configuring git${colors.reset}`)
+        }
+      } catch {
+        // git not available — skip silently
+      }
     }
   }
 
