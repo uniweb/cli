@@ -182,7 +182,7 @@ content = {
   pretitle: '',     // Heading before main title (auto-detected)
   subtitle: '',     // Heading after title (string or string[] for multi-line)
   paragraphs: [],   // Text blocks
-  links: [],        // { href, label, role } — standalone links become buttons
+  links: [],        // { href, label, role } — standalone links (not inside lists)
   images: [],       // { src, alt, role, href }
   icons: [],        // { library, name, role }
   videos: [],       // { src, alt, role, poster, href }
@@ -499,6 +499,8 @@ export default function Grid({ block, params }) {
   )
 }
 ```
+
+**Data and child blocks:** Page-level `data:` is available to all blocks on the page, including children. Each child block resolves data independently through the same page → site hierarchy. If a child component needs data, declare it in the child's `meta.js` or in the child section's frontmatter (`data: articles`).
 
 ### Section Backgrounds
 
