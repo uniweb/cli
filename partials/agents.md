@@ -138,6 +138,15 @@ The decision rule: **would a content author need to change this?** Yes → it be
 
 Start with the content, not the component. Write the markdown a content author would naturally write, check what content shape the parser produces, *then* build the component to receive it.
 
+**Markdown order ≠ rendering order.** The parser extracts content into a flat structure (`title`, `icons`, `images`, `paragraphs`). The component decides how to arrange these visually. Don't write markdown in visual order — write it in semantic order. Start sections with the heading, then add icons, images, and text in any order:
+
+```markdown
+# Site Name               ← title — always start with the heading
+![](lu-graduation-cap)    ← icon — component controls where this renders
+```
+
+Placing content *before* the first heading changes the parse: headings after body content become items, not the section title. This is by design — it's how repeating content groups (cards, features) are created.
+
 ### Section Format
 
 Each `.md` file is a section. Frontmatter on top, content below:
