@@ -258,7 +258,7 @@ Enterprise-grade security.     │  content.items[1].paragraphs[0] = "Enterprise
 
 Headings before the main title become `pretitle`. Headings after the main title at a lower importance become `subtitle`. Headings that appear after body content (paragraphs, links, images) start the `items` array.
 
-**Subtitle vs items:** A heading immediately after the title (no body content between them) becomes `subtitle`, not an item. If you want items without a subtitle, use a `---` divider or a paragraph to close the title group:
+**Subtitle vs items:** A heading immediately after the title becomes `subtitle` only when it is **exactly one level deeper** (H1→H2, H2→H3). Skipping levels (H1→H3) breaks the group — the deeper heading starts items instead. If you want items without a subtitle, use a `---` divider or a paragraph to close the title group:
 
 ```markdown
 # Our Stats                       │  content.title = "Our Stats"
