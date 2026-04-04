@@ -61,8 +61,10 @@ project/
 └── pnpm-workspace.yaml
 ```
 
-- **Foundation** (developer): React components. Those in `src/sections` and `src/layouts` are *section types* — selectable by content authors via `type:` in frontmatter, or used for site-level layout areas (header, footer, panel). Most have an a `meta.js` with metadata in them. Everything in `src/components` (or elsewhere) is ordinary React.
+- **Foundation** (developer): React components. Those in `src/sections` and `src/layouts` are *section types* — selectable by content authors via `type:` in frontmatter, or used for site-level layout areas (header, footer, panel). Most have a `meta.js` with metadata in them. Everything in `src/components` (or elsewhere) is ordinary React — the developer's workbench for helper components that section types import and compose internally.
 - **Site** (content author): Markdown content + configuration. Each section file references a section type. Authors work here without touching foundation code. It may also contain collections of structured content and/or references to external data sources.
+
+**The composition boundary:** Authors compose pages from finished section types — choosing types, writing content, setting params. Developers compose section types from building blocks — importing helpers from `src/components/`, using libraries, writing JSX. These are two different levels of composition. The section type is the boundary between them. Don't expose building-block composition to authors; build complete, self-contained section types that handle their own internal structure.
 
 > Multi-site projects use sub-folders with site/foundation pairs in them, or segregate foundations and sites into separate folders (`foundations/`, `sites/`).
 
@@ -1099,6 +1101,33 @@ export default function Hero({ content, block, params }) {
 
 This is the system-building pattern at its clearest: **section types are the public interface** to your content system (author-friendly names, documented in `meta.js`). **Helper components are the implementation** (developer-friendly APIs, ordinary React props). The section type is the thin translation layer that connects the two worlds.
 
+### Section components are composites
+
+A section component is rarely a single flat render. It imports helper components from `src/components/` to build a complex UI while presenting a single `type:` to the content author. The `src/components/` directory is the developer's workbench — ordinary React components with ordinary props, not selectable by authors, not auto-discovered.
+
+```jsx
+// src/sections/Lesson/index.jsx
+import LessonHeader from '../../components/LessonHeader'
+import LessonContent from '../../components/LessonContent'
+import LessonNav from '../../components/LessonNav'
+
+export default function Lesson({ content, params, block }) {
+  return (
+    <>
+      <LessonHeader block={block} />
+      <LessonContent content={content} params={params} />
+      <LessonNav block={block} />
+    </>
+  )
+}
+```
+
+The content author writes `type: Lesson` in one markdown file. The section component handles the structural chrome — a header derived from the page hierarchy, the rendered content, a prev/next footer. The three helpers live in `src/components/` and receive whatever props make sense for their job.
+
+**When to reach for this pattern:** When a page type has consistent structural elements (header bars, navigation footers, contextual sidebars) that the content author shouldn't need to add as separate sections. If the author would have to add the same boilerplate sections to every page of a certain type, the section component should compose them internally.
+
+**Common mistake:** Solving structural repetition at the layout level. If only some page types need a content header (lessons do, the homepage doesn't), it's a section concern, not a layout concern. The layout owns the page-wide chrome (header area, sidebar area). The section owns its own internal structure.
+
 ### Foundation Organization
 
 ```
@@ -1127,9 +1156,26 @@ foundation/src/
 const { website } = useWebsite()
 const page = website.activePage
 
-// Navigation
-website.getPageHierarchy({ for: 'header' })
-// → [{ route, navigableRoute, label, hasContent, children }]
+// Navigation — getPageHierarchy(options)
+// Returns [{ id, route, navigableRoute, translatedRoute, title, label, description, hasContent, version, children }]
+//
+// Options:
+//   for: 'header' | 'footer'  — filter by nav type (respects hideInHeader/hideInFooter)
+//   nested: true (default)    — nested hierarchy with children; false = flat list
+//   includeHidden: false       — include hidden pages
+//   filter: (page) => bool    — custom filter function
+//   sort: (a, b) => number    — custom sort function
+//
+// Convenience methods:
+//   website.getHeaderPages()  — same as getPageHierarchy({ for: 'header' })
+//   website.getFooterPages()  — same as getPageHierarchy({ for: 'footer' })
+//   website.getAllPages()     — flat list: getPageHierarchy({ nested: false })
+//
+// Common patterns:
+website.getPageHierarchy({ for: 'header' })           // Header nav (excludes hideInHeader pages)
+website.getPageHierarchy()                             // Full nested hierarchy (no nav filtering)
+website.getPageHierarchy({ nested: false })            // Flat list of all visible pages
+website.getPageHierarchy({ nested: false, includeHidden: true })  // Everything including hidden
 
 // Core properties
 website.name              // Site name from site.yml
@@ -1148,9 +1194,12 @@ const { isActive, isActiveOrAncestor } = useActiveRoute()
 const { scheme, toggle, canToggle } = useAppearance()
 
 // Page properties
-page.title, page.label, page.route
+page.title, page.label, page.route, page.description
 page.isHidden(), page.showInHeader(), page.showInFooter()
-page.hasChildren(), page.children
+page.hasContent()                   // True if page has its own content (not just a folder)
+page.hasChildren(), page.children   // Direct child Page instances
+page.parent                         // Parent Page instance (null for root pages)
+page.getNavigableRoute()            // First route with content (follows index children)
 ```
 
 ### Cross-Block Communication
