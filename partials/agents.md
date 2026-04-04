@@ -502,6 +502,14 @@ export default function Grid({ block, params }) {
 }
 ```
 
+`ChildBlocks` renders each child as a bare component by default — no wrapper element, no context classes, no background. This is the right behavior for grid cells, tab panels, carousel slides, and inline children where the parent controls the container.
+
+For the rare case where children should be independent sections with their own theming and backgrounds, pass `wrapAs`:
+
+```jsx
+<ChildBlocks from={block} wrapAs="div" />
+```
+
 **Data and child blocks:** Page-level `data:` is available to all blocks on the page, including children. Each child block resolves data independently through the same page → site hierarchy. If a child component needs data, declare it in the child's `meta.js` or in the child section's frontmatter (`data: articles`).
 
 ### Section Backgrounds
