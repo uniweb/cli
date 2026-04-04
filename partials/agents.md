@@ -555,7 +555,6 @@ description: Learn about our company
 id: about                   # Stable identity (for page: links, survives moves)
 order: 2                    # Navigation sort position
 pages: [team, history, ...] # Child page order (... = rest). Without ... = strict (hides unlisted)
-index: getting-started      # Which child page is the index
 redirect: academic          # Redirect to child page (relative or absolute path, or URL)
 ```
 
@@ -565,6 +564,10 @@ index: home                         # Just set the homepage
 pages: [home, about, ...]           # Order pages (... = rest, first = homepage)
 pages: [home, about]                # Strict: only listed pages in nav
 ```
+
+**Route mapping:** Folder structure maps 1:1 to routes. Every folder keeps its natural route — `pages:` controls **order only**, not which child "becomes" the parent. The only exception is the site root: `index:` (or first in `pages:`) in site.yml sets the homepage at `/`.
+
+**Content-less containers:** Folders with `page.yml` but no markdown are structural groups. They appear in `getPageHierarchy()` with `hasContent: false` and their own title/label. When visited directly, the runtime auto-redirects to the first descendant with content. This supports hierarchical navigation (courses → modules → lessons) at any depth.
 
 ### Lists as Navigation Menus
 
@@ -1199,7 +1202,12 @@ page.isHidden(), page.showInHeader(), page.showInFooter()
 page.hasContent()                   // True if page has its own content (not just a folder)
 page.hasChildren(), page.children   // Direct child Page instances
 page.parent                         // Parent Page instance (null for root pages)
-page.getNavigableRoute()            // First route with content (follows index children)
+page.getNavigableRoute()            // First descendant route with content (for linking)
+
+// Hierarchical navigation — content-less containers are group nodes:
+// { route: '/courses/intro', title: 'Introduction', hasContent: false,
+//   navigableRoute: '/courses/intro/lesson-1', children: [...] }
+// Use navigableRoute for links, title for display, hasContent to style differently.
 ```
 
 ### Cross-Block Communication
