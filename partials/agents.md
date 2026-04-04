@@ -708,7 +708,7 @@ inline:
     font-weight: '600'
 
 vars:
-  header-height: 5rem
+  radius: 0.75rem
 ```
 
 Each color generates 11 OKLCH shades (50–950). `neutral` uses a named preset rather than hex. Shade 500 = your exact input color. Context override keys match token names: `section:` not `bg:`, `primary:` not `btn-primary-bg:`.
@@ -734,19 +734,35 @@ contexts:
 
 ### Foundation variables
 
-Foundations declare customizable layout values in `foundation.js`:
+Most customization is handled by component params. Both section components and layout components declare their own params in `meta.js` — layouts are full components with params, not just structural wrappers. A header height, for example, is typically a layout param, not a foundation var.
+
+Foundation-level CSS variables are for values that must stay consistent **across** multiple components — shared radii, spacing scales, or additional font roles beyond the three the theming system already provides (body, heading, mono). Don't reach for foundation vars when a component or layout param would do.
+
+If you need them, declare vars in two places:
+
+**`foundation.js`** — metadata for the editor and schema:
 
 ```js
 export const vars = {
-  'header-height': { default: '4rem', description: 'Fixed header height' },
-  'max-content-width': { default: '80rem', description: 'Maximum content width' },
+  'radius': { default: '0.5rem', description: 'Default border radius for cards and buttons' },
+  'radius-lg': { default: '1rem', description: 'Large border radius' },
   'section-padding-y': { default: 'clamp(4rem, 6vw, 7rem)', description: 'Vertical section padding' },
 }
 ```
 
-Sites override in `theme.yml` under `vars:`. Components use: `py-[var(--section-padding-y)]`, `h-[var(--header-height)]`.
+**`styles.css`** — the actual CSS that ships with the foundation:
 
-Tailwind v4 also supports a shorthand: `py-(--section-padding-y)`. This requires registering the variable in `styles.css` via `@theme inline { --section-padding-y: <default>; }`. Use the shorthand for vars referenced across many components; otherwise the bracket syntax works without registration.
+```css
+@theme inline {
+  --radius: 0.5rem;
+  --radius-lg: 1rem;
+  --section-padding-y: clamp(4rem, 6vw, 7rem);
+}
+```
+
+The `styles.css` declaration ensures defaults are present in the foundation's CSS output and enables Tailwind shorthand (`rounded-(--radius)` instead of `rounded-[var(--radius)]`). The `foundation.js` declaration provides descriptions and types for the visual editor. Sites override values in `theme.yml` under `vars:` — the site's theme CSS takes priority over the foundation defaults.
+
+**Common mistake:** Using foundation vars for values that belong to a specific component. A header height is a layout param, not a foundation var — the layout component owns it. A sidebar width is a layout param too. Foundation vars are for values that multiple unrelated components share — radii, spacing, shadows.
 
 ### Design richness beyond tokens
 
