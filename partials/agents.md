@@ -274,6 +274,23 @@ Programs offered                  │  content.items[1].paragraphs[0]
 
 Without the `---`, `## 15,000+` would become `content.subtitle` instead of an item.
 
+### Sequential content
+
+`content.sequence` is the flat, ordered list of all elements before any grouping. Each element has a `type` (`heading`, `paragraph`, `image`, `codeBlock`, `dataBlock`, `list`, `link`, `divider`, `inset`, etc.) and type-specific fields. Use it when grouping isn't the right lens — for example, rendering prose in document order with `<Prose>`, or finding specific elements regardless of which group they ended up in:
+
+```js
+// All data blocks, regardless of heading groups
+const allData = {}
+for (const el of content.sequence) {
+  if (el.type === 'dataBlock') allData[el.tag] = el.data
+}
+
+// All headings in order
+const headings = content.sequence.filter(e => e.type === 'heading')
+```
+
+The grouped fields (`title`, `paragraphs`, `items`, `data`) and the sequential view (`sequence`) are two interpretations of the same content. Grouped is better for structured layouts (cards, features). Sequential is better for prose rendering and for finding content without caring about group boundaries.
+
 ### Choosing how to model content
 
 You have three layers. Most of the design skill is choosing between them:
