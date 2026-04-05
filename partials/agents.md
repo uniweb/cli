@@ -841,6 +841,8 @@ All non-reserved frontmatter fields become `params`. Reserved: `type`, `preset`,
 | `block.rawContent` | object | ProseMirror document — passed internally when using `<Article block={block} />` |
 | `block.themeName` | string | `"light"`, `"medium"`, `"dark"` |
 | `block.stableId` | string | Stable ID from filename or `id:` |
+| `block.key` | string | Unique key across pages (path + id) — use as React key |
+| `block.path` | string | Page route this block belongs to |
 
 ### Section Wrapper
 
