@@ -5,6 +5,8 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve, basename, dirname, relative } from 'node:path'
 import yaml from 'js-yaml'
+import { getCliVersion } from '../versions.js'
+import { readAgentsVersion } from '../utils/agents-stamp.js'
 
 // ANSI colors
 const colors = {
@@ -482,6 +484,29 @@ export async function doctor(args = []) {
         })
       }
     }
+  }
+
+  // Check AGENTS.md freshness
+  log('')
+  const agentsPath = join(workspaceDir, 'AGENTS.md')
+  const agentsVersion = readAgentsVersion(agentsPath)
+  const cliVersion = getCliVersion()
+
+  if (!existsSync(agentsPath)) {
+    warn('AGENTS.md not found')
+    info(`Run: uniweb update`)
+    issues.push({ type: 'warn', message: 'AGENTS.md not found' })
+  } else if (!agentsVersion) {
+    // No stamp — manually created or pre-stamp version
+    warn('AGENTS.md has no version stamp (may be outdated)')
+    info(`Run: uniweb update`)
+    issues.push({ type: 'warn', message: 'AGENTS.md has no version stamp' })
+  } else if (agentsVersion !== cliVersion) {
+    warn(`AGENTS.md is outdated (v${agentsVersion} → v${cliVersion})`)
+    info(`Run: uniweb update`)
+    issues.push({ type: 'warn', message: `AGENTS.md outdated (v${agentsVersion} → v${cliVersion})` })
+  } else {
+    success(`AGENTS.md is up to date (v${cliVersion})`)
   }
 
   // Summary

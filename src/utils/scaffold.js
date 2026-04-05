@@ -11,7 +11,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
 import { copyTemplateDirectory, registerVersions } from '../templates/processor.js'
-import { getVersionsForTemplates } from '../versions.js'
+import { getVersionsForTemplates, getCliVersion } from '../versions.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const TEMPLATES_DIR = join(__dirname, '..', '..', 'templates')
@@ -35,6 +35,9 @@ export async function scaffoldWorkspace(targetDir, context, options = {}) {
   // Without this, pnpm fails with ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND
   // because an empty packages: [] makes pnpm search parent directories.
   const skip = context.workspaceGlobs?.length ? [] : ['pnpm-workspace.yaml']
+
+  // Inject CLI version for AGENTS.md stamp
+  context = { ...context, cliVersion: getCliVersion() }
 
   const templatePath = join(TEMPLATES_DIR, 'workspace')
   await copyTemplateDirectory(templatePath, targetDir, context, {

@@ -35,6 +35,7 @@ import { publish } from './commands/publish.js'
 import { deploy } from './commands/deploy.js'
 import { invite } from './commands/invite.js'
 import { handoff } from './commands/handoff.js'
+import { update } from './commands/update.js'
 import { template } from './commands/template.js'
 import {
   resolveTemplate,
@@ -479,6 +480,12 @@ async function main() {
     return
   }
 
+  // Handle update command
+  if (command === 'update') {
+    await update(args.slice(1))
+    return
+  }
+
   // Handle inspect command
   if (command === 'inspect') {
     await inspect(args.slice(1))
@@ -794,6 +801,7 @@ ${colors.bright}Commands:${colors.reset}
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   doctor             Diagnose project configuration issues
+  update             Update AGENTS.md to match installed CLI version
   i18n <cmd>         Internationalization (extract, sync, status)
   template publish   Publish a site as a cloud template
   login              Log in to your Uniweb account

@@ -23,6 +23,15 @@ function getCliPackageJson() {
 }
 
 /**
+ * Get the CLI's own version
+ *
+ * @returns {string} CLI version (e.g., "0.8.32")
+ */
+export function getCliVersion() {
+  return getCliPackageJson().version
+}
+
+/**
  * Extract version number from version spec (e.g., "^0.1.4" -> "0.1.4")
  */
 function extractVersion(spec) {
