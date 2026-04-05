@@ -398,7 +398,7 @@ function Hello() {
 
 Access: `content.snippets[0]` → `{ language: 'jsx', code: 'function Hello() {...}' }`. The `language` attribute is a display hint for syntax highlighting, not a parsing format. Filter by language: `content.snippets.filter(s => s.language === 'css')`.
 
-Both appear in `content.sequence` for document-order rendering. The difference: tagged data blocks are parsed and extracted to `content.data`; code snippets are preserved and collected in `content.snippets`.
+Both appear in `content.sequence` for document-order rendering. The difference: tagged data blocks are parsed and extracted to `content.data`; code snippets are preserved and collected in `content.snippets`. `<Prose>` handles this automatically — it renders code snippets with syntax highlighting and skips tagged data blocks, which components access separately via `content.data`.
 
 ### Composition: Nesting and Embedding
 
@@ -875,11 +875,28 @@ Kit provides `H1` through `H6` — use the appropriate level for semantic hierar
 **Full content rendering** (article/docs sections where the author controls the flow):
 
 ```jsx
-import { Section, Article } from '@uniweb/kit'
+import { Section, Prose } from '@uniweb/kit'
 
 <Section block={block} width="lg" padding="md" />
-<Article block={block} />
+<Prose content={content} block={block} />
 ```
+
+`Prose` renders from the parsed content sequence — headings, paragraphs, images, code snippets, lists, etc. — with prose typography. Tagged data blocks are **skipped** (they're structured data, not prose). Access them via `content.data` for custom rendering:
+
+```jsx
+function Lesson({ content, block }) {
+  return (
+    <div>
+      <Prose content={content} block={block} />
+      {content.data.quiz && <Quiz data={content.data.quiz} />}
+    </div>
+  )
+}
+```
+
+Pass `content` (the parsed content object — has `.sequence`). Pass `block` too if the content uses insets. Also works as a pure typography wrapper: `<Prose>{children}</Prose>`.
+
+`Article` is an older alternative that renders from `block.rawContent` (raw ProseMirror nodes) — it renders everything including data blocks. Prefer `Prose` for new components.
 
 **Visuals:**
 
@@ -893,7 +910,7 @@ import { Visual } from '@uniweb/kit'
 
 **Rendering text:** `H1`–`H6`, `P`, `Span`, `Div`, `Text` (with `as` prop)
 
-**Rendering content:** `Section` (full section with prose + layout), `Article` (prose content from `block.rawContent`), `Render` (ProseMirror nodes → React), `ChildBlocks` (render child sections)
+**Rendering content:** `Section` (full section with prose + layout), `Prose` (prose from parsed content sequence, skips data blocks), `Article` (raw ProseMirror rendering), `Render` (ProseMirror nodes → React), `ChildBlocks` (render child sections)
 
 **Rendering media:** `Visual` (first non-empty: inset/video/image), `Image`, `Media`, `Icon`
 
