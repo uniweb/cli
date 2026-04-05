@@ -1197,6 +1197,18 @@ foundation/src/
 
 **Discovery:** PascalCase files/folders at root of `sections/` are auto-discovered. Nested levels require `meta.js`. Lowercase directories are organizational only. `hidden: true` excludes a component entirely. Everything outside `sections/` is ordinary React.
 
+**`#components` alias:** Foundations include a `#components/*` subpath import in `package.json` that maps to `src/components/`. Use it in section types instead of brittle relative paths:
+
+```jsx
+// ✅ Clean — use the alias
+import LessonHeader from '#components/LessonHeader'
+
+// ❌ Fragile — breaks if you reorganize sections/
+import LessonHeader from '../../components/LessonHeader'
+```
+
+Within `src/components/` itself, use normal relative imports (`./AIFeedbackCard`) since files are siblings.
+
 ### Website and Page APIs
 
 ```jsx
