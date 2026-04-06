@@ -1188,6 +1188,10 @@ foundation/src/
 │       └── Diagram/
 │           ├── index.jsx
 │           └── meta.js
+├── layouts/             # Custom layouts (optional, auto-discovered)
+│   └── DocsLayout/
+│       ├── index.jsx
+│       └── meta.js
 ├── components/          # Your React components (no meta.js, not selectable)
 │   ├── ui/
 │   │   └── button.jsx
