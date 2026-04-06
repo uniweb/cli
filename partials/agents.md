@@ -1154,9 +1154,9 @@ A section component is rarely a single flat render. It imports helper components
 
 ```jsx
 // src/sections/Lesson/index.jsx
-import LessonHeader from '../../components/LessonHeader'
-import LessonContent from '../../components/LessonContent'
-import LessonNav from '../../components/LessonNav'
+import LessonHeader from '#components/LessonHeader'
+import LessonContent from '#components/LessonContent'
+import LessonNav from '#components/LessonNav'
 
 export default function Lesson({ content, params, block }) {
   return (
@@ -1192,22 +1192,30 @@ foundation/src/
 │   ├── ui/
 │   │   └── button.jsx
 │   └── Card.jsx
+├── utils/               # Helper functions, non-React logic
+│   └── splitContent.js
 └── styles.css
 ```
 
 **Discovery:** PascalCase files/folders at root of `sections/` are auto-discovered. Nested levels require `meta.js`. Lowercase directories are organizational only. `hidden: true` excludes a component entirely. Everything outside `sections/` is ordinary React.
 
-**`#components` alias:** Foundations include a `#components/*` subpath import in `package.json` that maps to `src/components/`. Use it in section types instead of brittle relative paths:
+**Import aliases:** Foundations include subpath imports in `package.json` that map to `src/` subdirectories. Use them instead of brittle relative paths:
+
+| Alias | Maps to | Use for |
+|-------|---------|---------|
+| `#components/*` | `./src/components/*` | Shared React components |
+| `#utils/*` | `./src/utils/*` | Helper functions, non-React logic |
 
 ```jsx
-// ✅ Clean — use the alias
+// ✅ Clean — use aliases
 import LessonHeader from '#components/LessonHeader'
+import splitContent from '#utils/splitContent'
 
 // ❌ Fragile — breaks if you reorganize sections/
 import LessonHeader from '../../components/LessonHeader'
 ```
 
-Within `src/components/` itself, use normal relative imports (`./AIFeedbackCard`) since files are siblings.
+Within the same directory (e.g., one component importing a sibling), use normal relative imports (`./AIFeedbackCard`).
 
 ### Website and Page APIs
 
