@@ -1150,26 +1150,26 @@ This is the system-building pattern at its clearest: **section types are the pub
 
 ### Section components are composites
 
-A section component is rarely a single flat render. It imports helper components from `src/components/` to build a complex UI while presenting a single `type:` to the content author. The `src/components/` directory is the developer's workbench — ordinary React components with ordinary props, not selectable by authors, not auto-discovered.
+A section component is rarely a single flat render. It imports helper components from `src/components/` and utilities from `src/utils/` to build a complex UI while presenting a single `type:` to the content author. These directories are the developer's workbench — ordinary React and JS, not selectable by authors, not auto-discovered.
 
 ```jsx
-// src/sections/Lesson/index.jsx
-import LessonHeader from '#components/LessonHeader'
-import LessonContent from '#components/LessonContent'
-import LessonNav from '#components/LessonNav'
+// src/sections/Pricing/index.jsx
+import PricingCard from '#components/PricingCard'
+import formatPrice from '#utils/formatPrice'
 
-export default function Lesson({ content, params, block }) {
+export default function Pricing({ content, params }) {
+  const currency = params.currency || 'USD'
   return (
-    <>
-      <LessonHeader block={block} />
-      <LessonContent content={content} params={params} />
-      <LessonNav block={block} />
-    </>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+      {content.items.map((tier, i) => (
+        <PricingCard key={i} tier={tier} price={formatPrice(tier.data, currency)} />
+      ))}
+    </div>
   )
 }
 ```
 
-The content author writes `type: Lesson` in one markdown file. The section component handles the structural chrome — a header derived from the page hierarchy, the rendered content, a prev/next footer. The three helpers live in `src/components/` and receive whatever props make sense for their job.
+The content author writes `type: Pricing` and defines tiers as content items. The section component maps items to cards using a helper component from `src/components/` and a formatting utility from `src/utils/`. Neither is selectable by authors — they're implementation details behind the section type boundary.
 
 **When to reach for this pattern:** When a page type has consistent structural elements (header bars, navigation footers, contextual sidebars) that the content author shouldn't need to add as separate sections. If the author would have to add the same boilerplate sections to every page of a certain type, the section component should compose them internally.
 
