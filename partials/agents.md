@@ -1457,7 +1457,9 @@ Semantic tokens come from `theme-tokens.css` (populated from `theme.yml`). Use `
 
 **Styles not applying** — Verify `@source` includes your component paths.
 
-**Prerender warnings about hooks** — Components with useState/useEffect show SSG warnings during build. Expected and harmless.
+**Prerender warnings about hooks** — Components with useState/useEffect show SSG warnings during build in local symlinked mode. Expected and harmless — the page renders correctly client-side.
+
+**"document is not defined" during build** — Your component accesses `document`, `window`, or `localStorage` during render (not inside `useEffect`). Don't add `typeof document` guards — use the kit hook instead. Dark mode? `useAppearance()`. Scroll detection? `useScrolled()`. Kit hooks are SSR-safe by design.
 
 **Content not appearing as expected?**
 ```bash
