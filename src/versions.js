@@ -1,11 +1,37 @@
 /**
  * Version resolution utility
  *
- * Reads package versions from the CLI's own dependencies to ensure
- * generated projects use compatible versions.
+ * Produces npm-compatible version specs for every `@uniweb/*` package the
+ * scaffolder might reference when materializing a new project. The caller
+ * (templates/processor.js via the `{{version}}` Handlebars helper) never
+ * needs to know whether the CLI is running locally from a pnpm workspace
+ * or as an npm-installed binary — both code paths feed through here.
+ *
+ * ## How versions are resolved
+ *
+ * 1. Start from the CLI's own `package.json` dependencies. When the CLI
+ *    was installed via npm, pnpm has already resolved every `workspace:*`
+ *    spec into a concrete version like `^0.9.1`, so this step is
+ *    usually enough.
+ * 2. For any dep that is still `workspace:*` (i.e. the CLI is running
+ *    *from* the pnpm workspace — local dev, sandbox script, tests), fall
+ *    back to reading the real `package.json` of each sibling package
+ *    under `framework/<name>/` and using `^<that version>`. This is the
+ *    path that keeps local sandboxes and templates aligned with whatever
+ *    was last bumped in the monorepo.
+ * 3. Scan `framework/*` to catch any additional `@uniweb/*` package that
+ *    wasn't explicitly listed as a CLI dep (press, loom, scholar, etc.).
+ *    New packages get picked up by the scaffolder automatically.
+ *
+ * The previous implementation shipped a hardcoded fallback table and
+ * nothing kept it in sync with reality — see the audit note in
+ * `framework/CLAUDE.md` under "Publishing". Every workspace-based scaffold
+ * silently pinned against years-old versions. That table is gone. If this
+ * function ever fails to resolve a package, it returns `^0.0.0` rather
+ * than a stale best-guess, so the breakage is loud.
  */
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -32,37 +58,104 @@ export function getCliVersion() {
 }
 
 /**
- * Extract version number from version spec (e.g., "^0.1.4" -> "0.1.4")
+ * Locate the framework/ directory on disk. When the CLI is running from
+ * the pnpm workspace, this resolves to `<workspace>/framework/`. When the
+ * CLI is installed from npm, this directory won't exist — callers must
+ * handle that (return null) so the function doesn't pretend to know more
+ * than it does.
  */
-function extractVersion(spec) {
-  if (!spec) return null
-  // Remove ^, ~, >=, etc. prefixes
-  return spec.replace(/^[\^~>=<]+/, '')
+function getFrameworkRoot() {
+  const candidate = join(__dirname, '..', '..')
+  try {
+    if (statSync(candidate).isDirectory()) {
+      return candidate
+    }
+  } catch {}
+  return null
 }
 
 /**
- * Resolve a version spec to an npm-compatible version
- * Handles workspace:* and other pnpm-specific protocols
- *
- * @param {string} spec - Version spec (e.g., "workspace:*", "^0.1.0")
- * @param {string} fallback - Fallback version if spec is not resolvable
- * @returns {string} npm-compatible version spec
+ * Read the current on-disk version of a specific `@uniweb/*` package by
+ * looking up `framework/<last-segment>/package.json`. Returns a caret
+ * range string like `^0.6.0`, or null if the package isn't present on
+ * disk (i.e. the CLI is running from npm, not from the workspace).
  */
-function resolveVersionSpec(spec, fallback) {
-  if (!spec) return fallback
-  // workspace:* is pnpm-specific, use fallback for npm compatibility
-  if (spec.startsWith('workspace:')) return fallback
+function readWorkspaceVersion(packageName) {
+  const root = getFrameworkRoot()
+  if (!root) return null
+  const shortName = packageName.startsWith('@uniweb/')
+    ? packageName.slice('@uniweb/'.length)
+    : packageName
+  const pkgPath = join(root, shortName, 'package.json')
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+    if (pkg.name === packageName && pkg.version) {
+      return `^${pkg.version}`
+    }
+  } catch {}
+  return null
+}
+
+/**
+ * Enumerate every `@uniweb/*` package under `framework/*` and return a
+ * map of `{ name: '^version' }`. Used to seed the resolved-versions
+ * cache so that packages not explicitly listed in the CLI's own deps
+ * (press, loom, scholar, schemas, etc.) still have a version available
+ * to templates that reference them.
+ */
+function discoverWorkspacePackages() {
+  const root = getFrameworkRoot()
+  if (!root) return {}
+  const found = {}
+  let entries
+  try {
+    entries = readdirSync(root, { withFileTypes: true })
+  } catch {
+    return {}
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    if (entry.name.startsWith('.') || entry.name.startsWith('_')) continue
+    const pkgPath = join(root, entry.name, 'package.json')
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+      if (pkg.name && pkg.version && pkg.name.startsWith('@uniweb/')) {
+        found[pkg.name] = `^${pkg.version}`
+      }
+    } catch {}
+  }
+  return found
+}
+
+/**
+ * Resolve a single version spec to something npm can install. A concrete
+ * spec like `^0.9.0` passes through untouched; `workspace:*` is replaced
+ * by the on-disk version of the named package; anything still unresolved
+ * returns null so the caller can fall back.
+ */
+function resolveVersionSpec(spec, packageName) {
+  if (!spec) return null
+  if (spec.startsWith('workspace:')) {
+    return readWorkspaceVersion(packageName)
+  }
   return spec
 }
 
 /**
- * Get resolved versions for @uniweb/* packages
+ * Get resolved versions for @uniweb/* packages.
  *
- * Returns versions that should be used in generated projects,
- * based on the CLI's own dependencies.
+ * Priority (highest first):
+ *   1. A concrete version spec already in the CLI's own `package.json`
+ *      (the state after an npm publish: `workspace:*` is resolved to a
+ *      real version).
+ *   2. The on-disk version of the matching workspace package (the state
+ *      during local development).
+ *   3. Discovery fallback — every `@uniweb/*` package found under
+ *      `framework/*`, for packages that aren't in the CLI's own deps.
  *
- * Note: In development (pnpm workspace), versions may be "workspace:*"
- * which we convert to npm-compatible fallback versions.
+ * The return shape is stable across both paths: a map of package names to
+ * npm-compatible version specs, plus the CLI's own version under the key
+ * `uniweb`.
  *
  * @returns {Object} Map of package names to version specs
  */
@@ -72,20 +165,28 @@ export function getResolvedVersions() {
   const pkg = getCliPackageJson()
   const deps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies }
 
-  // All @uniweb/* packages are now direct dependencies of the CLI.
-  // When publishing with pnpm, workspace:* gets resolved to actual versions.
-  // Fallbacks are only used during local development.
-  resolvedVersions = {
-    '@uniweb/build': resolveVersionSpec(deps['@uniweb/build'], '^0.1.12'),
-    '@uniweb/core': resolveVersionSpec(deps['@uniweb/core'], '^0.1.6'),
-    '@uniweb/kit': resolveVersionSpec(deps['@uniweb/kit'], '^0.1.4'),
-    '@uniweb/runtime': resolveVersionSpec(deps['@uniweb/runtime'], '^0.2.3'),
-    '@uniweb/templates': resolveVersionSpec(deps['@uniweb/templates'], '^0.1.6'),
-
-    // CLI itself (use current version)
-    'uniweb': `^${pkg.version}`,
+  // Seed from the CLI's own deps (the authoritative set when installed from npm).
+  const result = {}
+  for (const [name, spec] of Object.entries(deps)) {
+    if (!name.startsWith('@uniweb/')) continue
+    const resolved = resolveVersionSpec(spec, name)
+    if (resolved) result[name] = resolved
   }
 
+  // Merge in anything under framework/* that the CLI didn't list explicitly.
+  // A newly-added package (e.g. @uniweb/press) becomes reachable via
+  // {{version "@uniweb/press"}} without touching the CLI's package.json.
+  const discovered = discoverWorkspacePackages()
+  for (const [name, version] of Object.entries(discovered)) {
+    if (!result[name]) result[name] = version
+  }
+
+  // CLI itself. Caret on the current version — templates referencing
+  // `{{version "uniweb"}}` pick up whatever patch/minor ships in the
+  // same publish cycle as the template.
+  result['uniweb'] = `^${pkg.version}`
+
+  resolvedVersions = result
   return resolvedVersions
 }
 
