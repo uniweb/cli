@@ -2,11 +2,76 @@
  * Template resolver - parses template identifiers and determines source type
  */
 
+import { readFileSync, statSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
 // Built-in templates (programmatic, not file-based)
 export const BUILTIN_TEMPLATES = ['blank', 'starter', 'none']
 
-// Official templates from @uniweb/templates package (downloaded from GitHub releases)
-export const OFFICIAL_TEMPLATES = ['marketing', 'academic', 'docs', 'international', 'dynamic', 'store', 'learning', 'extensions', 'cv']
+/**
+ * Load the list of official template names.
+ *
+ * There are two sources of truth depending on where the CLI is running:
+ *
+ * 1. **Local dev inside the Uniweb monorepo** — the authoritative file
+ *    is `framework/templates/manifest.json`. Adding a new template
+ *    there makes it immediately reachable from any locally-run CLI
+ *    without republishing. This is the only path that matters for
+ *    `node scripts/framework/sandbox.js create`.
+ *
+ * 2. **Published CLI (npm-installed)** — the monorepo isn't on disk, so
+ *    we read a vendored snapshot file (`./official-templates.snapshot.json`)
+ *    that the publish script rewrites from the workspace manifest just
+ *    before `pnpm publish` runs. The snapshot is committed so every CLI
+ *    version in git carries the template list it shipped with.
+ *
+ * When both sources are available (local dev with a committed snapshot),
+ * the live workspace manifest wins so newly-added templates are visible
+ * without waiting for a CLI republish.
+ *
+ * The previous implementation hardcoded a string array here, which
+ * silently duplicated `framework/templates/manifest.json` and required
+ * a two-repo edit whenever a template was added.
+ */
+function loadOfficialTemplateList() {
+  // Local dev: framework/templates/manifest.json relative to this file
+  // at framework/cli/src/templates/resolver.js
+  const workspaceManifest = join(__dirname, '..', '..', '..', 'templates', 'manifest.json')
+  const picked = tryReadManifest(workspaceManifest)
+  if (picked) return picked
+
+  // Published CLI fallback: vendored snapshot next to this file
+  const snapshotPath = join(__dirname, 'official-templates.snapshot.json')
+  const snapshot = tryReadManifest(snapshotPath)
+  if (snapshot) return snapshot
+
+  // If both fail, return an empty list rather than a stale hardcoded
+  // array. An unknown template name then falls through to the npm
+  // `@uniweb/template-<name>` lookup path, which is the intended
+  // behavior for third-party templates.
+  return []
+}
+
+function tryReadManifest(path) {
+  try {
+    if (!statSync(path).isFile()) return null
+    const manifest = JSON.parse(readFileSync(path, 'utf8'))
+    if (manifest && manifest.templates && typeof manifest.templates === 'object') {
+      return Object.keys(manifest.templates)
+    }
+  } catch {}
+  return null
+}
+
+// Official templates from the templates repo. Derived from manifest.json
+// at module load time — see loadOfficialTemplateList() for the two source
+// paths (local workspace vs. vendored snapshot). If the list needs to
+// reflect a just-added template, restart the CLI process or rerun the
+// scaffolder; this constant is read once per process.
+export const OFFICIAL_TEMPLATES = loadOfficialTemplateList()
 
 /**
  * Parse a template identifier and determine its source type
