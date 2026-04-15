@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-04-15T22:37:53.102Z",
+  "packages": {
+    "@uniweb/build": {
+      "version": "0.9.3",
+      "path": "framework/build",
+      "deps": [
+        "@uniweb/content-reader",
+        "@uniweb/core",
+        "@uniweb/runtime",
+        "@uniweb/schemas",
+        "@uniweb/theming"
+      ]
+    },
+    "@uniweb/content-reader": {
+      "version": "1.1.4",
+      "path": "framework/content-reader",
+      "deps": []
+    },
+    "@uniweb/content-writer": {
+      "version": "0.2.3",
+      "path": "framework/content-writer",
+      "deps": []
+    },
+    "@uniweb/core": {
+      "version": "0.6.1",
+      "path": "framework/core",
+      "deps": [
+        "@uniweb/semantic-parser",
+        "@uniweb/theming"
+      ]
+    },
+    "@uniweb/frame-bridge": {
+      "version": "0.2.3",
+      "path": "framework/frame-bridge",
+      "deps": []
+    },
+    "@uniweb/icons": {
+      "version": "0.1.0",
+      "path": "framework/icons",
+      "deps": []
+    },
+    "@uniweb/kit": {
+      "version": "0.8.1",
+      "path": "framework/kit",
+      "deps": [
+        "@uniweb/core"
+      ]
+    },
+    "@uniweb/loom": {
+      "version": "0.2.1",
+      "path": "framework/loom",
+      "deps": []
+    },
+    "@uniweb/press": {
+      "version": "0.2.1",
+      "path": "framework/press",
+      "deps": []
+    },
+    "@uniweb/runtime": {
+      "version": "0.7.3",
+      "path": "framework/runtime",
+      "deps": [
+        "@uniweb/core",
+        "@uniweb/theming"
+      ]
+    },
+    "@uniweb/schemas": {
+      "version": "0.2.1",
+      "path": "framework/schemas",
+      "deps": []
+    },
+    "@uniweb/scholar": {
+      "version": "0.2.1",
+      "path": "framework/scholar",
+      "deps": []
+    },
+    "@uniweb/semantic-parser": {
+      "version": "1.1.9",
+      "path": "framework/semantic-parser",
+      "deps": []
+    },
+    "@uniweb/templates": {
+      "version": "0.7.23",
+      "path": "framework/templates",
+      "deps": []
+    },
+    "@uniweb/theming": {
+      "version": "0.1.3",
+      "path": "framework/theming",
+      "deps": []
+    }
+  },
+  "templates": {
+    "marketing": {
+      "name": "Marketing Starter",
+      "description": "Landing pages and marketing sites with Tailwind CSS v4",
+      "tags": [
+        "marketing",
+        "landing-page",
+        "tailwind"
+      ]
+    },
+    "academic": {
+      "name": "Academic",
+      "description": "Academic sites for researchers, labs, and departments",
+      "tags": [
+        "academic",
+        "research",
+        "portfolio"
+      ]
+    },
+    "docs": {
+      "name": "Documentation",
+      "description": "Documentation sites with navigation levels",
+      "tags": [
+        "docs",
+        "documentation",
+        "technical"
+      ]
+    },
+    "international": {
+      "name": "International Business",
+      "description": "Multilingual corporate website with English, Spanish, and French",
+      "tags": [
+        "i18n",
+        "multilingual",
+        "corporate",
+        "business",
+        "localization"
+      ]
+    },
+    "dynamic": {
+      "name": "Dynamic Data",
+      "description": "Live API data fetching with loading states, transforms, and the portable data pattern",
+      "tags": [
+        "data",
+        "api",
+        "fetch",
+        "loading-states",
+        "dynamic"
+      ]
+    },
+    "store": {
+      "name": "Solis Artisans - Store",
+      "description": "Artisan e-commerce with product collections, Shopify Buy Button, journal blog, and stone-amber design",
+      "tags": [
+        "store",
+        "e-commerce",
+        "shopify",
+        "artisan",
+        "products"
+      ]
+    },
+    "learning": {
+      "name": "Learning Platform",
+      "description": "Course-based learning site with quizzes, code challenges, and AI grading integration",
+      "tags": [
+        "learning",
+        "course",
+        "education",
+        "quiz",
+        "lms",
+        "tutorial"
+      ]
+    },
+    "extensions": {
+      "name": "Extensions Demo",
+      "description": "Primary foundation with a visual effects extension, demonstrating multi-foundation sites",
+      "tags": [
+        "extensions",
+        "multi-foundation",
+        "visual-effects",
+        "runtime"
+      ]
+    },
+    "cv": {
+      "name": "CV (Docusite)",
+      "description": "An academic CV as a docusite — a URL whose content is also a downloadable Microsoft Word document. Ships with a full Charles Darwin sample CV and demonstrates the one-foundation-many-tenants pattern for download-time theming.",
+      "tags": [
+        "cv",
+        "resume",
+        "docusite",
+        "academic",
+        "document",
+        "press"
+      ]
+    }
+  }
+}

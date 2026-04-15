@@ -97,11 +97,60 @@ function readWorkspaceVersion(packageName) {
 }
 
 /**
+ * Load the vendored framework index file (see
+ * `./framework-index.json`). The index is a snapshot of the framework
+ * state taken at CLI publish time — every `@uniweb/*` package name,
+ * version, path, and inter-package dep edges, plus the template list.
+ *
+ * The snapshot is the only way a published CLI (running from
+ * `node_modules/uniweb/…`, with no workspace on disk) can resolve
+ * versions for packages it doesn't directly import (press, loom,
+ * scholar, etc.). Without it, Handlebars helpers like
+ * `{{version "@uniweb/press"}}` fall through to a bogus default.
+ *
+ * Returns null if the file doesn't exist, is unparseable, or has a
+ * schema version we don't understand. Callers treat null as "no
+ * snapshot available" and fall back to their next source.
+ */
+function loadFrameworkIndex() {
+  const indexPath = join(__dirname, 'framework-index.json')
+  try {
+    const raw = readFileSync(indexPath, 'utf8')
+    const parsed = JSON.parse(raw)
+    if (parsed && parsed.schemaVersion === 1 && parsed.packages) {
+      return parsed
+    }
+  } catch {}
+  return null
+}
+
+/**
+ * Pull `@uniweb/*` package versions out of the framework index's
+ * `packages` field and format them as caret ranges. Used as the
+ * published-CLI fallback source after the CLI's own deps and the live
+ * workspace walk both come up empty.
+ */
+function readIndexPackages() {
+  const index = loadFrameworkIndex()
+  if (!index) return {}
+  const result = {}
+  for (const [name, entry] of Object.entries(index.packages)) {
+    if (entry && entry.version) {
+      result[name] = `^${entry.version}`
+    }
+  }
+  return result
+}
+
+/**
  * Enumerate every `@uniweb/*` package under `framework/*` and return a
  * map of `{ name: '^version' }`. Used to seed the resolved-versions
  * cache so that packages not explicitly listed in the CLI's own deps
  * (press, loom, scholar, schemas, etc.) still have a version available
  * to templates that reference them.
+ *
+ * Works only in the monorepo. Published CLIs fall through to the
+ * framework-index snapshot via readIndexPackages() instead.
  */
 function discoverWorkspacePackages() {
   const root = getFrameworkRoot()
@@ -145,17 +194,23 @@ function resolveVersionSpec(spec, packageName) {
  * Get resolved versions for @uniweb/* packages.
  *
  * Priority (highest first):
- *   1. A concrete version spec already in the CLI's own `package.json`
- *      (the state after an npm publish: `workspace:*` is resolved to a
- *      real version).
- *   2. The on-disk version of the matching workspace package (the state
- *      during local development).
- *   3. Discovery fallback — every `@uniweb/*` package found under
- *      `framework/*`, for packages that aren't in the CLI's own deps.
  *
- * The return shape is stable across both paths: a map of package names to
- * npm-compatible version specs, plus the CLI's own version under the key
- * `uniweb`.
+ *   1. A concrete version spec already in the CLI's own `package.json`
+ *      (the state after an npm publish: `workspace:*` is resolved by
+ *      pnpm to a real version).
+ *   2. Live workspace walk — every `@uniweb/*` package found under
+ *      `framework/*` at CLI invocation time. This is the path that
+ *      matters for local dev: a freshly-added package becomes
+ *      reachable from every locally-run CLI without republishing.
+ *   3. Framework index snapshot — `./framework-index.json`, written by
+ *      the publish pipeline's pre-publish hook. This is the path that
+ *      matters for published CLIs: the monorepo isn't on disk, so the
+ *      snapshot is how the CLI knows about packages it doesn't import
+ *      directly (press, loom, scholar, schemas, …).
+ *
+ * The return shape is stable across all paths: a map of package names
+ * to npm-compatible version specs, plus the CLI's own version under
+ * the key `uniweb`.
  *
  * @returns {Object} Map of package names to version specs
  */
@@ -173,11 +228,21 @@ export function getResolvedVersions() {
     if (resolved) result[name] = resolved
   }
 
-  // Merge in anything under framework/* that the CLI didn't list explicitly.
-  // A newly-added package (e.g. @uniweb/press) becomes reachable via
-  // {{version "@uniweb/press"}} without touching the CLI's package.json.
+  // Layer in the live workspace walk. Overrides nothing (dev versions
+  // are fresher than anything in the CLI's own deps), but fills in
+  // packages the CLI doesn't reference directly.
   const discovered = discoverWorkspacePackages()
   for (const [name, version] of Object.entries(discovered)) {
+    if (!result[name]) result[name] = version
+  }
+
+  // Final fallback: the vendored framework index snapshot. Only hits
+  // when the workspace walk came up empty for a package (published
+  // CLI running outside the monorepo). The snapshot is refreshed at
+  // publish time, so its view of the world is current as of the CLI's
+  // own publish.
+  const indexed = readIndexPackages()
+  for (const [name, version] of Object.entries(indexed)) {
     if (!result[name]) result[name] = version
   }
 

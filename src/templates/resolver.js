@@ -23,10 +23,12 @@ export const BUILTIN_TEMPLATES = ['blank', 'starter', 'none']
  *    `node scripts/framework/sandbox.js create`.
  *
  * 2. **Published CLI (npm-installed)** — the monorepo isn't on disk, so
- *    we read a vendored snapshot file (`./official-templates.snapshot.json`)
- *    that the publish script rewrites from the workspace manifest just
- *    before `pnpm publish` runs. The snapshot is committed so every CLI
- *    version in git carries the template list it shipped with.
+ *    we read the vendored framework index at `../framework-index.json`,
+ *    which the publish pipeline's pre-publish hook rewrites just before
+ *    `pnpm publish` runs. The framework index is a single snapshot file
+ *    that also carries `@uniweb/*` package versions (consumed by
+ *    versions.js), so both the template list and the version resolver
+ *    share one source of truth.
  *
  * When both sources are available (local dev with a committed snapshot),
  * the live workspace manifest wins so newly-added templates are visible
@@ -34,43 +36,46 @@ export const BUILTIN_TEMPLATES = ['blank', 'starter', 'none']
  *
  * The previous implementation hardcoded a string array here, which
  * silently duplicated `framework/templates/manifest.json` and required
- * a two-repo edit whenever a template was added.
+ * a two-repo edit whenever a template was added. The one before THAT
+ * (v0.9.3) used a separate `./official-templates.snapshot.json` file;
+ * it has been retired in favor of the shared framework index.
  */
 function loadOfficialTemplateList() {
   // Local dev: framework/templates/manifest.json relative to this file
   // at framework/cli/src/templates/resolver.js
   const workspaceManifest = join(__dirname, '..', '..', '..', 'templates', 'manifest.json')
-  const picked = tryReadManifest(workspaceManifest)
+  const picked = tryReadTemplateKeys(workspaceManifest)
   if (picked) return picked
 
-  // Published CLI fallback: vendored snapshot next to this file
-  const snapshotPath = join(__dirname, 'official-templates.snapshot.json')
-  const snapshot = tryReadManifest(snapshotPath)
-  if (snapshot) return snapshot
+  // Published CLI fallback: the framework index snapshot, one directory
+  // up at framework/cli/src/framework-index.json.
+  const indexPath = join(__dirname, '..', 'framework-index.json')
+  const fromIndex = tryReadTemplateKeys(indexPath)
+  if (fromIndex) return fromIndex
 
-  // If both fail, return an empty list rather than a stale hardcoded
-  // array. An unknown template name then falls through to the npm
-  // `@uniweb/template-<name>` lookup path, which is the intended
-  // behavior for third-party templates.
+  // If both sources fail, return an empty list rather than a stale
+  // hardcoded array. An unknown template name then falls through to
+  // the npm `@uniweb/template-<name>` lookup path, which is the
+  // intended behavior for third-party templates.
   return []
 }
 
-function tryReadManifest(path) {
+function tryReadTemplateKeys(path) {
   try {
     if (!statSync(path).isFile()) return null
-    const manifest = JSON.parse(readFileSync(path, 'utf8'))
-    if (manifest && manifest.templates && typeof manifest.templates === 'object') {
-      return Object.keys(manifest.templates)
+    const data = JSON.parse(readFileSync(path, 'utf8'))
+    if (data && data.templates && typeof data.templates === 'object') {
+      return Object.keys(data.templates)
     }
   } catch {}
   return null
 }
 
 // Official templates from the templates repo. Derived from manifest.json
-// at module load time — see loadOfficialTemplateList() for the two source
-// paths (local workspace vs. vendored snapshot). If the list needs to
-// reflect a just-added template, restart the CLI process or rerun the
-// scaffolder; this constant is read once per process.
+// (local dev) or framework-index.json (published CLI) at module load
+// time — see loadOfficialTemplateList() for details. If the list needs
+// to reflect a just-added template, restart the CLI process or rerun
+// the scaffolder; this constant is read once per process.
 export const OFFICIAL_TEMPLATES = loadOfficialTemplateList()
 
 /**
