@@ -10,6 +10,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
+import Handlebars from 'handlebars'
 import { copyTemplateDirectory, registerVersions } from '../templates/processor.js'
 import { getVersionsForTemplates, getCliVersion } from '../versions.js'
 
@@ -157,19 +158,38 @@ async function copyContentRecursive(sourceDir, targetDir, context, structuralFil
         newContent = template(context)
       }
 
-      // Merge config files instead of overwriting
+      // Merge config files instead of overwriting.
+      //
+      // The "merge" here is narrow: take the content template's output
+      // as the source of truth (so comments, formatting, and the full
+      // educational structure of the content template survive) and
+      // override only the specific top-level keys listed in
+      // preserveKeys with the values from the already-scaffolded base
+      // file (so the user's chosen project name and foundation ref
+      // don't get replaced by whatever the content template hardcoded).
+      //
+      // Earlier versions of this code parsed both files through
+      // js-yaml, merged the objects, and re-emitted the result via
+      // yaml.dump() — which stripped every comment and blank line on
+      // the way through. For templates like `cv/site/site.yml.hbs`
+      // whose comments are the template's educational payload, that
+      // was devastating. The line-level override below preserves the
+      // content template's text verbatim except for the preserved keys.
       const preserveKeys = mergeFiles[outputName]
       if (preserveKeys && existsSync(targetPath)) {
         const existingContent = await fs.readFile(targetPath, 'utf-8')
         const existing = yaml.load(existingContent) || {}
-        const incoming = yaml.load(newContent || await fs.readFile(sourcePath, 'utf-8')) || {}
+        let merged = newContent ?? await fs.readFile(sourcePath, 'utf-8')
 
-        // Template values as base, preserve specified keys from scaffolded version
-        const merged = { ...incoming }
         for (const key of preserveKeys) {
-          if (existing[key] !== undefined) merged[key] = existing[key]
+          if (existing[key] === undefined) continue
+          const baseLine = matchTopLevelLine(existingContent, key)
+          if (baseLine) {
+            merged = replaceTopLevelLine(merged, key, baseLine)
+          }
         }
-        await fs.writeFile(targetPath, yaml.dump(merged, { lineWidth: -1 }))
+
+        await fs.writeFile(targetPath, merged)
       } else if (newContent !== undefined) {
         await fs.writeFile(targetPath, newContent)
       } else {
@@ -209,13 +229,75 @@ export async function applyStarter(projectDir, context, options = {}) {
 }
 
 /**
+ * Escape a string for safe inclusion in a RegExp literal. Used by the
+ * site.yml line-level merge path.
+ */
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Find the verbatim text of a single-line top-level YAML entry like
+ * `name: foo bar` or `foundation: my-foundation`. Returns the matched
+ * line (including any inline comment) or null if the key isn't present.
+ * Multi-line values (block scalars, nested maps) are deliberately
+ * unsupported — the merge path only uses this for simple scalar keys.
+ */
+function matchTopLevelLine(content, key) {
+  const match = content.match(new RegExp(`^${escapeRegex(key)}:.*$`, 'm'))
+  return match ? match[0] : null
+}
+
+/**
+ * Replace the verbatim text of a single-line top-level YAML entry.
+ * Returns the content unchanged if the key isn't present. See
+ * matchTopLevelLine for scope.
+ */
+function replaceTopLevelLine(content, key, replacement) {
+  return content.replace(
+    new RegExp(`^${escapeRegex(key)}:.*$`, 'm'),
+    () => replacement,
+  )
+}
+
+/**
+ * Resolve a dependency version string from a template.json entry.
+ *
+ * Template authors can either hardcode a concrete spec (`"^0.2.1"`) or
+ * use the same `{{version}}` Handlebars helper that `package.json.hbs`
+ * uses (`"{{version \"@uniweb/press\"}}"`). The helper is populated
+ * earlier in the scaffold flow via `registerVersions()`, so by the time
+ * this runs `versionData` already holds the current on-disk versions
+ * of every `@uniweb/*` package.
+ *
+ * Plain strings without `{{…}}` pass through untouched. Strings that
+ * fail to compile (rare — e.g. malformed mustache) fall back to the
+ * original literal so a bad template.json doesn't break scaffolding.
+ */
+function resolveDependencyVersion(rawValue) {
+  if (typeof rawValue !== 'string' || !rawValue.includes('{{')) {
+    return rawValue
+  }
+  try {
+    return Handlebars.compile(rawValue)({})
+  } catch {
+    return rawValue
+  }
+}
+
+/**
  * Merge additional dependencies from a content template into a scaffolded package.json
  *
  * Reads the package.json at the given path, adds any deps not already present
  * (in either dependencies or devDependencies), and writes it back.
  *
+ * Each version string in `deps` is first processed through the shared
+ * Handlebars pipeline so template.json entries can reference live
+ * workspace versions via `{{version "@uniweb/press"}}` instead of
+ * hardcoding a spec that goes stale on the next publish.
+ *
  * @param {string} packageJsonPath - Absolute path to package.json
- * @param {Object} deps - Dependencies to merge (name → version)
+ * @param {Object} deps - Dependencies to merge (name → version spec)
  */
 export async function mergeTemplateDependencies(packageJsonPath, deps) {
   if (!deps || Object.keys(deps).length === 0) return
@@ -223,7 +305,7 @@ export async function mergeTemplateDependencies(packageJsonPath, deps) {
   if (!pkg.dependencies) pkg.dependencies = {}
   for (const [name, version] of Object.entries(deps)) {
     if (!pkg.dependencies[name] && !pkg.devDependencies?.[name]) {
-      pkg.dependencies[name] = version
+      pkg.dependencies[name] = resolveDependencyVersion(version)
     }
   }
   await fs.writeFile(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n')
