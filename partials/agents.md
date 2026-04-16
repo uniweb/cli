@@ -529,6 +529,44 @@ For the rare case where children should be independent sections with their own t
 
 **Data and child blocks:** Page-level `data:` is available to all blocks on the page, including children. Each child block resolves data independently through the same page → site hierarchy. If a child component needs data, declare it in the child's `meta.js` or in the child section's frontmatter (`data: articles`).
 
+### Dividers — Content Boundaries
+
+The `---` (horizontal rule) in markdown creates a boundary between content regions. The developer decides what each region means. Two patterns:
+
+**Data-driven iteration (Loom).** Dividers separate header/body/footer in a repeated template. The content handler splits *before* Loom runs because each segment gets a different variable context — the body template contains item-level fields that don't exist on the top-level data. The header and footer are instantiated once against the full data; the body is repeated per data item.
+
+```markdown
+---
+type: CvEntry
+source: education
+---
+# Education
+{COUNT OF education} degrees.
+---
+## {degree}
+{institution} — {field} ({start}–{end})
+```
+
+The `source` frontmatter param names the data array to iterate. The content handler (see "Content Handlers" below) reads it. A second `---` starts a footer, rendered once after all items.
+
+**UI regions (component).** Dividers separate structural areas that the component renders differently — e.g., lesson prose vs challenge content. `splitContent()` from `@uniweb/kit` splits the parsed content at divider elements in the sequence:
+
+```jsx
+import { splitContent } from '@uniweb/kit'
+
+function Lesson({ content, block }) {
+  const [lesson, challenge] = splitContent(content)
+  return (
+    <div>
+      <Prose content={lesson} block={block} />
+      <aside><Prose content={challenge} block={block} /></aside>
+    </div>
+  )
+}
+```
+
+**When to use which:** Different data contexts per region → Loom pre-parse split (handled by the content handler). Same data, different UI treatment → kit post-parse split (`splitContent`). A foundation can use both — Loom splits and iterates to produce final content, then the component splits the result to route regions to different UI.
+
 ### Section Backgrounds
 
 Set `background` in frontmatter — the runtime renders it automatically:
@@ -825,7 +863,7 @@ function MyComponent({ content, params, block }) {
 }
 ```
 
-All non-reserved frontmatter fields become `params`. Reserved: `type`, `preset`, `input`, `data`, `id`, `background`, `theme`. Everything else flows to the component.
+All non-reserved frontmatter fields become `params`. Reserved: `type`, `preset`, `input`, `data`, `id`, `background`, `theme`, `source`. Everything else flows to the component.
 
 ### block properties
 
@@ -1383,6 +1421,82 @@ site/layout/
 ```
 
 Named subdirectories are self-contained — no inheritance. Layout cascade: `page.yml` → `folder.yml` → `site.yml` → foundation `defaultLayout` → `"default"`.
+
+---
+
+## Content Handlers
+
+Content handlers are a transform layer that runs between data assembly and the component. They're declared in `foundation.js` and apply to every section in the foundation. The standard content shape (title, paragraphs, items, sequence) is the default — handlers can reshape it.
+
+### The three hooks
+
+The foundation declares handlers as an object in its default export:
+
+```js
+// foundation.js
+export default {
+  handlers: {
+    data:    (data, block) => { /* ... */ },
+    content: (data, block) => { /* ... */ },
+    props:   (content, params, block) => { /* ... */ },
+  },
+}
+```
+
+All three are optional. Each runs per block and is error-isolated (a failing handler logs a warning and falls back to the default behavior).
+
+| Handler | When it runs | Receives | Returns | Purpose |
+|---|---|---|---|---|
+| `data` | After data assembly, before content transform | `(data, block)` | New data object, or null | Filter, reshape, or augment the assembled data |
+| `content` | After data handler | `(data, block)` | ProseMirror document, or null | Transform raw content (Loom instantiation, template expansion) |
+| `props` | After parsing, defaults, and guarantees | `(content, params, block)` | `{ content, params }`, or null | Post-process the final shape before the component sees it |
+
+### Loom integration
+
+The most common use of content handlers is Loom-based content instantiation — resolving `{placeholder}` expressions in markdown against live data. `@uniweb/loom` provides a factory that creates the handler for you:
+
+```js
+import { createLoomHandlers } from '@uniweb/loom'
+
+export default {
+  handlers: createLoomHandlers({
+    vars: (data) => data?.profile?.[0],
+  }),
+}
+```
+
+The `vars` function extracts the Loom variable namespace from the assembled data. The factory returns a `content` handler that reads the `source` frontmatter param — without it, the handler does simple substitution; with it, the handler splits the markdown at `---` dividers and repeats the body per data item (see "Dividers — Content Boundaries" above).
+
+### Writing a custom handler
+
+When the factory doesn't cover your case, write handlers directly:
+
+```js
+import { Loom, instantiateContent, instantiateRepeated } from '@uniweb/loom'
+
+const loom = new Loom()
+
+export default {
+  handlers: {
+    content: (data, block) => {
+      const profile = data?.profile?.[0]
+      if (!profile) return null
+
+      const doc = block.rawContent?.doc ?? block.rawContent
+      const source = block.properties?.source
+
+      if (!source) return instantiateContent(doc, loom, profile)
+      return instantiateRepeated(doc, loom, profile, source)
+    },
+  },
+}
+```
+
+The content handler receives `block.parsedContent.data` and reads raw ProseMirror from `block.rawContent`. It returns a new ProseMirror document — the framework re-parses it through the semantic parser. Returning `null` or the same reference as `block.rawContent` signals no change.
+
+### Reserved frontmatter fields
+
+`source` is a convention-level reserved field — it flows through to both `block.properties` (for handler access) and `params` (visible to components). Components can ignore it. This is consistent with how `background` and `theme` work. List it in `meta.js` params with a description so the editor and schema recognize it.
 
 ---
 
