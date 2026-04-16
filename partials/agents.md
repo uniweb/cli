@@ -1471,11 +1471,11 @@ The `vars` function extracts the Loom variable namespace from the assembled data
 ---
 type: PublicationList
 source: publications
-where: "= type 'book'"
+where: "type = 'book'"
 ---
 ```
 
-`where` expressions use Loom Compact form: `= type 'book'` (equality), `> year '1870'` (comparison), `refereed` (truthy check). Aggregate expressions in the header (like `{COUNT OF publications}`) reflect the filtered set.
+`where` expressions use Loom Plain form: `type = 'book'` (equality), `year > '1870'` (comparison), `refereed` (truthy check), `type = 'book' AND refereed` (boolean combination). Aggregate expressions in the header (like `{COUNT OF publications}`) reflect the filtered set.
 
 ### Writing a custom handler
 
