@@ -863,7 +863,7 @@ function MyComponent({ content, params, block }) {
 }
 ```
 
-All non-reserved frontmatter fields become `params`. Reserved: `type`, `preset`, `input`, `data`, `id`, `background`, `theme`, `source`. Everything else flows to the component.
+All non-reserved frontmatter fields become `params`. Reserved: `type`, `preset`, `input`, `data`, `id`, `background`, `theme`, `source`, `where`. Everything else flows to the component.
 
 ### block properties
 
@@ -1465,7 +1465,17 @@ export default {
 }
 ```
 
-The `vars` function extracts the Loom variable namespace from the assembled data. The factory returns a `content` handler that reads the `source` frontmatter param — without it, the handler does simple substitution; with it, the handler splits the markdown at `---` dividers and repeats the body per data item (see "Dividers — Content Boundaries" above).
+The `vars` function extracts the Loom variable namespace from the assembled data. The factory returns a `content` handler that reads the `source` and `where` frontmatter params — without `source`, the handler does simple substitution; with `source`, the handler splits the markdown at `---` dividers and repeats the body per data item (see "Dividers — Content Boundaries" above). When `where` is also set, the source array is filtered first — only items where the expression evaluates to truthy are iterated:
+
+```yaml
+---
+type: PublicationList
+source: publications
+where: "= type 'book'"
+---
+```
+
+`where` expressions use Loom Compact form: `= type 'book'` (equality), `> year '1870'` (comparison), `refereed` (truthy check). Aggregate expressions in the header (like `{COUNT OF publications}`) reflect the filtered set.
 
 ### Writing a custom handler
 
@@ -1496,7 +1506,7 @@ The content handler receives `block.parsedContent.data` and reads raw ProseMirro
 
 ### Reserved frontmatter fields
 
-`source` is a convention-level reserved field — it flows through to both `block.properties` (for handler access) and `params` (visible to components). Components can ignore it. This is consistent with how `background` and `theme` work. List it in `meta.js` params with a description so the editor and schema recognize it.
+`source` and `where` are convention-level reserved fields — they flow through to both `block.properties` (for handler access) and `params` (visible to components). Components can ignore them. This is consistent with how `background` and `theme` work. List them in `meta.js` params with descriptions so the editor and schema recognize them.
 
 ---
 
