@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-04-16T16:24:12.713Z",
+  "generatedAt": "2026-04-16T22:19:57.480Z",
   "packages": {
     "@uniweb/build": {
       "version": "0.9.4",
@@ -54,7 +54,7 @@
       "deps": []
     },
     "@uniweb/press": {
-      "version": "0.2.3",
+      "version": "0.2.4",
       "path": "framework/press",
       "deps": []
     },
@@ -82,7 +82,7 @@
       "deps": []
     },
     "@uniweb/templates": {
-      "version": "0.7.26",
+      "version": "0.7.28",
       "path": "framework/templates",
       "deps": []
     },
@@ -175,18 +175,6 @@
         "runtime"
       ]
     },
-    "cv": {
-      "name": "CV (Docusite)",
-      "description": "An academic CV as a docusite — a URL whose content is also a downloadable Microsoft Word document. Ships with a full Charles Darwin sample CV and demonstrates the one-foundation-many-tenants pattern for download-time theming.",
-      "tags": [
-        "cv",
-        "resume",
-        "docusite",
-        "academic",
-        "document",
-        "press"
-      ]
-    },
     "cv-loom": {
       "name": "CV (Loom-instantiated)",
       "description": "A single-page narrative CV whose prose is written with {placeholder} expressions and instantiated at render time via the foundation content handler and @uniweb/loom. Reference implementation of the handler hook.",
@@ -197,6 +185,19 @@
         "content-handler",
         "dynamic-prose",
         "academic"
+      ]
+    },
+    "monograph": {
+      "name": "Monograph (Press showcase)",
+      "description": "A richly illustrated long-form document — numbered chapters with nested subsections, figures with captions, data-driven specimen and measurement tables, and a citestyle bibliography. The same JSX drives the themed web preview and a branded .docx with headers, footers, and page numbers. Ships with Darwin's Galapagos observations as sample content.",
+      "tags": [
+        "monograph",
+        "docusite",
+        "press",
+        "document",
+        "figures",
+        "tables",
+        "bibliography"
       ]
     }
   }
