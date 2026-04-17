@@ -865,6 +865,21 @@ function MyComponent({ content, params, block }) {
 
 All non-reserved frontmatter fields become `params`. Reserved: `type`, `preset`, `input`, `data`, `id`, `background`, `theme`, `source`, `where`. Everything else flows to the component.
 
+### Data
+
+A component on a page with a `data:` or `fetch:` declaration automatically receives that data in `content.data.{schema}`. No opt-in required in `meta.js`. On a template page (`[slug]/`), the matched item is also delivered as `content.data.{singular}` (e.g. `content.data.article` when the parent declares `data: articles`).
+
+```jsx
+function Article({ content, block }) {
+  if (block.dataLoading) return <DataPlaceholder />
+  const article = content.data.article
+  if (!article) return <NotFound />
+  return <ArticleView article={article} />
+}
+```
+
+Components can ignore keys in `content.data` they don't need — the same way unused `params` are ignored. For declarative shape hints consumed by the editor and `prepare-props`, add `data: { entity: 'articles' }` to `meta.js`. For an explicit opt-out (rare), set `data: false`. See [Data Fetching](https://github.com/uniweb/docs/blob/main/reference/data-fetching.md) for the full model.
+
 ### block properties
 
 | Property | Type | Description |
