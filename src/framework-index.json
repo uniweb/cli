@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-04-16T22:34:02.528Z",
+  "generatedAt": "2026-04-18T18:19:51.002Z",
   "packages": {
     "@uniweb/build": {
-      "version": "0.9.4",
+      "version": "0.9.5",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -24,12 +24,17 @@
       "deps": []
     },
     "@uniweb/core": {
-      "version": "0.6.1",
+      "version": "0.6.2",
       "path": "framework/core",
       "deps": [
         "@uniweb/semantic-parser",
         "@uniweb/theming"
       ]
+    },
+    "@uniweb/fetchers": {
+      "version": "0.1.0",
+      "path": "framework/fetchers",
+      "deps": []
     },
     "@uniweb/frame-bridge": {
       "version": "0.2.3",
@@ -42,7 +47,7 @@
       "deps": []
     },
     "@uniweb/kit": {
-      "version": "0.8.2",
+      "version": "0.8.3",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core"
@@ -54,12 +59,17 @@
       "deps": []
     },
     "@uniweb/press": {
-      "version": "0.2.4",
+      "version": "0.2.8",
       "path": "framework/press",
       "deps": []
     },
+    "@uniweb/query": {
+      "version": "0.1.0",
+      "path": "framework/query",
+      "deps": []
+    },
     "@uniweb/runtime": {
-      "version": "0.7.4",
+      "version": "0.7.5",
       "path": "framework/runtime",
       "deps": [
         "@uniweb/core",
@@ -82,7 +92,7 @@
       "deps": []
     },
     "@uniweb/templates": {
-      "version": "0.7.29",
+      "version": "0.7.30",
       "path": "framework/templates",
       "deps": []
     },
@@ -198,6 +208,20 @@
         "figures",
         "tables",
         "bibliography"
+      ]
+    },
+    "academic-metrics": {
+      "name": "Academic Metrics (xlsx showcase)",
+      "description": "A docusite whose content is also a downloadable Excel workbook. Aggregates academic metrics (publications, funding, supervisions) across multiple members of a university unit. Rich web previews + flat tabular xlsx sheets from the same data. Ships with three 19th-century naturalists as sample members.",
+      "tags": [
+        "academic-metrics",
+        "docusite",
+        "press",
+        "xlsx",
+        "report",
+        "members",
+        "aggregate",
+        "academic"
       ]
     }
   }
