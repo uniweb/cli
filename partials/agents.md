@@ -891,7 +891,7 @@ fetch:
   limit: 3
 ```
 
-**Lean lists with `deferred:`.** Collections with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]` in `site.yml`. The cascade payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json`. On dynamic-route pages the focused entity's full record is delivered automatically; elsewhere components fetch on demand via the `useEntityDetail` kit hook.
+**Lean lists with `deferred:`.** Collections with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]` in `site.yml`. The cascade payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json` (markdown-backed collections) or fetched from an author-declared `detailUrl:` pattern (API-backed collections). On dynamic-route pages the focused entity's full record is delivered automatically; elsewhere components fetch on demand via the `useEntityDetail` kit hook.
 
 **Component-side fetching.** When a component genuinely needs to fetch something on its own (a search box, a "load more" button, a popover that lazy-loads), use the kit hooks (`useFetched`, `useCacheEntry`, `useEntityDetail`). They share the framework's cache and dispatcher with declarative fetches; same-key requests dedupe automatically.
 
