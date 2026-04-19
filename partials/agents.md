@@ -878,7 +878,24 @@ function Article({ content, block }) {
 }
 ```
 
-Components can ignore keys in `content.data` they don't need — the same way unused `params` are ignored. For declarative shape hints consumed by the editor and `prepare-props`, add `data: { entity: 'articles' }` to `meta.js`. For an explicit opt-out (rare), set `data: false`. See [Data Fetching](https://github.com/uniweb/docs/blob/main/reference/data-fetching.md) for the full model.
+Components can ignore keys in `content.data` they don't need — the same way unused `params` are ignored. For declarative shape hints consumed by the editor and `prepare-props`, add `data: { entity: 'articles' }` to `meta.js`. For an explicit opt-out (rare), set `data: false`.
+
+**Authoring queries.** Fetch declarations (`fetch:` or the `data:` shorthand) accept query operators that describe which records you want, in what order, how many: `where:` (a where-object predicate), `sort:` (e.g. `date desc`), `limit:` (first N records). Whether the source evaluates them or the framework applies them as a runtime fallback is a transport detail controlled by the site's `fetcher.supports:` declaration.
+
+```yaml
+# pages/blog/page.yml
+fetch:
+  collection: articles
+  where: { published: true, tags: featured }
+  sort: date desc
+  limit: 3
+```
+
+**Lean lists with `deferred:`.** Collections with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]` in `site.yml`. The cascade payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json`. On dynamic-route pages the focused entity's full record is delivered automatically; elsewhere components fetch on demand via the `useEntityDetail` kit hook.
+
+**Component-side fetching.** When a component genuinely needs to fetch something on its own (a search box, a "load more" button, a popover that lazy-loads), use the kit hooks (`useFetched`, `useCacheEntry`, `useEntityDetail`). They share the framework's cache and dispatcher with declarative fetches; same-key requests dedupe automatically.
+
+See [Data Fetching](https://github.com/uniweb/docs/blob/main/reference/data-fetching.md) for the full model and [Predicates](https://github.com/uniweb/docs/blob/main/authoring/predicates.md) for the where-object format with examples.
 
 ### block properties
 
