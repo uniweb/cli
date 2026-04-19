@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-04-18T18:19:51.002Z",
+  "generatedAt": "2026-04-19T01:29:37.432Z",
   "packages": {
     "@uniweb/build": {
-      "version": "0.9.5",
+      "version": "0.10.0",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -24,17 +24,12 @@
       "deps": []
     },
     "@uniweb/core": {
-      "version": "0.6.2",
+      "version": "0.7.0",
       "path": "framework/core",
       "deps": [
         "@uniweb/semantic-parser",
         "@uniweb/theming"
       ]
-    },
-    "@uniweb/fetchers": {
-      "version": "0.1.0",
-      "path": "framework/fetchers",
-      "deps": []
     },
     "@uniweb/frame-bridge": {
       "version": "0.2.3",
@@ -47,7 +42,7 @@
       "deps": []
     },
     "@uniweb/kit": {
-      "version": "0.8.3",
+      "version": "0.9.0",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core"
@@ -63,13 +58,8 @@
       "path": "framework/press",
       "deps": []
     },
-    "@uniweb/query": {
-      "version": "0.1.0",
-      "path": "framework/query",
-      "deps": []
-    },
     "@uniweb/runtime": {
-      "version": "0.7.5",
+      "version": "0.8.0",
       "path": "framework/runtime",
       "deps": [
         "@uniweb/core",
@@ -92,7 +82,7 @@
       "deps": []
     },
     "@uniweb/templates": {
-      "version": "0.7.30",
+      "version": "0.7.31",
       "path": "framework/templates",
       "deps": []
     },
