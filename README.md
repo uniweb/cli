@@ -257,7 +257,7 @@ You can delete the `foundation/` folder entirely and point your site at a publis
 
 _Site-first_ — You're building a website. The foundation is your component library, co-developed with the site. This is the common case.
 
-_Foundation-first_ — You're building a component system. The site is a test harness with sample content. The real sites live elsewhere—other repositories, other teams, or managed on [uniweb.app](https://uniweb.app). Use `uniweb add site` to add multiple test sites exercising a shared foundation.
+_Foundation-first_ — You're building a component system. The site is a test harness with sample content. The real sites live elsewhere—other repositories, other teams, or managed on [hub.uniweb.app](https://hub.uniweb.app). Use `uniweb add site` to add multiple test sites exercising a shared foundation.
 
 ## Growing Your Project
 
@@ -299,11 +299,11 @@ The structure you start with scales without rewrites:
 
 1. **Single project** — One site, one foundation. Develop and deploy together. Most projects stay here.
 
-2. **Published foundation** — Release your foundation as an npm package or to [uniweb.app](https://uniweb.app). Other sites can use it without copying code.
+2. **Published foundation** — Release your foundation as an npm package or to [hub.uniweb.app](https://hub.uniweb.app). Other sites can use it without copying code.
 
 3. **Multiple sites** — Several sites share one foundation. Update components once, every site benefits.
 
-4. **Platform-managed sites** — Sites built on [uniweb.app](https://uniweb.app) with visual editing tools can use your foundation. You develop components locally; content teams work in the browser.
+4. **Platform-managed sites** — Sites built on [hub.uniweb.app](https://hub.uniweb.app) with visual editing tools can use your foundation. You develop components locally; content teams work in the browser.
 
 Start with local files deployed anywhere. The same foundation works across all these scenarios.
 

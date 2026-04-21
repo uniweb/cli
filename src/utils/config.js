@@ -15,7 +15,7 @@ import { filterCmd } from './pm.js'
 // ── Platform URLs ──────────────────────────────────────────────
 
 // Production defaults — regular users get these out of the box
-const PRODUCTION_BACKEND_URL = 'https://uniweb.app'
+const PRODUCTION_BACKEND_URL = 'https://hub.uniweb.app'
 const PRODUCTION_REGISTRY_URL = 'https://site-router.uniweb-edge.workers.dev'
 
 /**
