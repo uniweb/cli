@@ -11,9 +11,10 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs'
-import { resolve, join } from 'node:path'
+import { resolve, join, dirname } from 'node:path'
 import { spawn } from 'node:child_process'
 import { writeFile, mkdir } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 
 // Import build utilities from @uniweb/build
 import {
@@ -124,6 +125,46 @@ function runCommand(command, args, cwd) {
 }
 
 /**
+ * Resolve the project's local Vite binary.
+ *
+ * We intentionally do NOT fall back to `npx vite`: npx resolves through npm's
+ * global cache, which may hold a stale Vite version (e.g. Vite 5 ignores
+ * lib.fileName for CSS and always emits style.css). Using the project's local
+ * Vite guarantees the version declared in package.json is the one that runs.
+ *
+ * @param {string} projectDir
+ * @returns {string} Absolute path to the vite CLI entry
+ */
+function resolveLocalVite(projectDir) {
+  const require = createRequire(join(projectDir, 'package.json'))
+  let pkgJsonPath
+  try {
+    pkgJsonPath = require.resolve('vite/package.json')
+  } catch {
+    throw new Error(
+      `Vite is not installed in ${projectDir}.\n` +
+      `Run \`pnpm install\` (or npm/yarn install) in the project before building.`
+    )
+  }
+  const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf8'))
+  const binRel = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.vite
+  if (!binRel) {
+    throw new Error(`Could not find vite bin entry in ${pkgJsonPath}`)
+  }
+  return join(dirname(pkgJsonPath), binRel)
+}
+
+/**
+ * Run the project's local Vite with the given args.
+ * @param {string} projectDir
+ * @param {string[]} args - e.g. ['build']
+ */
+async function runLocalVite(projectDir, args) {
+  const viteBin = resolveLocalVite(projectDir)
+  await runCommand(process.execPath, [viteBin, ...args], projectDir)
+}
+
+/**
  * Build a foundation
  */
 async function buildFoundation(projectDir, options = {}) {
@@ -158,7 +199,7 @@ async function buildFoundation(projectDir, options = {}) {
 
   // Check if vite.config.js uses the generated entry
   // For now, just run the standard vite build
-  await runCommand('npx', ['vite', 'build'], projectDir)
+  await runLocalVite(projectDir, ['build'])
 
   // Vite's foundation plugin generates dist/meta/schema.json
   // and processes preview images during the build.
@@ -351,7 +392,7 @@ async function buildSite(projectDir, options = {}) {
   info('Building site...')
 
   // Run vite build for sites
-  await runCommand('npx', ['vite', 'build'], projectDir)
+  await runLocalVite(projectDir, ['build'])
 
   success('Site build complete')
 
