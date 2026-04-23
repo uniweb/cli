@@ -417,6 +417,31 @@ Access: `content.snippets[0]` → `{ language: 'jsx', code: 'function Hello() {.
 
 Both appear in `content.sequence` for document-order rendering. The difference: tagged data blocks are parsed and extracted to `content.data`; code snippets are preserved and collected in `content.snippets`. `<Prose>` handles this automatically — it renders code snippets with syntax highlighting and skips tagged data blocks, which components access separately via `content.data`.
 
+### Math (LaTeX)
+
+Authors write LaTeX directly in markdown; the browser renders real math natively. The LaTeX is compiled to MathML Core **at build time** — no runtime math library ships to the browser, no CSS from a math package is required.
+
+Three forms, matching Pandoc / GitHub / VS Code / Jupyter / Obsidian convention:
+
+| Form | Mode | Example |
+|---|---|---|
+| `$x^2$` | Inline | `Let $f(x) = ax + b$ be a function.` |
+| `$$x^2$$` | Display (block when on its own line, inline display mid-paragraph) | `$$\sum_{i=1}^n i$$` |
+| ` ```math ` fence | Display (multi-line friendly) | see below |
+| `\$` | Literal `$` | `The price is \$20.` |
+
+Multi-line display math uses a `math` code fence:
+
+````markdown
+```math
+\int_0^\infty e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2}
+```
+````
+
+Disambiguation for `$...$`: a dollar-delimited span counts as math only when the body has no whitespace next to the delimiters *and* the closing `$` is not immediately followed by a digit. So `It costs $5 and $10 total` and `Budget: $200` stay as prose without any escaping, while `Let $f(x) = 5$ be a function` is math. Use `\$` when you need a literal `$` in content where the rules would otherwise trip it up.
+
+Math rides through the same content pipeline as everything else — it appears in prerendered HTML, survives `compile('epub')` and `compile('pagedjs')`, and roundtrips cleanly through the editor. Component code needs nothing special; `<Prose>` and `<Text>` already render the MathML that the pipeline embedded.
+
 ### Composition: Nesting and Embedding
 
 Pages are sequences of sections — that's the obvious composition layer. But the framework supports real nesting: sections containing other sections, and sections containing embedded components. And it does this without leaving markdown.
