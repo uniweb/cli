@@ -28,6 +28,7 @@
  *   uniweb deploy                          Normal deploy (browser may open on first deploy)
  *   uniweb deploy --skip-build             Don't rebuild even if dist/ is stale
  *   uniweb deploy --dry-run                Resolve everything but skip the Worker POST
+ *   uniweb deploy --skip-billing           Admin-only: bypass billing gate (dev/testing)
  *
  * See kb/platform/plans/cli-site-deploy-decisions.md for the full design.
  */
@@ -35,7 +36,7 @@
 import { createServer } from 'node:http'
 import { existsSync } from 'node:fs'
 import { readFile, writeFile, readdir, stat } from 'node:fs/promises'
-import { resolve, join, basename } from 'node:path'
+import { resolve, join, basename, sep } from 'node:path'
 import { execSync } from 'node:child_process'
 import yaml from 'js-yaml'
 
@@ -56,16 +57,26 @@ const ASSET_UPLOAD_RETRIES = 2
 // can skip upload without checking size. Unhashed formats fall through to
 // size-compare diffing.
 const VITE_HASHED_FILENAME_RE = /-[0-9a-f]{8,}\.[a-z0-9]+$/i
-// Rough mime map for the formats Vite passes through. Keep it small: covers
-// what a real site produces from markdown + theme.yml. Falls back to
-// application/octet-stream on unknowns.
+
+// MEDIA extensions only — images, fonts, documents, video/audio. dist/assets/
+// also contains Vite's JS/CSS chunks and source maps, which are code, not
+// user media, and are served by the Worker from elsewhere (runtime bundle +
+// content injection). Uploading those is wasted storage — they're never
+// referenced. Mirror of ProfileAsset's ALLOWED_EXTENSIONS minus the text
+// formats that have no place in a static media bucket.
+const MEDIA_EXTENSIONS = new Set([
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'ico',
+  'pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'xlsm', 'xlsb',
+  'mp4', 'webm', 'ogg',
+  'woff', 'woff2', 'ttf', 'otf', 'eot',
+])
 const MIME_BY_EXT = {
   webp: 'image/webp', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
   gif: 'image/gif', svg: 'image/svg+xml', ico: 'image/x-icon',
   pdf: 'application/pdf',
   woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf',
+  eot: 'application/vnd.ms-fontobject',
   mp4: 'video/mp4', webm: 'video/webm', ogg: 'audio/ogg',
-  json: 'application/json', csv: 'text/csv', txt: 'text/plain',
 }
 
 const c = {
@@ -91,6 +102,7 @@ export async function deploy(args = []) {
   const skipBuild = args.includes('--skip-build')
   const dryRun = args.includes('--dry-run')
   const skipAssets = args.includes('--skip-assets')
+  const skipBilling = args.includes('--skip-billing')
 
   const siteDir = await resolveSiteDir(args)
   const backendUrl = getBackendUrl()
@@ -120,23 +132,32 @@ export async function deploy(args = []) {
 
   const cliToken = await ensureAuth({ command: 'Deploying' })
 
-  // Ensure dist/ is present. Phase 1 just uses site-content.json — binary
-  // assets under dist/assets/* aren't uploaded yet.
+  // Always rebuild unless the user explicitly opts out with --skip-build.
+  // A stale dist/ from a previous build + edited content on disk would
+  // otherwise silently ship yesterday's version — a footgun big enough
+  // to warrant the extra seconds every deploy.
   const distDir = join(siteDir, 'dist')
   const contentPath = join(distDir, 'site-content.json')
+  if (!skipBuild) {
+    say.info('Building site…')
+    console.log('')
+    // No VITE_FOUNDATION_MODE override needed: @uniweb/build's
+    // detectFoundationType recognizes `@ns/name@version` refs as
+    // link-mode URLs, which auto-enters runtime mode. Prerender also
+    // auto-skips for link-mode foundations (HTML is rendered on the
+    // serving edge, not here).
+    execSync('npx uniweb build', {
+      cwd: siteDir,
+      stdio: 'inherit',
+    })
+    console.log('')
+  } else if (!existsSync(contentPath)) {
+    say.err('No build found and --skip-build passed. Run `uniweb build` first.')
+    process.exit(1)
+  }
   if (!existsSync(contentPath)) {
-    if (skipBuild) {
-      say.err('No build found and --skip-build passed. Run `uniweb build` first.')
-      process.exit(1)
-    }
-    say.warn('No build found. Building site…')
-    console.log('')
-    execSync('npx uniweb build', { cwd: siteDir, stdio: 'inherit' })
-    console.log('')
-    if (!existsSync(contentPath)) {
-      say.err('Build did not produce dist/site-content.json')
-      process.exit(1)
-    }
+    say.err('Build did not produce dist/site-content.json')
+    process.exit(1)
   }
 
   // Read site-content.json — we need `languages` for the capability preview
@@ -167,30 +188,68 @@ export async function deploy(args = []) {
   let publishToken, siteIdResolved, handleResolved, publishUrl, validateUrl
   try {
     say.info('Requesting deploy authorization…')
-    const authRes = await callAuthorize({
-      backendUrl,
-      cliToken,
-      body: {
-        siteId: siteYml.site?.id || '',
-        foundation,
-        runtimeVersion,
-        languages,
-        callbackUrl: loopback.callbackUrl,
-      },
-    })
+    const authorizeBody = {
+      siteId: siteYml.site?.id || '',
+      foundation,
+      runtimeVersion,
+      languages,
+      // `name` from site.yml is a hint for the create-flow review page so
+      // the handle input is pre-filled. Ignored by authorize in other
+      // branches (fast path, intent=authorize).
+      name: typeof siteYml.name === 'string' ? siteYml.name : '',
+      callbackUrl: loopback.callbackUrl,
+      // Dev-only: admin-gated server-side. PHP rejects for non-admins.
+      skipBilling: skipBilling || undefined,
+    }
+    let authRes
+    try {
+      authRes = await callAuthorize({ backendUrl, cliToken, body: authorizeBody })
+    } catch (err) {
+      // Stale-siteId recovery: the user's site.yml points at a site that
+      // no longer exists on the server (deleted, different env, etc.).
+      // Warn, drop the siteId, and retry — we'll land in the create flow
+      // and write a fresh site.id back to site.yml after success.
+      if (err.status === 404 && authorizeBody.siteId) {
+        say.warn(`site.id "${authorizeBody.siteId}" was not found on the server.`)
+        say.dim('Treating as a new site — the create flow will run in your browser.')
+        authorizeBody.siteId = ''
+        authRes = await callAuthorize({ backendUrl, cliToken, body: authorizeBody })
+      } else {
+        say.err(`Authorize failed: ${err.message}`)
+        process.exit(1)
+      }
+    }
 
     if (authRes.needsReview) {
-      say.info(`Opening browser for ${authRes.intent === 'create' ? 'site creation' : 'review'}…`)
+      const flowLabel = authRes.intent === 'create' ? 'site creation' : 'review'
+      // openBrowser returns a hint about whether a GUI was available. On
+      // headless/CI environments (no DISPLAY, SSH session, no browser
+      // command), we print the URL + clear instructions instead of just
+      // "timed out" 15 minutes later.
+      say.info(`Opening browser for ${flowLabel}…`)
       say.dim(authRes.reviewUrl)
-      await openBrowser(authRes.reviewUrl)
+      const opened = await openBrowser(authRes.reviewUrl)
       console.log('')
-      console.log(`${c.dim}Awaiting authorization in your browser…${c.reset}`)
+      if (opened === false) {
+        say.warn('No browser could be launched in this environment.')
+        console.log(`${c.dim}Open this URL manually to complete the ${flowLabel}:${c.reset}`)
+        console.log(`  ${authRes.reviewUrl}`)
+        console.log('')
+        console.log(`${c.dim}The browser must be able to POST to this CLI's loopback listener:${c.reset}`)
+        console.log(`  ${loopback.callbackUrl}`)
+        console.log(`${c.dim}If you're in CI or over SSH, run this deploy from a machine with a browser.${c.reset}`)
+        console.log('')
+      }
+      console.log(`${c.dim}Awaiting authorization…${c.reset}`)
       console.log(`${c.dim}(Will time out after ${REVIEW_TIMEOUT_MS / 60000} minutes)${c.reset}`)
       console.log('')
 
       const cb = await loopback.waitForCallback(REVIEW_TIMEOUT_MS)
       if (!cb || !cb.publishToken) {
         say.err('Browser authorization timed out or was denied.')
+        if (opened === false) {
+          say.dim('Hint: the browser may have run on a different machine and couldn\'t reach this CLI\'s loopback.')
+        }
         process.exit(1)
       }
       publishToken = cb.publishToken
@@ -235,6 +294,8 @@ export async function deploy(args = []) {
     await uploadAssetsAndRewriteContent({
       siteDir,
       siteContent,
+      siteYml,
+      theme,
       backendUrl,
       cliToken,
       siteId: siteIdResolved,
@@ -409,9 +470,12 @@ async function callAuthorize({ backendUrl, cliToken, body }) {
   }
 
   if (!res.ok) {
-    const msg = parsed?.error || `HTTP ${res.status}`
-    say.err(`Authorize failed: ${msg}`)
-    process.exit(1)
+    // Throw a structured error so the caller can branch — 404 on a known
+    // siteId means "site.yml is stale, fall back to create flow" rather
+    // than "hard fail". Other statuses remain fatal to the caller.
+    const err = new Error(parsed?.error || `HTTP ${res.status}`)
+    err.status = res.status
+    throw err
   }
 
   // The controller returns `data` wrapped by BaseController — unwrap if so.
@@ -471,17 +535,46 @@ async function callPublish({ url, token, body }) {
  * siteContent is mutated in place so the caller's publish payload picks up
  * the rewritten nodes without passing anything back.
  */
-async function uploadAssetsAndRewriteContent({ siteDir, siteContent, backendUrl, cliToken, siteId }) {
+async function uploadAssetsAndRewriteContent({ siteDir, siteContent, siteYml, theme, backendUrl, cliToken, siteId }) {
   const distAssetsDir = join(siteDir, 'dist', 'assets')
-  if (!existsSync(distAssetsDir)) {
-    say.dim('No dist/assets — skipping asset pipeline.')
-    return
-  }
+  const hasDistAssets = existsSync(distAssetsDir)
 
   // 1. Enumerate local files + read size.
-  const localFiles = await walkAssetDir(distAssetsDir)
+  const localFiles = hasDistAssets ? await walkAssetDir(distAssetsDir) : []
+
+  // 1a. Favicon — sits at site root, not in dist/assets. Ship it through
+  //     the same pipeline so it ends up at assets.uniweb.app with an
+  //     identifier; config.favicon gets set further down.
+  const faviconPath = await detectFavicon(siteDir, siteYml)
+  if (faviconPath) {
+    const ext = (faviconPath.split('.').pop() || '').toLowerCase()
+    const st = await stat(faviconPath)
+    localFiles.push({
+      filename: faviconPath.split(sep).pop(),
+      fullPath: faviconPath,
+      size: st.size,
+      mime: MIME_BY_EXT[ext] || 'application/octet-stream',
+    })
+  }
+
+  // 1b. Custom fonts — scan public/fonts/<family>/<weight>-<style>.{woff,woff2}
+  //     filtered to families actually referenced by theme slots. Each file
+  //     enters the same upload pipeline; faces[] with CDN URLs is assembled
+  //     below after identifiers are known.
+  const fontFiles = theme?.fonts?.faces
+    ? [] // User declared faces manually — skip auto-scan
+    : await discoverUsedFonts(siteDir, theme)
+  for (const f of fontFiles) {
+    localFiles.push({
+      filename: f.filename,
+      fullPath: f.fullPath,
+      size: f.size,
+      mime: MIME_BY_EXT[(f.filename.split('.').pop() || '').toLowerCase()] || 'application/octet-stream',
+    })
+  }
+
   if (localFiles.length === 0) {
-    say.dim('dist/assets is empty — skipping asset pipeline.')
+    say.dim('No assets to upload.')
     return
   }
 
@@ -574,6 +667,43 @@ async function uploadAssetsAndRewriteContent({ siteDir, siteContent, backendUrl,
   if (rewritten > 0) {
     say.dim(`Rewrote ${rewritten} asset reference(s) in site content.`)
   }
+
+  // 7. If a favicon was included above, inject its resolved CDN URL into
+  //    siteContent.config.favicon. Matches how Editor publish composes the
+  //    payload; Worker bakes <link rel="icon"> from this field.
+  if (faviconPath) {
+    const favName = faviconPath.split(sep).pop()
+    const favIdentifier = byFilenameAll.get(favName)
+    if (favIdentifier) {
+      const faviconUrl = resolveAssetCdnUrl(favIdentifier)
+      siteContent.config = { ...(siteContent.config || {}), favicon: faviconUrl }
+      say.dim(`Favicon: ${favName}`)
+    }
+  }
+
+  // 8. Assemble theme.fonts.faces from uploaded font files. Replaces the
+  //    local /fonts/... src with the CDN URL for each identifier. Mirrors
+  //    unicloud's scanFontDirectory → faces[] shape so @uniweb/theming
+  //    emits @font-face + preload links without any other changes.
+  if (fontFiles.length > 0) {
+    const faces = []
+    for (const f of fontFiles) {
+      const identifier = byFilenameAll.get(f.filename)
+      if (!identifier) continue
+      faces.push({
+        family: f.family,
+        src: resolveAssetCdnUrl(identifier),
+        weight: f.weight,
+        style: f.style,
+        format: f.format,
+      })
+    }
+    if (faces.length > 0) {
+      theme.fonts = { ...(theme.fonts || {}), faces }
+      const families = [...new Set(faces.map((x) => x.family))].join(', ')
+      say.dim(`Fonts: ${faces.length} face(s) across ${families}`)
+    }
+  }
 }
 
 async function walkAssetDir(dir) {
@@ -581,9 +711,13 @@ async function walkAssetDir(dir) {
   const entries = await readdir(dir, { withFileTypes: true, recursive: true })
   for (const entry of entries) {
     if (!entry.isFile()) continue
+    const ext = (entry.name.split('.').pop() || '').toLowerCase()
+    // Only upload media. JS/CSS/JSON/map files in dist/assets/ are Vite's
+    // build output — the Worker serves the site via runtime/{version}/ +
+    // content injection, not from these chunks.
+    if (!MEDIA_EXTENSIONS.has(ext)) continue
     const fullPath = join(entry.parentPath || entry.path, entry.name)
     const st = await stat(fullPath)
-    const ext = (entry.name.split('.').pop() || '').toLowerCase()
     out.push({
       filename: entry.name,
       fullPath,
@@ -592,6 +726,138 @@ async function walkAssetDir(dir) {
     })
   }
   return out
+}
+
+// Detect the site's favicon on disk. Order: explicit `favicon:` in site.yml,
+// then any of favicon.{svg,ico,png,webp} at the site root. Returns null when
+// nothing is found (site serves without a favicon).
+async function detectFavicon(siteDir, siteYml) {
+  if (typeof siteYml?.favicon === 'string' && siteYml.favicon.trim()) {
+    const p = resolve(siteDir, siteYml.favicon.trim())
+    if (existsSync(p)) return p
+    say.warn(`site.yml favicon "${siteYml.favicon}" not found on disk — falling back to auto-detect.`)
+  }
+  // Check both the site root and Vite's public/ directory (public/* is the
+  // source for static assets copied verbatim into dist/ at build time).
+  const dirs = [siteDir, join(siteDir, 'public')]
+  for (const dir of dirs) {
+    for (const name of ['favicon.svg', 'favicon.ico', 'favicon.png', 'favicon.webp']) {
+      const p = join(dir, name)
+      if (existsSync(p)) return p
+    }
+  }
+  return null
+}
+
+// Named weight → CSS numeric weight. Matches unicloud's font-scanner.js so
+// the CLI-deploy path and the local unicloud dev path agree on conventions.
+const FONT_WEIGHT_MAP = {
+  thin: 100, hairline: 100, extralight: 200, ultralight: 200, light: 300,
+  normal: 400, regular: 400, medium: 500, semibold: 600, demibold: 600,
+  bold: 700, extrabold: 800, ultrabold: 800, black: 900, heavy: 900,
+}
+
+// Parse "bold-normal.woff2" / "400-italic.woff" style filenames into weight,
+// style, format. Returns null on any unrecognized shape (caller skips the file).
+function parseFontFilename(filename) {
+  const dotIdx = filename.lastIndexOf('.')
+  if (dotIdx === -1) return null
+  const ext = filename.slice(dotIdx + 1).toLowerCase()
+  if (ext !== 'woff' && ext !== 'woff2') return null
+  const format = ext === 'woff2' ? 'woff2' : 'woff'
+  const stem = filename.slice(0, dotIdx)
+  const parts = stem.split('-')
+  if (parts.length < 2) return null
+  const style = parts[parts.length - 1].toLowerCase()
+  if (style !== 'normal' && style !== 'italic') return null
+  const weightPart = parts.slice(0, -1).join('').toLowerCase()
+  const numWeight = parseInt(weightPart, 10)
+  if (!isNaN(numWeight) && numWeight >= 1 && numWeight <= 999) {
+    return { weight: numWeight, style, format }
+  }
+  const mapped = FONT_WEIGHT_MAP[weightPart]
+  if (mapped) return { weight: mapped, style, format }
+  return null
+}
+
+// Extract the set of lowercase family names referenced by theme slots
+// (heading/body/mono and any declared _userSlots). Mirrors
+// @uniweb/theming's extractUsedFamilies — used here to drop font files
+// for families the theme doesn't actually consume, so upload stays lean.
+function extractUsedFontFamilies(theme) {
+  const fonts = theme?.fonts || {}
+  const slots = fonts._userSlots || ['body', 'heading', 'mono']
+  const generic = new Set([
+    'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui',
+    'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded',
+  ])
+  const used = new Set()
+  for (const slot of slots) {
+    const v = fonts[slot]
+    if (typeof v !== 'string') continue
+    for (const seg of v.split(',')) {
+      const n = seg.trim().replace(/^["']|["']$/g, '').toLowerCase()
+      if (n && !generic.has(n)) used.add(n)
+    }
+  }
+  return used
+}
+
+// Scan public/fonts/<family>/<weight>-<style>.{woff,woff2} and return the
+// files belonging to families that the theme actually uses. Returning [] is
+// the normal case for sites that don't ship custom fonts.
+async function discoverUsedFonts(siteDir, theme) {
+  const fontsDir = join(siteDir, 'public', 'fonts')
+  if (!existsSync(fontsDir)) return []
+  const used = extractUsedFontFamilies(theme)
+  if (used.size === 0) return []
+
+  let familyDirs
+  try {
+    familyDirs = await readdir(fontsDir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+
+  const out = []
+  for (const entry of familyDirs) {
+    if (!entry.isDirectory()) continue
+    const family = entry.name.toLowerCase()
+    if (!used.has(family)) continue // Skip unreferenced families.
+    const familyDir = join(fontsDir, entry.name)
+    let files
+    try {
+      files = await readdir(familyDir, { withFileTypes: true })
+    } catch { continue }
+    for (const file of files) {
+      if (!file.isFile()) continue
+      const parsed = parseFontFilename(file.name)
+      if (!parsed) continue
+      const fullPath = join(familyDir, file.name)
+      const st = await stat(fullPath)
+      out.push({
+        filename: file.name,
+        fullPath,
+        size: st.size,
+        family,
+        weight: parsed.weight,
+        style: parsed.style,
+        format: parsed.format,
+      })
+    }
+  }
+  return out
+}
+
+// Resolve an asset identifier ({uuid}/{filename}) to the canonical CDN URL.
+// Mirrors `resolveAssetIdentifier` in @uniweb/semantic-parser so the favicon
+// URL shape matches everything else the Worker sees from Editor publishes.
+function resolveAssetCdnUrl(identifier) {
+  if (!identifier || typeof identifier !== 'string') return ''
+  const [uuid, filename] = identifier.split('/')
+  if (!filename) return ''
+  const ext = filename.substring(filename.lastIndexOf('.') + 1)
+  return `https://assets.uniweb.app/dist/${uuid}/base.${ext}`
 }
 
 async function callAssetsAction({ backendUrl, cliToken, action, body }) {
@@ -673,7 +939,9 @@ function rewriteAssetReferences(node, byFilename) {
     if (!n || typeof n !== 'object') return
     if (Array.isArray(n)) { for (const child of n) walk(child); return }
     if (n.attrs && typeof n.attrs === 'object') {
-      const ref = pickAssetRef(n.attrs.src) || pickAssetRef(n.attrs.href)
+      const srcRef = pickAssetRef(n.attrs.src)
+      const hrefRef = pickAssetRef(n.attrs.href)
+      const ref = srcRef || hrefRef
       if (ref) {
         const identifier = byFilename.get(ref)
         if (identifier) {
@@ -682,6 +950,17 @@ function rewriteAssetReferences(node, byFilename) {
             identifier,
             contentType: 'website',
             viewType: 'profile',
+          }
+          // Clear the local Vite-hashed path so the runtime resolves via
+          // info.identifier (→ assets.uniweb.app CDN) instead of requesting
+          // a non-existent /assets/... file from the site host.
+          if (srcRef) n.attrs.src = null
+          if (hrefRef) n.attrs.href = null
+          // Match the Editor shape: plain `image` nodes skip identifier
+          // resolution in older runtimes; `ImageBlock` routes through
+          // parseImgBlock which reads info.identifier and fills url.
+          if (n.type === 'image' && n.attrs.role !== 'icon') {
+            n.type = 'ImageBlock'
           }
           count++
         }
