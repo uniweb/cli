@@ -132,16 +132,14 @@ export async function deploy(args = []) {
 
   const cliToken = await ensureAuth({ command: 'Deploying' })
 
-  // Ensure dist/ is present. Phase 1 just uses site-content.json — binary
-  // assets under dist/assets/* aren't uploaded yet.
+  // Always rebuild unless the user explicitly opts out with --skip-build.
+  // A stale dist/ from a previous build + edited content on disk would
+  // otherwise silently ship yesterday's version — a footgun big enough
+  // to warrant the extra seconds every deploy.
   const distDir = join(siteDir, 'dist')
   const contentPath = join(distDir, 'site-content.json')
-  if (!existsSync(contentPath)) {
-    if (skipBuild) {
-      say.err('No build found and --skip-build passed. Run `uniweb build` first.')
-      process.exit(1)
-    }
-    say.warn('No build found. Building site…')
+  if (!skipBuild) {
+    say.info('Building site…')
     console.log('')
     // Force runtime mode for CLI deploys — site.yml's `@ns/name@version`
     // foundation ref isn't a real package path, so bundled mode's Vite
@@ -153,10 +151,13 @@ export async function deploy(args = []) {
       env: { ...process.env, VITE_FOUNDATION_MODE: 'runtime' },
     })
     console.log('')
-    if (!existsSync(contentPath)) {
-      say.err('Build did not produce dist/site-content.json')
-      process.exit(1)
-    }
+  } else if (!existsSync(contentPath)) {
+    say.err('No build found and --skip-build passed. Run `uniweb build` first.')
+    process.exit(1)
+  }
+  if (!existsSync(contentPath)) {
+    say.err('Build did not produce dist/site-content.json')
+    process.exit(1)
   }
 
   // Read site-content.json — we need `languages` for the capability preview
@@ -187,36 +188,68 @@ export async function deploy(args = []) {
   let publishToken, siteIdResolved, handleResolved, publishUrl, validateUrl
   try {
     say.info('Requesting deploy authorization…')
-    const authRes = await callAuthorize({
-      backendUrl,
-      cliToken,
-      body: {
-        siteId: siteYml.site?.id || '',
-        foundation,
-        runtimeVersion,
-        languages,
-        // `name` from site.yml is a hint for the create-flow review page so
-        // the handle input is pre-filled. Ignored by authorize in other
-        // branches (fast path, intent=authorize).
-        name: typeof siteYml.name === 'string' ? siteYml.name : '',
-        callbackUrl: loopback.callbackUrl,
-        // Dev-only: admin-gated server-side. PHP rejects for non-admins.
-        skipBilling: skipBilling || undefined,
-      },
-    })
+    const authorizeBody = {
+      siteId: siteYml.site?.id || '',
+      foundation,
+      runtimeVersion,
+      languages,
+      // `name` from site.yml is a hint for the create-flow review page so
+      // the handle input is pre-filled. Ignored by authorize in other
+      // branches (fast path, intent=authorize).
+      name: typeof siteYml.name === 'string' ? siteYml.name : '',
+      callbackUrl: loopback.callbackUrl,
+      // Dev-only: admin-gated server-side. PHP rejects for non-admins.
+      skipBilling: skipBilling || undefined,
+    }
+    let authRes
+    try {
+      authRes = await callAuthorize({ backendUrl, cliToken, body: authorizeBody })
+    } catch (err) {
+      // Stale-siteId recovery: the user's site.yml points at a site that
+      // no longer exists on the server (deleted, different env, etc.).
+      // Warn, drop the siteId, and retry — we'll land in the create flow
+      // and write a fresh site.id back to site.yml after success.
+      if (err.status === 404 && authorizeBody.siteId) {
+        say.warn(`site.id "${authorizeBody.siteId}" was not found on the server.`)
+        say.dim('Treating as a new site — the create flow will run in your browser.')
+        authorizeBody.siteId = ''
+        authRes = await callAuthorize({ backendUrl, cliToken, body: authorizeBody })
+      } else {
+        say.err(`Authorize failed: ${err.message}`)
+        process.exit(1)
+      }
+    }
 
     if (authRes.needsReview) {
-      say.info(`Opening browser for ${authRes.intent === 'create' ? 'site creation' : 'review'}…`)
+      const flowLabel = authRes.intent === 'create' ? 'site creation' : 'review'
+      // openBrowser returns a hint about whether a GUI was available. On
+      // headless/CI environments (no DISPLAY, SSH session, no browser
+      // command), we print the URL + clear instructions instead of just
+      // "timed out" 15 minutes later.
+      say.info(`Opening browser for ${flowLabel}…`)
       say.dim(authRes.reviewUrl)
-      await openBrowser(authRes.reviewUrl)
+      const opened = await openBrowser(authRes.reviewUrl)
       console.log('')
-      console.log(`${c.dim}Awaiting authorization in your browser…${c.reset}`)
+      if (opened === false) {
+        say.warn('No browser could be launched in this environment.')
+        console.log(`${c.dim}Open this URL manually to complete the ${flowLabel}:${c.reset}`)
+        console.log(`  ${authRes.reviewUrl}`)
+        console.log('')
+        console.log(`${c.dim}The browser must be able to POST to this CLI's loopback listener:${c.reset}`)
+        console.log(`  ${loopback.callbackUrl}`)
+        console.log(`${c.dim}If you're in CI or over SSH, run this deploy from a machine with a browser.${c.reset}`)
+        console.log('')
+      }
+      console.log(`${c.dim}Awaiting authorization…${c.reset}`)
       console.log(`${c.dim}(Will time out after ${REVIEW_TIMEOUT_MS / 60000} minutes)${c.reset}`)
       console.log('')
 
       const cb = await loopback.waitForCallback(REVIEW_TIMEOUT_MS)
       if (!cb || !cb.publishToken) {
         say.err('Browser authorization timed out or was denied.')
+        if (opened === false) {
+          say.dim('Hint: the browser may have run on a different machine and couldn\'t reach this CLI\'s loopback.')
+        }
         process.exit(1)
       }
       publishToken = cb.publishToken
@@ -437,9 +470,12 @@ async function callAuthorize({ backendUrl, cliToken, body }) {
   }
 
   if (!res.ok) {
-    const msg = parsed?.error || `HTTP ${res.status}`
-    say.err(`Authorize failed: ${msg}`)
-    process.exit(1)
+    // Throw a structured error so the caller can branch — 404 on a known
+    // siteId means "site.yml is stale, fall back to create flow" rather
+    // than "hard fail". Other statuses remain fatal to the caller.
+    const err = new Error(parsed?.error || `HTTP ${res.status}`)
+    err.status = res.status
+    throw err
   }
 
   // The controller returns `data` wrapped by BaseController — unwrap if so.
@@ -533,7 +569,7 @@ async function uploadAssetsAndRewriteContent({ siteDir, siteContent, siteYml, th
       filename: f.filename,
       fullPath: f.fullPath,
       size: f.size,
-      mime: MIME_BY_EXT[(f.filename.split('.').pop() || '').toLowerCase()] || 'font/woff2',
+      mime: MIME_BY_EXT[(f.filename.split('.').pop() || '').toLowerCase()] || 'application/octet-stream',
     })
   }
 
