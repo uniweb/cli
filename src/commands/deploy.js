@@ -141,14 +141,14 @@ export async function deploy(args = []) {
   if (!skipBuild) {
     say.info('Building site…')
     console.log('')
-    // Force runtime mode for CLI deploys — site.yml's `@ns/name@version`
-    // foundation ref isn't a real package path, so bundled mode's Vite
-    // resolver would fail on `#foundation/styles`. CLI deploys are always
-    // link-mode (per plan §1); this env var makes that explicit to the build.
+    // No VITE_FOUNDATION_MODE override needed: @uniweb/build's
+    // detectFoundationType recognizes `@ns/name@version` refs as
+    // link-mode URLs, which auto-enters runtime mode. Prerender also
+    // auto-skips for link-mode foundations (HTML is rendered on the
+    // serving edge, not here).
     execSync('npx uniweb build', {
       cwd: siteDir,
       stdio: 'inherit',
-      env: { ...process.env, VITE_FOUNDATION_MODE: 'runtime' },
     })
     console.log('')
   } else if (!existsSync(contentPath)) {
