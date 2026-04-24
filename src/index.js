@@ -850,6 +850,7 @@ ${colors.bright}Template Options:${colors.reset}
 ${colors.bright}Deploy Options:${colors.reset}
   --dry-run          Resolve site.yml + foundation/runtime but skip the Worker POST
   --skip-build       Don't rebuild, use existing dist/ as-is
+  --skip-assets      Skip binary asset upload (content-only deploy)
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified
