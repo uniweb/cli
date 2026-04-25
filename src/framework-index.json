@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-04-23T17:16:28.977Z",
+  "generatedAt": "2026-04-25T19:10:07.878Z",
   "packages": {
     "@uniweb/build": {
-      "version": "0.10.3",
+      "version": "0.11.2",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -14,17 +14,17 @@
       ]
     },
     "@uniweb/content-reader": {
-      "version": "1.1.4",
+      "version": "1.1.5",
       "path": "framework/content-reader",
       "deps": []
     },
     "@uniweb/content-writer": {
-      "version": "0.2.3",
+      "version": "0.2.4",
       "path": "framework/content-writer",
       "deps": []
     },
     "@uniweb/core": {
-      "version": "0.7.2",
+      "version": "0.7.3",
       "path": "framework/core",
       "deps": [
         "@uniweb/semantic-parser",
@@ -42,7 +42,7 @@
       "deps": []
     },
     "@uniweb/kit": {
-      "version": "0.9.2",
+      "version": "0.9.3",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core"
@@ -54,12 +54,12 @@
       "deps": []
     },
     "@uniweb/press": {
-      "version": "0.3.1",
+      "version": "0.4.1",
       "path": "framework/press",
       "deps": []
     },
     "@uniweb/runtime": {
-      "version": "0.8.3",
+      "version": "0.8.4",
       "path": "framework/runtime",
       "deps": [
         "@uniweb/core",
@@ -72,12 +72,12 @@
       "deps": []
     },
     "@uniweb/scholar": {
-      "version": "0.2.1",
+      "version": "0.2.2",
       "path": "framework/scholar",
       "deps": []
     },
     "@uniweb/semantic-parser": {
-      "version": "1.1.10",
+      "version": "1.1.11",
       "path": "framework/semantic-parser",
       "deps": []
     },
@@ -90,6 +90,17 @@
       "version": "0.1.3",
       "path": "framework/theming",
       "deps": []
+    },
+    "@uniweb/unipress": {
+      "version": "0.2.1",
+      "path": "framework/unipress",
+      "deps": [
+        "@uniweb/build",
+        "@uniweb/content-reader",
+        "@uniweb/core",
+        "@uniweb/runtime",
+        "@uniweb/semantic-parser"
+      ]
     }
   },
   "templates": {
