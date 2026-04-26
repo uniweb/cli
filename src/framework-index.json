@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-04-25T19:10:07.878Z",
+  "generatedAt": "2026-04-26T20:11:49.324Z",
   "packages": {
     "@uniweb/build": {
-      "version": "0.11.2",
+      "version": "0.11.3",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -14,7 +14,7 @@
       ]
     },
     "@uniweb/content-reader": {
-      "version": "1.1.5",
+      "version": "1.1.6",
       "path": "framework/content-reader",
       "deps": []
     },
@@ -24,7 +24,7 @@
       "deps": []
     },
     "@uniweb/core": {
-      "version": "0.7.3",
+      "version": "0.7.4",
       "path": "framework/core",
       "deps": [
         "@uniweb/semantic-parser",
@@ -42,7 +42,7 @@
       "deps": []
     },
     "@uniweb/kit": {
-      "version": "0.9.3",
+      "version": "0.9.4",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core"
@@ -54,12 +54,12 @@
       "deps": []
     },
     "@uniweb/press": {
-      "version": "0.4.1",
+      "version": "0.4.2",
       "path": "framework/press",
       "deps": []
     },
     "@uniweb/runtime": {
-      "version": "0.8.4",
+      "version": "0.8.5",
       "path": "framework/runtime",
       "deps": [
         "@uniweb/core",
@@ -77,12 +77,12 @@
       "deps": []
     },
     "@uniweb/semantic-parser": {
-      "version": "1.1.11",
+      "version": "1.1.12",
       "path": "framework/semantic-parser",
       "deps": []
     },
     "@uniweb/templates": {
-      "version": "0.7.34",
+      "version": "0.7.35",
       "path": "framework/templates",
       "deps": []
     },
@@ -92,7 +92,7 @@
       "deps": []
     },
     "@uniweb/unipress": {
-      "version": "0.2.1",
+      "version": "0.2.3",
       "path": "framework/unipress",
       "deps": [
         "@uniweb/build",
