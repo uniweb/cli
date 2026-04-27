@@ -167,6 +167,22 @@ export async function deploy(args = []) {
   const defaultLanguage = siteContent?.config?.defaultLanguage || languages[0] || 'en'
   const theme = await readTheme(siteDir, siteContent)
 
+  // Multi-locale: @uniweb/build emits dist/<lang>/site-content.json per
+  // non-default locale via buildLocalizedContent (translations applied via
+  // locales/<lang>.json + freeform/). Load each one so we can ship a full
+  // locales: map in the publish payload — same shape as Editor publish.
+  // Single-locale sites just have the default and skip the loop.
+  const localeContents = { [defaultLanguage]: siteContent }
+  for (const lang of languages) {
+    if (lang === defaultLanguage) continue
+    const localeContentPath = join(distDir, lang, 'site-content.json')
+    if (existsSync(localeContentPath)) {
+      localeContents[lang] = JSON.parse(await readFile(localeContentPath, 'utf8'))
+    } else {
+      say.warn(`Locale "${lang}" listed in site config but no dist/${lang}/site-content.json found — skipping.`)
+    }
+  }
+
   if (dryRun) {
     say.info('Dry run — showing what would be deployed:')
     say.dim(`Site dir       : ${siteDir}`)
@@ -286,14 +302,16 @@ export async function deploy(args = []) {
     process.exit(1)
   }
 
-  // Asset pipeline — upload dist/assets/* to S3, rewrite siteContent to use
-  // identifier-based references so semantic-parser resolves CDN URLs (+
-  // optimized variants) at render time. Skipped with --skip-assets.
-  // Mutates siteContent in place: image/document nodes get info.identifier.
+  // Asset pipeline — upload dist/assets/* + favicon + fonts to S3, then
+  // rewrite each locale's siteContent so semantic-parser resolves CDN URLs
+  // at render time. Assets themselves are locale-shared (they live in
+  // dist/assets/ regardless of language), so the diff/upload runs once
+  // and the rewrite walks every locale's content tree in localeContents.
+  // Skipped with --skip-assets.
   if (!skipAssets) {
     await uploadAssetsAndRewriteContent({
       siteDir,
-      siteContent,
+      localeContents,
       siteYml,
       theme,
       backendUrl,
@@ -311,9 +329,10 @@ export async function deploy(args = []) {
     theme,
     languages,
     defaultLanguage,
-    // Phase 1 single-locale wraps the content under the active locale. Multi-
-    // locale CLI deploy needs per-locale collection (deferred — see plan §6).
-    locales: { [defaultLanguage]: siteContent },
+    // Same shape as Editor publish — one entry per language. Single-locale
+    // sites end up with `{ [defaultLanguage]: siteContent }`; multi-locale
+    // sites carry per-locale translated content emitted by buildLocalizedContent.
+    locales: localeContents,
   }
   await callPublish({ url: publishUrl, token: publishToken, body: publishPayload })
 
@@ -535,7 +554,7 @@ async function callPublish({ url, token, body }) {
  * siteContent is mutated in place so the caller's publish payload picks up
  * the rewritten nodes without passing anything back.
  */
-async function uploadAssetsAndRewriteContent({ siteDir, siteContent, siteYml, theme, backendUrl, cliToken, siteId }) {
+async function uploadAssetsAndRewriteContent({ siteDir, localeContents, siteYml, theme, backendUrl, cliToken, siteId }) {
   const distAssetsDir = join(siteDir, 'dist', 'assets')
   const hasDistAssets = existsSync(distAssetsDir)
 
@@ -659,24 +678,32 @@ async function uploadAssetsAndRewriteContent({ siteDir, siteContent, siteYml, th
     for (const u of confirmed) fresh.set(u.filename, u.identifier)
   }
 
-  // 6. Rewrite siteContent in place. Each image/document node whose
-  //    src/href references a local /assets/{filename} gets an info.identifier
-  //    pointing to the uploaded (or reused) asset.
+  // 6. Rewrite each locale's content in place. Image/document nodes whose
+  //    src/href references a local /assets/{filename} get an info.identifier
+  //    pointing to the uploaded (or reused) asset. Walking every locale
+  //    means translated content (which still references the same image
+  //    files via the source ProseMirror tree) gets the same rewrite.
   const byFilenameAll = new Map([...reused, ...fresh])
-  const rewritten = rewriteAssetReferences(siteContent, byFilenameAll)
+  let rewritten = 0
+  for (const lang of Object.keys(localeContents)) {
+    rewritten += rewriteAssetReferences(localeContents[lang], byFilenameAll)
+  }
   if (rewritten > 0) {
-    say.dim(`Rewrote ${rewritten} asset reference(s) in site content.`)
+    say.dim(`Rewrote ${rewritten} asset reference(s) across ${Object.keys(localeContents).length} locale(s).`)
   }
 
   // 7. If a favicon was included above, inject its resolved CDN URL into
-  //    siteContent.config.favicon. Matches how Editor publish composes the
-  //    payload; Worker bakes <link rel="icon"> from this field.
+  //    every locale's config.favicon. Matches Editor publish (which sets
+  //    favicon per-locale); Worker bakes <link rel="icon"> from the active
+  //    locale's content.config.favicon.
   if (faviconPath) {
     const favName = faviconPath.split(sep).pop()
     const favIdentifier = byFilenameAll.get(favName)
     if (favIdentifier) {
       const faviconUrl = resolveAssetCdnUrl(favIdentifier)
-      siteContent.config = { ...(siteContent.config || {}), favicon: faviconUrl }
+      for (const lang of Object.keys(localeContents)) {
+        localeContents[lang].config = { ...(localeContents[lang].config || {}), favicon: faviconUrl }
+      }
       say.dim(`Favicon: ${favName}`)
     }
   }
