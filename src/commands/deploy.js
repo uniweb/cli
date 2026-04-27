@@ -526,8 +526,8 @@ async function fetchLatestRuntime(workerUrl) {
 function extractLanguages(siteContent) {
   const langs = siteContent?.config?.languages
   if (!Array.isArray(langs) || langs.length === 0) return ['en']
-  // Editor-shape `[{ value, label }]` vs plain `[string]`.
-  return langs.map((l) => (typeof l === 'string' ? l : l?.value)).filter(Boolean)
+  // Three accepted shapes: plain `'en'`, Editor `{ value, label }`, site.yml `{ code, label }`.
+  return langs.map((l) => (typeof l === 'string' ? l : l?.value || l?.code)).filter(Boolean)
 }
 
 /**
