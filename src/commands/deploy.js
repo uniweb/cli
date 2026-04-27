@@ -232,8 +232,9 @@ export async function deploy(args = []) {
       skipBilling: skipBilling || undefined,
       // site.yml-declared target feature set. PHP routes through review
       // (with the desired set pre-applied) when it differs from DB.
-      // Omitted when site.yml has no `features:` block — back-compat.
-      desiredFeatures: desiredFeatures || undefined,
+      // Always sent as an array; missing/empty `features:` in site.yml
+      // is normalized to `[]`, meaning "no paid features".
+      desiredFeatures,
       // User-forced review (`uniweb deploy --review`). PHP refuses to
       // fast-path even when nothing else has drifted.
       forceReview: forceReview || undefined,
@@ -365,32 +366,29 @@ export async function deploy(args = []) {
   // Write site.id / site.handle / features back to site.yml so the file
   // stays in sync with the live billing state. site.id and site.handle
   // are written on first deploy and any time the server-side handle drifts.
-  // `features:` is only written when the user already declared it in
-  // site.yml OR when a Stripe-billed change was just minted (server
-  // returns the live set in `mintedFeatures`) — keeps the file clean for
-  // free-tier users who never opted in to declarative features.
+  // `features:` is rewritten whenever the live (server-confirmed) set
+  // differs from what's declared — including the case where the user
+  // declared `[]` and the live set is `[]` (no diff, no write).
   const siteIdChanged = !!siteIdResolved && !siteYml.site?.id
   const handleChanged = !!siteIdResolved && !!handleResolved && siteYml.site?.handle !== handleResolved
-  const featuresAlreadyDeclared = Array.isArray(siteYml.features)
-  const featuresChanged = mintedFeatures !== null && featuresAlreadyDeclared
-    && !arrayEqualsAsSets(siteYml.features, mintedFeatures)
-  // First deploy with paid features: PHP returned a non-empty set we
-  // should record so the next deploy fast-paths against a tracked state.
-  const firstPaidDeploy = mintedFeatures !== null && !featuresAlreadyDeclared
-    && mintedFeatures.length > 0
+  // desiredFeatures is what we sent to PHP (the simplified model: missing
+  // == empty), so comparing mintedFeatures against it tells us whether
+  // the file needs updating. Skip the write when nothing changed.
+  const featuresChanged = mintedFeatures !== null
+    && !arrayEqualsAsSets(desiredFeatures, mintedFeatures)
 
-  if (siteIdChanged || handleChanged || featuresChanged || firstPaidDeploy) {
+  if (siteIdChanged || handleChanged || featuresChanged) {
     const updates = {}
     if (siteIdChanged || handleChanged) {
       updates.site = { id: siteIdResolved, handle: handleResolved }
     }
-    if (featuresChanged || firstPaidDeploy) {
+    if (featuresChanged) {
       updates.features = mintedFeatures
     }
     await writeSiteYmlUpdates(siteYmlPath, siteYml, updates)
     if (siteIdChanged) say.dim(`Linked site.yml to site.id=${siteIdResolved}`)
     else if (handleChanged) say.dim(`Updated site.yml handle → ${handleResolved}`)
-    if (featuresChanged || firstPaidDeploy) {
+    if (featuresChanged) {
       say.dim(`Updated site.yml features → [${mintedFeatures.join(', ') || '(none)'}]`)
     }
   }
@@ -421,8 +419,19 @@ async function readSiteYml(path) {
 const KNOWN_FEATURES = new Set(['search', 'analytics', 'lowTtl', 'intelligence'])
 
 function readFeaturesFromYaml(siteYml) {
+  // site.yml's `features:` is the developer's declarative intent for what
+  // paid features they want billed. We treat absence and `features: []` as
+  // the same thing — both mean "no paid features". This keeps the model
+  // simple: what's in the file is what the user wants. No "no opinion"
+  // escape hatch. Legacy sites that have paid features in DB but no
+  // features: line yet will see a downgrade-review on their next deploy
+  // (they cancel and add the explicit list, or proceed and downgrade).
   const raw = siteYml?.features
-  if (!Array.isArray(raw)) return null
+  if (raw === undefined) return []
+  if (!Array.isArray(raw)) {
+    say.warn('site.yml `features:` should be a list (e.g. `features: [search]`). Treating as empty.')
+    return []
+  }
   const valid = []
   const unknown = []
   for (const v of raw) {
