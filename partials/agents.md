@@ -1316,6 +1316,8 @@ import LessonHeader from '../../components/LessonHeader'
 
 Within the same directory (e.g., one component importing a sibling), use normal relative imports (`./AIFeedbackCard`).
 
+**Foundation entry shape (`src/foundation.js`).** A single `export default { … }` whose top-level keys are the capabilities the foundation provides — e.g. `name`, `description`, `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers`. Optionally a named `vars` export for theme-variable metadata (see *Foundation variables*). Everything else (section types, layouts) is auto-discovered from `src/sections/` and `src/layouts/` and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in the produced `dist/foundation.js`; you don't write that wrapper yourself, and most foundation code never sees it. The one place it matters: when you import your **own** `src/foundation.js` from a foundation component (e.g., a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
+
 ### Website and Page APIs
 
 ```jsx
