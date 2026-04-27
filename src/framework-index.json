@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-04-26T23:45:14.666Z",
+  "generatedAt": "2026-04-27T02:34:44.099Z",
   "packages": {
     "@uniweb/build": {
-      "version": "0.11.4",
+      "version": "0.11.5",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -24,7 +24,7 @@
       "deps": []
     },
     "@uniweb/core": {
-      "version": "0.7.5",
+      "version": "0.7.6",
       "path": "framework/core",
       "deps": [
         "@uniweb/semantic-parser",
@@ -42,7 +42,7 @@
       "deps": []
     },
     "@uniweb/kit": {
-      "version": "0.9.5",
+      "version": "0.9.6",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core"
@@ -54,12 +54,12 @@
       "deps": []
     },
     "@uniweb/press": {
-      "version": "0.4.2",
+      "version": "0.4.3",
       "path": "framework/press",
       "deps": []
     },
     "@uniweb/runtime": {
-      "version": "0.8.6",
+      "version": "0.8.7",
       "path": "framework/runtime",
       "deps": [
         "@uniweb/core",
@@ -77,7 +77,7 @@
       "deps": []
     },
     "@uniweb/semantic-parser": {
-      "version": "1.1.13",
+      "version": "1.1.14",
       "path": "framework/semantic-parser",
       "deps": []
     },
@@ -92,7 +92,7 @@
       "deps": []
     },
     "@uniweb/unipress": {
-      "version": "0.2.4",
+      "version": "0.2.5",
       "path": "framework/unipress",
       "deps": [
         "@uniweb/build",
@@ -223,6 +223,20 @@
         "members",
         "aggregate",
         "academic"
+      ]
+    },
+    "business-docs": {
+      "name": "Business documents",
+      "description": "A complete business-document site: invoice and SOW collections, per-record preview pages, and a filtered engagement report with XLSX export. Built on @uniweb/business-docs and demonstrates the same foundation that ships the unipress invoice template.",
+      "tags": [
+        "business-docs",
+        "invoice",
+        "sow",
+        "report",
+        "press",
+        "xlsx",
+        "docx",
+        "pagedjs"
       ]
     }
   }
