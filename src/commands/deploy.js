@@ -38,7 +38,7 @@
 import { createServer } from 'node:http'
 import { existsSync } from 'node:fs'
 import { readFile, writeFile, readdir, stat } from 'node:fs/promises'
-import { resolve, join, basename, sep } from 'node:path'
+import { resolve, join, basename, relative, sep } from 'node:path'
 import { execSync } from 'node:child_process'
 import yaml from 'js-yaml'
 
@@ -178,6 +178,7 @@ export async function deploy(args = []) {
   // and the whole object for the publish payload.
   const siteContent = JSON.parse(await readFile(contentPath, 'utf8'))
   const languages = extractLanguages(siteContent)
+  const languageLabels = extractLanguageLabels(siteContent)
   const defaultLanguage = siteContent?.config?.defaultLanguage || languages[0] || 'en'
   const theme = await readTheme(siteDir, siteContent)
 
@@ -223,6 +224,11 @@ export async function deploy(args = []) {
       foundation,
       runtimeVersion,
       languages,
+      // Optional `{ code: label }` map from site.yml's object-form
+      // languages. PHP stamps this into the session JWT so CliDeployReview
+      // can use real labels (English, Français, …) when provisioning the
+      // site, instead of falling back to `lang.toUpperCase()`.
+      ...(languageLabels ? { languageLabels } : {}),
       // `name` from site.yml is a hint for the create-flow review page so
       // the handle input is pre-filled. Ignored by authorize in other
       // branches (fast path, intent=authorize).
@@ -312,6 +318,20 @@ export async function deploy(args = []) {
     loopback.close()
   }
 
+  // Write site.id / handle to site.yml AS SOON as we have them, before any
+  // step that can fail (validate, asset upload, publish). On first deploy
+  // the user has already paid by this point — losing the link to the
+  // server's site row would force a duplicate-create on the next attempt
+  // (and a second subscription). The features write happens later after
+  // publish; this early write only covers id/handle.
+  if (siteIdResolved && !siteYml.site?.id) {
+    await writeSiteYmlUpdates(siteYmlPath, siteYml, {
+      site: { id: siteIdResolved, handle: handleResolved },
+    })
+    siteYml.site = { ...(siteYml.site || {}), id: siteIdResolved, handle: handleResolved }
+    say.dim(`Linked site.yml to site.id=${siteIdResolved}`)
+  }
+
   // Pre-flight against the Worker. Surfaces "foundation not published" /
   // "runtime not found" / namespace mismatch BEFORE we ship content.
   say.info('Validating foundation + runtime…')
@@ -349,6 +369,16 @@ export async function deploy(args = []) {
     say.dim('Skipping asset upload (--skip-assets).')
   }
 
+  // Collect compiled collection JSON files from dist/data/. The framework
+  // emits these for `collection:` data sources — `<name>.json` cascade
+  // payloads plus per-record `<name>/<slug>.json` files when `deferred:` is
+  // declared. Editor publish has no equivalent (collections live in the DB);
+  // CLI sites need them shipped as static R2 objects.
+  const dataFiles = await collectDataFiles(distDir)
+  if (Object.keys(dataFiles).length > 0) {
+    say.dim(`Data files     : ${Object.keys(dataFiles).length} (collection JSON)`)
+  }
+
   say.info('Publishing…')
   const publishPayload = {
     foundation,
@@ -356,6 +386,10 @@ export async function deploy(args = []) {
     theme,
     languages,
     defaultLanguage,
+    // Compiled collection JSON files (relative-path → utf8 content). Worker
+    // publish writes each to ${sitePrefix}/data/<key>; worker serve allows
+    // /data/* paths from R2 alongside _pages/*.
+    ...(Object.keys(dataFiles).length > 0 ? { dataFiles } : {}),
     // Same shape as Editor publish — one entry per language. Single-locale
     // sites end up with `{ [defaultLanguage]: siteContent }`; multi-locale
     // sites carry per-locale translated content emitted by buildLocalizedContent.
@@ -528,6 +562,40 @@ function extractLanguages(siteContent) {
   if (!Array.isArray(langs) || langs.length === 0) return ['en']
   // Three accepted shapes: plain `'en'`, Editor `{ value, label }`, site.yml `{ code, label }`.
   return langs.map((l) => (typeof l === 'string' ? l : l?.value || l?.code)).filter(Boolean)
+}
+
+// Collect compiled collection JSON files from dist/data/ recursively.
+// Returns `{ '<relPath>': '<utf8-content>' }` keyed by the path under data/
+// so the worker can write each to `${sitePrefix}/data/<relPath>` in R2.
+// Empty object when the site has no `collection:` data sources.
+async function collectDataFiles(distDir) {
+  const dataDir = join(distDir, 'data')
+  if (!existsSync(dataDir)) return {}
+  const files = {}
+  const entries = await readdir(dataDir, { withFileTypes: true, recursive: true })
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    if (!entry.name.endsWith('.json')) continue
+    const fullPath = join(entry.parentPath || entry.path, entry.name)
+    const relPath = relative(dataDir, fullPath)
+    files[relPath] = await readFile(fullPath, 'utf8')
+  }
+  return files
+}
+
+// Optional per-language labels from site.yml's object form. Returns null when
+// site.yml uses the plain-string form (no labels declared) — server falls back
+// to its own defaults in that case.
+function extractLanguageLabels(siteContent) {
+  const langs = siteContent?.config?.languages
+  if (!Array.isArray(langs)) return null
+  const labels = {}
+  for (const l of langs) {
+    if (typeof l === 'string') continue
+    const code = l?.value || l?.code
+    if (code && l?.label) labels[code] = l.label
+  }
+  return Object.keys(labels).length > 0 ? labels : null
 }
 
 /**
@@ -742,6 +810,7 @@ async function uploadAssetsAndRewriteContent({ siteDir, localeContents, siteYml,
     const failed = []
     await runInPool(queue, ASSET_UPLOAD_CONCURRENCY, async ({ f, plan }) => {
       if (!plan) {
+        say.warn(`Server didn't return an upload plan for ${f.filename} — skipping.`)
         failed.push(f.filename)
         return
       }
@@ -1017,9 +1086,16 @@ async function putToS3WithRetry(file, presigned, maxRetries) {
       const res = await fetch(presigned.url, { method: 'POST', body: form })
       if (res.ok || res.status === 204) return true
       if (res.status >= 500 && attempt < maxRetries) continue
+      // Surface the server's response so failures are diagnosable. S3
+      // returns XML with a useful <Code>/<Message> on rejection (e.g.
+      // AccessDenied + reason); silently retrying without surfacing it
+      // hides real config issues like bucket-permission mismatches.
+      const errBody = await res.text().catch(() => '')
+      say.warn(`Upload of ${file.filename} rejected by S3 (HTTP ${res.status}):\n  ${errBody.slice(0, 500)}`)
       return false
-    } catch {
+    } catch (err) {
       if (attempt < maxRetries) continue
+      say.warn(`Upload of ${file.filename} failed: ${err?.message || err}`)
       return false
     }
   }
