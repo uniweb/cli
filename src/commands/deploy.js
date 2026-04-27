@@ -29,6 +29,8 @@
  *   uniweb deploy --skip-build             Don't rebuild even if dist/ is stale
  *   uniweb deploy --dry-run                Resolve everything but skip the Worker POST
  *   uniweb deploy --skip-billing           Admin-only: bypass billing gate (dev/testing)
+ *   uniweb deploy --review                 Force the browser review path even when
+ *                                          there's no drift (e.g., to change features)
  *
  * See kb/platform/plans/cli-site-deploy-decisions.md for the full design.
  */
@@ -103,6 +105,12 @@ export async function deploy(args = []) {
   const dryRun = args.includes('--dry-run')
   const skipAssets = args.includes('--skip-assets')
   const skipBilling = args.includes('--skip-billing')
+  // --review forces the browser review path even when there's no drift.
+  // Useful for "I want to look at / change my features" without first
+  // having to edit site.yml. The toggles in the review page persist live
+  // to DB, so any change the user makes there ends up in site.yml after
+  // the loopback finalize roundtrip.
+  const forceReview = args.includes('--review')
 
   const siteDir = await resolveSiteDir(args)
   const backendUrl = getBackendUrl()
@@ -129,6 +137,12 @@ export async function deploy(args = []) {
     }
     say.dim(`Runtime: ${runtimeVersion} (latest; pin via \`runtime:\` in site.yml)`)
   }
+
+  // Optional `features:` declaration. Acts as a "request" — CLI sends to
+  // PHP, PHP routes through review when it differs from the site's current
+  // metadata. Unknown names get warned + dropped before sending so a typo
+  // doesn't fail the whole deploy.
+  const desiredFeatures = readFeaturesFromYaml(siteYml)
 
   const cliToken = await ensureAuth({ command: 'Deploying' })
 
@@ -201,7 +215,7 @@ export async function deploy(args = []) {
   // needsReview=true on first deploy / billing drift in future phases).
   const loopback = await startLoopback()
 
-  let publishToken, siteIdResolved, handleResolved, publishUrl, validateUrl
+  let publishToken, siteIdResolved, handleResolved, publishUrl, validateUrl, mintedFeatures
   try {
     say.info('Requesting deploy authorization…')
     const authorizeBody = {
@@ -216,6 +230,13 @@ export async function deploy(args = []) {
       callbackUrl: loopback.callbackUrl,
       // Dev-only: admin-gated server-side. PHP rejects for non-admins.
       skipBilling: skipBilling || undefined,
+      // site.yml-declared target feature set. PHP routes through review
+      // (with the desired set pre-applied) when it differs from DB.
+      // Omitted when site.yml has no `features:` block — back-compat.
+      desiredFeatures: desiredFeatures || undefined,
+      // User-forced review (`uniweb deploy --review`). PHP refuses to
+      // fast-path even when nothing else has drifted.
+      forceReview: forceReview || undefined,
     }
     let authRes
     try {
@@ -271,6 +292,10 @@ export async function deploy(args = []) {
       publishToken = cb.publishToken
       siteIdResolved = cb.siteId
       handleResolved = cb.handle
+      // PHP echoes the live feature set in the loopback callback so the
+      // CLI can write `features:` back into site.yml accurately. Older
+      // PHP that doesn't include this field is a no-op.
+      mintedFeatures = Array.isArray(cb.features) ? cb.features : null
       // Review path: Worker URLs are implicit (we derive them from config).
       publishUrl = `${workerUrl}/api/publish/process`
       validateUrl = `${workerUrl}/api/publish/validate`
@@ -280,6 +305,7 @@ export async function deploy(args = []) {
       handleResolved = authRes.handle
       publishUrl = authRes.publishUrl
       validateUrl = authRes.validateUrl
+      mintedFeatures = Array.isArray(authRes.features) ? authRes.features : null
     }
   } finally {
     loopback.close()
@@ -336,15 +362,37 @@ export async function deploy(args = []) {
   }
   await callPublish({ url: publishUrl, token: publishToken, body: publishPayload })
 
-  // Write site.id / site.handle back to site.yml so next `uniweb deploy`
-  // fast-paths. Only touches the file on first deploy (or when the handle
-  // drifted server-side).
-  if (siteIdResolved && !siteYml.site?.id) {
-    await writeSiteBinding(siteYmlPath, siteYml, { id: siteIdResolved, handle: handleResolved })
-    say.dim(`Linked site.yml to site.id=${siteIdResolved}`)
-  } else if (siteIdResolved && handleResolved && siteYml.site?.handle !== handleResolved) {
-    await writeSiteBinding(siteYmlPath, siteYml, { id: siteIdResolved, handle: handleResolved })
-    say.dim(`Updated site.yml handle → ${handleResolved}`)
+  // Write site.id / site.handle / features back to site.yml so the file
+  // stays in sync with the live billing state. site.id and site.handle
+  // are written on first deploy and any time the server-side handle drifts.
+  // `features:` is only written when the user already declared it in
+  // site.yml OR when a Stripe-billed change was just minted (server
+  // returns the live set in `mintedFeatures`) — keeps the file clean for
+  // free-tier users who never opted in to declarative features.
+  const siteIdChanged = !!siteIdResolved && !siteYml.site?.id
+  const handleChanged = !!siteIdResolved && !!handleResolved && siteYml.site?.handle !== handleResolved
+  const featuresAlreadyDeclared = Array.isArray(siteYml.features)
+  const featuresChanged = mintedFeatures !== null && featuresAlreadyDeclared
+    && !arrayEqualsAsSets(siteYml.features, mintedFeatures)
+  // First deploy with paid features: PHP returned a non-empty set we
+  // should record so the next deploy fast-paths against a tracked state.
+  const firstPaidDeploy = mintedFeatures !== null && !featuresAlreadyDeclared
+    && mintedFeatures.length > 0
+
+  if (siteIdChanged || handleChanged || featuresChanged || firstPaidDeploy) {
+    const updates = {}
+    if (siteIdChanged || handleChanged) {
+      updates.site = { id: siteIdResolved, handle: handleResolved }
+    }
+    if (featuresChanged || firstPaidDeploy) {
+      updates.features = mintedFeatures
+    }
+    await writeSiteYmlUpdates(siteYmlPath, siteYml, updates)
+    if (siteIdChanged) say.dim(`Linked site.yml to site.id=${siteIdResolved}`)
+    else if (handleChanged) say.dim(`Updated site.yml handle → ${handleResolved}`)
+    if (featuresChanged || firstPaidDeploy) {
+      say.dim(`Updated site.yml features → [${mintedFeatures.join(', ') || '(none)'}]`)
+    }
   }
 
   console.log('')
@@ -367,17 +415,51 @@ async function readSiteYml(path) {
   }
 }
 
+// Recognized paid features. `features:` in site.yml uses these short
+// names; the PHP backend maps them to internal metadata flags. Anything
+// else gets dropped with a warning so a typo doesn't block a deploy.
+const KNOWN_FEATURES = new Set(['search', 'analytics', 'lowTtl', 'intelligence'])
+
+function readFeaturesFromYaml(siteYml) {
+  const raw = siteYml?.features
+  if (!Array.isArray(raw)) return null
+  const valid = []
+  const unknown = []
+  for (const v of raw) {
+    if (typeof v !== 'string') continue
+    if (KNOWN_FEATURES.has(v)) valid.push(v)
+    else unknown.push(v)
+  }
+  if (unknown.length > 0) {
+    say.warn(`site.yml features: unknown name(s) ignored: ${unknown.join(', ')}`)
+    say.dim(`Known features: ${[...KNOWN_FEATURES].join(', ')}`)
+  }
+  // Dedupe + stable order so authorize compares the same way every time.
+  return [...new Set(valid)].sort()
+}
+
+function arrayEqualsAsSets(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false
+  if (a.length !== b.length) return false
+  const sa = new Set(a)
+  for (const x of b) if (!sa.has(x)) return false
+  return true
+}
+
 /**
- * Write site.id + site.handle back to site.yml, preserving other fields.
+ * Write a partial set of updates back to site.yml, preserving other fields.
  *
  * Note: this is not a full YAML-preserving write — comments and exact
  * formatting are NOT preserved. js-yaml's `dump` re-emits the document.
  * Acceptable for now; the Phase 1 plan doesn't promise comment preservation.
  */
-async function writeSiteBinding(path, current, binding) {
-  const next = {
-    ...current,
-    site: { ...(current.site || {}), id: binding.id, handle: binding.handle },
+async function writeSiteYmlUpdates(path, current, updates) {
+  const next = { ...current }
+  if (updates.site) {
+    next.site = { ...(current.site || {}), ...updates.site }
+  }
+  if (updates.features !== undefined) {
+    next.features = [...updates.features].sort()
   }
   const dumped = yaml.dump(next, { lineWidth: 120, noRefs: true, quotingType: "'" })
   await writeFile(path, dumped)
