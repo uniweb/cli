@@ -207,11 +207,28 @@ export async function publish(args = []) {
     process.exit(1)
   }
 
-  // 3b. Resolve namespace (priority: --namespace flag > package.json uniweb.namespace > scoped name)
+  // 3b. Resolve namespace.
+  //
+  // Priority order:
+  //   1. --namespace <handle> CLI flag
+  //   2. package.json `uniweb.namespace`
+  //   3. Scope segment of `package.json` `name`             (e.g. "@uniweb/votiverse" → "uniweb")
+  //   4. Scope segment of foundation `src/foundation.js`'s default `name`
+  //      (rare — most foundations export a bare display name like 'votiverse',
+  //      so this rarely matches, but kept for backward compat)
+  //
+  // The package.json scope (#3) is the most natural fallback because npm-style
+  // scoped names already carry the namespace. Foundations that follow the
+  // `@ns/name` convention don't need to repeat themselves with --namespace
+  // or `uniweb.namespace`.
   const pkg = JSON.parse(await readFile(join(foundationDir, 'package.json'), 'utf8'))
   const uniwebNamespace = pkg.uniweb?.namespace
-  const scopedMatch = rawName.match(/^@([a-z0-9_-]+)\//)
-  const namespace = namespaceFlag || uniwebNamespace || scopedMatch?.[1]
+  const pkgScopeMatch = (pkg.name || '').match(/^@([a-z0-9_-]+)\//)
+  const selfScopeMatch = rawName.match(/^@([a-z0-9_-]+)\//)
+  const namespace = namespaceFlag
+    || uniwebNamespace
+    || pkgScopeMatch?.[1]
+    || selfScopeMatch?.[1]
 
   if (!namespace) {
     error('Namespace is required for publishing.')
@@ -219,12 +236,17 @@ export async function publish(args = []) {
     console.log(`  ${colors.dim}Use one of:${colors.reset}`)
     console.log(`    ${colors.cyan}uniweb publish --namespace <org-handle>${colors.reset}`)
     console.log(`    ${colors.dim}Add ${colors.reset}"uniweb": { "namespace": "<org-handle>" }${colors.dim} to package.json${colors.reset}`)
-    console.log(`    ${colors.dim}Or use a scoped name: ${colors.reset}"name": "@org/foundation"${colors.dim} in package.json${colors.reset}`)
+    console.log(`    ${colors.dim}Or use a scoped name in package.json: ${colors.reset}"name": "@org/foundation"${colors.reset}`)
     process.exit(1)
   }
 
-  // Construct scoped name: @namespace/foundationName
-  const foundationName = scopedMatch ? rawName.slice(scopedMatch[0].length) : rawName
+  // Construct scoped name: @namespace/foundationName.
+  // The "name" the registry stores is ALWAYS @namespace/<bare-name>, even
+  // when one of the inputs already had a scope — we strip and re-attach so
+  // a --namespace override can rename the scope.
+  const foundationName = selfScopeMatch
+    ? rawName.slice(selfScopeMatch[0].length)
+    : rawName
   const name = `@${namespace}/${foundationName}`
 
   // 3c. Advisory namespace check (Worker enforces — this is for early UX feedback)

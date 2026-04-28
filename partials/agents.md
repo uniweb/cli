@@ -134,6 +134,51 @@ pnpm preview    # Preview production build (SSG + SPA)
 
 ---
 
+## Foundation runtime policy
+
+(Foundation authors only — sites don't set this.)
+
+When a foundation builds, it pins the `@uniweb/runtime` version it was built against (from its own dependencies) into `dist/runtime-pin.json`. Foundations can also declare a *policy* that controls how the runtime version moves forward on already-published sites:
+
+```json
+// foundation's package.json
+{
+  "name": "@uniweb/votiverse",
+  "version": "0.1.1",
+  "uniweb": {
+    "runtimePolicy": "auto-minor"
+  },
+  "dependencies": {
+    "@uniweb/core": "0.7.8"
+  }
+}
+```
+
+Three valid values:
+
+| Value | Meaning |
+|---|---|
+| `exact` | The site stays on exactly the runtime version this foundation built against. Newer runtime versions are not auto-applied. |
+| `auto-patch` | The site auto-updates within the same `MAJOR.MINOR.x` (e.g. `0.8.9` → `0.8.10`). Conservative; matches typical npm patch semantics. |
+| `auto-minor` | The site auto-updates within the same `MAJOR.x.y` (e.g. `0.8.9` → `0.9.0`). |
+
+**Default when unset:** `auto-minor`. Most foundations don't need to set this field — the platform's runtime is internally backwards-compatible at the minor level by convention, and `auto-minor` lets your foundation's sites pick up bug fixes and additive features without rebuilding the foundation.
+
+Set `exact` if your foundation depends on undocumented runtime internals or has been audited against one specific runtime release and you don't want to allow drift.
+
+The field is read by `@uniweb/build` at build time and emitted into `dist/runtime-pin.json` next to the runtime version:
+
+```json
+// dist/runtime-pin.json (auto-generated)
+{ "runtime": "0.8.9", "policy": "auto-minor" }
+```
+
+Sites using your foundation will see this pin + policy when they're served. Site owners cannot override your policy choice — this is the foundation author's contract with the platform.
+
+(For platform operators interested in how propagation walks consume this field, see `kb/platform/operations/version-propagation.md` in the private docs.)
+
+---
+
 ## Content Authoring
 
 The decision rule: **would a content author need to change this?** Yes → it belongs in markdown, frontmatter, or a tagged data block. No → it belongs in component code.
