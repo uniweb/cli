@@ -134,6 +134,34 @@ pnpm preview    # Preview production build (SSG + SPA)
 
 ---
 
+## `package.json` `uniweb` configuration
+
+The `uniweb` block in `package.json` carries platform-specific configuration that doesn't belong in the npm-standard fields. All fields are optional; defaults apply when omitted.
+
+```json
+{
+  "name": "@myorg/foundation",
+  "version": "1.0.0",
+  "uniweb": {
+    "namespace": "myorg",
+    "runtimePolicy": "auto-minor"
+  },
+  "dependencies": {
+    "@uniweb/core": "0.7.8",
+    "@uniweb/runtime": "0.8.9"
+  }
+}
+```
+
+| Field | Where used | Default | Purpose |
+|---|---|---|---|
+| `namespace` | `uniweb publish` | scope of `package.json::name` (e.g. `"@myorg/foundation"` → `myorg`) | Organization handle to publish under. The artifact lands at `foundations/{namespace}/{name}/{version}/`. You only need to set this explicitly when your npm scope differs from your publish namespace. |
+| `runtimePolicy` | `dist/runtime-pin.json` (foundation build) | `"auto-minor"` | Controls how sites using this foundation receive runtime updates. Three values: `"exact"`, `"auto-patch"`, `"auto-minor"`. See "Foundation runtime policy" below. |
+
+These are the only fields the platform consumes today. Future platform features that need static configuration will land here too.
+
+---
+
 ## Foundation runtime policy
 
 (Foundation authors only — sites don't set this.)
