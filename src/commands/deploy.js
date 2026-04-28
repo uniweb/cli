@@ -42,6 +42,8 @@ import { resolve, join, basename, relative, sep } from 'node:path'
 import { execSync } from 'node:child_process'
 import yaml from 'js-yaml'
 
+import { detectFoundationType } from '@uniweb/build'
+
 import { ensureAuth } from '../utils/auth.js'
 import { getBackendUrl, getRegistryUrl } from '../utils/config.js'
 import {
@@ -187,6 +189,75 @@ function composeFoundationUrl(ref, registryBase) {
   return `${registryBase.replace(/\/$/, '')}/${name}/${version}/`
 }
 
+/**
+ * Inspect a workspace-local foundation's `dist/publish.json` (Phase 1 receipt)
+ * and decide whether it's stale relative to the current source tree.
+ *
+ * Returns `{ stale, reason, receipt }`. The caller decides whether to
+ * auto-publish (Phase 2 default) or fail (`--no-auto-publish`).
+ */
+async function inspectLocalFoundationReceipt(localPath, { dirtyAsStale }) {
+  const receiptPath = join(localPath, 'dist', 'publish.json')
+  let receipt = null
+  try {
+    receipt = JSON.parse(await readFile(receiptPath, 'utf8'))
+  } catch {
+    return { stale: true, reason: 'no dist/publish.json (foundation has not been published from this checkout)' }
+  }
+
+  const { gitSha, gitDirty } = readGitState(localPath)
+  if (!gitSha) {
+    return { stale: true, reason: 'foundation directory is not in a git repo or has no commits', receipt }
+  }
+  if (receipt.publishedFromGitSha && receipt.publishedFromGitSha !== gitSha) {
+    return {
+      stale: true,
+      reason: `foundation has new commits since last publish (${receipt.publishedFromGitSha.slice(0, 7)} → ${gitSha.slice(0, 7)})`,
+      receipt,
+    }
+  }
+  if (gitDirty && dirtyAsStale) {
+    return { stale: true, reason: 'foundation working tree is dirty', receipt }
+  }
+  return { stale: false, receipt }
+}
+
+/**
+ * Read a workspace-local foundation's identity (scoped name + version) from
+ * its `dist/meta/schema.json` + `package.json`, mirroring `publish.js`'s
+ * namespace resolution. Returns the registry ref (`@ns/name@ver`), or null
+ * if any of the inputs are missing.
+ */
+async function deriveLocalFoundationRef(localPath) {
+  let pkg
+  try {
+    pkg = JSON.parse(await readFile(join(localPath, 'package.json'), 'utf8'))
+  } catch {
+    return null
+  }
+
+  let rawName, version
+  try {
+    const schema = JSON.parse(await readFile(join(localPath, 'dist', 'meta', 'schema.json'), 'utf8'))
+    rawName = schema._self?.name
+    version = schema._self?.version
+  } catch {
+    // Fallback to package.json when the build hasn't run yet.
+  }
+  rawName = rawName || pkg.name
+  version = version || pkg.version
+  if (!rawName || !version) return null
+
+  const uniwebNamespace = pkg.uniweb?.namespace
+  const pkgScopeMatch = (pkg.name || '').match(/^@([a-z0-9_-]+)\//)
+  const selfScopeMatch = rawName.match(/^@([a-z0-9_-]+)\//)
+  const namespace = uniwebNamespace || pkgScopeMatch?.[1] || selfScopeMatch?.[1]
+  if (!namespace) return null
+
+  const bareName = selfScopeMatch ? rawName.slice(selfScopeMatch[0].length) : rawName
+  return `@${namespace}/${bareName}@${version}`
+}
+
 // ─── Main ───────────────────────────────────────────────────
 
 export async function deploy(args = []) {
@@ -200,6 +271,11 @@ export async function deploy(args = []) {
   // to DB, so any change the user makes there ends up in site.yml after
   // the loopback finalize roundtrip.
   const forceReview = args.includes('--review')
+  // Phase 2 (deploy-ux-v4): when `foundation:` in site.yml points at a
+  // workspace-local file: ref, deploy auto-publishes the foundation when
+  // its `dist/publish.json` receipt is missing/stale. These flags opt out.
+  const autoPublishFoundation = !args.includes('--no-auto-publish')
+  const treatDirtyAsStale = !args.includes('--no-dirty-as-stale')
 
   const siteDir = await resolveSiteDir(args)
   const backendUrl = getBackendUrl()
@@ -225,11 +301,61 @@ export async function deploy(args = []) {
   // Worker publish. PHP only inspects the namespace via the ref string;
   // it doesn't care about policy/pinned, so the object form passes through.
   // The Worker (publish.js::parseFoundationConfig) handles both shapes.
-  const foundation = fnd.normalized
+  let foundation = fnd.normalized
   if (fnd.policy && fnd.policy !== 'auto-patch') {
     say.dim(`Foundation policy: ${fnd.policy}${fnd.pinned ? ' (pinned)' : ''}`)
   } else if (fnd.pinned) {
     say.dim('Foundation policy: exact (pinned)')
+  }
+
+  // Phase 2: resolve workspace-local `file:` foundation refs.
+  //
+  // The object form of `foundation:` already requires a registry ref
+  // (`@ns/name@ver`) per parseSiteFoundation, so only the string form can
+  // resolve to a local path. Pass-through cases (registry ref, full URL,
+  // npm package) all leave `foundation` untouched. The resolved registry
+  // ref is also passed to the site build via UNIWEB_FOUNDATION_REF so the
+  // build runs in runtime mode against the just-published artifact instead
+  // of bundling the local foundation source. site.yml on disk is never
+  // modified.
+  let foundationBuildOverride = null
+  if (typeof foundation === 'string') {
+    const detected = detectFoundationType(foundation, siteDir)
+    if (detected.type === 'local') {
+      const localPath = detected.path
+      const relPath = relative(siteDir, localPath) || localPath
+
+      const inspection = await inspectLocalFoundationReceipt(localPath, {
+        dirtyAsStale: treatDirtyAsStale,
+      })
+
+      if (inspection.stale && !autoPublishFoundation) {
+        say.err(`Local foundation at ${relPath} is stale: ${inspection.reason}.`)
+        say.dim(`Run \`${getCliPrefix()} publish\` from ${relPath}, or drop --no-auto-publish to let deploy publish it for you.`)
+        process.exit(1)
+      }
+      if (inspection.stale) {
+        say.info(`Foundation at ${relPath} is stale (${inspection.reason}). Auto-publishing…`)
+        console.log('')
+        try {
+          execSync('npx uniweb publish', { cwd: localPath, stdio: 'inherit' })
+        } catch {
+          say.err(`Auto-publish of foundation at ${relPath} failed. See output above.`)
+          process.exit(1)
+        }
+        console.log('')
+      }
+
+      const resolved = await deriveLocalFoundationRef(localPath)
+      if (!resolved) {
+        say.err(`Could not derive a registry ref for foundation at ${relPath}.`)
+        say.dim(`Make sure its package.json has a name + version and a namespace (uniweb.namespace, scoped name, or run \`uniweb publish --namespace <handle>\` once).`)
+        process.exit(1)
+      }
+      say.dim(`Foundation: ${foundation} → ${resolved} (resolved from ${relPath})`)
+      foundation = resolved
+      foundationBuildOverride = resolved
+    }
   }
 
   // Runtime defaults to "latest" resolved at authorize time.
@@ -265,9 +391,18 @@ export async function deploy(args = []) {
     // link-mode URLs, which auto-enters runtime mode. Prerender also
     // auto-skips for link-mode foundations (HTML is rendered on the
     // serving edge, not here).
+    //
+    // For workspace-local foundations (Phase 2 resolution above),
+    // UNIWEB_FOUNDATION_REF tells defineSiteConfig to use the resolved
+    // registry ref instead of site.yml's literal value, so the build
+    // produces a runtime-mode bundle pointing at the just-published
+    // foundation rather than embedding the local source.
     execSync('npx uniweb build', {
       cwd: siteDir,
       stdio: 'inherit',
+      env: foundationBuildOverride
+        ? { ...process.env, UNIWEB_FOUNDATION_REF: foundationBuildOverride }
+        : process.env,
     })
     console.log('')
   } else if (!existsSync(contentPath)) {
