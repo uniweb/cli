@@ -55,6 +55,70 @@ import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 const REVIEW_TIMEOUT_MS = 15 * 60 * 1000 // 15 min — matches PHP session TTL
 const ASSET_UPLOAD_CONCURRENCY = 6
 const ASSET_UPLOAD_RETRIES = 2
+
+const FOUNDATION_POLICIES = new Set(['exact', 'auto-patch', 'auto-minor'])
+
+/**
+ * Parse the `foundation:` field from site.yml into a normalized shape.
+ *
+ * Accepts:
+ *   - string: '@uniweb/votiverse@0.1.1'
+ *   - object: { ref: '@uniweb/votiverse@0.1.1', policy?: ..., pinned?: true }
+ *
+ * Returns one of:
+ *   - { error: 'description of what's wrong' }
+ *   - { normalized, policy?, pinned }   where `normalized` is whichever
+ *     shape we received (string or { ref, policy?, pinned? }) — the Worker
+ *     accepts both. `policy`/`pinned` are also returned individually so
+ *     the CLI can print friendly diagnostics.
+ *
+ * Validation rules (mirrors publish.js::parseFoundationConfig):
+ *   - `policy` must be one of 'exact', 'auto-patch', 'auto-minor'
+ *   - `pinned: true` + `policy: not-exact` is rejected as conflicting
+ */
+function parseSiteFoundation(input) {
+  if (typeof input === 'string') {
+    return { normalized: input, policy: null, pinned: false }
+  }
+  if (!input || typeof input !== 'object') {
+    return { error: 'foundation must be a string or object' }
+  }
+
+  // Object form must carry `ref`; everything else is metadata.
+  if (!input.ref || typeof input.ref !== 'string') {
+    return { error: 'foundation.ref is required when using object form' }
+  }
+  if (!/^@[a-z0-9_-]+\/[a-z0-9_-]+@.+$/.test(input.ref)) {
+    return {
+      error: `foundation.ref does not match @namespace/name@version: '${input.ref}'`,
+    }
+  }
+
+  let policy = null
+  if (input.policy != null) {
+    if (!FOUNDATION_POLICIES.has(input.policy)) {
+      return {
+        error: `foundation.policy must be one of 'exact', 'auto-patch', 'auto-minor' (got '${input.policy}')`,
+      }
+    }
+    policy = input.policy
+  }
+  const pinned = input.pinned === true
+
+  if (pinned && policy && policy !== 'exact') {
+    return {
+      error: `foundation: 'pinned: true' conflicts with policy '${policy}'. ` +
+        `Use either 'pinned: true' or 'policy: \"exact\"' (they're equivalent), or drop one.`,
+    }
+  }
+
+  return {
+    normalized: { ref: input.ref, ...(policy ? { policy } : {}), ...(pinned ? { pinned: true } : {}) },
+    policy: pinned ? 'exact' : policy,
+    pinned,
+  }
+}
+
 // Vite content-addresses these formats. Same filename → same content, so we
 // can skip upload without checking size. Unhashed formats fall through to
 // size-compare diffing.
@@ -120,11 +184,27 @@ export async function deploy(args = []) {
   // site.id / site.handle from prior deploys.
   const siteYmlPath = join(siteDir, 'site.yml')
   const siteYml = await readSiteYml(siteYmlPath)
-  const foundation = siteYml.foundation
-  if (!foundation) {
+  if (!siteYml.foundation) {
     say.err('site.yml is missing `foundation`.')
     say.dim('Add a line like:  foundation: \'@uniweb/docs-foundation@0.1.20\'')
     process.exit(1)
+  }
+
+  // Foundation may be string or object form (see site.yml docs).
+  const fnd = parseSiteFoundation(siteYml.foundation)
+  if (fnd.error) {
+    say.err(`site.yml: ${fnd.error}`)
+    process.exit(1)
+  }
+  // `foundation` is the on-the-wire shape we forward to PHP authorize +
+  // Worker publish. PHP only inspects the namespace via the ref string;
+  // it doesn't care about policy/pinned, so the object form passes through.
+  // The Worker (publish.js::parseFoundationConfig) handles both shapes.
+  const foundation = fnd.normalized
+  if (fnd.policy && fnd.policy !== 'auto-patch') {
+    say.dim(`Foundation policy: ${fnd.policy}${fnd.pinned ? ' (pinned)' : ''}`)
+  } else if (fnd.pinned) {
+    say.dim('Foundation policy: exact (pinned)')
   }
 
   // Runtime defaults to "latest" resolved at authorize time.
@@ -202,7 +282,7 @@ export async function deploy(args = []) {
     say.info('Dry run — showing what would be deployed:')
     say.dim(`Site dir       : ${siteDir}`)
     say.dim(`site.id        : ${siteYml.site?.id || '(none — would use create flow)'}`)
-    say.dim(`Foundation     : ${foundation}`)
+    say.dim(`Foundation     : ${typeof foundation === 'string' ? foundation : foundation.ref}`)
     say.dim(`Runtime        : ${runtimeVersion}`)
     say.dim(`Languages      : ${languages.join(', ')}`)
     say.dim(`Default locale : ${defaultLanguage}`)
