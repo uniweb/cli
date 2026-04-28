@@ -12,7 +12,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 
@@ -322,8 +322,9 @@ export async function publish(args = []) {
     publishMetadata.editAccess = editAccess
   }
 
+  let publishResult
   try {
-    await registry.publish(name, version, distDir, publishMetadata)
+    publishResult = await registry.publish(name, version, distDir, publishMetadata)
   } catch (err) {
     if (err.code === 'CONFLICT') {
       error(`${colors.bright}${name}@${version}${colors.reset} already exists on the registry.`)
@@ -337,6 +338,24 @@ export async function publish(args = []) {
     }
     throw err
   }
+
+  // Local event memory — read by `uniweb deploy` to decide whether a
+  // workspace-local foundation needs republishing. Lives under dist/ which
+  // is gitignored; not part of the upload.
+  const receiptUrl = publishResult?.url
+    || (isLocal
+      ? `file://${registry.getPackagePath(name, version)}/`
+      : `${registry.apiUrl}/${name}/${version}/`)
+  const { gitSha, gitDirty } = readGitState(foundationDir)
+  const receipt = {
+    schemaVersion: 1,
+    publishedFromGitSha: gitSha,
+    publishedFromGitDirty: gitDirty,
+    url: receiptUrl,
+    publishedAt: new Date().toISOString(),
+    classification: isPropagate ? 'propagate' : 'silent',
+  }
+  await writeFile(join(distDir, 'publish.json'), JSON.stringify(receipt, null, 2) + '\n')
 
   const prefix = getCliPrefix()
   const isExtension = schema._self?.role === 'extension'
@@ -378,6 +397,22 @@ function bumpPatch(version) {
   if (parts.length !== 3) return version
   parts[2] = String(Number(parts[2]) + 1)
   return parts.join('.')
+}
+
+function readGitState(dir) {
+  try {
+    const sha = execSync('git rev-parse HEAD', {
+      cwd: dir,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString().trim()
+    const status = execSync('git status --porcelain', {
+      cwd: dir,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString()
+    return { gitSha: sha || null, gitDirty: status.length > 0 }
+  } catch {
+    return { gitSha: null, gitDirty: false }
+  }
 }
 
 export default publish

@@ -162,6 +162,31 @@ const say = {
   dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`),
 }
 
+function readGitState(dir) {
+  try {
+    const sha = execSync('git rev-parse HEAD', {
+      cwd: dir,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString().trim()
+    const status = execSync('git status --porcelain', {
+      cwd: dir,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString()
+    return { gitSha: sha || null, gitDirty: status.length > 0 }
+  } catch {
+    return { gitSha: null, gitDirty: false }
+  }
+}
+
+function composeFoundationUrl(ref, registryBase) {
+  if (typeof ref !== 'string') return null
+  if (ref.startsWith('https://') || ref.startsWith('http://')) return ref
+  const m = ref.match(/^(@[^/]+\/[^@]+|[^@]+)@(.+)$/)
+  if (!m || !registryBase) return null
+  const [, name, version] = m
+  return `${registryBase.replace(/\/$/, '')}/${name}/${version}/`
+}
+
 // ─── Main ───────────────────────────────────────────────────
 
 export async function deploy(args = []) {
@@ -476,6 +501,25 @@ export async function deploy(args = []) {
     locales: localeContents,
   }
   await callPublish({ url: publishUrl, token: publishToken, body: publishPayload })
+
+  // Local event memory — used by future re-deploys (e.g., to skip
+  // redundant work when nothing has changed). Lives under dist/ which is
+  // gitignored; the platform never reads it.
+  const foundationRef = typeof foundation === 'string' ? foundation : foundation?.ref
+  const { gitSha, gitDirty } = readGitState(siteDir)
+  const deployReceipt = {
+    schemaVersion: 1,
+    deployedFromGitSha: gitSha,
+    deployedFromGitDirty: gitDirty,
+    deployedAt: new Date().toISOString(),
+    url: handleResolved ? `https://${handleResolved}.uniweb.website/` : null,
+    foundation: {
+      ref: foundationRef,
+      url: composeFoundationUrl(foundationRef, getRegistryUrl()),
+    },
+    locales: languages,
+  }
+  await writeFile(join(distDir, 'deploy.json'), JSON.stringify(deployReceipt, null, 2) + '\n')
 
   // Write site.id / site.handle / features back to site.yml so the file
   // stays in sync with the live billing state. site.id and site.handle
