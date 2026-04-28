@@ -150,6 +150,12 @@ function parseEditAccess(args) {
 export async function publish(args = []) {
   const isLocal = args.includes('--local')
   const isDryRun = args.includes('--dry-run')
+  // --propagate opts the new version into the registry's version-update
+  // walk: trusting sites whose policy permits the jump pick it up
+  // automatically via gated rollout. Without --propagate (default
+  // 'silent'), the artifact is stored but no site moves until republish
+  // or manual refresh.
+  const isPropagate = args.includes('--propagate')
   const registryUrl = parseRegistryUrl(args)
   const editAccess = parseEditAccess(args)
   const namespaceFlag = parseNamespace(args)
@@ -288,6 +294,7 @@ export async function publish(args = []) {
   const auth = isLocal ? null : await readAuth()
   const publishMetadata = {
     publishedBy: auth?.email || (isLocal ? 'local' : 'cli'),
+    classification: isPropagate ? 'propagate' : 'silent',
   }
   if (editAccess) {
     publishMetadata.editAccess = editAccess
