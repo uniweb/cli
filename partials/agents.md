@@ -203,6 +203,26 @@ The field is read by `@uniweb/build` at build time and emitted into `dist/runtim
 
 Sites using your foundation will see this pin + policy when they're served. Site owners cannot override your policy choice — this is the foundation author's contract with the platform.
 
+### Where does the pinned runtime version come from?
+
+You may notice your foundation's `dist/runtime-pin.json` reports a runtime version (e.g. `0.8.9`) without your `package.json` declaring `@uniweb/runtime` anywhere. This is intentional.
+
+`@uniweb/runtime` is pulled in **transitively** through `@uniweb/build` (which every foundation has as a devDependency). The runtime version baked into your foundation's pin is whichever version your `@uniweb/build` version pulled in at install time:
+
+```
+your foundation
+  └─ devDependencies: "@uniweb/build": "0.12.0"
+       └─ pulls in @uniweb/runtime  (whatever version that build version locks)
+            → resolved at install time → version goes into dist/runtime-pin.json
+```
+
+Practical implications:
+
+- **You don't need to add `@uniweb/runtime` to your foundation's dependencies.** Runtime is the host environment, not a foundation import.
+- **To bump the runtime version your foundation pins, bump your `@uniweb/build` dep.** When a newer build version ships pulling in a newer runtime, updating your devDependency is how you adopt it.
+- **You can override by adding `@uniweb/runtime` directly to your foundation's `dependencies`** — but this is rarely needed and creates two sources of truth for the runtime version. Don't do this unless you have a specific reason.
+- **Whichever runtime version is pinned, your `runtimePolicy` controls how sites can move forward beyond it.** Pinning `0.8.9` with `auto-minor` lets sites pick up `0.9.0` or higher (within the same major); pinning with `exact` locks them at `0.8.9` until you rebuild your foundation.
+
 ### What happens when fields aren't set
 
 The system has multi-layer fallbacks so missing or partial information is always handled gracefully:
