@@ -65,11 +65,11 @@ function info(message) {
  * 5. pnpm-workspace.yaml or package.json workspaces → workspace
  */
 function detectProjectType(projectDir) {
-  // Foundation vs site: delegate to the canonical classifier in @uniweb/build.
-  const kind = classifyPackage(projectDir)
-  if (kind) return kind
-
-  // Workspace: has pnpm-workspace.yaml or package.json with workspaces field.
+  // Workspace check FIRST. A workspace root often co-exists with leaf-
+  // package signals (the `src/` foundation lives inside it), so asking
+  // the leaf classifier about a workspace root could yield 'foundation'
+  // by coincidence. Workspace markers (pnpm-workspace.yaml, or
+  // package.json::workspaces) are unambiguous.
   if (existsSync(join(projectDir, 'pnpm-workspace.yaml'))) {
     return 'workspace'
   }
@@ -85,6 +85,10 @@ function detectProjectType(projectDir) {
       // Ignore parse errors
     }
   }
+
+  // Foundation vs site: delegate to the canonical classifier in @uniweb/build.
+  const kind = classifyPackage(projectDir)
+  if (kind) return kind
 
   return null
 }
