@@ -209,61 +209,127 @@ export async function publish(args = []) {
     process.exit(1)
   }
 
-  // 3b. Resolve namespace.
+  // 3b. Resolve scope.
   //
   // Priority order:
-  //   1. --namespace <handle> CLI flag
-  //   2. package.json `uniweb.namespace`
-  //   3. Scope segment of `package.json` `name`             (e.g. "@uniweb/votiverse" → "uniweb")
-  //   4. Scope segment of foundation `src/foundation.js`'s default `name`
-  //      (rare — most foundations export a bare display name like 'votiverse',
-  //      so this rarely matches, but kept for backward compat)
+  //   1. --namespace <handle> CLI flag (forces an org-style scope)
+  //   2. Explicit scope in `package.json` `name`:
+  //        - `@org/x`   → org scope
+  //        - `~user/x`  → personal alias scope (opt-in)
+  //   3. `package.json` `uniweb.namespace` (legacy explicit field)
+  //   4. Empty / unscoped name → personal scope from JWT (memberId).
   //
-  // The package.json scope (#3) is the most natural fallback because npm-style
-  // scoped names already carry the namespace. Foundations that follow the
-  // `@ns/name` convention don't need to repeat themselves with --namespace
-  // or `uniweb.namespace`.
+  // The empty-scope path is the new keystone. A bare `name: "site-src"`
+  // means "publish under my personal scope, named site-src." The Worker
+  // resolves the empty scope to the user's memberId-keyed personal
+  // scope via the `sub` claim. Locally (--local) we just record an
+  // `~me/` placeholder that the local serve path tolerates.
+  //
+  // For `--local` the JWT may not exist; we fall back to the publisher's
+  // declared identity ('local' from auth or the literal string 'local').
   const pkg = JSON.parse(await readFile(join(foundationDir, 'package.json'), 'utf8'))
   const uniwebNamespace = pkg.uniweb?.namespace
-  const pkgScopeMatch = (pkg.name || '').match(/^@([a-z0-9_-]+)\//)
+  const orgScopeMatch = (pkg.name || '').match(/^@([a-z0-9_-]+)\//)
+  const personalScopeMatch = (pkg.name || '').match(/^~([a-z0-9_-]+)\//)
   const selfScopeMatch = rawName.match(/^@([a-z0-9_-]+)\//)
-  const namespace = namespaceFlag
-    || uniwebNamespace
-    || pkgScopeMatch?.[1]
-    || selfScopeMatch?.[1]
 
-  if (!namespace) {
-    error('Namespace is required for publishing.')
-    console.log('')
-    console.log(`  ${colors.dim}Use one of:${colors.reset}`)
-    console.log(`    ${colors.cyan}uniweb publish --namespace <org-handle>${colors.reset}`)
-    console.log(`    ${colors.dim}Add ${colors.reset}"uniweb": { "namespace": "<org-handle>" }${colors.dim} to package.json${colors.reset}`)
-    console.log(`    ${colors.dim}Or use a scoped name in package.json: ${colors.reset}"name": "@org/foundation"${colors.reset}`)
+  // Resolve scope — either an `@org` (sigil '@') or a `~user` (sigil '~').
+  // null sigil with a value means "use the empty-scope path"; null/null
+  // means we couldn't resolve anything.
+  let scopeSigil = null
+  let scopeName = null
+  if (namespaceFlag) {
+    scopeSigil = '@'
+    scopeName = namespaceFlag
+  } else if (orgScopeMatch) {
+    scopeSigil = '@'
+    scopeName = orgScopeMatch[1]
+  } else if (personalScopeMatch) {
+    scopeSigil = '~'
+    scopeName = personalScopeMatch[1]
+  } else if (uniwebNamespace) {
+    scopeSigil = '@'
+    scopeName = uniwebNamespace
+  } else if (selfScopeMatch) {
+    // Legacy: scope embedded in dist schema's _self.name. Rare.
+    scopeSigil = '@'
+    scopeName = selfScopeMatch[1]
+  }
+
+  // Construct registry name. For an explicit scope, that's `<sigil><name>/<base>`;
+  // for the empty-scope path, the CLI sends the bare base name and lets the
+  // server attach the personal scope. The server is the source of truth for
+  // empty-scope ownership (anchored to `sub`).
+  let foundationName
+  if (orgScopeMatch) {
+    foundationName = pkg.name.slice(orgScopeMatch[0].length)
+  } else if (personalScopeMatch) {
+    foundationName = pkg.name.slice(personalScopeMatch[0].length)
+  } else if (selfScopeMatch) {
+    foundationName = rawName.slice(selfScopeMatch[0].length)
+  } else {
+    // Bare name (empty-scope path) — use rawName as-is.
+    foundationName = rawName
+  }
+
+  // Validate the bare name component (matches uniweb-edge's regex).
+  if (!/^[a-z0-9_-]+$/.test(foundationName)) {
+    error(`Invalid foundation name: "${foundationName}"`)
+    console.log(`  ${colors.dim}Names must be lowercase letters, digits, hyphens, or underscores.${colors.reset}`)
     process.exit(1)
   }
 
-  // Construct scoped name: @namespace/foundationName.
-  // The "name" the registry stores is ALWAYS @namespace/<bare-name>, even
-  // when one of the inputs already had a scope — we strip and re-attach so
-  // a --namespace override can rename the scope.
-  const foundationName = selfScopeMatch
-    ? rawName.slice(selfScopeMatch[0].length)
-    : rawName
-  const name = `@${namespace}/${foundationName}`
+  // The registry name. Three cases:
+  //
+  //   1. Explicit scope (`@org/x` or `~user/x`)         → `<sigil><name>/<base>`.
+  //   2. Empty-scope, --local                           → synthesize a
+  //        personal-scope form `~<loginName-or-sub-or-'me'>/<base>` so the
+  //        local index mirrors what production will write. This is the
+  //        local mock's stand-in for the server-side memberId resolution.
+  //   3. Empty-scope, remote                            → send the bare
+  //        name. The Worker attaches the personal scope server-side
+  //        (anchoring to the `sub` claim), and the publish response
+  //        carries the canonical URL back to the CLI for the receipt.
+  let name
+  if (scopeSigil) {
+    name = `${scopeSigil}${scopeName}/${foundationName}`
+  } else if (isLocal) {
+    const localAuth = await readAuth()
+    const personalSeed = localAuth?.loginName || localAuth?.sub || 'me'
+    name = `~${personalSeed}/${foundationName}`
+  } else {
+    name = foundationName
+  }
 
-  // 3c. Advisory namespace check (Worker enforces — this is for early UX feedback)
+  // 3c. Advisory scope authorization (Worker enforces — this is for early UX feedback)
   if (!isLocal) {
     const auth = await readAuth()
-    const namespaces = auth?.namespaces
-    if (Array.isArray(namespaces) && !namespaces.includes(namespace)) {
-      error(`You don't have publish access to namespace "${colors.bright}@${namespace}${colors.reset}"`)
-      if (namespaces.length > 0) {
-        console.log(`  ${colors.dim}Your namespaces: ${namespaces.map(n => '@' + n).join(', ')}${colors.reset}`)
-      } else {
-        console.log(`  ${colors.dim}You don't belong to any organizations. Ask an admin to add you.${colors.reset}`)
+    if (scopeSigil === '@') {
+      // Org scope: must be in the user's namespaces[] claim.
+      const namespaces = auth?.namespaces
+      if (Array.isArray(namespaces) && !namespaces.includes(scopeName)) {
+        error(`You don't have publish access to namespace "${colors.bright}@${scopeName}${colors.reset}"`)
+        if (namespaces.length > 0) {
+          console.log(`  ${colors.dim}Your organizations: ${namespaces.map(n => '@' + n).join(', ')}${colors.reset}`)
+          console.log(`  ${colors.dim}Or remove the scope from package.json::name to publish under your personal scope.${colors.reset}`)
+        } else {
+          console.log(`  ${colors.dim}You don't belong to any organizations.${colors.reset}`)
+          console.log(`  ${colors.dim}Use a bare name in package.json (e.g. "site-src") to publish under your personal scope.${colors.reset}`)
+        }
+        process.exit(1)
       }
-      process.exit(1)
+    } else if (scopeSigil === '~') {
+      // Personal alias scope: must match the user's loginName claim
+      // (until handle-aliasing ships, this is loginName-only).
+      if (auth?.loginName && auth.loginName !== scopeName) {
+        error(`Personal scope "${colors.bright}~${scopeName}${colors.reset}" doesn't match your account`)
+        console.log(`  ${colors.dim}Your personal scope: ~${auth.loginName}${colors.reset}`)
+        console.log(`  ${colors.dim}Or remove the scope from package.json::name to publish under your personal scope.${colors.reset}`)
+        process.exit(1)
+      }
     }
+    // Empty-scope: no client-side check. The server resolves to the
+    // memberId from the JWT (sub claim) and writes ownership accordingly.
   }
 
   // 4. Create registry (local or remote)
