@@ -495,8 +495,8 @@ async function main() {
   // Handle doctor command (dynamic import — depends on @uniweb/build)
   if (command === 'doctor') {
     const { doctor } = await importProjectCommand('./commands/doctor.js')
-    await doctor(args.slice(1))
-    return
+    const result = await doctor(args.slice(1))
+    process.exit(result?.errors > 0 ? 1 : 0)
   }
 
   // Handle update command

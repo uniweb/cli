@@ -430,14 +430,45 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   // Update workspace globs
   await addWorkspaceGlob(rootDir, 'extensions/*')
 
-  // Wire extension to site if specified (or only one site exists)
+  // Wire extension to site:
+  //   - --site <name>: explicit, wire it.
+  //   - exactly one site: silent auto-wire (intent is unambiguous).
+  //   - multiple sites, interactive: single-select prompt (extensions are
+  //     typically per-site specialization — pick which site).
+  //   - multiple sites, non-interactive: don't wire silently. Print a
+  //     warning so the user/agent knows wiring is pending, and exit 0
+  //     (the extension itself is fine).
+  //   - no sites: print a note and exit 0.
   let wiredSite = null
+  let unwiredReason = null
   if (opts.site) {
     wiredSite = await wireExtensionToSite(rootDir, opts.site, name, target)
   } else {
     const sites = await discoverSites(rootDir)
     if (sites.length === 1) {
       wiredSite = await wireExtensionToSite(rootDir, sites[0].name, name, target)
+    } else if (sites.length > 1) {
+      if (isNonInteractive(process.argv)) {
+        unwiredReason = `Multiple sites in workspace; extension not wired. Re-run with --site <name>, or edit <site>/site.yml::extensions: manually.`
+      } else {
+        const sortedSites = [...sites].sort((a, b) => a.name.localeCompare(b.name))
+        const response = await prompts({
+          type: 'select',
+          name: 'site',
+          message: 'Which site is this extension for?',
+          choices: sortedSites.map(s => ({ title: s.name, description: s.path, value: s.name })),
+        }, {
+          onCancel: () => {
+            log('\nCancelled.')
+            process.exit(0)
+          },
+        })
+        if (response.site) {
+          wiredSite = await wireExtensionToSite(rootDir, response.site, name, target)
+        }
+      }
+    } else {
+      unwiredReason = `No site in this workspace yet. Wire this extension into a site's site.yml::extensions: once you create one.`
     }
   }
 
@@ -450,6 +481,9 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
     msg += ` → wired to site '${wiredSite}'`
   }
   success(msg)
+  if (unwiredReason) {
+    log(`  ${colors.yellow}⚠ ${unwiredReason}${colors.reset}`)
+  }
   log('')
   log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}`)
 }

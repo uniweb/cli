@@ -8,13 +8,11 @@
     "{{@key}}": "{{this}}"{{#unless @last}},{{/unless}}
     {{/each}}
   },
-  {{#if workspaceGlobs.length}}
-  "workspaces": [
+  "workspaces": [{{#if workspaceGlobs.length}}
     {{#each workspaceGlobs}}
     "{{this}}"{{#unless @last}},{{/unless}}
     {{/each}}
-  ],
-  {{/if}}
+  {{/if}}],
   "devDependencies": {
     "@types/node": "^22.0.0",
     "uniweb": "{{version "uniweb"}}"

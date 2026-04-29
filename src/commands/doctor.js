@@ -8,6 +8,8 @@ import yaml from 'js-yaml'
 import { resolveFoundationSrcPath, classifyPackage, isExtensionPackage as buildIsExtensionPackage } from '@uniweb/build'
 import { getCliVersion } from '../versions.js'
 import { readAgentsVersion } from '../utils/agents-stamp.js'
+import { discoverFoundations, discoverSites } from '../utils/config.js'
+import { findWorkspaceRoot } from '../utils/workspace.js'
 
 // ANSI colors
 const colors = {
@@ -121,27 +123,11 @@ export async function doctor(args = []) {
 
   const projectDir = resolve(process.cwd())
 
-  // Detect project type and find workspace root
-  let workspaceDir = projectDir
+  // Find workspace root via the canonical primitive (recognizes
+  // pnpm-workspace.yaml or package.json::workspaces).
+  const workspaceDir = findWorkspaceRoot(projectDir)
 
-  if (isSite(projectDir)) {
-    workspaceDir = dirname(projectDir)
-    if (basename(workspaceDir) === 'sites') {
-      workspaceDir = dirname(workspaceDir)
-    }
-  } else if (isFoundation(projectDir)) {
-    workspaceDir = dirname(projectDir)
-    const parentName = basename(workspaceDir)
-    if (parentName === 'foundations' || parentName === 'extensions') {
-      workspaceDir = dirname(workspaceDir)
-    }
-  }
-
-  // Check workspace structure
-  const hasWorkspaceConfig = existsSync(join(workspaceDir, 'pnpm-workspace.yaml')) ||
-                             existsSync(join(workspaceDir, 'package.json'))
-
-  if (!hasWorkspaceConfig) {
+  if (!workspaceDir) {
     error('Not in a Uniweb workspace')
     log(`${colors.dim}Run this command from your project root or a site/foundation directory.${colors.reset}`)
     process.exit(1)
@@ -150,65 +136,22 @@ export async function doctor(args = []) {
   log('')
   info(`Workspace: ${workspaceDir}`)
 
-  // Find all foundations
+  // Discover foundations + sites via the canonical workspace globs.
+  // Doctor used to walk fixed paths (`foundation/`, `foundations/*`) which
+  // missed the default-path `src/` shape that Thread D made canonical.
+  // Using the same primitives every other command uses keeps doctor in
+  // step with whatever layout the workspace has.
+  const discovered = await discoverFoundations(workspaceDir)
   const foundations = []
-
-  // Check single-foundation layout
-  const foundationDir = join(workspaceDir, 'foundation')
-  if (isFoundation(foundationDir)) {
-    const pkg = loadPackageJson(foundationDir)
-    foundations.push({
-      path: foundationDir,
-      name: pkg?.name || 'foundation',
-      folderName: 'foundation'
-    })
-  }
-
-  // Check multi-foundation layout
-  const foundationsDir = join(workspaceDir, 'foundations')
-  if (existsSync(foundationsDir)) {
-    try {
-      const entries = readdirSync(foundationsDir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const foundationPath = join(foundationsDir, entry.name)
-          if (isFoundation(foundationPath)) {
-            const pkg = loadPackageJson(foundationPath)
-            foundations.push({
-              path: foundationPath,
-              name: pkg?.name || entry.name,
-              folderName: entry.name
-            })
-          }
-        }
-      }
-    } catch {
-      // Ignore errors
-    }
-  }
-
-  // Discover extensions
   const extensions = []
-
-  const extensionsDir = join(workspaceDir, 'extensions')
-  if (existsSync(extensionsDir)) {
-    try {
-      const entries = readdirSync(extensionsDir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const extensionPath = join(extensionsDir, entry.name)
-          if (isFoundation(extensionPath)) {
-            const pkg = loadPackageJson(extensionPath)
-            extensions.push({
-              path: extensionPath,
-              name: pkg?.name || entry.name,
-              folderName: entry.name
-            })
-          }
-        }
-      }
-    } catch {
-      // Ignore errors
+  for (const f of discovered) {
+    const fullPath = join(workspaceDir, f.path)
+    const folderName = basename(f.path)
+    const entry = { path: fullPath, name: f.name, folderName }
+    if (buildIsExtensionPackage(fullPath)) {
+      extensions.push(entry)
+    } else {
+      foundations.push(entry)
     }
   }
 
@@ -231,32 +174,12 @@ export async function doctor(args = []) {
     }
   }
 
-  // Find all sites
-  const sites = []
-
-  // Check single-site layout
-  const siteDir = join(workspaceDir, 'site')
-  if (isSite(siteDir)) {
-    sites.push({ path: siteDir, name: 'site' })
-  }
-
-  // Check multi-site layout
-  const sitesDir = join(workspaceDir, 'sites')
-  if (existsSync(sitesDir)) {
-    try {
-      const entries = readdirSync(sitesDir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const sitePath = join(sitesDir, entry.name)
-          if (isSite(sitePath)) {
-            sites.push({ path: sitePath, name: entry.name })
-          }
-        }
-      }
-    } catch {
-      // Ignore errors
-    }
-  }
+  // Discover sites via the canonical workspace globs (same rationale as
+  // foundations above: respects whatever layout the user chose).
+  const sites = (await discoverSites(workspaceDir)).map(s => ({
+    path: join(workspaceDir, s.path),
+    name: s.name,
+  }))
 
   if (sites.length === 0) {
     warn('No sites found')
