@@ -518,6 +518,13 @@ async function main() {
     return
   }
 
+  // Handle rename command (dynamic import — depends on @uniweb/build via deps)
+  if (command === 'rename') {
+    const { rename } = await importProjectCommand('./commands/rename.js')
+    await rename(args.slice(1))
+    return
+  }
+
   // Handle publish command (dynamic import — depends on @uniweb/build)
   if (command === 'publish') {
     const { publish } = await importProjectCommand('./commands/publish.js')
@@ -815,6 +822,7 @@ ${colors.bright}Usage:${colors.reset}
 ${colors.bright}Commands:${colors.reset}
   create [name]      Create a new project
   add <type> [name]  Add a foundation, site, or extension to a project
+  rename <type>      Rename a workspace package (foundation today)
   build              Build the current project
   deploy             Deploy a site to Uniweb hosting
   publish            Publish a foundation to the Uniweb Registry

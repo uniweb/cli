@@ -196,7 +196,9 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   // both. Format validation runs on the derived package name below, not
   // on the raw input — slashes in the input are intentional path syntax.
   const FOUNDATION_KIND = { defaultDir: 'src', defaultPkg: 'src', projectSub: 'src' }
-  const { relativePath, packageName } = resolvePlacement(rootDir, name, opts, FOUNDATION_KIND)
+  const placement = resolvePlacement(rootDir, name, opts, FOUNDATION_KIND)
+  const { relativePath } = placement
+  let { packageName } = placement
   const fullPath = join(rootDir, relativePath)
 
   // Validate the derived package name (format + reserved-name check). The
@@ -222,11 +224,33 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Collision check 2: a package with the same name already exists somewhere
   // in the workspace.
+  //
+  // Cross-role collisions auto-resolve. If a *site* already owns this name,
+  // suffix the foundation with `-src` (matching the `add project` and
+  // `add extension` precedents). The site keeps its name; the foundation
+  // gets a self-documenting suffix that says "this is the source code for
+  // the site that owns this name." Same-role collisions stay an error —
+  // two foundations with the same name is a real "be more specific"
+  // situation, not a disambiguation case.
   if (existingNames.has(packageName)) {
-    error(`Cannot create foundation: a package named ${colors.bright}${packageName}${colors.reset} already exists in this workspace.`)
-    log(`Pick a different name:`)
-    log(`  ${colors.cyan}${getCliPrefix()} add foundation <other-name>${colors.reset}`)
-    process.exit(1)
+    const sites = await discoverSites(rootDir)
+    const isSiteCollision = sites.some(s => s.name === packageName)
+    if (isSiteCollision) {
+      const suffixed = `${packageName}-src`
+      if (existingNames.has(suffixed)) {
+        error(`Cannot create foundation: both ${colors.bright}${packageName}${colors.reset} and ${colors.bright}${suffixed}${colors.reset} are taken in this workspace.`)
+        log(`Pick a different name:`)
+        log(`  ${colors.cyan}${getCliPrefix()} add foundation <other-name>${colors.reset}`)
+        process.exit(1)
+      }
+      info(`Package "${packageName}" is taken by a site; using "${suffixed}" for this foundation.`)
+      packageName = suffixed
+    } else {
+      error(`Cannot create foundation: a foundation named ${colors.bright}${packageName}${colors.reset} already exists in this workspace.`)
+      log(`Pick a different name:`)
+      log(`  ${colors.cyan}${getCliPrefix()} add foundation <other-name>${colors.reset}`)
+      process.exit(1)
+    }
   }
 
   // Scaffold
@@ -266,7 +290,9 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Resolve placement first (path + package name); see notes in addFoundation.
   const SITE_KIND = { defaultDir: 'site', defaultPkg: 'site', projectSub: 'site' }
-  const { relativePath, packageName: siteName } = resolvePlacement(rootDir, name, opts, SITE_KIND)
+  const placement = resolvePlacement(rootDir, name, opts, SITE_KIND)
+  const { relativePath } = placement
+  let siteName = placement.packageName
   const fullPath = join(rootDir, relativePath)
 
   // Validate the package name (skip for the auto-derived 'site' default).
@@ -288,12 +314,28 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
     process.exit(1)
   }
 
-  // Collision check 2: package name already in workspace.
+  // Collision check 2: cross-role collisions auto-resolve with `-site`
+  // suffix; same-role collisions error. See the symmetric logic in
+  // addFoundation for the rationale.
   if (existingNames.has(siteName)) {
-    error(`Cannot create site: a package named ${colors.bright}${siteName}${colors.reset} already exists in this workspace.`)
-    log(`Pick a different name:`)
-    log(`  ${colors.cyan}${getCliPrefix()} add site <other-name>${colors.reset}`)
-    process.exit(1)
+    const foundations = await discoverFoundations(rootDir)
+    const isFoundationCollision = foundations.some(f => f.name === siteName)
+    if (isFoundationCollision) {
+      const suffixed = `${siteName}-site`
+      if (existingNames.has(suffixed)) {
+        error(`Cannot create site: both ${colors.bright}${siteName}${colors.reset} and ${colors.bright}${suffixed}${colors.reset} are taken in this workspace.`)
+        log(`Pick a different name:`)
+        log(`  ${colors.cyan}${getCliPrefix()} add site <other-name>${colors.reset}`)
+        process.exit(1)
+      }
+      info(`Package "${siteName}" is taken by a foundation; using "${suffixed}" for this site.`)
+      siteName = suffixed
+    } else {
+      error(`Cannot create site: a site named ${colors.bright}${siteName}${colors.reset} already exists in this workspace.`)
+      log(`Pick a different name:`)
+      log(`  ${colors.cyan}${getCliPrefix()} add site <other-name>${colors.reset}`)
+      process.exit(1)
+    }
   }
 
   // Resolve foundation
