@@ -46,7 +46,7 @@ Or skip the interactive prompt:
 pnpm create uniweb my-site --template docs
 ```
 
-### Development Commands
+### Local Scripts
 
 Run these from the **project root**:
 
@@ -56,7 +56,7 @@ npm run build      # Build foundation + site for production
 npm run preview    # Preview the production build
 ```
 
-The `build` command outputs to `site/dist/`. With pre-rendering enabled (the default for official templates), you get static HTML files ready to deploy anywhere.
+The `build` command outputs to `site/dist/`. With pre-rendering enabled (the default for official templates), you get static HTML files ready to deploy anywhere. For the actual deploy step (and the `uniweb publish` / `uniweb deploy` commands), see [Deployment](#deployment) below.
 
 ## What You Get
 
@@ -309,6 +309,17 @@ The structure you start with scales without rewrites:
 
 Start with local files deployed anywhere. The same foundation works across all these scenarios.
 
+## Deployment
+
+A Uniweb project produces two artifacts — a **site** (content) and a **foundation** (code) — and they don't have to ship together. That opens up deployment options other frameworks can't express:
+
+- **Bundled mode** — site and foundation built into one self-contained `dist/`, deployed to any static host (Vercel, Netlify, Cloudflare Pages, GitHub Pages, S3, anywhere).
+- **Linked mode** — the foundation lives at one URL; any number of sites load it at runtime. Update the foundation once, every site picks it up — no site rebuilds.
+
+Two verbs handle it: `uniweb publish` sends a foundation to a registry, `uniweb deploy` sends a site to a host. Most projects start bundled (one command, one destination) and grow into linked mode by changing one line in `site.yml`. Mix providers freely — foundation on GitHub Pages, site on Vercel; or use Uniweb's registry + hosting for propagation, gated rollouts, and edge SSR.
+
+→ **[Deploying](https://github.com/uniweb/docs/blob/main/development/deploying.md)** — the full menu: bundled vs linked, the two-verb model, one-foundation-many-sites, propagation on the Uniweb platform, and recipes for Vercel, Netlify, Cloudflare, GitHub Pages, S3, and self-hosted servers.
+
 ---
 
 ## Documentation
@@ -331,7 +342,7 @@ Full documentation is available at **[github.com/uniweb/docs](https://github.com
 | Site Configuration | [site.yml reference](https://github.com/uniweb/docs/blob/main/reference/site-configuration.md) |
 | CLI Commands       | [create, add, build, docs, doctor, i18n](https://github.com/uniweb/docs/blob/main/reference/cli-commands.md) |
 | Templates          | [Built-in, official, and external templates](https://github.com/uniweb/docs/blob/main/getting-started/templates.md) |
-| Deployment         | [Vercel, Netlify, Cloudflare, and more](https://github.com/uniweb/docs/blob/main/reference/deployment.md) |
+| Deployment         | [Two artifacts, two verbs — bundled, linked, and per-host recipes](https://github.com/uniweb/docs/blob/main/development/deploying.md) |
 
 ---
 
