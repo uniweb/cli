@@ -142,10 +142,10 @@ The `uniweb` block in `package.json` carries platform-specific configuration tha
 
 ```json
 {
-  "name": "@myorg/foundation",
+  "name": "site-src",
   "version": "1.0.0",
   "uniweb": {
-    "namespace": "myorg",
+    "id": "marketing",
     "runtimePolicy": "auto-minor"
   },
   "dependencies": {
@@ -157,8 +157,11 @@ The `uniweb` block in `package.json` carries platform-specific configuration tha
 
 | Field | Where used | Default | Purpose |
 |---|---|---|---|
-| `namespace` | `uniweb publish` | scope of `package.json::name` (e.g. `"@myorg/foundation"` → `myorg`) | Organization handle to publish under. The artifact lands at `foundations/{namespace}/{name}/{version}/`. You only need to set this explicitly when your npm scope differs from your publish namespace. |
+| `id` | `uniweb publish` | (set on first publish via the prompt, or via `--name`) | The foundation's published id — the bare-name segment in `~handle/<id>` or `@org/<id>`. Decoupled from `package.json::name` (a workspace concern), so renaming the foundation on the registry doesn't ripple through site dependencies. |
+| `namespace` | `uniweb publish` | (none — see scope resolution) | Legacy explicit org-namespace override. Equivalent to using a scoped `package.json::name` (`"@myorg/foundation"`). Rarely needed in modern foundations. |
 | `runtimePolicy` | `dist/runtime-pin.json` (foundation build) | `"auto-minor"` | Controls how sites using this foundation receive runtime updates. Three values: `"exact"`, `"auto-patch"`, `"auto-minor"`. See "Foundation runtime policy" below. |
+
+**On the split between `package.json::name` and `uniweb.id`:** the workspace name is what pnpm uses for `file:` linking and what `site.yml::foundation` references. The published id is what the registry stores. Keeping them separate means renaming on the registry (e.g. `marketing` → `marketing-pro`) is a one-shot `uniweb publish --name marketing-pro` — it persists to `uniweb.id` without touching the workspace.
 
 These are the only fields the platform consumes today. Future platform features that need static configuration will land here too.
 

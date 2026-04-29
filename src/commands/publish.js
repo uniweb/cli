@@ -130,6 +130,21 @@ function parseNamespace(args) {
 }
 
 /**
+ * Parse --name <id> from args.
+ * The publish-time "id" — the bare-name segment in the registry name.
+ * Distinct from `package.json::name` (a workspace concern). Persisted
+ * to `package.json::uniweb.id` after the first successful publish so
+ * it doesn't need to be supplied again.
+ * @param {string[]} args
+ * @returns {string|null}
+ */
+function parseName(args) {
+  const idx = args.indexOf('--name')
+  if (idx === -1 || !args[idx + 1]) return null
+  return args[idx + 1]
+}
+
+/**
  * Parse --edit-access <policy> from args.
  * @param {string[]} args
  * @returns {'open'|'restricted'|null}
@@ -160,6 +175,7 @@ export async function publish(args = []) {
   const registryUrl = parseRegistryUrl(args)
   const editAccess = parseEditAccess(args)
   const namespaceFlag = parseNamespace(args)
+  const nameFlag = parseName(args)
 
   // 1. Resolve foundation directory
   const foundationDir = await resolveFoundationDir(args)
@@ -209,33 +225,55 @@ export async function publish(args = []) {
     process.exit(1)
   }
 
-  // 3b. Resolve scope.
+  // 3b. Resolve scope and foundation id.
   //
-  // Priority order:
-  //   1. --namespace <handle> CLI flag (forces an org-style scope)
-  //   2. Explicit scope in `package.json` `name`:
-  //        - `@org/x`   → org scope
-  //        - `~user/x`  → personal alias scope (opt-in)
-  //   3. `package.json` `uniweb.namespace` (legacy explicit field)
-  //   4. Empty / unscoped name → personal scope from JWT (memberId).
+  // The publish-time identity is two pieces: a SCOPE (org `@`, personal `~`,
+  // or empty → server-resolved personal) and an ID (the bare name segment).
+  // They live in different places and get different defaults.
   //
-  // The empty-scope path is the new keystone. A bare `name: "site-src"`
-  // means "publish under my personal scope, named site-src." The Worker
-  // resolves the empty scope to the user's memberId-keyed personal
-  // scope via the `sub` claim. Locally (--local) we just record an
-  // `~me/` placeholder that the local serve path tolerates.
+  // Scope priority:
+  //   1. --namespace <handle> CLI flag           → forces `@<handle>` org scope
+  //   2. Sigil in `package.json::name`:
+  //        - `@org/x`                            → `@org`
+  //        - `~user/x`                           → `~user` (personal alias)
+  //   3. `package.json::uniweb.namespace`        → legacy explicit org field
+  //   4. (none)                                  → empty scope; server attaches
+  //                                                 the publisher's personal
+  //                                                 scope at upload time
   //
-  // For `--local` the JWT may not exist; we fall back to the publisher's
-  // declared identity ('local' from auth or the literal string 'local').
-  const pkg = JSON.parse(await readFile(join(foundationDir, 'package.json'), 'utf8'))
+  // ID priority (the bare name segment):
+  //   1. --name <id> CLI flag                    → override
+  //   2. Sigil-stripped `package.json::name`     → @org/<id> or ~user/<id>
+  //   3. `package.json::uniweb.id`               → persisted publish-id
+  //   4. Interactive prompt                      → and write back to
+  //                                                 `package.json::uniweb.id`
+  //                                                 so future publishes don't
+  //                                                 re-prompt.
+  //   5. Non-interactive without a usable id     → fail with guidance.
+  //
+  // Note: a bare `package.json::name` (e.g. the scaffold default `site-src`)
+  // is intentionally NOT used as a fallback id. The workspace name is for
+  // pnpm linking and the file: dependency in site/package.json — using it
+  // as the publish id would couple the registry identity to the workspace,
+  // exactly what `uniweb.id` exists to prevent. Users who want their
+  // workspace name to be the publish id pass `--name <pkg-name>` once;
+  // it persists.
+  //
+  // Why two storage locations for an ID? `package.json::name` is a
+  // workspace concern — pnpm uses it to link packages, sites reference
+  // it via `file:` deps and `site.yml::foundation`. Renaming it cascades
+  // through several files. `uniweb.id` is publish-only — changing it
+  // affects only the registry identity, never the workspace. Most users
+  // benefit from leaving `package.json::name` as the scaffold default
+  // (`site-src`) and putting the published-as id in `uniweb.id`.
+  const pkgPath = join(foundationDir, 'package.json')
+  const pkg = JSON.parse(await readFile(pkgPath, 'utf8'))
   const uniwebNamespace = pkg.uniweb?.namespace
-  const orgScopeMatch = (pkg.name || '').match(/^@([a-z0-9_-]+)\//)
-  const personalScopeMatch = (pkg.name || '').match(/^~([a-z0-9_-]+)\//)
-  const selfScopeMatch = rawName.match(/^@([a-z0-9_-]+)\//)
+  const uniwebId = pkg.uniweb?.id
+  const orgScopeMatch = (pkg.name || '').match(/^@([a-z0-9_-]+)\/([a-z0-9_-]+)$/)
+  const personalScopeMatch = (pkg.name || '').match(/^~([a-z0-9_-]+)\/([a-z0-9_-]+)$/)
 
-  // Resolve scope — either an `@org` (sigil '@') or a `~user` (sigil '~').
-  // null sigil with a value means "use the empty-scope path"; null/null
-  // means we couldn't resolve anything.
+  // Resolve the SCOPE.
   let scopeSigil = null
   let scopeName = null
   if (namespaceFlag) {
@@ -250,33 +288,90 @@ export async function publish(args = []) {
   } else if (uniwebNamespace) {
     scopeSigil = '@'
     scopeName = uniwebNamespace
-  } else if (selfScopeMatch) {
-    // Legacy: scope embedded in dist schema's _self.name. Rare.
-    scopeSigil = '@'
-    scopeName = selfScopeMatch[1]
   }
 
-  // Construct registry name. For an explicit scope, that's `<sigil><name>/<base>`;
-  // for the empty-scope path, the CLI sends the bare base name and lets the
-  // server attach the personal scope. The server is the source of truth for
-  // empty-scope ownership (anchored to `sub`).
-  let foundationName
-  if (orgScopeMatch) {
-    foundationName = pkg.name.slice(orgScopeMatch[0].length)
+  // Resolve the ID.
+  const ID_RE = /^[a-z0-9_-]+$/
+  let foundationName = null
+  let writeBackId = false
+  if (nameFlag) {
+    foundationName = nameFlag
+    // Persist the flag's value when it differs from what's already in
+    // `uniweb.id`. This makes rename a one-shot:
+    //   $ uniweb publish --name new-name
+    // From here on, `uniweb publish` (no flag) keeps using `new-name`.
+    // No-op when --name matches the existing id.
+    if (nameFlag !== uniwebId) writeBackId = true
+  } else if (orgScopeMatch) {
+    foundationName = orgScopeMatch[2]
   } else if (personalScopeMatch) {
-    foundationName = pkg.name.slice(personalScopeMatch[0].length)
-  } else if (selfScopeMatch) {
-    foundationName = rawName.slice(selfScopeMatch[0].length)
-  } else {
-    // Bare name (empty-scope path) — use rawName as-is.
-    foundationName = rawName
+    foundationName = personalScopeMatch[2]
+  } else if (uniwebId) {
+    foundationName = uniwebId
+  }
+  if (!foundationName) {
+    // No id resolvable from any field. Prompt — or fail in non-interactive.
+    if (isNonInteractive(process.argv)) {
+      error('Foundation id is required for publishing.')
+      console.log('')
+      console.log(`  ${colors.dim}Use one of:${colors.reset}`)
+      console.log(`    ${colors.cyan}uniweb publish --name <id>${colors.reset}`)
+      console.log(`    ${colors.dim}Add ${colors.reset}"uniweb": { "id": "<your-id>" }${colors.dim} to package.json${colors.reset}`)
+      console.log(`    ${colors.dim}Or use a scoped name in package.json: ${colors.reset}"name": "@org/<id>"${colors.reset}`)
+      process.exit(1)
+    }
+
+    const prompts = (await import('prompts')).default
+    // Default suggestion: derive from the workspace folder or pkg.name.
+    // Strip the suffix `-src` so a foundation in `marketing-src/` defaults
+    // to `marketing` as its publish id.
+    const workspaceRoot = findWorkspaceRoot(foundationDir) || foundationDir
+    const folderName = workspaceRoot === foundationDir
+      ? null
+      : foundationDir.replace(workspaceRoot + '/', '').split('/')[0]
+    const suggestion =
+      (typeof pkg.name === 'string' && ID_RE.test(pkg.name) ? pkg.name : null) ||
+      (folderName ? folderName.replace(/-src$/, '') : null) ||
+      'foundation'
+
+    console.log('')
+    console.log(`${colors.dim}This is the first publish of this foundation. Pick a name${colors.reset}`)
+    console.log(`${colors.dim}for the registry — what your foundation will be known as.${colors.reset}`)
+    const response = await prompts({
+      type: 'text',
+      name: 'id',
+      message: 'Foundation name',
+      initial: suggestion,
+      validate: (v) => {
+        if (!v) return 'Required'
+        if (!ID_RE.test(v)) return 'Lowercase letters, digits, hyphens, underscores only'
+        return true
+      },
+    }, {
+      onCancel: () => {
+        console.log('')
+        console.log('Publish cancelled.')
+        process.exit(0)
+      },
+    })
+    if (!response.id) process.exit(0)
+    foundationName = response.id
+    writeBackId = true
   }
 
-  // Validate the bare name component (matches uniweb-edge's regex).
-  if (!/^[a-z0-9_-]+$/.test(foundationName)) {
+  // Validate the resolved id (may have come from any source).
+  if (!ID_RE.test(foundationName)) {
     error(`Invalid foundation name: "${foundationName}"`)
     console.log(`  ${colors.dim}Names must be lowercase letters, digits, hyphens, or underscores.${colors.reset}`)
     process.exit(1)
+  }
+
+  // Persist the id so future publishes don't re-prompt.
+  if (writeBackId) {
+    pkg.uniweb = pkg.uniweb || {}
+    pkg.uniweb.id = foundationName
+    await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+    info(`Wrote ${colors.cyan}uniweb.id: "${foundationName}"${colors.reset} to ${colors.dim}package.json${colors.reset}`)
   }
 
   // The registry name. Three cases:
