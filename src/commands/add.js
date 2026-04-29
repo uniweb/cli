@@ -187,58 +187,45 @@ export async function add(rawArgs) {
  * Add a foundation to the workspace
  */
 async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
-  let name = opts.name
+  const name = opts.name
   const existingNames = await getExistingPackageNames(rootDir)
 
-  // Reject reserved names (format + reserved check only — collisions handled at package name level)
-  if (name) {
-    const valid = validatePackageName(name)
+  // Resolve placement first (path + package name) so we have everything we
+  // need to validate before scaffolding. Note: `name` here may be a bare
+  // name (`ui`) or a path (`foundations/ui`); resolvePlacement handles
+  // both. Format validation runs on the derived package name below, not
+  // on the raw input — slashes in the input are intentional path syntax.
+  const FOUNDATION_KIND = { defaultDir: 'src', defaultPkg: 'site-src', projectSub: 'src' }
+  const { relativePath, packageName } = resolvePlacement(rootDir, name, opts, FOUNDATION_KIND)
+  const fullPath = join(rootDir, relativePath)
+
+  // Validate the derived package name (format + reserved-name check). The
+  // auto-derived `site-src` default is grandfathered in (`src` IS reserved
+  // but `site-src` is the convention for "the package that lives in src/").
+  if (packageName !== 'site-src') {
+    const valid = validatePackageName(packageName)
     if (valid !== true) {
       error(valid)
       process.exit(1)
     }
   }
 
-  // Interactive name prompt when name not provided and no --path
-  if (!name && !opts.path) {
-    if (!isNonInteractive(process.argv)) {
-      const foundations = await discoverFoundations(rootDir)
-      const hasDefault = foundations.length === 0 && !existsSync(join(rootDir, 'foundation'))
-      const response = await prompts({
-        type: 'text',
-        name: 'name',
-        message: 'Foundation name:',
-        initial: hasDefault ? 'foundation' : undefined,
-        validate: (value) => validatePackageName(value),
-      }, {
-        onCancel: () => {
-          log('\nCancelled.')
-          process.exit(0)
-        },
-      })
-      // Only set name if user chose something other than the default —
-      // null name tells resolveFoundationTarget to use default placement (./foundation/)
-      if (!hasDefault || response.name !== 'foundation') {
-        name = response.name
-      }
-    }
-    // Non-interactive without name: defaults to 'foundation' — resolveFoundationTarget handles it
-  }
-
-  const target = await resolveFoundationTarget(rootDir, name, opts)
-  const fullPath = join(rootDir, target)
-
+  // Collision check 1: target folder already exists.
   if (existsSync(fullPath)) {
-    error(`Directory already exists: ${target}`)
+    error(`Cannot create foundation: ${colors.bright}${relativePath}/${colors.reset} already exists.`)
+    log('')
+    log(`Pick a different name, or pass --path to choose a different folder:`)
+    log(`  ${colors.cyan}${getCliPrefix()} add foundation <name>${colors.reset}`)
+    log(`  ${colors.cyan}${getCliPrefix()} add foundation <name> --path <parent-dir>${colors.reset}`)
     process.exit(1)
   }
 
-  // Package name = name or 'site-src' (the new default for an unnamed
-  // foundation; matches what `uniweb create` writes for new workspaces)
-  const packageName = name || 'site-src'
+  // Collision check 2: a package with the same name already exists somewhere
+  // in the workspace.
   if (existingNames.has(packageName)) {
-    error(`Package name '${packageName}' already exists in this workspace.`)
-    log(`Choose a different name: ${getCliPrefix()} add foundation <name>`)
+    error(`Cannot create foundation: a package named ${colors.bright}${packageName}${colors.reset} already exists in this workspace.`)
+    log(`Pick a different name:`)
+    log(`  ${colors.cyan}${getCliPrefix()} add foundation <other-name>${colors.reset}`)
     process.exit(1)
   }
 
@@ -256,15 +243,16 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
     await applyFromTemplate(opts.from, 'foundation', fullPath, projectName)
   }
 
-  // Update workspace globs
-  const glob = computeGlob(target, 'foundation')
-  await addWorkspaceGlob(rootDir, glob)
+  // Register the package in pnpm-workspace.yaml — by exact path, not by glob.
+  // No glob inference: if the user wants `foundations/*` they can edit the
+  // workspace file themselves. This matches the "no assumptions" rule.
+  await addWorkspaceGlob(rootDir, relativePath)
 
   // Update root scripts
   const sites = await discoverSites(rootDir)
   await updateRootScripts(rootDir, sites, pm)
 
-  success(`Created foundation '${packageName}' at ${target}/`)
+  success(`Created foundation ${colors.bright}${packageName}${colors.reset} at ${relativePath}/`)
   log('')
   log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}`)
 }
@@ -273,66 +261,47 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
  * Add a site to the workspace
  */
 async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
-  let name = opts.name
+  const name = opts.name
   const existingNames = await getExistingPackageNames(rootDir)
 
-  // Reject reserved names (format + reserved check only — collisions handled at package name level)
-  if (name) {
-    const valid = validatePackageName(name)
+  // Resolve placement first (path + package name); see notes in addFoundation.
+  const SITE_KIND = { defaultDir: 'site', defaultPkg: 'site', projectSub: 'site' }
+  const { relativePath, packageName: siteName } = resolvePlacement(rootDir, name, opts, SITE_KIND)
+  const fullPath = join(rootDir, relativePath)
+
+  // Validate the package name (skip for the auto-derived 'site' default).
+  if (siteName !== 'site') {
+    const valid = validatePackageName(siteName)
     if (valid !== true) {
       error(valid)
       process.exit(1)
     }
   }
 
-  // Interactive name prompt when name not provided and no --path
-  if (!name && !opts.path) {
-    if (!isNonInteractive(process.argv)) {
-      const existingSites = await discoverSites(rootDir)
-      const hasDefault = existingSites.length === 0 && !existsSync(join(rootDir, 'site'))
-      const response = await prompts({
-        type: 'text',
-        name: 'name',
-        message: 'Site name:',
-        initial: hasDefault ? 'site' : undefined,
-        validate: (value) => validatePackageName(value),
-      }, {
-        onCancel: () => {
-          log('\nCancelled.')
-          process.exit(0)
-        },
-      })
-      // Only set name if user chose something other than the default —
-      // null name tells resolveSiteTarget to use default placement (./site/)
-      if (!hasDefault || response.name !== 'site') {
-        name = response.name
-      }
-    }
-    // Non-interactive without name: defaults to 'site' — resolveSiteTarget handles it
+  // Collision check 1: target folder exists.
+  if (existsSync(fullPath)) {
+    error(`Cannot create site: ${colors.bright}${relativePath}/${colors.reset} already exists.`)
+    log('')
+    log(`Pick a different name, or pass --path to choose a different folder:`)
+    log(`  ${colors.cyan}${getCliPrefix()} add site <name>${colors.reset}`)
+    log(`  ${colors.cyan}${getCliPrefix()} add site <name> --path <parent-dir>${colors.reset}`)
+    process.exit(1)
   }
 
-  const target = await resolveSiteTarget(rootDir, name, opts)
-  const fullPath = join(rootDir, target)
-
-  if (existsSync(fullPath)) {
-    error(`Directory already exists: ${target}`)
+  // Collision check 2: package name already in workspace.
+  if (existingNames.has(siteName)) {
+    error(`Cannot create site: a package named ${colors.bright}${siteName}${colors.reset} already exists in this workspace.`)
+    log(`Pick a different name:`)
+    log(`  ${colors.cyan}${getCliPrefix()} add site <other-name>${colors.reset}`)
     process.exit(1)
   }
 
   // Resolve foundation
   const foundation = await resolveFoundation(rootDir, opts.foundation)
 
-  // Package name = name or 'site'
-  const siteName = name || 'site'
-  if (existingNames.has(siteName)) {
-    error(`Package name '${siteName}' already exists in this workspace.`)
-    log(`Choose a different name: ${getCliPrefix()} add site <name>`)
-    process.exit(1)
-  }
-
   if (foundation) {
     // Compute relative path from site to foundation
-    const foundationPath = computeFoundationPath(target, foundation.path)
+    const foundationPath = computeFoundationPath(relativePath, foundation.path)
 
     // Scaffold
     await scaffoldSite(fullPath, {
@@ -362,28 +331,26 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
     await applyFromTemplate(opts.from, 'site', fullPath, projectName)
   }
 
-  // Update workspace globs
-  const glob = computeGlob(target, 'site')
-  await addWorkspaceGlob(rootDir, glob)
+  // Register the package by exact path. No glob inference.
+  await addWorkspaceGlob(rootDir, relativePath)
 
-  // Update root scripts (discover sites after glob is added — includes the new one)
+  // Update root scripts (discover sites after registration — includes the new one)
   const sites = await discoverSites(rootDir)
-  // If the new site wasn't discovered (glob may not match yet), add it
-  if (!sites.find(s => s.path === target)) {
-    sites.push({ name: siteName, path: target })
+  if (!sites.find(s => s.path === relativePath)) {
+    sites.push({ name: siteName, path: relativePath })
   }
   await updateRootScripts(rootDir, sites, pm)
 
   if (foundation) {
-    success(`Created site '${siteName}' at ${target}/ → foundation '${foundation.name}'`)
+    success(`Created site ${colors.bright}${siteName}${colors.reset} at ${relativePath}/ → foundation '${foundation.name}'`)
   } else {
-    success(`Created site '${siteName}' at ${target}/`)
+    success(`Created site ${colors.bright}${siteName}${colors.reset} at ${relativePath}/`)
   }
   log('')
   log(`Next: ${colors.cyan}${installCmd(pm)} && ${filterCmd(pm, siteName, 'dev')}${colors.reset}`)
   if (!opts.from) {
     log('')
-    log(`${colors.dim}To add your first page, create ${target}/pages/home/page.yml and a .md file.${colors.reset}`)
+    log(`${colors.dim}To add your first page, create ${relativePath}/pages/home/page.yml and a .md file.${colors.reset}`)
     log(`${colors.dim}Or use --from to start with template content: uniweb add site --from starter${colors.reset}`)
   }
 }
@@ -592,121 +559,89 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
 }
 
 /**
- * Resolve placement for a foundation
+ * Resolve where a foundation or site should be placed, given the user's input.
  *
- * Rules:
- * - --path: use it directly
- * - --project: {project}/foundation (co-located)
- * - Existing co-located glob: follow pattern
- * - Existing segregated glob: follow pattern
- * - Named (e.g., "marketing"): segregated at foundations/{name}
- * - Unnamed: root-level 'foundation'
- * - Already have one: error in non-interactive, ask in interactive
- */
-async function resolveFoundationTarget(rootDir, name, opts) {
-  if (opts.path) return opts.path
-
-  // Check existing layout — covers both new (`*/src`) and legacy (`*/foundation`) globs
-  const { packages } = await readWorkspaceConfig(rootDir)
-  const hasColocatedSrc = packages.some(p => p.includes('*/src'))
-  const hasColocatedLegacy = packages.some(p => p.includes('*/foundation'))
-  const hasColocated = hasColocatedSrc || hasColocatedLegacy
-  const hasFoundationsGlob = packages.some(p => p.startsWith('foundations/'))
-  const colocatedSubdir = hasColocatedSrc ? 'src' : 'foundation'
-
-  if (opts.project) {
-    return `${opts.project}/${colocatedSubdir}`
-  }
-
-  // Respect existing co-located layout
-  if (hasColocated && name) {
-    return `${name}/${colocatedSubdir}`
-  }
-
-  // Respect existing segregated layout
-  if (hasFoundationsGlob) {
-    return `foundations/${name || 'site-src'}`
-  }
-
-  // Named foundation → segregated layout (foundations/{name})
-  if (name) {
-    return `foundations/${name}`
-  }
-
-  // Unnamed → root-level 'src/' (new convention; legacy 'foundation/' still
-  // resolves correctly downstream because the build reads package.json::main)
-  const dirName = 'src'
-
-  // Check if target already exists
-  if (!existsSync(join(rootDir, dirName))) {
-    return dirName
-  }
-
-  // Already have one at the target path — error with guidance
-  if (isNonInteractive(process.argv)) {
-    error(`Directory '${dirName}' already exists.`)
-    log(`\nTo add another foundation, specify a name:`)
-    log(`  ${getCliPrefix()} add foundation <name>`)
-    log(`\nOr use --path for explicit placement:`)
-    log(`  ${getCliPrefix()} add foundation --path <dir>`)
-    process.exit(1)
-  }
-
-  // Interactive: the existsSync check in addFoundation will catch it
-  return dirName
-}
-
-/**
- * Resolve placement for a site
+ * The rule: **the user names a folder, and we create exactly that folder.**
+ * No silent nesting under `foundations/` / `sites/`, no inferring layout from
+ * pre-existing globs. The framework doesn't require any particular folder
+ * structure (the build classifies packages by their contents, not their
+ * location), so the CLI shouldn't impose one.
  *
- * Same rules as resolveFoundationTarget, adapted for sites.
+ * Resolution priority (foundation example, same shape for site):
+ *
+ *   1. `--path <dir>`                   → explicit folder. Name is the path's
+ *                                          last segment (used as the package
+ *                                          name unless `name` was also given).
+ *   2. `name` contains `/`              → treat as a path (e.g., `foundations/ui`).
+ *                                          Folder = the path, package name =
+ *                                          the last segment.
+ *   3. `name` (no slash)                → folder = `<name>/`, package name = `<name>`.
+ *   4. `--project <project>`            → folder = `<project>/<defaultSub>` and
+ *                                          package name = `<project>-<defaultSub>`
+ *                                          (the co-located convention; only this
+ *                                          one uses the `-src` / `-site` suffix).
+ *   5. (no input)                       → folder = `<defaultDir>/`, package name
+ *                                          = `<defaultPkg>` (`src/` + `site-src`
+ *                                          for foundations; `site/` + `site` for
+ *                                          sites).
+ *
+ * @param {string} rootDir
+ * @param {string|null} name - Either a bare name or a path-with-slash.
+ * @param {{ path?: string, project?: string }} opts
+ * @param {{ defaultDir: string, defaultPkg: string, projectSub: string }} kind
+ * @returns {{ relativePath: string, packageName: string }}
  */
-async function resolveSiteTarget(rootDir, name, opts) {
-  if (opts.path) return opts.path
-
-  if (opts.project) {
-    return `${opts.project}/site`
+function resolvePlacement(rootDir, name, opts, kind) {
+  // 1. --path is a PARENT directory. The folder is `<path>/<name>` if a
+  //    name was given, or `<path>` itself if not (the path's last segment
+  //    is then taken as the package name).
+  if (opts.path) {
+    const parent = opts.path.replace(/\/+$/, '')
+    if (name) {
+      const last = name.split('/').filter(Boolean).pop()
+      return {
+        relativePath: `${parent}/${name}`.replace(/\/+/g, '/'),
+        packageName: last,
+      }
+    }
+    const lastSegment = parent.split('/').filter(Boolean).pop() || parent
+    return {
+      relativePath: parent,
+      packageName: lastSegment,
+    }
   }
 
-  const { packages } = await readWorkspaceConfig(rootDir)
-  const hasColocated = packages.some(p => p.includes('*/site'))
-  const hasSitesGlob = packages.some(p => p.startsWith('sites/'))
-
-  // Respect existing co-located layout
-  if (hasColocated && name) {
-    return `${name}/site`
+  // 2. name contains a slash → treat as a path.
+  if (name && name.includes('/')) {
+    const relativePath = name.replace(/\/+$/, '')
+    const lastSegment = relativePath.split('/').filter(Boolean).pop()
+    return {
+      relativePath,
+      packageName: lastSegment,
+    }
   }
 
-  // Respect existing segregated layout
-  if (hasSitesGlob) {
-    return `sites/${name || 'site'}`
-  }
-
-  // Named site → segregated layout (sites/{name})
+  // 3. Bare name.
   if (name) {
-    return `sites/${name}`
+    return {
+      relativePath: name,
+      packageName: name,
+    }
   }
 
-  // Unnamed → root-level 'site'
-  const dirName = 'site'
-
-  // Check if target already exists
-  if (!existsSync(join(rootDir, dirName))) {
-    return dirName
+  // 4. --project (co-located convention with -src / -site suffix).
+  if (opts.project) {
+    return {
+      relativePath: `${opts.project}/${kind.projectSub}`,
+      packageName: `${opts.project}-${kind.projectSub}`,
+    }
   }
 
-  // Already have one at the target path — error with guidance
-  if (isNonInteractive(process.argv)) {
-    error(`Directory '${dirName}' already exists.`)
-    log(`\nTo add another site, specify a name:`)
-    log(`  ${getCliPrefix()} add site <name>`)
-    log(`\nOr use --path for explicit placement:`)
-    log(`  ${getCliPrefix()} add site --path <dir>`)
-    process.exit(1)
+  // 5. Default placement.
+  return {
+    relativePath: kind.defaultDir,
+    packageName: kind.defaultPkg,
   }
-
-  // Interactive: the existsSync check in addSite will catch it
-  return dirName
 }
 
 /**
@@ -775,35 +710,6 @@ function computeFoundationPath(sitePath, foundationPath) {
   return `file:${rel}`
 }
 
-/**
- * Compute the appropriate glob pattern for a target directory
- */
-function computeGlob(target, type) {
-  // e.g., "foundation" → "foundation"
-  // e.g., "foundations/marketing" → "foundations/*"
-  // e.g., "docs/foundation" → "*/foundation"
-  // e.g., "lib/mktg" → "lib/mktg"
-
-  const parts = target.split('/')
-
-  if (parts.length === 1) {
-    // Direct: "foundation", "site"
-    return target
-  }
-
-  if (parts.length === 2) {
-    // Could be "foundations/marketing" or "docs/foundation"
-    if (parts[1] === type) {
-      // Co-located: "docs/foundation" → "*/foundation"
-      return `*/${type}`
-    }
-    // Plural container: "foundations/marketing" → "foundations/*"
-    return `${parts[0]}/*`
-  }
-
-  // Custom path — return as-is
-  return target
-}
 
 /**
  * Apply content from a template to a scaffolded package

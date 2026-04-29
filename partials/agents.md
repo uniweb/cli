@@ -95,14 +95,22 @@ This creates `docs/src/` + `docs/site/` with package names `docs-src` and `docs-
 
 ### Adding individual packages
 
+The CLI creates exactly the folder you ask for. No silent nesting under `foundations/` or `sites/` — the framework doesn't require a particular folder layout, so the CLI doesn't impose one.
+
 ```bash
-uniweb add foundation           # First foundation → ./src/         (package: site-src)
-uniweb add foundation ui        # Named → ./foundations/ui/         (package: ui)
-uniweb add site                 # First site → ./site/              (package: site)
-uniweb add site blog            # Named → ./sites/blog/             (package: blog)
+uniweb add foundation           # No name → ./src/                    (package: site-src)
+uniweb add foundation ui        # Bare name → ./ui/                   (package: ui)
+uniweb add foundation foundations/effects   # Slash → folder is the path  (package: effects)
+uniweb add foundation marketing --path libs # name + parent → ./libs/marketing/  (package: marketing)
+
+uniweb add site                 # No name → ./site/                   (package: site)
+uniweb add site blog            # Bare name → ./blog/                 (package: blog)
+uniweb add site sites/store     # Slash → folder is the path           (package: store)
 ```
 
-Unnamed packages take the bare folder names `src/` and `site/`. Named foundations and sites go into `foundations/{name}/` and `sites/{name}/` respectively (segregated layout). Use `--project <n>` to co-locate under a project directory (e.g., `--project docs` → `docs/src/` + `docs/site/`).
+If the target folder already exists, or the package name is already taken by another package in the workspace, the CLI stops with a precise error and suggests alternatives. The check uses the same `classifyPackage` logic the build uses, so cross-type collisions are caught (you can't `add site marketing` if a foundation named `marketing` is already in the workspace).
+
+Use `--project <n>` to co-locate a foundation+site pair under a project directory: `--project docs` → `docs/src/` (package `docs-src`) + `docs/site/` (package `docs-site`). The `-src` / `-site` suffix is the convention for co-located projects only — single-foundation workspaces use bare `site-src`.
 
 ### Adding section types
 
