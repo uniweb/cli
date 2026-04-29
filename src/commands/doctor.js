@@ -2,7 +2,7 @@
  * uniweb doctor - Diagnose project configuration issues
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, resolve, basename, dirname, relative } from 'node:path'
 import yaml from 'js-yaml'
 import { resolveFoundationSrcPath, classifyPackage, isExtensionPackage as buildIsExtensionPackage } from '@uniweb/build'
@@ -10,6 +10,22 @@ import { getCliVersion } from '../versions.js'
 import { readAgentsVersion } from '../utils/agents-stamp.js'
 import { discoverFoundations, discoverSites } from '../utils/config.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
+
+/**
+ * Parse the `--fix [<issue-id>]` flag.
+ *
+ * Returns:
+ *   null         — no auto-fix requested.
+ *   'all'        — fix every auto-fixable issue.
+ *   '<issue-id>' — fix only issues with this id.
+ */
+function parseFixFlag(args) {
+  const idx = args.indexOf('--fix')
+  if (idx === -1) return null
+  const next = args[idx + 1]
+  if (!next || next.startsWith('--')) return 'all'
+  return next
+}
 
 // ANSI colors
 const colors = {
@@ -121,6 +137,13 @@ export async function doctor(args = []) {
   log(`${colors.blue}${colors.bright}Uniweb Doctor${colors.reset}`)
   log(`${colors.dim}Checking project configuration...${colors.reset}`)
 
+  // Auto-fix mode. `--fix` alone fixes every recoverable issue;
+  // `--fix <issue-id>` targets one. Per-issue fix logic lives next to
+  // each diagnostic below so the rewrite happens with full context.
+  const fixFlag = parseFixFlag(args)
+  const shouldFix = (id) => fixFlag === 'all' || fixFlag === id
+  const fixed = (msg) => console.log(`  ${colors.green}↳ Fixed:${colors.reset} ${msg}`)
+
   const projectDir = resolve(process.cwd())
 
   // Find workspace root via the canonical primitive (recognizes
@@ -164,16 +187,29 @@ export async function doctor(args = []) {
     const onlyInYml = [...ymlSet].filter(g => !pkgSet.has(g))
     const onlyInPkg = [...pkgSet].filter(g => !ymlSet.has(g))
     if (onlyInYml.length || onlyInPkg.length) {
-      issues.push({
+      const issue = {
         id: 'workspace-manifests-out-of-sync',
         type: 'warn',
         message: `pnpm-workspace.yaml and package.json::workspaces declare different package globs.`,
         details: { onlyInYml, onlyInPkg },
-      })
+      }
+      issues.push(issue)
       warn(`[workspace-manifests-out-of-sync] pnpm-workspace.yaml and package.json::workspaces are out of sync:`)
       if (onlyInYml.length) log(`    only in pnpm-workspace.yaml:        ${onlyInYml.join(', ')}`)
       if (onlyInPkg.length) log(`    only in package.json::workspaces:    ${onlyInPkg.join(', ')}`)
-      log(`  ${colors.dim}Pick one set of globs and copy it to the other manifest. The two should always match — pnpm reads pnpm-workspace.yaml, npm/yarn read package.json::workspaces.${colors.reset}`)
+      if (shouldFix('workspace-manifests-out-of-sync')) {
+        // Canonical resolution: write the union to both manifests.
+        const union = Array.from(new Set([...ymlPackages, ...pkgWorkspaces])).sort()
+        writeFileSync(ymlPath, yaml.dump({ packages: union }, { flowLevel: -1, quotingType: '"' }))
+        const rootPkgPath = join(workspaceDir, 'package.json')
+        const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf-8'))
+        rootPkg.workspaces = union
+        writeFileSync(rootPkgPath, JSON.stringify(rootPkg, null, 2) + '\n')
+        issue.fixed = true
+        fixed(`wrote union [${union.join(', ')}] to both manifests`)
+      } else {
+        log(`  ${colors.dim}Pick one set of globs and copy it to the other manifest. The two should always match — pnpm reads pnpm-workspace.yaml, npm/yarn read package.json::workspaces.${colors.reset}`)
+      }
     }
   }
 
@@ -268,17 +304,27 @@ export async function doctor(args = []) {
       // Check if it might match a folder name instead
       const folderMatch = foundations.find(f => f.folderName === foundationName)
       if (folderMatch) {
-        issues.push({
+        const issue = {
+          id: 'foundation-name-mismatch',
           type: 'error',
           site: siteName,
-          message: `Foundation mismatch: site.yml uses folder name "${foundationName}" instead of package name "${folderMatch.name}"`
-        })
-        error(`Foundation mismatch:`)
+          message: `Foundation mismatch: site.yml uses folder name "${foundationName}" instead of package name "${folderMatch.name}"`,
+        }
+        issues.push(issue)
+        error(`[foundation-name-mismatch] Foundation mismatch:`)
         log(`    site.yml says: ${colors.yellow}foundation: ${foundationName}${colors.reset}`)
         log(`    This matches the folder name, but the package name is: ${colors.green}${folderMatch.name}${colors.reset}`)
-        log('')
-        log(`  ${colors.dim}To fix, update site.yml:${colors.reset}`)
-        log(`    foundation: ${folderMatch.name}`)
+        if (shouldFix('foundation-name-mismatch')) {
+          const siteYmlPath = join(sitePath, 'site.yml')
+          const updated = { ...siteYml, foundation: folderMatch.name }
+          writeFileSync(siteYmlPath, yaml.dump(updated, { flowLevel: -1, quotingType: "'" }))
+          issue.fixed = true
+          fixed(`${relative(workspaceDir, siteYmlPath)} now references "${folderMatch.name}"`)
+        } else {
+          log('')
+          log(`  ${colors.dim}To fix, update site.yml:${colors.reset}`)
+          log(`    foundation: ${folderMatch.name}`)
+        }
         continue
       }
 
@@ -303,30 +349,54 @@ export async function doctor(args = []) {
     const depValue = deps[foundationName]
 
     if (!depValue) {
-      issues.push({
+      const issue = {
+        id: 'missing-foundation-dep',
         type: 'error',
         site: siteName,
-        message: `Missing dependency "${foundationName}" in package.json`
-      })
-      error(`Missing dependency "${foundationName}" in package.json`)
-      log('')
-      log(`  ${colors.dim}Add to site's package.json dependencies:${colors.reset}`)
-      log(`    "${foundationName}": "file:${relative(sitePath, matchingFoundation.path)}"`)
+        message: `Missing dependency "${foundationName}" in package.json`,
+      }
+      issues.push(issue)
+      error(`[missing-foundation-dep] Missing dependency "${foundationName}" in package.json`)
+      const expectedPath = `file:${relative(sitePath, matchingFoundation.path)}`
+      if (shouldFix('missing-foundation-dep')) {
+        const sitePkgPath = join(sitePath, 'package.json')
+        const updatedPkg = { ...sitePkg }
+        updatedPkg.dependencies = { ...(updatedPkg.dependencies || {}), [foundationName]: expectedPath }
+        writeFileSync(sitePkgPath, JSON.stringify(updatedPkg, null, 2) + '\n')
+        issue.fixed = true
+        fixed(`added "${foundationName}": "${expectedPath}" to ${relative(workspaceDir, sitePkgPath)}`)
+      } else {
+        log('')
+        log(`  ${colors.dim}Add to site's package.json dependencies:${colors.reset}`)
+        log(`    "${foundationName}": "${expectedPath}"`)
+      }
       continue
     }
 
     if (depValue.startsWith('file:')) {
       const depPath = join(sitePath, depValue.slice(5))
       if (!existsSync(depPath)) {
-        issues.push({
+        const issue = {
+          id: 'stale-file-path',
           type: 'error',
           site: siteName,
-          message: `Dependency path doesn't exist: ${depValue}`
-        })
-        error(`Dependency path doesn't exist: ${depValue}`)
-        log('')
-        log(`  ${colors.dim}Update site's package.json:${colors.reset}`)
-        log(`    "${foundationName}": "file:${relative(sitePath, matchingFoundation.path)}"`)
+          message: `Dependency path doesn't exist: ${depValue}`,
+        }
+        issues.push(issue)
+        error(`[stale-file-path] Dependency path doesn't exist: ${depValue}`)
+        const expectedPath = `file:${relative(sitePath, matchingFoundation.path)}`
+        if (shouldFix('stale-file-path')) {
+          const sitePkgPath = join(sitePath, 'package.json')
+          const updatedPkg = { ...sitePkg }
+          updatedPkg.dependencies = { ...(updatedPkg.dependencies || {}), [foundationName]: expectedPath }
+          writeFileSync(sitePkgPath, JSON.stringify(updatedPkg, null, 2) + '\n')
+          issue.fixed = true
+          fixed(`updated "${foundationName}" to "${expectedPath}" in ${relative(workspaceDir, sitePkgPath)}`)
+        } else {
+          log('')
+          log(`  ${colors.dim}Update site's package.json:${colors.reset}`)
+          log(`    "${foundationName}": "${expectedPath}"`)
+        }
         continue
       }
       success(`Dependency path: ${depValue}`)
@@ -475,23 +545,32 @@ export async function doctor(args = []) {
   log('')
   log('─'.repeat(50))
 
-  const errors = issues.filter(i => i.type === 'error')
-  const warnings = issues.filter(i => i.type === 'warn')
+  // Fixed issues no longer count toward errors/warnings — they're
+  // resolved during this run. Exit code is based on what remains.
+  const errors = issues.filter(i => i.type === 'error' && !i.fixed)
+  const warnings = issues.filter(i => i.type === 'warn' && !i.fixed)
+  const fixedCount = issues.filter(i => i.fixed).length
 
-  if (errors.length === 0 && warnings.length === 0) {
+  if (errors.length === 0 && warnings.length === 0 && fixedCount === 0) {
     log('')
     log(`${colors.green}${colors.bright}All checks passed!${colors.reset}`)
     log('')
   } else {
     log('')
+    if (fixedCount > 0) {
+      log(`${colors.green}${fixedCount} issue(s) fixed${colors.reset}`)
+    }
     if (errors.length > 0) {
-      log(`${colors.red}${errors.length} error(s)${colors.reset}`)
+      log(`${colors.red}${errors.length} error(s) remaining${colors.reset}`)
     }
     if (warnings.length > 0) {
-      log(`${colors.yellow}${warnings.length} warning(s)${colors.reset}`)
+      log(`${colors.yellow}${warnings.length} warning(s) remaining${colors.reset}`)
+    }
+    if (fixFlag && (errors.length > 0 || warnings.length > 0)) {
+      log(`${colors.dim}Some issues were not auto-fixable. See the diagnostics above.${colors.reset}`)
     }
     log('')
   }
 
-  return { issues, errors: errors.length, warnings: warnings.length }
+  return { issues, errors: errors.length, warnings: warnings.length, fixed: fixedCount }
 }
