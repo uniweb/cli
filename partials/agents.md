@@ -66,7 +66,7 @@ A site is pure content. A foundation is the site's source code — that's why it
 - **Foundation** (developer, in `src/`): React components. Those in `src/sections` and `src/layouts` are *section types* — selectable by content authors via `type:` in frontmatter, or used for site-level layout areas (header, footer, panel). Most have a `meta.js` with metadata in them. Everything in `src/components` (or elsewhere) is ordinary React — the developer's workbench for helper components that section types import and compose internally.
 - **Site** (content author, in `site/`): Markdown content + configuration. Each section file references a section type. Authors work here without touching foundation code. It may also contain collections of structured content and/or references to external data sources.
 
-**The composition boundary:** Authors compose pages from finished section types — choosing types, writing content, setting params. Developers compose section types from building blocks — importing helpers from `src/components/`, using libraries, writing JSX. These are two different levels of composition. The section type is the boundary between them. Don't expose building-block composition to authors; build complete, self-contained section types that handle their own internal structure.
+**The composition boundary:** Authors compose pages from finished section types — choosing types, writing content, setting params. Developers compose section types from building blocks — importing helpers from `components/`, using libraries, writing JSX. These are two different levels of composition. The section type is the boundary between them. Don't expose building-block composition to authors; build complete, self-contained section types that handle their own internal structure.
 
 > Multi-site projects use sub-folders with site/foundation pairs in them (each project gets its own `src/` + `site/`), or segregate foundations and sites into separate folders (`foundations/`, `sites/`).
 
@@ -111,7 +111,7 @@ uniweb add section Hero
 uniweb add section Hero --foundation ui   # When multiple foundations exist
 ```
 
-Creates `src/sections/Hero/index.jsx` and `meta.js` with a minimal CCA-proper starter. The dev server picks it up automatically — no build or install needed.
+Creates `sections/Hero/index.jsx` and `meta.js` with a minimal CCA-proper starter. The dev server picks it up automatically — no build or install needed.
 
 ### What the CLI generates
 
@@ -971,7 +971,7 @@ The `styles.css` declaration ensures defaults are present in the foundation's CS
 Tokens handle context adaptation — the hard problem. **They are a floor, not a ceiling.** A great foundation adds design vocabulary on top:
 
 ```css
-/* src/styles.css */
+/* styles.css */
 .border-subtle { border-color: color-mix(in oklch, var(--border), transparent 50%); }
 .border-strong { border-color: color-mix(in oklch, var(--border), var(--heading) 30%); }
 .text-tertiary { color: color-mix(in oklch, var(--body), var(--subtle) 50%); }
@@ -1354,10 +1354,10 @@ This is the system-building pattern at its clearest: **section types are the pub
 
 ### Section components are composites
 
-A section component is rarely a single flat render. It imports helper components from `src/components/` and utilities from `src/utils/` to build a complex UI while presenting a single `type:` to the content author. These directories are the developer's workbench — ordinary React and JS, not selectable by authors, not auto-discovered.
+A section component is rarely a single flat render. It imports helper components from `components/` and utilities from `utils/` to build a complex UI while presenting a single `type:` to the content author. These directories are the developer's workbench — ordinary React and JS, not selectable by authors, not auto-discovered.
 
 ```jsx
-// src/sections/Pricing/index.jsx
+// sections/Pricing/index.jsx
 import PricingCard from '#components/PricingCard'
 import formatPrice from '#utils/formatPrice'
 
@@ -1373,7 +1373,7 @@ export default function Pricing({ content, params }) {
 }
 ```
 
-The content author writes `type: Pricing` and defines tiers as content items. The section component maps items to cards using a helper component from `src/components/` and a formatting utility from `src/utils/`. Neither is selectable by authors — they're implementation details behind the section type boundary.
+The content author writes `type: Pricing` and defines tiers as content items. The section component maps items to cards using a helper component from `components/` and a formatting utility from `utils/`. Neither is selectable by authors — they're implementation details behind the section type boundary.
 
 **When to reach for this pattern:** When a page type has consistent structural elements (header bars, navigation footers, contextual sidebars) that the content author shouldn't need to add as separate sections. If the author would have to add the same boilerplate sections to every page of a certain type, the section component should compose them internally.
 
@@ -1409,14 +1409,14 @@ src/                     # the foundation package (folder name is `src`)
 
 **Discovery:** PascalCase files/folders at root of `src/sections/` are auto-discovered. Nested levels require `meta.js`. Lowercase directories are organizational only. `hidden: true` excludes a component entirely. Everything outside `src/sections/` is ordinary React.
 
-**Source root.** The foundation package's source files live at the package root — the `src/` folder *is* the foundation. The build reads `package.json::main` to know that (for new scaffolds, `main: "./_entry.generated.js"`). Older foundations may use an even-more-nested layout where the source lives in `src/src/` and `main` points to `./src/_entry.generated.js`; both shapes work through the same code path.
+**Source root.** The foundation package's source files live at the package root — the `src/` folder *is* the foundation. The build reads `package.json::main` to know that (for new scaffolds, `main: "./_entry.generated.js"`). Older foundations may use an even-more-nested layout where the source lives in `foundation/src/` and `main` points to `./src/_entry.generated.js`; both shapes work through the same code path.
 
 **Import aliases:** Foundations include subpath imports in `package.json` for shared internals. Use them instead of brittle relative paths:
 
 | Alias | Maps to | Use for |
 |-------|---------|---------|
-| `#components/*` | `./components/*` (i.e. `src/components/*` from the workspace root) | Shared React components |
-| `#utils/*` | `./utils/*` (i.e. `src/utils/*`) | Helper functions, non-React logic |
+| `#components/*` | `./components/*` | Shared React components |
+| `#utils/*` | `./utils/*` | Helper functions, non-React logic |
 
 ```jsx
 // ✅ Clean — use aliases
@@ -1429,7 +1429,7 @@ import LessonHeader from '../../components/LessonHeader'
 
 Within the same directory (e.g., one component importing a sibling), use normal relative imports (`./AIFeedbackCard`).
 
-**Foundation entry shape (`src/main.js`).** A single `export default { … }` whose top-level keys are the capabilities the foundation provides — e.g. `name`, `description`, `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers`. Optionally a named `vars` export for theme-variable metadata (see *Foundation variables*). Everything else (section types, layouts) is auto-discovered from `src/sections/` and `src/layouts/` and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in the produced `dist/foundation.js`; you don't write that wrapper yourself, and most foundation code never sees it. The one place it matters: when you import your **own** `src/main.js` from a foundation component (e.g., a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
+**Foundation entry shape (`main.js`).** A single `export default { … }` whose top-level keys are the capabilities the foundation provides — e.g. `name`, `description`, `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers`. Optionally a named `vars` export for theme-variable metadata (see *Foundation variables*). Everything else (section types, layouts) is auto-discovered from `sections/` and `layouts/` and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in the produced `dist/foundation.js`; you don't write that wrapper yourself, and most foundation code never sees it. The one place it matters: when you import your **own** `main.js` from a foundation component (e.g., a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
 
 ### Website and Page APIs
 
@@ -1551,10 +1551,10 @@ Other navigation methods: `block.getPrevBlockInfo()`, `block.page.getFirstBodyBl
 
 ### Custom Layouts
 
-Layouts live in `src/layouts/` (inside the foundation package) and are auto-discovered:
+Layouts live in `layouts/` (inside the foundation package) and are auto-discovered:
 
 ```js
-// src/main.js
+// main.js
 export default {
   name: 'My Template',
   description: 'A brief description',
@@ -1563,7 +1563,7 @@ export default {
 ```
 
 ```jsx
-// src/layouts/DocsLayout/index.jsx
+// layouts/DocsLayout/index.jsx
 export default function DocsLayout({ header, body, footer, left, right, params }) {
   return (
     <div className="min-h-screen flex flex-col">
@@ -1711,7 +1711,7 @@ Don't port line-by-line. Study the source, then rebuild from first principles. O
 
 2. **Use named layouts** for different page groups — marketing layout for landing pages, docs layout for `/docs/*`.
 
-3. **Dump legacy components under `src/components/`** — they're not section types. Import from section types during transition.
+3. **Dump legacy components under `components/`** — they're not section types. Import from section types during transition.
 
 4. **Create section types one at a time.** Migration levels:
    - **Level 0**: Paste the original as one section type. Routing and dev tooling work immediately.
@@ -1723,13 +1723,13 @@ Don't port line-by-line. Study the source, then rebuild from first principles. O
 
 6. **Name by purpose, not content** — `TheModel` → `SplitContent`, `WorkModes` → `FeatureColumns`.
 
-7. **UI helpers → `components/`** — Buttons, badges, cards in `src/components/` (no `meta.js`, not selectable by authors).
+7. **UI helpers → `components/`** — Buttons, badges, cards in `components/` (no `meta.js`, not selectable by authors).
 
 ---
 
 ## Tailwind CSS v4
 
-Foundation styles in `src/styles.css`:
+Foundation styles in `styles.css`:
 
 ```css
 @import "tailwindcss";
