@@ -16,11 +16,11 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 
-import { resolveFoundationSrcPath } from '@uniweb/build'
+import { resolveFoundationSrcPath, classifyPackage } from '@uniweb/build'
 import { createLocalRegistry, RemoteRegistry } from '../utils/registry.js'
 import { ensureAuth, readAuth } from '../utils/auth.js'
 import { getRegistryUrl } from '../utils/config.js'
-import { findWorkspaceRoot, findFoundations, findSites, classifyPackage, promptSelect } from '../utils/workspace.js'
+import { findWorkspaceRoot, findFoundations, findSites, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
 // Colors for terminal output
@@ -63,7 +63,7 @@ async function resolveFoundationDir(args) {
   const prefix = getCliPrefix()
 
   // Check if current directory is a foundation
-  const type = await classifyPackage(cwd)
+  const type = classifyPackage(cwd)
   if (type === 'foundation') {
     return cwd
   }
@@ -164,10 +164,10 @@ export async function publish(args = []) {
   // 1. Resolve foundation directory
   const foundationDir = await resolveFoundationDir(args)
 
-  // Verify it's actually a foundation (has foundation.js in its source root)
-  const foundationSrc = resolveFoundationSrcPath(foundationDir)
-  if (!existsSync(join(foundationSrc, 'foundation.js'))) {
-    error(`Not a foundation directory (no foundation.js at ${foundationSrc})`)
+  // Verify it's actually a foundation (canonical classifier checks
+  // package.json::main, then main.js, then legacy foundation.js).
+  if (classifyPackage(foundationDir) !== 'foundation') {
+    error(`Not a foundation directory: ${foundationDir}`)
     process.exit(1)
   }
 

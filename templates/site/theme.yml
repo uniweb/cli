@@ -93,7 +93,7 @@ colors:
 
 # ─── Foundation Variables ──────────────────────────────────────────────────────
 # Override variables declared by the foundation (e.g., header-height, max-width).
-# Available variables depend on the foundation — check its foundation.js.
+# Available variables depend on the foundation — check its main.js.
 
 # vars:
 #   header-height: 5rem

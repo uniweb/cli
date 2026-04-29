@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve, basename, dirname, relative } from 'node:path'
 import yaml from 'js-yaml'
-import { resolveFoundationSrcPath } from '@uniweb/build'
+import { resolveFoundationSrcPath, classifyPackage, isExtensionPackage as buildIsExtensionPackage } from '@uniweb/build'
 import { getCliVersion } from '../versions.js'
 import { readAgentsVersion } from '../utils/agents-stamp.js'
 
@@ -30,37 +30,37 @@ const log = console.log
  * Check if a directory is a site
  */
 function isSite(dir) {
-  return existsSync(join(dir, 'site.yml')) || existsSync(join(dir, 'site.yaml'))
+  // Use the canonical classifier; also accept legacy `site.yaml`
+  // (the classifier only recognizes `.yml` and `.document.yml`).
+  return classifyPackage(dir) === 'site' || existsSync(join(dir, 'site.yaml'))
 }
 
 /**
  * Check if a directory is a foundation
  */
 function isFoundation(dir) {
-  const srcDir = resolveFoundationSrcPath(dir)
-  // Primary: has foundation.js config
-  if (existsSync(join(srcDir, 'foundation.js'))) return true
-  // Fallback: has sections/
-  if (existsSync(join(srcDir, 'sections'))) return true
-  // Legacy fallback: has components/
-  if (existsSync(join(srcDir, 'components'))) return true
-  return false
+  return classifyPackage(dir) === 'foundation'
 }
 
 /**
- * Load foundation.js config from a directory
- * Returns the default export, or null if not found/loadable
+ * Load the foundation's authored declarations file (main.js or legacy
+ * foundation.js) and return a minimal summary used by the doctor.
+ * Returns null if no declarations file is found.
  */
 function loadFoundationJs(dir) {
-  const filePath = join(resolveFoundationSrcPath(dir), 'foundation.js')
-  if (!existsSync(filePath)) return null
-  try {
-    const content = readFileSync(filePath, 'utf8')
-    // Simple extraction: check for extension: true
-    return { extension: /extension\s*:\s*true/.test(content) }
-  } catch {
-    return null
+  const srcDir = resolveFoundationSrcPath(dir)
+  for (const name of ['main.js', 'foundation.js']) {
+    const filePath = join(srcDir, name)
+    if (existsSync(filePath)) {
+      try {
+        const content = readFileSync(filePath, 'utf8')
+        return { extension: /extension\s*:\s*true/.test(content) }
+      } catch {
+        return null
+      }
+    }
   }
+  return null
 }
 
 /**
@@ -80,10 +80,7 @@ function loadSchemaJson(dir) {
  * Check if a foundation is an extension (via schema.json or foundation.js)
  */
 function isExtensionPackage(dir) {
-  const schema = loadSchemaJson(dir)
-  if (schema?._self?.role === 'extension') return true
-  const config = loadFoundationJs(dir)
-  return config?.extension === true
+  return buildIsExtensionPackage(dir)
 }
 
 /**

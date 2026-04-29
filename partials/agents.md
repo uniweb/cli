@@ -72,7 +72,7 @@ A site is pure content. A foundation is the site's source code — that's why it
 
 ## Project Setup
 
-Always use the CLI to scaffold projects — never write `package.json`, `vite.config.js`, `main.js`, or `index.html` manually. The CLI resolves correct versions and structure.
+Always use the CLI to scaffold projects — never write `package.json`, `vite.config.js`, `entry.js`, or `index.html` manually. The CLI resolves correct versions and structure.
 
 **npm or pnpm.** Projects include both `pnpm-workspace.yaml` and npm workspaces. Replace `pnpm` with `npm` in any command below.
 
@@ -115,15 +115,15 @@ Creates `src/sections/Hero/index.jsx` and `meta.js` with a minimal CCA-proper st
 
 ### What the CLI generates
 
-**Foundation** (`vite.config.js`, `package.json`, `src/foundation.js`, `src/styles.css`):
+**Foundation** (`vite.config.js`, `package.json`, `src/main.js`, `src/styles.css`):
 - `defineFoundationConfig()` in vite.config.js
 - Dependencies pinned to current npm versions
 - `@import "@uniweb/kit/theme-tokens.css"` in styles.css
 
-**Site** (`vite.config.js`, `package.json`, `main.js`, `index.html`, `site.yml`):
+**Site** (`vite.config.js`, `package.json`, `entry.js`, `index.html`, `site.yml`):
 - `defineSiteConfig()` in vite.config.js
 - `react-router-dom` in devDependencies (required by pnpm strict mode)
-- Standard `start()` call in main.js
+- Standard `start()` call in entry.js
 
 ## Commands
 
@@ -942,7 +942,7 @@ Foundation-level CSS variables are for values that must stay consistent **across
 
 If you need them, declare vars in two places:
 
-**`foundation.js`** — metadata for the editor and schema:
+**`main.js`** — metadata for the editor and schema:
 
 ```js
 export const vars = {
@@ -962,7 +962,7 @@ export const vars = {
 }
 ```
 
-The `styles.css` declaration ensures defaults are present in the foundation's CSS output and enables Tailwind shorthand (`rounded-(--radius)` instead of `rounded-[var(--radius)]`). The `foundation.js` declaration provides descriptions and types for the visual editor. Sites override values in `theme.yml` under `vars:` — the site's theme CSS takes priority over the foundation defaults.
+The `styles.css` declaration ensures defaults are present in the foundation's CSS output and enables Tailwind shorthand (`rounded-(--radius)` instead of `rounded-[var(--radius)]`). The `main.js` declaration provides descriptions and types for the visual editor. Sites override values in `theme.yml` under `vars:` — the site's theme CSS takes priority over the foundation defaults.
 
 **Common mistake:** Using foundation vars for values that belong to a specific component. A header height is a layout param, not a foundation var — the layout component owns it. A sidebar width is a layout param too. Foundation vars are for values that multiple unrelated components share — radii, spacing, shadows.
 
@@ -1402,7 +1402,7 @@ src/                     # the foundation package (folder name is `src`)
 │   └── Card.jsx
 ├── utils/               # Helper functions, non-React logic
 │   └── splitContent.js
-├── foundation.js
+├── main.js
 ├── styles.css
 └── package.json         # name: "site-src"
 ```
@@ -1429,7 +1429,7 @@ import LessonHeader from '../../components/LessonHeader'
 
 Within the same directory (e.g., one component importing a sibling), use normal relative imports (`./AIFeedbackCard`).
 
-**Foundation entry shape (`src/foundation.js`).** A single `export default { … }` whose top-level keys are the capabilities the foundation provides — e.g. `name`, `description`, `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers`. Optionally a named `vars` export for theme-variable metadata (see *Foundation variables*). Everything else (section types, layouts) is auto-discovered from `src/sections/` and `src/layouts/` and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in the produced `dist/foundation.js`; you don't write that wrapper yourself, and most foundation code never sees it. The one place it matters: when you import your **own** `src/foundation.js` from a foundation component (e.g., a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
+**Foundation entry shape (`src/main.js`).** A single `export default { … }` whose top-level keys are the capabilities the foundation provides — e.g. `name`, `description`, `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers`. Optionally a named `vars` export for theme-variable metadata (see *Foundation variables*). Everything else (section types, layouts) is auto-discovered from `src/sections/` and `src/layouts/` and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in the produced `dist/foundation.js`; you don't write that wrapper yourself, and most foundation code never sees it. The one place it matters: when you import your **own** `src/main.js` from a foundation component (e.g., a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
 
 ### Website and Page APIs
 
@@ -1554,7 +1554,7 @@ Other navigation methods: `block.getPrevBlockInfo()`, `block.page.getFirstBodyBl
 Layouts live in `src/layouts/` (inside the foundation package) and are auto-discovered:
 
 ```js
-// src/foundation.js
+// src/main.js
 export default {
   name: 'My Template',
   description: 'A brief description',
@@ -1598,14 +1598,14 @@ Named subdirectories are self-contained — no inheritance. Layout cascade: `pag
 
 ## Content Handlers
 
-Content handlers are a transform layer that runs between data assembly and the component. They're declared in `foundation.js` and apply to every section in the foundation. The standard content shape (title, paragraphs, items, sequence) is the default — handlers can reshape it.
+Content handlers are a transform layer that runs between data assembly and the component. They're declared in `main.js` and apply to every section in the foundation. The standard content shape (title, paragraphs, items, sequence) is the default — handlers can reshape it.
 
 ### The three hooks
 
 The foundation declares handlers as an object in its default export:
 
 ```js
-// foundation.js
+// main.js
 export default {
   handlers: {
     data:    (data, block) => { /* ... */ },

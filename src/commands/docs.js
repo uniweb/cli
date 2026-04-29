@@ -23,7 +23,7 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { resolve, join, dirname } from 'node:path'
-import { generateDocs, resolveFoundationSrcPath } from '@uniweb/build'
+import { generateDocs, resolveFoundationSrcPath, classifyPackage } from '@uniweb/build'
 import {
   isWorkspaceRoot,
   findFoundations,
@@ -314,17 +314,15 @@ ${colors.dim}Notes:${colors.reset}
  * Detect if current directory is a foundation
  */
 function isFoundation(dir) {
-  const srcDir = resolveFoundationSrcPath(dir)
-  if (existsSync(join(srcDir, 'foundation.js'))) return true
-  if (existsSync(join(srcDir, 'sections'))) return true
-  return existsSync(join(srcDir, 'components'))
+  return classifyPackage(dir) === 'foundation'
 }
 
 /**
  * Detect if current directory is a site
  */
 function isSite(dir) {
-  return existsSync(join(dir, 'site.yml')) || existsSync(join(dir, 'site.yaml'))
+  // Use the canonical classifier; also accept legacy `site.yaml`.
+  return classifyPackage(dir) === 'site' || existsSync(join(dir, 'site.yaml'))
 }
 
 /**

@@ -21,6 +21,8 @@ import {
   generateEntryPoint,
   discoverComponents,
   resolveFoundationSrcPath,
+  classifyPackage,
+  isExtensionPackage,
 } from '@uniweb/build'
 import { readSiteConfig } from '@uniweb/build/site'
 import { readWorkspaceConfig, resolveGlob } from '../utils/config.js'
@@ -63,33 +65,15 @@ function info(message) {
  * 5. pnpm-workspace.yaml or package.json workspaces → workspace
  */
 function detectProjectType(projectDir) {
-  // Primary detection: config files
-  // Foundation source root comes from package.json::main; for legacy nested
-  // layouts that's `<projectDir>/src/`, for flat layouts it's `<projectDir>/`.
-  const foundationSrc = resolveFoundationSrcPath(projectDir)
-  if (existsSync(join(foundationSrc, 'foundation.js'))) {
-    return 'foundation'
-  }
+  // Foundation vs site: delegate to the canonical classifier in @uniweb/build.
+  const kind = classifyPackage(projectDir)
+  if (kind) return kind
 
-  if (existsSync(join(projectDir, 'site.yml'))) {
-    return 'site'
-  }
-
-  // Fallback detection: directory structure
-  if (existsSync(join(foundationSrc, 'components')) || existsSync(join(foundationSrc, 'sections'))) {
-    return 'foundation'
-  }
-
-  if (existsSync(join(projectDir, 'pages'))) {
-    return 'site'
-  }
-
-  // Workspace: has pnpm-workspace.yaml or package.json with workspaces
+  // Workspace: has pnpm-workspace.yaml or package.json with workspaces field.
   if (existsSync(join(projectDir, 'pnpm-workspace.yaml'))) {
     return 'workspace'
   }
 
-  // Check package.json for workspaces field
   const packageJsonPath = join(projectDir, 'package.json')
   if (existsSync(packageJsonPath)) {
     try {
@@ -508,39 +492,22 @@ async function buildSite(projectDir, options = {}) {
  * Check if a directory is a foundation
  */
 function isFoundation(dir) {
-  const srcDir = resolveFoundationSrcPath(dir)
-  // Primary: has foundation.js config
-  if (existsSync(join(srcDir, 'foundation.js'))) return true
-  // Fallback: has sections/
-  if (existsSync(join(srcDir, 'sections'))) return true
-  // Legacy fallback: has components/
-  if (existsSync(join(srcDir, 'components'))) return true
-  return false
+  return classifyPackage(dir) === 'foundation'
 }
 
 /**
- * Check if a foundation directory declares extension: true in foundation.js
+ * Check if a foundation directory declares extension: true in its
+ * authored declarations file (main.js or legacy foundation.js).
  */
 function isExtensionDir(dir) {
-  const filePath = join(resolveFoundationSrcPath(dir), 'foundation.js')
-  if (!existsSync(filePath)) return false
-  try {
-    const content = readFileSync(filePath, 'utf8')
-    return /extension\s*:\s*true/.test(content)
-  } catch {
-    return false
-  }
+  return isExtensionPackage(dir)
 }
 
 /**
  * Check if a directory is a site
  */
 function isSite(dir) {
-  // Primary: has site.yml config
-  if (existsSync(join(dir, 'site.yml'))) return true
-  // Fallback: has pages/
-  if (existsSync(join(dir, 'pages'))) return true
-  return false
+  return classifyPackage(dir) === 'site'
 }
 
 /**

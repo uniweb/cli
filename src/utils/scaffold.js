@@ -94,7 +94,13 @@ export async function scaffoldSite(targetDir, context, options = {}) {
  * Apply content overlay from a content directory onto a target
  *
  * Content files overwrite scaffolded defaults. Structural files
- * (package.json, vite.config.js, main.js, index.html) are NOT overwritten.
+ * (package.json, vite.config.js, entry.js, index.html) are NOT overwritten.
+ *
+ * Note: a foundation's `main.js` (the user-authored declarations file) is
+ * NOT structural — templates legitimately provide their own `main.js` to
+ * override the empty scaffold default. The site's `entry.js` (formerly
+ * `main.js`) IS structural — the boilerplate `start({...})` is identical
+ * across all sites and shouldn't be overwritten.
  *
  * @param {string} contentDir - Source content directory (e.g., starter/foundation/)
  * @param {string} targetDir - Target directory to overlay onto
@@ -110,7 +116,7 @@ export async function applyContent(contentDir, targetDir, context, options = {})
   const STRUCTURAL_FILES = new Set([
     'package.json',
     'vite.config.js',
-    'main.js',
+    'entry.js',
     'index.html',
     '.gitignore',
   ])

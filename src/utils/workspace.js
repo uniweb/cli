@@ -10,6 +10,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { resolve, dirname, join } from 'node:path'
 import yaml from 'js-yaml'
+import { classifyPackage as classifyPackageSync } from '@uniweb/build'
 
 /**
  * Check if a directory is a workspace root.
@@ -124,38 +125,17 @@ export async function getWorkspacePackages(workspaceRoot) {
 }
 
 /**
- * Classify a package as foundation, site, or unknown
+ * Classify a package as foundation, site, or unknown.
  *
- * Classification logic:
- * - Site: has @uniweb/runtime in dependencies (checked first, more specific)
- * - Foundation: has @uniweb/build in devDependencies but NOT @uniweb/runtime
- *
- * Note: Sites also have @uniweb/build for the Vite plugin, so we check
- * for @uniweb/runtime first to distinguish them.
+ * Re-exports the canonical (sync) classifier from @uniweb/build, kept
+ * async-shaped here so existing call sites continue to work without an
+ * await-removal sweep. New code should import directly from @uniweb/build.
  *
  * @param {string} packagePath - Full path to package directory
  * @returns {Promise<'foundation'|'site'|null>}
  */
 export async function classifyPackage(packagePath) {
-  const pkgJsonPath = join(packagePath, 'package.json')
-  if (!existsSync(pkgJsonPath)) return null
-
-  try {
-    const pkg = JSON.parse(await readFile(pkgJsonPath, 'utf-8'))
-
-    // Site: has @uniweb/runtime in dependencies (check first - more specific)
-    if (pkg.dependencies?.['@uniweb/runtime']) {
-      return 'site'
-    }
-    // Foundation: has @uniweb/build in devDependencies (and not a site)
-    if (pkg.devDependencies?.['@uniweb/build']) {
-      return 'foundation'
-    }
-  } catch {
-    // Ignore parse errors
-  }
-
-  return null
+  return classifyPackageSync(packagePath)
 }
 
 /**
@@ -165,16 +145,7 @@ export async function classifyPackage(packagePath) {
  */
 export async function findFoundations(workspaceRoot) {
   const packages = await getWorkspacePackages(workspaceRoot)
-  const foundations = []
-
-  for (const pkg of packages) {
-    const fullPath = join(workspaceRoot, pkg)
-    if ((await classifyPackage(fullPath)) === 'foundation') {
-      foundations.push(pkg)
-    }
-  }
-
-  return foundations
+  return packages.filter(pkg => classifyPackageSync(join(workspaceRoot, pkg)) === 'foundation')
 }
 
 /**
@@ -184,16 +155,7 @@ export async function findFoundations(workspaceRoot) {
  */
 export async function findSites(workspaceRoot) {
   const packages = await getWorkspacePackages(workspaceRoot)
-  const sites = []
-
-  for (const pkg of packages) {
-    const fullPath = join(workspaceRoot, pkg)
-    if ((await classifyPackage(fullPath)) === 'site') {
-      sites.push(pkg)
-    }
-  }
-
-  return sites
+  return packages.filter(pkg => classifyPackageSync(join(workspaceRoot, pkg)) === 'site')
 }
 
 /**

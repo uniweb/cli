@@ -75,7 +75,7 @@ my-project/
 │   │       ├── page.yml      # Page metadata
 │   │       └── hero.md       # Section content
 │   ├── locales/              # i18n (hash-based translations)
-│   ├── main.js               # Entry point (~6 lines)
+│   ├── entry.js              # Entry point (~6 lines)
 │   ├── vite.config.js        # 3-line config
 │   └── public/               # Static assets
 │
@@ -87,7 +87,7 @@ my-project/
     │       └── Features.jsx
     ├── components/           # Regular React components
     │   └── Button.jsx
-    ├── foundation.js         # Foundation declarations
+    ├── main.js               # Foundation declarations (vars, defaultLayout, props)
     ├── styles.css            # Tailwind v4 + foundation CSS tokens
     ├── package.json          # name: "site-src"
     ├── vite.config.js        # 3-line config
