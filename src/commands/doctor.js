@@ -136,6 +136,47 @@ export async function doctor(args = []) {
   log('')
   info(`Workspace: ${workspaceDir}`)
 
+  // Workspace manifest sync — keep `pnpm-workspace.yaml::packages` and
+  // `package.json::workspaces` aligned. The CLI writes both on every
+  // mutation (see addWorkspaceGlob in utils/config.js), but a user who
+  // manually edits one can introduce drift. Drift breaks projects that
+  // switch package managers (pnpm-workspace.yaml is pnpm-only;
+  // package.json::workspaces is what npm and yarn read).
+  const issues = []
+  const ymlPath = join(workspaceDir, 'pnpm-workspace.yaml')
+  if (existsSync(ymlPath)) {
+    let ymlPackages = []
+    try {
+      ymlPackages = yaml.load(readFileSync(ymlPath, 'utf8'))?.packages || []
+    } catch {
+      // Malformed yaml — flag separately
+      issues.push({
+        id: 'workspace-yaml-malformed',
+        type: 'error',
+        message: 'pnpm-workspace.yaml is malformed and could not be parsed.',
+      })
+      error('pnpm-workspace.yaml is malformed and could not be parsed.')
+    }
+    const rootPkg = loadPackageJson(workspaceDir)
+    const pkgWorkspaces = Array.isArray(rootPkg?.workspaces) ? rootPkg.workspaces : []
+    const ymlSet = new Set(ymlPackages)
+    const pkgSet = new Set(pkgWorkspaces)
+    const onlyInYml = [...ymlSet].filter(g => !pkgSet.has(g))
+    const onlyInPkg = [...pkgSet].filter(g => !ymlSet.has(g))
+    if (onlyInYml.length || onlyInPkg.length) {
+      issues.push({
+        id: 'workspace-manifests-out-of-sync',
+        type: 'warn',
+        message: `pnpm-workspace.yaml and package.json::workspaces declare different package globs.`,
+        details: { onlyInYml, onlyInPkg },
+      })
+      warn(`[workspace-manifests-out-of-sync] pnpm-workspace.yaml and package.json::workspaces are out of sync:`)
+      if (onlyInYml.length) log(`    only in pnpm-workspace.yaml:        ${onlyInYml.join(', ')}`)
+      if (onlyInPkg.length) log(`    only in package.json::workspaces:    ${onlyInPkg.join(', ')}`)
+      log(`  ${colors.dim}Pick one set of globs and copy it to the other manifest. The two should always match — pnpm reads pnpm-workspace.yaml, npm/yarn read package.json::workspaces.${colors.reset}`)
+    }
+  }
+
   // Discover foundations + sites via the canonical workspace globs.
   // Doctor used to walk fixed paths (`foundation/`, `foundations/*`) which
   // missed the default-path `src/` shape that Thread D made canonical.
@@ -191,9 +232,8 @@ export async function doctor(args = []) {
     }
   }
 
-  // Check each site
-  const issues = []
-
+  // Check each site (issues array was declared earlier alongside the
+  // workspace-manifest-sync check).
   for (const site of sites) {
     const siteName = site.name
     const sitePath = site.path
