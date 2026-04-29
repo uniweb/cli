@@ -14,8 +14,8 @@ The interactive prompt asks for a project name and template. Pick one, then:
 
 ```bash
 cd my-project
-npm install
-npm run dev
+pnpm install  # or npm install
+pnpm dev      # or npm run dev
 ```
 
 Edit files in `site/pages/` and `src/sections/` to see changes instantly.
@@ -51,9 +51,9 @@ pnpm create uniweb my-site --template docs
 Run these from the **project root**:
 
 ```bash
-npm run dev        # Start development server
-npm run build      # Build foundation + site for production
-npm run preview    # Preview the production build
+pnpm dev        # Start development server
+pnpm build      # Build foundation + site for production
+pnpm preview    # Preview the production build
 ```
 
 The `build` command outputs to `site/dist/`. With pre-rendering enabled (the default for official templates), you get static HTML files ready to deploy anywhere. For the actual deploy step (and the `uniweb publish` / `uniweb deploy` commands), see [Deployment](#deployment) below.
@@ -243,14 +243,13 @@ The parser extracts semantic elements from markdown—`title` from the first hea
 
 ## Foundations Are Portable
 
-The `src/` folder (your project's foundation) ships with your project as a convenience, but a foundation is a self-contained artifact with no dependency on any specific site. Sites reference foundations by configuration, not by folder proximity.
+The `src/` folder (your project's foundation) ships with your project as a convenience, but a foundation is a dynamically linked module (DML) with no dependency on any specific site. Sites reference foundations by configuration, not by folder proximity.
 
-**Three ways to use a foundation:**
+**Two ways to use a foundation:**
 
 | Mode             | How it works                       | Best for                                           |
 | ---------------- | ---------------------------------- | -------------------------------------------------- |
 | **Local folder** | Foundation lives in your workspace | Developing site and components together            |
-| **npm package**  | `npm add @acme/foundation`         | Distributing via standard package tooling          |
 | **Runtime link** | Foundation loads from a URL        | Independent release cycles, platform-managed sites |
 
 You can delete the `src/` folder entirely and point your site at a published foundation. Or develop a foundation locally, then publish it for other sites to consume. The site doesn't care where its components come from.
@@ -259,7 +258,7 @@ You can delete the `src/` folder entirely and point your site at a published fou
 
 _Site-first_ — You're building a website. The foundation is your component library, co-developed with the site. This is the common case.
 
-_Foundation-first_ — You're building a component system. The site is a test harness with sample content. The real sites live elsewhere—other repositories, other teams, or managed on [hub.uniweb.app](https://hub.uniweb.app). Use `uniweb add site` to add multiple test sites exercising a shared foundation.
+_Foundation-first_ — You're building a component system. The site is a test harness with sample content. The real sites live elsewhere—other repositories, other teams, or managed on [uniweb.app](https://uniweb.app). Use `uniweb add site` to add multiple test sites exercising a shared foundation.
 
 ## Growing Your Project
 
@@ -301,11 +300,11 @@ The structure you start with scales without rewrites:
 
 1. **Single project** — One site, one foundation. Develop and deploy together. Most projects stay here.
 
-2. **Published foundation** — Release your foundation as an npm package or to [hub.uniweb.app](https://hub.uniweb.app). Other sites can use it without copying code.
+2. **Published foundation** — Release your foundation as a dynamically linked module to [uniweb.app](https://uniweb.app). Other sites can use it without copying code.
 
 3. **Multiple sites** — Several sites share one foundation. Update components once, every site benefits.
 
-4. **Platform-managed sites** — Sites built on [hub.uniweb.app](https://hub.uniweb.app) with visual editing tools can use your foundation. You develop components locally; content teams work in the browser.
+4. **Platform-managed sites** — Sites built on [uniweb.app](https://uniweb.app) with visual editing tools can use your foundation. You develop components locally; content teams work in the browser.
 
 Start with local files deployed anywhere. The same foundation works across all these scenarios.
 
@@ -313,12 +312,12 @@ Start with local files deployed anywhere. The same foundation works across all t
 
 A Uniweb project produces two artifacts — a **site** (content) and a **foundation** (code) — and they don't have to ship together. That opens up deployment options other frameworks can't express:
 
-- **Bundled mode** — site and foundation built into one self-contained `dist/`, deployed to any static host (Vercel, Netlify, Cloudflare Pages, GitHub Pages, S3, anywhere).
-- **Linked mode** — the foundation lives at one URL; any number of sites load it at runtime. Update the foundation once, every site picks it up — no site rebuilds.
+- **Bundled mode** — site and foundation built into one self-contained `dist/`, deployed to any static host.
+- **Linked mode** — the foundation lives in any host and the site in any other host; different sites can dynamically link with the same foundation. Update the foundation, every site picks it up — no site rebuilds.
 
 Two verbs handle it: `uniweb publish` sends a foundation to a registry, `uniweb deploy` sends a site to a host. Most projects start bundled (one command, one destination) and grow into linked mode by changing one line in `site.yml`. Mix providers freely — foundation on GitHub Pages, site on Vercel; or use Uniweb's registry + hosting for propagation, gated rollouts, and edge SSR.
 
-→ **[Deploying](https://github.com/uniweb/docs/blob/main/development/deploying.md)** — the full menu: bundled vs linked, the two-verb model, one-foundation-many-sites, propagation on the Uniweb platform, and recipes for Vercel, Netlify, Cloudflare, GitHub Pages, S3, and self-hosted servers.
+→ **[Deploying](https://github.com/uniweb/docs/blob/main/development/deploying.md)** — the full menu: bundled vs linked, the two-verb model, one-foundation-many-sites, optimized hosting on the Uniweb platform, and recipes for other hosting services.
 
 ---
 
@@ -398,7 +397,7 @@ A default project has two packages, listed in both `pnpm-workspace.yaml` and `pa
 ```yaml
 # pnpm-workspace.yaml
 packages:
-  - foundation
+  - src
   - site
 ```
 
@@ -406,20 +405,20 @@ In `package.json` (for npm compatibility):
 
 ```json
 {
-  "workspaces": ["foundation", "site"]
+  "workspaces": ["src", "site"]
 }
 ```
 
-When you `add` more packages, the CLI adds the appropriate globs to both files automatically:
+When you `add` more packages, the CLI adds the appropriate workspaces automatically:
 
 ```yaml
-# After: uniweb add foundation blog → adds foundations/*
-# After: uniweb add extension effects → adds extensions/*
+# After: uniweb add site marketing/blog
+# After: uniweb add foundation marketing/blogger
 packages:
-  - foundation
+  - src
   - site
-  - foundations/*
-  - extensions/*
+  - marketing/blog
+  - marketing/blogger
 ```
 
 ## FAQ
