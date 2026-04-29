@@ -201,7 +201,7 @@ async function createFromPackageTemplates(projectDir, projectName, options = {})
   // 1. Scaffold workspace
   await scaffoldWorkspace(projectDir, {
     projectName,
-    workspaceGlobs: ['foundation', 'site'],
+    workspaceGlobs: ['site', 'src'],
     scripts: {
       dev: filterCmd(pm, 'site', 'dev'),
       build: 'uniweb build',
@@ -209,10 +209,13 @@ async function createFromPackageTemplates(projectDir, projectName, options = {})
     },
   }, { onProgress, onWarning })
 
-  // 2. Scaffold foundation
+  // 2. Scaffold foundation (folder: src/, package name: site-src)
+  // The folder name 'src' carries the meaning — a foundation is the site's
+  // source code. The package name 'site-src' keeps it unique within the
+  // workspace, since 'site' is taken by the site package.
   onProgress?.('Creating foundation...')
-  await scaffoldFoundation(join(projectDir, 'foundation'), {
-    name: 'foundation',
+  await scaffoldFoundation(join(projectDir, 'src'), {
+    name: 'site-src',
     projectName,
     isExtension: false,
   }, { onProgress, onWarning })
@@ -222,8 +225,9 @@ async function createFromPackageTemplates(projectDir, projectName, options = {})
   await scaffoldSite(join(projectDir, 'site'), {
     name: 'site',
     projectName,
-    foundationName: 'foundation',
-    foundationPath: 'file:../foundation',
+    foundationName: 'site-src',
+    foundationPath: 'file:../src',
+    foundationRef: 'site-src',
   }, { onProgress, onWarning })
 
   // 4. Apply starter content (unless creating a "none" project)
@@ -264,9 +268,12 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
   const { onProgress, onWarning, pm = 'pnpm' } = options
 
   // Determine packages to create
+  // Default single-foundation single-site project uses package names
+  // 'site-src' (folder: src/) and 'site' (folder: site/). The folder
+  // convention is set in computePlacement() below.
   const packages = metadata.packages || [
-    { type: 'foundation', name: 'foundation' },
-    { type: 'site', name: 'site', foundation: 'foundation' },
+    { type: 'foundation', name: 'site-src' },
+    { type: 'site', name: 'site', foundation: 'site-src' },
   ]
 
   // Compute placement for each package
@@ -314,21 +321,25 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
       }, { onProgress, onWarning })
     } else if (pkg.type === 'site') {
       // Find the foundation this site wires to
-      const foundationName = pkg.foundation || 'foundation'
+      const foundationName = pkg.foundation || 'site-src'
       const foundationPkg = placed.find(p =>
         (p.type === 'foundation') && (p.name === foundationName)
       )
       const foundationPath = foundationPkg
         ? computeFoundationFilePath(pkg.relativePath, foundationPkg.relativePath)
-        : 'file:../foundation'
+        : 'file:../src'
 
       onProgress?.(`Creating site: ${pkg.name}...`)
+      // Always write `foundation: <name>` to site.yml — the value is
+      // never the implicit default in the new layout (the build's
+      // `detectFoundationType` defaults to 'foundation' when absent,
+      // which doesn't match 'site-src').
       await scaffoldSite(fullPath, {
         name: pkg.name,
         projectName,
         foundationName,
         foundationPath,
-        foundationRef: foundationName !== 'foundation' ? foundationName : undefined,
+        foundationRef: foundationName,
       }, { onProgress, onWarning })
     }
 
@@ -355,7 +366,9 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
  * Compute placement (relative paths) for packages
  *
  * Rules:
- * - 1 foundation named "foundation" → foundation/
+ * - 1 foundation → src/             (folder name is 'src' regardless of package name;
+ *                                    the package name is typically 'site-src' or
+ *                                    whatever the template declared)
  * - Multiple foundations → foundations/{name}/
  * - Extensions → extensions/{name}/
  * - 1 site named "site" → site/
@@ -369,8 +382,8 @@ function computePlacement(packages) {
   const placed = []
 
   for (const f of foundations) {
-    if (foundations.length === 1 && f.name === 'foundation') {
-      placed.push({ ...f, relativePath: 'foundation' })
+    if (foundations.length === 1) {
+      placed.push({ ...f, relativePath: 'src' })
     } else {
       placed.push({ ...f, relativePath: `foundations/${f.name}` })
     }

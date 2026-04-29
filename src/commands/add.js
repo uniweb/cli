@@ -233,8 +233,9 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
     process.exit(1)
   }
 
-  // Package name = name or 'foundation'
-  const packageName = name || 'foundation'
+  // Package name = name or 'site-src' (the new default for an unnamed
+  // foundation; matches what `uniweb create` writes for new workspaces)
+  const packageName = name || 'site-src'
   if (existingNames.has(packageName)) {
     error(`Package name '${packageName}' already exists in this workspace.`)
     log(`Choose a different name: ${getCliPrefix()} add foundation <name>`)
@@ -531,8 +532,11 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
     process.exit(1)
   }
 
-  // Compute package names
-  const foundationPkgName = `${name}-foundation`
+  // Compute package names. Co-located projects use the `-src` / `-site`
+  // suffix convention so package names are unique within the workspace.
+  // The folder structure inside the project is `src/` + `site/`, mirroring
+  // the single-project default layout.
+  const foundationPkgName = `${name}-src`
   const sitePkgName = `${name}-site`
 
   // Check package name collisions
@@ -545,9 +549,9 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
 
   const progressCb = (msg) => info(`  ${msg}`)
 
-  // Scaffold foundation
+  // Scaffold foundation (folder: src/, package name: <project>-src)
   info(`Creating foundation: ${foundationPkgName}...`)
-  await scaffoldFoundation(join(projectDir, 'foundation'), {
+  await scaffoldFoundation(join(projectDir, 'src'), {
     name: foundationPkgName,
     projectName,
     isExtension: false,
@@ -559,18 +563,18 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
     name: sitePkgName,
     projectName,
     foundationName: foundationPkgName,
-    foundationPath: 'file:../foundation',
+    foundationPath: 'file:../src',
     foundationRef: foundationPkgName,
   }, { onProgress: progressCb })
 
   // Apply template content if --from specified
   if (opts.from) {
-    await applyFromTemplate(opts.from, 'foundation', join(projectDir, 'foundation'), projectName)
+    await applyFromTemplate(opts.from, 'foundation', join(projectDir, 'src'), projectName)
     await applyFromTemplate(opts.from, 'site', join(projectDir, 'site'), projectName)
   }
 
   // Update workspace globs for co-located layout
-  await addWorkspaceGlob(rootDir, '*/foundation')
+  await addWorkspaceGlob(rootDir, '*/src')
   await addWorkspaceGlob(rootDir, '*/site')
 
   // Update root scripts
@@ -581,7 +585,7 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
   await updateRootScripts(rootDir, sites, pm)
 
   success(`Created project '${name}' at ${name}/`)
-  log(`  ${colors.dim}Foundation: ${name}/foundation/ (${foundationPkgName})${colors.reset}`)
+  log(`  ${colors.dim}Foundation: ${name}/src/ (${foundationPkgName})${colors.reset}`)
   log(`  ${colors.dim}Site: ${name}/site/ (${sitePkgName})${colors.reset}`)
   log('')
   log(`Next: ${colors.cyan}${installCmd(pm)} && ${filterCmd(pm, sitePkgName, 'dev')}${colors.reset}`)
@@ -602,23 +606,26 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
 async function resolveFoundationTarget(rootDir, name, opts) {
   if (opts.path) return opts.path
 
-  if (opts.project) {
-    return `${opts.project}/foundation`
-  }
-
-  // Check existing layout
+  // Check existing layout — covers both new (`*/src`) and legacy (`*/foundation`) globs
   const { packages } = await readWorkspaceConfig(rootDir)
-  const hasColocated = packages.some(p => p.includes('*/foundation'))
+  const hasColocatedSrc = packages.some(p => p.includes('*/src'))
+  const hasColocatedLegacy = packages.some(p => p.includes('*/foundation'))
+  const hasColocated = hasColocatedSrc || hasColocatedLegacy
   const hasFoundationsGlob = packages.some(p => p.startsWith('foundations/'))
+  const colocatedSubdir = hasColocatedSrc ? 'src' : 'foundation'
+
+  if (opts.project) {
+    return `${opts.project}/${colocatedSubdir}`
+  }
 
   // Respect existing co-located layout
   if (hasColocated && name) {
-    return `${name}/foundation`
+    return `${name}/${colocatedSubdir}`
   }
 
   // Respect existing segregated layout
   if (hasFoundationsGlob) {
-    return `foundations/${name || 'foundation'}`
+    return `foundations/${name || 'site-src'}`
   }
 
   // Named foundation → segregated layout (foundations/{name})
@@ -626,8 +633,9 @@ async function resolveFoundationTarget(rootDir, name, opts) {
     return `foundations/${name}`
   }
 
-  // Unnamed → root-level 'foundation'
-  const dirName = 'foundation'
+  // Unnamed → root-level 'src/' (new convention; legacy 'foundation/' still
+  // resolves correctly downstream because the build reads package.json::main)
+  const dirName = 'src'
 
   // Check if target already exists
   if (!existsSync(join(rootDir, dirName))) {
