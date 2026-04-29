@@ -26,13 +26,14 @@ import { execSync, spawn as spawnChild } from 'node:child_process'
 import { resolve, join, relative, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import prompts from 'prompts'
-import { doctor } from './commands/doctor.js'
+// `doctor`, `add`, `publish`, and `deploy` are loaded lazily via
+// importProjectCommand() — each imports `@uniweb/build` at the top,
+// so a static import here would crash `npx uniweb@latest create …`
+// (no @uniweb/build in the npx scratch dir) before any command runs.
+// Same pattern as `build` and `docs`.
 import { i18n } from './commands/i18n.js'
 import { inspect } from './commands/inspect.js'
-import { add } from './commands/add.js'
 import { login } from './commands/login.js'
-import { publish } from './commands/publish.js'
-import { deploy } from './commands/deploy.js'
 import { invite } from './commands/invite.js'
 import { handoff } from './commands/handoff.js'
 import { update } from './commands/update.js'
@@ -491,8 +492,9 @@ async function main() {
     return
   }
 
-  // Handle doctor command
+  // Handle doctor command (dynamic import — depends on @uniweb/build)
   if (command === 'doctor') {
+    const { doctor } = await importProjectCommand('./commands/doctor.js')
     await doctor(args.slice(1))
     return
   }
@@ -509,20 +511,23 @@ async function main() {
     return
   }
 
-  // Handle add command
+  // Handle add command (dynamic import — depends on @uniweb/build)
   if (command === 'add') {
+    const { add } = await importProjectCommand('./commands/add.js')
     await add(args.slice(1))
     return
   }
 
-  // Handle publish command
+  // Handle publish command (dynamic import — depends on @uniweb/build)
   if (command === 'publish') {
+    const { publish } = await importProjectCommand('./commands/publish.js')
     await publish(args.slice(1))
     return
   }
 
-  // Handle deploy command
+  // Handle deploy command (dynamic import — depends on @uniweb/build)
   if (command === 'deploy') {
+    const { deploy } = await importProjectCommand('./commands/deploy.js')
     await deploy(args.slice(1))
     return
   }

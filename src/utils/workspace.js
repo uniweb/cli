@@ -10,7 +10,20 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { resolve, dirname, join } from 'node:path'
 import yaml from 'js-yaml'
-import { classifyPackage as classifyPackageSync } from '@uniweb/build'
+
+// `classifyPackage` from @uniweb/build is loaded lazily — this module
+// is statically imported by index.js (for `findWorkspaceRoot`), and a
+// top-level @uniweb/build import would crash `npx uniweb@latest create`
+// before any command runs (the npx scratch dir has only the CLI's
+// declared deps; @uniweb/build comes from a project's node_modules).
+let _classifyPackageSync = null
+async function getClassifier() {
+  if (!_classifyPackageSync) {
+    const mod = await import('@uniweb/build')
+    _classifyPackageSync = mod.classifyPackage
+  }
+  return _classifyPackageSync
+}
 
 /**
  * Check if a directory is a workspace root.
@@ -135,7 +148,8 @@ export async function getWorkspacePackages(workspaceRoot) {
  * @returns {Promise<'foundation'|'site'|null>}
  */
 export async function classifyPackage(packagePath) {
-  return classifyPackageSync(packagePath)
+  const classify = await getClassifier()
+  return classify(packagePath)
 }
 
 /**
@@ -144,8 +158,11 @@ export async function classifyPackage(packagePath) {
  * @returns {Promise<string[]>} - Array of foundation paths (relative to workspace root)
  */
 export async function findFoundations(workspaceRoot) {
-  const packages = await getWorkspacePackages(workspaceRoot)
-  return packages.filter(pkg => classifyPackageSync(join(workspaceRoot, pkg)) === 'foundation')
+  const [packages, classify] = await Promise.all([
+    getWorkspacePackages(workspaceRoot),
+    getClassifier(),
+  ])
+  return packages.filter(pkg => classify(join(workspaceRoot, pkg)) === 'foundation')
 }
 
 /**
@@ -154,8 +171,11 @@ export async function findFoundations(workspaceRoot) {
  * @returns {Promise<string[]>} - Array of site paths (relative to workspace root)
  */
 export async function findSites(workspaceRoot) {
-  const packages = await getWorkspacePackages(workspaceRoot)
-  return packages.filter(pkg => classifyPackageSync(join(workspaceRoot, pkg)) === 'site')
+  const [packages, classify] = await Promise.all([
+    getWorkspacePackages(workspaceRoot),
+    getClassifier(),
+  ])
+  return packages.filter(pkg => classify(join(workspaceRoot, pkg)) === 'site')
 }
 
 /**
