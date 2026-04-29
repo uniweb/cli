@@ -8,7 +8,7 @@ A website built with [Uniweb](https://github.com/uniweb/cli) — a component web
 
 ```
 {{projectName}}/
-├── foundation/          # React component library (the site's source code)
+├── src/                 # Foundation package (the site's source code; pkg name: site-src)
 │   ├── sections/        # Section types (selectable by content authors)
 │   ├── styles.css       # Tailwind CSS v4 theme
 │   ├── foundation.js    # Foundation declarations
@@ -19,11 +19,13 @@ A website built with [Uniweb](https://github.com/uniweb/cli) — a component web
 │   │   └── home/
 │   │       ├── page.yml
 │   │       └── 1-welcome.md
-│   ├── site.yml         # Site configuration
+│   ├── site.yml         # Site configuration (foundation: site-src)
 │   └── vite.config.js   # defineSiteConfig()
 │
 └── AGENTS.md            # Developer guide (human + AI)
 ```
+
+A site is pure content. A foundation is the site's source code — that's why it lives in `src/`.
 
 ## Content Authoring
 
@@ -46,10 +48,10 @@ Your content here.
 
 ## Component Development
 
-Section types live in `foundation/sections/`. Each is a folder with an `index.jsx` and a `meta.js`:
+Section types live in `src/sections/`. Each is a folder with an `index.jsx` and a `meta.js`:
 
 ```jsx
-// foundation/sections/Hero/index.jsx
+// src/sections/Hero/index.jsx
 import { H1, P } from '@uniweb/kit'
 
 export default function Hero({ content }) {

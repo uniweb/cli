@@ -18,7 +18,7 @@ npm install
 npm run dev
 ```
 
-Edit files in `site/pages/` and `foundation/sections/` to see changes instantly.
+Edit files in `site/pages/` and `src/sections/` to see changes instantly.
 
 > **pnpm ready** — `pnpm create uniweb` works out of the box. Projects include both `pnpm-workspace.yaml` and npm workspaces.
 
@@ -62,10 +62,10 @@ The `build` command outputs to `site/dist/`. With pre-rendering enabled (the def
 
 Every project starts as a workspace with two packages:
 
-- **`site/`** — Content, pages, entry point
-- **`foundation/`** — React components
+- **`site/`** — Content, pages, entry point (package name: `site`)
+- **`src/`** — React components, the site's source code (package name: `site-src`)
 
-Content authors work in markdown. Component authors work in React. Neither can break the other's work. As your project grows, use `uniweb add` to add more foundations, sites, and extensions.
+A site is pure content. A foundation is the site's source code — that's why it lives in `src/`. Content authors work in markdown. Component authors work in React. Neither can break the other's work. As your project grows, use `uniweb add` to add more foundations, sites, and extensions.
 
 ```
 my-project/
@@ -79,15 +79,17 @@ my-project/
 │   ├── vite.config.js        # 3-line config
 │   └── public/               # Static assets
 │
-└── foundation/               # Your components
-    ├── src/
-    │   ├── sections/         # Section types (addressable from markdown)
-    │   │   ├── Hero.jsx      # Bare file → section type (no meta.js needed)
-    │   │   └── Features/
-    │   │       ├── meta.js   # Content interface (params, presets)
-    │   │       └── Features.jsx
-    │   └── components/       # Regular React components
-    │       └── Button.jsx
+└── src/                      # Foundation package (the site's source)
+    ├── sections/             # Section types (addressable from markdown)
+    │   ├── Hero.jsx          # Bare file → section type (no meta.js needed)
+    │   └── Features/
+    │       ├── meta.js       # Content interface (params, presets)
+    │       └── Features.jsx
+    ├── components/           # Regular React components
+    │   └── Button.jsx
+    ├── foundation.js         # Foundation declarations
+    ├── styles.css            # Tailwind v4 + foundation CSS tokens
+    ├── package.json          # name: "site-src"
     ├── vite.config.js        # 3-line config
     └── dist/                 # Built output
 ```
@@ -204,7 +206,7 @@ After creating your project:
 
 3. **Learn the configuration** — Run `uniweb docs site` or `uniweb docs page` for quick reference on configuration options.
 
-4. **Create a section type** — Add a file to `foundation/sections/` (e.g., `Banner.jsx`) and rebuild. Bare files at the root are discovered automatically — no `meta.js` needed. Add `meta.js` when you want to declare params or presets. See the [Component Metadata Reference](https://github.com/uniweb/docs/blob/main/reference/component-metadata.md) for the full schema.
+4. **Create a section type** — Add a file to `src/sections/` (e.g., `Banner.jsx`) and rebuild. Bare files at the root are discovered automatically — no `meta.js` needed. Add `meta.js` when you want to declare params or presets. See the [Component Metadata Reference](https://github.com/uniweb/docs/blob/main/reference/component-metadata.md) for the full schema.
 
 The `meta.js` file defines what content and parameters a component accepts. The runtime uses this metadata to apply defaults and guarantee content structure—no defensive null checks needed in your component code.
 
@@ -228,7 +230,7 @@ Save and see the change instantly in your browser.
 
 ### Your First Component Change
 
-Open `foundation/sections/Hero.jsx`. The component receives parsed content:
+Open `src/sections/Hero.jsx`. The component receives parsed content:
 
 ```jsx
 export default function Hero({ content }) {
@@ -241,7 +243,7 @@ The parser extracts semantic elements from markdown—`title` from the first hea
 
 ## Foundations Are Portable
 
-The `foundation/` folder ships with your project as a convenience, but a foundation is a self-contained artifact with no dependency on any specific site. Sites reference foundations by configuration, not by folder proximity.
+The `src/` folder (your project's foundation) ships with your project as a convenience, but a foundation is a self-contained artifact with no dependency on any specific site. Sites reference foundations by configuration, not by folder proximity.
 
 **Three ways to use a foundation:**
 
@@ -251,7 +253,7 @@ The `foundation/` folder ships with your project as a convenience, but a foundat
 | **npm package**  | `npm add @acme/foundation`         | Distributing via standard package tooling          |
 | **Runtime link** | Foundation loads from a URL        | Independent release cycles, platform-managed sites |
 
-You can delete the `foundation/` folder entirely and point your site at a published foundation. Or develop a foundation locally, then publish it for other sites to consume. The site doesn't care where its components come from.
+You can delete the `src/` folder entirely and point your site at a published foundation. Or develop a foundation locally, then publish it for other sites to consume. The site doesn't care where its components come from.
 
 **This enables two development patterns:**
 

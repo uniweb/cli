@@ -56,17 +56,19 @@ Most projects start as a workspace with two packages:
 
 ```
 project/
-├── foundation/     # Component developer's domain
+├── src/            # Component developer's domain (the foundation package)
 ├── site/           # Content author's domain
 └── pnpm-workspace.yaml
 ```
 
-- **Foundation** (developer): React components. Those in `src/sections` and `src/layouts` are *section types* — selectable by content authors via `type:` in frontmatter, or used for site-level layout areas (header, footer, panel). Most have a `meta.js` with metadata in them. Everything in `src/components` (or elsewhere) is ordinary React — the developer's workbench for helper components that section types import and compose internally.
-- **Site** (content author): Markdown content + configuration. Each section file references a section type. Authors work here without touching foundation code. It may also contain collections of structured content and/or references to external data sources.
+A site is pure content. A foundation is the site's source code — that's why it lives in `src/`. The foundation's `package.json::name` is `site-src` (a unique workspace package name; symmetric with `site`).
+
+- **Foundation** (developer, in `src/`): React components. Those in `src/sections` and `src/layouts` are *section types* — selectable by content authors via `type:` in frontmatter, or used for site-level layout areas (header, footer, panel). Most have a `meta.js` with metadata in them. Everything in `src/components` (or elsewhere) is ordinary React — the developer's workbench for helper components that section types import and compose internally.
+- **Site** (content author, in `site/`): Markdown content + configuration. Each section file references a section type. Authors work here without touching foundation code. It may also contain collections of structured content and/or references to external data sources.
 
 **The composition boundary:** Authors compose pages from finished section types — choosing types, writing content, setting params. Developers compose section types from building blocks — importing helpers from `src/components/`, using libraries, writing JSX. These are two different levels of composition. The section type is the boundary between them. Don't expose building-block composition to authors; build complete, self-contained section types that handle their own internal structure.
 
-> Multi-site projects use sub-folders with site/foundation pairs in them, or segregate foundations and sites into separate folders (`foundations/`, `sites/`).
+> Multi-site projects use sub-folders with site/foundation pairs in them (each project gets its own `src/` + `site/`), or segregate foundations and sites into separate folders (`foundations/`, `sites/`).
 
 ## Project Setup
 
@@ -89,18 +91,18 @@ uniweb add project docs
 pnpm install
 ```
 
-This creates `docs/foundation/` + `docs/site/` with package names `docs-foundation` and `docs-site`. Use `--from <template>` to apply template content to both packages.
+This creates `docs/src/` + `docs/site/` with package names `docs-src` and `docs-site`. Use `--from <template>` to apply template content to both packages.
 
 ### Adding individual packages
 
 ```bash
-uniweb add foundation           # First foundation → ./foundation/
-uniweb add foundation ui        # Named → ./ui/
-uniweb add site                 # First site → ./site/
-uniweb add site blog            # Named → ./blog/
+uniweb add foundation           # First foundation → ./src/         (package: site-src)
+uniweb add foundation ui        # Named → ./foundations/ui/         (package: ui)
+uniweb add site                 # First site → ./site/              (package: site)
+uniweb add site blog            # Named → ./sites/blog/             (package: blog)
 ```
 
-The name is both the directory name and the package name. Use `--project <n>` to co-locate under a project directory (e.g., `--project docs` → `docs/foundation/`).
+Unnamed packages take the bare folder names `src/` and `site/`. Named foundations and sites go into `foundations/{name}/` and `sites/{name}/` respectively (segregated layout). Use `--project <n>` to co-locate under a project directory (e.g., `--project docs` → `docs/src/` + `docs/site/`).
 
 ### Adding section types
 
@@ -969,7 +971,7 @@ The `styles.css` declaration ensures defaults are present in the foundation's CS
 Tokens handle context adaptation — the hard problem. **They are a floor, not a ceiling.** A great foundation adds design vocabulary on top:
 
 ```css
-/* foundation/styles.css */
+/* src/styles.css */
 .border-subtle { border-color: color-mix(in oklch, var(--border), transparent 50%); }
 .border-strong { border-color: color-mix(in oklch, var(--border), var(--heading) 30%); }
 .text-tertiary { color: color-mix(in oklch, var(--body), var(--subtle) 50%); }
@@ -1380,7 +1382,7 @@ The content author writes `type: Pricing` and defines tiers as content items. Th
 ### Foundation Organization
 
 ```
-foundation/
+src/                     # the foundation package (folder name is `src`)
 ├── sections/            # Section types (auto-discovered)
 │   ├── Hero.jsx         # Bare file — no folder needed
 │   ├── Features/        # Folder when you need meta.js
@@ -1402,19 +1404,19 @@ foundation/
 │   └── splitContent.js
 ├── foundation.js
 ├── styles.css
-└── package.json
+└── package.json         # name: "site-src"
 ```
 
-**Discovery:** PascalCase files/folders at root of `sections/` are auto-discovered. Nested levels require `meta.js`. Lowercase directories are organizational only. `hidden: true` excludes a component entirely. Everything outside `sections/` is ordinary React.
+**Discovery:** PascalCase files/folders at root of `src/sections/` are auto-discovered. Nested levels require `meta.js`. Lowercase directories are organizational only. `hidden: true` excludes a component entirely. Everything outside `src/sections/` is ordinary React.
 
-**Source root.** The foundation package's source files live at the package root (`foundation/sections/`, `foundation/components/`, `foundation/foundation.js`). The build reads `package.json::main` to determine where the source lives — for new scaffolds that's the package root. Older foundations may use a nested `src/` layout (`main: "./src/_entry.generated.js"`); both layouts work and resolve through the same code path.
+**Source root.** The foundation package's source files live at the package root — the `src/` folder *is* the foundation. The build reads `package.json::main` to know that (for new scaffolds, `main: "./_entry.generated.js"`). Older foundations may use an even-more-nested layout where the source lives in `src/src/` and `main` points to `./src/_entry.generated.js`; both shapes work through the same code path.
 
 **Import aliases:** Foundations include subpath imports in `package.json` for shared internals. Use them instead of brittle relative paths:
 
 | Alias | Maps to | Use for |
 |-------|---------|---------|
-| `#components/*` | `./components/*` | Shared React components |
-| `#utils/*` | `./utils/*` | Helper functions, non-React logic |
+| `#components/*` | `./components/*` (i.e. `src/components/*` from the workspace root) | Shared React components |
+| `#utils/*` | `./utils/*` (i.e. `src/utils/*`) | Helper functions, non-React logic |
 
 ```jsx
 // ✅ Clean — use aliases
@@ -1549,10 +1551,10 @@ Other navigation methods: `block.getPrevBlockInfo()`, `block.page.getFirstBodyBl
 
 ### Custom Layouts
 
-Layouts live in `foundation/layouts/` and are auto-discovered:
+Layouts live in `src/layouts/` (inside the foundation package) and are auto-discovered:
 
 ```js
-// foundation/foundation.js
+// src/foundation.js
 export default {
   name: 'My Template',
   description: 'A brief description',
@@ -1561,7 +1563,7 @@ export default {
 ```
 
 ```jsx
-// foundation/layouts/DocsLayout/index.jsx
+// src/layouts/DocsLayout/index.jsx
 export default function DocsLayout({ header, body, footer, left, right, params }) {
   return (
     <div className="min-h-screen flex flex-col">
@@ -1721,13 +1723,13 @@ Don't port line-by-line. Study the source, then rebuild from first principles. O
 
 6. **Name by purpose, not content** — `TheModel` → `SplitContent`, `WorkModes` → `FeatureColumns`.
 
-7. **UI helpers → `components/`** — Buttons, badges, cards in `foundation/components/` (no `meta.js`, not selectable by authors).
+7. **UI helpers → `components/`** — Buttons, badges, cards in `src/components/` (no `meta.js`, not selectable by authors).
 
 ---
 
 ## Tailwind CSS v4
 
-Foundation styles in `foundation/styles.css`:
+Foundation styles in `src/styles.css`:
 
 ```css
 @import "tailwindcss";
@@ -1771,10 +1773,10 @@ uniweb add project marketing --from marketing
 pnpm install
 ```
 
-This creates `marketing/foundation/` + `marketing/site/` alongside your existing project. You don't need to build or run it — just read the source files to see how working components handle content, params, theming, and data.
+This creates `marketing/src/` (the foundation, package `marketing-src`) + `marketing/site/` (the site, package `marketing-site`) alongside your existing project. You don't need to build or run it — just read the source files to see how working components handle content, params, theming, and data.
 
 **What to study:**
-- `{name}/foundation/sections/` — components with meta.js (content expectations, params, presets)
+- `{name}/src/sections/` — components with meta.js (content expectations, params, presets)
 - `{name}/site/pages/` — real content files showing markdown → component mapping
 - `{name}/site/theme.yml` + `site.yml` — theming and configuration patterns
 
