@@ -251,7 +251,7 @@ export async function publish(args = []) {
   //                                                 re-prompt.
   //   5. Non-interactive without a usable id     → fail with guidance.
   //
-  // Note: a bare `package.json::name` (e.g. the scaffold default `site-src`)
+  // Note: a bare `package.json::name` (e.g. the scaffold default `src`)
   // is intentionally NOT used as a fallback id. The workspace name is for
   // pnpm linking and the file: dependency in site/package.json — using it
   // as the publish id would couple the registry identity to the workspace,
@@ -265,7 +265,7 @@ export async function publish(args = []) {
   // through several files. `uniweb.id` is publish-only — changing it
   // affects only the registry identity, never the workspace. Most users
   // benefit from leaving `package.json::name` as the scaffold default
-  // (`site-src`) and putting the published-as id in `uniweb.id`.
+  // (`src`) and putting the published-as id in `uniweb.id`.
   const pkgPath = join(foundationDir, 'package.json')
   const pkg = JSON.parse(await readFile(pkgPath, 'utf8'))
   const uniwebNamespace = pkg.uniweb?.namespace
@@ -409,7 +409,7 @@ export async function publish(args = []) {
           console.log(`  ${colors.dim}Or remove the scope from package.json::name to publish under your personal scope.${colors.reset}`)
         } else {
           console.log(`  ${colors.dim}You don't belong to any organizations.${colors.reset}`)
-          console.log(`  ${colors.dim}Use a bare name in package.json (e.g. "site-src") to publish under your personal scope.${colors.reset}`)
+          console.log(`  ${colors.dim}Use a bare name in package.json (e.g. "src") to publish under your personal scope.${colors.reset}`)
         }
         process.exit(1)
       }

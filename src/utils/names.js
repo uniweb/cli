@@ -14,12 +14,19 @@ import { join } from 'node:path'
  * Names that must not be used as package names.
  * - JS module keywords: default, undefined, null, true, false
  * - Node/filesystem: node_modules, package
- * - Common directory names that would cause confusion: src, dist, build
+ * - Common build-output directories: dist, build (would shadow `dist/` /
+ *   `build/` references)
+ *
+ * Note: `src` is NOT reserved. A foundation in `src/` whose package name is
+ * also `src` is the default scaffold pattern — folder name and package name
+ * match. Multi-foundation co-located workspaces still use suffixes
+ * (`<project>-src`) because pnpm requires workspace-unique package names;
+ * that's a real constraint, not aesthetic.
  */
 const RESERVED_NAMES = new Set([
   'default', 'undefined', 'null', 'true', 'false',
   'node_modules', 'package',
-  'src', 'dist', 'build',
+  'dist', 'build',
 ])
 
 /**

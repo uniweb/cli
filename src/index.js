@@ -209,13 +209,13 @@ async function createFromPackageTemplates(projectDir, projectName, options = {})
     },
   }, { onProgress, onWarning })
 
-  // 2. Scaffold foundation (folder: src/, package name: site-src)
+  // 2. Scaffold foundation (folder: src/, package name: src)
   // The folder name 'src' carries the meaning — a foundation is the site's
-  // source code. The package name 'site-src' keeps it unique within the
+  // source code. The package name 'src' keeps it unique within the
   // workspace, since 'site' is taken by the site package.
   onProgress?.('Creating foundation...')
   await scaffoldFoundation(join(projectDir, 'src'), {
-    name: 'site-src',
+    name: 'src',
     projectName,
     isExtension: false,
   }, { onProgress, onWarning })
@@ -225,9 +225,9 @@ async function createFromPackageTemplates(projectDir, projectName, options = {})
   await scaffoldSite(join(projectDir, 'site'), {
     name: 'site',
     projectName,
-    foundationName: 'site-src',
+    foundationName: 'src',
     foundationPath: 'file:../src',
-    foundationRef: 'site-src',
+    foundationRef: 'src',
   }, { onProgress, onWarning })
 
   // 4. Apply starter content (unless creating a "none" project)
@@ -269,11 +269,11 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
 
   // Determine packages to create
   // Default single-foundation single-site project uses package names
-  // 'site-src' (folder: src/) and 'site' (folder: site/). The folder
+  // 'src' (folder: src/) and 'site' (folder: site/). The folder
   // convention is set in computePlacement() below.
   const packages = metadata.packages || [
-    { type: 'foundation', name: 'site-src' },
-    { type: 'site', name: 'site', foundation: 'site-src' },
+    { type: 'foundation', name: 'src' },
+    { type: 'site', name: 'site', foundation: 'src' },
   ]
 
   // Compute placement for each package
@@ -321,7 +321,7 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
       }, { onProgress, onWarning })
     } else if (pkg.type === 'site') {
       // Find the foundation this site wires to
-      const foundationName = pkg.foundation || 'site-src'
+      const foundationName = pkg.foundation || 'src'
       const foundationPkg = placed.find(p =>
         (p.type === 'foundation') && (p.name === foundationName)
       )
@@ -333,7 +333,7 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
       // Always write `foundation: <name>` to site.yml — the value is
       // never the implicit default in the new layout (the build's
       // `detectFoundationType` defaults to 'foundation' when absent,
-      // which doesn't match 'site-src').
+      // which doesn't match 'src').
       await scaffoldSite(fullPath, {
         name: pkg.name,
         projectName,
@@ -367,7 +367,7 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
  *
  * Rules:
  * - 1 foundation → src/             (folder name is 'src' regardless of package name;
- *                                    the package name is typically 'site-src' or
+ *                                    the package name is typically 'src' or
  *                                    whatever the template declared)
  * - Multiple foundations → foundations/{name}/
  * - Extensions → extensions/{name}/

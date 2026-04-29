@@ -195,14 +195,14 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   // name (`ui`) or a path (`foundations/ui`); resolvePlacement handles
   // both. Format validation runs on the derived package name below, not
   // on the raw input — slashes in the input are intentional path syntax.
-  const FOUNDATION_KIND = { defaultDir: 'src', defaultPkg: 'site-src', projectSub: 'src' }
+  const FOUNDATION_KIND = { defaultDir: 'src', defaultPkg: 'src', projectSub: 'src' }
   const { relativePath, packageName } = resolvePlacement(rootDir, name, opts, FOUNDATION_KIND)
   const fullPath = join(rootDir, relativePath)
 
   // Validate the derived package name (format + reserved-name check). The
-  // auto-derived `site-src` default is grandfathered in (`src` IS reserved
-  // but `site-src` is the convention for "the package that lives in src/").
-  if (packageName !== 'site-src') {
+  // auto-derived `src` default is grandfathered in (`src` IS reserved
+  // but `src` is the convention for "the package that lives in src/").
+  if (packageName !== 'src') {
     const valid = validatePackageName(packageName)
     if (valid !== true) {
       error(valid)
@@ -581,7 +581,7 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
  *                                          (the co-located convention; only this
  *                                          one uses the `-src` / `-site` suffix).
  *   5. (no input)                       → folder = `<defaultDir>/`, package name
- *                                          = `<defaultPkg>` (`src/` + `site-src`
+ *                                          = `<defaultPkg>` (`src/` + `src`
  *                                          for foundations; `site/` + `site` for
  *                                          sites).
  *

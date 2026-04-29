@@ -63,7 +63,7 @@ The `build` command outputs to `site/dist/`. With pre-rendering enabled (the def
 Every project starts as a workspace with two packages:
 
 - **`site/`** — Content, pages, entry point (package name: `site`)
-- **`src/`** — React components, the site's source code (package name: `site-src`)
+- **`src/`** — React components, the site's source code (package name: `src`)
 
 A site is pure content. A foundation is the site's source code — that's why it lives in `src/`. Content authors work in markdown. Component authors work in React. Neither can break the other's work. As your project grows, use `uniweb add` to add more foundations, sites, and extensions.
 
@@ -89,7 +89,7 @@ my-project/
     │   └── Button.jsx
     ├── main.js               # Package exports (vars, defaultLayout, props)
     ├── styles.css            # Tailwind v4 + CSS tokens
-    ├── package.json          # name: "site-src"
+    ├── package.json          # name: "src"
     ├── vite.config.js        # 3-line config
     └── dist/                 # Built output
 ```
