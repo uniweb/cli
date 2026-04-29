@@ -46,6 +46,8 @@ import { detectFoundationType } from '@uniweb/build'
 
 import { ensureAuth } from '../utils/auth.js'
 import { getBackendUrl, getRegistryUrl } from '../utils/config.js'
+import { RemoteRegistry } from '../utils/registry.js'
+import { receiptFromRegistryEntry, splitRegistryRef } from '../utils/receipt.js'
 import {
   findWorkspaceRoot,
   findSites,
@@ -193,16 +195,35 @@ function composeFoundationUrl(ref, registryBase) {
  * Inspect a workspace-local foundation's `dist/publish.json` (Phase 1 receipt)
  * and decide whether it's stale relative to the current source tree.
  *
- * Returns `{ stale, reason, receipt }`. The caller decides whether to
- * auto-publish (Phase 2 default) or fail (`--no-auto-publish`).
+ * When the receipt file is missing and a `registry` is provided, attempt
+ * to refill it from the registry's index entry for `<name>@<version>`.
+ * That makes the receipt pure cache: a fresh clone with a matching
+ * upstream artifact resolves without an unnecessary republish. If the
+ * registry has no record (or the stored entry lacks git provenance), the
+ * inspector returns `stale: true` and the caller's auto-publish path
+ * runs as before.
+ *
+ * Returns `{ stale, reason, receipt, refilled? }`. The caller decides
+ * whether to auto-publish (Phase 2 default) or fail (`--no-auto-publish`).
  */
-async function inspectLocalFoundationReceipt(localPath, { dirtyAsStale }) {
+async function inspectLocalFoundationReceipt(localPath, { dirtyAsStale, registry }) {
   const receiptPath = join(localPath, 'dist', 'publish.json')
   let receipt = null
+  let refilled = false
   try {
     receipt = JSON.parse(await readFile(receiptPath, 'utf8'))
   } catch {
-    return { stale: true, reason: 'no dist/publish.json (foundation has not been published from this checkout)' }
+    if (registry) {
+      const refill = await tryRefillReceiptFromRegistry({ localPath, registry })
+      if (refill) {
+        await writeFile(receiptPath, JSON.stringify(refill, null, 2) + '\n')
+        receipt = refill
+        refilled = true
+      }
+    }
+    if (!receipt) {
+      return { stale: true, reason: 'no dist/publish.json (foundation has not been published from this checkout)' }
+    }
   }
 
   const { gitSha, gitDirty } = readGitState(localPath)
@@ -219,7 +240,40 @@ async function inspectLocalFoundationReceipt(localPath, { dirtyAsStale }) {
   if (gitDirty && dirtyAsStale) {
     return { stale: true, reason: 'foundation working tree is dirty', receipt }
   }
-  return { stale: false, receipt }
+  return { stale: false, receipt, refilled }
+}
+
+/**
+ * When a receipt is missing, try to reconstruct it from the registry's
+ * own record of the publish. We resolve `name@version` from the same
+ * package metadata `deriveLocalFoundationRef` uses, then ask the registry
+ * for its stored version entry. The entry's `publishedFromGitSha` is the
+ * load-bearing field — without it (entries written before git provenance
+ * was added) we can't compare against HEAD, so we don't synthesize a
+ * misleading "fresh" receipt and let the caller fall through to the
+ * republish path.
+ *
+ * Returns the receipt body, or null when refill is not possible.
+ */
+async function tryRefillReceiptFromRegistry({ localPath, registry }) {
+  const ref = await deriveLocalFoundationRef(localPath)
+  const split = splitRegistryRef(ref)
+  if (!split) return null
+  let existingEntry
+  try {
+    existingEntry = await registry.getVersionEntry(split.name, split.version)
+  } catch {
+    return null
+  }
+  if (!existingEntry) return null
+  return receiptFromRegistryEntry({
+    existingEntry,
+    registry,
+    name: split.name,
+    version: split.version,
+    isLocal: false,
+    isPropagateDefault: false,
+  })
 }
 
 /**
@@ -325,9 +379,17 @@ export async function deploy(args = []) {
       const localPath = detected.path
       const relPath = relative(siteDir, localPath) || localPath
 
+      // Pass a RemoteRegistry into the inspector so it can refill a missing
+      // `dist/publish.json` from the registry's index (fresh-clone case).
+      // No auth needed — `getVersionEntry` reads the public listing.
+      const refillRegistry = new RemoteRegistry(workerUrl)
       const inspection = await inspectLocalFoundationReceipt(localPath, {
         dirtyAsStale: treatDirtyAsStale,
+        registry: refillRegistry,
       })
+      if (inspection.refilled) {
+        say.dim(`Foundation receipt at ${relPath} refilled from registry.`)
+      }
 
       if (inspection.stale && !autoPublishFoundation) {
         say.err(`Local foundation at ${relPath} is stale: ${inspection.reason}.`)

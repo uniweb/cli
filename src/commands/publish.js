@@ -22,6 +22,7 @@ import { ensureAuth, readAuth } from '../utils/auth.js'
 import { getRegistryUrl } from '../utils/config.js'
 import { findWorkspaceRoot, findFoundations, findSites, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
+import { composeReceipt, deriveReceiptUrl, receiptFromRegistryEntry } from '../utils/receipt.js'
 
 // Colors for terminal output
 const colors = {
@@ -443,8 +444,35 @@ export async function publish(args = []) {
 
   const registryLabel = isLocal ? 'local registry' : `registry`
 
-  // 5. Check for duplicates
-  if (await registry.exists(name, version)) {
+  // Git state — read up-front so it can both gate the duplicate check
+  // (fresh-checkout no-op vs. true conflict) and ride along in the
+  // publish payload.
+  const { gitSha, gitDirty } = readGitState(foundationDir)
+
+  // 5. Check for duplicates. If the registry already has this exact
+  //    version recorded as published from the current commit, treat it
+  //    as a fresh-checkout no-op: refresh the local receipt and exit
+  //    successfully. The artifact upstream is already correct; there's
+  //    nothing to upload. See `kb/framework/build/workspace-ergonomics.md`
+  //    (receipt-as-cache).
+  const existingEntry = await registry.getVersionEntry(name, version)
+  if (existingEntry) {
+    if (gitSha && existingEntry.publishedFromGitSha === gitSha) {
+      const refreshedReceipt = receiptFromRegistryEntry({
+        existingEntry,
+        registry,
+        name,
+        version,
+        isLocal,
+        isPropagateDefault: isPropagate,
+      })
+      if (refreshedReceipt) {
+        await writeFile(join(distDir, 'publish.json'), JSON.stringify(refreshedReceipt, null, 2) + '\n')
+        console.log('')
+        success(`${colors.bright}${name}@${version}${colors.reset} already published from ${gitSha.slice(0, 7)} — receipt refreshed.`)
+        return
+      }
+    }
     console.log('')
     error(`${colors.bright}${name}@${version}${colors.reset} is already published.`)
     console.log('')
@@ -474,6 +502,11 @@ export async function publish(args = []) {
   const publishMetadata = {
     publishedBy: auth?.email || (isLocal ? 'local' : 'cli'),
     classification: isPropagate ? 'propagate' : 'silent',
+    // Git provenance lets the registry serve as a recovery source for
+    // the local `dist/publish.json` cache on fresh checkouts, without
+    // requiring the cache itself to survive across machines.
+    ...(gitSha ? { publishedFromGitSha: gitSha } : {}),
+    ...(typeof gitDirty === 'boolean' ? { publishedFromGitDirty: gitDirty } : {}),
   }
   if (editAccess) {
     publishMetadata.editAccess = editAccess
@@ -499,30 +532,13 @@ export async function publish(args = []) {
   // Local event memory — read by `uniweb deploy` to decide whether a
   // workspace-local foundation needs republishing. Lives under dist/ which
   // is gitignored; not part of the upload.
-  // Prefer the canonical URL the registry returns (the form sites bake
-  // into deployed HTML — e.g. `/foundations/~<uuid>/<name>@<ver>/foundation.js`
-  // for empty-scope publishes, where the server-side rewrite means the CLI
-  // can't synthesize the right URL without the response). Fall back to a
-  // synthesized URL only for older registries that don't return one.
-  let receiptUrl = publishResult?.url
-  if (receiptUrl && !receiptUrl.startsWith('http')) {
-    // Registry returned a path (e.g. `/foundations/...`); join with the API host.
-    receiptUrl = new URL(receiptUrl, registry.apiUrl).toString()
-  }
-  if (!receiptUrl) {
-    receiptUrl = isLocal
-      ? `file://${registry.getPackagePath(name, version)}/`
-      : `${registry.apiUrl}/${name}/${version}/`
-  }
-  const { gitSha, gitDirty } = readGitState(foundationDir)
-  const receipt = {
-    schemaVersion: 1,
-    publishedFromGitSha: gitSha,
-    publishedFromGitDirty: gitDirty,
-    url: receiptUrl,
+  const receipt = composeReceipt({
+    gitSha,
+    gitDirty,
+    url: deriveReceiptUrl({ publishResult, registry, name, version, isLocal }),
     publishedAt: new Date().toISOString(),
     classification: isPropagate ? 'propagate' : 'silent',
-  }
+  })
   await writeFile(join(distDir, 'publish.json'), JSON.stringify(receipt, null, 2) + '\n')
 
   const prefix = getCliPrefix()

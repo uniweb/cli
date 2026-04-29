@@ -143,6 +143,21 @@ export class LocalRegistry {
   }
 
   /**
+   * Get the full version entry for `name@version`, or null if absent.
+   * Used by `publish` and `deploy` to refill `dist/publish.json` from
+   * server-of-record state when the local cache is missing — see
+   * `kb/framework/build/workspace-ergonomics.md` (receipt-as-cache).
+   *
+   * @param {string} name
+   * @param {string} version
+   * @returns {Promise<Object|null>}
+   */
+  async getVersionEntry(name, version) {
+    const versions = await this.getVersions(name)
+    return versions.find(v => v.version === version) || null
+  }
+
+  /**
    * Publish a foundation to the local registry.
    * Copies the dist directory and updates the index.
    * @param {string} name
@@ -251,6 +266,24 @@ export class RemoteRegistry {
   async getVersions(name) {
     const index = await this._fetchIndex()
     return index[name]?.versions || []
+  }
+
+  /**
+   * Get the full version entry for `name@version`, or null if absent.
+   * Used by `publish` and `deploy` to refill `dist/publish.json` from
+   * server-of-record state when the local cache is missing.
+   *
+   * @param {string} name
+   * @param {string} version
+   * @returns {Promise<Object|null>}
+   */
+  async getVersionEntry(name, version) {
+    try {
+      const versions = await this.getVersions(name)
+      return versions.find(v => v.version === version) || null
+    } catch {
+      return null
+    }
   }
 
   /**
