@@ -254,21 +254,15 @@ export async function publish(args = []) {
   // 3c. Advisory namespace check (Worker enforces — this is for early UX feedback)
   if (!isLocal) {
     const auth = await readAuth()
-    if (auth?.token) {
-      try {
-        const payload = JSON.parse(atob(auth.token.split('.')[1]))
-        if (payload.namespaces && !payload.namespaces.includes(namespace)) {
-          error(`You don't have publish access to namespace "${colors.bright}@${namespace}${colors.reset}"`)
-          if (payload.namespaces.length > 0) {
-            console.log(`  ${colors.dim}Your namespaces: ${payload.namespaces.map(n => '@' + n).join(', ')}${colors.reset}`)
-          } else {
-            console.log(`  ${colors.dim}You don't belong to any organizations. Ask an admin to add you.${colors.reset}`)
-          }
-          process.exit(1)
-        }
-      } catch {
-        // JWT decode failed — let the Worker validate
+    const namespaces = auth?.namespaces
+    if (Array.isArray(namespaces) && !namespaces.includes(namespace)) {
+      error(`You don't have publish access to namespace "${colors.bright}@${namespace}${colors.reset}"`)
+      if (namespaces.length > 0) {
+        console.log(`  ${colors.dim}Your namespaces: ${namespaces.map(n => '@' + n).join(', ')}${colors.reset}`)
+      } else {
+        console.log(`  ${colors.dim}You don't belong to any organizations. Ask an admin to add you.${colors.reset}`)
       }
+      process.exit(1)
     }
   }
 
