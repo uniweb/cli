@@ -884,11 +884,12 @@ ${colors.bright}Deploy Options:${colors.reset}
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified
-  --prerender        Force pre-rendering (overrides site.yml)
-  --no-prerender     Skip pre-rendering (overrides site.yml)
+  --link             Site: data-only pipeline (Uniweb-edge hosting)
+  --bundle           Site: vite-built static-host artifact (default)
+  --prerender        Force pre-rendering (bundle mode only; overrides site.yml)
+  --no-prerender     Skip pre-rendering (bundle mode only; overrides site.yml)
   --foundation-dir   Path to foundation directory (for prerendering)
   --platform <name>  Deployment platform (e.g., vercel) for platform-specific output
-  --shell            Build site without embedded content (for dynamic backend serving)
 
   At workspace root, builds all foundations first, then all sites.
   Pre-rendering is enabled by default when build.prerender: true in site.yml
