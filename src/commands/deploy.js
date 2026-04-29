@@ -388,6 +388,97 @@ async function refFromReceiptUrl(localPath) {
   return null
 }
 
+/**
+ * Resolve the deploy mode for this site.
+ *
+ * Returns `'link'` or `'bundle'`, optionally prompting the user when
+ * neither inference nor an explicit flag yields an answer. Mode choice
+ * is persisted server-side after the first successful deploy; switching
+ * modes later requires deleting the site and redeploying fresh.
+ *
+ * Ladder (first match wins):
+ *   1. `--link` or `--bundle` flag passed explicitly.
+ *   2. `site.yml::foundation` is a registry ref (`@org/x@ver` or
+ *      `~uuid/x@ver`) or full HTTPS URL → infer link. The user already
+ *      declared "load this foundation by URL at runtime."
+ *   3. `site.yml::foundation` is a workspace-local sibling AND that
+ *      foundation has a publish receipt (`dist/publish.json` with a
+ *      registry URL) → infer link. The user has already done the work
+ *      to make the foundation loadable from the registry.
+ *   4. Otherwise → ask (TTY prompt) or error (CI).
+ *
+ * @param {Object} ctx
+ * @param {string} ctx.foundationRef - the raw value of site.yml::foundation (string or normalized object).
+ * @param {string} ctx.siteDir - absolute path to the site dir (for resolving local foundation siblings).
+ * @param {boolean} ctx.linkFlag
+ * @param {boolean} ctx.bundleFlag
+ * @returns {Promise<{ mode: 'link'|'bundle', source: 'flag'|'inferred-registry-ref'|'inferred-published-local'|'asked' }>}
+ */
+async function resolveDeployMode({ foundationRef, siteDir, linkFlag, bundleFlag }) {
+  // 1. Explicit flag wins.
+  if (linkFlag) return { mode: 'link', source: 'flag' }
+  if (bundleFlag) return { mode: 'bundle', source: 'flag' }
+
+  // 2. Registry ref or URL in site.yml → link mode is the only sensible choice.
+  if (typeof foundationRef === 'string') {
+    if (foundationRef.startsWith('http://') || foundationRef.startsWith('https://')) {
+      return { mode: 'link', source: 'inferred-registry-ref' }
+    }
+    if (/^@[a-z0-9_-]+\/[a-z0-9_-]+@/.test(foundationRef)) {
+      return { mode: 'link', source: 'inferred-registry-ref' }
+    }
+    if (/^~[A-Za-z0-9_-]+\/[a-z0-9_-]+@/.test(foundationRef)) {
+      return { mode: 'link', source: 'inferred-registry-ref' }
+    }
+  }
+
+  // 3. Workspace-local foundation with an existing publish receipt → infer link.
+  //    The receipt being there means the user has already published this
+  //    foundation at least once, so they've shown intent to ship via the
+  //    registry. We don't validate the receipt's freshness here — that's
+  //    the existing inspectLocalFoundationReceipt path's job, which runs
+  //    later in the deploy flow.
+  if (typeof foundationRef === 'string') {
+    const detected = detectFoundationType(foundationRef, siteDir)
+    if (detected.type === 'local') {
+      const receiptPath = join(detected.path, 'dist', 'publish.json')
+      if (existsSync(receiptPath)) {
+        return { mode: 'link', source: 'inferred-published-local' }
+      }
+    }
+  }
+
+  // 4. Ambiguous — local foundation never published, or unknown shape. Ask.
+  if (isNonInteractive(process.argv)) {
+    say.err('First deploy of this site needs an explicit mode.')
+    console.log('')
+    console.log('  Pick one and re-run:')
+    console.log(`    ${c.cyan}uniweb deploy --link${c.reset}    ${c.dim}Uniweb-edge hosting (data only; worker generates HTML)${c.reset}`)
+    console.log(`    ${c.cyan}uniweb deploy --bundle${c.reset}  ${c.dim}Static-host artifact (vite build; for non-Uniweb hosts)${c.reset}`)
+    console.log('')
+    console.log(`  ${c.dim}Mode is persisted after the first deploy and can't be changed in place.${c.reset}`)
+    process.exit(1)
+  }
+
+  const prompts = (await import('prompts')).default
+  console.log('')
+  console.log(`${c.dim}First deploy of this site. Pick a deployment mode:${c.reset}`)
+  const resp = await prompts({
+    type: 'select',
+    name: 'mode',
+    message: 'Deployment mode',
+    choices: [
+      { title: 'Link mode (Uniweb-edge hosting)', description: 'Data only; worker generates HTML at request time', value: 'link' },
+      { title: 'Bundle mode (static-host artifact)', description: 'vite-built; deploy to Netlify, Vercel, GitHub Pages, etc.', value: 'bundle' },
+    ],
+    initial: 0,
+  }, {
+    onCancel: () => { console.log(''); console.log('Deploy cancelled.'); process.exit(0) },
+  })
+  if (!resp.mode) process.exit(0)
+  return { mode: resp.mode, source: 'asked' }
+}
+
 // ─── Main ───────────────────────────────────────────────────
 
 export async function deploy(args = []) {
@@ -406,6 +497,16 @@ export async function deploy(args = []) {
   // its `dist/publish.json` receipt is missing/stale. These flags opt out.
   const autoPublishFoundation = !args.includes('--no-auto-publish')
   const treatDirtyAsStale = !args.includes('--no-dirty-as-stale')
+  // Site mode — `--link` ships data only (Uniweb-edge hosting); `--bundle`
+  // ships a vite-built static-host artifact. Mutually exclusive. Resolution
+  // ladder runs further below: explicit flag → registry-ref / URL infer →
+  // published-local-foundation infer → ask-or-error.
+  const linkFlag = args.includes('--link')
+  const bundleFlag = args.includes('--bundle')
+  if (linkFlag && bundleFlag) {
+    say.err('Cannot pass both --link and --bundle.')
+    process.exit(1)
+  }
 
   const siteDir = await resolveSiteDir(args)
   const backendUrl = getBackendUrl()
@@ -436,6 +537,29 @@ export async function deploy(args = []) {
     say.dim(`Foundation policy: ${fnd.policy}${fnd.pinned ? ' (pinned)' : ''}`)
   } else if (fnd.pinned) {
     say.dim('Foundation policy: exact (pinned)')
+  }
+
+  // Resolve deploy mode (link vs bundle) BEFORE the foundation
+  // staleness check, because mode selection feeds into how we run
+  // the site build later. The resolver may prompt the user on first
+  // deploy; subsequent deploys infer or use the explicit flag.
+  // TODO: when PHP authorize starts returning a persisted mode for
+  // this site, reconcile it with the resolved mode here and reject
+  // any mismatch ("delete site and redeploy fresh to change modes").
+  const { mode: deployMode, source: modeSource } = await resolveDeployMode({
+    foundationRef: foundation,
+    siteDir,
+    linkFlag,
+    bundleFlag,
+  })
+  if (modeSource === 'inferred-registry-ref') {
+    say.dim('Deploy mode: link (inferred — foundation is a registry ref)')
+  } else if (modeSource === 'inferred-published-local') {
+    say.dim('Deploy mode: link (inferred — local foundation has a publish receipt)')
+  } else if (modeSource === 'asked') {
+    say.dim(`Deploy mode: ${deployMode} (selected)`)
+  } else {
+    say.dim(`Deploy mode: ${deployMode}`)
   }
 
   // Phase 2: resolve workspace-local `file:` foundation refs.
@@ -532,10 +656,13 @@ export async function deploy(args = []) {
     //
     // For workspace-local foundations (Phase 2 resolution above),
     // UNIWEB_FOUNDATION_REF tells defineSiteConfig to use the resolved
-    // registry ref instead of site.yml's literal value, so the build
-    // produces a runtime-mode bundle pointing at the just-published
-    // foundation rather than embedding the local source.
-    execSync('npx uniweb build', {
+    // registry ref instead of site.yml's literal value. In bundle mode
+    // the build produces a runtime-mode bundle pointing at the just-
+    // published foundation rather than embedding the local source.
+    // Link mode doesn't run vite at all, so the env var is harmless
+    // there but still passed through for consistency.
+    const buildModeFlag = deployMode === 'link' ? '--link' : '--bundle'
+    execSync(`npx uniweb build ${buildModeFlag}`, {
       cwd: siteDir,
       stdio: 'inherit',
       env: foundationBuildOverride
@@ -622,6 +749,13 @@ export async function deploy(args = []) {
       // User-forced review (`uniweb deploy --review`). PHP refuses to
       // fast-path even when nothing else has drifted.
       forceReview: forceReview || undefined,
+      // Deploy mode for this site. On first deploy PHP should persist
+      // it to the site row; on subsequent deploys PHP should return the
+      // persisted value back so the CLI can detect mode mismatches and
+      // refuse with "delete and redeploy fresh" rather than silently
+      // reshape the storage layout. PHP versions that pre-date mode
+      // persistence ignore this field — back-compat is built in.
+      mode: deployMode,
     }
     let authRes
     try {
@@ -640,6 +774,21 @@ export async function deploy(args = []) {
         say.err(`Authorize failed: ${err.message}`)
         process.exit(1)
       }
+    }
+
+    // Mode lock — once a site has a persisted mode on the server,
+    // deploying with a different mode would silently reshape its R2
+    // storage layout. Refuse and direct the user to start fresh.
+    // Until PHP starts returning `persistedMode`, this check is a
+    // no-op (forward-compatible).
+    if (authRes.persistedMode && authRes.persistedMode !== deployMode) {
+      say.err(`Deploy mode mismatch: this site is configured for ${authRes.persistedMode}, but this deploy resolved to ${deployMode}.`)
+      console.log('')
+      console.log(`  ${c.dim}Mode is locked after the first deploy. To switch:${c.reset}`)
+      console.log(`    1. Delete the site (manage.uniweb.app or the dashboard)`)
+      console.log(`    2. Remove ${c.cyan}site.id${c.reset} and ${c.cyan}site.handle${c.reset} from site.yml`)
+      console.log(`    3. Re-run ${c.cyan}uniweb deploy --${deployMode}${c.reset}`)
+      process.exit(1)
     }
 
     if (authRes.needsReview) {
