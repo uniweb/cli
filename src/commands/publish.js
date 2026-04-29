@@ -499,10 +499,21 @@ export async function publish(args = []) {
   // Local event memory — read by `uniweb deploy` to decide whether a
   // workspace-local foundation needs republishing. Lives under dist/ which
   // is gitignored; not part of the upload.
-  const receiptUrl = publishResult?.url
-    || (isLocal
+  // Prefer the canonical URL the registry returns (the form sites bake
+  // into deployed HTML — e.g. `/foundations/~<uuid>/<name>@<ver>/foundation.js`
+  // for empty-scope publishes, where the server-side rewrite means the CLI
+  // can't synthesize the right URL without the response). Fall back to a
+  // synthesized URL only for older registries that don't return one.
+  let receiptUrl = publishResult?.url
+  if (receiptUrl && !receiptUrl.startsWith('http')) {
+    // Registry returned a path (e.g. `/foundations/...`); join with the API host.
+    receiptUrl = new URL(receiptUrl, registry.apiUrl).toString()
+  }
+  if (!receiptUrl) {
+    receiptUrl = isLocal
       ? `file://${registry.getPackagePath(name, version)}/`
-      : `${registry.apiUrl}/${name}/${version}/`)
+      : `${registry.apiUrl}/${name}/${version}/`
+  }
   const { gitSha, gitDirty } = readGitState(foundationDir)
   const receipt = {
     schemaVersion: 1,
