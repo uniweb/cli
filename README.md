@@ -87,8 +87,8 @@ my-project/
     │       └── Features.jsx
     ├── components/           # Regular React components
     │   └── Button.jsx
-    ├── main.js               # Foundation declarations (vars, defaultLayout, props)
-    ├── styles.css            # Tailwind v4 + foundation CSS tokens
+    ├── main.js               # Package exports (vars, defaultLayout, props)
+    ├── styles.css            # Tailwind v4 + CSS tokens
     ├── package.json          # name: "site-src"
     ├── vite.config.js        # 3-line config
     └── dist/                 # Built output
