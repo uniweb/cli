@@ -1,13 +1,33 @@
 /**
  * Build Command
  *
- * Builds foundations with schema generation.
+ * Builds foundations with schema generation, or sites in either link or
+ * bundle mode.
+ *
+ * Site build modes:
+ *   --bundle (default for sites)
+ *     Full vite + post-vite pipeline. Produces a static-host JS bundle
+ *     (`dist/index.html`, `dist/entry.js`, `_importmap/*`, `_pages/*` for
+ *     split mode, sitemap/robots/search-index, prerendered HTML when
+ *     configured). Targets non-Uniweb hosts (Netlify, Vercel, GitHub
+ *     Pages) and the future Uniweb bundled-mode hosting.
+ *
+ *   --link
+ *     Data-only pipeline. No vite. Emits ONLY what the Uniweb-edge
+ *     deploy needs: `dist/site-content.json` (with full sections),
+ *     `dist/<lang>/site-content.json` per non-default locale,
+ *     `dist/data/*.json` (collections), and `dist/assets/<media>` (images,
+ *     fonts, video posters). Worker generates HTML at request time using
+ *     its own runtime + the foundation served from the registry — the
+ *     site's JS bundle is dead weight on this path.
  *
  * Usage:
- *   uniweb build                    # Build current directory
+ *   uniweb build                    # Build current directory (sites default to --bundle)
  *   uniweb build --target foundation # Explicitly build as foundation
  *   uniweb build --target site       # Explicitly build as site
- *   uniweb build --prerender         # Build site + pre-render to static HTML (SSG)
+ *   uniweb build --link              # Site: link-mode (data only, no vite)
+ *   uniweb build --bundle            # Site: bundle-mode (today's full pipeline)
+ *   uniweb build --prerender         # Bundle-mode site + SSG (static HTML)
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -376,6 +396,136 @@ function resolveFoundationDir(projectDir, siteConfig) {
 }
 
 /**
+ * Build a site in link mode — data only, no vite.
+ *
+ * Emits exactly what `uniweb deploy` ships to Uniweb-edge:
+ *   dist/site-content.json (full sections inlined)
+ *   dist/<lang>/site-content.json per non-default locale
+ *   dist/data/<collection>.json (+ per-record files for `deferred:`)
+ *   dist/assets/<media> (processed images, video posters, PDF thumbnails)
+ *
+ * Does NOT emit HTML, JS, CSS, source maps, _importmap chunks, or
+ * static-host extras (sitemap, robots, search-index, _pages/*) — none
+ * of these are consumed on the link-mode deploy path. The worker
+ * generates HTML at request time and re-derives split-content per-page
+ * files from the full payload it receives.
+ *
+ * The `buildLocalizedContent` step is the same call bundle mode makes
+ * post-vite, so multi-locale sites get identical per-locale outputs in
+ * either mode. Collection translation (`buildLocalizedCollections`)
+ * also runs here so deploy ships translated collection JSONs.
+ *
+ * Bug surfaced + fixed by routing deploy through this path: the bundle
+ * pipeline's prerender step rewrites `dist/site-content.json` into a
+ * lightweight manifest (sections stripped) when split-content is active,
+ * and deploy was reading that stripped version, causing the worker to
+ * mis-detect split and serve blank pages. Link mode skips prerender
+ * entirely; `dist/site-content.json` keeps full sections; the worker
+ * splits correctly. See `kb/framework/build/workspace-ergonomics.md`.
+ */
+async function buildSiteLink(projectDir, options = {}) {
+  const { siteConfig = null } = options
+
+  info('Building site (link mode)...')
+
+  const { buildSiteData } = await import('@uniweb/build/site')
+  const distDir = join(projectDir, 'dist')
+
+  // Resolve the local foundation path so collectSiteContent can pick up
+  // theme variable defaults from `foundation.js::theme.vars`. When the
+  // foundation is purely a registry ref (no local sibling), this stays
+  // null and theme defaults come from theme.yml only.
+  const foundationDir = await resolveFoundationDirForSite(projectDir, siteConfig).catch(() => null)
+
+  await buildSiteData({
+    siteRoot: projectDir,
+    distDir,
+    foundationPath: foundationDir,
+    assets: siteConfig?.build?.assets || {},
+  })
+  success(`Wrote ${join('dist', 'site-content.json')}`)
+
+  // Per-locale variants — same call bundle mode makes post-vite. Both
+  // modes produce identical `dist/<lang>/site-content.json` outputs so
+  // the deploy CLI walks the same path shape regardless of mode.
+  const i18nConfig = await loadI18nConfig(projectDir, siteConfig)
+  if (i18nConfig && i18nConfig.locales.length > 0) {
+    log('')
+    info(`Building localized content for: ${i18nConfig.locales.join(', ')}`)
+    try {
+      const outputs = await buildLocalizedContent(projectDir, i18nConfig)
+      success(`Generated ${Object.keys(outputs).length} locale(s)`)
+      for (const [locale] of Object.entries(outputs)) {
+        log(`  ${colors.dim}dist/${locale}/site-content.json${colors.reset}`)
+      }
+
+      // Collection translations — optional; don't fail the build if
+      // missing. Bundle mode does the same.
+      try {
+        const { buildLocalizedCollections } = await import('@uniweb/build/i18n')
+        const collectionOutputs = await buildLocalizedCollections(projectDir, {
+          locales: i18nConfig.locales,
+          outputDir: distDir,
+          collectionsLocalesDir: join(projectDir, i18nConfig.localesDir, 'collections'),
+        })
+        const collectionCount = Object.values(collectionOutputs).reduce(
+          (sum, localeOutputs) => sum + Object.keys(localeOutputs).length,
+          0
+        )
+        if (collectionCount > 0) {
+          success(`Translated collections for ${Object.keys(collectionOutputs).length} locale(s)`)
+        }
+      } catch (err) {
+        if (process.env.DEBUG) console.error('Collection translation:', err.message)
+      }
+    } catch (err) {
+      error(`i18n build failed: ${err.message}`)
+      if (process.env.DEBUG) console.error(err.stack)
+      log(`${colors.yellow}Continuing without localized content${colors.reset}`)
+    }
+  }
+
+  log('')
+  log(`${colors.green}${colors.bright}Build complete (link mode)${colors.reset}`)
+}
+
+/**
+ * Best-effort resolution of the local foundation directory for a site,
+ * used by `buildSiteLink` to pass `foundationPath` to the data pipeline.
+ *
+ * Mirrors a subset of `@uniweb/build`'s `detectFoundationType` semantics:
+ * when the site declares `foundation: <name>` and a sibling/file: dep
+ * resolves to a local foundation, return its path. When the foundation
+ * is a registry ref or URL, return null (data pipeline still works
+ * without a local foundation; theme defaults just come from theme.yml).
+ */
+async function resolveFoundationDirForSite(siteDir, siteConfig) {
+  const cfg = siteConfig || readSiteConfig(siteDir)
+  const foundation = cfg?.foundation
+  if (!foundation || typeof foundation !== 'string') return null
+  // Registry ref or URL — no local foundation.
+  if (/^@[a-z0-9_-]+\/[a-z0-9_-]+@/.test(foundation)) return null
+  if (/^~[A-Za-z0-9_-]+\/[a-z0-9_-]+@/.test(foundation)) return null
+  if (foundation.startsWith('http://') || foundation.startsWith('https://')) return null
+
+  // Workspace sibling.
+  const sibling = resolve(siteDir, '..', foundation)
+  if (existsSync(sibling)) return sibling
+
+  // file: dep declared in package.json.
+  try {
+    const pkg = JSON.parse(readFileSync(join(siteDir, 'package.json'), 'utf-8'))
+    const dep = pkg.dependencies?.[foundation]
+    if (typeof dep === 'string' && dep.startsWith('file:')) {
+      const filePath = resolve(siteDir, dep.slice(5))
+      if (existsSync(filePath)) return filePath
+    }
+  } catch { /* no package.json or malformed — fall through */ }
+
+  return null
+}
+
+/**
  * Build a site
  */
 async function buildSite(projectDir, options = {}) {
@@ -657,6 +807,20 @@ export async function build(args = []) {
   const prerenderFlag = args.includes('--prerender')
   const noPrerenderFlag = args.includes('--no-prerender')
 
+  // Check for --link / --bundle flags. These select between two
+  // mutually exclusive site build pipelines:
+  //   --link:   data only, no vite (for Uniweb-edge hosting)
+  //   --bundle: full vite pipeline (for static hosts; today's behavior)
+  // Bare `uniweb build` for a site defaults to --bundle for back-compat
+  // with users targeting static hosts. `uniweb deploy` always passes one
+  // of the two explicitly based on the resolved deploy mode.
+  const linkFlag = args.includes('--link')
+  const bundleFlag = args.includes('--bundle')
+  if (linkFlag && bundleFlag) {
+    error('Cannot pass both --link and --bundle (they select different build pipelines)')
+    process.exit(1)
+  }
+
   // Check for --foundation-dir flag (for prerendering)
   let foundationDir = null
   const foundationDirIndex = args.indexOf('--foundation-dir')
@@ -691,6 +855,19 @@ export async function build(args = []) {
     process.exit(1)
   }
 
+  // Validate --link / --bundle are only used with site target.
+  // (Foundation builds have no equivalent split — they always produce
+  // dist/foundation.js + schema.json regardless of how a downstream
+  // site consumes the result.)
+  if ((linkFlag || bundleFlag) && targetType === 'foundation') {
+    error('--link and --bundle apply to site builds only')
+    process.exit(1)
+  }
+  if ((linkFlag || bundleFlag) && shellFlag) {
+    error('--shell cannot be combined with --link or --bundle')
+    process.exit(1)
+  }
+
   // Run appropriate build
   try {
     if (targetType === 'workspace') {
@@ -700,6 +877,23 @@ export async function build(args = []) {
     } else {
       // For sites, read config to determine prerender default
       const siteConfig = readSiteConfig(projectDir)
+
+      // Link mode: data-only pipeline, no vite. The deployed Uniweb-edge
+      // site never consumes the JS bundle, so we skip producing it.
+      // Worker generates HTML at request time using its own runtime +
+      // the foundation served from the registry. See
+      // `framework/build/src/site/build-site-data.js` for what gets
+      // emitted (and what doesn't).
+      if (linkFlag) {
+        if (prerenderFlag) {
+          error('--prerender does not apply to link mode (no static HTML is produced)')
+          process.exit(1)
+        }
+        await buildSiteLink(projectDir, { siteConfig })
+        return
+      }
+
+      // Bundle mode (default for sites, or explicit --bundle).
       const configPrerender = siteConfig.build?.prerender === true
 
       // CLI flags override config: --prerender forces on, --no-prerender forces off
