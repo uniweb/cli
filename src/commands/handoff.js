@@ -160,7 +160,7 @@ function showWebHandoff(email, name) {
   console.log('')
   info(`Web-based handoff`)
   console.log('')
-  console.log(`  1. Create a site on ${colors.cyan}hub.uniweb.app${colors.reset} using ${colors.bright}${name}${colors.reset}`)
+  console.log(`  1. Create a site on ${colors.cyan}uniweb.app${colors.reset} using ${colors.bright}${name}${colors.reset}`)
   console.log(`  2. Add pages and content`)
   console.log(`  3. Transfer ownership to ${colors.bright}${email}${colors.reset}:`)
   console.log(`     ${colors.dim}Settings → Transfer site${colors.reset}`)

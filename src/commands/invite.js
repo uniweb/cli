@@ -275,10 +275,10 @@ async function handleCreate(args, email) {
     console.log('')
     if (isExtension) {
       console.log(`  ${colors.dim}When ${invite.email} adds ${name} to their site${colors.reset}`)
-      console.log(`  ${colors.dim}on hub.uniweb.app or Studio, it will be authorized automatically.${colors.reset}`)
+      console.log(`  ${colors.dim}on uniweb.app or Studio, it will be authorized automatically.${colors.reset}`)
     } else {
       console.log(`  ${colors.dim}When ${invite.email} creates a site with ${name}${colors.reset}`)
-      console.log(`  ${colors.dim}on hub.uniweb.app or Studio, it will be authorized automatically.${colors.reset}`)
+      console.log(`  ${colors.dim}on uniweb.app or Studio, it will be authorized automatically.${colors.reset}`)
     }
   } catch (err) {
     error(err.message)
