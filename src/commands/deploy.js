@@ -44,7 +44,7 @@ import yaml from 'js-yaml'
 
 import { detectFoundationType } from '@uniweb/build'
 
-import { ensureAuth } from '../utils/auth.js'
+import { ensureAuth, readAuth, decodeJwtPayload } from '../utils/auth.js'
 import { getBackendUrl, getRegistryUrl } from '../utils/config.js'
 import { RemoteRegistry } from '../utils/registry.js'
 import { receiptFromRegistryEntry, splitRegistryRef } from '../utils/receipt.js'
@@ -256,7 +256,18 @@ async function inspectLocalFoundationReceipt(localPath, { dirtyAsStale, registry
  * Returns the receipt body, or null when refill is not possible.
  */
 async function tryRefillReceiptFromRegistry({ localPath, registry }) {
-  const ref = await deriveLocalFoundationRef(localPath)
+  // Two ways to derive the canonical `<name>@<version>`:
+  //   1. `deriveLocalFoundationRef` — works for org-scope foundations
+  //      (where the namespace is in package.json) and for any foundation
+  //      where a previous receipt already exists. On the wipe-and-deploy
+  //      path that fired this code, the receipt is gone, so this only
+  //      works for org-scope.
+  //   2. Empty-scope fallback — if package.json has `uniweb.id` and the
+  //      user's auth.json carries a `memberUuid` claim, we can synthesize
+  //      `~<memberUuid>/<id>@<version>` directly. Same shape the server
+  //      stores under.
+  let ref = await deriveLocalFoundationRef(localPath)
+  if (!ref) ref = await refFromAuthAndPkg(localPath)
   const split = splitRegistryRef(ref)
   if (!split) return null
   let existingEntry
@@ -277,10 +288,46 @@ async function tryRefillReceiptFromRegistry({ localPath, registry }) {
 }
 
 /**
+ * Last-resort canonical-name derivation for empty-scope foundations.
+ * Combines `package.json::uniweb.id` (the foundation's bare name) with
+ * the user's `memberUuid` claim from auth.json to produce
+ * `~<memberUuid>/<id>@<version>`. Only fires when both inputs are
+ * available — otherwise returns null and the caller falls through to
+ * the republish path.
+ */
+async function refFromAuthAndPkg(localPath) {
+  let pkg
+  try {
+    pkg = JSON.parse(await readFile(join(localPath, 'package.json'), 'utf8'))
+  } catch {
+    return null
+  }
+  const id = pkg?.uniweb?.id
+  const version = pkg?.version
+  if (!id || !version || !/^[a-z0-9_-]+$/.test(id)) return null
+  try {
+    const auth = await readAuth()
+    const claims = decodeJwtPayload(auth?.token)
+    if (claims?.memberUuid) return `~${claims.memberUuid}/${id}@${version}`
+  } catch { /* no auth — fall through to null */ }
+  return null
+}
+
+/**
  * Read a workspace-local foundation's identity (scoped name + version) from
  * its `dist/meta/schema.json` + `package.json`, mirroring `publish.js`'s
- * namespace resolution. Returns the registry ref (`@ns/name@ver`), or null
- * if any of the inputs are missing.
+ * namespace resolution. Returns the registry ref (`@ns/name@ver` or
+ * `~uuid/name@ver`), or null if no shape can be resolved.
+ *
+ * Resolution order:
+ *   1. Org scope from `pkg.uniweb.namespace` or `pkg.name`'s `@org/...` prefix.
+ *   2. The receipt at `dist/publish.json`. After a successful publish, the
+ *      receipt's `url` carries the canonical server-rewritten name —
+ *      including empty-scope publishes, which the server rewrites to
+ *      `~<memberUuid>/<name>`. The CLI can't synthesize that locally
+ *      because the memberUuid lives in the JWT, not in the workspace.
+ *   3. null — caller falls through to the helpful "set uniweb.namespace"
+ *      error message.
  */
 async function deriveLocalFoundationRef(localPath) {
   let pkg
@@ -302,14 +349,43 @@ async function deriveLocalFoundationRef(localPath) {
   version = version || pkg.version
   if (!rawName || !version) return null
 
+  // Org-scope path — derived purely from local files.
   const uniwebNamespace = pkg.uniweb?.namespace
   const pkgScopeMatch = (pkg.name || '').match(/^@([a-z0-9_-]+)\//)
   const selfScopeMatch = rawName.match(/^@([a-z0-9_-]+)\//)
   const namespace = uniwebNamespace || pkgScopeMatch?.[1] || selfScopeMatch?.[1]
-  if (!namespace) return null
+  if (namespace) {
+    const bareName = selfScopeMatch ? rawName.slice(selfScopeMatch[0].length) : rawName
+    return `@${namespace}/${bareName}@${version}`
+  }
 
-  const bareName = selfScopeMatch ? rawName.slice(selfScopeMatch[0].length) : rawName
-  return `@${namespace}/${bareName}@${version}`
+  // Empty-scope path — read the canonical name from the receipt's URL.
+  // The server rewrites bare names to `~<memberUuid>/<name>`; the URL it
+  // returns carries that canonical form (e.g.
+  // `/foundations/~<uuid>/<name>@<ver>/foundation.js`). Parse it back.
+  const fromReceipt = await refFromReceiptUrl(localPath)
+  if (fromReceipt) return fromReceipt
+
+  return null
+}
+
+// Personal-scope namespaces are base58 memberUuids (mixed case; the
+// alphabet is `[A-HJ-NP-Za-km-z1-9]`). Org-scope handles are
+// lowercase-only. Allow both shapes here so the regex captures personal
+// scopes correctly. The bare-name portion (after the `/`) stays
+// lowercase per BARE_NAME_RE.
+const RECEIPT_URL_REF_RE = /\/foundations\/((?:@[a-z0-9_-]+|~[A-Za-z0-9_-]+)\/[a-z0-9_-]+)@([^/]+)\//
+
+async function refFromReceiptUrl(localPath) {
+  try {
+    const receipt = JSON.parse(await readFile(join(localPath, 'dist', 'publish.json'), 'utf8'))
+    const m = RECEIPT_URL_REF_RE.exec(receipt?.url || '')
+    if (m) return `${m[1]}@${m[2]}`
+  } catch {
+    // No receipt, malformed JSON, or URL doesn't carry the canonical
+    // shape — fall through to null.
+  }
+  return null
 }
 
 // ─── Main ───────────────────────────────────────────────────

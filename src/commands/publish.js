@@ -18,7 +18,7 @@ import { execSync } from 'node:child_process'
 
 import { resolveFoundationSrcPath, classifyPackage } from '@uniweb/build'
 import { createLocalRegistry, RemoteRegistry } from '../utils/registry.js'
-import { ensureAuth, readAuth } from '../utils/auth.js'
+import { ensureAuth, readAuth, decodeJwtPayload } from '../utils/auth.js'
 import { getRegistryUrl } from '../utils/config.js'
 import { findWorkspaceRoot, findFoundations, findSites, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
@@ -311,52 +311,89 @@ export async function publish(args = []) {
     foundationName = uniwebId
   }
   if (!foundationName) {
-    // No id resolvable from any field. Prompt — or fail in non-interactive.
+    // No id resolvable from any field. Build a set of suggestions
+    // contextual to this workspace, then either prompt (TTY) or print
+    // them as guidance (CI). The bare `pkg.name` is intentionally NOT
+    // a suggestion when it equals the scaffold default `src` — picking
+    // that name would couple the registry id to a generic placeholder
+    // that future renames couldn't undo.
+    const workspaceRoot = findWorkspaceRoot(foundationDir) || foundationDir
+    const suggestions = await buildIdSuggestions({ foundationDir, workspaceRoot, pkg })
+
     if (isNonInteractive(process.argv)) {
       error('Foundation id is required for publishing.')
       console.log('')
+      if (suggestions.length > 0) {
+        console.log(`  ${colors.bright}Suggestions for your workspace:${colors.reset}`)
+        for (const { id, why } of suggestions) {
+          console.log(`    ${colors.cyan}${id}${colors.reset}  ${colors.dim}${why}${colors.reset}`)
+        }
+        console.log('')
+      }
       console.log(`  ${colors.dim}Use one of:${colors.reset}`)
-      console.log(`    ${colors.cyan}uniweb publish --name <id>${colors.reset}`)
+      const example = suggestions[0]?.id || '<id>'
+      console.log(`    ${colors.cyan}uniweb publish --name ${example}${colors.reset}`)
       console.log(`    ${colors.dim}Add ${colors.reset}"uniweb": { "id": "<your-id>" }${colors.dim} to package.json${colors.reset}`)
       console.log(`    ${colors.dim}Or use a scoped name in package.json: ${colors.reset}"name": "@org/<id>"${colors.reset}`)
       process.exit(1)
     }
 
     const prompts = (await import('prompts')).default
-    // Default suggestion: derive from the workspace folder or pkg.name.
-    // Strip the suffix `-src` so a foundation in `marketing-src/` defaults
-    // to `marketing` as its publish id.
-    const workspaceRoot = findWorkspaceRoot(foundationDir) || foundationDir
-    const folderName = workspaceRoot === foundationDir
-      ? null
-      : foundationDir.replace(workspaceRoot + '/', '').split('/')[0]
-    const suggestion =
-      (typeof pkg.name === 'string' && ID_RE.test(pkg.name) ? pkg.name : null) ||
-      (folderName ? folderName.replace(/-src$/, '') : null) ||
-      'foundation'
-
     console.log('')
     console.log(`${colors.dim}This is the first publish of this foundation. Pick a name${colors.reset}`)
     console.log(`${colors.dim}for the registry — what your foundation will be known as.${colors.reset}`)
-    const response = await prompts({
-      type: 'text',
-      name: 'id',
-      message: 'Foundation name',
-      initial: suggestion,
-      validate: (v) => {
-        if (!v) return 'Required'
-        if (!ID_RE.test(v)) return 'Lowercase letters, digits, hyphens, underscores only'
-        return true
-      },
-    }, {
-      onCancel: () => {
-        console.log('')
-        console.log('Publish cancelled.')
-        process.exit(0)
-      },
-    })
-    if (!response.id) process.exit(0)
-    foundationName = response.id
+    console.log('')
+
+    let chosen
+    if (suggestions.length > 0) {
+      // Surface contextual suggestions first (sibling site, workspace name,
+      // M-code series). Always include "Type a different name…" so the
+      // user is never trapped in a list.
+      const choices = [
+        ...suggestions.map(s => ({ title: s.id, description: s.why, value: s.id })),
+        { title: 'Type a different name…', value: '__custom__' },
+      ]
+      const pickResp = await prompts({
+        type: 'select',
+        name: 'pick',
+        message: 'Foundation name',
+        choices,
+        initial: 0,
+      }, {
+        onCancel: () => { console.log(''); console.log('Publish cancelled.'); process.exit(0) },
+      })
+      if (!pickResp.pick) process.exit(0)
+      chosen = pickResp.pick
+    } else {
+      chosen = '__custom__'
+    }
+
+    if (chosen === '__custom__') {
+      const folderName = workspaceRoot === foundationDir
+        ? null
+        : foundationDir.replace(workspaceRoot + '/', '').split('/')[0]
+      const suggestion =
+        suggestions[0]?.id ||
+        (folderName ? folderName.replace(/-src$/, '') : null) ||
+        ''
+      const textResp = await prompts({
+        type: 'text',
+        name: 'id',
+        message: 'Foundation name',
+        initial: suggestion,
+        validate: (v) => {
+          if (!v) return 'Required'
+          if (!ID_RE.test(v)) return 'Lowercase letters, digits, hyphens, underscores only'
+          return true
+        },
+      }, {
+        onCancel: () => { console.log(''); console.log('Publish cancelled.'); process.exit(0) },
+      })
+      if (!textResp.id) process.exit(0)
+      chosen = textResp.id
+    }
+
+    foundationName = chosen
     writeBackId = true
   }
 
@@ -449,19 +486,40 @@ export async function publish(args = []) {
   // publish payload.
   const { gitSha, gitDirty } = readGitState(foundationDir)
 
+  // Compute the canonical name the server stores under. Empty-scope
+  // (bare-name) publishes go to the registry as `<name>` but are
+  // server-side rewritten to `~<memberUuid>/<name>`. The duplicate
+  // check below queries the registry's index, which uses the canonical
+  // form as the key — so we have to mirror the rewrite locally.
+  // Org / personal-scope publishes skip this (their `name` is already
+  // canonical).
+  let lookupName = name
+  if (!scopeSigil && !isLocal) {
+    try {
+      const localAuth = await readAuth()
+      const claims = decodeJwtPayload(localAuth?.token)
+      if (claims?.memberUuid) {
+        lookupName = `~${claims.memberUuid}/${foundationName}`
+      }
+    } catch {
+      // No usable auth — fall back to the bare name. The publish call
+      // itself will fail later with an auth error if a token is needed.
+    }
+  }
+
   // 5. Check for duplicates. If the registry already has this exact
   //    version recorded as published from the current commit, treat it
   //    as a fresh-checkout no-op: refresh the local receipt and exit
   //    successfully. The artifact upstream is already correct; there's
   //    nothing to upload. See `kb/framework/build/workspace-ergonomics.md`
   //    (receipt-as-cache).
-  const existingEntry = await registry.getVersionEntry(name, version)
+  const existingEntry = await registry.getVersionEntry(lookupName, version)
   if (existingEntry) {
     if (gitSha && existingEntry.publishedFromGitSha === gitSha) {
       const refreshedReceipt = receiptFromRegistryEntry({
         existingEntry,
         registry,
-        name,
+        name: lookupName,
         version,
         isLocal,
         isPropagateDefault: isPropagate,
@@ -469,7 +527,7 @@ export async function publish(args = []) {
       if (refreshedReceipt) {
         await writeFile(join(distDir, 'publish.json'), JSON.stringify(refreshedReceipt, null, 2) + '\n')
         console.log('')
-        success(`${colors.bright}${name}@${version}${colors.reset} already published from ${gitSha.slice(0, 7)} — receipt refreshed.`)
+        success(`${colors.bright}${lookupName}@${version}${colors.reset} already published from ${gitSha.slice(0, 7)} — receipt refreshed.`)
         return
       }
     }
@@ -581,6 +639,108 @@ function bumpPatch(version) {
   if (parts.length !== 3) return version
   parts[2] = String(Number(parts[2]) + 1)
   return parts.join('.')
+}
+
+/**
+ * Build a list of contextual `uniweb.id` suggestions for first-time publishes.
+ *
+ * The CLI never auto-picks an id (Diego's principle: a bare folder name like
+ * "src" is wrong, and silently committing to it would couple the registry
+ * id to scaffold noise the user can't easily undo). Instead, suggest names
+ * derived from signals the workspace already exposes:
+ *
+ *   - **Sibling site name.** When exactly one site exists in the workspace,
+ *     the user's mental model is "this foundation is FOR that site" — so
+ *     the site's name (or "<site>-foundation" if it would collide with the
+ *     site's own package name) is a natural pick.
+ *   - **Workspace name.** A workspace package.json often carries a name
+ *     more meaningful than the foundation folder ("acme-marketing" vs "src").
+ *   - **Folder name minus `-src`.** Foundations placed under
+ *     `<name>-src/` strongly suggest `<name>` as the publish id (this
+ *     is the existing default; preserved here for back-compat).
+ *   - **Code-based fallback (M1, M2, …).** When the workspace already has
+ *     other foundations (i.e., the user manages a category of similar
+ *     foundations across sites/projects), suggest the next code in series.
+ *
+ * Returns deduplicated `{ id, why }` entries — `why` is shown next to the
+ * id in both the CI guidance message and the TTY select prompt so the
+ * user can tell at a glance which signal each suggestion comes from.
+ *
+ * The bare scaffold default `pkg.name === 'src'` is excluded by design.
+ * Likewise any non-conforming shape (uppercase, dots, etc.) is filtered
+ * out so users only ever see valid candidates.
+ */
+async function buildIdSuggestions({ foundationDir, workspaceRoot, pkg }) {
+  const ID_RE = /^[a-z0-9_-]+$/
+  const sanitize = s => (typeof s === 'string' ? s.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/^-+|-+$/g, '') : null)
+  const isValid = s => typeof s === 'string' && ID_RE.test(s) && s !== 'src' && s !== 'site'
+
+  const seen = new Set()
+  const out = []
+  const push = (id, why) => {
+    if (!isValid(id) || seen.has(id)) return
+    seen.add(id)
+    out.push({ id, why })
+  }
+
+  // 1. Sibling-site suggestion. Only fires when there's exactly one site
+  //    in the workspace, because that's the unambiguous "for X" case.
+  try {
+    const sites = await findSites(workspaceRoot)
+    if (sites.length === 1) {
+      const sitePath = sites[0]
+      try {
+        const sitePkg = JSON.parse(await readFile(join(workspaceRoot, sitePath, 'package.json'), 'utf8'))
+        const siteName = sanitize(sitePkg.name)
+        if (siteName) {
+          push(siteName, `matches your site "${siteName}"`)
+          push(`${siteName}-foundation`, `derived from your site "${siteName}"`)
+        }
+      } catch { /* missing or malformed site package.json — skip */ }
+    }
+  } catch { /* findSites can fail in odd workspaces; non-fatal */ }
+
+  // 2. Workspace name suggestion. The workspace package.json's name is
+  //    the user's chosen project identity; if it's a clean id, suggest it.
+  try {
+    if (workspaceRoot && workspaceRoot !== foundationDir) {
+      const wsPkg = JSON.parse(await readFile(join(workspaceRoot, 'package.json'), 'utf8'))
+      const wsName = sanitize(wsPkg.name)
+      if (wsName) push(wsName, `matches your workspace "${wsName}"`)
+    }
+  } catch { /* no workspace package.json — skip */ }
+
+  // 3. Folder name minus `-src`. The pre-existing default lives on as a
+  //    suggestion now rather than the auto-pick.
+  if (workspaceRoot && foundationDir !== workspaceRoot) {
+    const folderName = foundationDir.replace(workspaceRoot + '/', '').split('/')[0]
+    const stripped = sanitize(folderName?.replace(/-src$/, ''))
+    if (stripped) push(stripped, `derived from the folder "${folderName}"`)
+  }
+
+  // 4. Code-based fallback. Only suggested when the workspace already has
+  //    multiple foundations — the case Diego flagged (publishers managing
+  //    a category like M1, M2, M3 across sites/projects).
+  try {
+    const foundations = await findFoundations(workspaceRoot)
+    if (foundations.length >= 2) {
+      // Find the next M-number not already used by a sibling foundation's id.
+      const usedCodes = new Set()
+      for (const fp of foundations) {
+        try {
+          const fp_pkg = JSON.parse(await readFile(join(workspaceRoot, fp, 'package.json'), 'utf8'))
+          const id = fp_pkg.uniweb?.id
+          const m = typeof id === 'string' && id.match(/^m(\d+)$/i)
+          if (m) usedCodes.add(parseInt(m[1], 10))
+        } catch { /* skip */ }
+      }
+      let n = 1
+      while (usedCodes.has(n)) n++
+      push(`m${n}`, `next in your "M-code" series`)
+    }
+  } catch { /* findFoundations failed — skip */ }
+
+  return out
 }
 
 function readGitState(dir) {

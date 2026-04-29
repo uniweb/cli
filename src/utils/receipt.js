@@ -39,8 +39,14 @@ export function composeReceipt({ gitSha, gitDirty, url, publishedAt, classificat
  *   1. A `publishResult.url` from a fresh upload — server-rendered, handles
  *      empty-scope rewrites the CLI can't synthesize.
  *   2. An `existingEntry.url` recorded by a previous publish (refill path).
- *   3. A synthesized fallback — `file://` for local registries, `apiUrl/name/ver/`
- *      for remote — used only when neither (1) nor (2) is present.
+ *   3. A synthesized canonical form — `file://` for local registries,
+ *      `<apiUrl>/foundations/<name>@<version>/foundation.js` for remote.
+ *      The remote form mirrors the path the worker returns in `publishResult.url`,
+ *      which keeps the receipt's URL parseable by the regex in
+ *      `deploy.js::deriveLocalFoundationRef` even when the registry's index
+ *      entry doesn't carry an explicit `url` field. (Unicloud's index entries
+ *      don't; uniweb-edge's index entries don't either — both rely on the
+ *      response shape, not the index shape.)
  *
  * Path-shaped candidates (e.g. `/foundations/...`) are joined with the
  * registry's `apiUrl` so the receipt always carries an absolute URL.
@@ -51,9 +57,8 @@ export function deriveReceiptUrl({ publishResult, existingEntry, registry, name,
     if (candidate.startsWith('http') || candidate.startsWith('file://')) return candidate
     if (registry?.apiUrl) return new URL(candidate, registry.apiUrl).toString()
   }
-  return isLocal
-    ? `file://${registry.getPackagePath(name, version)}/`
-    : `${registry.apiUrl}/${name}/${version}/`
+  if (isLocal) return `file://${registry.getPackagePath(name, version)}/`
+  return `${registry.apiUrl.replace(/\/$/, '')}/foundations/${name}@${version}/foundation.js`
 }
 
 /**
