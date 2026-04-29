@@ -3,18 +3,18 @@
   "version": "0.1.0",
   "description": "{{projectName}} foundation",
   "type": "module",
-  "main": "./src/_entry.generated.js",
+  "main": "./_entry.generated.js",
   "exports": {
-    ".": "./src/_entry.generated.js",
-    "./styles": "./src/styles.css",
+    ".": "./_entry.generated.js",
+    "./styles": "./styles.css",
     "./dist": "./dist/foundation.js",
     "./dist/styles": "./dist/assets/style.css"
   },
   "imports": {
-    "#components/*": "./src/components/*",
-    "#utils/*": "./src/utils/*"
+    "#components/*": "./components/*",
+    "#utils/*": "./utils/*"
   },
-  "files": ["dist", "src"],
+  "files": ["dist", "sections", "components", "layouts", "utils", "foundation.js", "styles.css", "_entry.generated.js"],
   "scripts": {
     "dev": "vite",
     "build": "uniweb build",

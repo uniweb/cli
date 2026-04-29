@@ -8,10 +8,10 @@ A website built with [Uniweb](https://github.com/uniweb/cli) — a component web
 
 ```
 {{projectName}}/
-├── foundation/          # React component library
-│   ├── src/
-│   │   ├── sections/    # Section types (selectable by content authors)
-│   │   └── styles.css   # Tailwind CSS v4 theme
+├── foundation/          # React component library (the site's source code)
+│   ├── sections/        # Section types (selectable by content authors)
+│   ├── styles.css       # Tailwind CSS v4 theme
+│   ├── foundation.js    # Foundation declarations
 │   └── vite.config.js   # defineFoundationConfig()
 │
 ├── site/                # Content (markdown)
@@ -46,10 +46,10 @@ Your content here.
 
 ## Component Development
 
-Section types live in `foundation/src/sections/`. Each is a folder with an `index.jsx` and a `meta.js`:
+Section types live in `foundation/sections/`. Each is a folder with an `index.jsx` and a `meta.js`:
 
 ```jsx
-// foundation/src/sections/Hero/index.jsx
+// foundation/sections/Hero/index.jsx
 import { H1, P } from '@uniweb/kit'
 
 export default function Hero({ content }) {

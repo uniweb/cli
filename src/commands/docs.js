@@ -23,7 +23,7 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { resolve, join, dirname } from 'node:path'
-import { generateDocs } from '@uniweb/build'
+import { generateDocs, resolveFoundationSrcPath } from '@uniweb/build'
 import {
   isWorkspaceRoot,
   findFoundations,
@@ -160,7 +160,7 @@ ${colors.dim}Schema: https://raw.githubusercontent.com/uniweb/cli/main/schemas/p
 const META_REFERENCE = `
 ${colors.cyan}${colors.bright}Component meta.js Reference${colors.reset}
 
-Component metadata in foundation/src/components/[Name]/meta.js
+Component metadata in <foundation>/components/[Name]/meta.js (or sections/[Name]/meta.js)
 
 ${colors.bright}Identity:${colors.reset}
   ${colors.cyan}title${colors.reset}             Display name in editor
@@ -314,9 +314,10 @@ ${colors.dim}Notes:${colors.reset}
  * Detect if current directory is a foundation
  */
 function isFoundation(dir) {
-  const srcDir = join(dir, 'src')
-  const componentsDir = join(srcDir, 'components')
-  return existsSync(componentsDir)
+  const srcDir = resolveFoundationSrcPath(dir)
+  if (existsSync(join(srcDir, 'foundation.js'))) return true
+  if (existsSync(join(srcDir, 'sections'))) return true
+  return existsSync(join(srcDir, 'components'))
 }
 
 /**

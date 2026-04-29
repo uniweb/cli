@@ -16,6 +16,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 
+import { resolveFoundationSrcPath } from '@uniweb/build'
 import { createLocalRegistry, RemoteRegistry } from '../utils/registry.js'
 import { ensureAuth, readAuth } from '../utils/auth.js'
 import { getRegistryUrl } from '../utils/config.js'
@@ -163,9 +164,10 @@ export async function publish(args = []) {
   // 1. Resolve foundation directory
   const foundationDir = await resolveFoundationDir(args)
 
-  // Verify it's actually a foundation (has src/foundation.js)
-  if (!existsSync(join(foundationDir, 'src', 'foundation.js'))) {
-    error('Not a foundation directory (no src/foundation.js)')
+  // Verify it's actually a foundation (has foundation.js in its source root)
+  const foundationSrc = resolveFoundationSrcPath(foundationDir)
+  if (!existsSync(join(foundationSrc, 'foundation.js'))) {
+    error(`Not a foundation directory (no foundation.js at ${foundationSrc})`)
     process.exit(1)
   }
 

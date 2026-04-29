@@ -969,7 +969,7 @@ The `styles.css` declaration ensures defaults are present in the foundation's CS
 Tokens handle context adaptation — the hard problem. **They are a floor, not a ceiling.** A great foundation adds design vocabulary on top:
 
 ```css
-/* foundation/src/styles.css */
+/* foundation/styles.css */
 .border-subtle { border-color: color-mix(in oklch, var(--border), transparent 50%); }
 .border-strong { border-color: color-mix(in oklch, var(--border), var(--heading) 30%); }
 .text-tertiary { color: color-mix(in oklch, var(--body), var(--subtle) 50%); }
@@ -1380,7 +1380,7 @@ The content author writes `type: Pricing` and defines tiers as content items. Th
 ### Foundation Organization
 
 ```
-foundation/src/
+foundation/
 ├── sections/            # Section types (auto-discovered)
 │   ├── Hero.jsx         # Bare file — no folder needed
 │   ├── Features/        # Folder when you need meta.js
@@ -1400,17 +1400,21 @@ foundation/src/
 │   └── Card.jsx
 ├── utils/               # Helper functions, non-React logic
 │   └── splitContent.js
-└── styles.css
+├── foundation.js
+├── styles.css
+└── package.json
 ```
 
 **Discovery:** PascalCase files/folders at root of `sections/` are auto-discovered. Nested levels require `meta.js`. Lowercase directories are organizational only. `hidden: true` excludes a component entirely. Everything outside `sections/` is ordinary React.
 
-**Import aliases:** Foundations include subpath imports in `package.json` that map to `src/` subdirectories. Use them instead of brittle relative paths:
+**Source root.** The foundation package's source files live at the package root (`foundation/sections/`, `foundation/components/`, `foundation/foundation.js`). The build reads `package.json::main` to determine where the source lives — for new scaffolds that's the package root. Older foundations may use a nested `src/` layout (`main: "./src/_entry.generated.js"`); both layouts work and resolve through the same code path.
+
+**Import aliases:** Foundations include subpath imports in `package.json` for shared internals. Use them instead of brittle relative paths:
 
 | Alias | Maps to | Use for |
 |-------|---------|---------|
-| `#components/*` | `./src/components/*` | Shared React components |
-| `#utils/*` | `./src/utils/*` | Helper functions, non-React logic |
+| `#components/*` | `./components/*` | Shared React components |
+| `#utils/*` | `./utils/*` | Helper functions, non-React logic |
 
 ```jsx
 // ✅ Clean — use aliases
@@ -1545,10 +1549,10 @@ Other navigation methods: `block.getPrevBlockInfo()`, `block.page.getFirstBodyBl
 
 ### Custom Layouts
 
-Layouts live in `foundation/src/layouts/` and are auto-discovered:
+Layouts live in `foundation/layouts/` and are auto-discovered:
 
 ```js
-// foundation/src/foundation.js
+// foundation/foundation.js
 export default {
   name: 'My Template',
   description: 'A brief description',
@@ -1557,7 +1561,7 @@ export default {
 ```
 
 ```jsx
-// foundation/src/layouts/DocsLayout/index.jsx
+// foundation/layouts/DocsLayout/index.jsx
 export default function DocsLayout({ header, body, footer, left, right, params }) {
   return (
     <div className="min-h-screen flex flex-col">
@@ -1717,13 +1721,13 @@ Don't port line-by-line. Study the source, then rebuild from first principles. O
 
 6. **Name by purpose, not content** — `TheModel` → `SplitContent`, `WorkModes` → `FeatureColumns`.
 
-7. **UI helpers → `components/`** — Buttons, badges, cards in `src/components/` (no `meta.js`, not selectable by authors).
+7. **UI helpers → `components/`** — Buttons, badges, cards in `foundation/components/` (no `meta.js`, not selectable by authors).
 
 ---
 
 ## Tailwind CSS v4
 
-Foundation styles in `foundation/src/styles.css`:
+Foundation styles in `foundation/styles.css`:
 
 ```css
 @import "tailwindcss";
@@ -1770,7 +1774,7 @@ pnpm install
 This creates `marketing/foundation/` + `marketing/site/` alongside your existing project. You don't need to build or run it — just read the source files to see how working components handle content, params, theming, and data.
 
 **What to study:**
-- `{name}/foundation/src/sections/` — components with meta.js (content expectations, params, presets)
+- `{name}/foundation/sections/` — components with meta.js (content expectations, params, presets)
 - `{name}/site/pages/` — real content files showing markdown → component mapping
 - `{name}/site/theme.yml` + `site.yml` — theming and configuration patterns
 

@@ -5,6 +5,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve, basename, dirname, relative } from 'node:path'
 import yaml from 'js-yaml'
+import { resolveFoundationSrcPath } from '@uniweb/build'
 import { getCliVersion } from '../versions.js'
 import { readAgentsVersion } from '../utils/agents-stamp.js'
 
@@ -36,12 +37,13 @@ function isSite(dir) {
  * Check if a directory is a foundation
  */
 function isFoundation(dir) {
+  const srcDir = resolveFoundationSrcPath(dir)
   // Primary: has foundation.js config
-  if (existsSync(join(dir, 'src', 'foundation.js'))) return true
-  // Fallback: has src/sections/
-  if (existsSync(join(dir, 'src', 'sections'))) return true
-  // Legacy fallback: has src/components/
-  if (existsSync(join(dir, 'src', 'components'))) return true
+  if (existsSync(join(srcDir, 'foundation.js'))) return true
+  // Fallback: has sections/
+  if (existsSync(join(srcDir, 'sections'))) return true
+  // Legacy fallback: has components/
+  if (existsSync(join(srcDir, 'components'))) return true
   return false
 }
 
@@ -50,7 +52,7 @@ function isFoundation(dir) {
  * Returns the default export, or null if not found/loadable
  */
 function loadFoundationJs(dir) {
-  const filePath = join(dir, 'src', 'foundation.js')
+  const filePath = join(resolveFoundationSrcPath(dir), 'foundation.js')
   if (!existsSync(filePath)) return null
   try {
     const content = readFileSync(filePath, 'utf8')

@@ -18,7 +18,7 @@ npm install
 npm run dev
 ```
 
-Edit files in `site/pages/` and `foundation/src/sections/` to see changes instantly.
+Edit files in `site/pages/` and `foundation/sections/` to see changes instantly.
 
 > **pnpm ready** — `pnpm create uniweb` works out of the box. Projects include both `pnpm-workspace.yaml` and npm workspaces.
 
@@ -204,7 +204,7 @@ After creating your project:
 
 3. **Learn the configuration** — Run `uniweb docs site` or `uniweb docs page` for quick reference on configuration options.
 
-4. **Create a section type** — Add a file to `foundation/src/sections/` (e.g., `Banner.jsx`) and rebuild. Bare files at the root are discovered automatically — no `meta.js` needed. Add `meta.js` when you want to declare params or presets. See the [Component Metadata Reference](https://github.com/uniweb/docs/blob/main/reference/component-metadata.md) for the full schema.
+4. **Create a section type** — Add a file to `foundation/sections/` (e.g., `Banner.jsx`) and rebuild. Bare files at the root are discovered automatically — no `meta.js` needed. Add `meta.js` when you want to declare params or presets. See the [Component Metadata Reference](https://github.com/uniweb/docs/blob/main/reference/component-metadata.md) for the full schema.
 
 The `meta.js` file defines what content and parameters a component accepts. The runtime uses this metadata to apply defaults and guarantee content structure—no defensive null checks needed in your component code.
 
@@ -228,7 +228,7 @@ Save and see the change instantly in your browser.
 
 ### Your First Component Change
 
-Open `foundation/src/sections/Hero.jsx`. The component receives parsed content:
+Open `foundation/sections/Hero.jsx`. The component receives parsed content:
 
 ```jsx
 export default function Hero({ content }) {

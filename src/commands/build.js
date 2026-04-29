@@ -20,6 +20,7 @@ import { createRequire } from 'node:module'
 import {
   generateEntryPoint,
   discoverComponents,
+  resolveFoundationSrcPath,
 } from '@uniweb/build'
 import { readSiteConfig } from '@uniweb/build/site'
 import { readWorkspaceConfig, resolveGlob } from '../utils/config.js'
@@ -63,7 +64,10 @@ function info(message) {
  */
 function detectProjectType(projectDir) {
   // Primary detection: config files
-  if (existsSync(join(projectDir, 'src', 'foundation.js'))) {
+  // Foundation source root comes from package.json::main; for legacy nested
+  // layouts that's `<projectDir>/src/`, for flat layouts it's `<projectDir>/`.
+  const foundationSrc = resolveFoundationSrcPath(projectDir)
+  if (existsSync(join(foundationSrc, 'foundation.js'))) {
     return 'foundation'
   }
 
@@ -72,7 +76,7 @@ function detectProjectType(projectDir) {
   }
 
   // Fallback detection: directory structure
-  if (existsSync(join(projectDir, 'src', 'components'))) {
+  if (existsSync(join(foundationSrc, 'components')) || existsSync(join(foundationSrc, 'sections'))) {
     return 'foundation'
   }
 
@@ -168,7 +172,7 @@ async function runLocalVite(projectDir, args) {
  * Build a foundation
  */
 async function buildFoundation(projectDir, options = {}) {
-  const srcDir = join(projectDir, 'src')
+  const srcDir = resolveFoundationSrcPath(projectDir)
 
   info('Building foundation...')
 
@@ -180,7 +184,7 @@ async function buildFoundation(projectDir, options = {}) {
 
   if (componentNames.length === 0) {
     error('No components found with meta.js files')
-    error('Make sure components are in src/components/[Name]/ with a meta.js file')
+    error(`Make sure components are in ${srcDir}/components/[Name]/ with a meta.js file`)
     process.exit(1)
   }
 
@@ -504,12 +508,13 @@ async function buildSite(projectDir, options = {}) {
  * Check if a directory is a foundation
  */
 function isFoundation(dir) {
+  const srcDir = resolveFoundationSrcPath(dir)
   // Primary: has foundation.js config
-  if (existsSync(join(dir, 'src', 'foundation.js'))) return true
-  // Fallback: has src/sections/
-  if (existsSync(join(dir, 'src', 'sections'))) return true
-  // Legacy fallback: has src/components/
-  if (existsSync(join(dir, 'src', 'components'))) return true
+  if (existsSync(join(srcDir, 'foundation.js'))) return true
+  // Fallback: has sections/
+  if (existsSync(join(srcDir, 'sections'))) return true
+  // Legacy fallback: has components/
+  if (existsSync(join(srcDir, 'components'))) return true
   return false
 }
 
@@ -517,7 +522,7 @@ function isFoundation(dir) {
  * Check if a foundation directory declares extension: true in foundation.js
  */
 function isExtensionDir(dir) {
-  const filePath = join(dir, 'src', 'foundation.js')
+  const filePath = join(resolveFoundationSrcPath(dir), 'foundation.js')
   if (!existsSync(filePath)) return false
   try {
     const content = readFileSync(filePath, 'utf8')

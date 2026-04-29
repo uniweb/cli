@@ -16,6 +16,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import prompts from 'prompts'
 import yaml from 'js-yaml'
+import { resolveFoundationSrcPath } from '@uniweb/build'
 import { scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemplateDependencies } from '../utils/scaffold.js'
 import {
   readWorkspaceConfig,
@@ -965,12 +966,16 @@ async function addSection(rootDir, opts) {
     foundation = response.foundation
   }
 
-  // Resolve sections directory
-  const sectionsDir = join(rootDir, foundation.path, 'src', 'sections')
+  // Resolve sections directory — source root comes from package.json::main
+  // (works for both nested `src/` layouts and flat layouts).
+  const foundationDir = join(rootDir, foundation.path)
+  const foundationSrc = resolveFoundationSrcPath(foundationDir)
+  const sectionsDir = join(foundationSrc, 'sections')
   const sectionDir = join(sectionsDir, name)
+  const relSectionPath = relative(foundationDir, sectionDir)
 
   if (existsSync(sectionDir)) {
-    error(`Section '${name}' already exists at ${foundation.path}/src/sections/${name}/`)
+    error(`Section '${name}' already exists at ${foundation.path}/${relSectionPath}/`)
     process.exit(1)
   }
 
@@ -1015,7 +1020,7 @@ export default function ${name}({ content, params }) {
   await writeFile(join(sectionDir, 'index.jsx'), componentContent)
   await writeFile(join(sectionDir, 'meta.js'), metaContent)
 
-  success(`Created section '${name}' at ${foundation.path}/src/sections/${name}/`)
+  success(`Created section '${name}' at ${foundation.path}/${relSectionPath}/`)
   log(`  ${colors.dim}index.jsx${colors.reset}  — component (customize the JSX)`)
   log(`  ${colors.dim}meta.js${colors.reset}    — metadata (add content expectations, params, presets)`)
   if (foundations.length === 1) {
