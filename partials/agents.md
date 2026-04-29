@@ -115,7 +115,7 @@ Creates `src/sections/Hero/index.jsx` and `meta.js` with a minimal CCA-proper st
 
 ### What the CLI generates
 
-**Foundation** (`vite.config.js`, `package.json`, `src/main.js`, `src/styles.css`):
+**Foundation** (`vite.config.js`, `package.json`, `main.js`, `styles.css`):
 - `defineFoundationConfig()` in vite.config.js
 - Dependencies pinned to current npm versions
 - `@import "@uniweb/kit/theme-tokens.css"` in styles.css

@@ -1,20 +1,36 @@
 /**
  * Local Foundation Registry
  *
- * Manages published foundations in .unicloud/registry/.
- * Same on-disk format as scripts/platform/registry.js, so
- * scripts/platform/serve.js can still serve them.
+ * Manages published foundations in .unicloud/registry/. The on-disk
+ * shape mirrors uniweb-edge's registry index (versions as an array of
+ * { version, ... } objects, plus top-level namespace and latest) so
+ * `--local` exercises the same data shape that ships in production.
  *
  * Layout:
  *   .unicloud/
  *     registry/
- *       index.json                  # { "name": { versions: { "1.0.0": { ... } } } }
+ *       index.json                  # see "Index format" below
  *       packages/
  *         name/
  *           1.0.0/
  *             foundation.js
  *             schema.json
  *             assets/...
+ *
+ * Index format:
+ *   {
+ *     "@ns/name": {
+ *       namespace: "ns",
+ *       versions: [
+ *         { version: "1.0.0", publishedAt, publishedBy, ... },
+ *         ...
+ *       ],
+ *       latest: "1.0.0"
+ *     }
+ *   }
+ *
+ *   Legacy entries (versions as an object keyed by version) are migrated
+ *   to this shape on read. The next write persists the new shape.
  */
 
 import { existsSync } from 'node:fs'
@@ -37,13 +53,45 @@ export function getRegistryDir(startDir = process.cwd()) {
 
 /**
  * Sanitize a package name for filesystem use.
- * '@org/pkg' → '@org__pkg'
+ * '@org/pkg' → 'org/pkg'
  * @param {string} name
  * @returns {string}
  */
 function sanitizeName(name) {
   // Strip leading @ for directory structure: @org/name → org/name
   return name.startsWith('@') ? name.slice(1) : name
+}
+
+/**
+ * Parse the namespace out of a scoped package name. '@org/pkg' → 'org';
+ * unscoped → ''.
+ * @param {string} name
+ * @returns {string}
+ */
+function parseNamespace(name) {
+  const m = /^@([a-z0-9_-]+)\//.exec(name)
+  return m ? m[1] : ''
+}
+
+/**
+ * Migrate a legacy index entry (versions as object, no namespace/latest)
+ * to the current shape (versions as array, namespace + latest at top).
+ * Mutates and returns the entry.
+ */
+function normalizeEntry(name, entry) {
+  if (!entry) return entry
+  if (entry.versions && !Array.isArray(entry.versions) && typeof entry.versions === 'object') {
+    entry.versions = Object.entries(entry.versions).map(([version, data]) => ({
+      version,
+      ...data,
+    }))
+  }
+  if (!Array.isArray(entry.versions)) entry.versions = []
+  if (!entry.namespace) entry.namespace = parseNamespace(name)
+  if (!entry.latest && entry.versions.length > 0) {
+    entry.latest = entry.versions[entry.versions.length - 1].version
+  }
+  return entry
 }
 
 /**
@@ -58,7 +106,11 @@ export class LocalRegistry {
 
   async _readIndex() {
     if (!existsSync(this.indexPath)) return {}
-    return JSON.parse(await readFile(this.indexPath, 'utf8'))
+    const raw = JSON.parse(await readFile(this.indexPath, 'utf8'))
+    for (const name of Object.keys(raw)) {
+      normalizeEntry(name, raw[name])
+    }
+    return raw
   }
 
   async _writeIndex(index) {
@@ -74,17 +126,20 @@ export class LocalRegistry {
    */
   async exists(name, version) {
     const index = await this._readIndex()
-    return !!index[name]?.versions?.[version]
+    const versions = index[name]?.versions
+    if (!Array.isArray(versions)) return false
+    return versions.some(v => v.version === version)
   }
 
   /**
-   * Get all published versions for a package.
+   * Get all published versions for a package as an array of
+   * `{ version, publishedAt, ... }` entries (matches uniweb-edge).
    * @param {string} name
-   * @returns {Promise<Object>}
+   * @returns {Promise<Array>}
    */
   async getVersions(name) {
     const index = await this._readIndex()
-    return index[name]?.versions || {}
+    return index[name]?.versions || []
   }
 
   /**
@@ -104,12 +159,26 @@ export class LocalRegistry {
 
     const index = await this._readIndex()
     if (!index[name]) {
-      index[name] = { versions: {} }
+      index[name] = {
+        namespace: parseNamespace(name),
+        versions: [],
+        latest: null,
+      }
     }
-    index[name].versions[version] = {
+
+    const versionEntry = {
+      version,
       publishedAt: new Date().toISOString(),
       ...metadata,
     }
+    const existingIdx = index[name].versions.findIndex(v => v.version === version)
+    if (existingIdx >= 0) {
+      index[name].versions[existingIdx] = versionEntry
+    } else {
+      index[name].versions.push(versionEntry)
+    }
+    index[name].latest = version
+
     await this._writeIndex(index)
   }
 
@@ -165,20 +234,23 @@ export class RemoteRegistry {
   async exists(name, version) {
     try {
       const index = await this._fetchIndex()
-      return !!index[name]?.versions?.[version]
+      const versions = index[name]?.versions
+      if (!Array.isArray(versions)) return false
+      return versions.some(v => v.version === version)
     } catch {
       return false
     }
   }
 
   /**
-   * Get all published versions for a package.
+   * Get all published versions for a package as an array of
+   * `{ version, publishedAt, ... }` entries.
    * @param {string} name
-   * @returns {Promise<Object>}
+   * @returns {Promise<Array>}
    */
   async getVersions(name) {
     const index = await this._fetchIndex()
-    return index[name]?.versions || {}
+    return index[name]?.versions || []
   }
 
   /**
