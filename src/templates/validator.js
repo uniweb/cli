@@ -175,7 +175,7 @@ export async function validateTemplate(templateRoot, options = {}) {
  *
  * @param {string} templateRoot - Root of the template (contains template.json)
  * @param {Object} metadata - Parsed template.json
- * @returns {Array<Object>} Content directories: [{ type, name, dir, foundation? }]
+ * @returns {Array<Object>} Content directories: [{ type, name, dir, foundation?, renames? }]
  */
 export function resolveContentDirs(templateRoot, metadata) {
   const dirs = []
@@ -185,19 +185,25 @@ export function resolveContentDirs(templateRoot, metadata) {
     for (const pkg of metadata.packages) {
       const dir = path.join(templateRoot, pkg.name)
       if (existsSync(dir)) {
-        dirs.push({
+        const entry = {
           type: pkg.type,
           name: pkg.name,
           dir,
           ...(pkg.foundation ? { foundation: pkg.foundation } : {}),
-        })
+        }
+        if (entry.type === 'foundation' || entry.type === 'extension') {
+          applyLegacyFoundationLayout(entry)
+        }
+        dirs.push(entry)
       }
     }
   } else {
     // Standard template: look for foundation/ and site/
     const foundationDir = path.join(templateRoot, 'foundation')
     if (existsSync(foundationDir)) {
-      dirs.push({ type: 'foundation', name: 'foundation', dir: foundationDir })
+      const entry = { type: 'foundation', name: 'foundation', dir: foundationDir }
+      applyLegacyFoundationLayout(entry)
+      dirs.push(entry)
     }
 
     const siteDir = path.join(templateRoot, 'site')
@@ -207,6 +213,48 @@ export function resolveContentDirs(templateRoot, metadata) {
   }
 
   return dirs
+}
+
+/**
+ * Detect and unwrap the legacy foundation layout.
+ *
+ * Old templates (published in the `uniweb/templates` releases up to
+ * v0.7.x) shipped foundation content nested one level deeper, with the
+ * package source under `foundation/src/` and the user-authored
+ * declarations file named `foundation.js`:
+ *
+ *     <template>/foundation/src/foundation.js
+ *     <template>/foundation/src/sections/...
+ *     <template>/foundation/src/components/...
+ *
+ * The current layout is flat — the foundation package root contains
+ * the source directly, and the declarations file is named `main.js`:
+ *
+ *     <template>/foundation/main.js
+ *     <template>/foundation/sections/...
+ *
+ * The CLI scaffolds the new flat shape into the project's `src/`
+ * directory, so an unmodified copy of an old-format template would
+ * land at `src/src/foundation.js` (extra `src/` layer + old name).
+ *
+ * This helper detects the legacy marker (`<dir>/src/foundation.js`),
+ * mutates the contentDir entry to point at the inner `src/` directory,
+ * and records a top-level rename so `foundation.js` is written as
+ * `main.js`. Once `uniweb/templates` is republished with the flat
+ * layout, this branch becomes a no-op.
+ */
+function applyLegacyFoundationLayout(entry) {
+  const innerSrc = path.join(entry.dir, 'src')
+  if (!existsSync(innerSrc)) return
+
+  const legacyMain = path.join(innerSrc, 'foundation.js')
+  const newMain = path.join(innerSrc, 'main.js')
+  if (!existsSync(legacyMain) && !existsSync(newMain)) return
+
+  entry.dir = innerSrc
+  if (existsSync(legacyMain)) {
+    entry.renames = { ...(entry.renames || {}), 'foundation.js': 'main.js' }
+  }
 }
 
 /**

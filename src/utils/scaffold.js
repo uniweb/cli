@@ -106,6 +106,11 @@ export async function scaffoldSite(targetDir, context, options = {}) {
  * @param {string} targetDir - Target directory to overlay onto
  * @param {Object} context - Handlebars context for .hbs files
  * @param {Object} [options] - Processing options
+ * @param {Object} [options.renames] - Top-level filename remapping
+ *   (e.g. `{ 'foundation.js': 'main.js' }`). Applied only at depth 0
+ *   so renames don't accidentally rewrite same-named files in nested
+ *   directories. Used to migrate legacy `foundation/foundation.js`
+ *   templates onto the new flat `src/main.js` layout.
  */
 export async function applyContent(contentDir, targetDir, context, options = {}) {
   if (!existsSync(contentDir)) return
@@ -127,28 +132,40 @@ export async function applyContent(contentDir, targetDir, context, options = {})
     'site.yml': ['name', 'foundation'],
   }
 
-  await copyContentRecursive(contentDir, targetDir, context, STRUCTURAL_FILES, MERGE_FILES, options)
+  await copyContentRecursive(contentDir, targetDir, context, STRUCTURAL_FILES, MERGE_FILES, options, 0)
 }
 
 /**
- * Recursively copy content files, skipping structural files
+ * Recursively copy content files, skipping structural files.
+ *
+ * `depth` is tracked so the `renames` map (passed via options) only
+ * applies at depth 0 — the top of the content directory. Without this
+ * guard, a rename like `foundation.js → main.js` would also rewrite a
+ * nested `sections/foo/foundation.js` if one existed, which is not the
+ * intent.
  */
-async function copyContentRecursive(sourceDir, targetDir, context, structuralFiles, mergeFiles, options) {
+async function copyContentRecursive(sourceDir, targetDir, context, structuralFiles, mergeFiles, options, depth = 0) {
   await fs.mkdir(targetDir, { recursive: true })
 
   const entries = readdirSync(sourceDir, { withFileTypes: true })
+  const renames = (depth === 0 && options.renames) || null
 
   for (const entry of entries) {
     const sourcePath = join(sourceDir, entry.name)
 
     if (entry.isDirectory()) {
       const targetSubDir = join(targetDir, entry.name)
-      await copyContentRecursive(sourcePath, targetSubDir, context, structuralFiles, mergeFiles, options)
+      await copyContentRecursive(sourcePath, targetSubDir, context, structuralFiles, mergeFiles, options, depth + 1)
     } else {
       // Determine the output filename (strip .hbs extension)
-      const outputName = entry.name.endsWith('.hbs')
+      let outputName = entry.name.endsWith('.hbs')
         ? entry.name.slice(0, -4)
         : entry.name
+
+      // Apply top-level rename (e.g. legacy `foundation.js` → `main.js`)
+      if (renames && Object.prototype.hasOwnProperty.call(renames, outputName)) {
+        outputName = renames[outputName]
+      }
 
       // Skip structural files
       if (structuralFiles.has(outputName)) continue
@@ -190,8 +207,17 @@ async function copyContentRecursive(sourceDir, targetDir, context, structuralFil
         for (const key of preserveKeys) {
           if (existing[key] === undefined) continue
           const baseLine = matchTopLevelLine(existingContent, key)
-          if (baseLine) {
+          if (!baseLine) continue
+          // If the new content carries the key, replace its line with
+          // the scaffolded value (preserving the user's project/foundation
+          // choice). Otherwise insert the line — older content templates
+          // (notably `docs/site/site.yml.hbs`) omit `foundation:` entirely,
+          // and dropping it leaves the site without a foundation ref so
+          // the entry's `import '#foundation/styles'` fails at build time.
+          if (matchTopLevelLine(merged, key)) {
             merged = replaceTopLevelLine(merged, key, baseLine)
+          } else {
+            merged = insertTopLevelLine(merged, baseLine)
           }
         }
 
@@ -213,14 +239,20 @@ async function copyContentRecursive(sourceDir, targetDir, context, structuralFil
 /**
  * Apply the built-in starter content
  *
+ * The starter ships its foundation content under `cli/starter/foundation/`
+ * (a description of the *kind* of content), and is applied into whatever
+ * folder the workspace uses for the foundation package — which is `src/`
+ * in the current single-foundation layout, not `foundation/`. Callers
+ * can override via options when scaffolding multi-foundation workspaces.
+ *
  * @param {string} projectDir - Root project directory
  * @param {Object} context - Template context
  * @param {Object} [options] - Processing options
- * @param {string} [options.foundationDir] - Foundation directory name (default: 'foundation')
+ * @param {string} [options.foundationDir] - Foundation directory name (default: 'src')
  * @param {string} [options.siteDir] - Site directory name (default: 'site')
  */
 export async function applyStarter(projectDir, context, options = {}) {
-  const foundationDir = options.foundationDir || 'foundation'
+  const foundationDir = options.foundationDir || 'src'
   const siteDir = options.siteDir || 'site'
 
   // Apply foundation starter content
@@ -264,6 +296,25 @@ function replaceTopLevelLine(content, key, replacement) {
     new RegExp(`^${escapeRegex(key)}:.*$`, 'm'),
     () => replacement,
   )
+}
+
+/**
+ * Insert a top-level YAML line into a content string.
+ *
+ * Used by the merge path when the content template omits a key that
+ * the scaffolded base file declared (e.g. an older `site.yml.hbs` with
+ * no `foundation:` line). Inserts immediately after the `name:` line
+ * if one exists — that's the conventional position for site
+ * configuration — and otherwise prepends to the file. The original
+ * trailing newline (or lack thereof) of the file is preserved.
+ */
+function insertTopLevelLine(content, line) {
+  const nameMatch = content.match(/^name:.*$/m)
+  if (nameMatch) {
+    const idx = nameMatch.index + nameMatch[0].length
+    return content.slice(0, idx) + '\n' + line + content.slice(idx)
+  }
+  return line + '\n' + content
 }
 
 /**

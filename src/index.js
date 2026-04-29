@@ -347,7 +347,11 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
     const contentDir = findContentDirFor(metadata.contentDirs, pkg)
     if (contentDir) {
       onProgress?.(`Applying ${metadata.name} content to ${pkg.name}...`)
-      await applyContent(contentDir.dir, fullPath, { projectName }, { onProgress, onWarning })
+      await applyContent(contentDir.dir, fullPath, { projectName }, {
+        onProgress,
+        onWarning,
+        renames: contentDir.renames,
+      })
     }
 
     // Merge template dependencies into package.json

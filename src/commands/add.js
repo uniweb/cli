@@ -730,12 +730,9 @@ async function applyFromTemplate(templateId, packageType, targetDir, projectName
     const metadata = await validateTemplate(resolved.path, {})
 
     // Look in contentDirs for matching package type
-    let contentDir = null
     const match = metadata.contentDirs.find(d => d.type === packageType) ||
                   metadata.contentDirs.find(d => d.name === packageType)
-    if (match) {
-      contentDir = match.dir
-    }
+    const contentDir = match ? match.dir : null
 
     if (contentDir) {
       info(`Applying ${metadata.name} content...`)
@@ -744,6 +741,7 @@ async function applyFromTemplate(templateId, packageType, targetDir, projectName
         versions: getVersionsForTemplates(),
       }, {
         onProgress: (msg) => info(`  ${msg}`),
+        renames: match.renames,
       })
 
       // Merge template dependencies
