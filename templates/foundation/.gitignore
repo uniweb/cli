@@ -1,4 +1,5 @@
 node_modules
 dist
+_entry.generated.js
 .DS_Store
 *.local

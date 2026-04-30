@@ -600,7 +600,16 @@ export async function deploy(args = []) {
         say.info(`Foundation at ${relPath} is stale (${inspection.reason}). Auto-publishing…`)
         console.log('')
         try {
-          execSync('npx uniweb publish', { cwd: localPath, stdio: 'inherit' })
+          // Spawn the SAME CLI binary that's currently running, not via
+          // `npx uniweb` — npx resolves through node_modules and could
+          // pick up a stale npm-published version that doesn't share
+          // this CLI's behavior (e.g. doesn't recognize new flags).
+          // Using `process.argv[1]` keeps the outer/inner CLI version
+          // identical, eliminating the skew.
+          execSync(`node ${JSON.stringify(process.argv[1])} publish`, {
+            cwd: localPath,
+            stdio: 'inherit',
+          })
         } catch {
           say.err(`Auto-publish of foundation at ${relPath} failed. See output above.`)
           process.exit(1)
@@ -661,8 +670,14 @@ export async function deploy(args = []) {
     // published foundation rather than embedding the local source.
     // Link mode doesn't run vite at all, so the env var is harmless
     // there but still passed through for consistency.
+    //
+    // Spawn the SAME CLI binary that's currently running rather than
+    // `npx uniweb build` — npx walks node_modules and would resolve to
+    // whatever version is installed there (which might be older than
+    // the deploy CLI and silently ignore --link). `process.argv[1]`
+    // pins the inner build to the outer's exact version.
     const buildModeFlag = deployMode === 'link' ? '--link' : '--bundle'
-    execSync(`npx uniweb build ${buildModeFlag}`, {
+    execSync(`node ${JSON.stringify(process.argv[1])} build ${buildModeFlag}`, {
       cwd: siteDir,
       stdio: 'inherit',
       env: foundationBuildOverride

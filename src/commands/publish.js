@@ -321,22 +321,37 @@ export async function publish(args = []) {
     const suggestions = await buildIdSuggestions({ foundationDir, workspaceRoot, pkg })
 
     if (isNonInteractive(process.argv)) {
-      error('Foundation id is required for publishing.')
-      console.log('')
-      if (suggestions.length > 0) {
-        console.log(`  ${colors.bright}Suggestions for your workspace:${colors.reset}`)
-        for (const { id, why } of suggestions) {
-          console.log(`    ${colors.cyan}${id}${colors.reset}  ${colors.dim}${why}${colors.reset}`)
-        }
+      // CI: when there's a high-confidence signal — the workspace
+      // package.json's name (the user typed it via `uniweb create
+      // <name>`) — auto-derive and persist. This unblocks first-deploy
+      // CI flows (pp-01 etc.) where stopping to ask isn't an option.
+      // Other suggestion sources (sibling-site name, M-code) are NOT
+      // auto-picked because they're ambiguous in multi-package
+      // workspaces; they remain available via the error message
+      // when no high-confidence signal exists.
+      const autoId = await pickAutoDerivedId({ workspaceRoot, foundationDir })
+      if (autoId) {
+        info(`Auto-deriving ${colors.bright}uniweb.id: "${autoId}"${colors.reset} ${colors.dim}(matches workspace name; persisted to package.json)${colors.reset}`)
+        foundationName = autoId
+        writeBackId = true
+      } else {
+        error('Foundation id is required for publishing.')
         console.log('')
+        if (suggestions.length > 0) {
+          console.log(`  ${colors.bright}Suggestions for your workspace:${colors.reset}`)
+          for (const { id, why } of suggestions) {
+            console.log(`    ${colors.cyan}${id}${colors.reset}  ${colors.dim}${why}${colors.reset}`)
+          }
+          console.log('')
+        }
+        console.log(`  ${colors.dim}Use one of:${colors.reset}`)
+        const example = suggestions[0]?.id || '<id>'
+        console.log(`    ${colors.cyan}uniweb publish --name ${example}${colors.reset}`)
+        console.log(`    ${colors.dim}Add ${colors.reset}"uniweb": { "id": "<your-id>" }${colors.dim} to package.json${colors.reset}`)
+        console.log(`    ${colors.dim}Or use a scoped name in package.json: ${colors.reset}"name": "@org/<id>"${colors.reset}`)
+        process.exit(1)
       }
-      console.log(`  ${colors.dim}Use one of:${colors.reset}`)
-      const example = suggestions[0]?.id || '<id>'
-      console.log(`    ${colors.cyan}uniweb publish --name ${example}${colors.reset}`)
-      console.log(`    ${colors.dim}Add ${colors.reset}"uniweb": { "id": "<your-id>" }${colors.dim} to package.json${colors.reset}`)
-      console.log(`    ${colors.dim}Or use a scoped name in package.json: ${colors.reset}"name": "@org/<id>"${colors.reset}`)
-      process.exit(1)
-    }
+    } else {
 
     const prompts = (await import('prompts')).default
     console.log('')
@@ -395,6 +410,7 @@ export async function publish(args = []) {
 
     foundationName = chosen
     writeBackId = true
+    }
   }
 
   // Validate the resolved id (may have come from any source).
@@ -639,6 +655,46 @@ function bumpPatch(version) {
   if (parts.length !== 3) return version
   parts[2] = String(Number(parts[2]) + 1)
   return parts.join('.')
+}
+
+/**
+ * High-confidence auto-derive for non-interactive (CI) first publishes.
+ *
+ * Diego's principle: never silently take a generic scaffold default like
+ * `src` or `site` as the registry id (those are placeholders, not user
+ * intent). But when the user has typed a real name elsewhere — most
+ * unambiguously the workspace package.json's `name` (set by
+ * `uniweb create <name>`) — picking that in CI is the obvious right
+ * answer and stopping to ask just breaks the CI run.
+ *
+ * Auto-derive set is intentionally NARROW:
+ *   1. Workspace package.json::name, when it's a clean id and not a
+ *      generic placeholder.
+ *
+ * Other suggestion sources from `buildIdSuggestions` (sibling-site
+ * name, M-code series) are NOT auto-picked: they're ambiguous in
+ * multi-package or multi-foundation workspaces. They remain visible
+ * in the CI error message when no high-confidence signal exists, so
+ * the user can pick one explicitly via `--name <id>`.
+ *
+ * Returns the id string, or null when no high-confidence signal is
+ * available (caller falls through to the existing error-with-
+ * suggestions guidance).
+ */
+async function pickAutoDerivedId({ workspaceRoot, foundationDir }) {
+  const ID_RE = /^[a-z0-9_-]+$/
+  const PLACEHOLDERS = new Set(['src', 'site', 'foundation', 'workspace', 'project'])
+  const isHighConfidence = s => typeof s === 'string' && ID_RE.test(s) && !PLACEHOLDERS.has(s)
+
+  if (!workspaceRoot || workspaceRoot === foundationDir) return null
+  try {
+    const wsPkg = JSON.parse(await readFile(join(workspaceRoot, 'package.json'), 'utf8'))
+    const wsName = typeof wsPkg.name === 'string'
+      ? wsPkg.name.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/^-+|-+$/g, '')
+      : null
+    if (isHighConfidence(wsName)) return wsName
+  } catch { /* no workspace package.json — skip */ }
+  return null
 }
 
 /**
