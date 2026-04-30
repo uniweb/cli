@@ -144,9 +144,8 @@ export class LocalRegistry {
 
   /**
    * Get the full version entry for `name@version`, or null if absent.
-   * Used by `publish` and `deploy` to refill `dist/publish.json` from
-   * server-of-record state when the local cache is missing — see
-   * `kb/framework/build/workspace-ergonomics.md` (receipt-as-cache).
+   * Used by `publish` (pre-flight duplicate check) and `deploy`
+   * (staleness check via git provenance comparison).
    *
    * @param {string} name
    * @param {string} version
@@ -270,8 +269,8 @@ export class RemoteRegistry {
 
   /**
    * Get the full version entry for `name@version`, or null if absent.
-   * Used by `publish` and `deploy` to refill `dist/publish.json` from
-   * server-of-record state when the local cache is missing.
+   * Used by `publish` (pre-flight duplicate check) and `deploy`
+   * (staleness check via git provenance comparison).
    *
    * @param {string} name
    * @param {string} version

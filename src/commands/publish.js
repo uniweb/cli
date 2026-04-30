@@ -40,11 +40,10 @@ import { execSync } from 'node:child_process'
 
 import { resolveFoundationSrcPath, classifyPackage } from '@uniweb/build'
 import { createLocalRegistry, RemoteRegistry } from '../utils/registry.js'
-import { ensureAuth, readAuth, decodeJwtPayload } from '../utils/auth.js'
+import { ensureAuth, readAuth, writeAuth, decodeJwtPayload } from '../utils/auth.js'
 import { getRegistryUrl } from '../utils/config.js'
 import { findWorkspaceRoot, findFoundations, findSites, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
-import { composeReceipt, deriveReceiptUrl, receiptFromRegistryEntry } from '../utils/receipt.js'
 
 // Colors for terminal output
 const colors = {
@@ -240,25 +239,22 @@ export async function publish(args = []) {
     process.exit(1)
   }
 
-  // 1b. Phase 3 deliberate-name gate.
+  // 1b. Phase 4e: catalog-publish gate.
   //
   //     `uniweb publish` is for cataloging a foundation as a product —
-  //     deliberate name, deliberate namespace, deliberate intent to make
-  //     it consumable by other sites. Site-bound foundations should use
-  //     `uniweb deploy` (auto-publishes under a site-scoped slot, no
-  //     naming ceremony).
+  //     deliberate `@org/{name}` name, version-pinnable, discoverable.
+  //     Site-bound foundations go through `uniweb deploy` instead, which
+  //     uploads them to `sites/{siteId}/_src/...` automatically.
   //
-  //     We require an explicit name signal so that running `uniweb
-  //     publish` from a freshly-scaffolded workspace doesn't accidentally
-  //     register the workspace's default name (e.g. "src") as a catalog
-  //     entry. Signals that count as deliberate:
-  //       - --name <id> flag
-  //       - --namespace <handle> flag
-  //       - sigil-scoped package.json::name (@org/x or ~user/x)
-  //       - package.json::uniweb.id
-  //       - package.json::uniweb.namespace
+  //     The gate rejects two shapes:
+  //       (a) No explicit name at all — running `uniweb publish` from a
+  //           fresh scaffold would otherwise register `src` (or whatever
+  //           the workspace name is) as a catalog entry.
+  //       (b) `~user/...` or personal-UUID scopes — Phase 4e retired the
+  //           personal scope; site-bound foundations use deploy, catalog
+  //           uses `@org/`. There is no "personal catalog" any more.
   //
-  //     Skipped for --local (local mock, no public consequences).
+  //     `--local` skips the gate (local mock registry, no public consequences).
   const hasExplicitName = !!(
     nameFlag ||
     namespaceFlag ||
@@ -270,14 +266,32 @@ export async function publish(args = []) {
     error('uniweb publish needs a deliberate foundation name.')
     console.log('')
     console.log(`  ${colors.bright}If this foundation only powers one site, use ${colors.cyan}uniweb deploy${colors.reset}${colors.bright} instead.${colors.reset}`)
-    console.log(`  ${colors.dim}Deploy auto-publishes your foundation under a site-scoped slot — no name needed.${colors.reset}`)
+    console.log(`  ${colors.dim}Deploy uploads your foundation alongside the site's assets — no name ceremony.${colors.reset}`)
     console.log('')
-    console.log(`  ${colors.bright}If you're cataloging this foundation as a product, give it a name:${colors.reset}`)
+    console.log(`  ${colors.bright}If you're cataloging this foundation as a product, name it explicitly:${colors.reset}`)
     console.log(`    ${colors.cyan}uniweb publish @your-org/foundation-name${colors.reset}`)
-    console.log(`    ${colors.cyan}uniweb publish --name foundation-name${colors.reset}  ${colors.dim}(personal scope)${colors.reset}`)
     console.log('')
     console.log(`  ${colors.dim}For local development, ${colors.reset}${colors.cyan}--local${colors.reset}${colors.dim} skips this gate.${colors.reset}`)
     process.exit(1)
+  }
+
+  // 1b'. Phase 4e: reject `~`-scoped names. Site-bound foundations don't
+  //      go through publish at all.
+  if (!isLocal) {
+    const candidateName = nameFlag || earlyPkg.name || earlyPkg.uniweb?.id || ''
+    const candidateNamespace = namespaceFlag || earlyPkg.uniweb?.namespace || ''
+    if (candidateName.startsWith('~') || candidateNamespace.startsWith('~')) {
+      error('uniweb publish is for cataloged foundations only.')
+      console.log('')
+      console.log(`  ${colors.dim}The personal-UUID scope (${colors.reset}~uuid/name${colors.dim}) is no longer accepted.${colors.reset}`)
+      console.log(`  ${colors.dim}Site-bound foundations are uploaded automatically by ${colors.reset}${colors.cyan}uniweb deploy${colors.reset}${colors.dim} — they live with site assets, not in the catalog.${colors.reset}`)
+      console.log('')
+      console.log(`  ${colors.bright}For a catalog product, use an org scope:${colors.reset}`)
+      console.log(`    ${colors.cyan}uniweb publish @your-org/foundation-name${colors.reset}`)
+      console.log('')
+      console.log(`  ${colors.dim}No org yet? The CLI will offer to claim one for you the first time you publish to a handle you don't own.${colors.reset}`)
+      process.exit(1)
+    }
   }
 
   // 1c. Phase 3 catalog confirmation gate.
@@ -339,9 +353,9 @@ export async function publish(args = []) {
   }
 
   // --dry-run gate. Must come BEFORE the pre-flight registry check (which
-  // can write a refreshed receipt to dist/publish.json on the matching-sha
-  // path) and BEFORE the build (which writes to dist/). Earlier the
-  // dry-run check sat after both, which violated the zero-writes contract.
+  // may persist `uniweb.id` to package.json on the matching-sha path) and
+  // BEFORE the build (which writes to dist/). Earlier the dry-run check
+  // sat after both, which violated the zero-writes contract.
   if (isDryRun) {
     const previewName = quickResolveCanonicalName(earlyPkg, { namespaceFlag, nameFlag })
       || earlyPkg.name
@@ -399,27 +413,13 @@ export async function publish(args = []) {
             if (existing) {
               const { gitSha } = readGitState(foundationDir)
               if (gitSha && existing.publishedFromGitSha === gitSha) {
-                // Match → refresh receipt, exit clean. NO BUILD.
-                const refreshed = receiptFromRegistryEntry({
-                  existingEntry: existing,
-                  registry: registryPre,
-                  name: lookupName,
-                  version: preflightVersion,
-                  isLocal: false,
-                  isPropagateDefault: isPropagate,
-                })
-                if (refreshed) {
-                  await mkdir(distDir, { recursive: true })
-                  await writeFile(join(distDir, 'publish.json'), JSON.stringify(refreshed, null, 2) + '\n')
-                  console.log('')
-                  success(`${colors.bright}${lookupName}@${preflightVersion}${colors.reset} already published from ${gitSha.slice(0, 7)} — receipt refreshed.`)
-                  return
-                }
+                // Already published from this exact source — nothing to do.
+                console.log('')
+                success(`${colors.bright}${lookupName}@${preflightVersion}${colors.reset} already published from ${gitSha.slice(0, 7)}.`)
+                return
               }
               // Sha mismatch (or no provenance recorded for the existing
-              // entry, which shouldn't happen for new publishes after
-              // the receipt-as-cache work shipped). Clean error before
-              // any build work.
+              // entry). Clean error before any build work.
               console.log('')
               error(`Foundation source has changed since the last publish, but ${colors.bright}${lookupName}@${preflightVersion}${colors.reset} is already published.`)
               console.log('')
@@ -702,35 +702,85 @@ export async function publish(args = []) {
     name = foundationName
   }
 
-  // 3c. Advisory scope authorization (Worker enforces — this is for early UX feedback)
-  if (!isLocal) {
+  // 3c. Phase 4f: org-claim flow.
+  //
+  //     `uniweb publish @handle/foo` against a handle the user doesn't own
+  //     yet drops into the org-claim flow instead of failing. Three cases:
+  //       (a) JWT has no `namespaces` claim at all → token predates org
+  //           support; tell the user to `uniweb login` again.
+  //       (b) Handle is already in `namespaces` → proceed.
+  //       (c) Handle is NOT in `namespaces` → call POST /api/orgs/{handle}.
+  //           Confirm-and-claim if available; hard-fail if taken; refresh
+  //           the cached token on success and proceed with publish.
+  //
+  //     Skipped for `--local` (no auth, no org system).
+  const claimOrgFlag = args.includes('--claim-org')
+  if (!isLocal && scopeSigil === '@') {
     const auth = await readAuth()
-    if (scopeSigil === '@') {
-      // Org scope: must be in the user's namespaces[] claim.
-      const namespaces = auth?.namespaces
-      if (Array.isArray(namespaces) && !namespaces.includes(scopeName)) {
-        error(`You don't have publish access to namespace "${colors.bright}@${scopeName}${colors.reset}"`)
-        if (namespaces.length > 0) {
-          console.log(`  ${colors.dim}Your organizations: ${namespaces.map(n => '@' + n).join(', ')}${colors.reset}`)
-          console.log(`  ${colors.dim}Or remove the scope from package.json::name to publish under your personal scope.${colors.reset}`)
-        } else {
-          console.log(`  ${colors.dim}You don't belong to any organizations.${colors.reset}`)
-          console.log(`  ${colors.dim}Use a bare name in package.json (e.g. "src") to publish under your personal scope.${colors.reset}`)
-        }
-        process.exit(1)
-      }
-    } else if (scopeSigil === '~') {
-      // Personal alias scope: must match the user's loginName claim
-      // (until handle-aliasing ships, this is loginName-only).
-      if (auth?.loginName && auth.loginName !== scopeName) {
-        error(`Personal scope "${colors.bright}~${scopeName}${colors.reset}" doesn't match your account`)
-        console.log(`  ${colors.dim}Your personal scope: ~${auth.loginName}${colors.reset}`)
-        console.log(`  ${colors.dim}Or remove the scope from package.json::name to publish under your personal scope.${colors.reset}`)
-        process.exit(1)
-      }
+    if (!Array.isArray(auth?.namespaces)) {
+      // Old token, predates org support.
+      error('Your authentication token doesn\'t carry organization claims.')
+      console.log('')
+      console.log(`  ${colors.dim}Run ${colors.reset}${colors.cyan}uniweb login${colors.reset}${colors.dim} to refresh your session, then retry.${colors.reset}`)
+      process.exit(1)
     }
-    // Empty-scope: no client-side check. The server resolves to the
-    // memberId from the JWT (sub claim) and writes ownership accordingly.
+    if (!auth.namespaces.includes(scopeName)) {
+      // Need to claim. Confirm interactively unless --claim-org was passed.
+      if (isNonInteractive(process.argv) && !claimOrgFlag) {
+        error(`You don't own ${colors.bright}@${scopeName}${colors.reset} yet.`)
+        console.log('')
+        console.log(`  ${colors.dim}In CI, pass ${colors.reset}${colors.cyan}--claim-org${colors.reset}${colors.dim} to claim available handles automatically.${colors.reset}`)
+        console.log(`  ${colors.dim}Interactive mode prompts for confirmation.${colors.reset}`)
+        process.exit(1)
+      }
+
+      if (!claimOrgFlag) {
+        const prompts = (await import('prompts')).default
+        console.log('')
+        console.log(`${colors.dim}You don't own ${colors.reset}${colors.bright}@${scopeName}${colors.reset}${colors.dim} yet.${colors.reset}`)
+        console.log(`${colors.dim}Org handles are global and permanent — only the claiming account can publish under them.${colors.reset}`)
+        console.log('')
+        const confirm = await prompts({
+          type: 'confirm',
+          name: 'go',
+          message: `Claim @${scopeName} for your account?`,
+          initial: false,
+        }, {
+          onCancel: () => { console.log(''); console.log('Publish cancelled.'); process.exit(0) },
+        })
+        if (!confirm.go) {
+          console.log('')
+          console.log(`${colors.dim}Cancelled. Publish under a handle you already own, or pick a different one.${colors.reset}`)
+          process.exit(0)
+        }
+      }
+
+      const claimed = await claimOrgHandle({
+        handle: scopeName,
+        token: auth.token,
+        registryUrl: registryUrl || getRegistryUrl(),
+      })
+      if (claimed.taken) {
+        error(`@${scopeName} is already claimed by another account.`)
+        console.log('')
+        console.log(`  ${colors.dim}Pick a different handle. Org names are global and exclusive.${colors.reset}`)
+        process.exit(1)
+      }
+      // Swap the cached token for the refreshed one (now carries the new
+      // namespace claim). Subsequent publish calls in this run see it via
+      // a fresh `readAuth()` and the worker accepts the upload.
+      await writeAuth({
+        token: claimed.token,
+        email: auth.email,
+        expiresAt: auth.expiresAt,
+      })
+      if (claimed.created) {
+        success(`Claimed ${colors.bright}@${scopeName}${colors.reset} for your account.`)
+      } else {
+        info(`Refreshed your token; ${colors.bright}@${scopeName}${colors.reset} is yours.`)
+      }
+      console.log('')
+    }
   }
 
   // 4. Create registry (local or remote)
@@ -777,41 +827,28 @@ export async function publish(args = []) {
 
   // 5. Check for duplicates. If the registry already has this exact
   //    version recorded as published from the current commit, treat it
-  //    as a fresh-checkout no-op: refresh the local receipt and exit
-  //    successfully. The artifact upstream is already correct; there's
-  //    nothing to upload. See `kb/framework/build/workspace-ergonomics.md`
-  //    (receipt-as-cache).
+  //    as a fresh-checkout no-op — the artifact upstream is already
+  //    correct; there's nothing to upload.
   const existingEntry = await registry.getVersionEntry(lookupName, version)
   if (existingEntry) {
     if (gitSha && existingEntry.publishedFromGitSha === gitSha) {
-      const refreshedReceipt = receiptFromRegistryEntry({
-        existingEntry,
-        registry,
-        name: lookupName,
-        version,
-        isLocal,
-        isPropagateDefault: isPropagate,
-      })
-      if (refreshedReceipt) {
-        // Persist uniweb.id BEFORE the early return when an auto-derive
-        // or prompt-resolved id was set in this run. Without this, the
-        // next run wouldn't know the id and would have to re-derive
-        // from scratch — which means the pre-flight registry check at
-        // the top of publish() can't fire either (it relies on a
-        // resolvable id from pkg.json alone). Persisting here closes
-        // that loop so future deploys hit the pre-flight bail and skip
-        // the build entirely.
-        if (writeBackId) {
-          pkg.uniweb = pkg.uniweb || {}
-          pkg.uniweb.id = foundationName
-          await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
-          info(`Wrote ${colors.cyan}uniweb.id: "${foundationName}"${colors.reset} to ${colors.dim}package.json${colors.reset}`)
-        }
-        await writeFile(join(distDir, 'publish.json'), JSON.stringify(refreshedReceipt, null, 2) + '\n')
-        console.log('')
-        success(`${colors.bright}${lookupName}@${version}${colors.reset} already published from ${gitSha.slice(0, 7)} — receipt refreshed.`)
-        return
+      // Persist uniweb.id BEFORE the early return when an auto-derive
+      // or prompt-resolved id was set in this run. Without this, the
+      // next run wouldn't know the id and would have to re-derive
+      // from scratch — which means the pre-flight registry check at
+      // the top of publish() can't fire either (it relies on a
+      // resolvable id from pkg.json alone). Persisting here closes
+      // that loop so future deploys hit the pre-flight bail and skip
+      // the build entirely.
+      if (writeBackId) {
+        pkg.uniweb = pkg.uniweb || {}
+        pkg.uniweb.id = foundationName
+        await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+        info(`Wrote ${colors.cyan}uniweb.id: "${foundationName}"${colors.reset} to ${colors.dim}package.json${colors.reset}`)
       }
+      console.log('')
+      success(`${colors.bright}${lookupName}@${version}${colors.reset} already published from ${gitSha.slice(0, 7)}.`)
+      return
     }
     console.log('')
     error(`Foundation source has changed since the last publish, but ${colors.bright}${name}@${version}${colors.reset} is already published.`)
@@ -829,9 +866,8 @@ export async function publish(args = []) {
   const publishMetadata = {
     publishedBy: auth?.email || (isLocal ? 'local' : 'cli'),
     classification: isPropagate ? 'propagate' : 'silent',
-    // Git provenance lets the registry serve as a recovery source for
-    // the local `dist/publish.json` cache on fresh checkouts, without
-    // requiring the cache itself to survive across machines.
+    // Git provenance lets `uniweb deploy` decide whether a workspace-local
+    // foundation needs republishing — see deploy.js's staleness check.
     ...(gitSha ? { publishedFromGitSha: gitSha } : {}),
     ...(typeof gitDirty === 'boolean' ? { publishedFromGitDirty: gitDirty } : {}),
   }
@@ -839,9 +875,8 @@ export async function publish(args = []) {
     publishMetadata.editAccess = editAccess
   }
 
-  let publishResult
   try {
-    publishResult = await registry.publish(name, version, distDir, publishMetadata)
+    await registry.publish(name, version, distDir, publishMetadata)
   } catch (err) {
     if (err.code === 'CONFLICT') {
       error(`${colors.bright}${name}@${version}${colors.reset} already exists on the registry.`)
@@ -855,18 +890,6 @@ export async function publish(args = []) {
     }
     throw err
   }
-
-  // Local event memory — read by `uniweb deploy` to decide whether a
-  // workspace-local foundation needs republishing. Lives under dist/ which
-  // is gitignored; not part of the upload.
-  const receipt = composeReceipt({
-    gitSha,
-    gitDirty,
-    url: deriveReceiptUrl({ publishResult, registry, name, version, isLocal }),
-    publishedAt: new Date().toISOString(),
-    classification: isPropagate ? 'propagate' : 'silent',
-  })
-  await writeFile(join(distDir, 'publish.json'), JSON.stringify(receipt, null, 2) + '\n')
 
   const prefix = getCliPrefix()
   const isExtension = schema._self?.role === 'extension'
@@ -1114,10 +1137,9 @@ async function buildIdSuggestions({ foundationDir, workspaceRoot, pkg }) {
 /**
  * Per-directory git state. Mirrors `deploy.js::readGitState` exactly —
  * scopes the sha + dirty check to `dir` rather than reading the whole
- * repo's HEAD. Receipts compare against this; if publish records the
- * repo HEAD but deploy compares against the foundation's last commit,
- * the receipt-as-cache no-op-refresh path drifts. Both sides must read
- * the same shape.
+ * repo's HEAD. Publish records this in registry metadata; deploy
+ * compares against it for staleness. Both sides must read the same
+ * shape or the staleness check drifts.
  */
 function readGitState(dir) {
   try {
@@ -1133,6 +1155,38 @@ function readGitState(dir) {
   } catch {
     return { gitSha: null, gitDirty: false }
   }
+}
+
+/**
+ * POST /api/orgs/{handle} — claim an `@handle` for the calling user.
+ *
+ * Returns one of:
+ *   { created: true,  token: '<refreshed JWT>' }   — handle was free
+ *   { created: false, token: '<refreshed JWT>' }   — user already owned it
+ *   { taken:  true }                               — claimed by someone else
+ *
+ * Other failures throw.
+ */
+async function claimOrgHandle({ handle, token, registryUrl }) {
+  const url = `${registryUrl.replace(/\/$/, '')}/api/orgs/${encodeURIComponent(handle)}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  })
+  if (res.status === 409) return { taken: true }
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`
+    try {
+      const j = await res.json()
+      detail = j.error || detail
+    } catch { /* non-JSON body */ }
+    throw new Error(`Org claim failed: ${detail}`)
+  }
+  const body = await res.json()
+  return { created: !!body.created, token: body.token }
 }
 
 export default publish

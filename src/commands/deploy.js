@@ -53,7 +53,18 @@ import { ensureAuth, readAuth, decodeJwtPayload } from '../utils/auth.js'
 import { getBackendUrl, getRegistryUrl } from '../utils/config.js'
 import { parseBoolEnv } from '../utils/env.js'
 import { RemoteRegistry } from '../utils/registry.js'
-import { receiptFromRegistryEntry, splitRegistryRef } from '../utils/receipt.js'
+
+/**
+ * Split `@ns/name@ver`, `~user/name@ver`, or `name@ver` into name + version.
+ * Returns null on any shape we don't recognize. Inlined here after the
+ * receipt-cache utility module was removed in Phase 4b — the only
+ * remaining caller is the staleness check below.
+ */
+function splitRegistryRef(ref) {
+  if (typeof ref !== 'string') return null
+  const m = /^(@[^/]+\/[^@]+|~[^/]+\/[^@]+|[^@]+)@(.+)$/.exec(ref)
+  return m ? { name: m[1], version: m[2] } : null
+}
 import {
   findWorkspaceRoot,
   findSites,
@@ -221,46 +232,41 @@ function composeFoundationUrl(ref, registryBase) {
 }
 
 /**
- * Inspect a workspace-local foundation's `dist/publish.json` (Phase 1 receipt)
- * and decide whether it's stale relative to the current source tree.
+ * Decide whether a workspace-local foundation is stale relative to the
+ * registry's record, by comparing per-directory git provenance against
+ * the registry entry's `publishedFromGitSha`. No local cache file —
+ * `dist/publish.json` was deleted in Phase 4b of the CLI ergonomics
+ * overhaul because every fresh clone / CI run / collaborator paid the
+ * registry round-trip anyway, and the local cache only added confusing
+ * "stale receipt" warnings when collaborators had different `dist/`
+ * state.
  *
- * When the receipt file is missing and a `registry` is provided, attempt
- * to refill it from the registry's index entry for `<name>@<version>`.
- * That makes the receipt pure cache: a fresh clone with a matching
- * upstream artifact resolves without an unnecessary republish. If the
- * registry has no record (or the stored entry lacks git provenance), the
- * inspector returns `stale: true` and the caller's auto-publish path
- * runs as before.
- *
- * Returns `{ stale, reason, receipt, refilled? }`. The caller decides
- * whether to auto-publish (Phase 2 default) or fail (`--no-auto-publish`).
+ * Returns `{ stale, reason }`. The caller decides whether to auto-publish
+ * (Phase 2 default) or fail (`--no-auto-publish`).
  */
-async function inspectLocalFoundationReceipt(localPath, { dirtyAsStale, registry }) {
-  const receiptPath = join(localPath, 'dist', 'publish.json')
-  let receipt = null
-  let refilled = false
-  try {
-    receipt = JSON.parse(await readFile(receiptPath, 'utf8'))
-  } catch {
-    if (registry) {
-      const refill = await tryRefillReceiptFromRegistry({ localPath, registry })
-      if (refill) {
-        await writeFile(receiptPath, JSON.stringify(refill, null, 2) + '\n')
-        receipt = refill
-        refilled = true
-      }
-    }
-    if (!receipt) {
-      return { stale: true, reason: 'no dist/publish.json (foundation has not been published from this checkout)' }
-    }
-  }
-
+async function inspectFoundationStaleness(localPath, { dirtyAsStale, registry, ref }) {
   const { gitSha, gitDirty } = readGitState(localPath)
   if (!gitSha) {
-    return { stale: true, reason: 'foundation directory is not in a git repo or has no commits', receipt }
+    return { stale: true, reason: 'foundation directory is not in a git repo or has no commits' }
   }
-  if (receipt.publishedFromGitSha && receipt.publishedFromGitSha !== gitSha) {
-    // Receipt's recorded sha differs from the foundation's per-directory
+
+  const split = splitRegistryRef(ref)
+  if (!split) {
+    return { stale: true, reason: 'cannot derive registry ref from package.json' }
+  }
+
+  let existingEntry
+  try {
+    existingEntry = await registry.getVersionEntry(split.name, split.version)
+  } catch {
+    return { stale: true, reason: 'registry lookup failed' }
+  }
+  if (!existingEntry) {
+    return { stale: true, reason: `${split.name}@${split.version} not yet published` }
+  }
+
+  if (existingEntry.publishedFromGitSha && existingEntry.publishedFromGitSha !== gitSha) {
+    // Recorded sha differs from the foundation's per-directory
     // last-touched commit. Normally that's "real" staleness — somebody
     // committed changes to src/ that haven't been republished.
     //
@@ -274,67 +280,17 @@ async function inspectLocalFoundationReceipt(localPath, { dirtyAsStale, registry
     // hasn't materially changed. Don't fire staleness on the sha
     // alone in that case; let the dirty-tree check below do its job
     // if the tree IS still dirty, and otherwise treat as fresh.
-    //
-    // Edge: if the user committed real source changes ON TOP of the
-    // auto-derive in the same commit, we won't detect that as stale
-    // here — the next publish would 409 against the registry though,
-    // surfacing the issue with a clear "bump the version" message.
-    if (!receipt.publishedFromGitDirty) {
+    if (!existingEntry.publishedFromGitDirty) {
       return {
         stale: true,
-        reason: `foundation has new commits since last publish (${receipt.publishedFromGitSha.slice(0, 7)} → ${gitSha.slice(0, 7)})`,
-        receipt,
+        reason: `foundation has new commits since last publish (${existingEntry.publishedFromGitSha.slice(0, 7)} → ${gitSha.slice(0, 7)})`,
       }
     }
   }
   if (gitDirty && dirtyAsStale) {
-    return { stale: true, reason: 'foundation working tree is dirty', receipt }
+    return { stale: true, reason: 'foundation working tree is dirty' }
   }
-  return { stale: false, receipt, refilled }
-}
-
-/**
- * When a receipt is missing, try to reconstruct it from the registry's
- * own record of the publish. We resolve `name@version` from the same
- * package metadata `deriveLocalFoundationRef` uses, then ask the registry
- * for its stored version entry. The entry's `publishedFromGitSha` is the
- * load-bearing field — without it (entries written before git provenance
- * was added) we can't compare against HEAD, so we don't synthesize a
- * misleading "fresh" receipt and let the caller fall through to the
- * republish path.
- *
- * Returns the receipt body, or null when refill is not possible.
- */
-async function tryRefillReceiptFromRegistry({ localPath, registry }) {
-  // Two ways to derive the canonical `<name>@<version>`:
-  //   1. `deriveLocalFoundationRef` — works for org-scope foundations
-  //      (where the namespace is in package.json) and for any foundation
-  //      where a previous receipt already exists. On the wipe-and-deploy
-  //      path that fired this code, the receipt is gone, so this only
-  //      works for org-scope.
-  //   2. Empty-scope fallback — if package.json has `uniweb.id` and the
-  //      user's auth.json carries a `memberUuid` claim, we can synthesize
-  //      `~<memberUuid>/<id>@<version>` directly. Same shape the server
-  //      stores under.
-  let ref = await deriveLocalFoundationRef(localPath)
-  if (!ref) ref = await refFromAuthAndPkg(localPath)
-  const split = splitRegistryRef(ref)
-  if (!split) return null
-  let existingEntry
-  try {
-    existingEntry = await registry.getVersionEntry(split.name, split.version)
-  } catch {
-    return null
-  }
-  if (!existingEntry) return null
-  return receiptFromRegistryEntry({
-    existingEntry,
-    registry,
-    name: split.name,
-    version: split.version,
-    isLocal: false,
-    isPropagateDefault: false,
-  })
+  return { stale: false }
 }
 
 /**
@@ -371,11 +327,10 @@ async function refFromAuthAndPkg(localPath) {
  *
  * Resolution order:
  *   1. Org scope from `pkg.uniweb.namespace` or `pkg.name`'s `@org/...` prefix.
- *   2. The receipt at `dist/publish.json`. After a successful publish, the
- *      receipt's `url` carries the canonical server-rewritten name —
- *      including empty-scope publishes, which the server rewrites to
- *      `~<memberUuid>/<name>`. The CLI can't synthesize that locally
- *      because the memberUuid lives in the JWT, not in the workspace.
+ *   2. Empty-scope synthesis from `pkg.uniweb.id` + the user's auth claim
+ *      (`~<memberUuid>/<id>@<version>`). Same canonical shape the server
+ *      stores under for empty-scope publishes. Phase 4d will replace this
+ *      with `~{siteId}/...` derived from authorize.
  *   3. null — caller falls through to the helpful "set uniweb.namespace"
  *      error message.
  */
@@ -409,32 +364,13 @@ async function deriveLocalFoundationRef(localPath) {
     return `@${namespace}/${bareName}@${version}`
   }
 
-  // Empty-scope path — read the canonical name from the receipt's URL.
-  // The server rewrites bare names to `~<memberUuid>/<name>`; the URL it
-  // returns carries that canonical form (e.g.
-  // `/foundations/~<uuid>/<name>@<ver>/foundation.js`). Parse it back.
-  const fromReceipt = await refFromReceiptUrl(localPath)
-  if (fromReceipt) return fromReceipt
+  // Empty-scope fallback: synthesize `~<memberUuid>/<id>@<version>` from
+  // the user's auth + package.json::uniweb.id. Same canonical shape the
+  // server stores under for empty-scope publishes. After Phase 4d this
+  // path is replaced by `~{siteId}/...` derived from authorize.
+  const fromAuth = await refFromAuthAndPkg(localPath)
+  if (fromAuth) return fromAuth
 
-  return null
-}
-
-// Personal-scope namespaces are base58 memberUuids (mixed case; the
-// alphabet is `[A-HJ-NP-Za-km-z1-9]`). Org-scope handles are
-// lowercase-only. Allow both shapes here so the regex captures personal
-// scopes correctly. The bare-name portion (after the `/`) stays
-// lowercase per BARE_NAME_RE.
-const RECEIPT_URL_REF_RE = /\/foundations\/((?:@[a-z0-9_-]+|~[A-Za-z0-9_-]+)\/[a-z0-9_-]+)@([^/]+)\//
-
-async function refFromReceiptUrl(localPath) {
-  try {
-    const receipt = JSON.parse(await readFile(join(localPath, 'dist', 'publish.json'), 'utf8'))
-    const m = RECEIPT_URL_REF_RE.exec(receipt?.url || '')
-    if (m) return `${m[1]}@${m[2]}`
-  } catch {
-    // No receipt, malformed JSON, or URL doesn't carry the canonical
-    // shape — fall through to null.
-  }
   return null
 }
 
@@ -442,9 +378,9 @@ async function refFromReceiptUrl(localPath) {
 
 export async function deploy(args = []) {
   const dryRun = args.includes('--dry-run')
-  // Phase 2 (deploy-ux-v4): when `foundation:` in site.yml points at a
-  // workspace-local file: ref, deploy auto-publishes the foundation when
-  // its `dist/publish.json` receipt is missing/stale. This flag opts out.
+  // When `foundation:` in site.yml points at a workspace-local file: ref,
+  // deploy auto-publishes the foundation when the registry has no record
+  // of the current source's git sha. This flag opts out.
   const autoPublishFoundation = !args.includes('--no-auto-publish')
 
   // Internal escape hatches — see framework/cli/docs/env-vars.md. These
@@ -524,61 +460,51 @@ export async function deploy(args = []) {
   // build runs in runtime mode against the just-published artifact instead
   // of bundling the local foundation source. site.yml on disk is never
   // modified.
-  let foundationBuildOverride = null
+  // Phase 4d: detect a workspace-local foundation. The actual upload happens
+  // AFTER authorize (which mints siteId), so the canonical site-bound ref
+  // `~{siteId}/{name}@{ver}` is known by the time we publish. For now we
+  // just record what we'll need at upload time and pass a `~self/...`
+  // placeholder to authorize — the server rewrites it.
+  let localFoundation = null
   if (typeof foundation === 'string') {
     const detected = detectFoundationType(foundation, siteDir)
     if (detected.type === 'local') {
       const localPath = detected.path
       const relPath = relative(siteDir, localPath) || localPath
 
-      // Pass a RemoteRegistry into the inspector so it can refill a missing
-      // `dist/publish.json` from the registry's index (fresh-clone case).
-      // No auth needed — `getVersionEntry` reads the public listing.
-      const refillRegistry = new RemoteRegistry(workerUrl)
-      const inspection = await inspectLocalFoundationReceipt(localPath, {
-        dirtyAsStale: treatDirtyAsStale,
-        registry: refillRegistry,
-      })
-      if (inspection.refilled) {
-        say.dim(`Foundation receipt at ${relPath} refilled from registry.`)
-      }
-
-      if (inspection.stale && !autoPublishFoundation) {
-        say.err(`Local foundation at ${relPath} is stale: ${inspection.reason}.`)
-        say.dim(`Run \`${getCliPrefix()} publish\` from ${relPath}, or drop --no-auto-publish to let deploy publish it for you.`)
+      let pkg
+      try {
+        pkg = JSON.parse(await readFile(join(localPath, 'package.json'), 'utf8'))
+      } catch {
+        say.err(`Could not read ${relPath}/package.json.`)
         process.exit(1)
       }
-      if (inspection.stale) {
-        say.info(`Foundation at ${relPath} is stale (${inspection.reason}). Auto-publishing…`)
-        console.log('')
-        try {
-          // Spawn the SAME CLI binary that's currently running, not via
-          // `npx uniweb` — npx resolves through node_modules and could
-          // pick up a stale npm-published version that doesn't share
-          // this CLI's behavior (e.g. doesn't recognize new flags).
-          // Using `process.argv[1]` keeps the outer/inner CLI version
-          // identical, eliminating the skew.
-          execSync(`node ${JSON.stringify(process.argv[1])} publish`, {
-            cwd: localPath,
-            stdio: 'inherit',
-          })
-        } catch {
-          say.err(`Auto-publish of foundation at ${relPath} failed. See output above.`)
-          process.exit(1)
-        }
-        console.log('')
-      }
-
-      const resolved = await deriveLocalFoundationRef(localPath)
-      if (!resolved) {
-        say.err(`Could not derive a registry ref for foundation at ${relPath}.`)
-        say.dim(`Make sure its package.json has a name + version and a namespace (uniweb.namespace, scoped name, or run \`uniweb publish --namespace <handle>\` once).`)
+      const foundationName = pkg.uniweb?.id || pkg.name?.replace(/^[@~][^/]+\//, '') || pkg.name
+      const foundationVersion = pkg.version
+      if (!foundationName || !foundationVersion) {
+        say.err(`Foundation at ${relPath} needs both a name and a version in package.json.`)
         process.exit(1)
       }
-      say.dim(`Foundation: ${foundation} → ${resolved} (resolved from ${relPath})`)
-      foundation = resolved
-      foundationBuildOverride = resolved
+
+      localFoundation = {
+        path: localPath,
+        relPath,
+        name: foundationName,
+        version: foundationVersion,
+      }
+
+      // Send `~self/{name}@{ver}` as a placeholder. The server will rewrite
+      // to `~{siteId}/{name}@{ver}` once siteId is minted. The CLI uses the
+      // returned canonical ref for both the upload and the publish payload.
+      foundation = `~self/${foundationName}@${foundationVersion}`
     }
+  }
+  // Honor --no-auto-publish for local foundations: surface the gate before
+  // we do any work.
+  if (localFoundation && !autoPublishFoundation) {
+    say.err(`Local foundation at ${localFoundation.relPath} would be auto-published as part of deploy.`)
+    say.dim('Drop --no-auto-publish to let deploy publish it, or change site.yml to reference a registry-published foundation.')
+    process.exit(1)
   }
 
   // Runtime defaults to "latest" resolved at authorize time.
@@ -674,6 +600,7 @@ export async function deploy(args = []) {
   const loopback = await startLoopback()
 
   let publishToken, siteIdResolved, handleResolved, publishUrl, validateUrl, mintedFeatures
+  let foundationUploadUrl  // Phase 4d: returned by authorize for site-bound foundation uploads
   try {
     say.info('Requesting deploy authorization…')
     const authorizeBody = {
@@ -715,6 +642,12 @@ export async function deploy(args = []) {
         say.dim('Treating as a new site — the create flow will run in your browser.')
         authorizeBody.siteId = ''
         authRes = await callAuthorize({ backendUrl, cliToken, body: authorizeBody })
+      } else if (err.status === 403 && authorizeBody.siteId) {
+        // Collaborator ACL — the user has the repo (and thus site.id in
+        // site.yml) but isn't owner or editor on this site. The server's
+        // 403 message names the owner; surface it verbatim.
+        say.err(err.message)
+        process.exit(1)
       } else {
         say.err(`Authorize failed: ${err.message}`)
         process.exit(1)
@@ -769,7 +702,13 @@ export async function deploy(args = []) {
       handleResolved = authRes.handle
       publishUrl = authRes.publishUrl
       validateUrl = authRes.validateUrl
+      foundationUploadUrl = authRes.foundationUploadUrl
       mintedFeatures = Array.isArray(authRes.features) ? authRes.features : null
+      // Phase 4d: server returns the canonical foundation ref. For
+      // `~self/...` placeholders this is the rewritten `~{siteId}/...`
+      // form; catalog refs pass through. The CLI uses this for both the
+      // foundation upload (next step) and the publish payload below.
+      if (authRes.foundationRef) foundation = authRes.foundationRef
     }
   } finally {
     loopback.close()
@@ -787,6 +726,45 @@ export async function deploy(args = []) {
     })
     siteYml.site = { ...(siteYml.site || {}), id: siteIdResolved, handle: handleResolved }
     say.dim(`Linked site.yml to site.id=${siteIdResolved}`)
+  }
+
+  // Phase 4d: upload site-bound foundation files directly. Replaces the
+  // pre-Phase-4d `execSync('uniweb publish')` flow — we now know the
+  // canonical `~{siteId}/{name}@{ver}` ref from authorize, and the worker's
+  // /api/foundations endpoint accepts the publish token's siteId claim
+  // for this scope.
+  if (localFoundation) {
+    say.info(`Building foundation at ${localFoundation.relPath}…`)
+    console.log('')
+    try {
+      execSync(`node ${JSON.stringify(process.argv[1])} build`, {
+        cwd: localFoundation.path,
+        stdio: 'inherit',
+      })
+    } catch {
+      say.err(`Foundation build at ${localFoundation.relPath} failed. See output above.`)
+      process.exit(1)
+    }
+    console.log('')
+
+    say.info(`Uploading foundation as ${foundation}…`)
+    const foundationFiles = await collectFoundationDistFiles(join(localFoundation.path, 'dist'))
+    const foundationPublishUrl = foundationUploadUrl || `${workerUrl}/api/foundations`
+    const { gitSha: fGitSha, gitDirty: fGitDirty } = readGitState(localFoundation.path)
+    await callFoundationUpload({
+      url: foundationPublishUrl,
+      token: publishToken,
+      body: {
+        name: foundation.replace(/@[^@]+$/, ''),  // strip `@version` to get `~{siteId}/{name}`
+        version: localFoundation.version,
+        files: foundationFiles,
+        metadata: {
+          ...(fGitSha ? { publishedFromGitSha: fGitSha } : {}),
+          ...(typeof fGitDirty === 'boolean' ? { publishedFromGitDirty: fGitDirty } : {}),
+        },
+      },
+    })
+    say.ok(`Foundation uploaded.`)
   }
 
   // Pre-flight against the Worker. Surfaces "foundation not published" /
@@ -1181,6 +1159,50 @@ async function callPublish({ url, token, body }) {
       err = j.error || err
     } catch {}
     say.err(`Publish failed: ${err}`)
+    process.exit(1)
+  }
+  return res.json()
+}
+
+// ─── Site-bound foundation upload (Phase 4d) ────────────────
+
+/**
+ * Walk a built foundation's `dist/` directory and return `{ relPath: base64Bytes }`
+ * — the shape `POST /api/foundations` expects in its `files` field.
+ */
+async function collectFoundationDistFiles(distDir) {
+  if (!existsSync(distDir)) {
+    say.err(`Foundation dist/ not found at ${distDir}.`)
+    process.exit(1)
+  }
+  const files = {}
+  const entries = await readdir(distDir, { withFileTypes: true, recursive: true })
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    const fullPath = join(entry.parentPath, entry.name)
+    const relPath = relative(distDir, fullPath).split(sep).join('/')
+    const bytes = await readFile(fullPath)
+    files[relPath] = bytes.toString('base64')
+  }
+  return files
+}
+
+async function callFoundationUpload({ url, token, body }) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    let err = `HTTP ${res.status}`
+    try {
+      const j = await res.json()
+      err = j.error || err
+    } catch {}
+    say.err(`Foundation upload failed: ${err}`)
     process.exit(1)
   }
   return res.json()
