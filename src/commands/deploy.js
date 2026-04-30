@@ -26,11 +26,15 @@
  *
  * Usage:
  *   uniweb deploy                          Normal deploy (browser may open on first deploy)
- *   uniweb deploy --skip-build             Don't rebuild even if dist/ is stale
  *   uniweb deploy --dry-run                Resolve everything but skip the Worker POST
- *   uniweb deploy --skip-billing           Admin-only: bypass billing gate (dev/testing)
- *   uniweb deploy --review                 Force the browser review path even when
- *                                          there's no drift (e.g., to change features)
+ *   uniweb deploy --no-auto-publish        Don't auto-publish workspace-local foundation
+ *
+ * Internal escape hatches (UNIWEB_* env vars — see framework/cli/docs/env-vars.md):
+ *   UNIWEB_SKIP_BUILD=1                    Reuse existing dist/ instead of rebuilding
+ *   UNIWEB_SKIP_ASSETS=1                   Skip the asset upload step
+ *   UNIWEB_SKIP_BILLING=1                  Admin-only: bypass billing gate
+ *   UNIWEB_FORCE_REVIEW=1                  Force the browser review flow
+ *   UNIWEB_ALLOW_DIRTY_FOUNDATION=1        Don't treat a dirty workspace as stale
  *
  * See kb/platform/plans/cli-site-deploy-decisions.md for the full design.
  */
@@ -46,6 +50,7 @@ import { detectFoundationType } from '@uniweb/build'
 
 import { ensureAuth, readAuth, decodeJwtPayload } from '../utils/auth.js'
 import { getBackendUrl, getRegistryUrl } from '../utils/config.js'
+import { parseBoolEnv } from '../utils/env.js'
 import { RemoteRegistry } from '../utils/registry.js'
 import { receiptFromRegistryEntry, splitRegistryRef } from '../utils/receipt.js'
 import {
@@ -493,14 +498,20 @@ async function resolveDeployMode({ foundationRef, siteDir, linkFlag, bundleFlag 
   }
 
   // 4. Ambiguous — local foundation never published, or unknown shape. Ask.
+  //
+  // NOTE: --link / --bundle are scheduled for removal in Phase 2 of the
+  // CLI ergonomics overhaul (kb/framework/plans/cli-ergonomics-overhaul.md).
+  // Both modes upload to uniweb-edge; the "static-host artifact" story moves
+  // to a separate `uniweb export` command. Until then, the help text below
+  // describes today's actual behavior rather than the historical intent.
   if (isNonInteractive(process.argv)) {
     say.err('First deploy of this site needs an explicit mode.')
     console.log('')
     console.log('  Pick one and re-run:')
-    console.log(`    ${c.cyan}uniweb deploy --link${c.reset}    ${c.dim}Uniweb-edge hosting (data only; worker generates HTML)${c.reset}`)
-    console.log(`    ${c.cyan}uniweb deploy --bundle${c.reset}  ${c.dim}Static-host artifact (vite build; for non-Uniweb hosts)${c.reset}`)
+    console.log(`    ${c.cyan}uniweb deploy --link${c.reset}    ${c.dim}Skip vite; upload site-content.json + assets${c.reset}`)
+    console.log(`    ${c.cyan}uniweb deploy --bundle${c.reset}  ${c.dim}Run vite locally; upload to uniweb-edge${c.reset}`)
     console.log('')
-    console.log(`  ${c.dim}Mode is persisted after the first deploy and can't be changed in place.${c.reset}`)
+    console.log(`  ${c.dim}Both modes deploy to uniweb-edge. Mode is persisted after the first deploy.${c.reset}`)
     process.exit(1)
   }
 
@@ -512,8 +523,8 @@ async function resolveDeployMode({ foundationRef, siteDir, linkFlag, bundleFlag 
     name: 'mode',
     message: 'Deployment mode',
     choices: [
-      { title: 'Link mode (Uniweb-edge hosting)', description: 'Data only; worker generates HTML at request time', value: 'link' },
-      { title: 'Bundle mode (static-host artifact)', description: 'vite-built; deploy to Netlify, Vercel, GitHub Pages, etc.', value: 'bundle' },
+      { title: 'Link mode', description: 'Skip vite; upload site-content.json + assets to uniweb-edge', value: 'link' },
+      { title: 'Bundle mode', description: 'Run vite locally; upload to uniweb-edge (transitional)', value: 'bundle' },
     ],
     initial: 0,
   }, {
@@ -526,21 +537,24 @@ async function resolveDeployMode({ foundationRef, siteDir, linkFlag, bundleFlag 
 // ─── Main ───────────────────────────────────────────────────
 
 export async function deploy(args = []) {
-  const skipBuild = args.includes('--skip-build')
   const dryRun = args.includes('--dry-run')
-  const skipAssets = args.includes('--skip-assets')
-  const skipBilling = args.includes('--skip-billing')
-  // --review forces the browser review path even when there's no drift.
-  // Useful for "I want to look at / change my features" without first
-  // having to edit site.yml. The toggles in the review page persist live
-  // to DB, so any change the user makes there ends up in site.yml after
-  // the loopback finalize roundtrip.
-  const forceReview = args.includes('--review')
   // Phase 2 (deploy-ux-v4): when `foundation:` in site.yml points at a
   // workspace-local file: ref, deploy auto-publishes the foundation when
-  // its `dist/publish.json` receipt is missing/stale. These flags opt out.
+  // its `dist/publish.json` receipt is missing/stale. This flag opts out.
   const autoPublishFoundation = !args.includes('--no-auto-publish')
-  const treatDirtyAsStale = !args.includes('--no-dirty-as-stale')
+
+  // Internal escape hatches — see framework/cli/docs/env-vars.md. These
+  // are not user-facing flags; they exist for the platform test team,
+  // CI scripts, and dev-loop unblockers. The bare `deploy` command should
+  // do the right thing for normal users without any of them set.
+  const skipBuild = parseBoolEnv('UNIWEB_SKIP_BUILD')
+  const skipAssets = parseBoolEnv('UNIWEB_SKIP_ASSETS')
+  const skipBilling = parseBoolEnv('UNIWEB_SKIP_BILLING')
+  const forceReview = parseBoolEnv('UNIWEB_FORCE_REVIEW')
+  // Inverse of the (now-removed) --no-dirty-as-stale flag. When true, a
+  // dirty workspace will NOT be treated as stale (won't trigger auto-publish
+  // of the foundation). Default: dirty IS stale.
+  const treatDirtyAsStale = !parseBoolEnv('UNIWEB_ALLOW_DIRTY_FOUNDATION')
   // Site mode — `--link` ships data only (Uniweb-edge hosting); `--bundle`
   // ships a vite-built static-host artifact. Mutually exclusive. Resolution
   // ladder runs further below: explicit flag → registry-ref / URL infer →
@@ -581,6 +595,24 @@ export async function deploy(args = []) {
     say.dim(`Foundation policy: ${fnd.policy}${fnd.pinned ? ' (pinned)' : ''}`)
   } else if (fnd.pinned) {
     say.dim('Foundation policy: exact (pinned)')
+  }
+
+  // --dry-run gate. Must come BEFORE auto-publish (which writes to the
+  // registry) and BEFORE the site build (which writes to dist/). Earlier
+  // versions of this command had the dry-run check after both, which
+  // violated the contract that --dry-run performs zero writes. Languages
+  // and the default locale are unavailable here (they live in
+  // dist/site-content.json, which a dry-run won't build); the trade-off
+  // is intentional. Run `uniweb build` directly if you need that detail.
+  if (dryRun) {
+    say.info('Dry run — would deploy:')
+    say.dim(`Site dir       : ${siteDir}`)
+    say.dim(`site.id        : ${siteYml.site?.id || '(none — would use create flow)'}`)
+    say.dim(`Foundation     : ${typeof foundation === 'string' ? foundation : foundation.ref}`)
+    say.dim(`Runtime        : ${siteYml.runtime || '(latest, resolved at authorize)'}`)
+    say.dim(`Backend (PHP)  : ${backendUrl}`)
+    say.dim(`Worker         : ${workerUrl}`)
+    return
   }
 
   // Resolve deploy mode (link vs bundle) BEFORE the foundation
@@ -760,19 +792,6 @@ export async function deploy(args = []) {
     } else {
       say.warn(`Locale "${lang}" listed in site config but no dist/${lang}/site-content.json found — skipping.`)
     }
-  }
-
-  if (dryRun) {
-    say.info('Dry run — showing what would be deployed:')
-    say.dim(`Site dir       : ${siteDir}`)
-    say.dim(`site.id        : ${siteYml.site?.id || '(none — would use create flow)'}`)
-    say.dim(`Foundation     : ${typeof foundation === 'string' ? foundation : foundation.ref}`)
-    say.dim(`Runtime        : ${runtimeVersion}`)
-    say.dim(`Languages      : ${languages.join(', ')}`)
-    say.dim(`Default locale : ${defaultLanguage}`)
-    say.dim(`Backend (PHP)  : ${backendUrl}`)
-    say.dim(`Worker         : ${workerUrl}`)
-    return
   }
 
   // Spin up the loopback listener eagerly — we need its callback URL for the

@@ -229,6 +229,25 @@ export async function publish(args = []) {
     }
   }
 
+  // --dry-run gate. Must come BEFORE the pre-flight registry check (which
+  // can write a refreshed receipt to dist/publish.json on the matching-sha
+  // path) and BEFORE the build (which writes to dist/). Earlier the
+  // dry-run check sat after both, which violated the zero-writes contract.
+  if (isDryRun) {
+    const previewName = quickResolveCanonicalName(earlyPkg, { namespaceFlag, nameFlag })
+      || earlyPkg.name
+      || '(unresolved)'
+    const target = isLocal ? 'local registry' : `remote registry (${registryUrl || getRegistryUrl()})`
+    console.log('')
+    info(`Would publish ${colors.bright}${previewName}@${earlyPkg.version}${colors.reset} to ${target}`)
+    if (needsBuild) {
+      console.log(`  ${colors.dim}Would build first: ${buildReason}${colors.reset}`)
+    } else {
+      console.log(`  ${colors.dim}Source: ${distDir}${colors.reset}`)
+    }
+    return
+  }
+
   // 2b. Pre-flight registry check — runs BEFORE the build so we don't
   //     burn vite cycles on a foundation we already know we can't (or
   //     don't need to) publish.
@@ -693,20 +712,7 @@ export async function publish(args = []) {
     process.exit(1)
   }
 
-  // 6. Dry-run check
-  if (isDryRun) {
-    console.log('')
-    info(`Would publish ${colors.bright}${name}@${version}${colors.reset} to ${registryLabel}`)
-    console.log(`  ${colors.dim}Source: ${distDir}${colors.reset}`)
-    if (isLocal) {
-      console.log(`  ${colors.dim}Target: ${registry.getPackagePath(name, version)}${colors.reset}`)
-    } else {
-      console.log(`  ${colors.dim}Target: ${registry.apiUrl}${colors.reset}`)
-    }
-    return
-  }
-
-  // 7. Publish
+  // 6. Publish
   info(`Publishing ${colors.bright}${name}@${version}${colors.reset} to ${registryLabel}...`)
 
   // Resolve the publisher's identity

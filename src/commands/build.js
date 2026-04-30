@@ -476,11 +476,11 @@ async function buildSiteLink(projectDir, options = {}) {
           success(`Translated collections for ${Object.keys(collectionOutputs).length} locale(s)`)
         }
       } catch (err) {
-        if (process.env.DEBUG) console.error('Collection translation:', err.message)
+        if (process.env.UNIWEB_DEBUG) console.error('Collection translation:', err.message)
       }
     } catch (err) {
       error(`i18n build failed: ${err.message}`)
-      if (process.env.DEBUG) console.error(err.stack)
+      if (process.env.UNIWEB_DEBUG) console.error(err.stack)
       log(`${colors.yellow}Continuing without localized content${colors.reset}`)
     }
   }
@@ -578,13 +578,13 @@ async function buildSite(projectDir, options = {}) {
         }
       } catch (err) {
         // Collection translation is optional, don't fail build
-        if (process.env.DEBUG) {
+        if (process.env.UNIWEB_DEBUG) {
           console.error('Collection translation:', err.message)
         }
       }
     } catch (err) {
       error(`i18n build failed: ${err.message}`)
-      if (process.env.DEBUG) {
+      if (process.env.UNIWEB_DEBUG) {
         console.error(err.stack)
       }
       // Don't fail the build, just warn
@@ -632,7 +632,7 @@ async function buildSite(projectDir, options = {}) {
         log(`  • The foundation's dist/foundation.js exists (build the foundation first)`)
       }
 
-      if (process.env.DEBUG) {
+      if (process.env.UNIWEB_DEBUG) {
         console.error(err.stack)
       }
       process.exit(1)
