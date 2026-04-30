@@ -539,6 +539,13 @@ async function main() {
     return
   }
 
+  // Handle export command (dynamic import — depends on @uniweb/build)
+  if (command === 'export') {
+    const { exportSite } = await importProjectCommand('./commands/export.js')
+    await exportSite(args.slice(1))
+    return
+  }
+
   // Handle login command
   if (command === 'login') {
     await login(args.slice(1))
@@ -825,6 +832,7 @@ ${colors.bright}Commands:${colors.reset}
   rename <type>      Rename a workspace package (foundation today)
   build              Build the current project
   deploy             Deploy a site to Uniweb hosting
+  export             Export a self-contained site for third-party hosting
   publish            Publish a foundation to the Uniweb Registry
   invite <email>     Create a foundation invite for a client
   handoff <email>    Hand off a site to a client
@@ -878,16 +886,16 @@ ${colors.bright}Template Options:${colors.reset}
   --registry <url>   Registry URL (default: http://localhost:4001)
 
 ${colors.bright}Deploy Options:${colors.reset}
-  --dry-run          Resolve site.yml + foundation/runtime but skip the Worker POST
-  --skip-build       Don't rebuild, use existing dist/ as-is
-  --skip-assets      Skip binary asset upload (content-only deploy)
+  --dry-run          Resolve site.yml + foundation/runtime; print summary; no writes
+  --no-auto-publish  Don't auto-publish workspace-local foundation as part of deploy
+
+${colors.bright}Export Options:${colors.reset}
+  --no-prerender     Skip per-page prerendered HTML
 
 ${colors.bright}Build Options:${colors.reset}
   --target <type>    Build target (foundation, site) - auto-detected if not specified
-  --link             Site: data-only pipeline (Uniweb-edge hosting)
-  --bundle           Site: vite-built static-host artifact (default)
-  --prerender        Force pre-rendering (bundle mode only; overrides site.yml)
-  --no-prerender     Skip pre-rendering (bundle mode only; overrides site.yml)
+  --prerender        Force pre-rendering (overrides site.yml)
+  --no-prerender     Skip pre-rendering (overrides site.yml)
   --foundation-dir   Path to foundation directory (for prerendering)
   --platform <name>  Deployment platform (e.g., vercel) for platform-specific output
 

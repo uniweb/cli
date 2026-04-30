@@ -1,8 +1,9 @@
 /**
  * Deploy Command
  *
- * Deploys a built site to Uniweb hosting. Phase 1 — link-mode, content + theme
- * + locales only (no binary assets yet).
+ * Deploys a site to uniweb-edge. Always runtime-linked: the edge serves a
+ * runtime template + per-site base.html, with the foundation loaded by URL.
+ * For static-host artifacts (no upload), see `uniweb export`.
  *
  * Flow:
  *   1. Read site.yml → { site.id?, site.handle?, foundation, runtime? }.
@@ -437,103 +438,6 @@ async function refFromReceiptUrl(localPath) {
   return null
 }
 
-/**
- * Resolve the deploy mode for this site.
- *
- * Returns `'link'` or `'bundle'`, optionally prompting the user when
- * neither inference nor an explicit flag yields an answer. Mode choice
- * is persisted server-side after the first successful deploy; switching
- * modes later requires deleting the site and redeploying fresh.
- *
- * Ladder (first match wins):
- *   1. `--link` or `--bundle` flag passed explicitly.
- *   2. `site.yml::foundation` is a registry ref (`@org/x@ver` or
- *      `~uuid/x@ver`) or full HTTPS URL → infer link. The user already
- *      declared "load this foundation by URL at runtime."
- *   3. `site.yml::foundation` is a workspace-local sibling AND that
- *      foundation has a publish receipt (`dist/publish.json` with a
- *      registry URL) → infer link. The user has already done the work
- *      to make the foundation loadable from the registry.
- *   4. Otherwise → ask (TTY prompt) or error (CI).
- *
- * @param {Object} ctx
- * @param {string} ctx.foundationRef - the raw value of site.yml::foundation (string or normalized object).
- * @param {string} ctx.siteDir - absolute path to the site dir (for resolving local foundation siblings).
- * @param {boolean} ctx.linkFlag
- * @param {boolean} ctx.bundleFlag
- * @returns {Promise<{ mode: 'link'|'bundle', source: 'flag'|'inferred-registry-ref'|'inferred-published-local'|'asked' }>}
- */
-async function resolveDeployMode({ foundationRef, siteDir, linkFlag, bundleFlag }) {
-  // 1. Explicit flag wins.
-  if (linkFlag) return { mode: 'link', source: 'flag' }
-  if (bundleFlag) return { mode: 'bundle', source: 'flag' }
-
-  // 2. Registry ref or URL in site.yml → link mode is the only sensible choice.
-  if (typeof foundationRef === 'string') {
-    if (foundationRef.startsWith('http://') || foundationRef.startsWith('https://')) {
-      return { mode: 'link', source: 'inferred-registry-ref' }
-    }
-    if (/^@[a-z0-9_-]+\/[a-z0-9_-]+@/.test(foundationRef)) {
-      return { mode: 'link', source: 'inferred-registry-ref' }
-    }
-    if (/^~[A-Za-z0-9_-]+\/[a-z0-9_-]+@/.test(foundationRef)) {
-      return { mode: 'link', source: 'inferred-registry-ref' }
-    }
-  }
-
-  // 3. Workspace-local foundation with an existing publish receipt → infer link.
-  //    The receipt being there means the user has already published this
-  //    foundation at least once, so they've shown intent to ship via the
-  //    registry. We don't validate the receipt's freshness here — that's
-  //    the existing inspectLocalFoundationReceipt path's job, which runs
-  //    later in the deploy flow.
-  if (typeof foundationRef === 'string') {
-    const detected = detectFoundationType(foundationRef, siteDir)
-    if (detected.type === 'local') {
-      const receiptPath = join(detected.path, 'dist', 'publish.json')
-      if (existsSync(receiptPath)) {
-        return { mode: 'link', source: 'inferred-published-local' }
-      }
-    }
-  }
-
-  // 4. Ambiguous — local foundation never published, or unknown shape. Ask.
-  //
-  // NOTE: --link / --bundle are scheduled for removal in Phase 2 of the
-  // CLI ergonomics overhaul (kb/framework/plans/cli-ergonomics-overhaul.md).
-  // Both modes upload to uniweb-edge; the "static-host artifact" story moves
-  // to a separate `uniweb export` command. Until then, the help text below
-  // describes today's actual behavior rather than the historical intent.
-  if (isNonInteractive(process.argv)) {
-    say.err('First deploy of this site needs an explicit mode.')
-    console.log('')
-    console.log('  Pick one and re-run:')
-    console.log(`    ${c.cyan}uniweb deploy --link${c.reset}    ${c.dim}Skip vite; upload site-content.json + assets${c.reset}`)
-    console.log(`    ${c.cyan}uniweb deploy --bundle${c.reset}  ${c.dim}Run vite locally; upload to uniweb-edge${c.reset}`)
-    console.log('')
-    console.log(`  ${c.dim}Both modes deploy to uniweb-edge. Mode is persisted after the first deploy.${c.reset}`)
-    process.exit(1)
-  }
-
-  const prompts = (await import('prompts')).default
-  console.log('')
-  console.log(`${c.dim}First deploy of this site. Pick a deployment mode:${c.reset}`)
-  const resp = await prompts({
-    type: 'select',
-    name: 'mode',
-    message: 'Deployment mode',
-    choices: [
-      { title: 'Link mode', description: 'Skip vite; upload site-content.json + assets to uniweb-edge', value: 'link' },
-      { title: 'Bundle mode', description: 'Run vite locally; upload to uniweb-edge (transitional)', value: 'bundle' },
-    ],
-    initial: 0,
-  }, {
-    onCancel: () => { console.log(''); console.log('Deploy cancelled.'); process.exit(0) },
-  })
-  if (!resp.mode) process.exit(0)
-  return { mode: resp.mode, source: 'asked' }
-}
-
 // ─── Main ───────────────────────────────────────────────────
 
 export async function deploy(args = []) {
@@ -555,16 +459,6 @@ export async function deploy(args = []) {
   // dirty workspace will NOT be treated as stale (won't trigger auto-publish
   // of the foundation). Default: dirty IS stale.
   const treatDirtyAsStale = !parseBoolEnv('UNIWEB_ALLOW_DIRTY_FOUNDATION')
-  // Site mode — `--link` ships data only (Uniweb-edge hosting); `--bundle`
-  // ships a vite-built static-host artifact. Mutually exclusive. Resolution
-  // ladder runs further below: explicit flag → registry-ref / URL infer →
-  // published-local-foundation infer → ask-or-error.
-  const linkFlag = args.includes('--link')
-  const bundleFlag = args.includes('--bundle')
-  if (linkFlag && bundleFlag) {
-    say.err('Cannot pass both --link and --bundle.')
-    process.exit(1)
-  }
 
   const siteDir = await resolveSiteDir(args)
   const backendUrl = getBackendUrl()
@@ -615,28 +509,10 @@ export async function deploy(args = []) {
     return
   }
 
-  // Resolve deploy mode (link vs bundle) BEFORE the foundation
-  // staleness check, because mode selection feeds into how we run
-  // the site build later. The resolver may prompt the user on first
-  // deploy; subsequent deploys infer or use the explicit flag.
-  // TODO: when PHP authorize starts returning a persisted mode for
-  // this site, reconcile it with the resolved mode here and reject
-  // any mismatch ("delete site and redeploy fresh to change modes").
-  const { mode: deployMode, source: modeSource } = await resolveDeployMode({
-    foundationRef: foundation,
-    siteDir,
-    linkFlag,
-    bundleFlag,
-  })
-  if (modeSource === 'inferred-registry-ref') {
-    say.dim('Deploy mode: link (inferred — foundation is a registry ref)')
-  } else if (modeSource === 'inferred-published-local') {
-    say.dim('Deploy mode: link (inferred — local foundation has a publish receipt)')
-  } else if (modeSource === 'asked') {
-    say.dim(`Deploy mode: ${deployMode} (selected)`)
-  } else {
-    say.dim(`Deploy mode: ${deployMode}`)
-  }
+  // `uniweb deploy` always runtime-links: the edge serves a runtime
+  // template + per-site base.html, with the foundation loaded by URL.
+  // The historical --link / --bundle flags are gone (Phase 2 of the CLI
+  // ergonomics overhaul). For static-host artifacts, see `uniweb export`.
 
   // Phase 2: resolve workspace-local `file:` foundation refs.
   //
@@ -737,23 +613,21 @@ export async function deploy(args = []) {
     // detectFoundationType recognizes `@ns/name@version` refs as
     // link-mode URLs, which auto-enters runtime mode. Prerender also
     // auto-skips for link-mode foundations (HTML is rendered on the
-    // serving edge, not here).
+    // serving edge, not here). Always --link: the edge serves a runtime
+    // template + per-site base.html, never a self-contained vite bundle.
     //
     // For workspace-local foundations (Phase 2 resolution above),
     // UNIWEB_FOUNDATION_REF tells defineSiteConfig to use the resolved
-    // registry ref instead of site.yml's literal value. In bundle mode
-    // the build produces a runtime-mode bundle pointing at the just-
-    // published foundation rather than embedding the local source.
-    // Link mode doesn't run vite at all, so the env var is harmless
-    // there but still passed through for consistency.
+    // registry ref instead of site.yml's literal value. Link mode doesn't
+    // run vite at all, so the env var is harmless but passed through for
+    // consistency with future work.
     //
     // Spawn the SAME CLI binary that's currently running rather than
     // `npx uniweb build` — npx walks node_modules and would resolve to
     // whatever version is installed there (which might be older than
     // the deploy CLI and silently ignore --link). `process.argv[1]`
     // pins the inner build to the outer's exact version.
-    const buildModeFlag = deployMode === 'link' ? '--link' : '--bundle'
-    execSync(`node ${JSON.stringify(process.argv[1])} build ${buildModeFlag}`, {
+    execSync(`node ${JSON.stringify(process.argv[1])} build --link`, {
       cwd: siteDir,
       stdio: 'inherit',
       env: foundationBuildOverride
@@ -762,7 +636,7 @@ export async function deploy(args = []) {
     })
     console.log('')
   } else if (!existsSync(contentPath)) {
-    say.err('No build found and --skip-build passed. Run `uniweb build` first.')
+    say.err('No build found and UNIWEB_SKIP_BUILD set. Run `uniweb build` first.')
     process.exit(1)
   }
   if (!existsSync(contentPath)) {
@@ -824,16 +698,9 @@ export async function deploy(args = []) {
       // Always sent as an array; missing/empty `features:` in site.yml
       // is normalized to `[]`, meaning "no paid features".
       desiredFeatures,
-      // User-forced review (`uniweb deploy --review`). PHP refuses to
+      // User-forced review (UNIWEB_FORCE_REVIEW=1). PHP refuses to
       // fast-path even when nothing else has drifted.
       forceReview: forceReview || undefined,
-      // Deploy mode for this site. On first deploy PHP should persist
-      // it to the site row; on subsequent deploys PHP should return the
-      // persisted value back so the CLI can detect mode mismatches and
-      // refuse with "delete and redeploy fresh" rather than silently
-      // reshape the storage layout. PHP versions that pre-date mode
-      // persistence ignore this field — back-compat is built in.
-      mode: deployMode,
     }
     let authRes
     try {
@@ -852,21 +719,6 @@ export async function deploy(args = []) {
         say.err(`Authorize failed: ${err.message}`)
         process.exit(1)
       }
-    }
-
-    // Mode lock — once a site has a persisted mode on the server,
-    // deploying with a different mode would silently reshape its R2
-    // storage layout. Refuse and direct the user to start fresh.
-    // Until PHP starts returning `persistedMode`, this check is a
-    // no-op (forward-compatible).
-    if (authRes.persistedMode && authRes.persistedMode !== deployMode) {
-      say.err(`Deploy mode mismatch: this site is configured for ${authRes.persistedMode}, but this deploy resolved to ${deployMode}.`)
-      console.log('')
-      console.log(`  ${c.dim}Mode is locked after the first deploy. To switch:${c.reset}`)
-      console.log(`    1. Delete the site (manage.uniweb.app or the dashboard)`)
-      console.log(`    2. Remove ${c.cyan}site.id${c.reset} and ${c.cyan}site.handle${c.reset} from site.yml`)
-      console.log(`    3. Re-run ${c.cyan}uniweb deploy --${deployMode}${c.reset}`)
-      process.exit(1)
     }
 
     if (authRes.needsReview) {
@@ -1134,7 +986,11 @@ async function writeSiteYmlUpdates(path, current, updates) {
 
 // ─── Resolve site dir + runtime ────────────────────────────
 
-async function resolveSiteDir(args) {
+// Exported so `uniweb export` (commands/export.js) can reuse the same
+// site-discovery logic without duplicating it. `verb` is the command
+// being run ("deploy" or "export"); it appears in the error messages
+// so the user gets accurate guidance.
+export async function resolveSiteDir(args, verb = 'deploy') {
   const cwd = process.cwd()
   const prefix = getCliPrefix()
 
@@ -1147,16 +1003,16 @@ async function resolveSiteDir(args) {
     if (sites.length === 1) return resolve(workspaceRoot, sites[0])
     if (sites.length > 1) {
       if (isNonInteractive(args)) {
-        say.err('Multiple sites found. Specify which one to deploy.')
+        say.err(`Multiple sites found. Specify which one to ${verb}.`)
         console.log('')
         for (const s of sites) {
-          console.log(`  ${c.cyan}cd ${s} && ${prefix} deploy${c.reset}`)
+          console.log(`  ${c.cyan}cd ${s} && ${prefix} ${verb}${c.reset}`)
         }
         process.exit(1)
       }
       const choice = await promptSelect('Which site?', sites)
       if (!choice) {
-        console.log('\nDeploy cancelled.')
+        console.log(`\n${verb.charAt(0).toUpperCase() + verb.slice(1)} cancelled.`)
         process.exit(0)
       }
       return resolve(workspaceRoot, choice)
@@ -1164,7 +1020,11 @@ async function resolveSiteDir(args) {
   }
 
   say.err('No site found in this workspace.')
-  say.dim('`deploy` publishes a built Uniweb site to the hosting platform.')
+  if (verb === 'export') {
+    say.dim('`export` produces a self-contained dist/ artifact for third-party hosting.')
+  } else {
+    say.dim('`deploy` publishes a built Uniweb site to the hosting platform.')
+  }
   process.exit(1)
 }
 

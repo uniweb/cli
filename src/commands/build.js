@@ -1,33 +1,44 @@
 /**
  * Build Command
  *
- * Builds foundations with schema generation, or sites in either link or
- * bundle mode.
+ * Builds foundations with schema generation, or sites.
  *
- * Site build modes:
- *   --bundle (default for sites)
+ * Two site build pipelines are available, but they're INTERNAL vocabulary
+ * after Phase 2 of the CLI ergonomics overhaul. Users see `uniweb deploy`
+ * (uniweb-edge — runtime-linked) and `uniweb export` (third-party host —
+ * concatenated bundle); the build command itself just dispatches to whichever
+ * pipeline the caller requested.
+ *
+ *   --bundle (internal; called by `uniweb export`)
  *     Full vite + post-vite pipeline. Produces a static-host JS bundle
  *     (`dist/index.html`, `dist/entry.js`, `_importmap/*`, `_pages/*` for
  *     split mode, sitemap/robots/search-index, prerendered HTML when
- *     configured). Targets non-Uniweb hosts (Netlify, Vercel, GitHub
- *     Pages) and the future Uniweb bundled-mode hosting.
+ *     configured). Foundation is loaded by URL when site.yml's foundation
+ *     is a registry ref; statically inlined when it's a workspace-local
+ *     ref with no auto-publish (the narrow self-contained case).
  *
- *   --link
+ *   --link (internal; called by `uniweb deploy`)
  *     Data-only pipeline. No vite. Emits ONLY what the Uniweb-edge
  *     deploy needs: `dist/site-content.json` (with full sections),
  *     `dist/<lang>/site-content.json` per non-default locale,
  *     `dist/data/*.json` (collections), and `dist/assets/<media>` (images,
- *     fonts, video posters). Worker generates HTML at request time using
- *     its own runtime + the foundation served from the registry — the
- *     site's JS bundle is dead weight on this path.
+ *     fonts, video posters). Edge stitches runtime + foundation per
+ *     request — the site's JS bundle would be dead weight.
+ *
+ * Bare `uniweb build` for a site defaults to --bundle (the historical
+ * behavior). This is mostly useful for inspecting the build output during
+ * development; for shipping, use `uniweb deploy` or `uniweb export`.
  *
  * Usage:
  *   uniweb build                    # Build current directory (sites default to --bundle)
  *   uniweb build --target foundation # Explicitly build as foundation
  *   uniweb build --target site       # Explicitly build as site
- *   uniweb build --link              # Site: link-mode (data only, no vite)
- *   uniweb build --bundle            # Site: bundle-mode (full pipeline, today's behavior)
- *   uniweb build --prerender         # Bundle-mode site + SSG (static HTML)
+ *   uniweb build --prerender         # Force pre-rendering
+ *   uniweb build --no-prerender      # Skip pre-rendering
+ *
+ * Internal flags (called by `uniweb deploy` / `uniweb export`):
+ *   --link              # Data-only pipeline (Uniweb-edge)
+ *   --bundle            # Full vite pipeline (third-party hosts)
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -804,13 +815,12 @@ export async function build(args = []) {
   const prerenderFlag = args.includes('--prerender')
   const noPrerenderFlag = args.includes('--no-prerender')
 
-  // Check for --link / --bundle flags. These select between two
-  // mutually exclusive site build pipelines:
-  //   --link:   data only, no vite (for Uniweb-edge hosting)
-  //   --bundle: full vite pipeline (for static hosts; today's behavior)
-  // Bare `uniweb build` for a site defaults to --bundle for back-compat
-  // with users targeting static hosts. `uniweb deploy` always passes one
-  // of the two explicitly based on the resolved deploy mode.
+  // Internal flags — called by `uniweb deploy` (always --link) and
+  // `uniweb export` (always --bundle). After Phase 2 of the CLI
+  // ergonomics overhaul, users don't see these flags directly; they
+  // pick the deploy target (deploy vs export) and the corresponding
+  // pipeline runs. Bare `uniweb build` for a site defaults to --bundle
+  // (mostly used during development to inspect the vite output).
   const linkFlag = args.includes('--link')
   const bundleFlag = args.includes('--bundle')
   if (linkFlag && bundleFlag) {
