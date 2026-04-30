@@ -254,10 +254,31 @@ async function inspectLocalFoundationReceipt(localPath, { dirtyAsStale, registry
     return { stale: true, reason: 'foundation directory is not in a git repo or has no commits', receipt }
   }
   if (receipt.publishedFromGitSha && receipt.publishedFromGitSha !== gitSha) {
-    return {
-      stale: true,
-      reason: `foundation has new commits since last publish (${receipt.publishedFromGitSha.slice(0, 7)} → ${gitSha.slice(0, 7)})`,
-      receipt,
+    // Receipt's recorded sha differs from the foundation's per-directory
+    // last-touched commit. Normally that's "real" staleness — somebody
+    // committed changes to src/ that haven't been republished.
+    //
+    // Exception: when the publish was made FROM A DIRTY tree, the
+    // recorded sha is a checkpoint, not an identity. The published
+    // artifact reflects the committed state at that sha PLUS the
+    // uncommitted changes that were on disk when publish ran. After
+    // those changes get committed (a normal post-deploy housekeeping
+    // step — e.g., committing the auto-derived `uniweb.id`), the
+    // per-foundation sha moves forward, but the artifact upstream
+    // hasn't materially changed. Don't fire staleness on the sha
+    // alone in that case; let the dirty-tree check below do its job
+    // if the tree IS still dirty, and otherwise treat as fresh.
+    //
+    // Edge: if the user committed real source changes ON TOP of the
+    // auto-derive in the same commit, we won't detect that as stale
+    // here — the next publish would 409 against the registry though,
+    // surfacing the issue with a clear "bump the version" message.
+    if (!receipt.publishedFromGitDirty) {
+      return {
+        stale: true,
+        reason: `foundation has new commits since last publish (${receipt.publishedFromGitSha.slice(0, 7)} → ${gitSha.slice(0, 7)})`,
+        receipt,
+      }
     }
   }
   if (gitDirty && dirtyAsStale) {

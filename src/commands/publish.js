@@ -293,9 +293,9 @@ export async function publish(args = []) {
               // the receipt-as-cache work shipped). Clean error before
               // any build work.
               console.log('')
-              error(`${colors.bright}${lookupName}@${preflightVersion}${colors.reset} is already published.`)
+              error(`Foundation source has changed since the last publish, but ${colors.bright}${lookupName}@${preflightVersion}${colors.reset} is already published.`)
               console.log('')
-              console.log(`  Bump the version in package.json to publish an update:`)
+              console.log(`  Bump ${colors.cyan}package.json::version${colors.reset} to publish an update:`)
               console.log(`    ${colors.dim}"version": "${bumpPatch(preflightVersion)}"${colors.reset}`)
               process.exit(1)
             }
@@ -686,10 +686,10 @@ export async function publish(args = []) {
       }
     }
     console.log('')
-    error(`${colors.bright}${name}@${version}${colors.reset} is already published.`)
+    error(`Foundation source has changed since the last publish, but ${colors.bright}${name}@${version}${colors.reset} is already published.`)
     console.log('')
-    console.log(`  Bump the version in foundation.js to publish an update:`)
-    console.log(`    ${colors.dim}export const version = '${bumpPatch(version)}'${colors.reset}`)
+    console.log(`  Bump ${colors.cyan}package.json::version${colors.reset} to publish an update:`)
+    console.log(`    ${colors.dim}"version": "${bumpPatch(version)}"${colors.reset}`)
     process.exit(1)
   }
 
