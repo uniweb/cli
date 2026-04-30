@@ -165,9 +165,14 @@ The `uniweb` block in `package.json` carries platform-specific configuration tha
 
 | Field | Where used | Default | Purpose |
 |---|---|---|---|
-| `id` | `uniweb publish` | (set on first publish via the prompt, or via `--name`) | The foundation's published id — the bare-name segment in `~handle/<id>` or `@org/<id>`. Decoupled from `package.json::name` (a workspace concern), so renaming the foundation on the registry doesn't ripple through site dependencies. |
+| `id` | `uniweb publish` | (set via `--name` or scoped `package.json::name`) | The foundation's published id — the bare-name segment in `@org/<id>`. Decoupled from `package.json::name` (a workspace concern), so renaming the foundation on the registry doesn't ripple through site dependencies. Only relevant for catalog-published foundations; site-bound foundations skip this. |
 | `namespace` | `uniweb publish` | (none — see scope resolution) | Legacy explicit org-namespace override. Equivalent to using a scoped `package.json::name` (`"@myorg/foundation"`). Rarely needed in modern foundations. |
 | `runtimePolicy` | `dist/runtime-pin.json` (foundation build) | `"auto-minor"` | Controls how sites using this foundation receive runtime updates. Three values: `"exact"`, `"auto-patch"`, `"auto-minor"`. See "Foundation runtime policy" below. |
+
+**Catalog vs site-bound foundations.** Two distribution intents share the same `dist/foundation.js` artifact:
+
+- A **catalog foundation** is a deliberate product — named, versioned, listed in the catalog, consumable by other developers' sites. Use `uniweb publish @org/name` for these. The CLI requires an explicit name argument so you don't accidentally catalog a foundation that was meant to be site-bound.
+- A **site-bound foundation** powers exactly one site. Don't run `uniweb publish` for it. Just run `uniweb deploy` from the site directory — the CLI auto-publishes your local foundation as part of the deploy, under a registry slot scoped to the site itself, with no naming ceremony. The foundation isn't visible in the catalog and isn't owned by the developer who happened to run the deploy.
 
 **On the split between `package.json::name` and `uniweb.id`:** the workspace name is what pnpm uses for `file:` linking and what `site.yml::foundation` references. The published id is what the registry stores. Keeping them separate means renaming on the registry (e.g. `marketing` → `marketing-pro`) is a one-shot `uniweb publish --name marketing-pro` — it persists to `uniweb.id` without touching the workspace.
 

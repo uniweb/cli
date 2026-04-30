@@ -1,14 +1,36 @@
 /**
  * Publish Command
  *
- * Publishes a foundation to the Uniweb Registry.
+ * Publishes a foundation to the Uniweb Registry as a CATALOG product —
+ * a deliberate, named, versioned artifact that other developers may
+ * consume across many sites.
+ *
+ * For SITE-BOUND foundations (one foundation, one site), use
+ * `uniweb deploy` instead. The deploy command auto-publishes a
+ * workspace-local foundation as part of the deploy under a registry
+ * slot scoped to the site, with no naming ceremony. That's the right
+ * flow for the "this foundation only powers this one site" case.
+ *
+ * Phase 3 of the CLI ergonomics overhaul reshaped this command around
+ * the catalog/site-bound distinction:
+ *
+ *   - Bare `uniweb publish` (no explicit name) is no longer accepted.
+ *     The user must provide a deliberate name via --name, --namespace,
+ *     a sigil-scoped package.json::name, or package.json::uniweb.id.
+ *   - Catalog confirmation is required: interactive runs prompt; CI
+ *     runs need --catalog to skip the prompt.
+ *   - Both gates are skipped for --local (local mock, no public
+ *     consequences).
  *
  * Usage:
- *   uniweb publish                          # Publish to remote registry
- *   uniweb publish --local                  # Publish to local registry (.unicloud/)
- *   uniweb publish --registry <url>         # Publish to a specific registry URL
+ *   uniweb publish @org/my-foundation       # Catalog publish (interactive prompt confirms)
+ *   uniweb publish --name my-foundation     # Same; flag form
+ *   uniweb publish @org/x --catalog         # Skip the catalog confirmation prompt
+ *   uniweb publish --local                  # Local registry (.unicloud/) — no gates
+ *   uniweb publish --registry <url>         # Specific registry URL
  *   uniweb publish --edit-access open       # Anyone can edit in Studio (default: restricted)
- *   uniweb publish --dry-run                # Show what would be published
+ *   uniweb publish --dry-run                # Show what would be published; no writes
+ *   uniweb publish --propagate              # Walk trusting sites' policy waves
  */
 
 import { existsSync } from 'node:fs'
@@ -173,6 +195,12 @@ export async function publish(args = []) {
   // 'silent'), the artifact is stored but no site moves until republish
   // or manual refresh.
   const isPropagate = args.includes('--propagate')
+  // --catalog confirms the user understands they're publishing to the
+  // public catalog. Phase 3 of the CLI ergonomics overhaul: in
+  // interactive mode, missing --catalog triggers a confirmation prompt;
+  // in non-interactive mode, it's required (otherwise fatal). Skipped
+  // entirely for --local (local mock) and --dry-run (no writes).
+  const isCatalog = args.includes('--catalog')
   const registryUrl = parseRegistryUrl(args)
   const editAccess = parseEditAccess(args)
   const namespaceFlag = parseNamespace(args)
@@ -210,6 +238,87 @@ export async function publish(args = []) {
   } catch (err) {
     error(`Failed to read package.json: ${err.message}`)
     process.exit(1)
+  }
+
+  // 1b. Phase 3 deliberate-name gate.
+  //
+  //     `uniweb publish` is for cataloging a foundation as a product —
+  //     deliberate name, deliberate namespace, deliberate intent to make
+  //     it consumable by other sites. Site-bound foundations should use
+  //     `uniweb deploy` (auto-publishes under a site-scoped slot, no
+  //     naming ceremony).
+  //
+  //     We require an explicit name signal so that running `uniweb
+  //     publish` from a freshly-scaffolded workspace doesn't accidentally
+  //     register the workspace's default name (e.g. "src") as a catalog
+  //     entry. Signals that count as deliberate:
+  //       - --name <id> flag
+  //       - --namespace <handle> flag
+  //       - sigil-scoped package.json::name (@org/x or ~user/x)
+  //       - package.json::uniweb.id
+  //       - package.json::uniweb.namespace
+  //
+  //     Skipped for --local (local mock, no public consequences).
+  const hasExplicitName = !!(
+    nameFlag ||
+    namespaceFlag ||
+    /^[@~]/.test(earlyPkg.name || '') ||
+    earlyPkg.uniweb?.id ||
+    earlyPkg.uniweb?.namespace
+  )
+  if (!hasExplicitName && !isLocal) {
+    error('uniweb publish needs a deliberate foundation name.')
+    console.log('')
+    console.log(`  ${colors.bright}If this foundation only powers one site, use ${colors.cyan}uniweb deploy${colors.reset}${colors.bright} instead.${colors.reset}`)
+    console.log(`  ${colors.dim}Deploy auto-publishes your foundation under a site-scoped slot — no name needed.${colors.reset}`)
+    console.log('')
+    console.log(`  ${colors.bright}If you're cataloging this foundation as a product, give it a name:${colors.reset}`)
+    console.log(`    ${colors.cyan}uniweb publish @your-org/foundation-name${colors.reset}`)
+    console.log(`    ${colors.cyan}uniweb publish --name foundation-name${colors.reset}  ${colors.dim}(personal scope)${colors.reset}`)
+    console.log('')
+    console.log(`  ${colors.dim}For local development, ${colors.reset}${colors.cyan}--local${colors.reset}${colors.dim} skips this gate.${colors.reset}`)
+    process.exit(1)
+  }
+
+  // 1c. Phase 3 catalog confirmation gate.
+  //
+  //     Cataloging a foundation has consequences (visible in the catalog,
+  //     other developers may pin to versions, propagation system tracks
+  //     it). Require explicit confirmation:
+  //       - Interactive: prompt unless --catalog passed.
+  //       - Non-interactive: fatal unless --catalog passed.
+  //       - Skipped for --local and --dry-run (no public consequences).
+  if (hasExplicitName && !isLocal && !isDryRun && !isCatalog) {
+    if (isNonInteractive(process.argv)) {
+      error('uniweb publish to the catalog needs --catalog confirmation.')
+      console.log('')
+      console.log(`  ${colors.dim}Catalog publishes are public — other developers can pin to your versions.${colors.reset}`)
+      console.log(`  ${colors.dim}Pass ${colors.reset}${colors.cyan}--catalog${colors.reset}${colors.dim} to confirm:${colors.reset}`)
+      console.log(`    ${colors.cyan}uniweb publish ${colors.reset}${colors.dim}<args>${colors.reset} ${colors.cyan}--catalog${colors.reset}`)
+      console.log('')
+      console.log(`  ${colors.dim}For site-bound foundations, use ${colors.reset}${colors.cyan}uniweb deploy${colors.reset}${colors.dim} instead.${colors.reset}`)
+      process.exit(1)
+    }
+
+    const prompts = (await import('prompts')).default
+    console.log('')
+    console.log(`${colors.dim}You're publishing this foundation to the public catalog.${colors.reset}`)
+    console.log(`${colors.dim}Other developers will be able to find it and pin to its versions.${colors.reset}`)
+    console.log(`${colors.dim}For site-bound foundations, ${colors.reset}${colors.cyan}uniweb deploy${colors.reset}${colors.dim} is the right command.${colors.reset}`)
+    console.log('')
+    const confirm = await prompts({
+      type: 'confirm',
+      name: 'go',
+      message: 'Continue with catalog publish?',
+      initial: false,
+    }, {
+      onCancel: () => { console.log(''); console.log('Publish cancelled.'); process.exit(0) },
+    })
+    if (!confirm.go) {
+      console.log('')
+      console.log(`${colors.dim}Cancelled. Use ${colors.reset}${colors.cyan}uniweb deploy${colors.reset}${colors.dim} for site-bound foundations.${colors.reset}`)
+      process.exit(0)
+    }
   }
 
   let needsBuild = !existsSync(foundationJs) || !existsSync(schemaJson)

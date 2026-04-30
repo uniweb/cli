@@ -833,7 +833,7 @@ ${colors.bright}Commands:${colors.reset}
   build              Build the current project
   deploy             Deploy a site to Uniweb hosting
   export             Export a self-contained site for third-party hosting
-  publish            Publish a foundation to the Uniweb Registry
+  publish            Publish a foundation to the Uniweb catalog (deliberate; for site-bound foundations, use deploy)
   invite <email>     Create a foundation invite for a client
   handoff <email>    Hand off a site to a client
   inspect <path>     Inspect parsed content shape of a markdown file or folder
@@ -863,9 +863,19 @@ ${colors.bright}Global Options:${colors.reset}
                        Auto-detected when CI=true or no TTY (pipes, agents)
 
 ${colors.bright}Publish Options:${colors.reset}
+  --catalog          Confirm publish to the public catalog (required in CI)
+  --propagate        Walk trusting sites' policy waves (default: silent)
+  --name <id>        Foundation id (overrides package.json::uniweb.id)
+  --namespace <ns>   Force org-scope namespace (overrides package.json)
   --local            Publish to the local registry (.unicloud/) instead of Uniweb Registry
+  --registry <url>   Use a specific registry URL
   --edit-access <p>  Set edit access policy: "open" or "restricted" (default: restricted)
   --dry-run          Show what would be published without uploading
+
+  uniweb publish is for cataloging a foundation as a product. For
+  site-bound foundations (one foundation, one site), use uniweb deploy
+  instead — it auto-publishes under a site-scoped slot, no naming
+  ceremony.
 
 ${colors.bright}Invite Options:${colors.reset}
   --uses <n>         Max sites per invite (default: 1)
