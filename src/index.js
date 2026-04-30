@@ -440,9 +440,20 @@ async function main() {
     return
   }
 
-  // Global install launcher: delegate project-bound commands to local CLI
+  // Global install launcher: delegate project-bound commands to local CLI.
+  //
+  // Escape hatch: `UNIWEB_DISABLE_LOCAL_DELEGATION=1` forces the in-process
+  // CLI to handle the command itself, even when a project-local copy of
+  // `uniweb` is installed. This exists for the workspace-ergonomics eval
+  // harness — when it points the eval at `node $WORKSPACE_ROOT/.../index.js`
+  // it expects to exercise the workspace source, not whatever `uniweb`
+  // version is symlinked under the test fixture's `node_modules`. Without
+  // the escape, evals silently test the published npm version and any
+  // unpublished workspace fixes are invisible. See
+  // `kb/framework/build/workspace-ergonomics-runbook.md` (`--cli=workspace`).
   const global = isGlobalInstall()
-  if (global && command && !STANDALONE_COMMANDS.has(command)) {
+  const skipDelegation = process.env.UNIWEB_DISABLE_LOCAL_DELEGATION === '1'
+  if (global && !skipDelegation && command && !STANDALONE_COMMANDS.has(command)) {
     const localCli = findLocalCli()
     if (localCli) {
       await delegateToLocal(localCli)
