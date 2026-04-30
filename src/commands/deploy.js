@@ -166,13 +166,36 @@ const say = {
   dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`),
 }
 
+/**
+ * Read the git state for `dir`, scoped to that directory's history and
+ * working tree — NOT the whole repo's HEAD.
+ *
+ * `gitSha`  : last commit that touched `dir` (`git log -1 -- .`).
+ * `gitDirty`: uncommitted changes inside `dir` only (`git status -- .`).
+ *
+ * Why scope it. In a multi-package monorepo, `git rev-parse HEAD` is
+ * the same value for every directory — the repo's current HEAD. That
+ * meant editing a SITE then deploying triggered the foundation's
+ * staleness check (its receipt's recorded sha didn't match the new
+ * repo HEAD), even though the foundation source was unchanged. The
+ * receipt's `publishedFromGitSha` field is per-foundation by design;
+ * the comparison side has to be too.
+ *
+ * If the path is outside a git repo, or has no commits touching it
+ * yet, the function returns `{ gitSha: null, gitDirty: false }` —
+ * same fallback shape as before.
+ */
 function readGitState(dir) {
   try {
-    const sha = execSync('git rev-parse HEAD', {
+    // `git log -1 --format=%H -- .` returns the SHA of the last
+    // commit that touched the cwd path. If no such commit exists
+    // yet (path was never committed), output is empty — caller
+    // treats null as "no published-from-sha to compare against."
+    const sha = execSync('git log -1 --format=%H -- .', {
       cwd: dir,
       stdio: ['ignore', 'pipe', 'ignore'],
     }).toString().trim()
-    const status = execSync('git status --porcelain', {
+    const status = execSync('git status --porcelain -- .', {
       cwd: dir,
       stdio: ['ignore', 'pipe', 'ignore'],
     }).toString()

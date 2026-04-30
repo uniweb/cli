@@ -12,7 +12,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 
@@ -188,13 +188,129 @@ export async function publish(args = []) {
     process.exit(1)
   }
 
-  // 2. Auto-build if dist/ is missing
+  // 2. Auto-build if dist/ is missing OR stale.
+  //
+  //    "Stale" means the schema fingerprint baked into
+  //    `dist/meta/schema.json::_self.version` doesn't match the user's
+  //    current `package.json::version`. That happens when the user bumps
+  //    the version and runs `uniweb publish` without rebuilding — the
+  //    artifact in dist/ encodes the OLD version, but the publish
+  //    intends the NEW one. Without rebuilding we'd ship inconsistent
+  //    bytes (schema says one version, registry record says another).
   const distDir = join(foundationDir, 'dist')
   const foundationJs = join(distDir, 'foundation.js')
   const schemaJson = join(distDir, 'meta', 'schema.json')
 
-  if (!existsSync(foundationJs) || !existsSync(schemaJson)) {
-    console.log(`${colors.yellow}⚠${colors.reset} No build found. Building foundation...`)
+  // Pre-read package.json so we can compare its version against the
+  // schema before deciding whether to rebuild.
+  const pkgPath = join(foundationDir, 'package.json')
+  let earlyPkg
+  try {
+    earlyPkg = JSON.parse(await readFile(pkgPath, 'utf8'))
+  } catch (err) {
+    error(`Failed to read package.json: ${err.message}`)
+    process.exit(1)
+  }
+
+  let needsBuild = !existsSync(foundationJs) || !existsSync(schemaJson)
+  let buildReason = needsBuild ? 'no dist/ found' : null
+
+  if (!needsBuild) {
+    try {
+      const peekSchema = JSON.parse(await readFile(schemaJson, 'utf8'))
+      if (peekSchema?._self?.version && earlyPkg.version && peekSchema._self.version !== earlyPkg.version) {
+        needsBuild = true
+        buildReason = `package.json::version (${earlyPkg.version}) differs from dist/meta/schema.json::_self.version (${peekSchema._self.version})`
+      }
+    } catch {
+      // Malformed schema → treat as stale.
+      needsBuild = true
+      buildReason = 'dist/meta/schema.json could not be parsed'
+    }
+  }
+
+  // 2b. Pre-flight registry check — runs BEFORE the build so we don't
+  //     burn vite cycles on a foundation we already know we can't (or
+  //     don't need to) publish.
+  //
+  //     Two outcomes short-circuit the build:
+  //
+  //       a. The registry already has `<canonicalName>@<version>`
+  //          published from the CURRENT git sha (per-foundation last
+  //          commit). The artifact upstream is correct; refresh the
+  //          local receipt and exit. (Same outcome as the post-build
+  //          duplicate check, just earlier — saves a build.)
+  //
+  //       b. The registry has the version published from a DIFFERENT
+  //          sha. The user has unpublished changes against an already-
+  //          published version → "bump the version" error before any
+  //          build work. Was the eval skill's pp-03 row.
+  //
+  //     If the pre-flight can't determine the canonical name from
+  //     pkg.json + flags + auth alone (e.g., needs a TTY prompt for
+  //     the foundation id), it falls through silently to the existing
+  //     post-build path. No-build-saved is still the existing behavior.
+  if (!isLocal) {
+    const preflightName = quickResolveCanonicalName(earlyPkg, { namespaceFlag, nameFlag })
+    const preflightVersion = earlyPkg.version
+    if (preflightName && preflightVersion) {
+      try {
+        const auth = await readAuth()
+        if (auth?.token) {
+          const claims = decodeJwtPayload(auth.token)
+          const memberUuid = claims?.memberUuid
+          // Empty-scope publishes are server-rewritten to ~<memberUuid>/<id>.
+          // Mirror that here so getVersionEntry queries the canonical key.
+          const lookupName = preflightName.startsWith('@') || preflightName.startsWith('~')
+            ? preflightName
+            : memberUuid ? `~${memberUuid}/${preflightName}` : null
+          if (lookupName) {
+            const registryUrlPre = registryUrl || getRegistryUrl()
+            const registryPre = new RemoteRegistry(registryUrlPre, auth.token)
+            const existing = await registryPre.getVersionEntry(lookupName, preflightVersion)
+            if (existing) {
+              const { gitSha } = readGitState(foundationDir)
+              if (gitSha && existing.publishedFromGitSha === gitSha) {
+                // Match → refresh receipt, exit clean. NO BUILD.
+                const refreshed = receiptFromRegistryEntry({
+                  existingEntry: existing,
+                  registry: registryPre,
+                  name: lookupName,
+                  version: preflightVersion,
+                  isLocal: false,
+                  isPropagateDefault: isPropagate,
+                })
+                if (refreshed) {
+                  await mkdir(distDir, { recursive: true })
+                  await writeFile(join(distDir, 'publish.json'), JSON.stringify(refreshed, null, 2) + '\n')
+                  console.log('')
+                  success(`${colors.bright}${lookupName}@${preflightVersion}${colors.reset} already published from ${gitSha.slice(0, 7)} — receipt refreshed.`)
+                  return
+                }
+              }
+              // Sha mismatch (or no provenance recorded for the existing
+              // entry, which shouldn't happen for new publishes after
+              // the receipt-as-cache work shipped). Clean error before
+              // any build work.
+              console.log('')
+              error(`${colors.bright}${lookupName}@${preflightVersion}${colors.reset} is already published.`)
+              console.log('')
+              console.log(`  Bump the version in package.json to publish an update:`)
+              console.log(`    ${colors.dim}"version": "${bumpPatch(preflightVersion)}"${colors.reset}`)
+              process.exit(1)
+            }
+          }
+        }
+      } catch {
+        // Network down, malformed auth, etc. — fall through to the
+        // existing post-build flow. No-build-saved is still the same
+        // behavior the user got before this pre-flight existed.
+      }
+    }
+  }
+
+  if (needsBuild) {
+    console.log(`${colors.yellow}⚠${colors.reset} ${buildReason}. Building foundation...`)
     console.log('')
     execSync('npx uniweb build --target foundation', {
       cwd: foundationDir,
@@ -208,7 +324,13 @@ export async function publish(args = []) {
     }
   }
 
-  // 3. Read name and version from meta/schema.json
+  // 3. Read name + version from the (now-fresh) schema + package.json.
+  //
+  //    `_self.name` is the build-RESOLVED form — applies `uniweb.id`,
+  //    scope resolution, etc., that are easier to read off the build
+  //    output than to redo here. `version` is sourced from package.json
+  //    directly; the version-skew check above already ensured the
+  //    schema and package.json agree.
   let schema
   try {
     schema = JSON.parse(await readFile(schemaJson, 'utf8'))
@@ -218,11 +340,12 @@ export async function publish(args = []) {
   }
 
   const rawName = schema._self?.name
-  const version = schema._self?.version
+  const version = earlyPkg.version
 
   if (!rawName || !version) {
-    error('dist/meta/schema.json missing _self.name or _self.version')
-    console.log(`${colors.dim}  Ensure your package.json has "name" and "version" fields.${colors.reset}`)
+    error('Foundation missing name or version')
+    console.log(`${colors.dim}  Ensure your package.json has "name" and "version" fields,${colors.reset}`)
+    console.log(`${colors.dim}  and that the build has produced dist/meta/schema.json with _self.name.${colors.reset}`)
     process.exit(1)
   }
 
@@ -267,8 +390,9 @@ export async function publish(args = []) {
   // affects only the registry identity, never the workspace. Most users
   // benefit from leaving `package.json::name` as the scaffold default
   // (`src`) and putting the published-as id in `uniweb.id`.
-  const pkgPath = join(foundationDir, 'package.json')
-  const pkg = JSON.parse(await readFile(pkgPath, 'utf8'))
+  // pkgPath was declared earlier (during the rebuild-stale-dist check).
+  // Reuse the already-loaded `earlyPkg` rather than re-reading from disk.
+  const pkg = earlyPkg
   const uniwebNamespace = pkg.uniweb?.namespace
   const uniwebId = pkg.uniweb?.id
   const orgScopeMatch = (pkg.name || '').match(/^@([a-z0-9_-]+)\/([a-z0-9_-]+)$/)
@@ -541,6 +665,20 @@ export async function publish(args = []) {
         isPropagateDefault: isPropagate,
       })
       if (refreshedReceipt) {
+        // Persist uniweb.id BEFORE the early return when an auto-derive
+        // or prompt-resolved id was set in this run. Without this, the
+        // next run wouldn't know the id and would have to re-derive
+        // from scratch — which means the pre-flight registry check at
+        // the top of publish() can't fire either (it relies on a
+        // resolvable id from pkg.json alone). Persisting here closes
+        // that loop so future deploys hit the pre-flight bail and skip
+        // the build entirely.
+        if (writeBackId) {
+          pkg.uniweb = pkg.uniweb || {}
+          pkg.uniweb.id = foundationName
+          await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+          info(`Wrote ${colors.cyan}uniweb.id: "${foundationName}"${colors.reset} to ${colors.dim}package.json${colors.reset}`)
+        }
         await writeFile(join(distDir, 'publish.json'), JSON.stringify(refreshedReceipt, null, 2) + '\n')
         console.log('')
         success(`${colors.bright}${lookupName}@${version}${colors.reset} already published from ${gitSha.slice(0, 7)} — receipt refreshed.`)
@@ -650,6 +788,65 @@ export async function publish(args = []) {
  * @param {string} version - e.g. "1.0.0"
  * @returns {string} - e.g. "1.0.1"
  */
+/**
+ * Quickly compute the canonical foundation name from `package.json` +
+ * CLI flags alone, without prompting and without reading the build's
+ * `dist/meta/schema.json`. Used by the pre-flight registry check so we
+ * can short-circuit the build when the registry already has this
+ * version published.
+ *
+ * Returns null when resolution would need a prompt or auto-derive
+ * (caller falls through to the existing post-build resolution path,
+ * which handles those cases). The returned string is one of:
+ *   - `@<scope>/<id>`  (org scope, full canonical form)
+ *   - `~<handle>/<id>` (personal alias scope)
+ *   - `<id>`            (bare; caller may prepend `~<memberUuid>/`
+ *                       from the JWT for the actual lookup)
+ *
+ * The full resolution at line 313+ is the canonical implementation;
+ * this helper is a strict subset that mirrors the high-confidence
+ * paths only. If they diverge, the helper is the one that should
+ * stay conservative (return null on uncertainty).
+ */
+function quickResolveCanonicalName(pkg, { namespaceFlag, nameFlag } = {}) {
+  if (!pkg) return null
+  const orgScopeMatch = (pkg.name || '').match(/^@([a-z0-9_-]+)\/([a-z0-9_-]+)$/)
+  const personalScopeMatch = (pkg.name || '').match(/^~([a-z0-9_-]+)\/([a-z0-9_-]+)$/)
+  const uniwebNamespace = pkg.uniweb?.namespace
+  const uniwebId = pkg.uniweb?.id
+
+  // Scope precedence mirrors the full resolution.
+  let scopeSigil = null
+  let scopeName = null
+  if (namespaceFlag) {
+    scopeSigil = '@'
+    scopeName = namespaceFlag
+  } else if (orgScopeMatch) {
+    scopeSigil = '@'
+    scopeName = orgScopeMatch[1]
+  } else if (personalScopeMatch) {
+    scopeSigil = '~'
+    scopeName = personalScopeMatch[1]
+  } else if (uniwebNamespace) {
+    scopeSigil = '@'
+    scopeName = uniwebNamespace
+  }
+
+  // Id precedence mirrors the full resolution but stops at "no-prompt"
+  // sources. Auto-derive and TTY prompts both happen post-build so the
+  // user sees suggestions in context; the pre-flight only fires when
+  // the id is already determined.
+  let id = null
+  if (nameFlag) id = nameFlag
+  else if (orgScopeMatch) id = orgScopeMatch[2]
+  else if (personalScopeMatch) id = personalScopeMatch[2]
+  else if (uniwebId) id = uniwebId
+  else return null
+
+  if (scopeSigil) return `${scopeSigil}${scopeName}/${id}`
+  return id
+}
+
 function bumpPatch(version) {
   const parts = version.split('.')
   if (parts.length !== 3) return version
@@ -799,13 +996,21 @@ async function buildIdSuggestions({ foundationDir, workspaceRoot, pkg }) {
   return out
 }
 
+/**
+ * Per-directory git state. Mirrors `deploy.js::readGitState` exactly —
+ * scopes the sha + dirty check to `dir` rather than reading the whole
+ * repo's HEAD. Receipts compare against this; if publish records the
+ * repo HEAD but deploy compares against the foundation's last commit,
+ * the receipt-as-cache no-op-refresh path drifts. Both sides must read
+ * the same shape.
+ */
 function readGitState(dir) {
   try {
-    const sha = execSync('git rev-parse HEAD', {
+    const sha = execSync('git log -1 --format=%H -- .', {
       cwd: dir,
       stdio: ['ignore', 'pipe', 'ignore'],
     }).toString().trim()
-    const status = execSync('git status --porcelain', {
+    const status = execSync('git status --porcelain -- .', {
       cwd: dir,
       stdio: ['ignore', 'pipe', 'ignore'],
     }).toString()
