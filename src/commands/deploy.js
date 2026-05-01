@@ -542,11 +542,12 @@ export async function deploy(args = []) {
     // serving edge, not here). Always --link: the edge serves a runtime
     // template + per-site base.html, never a self-contained vite bundle.
     //
-    // For workspace-local foundations (Phase 2 resolution above),
-    // UNIWEB_FOUNDATION_REF tells defineSiteConfig to use the resolved
-    // registry ref instead of site.yml's literal value. Link mode doesn't
-    // run vite at all, so the env var is harmless but passed through for
-    // consistency with future work.
+    // Phase 4d: workspace-local foundations carry the `~self/{name}@{ver}`
+    // placeholder at this point; the canonical `~{siteId}/...` ref isn't
+    // known until authorize returns. Link mode doesn't run vite or fetch
+    // the foundation, so site-content.json's foundation field reflects
+    // whatever's in site.yml — that's fine because the publish payload
+    // overrides it with the canonical form post-authorize.
     //
     // Spawn the SAME CLI binary that's currently running rather than
     // `npx uniweb build` — npx walks node_modules and would resolve to
@@ -556,9 +557,7 @@ export async function deploy(args = []) {
     execSync(`node ${JSON.stringify(process.argv[1])} build --link`, {
       cwd: siteDir,
       stdio: 'inherit',
-      env: foundationBuildOverride
-        ? { ...process.env, UNIWEB_FOUNDATION_REF: foundationBuildOverride }
-        : process.env,
+      env: process.env,
     })
     console.log('')
   } else if (!existsSync(contentPath)) {
@@ -693,6 +692,13 @@ export async function deploy(args = []) {
       // CLI can write `features:` back into site.yml accurately. Older
       // PHP that doesn't include this field is a no-op.
       mintedFeatures = Array.isArray(cb.features) ? cb.features : null
+      // Phase 4d: workspace-local foundation deploys on the create flow
+      // need the rewritten `~{siteId}/{name}@{ver}` ref + upload endpoint.
+      // PHP/unicloud put them in the finalize response; the web app
+      // forwards them to the loopback. Catalog-ref deploys leave them
+      // undefined and we fall back to the placeholder/derived URL below.
+      if (cb.foundationRef) foundation = cb.foundationRef
+      if (cb.foundationUploadUrl) foundationUploadUrl = cb.foundationUploadUrl
       // Review path: Worker URLs are implicit (we derive them from config).
       publishUrl = `${workerUrl}/api/publish/process`
       validateUrl = `${workerUrl}/api/publish/validate`
