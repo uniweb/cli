@@ -790,34 +790,58 @@ export async function deploy(args = []) {
     process.exit(1)
   }
 
-  // Asset pipeline — upload dist/assets/* + favicon + fonts to S3, then
-  // rewrite each locale's siteContent so semantic-parser resolves CDN URLs
-  // at render time. Assets themselves are locale-shared (they live in
-  // dist/assets/ regardless of language), so the diff/upload runs once
-  // and the rewrite walks every locale's content tree in localeContents.
+  // Collect compiled collection JSON files from dist/data/. The framework
+  // emits these for `collection:` data sources — `<name>.json` cascade
+  // payloads plus per-record `<name>/<slug>.json` files when `deferred:` is
+  // declared. Editor publish has no equivalent (collections live in the DB);
+  // CLI sites need them shipped as static R2 objects.
+  //
+  // Read BEFORE the asset pipeline so the asset scan can pick up image
+  // refs in collection JSON (e.g. `article.image: "/covers/foo.svg"`)
+  // and the rewrite can swap them for CDN URLs alongside locale content.
+  const dataFiles = await collectDataFiles(distDir)
+  // Decode each data file as JSON so the asset scan can walk the tree;
+  // mutated in place by the rewrite step. Re-stringified before publish.
+  const dataFileObjects = {}
+  for (const [k, raw] of Object.entries(dataFiles)) {
+    try {
+      dataFileObjects[k] = JSON.parse(raw)
+    } catch {
+      dataFileObjects[k] = null // unparseable — skip rewrite, ship as-is
+    }
+  }
+  if (Object.keys(dataFiles).length > 0) {
+    say.dim(`Data files     : ${Object.keys(dataFiles).length} (collection JSON)`)
+  }
+
+  // Asset pipeline — upload dist/assets/* + favicon + fonts + content-scan
+  // hits (public/, data file refs) to S3, then rewrite each locale's
+  // siteContent + each parsed data file so the runtime resolves CDN URLs at
+  // render time. Assets are locale-shared (they live in dist/assets/ +
+  // public/ regardless of language); diff/upload runs once and the rewrite
+  // walks every locale's content tree + every data-file JSON tree.
   // Skipped with --skip-assets.
   if (!skipAssets) {
     await uploadAssetsAndRewriteContent({
       siteDir,
       localeContents,
+      dataFileObjects,
       siteYml,
       theme,
       backendUrl,
       cliToken,
       siteId: siteIdResolved,
     })
+    // Re-stringify any data-file JSON that the rewrite step mutated, so the
+    // publish payload below sees the rewritten URLs. Untouched files round-
+    // trip identically.
+    for (const k of Object.keys(dataFiles)) {
+      if (dataFileObjects[k] !== null) {
+        dataFiles[k] = JSON.stringify(dataFileObjects[k])
+      }
+    }
   } else {
     say.dim('Skipping asset upload (--skip-assets).')
-  }
-
-  // Collect compiled collection JSON files from dist/data/. The framework
-  // emits these for `collection:` data sources — `<name>.json` cascade
-  // payloads plus per-record `<name>/<slug>.json` files when `deferred:` is
-  // declared. Editor publish has no equivalent (collections live in the DB);
-  // CLI sites need them shipped as static R2 objects.
-  const dataFiles = await collectDataFiles(distDir)
-  if (Object.keys(dataFiles).length > 0) {
-    say.dim(`Data files     : ${Object.keys(dataFiles).length} (collection JSON)`)
   }
 
   say.info('Publishing…')
@@ -1225,12 +1249,36 @@ async function callFoundationUpload({ url, token, body }) {
  * siteContent is mutated in place so the caller's publish payload picks up
  * the rewritten nodes without passing anything back.
  */
-async function uploadAssetsAndRewriteContent({ siteDir, localeContents, siteYml, theme, backendUrl, cliToken, siteId }) {
+async function uploadAssetsAndRewriteContent({ siteDir, localeContents, dataFileObjects = {}, siteYml, theme, backendUrl, cliToken, siteId }) {
   const distAssetsDir = join(siteDir, 'dist', 'assets')
   const hasDistAssets = existsSync(distAssetsDir)
 
   // 1. Enumerate local files + read size.
   const localFiles = hasDistAssets ? await walkAssetDir(distAssetsDir) : []
+
+  // 1a. Content-scan: walk site-content.json (and locale variants) for any
+  //     asset references (image/document src/href) and resolve absolute
+  //     paths to local files under `dist/` or `public/`. This catches static
+  //     assets the author placed in `public/covers/`, `public/images/`, etc.
+  //     that the dist/assets walk above misses (vite's image-pipeline only
+  //     produces files for refs that go through it). Each resolved file
+  //     joins the upload pipeline; the rewrite step at the end maps every
+  //     such reference to its CDN identifier so content stays portable
+  //     across site delete / template extraction.
+  const contentRefMap = await scanContentForAssetRefs(localeContents, dataFileObjects, siteDir)
+  const seenPaths = new Set(localFiles.map((f) => f.fullPath))
+  for (const [, info] of contentRefMap) {
+    if (seenPaths.has(info.resolvedPath)) continue
+    const ext = (info.filename.split('.').pop() || '').toLowerCase()
+    const st = await stat(info.resolvedPath)
+    localFiles.push({
+      filename: info.filename,
+      fullPath: info.resolvedPath,
+      size: st.size,
+      mime: MIME_BY_EXT[ext] || 'application/octet-stream',
+    })
+    seenPaths.add(info.resolvedPath)
+  }
 
   // 1a. Favicon — sits at site root, not in dist/assets. Ship it through
   //     the same pipeline so it ends up at assets.uniweb.app with an
@@ -1351,14 +1399,39 @@ async function uploadAssetsAndRewriteContent({ siteDir, localeContents, siteYml,
   }
 
   // 6. Rewrite each locale's content in place. Image/document nodes whose
-  //    src/href references a local /assets/{filename} get an info.identifier
-  //    pointing to the uploaded (or reused) asset. Walking every locale
-  //    means translated content (which still references the same image
-  //    files via the source ProseMirror tree) gets the same rewrite.
+  //    src/href references an uploaded asset get an info.identifier pointing
+  //    to the CDN. Walking every locale means translated content (which
+  //    still references the same image files via the source ProseMirror
+  //    tree) gets the same rewrite.
+  //
+  //    Two lookup paths:
+  //      - byOriginalRef: full src/href string → identifier (covers static
+  //        public/ assets like `/covers/foo.svg` and dist/-resolved refs)
+  //      - byFilename: legacy match for `assets/{filename}` shape — kept
+  //        for back-compat with content authored against the old vite-
+  //        produced `/assets/...` URLs.
   const byFilenameAll = new Map([...reused, ...fresh])
+  const byOriginalRef = new Map()
+  for (const [ref, info] of contentRefMap) {
+    const id = byFilenameAll.get(info.filename)
+    if (id) byOriginalRef.set(ref, id)
+  }
   let rewritten = 0
   for (const lang of Object.keys(localeContents)) {
-    rewritten += rewriteAssetReferences(localeContents[lang], byFilenameAll)
+    rewritten += rewriteAssetReferences(localeContents[lang], byFilenameAll, byOriginalRef)
+  }
+  // Data files: walk the JSON tree. Two patterns coexist in collection
+  // payloads:
+  //   - Flat fields (e.g. `article.image: "/covers/foo.svg"`) → replace
+  //     the string with a resolveAssetCdnUrl(identifier). The runtime
+  //     reads these as plain URLs, so rewriting at deploy time is the
+  //     simplest path to portability.
+  //   - Nested ProseMirror sub-trees (e.g. `article.content`) → use the
+  //     existing image/document node rewrite (sets `attrs.info.identifier`).
+  for (const k of Object.keys(dataFileObjects)) {
+    if (dataFileObjects[k] === null) continue
+    rewritten += rewriteFlatAssetUrls(dataFileObjects[k], byOriginalRef)
+    rewritten += rewriteAssetReferences(dataFileObjects[k], byFilenameAll, byOriginalRef)
   }
   if (rewritten > 0) {
     say.dim(`Rewrote ${rewritten} asset reference(s) across ${Object.keys(localeContents).length} locale(s).`)
@@ -1632,44 +1705,68 @@ async function runInPool(items, concurrency, worker) {
 
 /**
  * Walk siteContent (ProseMirror-ish JSON tree) and rewrite any node whose
- * `attrs.src` or `attrs.href` references a local `/assets/{filename}` that
- * we've uploaded/reused. Sets `attrs.info.identifier` so semantic-parser
- * resolves the real CDN URL (and optimized variants) at render time.
+ * `attrs.src` or `attrs.href` references an uploaded/reused asset. Sets
+ * `attrs.info.identifier` so semantic-parser resolves the real CDN URL
+ * (and optimized variants) at render time.
+ *
+ * Two lookup paths, in order:
+ *   1. `byOriginalRef` — full src/href string → identifier. Covers static
+ *      public/ assets (`/covers/foo.svg`, `/images/foo.png`) and any
+ *      content-scan-resolved file. Decouples assets from site lifecycle
+ *      (templates can extract content + identifier; assets stay on CDN).
+ *   2. `byFilename` (legacy) — only fires when the path matches the old
+ *      `/assets/{filename}` shape. Kept so re-deploys of content authored
+ *      against pre-content-scan CLIs still work.
  *
  * Returns the number of rewrites performed — useful for reporting, and to
  * detect "nothing matched" (likely a content-shape mismatch worth flagging).
  */
-function rewriteAssetReferences(node, byFilename) {
+function rewriteAssetReferences(node, byFilename, byOriginalRef = new Map()) {
   let count = 0
   const walk = (n) => {
     if (!n || typeof n !== 'object') return
     if (Array.isArray(n)) { for (const child of n) walk(child); return }
     if (n.attrs && typeof n.attrs === 'object') {
-      const srcRef = pickAssetRef(n.attrs.src)
-      const hrefRef = pickAssetRef(n.attrs.href)
-      const ref = srcRef || hrefRef
-      if (ref) {
-        const identifier = byFilename.get(ref)
-        if (identifier) {
-          n.attrs.info = {
-            ...(n.attrs.info || {}),
-            identifier,
-            contentType: 'website',
-            viewType: 'profile',
-          }
-          // Clear the local Vite-hashed path so the runtime resolves via
-          // info.identifier (→ assets.uniweb.app CDN) instead of requesting
-          // a non-existent /assets/... file from the site host.
-          if (srcRef) n.attrs.src = null
-          if (hrefRef) n.attrs.href = null
-          // Match the Editor shape: plain `image` nodes skip identifier
-          // resolution in older runtimes; `ImageBlock` routes through
-          // parseImgBlock which reads info.identifier and fills url.
-          if (n.type === 'image' && n.attrs.role !== 'icon') {
-            n.type = 'ImageBlock'
-          }
-          count++
+      // Prefer full-ref lookup (covers static + dist refs uniformly);
+      // fall back to legacy `assets/{filename}` extraction.
+      let identifier = null
+      let srcMatched = false
+      let hrefMatched = false
+      if (typeof n.attrs.src === 'string' && byOriginalRef.has(n.attrs.src)) {
+        identifier = byOriginalRef.get(n.attrs.src)
+        srcMatched = true
+      } else if (typeof n.attrs.href === 'string' && byOriginalRef.has(n.attrs.href)) {
+        identifier = byOriginalRef.get(n.attrs.href)
+        hrefMatched = true
+      } else {
+        const srcRef = pickAssetRef(n.attrs.src)
+        const hrefRef = pickAssetRef(n.attrs.href)
+        const ref = srcRef || hrefRef
+        if (ref) {
+          identifier = byFilename.get(ref) || null
+          srcMatched = !!srcRef
+          hrefMatched = !srcRef && !!hrefRef
         }
+      }
+      if (identifier) {
+        n.attrs.info = {
+          ...(n.attrs.info || {}),
+          identifier,
+          contentType: 'website',
+          viewType: 'profile',
+        }
+        // Clear the local path so the runtime resolves via info.identifier
+        // (→ assets.uniweb.app CDN) instead of requesting a non-existent
+        // file from the site host.
+        if (srcMatched) n.attrs.src = null
+        if (hrefMatched) n.attrs.href = null
+        // Match the Editor shape: plain `image` nodes skip identifier
+        // resolution in older runtimes; `ImageBlock` routes through
+        // parseImgBlock which reads info.identifier and fills url.
+        if (n.type === 'image' && n.attrs.role !== 'icon') {
+          n.type = 'ImageBlock'
+        }
+        count++
       }
     }
     for (const v of Object.values(n)) if (typeof v === 'object') walk(v)
@@ -1683,6 +1780,153 @@ function pickAssetRef(v) {
   // Match "/assets/filename.ext", "./assets/filename.ext", "assets/filename.ext".
   const m = v.match(/(?:^|\/|\.\/)assets\/([^/?#]+)$/)
   return m ? m[1] : null
+}
+
+/**
+ * Walk every locale's content for `attrs.src` and `attrs.href` strings, and
+ * resolve absolute-path refs (e.g. `/covers/foo.svg`) to local files under
+ * the site root.
+ *
+ * Resolution order per ref:
+ *   1. `dist/{path}`    — vite outputs, link-mode collection JSON, etc.
+ *   2. `public/{path}`  — static author-placed assets (covers, images).
+ *
+ * Returns Map<originalRef, { resolvedPath, filename }> where:
+ *   - `originalRef`  — the exact src/href string from content (used as the
+ *                      lookup key during rewrite).
+ *   - `resolvedPath` — absolute path on disk (used for upload).
+ *   - `filename`     — basename, used as the assets-server upload filename.
+ *                      Server keys by (siteId, filename); collisions across
+ *                      paths with the same basename are flagged as warnings.
+ *
+ * Skips:
+ *   - Non-string values, refs that don't start with `/`, protocol-relative
+ *     refs (`//cdn.example.com/...`), and external URLs.
+ *   - Refs starting with `/api/` or `/_` (worker-internal paths, never
+ *     local files).
+ *   - Nodes already rewritten with `attrs.info.identifier` set (re-deploy).
+ */
+async function scanContentForAssetRefs(localeContents, dataFileObjects, siteDir) {
+  const candidates = new Set()
+  for (const lang of Object.keys(localeContents)) {
+    walkContentForAssetRefs(localeContents[lang], candidates)
+  }
+  // Also walk parsed collection JSON files. These contain BOTH ProseMirror-
+  // shaped sub-trees (article.content) AND flat string fields (article.image,
+  // article.cover, etc.). The walker captures both: any string-valued src/
+  // href/image/cover/thumbnail/icon/poster field, plus any string anywhere
+  // that looks like an absolute path with a known media extension.
+  for (const k of Object.keys(dataFileObjects || {})) {
+    if (dataFileObjects[k] !== null) {
+      walkContentForAssetRefs(dataFileObjects[k], candidates)
+    }
+  }
+
+  const results = new Map()
+  const filenameToRef = new Map() // detect collisions (same basename, different path)
+  for (const ref of candidates) {
+    if (!isResolvableContentRef(ref)) continue
+    const cleanPath = ref.split('?')[0].split('#')[0].slice(1) // drop leading '/'
+    const distCandidate = join(siteDir, 'dist', cleanPath)
+    const publicCandidate = join(siteDir, 'public', cleanPath)
+    let resolvedPath = null
+    if (existsSync(distCandidate)) {
+      try { if ((await stat(distCandidate)).isFile()) resolvedPath = distCandidate } catch {}
+    }
+    if (!resolvedPath && existsSync(publicCandidate)) {
+      try { if ((await stat(publicCandidate)).isFile()) resolvedPath = publicCandidate } catch {}
+    }
+    if (!resolvedPath) continue
+    const filename = resolvedPath.split(sep).pop()
+    const prior = filenameToRef.get(filename)
+    if (prior && prior !== resolvedPath) {
+      // Two different files want the same upload filename — server keys by
+      // filename so the second would clobber the first. Skip + warn rather
+      // than silently overwrite. Caller can rename the file or move one
+      // into a vite-processed path to disambiguate via content hashing.
+      say.warn(
+        `Asset filename collision: "${filename}" exists at multiple paths ` +
+          `(${prior}, ${resolvedPath}). Skipping the second; rename to disambiguate.`
+      )
+      continue
+    }
+    filenameToRef.set(filename, resolvedPath)
+    results.set(ref, { resolvedPath, filename })
+  }
+  return results
+}
+
+// Field names commonly used for media in collection JSON. The walker
+// collects any absolute-path string under these keys as a potential asset
+// reference. ProseMirror image/link nodes are caught separately via attrs.
+const FLAT_ASSET_FIELDS = new Set([
+  'src', 'href', 'image', 'cover', 'thumbnail', 'icon', 'poster', 'logo',
+  'avatar', 'photo', 'banner', 'background',
+])
+
+function walkContentForAssetRefs(node, refs) {
+  if (!node || typeof node !== 'object') return
+  if (Array.isArray(node)) { for (const child of node) walkContentForAssetRefs(child, refs); return }
+  if (node.attrs && typeof node.attrs === 'object') {
+    // Skip nodes already rewritten in a prior deploy — those have an
+    // identifier and the runtime resolves them through the CDN already.
+    if (!node.attrs.info?.identifier) {
+      if (typeof node.attrs.src === 'string') refs.add(node.attrs.src)
+      if (typeof node.attrs.href === 'string') refs.add(node.attrs.href)
+    }
+  }
+  // Flat fields: collection-shaped objects (e.g. an article record) often
+  // carry media URLs as plain string fields rather than ProseMirror nodes.
+  // Capture absolute-path values under known keys.
+  for (const [k, v] of Object.entries(node)) {
+    if (typeof v === 'string' && FLAT_ASSET_FIELDS.has(k) && isResolvableContentRef(v)) {
+      refs.add(v)
+    } else if (typeof v === 'object') {
+      walkContentForAssetRefs(v, refs)
+    }
+  }
+}
+
+/**
+ * Walk an arbitrary JSON tree and replace any string equal to a key in
+ * `byOriginalRef` (and not already a CDN URL) with the asset's CDN URL.
+ * Used for collection JSON files where image refs are flat string fields
+ * (e.g. `article.image: "/covers/foo.svg"`) rather than ProseMirror nodes.
+ *
+ * Returns the number of replacements performed.
+ */
+function rewriteFlatAssetUrls(node, byOriginalRef) {
+  let count = 0
+  const walk = (n, parent, key) => {
+    if (n == null) return
+    if (typeof n === 'string') {
+      const id = byOriginalRef.get(n)
+      if (id && parent != null && key != null) {
+        parent[key] = resolveAssetCdnUrl(id)
+        count++
+      }
+      return
+    }
+    if (typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (let i = 0; i < n.length; i++) walk(n[i], n, i)
+      return
+    }
+    for (const [k, v] of Object.entries(n)) walk(v, n, k)
+  }
+  walk(node, null, null)
+  return count
+}
+
+function isResolvableContentRef(ref) {
+  if (typeof ref !== 'string' || !ref) return false
+  // Absolute-path only — relative paths (`./foo`, `foo`) are content-author
+  // shorthand handled elsewhere; URLs (`http://`, `//cdn`) never resolve to
+  // local files; worker-internal paths (`/api/`, `/_`) aren't asset content.
+  if (!ref.startsWith('/')) return false
+  if (ref.startsWith('//')) return false
+  if (ref.startsWith('/api/') || ref.startsWith('/_')) return false
+  return true
 }
 
 // ─── Loopback listener (review path) ───────────────────────
