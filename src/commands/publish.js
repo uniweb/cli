@@ -41,7 +41,7 @@ import { execSync } from 'node:child_process'
 import { resolveFoundationSrcPath, classifyPackage } from '@uniweb/build'
 import { createLocalRegistry, RemoteRegistry } from '../utils/registry.js'
 import { ensureAuth, readAuth, writeAuth, decodeJwtPayload } from '../utils/auth.js'
-import { getRegistryUrl } from '../utils/config.js'
+import { getRegistryUrl, getBackendUrl } from '../utils/config.js'
 import { findWorkspaceRoot, findFoundations, findSites, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
@@ -755,10 +755,13 @@ export async function publish(args = []) {
         }
       }
 
+      // Org claim hits the PHP backend (auth/identity is PHP's domain),
+      // not the worker. In local dev unicloud serves both on one port, so
+      // tests work; in production these are different hosts.
       const claimed = await claimOrgHandle({
         handle: scopeName,
         token: auth.token,
-        registryUrl: registryUrl || getRegistryUrl(),
+        backendUrl: getBackendUrl(),
       })
       if (claimed.taken) {
         error(`@${scopeName} is already claimed by another account.`)
@@ -1167,8 +1170,8 @@ function readGitState(dir) {
  *
  * Other failures throw.
  */
-async function claimOrgHandle({ handle, token, registryUrl }) {
-  const url = `${registryUrl.replace(/\/$/, '')}/api/orgs/${encodeURIComponent(handle)}`
+async function claimOrgHandle({ handle, token, backendUrl }) {
+  const url = `${backendUrl.replace(/\/$/, '')}/api/orgs/${encodeURIComponent(handle)}`
   const res = await fetch(url, {
     method: 'POST',
     headers: {
