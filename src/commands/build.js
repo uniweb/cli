@@ -35,6 +35,8 @@
  *   uniweb build --target site       # Explicitly build as site
  *   uniweb build --prerender         # Force pre-rendering
  *   uniweb build --no-prerender      # Skip pre-rendering
+ *   uniweb build --host <name>       # Override site.yml deploy.host (e.g.
+ *                                      netlify, s3-cloudfront, generic-static)
  *
  * Internal flags (called by `uniweb deploy` / `uniweb export`):
  *   --link              # Data-only pipeline (Uniweb-edge)
@@ -540,7 +542,7 @@ async function resolveFoundationDirForSite(siteDir, siteConfig) {
  * Build a site
  */
 async function buildSite(projectDir, options = {}) {
-  const { prerender = false, foundationDir, siteConfig = null } = options
+  const { prerender = false, foundationDir, siteConfig = null, host = null } = options
 
   info('Building site...')
 
@@ -613,6 +615,7 @@ async function buildSite(projectDir, options = {}) {
 
       const result = await prerenderSite(projectDir, {
         foundationDir: foundationDir || resolveFoundationDir(projectDir, siteConfig),
+        host,
         onProgress: (msg) => log(`  ${colors.dim}${msg}${colors.reset}`)
       })
 
@@ -710,7 +713,7 @@ async function discoverWorkspacePackages(workspaceDir) {
  * Build all packages in a workspace
  */
 async function buildWorkspace(workspaceDir, options = {}) {
-  const { prerenderFlag, noPrerenderFlag } = options
+  const { prerenderFlag, noPrerenderFlag, host = null } = options
 
   log(`${colors.cyan}${colors.bright}Building workspace...${colors.reset}`)
   log('')
@@ -757,7 +760,7 @@ async function buildWorkspace(workspaceDir, options = {}) {
     // Resolve foundation directory for this site
     const foundationDir = resolveFoundationDir(site.path, siteConfig)
 
-    await buildSite(site.path, { prerender, foundationDir, siteConfig })
+    await buildSite(site.path, { prerender, foundationDir, siteConfig, host })
     log('')
   }
 
@@ -835,6 +838,14 @@ export async function build(args = []) {
     foundationDir = resolve(args[foundationDirIndex + 1])
   }
 
+  // --host overrides site.yml's deploy.host for this build's prerender
+  // step. Validated lazily (inside prerender.js, via the registry).
+  let host = null
+  const hostIndex = args.indexOf('--host')
+  if (hostIndex !== -1 && args[hostIndex + 1]) {
+    host = args[hostIndex + 1]
+  }
+
   // Auto-detect project type if not specified
   if (!targetType) {
     targetType = detectProjectType(projectDir)
@@ -868,7 +879,7 @@ export async function build(args = []) {
   // Run appropriate build
   try {
     if (targetType === 'workspace') {
-      await buildWorkspace(projectDir, { prerenderFlag, noPrerenderFlag })
+      await buildWorkspace(projectDir, { prerenderFlag, noPrerenderFlag, host })
     } else if (targetType === 'foundation') {
       await buildFoundation(projectDir)
     } else {
@@ -898,7 +909,7 @@ export async function build(args = []) {
       if (prerenderFlag) prerender = true
       if (noPrerenderFlag) prerender = false
 
-      await buildSite(projectDir, { prerender, foundationDir, siteConfig })
+      await buildSite(projectDir, { prerender, foundationDir, siteConfig, host })
     }
   } catch (err) {
     error(err.message)

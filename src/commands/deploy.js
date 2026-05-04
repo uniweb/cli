@@ -1,11 +1,21 @@
 /**
  * Deploy Command
  *
- * Deploys a site to uniweb-edge. Always runtime-linked: the edge serves a
- * runtime template + per-site base.html, with the foundation loaded by URL.
- * For static-host artifacts (no upload), see `uniweb export`.
+ * Deploys a site. Host is determined by `deploy.host` in site.yml (or
+ * `--host <name>` flag). The default is `uniweb`:
  *
- * Flow:
+ *   - `uniweb` (default): Uniweb hosting — link-mode + edge JIT prerender.
+ *     Foundation loaded by URL from the registry. Requires `uniweb login`
+ *     and a `foundation:` declaration in site.yml.
+ *
+ *   - Static-host adapters (`s3-cloudfront`, `cloudflare-pages`,
+ *     `github-pages`, `generic-static`, …): build dist/ in bundle-mode
+ *     and hand it to a host adapter for upload + invalidation. No login,
+ *     no edge. See kb/framework/plans/static-host-deploy-adapters.md.
+ *
+ * For static-host artifacts WITHOUT upload, see `uniweb export`.
+ *
+ * Default-flow steps:
  *   1. Read site.yml → { site.id?, site.handle?, foundation, runtime? }.
  *   2. Resolve runtime (default: GET /runtime/latest from the Worker).
  *   3. ensureAuth() → bearer CLI JWT from ~/.uniweb/auth.json.
@@ -29,6 +39,8 @@
  *   uniweb deploy                          Normal deploy (browser may open on first deploy)
  *   uniweb deploy --dry-run                Resolve everything but skip the Worker POST
  *   uniweb deploy --no-auto-publish        Don't auto-publish workspace-local foundation
+ *   uniweb deploy --host <name>            Static-host flow (e.g., s3-cloudfront,
+ *                                          generic-static). Overrides site.yml deploy.host.
  *
  * Internal escape hatches (UNIWEB_* env vars — see framework/cli/docs/env-vars.md):
  *   UNIWEB_SKIP_BUILD=1                    Reuse existing dist/ instead of rebuilding
@@ -404,6 +416,22 @@ export async function deploy(args = []) {
   // site.id / site.handle from prior deploys.
   const siteYmlPath = join(siteDir, 'site.yml')
   const siteYml = await readSiteYml(siteYmlPath)
+
+  // Host dispatch. The default host is `uniweb` — Uniweb hosting
+  // (link-mode + edge JIT prerender), which is the rest of this
+  // function. Any other named host is a static-host adapter; hand off
+  // to it and return. The default flow requires a `foundation:`
+  // declaration; static-host deploys don't, so this branch comes BEFORE
+  // the foundation check.
+  // See kb/framework/plans/static-host-deploy-adapters.md.
+  const hostFlagIndex = args.indexOf('--host')
+  const hostFromFlag = hostFlagIndex !== -1 ? args[hostFlagIndex + 1] : null
+  const host = hostFromFlag || siteYml.deploy?.host || 'uniweb'
+  if (host !== 'uniweb') {
+    await deployStaticHost(siteDir, siteYml, host, { dryRun })
+    return
+  }
+
   if (!siteYml.foundation) {
     say.err('site.yml is missing `foundation`.')
     say.dim('Add a line like:  foundation: \'@uniweb/docs-foundation@0.1.20\'')
@@ -915,6 +943,107 @@ export async function deploy(args = []) {
   say.ok(`Deployed ${c.bold}${handleResolved || siteIdResolved || 'site'}${c.reset}`)
   if (handleResolved) {
     console.log(`  ${c.cyan}https://${handleResolved}.uniweb.website/${c.reset}`)
+  }
+}
+
+// ─── Static-host deploy (S3+CloudFront, etc.) ─────────────────
+//
+// Distinct from the uniweb-edge flow above. Picked when site.yml's
+// `deploy.host` (or --host flag) names a static-host adapter
+// registered in @uniweb/build/hosts. Always runs `uniweb build`
+// (bundle mode + prerender) first, then hands dist/ to the adapter's
+// deploy hook for upload + invalidation.
+//
+// See kb/framework/plans/static-host-deploy-adapters.md.
+
+async function deployStaticHost(siteDir, siteYml, hostName, { dryRun }) {
+  let getAdapter
+  try {
+    ({ getAdapter } = await import('@uniweb/build/hosts'))
+  } catch (err) {
+    say.err('Failed to load host adapter registry from @uniweb/build/hosts.')
+    say.dim(err.message)
+    process.exit(1)
+  }
+
+  let adapter
+  try {
+    adapter = getAdapter(hostName)
+  } catch (err) {
+    say.err(err.message)
+    say.dim(`Set deploy.host in site.yml or pass --host=<name>. See \`uniweb deploy --help\`.`)
+    process.exit(1)
+  }
+
+  if (typeof adapter.deploy !== 'function') {
+    say.err(`Host adapter '${hostName}' does not implement a deploy step.`)
+    say.dim(`Build with \`uniweb build --host=${hostName}\` and upload \`dist/\` manually,`)
+    say.dim(`or use a host whose adapter ships a deploy hook (e.g., s3-cloudfront).`)
+    process.exit(1)
+  }
+
+  const deployConfig = siteYml.deploy || {}
+  const distDir = join(siteDir, 'dist')
+
+  if (dryRun) {
+    say.info(`Dry run — would deploy via host adapter: ${c.bold}${adapter.name}${c.reset}`)
+    say.dim(`Site dir       : ${siteDir}`)
+    say.dim(`dist/          : ${existsSync(distDir) ? 'exists (would not rebuild)' : 'missing (would build)'}`)
+    say.dim(`deploy.bucket  : ${deployConfig.bucket || '(unset)'}`)
+    say.dim(`deploy.distId  : ${deployConfig.distributionId || '(unset)'}`)
+    say.dim(`deploy.region  : ${deployConfig.region || '(unset)'}`)
+    say.dim(`deploy.profile : ${deployConfig.profile || '(default AWS chain)'}`)
+    return
+  }
+
+  // Always rebuild — the static-host flow expects fresh dist/ on every
+  // deploy. UNIWEB_SKIP_BUILD env var lets CI / dev loops reuse an
+  // existing build (mirrors the uniweb-edge flow's escape hatch).
+  const skipBuild = parseBoolEnv('UNIWEB_SKIP_BUILD')
+  if (skipBuild) {
+    if (!existsSync(distDir)) {
+      say.err('UNIWEB_SKIP_BUILD is set but dist/ does not exist.')
+      process.exit(1)
+    }
+    say.info('UNIWEB_SKIP_BUILD set — reusing existing dist/.')
+  } else {
+    say.info(`Building site (host: ${adapter.name})…`)
+    console.log('')
+    try {
+      execSync(
+        `node ${JSON.stringify(process.argv[1])} build --bundle --host ${JSON.stringify(adapter.name)}`,
+        { cwd: siteDir, stdio: 'inherit' }
+      )
+    } catch {
+      say.err('Build failed. See output above.')
+      process.exit(1)
+    }
+    if (!existsSync(distDir)) {
+      say.err('Build did not produce dist/.')
+      process.exit(1)
+    }
+    console.log('')
+  }
+
+  // Hand off to the adapter. DeployError is the structured shape from
+  // @uniweb/build/hosts/s3-cloudfront — translate to user-facing output.
+  try {
+    await adapter.deploy({
+      distDir,
+      deployConfig,
+      env: process.env,
+      log: (m) => console.log(m),
+    })
+  } catch (err) {
+    if (err && err.name === 'DeployError') {
+      say.err(err.message)
+      if (err.hint) {
+        console.log('')
+        console.log(err.hint)
+      }
+      process.exit(1)
+    }
+    throw err
   }
 }
 

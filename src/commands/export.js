@@ -17,6 +17,9 @@
  * Usage:
  *   uniweb export                          Produce dist/ for static hosting
  *   uniweb export --no-prerender           Skip per-page prerendered HTML
+ *   uniweb export --host <name>            Select a host adapter (e.g.
+ *                                          netlify, s3-cloudfront, generic-static).
+ *                                          Overrides site.yml's deploy.host.
  */
 
 import { execSync } from 'node:child_process'
@@ -42,13 +45,18 @@ const say = {
 export async function exportSite(args = []) {
   const siteDir = await resolveSiteDir(args, 'export')
 
-  // Pass through --no-prerender; everything else gets ignored. `uniweb
-  // export` is intentionally low-flag: the user picks the destination
-  // host themselves outside the CLI, so there's nothing to configure
-  // beyond what `uniweb build --bundle` already exposes.
+  // Pass through --no-prerender and --host. Everything else is ignored.
+  // `uniweb export` stays low-flag: the user picks the destination host
+  // themselves outside the CLI, so there's nothing to configure beyond
+  // what `uniweb build --bundle` already exposes.
   const noPrerender = args.includes('--no-prerender')
   const buildArgs = ['build', '--bundle']
   if (noPrerender) buildArgs.push('--no-prerender')
+
+  const hostIndex = args.indexOf('--host')
+  if (hostIndex !== -1 && args[hostIndex + 1]) {
+    buildArgs.push('--host', args[hostIndex + 1])
+  }
 
   say.info('Exporting site (vite build → dist/)…')
   console.log('')
