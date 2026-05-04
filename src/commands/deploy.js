@@ -7,7 +7,7 @@
  *
  * Flow:
  *   1. Read site.yml → { site.id?, site.handle?, foundation, runtime? }.
- *   2. Resolve runtime (default: GET /api/runtime/latest from the Worker).
+ *   2. Resolve runtime (default: GET /runtime/latest from the Worker).
  *   3. ensureAuth() → bearer CLI JWT from ~/.uniweb/auth.json.
  *   4. Build `dist/` if missing.
  *   5. Load dist/site-content.json → extract `languages` for the capability
@@ -19,9 +19,9 @@
  *        - publishToken returned → fast path.
  *        - needsReview:true + reviewUrl → open browser, wait for callback,
  *          consume { publishToken, siteId, handle }.
- *   9. POST Worker /api/publish/validate to confirm foundation + runtime
+ *   9. POST Worker /publish/check to confirm foundation + runtime
  *      exist and the token's namespace claim matches.
- *  10. POST Worker /api/publish/process with the full payload.
+ *  10. POST Worker /publish with the full payload.
  *  11. On first-deploy create flow: write site.id + site.handle back into
  *      site.yml so subsequent deploys fast-path.
  *
@@ -512,7 +512,7 @@ export async function deploy(args = []) {
   if (!runtimeVersion) {
     runtimeVersion = await fetchLatestRuntime(workerUrl)
     if (!runtimeVersion) {
-      say.err('Could not resolve a runtime version (no runtime: in site.yml, /api/runtime/latest failed).')
+      say.err('Could not resolve a runtime version (no runtime: in site.yml, /runtime/latest failed).')
       process.exit(1)
     }
     say.dim(`Runtime: ${runtimeVersion} (latest; pin via \`runtime:\` in site.yml)`)
@@ -700,8 +700,8 @@ export async function deploy(args = []) {
       if (cb.foundationRef) foundation = cb.foundationRef
       if (cb.foundationUploadUrl) foundationUploadUrl = cb.foundationUploadUrl
       // Review path: Worker URLs are implicit (we derive them from config).
-      publishUrl = `${workerUrl}/api/publish/process`
-      validateUrl = `${workerUrl}/api/publish/validate`
+      publishUrl = `${workerUrl}/publish`
+      validateUrl = `${workerUrl}/publish/check`
     } else {
       publishToken = authRes.publishToken
       siteIdResolved = authRes.siteId
@@ -737,7 +737,7 @@ export async function deploy(args = []) {
   // Phase 4d: upload site-bound foundation files directly. Replaces the
   // pre-Phase-4d `execSync('uniweb publish')` flow — we now know the
   // canonical `~{siteId}/{name}@{ver}` ref from authorize, and the worker's
-  // /api/foundations endpoint accepts the publish token's siteId claim
+  // /foundations endpoint accepts the publish token's siteId claim
   // for this scope.
   if (localFoundation) {
     say.info(`Building foundation at ${localFoundation.relPath}…`)
@@ -755,7 +755,7 @@ export async function deploy(args = []) {
 
     say.info(`Uploading foundation as ${foundation}…`)
     const foundationFiles = await collectFoundationDistFiles(join(localFoundation.path, 'dist'))
-    const foundationPublishUrl = foundationUploadUrl || `${workerUrl}/api/foundations`
+    const foundationPublishUrl = foundationUploadUrl || `${workerUrl}/foundations`
     const { gitSha: fGitSha, gitDirty: fGitDirty } = readGitState(localFoundation.path)
     await callFoundationUpload({
       url: foundationPublishUrl,
@@ -1038,7 +1038,7 @@ export async function resolveSiteDir(args, verb = 'deploy') {
 
 async function fetchLatestRuntime(workerUrl) {
   try {
-    const res = await fetch(`${workerUrl}/api/runtime/latest`)
+    const res = await fetch(`${workerUrl}/runtime/latest`)
     if (!res.ok) return null
     const body = await res.json()
     return body.version || null
@@ -1198,7 +1198,7 @@ async function callPublish({ url, token, body }) {
 
 /**
  * Walk a built foundation's `dist/` directory and return `{ relPath: base64Bytes }`
- * — the shape `POST /api/foundations` expects in its `files` field.
+ * — the shape `POST /foundations` expects in its `files` field.
  */
 async function collectFoundationDistFiles(distDir) {
   if (!existsSync(distDir)) {
