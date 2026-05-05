@@ -74,25 +74,32 @@ function printNotification(current, latest, tone = 'soft') {
 }
 
 /**
- * Synchronously read the cache and print an eager notification if a newer
+ * Synchronously read the cache and print a notification if a newer
  * version is known. No network fetch — only reads what `startUpdateCheck`
  * has previously cached. Returns true if a notification was printed.
  *
- * Use this for staleness-sensitive verbs (`create`) BEFORE the verb does
- * its work, so the user sees the warning before any files are written
- * from CLI-bundled templates. For other verbs, the trailing soft
- * notification from startUpdateCheck() is sufficient.
+ * Two call sites today, with different tone needs:
+ *   - `create` (tone='eager'): loud leading notice — templates ship with
+ *     the CLI, the user is about to scaffold files, this matters.
+ *   - `--version` / `-v` (tone='soft'): brief trailing notice — the user
+ *     was already asking about version, mention staleness while we're
+ *     here. Goes to stderr so scripts capturing stdout aren't affected.
  *
  * @param {string} currentVersion
+ * @param {'eager'|'soft'} [tone='eager']
  * @returns {boolean} true if a notification was printed
  */
-export function maybeEagerNotification(currentVersion) {
+export function maybeNotifyFromCache(currentVersion, tone = 'eager') {
   const state = readState()
   if (!state.latestVersion) return false
   if (compareSemver(state.latestVersion, currentVersion) <= 0) return false
-  printNotification(currentVersion, state.latestVersion, 'eager')
+  printNotification(currentVersion, state.latestVersion, tone)
   return true
 }
+
+// Old name preserved as alias — `create` calls it without a tone arg
+// and gets the eager default. Keeps that call site unchanged.
+export const maybeEagerNotification = maybeNotifyFromCache
 
 /**
  * Start a non-blocking update check.

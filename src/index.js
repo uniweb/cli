@@ -445,8 +445,20 @@ async function main() {
   const pm = detectPackageManager()
 
   // Handle --version / -v
+  //
+  // Output convention: the version goes to stdout (parseable, scriptable —
+  // `version=$(uniweb --version)` should keep working). Any staleness
+  // notice goes to stderr, so it shows in interactive terminals but
+  // doesn't pollute captured output. Cache-only — never makes a network
+  // call from this path.
   if (command === '--version' || command === '-v') {
     console.log(`uniweb ${getCliVersion()}`)
+    if (isGlobalInstall()) {
+      try {
+        const { maybeNotifyFromCache } = await import('./utils/update-check.js')
+        maybeNotifyFromCache(getCliVersion(), 'soft')
+      } catch { /* ignore */ }
+    }
     return
   }
 
