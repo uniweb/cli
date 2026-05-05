@@ -63,6 +63,8 @@ import yaml from 'js-yaml'
 
 import { detectFoundationType } from '@uniweb/build'
 import { loadDeployYml, resolveTarget, recordLastDeploy } from '@uniweb/build/site'
+import { promptForHost } from '../utils/host-prompt.js'
+import { readFlagValue } from '../utils/args.js'
 
 import { ensureAuth, readAuth, decodeJwtPayload } from '../utils/auth.js'
 import { getBackendUrl, getRegistryUrl } from '../utils/config.js'
@@ -81,18 +83,6 @@ function splitRegistryRef(ref) {
   return m ? { name: m[1], version: m[2] } : null
 }
 
-/**
- * Read `--flag value` from argv. Accepts both `--flag value` and
- * `--flag=value`. Returns null when absent.
- */
-function readFlagValue(args, name) {
-  const eqPrefix = name + '='
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === name) return args[i + 1] ?? null
-    if (args[i].startsWith(eqPrefix)) return args[i].slice(eqPrefix.length)
-  }
-  return null
-}
 import {
   findWorkspaceRoot,
   findSites,
@@ -447,7 +437,7 @@ export async function deploy(args = []) {
   // static-host deploys don't, so this branch comes BEFORE the foundation
   // check. See kb/framework/plans/static-host-deploy-adapters.md.
   const targetFromFlag = readFlagValue(args, '--target')
-  const hostFromFlag = readFlagValue(args, '--host')
+  let hostFromFlag = readFlagValue(args, '--host')
   const noSave = args.includes('--no-save')
 
   let deployYml
@@ -459,10 +449,20 @@ export async function deploy(args = []) {
   }
   let resolved
   try {
-    resolved = resolveTarget(deployYml, targetFromFlag)
+    resolved = resolveTarget(deployYml, targetFromFlag || null)
   } catch (err) {
     say.err(err.message)
     process.exit(1)
+  }
+  // --host with no value → interactive picker. Pre-selects the resolved
+  // target's host so Enter does the obvious thing.
+  if (hostFromFlag === null) {
+    try {
+      hostFromFlag = await promptForHost({ args, preselect: resolved.host })
+    } catch (err) {
+      say.err(err.message)
+      process.exit(1)
+    }
   }
   const host = hostFromFlag || resolved.host
   const hostOverridden = !!hostFromFlag && hostFromFlag !== resolved.host

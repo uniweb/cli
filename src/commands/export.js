@@ -54,9 +54,21 @@ export async function exportSite(args = []) {
   const buildArgs = ['build', '--bundle']
   if (noPrerender) buildArgs.push('--no-prerender')
 
-  const hostIndex = args.indexOf('--host')
-  if (hostIndex !== -1 && args[hostIndex + 1]) {
-    buildArgs.push('--host', args[hostIndex + 1])
+  const { readFlagValue } = await import('../utils/args.js')
+  const hostFlag = readFlagValue(args, '--host')
+  if (hostFlag === null) {
+    // --host with no value → prompt here so the build subprocess gets
+    // a concrete value (and doesn't re-prompt against its own argv).
+    const { promptForHost } = await import('../utils/host-prompt.js')
+    try {
+      const chosen = await promptForHost({ args })
+      buildArgs.push('--host', chosen)
+    } catch (err) {
+      say.err(err.message)
+      process.exit(1)
+    }
+  } else if (typeof hostFlag === 'string') {
+    buildArgs.push('--host', hostFlag)
   }
 
   say.info('Exporting site (vite build → dist/)…')

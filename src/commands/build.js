@@ -844,10 +844,21 @@ export async function build(args = []) {
   // Default = 'cloudflare-pages' (resolved inside prerender.js, via the
   // registry). Build does not read deploy.yml; that is the deploy
   // orchestrator's job. See kb/framework/plans/static-host-deploy-adapters.md.
+  //
+  // `--host` with no value → interactive picker (errors in CI / non-TTY).
+  const { readFlagValue } = await import('../utils/args.js')
+  const hostFlag = readFlagValue(args, '--host')
   let host = null
-  const hostIndex = args.indexOf('--host')
-  if (hostIndex !== -1 && args[hostIndex + 1]) {
-    host = args[hostIndex + 1]
+  if (hostFlag === null) {
+    const { promptForHost } = await import('../utils/host-prompt.js')
+    try {
+      host = await promptForHost({ args })
+    } catch (err) {
+      error(err.message)
+      process.exit(1)
+    }
+  } else if (typeof hostFlag === 'string') {
+    host = hostFlag
   }
 
   // Auto-detect project type if not specified
