@@ -17,9 +17,10 @@
  * Usage:
  *   uniweb export                          Produce dist/ for static hosting
  *   uniweb export --no-prerender           Skip per-page prerendered HTML
- *   uniweb export --host <name>            Select a host adapter (e.g.
- *                                          netlify, s3-cloudfront, generic-static).
- *                                          Overrides site.yml's deploy.host.
+ *   uniweb export --host <name>            Pick a host adapter for postBuild
+ *                                          (e.g. cloudflare-pages, s3-cloudfront,
+ *                                          github-pages, generic-static).
+ *                                          Default: cloudflare-pages.
  */
 
 import { execSync } from 'node:child_process'

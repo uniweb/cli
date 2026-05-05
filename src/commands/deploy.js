@@ -1057,10 +1057,11 @@ async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave,
     say.info(`Dry run — would deploy via host adapter: ${c.bold}${adapter.name}${c.reset}`)
     say.dim(`Site dir       : ${siteDir}`)
     say.dim(`dist/          : ${existsSync(distDir) ? 'exists (would not rebuild)' : 'missing (would build)'}`)
-    say.dim(`deploy.bucket  : ${deployConfig.bucket || '(unset)'}`)
-    say.dim(`deploy.distId  : ${deployConfig.distributionId || '(unset)'}`)
-    say.dim(`deploy.region  : ${deployConfig.region || '(unset)'}`)
-    say.dim(`deploy.profile : ${deployConfig.profile || '(default AWS chain)'}`)
+    say.dim(`Target         : ${resolved.targetName}`)
+    say.dim(`bucket         : ${deployConfig.bucket || '(unset)'}`)
+    say.dim(`distributionId : ${deployConfig.distributionId || '(unset)'}`)
+    say.dim(`region         : ${deployConfig.region || '(unset)'}`)
+    say.dim(`profile        : ${deployConfig.profile || '(default AWS chain)'}`)
     return
   }
 

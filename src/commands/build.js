@@ -35,8 +35,10 @@
  *   uniweb build --target site       # Explicitly build as site
  *   uniweb build --prerender         # Force pre-rendering
  *   uniweb build --no-prerender      # Skip pre-rendering
- *   uniweb build --host <name>       # Override site.yml deploy.host (e.g.
- *                                      netlify, s3-cloudfront, generic-static)
+ *   uniweb build --host <name>       # Pick the host adapter for this build's
+ *                                      postBuild step (e.g. cloudflare-pages,
+ *                                      s3-cloudfront, github-pages,
+ *                                      generic-static). Default: cloudflare-pages.
  *
  * Internal flags (called by `uniweb deploy` / `uniweb export`):
  *   --link              # Data-only pipeline (Uniweb-edge)
@@ -838,8 +840,10 @@ export async function build(args = []) {
     foundationDir = resolve(args[foundationDirIndex + 1])
   }
 
-  // --host overrides site.yml's deploy.host for this build's prerender
-  // step. Validated lazily (inside prerender.js, via the registry).
+  // --host names the host adapter for this build's prerender step.
+  // Default = 'cloudflare-pages' (resolved inside prerender.js, via the
+  // registry). Build does not read deploy.yml; that is the deploy
+  // orchestrator's job. See kb/framework/plans/static-host-deploy-adapters.md.
   let host = null
   const hostIndex = args.indexOf('--host')
   if (hostIndex !== -1 && args[hostIndex + 1]) {
