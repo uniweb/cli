@@ -157,9 +157,17 @@ export async function writeRootPackageJson(rootDir, pkg) {
 }
 
 /**
- * Compute root scripts based on discovered sites
+ * Compute root scripts based on discovered sites.
+ *
+ * `dev` and `build` route through the uniweb CLI verb (PM-agnostic — they
+ * resolve `uniweb` from the project's local node_modules/.bin, so `pnpm
+ * dev` and `npm run dev` both work without locking the scripts to one PM
+ * at create-time). `preview` stays on a PM-specific filter because there
+ * isn't a `uniweb preview` verb yet (the site's own `vite preview` is what
+ * runs); switch it over when one ships.
+ *
  * @param {Array<{name: string, path: string}>} sites - Discovered sites
- * @param {'pnpm' | 'npm'} [pm='pnpm'] - Package manager
+ * @param {'pnpm' | 'npm'} [pm='pnpm'] - Package manager (used only for preview)
  * @returns {Object} Scripts object for package.json
  */
 export function computeRootScripts(sites, pm = 'pnpm') {
@@ -172,16 +180,17 @@ export function computeRootScripts(sites, pm = 'pnpm') {
   }
 
   if (sites.length === 1) {
-    scripts.dev = filterCmd(pm, sites[0].name, 'dev')
+    scripts.dev = 'uniweb dev'
     scripts.preview = filterCmd(pm, sites[0].name, 'preview')
   } else {
-    // First site gets unqualified dev/preview
-    scripts.dev = filterCmd(pm, sites[0].name, 'dev')
+    // First site gets unqualified dev/preview (matches `uniweb dev`'s
+    // default-to-first-site behavior).
+    scripts.dev = 'uniweb dev'
     scripts.preview = filterCmd(pm, sites[0].name, 'preview')
 
     // Subsequent sites get qualified dev:{name}/preview:{name}
     for (let i = 1; i < sites.length; i++) {
-      scripts[`dev:${sites[i].name}`] = filterCmd(pm, sites[i].name, 'dev')
+      scripts[`dev:${sites[i].name}`] = `uniweb dev ${sites[i].name}`
       scripts[`preview:${sites[i].name}`] = filterCmd(pm, sites[i].name, 'preview')
     }
   }

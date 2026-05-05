@@ -199,12 +199,16 @@ async function createFromPackageTemplates(projectDir, projectName, options = {})
 
   onProgress?.('Setting up workspace...')
 
-  // 1. Scaffold workspace
+  // 1. Scaffold workspace.
+  // dev/build go through `uniweb` verbs so the scripts stay PM-agnostic
+  // (the verb resolves the right PM at runtime instead of locking the
+  // root scripts to whichever PM ran `npx uniweb create`). preview stays
+  // PM-filtered until a `uniweb preview` verb exists.
   await scaffoldWorkspace(projectDir, {
     projectName,
     workspaceGlobs: ['site', 'src'],
     scripts: {
-      dev: filterCmd(pm, 'site', 'dev'),
+      dev: 'uniweb dev',
       build: 'uniweb build',
       preview: filterCmd(pm, 'site', 'preview'),
     },
@@ -286,17 +290,19 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
   const scripts = {
     build: 'uniweb build',
   }
+  // dev goes through `uniweb` (PM-agnostic; see computeRootScripts).
+  // preview stays PM-filtered until a `uniweb preview` verb exists.
   if (sites.length === 1) {
-    scripts.dev = filterCmd(pm, sites[0].name, 'dev')
+    scripts.dev = 'uniweb dev'
     scripts.preview = filterCmd(pm, sites[0].name, 'preview')
   } else {
     for (const s of sites) {
-      scripts[`dev:${s.name}`] = filterCmd(pm, s.name, 'dev')
+      scripts[`dev:${s.name}`] = `uniweb dev ${s.name}`
       scripts[`preview:${s.name}`] = filterCmd(pm, s.name, 'preview')
     }
     // First site gets unqualified aliases
     if (sites.length > 0) {
-      scripts.dev = filterCmd(pm, sites[0].name, 'dev')
+      scripts.dev = 'uniweb dev'
       scripts.preview = filterCmd(pm, sites[0].name, 'preview')
     }
   }

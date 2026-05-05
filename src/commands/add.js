@@ -389,7 +389,7 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
     success(`Created site ${colors.bright}${siteName}${colors.reset} at ${relativePath}/`)
   }
   log('')
-  log(`Next: ${colors.cyan}${installCmd(pm)} && ${filterCmd(pm, siteName, 'dev')}${colors.reset}`)
+  log(`Next: ${colors.cyan}${installCmd(pm)} && uniweb dev ${siteName}${colors.reset}`)
   if (!opts.from) {
     log('')
     log(`${colors.dim}To add your first page, create ${relativePath}/pages/home/page.yml and a .md file.${colors.reset}`)
@@ -631,7 +631,7 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
   log(`  ${colors.dim}Foundation: ${name}/src/ (${foundationPkgName})${colors.reset}`)
   log(`  ${colors.dim}Site: ${name}/site/ (${sitePkgName})${colors.reset}`)
   log('')
-  log(`Next: ${colors.cyan}${installCmd(pm)} && ${filterCmd(pm, sitePkgName, 'dev')}${colors.reset}`)
+  log(`Next: ${colors.cyan}${installCmd(pm)} && uniweb dev ${sitePkgName}${colors.reset}`)
 }
 
 /**
