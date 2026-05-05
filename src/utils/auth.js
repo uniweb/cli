@@ -153,15 +153,43 @@ export function isExpired(auth) {
  * Ensure the user is authenticated. If not, prompt inline login.
  * Returns the auth token on success, exits the process on cancel.
  *
+ * In non-interactive mode (CI, no TTY, or --non-interactive in args),
+ * bails with an actionable error instead of opening a browser. The browser
+ * login flow waits 120 seconds for a callback that can never arrive without
+ * a user, then drops to a token-paste prompt that pipes can't answer —
+ * silently burning two minutes per invocation. CI / agent / piped callers
+ * must set `UNIWEB_TOKEN`, run `uniweb login` interactively first, or use
+ * `--local` for the unicloud mock (see workspace root CLAUDE.md).
+ *
  * @param {Object} options
  * @param {string} options.command - The command that needs auth (for messaging)
+ * @param {string[]} [options.args] - Argv slice; checked for --non-interactive
  * @returns {Promise<string>} Bearer token
  */
-export async function ensureAuth({ command = 'This command' } = {}) {
+export async function ensureAuth({ command = 'This command', args = [] } = {}) {
+  // Honor explicit token from env — useful for CI and agents.
+  if (process.env.UNIWEB_TOKEN) {
+    return process.env.UNIWEB_TOKEN
+  }
+
   const auth = await readAuth()
 
   if (auth?.token && !isExpired(auth)) {
     return auth.token
+  }
+
+  // Non-interactive bail: don't open a browser, don't wait 120s, don't
+  // prompt for a token paste. Print an actionable error and exit.
+  const { isNonInteractive, getCliPrefix } = await import('./interactive.js')
+  if (isNonInteractive(args)) {
+    const prefix = getCliPrefix()
+    const reason = auth && isExpired(auth) ? 'Session expired.' : 'Not logged in.'
+    console.error(`\x1b[31m✗\x1b[0m ${reason} ${command} requires a Uniweb account, and the CLI is in non-interactive mode (CI / no TTY / --non-interactive).`)
+    console.error(`  Options:`)
+    console.error(`    • Run \`${prefix} login\` interactively first, then re-run.`)
+    console.error(`    • Set the \`UNIWEB_TOKEN\` env var to a bearer token.`)
+    console.error(`    • Use \`--local\` to target the unicloud mock (internal testing only — see workspace root CLAUDE.md).`)
+    process.exit(1)
   }
 
   // Need to log in — delegate to the login command

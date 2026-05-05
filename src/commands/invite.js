@@ -146,7 +146,7 @@ async function readSchema(foundationDir) {
  * Create a RemoteRegistry instance with auth.
  */
 async function createRegistry(args) {
-  const token = await ensureAuth({ command: 'Creating invite' })
+  const token = await ensureAuth({ command: 'Creating invite', args })
 
   const registryUrl = parseFlag(args, '--registry')
   const url = registryUrl || process.env.UNIWEB_REGISTRY_URL || 'http://localhost:4001'

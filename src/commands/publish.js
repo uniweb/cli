@@ -794,7 +794,7 @@ export async function publish(args = []) {
     registry = createLocalRegistry(foundationDir)
   } else {
     // Remote publish — ensure authenticated (inline login if needed)
-    const token = await ensureAuth({ command: 'Publishing' })
+    const token = await ensureAuth({ command: 'Publishing', args })
 
     const url = registryUrl || getRegistryUrl()
     registry = new RemoteRegistry(url, token)

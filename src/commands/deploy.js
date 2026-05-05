@@ -599,7 +599,7 @@ export async function deploy(args = []) {
   // doesn't fail the whole deploy.
   const desiredFeatures = readFeaturesFromYaml(siteYml)
 
-  const cliToken = await ensureAuth({ command: 'Deploying' })
+  const cliToken = await ensureAuth({ command: 'Deploying', args })
 
   // Always rebuild unless the user explicitly opts out with --skip-build.
   // A stale dist/ from a previous build + edited content on disk would

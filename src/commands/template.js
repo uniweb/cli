@@ -191,7 +191,7 @@ async function templatePublish(args) {
   console.log(`  ${colors.dim}${fileCount} files${colors.reset}`)
 
   // 5. Authenticate
-  const token = await ensureAuth({ command: 'Publishing template' })
+  const token = await ensureAuth({ command: 'Publishing template', args })
 
   // 6. Build payload
   const url = registryUrl || process.env.UNIWEB_REGISTRY_URL || 'http://localhost:4001'
