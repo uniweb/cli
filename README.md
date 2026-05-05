@@ -310,20 +310,22 @@ Start with local files deployed anywhere. The same foundation works across all t
 
 ## Deployment
 
-A Uniweb project produces two artifacts — a **site** (content) and a **foundation** (code) — and they don't have to ship together. That opens up deployment options other frameworks can't express:
+A Uniweb project produces two artifacts — a **site** (content) and a **foundation** (code) — and they don't have to ship together. Two top-level modes:
 
 - **Standalone mode** — site and foundation built into one self-contained `dist/`, deployed to any static host.
-- **Linked mode** — the foundation lives at one URL, sites load it dynamically. Different sites can share the same foundation; updates propagate without site rebuilds.
+- **Linked mode** — the foundation is a separate file the site loads at runtime, with two flavours:
+  - **Site-bound** — the foundation belongs to one site and rides with it (`foundation: ~self/<name>@<version>` in `site.yml`).
+  - **Cataloged** — the foundation is a catalog product, published once and licensed to consuming sites (`foundation: '@<org>/<name>@<version>'`).
 
-`uniweb publish` sends a foundation to a registry; `uniweb deploy` sends a site to a host. Most projects start standalone (one command, one destination) and grow into linked mode by changing one line in `site.yml`.
+`uniweb publish` ships a cataloged foundation; `uniweb deploy` ships a site (and, for site-bound, the foundation along with it). Most projects start standalone or site-bound and grow into cataloged when a foundation needs to serve more than one site.
 
 Where can you deploy?
 
 - **Free static hosts** — Vercel, Cloudflare Pages, Netlify, GitHub Pages — work great when you have a site to publish. Built-in adapters: `vercel`, `cloudflare-pages`, `netlify`, `github-pages`. Lifecycle is Git-driven: connect your repo, the host runs `uniweb build` on each push, serves `dist/`. The framework auto-detects the CI host and emits the right helper files.
 - **AWS S3 + CloudFront** — `uniweb deploy --host=s3-cloudfront` builds, syncs, and invalidates in one command.
-- **Uniweb hosting** — paid (starts at $14/month per site), but adds JIT prerender, edge SSR, foundation propagation, multi-tenant CMS, and the visual editor for non-technical content authors. The right choice when foundation developers or agencies build for clients who manage their own content.
+- **Uniweb hosting** — paid (starts at $14/month per site). Always serves linked sites with JIT prerender, edge SSR, locale-aware routing, foundation/runtime version propagation, and the multi-tenant CMS for non-technical content authors via the visual editor. The right choice when foundation developers or agencies build for clients who manage their own content. The catalog is private and access-segregated — foundations are commercial products licensed by site, not packages on a public registry.
 
-→ **[Deploying](https://github.com/uniweb/docs/blob/main/development/deploying.md)** — the full menu: picking a deploy path (free vs paid), standalone vs linked, the two-verb model, CI-detection, and per-host recipes.
+→ **[Deploying](https://github.com/uniweb/docs/blob/main/development/deploying.md)** — the full menu: picking a deploy path (free vs paid), standalone vs linked, site-bound vs cataloged, the two-verb model, CI-detection, and per-host recipes.
 
 ---
 
