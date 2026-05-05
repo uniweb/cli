@@ -458,12 +458,26 @@ async function main() {
     // Commands that need @uniweb/build will get a helpful error via importProjectCommand().
   }
 
-  // Start non-blocking update check for global installs
+  // Start non-blocking update check for global installs.
+  //
+  // Two surfaces:
+  //   - showUpdateNotification (soft, trailing): printed at command end for
+  //     any verb. Doesn't interrupt the user's workflow.
+  //   - eager (loud, leading): printed BEFORE staleness-sensitive verbs do
+  //     their work. Today: only `create` (templates ship with the CLI, so
+  //     a stale CLI scaffolds stale starter content; the user needs to know
+  //     before files hit disk). Other verbs are insensitive — `deploy` etc.
+  //     are project-bound (delegated to local node_modules), and the
+  //     local-vs-global mismatch warning in delegateToLocal already covers
+  //     that case.
   let showUpdateNotification = () => {}
   if (global) {
     try {
-      const { startUpdateCheck } = await import('./utils/update-check.js')
+      const { startUpdateCheck, maybeEagerNotification } = await import('./utils/update-check.js')
       showUpdateNotification = startUpdateCheck(getCliVersion())
+      if (command === 'create') {
+        maybeEagerNotification(getCliVersion())
+      }
     } catch {
       // Update check is optional — don't fail if the module is missing
     }

@@ -52,15 +52,46 @@ function writeState(state) {
 
 /**
  * Print update notification to stderr (doesn't interfere with piped output).
+ * `tone` controls the lead-in: 'soft' (default — trailing notice for finished
+ * commands) vs 'eager' (leading notice for staleness-sensitive commands like
+ * `create`, where the user is about to scaffold files from CLI-bundled
+ * templates and a stale CLI means stale starter content).
  */
-function printNotification(current, latest) {
+function printNotification(current, latest, tone = 'soft') {
   const yellow = '\x1b[33m'
   const cyan = '\x1b[36m'
   const dim = '\x1b[2m'
   const reset = '\x1b[0m'
   console.error('')
-  console.error(`${yellow}Update available:${reset} ${dim}${current}${reset} → ${cyan}${latest}${reset}`)
-  console.error(`${dim}Run${reset} npm i -g uniweb ${dim}to update${reset}`)
+  if (tone === 'eager') {
+    console.error(`${yellow}Heads up:${reset} this CLI is ${dim}${current}${reset}; latest is ${cyan}${latest}${reset}.`)
+    console.error(`${dim}Templates ship with the CLI — consider updating first:${reset} npm i -g uniweb`)
+    console.error(`${dim}Or run a one-shot fresh:${reset} npx uniweb@latest <command>`)
+  } else {
+    console.error(`${yellow}Update available:${reset} ${dim}${current}${reset} → ${cyan}${latest}${reset}`)
+    console.error(`${dim}Run${reset} npm i -g uniweb ${dim}to update${reset}`)
+  }
+}
+
+/**
+ * Synchronously read the cache and print an eager notification if a newer
+ * version is known. No network fetch — only reads what `startUpdateCheck`
+ * has previously cached. Returns true if a notification was printed.
+ *
+ * Use this for staleness-sensitive verbs (`create`) BEFORE the verb does
+ * its work, so the user sees the warning before any files are written
+ * from CLI-bundled templates. For other verbs, the trailing soft
+ * notification from startUpdateCheck() is sufficient.
+ *
+ * @param {string} currentVersion
+ * @returns {boolean} true if a notification was printed
+ */
+export function maybeEagerNotification(currentVersion) {
+  const state = readState()
+  if (!state.latestVersion) return false
+  if (compareSemver(state.latestVersion, currentVersion) <= 0) return false
+  printNotification(currentVersion, state.latestVersion, 'eager')
+  return true
 }
 
 /**
