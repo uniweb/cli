@@ -1213,21 +1213,34 @@ ${colors.bright}Template Options:${colors.reset}
   --registry <url>   Registry URL (default: http://localhost:4001)
 
 ${colors.bright}Deploy Options:${colors.reset}
+  --target <name>    Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
+  --host <name>      Override the resolved target's host (does not persist).
+                     Without a value, opens an interactive picker (TTY only).
+                     Hosts: uniweb, cloudflare-pages, netlify, vercel,
+                     github-pages, s3-cloudfront, generic-static.
   --dry-run          Resolve site.yml + foundation/runtime; print summary; no writes
   --no-auto-publish  Don't auto-publish workspace-local foundation as part of deploy
+  --no-save          Skip the auto-save of lastDeploy in deploy.yml
+
+${colors.bright}Dev Options:${colors.reset}
+  <site>             Site name to run (positional)
+  --site <name>      Site name to run (explicit form)
 
 ${colors.bright}Export Options:${colors.reset}
   --no-prerender     Skip per-page prerendered HTML
+  --host <name>      Apply host-specific postBuild (cloudflare-pages, github-pages, …)
 
 ${colors.bright}Build Options:${colors.reset}
-  --target <type>    Build target (foundation, site) - auto-detected if not specified
+  --target <type>    Build target (foundation, site) — auto-detected if not specified
   --prerender        Force pre-rendering (overrides site.yml)
   --no-prerender     Skip pre-rendering (overrides site.yml)
   --foundation-dir   Path to foundation directory (for prerendering)
-  --platform <name>  Deployment platform (e.g., vercel) for platform-specific output
+  --host <name>      Apply host-specific postBuild (cloudflare-pages, s3-cloudfront, …)
+  --platform <name>  (Deprecated alias for --host)
 
   At workspace root, builds all foundations first, then all sites.
-  Pre-rendering is enabled by default when build.prerender: true in site.yml
+  Pre-rendering is enabled by default when build.prerender: true in site.yml.
+  See \`uniweb <command> --help\` for command-specific detail and examples.
 
 ${colors.bright}Docs Subcommands:${colors.reset}
   docs               Generate COMPONENTS.md from foundation schema
