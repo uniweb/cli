@@ -1,8 +1,8 @@
 /**
  * Deploy Command
  *
- * Deploys a site. Host is determined by `deploy.host` in site.yml (or
- * `--host <name>` flag). The default is `uniweb`:
+ * Deploys a site. Host is determined by the resolved deploy.yml target
+ * (or `--target <name>` / `--host <name>` flags). The default is `uniweb`:
  *
  *   - `uniweb` (default): Uniweb hosting — link-mode + edge JIT prerender.
  *     Foundation loaded by URL from the registry. Requires `uniweb login`
@@ -39,8 +39,10 @@
  *   uniweb deploy                          Normal deploy (browser may open on first deploy)
  *   uniweb deploy --dry-run                Resolve everything but skip the Worker POST
  *   uniweb deploy --no-auto-publish        Don't auto-publish workspace-local foundation
- *   uniweb deploy --host <name>            Static-host flow (e.g., s3-cloudfront,
- *                                          generic-static). Overrides site.yml deploy.host.
+ *   uniweb deploy --target <name>          Pick a target from deploy.yml (default: deploy.yml's `default:`)
+ *   uniweb deploy --host <name>            Override the resolved target's host adapter
+ *                                          (does not write to deploy.yml on success)
+ *   uniweb deploy --no-save                Skip the auto-save of lastDeploy in deploy.yml
  *
  * Internal escape hatches (UNIWEB_* env vars — see framework/cli/docs/env-vars.md):
  *   UNIWEB_SKIP_BUILD=1                    Reuse existing dist/ instead of rebuilding
@@ -60,6 +62,7 @@ import { execSync } from 'node:child_process'
 import yaml from 'js-yaml'
 
 import { detectFoundationType } from '@uniweb/build'
+import { loadDeployYml, resolveTarget, recordLastDeploy } from '@uniweb/build/site'
 
 import { ensureAuth, readAuth, decodeJwtPayload } from '../utils/auth.js'
 import { getBackendUrl, getRegistryUrl } from '../utils/config.js'
@@ -76,6 +79,19 @@ function splitRegistryRef(ref) {
   if (typeof ref !== 'string') return null
   const m = /^(@[^/]+\/[^@]+|~[^/]+\/[^@]+|[^@]+)@(.+)$/.exec(ref)
   return m ? { name: m[1], version: m[2] } : null
+}
+
+/**
+ * Read `--flag value` from argv. Accepts both `--flag value` and
+ * `--flag=value`. Returns null when absent.
+ */
+function readFlagValue(args, name) {
+  const eqPrefix = name + '='
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === name) return args[i + 1] ?? null
+    if (args[i].startsWith(eqPrefix)) return args[i].slice(eqPrefix.length)
+  }
+  return null
 }
 import {
   findWorkspaceRoot,
@@ -417,18 +433,49 @@ export async function deploy(args = []) {
   const siteYmlPath = join(siteDir, 'site.yml')
   const siteYml = await readSiteYml(siteYmlPath)
 
-  // Host dispatch. The default host is `uniweb` — Uniweb hosting
-  // (link-mode + edge JIT prerender), which is the rest of this
-  // function. Any other named host is a static-host adapter; hand off
-  // to it and return. The default flow requires a `foundation:`
-  // declaration; static-host deploys don't, so this branch comes BEFORE
-  // the foundation check.
-  // See kb/framework/plans/static-host-deploy-adapters.md.
-  const hostFlagIndex = args.indexOf('--host')
-  const hostFromFlag = hostFlagIndex !== -1 ? args[hostFlagIndex + 1] : null
-  const host = hostFromFlag || siteYml.deploy?.host || 'uniweb'
+  // Host dispatch.
+  //
+  // Resolution order:
+  //   1. --target <name> picks a target from deploy.yml (full config:
+  //      host + adapter-specific fields)
+  //   2. deploy.yml's `default:` target is used when no flag is given
+  //   3. With no deploy.yml at all, the implicit default is host: 'uniweb'
+  //   4. --host <name> is a one-off override of the resolved target's host
+  //      and does NOT persist on success (see saveDeployTarget below).
+  //
+  // The default flow (`uniweb`) requires a `foundation:` declaration;
+  // static-host deploys don't, so this branch comes BEFORE the foundation
+  // check. See kb/framework/plans/static-host-deploy-adapters.md.
+  const targetFromFlag = readFlagValue(args, '--target')
+  const hostFromFlag = readFlagValue(args, '--host')
+  const noSave = args.includes('--no-save')
+
+  let deployYml
+  try {
+    deployYml = await loadDeployYml(siteDir)
+  } catch (err) {
+    say.err(err.message)
+    process.exit(1)
+  }
+  let resolved
+  try {
+    resolved = resolveTarget(deployYml, targetFromFlag)
+  } catch (err) {
+    say.err(err.message)
+    process.exit(1)
+  }
+  const host = hostFromFlag || resolved.host
+  const hostOverridden = !!hostFromFlag && hostFromFlag !== resolved.host
+  // Auto-save scope: 'off' from --no-save OR an ad-hoc --host override
+  // (we don't want a one-off experiment to rewrite the file).
+  const autoSave = noSave || hostOverridden ? 'off' : resolved.autoSave
+
   if (host !== 'uniweb') {
-    await deployStaticHost(siteDir, siteYml, host, { dryRun })
+    await deployStaticHost(siteDir, host, resolved, {
+      dryRun,
+      autoSave,
+      hostOverridden,
+    })
     return
   }
 
@@ -944,19 +991,40 @@ export async function deploy(args = []) {
   if (handleResolved) {
     console.log(`  ${c.cyan}https://${handleResolved}.uniweb.website/${c.reset}`)
   }
+
+  // Record a fresh lastDeploy.<target> entry. Skipped on --no-save (and
+  // on --host overrides, but uniweb-host can't be reached via override
+  // since the override branches into deployStaticHost above).
+  await persistLastDeploy(siteDir, {
+    targetName: resolved.targetName,
+    targetConfig: resolved.fromFile ? null : { host: 'uniweb' },
+    autoSave,
+    lastDeploy: {
+      at: deployReceipt.deployedAt,
+      host: 'uniweb',
+      url: deployReceipt.url,
+      siteId: siteIdResolved,
+      handle: handleResolved,
+      foundation: {
+        shape: 'linked',
+        ref: foundationRef,
+      },
+      runtime: runtimeVersion,
+    },
+  })
 }
 
 // ─── Static-host deploy (S3+CloudFront, etc.) ─────────────────
 //
-// Distinct from the uniweb-edge flow above. Picked when site.yml's
-// `deploy.host` (or --host flag) names a static-host adapter
-// registered in @uniweb/build/hosts. Always runs `uniweb build`
-// (bundle mode + prerender) first, then hands dist/ to the adapter's
-// deploy hook for upload + invalidation.
+// Distinct from the uniweb-edge flow above. Picked when the resolved
+// deploy.yml target (or --host override) names a static-host adapter
+// registered in @uniweb/build/hosts. Always runs `uniweb build` (bundle
+// mode + prerender) first, then hands dist/ to the adapter's deploy hook
+// for upload + invalidation.
 //
 // See kb/framework/plans/static-host-deploy-adapters.md.
 
-async function deployStaticHost(siteDir, siteYml, hostName, { dryRun }) {
+async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave, hostOverridden }) {
   let getAdapter
   try {
     ({ getAdapter } = await import('@uniweb/build/hosts'))
@@ -971,7 +1039,7 @@ async function deployStaticHost(siteDir, siteYml, hostName, { dryRun }) {
     adapter = getAdapter(hostName)
   } catch (err) {
     say.err(err.message)
-    say.dim(`Set deploy.host in site.yml or pass --host=<name>. See \`uniweb deploy --help\`.`)
+    say.dim('Set the host in deploy.yml or pass --host=<name>. See `uniweb deploy --help`.')
     process.exit(1)
   }
 
@@ -982,7 +1050,7 @@ async function deployStaticHost(siteDir, siteYml, hostName, { dryRun }) {
     process.exit(1)
   }
 
-  const deployConfig = siteYml.deploy || {}
+  const deployConfig = resolved.config || {}
   const distDir = join(siteDir, 'dist')
 
   if (dryRun) {
@@ -1044,6 +1112,39 @@ async function deployStaticHost(siteDir, siteYml, hostName, { dryRun }) {
       process.exit(1)
     }
     throw err
+  }
+
+  // Record a fresh lastDeploy.<target> entry. Skipped on --no-save and
+  // on ad-hoc --host overrides — see autoSave gating in deploy().
+  await persistLastDeploy(siteDir, {
+    targetName: resolved.targetName,
+    targetConfig: resolved.fromFile ? null : { host: hostName, ...deployConfig },
+    autoSave,
+    lastDeploy: {
+      at: new Date().toISOString(),
+      host: hostName,
+      // Static hosts know their public URL only via the user's CDN config;
+      // we don't have it on hand. Future: pull from a known field.
+    },
+  })
+  if (hostOverridden && !dryRun) {
+    say.dim('--host override active — did not write to deploy.yml. Edit deploy.yml to make this permanent.')
+  }
+}
+
+// ─── deploy.yml lastDeploy persistence ──────────────────────────
+
+async function persistLastDeploy(siteDir, opts) {
+  if (opts.autoSave === 'off') return
+  try {
+    const result = await recordLastDeploy(siteDir, opts)
+    if (result?.created) {
+      say.dim(`Wrote deploy.yml (target: ${opts.targetName})`)
+    }
+  } catch (err) {
+    // The deploy itself succeeded — never fail the whole command on a
+    // memo-write error. Surface it so the user can fix the file.
+    say.dim(`Could not update deploy.yml: ${err.message}`)
   }
 }
 
