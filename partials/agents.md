@@ -148,8 +148,7 @@ uniweb deploy --host=<adapter>    # Deploy to a static host: cloudflare-pages, n
                                   # vercel, github-pages, s3-cloudfront, generic-static
 uniweb deploy --dry-run           # Resolve foundation/runtime + print summary; no writes
 uniweb export                     # Build dist/ for any static host (no Uniweb account)
-uniweb publish                    # Publish a foundation as a catalog product (deliberate;
-                                  # for site-bound foundations use `uniweb deploy` instead)
+uniweb publish                    # Publish a foundation to the Uniweb registry
 uniweb doctor                     # Diagnose project configuration issues (--fix to auto-repair)
 
 # Help

@@ -315,7 +315,7 @@ A Uniweb project produces two artifacts — a **site** (content) and a **foundat
 - **Standalone mode** — site and foundation built into one self-contained `dist/`, deployed to any static host.
 - **Linked mode** — the foundation is a separate file the site loads at runtime, with two flavours:
   - **Site-bound** — the foundation belongs to one site and rides with it (`foundation: ~self/<name>@<version>` in `site.yml`).
-  - **Cataloged** — the foundation is a catalog product, published once and licensed to consuming sites (`foundation: '@<org>/<name>@<version>'`).
+  - **Cataloged** — the foundation is a private catalog product, published once and licensed to consuming sites (`foundation: '@<org>/<name>@<version>'`).
 
 `uniweb publish` ships a cataloged foundation; `uniweb deploy` ships a site (and, for site-bound, the foundation along with it). Most projects start standalone or site-bound and grow into cataloged when a foundation needs to serve more than one site.
 
