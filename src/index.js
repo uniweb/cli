@@ -470,6 +470,23 @@ async function main() {
     return
   }
 
+  // Per-command --help: short-circuit BEFORE the command's side effects run.
+  // Critical for `deploy --help` (used to open a browser to production for
+  // login because deploy.js doesn't parse --help and ensureAuth ran first).
+  // Falls back to the global help when a command has no dedicated block.
+  if (args.slice(1).some(a => a === '--help' || a === '-h')) {
+    const printed = printCommandHelp(command)
+    if (printed) {
+      await showUpdateNotification()
+      return
+    }
+    // No dedicated block — show global help as a useful fallback rather
+    // than executing the command (which often has side effects).
+    showHelp()
+    await showUpdateNotification()
+    return
+  }
+
   // Handle build command (dynamic import — depends on @uniweb/build)
   if (command === 'build') {
     const { build } = await importProjectCommand('./commands/build.js')
@@ -817,6 +834,274 @@ async function main() {
   log('')
 
   await showUpdateNotification()
+}
+
+/**
+ * Print help for a specific command. Returns true if a dedicated help
+ * block exists for the command, false to signal "fall back to global
+ * help."
+ *
+ * Help text intentionally lives next to the dispatcher rather than in
+ * the per-command files because most help-seekers haven't run that
+ * command yet — keeping it here means `uniweb foo --help` prints
+ * without loading @uniweb/build or any project context.
+ */
+function printCommandHelp(command) {
+  const blocks = {
+    deploy: `
+${colors.cyan}${colors.bright}uniweb deploy${colors.reset} ${colors.dim}— Deploy a site${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb deploy [options]
+
+The host is determined by the resolved deploy.yml target. Defaults to
+${colors.cyan}uniweb${colors.reset} hosting (link-mode, edge JIT prerender) when no deploy.yml exists.
+
+${colors.bright}Hosts:${colors.reset}
+  uniweb              Uniweb hosting (default; requires \`uniweb login\`)
+  cloudflare-pages    Cloudflare Pages (build artifact + adapter postBuild)
+  netlify             Netlify (alias of cloudflare-pages adapter)
+  vercel              Vercel (build-only — deploy via \`npx vercel\`)
+  github-pages        GitHub Pages (build-only — push dist/ to gh-pages)
+  s3-cloudfront       AWS S3 + CloudFront (uploads + invalidates via CLI)
+  generic-static      Plain static-host build, no host-specific helpers
+
+${colors.bright}Options:${colors.reset}
+  --target <name>     Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
+  --host <name>       Override the resolved target's host (does not persist)
+  --host              No value → interactive picker (TTY only)
+  --dry-run           Resolve site.yml + foundation/runtime; print summary; no writes
+  --no-auto-publish   Don't auto-publish workspace-local foundation as part of deploy
+  --no-save           Skip the auto-save of lastDeploy in deploy.yml
+  --local             Internal: target the unicloud mock (see workspace root CLAUDE.md)
+  --non-interactive   Fail with usage info instead of prompting
+
+${colors.bright}Auth:${colors.reset}
+  \`host: uniweb\` requires authentication. Run \`uniweb login\` first, set
+  \`UNIWEB_TOKEN=<bearer>\` env var, or use a static-host adapter that
+  doesn't need a Uniweb account. CI / agents / piped stdin auto-detect
+  non-interactive mode and bail with an actionable error instead of
+  hanging on a browser callback.
+
+${colors.bright}Examples:${colors.reset}
+  uniweb deploy                              # Default (host=uniweb)
+  uniweb deploy --dry-run                    # Print summary, no writes
+  uniweb deploy --host=cloudflare-pages      # One-off override
+  uniweb deploy --target=preview             # Pick named target from deploy.yml
+`,
+    publish: `
+${colors.cyan}${colors.bright}uniweb publish${colors.reset} ${colors.dim}— Publish a foundation to the catalog${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb publish [@org/name] [options]
+
+For site-bound foundations (one foundation, one site), use \`uniweb deploy\`
+instead — it auto-publishes under a site-scoped slot, no naming ceremony.
+
+${colors.bright}Options:${colors.reset}
+  --catalog          Confirm publish to the public catalog (required in CI)
+  --propagate        Walk trusting sites' policy waves (default: silent)
+  --name <id>        Foundation id (overrides package.json::uniweb.id)
+  --namespace <ns>   Force org-scope namespace (overrides package.json)
+  --local            Internal: publish to the unicloud mock (see workspace root CLAUDE.md)
+  --registry <url>   Use a specific registry URL
+  --edit-access <p>  "open" or "restricted" (default: restricted)
+  --dry-run          Show what would be published without uploading
+  --non-interactive  Fail with usage info instead of prompting
+`,
+    create: `
+${colors.cyan}${colors.bright}uniweb create${colors.reset} ${colors.dim}— Create a new project${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb create [name] [options]
+
+${colors.bright}Options:${colors.reset}
+  --template <type>  Project template (default: starter)
+                     Built-in: starter, none, marketing
+                     Local:    ./path/to/template
+                     npm:      @scope/template-name
+                     GitHub:   github:user/repo or https://github.com/user/repo
+  --blank            Create an empty workspace (grow with \`uniweb add\`)
+  --name <name>      Project display name
+  --no-git           Skip git repository initialization
+
+${colors.bright}Examples:${colors.reset}
+  uniweb create my-project                       # Foundation + site + starter content
+  uniweb create my-project --template marketing  # Official template
+  uniweb create my-project --blank               # Empty workspace
+`,
+    build: `
+${colors.cyan}${colors.bright}uniweb build${colors.reset} ${colors.dim}— Build the current project${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb build [options]
+
+At workspace root, builds all foundations first, then all sites.
+Pre-rendering is enabled by default when build.prerender: true in site.yml.
+
+${colors.bright}Options:${colors.reset}
+  --target <type>    Build target (foundation, site) — auto-detected if not specified
+  --prerender        Force pre-rendering (overrides site.yml)
+  --no-prerender     Skip pre-rendering (overrides site.yml)
+  --foundation-dir   Path to foundation directory (for prerendering)
+  --host <name>      Apply host-specific postBuild (e.g., cloudflare-pages emits _redirects)
+  --platform <name>  (Deprecated alias for --host)
+`,
+    add: `
+${colors.cyan}${colors.bright}uniweb add${colors.reset} ${colors.dim}— Add a foundation, site, or extension${colors.reset}
+
+${colors.bright}Subcommands:${colors.reset}
+  add project [name]      Add a co-located foundation + site pair
+  add foundation [name]   Add a foundation (--from, --path, --project)
+  add site [name]         Add a site (--from, --foundation, --path, --project)
+  add extension <name>    Add an extension (--from, --site, --path)
+  add section <name>      Add a section type to a foundation (--foundation)
+
+${colors.bright}Common options:${colors.reset}
+  --from <template>       Source content from a template
+  --path <dir>            Override default folder location
+  --foundation <name>     Wire site/extension to this foundation (CI-friendly)
+  --site <name>           Wire extension to this site (CI-friendly)
+  --non-interactive       Fail with usage info instead of prompting
+`,
+    export: `
+${colors.cyan}${colors.bright}uniweb export${colors.reset} ${colors.dim}— Export a self-contained site for third-party hosting${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb export [options]
+
+Builds dist/ and prints upload examples for common static hosts. No login,
+no deploy step — you push the artifact to your host of choice yourself.
+For Uniweb-hosted sites, use \`uniweb deploy\`.
+
+${colors.bright}Options:${colors.reset}
+  --no-prerender     Skip per-page prerendered HTML
+  --host <name>      Apply host-specific postBuild (cloudflare-pages, github-pages, …)
+`,
+    doctor: `
+${colors.cyan}${colors.bright}uniweb doctor${colors.reset} ${colors.dim}— Diagnose project configuration issues${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb doctor [options]
+
+${colors.bright}Options:${colors.reset}
+  --fix              Apply fixes for safely-fixable issues
+  --fix <issue-id>   Apply fix for a specific issue id only
+  --non-interactive  Fail with usage info instead of prompting
+
+Exit code is 1 if errors are found (warnings only → exit 0).
+`,
+    rename: `
+${colors.cyan}${colors.bright}uniweb rename${colors.reset} ${colors.dim}— Rename a workspace package${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb rename foundation <old> <new>
+
+Today supports renaming foundations only. Updates folder name, foundation
+package.json::name, every dependent site's site.yml::foundation, every
+dependent site's package.json::dependencies, pnpm-workspace.yaml, and
+package.json::workspaces. Transactional — bails on conflict before any
+filesystem mutation.
+`,
+    login: `
+${colors.cyan}${colors.bright}uniweb login${colors.reset} ${colors.dim}— Log in to your Uniweb account${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb login [options]
+
+Opens a browser to hub.uniweb.app for OAuth-style login, then captures
+the token via a loopback callback. Falls back to a paste-token prompt
+if the browser flow fails.
+
+${colors.bright}Options:${colors.reset}
+  --backend <url>    Override the auth backend (default: https://hub.uniweb.app)
+
+In non-interactive mode (CI / no TTY / --non-interactive), this command
+errors out — set the \`UNIWEB_TOKEN\` env var instead, or run \`login\`
+once on a machine with a browser to seed ~/.uniweb/auth.json.
+`,
+    invite: `
+${colors.cyan}${colors.bright}uniweb invite${colors.reset} ${colors.dim}— Create a foundation invite for a client${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb invite <email> [options]
+
+${colors.bright}Options:${colors.reset}
+  --uses <n>         Max sites per invite (default: 1)
+  --expires <days>   Days until expiry (default: 30)
+  --version <n>      Major version to license (default: current)
+  --list             List invites for your foundation
+  --revoke <id>      Revoke an invite
+  --resend <id>      Resend an invite
+`,
+    handoff: `
+${colors.cyan}${colors.bright}uniweb handoff${colors.reset} ${colors.dim}— Hand off a site to a client${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb handoff <email> [options]
+
+${colors.bright}Options:${colors.reset}
+  --site <id>        Site identifier (default: auto-generated)
+  --web              Show web-based handoff instructions instead
+`,
+    template: `
+${colors.cyan}${colors.bright}uniweb template${colors.reset} ${colors.dim}— Manage cloud templates${colors.reset}
+
+${colors.bright}Subcommands:${colors.reset}
+  template publish        Publish a site as a cloud template
+
+${colors.bright}Publish Options:${colors.reset}
+  --name <name>      Template registry name (overrides site.yml template: field)
+  --title <title>    Display title (overrides site.yml name: field)
+  --description <t>  Description
+  --registry <url>   Registry URL (default: http://localhost:4001)
+`,
+    docs: `
+${colors.cyan}${colors.bright}uniweb docs${colors.reset} ${colors.dim}— Generate component documentation${colors.reset}
+
+${colors.bright}Subcommands:${colors.reset}
+  docs               Generate COMPONENTS.md from foundation schema
+  docs site          Show site.yml configuration reference
+  docs page          Show page.yml configuration reference
+  docs meta          Show component meta.js reference
+
+${colors.bright}Options:${colors.reset}
+  --output <file>    Output filename (default: COMPONENTS.md)
+  --from-source      Read meta.js files directly instead of schema.json
+`,
+    i18n: `
+${colors.cyan}${colors.bright}uniweb i18n${colors.reset} ${colors.dim}— Internationalization workflow${colors.reset}
+
+${colors.bright}Subcommands:${colors.reset}
+  i18n extract       Extract translatable strings to manifest
+  i18n sync          Update manifest with content changes
+  i18n status        Show translation coverage per locale
+`,
+    inspect: `
+${colors.cyan}${colors.bright}uniweb inspect${colors.reset} ${colors.dim}— Inspect parsed content shape${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb inspect <path>
+
+Prints the parsed content shape of a markdown file or folder — the
+{ content, params, items, … } object that components actually receive.
+Useful for debugging "why isn't my section getting X?".
+`,
+    update: `
+${colors.cyan}${colors.bright}uniweb update${colors.reset} ${colors.dim}— Update AGENTS.md to match installed CLI version${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb update
+
+Refreshes the project's AGENTS.md from the CLI's bundled version. Run
+after upgrading the \`uniweb\` package to pick up new content authoring
+patterns and platform documentation.
+`,
+  }
+
+  if (!blocks[command]) return false
+  log(blocks[command])
+  return true
 }
 
 function showHelp() {
