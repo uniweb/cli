@@ -449,14 +449,26 @@ async function main() {
   // Output convention: the version goes to stdout (parseable, scriptable —
   // `version=$(uniweb --version)` should keep working). Any staleness
   // notice goes to stderr, so it shows in interactive terminals but
-  // doesn't pollute captured output. Cache-only — never makes a network
-  // call from this path.
+  // doesn't pollute captured output.
+  //
+  // Two staleness paths split by stdout TTY-ness:
+  //   - TTY (interactive user typed it): fetch the registry with a tight
+  //     timeout. Accuracy matters — a fresh install would otherwise see
+  //     no notice on its first invocation (the cache is empty). Network
+  //     latency is acceptable here, capped at ~1.5s by the abort timeout.
+  //   - Non-TTY (script captured stdout, piped through, etc.): cache-only.
+  //     Scripts must stay fast and offline-safe. The `gh --version` /
+  //     `claude --version` convention.
   if (command === '--version' || command === '-v') {
     console.log(`uniweb ${getCliVersion()}`)
     if (isGlobalInstall()) {
       try {
-        const { maybeNotifyFromCache } = await import('./utils/update-check.js')
-        maybeNotifyFromCache(getCliVersion(), 'soft')
+        const { fetchAndNotifyIfNewer, maybeNotifyFromCache } = await import('./utils/update-check.js')
+        if (process.stdout.isTTY) {
+          await fetchAndNotifyIfNewer(getCliVersion(), { tone: 'soft' })
+        } else {
+          maybeNotifyFromCache(getCliVersion(), 'soft')
+        }
       } catch { /* ignore */ }
     }
     return

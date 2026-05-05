@@ -102,6 +102,47 @@ export function maybeNotifyFromCache(currentVersion, tone = 'eager') {
 export const maybeEagerNotification = maybeNotifyFromCache
 
 /**
+ * Fetch the latest version (with a tight timeout) and print a notice if
+ * a newer version is found. Updates the on-disk cache as a side effect
+ * so future cache-only callers benefit too.
+ *
+ * Use this for TTY invocations of `--version` / `-v` where the user is
+ * interactively asking about the version and a brief network wait is
+ * acceptable. Don't use it for non-TTY callers — scripts capturing
+ * stdout (`version=$(uniweb -v)`) need a fast, offline-safe path.
+ *
+ * @param {string} currentVersion
+ * @param {object} [opts]
+ * @param {number} [opts.timeoutMs=1500] Network timeout. Slow / offline
+ *   calls return silently — never block the verb for long.
+ * @param {'eager'|'soft'} [opts.tone='soft'] Notification copy.
+ * @returns {Promise<boolean>} true if a notice was printed.
+ */
+export async function fetchAndNotifyIfNewer(currentVersion, { timeoutMs = 1500, tone = 'soft' } = {}) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let latest = null
+  try {
+    const res = await fetch('https://registry.npmjs.org/uniweb/latest', { signal: controller.signal })
+    if (res.ok) {
+      const data = await res.json()
+      latest = data?.version || null
+    }
+  } catch {
+    // Aborted, network error, parse error — all silent. The verb
+    // shouldn't block on update-check failures.
+  } finally {
+    clearTimeout(timer)
+  }
+  if (!latest) return false
+  // Refresh the cache so other code paths see this fresh result.
+  writeState({ lastCheck: Date.now(), latestVersion: latest })
+  if (compareSemver(latest, currentVersion) <= 0) return false
+  printNotification(currentVersion, latest, tone)
+  return true
+}
+
+/**
  * Start a non-blocking update check.
  *
  * Returns a function that, when called (optionally awaited), prints
