@@ -401,6 +401,21 @@ export async function deploy(args = []) {
   // of the current source's git sha. This flag opts out.
   const autoPublishFoundation = !args.includes('--no-auto-publish')
 
+  // --local: redirect platform URLs to the unicloud mock (localhost:4001)
+  // for internal end-to-end testing. Documented in the workspace root
+  // CLAUDE.md ("The --local Flag" section). NOT a public user-facing
+  // feature — a real user has no unicloud server running. The flag is
+  // intentionally absent from the global help to avoid leaking it into
+  // user docs; per-command help (uniweb deploy --help) lists it under
+  // an "Internal" caveat for the eval / test team.
+  //
+  // The override unconditionally pins both backend and worker to
+  // http://localhost:4001 (unicloud's default port) regardless of any
+  // env vars set in the calling shell. Auth is NOT skipped — the runbook
+  // expects mock-login.js to seed ~/.uniweb/auth.json with a JWT
+  // unicloud's verifyToken accepts.
+  const isLocal = args.includes('--local')
+
   // Internal escape hatches — see framework/cli/docs/env-vars.md. These
   // are not user-facing flags; they exist for the platform test team,
   // CI scripts, and dev-loop unblockers. The bare `deploy` command should
@@ -415,8 +430,11 @@ export async function deploy(args = []) {
   const treatDirtyAsStale = !parseBoolEnv('UNIWEB_ALLOW_DIRTY_FOUNDATION')
 
   const siteDir = await resolveSiteDir(args)
-  const backendUrl = getBackendUrl()
-  const workerUrl = getRegistryUrl()
+  const backendUrl = isLocal ? 'http://localhost:4001' : getBackendUrl()
+  const workerUrl = isLocal ? 'http://localhost:4001' : getRegistryUrl()
+  if (isLocal) {
+    console.log(`  \x1b[2m→ Local mock mode (unicloud at ${backendUrl}; see workspace root CLAUDE.md)\x1b[0m`)
+  }
 
   // Read site.yml — declares the foundation (required) and optionally the
   // site.id / site.handle from prior deploys.
