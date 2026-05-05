@@ -1195,7 +1195,7 @@ ${colors.bright}Usage:${colors.reset}
 ${colors.bright}Commands:${colors.reset}
   create [name]      Create a new project
   add <type> [name]  Add a foundation, site, or extension to a project
-  rename <type>      Rename a workspace package (foundation today)
+  rename foundation  Rename a foundation across the workspace
   dev                Start a dev server for a site
   build              Build the current project
   deploy             Deploy a site to Uniweb hosting
