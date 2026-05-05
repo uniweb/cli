@@ -103,8 +103,12 @@ function getCliVersion() {
 /**
  * Commands that always run from the global CLI (no project context needed)
  */
+// Commands that always run from the global CLI, never delegating to a
+// project-local copy. `update` is here because its primary job is to
+// self-update the GLOBAL install — delegating it to project-local would
+// short-circuit that intent.
 const STANDALONE_COMMANDS = new Set([
-  'create', '--help', '-h', '--version', '-v', 'login',
+  'create', '--help', '-h', '--version', '-v', 'login', 'update',
 ])
 
 /**
@@ -1139,14 +1143,28 @@ Prints the parsed content shape of a markdown file or folder — the
 Useful for debugging "why isn't my section getting X?".
 `,
     update: `
-${colors.cyan}${colors.bright}uniweb update${colors.reset} ${colors.dim}— Update AGENTS.md to match installed CLI version${colors.reset}
+${colors.cyan}${colors.bright}uniweb update${colors.reset} ${colors.dim}— Update the CLI itself, plus AGENTS.md when in a project${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
-  uniweb update
+  uniweb update                Self-update + (in project) refresh AGENTS.md
+  uniweb update --agents-only  Only refresh AGENTS.md (skip self-update)
+  uniweb update --no-agents    Only self-update (skip AGENTS.md)
+  uniweb update --yes          Skip the confirmation prompts
 
-Refreshes the project's AGENTS.md from the CLI's bundled version. Run
-after upgrading the \`uniweb\` package to pick up new content authoring
-patterns and platform documentation.
+${colors.bright}What it does:${colors.reset}
+  1. Self-update the global install via npm / pnpm / yarn (auto-detected).
+     In TTY, prompts before running. In CI / non-interactive, prints the
+     command and exits without running it.
+  2. If the cwd resolves to a Uniweb project (root package.json declares
+     \`uniweb\` as a dep), refreshes AGENTS.md from the CLI's bundled
+     version. Outside a Uniweb project, this step is skipped — the
+     command will not write AGENTS.md into unrelated directories.
+
+${colors.bright}Project-local installs:${colors.reset}
+  When the running CLI is project-local (lives in node_modules), self-
+  update is a no-op — the version is pinned by your project's
+  package.json. The verb prints that explanation and proceeds with the
+  AGENTS.md refresh path only.
 `,
   }
 
