@@ -136,11 +136,28 @@ Creates `sections/Hero/index.jsx` and `meta.js` with a minimal CCA-proper starte
 ## Commands
 
 ```bash
-pnpm install    # Install dependencies
-pnpm dev        # Start dev server
-pnpm build      # Build for production
-pnpm preview    # Preview production build (SSG + SPA)
+# Local development (project scripts)
+pnpm install                      # Install dependencies
+pnpm dev                          # Start dev server
+pnpm build                        # Build for production
+pnpm preview                      # Preview production build (SSG + SPA)
+
+# Ship the site (uniweb verbs)
+uniweb deploy                     # Deploy to Uniweb hosting (default; needs `uniweb login` first)
+uniweb deploy --host=<adapter>    # Deploy to a static host: cloudflare-pages, netlify,
+                                  # vercel, github-pages, s3-cloudfront, generic-static
+uniweb deploy --dry-run           # Resolve foundation/runtime + print summary; no writes
+uniweb export                     # Build dist/ for any static host (no Uniweb account)
+uniweb publish                    # Publish a foundation as a catalog product (deliberate;
+                                  # for site-bound foundations use `uniweb deploy` instead)
+uniweb doctor                     # Diagnose project configuration issues (--fix to auto-repair)
+
+# Help
+uniweb --help                     # Top-level help
+uniweb <command> --help           # Per-command help (no side effects)
 ```
+
+`uniweb deploy` auto-publishes a workspace-local foundation as part of the deploy under a site-scoped slot — no separate `uniweb publish` step needed for site-bound foundations.
 
 ---
 

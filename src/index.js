@@ -824,13 +824,20 @@ async function main() {
     log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
     log(`  ${colors.cyan}${prefix} add project${colors.reset}`)
     log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
-    log(`  ${colors.cyan}${runCmd(pm, 'dev')}${colors.reset}`)
+    log(`  ${colors.cyan}${runCmd(pm, 'dev')}${colors.reset}                     ${colors.dim}# Start dev server${colors.reset}`)
   } else {
     log(`Next steps:\n`)
     log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
     log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
-    log(`  ${colors.cyan}${runCmd(pm, 'dev')}${colors.reset}`)
+    log(`  ${colors.cyan}${runCmd(pm, 'dev')}${colors.reset}                     ${colors.dim}# Start dev server${colors.reset}`)
   }
+  log('')
+  log(`When ready to ship:\n`)
+  log(`  ${colors.cyan}${prefix} deploy${colors.reset}                     ${colors.dim}# Uniweb hosting (default; uniweb login first)${colors.reset}`)
+  log(`  ${colors.cyan}${prefix} deploy --host=<adapter>${colors.reset}    ${colors.dim}# cloudflare-pages, netlify, vercel, github-pages, s3-cloudfront${colors.reset}`)
+  log(`  ${colors.cyan}${prefix} export${colors.reset}                     ${colors.dim}# Build dist/ for any static host (no Uniweb account)${colors.reset}`)
+  log('')
+  log(`  ${colors.dim}See ${colors.reset}${colors.cyan}${prefix} <command> --help${colors.reset}${colors.dim} for command-specific options.${colors.reset}`)
   log('')
 
   await showUpdateNotification()
