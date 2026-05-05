@@ -1,35 +1,50 @@
 /**
  * Rename Command
  *
- * Renames packages across the workspace transactionally. Currently
- * supports `rename foundation <old> <new>`; sites and extensions can be
- * added with the same scaffolding when needed.
+ * Renames packages across the workspace transactionally. Supports
+ * `rename foundation`, `rename site`, and `rename extension`. Each
+ * subcommand updates a different set of touch points:
  *
- * What a foundation rename touches (in order):
- *   1. The foundation's own package.json::name.
- *   2. Folder name on disk (when folder leaf matches old package name).
- *   3. Each site's package.json: dep key (old → new) + file: path.
- *   4. Each site's site.yml::foundation.
- *   5. pnpm-workspace.yaml::packages and package.json::workspaces
- *      (when the folder rename moved the path).
- *   6. Root scripts (`pnpm --filter <old>` references).
+ *   foundation: package.json::name + folder + every dependent site's
+ *     package.json (dep key + file: path) + every site.yml::foundation
+ *     reference + workspace manifests + root scripts.
+ *
+ *   site: package.json::name + folder + workspace manifests + root
+ *     scripts (sites are referenced by name in `pnpm --filter`-style
+ *     scripts, hence the regen).
+ *
+ *   extension: package.json::name + folder + every site.yml::extensions
+ *     entry whose URL prefix matches the old folder path + workspace
+ *     manifests. Sites don't carry a `file:` dep on extensions (extensions
+ *     load by URL at runtime), so no per-site package.json updates.
+ *
+ * Extensions are technically a flavor of foundation (same build, same
+ * package.json shape, distinguished only by `extension: true` in
+ * src/foundation.js or `role: 'extension'` in the built schema). The
+ * rename verb still keeps them on a separate subcommand because the
+ * touch-point sets differ — `rename foundation` against an extension
+ * would update the wrong things. Each subcommand guards its target
+ * type and points at the right verb when wrong.
  *
  * Pre-flight checks run before any mutation. If anything would conflict
- * (target name already taken, foundation not found, folder collision)
- * we bail with a clear message and no partial state.
+ * (target name already taken, target not found, folder collision,
+ * type mismatch) we bail with a clear message and no partial state.
  *
- * Out of scope: registry side. The publish id (`package.json::uniweb.id`)
+ * Out of scope: registry side. The publish id (package.json::uniweb.id)
  * is independent of the workspace name and stays untouched. Users who
  * want to also rename on the registry run `uniweb publish --name <new>`.
  *
  * Usage:
  *   uniweb rename foundation <old> <new>
+ *   uniweb rename site <old> <new>
+ *   uniweb rename extension <old> <new>
  */
 
 import { existsSync } from 'node:fs'
 import { readFile, writeFile, rename as fsRename } from 'node:fs/promises'
 import { join, relative, dirname, basename } from 'node:path'
 import yaml from 'js-yaml'
+import { isExtensionPackage } from '@uniweb/build'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import {
   discoverFoundations,
@@ -59,6 +74,8 @@ const error = (msg) => console.error(`${colors.red}✗${colors.reset} ${msg}`)
 const info = (msg) => console.log(`${colors.dim}${msg}${colors.reset}`)
 const log = console.log
 
+const SUPPORTED_SUBCOMMANDS = new Set(['foundation', 'site', 'extension'])
+
 export async function rename(args = []) {
   const [subcommand, oldName, newName] = args
   const prefix = getCliPrefix()
@@ -68,15 +85,15 @@ export async function rename(args = []) {
     return
   }
 
-  if (subcommand !== 'foundation') {
+  if (!SUPPORTED_SUBCOMMANDS.has(subcommand)) {
     error(`Unknown subcommand: ${subcommand}`)
-    log(`Supported: rename foundation <old> <new>`)
+    log(`Supported: rename foundation|site|extension <old> <new>`)
     process.exit(1)
   }
 
   if (!oldName || !newName) {
     error('Missing arguments.')
-    log(`Usage: ${prefix} rename foundation <old> <new>`)
+    log(`Usage: ${prefix} rename ${subcommand} <old> <new>`)
     process.exit(1)
   }
 
@@ -92,24 +109,92 @@ export async function rename(args = []) {
     process.exit(1)
   }
 
-  await renameFoundation(rootDir, oldName, newName, prefix)
+  if (subcommand === 'foundation') {
+    await renameFoundation(rootDir, oldName, newName, prefix)
+  } else if (subcommand === 'site') {
+    await renameSite(rootDir, oldName, newName, prefix)
+  } else if (subcommand === 'extension') {
+    await renameExtension(rootDir, oldName, newName, prefix)
+  }
 }
 
-async function renameFoundation(rootDir, oldName, newName, prefix) {
-  // ─── Pre-flight ───────────────────────────────────────────────
+// ─── Common helpers ──────────────────────────────────────────────
 
-  // Validate the new name (format + reserved-name check). `src` is
-  // grandfathered in for the same reason add foundation grandfathers
-  // it (the convention for "the package that lives in src/").
-  if (newName !== 'src') {
+/**
+ * Compute the new folder path for a rename. Returns { folderWillRename,
+ * newPath, newDir }. The leaf is renamed to match the new package name
+ * only when the leaf already matched the old package name — preserves
+ * any folder convention the user adopted that diverges from the package
+ * name.
+ */
+function computeNewFolderPath(rootDir, oldPath, oldName, newName) {
+  const leaf = basename(oldPath)
+  const folderWillRename = leaf === oldName
+  if (!folderWillRename) {
+    return { folderWillRename, newPath: oldPath, newDir: join(rootDir, oldPath) }
+  }
+  const parent = dirname(oldPath)
+  const newPath = parent === '.' ? newName : join(parent, newName)
+  return { folderWillRename, newPath, newDir: join(rootDir, newPath) }
+}
+
+/**
+ * Update the workspace manifests when a folder path moves. Both
+ * pnpm-workspace.yaml and package.json::workspaces are kept in sync
+ * (the multi-PM compatibility invariant). Wildcard entries
+ * (`extensions/*`) are left alone — only specific paths get rewritten.
+ */
+async function updateWorkspaceManifestsForFolderMove(rootDir, oldPath, newPath) {
+  const wsConfig = await readWorkspaceConfig(rootDir)
+  const rootPkg = await readRootPackageJson(rootDir)
+  if (wsConfig.packages.includes(oldPath)) {
+    const idx = wsConfig.packages.indexOf(oldPath)
+    wsConfig.packages[idx] = newPath
+    await writeWorkspaceConfig(rootDir, wsConfig)
+  }
+  if (Array.isArray(rootPkg.workspaces) && rootPkg.workspaces.includes(oldPath)) {
+    const idx = rootPkg.workspaces.indexOf(oldPath)
+    rootPkg.workspaces[idx] = newPath
+    await writeRootPackageJson(rootDir, rootPkg)
+  }
+}
+
+/**
+ * Validate that a name is a legal package name and not already taken in
+ * the workspace. Bails the process with an error if either check fails.
+ * `src` and `site` are grandfathered as valid names because they're the
+ * default folder leaf for the canonical foundation and site, and `add
+ * foundation` / `add site` already grandfather them at scaffold time.
+ */
+async function validateRenameName(rootDir, newName) {
+  if (newName !== 'src' && newName !== 'site') {
     const valid = validatePackageName(newName)
     if (valid !== true) {
       error(valid)
       process.exit(1)
     }
   }
+  const existingNames = await getExistingPackageNames(rootDir)
+  if (existingNames.has(newName)) {
+    error(`Cannot rename: a package named ${colors.bright}${newName}${colors.reset} already exists in this workspace.`)
+    process.exit(1)
+  }
+}
 
-  // The foundation must exist under its current name.
+/**
+ * Rewrite the `name` field in a package.json file.
+ */
+async function rewritePackageJsonName(pkgPath, newName) {
+  const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
+  pkg.name = newName
+  await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+}
+
+// ─── Foundation rename ───────────────────────────────────────────
+
+async function renameFoundation(rootDir, oldName, newName, prefix) {
+  await validateRenameName(rootDir, newName)
+
   const foundations = await discoverFoundations(rootDir)
   const target = foundations.find(f => f.name === oldName)
   if (!target) {
@@ -120,33 +205,24 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
     process.exit(1)
   }
 
-  // The new name must be free across the entire workspace.
-  const existingNames = await getExistingPackageNames(rootDir)
-  if (existingNames.has(newName)) {
-    error(`Cannot rename: a package named ${colors.bright}${newName}${colors.reset} already exists in this workspace.`)
+  // Type guard — point users at the right subcommand if they're trying
+  // to rename an extension via the foundation verb. They share a build
+  // shape but their touch-point sets differ (foundation rename touches
+  // sites' deps + site.yml::foundation; extension rename touches
+  // site.yml::extensions URLs).
+  if (isExtensionPackage(join(rootDir, target.path))) {
+    error(`${colors.bright}${oldName}${colors.reset} is an extension, not a foundation.`)
+    log(`Use \`${prefix} rename extension ${oldName} ${newName}\` instead.`)
     process.exit(1)
   }
 
-  const oldFoundationPath = target.path  // workspace-relative
+  const oldFoundationPath = target.path
   const oldFoundationDir = join(rootDir, oldFoundationPath)
-  const folderLeaf = basename(oldFoundationPath)
-
-  // Decide the new folder path. Rule: if the folder leaf matches the
-  // old package name, rename the leaf to match the new package name
-  // (preserving any parent dirs like `foundations/`). Otherwise leave
-  // the folder alone — the user named the folder differently than the
-  // package, and we honor that.
-  let newFoundationPath = oldFoundationPath
-  let newFoundationDir = oldFoundationDir
-  const folderWillRename = folderLeaf === oldName
-  if (folderWillRename) {
-    const parent = dirname(oldFoundationPath)
-    newFoundationPath = parent === '.' ? newName : join(parent, newName)
-    newFoundationDir = join(rootDir, newFoundationPath)
-    if (existsSync(newFoundationDir)) {
-      error(`Cannot rename: target folder ${colors.bright}${newFoundationPath}/${colors.reset} already exists.`)
-      process.exit(1)
-    }
+  const { folderWillRename, newPath: newFoundationPath, newDir: newFoundationDir } =
+    computeNewFolderPath(rootDir, oldFoundationPath, oldName, newName)
+  if (folderWillRename && existsSync(newFoundationDir)) {
+    error(`Cannot rename: target folder ${colors.bright}${newFoundationPath}/${colors.reset} already exists.`)
+    process.exit(1)
   }
 
   // Find every site that depends on the foundation. Two signals must
@@ -159,17 +235,15 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
   for (const site of sites) {
     const sitePkgPath = join(rootDir, site.path, 'package.json')
     const siteYmlPath = join(rootDir, site.path, 'site.yml')
-    let pkg, ymlText, ymlData
+    let pkg, ymlData
     try {
       pkg = JSON.parse(await readFile(sitePkgPath, 'utf-8'))
     } catch {
       pkg = null
     }
     try {
-      ymlText = await readFile(siteYmlPath, 'utf-8')
-      ymlData = yaml.load(ymlText) || {}
+      ymlData = yaml.load(await readFile(siteYmlPath, 'utf-8')) || {}
     } catch {
-      ymlText = null
       ymlData = null
     }
     const hasDep = pkg?.dependencies && oldName in pkg.dependencies
@@ -187,12 +261,6 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
       })
     }
   }
-
-  // Read workspace config + root package.json once. Both manifests
-  // are kept in sync by addWorkspaceGlob; we update both here too
-  // (the multi-PM compatibility invariant).
-  const wsConfig = await readWorkspaceConfig(rootDir)
-  const rootPkg = await readRootPackageJson(rootDir)
 
   // ─── Print plan, then execute ────────────────────────────────
 
@@ -215,31 +283,19 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
   }
   log('')
 
-  // 1. Rename the folder (if applicable). Do this first because every
-  //    later write needs paths under the new location.
   if (folderWillRename) {
     await fsRename(oldFoundationDir, newFoundationDir)
   }
+  await rewritePackageJsonName(join(newFoundationDir, 'package.json'), newName)
 
-  // 2. Rewrite the foundation's package.json::name.
-  const fndPkgPath = join(newFoundationDir, 'package.json')
-  const fndPkg = JSON.parse(await readFile(fndPkgPath, 'utf-8'))
-  fndPkg.name = newName
-  await writeFile(fndPkgPath, JSON.stringify(fndPkg, null, 2) + '\n')
-
-  // 3 + 4. For each affected site, update package.json deps and site.yml.
   for (const s of affectedSites) {
     if (s.hasDep) {
-      // Rename the dep key. Recompute the file: path against the new
-      // foundation location (the old one no longer exists if the
-      // folder was renamed).
       const newRel = relative(join(rootDir, s.path), newFoundationDir) || '.'
       const oldValue = s.pkg.dependencies[oldName]
       delete s.pkg.dependencies[oldName]
       s.pkg.dependencies[newName] = oldValue.startsWith('file:')
         ? `file:${newRel}`
-        : oldValue  // npm-pinned, leave it; rename-then-republish would
-                    // need a separate `pnpm update` step that's out of scope.
+        : oldValue  // npm-pinned, leave it; rename-then-republish is out of scope.
       await writeFile(s.sitePkgPath, JSON.stringify(s.pkg, null, 2) + '\n')
     }
     if (s.ymlMatches) {
@@ -248,38 +304,185 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
     }
   }
 
-  // 5. Update workspace manifests. Both pnpm-workspace.yaml and
-  //    package.json::workspaces (sync invariant) — only the entry
-  //    matching the old folder path moves; bare globs like
-  //    `foundations/*` don't change.
   if (folderWillRename) {
-    if (wsConfig.packages.includes(oldFoundationPath)) {
-      const idx = wsConfig.packages.indexOf(oldFoundationPath)
-      wsConfig.packages[idx] = newFoundationPath
-      await writeWorkspaceConfig(rootDir, wsConfig)
-    }
-    if (Array.isArray(rootPkg.workspaces) && rootPkg.workspaces.includes(oldFoundationPath)) {
-      const idx = rootPkg.workspaces.indexOf(oldFoundationPath)
-      rootPkg.workspaces[idx] = newFoundationPath
-      await writeRootPackageJson(rootDir, rootPkg)
-    }
+    await updateWorkspaceManifestsForFolderMove(rootDir, oldFoundationPath, newFoundationPath)
   }
 
-  // 6. Root scripts can reference the foundation by name (e.g.
-  //    `pnpm --filter <name> build`). updateRootScripts regenerates
-  //    them from the current discoverSites output, which has fresh
-  //    names after the writes above.
+  // Root scripts can reference the foundation by name (e.g. `pnpm --filter
+  // <name> build`). updateRootScripts regenerates them from the current
+  // discoverSites output, which has fresh names after the writes above.
   const pm = detectPackageManager()
   const freshSites = await discoverSites(rootDir)
   await updateRootScripts(rootDir, freshSites, pm)
 
-  // ─── Done ─────────────────────────────────────────────────────
-
   log('')
   success(`Renamed foundation ${colors.bright}${oldName}${colors.reset} → ${colors.bright}${newName}${colors.reset}`)
+  printNextSteps(prefix, pm)
+}
+
+// ─── Site rename ─────────────────────────────────────────────────
+
+async function renameSite(rootDir, oldName, newName, prefix) {
+  await validateRenameName(rootDir, newName)
+
+  const sites = await discoverSites(rootDir)
+  const target = sites.find(s => s.name === oldName)
+  if (!target) {
+    error(`No site named ${colors.bright}${oldName}${colors.reset} in this workspace.`)
+    if (sites.length > 0) {
+      log(`Available: ${sites.map(s => s.name).join(', ')}`)
+    }
+    process.exit(1)
+  }
+
+  const oldSitePath = target.path
+  const oldSiteDir = join(rootDir, oldSitePath)
+  const { folderWillRename, newPath: newSitePath, newDir: newSiteDir } =
+    computeNewFolderPath(rootDir, oldSitePath, oldName, newName)
+  if (folderWillRename && existsSync(newSiteDir)) {
+    error(`Cannot rename: target folder ${colors.bright}${newSitePath}/${colors.reset} already exists.`)
+    process.exit(1)
+  }
+
+  log('')
+  log(`${colors.bright}Rename site${colors.reset}: ${colors.yellow}${oldName}${colors.reset} → ${colors.green}${newName}${colors.reset}`)
+  log('')
+  if (folderWillRename) {
+    info(`  Folder:  ${oldSitePath}/  →  ${newSitePath}/`)
+  } else {
+    info(`  Folder:  ${oldSitePath}/  (unchanged — leaf doesn't match package name)`)
+  }
+  info(`  package.json::name:  "${oldName}"  →  "${newName}"`)
+  log('')
+
+  if (folderWillRename) {
+    await fsRename(oldSiteDir, newSiteDir)
+  }
+  await rewritePackageJsonName(join(newSiteDir, 'package.json'), newName)
+  if (folderWillRename) {
+    await updateWorkspaceManifestsForFolderMove(rootDir, oldSitePath, newSitePath)
+  }
+
+  // Root scripts include `pnpm --filter <site-name>` style invocations
+  // for `dev` / `preview` and per-site aliases. Regenerate from fresh
+  // site discovery to pick up the new name.
+  const pm = detectPackageManager()
+  const freshSites = await discoverSites(rootDir)
+  await updateRootScripts(rootDir, freshSites, pm)
+
+  log('')
+  success(`Renamed site ${colors.bright}${oldName}${colors.reset} → ${colors.bright}${newName}${colors.reset}`)
+  printNextSteps(prefix, pm)
+}
+
+// ─── Extension rename ────────────────────────────────────────────
+
+async function renameExtension(rootDir, oldName, newName, prefix) {
+  await validateRenameName(rootDir, newName)
+
+  // Extensions are a subset of foundations (same build, distinguished
+  // by `extension: true` declaration). Find via discoverFoundations,
+  // then verify the extension marker.
+  const foundations = await discoverFoundations(rootDir)
+  const target = foundations.find(f => f.name === oldName)
+  if (!target) {
+    error(`No package named ${colors.bright}${oldName}${colors.reset} in this workspace.`)
+    process.exit(1)
+  }
+  if (!isExtensionPackage(join(rootDir, target.path))) {
+    error(`${colors.bright}${oldName}${colors.reset} is a foundation, not an extension.`)
+    log(`Use \`${prefix} rename foundation ${oldName} ${newName}\` instead.`)
+    process.exit(1)
+  }
+
+  const oldExtPath = target.path
+  const oldExtDir = join(rootDir, oldExtPath)
+  const { folderWillRename, newPath: newExtPath, newDir: newExtDir } =
+    computeNewFolderPath(rootDir, oldExtPath, oldName, newName)
+  if (folderWillRename && existsSync(newExtDir)) {
+    error(`Cannot rename: target folder ${colors.bright}${newExtPath}/${colors.reset} already exists.`)
+    process.exit(1)
+  }
+
+  // Find every site referencing this extension via its site.yml's
+  // `extensions:` array. Sites declare extensions by URL, with the
+  // shape `/<workspace-relative-path>/dist/<file>` (where <file> is
+  // `entry.js` post-Phase-4, `foundation.js` for older builds — match
+  // both). Foreign URLs (https://, anything not starting with
+  // `/<oldExtPath>/`) are left untouched.
+  const oldUrlPrefix = `/${oldExtPath}/`
+  const newUrlPrefix = `/${newExtPath}/`
+  const sites = await discoverSites(rootDir)
+  const affectedSites = []
+  for (const site of sites) {
+    const siteYmlPath = join(rootDir, site.path, 'site.yml')
+    let ymlData
+    try {
+      ymlData = yaml.load(await readFile(siteYmlPath, 'utf-8')) || {}
+    } catch {
+      continue
+    }
+    const exts = Array.isArray(ymlData.extensions) ? ymlData.extensions : []
+    const hits = exts.filter(e => typeof e === 'string' && e.startsWith(oldUrlPrefix))
+    if (hits.length > 0) {
+      affectedSites.push({ site, ymlData, siteYmlPath, hits })
+    }
+  }
+
+  log('')
+  log(`${colors.bright}Rename extension${colors.reset}: ${colors.yellow}${oldName}${colors.reset} → ${colors.green}${newName}${colors.reset}`)
+  log('')
+  if (folderWillRename) {
+    info(`  Folder:  ${oldExtPath}/  →  ${newExtPath}/`)
+  } else {
+    info(`  Folder:  ${oldExtPath}/  (unchanged — leaf doesn't match package name)`)
+  }
+  info(`  package.json::name:  "${oldName}"  →  "${newName}"`)
+  if (affectedSites.length === 0) {
+    info(`  Sites referencing this extension: none`)
+  } else {
+    info(`  Sites referencing this extension:`)
+    for (const { site, hits } of affectedSites) {
+      info(`    • ${site.name} at ${site.path}/  (${hits.length} entr${hits.length === 1 ? 'y' : 'ies'})`)
+    }
+  }
+  log('')
+
+  if (folderWillRename) {
+    await fsRename(oldExtDir, newExtDir)
+  }
+  await rewritePackageJsonName(join(newExtDir, 'package.json'), newName)
+
+  for (const a of affectedSites) {
+    const newExts = (a.ymlData.extensions || []).map(e =>
+      typeof e === 'string' && e.startsWith(oldUrlPrefix)
+        ? newUrlPrefix + e.slice(oldUrlPrefix.length)
+        : e
+    )
+    const newYmlData = { ...a.ymlData, extensions: newExts }
+    await writeFile(a.siteYmlPath, yaml.dump(newYmlData, { flowLevel: -1, quotingType: "'" }))
+  }
+
+  if (folderWillRename) {
+    await updateWorkspaceManifestsForFolderMove(rootDir, oldExtPath, newExtPath)
+  }
+
+  // Extensions don't appear in root scripts (no dev/preview filter by
+  // extension name — the foundation's own scripts handle building).
+  // No updateRootScripts needed.
+
+  const pm = detectPackageManager()
+  log('')
+  success(`Renamed extension ${colors.bright}${oldName}${colors.reset} → ${colors.bright}${newName}${colors.reset}`)
+  printNextSteps(prefix, pm)
+}
+
+// ─── Shared output ───────────────────────────────────────────────
+
+function printNextSteps(prefix, pm) {
   log('')
   log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}  ${colors.dim}(refresh symlinks under the new name)${colors.reset}`)
-  log(`      ${colors.cyan}${getCliPrefix()} doctor${colors.reset}  ${colors.dim}(verify wiring)${colors.reset}`)
+  log(`      ${colors.cyan}${prefix} doctor${colors.reset}  ${colors.dim}(verify wiring)${colors.reset}`)
 }
 
 function showHelp(prefix) {
@@ -290,8 +493,10 @@ Rename a package across the workspace, keeping all wiring in sync.
 
 ${colors.bright}Usage:${colors.reset}
   ${prefix} rename foundation <old-name> <new-name>
+  ${prefix} rename site <old-name> <new-name>
+  ${prefix} rename extension <old-name> <new-name>
 
-${colors.bright}What it does (foundation):${colors.reset}
+${colors.bright}What rename foundation does:${colors.reset}
   • Updates the foundation's package.json::name.
   • Renames the folder if its leaf matched the old package name.
   • Updates every site's package.json dependency key + file: path.
@@ -299,12 +504,25 @@ ${colors.bright}What it does (foundation):${colors.reset}
   • Updates pnpm-workspace.yaml + package.json::workspaces (kept in sync).
   • Regenerates root scripts.
 
-${colors.bright}What it does NOT do:${colors.reset}
+${colors.bright}What rename site does:${colors.reset}
+  • Updates the site's package.json::name.
+  • Renames the folder if its leaf matched the old package name.
+  • Updates pnpm-workspace.yaml + package.json::workspaces.
+  • Regenerates root scripts (\`dev\` / \`preview\` filter by site name).
+
+${colors.bright}What rename extension does:${colors.reset}
+  • Updates the extension's package.json::name.
+  • Renames the folder if its leaf matched the old package name.
+  • Updates every site.yml::extensions URL whose path matched the old folder.
+  • Updates pnpm-workspace.yaml + package.json::workspaces.
+
+${colors.bright}What rename does NOT do (any subcommand):${colors.reset}
   • Push to the registry. The publish id (package.json::uniweb.id) is
     independent. To rename on the registry too, run \`${prefix} publish --name <new>\`.
 
 ${colors.bright}Examples:${colors.reset}
   ${prefix} rename foundation src marketing-src
-  ${prefix} rename foundation marketing acme-marketing
+  ${prefix} rename site site marketing-com
+  ${prefix} rename extension effects animations
 `)
 }

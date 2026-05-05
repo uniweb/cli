@@ -1063,12 +1063,30 @@ ${colors.cyan}${colors.bright}uniweb rename${colors.reset} ${colors.dim}— Rena
 
 ${colors.bright}Usage:${colors.reset}
   uniweb rename foundation <old> <new>
+  uniweb rename site <old> <new>
+  uniweb rename extension <old> <new>
 
-Today supports renaming foundations only. Updates folder name, foundation
-package.json::name, every dependent site's site.yml::foundation, every
-dependent site's package.json::dependencies, pnpm-workspace.yaml, and
-package.json::workspaces. Transactional — bails on conflict before any
-filesystem mutation.
+Each subcommand updates a different set of touch points:
+
+  foundation: package.json::name + folder + every dependent site's
+    package.json (dep key + file: path) + every site.yml::foundation +
+    pnpm-workspace.yaml / package.json::workspaces + root scripts.
+
+  site: package.json::name + folder + workspace manifests + root
+    scripts (\`dev\` / \`preview\` are filtered by site name).
+
+  extension: package.json::name + folder + every site.yml::extensions
+    URL whose path matches the old folder + workspace manifests.
+    (Sites don't carry a \`file:\` dep on extensions — they load by
+    URL at runtime, so no per-site package.json updates.)
+
+Transactional — bails on conflict (target name taken, target not found,
+folder collision, type mismatch) before any filesystem mutation.
+
+Type guards: \`rename foundation\` against an extension errors and
+points at \`rename extension\` (and vice versa). They share a build
+shape but the touch-point sets differ; using the wrong subcommand
+would update the wrong things.
 `,
     login: `
 ${colors.cyan}${colors.bright}uniweb login${colors.reset} ${colors.dim}— Log in to your Uniweb account${colors.reset}
@@ -1195,12 +1213,12 @@ ${colors.bright}Usage:${colors.reset}
 ${colors.bright}Commands:${colors.reset}
   create [name]      Create a new project
   add <type> [name]  Add a foundation, site, or extension to a project
-  rename foundation  Rename a foundation across the workspace
+  rename <type>      Rename a foundation, site, or extension across the workspace
   dev                Start a dev server for a site
   build              Build the current project
   deploy             Deploy a site to Uniweb hosting
   export             Export a self-contained site for third-party hosting
-  publish            Publish a foundation to the Uniweb catalog (deliberate; for site-bound foundations, use deploy)
+  publish            Publish a foundation to the Uniweb registry
   invite <email>     Create a foundation invite for a client
   handoff <email>    Hand off a site to a client
   inspect <path>     Inspect parsed content shape of a markdown file or folder
@@ -1324,15 +1342,15 @@ ${colors.bright}Examples:${colors.reset}
   uniweb create my-project --template ./my-template  # Local template
 
   cd my-project
-  uniweb add project docs                            # Add docs/foundation/ + docs/site/
+  uniweb add project docs                            # Add docs/src/ + docs/site/
   uniweb add project docs --from academic            # Co-located pair + academic content
-  uniweb add foundation                              # Add foundation at root
-  uniweb add site blog --foundation marketing        # Add site wired to marketing
-  uniweb add extension effects --site site           # Add extensions/effects/
+  uniweb add marketing                               # Add marketing/ at root
+  uniweb add site blog --foundation marketing        # Add site/ wired to marketing
+  uniweb add extension effects --site site           # Add effects/ at root
 
   uniweb build
-  uniweb build --target foundation
-  cd foundation && uniweb docs                       # Generate COMPONENTS.md
+  uniweb build --target src                          # Build src/ package
+  cd src && uniweb docs                              # Generate COMPONENTS.md
 
 ${colors.bright}Install:${colors.reset}
   npm i -g uniweb          Global install (recommended)
