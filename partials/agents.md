@@ -136,9 +136,9 @@ Creates `sections/Hero/index.jsx` and `meta.js` with a minimal CCA-proper starte
 ## Commands
 
 ```bash
-# Local development (project scripts)
+# Local development
+uniweb dev                        # Start dev server (picks the site for you)
 pnpm install                      # Install dependencies
-pnpm dev                          # Start dev server
 pnpm build                        # Build for production
 pnpm preview                      # Preview production build (SSG + SPA)
 

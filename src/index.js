@@ -495,6 +495,16 @@ async function main() {
     return
   }
 
+  // Handle dev command — thin wrapper that shells to the package manager's
+  // workspace-filtered `dev` script (mirrors what `uniweb create` writes
+  // into the root package.json::scripts.dev). Lazy import keeps startup
+  // fast when the user is not running dev.
+  if (command === 'dev') {
+    const { dev } = await import('./commands/dev.js')
+    await dev(args.slice(1))
+    return
+  }
+
   // Handle docs command (dynamic import — depends on @uniweb/build)
   if (command === 'docs') {
     const { docs } = await importProjectCommand('./commands/docs.js')
@@ -824,12 +834,12 @@ async function main() {
     log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
     log(`  ${colors.cyan}${prefix} add project${colors.reset}`)
     log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
-    log(`  ${colors.cyan}${runCmd(pm, 'dev')}${colors.reset}                     ${colors.dim}# Start dev server${colors.reset}`)
+    log(`  ${colors.cyan}${prefix} dev${colors.reset}                       ${colors.dim}# Start dev server${colors.reset}`)
   } else {
     log(`Next steps:\n`)
     log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
     log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
-    log(`  ${colors.cyan}${runCmd(pm, 'dev')}${colors.reset}                     ${colors.dim}# Start dev server${colors.reset}`)
+    log(`  ${colors.cyan}${prefix} dev${colors.reset}                       ${colors.dim}# Start dev server${colors.reset}`)
   }
   log('')
   log(`When ready to ship:\n`)
@@ -936,6 +946,20 @@ ${colors.bright}Examples:${colors.reset}
   uniweb create my-project                       # Foundation + site + starter content
   uniweb create my-project --template marketing  # Official template
   uniweb create my-project --blank               # Empty workspace
+`,
+    dev: `
+${colors.cyan}${colors.bright}uniweb dev${colors.reset} ${colors.dim}— Start a dev server for a site${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb dev                  Start dev server for the (single) site
+  uniweb dev <site>           Start dev server for a specific site
+  uniweb dev --site <name>    Same, with explicit flag form
+
+Thin wrapper around the package manager's workspace-filtered \`dev\`
+script (\`pnpm --filter <site> dev\` or \`npm -w <site> run dev\`). Picks
+the single site automatically; for multi-site workspaces the first
+site runs by default with a notice pointing at \`--site\` for explicit
+selection.
 `,
     build: `
 ${colors.cyan}${colors.bright}uniweb build${colors.reset} ${colors.dim}— Build the current project${colors.reset}
@@ -1122,6 +1146,7 @@ ${colors.bright}Commands:${colors.reset}
   create [name]      Create a new project
   add <type> [name]  Add a foundation, site, or extension to a project
   rename <type>      Rename a workspace package (foundation today)
+  dev                Start a dev server for a site
   build              Build the current project
   deploy             Deploy a site to Uniweb hosting
   export             Export a self-contained site for third-party hosting
