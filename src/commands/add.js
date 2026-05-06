@@ -1086,6 +1086,13 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
     process.exit(1)
   }
 
+  // If --domain wasn't passed, fall back to whatever's already in
+  // deploy.yml's targets.<host>.domain. Lets re-running `add ci` (e.g.,
+  // to refresh the workflow after a CLI upgrade) keep the domain
+  // without the user re-typing it.
+  const { loadDeployYml } = await import('@uniweb/build/site')
+  let resolvedDomain = opts.domain
+
   // Resolve site: --site flag, single site auto, prompt, or error.
   const sites = await discoverSites(rootDir)
   if (sites.length === 0) {
@@ -1130,12 +1137,26 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   )
   const nodeVersion = parseNodeMajor(rootPkg.engines?.node) || '20'
 
+  const siteDir = join(rootDir, site.path)
+  if (!resolvedDomain) {
+    try {
+      const deployYml = await loadDeployYml(siteDir)
+      const remembered = deployYml?.targets?.[host]?.domain
+      if (remembered && isLikelyDomain(remembered)) {
+        resolvedDomain = remembered
+        info(`Using domain '${remembered}' from deploy.yml.`)
+      }
+    } catch {
+      // Malformed deploy.yml — surface elsewhere; don't block add ci.
+    }
+  }
+
   const result = await adapter.initCi({
     rootDir,
     site,
     packageManager: pm,
     nodeVersion,
-    domain: opts.domain,
+    domain: resolvedDomain,
   })
 
   // Write files. Refuse to overwrite without --force so re-running
@@ -1150,6 +1171,34 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
     await mkdir(join(fullPath, '..'), { recursive: true })
     await writeFile(fullPath, file.content)
     success(`Wrote ${file.path}`)
+  }
+
+  // Persist the adapter's target config into deploy.yml so the user's
+  // intent (host + adapter-specific fields like `domain`) is remembered
+  // across CLI upgrades and re-runs. github-pages deploys via GHA, not
+  // via `uniweb deploy`, so without this its config would never reach
+  // deploy.yml. The writer:
+  //   - scaffolds a fresh deploy.yml on first call (this target is the
+  //     default), or
+  //   - merges into an existing targets.<targetName> without touching
+  //     `default`, `autoSave`, or other targets.
+  if (result.targetConfig) {
+    try {
+      const { recordTarget } = await import('@uniweb/build/site')
+      const writeResult = await recordTarget(siteDir, {
+        targetName: host,
+        targetConfig: result.targetConfig,
+      })
+      success(
+        writeResult.action === 'scaffold'
+          ? `Wrote ${relative(rootDir, writeResult.path)} (default target: ${host})`
+          : `Updated ${relative(rootDir, writeResult.path)} (target: ${host})`
+      )
+    } catch (err) {
+      // deploy.yml persistence is best-effort: the workflow + CNAME
+      // are the load-bearing artifacts. Print a warning and continue.
+      info(`Warning: could not update deploy.yml: ${err.message}`)
+    }
   }
 
   if (result.postInstructions?.length) {
