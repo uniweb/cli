@@ -150,6 +150,9 @@ uniweb deploy --dry-run           # Resolve foundation/runtime + print summary; 
 uniweb export                     # Build dist/ for any static host (no Uniweb account)
 uniweb publish                    # Publish a foundation to the Uniweb registry
 uniweb doctor                     # Diagnose project configuration issues (--fix to auto-repair)
+uniweb update                     # Reconcile workspace state with the CLI: align @uniweb/*
+                                  # deps in every package.json + refresh this AGENTS.md.
+                                  # Use --dry-run to preview, --deps-only to skip the doc.
 
 # Help
 uniweb --help                     # Top-level help
@@ -157,6 +160,8 @@ uniweb <command> --help           # Per-command help (no side effects)
 ```
 
 `uniweb deploy` auto-publishes a workspace-local foundation as part of the deploy under a site-scoped slot — no separate `uniweb publish` step needed for site-bound foundations.
+
+If this AGENTS.md was stamped against an older CLI than the workspace's installed `@uniweb/*` packages, run `uniweb update --dry-run` to see the gap. The verb refuses to refresh the doc while declared deps lag the CLI — a stale doc that documents features the installed code doesn't have is worse than no refresh.
 
 ---
 

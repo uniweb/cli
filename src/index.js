@@ -1185,28 +1185,39 @@ Prints the parsed content shape of a markdown file or folder — the
 Useful for debugging "why isn't my section getting X?".
 `,
     update: `
-${colors.cyan}${colors.bright}uniweb update${colors.reset} ${colors.dim}— Update the CLI itself, plus AGENTS.md when in a project${colors.reset}
+${colors.cyan}${colors.bright}uniweb update${colors.reset} ${colors.dim}— Reconcile workspace state with the running CLI${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
-  uniweb update                Self-update + (in project) refresh AGENTS.md
-  uniweb update --agents-only  Only refresh AGENTS.md (skip self-update)
-  uniweb update --no-agents    Only self-update (skip AGENTS.md)
-  uniweb update --yes          Skip the confirmation prompts
+  uniweb update                     Self-update + align deps + refresh AGENTS.md
+  uniweb update --deps-only         Only align workspace @uniweb/* deps
+  uniweb update --agents-only       Only refresh AGENTS.md
+  uniweb update --no-deps           Skip the deps-alignment step
+  uniweb update --no-agents         Skip the AGENTS.md step
+  uniweb update --dry-run           Print survey + would-be writes; no mutations
+  uniweb update --allow-mismatch    Refresh AGENTS.md even if declared deps lag
+  uniweb update --yes               Skip confirmation prompts
 
 ${colors.bright}What it does:${colors.reset}
-  1. Self-update the global install via npm / pnpm / yarn (auto-detected).
-     In TTY, prompts before running. In CI / non-interactive, prints the
-     command and exits without running it.
-  2. If the cwd resolves to a Uniweb project (root package.json declares
-     \`uniweb\` as a dep), refreshes AGENTS.md from the CLI's bundled
-     version. Outside a Uniweb project, this step is skipped — the
-     command will not write AGENTS.md into unrelated directories.
+  Prints a version survey first (CLI version, AGENTS.md stamp, every
+  @uniweb/* + uniweb dep declared in workspace package.json files,
+  marked aligned / behind / ahead). Then three steps:
+
+  1. ${colors.bright}Self-update${colors.reset} the global install via npm / pnpm / yarn
+     (auto-detected). TTY prompts; non-interactive prints the command.
+  2. ${colors.bright}Align workspace deps${colors.reset} to the CLI's bundled version matrix —
+     edits every workspace package.json (only @uniweb/* + uniweb keys),
+     then offers to run the workspace's package manager (lockfile-detected:
+     pnpm-lock.yaml → pnpm, yarn.lock → yarn, package-lock.json → npm).
+     If the install fails, package.json edits are kept and a revert
+     command is printed.
+  3. ${colors.bright}Refresh AGENTS.md${colors.reset} from the CLI's bundled partial. Refuses to
+     run while declared deps still lag the CLI (would document features
+     not in your installed packages); pass --allow-mismatch to override.
 
 ${colors.bright}Project-local installs:${colors.reset}
   When the running CLI is project-local (lives in node_modules), self-
   update is a no-op — the version is pinned by your project's
-  package.json. The verb prints that explanation and proceeds with the
-  AGENTS.md refresh path only.
+  package.json. The deps + AGENTS.md steps still run.
 `,
   }
 
