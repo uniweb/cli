@@ -645,7 +645,7 @@ async function buildSite(projectDir, options = {}) {
         log(`${colors.dim}Check that:${colors.reset}`)
         log(`  • site.yml 'foundation:' matches the package name in your foundation's package.json`)
         log(`  • site's package.json has a dependency pointing to the correct foundation path`)
-        log(`  • The foundation's dist/foundation.js exists (build the foundation first)`)
+        log(`  • The foundation's dist/entry.js exists (build the foundation first)`)
       }
 
       if (process.env.UNIWEB_DEBUG) {
@@ -884,7 +884,7 @@ export async function build(args = []) {
 
   // Validate --link / --bundle are only used with site target.
   // (Foundation builds have no equivalent split — they always produce
-  // dist/foundation.js + schema.json regardless of how a downstream
+  // dist/entry.js + schema.json regardless of how a downstream
   // site consumes the result.)
   if ((linkFlag || bundleFlag) && targetType === 'foundation') {
     error('--link and --bundle apply to site builds only')
