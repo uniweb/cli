@@ -45,8 +45,8 @@
  *   --bundle            # Full vite pipeline (third-party hosts)
  */
 
-import { existsSync, readFileSync } from 'node:fs'
-import { resolve, join, dirname } from 'node:path'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { resolve, join, dirname, basename } from 'node:path'
 import { spawn } from 'node:child_process'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -241,6 +241,118 @@ async function buildFoundation(projectDir, options = {}) {
   log(`${colors.bright}Share with clients:${colors.reset}`)
   log(`  ${colors.bright}uniweb publish${colors.reset}              Register your foundation (one-time setup)`)
   log(`  ${colors.bright}uniweb handoff <email>${colors.reset}      Hand off a site to a client`)
+}
+
+/**
+ * Ensure a local foundation's `dist/entry.js` is current.
+ *
+ * Whenever a build or deploy reads a local foundation from disk — bundle
+ * mode (vite imports it, prerender loads it for SSG), or link mode where
+ * the foundation is uploaded alongside the site — the foundation must be
+ * built and current. Otherwise the verb fails with "Foundation not found
+ * at .../dist/entry.js" or silently ships stale artifacts.
+ *
+ * `buildWorkspace()` already cascades when invoked from a workspace root,
+ * but verbs invoked from a site directory (`uniweb build` in `sites/x/`,
+ * `uniweb deploy`, `uniweb export`) used to skip the cascade and rely on
+ * the user having pre-built the foundation. That broke fresh checkouts
+ * where the foundation has never been built locally.
+ *
+ * This helper is idempotent: when the workspace-root cascade has already
+ * run, the freshness check sees a current `dist/entry.js` and returns
+ * without rebuilding. So adding the call inside `buildSite()` /
+ * `buildSiteLink()` does not double-build under `buildWorkspace()`.
+ *
+ * Freshness rule: a built artifact (`dist/entry.js` or the legacy
+ * `dist/foundation.js`) exists AND its mtime is >= the newest mtime of
+ * any tracked source file. Tracked sources: every file under
+ * `<foundation>/src/`, plus root-level `package.json`, `foundation.js`,
+ * `meta.js` (the structural files that drive entry generation and
+ * schema). Build outputs and node_modules are skipped.
+ *
+ * Both artifact names are accepted because the foundation build emitter
+ * was renamed `dist/foundation.js → dist/entry.js` in `@uniweb/build`
+ * v0.14.3. A foundation built with an older @uniweb/build still produces
+ * the legacy name; we don't want the cascade to keep rebuilding such a
+ * foundation forever just because the new name is missing.
+ */
+async function ensureFoundationFresh(foundationDir, label = 'foundation') {
+  const distArtifact = findFoundationDistArtifact(foundationDir)
+
+  if (!distArtifact) {
+    info(`Local ${label} not built yet — building ${basename(foundationDir)} first`)
+    log('')
+    await buildFoundation(foundationDir)
+    log('')
+    return { built: true, reason: 'missing' }
+  }
+
+  const distMtime = statSync(distArtifact).mtimeMs
+  const stale = isFoundationSourceNewerThan(foundationDir, distMtime)
+
+  if (stale) {
+    info(`Local ${label} sources changed — rebuilding ${basename(foundationDir)}`)
+    log('')
+    await buildFoundation(foundationDir)
+    log('')
+    return { built: true, reason: 'stale' }
+  }
+
+  return { built: false, reason: 'fresh' }
+}
+
+/**
+ * Locate the foundation's built entry artifact. Returns the path of the
+ * first match, or null when neither file exists. Prefers the current
+ * name (`dist/entry.js`) over the legacy one (`dist/foundation.js`).
+ */
+function findFoundationDistArtifact(foundationDir) {
+  for (const name of ['entry.js', 'foundation.js']) {
+    const p = join(foundationDir, 'dist', name)
+    if (existsSync(p)) return p
+  }
+  return null
+}
+
+/**
+ * Returns true if any tracked foundation source file has an mtime newer
+ * than `referenceMtime`. Walks `<foundationDir>/src/` recursively (skipping
+ * dotfiles, node_modules, and dist). Also stats the root structural files.
+ */
+function isFoundationSourceNewerThan(foundationDir, referenceMtime) {
+  const rootFiles = ['package.json', 'foundation.js', 'meta.js']
+  for (const f of rootFiles) {
+    const p = join(foundationDir, f)
+    if (existsSync(p) && statSync(p).mtimeMs > referenceMtime) return true
+  }
+
+  const srcDir = join(foundationDir, 'src')
+  if (!existsSync(srcDir)) return false
+
+  const stack = [srcDir]
+  while (stack.length) {
+    const dir = stack.pop()
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const e of entries) {
+      if (e.name === 'node_modules' || e.name === 'dist' || e.name.startsWith('.')) continue
+      const full = join(dir, e.name)
+      if (e.isDirectory()) {
+        stack.push(full)
+        continue
+      }
+      if (!e.isFile()) continue
+      try {
+        if (statSync(full).mtimeMs > referenceMtime) return true
+      } catch { /* ignore */ }
+    }
+  }
+
+  return false
 }
 
 /**
@@ -452,6 +564,11 @@ async function buildSiteLink(projectDir, options = {}) {
   // null and theme defaults come from theme.yml only.
   const foundationDir = await resolveFoundationDirForSite(projectDir, siteConfig).catch(() => null)
 
+  // Cascade: a local foundation in link mode is uploaded alongside the
+  // site (site-bound mode), so its dist must be current. Idempotent under
+  // buildWorkspace() — the freshness check no-ops when already built.
+  if (foundationDir) await ensureFoundationFresh(foundationDir)
+
   await buildSiteData({
     siteRoot: projectDir,
     distDir,
@@ -547,6 +664,12 @@ async function buildSite(projectDir, options = {}) {
   const { prerender = false, foundationDir, siteConfig = null, host = null } = options
 
   info('Building site...')
+
+  // Cascade: bundle mode imports the foundation through vite, and (when
+  // prerender is on) loads dist/entry.js for SSG. A local foundation must
+  // therefore be current. Idempotent under buildWorkspace() — when the
+  // workspace cascade has already built it, the freshness check no-ops.
+  if (foundationDir) await ensureFoundationFresh(foundationDir)
 
   // Run vite build for sites
   await runLocalVite(projectDir, ['build'])
@@ -924,7 +1047,20 @@ export async function build(args = []) {
       if (prerenderFlag) prerender = true
       if (noPrerenderFlag) prerender = false
 
-      await buildSite(projectDir, { prerender, foundationDir, siteConfig, host })
+      // If `--foundation-dir` wasn't passed, resolve the local foundation
+      // from site.yml + package.json. Required so buildSite() can cascade
+      // to the local foundation when the user runs `uniweb build` from a
+      // site dir on a fresh checkout where dist/ doesn't exist yet.
+      const resolvedFoundationDir =
+        foundationDir
+        || (await resolveFoundationDirForSite(projectDir, siteConfig).catch(() => null))
+
+      await buildSite(projectDir, {
+        prerender,
+        foundationDir: resolvedFoundationDir,
+        siteConfig,
+        host,
+      })
     }
   } catch (err) {
     error(err.message)
