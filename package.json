@@ -36,6 +36,9 @@
   "engines": {
     "node": ">=20.19"
   },
+  "scripts": {
+    "test": "node --test 'test/**/*.test.js'"
+  },
   "dependencies": {
     "@uniweb/core": "workspace:*",
     "@uniweb/kit": "workspace:*",

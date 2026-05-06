@@ -36,7 +36,8 @@ import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 
 import { detectPackageManager, filterCmd } from '../utils/pm.js'
-import { discoverSites, readWorkspaceConfig } from '../utils/config.js'
+import { readWorkspaceConfig } from '../utils/config.js'
+import { discoverSites } from '../utils/discover.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { readFlagValue } from '../utils/args.js'
 

@@ -5,7 +5,8 @@
  * and detects collisions with existing workspace packages.
  */
 
-import { discoverFoundations, discoverSites, readWorkspaceConfig, resolveGlob } from './config.js'
+import { readWorkspaceConfig, resolveGlob } from './config.js'
+import { discoverFoundations, discoverSites } from './discover.js'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'

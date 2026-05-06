@@ -47,14 +47,13 @@ import yaml from 'js-yaml'
 import { isExtensionPackage } from '@uniweb/build'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import {
-  discoverFoundations,
-  discoverSites,
   readWorkspaceConfig,
   writeWorkspaceConfig,
   readRootPackageJson,
   writeRootPackageJson,
   updateRootScripts,
 } from '../utils/config.js'
+import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { getExistingPackageNames, validatePackageName } from '../utils/names.js'
 import { detectPackageManager, installCmd } from '../utils/pm.js'
 import { getCliPrefix } from '../utils/interactive.js'

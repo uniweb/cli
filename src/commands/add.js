@@ -21,10 +21,9 @@ import { scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemp
 import {
   readWorkspaceConfig,
   addWorkspaceGlob,
-  discoverFoundations,
-  discoverSites,
   updateRootScripts,
 } from '../utils/config.js'
+import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { validatePackageName, getExistingPackageNames, resolveUniqueName } from '../utils/names.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { detectPackageManager, filterCmd, installCmd } from '../utils/pm.js'

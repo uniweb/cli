@@ -10,7 +10,7 @@ import { loadDeployYml } from '@uniweb/build/site'
 import { listAdapters } from '@uniweb/build/hosts'
 import { getCliVersion } from '../versions.js'
 import { readAgentsVersion } from '../utils/agents-stamp.js'
-import { discoverFoundations, discoverSites } from '../utils/config.js'
+import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 
 /**

@@ -1,8 +1,17 @@
 /**
  * Workspace Config Management
  *
- * Read/write pnpm-workspace.yaml and root package.json.
- * Used by both `create` and `add` commands.
+ * Read/write pnpm-workspace.yaml and root package.json, plus URL config
+ * for the platform backend / registry. Used by both `create` and `add`
+ * commands.
+ *
+ * This module is on the CLI's startup path (statically imported by
+ * `commands/login.js`, which is loaded by `src/index.js`). It MUST NOT
+ * import any optional peer dependency — most importantly `@uniweb/build`,
+ * which is absent in `npx uniweb create` scratch dirs and global
+ * installs. Workspace package discovery (which does need `@uniweb/build`)
+ * lives in `./discover.js` and is loaded only by commands that already
+ * require a project context.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -10,7 +19,6 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import yaml from 'js-yaml'
-import { classifyPackage } from '@uniweb/build'
 import { filterCmd } from './pm.js'
 
 // ── Platform URLs ──────────────────────────────────────────────
@@ -221,63 +229,6 @@ export async function updateRootScripts(rootDir, sites, pm = 'pnpm') {
 
   pkg.scripts = { ...pkg.scripts, ...newScripts }
   await writeRootPackageJson(rootDir, pkg)
-}
-
-/**
- * Discover foundations in the workspace
- * @param {string} rootDir - Workspace root directory
- * @returns {Promise<Array<{name: string, path: string}>>}
- */
-export async function discoverFoundations(rootDir) {
-  return discoverByKind(rootDir, 'foundation')
-}
-
-/**
- * Discover sites in the workspace
- * @param {string} rootDir - Workspace root directory
- * @returns {Promise<Array<{name: string, path: string}>>}
- */
-export async function discoverSites(rootDir) {
-  return discoverByKind(rootDir, 'site')
-}
-
-/**
- * Walk the workspace globs and return packages of the requested kind.
- * Uses `classifyPackage` from @uniweb/build — the canonical classifier
- * shared with the build pipeline, which keys on real signals (site.yml
- * for sites, generated entry for foundations) rather than which
- * `@uniweb/*` packages happen to be in dependencies. Templates whose
- * sites pull runtime transitively through the foundation (e.g.,
- * marketing) used to be invisible to the older dependency-based check.
- */
-async function discoverByKind(rootDir, kind) {
-  const { packages } = await readWorkspaceConfig(rootDir)
-  const out = []
-
-  for (const pattern of packages) {
-    const dirs = await resolveGlob(rootDir, pattern)
-    for (const dir of dirs) {
-      const fullPath = join(rootDir, dir)
-      if (classifyPackage(fullPath) !== kind) continue
-
-      // Read package.json for the package name. Synthesize one from
-      // the directory if it's missing or malformed — we still want
-      // the package to surface in pickers.
-      const pkgPath = join(fullPath, 'package.json')
-      let name = dir.split('/').pop()
-      if (existsSync(pkgPath)) {
-        try {
-          const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
-          if (pkg.name) name = pkg.name
-        } catch {
-          // keep directory-derived name
-        }
-      }
-      out.push({ name, path: dir })
-    }
-  }
-
-  return out
 }
 
 // Resolve a workspace glob pattern to actual directories
