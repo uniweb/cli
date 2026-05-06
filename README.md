@@ -314,7 +314,7 @@ You (or your dev team) write the markdown. Deploy site + foundation together.
 The shortest path to a live site is free, on GitHub Pages, with a custom domain:
 
 ```bash
-uniweb create .   # from within an empty GitHub repo
+uniweb create .   # from within a freshly-cloned GitHub repo
 uniweb add ci --host=github-pages
 # Commit, push to GitHub, enable Pages in repo settings → live site
 ```
