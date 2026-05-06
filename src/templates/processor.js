@@ -225,6 +225,53 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
 }
 
 /**
+ * Enumerate the output paths a template directory would write, without
+ * touching disk. Mirrors `copyTemplateDirectory`'s naming rules:
+ *   - `.hbs` extension is stripped
+ *   - `_dir` is renamed to `.dir` (but `__dir` is preserved as `_dir` would be)
+ *   - `template.json` is excluded
+ *   - `skip` filenames are excluded by their post-rename name
+ *
+ * Returns relative paths (POSIX-style separators on POSIX, native on Windows
+ * — `path.join` semantics). Used by the in-place create flow to detect
+ * conflicts before any I/O begins.
+ *
+ * @param {string} sourcePath - Source template directory
+ * @param {Object} [options]
+ * @param {string[]} [options.skip] - Output filenames to exclude
+ * @returns {Promise<string[]>}
+ */
+export async function enumerateTemplateOutputs(sourcePath, options = {}) {
+  const { skip = [] } = options
+  const outputs = []
+  await enumerateInto(sourcePath, '', outputs, skip)
+  return outputs
+}
+
+async function enumerateInto(sourcePath, relPath, outputs, skip) {
+  const entries = await fs.readdir(sourcePath, { withFileTypes: true })
+  for (const entry of entries) {
+    const sourceName = entry.name
+    if (entry.isDirectory()) {
+      const targetName = sourceName.startsWith('_') && !sourceName.startsWith('__')
+        ? `.${sourceName.slice(1)}`
+        : sourceName
+      await enumerateInto(
+        path.join(sourcePath, sourceName),
+        relPath ? path.join(relPath, targetName) : targetName,
+        outputs,
+        skip,
+      )
+    } else {
+      if (sourceName === 'template.json') continue
+      const outputName = sourceName.endsWith('.hbs') ? sourceName.slice(0, -4) : sourceName
+      if (skip.includes(outputName)) continue
+      outputs.push(relPath ? path.join(relPath, outputName) : outputName)
+    }
+  }
+}
+
+/**
  * Clear the template cache
  */
 export function clearCache() {

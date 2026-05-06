@@ -23,7 +23,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { execSync, spawn as spawnChild } from 'node:child_process'
-import { resolve, join, relative, dirname } from 'node:path'
+import { resolve, join, relative, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import prompts from 'prompts'
 // `doctor`, `add`, `publish`, and `deploy` are loaded lazily via
@@ -43,7 +43,7 @@ import {
   parseTemplateId,
 } from './templates/index.js'
 import { validateTemplate } from './templates/validator.js'
-import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemplateDependencies } from './utils/scaffold.js'
+import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemplateDependencies, getWorkspaceTemplateOutputs } from './utils/scaffold.js'
 import { detectPackageManager, filterCmd, installCmd, runCmd } from './utils/pm.js'
 import { isNonInteractive, getCliPrefix, stripNonInteractiveFlag, formatOptions } from './utils/interactive.js'
 import { findWorkspaceRoot } from './utils/workspace.js'
@@ -72,6 +72,30 @@ const TEMPLATE_CHOICES = [
   { title: 'Extensions', value: 'extensions', description: 'Multi-foundation with visual effects extension' },
   { title: 'Blank workspace', value: 'blank', description: 'Empty workspace — grow with uniweb add' },
 ]
+
+// Files that may pre-exist in the target dir during `uniweb create .` and
+// will be silently overwritten by the scaffold. Anything else colliding
+// causes the verb to abort. README and .gitignore are the only two files
+// the workspace template writes that overlap with what `gh repo create`
+// puts in a fresh repo, and the scaffold's versions are more useful in
+// this context (Vite/Node-aware .gitignore, project-shaped README).
+const IN_PLACE_OVERWRITE_ALLOWED = new Set(['README.md', '.gitignore'])
+
+/**
+ * Slugify a directory name into a valid project slug — lowercase,
+ * `[a-z0-9-]+`, no leading/trailing/duplicated hyphens. Matches the
+ * validation regex used for the interactive name prompt.
+ *
+ * @param {string} name
+ * @returns {string} Slugified name; empty if no valid characters remain.
+ */
+function slugifyName(name) {
+  return String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-')
+}
 
 function log(message) {
   console.log(message)
@@ -669,6 +693,18 @@ async function main() {
   let projectName = args[1]
   let templateType = null  // null = use new package template flow
 
+  // In-place mode: `uniweb create .` scaffolds into the current working
+  // directory instead of creating a new one. Pairs with the GitHub-first
+  // workflow where the user already cloned an empty repo (README.md and
+  // optionally .gitignore present) and wants to scaffold inside it.
+  const inPlace = projectName === '.'
+  if (inPlace) {
+    // Clear the positional so downstream logic (template prompt, name
+    // prompt, etc.) doesn't see `.` as a literal name. The actual project
+    // name is derived below from the cwd basename or `--name`.
+    projectName = null
+  }
+
   // Check for --template flag
   const templateIndex = args.indexOf('--template')
   if (templateIndex !== -1 && args[templateIndex + 1]) {
@@ -682,11 +718,14 @@ async function main() {
     }
   }
 
-  // Check for --name flag (used for project display name)
+  // Check for --name flag. Accepts both `--name foo` and `--name=foo`.
   let displayName = null
   const nameIndex = args.indexOf('--name')
   if (nameIndex !== -1 && args[nameIndex + 1]) {
     displayName = args[nameIndex + 1]
+  } else {
+    const nameEq = args.find(a => a.startsWith('--name='))
+    if (nameEq) displayName = nameEq.slice('--name='.length)
   }
 
   // Check for --blank flag
@@ -708,6 +747,28 @@ async function main() {
 
   const prefix = getCliPrefix()
 
+  // In-place: derive the project name from the cwd basename (slugified),
+  // or use --name when provided. Skip the interactive name prompt below.
+  if (inPlace) {
+    if (displayName) {
+      projectName = displayName
+    } else {
+      const dirName = basename(process.cwd())
+      const slug = slugifyName(dirName)
+      if (!slug) {
+        error(`Could not derive a valid project name from the current directory ("${dirName}").`)
+        log(`Re-run with ${colors.cyan}--name=<your-name>${colors.reset}.`)
+        process.exit(1)
+      }
+      projectName = slug
+      if (slug !== dirName) {
+        log(`${colors.dim}Project name:${colors.reset} ${slug} ${colors.dim}(slugified from "${dirName}")${colors.reset}`)
+      } else {
+        log(`${colors.dim}Project name:${colors.reset} ${slug}`)
+      }
+    }
+  }
+
   // Non-interactive: fail with actionable message instead of prompting
   if (nonInteractive && !projectName) {
     error(`Missing project name.\n`)
@@ -720,7 +781,7 @@ async function main() {
     templateType = 'starter'
   }
 
-  // Interactive prompts
+  // Interactive prompts (skipped in in-place mode — name was derived above)
   const response = await prompts([
     {
       type: projectName ? null : 'text',
@@ -773,12 +834,38 @@ async function main() {
 
   const effectiveName = displayName || projectName
 
-  // Create project directory
-  const projectDir = resolve(process.cwd(), projectName)
+  // Resolve target directory. In-place mode scaffolds into the cwd;
+  // otherwise create `./<projectName>`.
+  const projectDir = inPlace ? process.cwd() : resolve(process.cwd(), projectName)
 
-  if (existsSync(projectDir)) {
+  if (!inPlace && existsSync(projectDir)) {
     error(`Directory already exists: ${projectName}`)
     process.exit(1)
+  }
+
+  if (inPlace) {
+    // Conflict check: enumerate the workspace template's would-write paths
+    // (the only stage that touches the project root) and bail if any
+    // collide with existing files outside the small allowlist.
+    //
+    // Allowlist: README.md and .gitignore overwrite cleanly. README is
+    // typically GitHub-generated boilerplate; .gitignore should be ours
+    // since the scaffold ships sensible Vite/Node ignores.
+    const outputs = await getWorkspaceTemplateOutputs({ blank: isBlank })
+    const conflicts = []
+    for (const rel of outputs) {
+      const full = resolve(projectDir, rel)
+      if (existsSync(full) && !IN_PLACE_OVERWRITE_ALLOWED.has(rel)) {
+        conflicts.push(rel)
+      }
+    }
+    if (conflicts.length > 0) {
+      error(`Cannot scaffold in place — these files would be overwritten:`)
+      for (const c of conflicts) log(`  ${colors.yellow}${c}${colors.reset}`)
+      log('')
+      log(`Move or remove them, then re-run ${colors.cyan}uniweb create .${colors.reset}.`)
+      process.exit(1)
+    }
   }
 
   // Template routing logic
@@ -879,13 +966,13 @@ async function main() {
 
   if (isBlank) {
     log(`Next steps:\n`)
-    log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
+    if (!inPlace) log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
     log(`  ${colors.cyan}${prefix} add project${colors.reset}`)
     log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
     log(`  ${colors.cyan}${prefix} dev${colors.reset}                       ${colors.dim}# Start dev server${colors.reset}`)
   } else {
     log(`Next steps:\n`)
-    log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
+    if (!inPlace) log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
     log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
     log(`  ${colors.cyan}${prefix} dev${colors.reset}                       ${colors.dim}# Start dev server${colors.reset}`)
   }
@@ -979,6 +1066,7 @@ ${colors.cyan}${colors.bright}uniweb create${colors.reset} ${colors.dim}— Crea
 
 ${colors.bright}Usage:${colors.reset}
   uniweb create [name] [options]
+  uniweb create .                Scaffold into the current directory
 
 ${colors.bright}Options:${colors.reset}
   --template <type>  Project template (default: starter)
@@ -987,13 +1075,24 @@ ${colors.bright}Options:${colors.reset}
                      npm:      @scope/template-name
                      GitHub:   github:user/repo or https://github.com/user/repo
   --blank            Create an empty workspace (grow with \`uniweb add\`)
-  --name <name>      Project display name
+  --name <name>      Project name (overrides slugified basename when used with \`.\`)
   --no-git           Skip git repository initialization
+
+${colors.bright}In-place mode (\`uniweb create .\`):${colors.reset}
+  Pairs with the GitHub-first workflow — clone an empty repo locally
+  (README, optional .gitignore), then scaffold inside it. Project name
+  is the cwd basename, slugified to a valid npm name. Pass \`--name\` to
+  override. Pre-existing \`README.md\` and \`.gitignore\` are overwritten;
+  any other collision aborts with the list of conflicting files. Skips
+  \`git init\` when a \`.git/\` directory already exists.
 
 ${colors.bright}Examples:${colors.reset}
   uniweb create my-project                       # Foundation + site + starter content
   uniweb create my-project --template marketing  # Official template
   uniweb create my-project --blank               # Empty workspace
+  uniweb create .                                # Scaffold into current dir
+  uniweb create . --template docs                # In place + a content template
+  uniweb create . --name=my-app                  # In place, explicit slug
 `,
     dev: `
 ${colors.cyan}${colors.bright}uniweb dev${colors.reset} ${colors.dim}— Start a dev server for a site${colors.reset}

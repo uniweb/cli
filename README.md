@@ -43,7 +43,8 @@ Use `--blank` for an empty workspace (no packages) — grow with `uniweb add`.
 Or skip the interactive prompt:
 
 ```bash
-pnpm create uniweb my-site --template docs
+pnpm create uniweb my-site --template docs   # named folder
+pnpm create uniweb . --template docs         # in place (current directory)
 ```
 
 ### Local Scripts
@@ -308,8 +309,7 @@ You (or your dev team) write the markdown. Deploy site + foundation together.
 The shortest path to a live site is free, on GitHub Pages, with a custom domain:
 
 ```bash
-npm create uniweb my-site
-cd my-site
+uniweb create .   # from within an empty GitHub repo
 uniweb add ci --host=github-pages
 # Commit, push to GitHub, enable Pages in repo settings → live site
 ```

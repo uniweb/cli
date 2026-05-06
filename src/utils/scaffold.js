@@ -11,7 +11,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
 import Handlebars from 'handlebars'
-import { copyTemplateDirectory, registerVersions } from '../templates/processor.js'
+import { copyTemplateDirectory, enumerateTemplateOutputs, registerVersions } from '../templates/processor.js'
 import { getVersionsForTemplates, getCliVersion } from '../versions.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -46,6 +46,28 @@ export async function scaffoldWorkspace(targetDir, context, options = {}) {
     onWarning: options.onWarning,
     skip,
   })
+}
+
+/**
+ * Return the relative paths the workspace template would write into the
+ * project root, given the same skip rules `scaffoldWorkspace` applies.
+ * Used by the in-place create flow (`uniweb create .`) to detect conflicts
+ * before any I/O begins.
+ *
+ * Only the workspace template's outputs are enumerated. The foundation,
+ * site, and starter stages write into newly-created subdirectories
+ * (`src/`, `site/`) that don't pre-exist in a target like a fresh GitHub
+ * clone, so they can't conflict.
+ *
+ * @param {Object} [options]
+ * @param {boolean} [options.blank] - True when scaffolding a blank workspace
+ *   (no packages yet) — skips `pnpm-workspace.yaml`, mirroring scaffoldWorkspace.
+ * @returns {Promise<string[]>}
+ */
+export async function getWorkspaceTemplateOutputs({ blank = false } = {}) {
+  const skip = blank ? ['pnpm-workspace.yaml'] : []
+  const templatePath = join(TEMPLATES_DIR, 'workspace')
+  return enumerateTemplateOutputs(templatePath, { skip })
 }
 
 /**
