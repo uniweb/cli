@@ -2,10 +2,12 @@
  * uniweb doctor - Diagnose project configuration issues
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, resolve, basename, dirname, relative } from 'node:path'
 import yaml from 'js-yaml'
 import { resolveFoundationSrcPath, classifyPackage, isExtensionPackage as buildIsExtensionPackage } from '@uniweb/build'
+import { loadDeployYml } from '@uniweb/build/site'
+import { listAdapters } from '@uniweb/build/hosts'
 import { getCliVersion } from '../versions.js'
 import { readAgentsVersion } from '../utils/agents-stamp.js'
 import { discoverFoundations, discoverSites } from '../utils/config.js'
@@ -515,6 +517,158 @@ export async function doctor(args = []) {
           message: `Extension "${extName}" referenced in site.yml is not built`
         })
       }
+    }
+  }
+
+  // ─── Deploy configuration ────────────────────────────────────
+  // Sanity-check deploy.yml shape and surface common drift between
+  // deploy.yml, site.yml, and the artifacts the CLI generates.
+  // Failures here would otherwise only surface at deploy / first GHA
+  // run, where the feedback loop is slower.
+  log('')
+  info('Checking deploy configuration...')
+  const knownAdapters = new Set(listAdapters())
+  for (const site of sites) {
+    const sitePath = site.path
+    const siteName = site.name
+    const deployYmlPath = join(sitePath, 'deploy.yml')
+    if (!existsSync(deployYmlPath)) continue
+
+    let deployYml
+    try {
+      deployYml = await loadDeployYml(sitePath)
+    } catch (err) {
+      issues.push({
+        id: 'deploy-yml-malformed',
+        type: 'error',
+        site: siteName,
+        message: `deploy.yml is malformed: ${err.message}`,
+      })
+      error(`[deploy-yml-malformed] ${relative(workspaceDir, deployYmlPath)}: ${err.message}`)
+      continue
+    }
+    if (!deployYml) continue
+
+    const targets = deployYml.targets || {}
+    const targetNames = Object.keys(targets)
+
+    // default: must reference a real target.
+    if (deployYml.default && !targets[deployYml.default]) {
+      issues.push({
+        id: 'deploy-yml-default-unknown-target',
+        type: 'error',
+        site: siteName,
+        message: `deploy.yml: default '${deployYml.default}' is not in targets (known: ${targetNames.join(', ') || '(none)'})`,
+      })
+      error(`[deploy-yml-default-unknown-target] ${siteName}: default '${deployYml.default}' is not declared under \`targets:\`.`)
+      log(`    ${colors.dim}Add it to targets: or change default: to one of: ${targetNames.join(', ') || '(none)'}.${colors.reset}`)
+    }
+
+    // Each target must have a host, and host should be a known adapter.
+    for (const [name, cfg] of Object.entries(targets)) {
+      if (!cfg || typeof cfg !== 'object') continue
+      if (!cfg.host) {
+        issues.push({
+          id: 'deploy-yml-target-missing-host',
+          type: 'error',
+          site: siteName,
+          message: `deploy.yml: targets.${name} is missing \`host\``,
+        })
+        error(`[deploy-yml-target-missing-host] ${siteName}: targets.${name} has no \`host\` field.`)
+        continue
+      }
+      // 'uniweb' is the platform default and isn't in the static-host
+      // adapter registry; treat it as known.
+      if (cfg.host !== 'uniweb' && !knownAdapters.has(cfg.host)) {
+        issues.push({
+          id: 'deploy-yml-unknown-host',
+          type: 'warn',
+          site: siteName,
+          message: `deploy.yml: targets.${name}.host '${cfg.host}' is not a known adapter`,
+        })
+        warn(`[deploy-yml-unknown-host] ${siteName}: targets.${name}.host: '${cfg.host}' is not a known built-in adapter.`)
+        log(`    ${colors.dim}Known: ${[...knownAdapters].sort().join(', ')}, plus 'uniweb'.${colors.reset}`)
+      }
+    }
+
+    // github-pages-specific: if a target has `domain`, `site/public/CNAME`
+    // should exist with that value. Vite copies public/ into dist/, and
+    // GH Pages reads dist/CNAME on each deploy to keep the custom domain
+    // configured. A drift here means a deploy will silently lose the
+    // custom domain.
+    const cnamePath = join(sitePath, 'public', 'CNAME')
+    const ghTarget = Object.entries(targets).find(([, c]) => c?.host === 'github-pages')
+    if (ghTarget) {
+      const [ghName, ghCfg] = ghTarget
+      if (ghCfg.domain) {
+        const expected = String(ghCfg.domain).trim()
+        let actual = null
+        if (existsSync(cnamePath)) {
+          try {
+            actual = readFileSync(cnamePath, 'utf8').trim()
+          } catch {
+            actual = null
+          }
+        }
+        if (actual !== expected) {
+          const issue = {
+            id: 'github-pages-cname-mismatch',
+            type: 'warn',
+            site: siteName,
+            message: actual === null
+              ? `deploy.yml: targets.${ghName}.domain is '${expected}' but ${relative(workspaceDir, cnamePath)} is missing`
+              : `deploy.yml: targets.${ghName}.domain is '${expected}' but ${relative(workspaceDir, cnamePath)} contains '${actual}'`,
+          }
+          issues.push(issue)
+          warn(`[github-pages-cname-mismatch] ${siteName}: ${issue.message}`)
+          if (shouldFix('github-pages-cname-mismatch')) {
+            const dir = dirname(cnamePath)
+            if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+            writeFileSync(cnamePath, expected + '\n')
+            issue.fixed = true
+            fixed(`wrote ${relative(workspaceDir, cnamePath)} = ${expected}`)
+          } else {
+            log(`    ${colors.dim}Re-run \`uniweb add ci --domain ${expected} --force\` (or pass --fix to write CNAME from deploy.yml).${colors.reset}`)
+          }
+        }
+      } else if (existsSync(cnamePath)) {
+        // CNAME exists but the github-pages target has no `domain` set —
+        // either deploy.yml was edited and lost the domain, or someone
+        // hand-authored CNAME without setting the target.
+        let actual = ''
+        try {
+          actual = readFileSync(cnamePath, 'utf8').trim()
+        } catch {
+          // ignore
+        }
+        issues.push({
+          id: 'github-pages-cname-orphan',
+          type: 'warn',
+          site: siteName,
+          message: `${relative(workspaceDir, cnamePath)} exists ('${actual}') but deploy.yml's github-pages target has no \`domain\``,
+        })
+        warn(`[github-pages-cname-orphan] ${siteName}: ${relative(workspaceDir, cnamePath)} exists ('${actual}') but the github-pages target has no \`domain\` set.`)
+        log(`    ${colors.dim}Either add \`domain: ${actual}\` to targets.${ghName}, or delete the CNAME if you no longer want a custom domain.${colors.reset}`)
+      }
+    }
+
+    // site.yml::base + a generated GH Pages workflow → the workflow
+    // sets UNIWEB_BASE at build time, which beats site.yml::base
+    // (site/config.js precedence: explicit > UNIWEB_BASE > site.yml).
+    // Not an error — site.yml's value is just dormant for that target —
+    // but worth flagging so the user knows the value isn't taking effect.
+    const siteYml = loadSiteYml(sitePath)
+    const workflowPath = join(workspaceDir, '.github/workflows/deploy-github-pages.yml')
+    if (siteYml?.base && existsSync(workflowPath) && ghTarget) {
+      issues.push({
+        id: 'site-base-overridden-by-workflow',
+        type: 'warn',
+        site: siteName,
+        message: `site.yml::base ('${siteYml.base}') is dormant — the GH Pages workflow sets UNIWEB_BASE at build time, which takes precedence`,
+      })
+      warn(`[site-base-overridden-by-workflow] ${siteName}: site.yml has \`base: ${siteYml.base}\`, but the GH Pages workflow sets UNIWEB_BASE.`)
+      log(`    ${colors.dim}site.yml::base is the fallback when no UNIWEB_BASE env var is set. The workflow always sets it, so this value is ignored on GH Pages deploys.${colors.reset}`)
+      log(`    ${colors.dim}If the GH Pages deploy is the only target, you can remove \`base:\` from site.yml. Otherwise leave it — it still applies to other deploy targets.${colors.reset}`)
     }
   }
 
