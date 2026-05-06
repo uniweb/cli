@@ -54,19 +54,25 @@ function info(message) { console.log(`${colors.dim}${message}${colors.reset}`) }
  */
 function parseArgs(args) {
   const result = {
-    subcommand: args[0],   // foundation, site, extension
+    subcommand: args[0],   // foundation, site, extension, ci, …
     name: null,
     path: null,
     project: null,
     foundation: null,
     site: null,
     from: null,
+    host: null,
+    force: false,
   }
 
-  // Find positional name (first arg after subcommand that's not a flag)
+  // Booleans (no value) consumed up-front so the value-flag loop below
+  // doesn't accidentally swallow the next positional.
+  const BOOLEAN_FLAGS = new Set(['--force'])
+
+  // Find positional name (first arg after subcommand that's not a flag).
   for (let i = 1; i < args.length; i++) {
     if (args[i].startsWith('--')) {
-      i++ // skip flag value
+      if (!BOOLEAN_FLAGS.has(args[i])) i++ // skip flag value
       continue
     }
     if (!result.name) {
@@ -86,6 +92,10 @@ function parseArgs(args) {
       result.site = args[++i]
     } else if (args[i] === '--from' && args[i + 1]) {
       result.from = args[++i]
+    } else if (args[i] === '--host' && args[i + 1]) {
+      result.host = args[++i]
+    } else if (args[i] === '--force') {
+      result.force = true
     }
   }
 
@@ -126,9 +136,10 @@ export async function add(rawArgs) {
         { label: 'site', description: 'Content site' },
         { label: 'extension', description: 'Additional component package' },
         { label: 'section', description: 'Section type in a foundation' },
+        { label: 'ci', description: 'CI deploy workflow for a host (e.g., GitHub Pages)' },
       ]))
       log('')
-      log(`Usage: ${prefix} add <project|foundation|site|extension|section> [name]`)
+      log(`Usage: ${prefix} add <project|foundation|site|extension|section|ci> [name]`)
       process.exit(1)
     }
 
@@ -142,6 +153,7 @@ export async function add(rawArgs) {
         { title: 'Site', value: 'site', description: 'Content site' },
         { title: 'Extension', value: 'extension', description: 'Additional component package' },
         { title: 'Section', value: 'section', description: 'Section type in a foundation' },
+        { title: 'CI workflow', value: 'ci', description: 'Deploy workflow for a host (e.g., GitHub Pages)' },
       ],
     }, {
       onCancel: () => {
@@ -176,9 +188,12 @@ export async function add(rawArgs) {
     case 'section':
       await addSection(rootDir, parsed)
       break
+    case 'ci':
+      await addCi(rootDir, parsed, pm)
+      break
     default:
       error(`Unknown subcommand: ${parsed.subcommand}`)
-      log(`Valid subcommands: project, foundation, site, extension, section`)
+      log(`Valid subcommands: project, foundation, site, extension, section, ci`)
       process.exit(1)
   }
 }
@@ -865,7 +880,7 @@ async function wireExtensionToSite(rootDir, siteName, extensionName, extensionPa
     const config = yaml.load(content) || {}
 
     // Add extension URL
-    const extensionUrl = `/${extensionPath}/dist/foundation.js`
+    const extensionUrl = `/${extensionPath}/dist/entry.js`
     if (!config.extensions) {
       config.extensions = []
     }
@@ -1018,13 +1033,135 @@ export default function ${name}({ content, params }) {
 }
 
 /**
+ * Add a CI deploy workflow for a host adapter.
+ *
+ * Wires through the host-adapter registry: each adapter optionally
+ * exports `initCi({ rootDir, site, packageManager, nodeVersion })`
+ * returning `{ files, postInstructions }`. The CLI handles file writes,
+ * --force overwrite, and consistent output. Today only github-pages
+ * implements initCi; the registry's other adapters (cloudflare-pages,
+ * vercel, s3-cloudfront, generic-static) error out with a clear message
+ * and can plug in later.
+ */
+async function addCi(rootDir, opts, pm = 'pnpm') {
+  // Lazy-load the host registry so the CLI doesn't pay this import on
+  // every add invocation.
+  let getAdapter
+  try {
+    ({ getAdapter } = await import('@uniweb/build/hosts'))
+  } catch {
+    error('Failed to load host adapter registry from @uniweb/build/hosts.')
+    process.exit(1)
+  }
+
+  // Resolve host. With one CI-capable adapter today (github-pages),
+  // default silently when --host isn't passed. If more adapters add
+  // initCi later, this becomes a picker.
+  const host = opts.host || 'github-pages'
+
+  let adapter
+  try {
+    adapter = getAdapter(host)
+  } catch (err) {
+    error(err.message)
+    process.exit(1)
+  }
+
+  if (typeof adapter.initCi !== 'function') {
+    error(`Host '${host}' does not provide a CI workflow yet.`)
+    log(`Currently supported: github-pages.`)
+    log(`Other hosts may use platform-side integrations (e.g., Vercel/Netlify connect via dashboard).`)
+    process.exit(1)
+  }
+
+  // Resolve site: --site flag, single site auto, prompt, or error.
+  const sites = await discoverSites(rootDir)
+  if (sites.length === 0) {
+    error('No site found in this workspace. Add one with `uniweb add site` first.')
+    process.exit(1)
+  }
+
+  let site
+  if (opts.site) {
+    site = sites.find(s => s.name === opts.site)
+    if (!site) {
+      error(`Site '${opts.site}' not found.`)
+      log(`Available sites: ${sites.map(s => s.name).join(', ')}`)
+      process.exit(1)
+    }
+  } else if (sites.length === 1) {
+    site = sites[0]
+  } else if (isNonInteractive(process.argv)) {
+    error(`Multiple sites in workspace. Specify --site <name>.`)
+    log(`Available sites: ${sites.map(s => s.name).join(', ')}`)
+    process.exit(1)
+  } else {
+    const sortedSites = [...sites].sort((a, b) => a.name.localeCompare(b.name))
+    const response = await prompts({
+      type: 'select',
+      name: 'site',
+      message: 'Which site should the workflow build?',
+      choices: sortedSites.map(s => ({ title: s.name, description: s.path, value: s })),
+    }, {
+      onCancel: () => {
+        log('\nCancelled.')
+        process.exit(0)
+      },
+    })
+    site = response.site
+  }
+
+  // Read node version from root package.json engines.node if pinned;
+  // otherwise default to 20 (matches the workspace template's >=20.19).
+  const rootPkg = JSON.parse(
+    await readFile(join(rootDir, 'package.json'), 'utf-8').catch(() => '{}')
+  )
+  const nodeVersion = parseNodeMajor(rootPkg.engines?.node) || '20'
+
+  const result = await adapter.initCi({
+    rootDir,
+    site,
+    packageManager: pm,
+    nodeVersion,
+  })
+
+  // Write files. Refuse to overwrite without --force so re-running
+  // doesn't silently clobber edits the user made to the workflow.
+  for (const file of result.files) {
+    const fullPath = join(rootDir, file.path)
+    if (existsSync(fullPath) && !opts.force) {
+      error(`File already exists: ${file.path}`)
+      log(`Re-run with --force to overwrite.`)
+      process.exit(1)
+    }
+    await mkdir(join(fullPath, '..'), { recursive: true })
+    await writeFile(fullPath, file.content)
+    success(`Wrote ${file.path}`)
+  }
+
+  if (result.postInstructions?.length) {
+    log('')
+    log(`${colors.bright}Next steps:${colors.reset}`)
+    for (const line of result.postInstructions) {
+      log(line ? `  ${line}` : '')
+    }
+  }
+}
+
+function parseNodeMajor(engines) {
+  if (!engines) return null
+  const match = String(engines).match(/(\d+)/)
+  return match ? match[1] : null
+}
+
+/**
  * Show help for the add command
  */
 function showAddHelp() {
   log(`
 ${colors.cyan}${colors.bright}Uniweb Add${colors.reset}
 
-Add projects, foundations, sites, extensions, or section types to your workspace.
+Add projects, foundations, sites, extensions, section types, or CI workflows to your workspace.
 
 ${colors.bright}Usage:${colors.reset}
   uniweb add project [name] [options]
@@ -1032,6 +1169,7 @@ ${colors.bright}Usage:${colors.reset}
   uniweb add site [name] [options]
   uniweb add extension <name> [options]
   uniweb add section <name> [options]
+  uniweb add ci [options]
 
 ${colors.bright}Common Options:${colors.reset}
   --from <template>  Apply content from a template after scaffolding
@@ -1050,6 +1188,11 @@ ${colors.bright}Extension Options:${colors.reset}
 ${colors.bright}Section Options:${colors.reset}
   --foundation <n>   Foundation to add section to (prompted if multiple exist)
 
+${colors.bright}CI Options:${colors.reset}
+  --host <name>      Host adapter (default: github-pages)
+  --site <name>      Site the workflow builds (prompted if multiple exist)
+  --force            Overwrite an existing workflow file
+
 ${colors.bright}Examples:${colors.reset}
   uniweb add project docs                              # Create docs/foundation/ + docs/site/
   uniweb add project docs --from academic              # Co-located pair + academic content
@@ -1062,5 +1205,7 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add section Hero --foundation ui              # Target specific foundation
   uniweb add foundation --project docs                 # Create ./docs/foundation/ (co-located)
   uniweb add site --project docs                       # Create ./docs/site/ (co-located)
+  uniweb add ci                                        # Add GitHub Pages deploy workflow
+  uniweb add ci --host=github-pages --site=marketing   # Pick host + site explicitly
 `)
 }
