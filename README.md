@@ -294,38 +294,64 @@ pnpm dev     # or npm run dev
 
 The workspace grows organically. `add` handles placement, wires dependencies, updates workspace globs, and generates root scripts. The name you provide becomes both the directory name and the package name. Use `--path` to override default placement, or `--project` for explicit co-located layouts.
 
-## The Bigger Picture
-
-The structure you start with scales without rewrites:
-
-1. **Single project** — One site, one foundation. Develop and deploy together. Most projects stay here.
-
-2. **Published foundation** — Release your foundation as a dynamically linked module to [uniweb.app](https://uniweb.app). Other sites can use it without copying code.
-
-3. **Multiple sites** — Several sites share one foundation. Update components once, every site benefits.
-
-4. **Platform-managed sites** — Sites built on [uniweb.app](https://uniweb.app) with visual editing tools can use your foundation. You develop components locally; content teams work in the browser.
-
-Start with local files deployed anywhere. The same foundation works across all these scenarios.
-
 ## Deployment
 
-A Uniweb project produces two artifacts — a **site** (content) and a **foundation** (code) — and they don't have to ship together. Two top-level modes:
+A Uniweb project produces two artifacts — a **site** (content) and a **foundation** (code). **Who manages the content** decides what you ship:
 
-- **Standalone mode** — site and foundation built into one self-contained `dist/`, deployed to any static host.
-- **Linked mode** — the foundation is a separate file the site loads at runtime, with two flavours:
-  - **Site-bound** — the foundation belongs to one site and rides with it (`foundation: ~self/<name>@<version>` in `site.yml`).
-  - **Cataloged** — the foundation is a private catalog product, published once and licensed to consuming sites (`foundation: '@<org>/<name>@<version>'`).
+- If you (or your dev team) manage the content, you ship them together — the site and its foundation, bundled or linked.
+- If someone else manages the content, you ship only the foundation. Content authors compose sites in the Uniweb apps; there's no site to deploy from your repo.
 
-`uniweb publish` ships a cataloged foundation; `uniweb deploy` ships a site (and, for site-bound, the foundation along with it). Most projects start standalone or site-bound and grow into cataloged when a foundation needs to serve more than one site.
+### Path 1 — You manage the content
 
-Where can you deploy?
+You (or your dev team) write the markdown. Deploy site + foundation together.
 
-- **Free static hosts** — Vercel, Cloudflare Pages, Netlify, GitHub Pages — work great when you have a site to publish. Built-in adapters: `vercel`, `cloudflare-pages`, `netlify`, `github-pages`. Lifecycle is Git-driven: connect your repo, the host runs `uniweb build` on each push, serves `dist/`. The framework auto-detects the CI host and emits the right helper files.
-- **AWS S3 + CloudFront** — `uniweb deploy --host=s3-cloudfront` builds, syncs, and invalidates in one command.
-- **Uniweb hosting** — paid (starts at $14/month per site). Always serves linked sites with JIT prerender, edge SSR, locale-aware routing, foundation/runtime version propagation, and the multi-tenant CMS for non-technical content authors via the visual editor. The right choice when foundation developers or agencies build for clients who manage their own content. The catalog is private and access-segregated — foundations are commercial products licensed by site, not packages on a public registry.
+The shortest path to a live site is free, on GitHub Pages, with a custom domain:
 
-→ **[Deploying](https://github.com/uniweb/docs/blob/main/development/deploying.md)** — the full menu: picking a deploy path (free vs paid), standalone vs linked, site-bound vs cataloged, the two-verb model, CI-detection, and per-host recipes.
+```bash
+npm create uniweb my-site
+cd my-site
+uniweb add ci --host=github-pages
+# Commit, push to GitHub, enable Pages in repo settings → live site
+```
+
+`uniweb add ci` scaffolds a GitHub Actions workflow that runs `uniweb build` on each push. Pre-rendering is on by default — static HTML, fast first paint, SEO out of the box. Use `--domain=<domain>` for a custom domain.
+
+**Other free static hosts.** Cloudflare Pages, Netlify, and Vercel auto-build your site when you connect the repo through their dashboard — no scaffolded workflow needed.
+
+**When to choose Uniweb hosting instead** (paid): when you need dynamic-page prerender at the edge (for collections fetched at runtime, not just at build time), foundation/runtime version propagation without redeploying every site, or edge SSR. If your site's content lives in markdown and updates ship via git, free CI is the right call.
+
+### Path 2 — Someone else manages the content
+
+You're building a foundation for clients, content authors, or any team that won't write markdown. The foundation is your product; the repo's `site/` is a test harness for the code (run `pnpm dev` to preview your components against sample content). You don't deploy a site — you publish a foundation:
+
+```bash
+cd src
+uniweb publish @your-org/foundation-name
+```
+
+Real sites built on your foundation are managed in the **Uniweb apps** (web + desktop) — visual editors designed for non-technical authors. They never see git, markdown, yaml, or React. They see *your* components, with live previews and visual controls for the params you defined. The foundation becomes the editor's native vocabulary for that site: you keep creative control of the design system, they get an editor that feels custom-built for them.
+
+This is the best path when site content has a life independent of the foundation's release cycle — agencies, design studios, multi-client teams, or any project where content authors aren't the same people as the developers.
+
+### Roadmap — Hybrid
+
+A future version will let markdown in a git repo and content in the Uniweb apps stay in two-way sync. Authors edit visually, devs edit in their IDE, both surfaces work on the same content. On the roadmap; not available today.
+
+### Commands at a glance
+
+| Command | What it does |
+| --- | --- |
+| `uniweb add ci --host=<adapter>` | Scaffold a CI workflow in your repo (today: `github-pages`). The host runs `uniweb build` on each push. |
+| `uniweb deploy` | Deploy to Uniweb hosting (default). With `--host=<adapter>`, push directly to a static host — builds, uploads, invalidates in one step. |
+| `uniweb export` | Produce a self-contained `dist/` for any static host. You upload it yourself. `--host=<adapter>` adds host-specific helper files. |
+| `uniweb publish @org/name` | Publish a foundation to the registry (path 2). |
+| `uniweb build` | Inspect a build locally. For shipping, use `deploy` or `export`. |
+
+`--host=<adapter>` is the same option across `deploy`, `export`, and `add ci`. Built-in adapters: `cloudflare-pages`, `netlify`, `github-pages`, `vercel`, `s3-cloudfront`, `generic-static`. Each adapter implements only the operations it supports — `add ci` is currently `github-pages`-only because it's the only one that needs a workflow file in the repo.
+
+---
+
+Both paths use the same framework. The difference is who edits content, where it lives, and what gets deployed. For the deeper menu — site-bound vs cataloged foundations, S3+CloudFront, manual exports, per-host recipes, foundation propagation — see → **[Deploying](https://github.com/uniweb/docs/blob/main/development/deploying.md)**.
 
 ---
 
