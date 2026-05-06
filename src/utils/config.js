@@ -10,6 +10,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import yaml from 'js-yaml'
+import { classifyPackage } from '@uniweb/build'
 import { filterCmd } from './pm.js'
 
 // ── Platform URLs ──────────────────────────────────────────────
@@ -228,27 +229,7 @@ export async function updateRootScripts(rootDir, sites, pm = 'pnpm') {
  * @returns {Promise<Array<{name: string, path: string}>>}
  */
 export async function discoverFoundations(rootDir) {
-  const { packages } = await readWorkspaceConfig(rootDir)
-  const foundations = []
-
-  for (const pattern of packages) {
-    const dirs = await resolveGlob(rootDir, pattern)
-    for (const dir of dirs) {
-      const pkgPath = join(rootDir, dir, 'package.json')
-      if (!existsSync(pkgPath)) continue
-      try {
-        const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
-        // Foundation: has @uniweb/build in devDeps but NOT @uniweb/runtime in deps
-        if (pkg.devDependencies?.['@uniweb/build'] && !pkg.dependencies?.['@uniweb/runtime']) {
-          foundations.push({ name: pkg.name, path: dir })
-        }
-      } catch {
-        // skip
-      }
-    }
-  }
-
-  return foundations
+  return discoverByKind(rootDir, 'foundation')
 }
 
 /**
@@ -257,27 +238,46 @@ export async function discoverFoundations(rootDir) {
  * @returns {Promise<Array<{name: string, path: string}>>}
  */
 export async function discoverSites(rootDir) {
+  return discoverByKind(rootDir, 'site')
+}
+
+/**
+ * Walk the workspace globs and return packages of the requested kind.
+ * Uses `classifyPackage` from @uniweb/build — the canonical classifier
+ * shared with the build pipeline, which keys on real signals (site.yml
+ * for sites, generated entry for foundations) rather than which
+ * `@uniweb/*` packages happen to be in dependencies. Templates whose
+ * sites pull runtime transitively through the foundation (e.g.,
+ * marketing) used to be invisible to the older dependency-based check.
+ */
+async function discoverByKind(rootDir, kind) {
   const { packages } = await readWorkspaceConfig(rootDir)
-  const sites = []
+  const out = []
 
   for (const pattern of packages) {
     const dirs = await resolveGlob(rootDir, pattern)
     for (const dir of dirs) {
-      const pkgPath = join(rootDir, dir, 'package.json')
-      if (!existsSync(pkgPath)) continue
-      try {
-        const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
-        // Site: has @uniweb/runtime in deps
-        if (pkg.dependencies?.['@uniweb/runtime']) {
-          sites.push({ name: pkg.name, path: dir })
+      const fullPath = join(rootDir, dir)
+      if (classifyPackage(fullPath) !== kind) continue
+
+      // Read package.json for the package name. Synthesize one from
+      // the directory if it's missing or malformed — we still want
+      // the package to surface in pickers.
+      const pkgPath = join(fullPath, 'package.json')
+      let name = dir.split('/').pop()
+      if (existsSync(pkgPath)) {
+        try {
+          const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
+          if (pkg.name) name = pkg.name
+        } catch {
+          // keep directory-derived name
         }
-      } catch {
-        // skip
       }
+      out.push({ name, path: dir })
     }
   }
 
-  return sites
+  return out
 }
 
 // Resolve a workspace glob pattern to actual directories
