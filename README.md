@@ -40,11 +40,16 @@ Edit files in `site/pages/` and `src/sections/` to see changes instantly.
 
 Use `--blank` for an empty workspace (no packages) — grow with `uniweb add`.
 
-Or skip the interactive prompt:
+**Two starting points.** Either let the CLI create a new directory:
 
 ```bash
-pnpm create uniweb my-site --template docs   # named folder
-pnpm create uniweb . --template docs         # in place (current directory)
+pnpm create uniweb my-site --template docs
+```
+
+…or scaffold inside an existing directory (e.g., a freshly-cloned GitHub repo):
+
+```bash
+pnpm create uniweb . --template docs
 ```
 
 ### Local Scripts
@@ -244,7 +249,7 @@ The parser extracts semantic elements from markdown—`title` from the first hea
 
 ## Foundations Are Portable
 
-The `src/` folder (your project's foundation) ships with your project as a convenience, but a foundation is a dynamically linked module (DML) with no dependency on any specific site. Sites reference foundations by configuration, not by folder proximity.
+The `src/` folder (your project's foundation) ships with your project as a convenience, but a foundation is dynamically loaded — sites reference it by configuration, not by folder proximity.
 
 **Two ways to use a foundation:**
 
@@ -374,7 +379,7 @@ Full documentation is available at **[github.com/uniweb/docs](https://github.com
 | Content Structure  | [How markdown becomes component props](https://github.com/uniweb/docs/blob/main/reference/content-structure.md) |
 | Component Metadata | [The meta.js schema](https://github.com/uniweb/docs/blob/main/reference/component-metadata.md) |
 | Site Configuration | [site.yml reference](https://github.com/uniweb/docs/blob/main/reference/site-configuration.md) |
-| CLI Commands       | [create, add, build, docs, doctor, i18n](https://github.com/uniweb/docs/blob/main/reference/cli-commands.md) |
+| CLI Commands       | [All CLI commands and flags](https://github.com/uniweb/docs/blob/main/reference/cli-commands.md) |
 | Templates          | [Built-in, official, and external templates](https://github.com/uniweb/docs/blob/main/getting-started/templates.md) |
 | Deployment         | [Two artifacts, two verbs — bundled, linked, and per-host recipes](https://github.com/uniweb/docs/blob/main/development/deploying.md) |
 
