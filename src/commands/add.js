@@ -63,6 +63,7 @@ function parseArgs(args) {
     from: null,
     host: null,
     force: false,
+    domain: null,
   }
 
   // Booleans (no value) consumed up-front so the value-flag loop below
@@ -94,6 +95,8 @@ function parseArgs(args) {
       result.from = args[++i]
     } else if (args[i] === '--host' && args[i + 1]) {
       result.host = args[++i]
+    } else if (args[i] === '--domain' && args[i + 1]) {
+      result.domain = args[++i]
     } else if (args[i] === '--force') {
       result.force = true
     }
@@ -1074,6 +1077,15 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
     process.exit(1)
   }
 
+  // Validate --domain (lightweight: must look like a hostname). The
+  // adapter decides what to do with it; today only github-pages uses
+  // it (writes a CNAME, switches UNIWEB_BASE to root).
+  if (opts.domain && !isLikelyDomain(opts.domain)) {
+    error(`Invalid --domain value: '${opts.domain}'`)
+    log(`Expected a bare hostname (e.g., 'mysite.com' or 'docs.mysite.com'). No scheme, no path.`)
+    process.exit(1)
+  }
+
   // Resolve site: --site flag, single site auto, prompt, or error.
   const sites = await discoverSites(rootDir)
   if (sites.length === 0) {
@@ -1123,6 +1135,7 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
     site,
     packageManager: pm,
     nodeVersion,
+    domain: opts.domain,
   })
 
   // Write files. Refuse to overwrite without --force so re-running
@@ -1146,6 +1159,14 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
       log(line ? `  ${line}` : '')
     }
   }
+}
+
+function isLikelyDomain(value) {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 253) return false
+  // Reject schemes, paths, ports, whitespace, leading/trailing dots/hyphens.
+  // Each label is 1–63 chars of [a-z0-9-], no leading/trailing hyphen.
+  // The TLD must be at least 2 characters of letters.
+  return /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i.test(value)
 }
 
 function parseNodeMajor(engines) {
@@ -1191,6 +1212,7 @@ ${colors.bright}Section Options:${colors.reset}
 ${colors.bright}CI Options:${colors.reset}
   --host <name>      Host adapter (default: github-pages)
   --site <name>      Site the workflow builds (prompted if multiple exist)
+  --domain <host>    Custom domain (writes CNAME, serves at root)
   --force            Overwrite an existing workflow file
 
 ${colors.bright}Examples:${colors.reset}
@@ -1206,6 +1228,7 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add foundation --project docs                 # Create ./docs/foundation/ (co-located)
   uniweb add site --project docs                       # Create ./docs/site/ (co-located)
   uniweb add ci                                        # Add GitHub Pages deploy workflow
-  uniweb add ci --host=github-pages --site=marketing   # Pick host + site explicitly
+  uniweb add ci --host github-pages --site marketing   # Pick host + site explicitly
+  uniweb add ci --domain mysite.com                    # Custom domain → writes CNAME + UNIWEB_BASE=/
 `)
 }
