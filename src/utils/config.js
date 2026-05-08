@@ -27,10 +27,8 @@ import { filterCmd } from './pm.js'
 // REGISTRY hosts platform operations (publish, foundations, runtime, admin):
 //   moved to hosting.uniweb.app in the CDN migration (Phase 4c, 2026-05-04).
 // BACKEND hosts the PHP user-facing surface (login, account, orgs, billing,
-//   publish-authorize): owned by the v4 single-domain plan
-//   (kb/platform/plans/uniweb-domain-plan-v4.md), which will move it to
-//   uniweb.app/api/* when v4 ships. Until then, it stays at hub.uniweb.app.
-const PRODUCTION_BACKEND_URL = 'https://hub.uniweb.app'
+//   publish-authorize).
+const PRODUCTION_BACKEND_URL = 'https://www.uniweb.app'
 const PRODUCTION_REGISTRY_URL = 'https://hosting.uniweb.app'
 
 /**

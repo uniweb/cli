@@ -1205,12 +1205,12 @@ ${colors.cyan}${colors.bright}uniweb login${colors.reset} ${colors.dim}— Log i
 ${colors.bright}Usage:${colors.reset}
   uniweb login [options]
 
-Opens a browser to hub.uniweb.app for OAuth-style login, then captures
+Opens a browser to www.uniweb.app for OAuth-style login, then captures
 the token via a loopback callback. Falls back to a paste-token prompt
 if the browser flow fails.
 
 ${colors.bright}Options:${colors.reset}
-  --backend <url>    Override the auth backend (default: https://hub.uniweb.app)
+  --backend <url>    Override the auth backend (default: https://www.uniweb.app)
 
 In non-interactive mode (CI / no TTY / --non-interactive), this command
 errors out — set the \`UNIWEB_TOKEN\` env var instead, or run \`login\`
