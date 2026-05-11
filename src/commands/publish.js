@@ -225,7 +225,12 @@ export async function publish(args = []) {
   //    intends the NEW one. Without rebuilding we'd ship inconsistent
   //    bytes (schema says one version, registry record says another).
   const distDir = join(foundationDir, 'dist')
+  // @uniweb/build@0.14.0+ emits dist/entry.js (Phase 5 of CDN migration);
+  // older builds emitted dist/foundation.js. Accept either so a single CLI
+  // works against both old and new foundations during the rollout window.
+  const entryJs = join(distDir, 'entry.js')
   const foundationJs = join(distDir, 'foundation.js')
+  const hasMainArtifact = () => existsSync(entryJs) || existsSync(foundationJs)
   const schemaJson = join(distDir, 'meta', 'schema.json')
 
   // Pre-read package.json so we can compare its version against the
@@ -335,7 +340,7 @@ export async function publish(args = []) {
     }
   }
 
-  let needsBuild = !existsSync(foundationJs) || !existsSync(schemaJson)
+  let needsBuild = !hasMainArtifact() || !existsSync(schemaJson)
   let buildReason = needsBuild ? 'no dist/ found' : null
 
   if (!needsBuild) {
@@ -446,8 +451,8 @@ export async function publish(args = []) {
     })
     console.log('')
 
-    if (!existsSync(foundationJs) || !existsSync(schemaJson)) {
-      error('Build did not produce dist/foundation.js and dist/meta/schema.json')
+    if (!hasMainArtifact() || !existsSync(schemaJson)) {
+      error('Build did not produce dist/entry.js (or legacy dist/foundation.js) and dist/meta/schema.json')
       process.exit(1)
     }
   }
