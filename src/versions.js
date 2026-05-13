@@ -76,9 +76,16 @@ function getFrameworkRoot() {
 
 /**
  * Read the current on-disk version of a specific `@uniweb/*` package by
- * looking up `framework/<last-segment>/package.json`. Returns a caret
- * range string like `^0.6.0`, or null if the package isn't present on
- * disk (i.e. the CLI is running from npm, not from the workspace).
+ * looking up `framework/<last-segment>/package.json`. Returns the version
+ * string verbatim (e.g. `0.7.11`), or null if the package isn't present
+ * on disk (i.e. the CLI is running from npm, not from the workspace).
+ *
+ * Returns the version *exact*, not as a caret range, to match the shape
+ * published-CLI direct deps take after pnpm resolves `workspace:*` at
+ * publish time. Both modes converge on identical specs in
+ * `getResolvedVersions()`, so `uniweb update` and the scaffolder produce
+ * the same `package.json` whether the CLI ran from npm or from this
+ * monorepo.
  */
 function readWorkspaceVersion(packageName) {
   const root = getFrameworkRoot()
@@ -90,7 +97,7 @@ function readWorkspaceVersion(packageName) {
   try {
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
     if (pkg.name === packageName && pkg.version) {
-      return `^${pkg.version}`
+      return pkg.version
     }
   } catch {}
   return null
