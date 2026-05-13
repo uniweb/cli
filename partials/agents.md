@@ -150,9 +150,9 @@ uniweb deploy --dry-run           # Resolve foundation/runtime + print summary; 
 uniweb export                     # Build dist/ for any static host (no Uniweb account)
 uniweb publish                    # Publish a foundation to the Uniweb registry
 uniweb doctor                     # Diagnose project configuration issues (--fix to auto-repair)
-uniweb update                     # Reconcile workspace state with the CLI: align @uniweb/*
-                                  # deps in every package.json + refresh this AGENTS.md.
-                                  # Use --dry-run to preview, --deps-only to skip the doc.
+uniweb update                     # Align @uniweb/* deps + this AGENTS.md with the CLI's matrix.
+                                  # Use --dry-run to preview, --yes for non-interactive.
+                                  # `npx uniweb@latest update` pins to the latest release.
 
 # Help
 uniweb --help                     # Top-level help
@@ -161,7 +161,7 @@ uniweb <command> --help           # Per-command help (no side effects)
 
 `uniweb deploy` auto-publishes a workspace-local foundation as part of the deploy under a site-scoped slot — no separate `uniweb publish` step needed for site-bound foundations.
 
-If this AGENTS.md was stamped against an older CLI than the workspace's installed `@uniweb/*` packages, run `uniweb update --dry-run` to see the gap. The verb refuses to refresh the doc while declared deps lag the CLI — a stale doc that documents features the installed code doesn't have is worse than no refresh.
+**Staying current.** `uniweb update` aligns this project's `@uniweb/*` deps and `AGENTS.md` to the CLI that runs it; `uniweb doctor` reports drift without mutating. To pin to the newest published release, run `npx uniweb@latest update --yes` — no global install needed. The verb won't refresh AGENTS.md while declared deps still lag the CLI, or while edited deps haven't been installed: both would put the doc ahead of the code. Updating the CLI itself is your package manager's job (`npm i -g uniweb@latest`, `pnpm add -g uniweb@latest`, …); `uniweb update` does not do that.
 
 ---
 

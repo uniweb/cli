@@ -361,6 +361,35 @@ Both paths use the same framework. The difference is who edits content, where it
 
 ---
 
+## Keeping a Project in Sync
+
+Uniweb projects pin to specific `@uniweb/*` versions in their `package.json` files and ship an `AGENTS.md` stamped with the CLI version that wrote it. As the framework releases, both can drift from what the CLI you're running expects.
+
+Two paired verbs cover the drift:
+
+- **`uniweb doctor`** — diagnoses only. Flags `@uniweb/*` / `uniweb` declarations that lag the running CLI, plus `AGENTS.md` staleness, plus a small set of safely auto-fixable structural issues.
+- **`uniweb update`** — the mutator. Rewrites `@uniweb/*` + `uniweb` version keys in every workspace `package.json` to the CLI's bundled matrix (deps that are *ahead* are left alone — never downgraded), runs your workspace's package manager, and refreshes `AGENTS.md`. Each file's existing indentation is preserved.
+
+```bash
+npx uniweb@latest update          # canonical: pin to the latest release (no install)
+npx uniweb@latest update --yes    # same, non-interactive (CI, agents, automation)
+uniweb update --dry-run           # preview the plan without touching files
+```
+
+`update` aligns your project to *the CLI that's running it*. `npx uniweb@latest update` is the "pin to the newest release" path. A project-local copy (`node_modules/.bin/uniweb`) deliberately pins to your committed `uniweb` version — bump it in `package.json` and re-install, or use the npx form, to go further.
+
+**Updating the CLI itself is separate**, and it's your package manager's job:
+
+```bash
+npm i -g uniweb@latest        # npm
+pnpm add -g uniweb@latest     # pnpm
+yarn global add uniweb@latest # yarn
+```
+
+`uniweb update` prints the right command for your install when a newer release exists. It will *not* update the CLI itself — running it twice was never the intent.
+
+---
+
 ## Documentation
 
 Full documentation is available at **[github.com/uniweb/docs](https://github.com/uniweb/docs)**:
