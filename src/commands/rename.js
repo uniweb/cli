@@ -54,6 +54,7 @@ import {
   updateRootScripts,
 } from '../utils/config.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
+import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import { getExistingPackageNames, validatePackageName } from '../utils/names.js'
 import { detectPackageManager, installCmd } from '../utils/pm.js'
 import { getCliPrefix } from '../utils/interactive.js'
@@ -184,9 +185,10 @@ async function validateRenameName(rootDir, newName) {
  * Rewrite the `name` field in a package.json file.
  */
 async function rewritePackageJsonName(pkgPath, newName) {
-  const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
+  const src = await readFile(pkgPath, 'utf-8')
+  const pkg = JSON.parse(src)
   pkg.name = newName
-  await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+  await writeJsonPreservingStyleAsync(pkgPath, pkg, src)
 }
 
 // ─── Foundation rename ───────────────────────────────────────────
@@ -234,11 +236,13 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
   for (const site of sites) {
     const sitePkgPath = join(rootDir, site.path, 'package.json')
     const siteYmlPath = join(rootDir, site.path, 'site.yml')
-    let pkg, ymlData
+    let pkg, pkgSrc, ymlData
     try {
-      pkg = JSON.parse(await readFile(sitePkgPath, 'utf-8'))
+      pkgSrc = await readFile(sitePkgPath, 'utf-8')
+      pkg = JSON.parse(pkgSrc)
     } catch {
       pkg = null
+      pkgSrc = null
     }
     try {
       ymlData = yaml.load(await readFile(siteYmlPath, 'utf-8')) || {}
@@ -252,6 +256,7 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
         path: site.path,
         name: site.name,
         pkg,
+        pkgSrc,
         sitePkgPath,
         siteYmlPath,
         ymlData,
@@ -295,7 +300,7 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
       s.pkg.dependencies[newName] = oldValue.startsWith('file:')
         ? `file:${newRel}`
         : oldValue  // npm-pinned, leave it; rename-then-republish is out of scope.
-      await writeFile(s.sitePkgPath, JSON.stringify(s.pkg, null, 2) + '\n')
+      await writeJsonPreservingStyleAsync(s.sitePkgPath, s.pkg, s.pkgSrc)
     }
     if (s.ymlMatches) {
       const newYmlData = { ...s.ymlData, foundation: newName }

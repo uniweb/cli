@@ -13,6 +13,7 @@ import yaml from 'js-yaml'
 import Handlebars from 'handlebars'
 import { copyTemplateDirectory, enumerateTemplateOutputs, registerVersions } from '../templates/processor.js'
 import { getVersionsForTemplates, getCliVersion } from '../versions.js'
+import { writeJsonPreservingStyleAsync } from './json-file.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const TEMPLATES_DIR = join(__dirname, '..', '..', 'templates')
@@ -380,12 +381,13 @@ function resolveDependencyVersion(rawValue) {
  */
 export async function mergeTemplateDependencies(packageJsonPath, deps) {
   if (!deps || Object.keys(deps).length === 0) return
-  const pkg = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'))
+  const src = await fs.readFile(packageJsonPath, 'utf-8')
+  const pkg = JSON.parse(src)
   if (!pkg.dependencies) pkg.dependencies = {}
   for (const [name, version] of Object.entries(deps)) {
     if (!pkg.dependencies[name] && !pkg.devDependencies?.[name]) {
       pkg.dependencies[name] = resolveDependencyVersion(version)
     }
   }
-  await fs.writeFile(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n')
+  await writeJsonPreservingStyleAsync(packageJsonPath, pkg, src)
 }

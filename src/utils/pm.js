@@ -41,6 +41,35 @@ export function detectWorkspacePm(workspaceRoot) {
 }
 
 /**
+ * Detect which package manager owns a *globally installed* `uniweb` CLI
+ * binary, by inspecting its install path (`process.argv[1]`). pnpm and
+ * yarn keep global packages under recognizable directory segments;
+ * everything else is assumed to be npm. Only meaningful when the CLI is
+ * actually a global install (see index.js::isGlobalInstall) — a
+ * project-local or npx-launched copy is updated differently.
+ *
+ * @returns {'pnpm' | 'yarn' | 'npm'}
+ */
+export function detectGlobalCliPm() {
+  const path = (process.argv[1] || '').toLowerCase().replace(/\\/g, '/')
+  if (path.includes('/pnpm/')) return 'pnpm'
+  if (path.includes('/yarn/')) return 'yarn'
+  return 'npm'
+}
+
+/**
+ * The command to (re)install the latest `uniweb` CLI globally with a
+ * given package manager.
+ * @param {'pnpm' | 'yarn' | 'npm'} pm
+ * @returns {string}
+ */
+export function globalCliUpdateCmd(pm) {
+  if (pm === 'pnpm') return 'pnpm add -g uniweb@latest'
+  if (pm === 'yarn') return 'yarn global add uniweb@latest'
+  return 'npm i -g uniweb@latest'
+}
+
+/**
  * Generate a workspace-filtered command.
  * pnpm: "pnpm --filter site dev"
  * npm:  "npm -w site run dev"

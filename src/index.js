@@ -128,9 +128,10 @@ function getCliVersion() {
  * Commands that always run from the global CLI (no project context needed)
  */
 // Commands that always run from the global CLI, never delegating to a
-// project-local copy. `update` is here because its primary job is to
-// self-update the GLOBAL install — delegating it to project-local would
-// short-circuit that intent.
+// project-local copy. `update` is here because it reconciles the project
+// against *this* CLI's version matrix — when run from a (newer) global
+// install that's the whole point; delegating to the project-local copy
+// would align the project to the version it already has, i.e. a no-op.
 const STANDALONE_COMMANDS = new Set([
   'create', '--help', '-h', '--version', '-v', 'login', 'update',
 ])
@@ -1284,39 +1285,47 @@ Prints the parsed content shape of a markdown file or folder — the
 Useful for debugging "why isn't my section getting X?".
 `,
     update: `
-${colors.cyan}${colors.bright}uniweb update${colors.reset} ${colors.dim}— Reconcile workspace state with the running CLI${colors.reset}
+${colors.cyan}${colors.bright}uniweb update${colors.reset} ${colors.dim}— Align this project with the running CLI${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
-  uniweb update                     Self-update + align deps + refresh AGENTS.md
+  uniweb update                     Align deps + refresh AGENTS.md
   uniweb update --deps-only         Only align workspace @uniweb/* deps
   uniweb update --agents-only       Only refresh AGENTS.md
   uniweb update --no-deps           Skip the deps-alignment step
   uniweb update --no-agents         Skip the AGENTS.md step
   uniweb update --dry-run           Print survey + would-be writes; no mutations
   uniweb update --allow-mismatch    Refresh AGENTS.md even if declared deps lag
-  uniweb update --yes               Skip confirmation prompts
+  uniweb update --yes               Don't prompt — apply edits and run the install
 
 ${colors.bright}What it does:${colors.reset}
   Prints a version survey first (CLI version, AGENTS.md stamp, every
   @uniweb/* + uniweb dep declared in workspace package.json files,
-  marked aligned / behind / ahead). Then three steps:
+  marked aligned / behind / ahead). Then two steps:
 
-  1. ${colors.bright}Self-update${colors.reset} the global install via npm / pnpm / yarn
-     (auto-detected). TTY prompts; non-interactive prints the command.
-  2. ${colors.bright}Align workspace deps${colors.reset} to the CLI's bundled version matrix —
-     edits every workspace package.json (only @uniweb/* + uniweb keys),
-     then offers to run the workspace's package manager (lockfile-detected:
-     pnpm-lock.yaml → pnpm, yarn.lock → yarn, package-lock.json → npm).
-     If the install fails, package.json edits are kept and a revert
-     command is printed.
-  3. ${colors.bright}Refresh AGENTS.md${colors.reset} from the CLI's bundled partial. Refuses to
-     run while declared deps still lag the CLI (would document features
-     not in your installed packages); pass --allow-mismatch to override.
+  1. ${colors.bright}Align workspace deps${colors.reset} to this CLI's bundled version matrix —
+     rewrites the @uniweb/* + uniweb keys in each package.json that lags
+     (deps ahead of the matrix are left alone — never downgraded;
+     existing indentation is preserved), then offers to run the
+     workspace's package manager (lockfile-detected: pnpm-lock.yaml →
+     pnpm, yarn.lock → yarn, package-lock.json → npm). If the install
+     fails, the package.json edits are kept and a revert command printed.
+  2. ${colors.bright}Refresh AGENTS.md${colors.reset} from this CLI's bundled partial. Won't run
+     if deps were edited but not installed (node_modules would be behind
+     package.json), or while declared deps still lag the CLI (would
+     document features not in your packages) — pass --allow-mismatch for
+     the latter.
+
+${colors.bright}Which matrix?${colors.reset}
+  \`update\` pins to the version matrix *this* CLI shipped with — not
+  necessarily the latest release. To reconcile against the latest release
+  without touching a global install, run \`npx uniweb@latest update\`. This
+  command does NOT update the CLI itself; use your package manager
+  (\`npm i -g uniweb@latest\`, \`pnpm add -g uniweb@latest\`, …).
 
 ${colors.bright}Project-local installs:${colors.reset}
-  When the running CLI is project-local (lives in node_modules), self-
-  update is a no-op — the version is pinned by your project's
-  package.json. The deps + AGENTS.md steps still run.
+  When run from a project-local CLI (in node_modules), it aligns the
+  project to that pinned version — bump \`uniweb\` in package.json (or use
+  \`npx uniweb@latest update\`) to align to something newer.
 `,
   }
 
@@ -1346,7 +1355,7 @@ ${colors.bright}Commands:${colors.reset}
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   doctor             Diagnose project configuration issues
-  update             Update AGENTS.md to match installed CLI version
+  update             Align workspace deps + AGENTS.md to the running CLI
   i18n <cmd>         Internationalization (extract, sync, status)
   template publish   Publish a site as a cloud template
   login              Log in to your Uniweb account

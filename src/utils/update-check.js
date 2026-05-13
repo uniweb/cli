@@ -9,6 +9,7 @@
 import { homedir } from 'node:os'
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { detectGlobalCliPm, globalCliUpdateCmd } from './pm.js'
 
 const CHECK_INTERVAL = 24 * 60 * 60 * 1000 // 1 day
 const STATE_DIR = join(homedir(), '.uniweb')
@@ -62,14 +63,15 @@ function printNotification(current, latest, tone = 'soft') {
   const cyan = '\x1b[36m'
   const dim = '\x1b[2m'
   const reset = '\x1b[0m'
+  const updateCmd = globalCliUpdateCmd(detectGlobalCliPm())
   console.error('')
   if (tone === 'eager') {
     console.error(`${yellow}Heads up:${reset} this CLI is ${dim}${current}${reset}; latest is ${cyan}${latest}${reset}.`)
-    console.error(`${dim}Templates ship with the CLI — consider updating first:${reset} npm i -g uniweb`)
+    console.error(`${dim}Templates ship with the CLI — consider updating first:${reset} ${updateCmd}`)
     console.error(`${dim}Or run a one-shot fresh:${reset} npx uniweb@latest <command>`)
   } else {
     console.error(`${yellow}Update available:${reset} ${dim}${current}${reset} → ${cyan}${latest}${reset}`)
-    console.error(`${dim}Run${reset} npm i -g uniweb ${dim}to update${reset}`)
+    console.error(`${dim}Run${reset} ${updateCmd} ${dim}to update the CLI${reset}`)
   }
 }
 

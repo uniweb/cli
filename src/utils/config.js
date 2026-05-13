@@ -20,6 +20,7 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import yaml from 'js-yaml'
 import { filterCmd } from './pm.js'
+import { writeJsonPreservingStyleAsync } from './json-file.js'
 
 // ── Platform URLs ──────────────────────────────────────────────
 
@@ -154,13 +155,19 @@ export async function readRootPackageJson(rootDir) {
 }
 
 /**
- * Write root package.json (2-space indent)
+ * Write root package.json, preserving the file's existing indentation
+ * (newly scaffolded workspaces use 2-space; we don't reflow whatever's
+ * already there).
  * @param {string} rootDir - Workspace root directory
  * @param {Object} pkg - Package.json object
  */
 export async function writeRootPackageJson(rootDir, pkg) {
   const pkgPath = join(rootDir, 'package.json')
-  await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+  if (existsSync(pkgPath)) {
+    await writeJsonPreservingStyleAsync(pkgPath, pkg)
+  } else {
+    await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+  }
 }
 
 /**

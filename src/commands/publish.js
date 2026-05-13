@@ -34,7 +34,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, mkdir } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 
@@ -42,6 +42,7 @@ import { resolveFoundationSrcPath, classifyPackage } from '@uniweb/build'
 import { createLocalRegistry, RemoteRegistry } from '../utils/registry.js'
 import { ensureAuth, readAuth, writeAuth, decodeJwtPayload } from '../utils/auth.js'
 import { getRegistryUrl, getBackendUrl } from '../utils/config.js'
+import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import { findWorkspaceRoot, findFoundations, findSites, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
@@ -681,7 +682,7 @@ export async function publish(args = []) {
   if (writeBackId) {
     pkg.uniweb = pkg.uniweb || {}
     pkg.uniweb.id = foundationName
-    await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+    await writeJsonPreservingStyleAsync(pkgPath, pkg)
     info(`Wrote ${colors.cyan}uniweb.id: "${foundationName}"${colors.reset} to ${colors.dim}package.json${colors.reset}`)
   }
 
@@ -851,7 +852,7 @@ export async function publish(args = []) {
       if (writeBackId) {
         pkg.uniweb = pkg.uniweb || {}
         pkg.uniweb.id = foundationName
-        await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
+        await writeJsonPreservingStyleAsync(pkgPath, pkg)
         info(`Wrote ${colors.cyan}uniweb.id: "${foundationName}"${colors.reset} to ${colors.dim}package.json${colors.reset}`)
       }
       console.log('')

@@ -10,6 +10,8 @@ import { loadDeployYml } from '@uniweb/build/site'
 import { listAdapters } from '@uniweb/build/hosts'
 import { getCliVersion } from '../versions.js'
 import { readAgentsVersion } from '../utils/agents-stamp.js'
+import { writeJsonPreservingStyle } from '../utils/json-file.js'
+import { surveyWorkspaceDeps } from '../utils/dep-survey.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 
@@ -204,9 +206,10 @@ export async function doctor(args = []) {
         const union = Array.from(new Set([...ymlPackages, ...pkgWorkspaces])).sort()
         writeFileSync(ymlPath, yaml.dump({ packages: union }, { flowLevel: -1, quotingType: '"' }))
         const rootPkgPath = join(workspaceDir, 'package.json')
-        const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf-8'))
+        const rootPkgSrc = readFileSync(rootPkgPath, 'utf-8')
+        const rootPkg = JSON.parse(rootPkgSrc)
         rootPkg.workspaces = union
-        writeFileSync(rootPkgPath, JSON.stringify(rootPkg, null, 2) + '\n')
+        writeJsonPreservingStyle(rootPkgPath, rootPkg, rootPkgSrc)
         issue.fixed = true
         fixed(`wrote union [${union.join(', ')}] to both manifests`)
       } else {
@@ -364,7 +367,7 @@ export async function doctor(args = []) {
         const sitePkgPath = join(sitePath, 'package.json')
         const updatedPkg = { ...sitePkg }
         updatedPkg.dependencies = { ...(updatedPkg.dependencies || {}), [foundationName]: expectedPath }
-        writeFileSync(sitePkgPath, JSON.stringify(updatedPkg, null, 2) + '\n')
+        writeJsonPreservingStyle(sitePkgPath, updatedPkg)
         issue.fixed = true
         fixed(`added "${foundationName}": "${expectedPath}" to ${relative(workspaceDir, sitePkgPath)}`)
       } else {
@@ -391,7 +394,7 @@ export async function doctor(args = []) {
           const sitePkgPath = join(sitePath, 'package.json')
           const updatedPkg = { ...sitePkg }
           updatedPkg.dependencies = { ...(updatedPkg.dependencies || {}), [foundationName]: expectedPath }
-          writeFileSync(sitePkgPath, JSON.stringify(updatedPkg, null, 2) + '\n')
+          writeJsonPreservingStyle(sitePkgPath, updatedPkg)
           issue.fixed = true
           fixed(`updated "${foundationName}" to "${expectedPath}" in ${relative(workspaceDir, sitePkgPath)}`)
         } else {
@@ -672,11 +675,27 @@ export async function doctor(args = []) {
     }
   }
 
+  const cliVersion = getCliVersion()
+
+  // Check @uniweb/* dep alignment with the running CLI
+  log('')
+  const depSurvey = await surveyWorkspaceDeps(workspaceDir)
+  const behindDeps = depSurvey.rows.filter(r => r.status === 'behind')
+  if (behindDeps.length > 0) {
+    const names = [...new Set(behindDeps.map(r => r.name))].sort()
+    warn(`${behindDeps.length} workspace dep declaration${behindDeps.length === 1 ? '' : 's'} lag the CLI (v${cliVersion}): ${names.join(', ')}`)
+    info(`Run: uniweb update`)
+    issues.push({ type: 'warn', message: `${behindDeps.length} @uniweb/* dep declaration(s) behind CLI v${cliVersion}` })
+  } else if (depSurvey.anyAhead) {
+    success(`@uniweb/* deps are aligned or ahead of the CLI (v${cliVersion})`)
+  } else {
+    success(`@uniweb/* deps are aligned with the CLI (v${cliVersion})`)
+  }
+
   // Check AGENTS.md freshness
   log('')
   const agentsPath = join(workspaceDir, 'AGENTS.md')
   const agentsVersion = readAgentsVersion(agentsPath)
-  const cliVersion = getCliVersion()
 
   if (!existsSync(agentsPath)) {
     warn('AGENTS.md not found')
