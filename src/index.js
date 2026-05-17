@@ -646,6 +646,13 @@ async function main() {
     return
   }
 
+  // Handle content command (dynamic import — depends on @uniweb/build/uwx)
+  if (command === 'content') {
+    const { content } = await importProjectCommand('./commands/content.js')
+    await content(args.slice(1))
+    return
+  }
+
   // Handle login command
   if (command === 'login') {
     await login(args.slice(1))
