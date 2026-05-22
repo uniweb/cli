@@ -907,6 +907,11 @@ export async function deploy(args = []) {
     say.dim(`Data files     : ${Object.keys(dataFiles).length} (collection JSON)`)
   }
 
+  const searchFiles = await collectSearchFiles(distDir)
+  if (Object.keys(searchFiles).length > 0) {
+    say.dim(`Search indexes : ${Object.keys(searchFiles).length} (_search/ JSON)`)
+  }
+
   // Asset pipeline — upload dist/assets/* + favicon + fonts + content-scan
   // hits (public/, data file refs) to S3, then rewrite each locale's
   // siteContent + each parsed data file so the runtime resolves CDN URLs at
@@ -948,6 +953,7 @@ export async function deploy(args = []) {
     // publish writes each to ${sitePrefix}/data/<key>; worker serve allows
     // /data/* paths from R2 alongside _pages/*.
     ...(Object.keys(dataFiles).length > 0 ? { dataFiles } : {}),
+    ...(Object.keys(searchFiles).length > 0 ? { searchFiles } : {}),
     // Same shape as Editor publish — one entry per language. Single-locale
     // sites end up with `{ [defaultLanguage]: siteContent }`; multi-locale
     // sites carry per-locale translated content emitted by buildLocalizedContent.
@@ -1319,6 +1325,25 @@ async function collectDataFiles(distDir) {
     if (!entry.name.endsWith('.json')) continue
     const fullPath = join(entry.parentPath || entry.path, entry.name)
     const relPath = relative(dataDir, fullPath)
+    files[relPath] = await readFile(fullPath, 'utf8')
+  }
+  return files
+}
+
+// Collect search index files from dist/_search/ recursively.
+// Returns `{ '<locale>/<name>.json': '<utf8-content>' }` so the worker can
+// write each to `${sitePrefix}/_search/<key>` in R2, gated by searchEnabled.
+// Empty object when the build emitted no search indexes.
+async function collectSearchFiles(distDir) {
+  const searchDir = join(distDir, '_search')
+  if (!existsSync(searchDir)) return {}
+  const files = {}
+  const entries = await readdir(searchDir, { withFileTypes: true, recursive: true })
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    if (!entry.name.endsWith('.json')) continue
+    const fullPath = join(entry.parentPath || entry.path, entry.name)
+    const relPath = relative(searchDir, fullPath)
     files[relPath] = await readFile(fullPath, 'utf8')
   }
   return files
