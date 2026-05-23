@@ -45,7 +45,7 @@ ${c.cyan}uniweb content export${c.reset} [dir] [options]
   Package a site project (or built foundation schema) as a .uwx entity
   package for import into Uniweb.
 
-  ${c.dim}-o, --output <file>${c.reset}      Output path (default: <name>.entity.uwx)
+  ${c.dim}-o, --output <file>${c.reset}      Output path (default: <name>.uwx)
   ${c.dim}--no-sidecar${c.reset}             Mint fresh ids (submit-once) instead of
                            the syncable round trip
   ${c.dim}--dry-run${c.reset}                Print a summary; write nothing
@@ -105,9 +105,10 @@ async function contentExport(args) {
       defaultName = basename(dir)
     } else {
       const schema = JSON.parse(readFileSync(schemaPath, 'utf8'))
-      say.info(`Packaging foundation → @uniweb/foundation (.uwx)…`)
-      buf = uwx.emitFoundationPackage(schema, {
+      say.info(`Packaging foundation schema → @uniweb/foundation-schema (.uwx)…`)
+      buf = uwx.emitFoundationSchemaPackage(schema, {
         sidecar: useSidecar ? join(dir, uwx.SIDECAR_RELPATH) : undefined,
+        foundationDir: dir,
         sourceLocale,
       })
       defaultName = (schema?._self?.name || basename(dir)).replace(
@@ -134,7 +135,7 @@ async function contentExport(args) {
   console.log('')
   say.dim(`subtype       ${manifest.subtype}  (format ${manifest.format})`)
   say.dim(
-    `model         ${manifest.models_required[0].name_at_export} ${manifest.models_required[0].uuid}`
+    `type          ${manifest.models_required[0].name_at_export} ${manifest.models_required[0].uuid}`
   )
   say.dim(`entity        ${entity.uuid}`)
   say.dim(
@@ -151,7 +152,7 @@ async function contentExport(args) {
     return
   }
 
-  const outPath = resolve(output || `${defaultName}.entity.uwx`)
+  const outPath = resolve(output || `${defaultName}.uwx`)
   writeFileSync(outPath, buf)
   say.ok(`Wrote ${c.cyan}${outPath}${c.reset}`)
   if (useSidecar) {
