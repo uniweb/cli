@@ -1038,18 +1038,33 @@ All non-reserved frontmatter fields become `params`. Reserved: `type`, `preset`,
 
 ### Data
 
-A component on a page with a `data:` or `fetch:` declaration automatically receives that data in `content.data.{schema}`. No opt-in required in `meta.js`. On a template page (`[slug]/`), the matched item is also delivered as `content.data.{singular}` (e.g. `content.data.article` when the parent declares `data: articles`).
+A component on a page with a `data:` or `fetch:` declaration automatically receives that data in `content.data.{key}`. No opt-in required in `meta.js`. **Bound collections always arrive as arrays.** On a list page, `content.data.articles` is the full collection. On a template page (`[slug]/`), the matched record is delivered under the *same* collection key as a single-element array — the detail section reads `content.data.articles[0]`. When nothing matches, the key is `[]`. The runtime never coerces the array to a single object and never synthesizes a separate singular key.
 
 ```jsx
 function Article({ content, block }) {
   if (block.dataLoading) return <DataPlaceholder />
-  const article = content.data.article
+  const article = content.data.articles?.[0]   // focused record on a [slug] page
   if (!article) return <NotFound />
   return <ArticleView article={article} />
 }
 ```
 
-Components can ignore keys in `content.data` they don't need — the same way unused `params` are ignored. For declarative shape hints consumed by the editor and `prepare-props`, add `data: { entity: 'articles' }` to `meta.js`. For an explicit opt-out (rare), set `data: false`.
+Components can ignore keys in `content.data` they don't need — the same way unused `params` are ignored.
+
+**Declaring data schemas.** `meta.js` declares the schema for each `content.data` key with a single `data:` field — there is no separate `schemas:` key. Each entry's value is one of: a **named ref** (`'@/article'` resolves to this foundation's `foundation/schemas/article.{js,json,yml}`; `'@uniweb/person'` is a shared standard), an **inline field map** (`{ field: { type, default } }`), or an **inline rich-form** (`{ fields: [...] }`, an editor form). Refs use Uniweb namespacing — `@/name` (self), `@uniweb/name` (shared standards) — resolved on disk at build time, never fetched. The schema is a hint: it supplies field defaults and drives the editor, not delivery (which is default-on). For an explicit opt-out (rare), set `data: false`.
+
+```js
+// meta.js
+export default {
+  data: {
+    articles: '@/article',                               // named ref (this foundation)
+    authors:  '@uniweb/person',                          // named ref (shared standard)
+    pricing:  { tier: { type: 'string', default: '' } }, // inline field map
+  },
+}
+```
+
+When the same record needs to be a single object rather than a one-element array, that's the foundation's job: read `content.data.articles[0]`, or reshape `content.data` once with a `handlers.data` hook.
 
 **Authoring queries.** Fetch declarations (`fetch:` or the `data:` shorthand) accept query operators that describe which records you want, in what order, how many: `where:` (a where-object predicate), `sort:` (e.g. `date desc`), `limit:` (first N records). Whether the source evaluates them or the framework applies them as a runtime fallback is a transport detail controlled by the site's `fetcher.supports:` declaration.
 
