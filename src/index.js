@@ -599,6 +599,13 @@ async function main() {
     process.exit(result?.errors > 0 ? 1 : 0)
   }
 
+  // Handle validate command (dynamic import — depends on @uniweb/build)
+  if (command === 'validate') {
+    const { validate } = await importProjectCommand('./commands/validate.js')
+    const result = await validate(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
+  }
+
   // Handle update command
   if (command === 'update') {
     await update(args.slice(1))
@@ -1177,6 +1184,29 @@ ${colors.bright}Options:${colors.reset}
 
 Exit code is 1 if errors are found (warnings only → exit 0).
 `,
+    validate: `
+${colors.cyan}${colors.bright}uniweb validate${colors.reset} ${colors.dim}— Check your content against your foundation's data schemas${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb validate [path] [options]
+
+Checks each section's file-based data inputs against the schema your
+foundation declared for that input (meta.js \`data:\`). Answers "does my
+data match what I promised?" — distinct from \`doctor\`, which checks your
+project against framework conventions.
+
+Warns by default; the live render path stays tolerant, so this is a
+pre-live / CI gate. Dynamic (\`url:\`) inputs and entity references can't be
+resolved without a running backend, so they're reported as deferred,
+never silently skipped.
+
+${colors.bright}Options:${colors.reset}
+  --strict           Treat findings as errors (non-zero exit for CI)
+  --json             Machine-readable output (for CI annotations)
+  --site <name>      Check one site in a multi-site workspace
+
+Exit codes: 0 clean (or warn-only), 1 violations under --strict, 2 setup error.
+`,
     rename: `
 ${colors.cyan}${colors.bright}uniweb rename${colors.reset} ${colors.dim}— Rename a workspace package${colors.reset}
 
@@ -1362,6 +1392,7 @@ ${colors.bright}Commands:${colors.reset}
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   doctor             Diagnose project configuration issues
+  validate           Check your content against your foundation's data schemas
   update             Align workspace deps + AGENTS.md to the running CLI
   i18n <cmd>         Internationalization (extract, sync, status)
   template publish   Publish a site as a cloud template
