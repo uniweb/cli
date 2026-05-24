@@ -276,8 +276,6 @@ The system has multi-layer fallbacks so missing or partial information is always
 
 Bottom line: a foundation that doesn't set `runtimePolicy` gets `auto-minor` behavior automatically. A foundation that doesn't ship `runtime-pin.json` at all (e.g. a legacy build) still serves correctly through the platform's compatibility path — you just don't get the propagation benefits. Set `runtimePolicy` explicitly only when you want to override the default (typically to `exact` for stability-critical builds).
 
-(For platform operators interested in how propagation walks consume this field, see `kb/platform/operations/version-propagation.md` in the private docs.)
-
 ---
 
 ## Content Authoring

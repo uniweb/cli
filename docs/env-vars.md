@@ -15,7 +15,7 @@ This file is the canonical list. If you add a new `UNIWEB_*` env var, add it her
 
 ## Flag-equivalents (escape hatches that used to be `--flag`)
 
-These were once user-facing flags. They moved to env vars during the Phase 1 ergonomics overhaul (`kb/framework/plans/cli-ergonomics-overhaul.md`) because they exist for the platform test team / CI scripts, not for normal users.
+These were once user-facing flags. They moved to env vars during the Phase 1 ergonomics overhaul because they exist for the platform test team / CI scripts, not for normal users.
 
 | Variable | Used by | Effect |
 |---|---|---|
@@ -75,5 +75,4 @@ Currently honored by: `uniweb deploy`, `uniweb publish`, `uniweb i18n extract`, 
 
 ## Related docs
 
-- `kb/framework/plans/cli-ergonomics-overhaul.md` — the plan that established this convention (Phase 1).
 - `framework/cli/partials/agents.md` — user-facing CLI vocabulary.

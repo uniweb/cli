@@ -11,7 +11,7 @@
  *   - Static-host adapters (`s3-cloudfront`, `cloudflare-pages`,
  *     `github-pages`, `generic-static`, …): build dist/ in bundle-mode
  *     and hand it to a host adapter for upload + invalidation. No login,
- *     no edge. See kb/framework/plans/static-host-deploy-adapters.md.
+ *     no edge.
  *
  * For static-host artifacts WITHOUT upload, see `uniweb export`.
  *
@@ -50,8 +50,6 @@
  *   UNIWEB_SKIP_BILLING=1                  Admin-only: bypass billing gate
  *   UNIWEB_FORCE_REVIEW=1                  Force the browser review flow
  *   UNIWEB_ALLOW_DIRTY_FOUNDATION=1        Don't treat a dirty workspace as stale
- *
- * See kb/platform/plans/cli-site-deploy-decisions.md for the full design.
  */
 
 import { createServer } from 'node:http'
@@ -453,7 +451,7 @@ export async function deploy(args = []) {
   //
   // The default flow (`uniweb`) requires a `foundation:` declaration;
   // static-host deploys don't, so this branch comes BEFORE the foundation
-  // check. See kb/framework/plans/static-host-deploy-adapters.md.
+  // check.
   const targetFromFlag = readFlagValue(args, '--target')
   let hostFromFlag = readFlagValue(args, '--host')
   const noSave = args.includes('--no-save')
@@ -1045,8 +1043,6 @@ export async function deploy(args = []) {
 // registered in @uniweb/build/hosts. Always runs `uniweb build` (bundle
 // mode + prerender) first, then hands dist/ to the adapter's deploy hook
 // for upload + invalidation.
-//
-// See kb/framework/plans/static-host-deploy-adapters.md.
 
 async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave, hostOverridden }) {
   let getAdapter

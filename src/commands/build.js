@@ -548,7 +548,7 @@ function resolveFoundationDir(projectDir, siteConfig) {
  * and deploy was reading that stripped version, causing the worker to
  * mis-detect split and serve blank pages. Link mode skips prerender
  * entirely; `dist/site-content.json` keeps full sections; the worker
- * splits correctly. See `kb/framework/build/workspace-ergonomics.md`.
+ * splits correctly.
  */
 async function buildSiteLink(projectDir, options = {}) {
   const { siteConfig = null } = options
@@ -966,7 +966,7 @@ export async function build(args = []) {
   // --host names the host adapter for this build's prerender step.
   // Default = 'cloudflare-pages' (resolved inside prerender.js, via the
   // registry). Build does not read deploy.yml; that is the deploy
-  // orchestrator's job. See kb/framework/plans/static-host-deploy-adapters.md.
+  // orchestrator's job.
   //
   // `--host` with no value → interactive picker (errors in CI / non-TTY).
   const { readFlagValue } = await import('../utils/args.js')
