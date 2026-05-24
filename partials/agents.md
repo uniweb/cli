@@ -150,6 +150,7 @@ uniweb deploy --dry-run           # Resolve foundation/runtime + print summary; 
 uniweb export                     # Build dist/ for any static host (no Uniweb account)
 uniweb publish                    # Publish a foundation to the Uniweb registry
 uniweb doctor                     # Diagnose project configuration issues (--fix to auto-repair)
+uniweb validate                   # Check your file-based data against your declared schemas (--strict for CI)
 uniweb update                     # Align @uniweb/* deps + this AGENTS.md with the CLI's matrix.
                                   # Use --dry-run to preview, --yes for non-interactive.
                                   # `npx uniweb@latest update` pins to the latest release.
@@ -1049,18 +1050,29 @@ function Article({ content, block }) {
 
 Components can ignore keys in `content.data` they don't need — the same way unused `params` are ignored.
 
-**Declaring data schemas.** `meta.js` declares the schema for each `content.data` key with a single `data:` field — there is no separate `schemas:` key. Each entry's value is one of: a **named ref** (`'@/article'` resolves to this foundation's `foundation/schemas/article.{js,json,yml}`; `'@uniweb/person'` is a shared standard), an **inline field map** (`{ field: { type, default } }`), or an **inline rich-form** (`{ fields: [...] }`, an editor form). Refs use Uniweb namespacing — `@/name` (self), `@uniweb/name` (shared standards) — resolved on disk at build time, never fetched. The schema is a hint: it supplies field defaults and drives the editor, not delivery (which is default-on). For an explicit opt-out (rare), set `data: false`.
+**Declaring data schemas.** `meta.js` declares the schema for each `content.data` key with a single `data:` field — there is no separate `schemas:` key. Each entry's value is one of: a **named ref** (`'@/article'` resolves to this foundation's `foundation/schemas/article.{js,json,yml}`; `'@std/person'` is a shared standard), an **inline field map** (`{ field: { type, default } }`), or an **inline rich-form** (`{ fields: [...] }`, an editor form). Refs use Uniweb namespacing, resolved on disk at build time, never fetched: `@/name` (this foundation's own `foundation/schemas/`), `@std/name` (the shared standard schemas, shipped in the `@uniweb/schemas` package), and `@org/name` (an org's own schemas, from its `@org/schemas` package — define a schema once and share it across foundations). The schema is a hint: it supplies field defaults and drives the editor, not delivery (which is default-on). For an explicit opt-out (rare), set `data: false`.
 
 ```js
 // meta.js
 export default {
   data: {
     articles: '@/article',                               // named ref (this foundation)
-    authors:  '@uniweb/person',                          // named ref (shared standard)
+    authors:  '@std/person',                             // named ref (shared standard)
     pricing:  { tier: { type: 'string', default: '' } }, // inline field map
   },
 }
 ```
+
+**Routing a scope to a folder.** By default `@org/name` resolves from that org's `@org/schemas` package. A foundation can instead route a scope to a plain folder of schema files — anywhere on disk, no package, no install — via an optional `schemas.config.js` at its root. This is how a team shares one set of schemas across many foundations:
+
+```js
+// schemas.config.js  —  @acme/person → ../shared/acme-schemas/person.{js,yml}
+export default { '@acme': '../shared/acme-schemas', '@brand': process.env.BRAND_SCHEMAS }
+```
+
+Plain JS, so paths can be relative, absolute, or read from an env var. A routed scope wins over the package convention; `@/` and `@uniweb` are never routable; an empty value (e.g. an unset env var) falls back to the package convention.
+
+**Validate your data.** `uniweb validate` checks your file-based data against these declared schemas — missing required fields, type/enum/format mismatches, nested fields — before you ship. Warns by default, `--strict` for a non-zero CI exit. It's distinct from `uniweb doctor` (which checks project structure): `validate` checks your *data* against the schemas you *declared*. Remote (`url:`), `ref`/`options`, and rich `sections`-form inputs are reported deferred — validate those against live data.
 
 When the same record needs to be a single object rather than a one-element array, that's the foundation's job: read `content.data.articles[0]`, or reshape `content.data` once with a `handlers.data` hook.
 
