@@ -8,6 +8,7 @@
  *
  * Usage:
  *   uniweb register                      Build the .uwx and submit it
+ *   uniweb register --scope @org         Publish names under @org (resolves @/x -> @org/x)
  *   uniweb register --dry-run            Print the .uwx; submit nothing
  *   uniweb register -o foundation.uwx    Write the .uwx to a file; submit nothing
  *   uniweb register --registry <url>     Override the submit endpoint
@@ -44,6 +45,16 @@ function flagValue(args, name) {
   return null
 }
 
+// The uniweb CLI version, for the `.uwx` exporter envelope. Safe fallback if the
+// package.json isn't reachable.
+function cliVersion() {
+  try {
+    return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version
+  } catch {
+    return '0.0.0'
+  }
+}
+
 /**
  * Resolve which foundation to register: the cwd if it's a foundation, else the
  * single foundation in the workspace, else prompt (or error in non-interactive).
@@ -76,6 +87,7 @@ async function resolveFoundationDir(args) {
 export async function register(args = []) {
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
+  const scope = flagValue(args, '--scope')
   const registryUrl = flagValue(args, '--registry') || process.env.UNIWEB_REGISTER_URL || DEFAULT_REGISTER_URL
 
   const foundationDir = await resolveFoundationDir(args)
@@ -96,7 +108,12 @@ export async function register(args = []) {
 
   let doc
   try {
-    doc = buildRegistryPackage({ schema, foundationDir })
+    doc = buildRegistryPackage({
+      schema,
+      foundationDir,
+      scope,
+      exporter: { tool: 'uniweb', version: cliVersion(), instance: 'build' },
+    })
   } catch (err) {
     error(`Could not assemble the .uwx: ${err.message}`)
     return { exitCode: 2 }
@@ -123,6 +140,9 @@ export async function register(args = []) {
   }
 
   // Submit: login, then POST the .uwx.
+  if (!scope) {
+    log(`  ${colors.yellow}!${colors.reset} ${colors.dim}No --scope given — names stay @/… and the registry will likely reject them. Pass --scope @org.${colors.reset}`)
+  }
   const token = await ensureAuth({ command: 'Registering', args })
   info(`Submitting to ${colors.dim}${registryUrl}${colors.reset} …`)
   let res
