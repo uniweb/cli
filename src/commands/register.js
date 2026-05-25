@@ -13,8 +13,10 @@
  *   uniweb register --dry-run            Print the .uwx; submit nothing
  *   uniweb register -o foundation.uwx    Write the .uwx to a file; submit nothing
  *   uniweb register --registry <url>     Override the submit endpoint
+ *   uniweb register --token <bearer>     Submit with this bearer; skips `uniweb login`
  *
  * Endpoint resolution: --registry <url>  >  UNIWEB_REGISTER_URL  >  the local default.
+ * Auth (submit only):  --token <bearer>  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -100,6 +102,7 @@ export async function register(args = []) {
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
   const scopeFlag = flagValue(args, '--scope')
+  const tokenFlag = flagValue(args, '--token')
   const registryUrl = flagValue(args, '--registry') || process.env.UNIWEB_REGISTER_URL || DEFAULT_REGISTER_URL
 
   const foundationDir = await resolveFoundationDir(args)
@@ -163,8 +166,11 @@ export async function register(args = []) {
     log(`  ${colors.dim}Without a scope, names stay @/… and the registry rejects them.${colors.reset}`)
     return { exitCode: 2 }
   }
-  // Submit: login, then POST the .uwx.
-  const token = await ensureAuth({ command: 'Registering', args })
+  // Submit: use an explicit --token bearer if given (e.g. one minted by the
+  // registry backend's own login), else fall back to the `uniweb login` session.
+  // --token lets register reach the new backend without a manual curl, until
+  // `uniweb login` adopts that backend's session endpoint.
+  const token = tokenFlag || (await ensureAuth({ command: 'Registering', args }))
   info(`Submitting to ${colors.dim}${registryUrl}${colors.reset} …`)
   let res
   try {
@@ -181,7 +187,8 @@ export async function register(args = []) {
   if (!res.ok) {
     error(`Registry rejected the submission: HTTP ${res.status} ${res.statusText}`)
     if (res.status === 401 || res.status === 403) {
-      log(`  ${colors.dim}The registry didn't accept your \`uniweb login\` session — the registry backend may use different credentials.${colors.reset}`)
+      log(`  ${colors.dim}The registry didn't accept your credentials — it may use different ones than \`uniweb login\`.${colors.reset}`)
+      log(`  ${colors.dim}Supply a registry bearer with --token <bearer> (or UNIWEB_TOKEN); an existing one may be wrong or expired.${colors.reset}`)
     }
     const body = await res.text().catch(() => '')
     if (body) log(`  ${colors.dim}${body.slice(0, 500)}${colors.reset}`)
