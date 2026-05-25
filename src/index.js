@@ -606,6 +606,13 @@ async function main() {
     process.exit(result?.exitCode ?? 0)
   }
 
+  // Handle register command (dynamic import — depends on @uniweb/build)
+  if (command === 'register') {
+    const { register } = await importProjectCommand('./commands/register.js')
+    const result = await register(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
+  }
+
   // Handle update command
   if (command === 'update') {
     await update(args.slice(1))
@@ -1207,6 +1214,24 @@ ${colors.bright}Options:${colors.reset}
 
 Exit codes: 0 clean (or warn-only), 1 violations under --strict, 2 setup error.
 `,
+    register: `
+${colors.cyan}${colors.bright}uniweb register${colors.reset} ${colors.dim}— Register a foundation + its data schemas with the backend registry${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb register [options]
+
+Builds one \`.uwx\` document — the foundation plus the data schemas it defines —
+and submits it to the backend registry over HTTP. Run \`uniweb login\` first.
+This is distinct from \`uniweb publish\` (legacy hosting platform).
+
+${colors.bright}Options:${colors.reset}
+  --dry-run          Print the .uwx; submit nothing
+  -o, --output <f>   Write the .uwx to a file; submit nothing
+  --registry <url>   Submit endpoint (default: \$UNIWEB_REGISTER_URL or a local URL)
+  --non-interactive  Fail with usage info instead of prompting
+
+Run from a foundation directory, or a workspace with a single foundation.
+`,
     rename: `
 ${colors.cyan}${colors.bright}uniweb rename${colors.reset} ${colors.dim}— Rename a workspace package${colors.reset}
 
@@ -1387,6 +1412,7 @@ ${colors.bright}Commands:${colors.reset}
   deploy             Deploy a site to Uniweb hosting
   export             Export a self-contained site for third-party hosting
   publish            Publish a foundation to the Uniweb registry
+  register           Register a foundation + its data schemas with the backend registry
   invite <email>     Create a foundation invite for a client
   handoff <email>    Hand off a site to a client
   inspect <path>     Inspect parsed content shape of a markdown file or folder
