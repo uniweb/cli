@@ -8,7 +8,8 @@
  *
  * Usage:
  *   uniweb register                      Build the .uwx and submit it
- *   uniweb register --scope @org         Publish names under @org (resolves @/x -> @org/x)
+ *   uniweb register --scope @org         Publish under @org (resolves @/x -> @org/x).
+ *                                        Default: the foundation's package.json "uniweb.scope".
  *   uniweb register --dry-run            Print the .uwx; submit nothing
  *   uniweb register -o foundation.uwx    Write the .uwx to a file; submit nothing
  *   uniweb register --registry <url>     Override the submit endpoint
@@ -55,6 +56,17 @@ function cliVersion() {
   }
 }
 
+// The foundation's recorded publish org, from its package.json `uniweb.scope`
+// (`{ "uniweb": { "scope": "@acme" } }`) — the default when `--scope` is absent.
+function readPkgScope(foundationDir) {
+  try {
+    const pkg = JSON.parse(readFileSync(join(foundationDir, 'package.json'), 'utf8'))
+    return pkg?.uniweb?.scope || null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Resolve which foundation to register: the cwd if it's a foundation, else the
  * single foundation in the workspace, else prompt (or error in non-interactive).
@@ -87,10 +99,15 @@ async function resolveFoundationDir(args) {
 export async function register(args = []) {
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
-  const scope = flagValue(args, '--scope')
+  const scopeFlag = flagValue(args, '--scope')
   const registryUrl = flagValue(args, '--registry') || process.env.UNIWEB_REGISTER_URL || DEFAULT_REGISTER_URL
 
   const foundationDir = await resolveFoundationDir(args)
+  // Scope: --scope flag, else the foundation's package.json `uniweb.scope`.
+  const pkgScope = readPkgScope(foundationDir)
+  const scope = scopeFlag || pkgScope
+  const scopeSource = scopeFlag ? '--scope' : pkgScope ? 'package.json uniweb.scope' : null
+
   const schemaPath = join(foundationDir, 'dist', 'meta', 'schema.json')
   if (!existsSync(schemaPath)) {
     error('No built schema found (dist/meta/schema.json).')
@@ -124,6 +141,7 @@ export async function register(args = []) {
   log('')
   info(`${colors.bright}${schema._self.name}@${schema._self.version}${colors.reset}`)
   log(`  ${colors.dim}data schemas defined: ${defined.length ? defined.join(', ') : '(none)'}${colors.reset}`)
+  if (scope) log(`  ${colors.dim}scope: ${scope} (${scopeSource})${colors.reset}`)
 
   // Preview paths — no submit, no auth needed.
   if (output) {
@@ -139,10 +157,13 @@ export async function register(args = []) {
     return { exitCode: 0 }
   }
 
-  // Submit: login, then POST the .uwx.
+  // Submit requires a concrete scope — the registry rejects @/… fail-closed.
   if (!scope) {
-    log(`  ${colors.yellow}!${colors.reset} ${colors.dim}No --scope given — names stay @/… and the registry will likely reject them. Pass --scope @org.${colors.reset}`)
+    error('No publish scope — set "uniweb.scope" in package.json, or pass --scope @org.')
+    log(`  ${colors.dim}Without a scope, names stay @/… and the registry rejects them.${colors.reset}`)
+    return { exitCode: 2 }
   }
+  // Submit: login, then POST the .uwx.
   const token = await ensureAuth({ command: 'Registering', args })
   info(`Submitting to ${colors.dim}${registryUrl}${colors.reset} …`)
   let res
