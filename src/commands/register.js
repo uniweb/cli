@@ -23,9 +23,9 @@ import { ensureAuth } from '../utils/auth.js'
 import { findWorkspaceRoot, findFoundations, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
-// The new backend's register route is being finalized; default to a local
-// server and let --registry / UNIWEB_REGISTER_URL override.
-const DEFAULT_REGISTER_URL = 'http://localhost:8080/register'
+// The backend route is `/api/registry/register`; the host defaults to a local
+// server and is overridable via --registry / UNIWEB_REGISTER_URL (full URL).
+const DEFAULT_REGISTER_URL = 'http://localhost:8080/api/registry/register'
 
 const colors = {
   reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m',
@@ -139,6 +139,9 @@ export async function register(args = []) {
   }
   if (!res.ok) {
     error(`Registry rejected the submission: HTTP ${res.status} ${res.statusText}`)
+    if (res.status === 401 || res.status === 403) {
+      log(`  ${colors.dim}The registry didn't accept your \`uniweb login\` session — the registry backend may use different credentials.${colors.reset}`)
+    }
     const body = await res.text().catch(() => '')
     if (body) log(`  ${colors.dim}${body.slice(0, 500)}${colors.reset}`)
     return { exitCode: 1 }
