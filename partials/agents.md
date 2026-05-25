@@ -149,6 +149,7 @@ uniweb deploy --host=<adapter>    # Deploy to a static host: cloudflare-pages, n
 uniweb deploy --dry-run           # Resolve foundation/runtime + print summary; no writes
 uniweb export                     # Build dist/ for any static host (no Uniweb account)
 uniweb publish                    # Publish a foundation to the Uniweb registry
+uniweb register                   # Register a foundation + the data schemas it defines
 uniweb doctor                     # Diagnose project configuration issues (--fix to auto-repair)
 uniweb validate                   # Check your file-based data against your declared schemas (--strict for CI)
 uniweb update                     # Align @uniweb/* deps + this AGENTS.md with the CLI's matrix.
@@ -161,6 +162,8 @@ uniweb <command> --help           # Per-command help (no side effects)
 ```
 
 `uniweb deploy` auto-publishes a workspace-local foundation as part of the deploy under a site-scoped slot — no separate `uniweb publish` step needed for site-bound foundations.
+
+**Registering data schemas.** A foundation that defines data schemas (`@/article`, …) uses `uniweb register` to register the foundation together with those schemas in the Uniweb registry — so content authors can create and manage entities of those types. It requires authentication: run `uniweb login`, or supply a bearer token directly with `--token <bearer>` (or the `UNIWEB_TOKEN` env var). Point at a specific registry with `--registry <url>` (or `UNIWEB_REGISTER_URL`). Preview without auth using `--dry-run` (or `-o <file>` to write the submission), and set the publish org with `--scope @org` (default: the foundation's `package.json` `uniweb.scope`).
 
 **Staying current.** `uniweb update` aligns this project's `@uniweb/*` deps and `AGENTS.md` to the CLI that runs it; `uniweb doctor` reports drift without mutating. To pin to the newest published release, run `npx uniweb@latest update --yes` — no global install needed. The verb won't refresh AGENTS.md while declared deps still lag the CLI, or while edited deps haven't been installed: both would put the doc ahead of the code. Updating the CLI itself is your package manager's job (`npm i -g uniweb@latest`, `pnpm add -g uniweb@latest`, …); `uniweb update` does not do that.
 
