@@ -19,9 +19,11 @@ const UNIT_PATH = '/api/core/unit'
 // "taken" for these; we block them earlier for a clearer message.
 const RESERVED_HANDLES = new Set(['uniweb', 'std'])
 
-// Handle grammar (backend §4): lowercase alphanumerics + internal hyphens, 1–39,
-// no leading/trailing hyphen.
+// Handle grammar (backend): lowercase alphanumerics + internal hyphens, 3–39 chars,
+// no leading/trailing hyphen. The server is authoritative on reserved names (409).
 const HANDLE_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/
+const HANDLE_MIN = 3
+const HANDLE_MAX = 39
 
 /** Strip a leading `@` and any `/suffix`, returning the bare handle segment. */
 export function bareHandle(scope) {
@@ -35,7 +37,7 @@ export function bareHandle(scope) {
 export function validateHandle(handle) {
   const h = bareHandle(handle)
   if (!h) return 'A handle is required.'
-  if (h.length > 39) return 'Handle must be 1–39 characters.'
+  if (h.length < HANDLE_MIN || h.length > HANDLE_MAX) return `Handle must be ${HANDLE_MIN}–${HANDLE_MAX} characters.`
   if (!HANDLE_RE.test(h)) return 'Use lowercase letters, digits, and internal hyphens only (e.g. acme-co).'
   if (RESERVED_HANDLES.has(h)) return `@${h} is reserved.`
   return null
