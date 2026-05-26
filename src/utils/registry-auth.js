@@ -24,6 +24,8 @@
 import { existsSync } from 'node:fs'
 import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
+import { createServer } from 'node:http'
+import { randomBytes } from 'node:crypto'
 import { getAuthDir, isExpired } from './auth.js'
 
 const LOGIN_PATH = '/api/core/auth/login'
@@ -177,10 +179,10 @@ export async function ensureRegistryAuth({ apiBase, command = 'This command', ar
   return record.token
 }
 
-// Whether the new backend's CLI browser/OAuth login is wired yet. Flip to true
-// once the backend exposes an OAuth + localhost-callback flow (mirrors the legacy
-// browser login in commands/login.js). Until then the picker offers the
-// non-browser methods and `--browser` reports that it isn't available.
+// The browser/OAuth flow is wired below (loginViaBrowser: a loopback redirect
+// against the backend's /api/core/auth/cli/authorize, token-in-redirect). Kept
+// gated until that endpoint is live on the backend — flip to true then, and the
+// picker offers Browser/social as the default (and `--browser` works).
 const BROWSER_AVAILABLE = false
 
 /**
@@ -239,15 +241,74 @@ async function loginViaTokenPaste({ apiBase, nonInteractive }) {
   return record
 }
 
-// Browser / social — pending the new backend's CLI OAuth flow.
-async function loginViaBrowser(/* { apiBase } */) {
-  if (!BROWSER_AVAILABLE) {
-    throw new Error('browser/social login for the new backend isn’t available yet — use --password or --token-paste (browser is pending the backend OAuth flow).')
+// Open a URL in the default browser. Returns whether it launched.
+async function openBrowser(url) {
+  try {
+    const { exec } = await import('node:child_process')
+    const cmd = process.platform === 'darwin' ? `open "${url}"`
+      : process.platform === 'win32' ? `start "" "${url}"`
+        : `xdg-open "${url}"`
+    return await new Promise((resolve) => exec(cmd, (err) => resolve(!err)))
+  } catch {
+    return false
   }
-  // TODO(wire once the backend ships OAuth): start a temp localhost server, open
-  // the browser to {apiBase}/<oauth-login>?callback=http://localhost:<port>/callback,
-  // catch the redirect token, verify via fetchMe, then writeRegistryAuth. Mirrors
-  // the legacy browserLogin in commands/login.js, pointed at the new backend.
+}
+
+// Browser / social — loopback OAuth against the backend's /cli/authorize.
+// The CLI hosts a one-shot 127.0.0.1 server, opens the browser to authorize, and
+// the backend (after the Google dance) 302s back to the loopback with the token
+// (or an error). state is a CSRF nonce echoed back and verified. The token never
+// leaves browser→localhost. Gated by BROWSER_AVAILABLE until the endpoint is live.
+async function loginViaBrowser({ apiBase }) {
+  if (!BROWSER_AVAILABLE) {
+    throw new Error('browser/social login for the new backend isn’t available yet — use --password or --token-paste.')
+  }
+  const base = apiBase.replace(/\/$/, '')
+  const state = randomBytes(16).toString('hex')
+
+  const result = await new Promise((resolve) => {
+    const server = createServer((req, res) => {
+      const u = new URL(req.url, 'http://127.0.0.1')
+      if (u.pathname !== '/callback') { res.writeHead(404); res.end('Not found'); return }
+      const token = u.searchParams.get('token')
+      const error = u.searchParams.get('error')
+      const gotState = u.searchParams.get('state')
+      const failed = !!error || !token || gotState !== state
+      res.writeHead(failed ? 400 : 200, { 'Content-Type': 'text/html' })
+      res.end(`<!doctype html><html><body style="font-family:system-ui,sans-serif;text-align:center;padding:60px">`
+        + `<h2 style="color:${failed ? '#dc2626' : '#16a34a'}">${failed ? 'Login failed' : 'Login successful'}</h2>`
+        + `<p>You can close this tab and return to your terminal.</p></body></html>`)
+      cleanup()
+      if (error) resolve({ error })
+      else if (gotState !== state) resolve({ error: 'state mismatch — please try again.' })
+      else if (!token) resolve({ error: 'no token returned by the callback.' })
+      else resolve({ token })
+    })
+    let timer
+    function cleanup() { clearTimeout(timer); server.close() }
+    server.on('error', (e) => resolve({ error: `loopback server error: ${e.message}` }))
+    server.listen(0, '127.0.0.1', async () => {
+      const { port } = server.address()
+      const redirectUri = `http://127.0.0.1:${port}/callback`
+      const authorizeUrl = `${base}/api/core/auth/cli/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
+      console.log('\x1b[36m→\x1b[0m Opening your browser to sign in…')
+      console.log(`  \x1b[2m${authorizeUrl}\x1b[0m`)
+      const opened = await openBrowser(authorizeUrl)
+      if (!opened) console.log('\x1b[33m⚠\x1b[0m Could not open a browser automatically — open the URL above.')
+      console.log('\x1b[2mWaiting for sign-in to complete (120s)…\x1b[0m')
+    })
+    timer = setTimeout(() => { server.close(); resolve({ error: 'timed out waiting for sign-in (120s).' }) }, 120000)
+  })
+
+  if (result.error) throw new Error(result.error)
+  let account = null
+  try { account = await fetchMe({ apiBase, token: result.token }) } catch { /* identity optional; token is valid */ }
+  const record = { token: result.token }
+  if (account?.uuid) record.uuid = account.uuid
+  if (account?.username) record.username = account.username
+  if (account?.handle) record.handle = account.handle
+  await writeRegistryAuth(record)
+  return record
 }
 
 /**
