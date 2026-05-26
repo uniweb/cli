@@ -1,15 +1,21 @@
 /**
- * uniweb register — submit a foundation and the data schemas it defines to the
- * backend registry as one names-only `.uwx` document (uwx-format.md §5).
+ * uniweb register — submit a foundation (and the data schemas it renders), or a
+ * standalone schemas package (the data schemas alone, no foundation), to the
+ * registry as one names-only `.uwx` document (uwx-format.md §5).
  *
  * `uniweb login && uniweb register`. Distinct from `uniweb publish` (which
  * targets the legacy unicloud / uniweb-edge platform) — `register` talks to the
- * new backend over HTTP at a configurable endpoint.
+ * registry over HTTP at a configurable endpoint.
+ *
+ * Run from a foundation, or from a schemas-only package — a package that exports
+ * schemas (e.g. `@uniweb/schemas`, any `@org/schemas`) or a bare `schemas/*.yml`
+ * folder. The schemas-only package is auto-detected and submits its data schemas
+ * standalone (foundation-less); same flags, `--scope` names them.
  *
  * Usage:
  *   uniweb register                      Build the .uwx and submit it
  *   uniweb register --scope @org         Publish under @org (resolves @/x -> @org/x).
- *                                        Default: the foundation's package.json "uniweb.scope".
+ *                                        Default: the package's package.json "uniweb.scope".
  *   uniweb register --dry-run            Print the .uwx; submit nothing
  *   uniweb register -o foundation.uwx    Write the .uwx to a file; submit nothing
  *   uniweb register --registry <url>     Override the submit endpoint
@@ -21,8 +27,8 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
-import { buildRegistryPackage } from '@uniweb/build/uwx'
-import { classifyPackage } from '@uniweb/build'
+import { buildRegistryPackage, buildSchemaOnlyPackage } from '@uniweb/build/uwx'
+import { classifyPackage, isSchemasPackage, collectStandaloneSchemas } from '@uniweb/build'
 import { ensureRegistryAuth, readRegistryAuth } from '../utils/registry-auth.js'
 import { deriveScope } from '../utils/registry-orgs.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
@@ -81,6 +87,16 @@ async function writePkgScope(foundationDir, scope) {
   await writeJsonPreservingStyleAsync(path, pkg)
 }
 
+// The package's name from its package.json, for display. The standalone schemas
+// register has no foundation `_self` to name, so it labels by package name.
+function readPkgName(dir) {
+  try {
+    return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))?.name || null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Resolve which foundation to register: the cwd if it's a foundation, else the
  * single foundation in the workspace, else prompt (or error in non-interactive).
@@ -117,29 +133,51 @@ export async function register(args = []) {
   const tokenFlag = flagValue(args, '--token')
   const registryUrl = flagValue(args, '--registry') || process.env.UNIWEB_REGISTER_URL || DEFAULT_REGISTER_URL
 
-  const foundationDir = await resolveFoundationDir(args)
+  // Target: a schemas-only package (standalone data-schema register) or a
+  // foundation (foundation + the schemas it renders). A schemas package is only
+  // detected when the cwd isn't a foundation, so the foundation path — including
+  // its workspace-scan + prompt (resolveFoundationDir) — is unchanged.
+  const standalone = isSchemasPackage(process.cwd())
+  const targetDir = standalone ? process.cwd() : await resolveFoundationDir(args)
+
   // Scope: --scope flag, else package.json `uniweb.scope`, else (real submit
   // only) derived from login membership in the bootstrap below.
-  const pkgScope = readPkgScope(foundationDir)
+  const pkgScope = readPkgScope(targetDir)
   let scope = scopeFlag || pkgScope
   let scopeSource = scopeFlag ? '--scope' : pkgScope ? 'package.json uniweb.scope' : null
   const isPreview = !!output || dryRun
   const apiBase = new URL(registryUrl).origin
   let token = null
 
-  const schemaPath = join(foundationDir, 'dist', 'meta', 'schema.json')
-  if (!existsSync(schemaPath)) {
-    error('No built schema found (dist/meta/schema.json).')
-    log(`  Build the foundation first: ${colors.bright}uniweb build${colors.reset}`)
-    return { exitCode: 2 }
-  }
-
-  let schema
-  try {
-    schema = JSON.parse(readFileSync(schemaPath, 'utf8'))
-  } catch (err) {
-    error(`Could not read ${schemaPath}: ${err.message}`)
-    return { exitCode: 2 }
+  // Each path supplies a different schema source: the standalone path discovers
+  // the package's own schemas; the foundation path reads its built schema.json.
+  let schema = null
+  let schemas = null
+  if (standalone) {
+    try {
+      schemas = await collectStandaloneSchemas(targetDir)
+    } catch (err) {
+      error(`Could not read the schemas package: ${err.message}`)
+      return { exitCode: 2 }
+    }
+    if (!schemas || Object.keys(schemas).length === 0) {
+      error('No data schemas found in this package.')
+      log(`  ${colors.dim}Expected a package that exports schemas (getSchema / schemas), or a schemas/ directory of *.yml files.${colors.reset}`)
+      return { exitCode: 2 }
+    }
+  } else {
+    const schemaPath = join(targetDir, 'dist', 'meta', 'schema.json')
+    if (!existsSync(schemaPath)) {
+      error('No built schema found (dist/meta/schema.json).')
+      log(`  Build the foundation first: ${colors.bright}uniweb build${colors.reset}`)
+      return { exitCode: 2 }
+    }
+    try {
+      schema = JSON.parse(readFileSync(schemaPath, 'utf8'))
+    } catch (err) {
+      error(`Could not read ${schemaPath}: ${err.message}`)
+      return { exitCode: 2 }
+    }
   }
 
   // No scope for a real submit → derive it from login membership (list → 1 use /
@@ -152,21 +190,19 @@ export async function register(args = []) {
     scope = `@${derived}`
     scopeSource = 'login'
     try {
-      await writePkgScope(foundationDir, scope)
-      info(`Saved ${colors.bright}${scope}${colors.reset} as this foundation's publish scope (package.json).`)
+      await writePkgScope(targetDir, scope)
+      info(`Saved ${colors.bright}${scope}${colors.reset} as this ${standalone ? 'package' : 'foundation'}'s publish scope (package.json).`)
     } catch {
       log(`  ${colors.dim}(Could not save the scope to package.json — pass --scope ${scope} next time.)${colors.reset}`)
     }
   }
 
+  const exporter = { tool: 'uniweb', version: cliVersion(), instance: 'build' }
   let doc
   try {
-    doc = buildRegistryPackage({
-      schema,
-      foundationDir,
-      scope,
-      exporter: { tool: 'uniweb', version: cliVersion(), instance: 'build' },
-    })
+    doc = standalone
+      ? buildSchemaOnlyPackage({ schemas, scope, exporter })
+      : buildRegistryPackage({ schema, foundationDir: targetDir, scope, exporter })
   } catch (err) {
     error(`Could not assemble the .uwx: ${err.message}`)
     return { exitCode: 2 }
@@ -175,8 +211,12 @@ export async function register(args = []) {
 
   const defined = doc.entities.filter((e) => e.model === '@uniweb/data-schema').map((e) => e.name)
   log('')
-  info(`${colors.bright}${schema._self.name}@${schema._self.version}${colors.reset}`)
-  log(`  ${colors.dim}data schemas defined: ${defined.length ? defined.join(', ') : '(none)'}${colors.reset}`)
+  if (standalone) {
+    info(`${colors.bright}${readPkgName(targetDir) || 'schemas'}${colors.reset} ${colors.dim}(schemas-only — no foundation)${colors.reset}`)
+  } else {
+    info(`${colors.bright}${schema._self.name}@${schema._self.version}${colors.reset}`)
+  }
+  log(`  ${colors.dim}data schemas ${standalone ? 'registered' : 'defined'}: ${defined.length ? defined.join(', ') : '(none)'}${colors.reset}`)
   if (scope) log(`  ${colors.dim}scope: ${scope} (${scopeSource})${colors.reset}`)
 
   // Preview paths — no submit, no auth needed.
@@ -225,6 +265,10 @@ export async function register(args = []) {
     if (body) log(`  ${colors.dim}${body.slice(0, 500)}${colors.reset}`)
     return { exitCode: 1 }
   }
-  success(`Registered ${schema._self.name}@${schema._self.version}${defined.length ? ` + ${defined.length} data schema(s)` : ''}`)
+  success(
+    standalone
+      ? `Registered ${defined.length} data schema(s)${scope ? ` under ${scope}` : ''}`
+      : `Registered ${schema._self.name}@${schema._self.version}${defined.length ? ` + ${defined.length} data schema(s)` : ''}`
+  )
   return { exitCode: 0 }
 }
