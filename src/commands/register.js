@@ -23,7 +23,9 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { buildRegistryPackage } from '@uniweb/build/uwx'
 import { classifyPackage } from '@uniweb/build'
-import { ensureAuth } from '../utils/auth.js'
+import { ensureRegistryAuth, readRegistryAuth } from '../utils/registry-auth.js'
+import { deriveScope } from '../utils/registry-orgs.js'
+import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import { findWorkspaceRoot, findFoundations, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
@@ -69,6 +71,16 @@ function readPkgScope(foundationDir) {
   }
 }
 
+// Record the chosen publish scope in the foundation's package.json so it travels
+// with the foundation (read back by readPkgScope on the next register). Preserves
+// the file's existing JSON style.
+async function writePkgScope(foundationDir, scope) {
+  const path = join(foundationDir, 'package.json')
+  const pkg = JSON.parse(readFileSync(path, 'utf8'))
+  pkg.uniweb = { ...(pkg.uniweb || {}), scope }
+  await writeJsonPreservingStyleAsync(path, pkg)
+}
+
 /**
  * Resolve which foundation to register: the cwd if it's a foundation, else the
  * single foundation in the workspace, else prompt (or error in non-interactive).
@@ -106,10 +118,14 @@ export async function register(args = []) {
   const registryUrl = flagValue(args, '--registry') || process.env.UNIWEB_REGISTER_URL || DEFAULT_REGISTER_URL
 
   const foundationDir = await resolveFoundationDir(args)
-  // Scope: --scope flag, else the foundation's package.json `uniweb.scope`.
+  // Scope: --scope flag, else package.json `uniweb.scope`, else (real submit
+  // only) derived from login membership in the bootstrap below.
   const pkgScope = readPkgScope(foundationDir)
-  const scope = scopeFlag || pkgScope
-  const scopeSource = scopeFlag ? '--scope' : pkgScope ? 'package.json uniweb.scope' : null
+  let scope = scopeFlag || pkgScope
+  let scopeSource = scopeFlag ? '--scope' : pkgScope ? 'package.json uniweb.scope' : null
+  const isPreview = !!output || dryRun
+  const apiBase = new URL(registryUrl).origin
+  let token = null
 
   const schemaPath = join(foundationDir, 'dist', 'meta', 'schema.json')
   if (!existsSync(schemaPath)) {
@@ -124,6 +140,23 @@ export async function register(args = []) {
   } catch (err) {
     error(`Could not read ${schemaPath}: ${err.message}`)
     return { exitCode: 2 }
+  }
+
+  // No scope for a real submit → derive it from login membership (list → 1 use /
+  // 0 create / N pick), persist to package.json, and reuse the session token.
+  if (!scope && !isPreview) {
+    token = tokenFlag || (await ensureRegistryAuth({ apiBase, command: 'Registering', args }))
+    const sess = await readRegistryAuth()
+    const derived = await deriveScope({ apiBase, token, accountHandle: sess?.handle || null, args })
+    if (!derived) return { exitCode: 0 }
+    scope = `@${derived}`
+    scopeSource = 'login'
+    try {
+      await writePkgScope(foundationDir, scope)
+      info(`Saved ${colors.bright}${scope}${colors.reset} as this foundation's publish scope (package.json).`)
+    } catch {
+      log(`  ${colors.dim}(Could not save the scope to package.json — pass --scope ${scope} next time.)${colors.reset}`)
+    }
   }
 
   let doc
@@ -166,11 +199,9 @@ export async function register(args = []) {
     log(`  ${colors.dim}Without a scope, names stay @/… and the registry rejects them.${colors.reset}`)
     return { exitCode: 2 }
   }
-  // Submit: use an explicit --token bearer if given (e.g. one minted by the
-  // registry backend's own login), else fall back to the `uniweb login` session.
-  // --token lets register reach the new backend without a manual curl, until
-  // `uniweb login` adopts that backend's session endpoint.
-  const token = tokenFlag || (await ensureAuth({ command: 'Registering', args }))
+  // Submit auth: reuse the token from the scope bootstrap if it ran, else
+  // --token › UNIWEB_TOKEN › stored session › login (ensureRegistryAuth).
+  token = token || tokenFlag || (await ensureRegistryAuth({ apiBase, command: 'Registering', args }))
   info(`Submitting to ${colors.dim}${registryUrl}${colors.reset} …`)
   let res
   try {

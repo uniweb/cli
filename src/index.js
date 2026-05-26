@@ -667,9 +667,25 @@ async function main() {
     return
   }
 
-  // Handle login command
+  // Handle login command. Default targets the NEW backend (username/password);
+  // `--legacy` runs the old browser/social flow (still used by publish/deploy
+  // internally via ensureAuth, so it stays reachable).
   if (command === 'login') {
-    await login(args.slice(1))
+    const loginArgs = args.slice(1)
+    if (loginArgs.includes('--legacy')) {
+      await login(loginArgs.filter((a) => a !== '--legacy'))
+    } else {
+      const { getRegistryApiBaseUrl } = await import('./utils/config.js')
+      const { runRegistryLogin } = await import('./utils/registry-auth.js')
+      await runRegistryLogin({ apiBase: getRegistryApiBaseUrl(), args: loginArgs })
+    }
+    return
+  }
+
+  // Handle org command (new-backend orgs/units — publish-scope management)
+  if (command === 'org') {
+    const { org } = await import('./commands/org.js')
+    await org(args.slice(1))
     return
   }
 

@@ -84,6 +84,27 @@ export function getRegistryUrl() {
 }
 
 /**
+ * Get the new registry backend's API base origin — DISTINCT from the
+ * legacy PHP getBackendUrl(). `register` POSTs to {origin}/api/registry/register
+ * and the new-backend `login` to {origin}/api/core/auth/login.
+ *
+ * Priority: UNIWEB_REGISTER_URL's origin (the env users already set for
+ * register) > ~/.uniweb/config.json registryApiUrl > local default.
+ * @returns {string}
+ */
+export function getRegistryApiBaseUrl() {
+  const fromEnv = process.env.UNIWEB_REGISTER_URL
+  if (fromEnv) {
+    try { return new URL(fromEnv).origin } catch { /* fall through */ }
+  }
+  const fromCfg = readCliConfig().registryApiUrl
+  if (fromCfg) {
+    try { return new URL(fromCfg).origin } catch { return fromCfg }
+  }
+  return 'http://localhost:8080'
+}
+
+/**
  * Read workspace package globs.
  * Tries pnpm-workspace.yaml first, falls back to package.json workspaces.
  * @param {string} rootDir - Workspace root directory
