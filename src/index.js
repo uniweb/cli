@@ -1236,9 +1236,19 @@ ${colors.cyan}${colors.bright}uniweb register${colors.reset} ${colors.dim}— Re
 ${colors.bright}Usage:${colors.reset}
   uniweb register [options]
 
-Builds one \`.uwx\` document — the foundation plus the data schemas it defines —
-and submits it to the backend registry over HTTP. Run \`uniweb login\` first.
-This is distinct from \`uniweb publish\` (legacy hosting platform).
+Builds one \`.uwx\` document and submits it to the registry over HTTP. Run
+\`uniweb login\` first (or pass \`--token\`). Distinct from \`uniweb publish\` (legacy
+hosting platform).
+
+Auto-detects what you run it in:
+  • a foundation        the foundation + the data schemas it defines/renders
+  • a schemas-only pkg   just its data schemas, no foundation — e.g. @uniweb/schemas,
+                         any @org/schemas package, or a bare schemas/*.yml folder
+
+Schema scopes (set the org with --scope, or package.json uniweb.scope):
+  @/name     your own schema, scoped to the publish org   (@/x -> @org/x)
+  @std/name  a shared standard schema (from @uniweb/schemas)
+  @org/name  another org's published schema, referenced by name
 
 ${colors.bright}Options:${colors.reset}
   --scope @org       Publish under @org (resolves @/x -> @org/x); default: package.json uniweb.scope
@@ -1248,7 +1258,7 @@ ${colors.bright}Options:${colors.reset}
   --token <bearer>   Submit with this bearer; skips \`uniweb login\` (or set UNIWEB_TOKEN)
   --non-interactive  Fail with usage info instead of prompting
 
-Run from a foundation directory, or a workspace with a single foundation.
+Run from a foundation, a schemas-only package, or a workspace with a single foundation.
 `,
     rename: `
 ${colors.cyan}${colors.bright}uniweb rename${colors.reset} ${colors.dim}— Rename a workspace package${colors.reset}
