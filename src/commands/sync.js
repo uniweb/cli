@@ -53,24 +53,36 @@ function flagValue(args, name) {
 }
 
 // Pull the finalized entities ({ $id, $model, $uuid }) out of the restore
-// response. The backend returns the finalized documents — each a `$`-document
-// carrying its own sigils. A few envelope shapes are tolerated until the
-// response envelope is locked; only entries with both $id and $uuid are usable
-// for back-fill.
+// response. The response is `{ report: { created, updated, skipped, minted,
+// finalized: [ <$-document>, … ] } }`; each finalized entry IS the symmetric
+// `$`-document, carrying top-level `$id` / `$model` / `$uuid`. A couple of
+// shapes are tolerated for resilience; only entries with both $id and $uuid are
+// usable for back-fill.
 function extractFinalized(payload) {
-  const list = Array.isArray(payload)
-    ? payload
+  const list = Array.isArray(payload?.report?.finalized)
+    ? payload.report.finalized
     : Array.isArray(payload?.finalized)
       ? payload.finalized
-      : Array.isArray(payload?.results)
-        ? payload.results
-        : Array.isArray(payload?.entities)
-          ? payload.entities
-          : null
+      : Array.isArray(payload)
+        ? payload
+        : null
   if (!list) return null
   return list
     .map((d) => ({ $id: d?.$id, $model: d?.$model, $uuid: d?.$uuid }))
     .filter((e) => e.$id && e.$uuid)
+}
+
+// Optional one-line summary of the create/replace/skip counts the report carries.
+function reportSummary(payload) {
+  const r = payload?.report
+  if (!r || typeof r !== 'object') return null
+  const n = (k) => (Array.isArray(r[k]) ? r[k].length : null)
+  const parts = []
+  for (const k of ['created', 'updated', 'skipped']) {
+    const c = n(k)
+    if (c != null) parts.push(`${c} ${k}`)
+  }
+  return parts.length ? parts.join(', ') : null
 }
 
 export async function sync(args = []) {
@@ -162,6 +174,8 @@ export async function sync(args = []) {
     return { exitCode: 1 }
   }
 
+  const summary = reportSummary(payload)
+  if (summary) note(summary)
   const bf = backfillEntityUuids({ index, finalized })
   for (const w of bf.warnings) note(`! ${w}`)
   for (const d of bf.deferred) note(`↷ ${d.id} (${d.model}): ${d.reason}`)
