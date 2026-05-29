@@ -52,12 +52,12 @@ function flagValue(args, name) {
   return null
 }
 
-// Pull the finalized entities ({ $id, $model, $uuid }) out of the restore
-// response. The response is `{ report: { created, updated, skipped, minted,
-// finalized: [ <$-document>, … ] } }`; each finalized entry IS the symmetric
-// `$`-document, carrying top-level `$id` / `$model` / `$uuid`. A couple of
-// shapes are tolerated for resilience; only entries with both $id and $uuid are
-// usable for back-fill.
+// Pull the finalized entities out of the restore response. The backend returns
+// `{ report: { finalized: [ { index, uuid, changed, document }, … ] } }` — each
+// entry carries its position in the SUBMITTED sequence (`index`, the correlation
+// key — `$id` is not echoed), the minted entity `uuid`, a `changed` flag, and the
+// full `document` (verbatim stored content with every `$uuid` filled in). A couple
+// of shapes are tolerated; only entries with a valid `index` + `uuid` are usable.
 function extractFinalized(payload) {
   const list = Array.isArray(payload?.report?.finalized)
     ? payload.report.finalized
@@ -68,20 +68,23 @@ function extractFinalized(payload) {
         : null
   if (!list) return null
   return list
-    .map((d) => ({ $id: d?.$id, $model: d?.$model, $uuid: d?.$uuid }))
-    .filter((e) => e.$id && e.$uuid)
+    .map((d) => ({
+      index: d?.index,
+      uuid: d?.uuid ?? d?.document?.$uuid ?? null,
+      changed: d?.changed,
+      document: d?.document ?? null,
+    }))
+    .filter((e) => Number.isInteger(e.index) && e.uuid)
 }
 
-// Optional one-line summary of the create/replace/skip counts the report carries.
-function reportSummary(payload) {
-  const r = payload?.report
-  if (!r || typeof r !== 'object') return null
-  const n = (k) => (Array.isArray(r[k]) ? r[k].length : null)
+// One-line summary from the authoritative per-entity `changed` flag (`false` = a
+// true no-op). Falls back silently when the backend omits it.
+function changedSummary(finalized) {
+  const changed = finalized.filter((f) => f.changed === true).length
+  const unchanged = finalized.filter((f) => f.changed === false).length
   const parts = []
-  for (const k of ['created', 'updated', 'skipped']) {
-    const c = n(k)
-    if (c != null) parts.push(`${c} ${k}`)
-  }
+  if (changed) parts.push(`${changed} changed`)
+  if (unchanged) parts.push(`${unchanged} unchanged`)
   return parts.length ? parts.join(', ') : null
 }
 
@@ -169,19 +172,20 @@ export async function sync(args = []) {
   }
   const finalized = extractFinalized(payload)
   if (!finalized) {
-    error('The response carried no recognizable finalized list (expected the finalized `$`-documents).')
+    error('The response carried no recognizable finalized list (expected `report.finalized[]` with index + uuid).')
     note(JSON.stringify(payload).slice(0, 800))
     return { exitCode: 1 }
   }
 
-  const summary = reportSummary(payload)
+  const summary = changedSummary(finalized)
   if (summary) note(summary)
+  // Correlate by index + render each finalized document back to its source file.
   const bf = backfillEntityUuids({ index, finalized })
   for (const w of bf.warnings) note(`! ${w}`)
-  for (const d of bf.deferred) note(`↷ ${d.id} (${d.model}): ${d.reason}`)
+  for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
   success(
     `Synced ${finalized.length} entit${finalized.length === 1 ? 'y' : 'ies'} — ` +
-      `back-filled $uuid into ${bf.updated.length} file(s)` +
+      `wrote ${bf.updated.length} file(s)` +
       (bf.unchanged.length ? `, ${bf.unchanged.length} unchanged` : '')
   )
   return { exitCode: 0 }
