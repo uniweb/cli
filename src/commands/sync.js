@@ -18,14 +18,15 @@
  *   uniweb sync --registry <url>         Override the backend origin
  *   uniweb sync --token <bearer>         Submit with this bearer; skips `uniweb login`
  *   uniweb sync --foundation <dir>       Use this local foundation for the Model schema
+ *   uniweb sync --all                    Send every record (bypass the changed-only cache)
  *
  * Endpoint: <origin>/api/core/exchange/restore, origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
 
-import { writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
+import { resolve, join, dirname } from 'node:path'
 import { emitCollectionSyncPackage, backfillEntityUuids } from '@uniweb/build/uwx'
 import { ensureRegistryAuth } from '../utils/registry-auth.js'
 import { resolveSiteDir } from './deploy.js'
@@ -131,12 +132,34 @@ function makeModelResolver({ apiBase, getToken }) {
   }
 }
 
+// "Send only changed" cache: content hashes from the last successful sync, keyed
+// `<model> <id>`. Gitignored, per-clone, deletable (a deleted cache just means one
+// full re-sync, which the backend then no-ops). NOT identity — the minted `$uuid`
+// lives in the source files; this is a pure wire-efficiency cache.
+function syncCachePath(siteDir) {
+  return join(siteDir, '.uniweb', 'sync-cache.json')
+}
+function readSyncCache(siteDir) {
+  try {
+    const obj = JSON.parse(readFileSync(syncCachePath(siteDir), 'utf8'))
+    return obj && typeof obj.hashes === 'object' && obj.hashes ? obj.hashes : {}
+  } catch {
+    return {} // missing / unreadable → treat everything as changed
+  }
+}
+function writeSyncCache(siteDir, hashes) {
+  const p = syncCachePath(siteDir)
+  mkdirSync(dirname(p), { recursive: true })
+  writeFileSync(p, JSON.stringify({ version: 1, hashes }, null, 2) + '\n')
+}
+
 export async function sync(args = []) {
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
   const tokenFlag = flagValue(args, '--token')
   const asUnit = flagValue(args, '--as-unit')
   const foundationDir = flagValue(args, '--foundation')
+  const sendAll = args.includes('--all') // bypass the send-only-changed cache
   const registryFlag =
     flagValue(args, '--registry') || process.env.UNIWEB_REGISTER_URL || DEFAULT_BACKEND_ORIGIN
 
@@ -164,20 +187,33 @@ export async function sync(args = []) {
   // Build the package (the producer side). Carries `index` — the per-entity
   // source-file map used to render/back-fill minted uuids, correlated by the
   // submission `index`. Non-local Models are fetched from the registry on demand.
+  // `priorHashes` (the .uniweb sync-cache) drives "send only changed"; --all bypasses.
+  const priorHashes = readSyncCache(siteDir)
   let pkg
   try {
     pkg = await emitCollectionSyncPackage(siteDir, {
       ...(foundationDir ? { foundationDir } : {}),
       resolveModel: makeModelResolver({ apiBase, getToken }),
+      priorHashes,
+      sendAll,
     })
   } catch (err) {
     error(`Could not build the sync package: ${err.message}`)
     return { exitCode: 2 }
   }
-  const { buffer, models, entityCount, warnings, index } = pkg
+  const { buffer, models, entityCount, warnings, index, hashes, skipped } = pkg
   log('')
-  info(`${colors.bright}${entityCount}${colors.reset} record(s) → ${models.join(', ')}`)
   for (const w of warnings) note(`! ${w}`)
+
+  // Nothing changed since the last sync — the backend is already in sync.
+  if (entityCount === 0) {
+    success(`Nothing to sync — ${skipped} record(s) unchanged since the last sync.`)
+    return { exitCode: 0 }
+  }
+  info(
+    `${colors.bright}${entityCount}${colors.reset} changed record(s) → ${models.join(', ')}` +
+      (skipped ? `  ${colors.dim}(${skipped} unchanged, skipped)${colors.reset}` : '')
+  )
 
   // Preview paths — no submit, no auth.
   if (output) {
@@ -240,6 +276,8 @@ export async function sync(args = []) {
   const bf = backfillEntityUuids({ index, finalized })
   for (const w of bf.warnings) note(`! ${w}`)
   for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
+  // Persist the full content-hash map so the next sync skips unchanged records.
+  writeSyncCache(siteDir, hashes)
   success(
     `Synced ${finalized.length} entit${finalized.length === 1 ? 'y' : 'ies'} — ` +
       `wrote ${bf.updated.length} file(s)` +
