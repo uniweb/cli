@@ -88,6 +88,49 @@ function changedSummary(finalized) {
   return parts.length ? parts.join(', ') : null
 }
 
+// Build the Model-read path for a registry name. `@scope/name` →
+// /api/models/{scope}/{name}; a bare name → /api/models/{name}. The `@` sigil is
+// not part of the path segment. (Path segment encoding to confirm at live e2e.)
+function modelPathFor(modelName) {
+  const m = /^@([^/]+)\/(.+)$/.exec(modelName)
+  if (m) return `/api/models/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}`
+  return `/api/models/${encodeURIComponent(modelName)}`
+}
+
+// Resolve a Model NOT defined by the local foundation by fetching its declaration
+// (the `@uniweb/data-schema` form) from the backend's Model-read route. Cached per
+// run; HTTP 404 → null (the emitter then says "register it first"). The bearer is
+// acquired lazily via getToken, so a fully-local sync never authenticates.
+function makeModelResolver({ apiBase, getToken }) {
+  const cache = new Map()
+  return async (modelName) => {
+    if (cache.has(modelName)) return cache.get(modelName)
+    const url = `${apiBase}${modelPathFor(modelName)}`
+    const token = await getToken()
+    let res
+    try {
+      res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    } catch (err) {
+      throw new Error(`could not reach the Model-read endpoint ${url}: ${err.message}`)
+    }
+    if (res.status === 404) {
+      cache.set(modelName, null)
+      return null
+    }
+    if (!res.ok) {
+      throw new Error(`Model-read ${url} failed: HTTP ${res.status} ${res.statusText}`)
+    }
+    let decl
+    try {
+      decl = await res.json()
+    } catch (err) {
+      throw new Error(`Model-read ${url} returned non-JSON: ${err.message}`)
+    }
+    cache.set(modelName, decl)
+    return decl
+  }
+}
+
 export async function sync(args = []) {
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
@@ -107,11 +150,26 @@ export async function sync(args = []) {
 
   const siteDir = await resolveSiteDir(args, 'sync')
 
+  // Lazy bearer — acquired once, on first need (a non-local Model fetch during the
+  // build, or the submit). A fully-local sync never triggers it, so --dry-run / -o
+  // stay offline when every Model is defined by the local foundation.
+  let cachedToken = null
+  const getToken = async () => {
+    if (cachedToken) return cachedToken
+    cachedToken =
+      tokenFlag || process.env.UNIWEB_TOKEN || (await ensureRegistryAuth({ apiBase, command: 'Syncing', args }))
+    return cachedToken
+  }
+
   // Build the package (the producer side). Carries `index` — the per-entity
-  // ($model, $id) → source-file map used to back-fill minted uuids.
+  // source-file map used to render/back-fill minted uuids, correlated by the
+  // submission `index`. Non-local Models are fetched from the registry on demand.
   let pkg
   try {
-    pkg = await emitCollectionSyncPackage(siteDir, foundationDir ? { foundationDir } : {})
+    pkg = await emitCollectionSyncPackage(siteDir, {
+      ...(foundationDir ? { foundationDir } : {}),
+      resolveModel: makeModelResolver({ apiBase, getToken }),
+    })
   } catch (err) {
     error(`Could not build the sync package: ${err.message}`)
     return { exitCode: 2 }
@@ -133,8 +191,7 @@ export async function sync(args = []) {
   }
 
   // Submit: binary .uwx body, sync-lane query params, bearer auth.
-  const token =
-    tokenFlag || process.env.UNIWEB_TOKEN || (await ensureRegistryAuth({ apiBase, command: 'Syncing', args }))
+  const token = await getToken()
   const params = new URLSearchParams({ collision: 'force', binding: 'sync' })
   if (asUnit) params.set('as_unit', asUnit)
   const url = `${apiBase}/api/core/exchange/restore?${params.toString()}`
