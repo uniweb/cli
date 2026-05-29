@@ -613,6 +613,13 @@ async function main() {
     process.exit(result?.exitCode ?? 0)
   }
 
+  // Handle sync command (dynamic import — depends on @uniweb/build)
+  if (command === 'sync') {
+    const { sync } = await importProjectCommand('./commands/sync.js')
+    const result = await sync(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
+  }
+
   // Handle update command
   if (command === 'update') {
     await update(args.slice(1))
