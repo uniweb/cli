@@ -1,33 +1,33 @@
 /**
- * uniweb sync — push a site to the backend as entities, with a stable-identity
- * round trip. One sync pushes BOTH facets:
- *   - static content → `@uniweb/site-content` (the nested `$`-document: pages,
- *     sections, layout, theme, foundation ref, extensions, collection decls);
- *   - dynamic content → one entity per `model:`-mapped collection record.
+ * uniweb sync — push a site to the backend over its two directional lanes:
+ *   - site-content lane → `@uniweb/site-content` (the static half: pages, sections,
+ *     layout, theme, foundation ref, extensions, collection decls);
+ *   - collections lane → one `@uniweb/folder` + the collection-record entities it
+ *     references (the dynamic half; the `$ref` closure rides together).
  *
  * Each entity is an entity-content document (`$id` + `$model` + sections). First
- * sync carries no `$uuid`; the backend mints them and echoes them back. `sync`
- * then back-fills each entity's uuid into its home file: collection-record uuids
- * into their source files; the `@uniweb/folder` uuid into `collections.yml`; the
- * site-content uuid into `site.yml`. Per-page/section identity is our own local
- * ledger (`.uniweb/site-ids.json`), never on the wire. Push-only, last-push-wins
+ * sync carries no `$uuid`; the backend mints them and echoes them back. `sync` then
+ * back-fills each entity's uuid into its home file: the site-content uuid → `site.yml`,
+ * the folder uuid → `collections.yml`, each record uuid → its source file. site-content
+ * syncs wholesale (no per-item uuids on the wire). Push-only, last-push-wins
  * (`collision=force`) in v1.
+ *
+ * Order: push site-content first (the site is born there), then collections — binding
+ * the folder to that site via `?site=<siteContentUuid>` on the first collections push.
  *
  * `uniweb login && uniweb sync`. Run from a site, or a workspace with one site.
  *
  * Usage:
- *   uniweb sync                          Build the .uwx, submit, back-fill $uuid
+ *   uniweb sync                          Build, push both lanes, back-fill $uuid
  *   uniweb sync --as-unit @org           Act as @org (membership-gated)
- *   uniweb sync --dry-run                Report what would be sent; submit nothing
- *   uniweb sync -o collections.uwx       Write the .uwx to a file; submit nothing
+ *   uniweb sync --dry-run                Report what would be pushed; submit nothing
+ *   uniweb sync -o out.uwx               Write the .uwx file(s) per lane; submit nothing
  *   uniweb sync --registry <url>         Override the backend origin
  *   uniweb sync --token <bearer>         Submit with this bearer; skips `uniweb login`
  *   uniweb sync --foundation <dir>       Use this local foundation for the Model schema
  *   uniweb sync --all                    Send every record (bypass the changed-only cache)
  *
- * Endpoint: a site sync (bundle includes site-content) POSTs to
- *   <origin>/api/sites/sync; a loose-entity sync (no site-content) stays on
- *   <origin>/api/core/exchange/restore?binding=sync. origin from
+ * Endpoints: <origin>/api/sync/{site-content,collections}/push. origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
@@ -35,12 +35,10 @@
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { resolve, join, dirname } from 'node:path'
 import {
-  emitSyncPackage,
+  emitSyncPackages,
   backfillEntityUuids,
   writeSiteEntityUuid,
-  recordSiteIdLedger,
   writeFolderUuid,
-  SITE_ID_LEDGER_RELPATH,
 } from '@uniweb/build/uwx'
 import { ensureRegistryAuth } from '../utils/registry-auth.js'
 import { resolveSiteDir } from './deploy.js'
@@ -198,14 +196,14 @@ export async function sync(args = []) {
     return cachedToken
   }
 
-  // Build the package (the producer side). Carries `index` — the per-entity
-  // source-file map used to render/back-fill minted uuids, correlated by the
-  // submission `index`. Non-local Models are fetched from the registry on demand.
-  // `priorHashes` (the .uniweb sync-cache) drives "send only changed"; --all bypasses.
+  // Build BOTH directional packages (the producer side). Each carries its own
+  // `index` — the per-entity source-file map for back-fill, correlated by submission
+  // position. Non-local Models are fetched from the registry on demand. `priorHashes`
+  // (the .uniweb sync-cache) drives "send only changed" across both lanes; --all bypasses.
   const priorHashes = readSyncCache(siteDir)
   let pkg
   try {
-    pkg = await emitSyncPackage(siteDir, {
+    pkg = await emitSyncPackages(siteDir, {
       ...(foundationDir ? { foundationDir } : {}),
       resolveModel: makeModelResolver({ apiBase, getToken }),
       priorHashes,
@@ -215,115 +213,129 @@ export async function sync(args = []) {
     error(`Could not build the sync package: ${err.message}`)
     return { exitCode: 2 }
   }
-  const { buffer, models, entityCount, siteIncluded, warnings, index, hashes, skipped } = pkg
+  const { siteContent, collections, siteContentUuid, warnings, hashes, skipped } = pkg
   log('')
   for (const w of warnings) note(`! ${w}`)
 
-  // Route by facet: a site sync (bundle carries site-content) is a first-class site
-  // operation; a loose-entity sync stays on the generic restore lane.
-  const submitUrl = siteIncluded
-    ? `${apiBase}/api/sites/sync`
-    : `${apiBase}/api/core/exchange/restore`
+  const totalEntities = (siteContent?.entityCount || 0) + (collections?.entityCount || 0)
 
   // Nothing changed since the last sync — the backend is already in sync.
-  if (entityCount === 0) {
+  if (totalEntities === 0) {
     success(`Nothing to sync — ${skipped} entit${skipped === 1 ? 'y' : 'ies'} unchanged since the last sync.`)
     return { exitCode: 0 }
   }
-  info(
-    `${colors.bright}${entityCount}${colors.reset} changed entit${entityCount === 1 ? 'y' : 'ies'} → ${models.join(', ')}` +
-      (skipped ? `  ${colors.dim}(${skipped} unchanged, skipped)${colors.reset}` : '')
-  )
+  if (siteContent) info(`${colors.bright}site-content${colors.reset} → ${siteContent.models.join(', ')}`)
+  if (collections) {
+    const n = collections.entityCount
+    info(`${colors.bright}collections${colors.reset} (${n} entit${n === 1 ? 'y' : 'ies'}) → ${collections.models.join(', ')}`)
+  }
+  if (skipped) note(`${skipped} unchanged, skipped`)
 
-  // Preview paths — no submit, no auth.
+  // Preview paths — no submit, no auth. Two lanes → up to two files / two routes.
   if (output) {
-    writeFileSync(resolve(output), buffer)
-    success(`Wrote ${output} (${entityCount} entities, ${buffer.length} bytes) — not submitted`)
+    const base = output.replace(/\.uwx$/, '')
+    if (siteContent) writeFileSync(resolve(`${base}.site-content.uwx`), siteContent.buffer)
+    if (collections) writeFileSync(resolve(`${base}.collections.uwx`), collections.buffer)
+    const lanes = [siteContent && 'site-content', collections && 'collections'].filter(Boolean)
+    success(`Wrote ${lanes.join(' + ')} .uwx — not submitted`)
     return { exitCode: 0 }
   }
   if (dryRun) {
-    info(`Dry run — would submit to ${colors.dim}${submitUrl}${colors.reset}`)
+    if (siteContent) info(`Dry run — would push to ${colors.dim}${apiBase}/api/sync/site-content/push${colors.reset}`)
+    if (collections) info(`Dry run — would push to ${colors.dim}${apiBase}/api/sync/collections/push${colors.reset}`)
     return { exitCode: 0 }
   }
 
-  // Submit: binary .uwx body, sync-lane query params, bearer auth. The site route
-  // takes `collision`; the loose-entity restore lane also takes `binding=sync`.
   const token = await getToken()
-  const params = new URLSearchParams({ collision: 'force' })
-  if (!siteIncluded) params.set('binding', 'sync')
-  if (asUnit) params.set('as_unit', asUnit)
-  const url = `${submitUrl}?${params.toString()}`
+  const wrote = []
+  let finalizedTotal = 0
 
-  info(`Submitting to ${colors.dim}${url}${colors.reset} …`)
-  let res
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/zip', Authorization: `Bearer ${token}` },
-      body: buffer,
-    })
-  } catch (err) {
-    error(`Could not reach the backend at ${url}: ${err.message}`)
-    note('Set the origin with --registry <url> or UNIWEB_REGISTER_URL.')
-    return { exitCode: 2 }
-  }
-  if (!res.ok) {
-    error(`Sync rejected: HTTP ${res.status} ${res.statusText}`)
-    if (res.status === 401 || res.status === 403) {
-      note("Credentials weren't accepted — supply a bearer with --token <bearer> (or UNIWEB_TOKEN).")
+  // POST one lane's .uwx and parse its finalized list. Returns null on any failure
+  // (already reported). `extra` adds lane-specific query params (e.g. `site=`).
+  const pushLane = async (label, path, buffer, extra = {}) => {
+    const params = new URLSearchParams({ collision: 'force', ...extra })
+    if (asUnit) params.set('as_unit', asUnit)
+    const url = `${apiBase}${path}?${params.toString()}`
+    info(`Pushing ${label} to ${colors.dim}${url}${colors.reset} …`)
+    let res
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/zip', Authorization: `Bearer ${token}` },
+        body: buffer,
+      })
+    } catch (err) {
+      error(`Could not reach the backend at ${url}: ${err.message}`)
+      note('Set the origin with --registry <url> or UNIWEB_REGISTER_URL.')
+      return null
     }
-    const body = await res.text().catch(() => '')
-    if (body) note(body.slice(0, 800))
-    return { exitCode: 1 }
-  }
-
-  // Parse the finalized response and back-fill the minted $uuids.
-  let payload
-  try {
-    payload = await res.json()
-  } catch (err) {
-    error(`Could not parse the sync response as JSON: ${err.message}`)
-    return { exitCode: 1 }
-  }
-  const finalized = extractFinalized(payload)
-  if (!finalized) {
-    error('The response carried no recognizable finalized list (expected `report.finalized[]` with index + uuid).')
-    note(JSON.stringify(payload).slice(0, 800))
-    return { exitCode: 1 }
-  }
-
-  const summary = changedSummary(finalized)
-  if (summary) note(summary)
-  // Back-fill the minted uuids, by facet: each entity's uuid into its home file —
-  // site-content → site.yml, @uniweb/folder → collections.yml, records → their
-  // source files. Per-page/section local ids go into the committed move-tracking
-  // ledger (never on the wire).
-  let siteRecorded = false
-  let folderRecorded = false
-  for (const fin of finalized) {
-    const entry = index[fin.index]
-    if (entry?.kind === 'site') {
-      writeSiteEntityUuid(siteDir, fin.uuid)
-      recordSiteIdLedger(join(siteDir, SITE_ID_LEDGER_RELPATH), entry.document)
-      siteRecorded = true
-    } else if (entry?.kind === 'folder') {
-      writeFolderUuid(siteDir, fin.uuid)
-      folderRecorded = true
+    if (!res.ok) {
+      error(`${label} push rejected: HTTP ${res.status} ${res.statusText}`)
+      if (res.status === 401 || res.status === 403) {
+        note("Credentials weren't accepted — supply a bearer with --token <bearer> (or UNIWEB_TOKEN).")
+      }
+      const body = await res.text().catch(() => '')
+      if (body) note(body.slice(0, 800))
+      return null
     }
+    let payload
+    try {
+      payload = await res.json()
+    } catch (err) {
+      error(`Could not parse the ${label} response as JSON: ${err.message}`)
+      return null
+    }
+    const finalized = extractFinalized(payload)
+    if (!finalized) {
+      error(`The ${label} response carried no recognizable finalized list (expected report.finalized[] with index + uuid).`)
+      note(JSON.stringify(payload).slice(0, 800))
+      return null
+    }
+    const summary = changedSummary(finalized)
+    if (summary) note(`${label}: ${summary}`)
+    return finalized
   }
-  const bf = backfillEntityUuids({ index, finalized })
-  for (const w of bf.warnings) note(`! ${w}`)
-  for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
+
+  // Lane 1 — site-content (the site is born here; must exist before binding collections).
+  // Capture the minted/known site uuid to bind the collections folder to.
+  let boundSiteUuid = siteContentUuid
+  if (siteContent) {
+    const finalized = await pushLane('site-content', '/api/sync/site-content/push', siteContent.buffer)
+    if (!finalized) return { exitCode: 1 }
+    for (const fin of finalized) {
+      if (siteContent.index[fin.index]?.kind === 'site') {
+        writeSiteEntityUuid(siteDir, fin.uuid)
+        boundSiteUuid = fin.uuid
+        wrote.push('recorded site $uuid in site.yml')
+      }
+    }
+    finalizedTotal += finalized.length
+  }
+
+  // Lane 2 — collections (folder + the records it references). Bind to the site on the
+  // first collections push (the folder has no uuid yet) via `?site=<siteContentUuid>`.
+  if (collections) {
+    const extra = collections.bind && boundSiteUuid ? { site: boundSiteUuid } : {}
+    const finalized = await pushLane('collections', '/api/sync/collections/push', collections.buffer, extra)
+    if (!finalized) return { exitCode: 1 }
+    for (const fin of finalized) {
+      if (collections.index[fin.index]?.kind === 'folder') {
+        writeFolderUuid(siteDir, fin.uuid)
+        wrote.push('recorded folder $uuid in collections.yml')
+      }
+    }
+    const bf = backfillEntityUuids({ index: collections.index, finalized })
+    for (const w of bf.warnings) note(`! ${w}`)
+    for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
+    if (bf.updated.length) wrote.push(`wrote ${bf.updated.length} record file(s)`)
+    finalizedTotal += finalized.length
+  }
+
   // Persist the full content-hash map so the next sync skips unchanged entities.
   writeSyncCache(siteDir, hashes)
-  const wrote = []
-  if (siteRecorded) wrote.push('recorded site $uuid in site.yml')
-  if (folderRecorded) wrote.push('recorded folder $uuid in collections.yml')
-  if (bf.updated.length) wrote.push(`wrote ${bf.updated.length} record file(s)`)
   success(
-    `Synced ${finalized.length} entit${finalized.length === 1 ? 'y' : 'ies'}` +
-      (wrote.length ? ` — ${wrote.join(', ')}` : '') +
-      (bf.unchanged.length ? ` (${bf.unchanged.length} file(s) unchanged)` : '')
+    `Synced ${finalizedTotal} entit${finalizedTotal === 1 ? 'y' : 'ies'}` +
+      (wrote.length ? ` — ${wrote.join(', ')}` : '')
   )
   return { exitCode: 0 }
 }
