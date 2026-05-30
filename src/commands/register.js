@@ -35,9 +35,9 @@ import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import { findWorkspaceRoot, findFoundations, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
-// The backend route is `/api/registry/register`; the host defaults to a local
+// The backend route is `/dev/registry/register`; the host defaults to a local
 // server and is overridable via --registry / UNIWEB_REGISTER_URL (full URL).
-const DEFAULT_REGISTER_URL = 'http://localhost:8080/api/registry/register'
+const DEFAULT_REGISTER_URL = 'http://localhost:8080/dev/registry/register'
 
 const colors = {
   reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m',

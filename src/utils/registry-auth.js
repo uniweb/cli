@@ -6,7 +6,7 @@
  * and `deploy`, stored in ~/.uniweb/auth.json. This module serves the NEW
  * backend that `uniweb register` talks to:
  *
- *   - non-browser username/password login → POST {apiBase}/api/core/auth/login
+ *   - non-browser username/password login → POST {apiBase}/dev/auth/login
  *   - the returned bearer is an OPAQUE random token (NOT a JWT — never decode it,
  *     it carries no claims; org memberships come from a separate authed read)
  *   - stored in a register-scoped slot (~/.uniweb/registry-auth.json) so it can
@@ -28,7 +28,7 @@ import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
 import { getAuthDir, isExpired } from './auth.js'
 
-const LOGIN_PATH = '/api/core/auth/login'
+const LOGIN_PATH = '/dev/auth/login'
 
 /**
  * Path to the register-scoped credential file (~/.uniweb/registry-auth.json).
@@ -74,7 +74,7 @@ export async function clearRegistryAuth() {
 
 /**
  * Username/password login against the new backend. POSTs to
- * `{apiBase}/api/core/auth/login`, reads the opaque token from the JSON body
+ * `{apiBase}/dev/auth/login`, reads the opaque token from the JSON body
  * (the HttpOnly cookie the response also sets is ignored on the CLI), and
  * persists it. Throws on non-2xx or a tokenless body.
  *
@@ -180,17 +180,17 @@ export async function ensureRegistryAuth({ apiBase, command = 'This command', ar
 }
 
 // The browser/OAuth flow is wired below (loginViaBrowser: a loopback redirect
-// against the backend's /api/core/auth/cli/authorize, token-in-redirect). Kept
+// against the backend's /dev/auth/cli/authorize, token-in-redirect). Kept
 // gated until that endpoint is live on the backend — flip to true then, and the
 // picker offers Browser/social as the default (and `--browser` works).
 const BROWSER_AVAILABLE = false
 
 /**
- * GET /api/core/auth/me with a bearer → the account object ({ uuid, username,
+ * GET /dev/auth/me with a bearer → the account object ({ uuid, username,
  * handle }), or throws. Used to verify + identify a pasted token.
  */
 export async function fetchMe({ apiBase, token }) {
-  const res = await fetch(`${apiBase.replace(/\/$/, '')}/api/core/auth/me`, {
+  const res = await fetch(`${apiBase.replace(/\/$/, '')}/dev/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   if (!res.ok) {
@@ -290,7 +290,7 @@ async function loginViaBrowser({ apiBase }) {
     server.listen(0, '127.0.0.1', async () => {
       const { port } = server.address()
       const redirectUri = `http://127.0.0.1:${port}/callback`
-      const authorizeUrl = `${base}/api/core/auth/cli/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
+      const authorizeUrl = `${base}/dev/auth/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
       console.log('\x1b[36m→\x1b[0m Opening your browser to sign in…')
       console.log(`  \x1b[2m${authorizeUrl}\x1b[0m`)
       const opened = await openBrowser(authorizeUrl)

@@ -1,5 +1,5 @@
 /**
- * uniweb org — manage publish orgs (Units) on the new backend.
+ * uniweb org — manage publish orgs on the new backend.
  *
  *   uniweb org list                 List the orgs you're a member of.
  *   uniweb org create <handle>      Create an org; you become a member.
@@ -10,7 +10,7 @@
 
 import { getRegistryApiBaseUrl } from '../utils/config.js'
 import { ensureRegistryAuth } from '../utils/registry-auth.js'
-import { listUnits, createUnit, validateHandle, bareHandle } from '../utils/registry-orgs.js'
+import { listOrgs, createOrg, validateHandle, bareHandle } from '../utils/registry-orgs.js'
 
 const colors = { reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', green: '\x1b[32m' }
 const error = (m) => console.error(`${colors.red}✗${colors.reset} ${m}`)
@@ -22,13 +22,13 @@ export async function org(args = []) {
 
   if (sub === 'list') {
     const token = await ensureRegistryAuth({ apiBase, command: 'Listing orgs', args })
-    const units = await listUnits({ apiBase, token })
-    if (!units.length) {
+    const orgs = await listOrgs({ apiBase, token })
+    if (!orgs.length) {
       console.log('You have no orgs yet. Create one: uniweb org create <handle>')
       return { exitCode: 0 }
     }
     console.log('Your orgs:')
-    for (const u of units) {
+    for (const u of orgs) {
       console.log(`  ${colors.bright}@${u.handle}${colors.reset}${u.is_primary ? `${colors.dim} (primary)${colors.reset}` : ''}`)
     }
     return { exitCode: 0 }
@@ -47,9 +47,9 @@ export async function org(args = []) {
     }
     const token = await ensureRegistryAuth({ apiBase, command: 'Creating an org', args })
     try {
-      const unit = await createUnit({ apiBase, token, handle })
-      success(`Created ${colors.bright}@${unit.handle}${colors.reset} — you're a member${unit.is_primary ? ' (primary)' : ''}.`)
-      console.log(`${colors.dim}Publish under it: uniweb register --scope @${unit.handle}${colors.reset}`)
+      const org = await createOrg({ apiBase, token, handle })
+      success(`Created ${colors.bright}@${org.handle}${colors.reset} — you're a member${org.is_primary ? ' (primary)' : ''}.`)
+      console.log(`${colors.dim}Publish under it: uniweb register --scope @${org.handle}${colors.reset}`)
       return { exitCode: 0 }
     } catch (err) {
       error(err.message)

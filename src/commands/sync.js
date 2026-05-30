@@ -19,7 +19,7 @@
  *
  * Usage:
  *   uniweb sync                          Build, push both lanes, back-fill $uuid
- *   uniweb sync --as-unit @org           Act as @org (membership-gated)
+ *   uniweb sync --as-org @org            Act as @org (membership-gated)
  *   uniweb sync --dry-run                Report what would be pushed; submit nothing
  *   uniweb sync -o out.uwx               Write the .uwx file(s) per lane; submit nothing
  *   uniweb sync --registry <url>         Override the backend origin
@@ -27,7 +27,7 @@
  *   uniweb sync --foundation <dir>       Use this local foundation for the Model schema
  *   uniweb sync --all                    Send every record (bypass the changed-only cache)
  *
- * Endpoints: <origin>/api/sync/{site-content,collections}/push. origin from
+ * Endpoints: <origin>/dev/sync/{site-content,collections}/push. origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
@@ -101,13 +101,14 @@ function changedSummary(finalized) {
   return parts.length ? parts.join(', ') : null
 }
 
-// Build the Model-read path for a registry name. `@scope/name` →
-// /api/models/{scope}/{name}; a bare name → /api/models/{name}. The `@` sigil is
-// not part of the path segment. (Path segment encoding to confirm at live e2e.)
+// Build the data-schema-read path for a registry name. `@scope/name` →
+// /dev/registry/data-schemas/{scope}/{name}; a bare name →
+// /dev/registry/data-schemas/{name}. The `@` sigil is not part of the path
+// segment. (Path segment encoding to confirm at live e2e.)
 function modelPathFor(modelName) {
   const m = /^@([^/]+)\/(.+)$/.exec(modelName)
-  if (m) return `/api/models/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}`
-  return `/api/models/${encodeURIComponent(modelName)}`
+  if (m) return `/dev/registry/data-schemas/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}`
+  return `/dev/registry/data-schemas/${encodeURIComponent(modelName)}`
 }
 
 // Resolve a Model NOT defined by the local foundation by fetching its declaration
@@ -169,7 +170,7 @@ export async function sync(args = []) {
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
   const tokenFlag = flagValue(args, '--token')
-  const asUnit = flagValue(args, '--as-unit')
+  const asOrg = flagValue(args, '--as-org')
   const foundationDir = flagValue(args, '--foundation')
   const sendAll = args.includes('--all') // bypass the send-only-changed cache
   const registryFlag =
@@ -241,8 +242,8 @@ export async function sync(args = []) {
     return { exitCode: 0 }
   }
   if (dryRun) {
-    if (siteContent) info(`Dry run — would push to ${colors.dim}${apiBase}/api/sync/site-content/push${colors.reset}`)
-    if (collections) info(`Dry run — would push to ${colors.dim}${apiBase}/api/sync/collections/push${colors.reset}`)
+    if (siteContent) info(`Dry run — would push to ${colors.dim}${apiBase}/dev/sync/site-content/push${colors.reset}`)
+    if (collections) info(`Dry run — would push to ${colors.dim}${apiBase}/dev/sync/collections/push${colors.reset}`)
     return { exitCode: 0 }
   }
 
@@ -254,7 +255,7 @@ export async function sync(args = []) {
   // (already reported). `extra` adds lane-specific query params (e.g. `site=`).
   const pushLane = async (label, path, buffer, extra = {}) => {
     const params = new URLSearchParams({ collision: 'force', ...extra })
-    if (asUnit) params.set('as_unit', asUnit)
+    if (asOrg) params.set('as_org', asOrg)
     const url = `${apiBase}${path}?${params.toString()}`
     info(`Pushing ${label} to ${colors.dim}${url}${colors.reset} …`)
     let res
@@ -300,7 +301,7 @@ export async function sync(args = []) {
   // Capture the minted/known site uuid to bind the collections folder to.
   let boundSiteUuid = siteContentUuid
   if (siteContent) {
-    const finalized = await pushLane('site-content', '/api/sync/site-content/push', siteContent.buffer)
+    const finalized = await pushLane('site-content', '/dev/sync/site-content/push', siteContent.buffer)
     if (!finalized) return { exitCode: 1 }
     for (const fin of finalized) {
       if (siteContent.index[fin.index]?.kind === 'site') {
@@ -316,7 +317,7 @@ export async function sync(args = []) {
   // first collections push (the folder has no uuid yet) via `?site=<siteContentUuid>`.
   if (collections) {
     const extra = collections.bind && boundSiteUuid ? { site: boundSiteUuid } : {}
-    const finalized = await pushLane('collections', '/api/sync/collections/push', collections.buffer, extra)
+    const finalized = await pushLane('collections', '/dev/sync/collections/push', collections.buffer, extra)
     if (!finalized) return { exitCode: 1 }
     for (const fin of finalized) {
       if (collections.index[fin.index]?.kind === 'folder') {

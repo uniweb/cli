@@ -85,8 +85,8 @@ export function getRegistryUrl() {
 
 /**
  * Get the new registry backend's API base origin — DISTINCT from the
- * legacy PHP getBackendUrl(). `register` POSTs to {origin}/api/registry/register
- * and the new-backend `login` to {origin}/api/core/auth/login.
+ * legacy PHP getBackendUrl(). `register` POSTs to {origin}/dev/registry/register
+ * and the new-backend `login` to {origin}/dev/auth/login.
  *
  * Priority: UNIWEB_REGISTER_URL's origin (the env users already set for
  * register) > ~/.uniweb/config.json registryApiUrl > local default.
