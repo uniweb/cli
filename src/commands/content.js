@@ -98,8 +98,11 @@ async function contentExport(args) {
   try {
     if (isSite) {
       say.info(`Packaging site → @uniweb/site-content (.uwx)…`)
-      buf = await uwx.emitSitePackage(dir, {
-        sidecar: useSidecar, // <dir>/.uniweb/uwx-ids.json
+      // Nested $-document on the sync lane. The sidecar is read-only here: it
+      // supplies $uuids a prior sync recorded (the backend mints, never this
+      // export), so a fresh project exports a uuid-less document.
+      buf = await uwx.emitSiteSyncPackage(dir, {
+        sidecar: useSidecar, // read <dir>/.uniweb/uwx-ids.json if present
         sourceLocale,
       })
       defaultName = basename(dir)
@@ -121,15 +124,42 @@ async function contentExport(args) {
     process.exit(1)
   }
 
-  // Structural summary (not an import simulation).
+  // Structural summary (not an import simulation). The entity file is located
+  // via the manifest index, which works for both lanes: the register lane
+  // (foundation schema, flat `items[]`) and the sync lane (site, nested
+  // `$`-document).
   const files = uwx.readZip(buf)
   const manifest = JSON.parse(files.get('manifest.json').toString('utf8'))
-  const entity = JSON.parse(
-    files.get(`entities/${manifest.roots[0]}.json`).toString('utf8')
-  )
+  const entityFile = manifest.entries?.[0]?.file
+  const entity = JSON.parse(files.get(entityFile).toString('utf8'))
   const counts = {}
-  for (const it of entity.items) {
-    counts[it.section] = (counts[it.section] || 0) + 1
+  if (Array.isArray(entity.items)) {
+    // Flat register lane: one item per section occurrence.
+    for (const it of entity.items) {
+      counts[it.section] = (counts[it.section] || 0) + 1
+    }
+  } else {
+    // Nested sync lane: count records per top-level section, recursing into
+    // self-nested `$children` and inline `page_sections`.
+    const countPages = (pages) => {
+      let p = 0
+      let s = 0
+      for (const page of pages || []) {
+        p++
+        s += (page.page_sections || []).length
+        const sub = countPages(page.$children)
+        p += sub.p
+        s += sub.s
+      }
+      return { p, s }
+    }
+    if (entity.info) counts.info = 1
+    const pg = countPages(entity.pages)
+    if (pg.p) counts.pages = pg.p
+    if (pg.s) counts.page_sections = pg.s
+    if (entity.layout_sections?.length) counts.layout_sections = entity.layout_sections.length
+    if (entity.extensions?.length) counts.extensions = entity.extensions.length
+    if (entity.collections?.length) counts.collections = entity.collections.length
   }
 
   console.log('')
@@ -137,7 +167,7 @@ async function contentExport(args) {
   say.dim(
     `type          ${manifest.models_required[0].name_at_export} ${manifest.models_required[0].uuid}`
   )
-  say.dim(`entity        ${entity.uuid}`)
+  say.dim(`entity        ${entity.uuid || entity.$uuid || entity.$id}`)
   say.dim(
     `items         ${Object.entries(counts)
       .map(([s, n]) => `${s}:${n}`)
@@ -155,7 +185,10 @@ async function contentExport(args) {
   const outPath = resolve(output || `${defaultName}.uwx`)
   writeFileSync(outPath, buf)
   say.ok(`Wrote ${c.cyan}${outPath}${c.reset}`)
-  if (useSidecar) {
+  // Only the register lane (foundation schema) mints + persists ids locally. The
+  // site sync lane reads the sidecar read-only — the backend mints on sync — so
+  // there is nothing to persist here for a site.
+  if (useSidecar && isFoundation) {
     say.dim(
       `ids persisted in ${uwx.SIDECAR_RELPATH} — commit it so re-exports update, not duplicate.`
     )
