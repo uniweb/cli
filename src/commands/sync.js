@@ -1,11 +1,15 @@
 /**
- * uniweb sync — push a site's file-based collections to the backend as entities,
- * with a stable-identity round trip.
+ * uniweb sync — push a site to the backend as entities, with a stable-identity
+ * round trip. One sync pushes BOTH facets:
+ *   - static content → `@uniweb/site-content` (the nested `$`-document: pages,
+ *     sections, layout, theme, foundation ref, extensions, collection decls);
+ *   - dynamic content → one entity per `model:`-mapped collection record.
  *
- * Each `model:`-mapped collection record is sent as one entity-content document
- * (`$id` + `$model` + the brief section). First sync carries no `$uuid`; the
- * backend mints one and returns it, and `sync` back-fills it into the source file
- * so a re-sync updates in place rather than duplicating. Push-only, last-push-wins
+ * Each entity is an entity-content document (`$id` + `$model` + sections). First
+ * sync carries no `$uuid`; the backend mints them and echoes them back. `sync`
+ * then back-fills by facet: collection-record uuids into their source files;
+ * site-content's (nested) uuids into the committed `.uniweb/uwx-ids.json` sidecar,
+ * keeping machine uuids out of authored files. Push-only, last-push-wins
  * (`collision=force`) in v1.
  *
  * `uniweb login && uniweb sync`. Run from a site, or a workspace with one site.
@@ -27,7 +31,12 @@
 
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { resolve, join, dirname } from 'node:path'
-import { emitCollectionSyncPackage, backfillEntityUuids } from '@uniweb/build/uwx'
+import {
+  emitSyncPackage,
+  backfillEntityUuids,
+  writeSiteSidecar,
+  SIDECAR_RELPATH,
+} from '@uniweb/build/uwx'
 import { ensureRegistryAuth } from '../utils/registry-auth.js'
 import { resolveSiteDir } from './deploy.js'
 
@@ -191,7 +200,7 @@ export async function sync(args = []) {
   const priorHashes = readSyncCache(siteDir)
   let pkg
   try {
-    pkg = await emitCollectionSyncPackage(siteDir, {
+    pkg = await emitSyncPackage(siteDir, {
       ...(foundationDir ? { foundationDir } : {}),
       resolveModel: makeModelResolver({ apiBase, getToken }),
       priorHashes,
@@ -207,11 +216,11 @@ export async function sync(args = []) {
 
   // Nothing changed since the last sync — the backend is already in sync.
   if (entityCount === 0) {
-    success(`Nothing to sync — ${skipped} record(s) unchanged since the last sync.`)
+    success(`Nothing to sync — ${skipped} entit${skipped === 1 ? 'y' : 'ies'} unchanged since the last sync.`)
     return { exitCode: 0 }
   }
   info(
-    `${colors.bright}${entityCount}${colors.reset} changed record(s) → ${models.join(', ')}` +
+    `${colors.bright}${entityCount}${colors.reset} changed entit${entityCount === 1 ? 'y' : 'ies'} → ${models.join(', ')}` +
       (skipped ? `  ${colors.dim}(${skipped} unchanged, skipped)${colors.reset}` : '')
   )
 
@@ -272,16 +281,29 @@ export async function sync(args = []) {
 
   const summary = changedSummary(finalized)
   if (summary) note(summary)
-  // Correlate by index + render each finalized document back to its source file.
+  // Back-fill the minted uuids, by facet: the site-content entity records its
+  // (nested) uuids into the committed sidecar — uuids stay out of authored files
+  // (plan §4); collection records back-fill `$uuid` into their source files.
+  let siteRecorded = false
+  for (const fin of finalized) {
+    const entry = index[fin.index]
+    if (entry?.kind === 'site' && fin.document) {
+      writeSiteSidecar(entry.sidecarPath, entry.document, fin.document)
+      siteRecorded = true
+    }
+  }
   const bf = backfillEntityUuids({ index, finalized })
   for (const w of bf.warnings) note(`! ${w}`)
   for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
-  // Persist the full content-hash map so the next sync skips unchanged records.
+  // Persist the full content-hash map so the next sync skips unchanged entities.
   writeSyncCache(siteDir, hashes)
+  const wrote = []
+  if (siteRecorded) wrote.push(`recorded site ids in ${SIDECAR_RELPATH}`)
+  if (bf.updated.length) wrote.push(`wrote ${bf.updated.length} record file(s)`)
   success(
-    `Synced ${finalized.length} entit${finalized.length === 1 ? 'y' : 'ies'} — ` +
-      `wrote ${bf.updated.length} file(s)` +
-      (bf.unchanged.length ? `, ${bf.unchanged.length} unchanged` : '')
+    `Synced ${finalized.length} entit${finalized.length === 1 ? 'y' : 'ies'}` +
+      (wrote.length ? ` — ${wrote.join(', ')}` : '') +
+      (bf.unchanged.length ? ` (${bf.unchanged.length} file(s) unchanged)` : '')
   )
   return { exitCode: 0 }
 }
