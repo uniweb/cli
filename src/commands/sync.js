@@ -7,9 +7,10 @@
  *
  * Each entity is an entity-content document (`$id` + `$model` + sections). First
  * sync carries no `$uuid`; the backend mints them and echoes them back. `sync`
- * then back-fills by facet: collection-record uuids into their source files;
- * site-content's (nested) uuids into the committed `.uniweb/uwx-ids.json` sidecar,
- * keeping machine uuids out of authored files. Push-only, last-push-wins
+ * then back-fills each entity's uuid into its home file: collection-record uuids
+ * into their source files; the `@uniweb/folder` uuid into `collections.yml`; the
+ * site-content uuid into `site.yml`. Per-page/section identity is our own local
+ * ledger (`.uniweb/site-ids.json`), never on the wire. Push-only, last-push-wins
  * (`collision=force`) in v1.
  *
  * `uniweb login && uniweb sync`. Run from a site, or a workspace with one site.
@@ -24,7 +25,9 @@
  *   uniweb sync --foundation <dir>       Use this local foundation for the Model schema
  *   uniweb sync --all                    Send every record (bypass the changed-only cache)
  *
- * Endpoint: <origin>/api/core/exchange/restore, origin from
+ * Endpoint: a site sync (bundle includes site-content) POSTs to
+ *   <origin>/api/sites/sync; a loose-entity sync (no site-content) stays on
+ *   <origin>/api/core/exchange/restore?binding=sync. origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
@@ -34,8 +37,10 @@ import { resolve, join, dirname } from 'node:path'
 import {
   emitSyncPackage,
   backfillEntityUuids,
-  writeSiteSidecar,
-  SIDECAR_RELPATH,
+  writeSiteEntityUuid,
+  recordSiteIdLedger,
+  writeFolderUuid,
+  SITE_ID_LEDGER_RELPATH,
 } from '@uniweb/build/uwx'
 import { ensureRegistryAuth } from '../utils/registry-auth.js'
 import { resolveSiteDir } from './deploy.js'
@@ -210,9 +215,15 @@ export async function sync(args = []) {
     error(`Could not build the sync package: ${err.message}`)
     return { exitCode: 2 }
   }
-  const { buffer, models, entityCount, warnings, index, hashes, skipped } = pkg
+  const { buffer, models, entityCount, siteIncluded, warnings, index, hashes, skipped } = pkg
   log('')
   for (const w of warnings) note(`! ${w}`)
+
+  // Route by facet: a site sync (bundle carries site-content) is a first-class site
+  // operation; a loose-entity sync stays on the generic restore lane.
+  const submitUrl = siteIncluded
+    ? `${apiBase}/api/sites/sync`
+    : `${apiBase}/api/core/exchange/restore`
 
   // Nothing changed since the last sync — the backend is already in sync.
   if (entityCount === 0) {
@@ -231,15 +242,17 @@ export async function sync(args = []) {
     return { exitCode: 0 }
   }
   if (dryRun) {
-    info(`Dry run — would submit to ${colors.dim}${apiBase}/api/core/exchange/restore${colors.reset}`)
+    info(`Dry run — would submit to ${colors.dim}${submitUrl}${colors.reset}`)
     return { exitCode: 0 }
   }
 
-  // Submit: binary .uwx body, sync-lane query params, bearer auth.
+  // Submit: binary .uwx body, sync-lane query params, bearer auth. The site route
+  // takes `collision`; the loose-entity restore lane also takes `binding=sync`.
   const token = await getToken()
-  const params = new URLSearchParams({ collision: 'force', binding: 'sync' })
+  const params = new URLSearchParams({ collision: 'force' })
+  if (!siteIncluded) params.set('binding', 'sync')
   if (asUnit) params.set('as_unit', asUnit)
-  const url = `${apiBase}/api/core/exchange/restore?${params.toString()}`
+  const url = `${submitUrl}?${params.toString()}`
 
   info(`Submitting to ${colors.dim}${url}${colors.reset} …`)
   let res
@@ -281,15 +294,21 @@ export async function sync(args = []) {
 
   const summary = changedSummary(finalized)
   if (summary) note(summary)
-  // Back-fill the minted uuids, by facet: the site-content entity records its
-  // (nested) uuids into the committed sidecar — uuids stay out of authored files
-  // (plan §4); collection records back-fill `$uuid` into their source files.
+  // Back-fill the minted uuids, by facet: each entity's uuid into its home file —
+  // site-content → site.yml, @uniweb/folder → collections.yml, records → their
+  // source files. Per-page/section local ids go into the committed move-tracking
+  // ledger (never on the wire).
   let siteRecorded = false
+  let folderRecorded = false
   for (const fin of finalized) {
     const entry = index[fin.index]
-    if (entry?.kind === 'site' && fin.document) {
-      writeSiteSidecar(entry.sidecarPath, entry.document, fin.document)
+    if (entry?.kind === 'site') {
+      writeSiteEntityUuid(siteDir, fin.uuid)
+      recordSiteIdLedger(join(siteDir, SITE_ID_LEDGER_RELPATH), entry.document)
       siteRecorded = true
+    } else if (entry?.kind === 'folder') {
+      writeFolderUuid(siteDir, fin.uuid)
+      folderRecorded = true
     }
   }
   const bf = backfillEntityUuids({ index, finalized })
@@ -298,7 +317,8 @@ export async function sync(args = []) {
   // Persist the full content-hash map so the next sync skips unchanged entities.
   writeSyncCache(siteDir, hashes)
   const wrote = []
-  if (siteRecorded) wrote.push(`recorded site ids in ${SIDECAR_RELPATH}`)
+  if (siteRecorded) wrote.push('recorded site $uuid in site.yml')
+  if (folderRecorded) wrote.push('recorded folder $uuid in collections.yml')
   if (bf.updated.length) wrote.push(`wrote ${bf.updated.length} record file(s)`)
   success(
     `Synced ${finalized.length} entit${finalized.length === 1 ? 'y' : 'ies'}` +
