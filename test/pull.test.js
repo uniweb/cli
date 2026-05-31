@@ -71,7 +71,7 @@ test('pull projects the site-content lane (pages + sections + config) from a moc
       $uuid: 'SITE',
       $id: 'site-content',
       $model: '@uniweb/site-content',
-      info: { name: { en: 'Pulled' }, foundation_name: '@a/base' },
+      info: { name: { en: 'Pulled' }, foundation: '@a/base' },
       pages: [
         {
           $id: 'home',
