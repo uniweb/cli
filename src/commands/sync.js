@@ -105,7 +105,7 @@ function changedSummary(finalized) {
 // /dev/registry/data-schemas/{scope}/{name}; a bare name →
 // /dev/registry/data-schemas/{name}. The `@` sigil is not part of the path
 // segment. (Path segment encoding to confirm at live e2e.)
-function modelPathFor(modelName) {
+export function modelPathFor(modelName) {
   const m = /^@([^/]+)\/(.+)$/.exec(modelName)
   if (m) return `/dev/registry/data-schemas/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}`
   return `/dev/registry/data-schemas/${encodeURIComponent(modelName)}`
@@ -115,7 +115,7 @@ function modelPathFor(modelName) {
 // (the `@uniweb/data-schema` form) from the backend's Model-read route. Cached per
 // run; HTTP 404 → null (the emitter then says "register it first"). The bearer is
 // acquired lazily via getToken, so a fully-local sync never authenticates.
-function makeModelResolver({ apiBase, getToken }) {
+export function makeModelResolver({ apiBase, getToken, fetchImpl = fetch }) {
   const cache = new Map()
   return async (modelName) => {
     if (cache.has(modelName)) return cache.get(modelName)
@@ -123,7 +123,7 @@ function makeModelResolver({ apiBase, getToken }) {
     const token = await getToken()
     let res
     try {
-      res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } })
     } catch (err) {
       throw new Error(`could not reach the Model-read endpoint ${url}: ${err.message}`)
     }

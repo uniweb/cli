@@ -620,6 +620,13 @@ async function main() {
     process.exit(result?.exitCode ?? 0)
   }
 
+  // Handle pull command (dynamic import — depends on @uniweb/build)
+  if (command === 'pull') {
+    const { pull } = await importProjectCommand('./commands/pull.js')
+    const result = await pull(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
+  }
+
   // Handle update command
   if (command === 'update') {
     await update(args.slice(1))
