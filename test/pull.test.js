@@ -97,12 +97,16 @@ test('pull projects the site-content lane (pages + sections + config) from a moc
     assert.equal(res.exitCode, 0)
     // config written from info
     assert.equal(yaml.load(readFileSync(join(dir, 'site.yml'), 'utf8')).name, 'Pulled')
-    // page + section projected, with the uuid sidecar in page.yml
+    // page + section projected; page.yml stays clean (identity → .uniweb/ index)
     const pageYml = yaml.load(readFileSync(join(dir, 'pages/home/page.yml'), 'utf8'))
     assert.deepEqual(pageYml.sections, ['hero'])
-    assert.equal(pageYml.uuid, 'P1')
-    assert.deepEqual(pageYml.ids, { hero: 'S1' })
+    assert.equal(pageYml.uuid, undefined)
+    assert.equal(pageYml.ids, undefined)
     assert.ok(existsSync(join(dir, 'pages/home/hero.md')))
+    // uuids recorded in the gitignored index instead
+    const index = JSON.parse(readFileSync(join(dir, '.uniweb/pull-index.json'), 'utf8'))
+    assert.equal(index.items.P1, join('pages', 'home'))
+    assert.equal(index.items.S1, join('pages', 'home', 'hero.md'))
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
