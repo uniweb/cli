@@ -42,8 +42,10 @@ import {
   collectionsToProject,
   collectionsYmlPath,
   resolveCollectionsConfig,
+  writeFolderUuid,
 } from '@uniweb/build/uwx'
 import { makeModelResolver } from './push.js'
+import { extractFolderUuid } from '../utils/site-content-refs.js'
 import { ensureRegistryAuth } from '../utils/registry-auth.js'
 import { resolveSiteDir as defaultResolveSiteDir } from './deploy.js'
 
@@ -127,7 +129,7 @@ export async function pull(args = [], deps = {}) {
 
   const siteDir = await resolveSiteDir(args, 'pull')
   const siteContentUuid = readYamlUuid(join(siteDir, 'site.yml'))
-  const folderUuid = readYamlUuid(collectionsYmlPath(siteDir))
+  let folderUuid = readYamlUuid(collectionsYmlPath(siteDir))
 
   if (!siteContentUuid && !folderUuid) {
     info('Nothing to pull — this project has no $uuid yet. Run `uniweb push` first.')
@@ -187,13 +189,26 @@ export async function pull(args = [], deps = {}) {
   let deleted = 0
 
   // Lane 1 — site-content → config + pages/** + layout/**.
+  let siteDoc = null
   if (siteContentUuid) {
-    const document = extractDocument(await getJson(`/dev/sync/site-content/pull/${encodeURIComponent(siteContentUuid)}`, 'site-content'))
-    if (document) {
-      const report = siteContentDocumentToProject({ document, siteRoot: siteDir, prune })
+    siteDoc = extractDocument(await getJson(`/dev/sync/site-content/pull/${encodeURIComponent(siteContentUuid)}`, 'site-content'))
+    if (siteDoc) {
+      const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
       pages += report.pages.length
       sections += report.sections.length
       deleted += report.deleted.length
+    }
+  }
+
+  // Bootstrap the collections folder from the site-content `folder` ref when the
+  // project has no local collections.yml::$uuid yet — e.g. a pages-only clone, or a
+  // folder the app created after the first sync. Seed it so next pull reads it locally.
+  if (!folderUuid && siteDoc) {
+    const ref = extractFolderUuid(siteDoc.info, siteDoc)
+    if (ref) {
+      folderUuid = ref
+      writeFolderUuid(siteDir, ref)
+      note(`Discovered collections folder ${ref} from site-content — recorded in collections.yml`)
     }
   }
 

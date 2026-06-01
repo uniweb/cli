@@ -21,7 +21,7 @@ const jsonRes = (body, status = 200) => ({ ok: status >= 200 && status < 300, st
 const siteDoc = () => ({
   $model: '@uniweb/site-content',
   $uuid: 'SITE-1',
-  info: { name: 'My Site', foundation: '@acme/base@1.0.0', folder_uuid: 'FOLDER-1' },
+  info: { name: 'My Site', foundation: '@acme/base@1.0.0', folder: 'FOLDER-1' },
 })
 
 const tmpCwd = () => mkdtempSync(join(tmpdir(), 'uniweb-clone-'))
@@ -35,8 +35,8 @@ test('extractCloneSeeds reads foundation ref, folder uuid, and name', () => {
   })
 })
 
-test('extractCloneSeeds tolerates a localized name and alternate folder-uuid field', () => {
-  const seeds = extractCloneSeeds({ info: { name: { en: 'Hi', fr: 'Salut' }, folderUuid: 'F2' } })
+test('extractCloneSeeds tolerates a localized name and a wrapped folder ref', () => {
+  const seeds = extractCloneSeeds({ info: { name: { en: 'Hi', fr: 'Salut' }, folder: { $uuid: 'F2' } } })
   assert.equal(seeds.name, 'Hi')
   assert.equal(seeds.folderUuid, 'F2')
   assert.equal(seeds.foundationRef, null)

@@ -54,6 +54,7 @@ import { addWorkspaceGlob } from '../utils/config.js'
 import { detectWorkspacePm, installCmd } from '../utils/pm.js'
 import { ensureRegistryAuth } from '../utils/registry-auth.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
+import { extractFoundationRef, extractFolderUuid } from '../utils/site-content-refs.js'
 
 const DEFAULT_BACKEND_ORIGIN = 'http://localhost:8080'
 
@@ -109,16 +110,11 @@ function unwrapScalar(v) {
  */
 export function extractCloneSeeds(document) {
   const info = document?.info || {}
-  const foundationRef = info.foundation ?? info.foundation_name ?? document?.foundation ?? null
-  const name = unwrapScalar(info.name) ?? unwrapScalar(document?.name) ?? null
-  const folderUuid =
-    info.folder_uuid ??
-    info.folderUuid ??
-    document?.folder_uuid ??
-    document?.folder?.$uuid ??
-    info.collections?.folder_uuid ??
-    null
-  return { foundationRef, folderUuid: folderUuid || null, name }
+  return {
+    foundationRef: extractFoundationRef(info, document),
+    folderUuid: extractFolderUuid(info, document),
+    name: unwrapScalar(info.name) ?? unwrapScalar(document?.name) ?? null,
+  }
 }
 
 // Insert/replace a top-level `$uuid:` scalar in a YAML file's text without

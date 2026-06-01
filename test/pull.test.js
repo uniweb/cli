@@ -112,6 +112,47 @@ test('pull projects the site-content lane (pages + sections + config) from a moc
   }
 })
 
+test('pull bootstraps the collections folder from the site-content `folder` ref', async () => {
+  const dir = tempSite()
+  try {
+    // site-content uuid present, but NO local collections.yml (e.g. a pages-only clone).
+    writeFileSync(join(dir, 'site.yml'), "$uuid: SITE9\nname: Old\nfoundation: '@a/base'\n")
+
+    const siteContent = {
+      $uuid: 'SITE9', $id: 'site-content', $model: '@uniweb/site-content',
+      info: { name: { en: 'S' }, foundation: '@a/base', folder: 'F9' }, // the assumed folder ref
+      pages: [], layout_sections: [], extensions: [], collections: [],
+    }
+    const folderDoc = {
+      $uuid: 'F9', $id: '@folder', $model: '@uniweb/folder',
+      entries: [{ kind: 'branch', path_segment: 'articles', entries: [{ kind: 'ref', path_segment: 'hello', entry: 'R9' }] }],
+    }
+    const recordDoc = { $uuid: 'R9', $model: '@acme/article', article: { title: { en: 'Hello' }, body: { en: '\n# Hi\n' } } }
+    const declaration = {
+      name: '@acme/article',
+      sections: { article: { brief: true, fields: { title: { type: 'string', localized: true }, body: { type: 'richtext', localized: true } } } },
+    }
+
+    const res = await pull([], {
+      resolveSiteDir: async () => dir,
+      getToken: async () => 'tok',
+      fetch: makeFetch([
+        ['/dev/sync/site-content/pull/SITE9', siteContent],
+        ['/dev/sync/collections/pull/F9', { entities: [folderDoc, recordDoc] }],
+        ['/dev/registry/data-schemas/', declaration],
+      ]),
+    })
+
+    assert.equal(res.exitCode, 0)
+    // folder uuid discovered from site-content and seeded into collections.yml
+    assert.match(readFileSync(join(dir, 'collections/collections.yml'), 'utf8'), /\$uuid: F9/)
+    // and the collections lane actually ran via the discovered folder
+    assert.ok(existsSync(join(dir, 'collections/articles/hello.md')), 'record projected via discovered folder')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('pull projects the collections lane, resolving the model via a mock model-read', async () => {
   const dir = tempSite()
   try {
