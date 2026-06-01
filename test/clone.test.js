@@ -21,7 +21,7 @@ const jsonRes = (body, status = 200) => ({ ok: status >= 200 && status < 300, st
 const siteDoc = () => ({
   $model: '@uniweb/site-content',
   $uuid: 'SITE-1',
-  info: { name: 'My Site', foundation: '@acme/base@1.0.0', folder: 'FOLDER-1' },
+  info: { name: 'My Site', foundation: '@acme/base@1.0.0', gateway: 'FOLDER-1' },
 })
 
 const tmpCwd = () => mkdtempSync(join(tmpdir(), 'uniweb-clone-'))

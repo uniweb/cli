@@ -120,7 +120,7 @@ test('pull bootstraps the collections folder from the site-content `folder` ref'
 
     const siteContent = {
       $uuid: 'SITE9', $id: 'site-content', $model: '@uniweb/site-content',
-      info: { name: { en: 'S' }, foundation: '@a/base', folder: 'F9' }, // the assumed folder ref
+      info: { name: { en: 'S' }, foundation: '@a/base', gateway: 'F9' }, // the site's gateway ref
       pages: [], layout_sections: [], extensions: [], collections: [],
     }
     const folderDoc = {
