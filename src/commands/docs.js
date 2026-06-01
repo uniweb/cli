@@ -119,8 +119,7 @@ ${colors.bright}Child Page Ordering:${colors.reset}
 
 ${colors.bright}Navigation Visibility:${colors.reset}
   ${colors.cyan}hidden${colors.reset}            Hide from all navigation (page still exists)
-  ${colors.cyan}hideInHeader${colors.reset}      Hide from header nav only
-  ${colors.cyan}hideInFooter${colors.reset}      Hide from footer nav only
+  ${colors.cyan}hideIn${colors.reset}            Hide from named nav areas, e.g. [header] or [footer, sidebar]
 
 ${colors.bright}Layout Options:${colors.reset}
   ${colors.cyan}layout${colors.reset}            Layout name or object with name, hide, params
@@ -148,7 +147,7 @@ ${colors.bright}Example:${colors.reset}
   ${colors.dim}title: About Us
   description: Learn about our company
   order: 2
-  hideInFooter: true
+  hideIn: [footer]
   layout:
     hide: [right]
   seo:

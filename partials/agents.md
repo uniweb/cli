@@ -1508,7 +1508,7 @@ const page = website.activePage
 // Returns [{ id, route, navigableRoute, translatedRoute, title, label, description, hasContent, version, children }]
 //
 // Options:
-//   for: 'header' | 'footer'  — filter by nav type (respects hideInHeader/hideInFooter)
+//   for: 'header' | 'footer' | <area>  — filter by nav area (respects the page's hideIn)
 //   nested: true (default)    — nested hierarchy with children; false = flat list
 //   includeHidden: false       — include hidden pages
 //   filter: (page) => bool    — custom filter function
@@ -1520,7 +1520,7 @@ const page = website.activePage
 //   website.getAllPages()     — flat list: getPageHierarchy({ nested: false })
 //
 // Common patterns:
-website.getPageHierarchy({ for: 'header' })           // Header nav (excludes hideInHeader pages)
+website.getPageHierarchy({ for: 'header' })           // Header nav (excludes pages with 'header' in hideIn)
 website.getPageHierarchy()                             // Full nested hierarchy (no nav filtering)
 website.getPageHierarchy({ nested: false })            // Flat list of all visible pages
 website.getPageHierarchy({ nested: false, includeHidden: true })  // Everything including hidden
