@@ -94,13 +94,24 @@ export async function scaffoldFoundation(targetDir, context, options = {}) {
 /**
  * Scaffold a site from the site package template
  *
+ * Two shapes, by whether a local foundation is wired:
+ *  - Local foundation (the default for `create`/`add site`): pass
+ *    `foundationName` + `foundationPath` (a `file:` spec) and the site's
+ *    package.json gets that dependency.
+ *  - Referenced foundation (no local sibling — what `uniweb clone` uses):
+ *    OMIT `foundationName`/`foundationPath` and set `foundationRef` to a
+ *    registry ref (`@ns/name@ver`) or URL. No `file:` dependency is written;
+ *    `site.yml::foundation` carries the ref and the runtime loads it as a
+ *    federated module (runtime mode). Deps still pin to the CLI version
+ *    matrix via the template's `{{version}}` helper.
+ *
  * @param {string} targetDir - Target directory for the site
  * @param {Object} context - Template context
  * @param {string} context.name - Package name
  * @param {string} context.projectName - Workspace name
- * @param {string} context.foundationName - Foundation package name
- * @param {string} context.foundationPath - Relative file: path to foundation
- * @param {string} [context.foundationRef] - Foundation ref for site.yml (when multiple foundations)
+ * @param {string} [context.foundationName] - Local foundation package name (omit for a referenced foundation)
+ * @param {string} [context.foundationPath] - Relative file: path to a local foundation (omit for a referenced foundation)
+ * @param {string} [context.foundationRef] - Foundation ref written to site.yml (a local package name, a registry ref, or a URL)
  * @param {Object} [options] - Processing options
  */
 export async function scaffoldSite(targetDir, context, options = {}) {

@@ -10,8 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@uniweb/runtime": "{{version "@uniweb/runtime"}}",
-    "{{foundationName}}": "{{foundationPath}}"
+    "@uniweb/runtime": "{{version "@uniweb/runtime"}}"{{#if foundationPath}},
+    "{{foundationName}}": "{{foundationPath}}"{{/if}}
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
