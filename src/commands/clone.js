@@ -12,18 +12,19 @@
  * `npx uniweb clone`, same reason utils/workspace.js loads the classifier lazily).
  * So clone does the minimum itself and delegates the heavy lifting:
  *
- *   1. plain `fetch` GET <origin>/dev/sync/site-content/pull/<uuid> — read the
- *      `foundation` ref and the `@uniweb/folder` uuid out of that one document
- *      (no `@uniweb/build` needed for a GET);
+ *   1. plain `fetch` GET <origin>/dev/site/content/pull/<uuid> — read the `foundation`
+ *      ref out of that one document (no `@uniweb/build` needed for a GET);
  *   2. scaffold the HARNESS — a full Vite site package whose foundation is
  *      REFERENCED (runtime-loaded), no local foundation sibling (scaffoldSite with
  *      foundationRef and no foundationPath) + AGENTS.md + deps pinned to this CLI's
  *      version matrix; placement reuses create (new workspace / in-place) and add's
  *      resolver (into an existing workspace, any shape);
- *   3. seed the uuids into the files pull reads — site.yml::$uuid and
- *      collections/collections.yml::$uuid (plain YAML scalar writes);
- *   4. install, then delegate the projection to the project-local `uniweb pull`
- *      (which resolves the now-installed project-local `@uniweb/build`).
+ *   3. seed the site's one identity — site.yml::$uuid (a plain YAML scalar write).
+ *      The folder is pulled by this same uuid, so there is no separate folder uuid to
+ *      seed;
+ *   4. install, then delegate the projection to the project-local `uniweb pull` (which
+ *      resolves the now-installed project-local `@uniweb/build`; clone forwards
+ *      `--no-collections` to it when set).
  *
  * Sites are private — authenticate with `uniweb login` first; the session carries
  * identity + the backend origin. There is no `--foundation` flag: the site carries
@@ -38,7 +39,7 @@
  *   uniweb clone <uuid> --project docs   Co-located docs/site
  *   uniweb clone <uuid> --no-collections Pull pages only; skip collection records
  *
- * Endpoints: <origin>/dev/sync/site-content/pull/<uuid>. Origin from
+ * Endpoints: <origin>/dev/site/content/pull/<uuid>. Origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default (internal dev overrides;
  *   not the user-facing path — `uniweb login` determines the origin).
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
@@ -54,7 +55,7 @@ import { addWorkspaceGlob } from '../utils/config.js'
 import { detectWorkspacePm, installCmd } from '../utils/pm.js'
 import { ensureRegistryAuth } from '../utils/registry-auth.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
-import { extractFoundationRef, extractFolderUuid } from '../utils/site-content-refs.js'
+import { extractFoundationRef } from '../utils/site-content-refs.js'
 
 const DEFAULT_BACKEND_ORIGIN = 'http://localhost:8080'
 
@@ -102,17 +103,15 @@ function unwrapScalar(v) {
  * Read the seeds clone needs out of a site-content `$`-document:
  *  - foundationRef: the `foundation` ref (a URL or our `@ns/name@ver`) — written
  *    verbatim into site.yml so the runtime loads it as a federated module;
- *  - folderUuid: the site's `@uniweb/folder` uuid (one per site, backend-known).
- *    Tolerant about where it rides, since the exact field is the one open backend
- *    item (see the plan doc + collab channel). Returns null if absent → clone
- *    proceeds without collections, with a note.
  *  - name: a display name for the new project.
+ *
+ * No folder uuid is read: the site holds one identity (its site-content uuid), and
+ * the folder is pulled by that same uuid — the framework never holds a folder uuid.
  */
 export function extractCloneSeeds(document) {
   const info = document?.info || {}
   return {
     foundationRef: extractFoundationRef(info, document),
-    folderUuid: extractFolderUuid(info, document),
     name: unwrapScalar(info.name) ?? unwrapScalar(document?.name) ?? null,
   }
 }
@@ -188,7 +187,7 @@ export async function clone(args = [], deps = {}) {
     })
 
   // 1. GET the site-content document (plain fetch — no @uniweb/build).
-  const url = `${apiBase}/dev/sync/site-content/pull/${encodeURIComponent(siteUuid)}`
+  const url = `${apiBase}/dev/site/content/pull/${encodeURIComponent(siteUuid)}`
   info(`Reading site ${colors.bright}${siteUuid}${colors.reset} from ${colors.dim}${url}${colors.reset} …`)
   let payload
   try {
@@ -213,7 +212,7 @@ export async function clone(args = [], deps = {}) {
     error('The site-content response carried no recognizable document.')
     return { exitCode: 1 }
   }
-  const { foundationRef, folderUuid, name: siteDisplayName } = extractCloneSeeds(document)
+  const { foundationRef, name: siteDisplayName } = extractCloneSeeds(document)
   if (!foundationRef) {
     note('! The pulled site declares no foundation ref — set `foundation:` in site.yml after clone.')
   }
@@ -287,13 +286,10 @@ export async function clone(args = [], deps = {}) {
     await addWorkspaceGlob(existingRoot, placement.relativePath)
   }
 
-  // 4. Seed the uuids pull reads.
+  // 4. Seed the site's one identity — site.yml::$uuid. The folder is pulled by this
+  // same uuid (the backend resolves the site's @uniweb/folder from it), so there is no
+  // separate folder uuid to seed.
   seedYamlUuid(join(siteDir, 'site.yml'), siteUuid)
-  if (folderUuid && !noCollections) {
-    seedYamlUuid(join(siteDir, 'collections', 'collections.yml'), folderUuid)
-  } else if (!folderUuid && !noCollections) {
-    note('! No collections folder uuid found in the site payload — pulling pages only.')
-  }
   success(`Scaffolded the site harness${foundationRef ? ` (foundation: ${foundationRef})` : ''}.`)
 
   // 5. Install, then delegate the projection to the project-local `uniweb pull`.
@@ -315,6 +311,7 @@ export async function clone(args = [], deps = {}) {
   const pullExtra = []
   if (flagValue(args, '--registry')) pullExtra.push('--registry', registryFlag)
   if (tokenFlag) pullExtra.push('--token', tokenFlag)
+  if (noCollections) pullExtra.push('--no-collections')
 
   if (deps.skipPull) {
     note('Skipping pull (test mode).')

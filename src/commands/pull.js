@@ -1,15 +1,16 @@
 /**
  * uniweb pull — bring the backend's copy of a site back to canonical files.
  *
- * The read-side mirror of `uniweb push`. It reads the uuids the project
- * already holds — `site.yml::$uuid` (the site-content entity) and
- * `collections.yml::$uuid` (the `@uniweb/folder`) — GETs the two pull lanes, and
- * projects the returned documents back to files via the framework's projection
- * layer (`@uniweb/build/uwx`):
+ * The read-side mirror of `uniweb push`. The project holds exactly one identity —
+ * `site.yml::$uuid` (the site-content entity) — and BOTH pull lanes are keyed by it
+ * (the backend owns the site's `@uniweb/folder` and resolves it from the site-content
+ * uuid, so the framework never holds a folder uuid). It GETs the two lanes and projects
+ * the returned documents back to files via the framework's projection layer
+ * (`@uniweb/build/uwx`):
  *
- *   - site-content lane → `siteContentDocumentToProject` (site.yml/theme.yml/
- *     head.html, pages/**, layout/**), and
- *   - collections lane  → `collectionsToProject` (the folder + record files).
+ *   - content lane → `siteContentDocumentToProject` (site.yml/theme.yml/head.html,
+ *     pages/**, layout/**), and
+ *   - folder lane  → `collectionsToProject` (the folder + record files).
  *
  * Pull is git-pull-like: it reconciles the working tree to the backend, DELETING
  * pages/sections that no longer exist there (toggle off with `--no-delete`). The
@@ -19,12 +20,14 @@
  *
  * Usage:
  *   uniweb pull                          GET both lanes, project to files, prune orphans
+ *   uniweb pull --no-collections         Pull pages only; skip the folder (collections) lane
  *   uniweb pull --no-delete              Project, but keep files with no backend item
  *   uniweb pull --dry-run                Report what it would GET; write nothing
  *   uniweb pull --registry <url>         Override the backend origin
  *   uniweb pull --token <bearer>         Read with this bearer; skips `uniweb login`
  *
- * Endpoints: <origin>/dev/sync/{site-content,collections}/pull/{uuid}. Origin from
+ * Endpoints: <origin>/dev/site/content/pull/{uuid} + /dev/site/folder/pull/{uuid},
+ *   both keyed by `site.yml::$uuid`. Origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  *
@@ -40,12 +43,9 @@ import yaml from 'js-yaml'
 import {
   siteContentDocumentToProject,
   collectionsToProject,
-  collectionsYmlPath,
   resolveCollectionsConfig,
-  writeFolderUuid,
 } from '@uniweb/build/uwx'
 import { makeModelResolver } from './push.js'
-import { extractFolderUuid } from '../utils/site-content-refs.js'
 import { ensureRegistryAuth } from '../utils/registry-auth.js'
 import { resolveSiteDir as defaultResolveSiteDir } from './deploy.js'
 
@@ -117,6 +117,7 @@ export async function pull(args = [], deps = {}) {
   const dryRun = args.includes('--dry-run')
   const tokenFlag = flagValue(args, '--token')
   const prune = !(args.includes('--no-delete') || args.includes('--no-prune')) // git-like by default
+  const noCollections = args.includes('--no-collections') || args.includes('--content-only')
   const registryFlag = flagValue(args, '--registry') || process.env.UNIWEB_REGISTER_URL || DEFAULT_BACKEND_ORIGIN
 
   let apiBase
@@ -128,10 +129,11 @@ export async function pull(args = [], deps = {}) {
   }
 
   const siteDir = await resolveSiteDir(args, 'pull')
+  // One identity per site: `site.yml::$uuid`. Both lanes (content + folder) are keyed
+  // by it — the backend resolves the site's `@uniweb/folder` from this uuid.
   const siteContentUuid = readYamlUuid(join(siteDir, 'site.yml'))
-  let folderUuid = readYamlUuid(collectionsYmlPath(siteDir))
 
-  if (!siteContentUuid && !folderUuid) {
+  if (!siteContentUuid) {
     info('Nothing to pull — this project has no $uuid yet. Run `uniweb push` first.')
     return { exitCode: 0 }
   }
@@ -148,8 +150,8 @@ export async function pull(args = [], deps = {}) {
     })
 
   if (dryRun) {
-    if (siteContentUuid) info(`Dry run — would GET ${colors.dim}${apiBase}/dev/sync/site-content/pull/${siteContentUuid}${colors.reset}`)
-    if (folderUuid) info(`Dry run — would GET ${colors.dim}${apiBase}/dev/sync/collections/pull/${folderUuid}${colors.reset}`)
+    info(`Dry run — would GET ${colors.dim}${apiBase}/dev/site/content/pull/${siteContentUuid}${colors.reset}`)
+    if (!noCollections) info(`Dry run — would GET ${colors.dim}${apiBase}/dev/site/folder/pull/${siteContentUuid}${colors.reset}`)
     return { exitCode: 0 }
   }
 
@@ -188,34 +190,23 @@ export async function pull(args = [], deps = {}) {
   let records = 0
   let deleted = 0
 
-  // Lane 1 — site-content → config + pages/** + layout/**.
-  let siteDoc = null
-  if (siteContentUuid) {
-    siteDoc = extractDocument(await getJson(`/dev/sync/site-content/pull/${encodeURIComponent(siteContentUuid)}`, 'site-content'))
-    if (siteDoc) {
-      const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
-      pages += report.pages.length
-      sections += report.sections.length
-      deleted += report.deleted.length
-    }
+  // Lane 1 — content → config + pages/** + layout/**.
+  const siteDoc = extractDocument(
+    await getJson(`/dev/site/content/pull/${encodeURIComponent(siteContentUuid)}`, 'content')
+  )
+  if (siteDoc) {
+    const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
+    pages += report.pages.length
+    sections += report.sections.length
+    deleted += report.deleted.length
   }
 
-  // Bootstrap the collections folder from the site-content `folder` ref when the
-  // project has no local collections.yml::$uuid yet — e.g. a pages-only clone, or a
-  // folder the app created after the first sync. Seed it so next pull reads it locally.
-  if (!folderUuid && siteDoc) {
-    const ref = extractFolderUuid(siteDoc.info, siteDoc)
-    if (ref) {
-      folderUuid = ref
-      writeFolderUuid(siteDir, ref)
-      note(`Discovered collections folder ${ref} from site-content — recorded in collections.yml`)
-    }
-  }
-
-  // Lane 2 — collections → the folder + record files. Models are resolved by name
-  // (async) up front, so collectionsToProject keeps its synchronous contract.
-  if (folderUuid) {
-    const payload = await getJson(`/dev/sync/collections/pull/${encodeURIComponent(folderUuid)}`, 'collections')
+  // Lane 2 — folder → the folder + record files, keyed by the SAME site-content uuid
+  // (the backend resolves the site's `@uniweb/folder` from it; the framework never
+  // holds a folder uuid). Models are resolved by name (async) up front, so
+  // collectionsToProject keeps its synchronous contract.
+  if (!noCollections) {
+    const payload = await getJson(`/dev/site/folder/pull/${encodeURIComponent(siteContentUuid)}`, 'collections')
     if (payload) {
       const { folderDoc, recordDocs } = splitCollectionsPull(payload)
       const resolveModel = makeModelResolver({ apiBase, getToken, fetchImpl })

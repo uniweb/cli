@@ -9,7 +9,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
@@ -91,7 +91,7 @@ test('pull projects the site-content lane (pages + sections + config) from a moc
     const res = await pull([], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
-      fetch: makeFetch([['/dev/sync/site-content/pull/SITE', document]]),
+      fetch: makeFetch([['/dev/site/content/pull/SITE', document]]),
     })
 
     assert.equal(res.exitCode, 0)
@@ -112,19 +112,20 @@ test('pull projects the site-content lane (pages + sections + config) from a moc
   }
 })
 
-test('pull bootstraps the collections folder from the site-content `folder` ref', async () => {
+test('pull fetches the folder lane by the site-content uuid (no collections.yml needed)', async () => {
   const dir = tempSite()
   try {
-    // site-content uuid present, but NO local collections.yml (e.g. a pages-only clone).
+    // The site holds one identity (site.yml::$uuid); the folder is keyed by it.
     writeFileSync(join(dir, 'site.yml'), "$uuid: SITE9\nname: Old\nfoundation: '@a/base'\n")
 
     const siteContent = {
       $uuid: 'SITE9', $id: 'site-content', $model: '@uniweb/site-content',
-      info: { name: { en: 'S' }, foundation: '@a/base', gateway: 'F9' }, // the site's gateway ref
+      info: { name: { en: 'S' }, foundation: '@a/base' },
       pages: [], layout_sections: [], extensions: [], collections: [],
     }
+    // The folder document carries no $uuid of its own (the backend owns it).
     const folderDoc = {
-      $uuid: 'F9', $id: '@folder', $model: '@uniweb/folder',
+      $id: '@folder', $model: '@uniweb/folder',
       entries: [{ kind: 'branch', path_segment: 'articles', entries: [{ kind: 'ref', path_segment: 'hello', entry: 'R9' }] }],
     }
     const recordDoc = { $uuid: 'R9', $model: '@acme/article', article: { title: { en: 'Hello' }, body: { en: '\n# Hi\n' } } }
@@ -137,17 +138,17 @@ test('pull bootstraps the collections folder from the site-content `folder` ref'
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: makeFetch([
-        ['/dev/sync/site-content/pull/SITE9', siteContent],
-        ['/dev/sync/collections/pull/F9', { entities: [folderDoc, recordDoc] }],
+        ['/dev/site/content/pull/SITE9', siteContent],
+        ['/dev/site/folder/pull/SITE9', { entities: [folderDoc, recordDoc] }],
         ['/dev/registry/data-schemas/', declaration],
       ]),
     })
 
     assert.equal(res.exitCode, 0)
-    // folder uuid discovered from site-content and seeded into collections.yml
-    assert.match(readFileSync(join(dir, 'collections/collections.yml'), 'utf8'), /\$uuid: F9/)
-    // and the collections lane actually ran via the discovered folder
-    assert.ok(existsSync(join(dir, 'collections/articles/hello.md')), 'record projected via discovered folder')
+    // the folder lane ran, keyed by the site-content uuid
+    assert.ok(existsSync(join(dir, 'collections/articles/hello.md')), 'record projected via the folder lane')
+    // and no folder uuid is persisted to collections.yml (the framework holds none)
+    assert.equal(existsSync(join(dir, 'collections/collections.yml')), false)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -156,12 +157,9 @@ test('pull bootstraps the collections folder from the site-content `folder` ref'
 test('pull projects the collections lane, resolving the model via a mock model-read', async () => {
   const dir = tempSite()
   try {
-    writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n") // no $uuid → site-content lane skipped
-    mkdirSync(join(dir, 'collections'), { recursive: true })
-    writeFileSync(join(dir, 'collections/collections.yml'), '$uuid: F1\n')
+    writeFileSync(join(dir, 'site.yml'), "$uuid: SITE1\nname: S\nfoundation: '@a/base'\n")
 
     const folderDoc = {
-      $uuid: 'F1',
       $id: '@folder',
       $model: '@uniweb/folder',
       entries: [{ kind: 'branch', path_segment: 'articles', entries: [{ kind: 'ref', path_segment: 'hello', entry: 'R1' }] }],
@@ -176,7 +174,8 @@ test('pull projects the collections lane, resolving the model via a mock model-r
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: makeFetch([
-        ['/dev/sync/collections/pull/F1', { entities: [folderDoc, recordDoc] }],
+        // content lane 404s here (focus on the folder lane); the site $uuid drives both
+        ['/dev/site/folder/pull/SITE1', { entities: [folderDoc, recordDoc] }],
         ['/dev/registry/data-schemas/', declaration],
       ]),
     })
@@ -185,6 +184,34 @@ test('pull projects the collections lane, resolving the model via a mock model-r
     const recordFile = join(dir, 'collections/articles/hello.md')
     assert.ok(existsSync(recordFile), 'record file projected')
     assert.match(readFileSync(recordFile, 'utf8'), /title: Hello/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('pull --no-collections skips the folder lane', async () => {
+  const dir = tempSite()
+  const pulledUrls = []
+  try {
+    writeFileSync(join(dir, 'site.yml'), "$uuid: SITE2\nname: S\nfoundation: '@a/base'\n")
+    const siteContent = {
+      $uuid: 'SITE2', $id: 'site-content', $model: '@uniweb/site-content',
+      info: { name: { en: 'S' }, foundation: '@a/base' },
+      pages: [], layout_sections: [], extensions: [], collections: [],
+    }
+
+    const res = await pull(['--no-collections'], {
+      resolveSiteDir: async () => dir,
+      getToken: async () => 'tok',
+      fetch: async (url) => {
+        pulledUrls.push(url)
+        return url.includes('/dev/site/content/pull/SITE2') ? jsonRes(siteContent) : jsonRes(null, 404)
+      },
+    })
+
+    assert.equal(res.exitCode, 0)
+    assert.ok(pulledUrls.some((u) => u.includes('/dev/site/content/pull/SITE2')), 'content lane ran')
+    assert.ok(!pulledUrls.some((u) => u.includes('/dev/site/folder/pull/')), 'folder lane skipped')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

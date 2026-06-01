@@ -21,25 +21,24 @@ const jsonRes = (body, status = 200) => ({ ok: status >= 200 && status < 300, st
 const siteDoc = () => ({
   $model: '@uniweb/site-content',
   $uuid: 'SITE-1',
-  info: { name: 'My Site', foundation: '@acme/base@1.0.0', gateway: 'FOLDER-1' },
+  info: { name: 'My Site', foundation: '@acme/base@1.0.0' },
 })
 
 const tmpCwd = () => mkdtempSync(join(tmpdir(), 'uniweb-clone-'))
 const noSpawn = { getToken: async () => 'tok', skipInstall: true, skipPull: true }
 
-test('extractCloneSeeds reads foundation ref, folder uuid, and name', () => {
+test('extractCloneSeeds reads the foundation ref and name (no folder uuid)', () => {
   assert.deepEqual(extractCloneSeeds(siteDoc()), {
     foundationRef: '@acme/base@1.0.0',
-    folderUuid: 'FOLDER-1',
     name: 'My Site',
   })
 })
 
-test('extractCloneSeeds tolerates a localized name and a wrapped folder ref', () => {
-  const seeds = extractCloneSeeds({ info: { name: { en: 'Hi', fr: 'Salut' }, folder: { $uuid: 'F2' } } })
+test('extractCloneSeeds tolerates a localized name', () => {
+  const seeds = extractCloneSeeds({ info: { name: { en: 'Hi', fr: 'Salut' } } })
   assert.equal(seeds.name, 'Hi')
-  assert.equal(seeds.folderUuid, 'F2')
   assert.equal(seeds.foundationRef, null)
+  assert.equal(seeds.folderUuid, undefined) // no folder uuid is read anymore
 })
 
 test('extractDocument tolerates raw and {document}/{entity} envelopes', () => {
@@ -71,7 +70,7 @@ test('clone scaffolds a ref-only harness and seeds the uuids (new workspace)', a
     const res = await clone(['SITE-1', 'my-site'], {
       ...noSpawn,
       cwd: dir,
-      fetch: async (url) => (url.includes('/dev/sync/site-content/pull/SITE-1') ? jsonRes(siteDoc()) : jsonRes(null, 404)),
+      fetch: async (url) => (url.includes('/dev/site/content/pull/SITE-1') ? jsonRes(siteDoc()) : jsonRes(null, 404)),
     })
     assert.equal(res.exitCode, 0)
 
@@ -91,24 +90,28 @@ test('clone scaffolds a ref-only harness and seeds the uuids (new workspace)', a
     const pkg = JSON.parse(readFileSync(join(siteDir, 'package.json'), 'utf8'))
     assert.deepEqual(Object.keys(pkg.dependencies), ['@uniweb/runtime'])
 
-    // Collections folder uuid seeded for the delegated pull.
-    const colYml = readFileSync(join(siteDir, 'collections', 'collections.yml'), 'utf8')
-    assert.match(colYml, /^\$uuid: FOLDER-1$/m)
+    // No folder uuid is seeded — the folder is pulled by the site-content uuid.
+    assert.equal(existsSync(join(siteDir, 'collections', 'collections.yml')), false)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })
 
-test('clone --no-collections skips the collections seed', async () => {
+test('clone forwards --no-collections to the delegated pull', async () => {
   const dir = tmpCwd()
+  let pulledArgs = null
   try {
     const res = await clone(['SITE-1', 'solo', '--no-collections'], {
-      ...noSpawn,
+      getToken: async () => 'tok',
+      skipInstall: true,
+      runPull: async (_siteDir, _pm, extra) => {
+        pulledArgs = extra
+      },
       cwd: dir,
       fetch: async () => jsonRes(siteDoc()),
     })
     assert.equal(res.exitCode, 0)
-    assert.equal(existsSync(join(dir, 'solo', 'site', 'collections', 'collections.yml')), false)
+    assert.ok(pulledArgs && pulledArgs.includes('--no-collections'), 'forwarded --no-collections to pull')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

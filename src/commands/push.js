@@ -1,19 +1,24 @@
 /**
  * uniweb push — push a site to the backend over its two directional lanes:
- *   - site-content lane → `@uniweb/site-content` (the static half: pages, sections,
+ *   - content lane → `@uniweb/site-content` (the static half: pages, sections,
  *     layout, theme, foundation ref, extensions, collection decls);
- *   - collections lane → one `@uniweb/folder` + the collection-record entities it
+ *   - folder lane → one `@uniweb/folder` + the collection-record entities it
  *     references (the dynamic half; the `$ref` closure rides together).
  *
- * Each entity is an entity-content document (`$id` + `$model` + sections). First
- * push carries no `$uuid`; the backend mints them and echoes them back. `push` then
- * back-fills each entity's uuid into its home file: the site-content uuid → `site.yml`,
- * the folder uuid → `collections.yml`, each record uuid → its source file. site-content
- * is pushed wholesale (no per-item uuids on the wire). Push-only, last-push-wins
- * (`collision=force`) in v1.
+ * Each entity is an entity-content document (`$id` + `$model` + sections). The site
+ * holds exactly one identity: `site.yml::$uuid` (the site-content entity). A first
+ * push has none — it CREATEs the site (`POST /dev/site/content`, uuid-less), the
+ * backend mints + adopts it and returns the new uuid, which `push` records into
+ * `site.yml`. Later pushes UPDATE by that uuid (`POST /dev/site/content/push/{uuid}`).
+ * The folder lane is keyed by the SAME site-content uuid (`POST
+ * /dev/site/folder/push/{uuid}`) — the backend owns the site's `@uniweb/folder`, so
+ * the framework never holds a folder uuid. Records still round-trip their own `$uuid`
+ * (back-filled into their source files). site-content is pushed wholesale (no per-item
+ * uuids on the wire). Push-only, last-push-wins (`collision=force`) in v1.
  *
- * Order: push site-content first (the site is born there), then collections — binding
- * the folder to that site via `?site=<siteContentUuid>` on the first collections push.
+ * Order: content first (CREATE or UPDATE — the site must exist before its folder),
+ * then the folder, keyed by the site's uuid. On a brand-new site the backend creates
+ * the folder on its first folder push for that uuid.
  *
  * `uniweb login && uniweb push`. Run from a site, or a workspace with one site.
  *
@@ -27,7 +32,8 @@
  *   uniweb push --foundation <dir>       Use this local foundation for the Model schema
  *   uniweb push --all                    Send every record (bypass the changed-only cache)
  *
- * Endpoints: <origin>/dev/sync/{site-content,collections}/push. origin from
+ * Endpoints: <origin>/dev/site/content (create), /dev/site/content/push/{uuid}
+ *   (update), /dev/site/folder/push/{uuid}. origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
@@ -38,7 +44,6 @@ import {
   emitSyncPackages,
   backfillEntityUuids,
   writeSiteEntityUuid,
-  writeFolderUuid,
 } from '@uniweb/build/uwx'
 import { ensureRegistryAuth } from '../utils/registry-auth.js'
 import { resolveSiteDir } from './deploy.js'
@@ -88,6 +93,24 @@ function extractFinalized(payload) {
       document: d?.document ?? null,
     }))
     .filter((e) => Number.isInteger(e.index) && e.uuid)
+}
+
+// Pull the minted site-content uuid out of a CREATE (`POST /dev/site/content`)
+// response. The exact shape is an open backend item — tolerant of a bare
+// `{ siteContentUuid }` / `{ $uuid }` / `{ uuid }`, or the same `report.finalized[]`
+// envelope the update/folder lanes return (the site entity is submitted alone, so its
+// minted uuid is the first finalized entry). Returns null if none is present. (Single
+// adjust-point to pin at the first live CREATE.)
+export function extractMintedSiteUuid(payload) {
+  if (typeof payload?.siteContentUuid === 'string') return payload.siteContentUuid
+  if (typeof payload?.$uuid === 'string') return payload.$uuid
+  if (typeof payload?.uuid === 'string') return payload.uuid
+  const finalized = extractFinalized(payload)
+  if (finalized && finalized.length) {
+    const site = finalized.find((f) => f.index === 0) || finalized[0]
+    return site?.uuid ?? null
+  }
+  return null
 }
 
 // One-line summary from the authoritative per-entity `changed` flag (`false` = a
@@ -242,8 +265,15 @@ export async function push(args = []) {
     return { exitCode: 0 }
   }
   if (dryRun) {
-    if (siteContent) info(`Dry run — would push to ${colors.dim}${apiBase}/dev/sync/site-content/push${colors.reset}`)
-    if (collections) info(`Dry run — would push to ${colors.dim}${apiBase}/dev/sync/collections/push${colors.reset}`)
+    if (siteContent) {
+      const route = siteContentUuid ? `/dev/site/content/push/${siteContentUuid}` : '/dev/site/content'
+      const verb = siteContentUuid ? 'update' : 'create'
+      info(`Dry run — would ${verb} content at ${colors.dim}${apiBase}${route}${colors.reset}`)
+    }
+    if (collections) {
+      const key = siteContentUuid || '{new-site-uuid}'
+      info(`Dry run — would push the folder to ${colors.dim}${apiBase}/dev/site/folder/push/${key}${colors.reset}`)
+    }
     return { exitCode: 0 }
   }
 
@@ -251,10 +281,14 @@ export async function push(args = []) {
   const wrote = []
   let finalizedTotal = 0
 
-  // POST one lane's .uwx and parse its finalized list. Returns null on any failure
-  // (already reported). `extra` adds lane-specific query params (e.g. `site=`).
-  const pushLane = async (label, path, buffer, extra = {}) => {
-    const params = new URLSearchParams({ collision: 'force', ...extra })
+  // POST one lane's .uwx and parse the JSON response. Returns the parsed payload, or
+  // null on any transport/HTTP/parse failure (already reported). `collision=force`
+  // (last-push-wins) rides on every lane; `--as-org` rides as `as_org`. (Both the
+  // scope-param name — `as_org` vs the backend's `as_unit` — and whether `collision`
+  // stays required now that create/update are split are open backend items; preserved
+  // as-is until pinned at the first live run.)
+  const postLane = async (label, path, buffer) => {
+    const params = new URLSearchParams({ collision: 'force' })
     if (asOrg) params.set('as_org', asOrg)
     const url = `${apiBase}${path}?${params.toString()}`
     info(`Pushing ${label} to ${colors.dim}${url}${colors.reset} …`)
@@ -279,13 +313,20 @@ export async function push(args = []) {
       if (body) note(body.slice(0, 800))
       return null
     }
-    let payload
     try {
-      payload = await res.json()
+      return await res.json()
     } catch (err) {
       error(`Could not parse the ${label} response as JSON: ${err.message}`)
       return null
     }
+  }
+
+  // POST a lane that round-trips entity uuids (content UPDATE + the folder): parse the
+  // finalized list (for record back-fill + the changed summary). Returns the finalized
+  // array, or null on failure (already reported).
+  const pushLane = async (label, path, buffer) => {
+    const payload = await postLane(label, path, buffer)
+    if (payload === null) return null
     const finalized = extractFinalized(payload)
     if (!finalized) {
       error(`The ${label} response carried no recognizable finalized list (expected report.finalized[] with index + uuid).`)
@@ -297,34 +338,51 @@ export async function push(args = []) {
     return finalized
   }
 
-  // Lane 1 — site-content (the site is born here; must exist before binding collections).
-  // Capture the minted/known site uuid to bind the collections folder to.
+  // Lane 1 — site-content (the site is born here; it must exist before its folder). A
+  // known site uuid → UPDATE by uuid; none → CREATE (the backend mints + adopts the
+  // site and returns its uuid, which we record into site.yml). `boundSiteUuid` carries
+  // the minted/known uuid forward to key the folder push.
   let boundSiteUuid = siteContentUuid
   if (siteContent) {
-    const finalized = await pushLane('site-content', '/dev/sync/site-content/push', siteContent.buffer)
-    if (!finalized) return { exitCode: 1 }
-    for (const fin of finalized) {
-      if (siteContent.index[fin.index]?.kind === 'site') {
-        writeSiteEntityUuid(siteDir, fin.uuid)
-        boundSiteUuid = fin.uuid
-        wrote.push('recorded site $uuid in site.yml')
+    if (siteContentUuid) {
+      const finalized = await pushLane(
+        'site-content',
+        `/dev/site/content/push/${encodeURIComponent(siteContentUuid)}`,
+        siteContent.buffer
+      )
+      if (!finalized) return { exitCode: 1 }
+      finalizedTotal += finalized.length
+    } else {
+      const payload = await postLane('site-content', '/dev/site/content', siteContent.buffer)
+      if (payload === null) return { exitCode: 1 }
+      const minted = extractMintedSiteUuid(payload)
+      if (!minted) {
+        error('The create response carried no minted site-content uuid — cannot record the site identity or push its folder.')
+        note(JSON.stringify(payload).slice(0, 800))
+        return { exitCode: 1 }
       }
+      writeSiteEntityUuid(siteDir, minted)
+      boundSiteUuid = minted
+      wrote.push('recorded site $uuid in site.yml')
+      finalizedTotal += extractFinalized(payload)?.length ?? 1
     }
-    finalizedTotal += finalized.length
   }
 
-  // Lane 2 — collections (folder + the records it references). Bind to the site on the
-  // first collections push (the folder has no uuid yet) via `?site=<siteContentUuid>`.
+  // Lane 2 — collections (the @uniweb/folder + the records it references), keyed by the
+  // site-content uuid. On a brand-new site the backend creates the folder on this first
+  // push. Records round-trip their own $uuid (back-filled into source files); the folder
+  // itself has no uuid (the backend owns it).
   if (collections) {
-    const extra = collections.bind && boundSiteUuid ? { site: boundSiteUuid } : {}
-    const finalized = await pushLane('collections', '/dev/sync/collections/push', collections.buffer, extra)
-    if (!finalized) return { exitCode: 1 }
-    for (const fin of finalized) {
-      if (collections.index[fin.index]?.kind === 'folder') {
-        writeFolderUuid(siteDir, fin.uuid)
-        wrote.push('recorded folder $uuid in collections.yml')
-      }
+    if (!boundSiteUuid) {
+      error('Cannot push collections — the site has no uuid yet. Push the site-content lane first.')
+      return { exitCode: 1 }
     }
+    const finalized = await pushLane(
+      'collections',
+      `/dev/site/folder/push/${encodeURIComponent(boundSiteUuid)}`,
+      collections.buffer
+    )
+    if (!finalized) return { exitCode: 1 }
     const bf = backfillEntityUuids({ index: collections.index, finalized })
     for (const w of bf.warnings) note(`! ${w}`)
     for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
