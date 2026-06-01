@@ -613,10 +613,10 @@ async function main() {
     process.exit(result?.exitCode ?? 0)
   }
 
-  // Handle sync command (dynamic import — depends on @uniweb/build)
-  if (command === 'sync') {
-    const { sync } = await importProjectCommand('./commands/sync.js')
-    const result = await sync(args.slice(1))
+  // Handle push command (dynamic import — depends on @uniweb/build)
+  if (command === 'push') {
+    const { push } = await importProjectCommand('./commands/push.js')
+    const result = await push(args.slice(1))
     process.exit(result?.exitCode ?? 0)
   }
 
@@ -1455,6 +1455,8 @@ ${colors.bright}Commands:${colors.reset}
   export             Export a self-contained site for third-party hosting
   publish            Publish a foundation to the Uniweb registry
   register           Register a foundation + its data schemas with the backend registry
+  push               Push a site's content to the backend
+  pull               Pull a site's content from the backend
   invite <email>     Create a foundation invite for a client
   handoff <email>    Hand off a site to a client
   inspect <path>     Inspect parsed content shape of a markdown file or folder

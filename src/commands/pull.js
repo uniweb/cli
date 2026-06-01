@@ -1,7 +1,7 @@
 /**
  * uniweb pull — bring the backend's copy of a site back to canonical files.
  *
- * The read-side mirror of `uniweb sync` (push). It reads the uuids the project
+ * The read-side mirror of `uniweb push`. It reads the uuids the project
  * already holds — `site.yml::$uuid` (the site-content entity) and
  * `collections.yml::$uuid` (the `@uniweb/folder`) — GETs the two pull lanes, and
  * projects the returned documents back to files via the framework's projection
@@ -28,7 +28,7 @@
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  *
- * A project that never synced has no `$uuid` to pull by — pull is a no-op with a
+ * A project that never pushed has no `$uuid` to pull by — pull is a no-op with a
  * clear message. NOTE: the backend pull routes have not been exercised live; the
  * response-envelope extraction (extractDocument / splitCollectionsPull) is
  * deliberately tolerant and is the single point to adjust at the first live run.
@@ -43,7 +43,7 @@ import {
   collectionsYmlPath,
   resolveCollectionsConfig,
 } from '@uniweb/build/uwx'
-import { makeModelResolver } from './sync.js'
+import { makeModelResolver } from './push.js'
 import { ensureRegistryAuth } from '../utils/registry-auth.js'
 import { resolveSiteDir as defaultResolveSiteDir } from './deploy.js'
 
@@ -130,7 +130,7 @@ export async function pull(args = [], deps = {}) {
   const folderUuid = readYamlUuid(collectionsYmlPath(siteDir))
 
   if (!siteContentUuid && !folderUuid) {
-    info('Nothing to pull — this project has no $uuid yet. Run `uniweb sync` first.')
+    info('Nothing to pull — this project has no $uuid yet. Run `uniweb push` first.')
     return { exitCode: 0 }
   }
 

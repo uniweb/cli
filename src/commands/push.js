@@ -1,31 +1,31 @@
 /**
- * uniweb sync — push a site to the backend over its two directional lanes:
+ * uniweb push — push a site to the backend over its two directional lanes:
  *   - site-content lane → `@uniweb/site-content` (the static half: pages, sections,
  *     layout, theme, foundation ref, extensions, collection decls);
  *   - collections lane → one `@uniweb/folder` + the collection-record entities it
  *     references (the dynamic half; the `$ref` closure rides together).
  *
  * Each entity is an entity-content document (`$id` + `$model` + sections). First
- * sync carries no `$uuid`; the backend mints them and echoes them back. `sync` then
+ * push carries no `$uuid`; the backend mints them and echoes them back. `push` then
  * back-fills each entity's uuid into its home file: the site-content uuid → `site.yml`,
  * the folder uuid → `collections.yml`, each record uuid → its source file. site-content
- * syncs wholesale (no per-item uuids on the wire). Push-only, last-push-wins
+ * is pushed wholesale (no per-item uuids on the wire). Push-only, last-push-wins
  * (`collision=force`) in v1.
  *
  * Order: push site-content first (the site is born there), then collections — binding
  * the folder to that site via `?site=<siteContentUuid>` on the first collections push.
  *
- * `uniweb login && uniweb sync`. Run from a site, or a workspace with one site.
+ * `uniweb login && uniweb push`. Run from a site, or a workspace with one site.
  *
  * Usage:
- *   uniweb sync                          Build, push both lanes, back-fill $uuid
- *   uniweb sync --as-org @org            Act as @org (membership-gated)
- *   uniweb sync --dry-run                Report what would be pushed; submit nothing
- *   uniweb sync -o out.uwx               Write the .uwx file(s) per lane; submit nothing
- *   uniweb sync --registry <url>         Override the backend origin
- *   uniweb sync --token <bearer>         Submit with this bearer; skips `uniweb login`
- *   uniweb sync --foundation <dir>       Use this local foundation for the Model schema
- *   uniweb sync --all                    Send every record (bypass the changed-only cache)
+ *   uniweb push                          Build, push both lanes, back-fill $uuid
+ *   uniweb push --as-org @org            Act as @org (membership-gated)
+ *   uniweb push --dry-run                Report what would be pushed; submit nothing
+ *   uniweb push -o out.uwx               Write the .uwx file(s) per lane; submit nothing
+ *   uniweb push --registry <url>         Override the backend origin
+ *   uniweb push --token <bearer>         Submit with this bearer; skips `uniweb login`
+ *   uniweb push --foundation <dir>       Use this local foundation for the Model schema
+ *   uniweb push --all                    Send every record (bypass the changed-only cache)
  *
  * Endpoints: <origin>/dev/sync/{site-content,collections}/push. origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
@@ -166,7 +166,7 @@ function writeSyncCache(siteDir, hashes) {
   writeFileSync(p, JSON.stringify({ version: 1, hashes }, null, 2) + '\n')
 }
 
-export async function sync(args = []) {
+export async function push(args = []) {
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
   const tokenFlag = flagValue(args, '--token')
@@ -184,7 +184,7 @@ export async function sync(args = []) {
     return { exitCode: 2 }
   }
 
-  const siteDir = await resolveSiteDir(args, 'sync')
+  const siteDir = await resolveSiteDir(args, 'push')
 
   // Lazy bearer — acquired once, on first need (a non-local Model fetch during the
   // build, or the submit). A fully-local sync never triggers it, so --dry-run / -o
@@ -200,7 +200,7 @@ export async function sync(args = []) {
   // Build BOTH directional packages (the producer side). Each carries its own
   // `index` — the per-entity source-file map for back-fill, correlated by submission
   // position. Non-local Models are fetched from the registry on demand. `priorHashes`
-  // (the .uniweb sync-cache) drives "send only changed" across both lanes; --all bypasses.
+  // (the .uniweb push-cache) drives "send only changed" across both lanes; --all bypasses.
   const priorHashes = readSyncCache(siteDir)
   let pkg
   try {
@@ -220,9 +220,9 @@ export async function sync(args = []) {
 
   const totalEntities = (siteContent?.entityCount || 0) + (collections?.entityCount || 0)
 
-  // Nothing changed since the last sync — the backend is already in sync.
+  // Nothing changed since the last push — the backend is already up to date.
   if (totalEntities === 0) {
-    success(`Nothing to sync — ${skipped} entit${skipped === 1 ? 'y' : 'ies'} unchanged since the last sync.`)
+    success(`Nothing to push — ${skipped} entit${skipped === 1 ? 'y' : 'ies'} unchanged since the last push.`)
     return { exitCode: 0 }
   }
   if (siteContent) info(`${colors.bright}site-content${colors.reset} → ${siteContent.models.join(', ')}`)
@@ -332,10 +332,10 @@ export async function sync(args = []) {
     finalizedTotal += finalized.length
   }
 
-  // Persist the full content-hash map so the next sync skips unchanged entities.
+  // Persist the full content-hash map so the next push skips unchanged entities.
   writeSyncCache(siteDir, hashes)
   success(
-    `Synced ${finalizedTotal} entit${finalizedTotal === 1 ? 'y' : 'ies'}` +
+    `Pushed ${finalizedTotal} entit${finalizedTotal === 1 ? 'y' : 'ies'}` +
       (wrote.length ? ` — ${wrote.join(', ')}` : '')
   )
   return { exitCode: 0 }
