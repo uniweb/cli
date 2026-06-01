@@ -37,6 +37,7 @@ import { login } from './commands/login.js'
 import { invite } from './commands/invite.js'
 import { handoff } from './commands/handoff.js'
 import { update } from './commands/update.js'
+import { clone } from './commands/clone.js'
 import { template } from './commands/template.js'
 import {
   resolveTemplate,
@@ -133,7 +134,7 @@ function getCliVersion() {
 // install that's the whole point; delegating to the project-local copy
 // would align the project to the version it already has, i.e. a no-op.
 const STANDALONE_COMMANDS = new Set([
-  'create', '--help', '-h', '--version', '-v', 'login', 'update',
+  'create', 'clone', '--help', '-h', '--version', '-v', 'login', 'update',
 ])
 
 /**
@@ -624,6 +625,16 @@ async function main() {
   if (command === 'pull') {
     const { pull } = await importProjectCommand('./commands/pull.js')
     const result = await pull(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
+  }
+
+  // Handle clone command (global — bootstraps a new project from a backend site;
+  // STANDALONE, so a global `uniweb clone` runs here instead of delegating to a
+  // project-local CLI that doesn't exist yet. clone.js avoids any static
+  // @uniweb/build import, then delegates the projection to the project-local
+  // `uniweb pull` after install.)
+  if (command === 'clone') {
+    const result = await clone(args.slice(1))
     process.exit(result?.exitCode ?? 0)
   }
 
@@ -1447,6 +1458,7 @@ ${colors.bright}Usage:${colors.reset}
 
 ${colors.bright}Commands:${colors.reset}
   create [name]      Create a new project
+  clone <site-uuid>  Clone a backend site into a local file project
   add <type> [name]  Add a foundation, site, or extension to a project
   rename <type>      Rename a foundation, site, or extension across the workspace
   dev                Start a dev server for a site
