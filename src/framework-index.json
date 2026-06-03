@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-13T05:21:17.590Z",
+  "generatedAt": "2026-06-03T19:50:40.168Z",
   "packages": {
     "@uniweb/build": {
-      "version": "0.14.5",
+      "version": "0.14.6",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
+        "@uniweb/content-writer",
         "@uniweb/core",
         "@uniweb/runtime",
         "@uniweb/schemas",
@@ -14,17 +15,17 @@
       ]
     },
     "@uniweb/content-reader": {
-      "version": "1.1.11",
+      "version": "1.1.12",
       "path": "framework/content-reader",
       "deps": []
     },
     "@uniweb/content-writer": {
-      "version": "0.2.4",
+      "version": "0.2.5",
       "path": "framework/content-writer",
       "deps": []
     },
     "@uniweb/core": {
-      "version": "0.7.11",
+      "version": "0.7.12",
       "path": "framework/core",
       "deps": [
         "@uniweb/semantic-parser",
@@ -42,7 +43,7 @@
       "deps": []
     },
     "@uniweb/kit": {
-      "version": "0.9.13",
+      "version": "0.9.14",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core"
@@ -54,12 +55,12 @@
       "deps": []
     },
     "@uniweb/press": {
-      "version": "0.4.6",
+      "version": "0.4.7",
       "path": "framework/press",
       "deps": []
     },
     "@uniweb/runtime": {
-      "version": "0.8.14",
+      "version": "0.8.15",
       "path": "framework/runtime",
       "deps": [
         "@uniweb/core",
