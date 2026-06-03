@@ -131,7 +131,7 @@ test('pull fetches the folder lane by the site-content uuid (no collections.yml 
     const recordDoc = { $uuid: 'R9', $model: '@acme/article', article: { title: { en: 'Hello' }, body: { en: '\n# Hi\n' } } }
     const declaration = {
       name: '@acme/article',
-      sections: { article: { brief: true, fields: { title: { type: 'string', localized: true }, body: { type: 'richtext', localized: true } } } },
+      sections: { article: { brief: true, fields: { title: { type: 'string', localized: true }, body: { type: 'text', format: 'markdown', localized: true } } } },
     }
 
     const res = await pull([], {
@@ -167,7 +167,7 @@ test('pull projects the collections lane, resolving the model via a mock model-r
     const recordDoc = { $uuid: 'R1', $model: '@acme/article', article: { title: { en: 'Hello' }, body: { en: '\n# Hi\n' } } }
     const declaration = {
       name: '@acme/article',
-      sections: { article: { brief: true, fields: { title: { type: 'string', localized: true }, body: { type: 'richtext', localized: true } } } },
+      sections: { article: { brief: true, fields: { title: { type: 'string', localized: true }, body: { type: 'text', format: 'markdown', localized: true } } } },
     }
 
     const res = await pull([], {
