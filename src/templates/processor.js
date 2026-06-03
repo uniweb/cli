@@ -167,6 +167,35 @@ async function processFile(sourcePath, targetPath, data, options = {}) {
 }
 
 /**
+ * Rename a leading single underscore to a dot: `_gitignore` → `.gitignore`,
+ * `_vscode` → `.vscode`.
+ *
+ * Dotfiles live in the template source under a `_`-prefixed name for two
+ * reasons: (1) so they aren't swept up by the template repo's own git ignore
+ * rules, and (2) — critically — so they survive `npm publish`. npm strips any
+ * file literally named `.gitignore` from the package tarball (it's treated as
+ * an ignore-source, not shippable content), so a template that needs to ship a
+ * `.gitignore` MUST store it as `_gitignore` and rename it at scaffold time.
+ * `.gitkeep` and other dotfiles ship fine; `.gitignore` is the trap.
+ *
+ * `__name` (double underscore) is left untouched, matching the prior
+ * directory-only behavior.
+ */
+function dotfileRename(name) {
+  return name.startsWith('_') && !name.startsWith('__') ? `.${name.slice(1)}` : name
+}
+
+/**
+ * Compute a template file's scaffolded output name: strip the `.hbs`
+ * Handlebars suffix, then apply {@link dotfileRename}. So `_gitignore` →
+ * `.gitignore` and `_env.local.hbs` → `.env.local`.
+ */
+function templateOutputName(sourceName) {
+  const base = sourceName.endsWith('.hbs') ? sourceName.slice(0, -4) : sourceName
+  return dotfileRename(base)
+}
+
+/**
  * Copy a directory structure recursively, processing templates
  *
  * @param {string} sourcePath - Source template directory
@@ -187,12 +216,8 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
 
     if (entry.isDirectory()) {
       const sourceFullPath = path.join(sourcePath, sourceName)
-      // Rename _prefix directories to .prefix (e.g., _vscode → .vscode)
-      // This allows dotfile directories to be committed without being gitignored
-      const targetName = sourceName.startsWith('_') && !sourceName.startsWith('__')
-        ? `.${sourceName.slice(1)}`
-        : sourceName
-      const targetFullPath = path.join(targetPath, targetName)
+      // Rename _prefix directories to .prefix (e.g., _vscode → .vscode).
+      const targetFullPath = path.join(targetPath, dotfileRename(sourceName))
 
       await copyTemplateDirectory(sourceFullPath, targetFullPath, data, { onWarning, onProgress, skip })
     } else {
@@ -201,16 +226,13 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
         continue
       }
 
-      // Determine the output filename (strip .hbs extension) for skip check
-      const outputName = sourceName.endsWith('.hbs') ? sourceName.slice(0, -4) : sourceName
-      if (skip?.includes(outputName)) {
+      // Output name: strip `.hbs`, then rename a leading `_` to `.`
+      // (e.g. `_gitignore` → `.gitignore`). Used for both the skip check and
+      // the written filename so they can't drift.
+      const targetName = templateOutputName(sourceName)
+      if (skip?.includes(targetName)) {
         continue
       }
-
-      // Remove .hbs extension for target filename
-      const targetName = sourceName.endsWith('.hbs')
-        ? sourceName.slice(0, -4)
-        : sourceName
 
       const sourceFullPath = path.join(sourcePath, sourceName)
       const targetFullPath = path.join(targetPath, targetName)
@@ -228,7 +250,9 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
  * Enumerate the output paths a template directory would write, without
  * touching disk. Mirrors `copyTemplateDirectory`'s naming rules:
  *   - `.hbs` extension is stripped
- *   - `_dir` is renamed to `.dir` (but `__dir` is preserved as `_dir` would be)
+ *   - a leading `_` is renamed to `.` for both files and directories
+ *     (e.g. `_gitignore` → `.gitignore`, `_vscode` → `.vscode`); `__name`
+ *     is preserved
  *   - `template.json` is excluded
  *   - `skip` filenames are excluded by their post-rename name
  *
@@ -253,9 +277,7 @@ async function enumerateInto(sourcePath, relPath, outputs, skip) {
   for (const entry of entries) {
     const sourceName = entry.name
     if (entry.isDirectory()) {
-      const targetName = sourceName.startsWith('_') && !sourceName.startsWith('__')
-        ? `.${sourceName.slice(1)}`
-        : sourceName
+      const targetName = dotfileRename(sourceName)
       await enumerateInto(
         path.join(sourcePath, sourceName),
         relPath ? path.join(relPath, targetName) : targetName,
@@ -264,7 +286,7 @@ async function enumerateInto(sourcePath, relPath, outputs, skip) {
       )
     } else {
       if (sourceName === 'template.json') continue
-      const outputName = sourceName.endsWith('.hbs') ? sourceName.slice(0, -4) : sourceName
+      const outputName = templateOutputName(sourceName)
       if (skip.includes(outputName)) continue
       outputs.push(relPath ? path.join(relPath, outputName) : outputName)
     }
