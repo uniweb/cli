@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-06-03T19:50:40.168Z",
+  "generatedAt": "2026-06-03T20:15:20.971Z",
   "packages": {
     "@uniweb/build": {
-      "version": "0.14.6",
+      "version": "0.14.7",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -83,7 +83,7 @@
       "deps": []
     },
     "@uniweb/templates": {
-      "version": "0.7.38",
+      "version": "0.7.39",
       "path": "framework/templates",
       "deps": []
     },
@@ -93,7 +93,7 @@
       "deps": []
     },
     "@uniweb/unipress": {
-      "version": "0.4.10",
+      "version": "0.4.11",
       "path": "framework/unipress",
       "deps": [
         "@uniweb/build",
