@@ -271,11 +271,11 @@ export async function register(args = []) {
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     // Resume path: a registered version is immutable, so re-running after a
-    // partial code delivery hits the duplicate rejection here — proceed to
-    // phase 2 (the code-uploads plan authorizes against the REGISTERED
-    // version; completed files are idempotent no-ops).
-    const isDuplicate =
-      !standalone && res.status === 400 && /already|exists|immutable|duplicate/i.test(body)
+    // partial code delivery hits the duplicate rejection here — a STRUCTURED
+    // 409 (problem+json, title "Conflict") — and proceeds to phase 2 (the
+    // code-uploads plan authorizes against the REGISTERED version; completed
+    // files are idempotent no-ops).
+    const isDuplicate = !standalone && res.status === 409
     if (isDuplicate) {
       alreadyRegistered = true
       info(`${colors.dim}Schema for this version is already registered — resuming code delivery.${colors.reset}`)
