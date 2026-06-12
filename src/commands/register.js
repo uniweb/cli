@@ -13,10 +13,13 @@
  * standalone (foundation-less); same flags, `--scope` names them.
  *
  * Usage:
- *   uniweb register                      Build the .uwx and submit it
+ *   uniweb register                      Build the .uwx, submit it, then deliver
+ *                                        the foundation's dist/ code (plan +
+ *                                        upload — see utils/code-upload.js)
  *   uniweb register --scope @org         Publish under @org (resolves @/x -> @org/x).
  *                                        Default: the package's package.json "uniweb.scope".
- *   uniweb register --dry-run            Print the .uwx; submit nothing
+ *   uniweb register --schema-only        Skip the code delivery (schemas land, no dist upload)
+ *   uniweb register --dry-run            Print the .uwx + the code file plan; submit nothing
  *   uniweb register -o foundation.uwx    Write the .uwx to a file; submit nothing
  *   uniweb register --registry <url>     Override the submit endpoint
  *   uniweb register --token <bearer>     Submit with this bearer; skips `uniweb login`
@@ -30,6 +33,7 @@ import { resolve, join } from 'node:path'
 import { buildRegistryPackage, buildSchemaOnlyPackage } from '@uniweb/build/uwx'
 import { classifyPackage, isSchemasPackage, collectStandaloneSchemas } from '@uniweb/build'
 import { ensureRegistryAuth, readRegistryAuth } from '../utils/registry-auth.js'
+import { collectDistFiles, uploadFoundationCode } from '../utils/code-upload.js'
 import { deriveScope } from '../utils/registry-orgs.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import { findWorkspaceRoot, findFoundations, promptSelect } from '../utils/workspace.js'
@@ -230,6 +234,14 @@ export async function register(args = []) {
     log(json)
     log('')
     info(`Dry run — would submit to ${registryUrl}`)
+    if (!standalone && !args.includes('--schema-only')) {
+      const distFiles = collectDistFiles(join(targetDir, 'dist'))
+      log('')
+      info(`Would then deliver ${distFiles.length} code file(s) (meta/ excluded):`)
+      for (const f of distFiles) {
+        log(`  ${colors.dim}${f.path}  ${f.size} bytes  ${f.content_type}${colors.reset}`)
+      }
+    }
     return { exitCode: 0 }
   }
 
@@ -255,20 +267,75 @@ export async function register(args = []) {
     log(`  ${colors.dim}Set the endpoint with --registry <url> or UNIWEB_REGISTER_URL.${colors.reset}`)
     return { exitCode: 2 }
   }
+  let alreadyRegistered = false
   if (!res.ok) {
-    error(`Registry rejected the submission: HTTP ${res.status} ${res.statusText}`)
-    if (res.status === 401 || res.status === 403) {
-      log(`  ${colors.dim}The registry didn't accept your credentials — it may use different ones than \`uniweb login\`.${colors.reset}`)
-      log(`  ${colors.dim}Supply a registry bearer with --token <bearer> (or UNIWEB_TOKEN); an existing one may be wrong or expired.${colors.reset}`)
-    }
     const body = await res.text().catch(() => '')
-    if (body) log(`  ${colors.dim}${body.slice(0, 500)}${colors.reset}`)
-    return { exitCode: 1 }
+    // Resume path: a registered version is immutable, so re-running after a
+    // partial code delivery hits the duplicate rejection here — proceed to
+    // phase 2 (the code-uploads plan authorizes against the REGISTERED
+    // version; completed files are idempotent no-ops).
+    const isDuplicate =
+      !standalone && res.status === 400 && /already|exists|immutable|duplicate/i.test(body)
+    if (isDuplicate) {
+      alreadyRegistered = true
+      info(`${colors.dim}Schema for this version is already registered — resuming code delivery.${colors.reset}`)
+    } else {
+      error(`Registry rejected the submission: HTTP ${res.status} ${res.statusText}`)
+      if (res.status === 401 || res.status === 403) {
+        log(`  ${colors.dim}The registry didn't accept your credentials — it may use different ones than \`uniweb login\`.${colors.reset}`)
+        log(`  ${colors.dim}Supply a registry bearer with --token <bearer> (or UNIWEB_TOKEN); an existing one may be wrong or expired.${colors.reset}`)
+      }
+      if (body) log(`  ${colors.dim}${body.slice(0, 500)}${colors.reset}`)
+      return { exitCode: 1 }
+    }
   }
-  success(
-    standalone
-      ? `Registered ${defined.length} data schema(s)${scope ? ` under ${scope}` : ''}`
-      : `Registered ${schema._self.name}@${schema._self.version}${defined.length ? ` + ${defined.length} data schema(s)` : ''}`
-  )
+  if (!alreadyRegistered) {
+    success(
+      standalone
+        ? `Registered ${defined.length} data schema(s)${scope ? ` under ${scope}` : ''}`
+        : `Registered ${schema._self.name}@${schema._self.version}${defined.length ? ` + ${defined.length} data schema(s)` : ''}`
+    )
+  }
+
+  // Phase 2 — deliver the foundation's code (plan → PUT-per-file, entry
+  // last; contract: foundation-code-upload.md). Schemas-
+  // only packages have no dist; --schema-only skips deliberately.
+  if (!standalone && !args.includes('--schema-only')) {
+    const distDir = join(targetDir, 'dist')
+    const name = schema._self.name
+    const version = schema._self.version
+    info(`Delivering code for ${colors.bright}${name}@${version}${colors.reset} …`)
+    try {
+      const result = await uploadFoundationCode({
+        apiBase,
+        token,
+        name,
+        version,
+        distDir,
+        onProgress: (m) => log(`  ${colors.dim}${m}${colors.reset}`),
+      })
+      if (result.failed.length) {
+        error(`${result.failed.length} file(s) failed to upload:`)
+        for (const f of result.failed) {
+          log(`  ${colors.red}${f.path}${colors.reset} ${colors.dim}HTTP ${f.status} ${f.detail}${colors.reset}`)
+        }
+        log(`  ${colors.dim}Re-run \`uniweb register\` to resume — completed files are safe no-ops.${colors.reset}`)
+        return { exitCode: 1 }
+      }
+      const where = result.serveBase || 'the registry gateway'
+      if (result.verified === true) {
+        success(`Code delivered (${result.uploaded.length} files) — entry verified live at ${colors.dim}${where}${colors.reset}`)
+      } else if (result.verified === false) {
+        error('Code uploaded but the entry verification fetch did not match — investigate before using this version.')
+        return { exitCode: 1 }
+      } else {
+        success(`Code delivered (${result.uploaded.length} files, ${result.mode} mode)`)
+      }
+    } catch (err) {
+      error(`Code delivery failed: ${err.message}`)
+      log(`  ${colors.dim}The schema registration above succeeded; re-run \`uniweb register\` to deliver the code.${colors.reset}`)
+      return { exitCode: 1 }
+    }
+  }
   return { exitCode: 0 }
 }
