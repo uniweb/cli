@@ -302,7 +302,11 @@ export async function register(args = []) {
   // only packages have no dist; --schema-only skips deliberately.
   if (!standalone && !args.includes('--schema-only')) {
     const distDir = join(targetDir, 'dist')
-    const name = schema._self.name
+    // The registry's vocabulary is the SCOPED name (`@org/name`). A scoped
+    // package name passes through; a bare one gets the chosen scope — the
+    // same resolution the .uwx submission applied.
+    const bareName = schema._self.name
+    const name = bareName.startsWith('@') ? bareName : `${scope}/${bareName}`
     const version = schema._self.version
     info(`Delivering code for ${colors.bright}${name}@${version}${colors.reset} …`)
     try {
