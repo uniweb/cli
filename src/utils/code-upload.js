@@ -184,9 +184,11 @@ export async function uploadFoundationCode({
     }
     const bytes = readFileSync(join(distDir, file.path))
     try {
-      const res = await fetch(target.url, {
+      const res = await fetch(new URL(target.url, origin), {
         method: target.method || 'PUT',
-        headers: { ...(target.headers || {}) },
+        // x-uniweb-sha256: optional integrity guard — direct mode verifies
+        // the received bytes and 400s on mismatch (corruption-in-flight).
+        headers: { ...(target.headers || {}), 'x-uniweb-sha256': file.sha256 },
         body: bytes,
       })
       if (res.ok) {
@@ -210,8 +212,10 @@ export async function uploadFoundationCode({
   const entry = list.find((f) => f.path === ENTRY_PATH)
   if (plan.mode === 'direct' && entry && !failed.length) {
     try {
+      // serve_base is origin-relative in direct mode — resolve against the
+      // registry origin before fetching.
       const url = serveBase
-        ? `${serveBase.replace(/\/$/, '')}/${ENTRY_PATH}`
+        ? new URL(`${serveBase.replace(/\/$/, '')}/${ENTRY_PATH}`, origin).toString()
         : gatewayUrl(origin, name, version, ENTRY_PATH)
       const res = await fetch(url)
       if (res.ok) {

@@ -106,7 +106,10 @@ test('uploadFoundationCode plans, PUTs entry-last, verifies in direct mode', asy
         }),
       }
     }
-    if (opts.method === 'PUT') return { ok: true, status: 200, text: async () => '' }
+    if (opts.method === 'PUT') {
+      assert.ok(opts.headers['x-uniweb-sha256'], 'integrity header rides every PUT')
+      return { ok: true, status: 200, text: async () => '' }
+    }
     // the verification GET of the entry
     return {
       ok: true,
@@ -170,6 +173,47 @@ test('uploadFoundationCode surfaces per-file failures and skips verification', a
     assert.equal(result.failed[0].path, 'assets/style.css')
     assert.equal(result.failed[0].status, 413)
     assert.equal(result.verified, null, 'no verification after failures')
+  } finally {
+    globalThis.fetch = realFetch
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('origin-relative serve_base resolves against the registry origin', async () => {
+  const dir = makeDist()
+  const gets = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (url, opts = {}) => {
+    if (String(url).endsWith('/dev/registry/code-uploads')) {
+      const body = JSON.parse(opts.body)
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          mode: 'direct',
+          serve_base: '/gateway/foundation/@std/starter/1.0.2/',
+          uploads: body.files.map((f) => ({ path: f.path, method: 'PUT', url: `/dev/registry/code/std/starter/1.0.2/${f.path}` })),
+        }),
+      }
+    }
+    if (opts.method === 'PUT') return { ok: true, status: 200, text: async () => '' }
+    gets.push(String(url))
+    return {
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => new TextEncoder().encode('export default 42\n').buffer,
+    }
+  }
+  try {
+    const result = await uploadFoundationCode({
+      apiBase: 'http://localhost:8080',
+      token: 't',
+      name: '@std/starter',
+      version: '1.0.2',
+      distDir: dir,
+    })
+    assert.equal(result.verified, true)
+    assert.deepEqual(gets, ['http://localhost:8080/gateway/foundation/@std/starter/1.0.2/entry.js'])
   } finally {
     globalThis.fetch = realFetch
     rmSync(dir, { recursive: true, force: true })
