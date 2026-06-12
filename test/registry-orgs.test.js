@@ -11,10 +11,18 @@ import { deriveScope, offerCreateOrg, validateHandle, bareHandle } from '../src/
 
 const BASE = { apiBase: 'http://localhost:8080', token: 't' }
 
-function fakeOrgs({ list = [], createdHandles = [] } = {}) {
+function fakeOrgs({ list = [], accountHandle = 'jane', personalOrgExists = false, createdHandles = [] } = {}) {
   return async (url, opts = {}) => {
     if ((opts.method || 'GET') === 'GET') {
-      return { ok: true, status: 200, json: async () => list }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          account_handle: accountHandle,
+          personal_org_exists: personalOrgExists,
+          orgs: list,
+        }),
+      }
     }
     const body = JSON.parse(opts.body)
     createdHandles.push(body.handle)
@@ -22,12 +30,13 @@ function fakeOrgs({ list = [], createdHandles = [] } = {}) {
   }
 }
 
-test('validateHandle: grammar + reserved scopes', () => {
+test('validateHandle: grammar only — reserved names are the server\'s call', () => {
   assert.equal(validateHandle('jane'), null)
   assert.equal(validateHandle('@acme-co'), null)
+  assert.equal(validateHandle('a--b'), null) // consecutive hyphens allowed
   assert.ok(validateHandle('ab')) // too short
   assert.ok(validateHandle('-bad-')) // leading/trailing hyphen
-  assert.ok(validateHandle('std')) // reserved
+  assert.equal(validateHandle('std'), null) // grammar-valid; server 409s reserved
   assert.equal(bareHandle('@jane/extra'), 'jane')
 })
 
@@ -101,6 +110,42 @@ test('N orgs non-interactive: the personal org wins over primary', async () => {
   try {
     const scope = await deriveScope({ ...BASE, accountHandle: 'jane' })
     assert.equal(scope, 'jane')
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+
+test('created-then-left: the lazy claim is not offered (would 409)', async () => {
+  const created = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = fakeOrgs({ list: [], personalOrgExists: true, createdHandles: created })
+  try {
+    prompts.inject([':new', 'acme-two'])
+    const scope = await offerCreateOrg({
+      apiBase: 'http://localhost:8080', token: 't',
+      accountHandle: 'jane', personalOrgExists: true,
+    })
+    assert.equal(scope, 'acme-two')
+    assert.deepEqual(created, ['acme-two']) // never tried to claim @jane
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+test('createOrg surfaces the server detail on 409 (three flavors, one status)', async () => {
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 409,
+    json: async () => ({ status: 409, title: 'Conflict', detail: 'only its owner can create @jane' }),
+  })
+  try {
+    const { createOrg } = await import('../src/utils/registry-orgs.js')
+    await assert.rejects(
+      () => createOrg({ apiBase: 'http://x', token: 't', handle: 'jane' }),
+      (e) => e.status === 409 && /only its owner/.test(e.message)
+    )
   } finally {
     globalThis.fetch = realFetch
   }
