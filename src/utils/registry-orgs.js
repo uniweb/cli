@@ -107,16 +107,19 @@ export async function deriveScope({ apiBase, token, accountHandle = null, args =
   const orgs = await listOrgs({ apiBase, token })
   const { isNonInteractive } = await import('./interactive.js')
   const nonInteractive = isNonInteractive(args)
+  const personal = accountHandle ? bareHandle(accountHandle) : null
+  const isPersonal = (h) => personal && h === personal
 
   if (orgs.length === 1) {
     const h = orgs[0].handle
+    const label = isPersonal(h) ? `your personal org @${h}` : `your org @${h}`
     if (nonInteractive) {
-      console.log(`Publishing under your org \x1b[1m@${h}\x1b[0m.`)
+      console.log(`Publishing under ${label.replace(`@${h}`, `\x1b[1m@${h}\x1b[0m`)}.`)
       return h
     }
     const prompts = (await import('prompts')).default
     const { ok } = await prompts({
-      type: 'confirm', name: 'ok', message: `Publish under your org @${h}?`, initial: true,
+      type: 'confirm', name: 'ok', message: `Publish under ${label}?`, initial: true,
     }, { onCancel: () => { console.log('\nCancelled.'); process.exit(0) } })
     if (!ok) {
       console.log('Pass --scope @org, or create another with `uniweb org create <handle>`.')
@@ -126,17 +129,23 @@ export async function deriveScope({ apiBase, token, accountHandle = null, args =
   }
 
   if (orgs.length > 1) {
+    // Personal org first; the rest in server order.
+    const ordered = [...orgs].sort((a, b) => (isPersonal(b.handle) ? 1 : 0) - (isPersonal(a.handle) ? 1 : 0))
     if (nonInteractive) {
-      const primary = orgs.find((u) => u.is_primary) || orgs[0]
-      console.log(`Multiple orgs; using primary \x1b[1m@${primary.handle}\x1b[0m (non-interactive).`)
-      return primary.handle
+      const pick = ordered.find((u) => isPersonal(u.handle)) || orgs.find((u) => u.is_primary) || orgs[0]
+      console.log(`Multiple orgs; using \x1b[1m@${pick.handle}\x1b[0m (non-interactive).`)
+      return pick.handle
     }
     const prompts = (await import('prompts')).default
     const { choice } = await prompts({
       type: 'select',
       name: 'choice',
       message: 'Publish under which org?',
-      choices: orgs.map((u) => ({ title: `@${u.handle}${u.is_primary ? ' (primary)' : ''}`, value: u.handle })),
+      choices: ordered.map((u) => ({
+        title: `@${u.handle}${isPersonal(u.handle) ? ' — your personal org' : u.is_primary ? ' (primary)' : ''}`,
+        value: u.handle,
+      })),
+      initial: 0,
     }, { onCancel: () => { console.log('\nCancelled.'); process.exit(0) } })
     return choice || null
   }
@@ -150,23 +159,54 @@ export async function deriveScope({ apiBase, token, accountHandle = null, args =
 }
 
 /**
- * Cold-start: prompt for a handle (pre-filled with the account handle when it's
- * set + valid — never the username), create the org, return its handle.
- * @returns {Promise<string|null>}
+ * Cold-start (0 orgs) — the first-publish org choice. Every account handle
+ * is a reserved, ready-to-go org handle (globally unique across accounts +
+ * orgs; only the owner can claim it), so the default is one keystroke:
+ *
+ *   ? Publish under which org?
+ *   ❯ @jane — your personal org (created on first publish)
+ *     A new organization…
+ *
+ * The personal org is materialized LAZILY here — at first publish, never at
+ * signup. Accounts without a handle get a crisp pointer instead of a prompt
+ * (the handle is claimed in the app; fixture accounts may lack one).
+ * Returns the chosen bare handle, or null if cancelled/failed.
  */
 export async function offerCreateOrg({ apiBase, token, accountHandle = null }) {
   const prompts = (await import('prompts')).default
-  const suggested = accountHandle && !validateHandle(accountHandle) ? bareHandle(accountHandle) : ''
+  const personal = accountHandle && !validateHandle(accountHandle) ? bareHandle(accountHandle) : null
 
-  console.log("You don't have an org yet — let's create one (it becomes your publish scope).")
-  const { handle } = await prompts({
-    type: 'text',
-    name: 'handle',
-    message: 'Org handle (e.g. acme):',
-    initial: suggested,
-    validate: (v) => validateHandle(v) || true,
+  if (!personal) {
+    console.error(
+      '\x1b[31m✗\x1b[0m Your account has no handle yet, so there is no ready-to-go org.\n' +
+      '  Claim your handle in the app, then re-run — or pass --scope @org / `uniweb org create <handle>`.'
+    )
+    return null
+  }
+
+  const { choice } = await prompts({
+    type: 'select',
+    name: 'choice',
+    message: 'Publish under which org?',
+    choices: [
+      { title: `@${personal} — your personal org (created on first publish)`, value: personal },
+      { title: 'A new organization…', value: ':new' },
+    ],
+    initial: 0,
   }, { onCancel: () => { console.log('\nCancelled.'); process.exit(0) } })
-  if (!handle) return null
+  if (!choice) return null
+
+  let handle = choice
+  if (choice === ':new') {
+    const answer = await prompts({
+      type: 'text',
+      name: 'handle',
+      message: 'Org handle (e.g. acme):',
+      validate: (v) => validateHandle(v) || true,
+    }, { onCancel: () => { console.log('\nCancelled.'); process.exit(0) } })
+    if (!answer.handle) return null
+    handle = answer.handle
+  }
 
   try {
     const org = await createOrg({ apiBase, token, handle })
