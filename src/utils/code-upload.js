@@ -173,6 +173,10 @@ export async function uploadFoundationCode({
   const plan = await planRes.json()
   const targets = new Map((plan.uploads || []).map((u) => [u.path, u]))
   const serveBase = plan.serve_base || null
+  // The ONE mode-aware bit: direct-mode PUTs are bearer-authed uniwebd
+  // routes; presigned URLs are self-authorizing and must NOT carry a
+  // bearer (foreign auth headers can break signed-request validation).
+  const authHeaders = plan.mode === 'direct' ? { Authorization: `Bearer ${token}` } : {}
 
   const uploaded = []
   const failed = []
@@ -188,7 +192,7 @@ export async function uploadFoundationCode({
         method: target.method || 'PUT',
         // x-uniweb-sha256: optional integrity guard — direct mode verifies
         // the received bytes and 400s on mismatch (corruption-in-flight).
-        headers: { ...(target.headers || {}), 'x-uniweb-sha256': file.sha256 },
+        headers: { ...(target.headers || {}), ...authHeaders, 'x-uniweb-sha256': file.sha256 },
         body: bytes,
       })
       if (res.ok) {
