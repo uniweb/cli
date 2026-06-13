@@ -26,8 +26,8 @@
  *   uniweb pull --registry <url>         Override the backend origin
  *   uniweb pull --token <bearer>         Read with this bearer; skips `uniweb login`
  *
- * Endpoints: <origin>/dev/site/content/pull/{uuid} + /dev/site/folder/pull/{uuid},
- *   both keyed by `site.yml::$uuid`. Origin from
+ * Backend: via BackendClient (the content + folder pull lanes), both keyed by
+ *   `site.yml::$uuid`. Origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  *
@@ -136,21 +136,21 @@ export async function pull(args = [], deps = {}) {
   }
 
   if (dryRun) {
-    info(`Dry run — would GET ${colors.dim}${client.origin}/dev/site/content/pull/${siteContentUuid}${colors.reset}`)
-    if (!noCollections) info(`Dry run — would GET ${colors.dim}${client.origin}/dev/site/folder/pull/${siteContentUuid}${colors.reset}`)
+    info(`Dry run — would pull content from ${colors.dim}${client.origin}${colors.reset}`)
+    if (!noCollections) info(`Dry run — would also pull collections`)
     return { exitCode: 0 }
   }
 
   // GET a pull lane via the client and parse it as JSON. `doRequest` is a thunk
   // returning the client's Response promise. 404 → null (deleted / no access); any
   // failure is reported and returns null (the lane is skipped, not fatal).
-  const getJson = async (label, url, doRequest) => {
-    info(`Pulling ${colors.bright}${label}${colors.reset} from ${colors.dim}${url}${colors.reset} …`)
+  const getJson = async (label, doRequest) => {
+    info(`Pulling ${colors.bright}${label}${colors.reset} from ${colors.dim}${client.origin}${colors.reset} …`)
     let res
     try {
       res = await doRequest()
     } catch (err) {
-      error(`Could not reach the backend at ${url}: ${err.message}`)
+      error(`Could not reach the backend at ${client.origin}: ${err.message}`)
       note('Set the origin with --registry <url> or UNIWEB_REGISTER_URL.')
       return null
     }
@@ -178,11 +178,7 @@ export async function pull(args = [], deps = {}) {
 
   // Lane 1 — content → config + pages/** + layout/**.
   const siteDoc = extractDocument(
-    await getJson(
-      'content',
-      `${client.origin}/dev/site/content/pull/${encodeURIComponent(siteContentUuid)}`,
-      () => client.pullSiteContent(siteContentUuid)
-    )
+    await getJson('content', () => client.pullSiteContent(siteContentUuid))
   )
   if (siteDoc) {
     const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
@@ -196,11 +192,7 @@ export async function pull(args = [], deps = {}) {
   // holds a folder uuid). Models are resolved by name (async) up front, so
   // collectionsToProject keeps its synchronous contract.
   if (!noCollections) {
-    const payload = await getJson(
-      'collections',
-      `${client.origin}/dev/site/folder/pull/${encodeURIComponent(siteContentUuid)}`,
-      () => client.pullFolder(siteContentUuid)
-    )
+    const payload = await getJson('collections', () => client.pullFolder(siteContentUuid))
     if (payload) {
       const { folderDoc, recordDocs } = splitCollectionsPull(payload)
       const resolveModel = makeModelResolver({ client })

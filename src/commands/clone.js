@@ -12,8 +12,8 @@
  * `npx uniweb clone`, same reason utils/workspace.js loads the classifier lazily).
  * So clone does the minimum itself and delegates the heavy lifting:
  *
- *   1. plain `fetch` GET <origin>/dev/site/content/pull/<uuid> — read the `foundation`
- *      ref out of that one document (no `@uniweb/build` needed for a GET);
+ *   1. read the site-content document via the backend client — pull the `foundation`
+ *      ref out of that one document (no `@uniweb/build` needed for a read);
  *   2. scaffold the HARNESS — a full Vite site package whose foundation is
  *      REFERENCED (runtime-loaded), no local foundation sibling (scaffoldSite with
  *      foundationRef and no foundationPath) + AGENTS.md + deps pinned to this CLI's
@@ -39,7 +39,7 @@
  *   uniweb clone <uuid> --project docs   Co-located docs/site
  *   uniweb clone <uuid> --no-collections Pull pages only; skip collection records
  *
- * Endpoints: <origin>/dev/site/content/pull/<uuid>. Origin from
+ * Backend: via BackendClient (the site-content pull lane). Origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default (internal dev overrides;
  *   not the user-facing path — `uniweb login` determines the origin).
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
@@ -174,8 +174,7 @@ export async function clone(args = [], deps = {}) {
   })
 
   // 1. GET the site-content document (no @uniweb/build needed for a read).
-  const url = `${client.origin}/dev/site/content/pull/${encodeURIComponent(siteUuid)}`
-  info(`Reading site ${colors.bright}${siteUuid}${colors.reset} from ${colors.dim}${url}${colors.reset} …`)
+  info(`Reading site ${colors.bright}${siteUuid}${colors.reset} from ${colors.dim}${client.origin}${colors.reset} …`)
   let payload
   try {
     const res = await client.pullSiteContent(siteUuid)
@@ -190,7 +189,7 @@ export async function clone(args = [], deps = {}) {
     }
     payload = await res.json()
   } catch (err) {
-    error(`Could not reach the backend at ${url}: ${err.message}`)
+    error(`Could not reach the backend at ${client.origin}: ${err.message}`)
     return { exitCode: 1 }
   }
 

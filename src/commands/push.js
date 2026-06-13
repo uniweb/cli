@@ -7,12 +7,11 @@
  *
  * Each entity is an entity-content document (`$id` + `$model` + sections). The site
  * holds exactly one identity: `site.yml::$uuid` (the site-content entity). A first
- * push has none — it CREATEs the site (`POST /dev/site/content`, uuid-less), the
- * backend mints + adopts it and returns the new uuid, which `push` records into
- * `site.yml`. Later pushes UPDATE by that uuid (`POST /dev/site/content/push/{uuid}`).
- * The folder lane is keyed by the SAME site-content uuid (`POST
- * /dev/site/folder/push/{uuid}`) — the backend owns the site's `@uniweb/folder`, so
- * the framework never holds a folder uuid. Records still round-trip their own `$uuid`
+ * push has none — it CREATEs the site (uuid-less), the backend mints + adopts it
+ * and returns the new uuid, which `push` records into `site.yml`. Later pushes
+ * UPDATE by that uuid. The folder lane is keyed by the SAME site-content uuid —
+ * the backend owns the site's `@uniweb/folder`, so the framework never holds a
+ * folder uuid. Records still round-trip their own `$uuid`
  * (back-filled into their source files). site-content is pushed wholesale (no per-item
  * uuids on the wire). Push-only, last-push-wins (`collision=force`) in v1.
  *
@@ -32,8 +31,7 @@
  *   uniweb push --foundation <dir>       Use this local foundation for the Model schema
  *   uniweb push --all                    Send every record (bypass the changed-only cache)
  *
- * Endpoints: <origin>/dev/site/content (create), /dev/site/content/push/{uuid}
- *   (update), /dev/site/folder/push/{uuid}. origin from
+ * Backend: via BackendClient (the content + folder sync lanes). Origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
@@ -91,7 +89,7 @@ function extractFinalized(payload) {
     .filter((e) => Number.isInteger(e.index) && e.uuid)
 }
 
-// Pull the minted site-content uuid out of a CREATE (`POST /dev/site/content`)
+// Pull the minted site-content uuid out of a CREATE
 // response. The exact shape is an open backend item — tolerant of a bare
 // `{ siteContentUuid }` / `{ $uuid }` / `{ uuid }`, or the same `report.finalized[]`
 // envelope the update/folder lanes return (the site entity is submitted alone, so its
@@ -220,13 +218,11 @@ export async function push(args = []) {
   }
   if (dryRun) {
     if (siteContent) {
-      const route = siteContentUuid ? `/dev/site/content/push/${siteContentUuid}` : '/dev/site/content'
       const verb = siteContentUuid ? 'update' : 'create'
-      info(`Dry run — would ${verb} content at ${colors.dim}${client.origin}${route}${colors.reset}`)
+      info(`Dry run — would ${verb} content at ${colors.dim}${client.origin}${colors.reset}`)
     }
     if (collections) {
-      const key = siteContentUuid || '{new-site-uuid}'
-      info(`Dry run — would push the folder to ${colors.dim}${client.origin}/dev/site/folder/push/${key}${colors.reset}`)
+      info(`Dry run — would push the folder at ${colors.dim}${client.origin}${colors.reset}`)
     }
     return { exitCode: 0 }
   }
@@ -239,13 +235,13 @@ export async function push(args = []) {
   // request fires). The client carries `collision=force` (last-push-wins) + the optional
   // `--as-org`. Returns the parsed payload, or null on any transport/HTTP/parse failure
   // (already reported).
-  const postLane = async (label, url, doRequest) => {
-    info(`Pushing ${label} to ${colors.dim}${url}${colors.reset} …`)
+  const postLane = async (label, doRequest) => {
+    info(`Pushing ${label} to ${colors.dim}${client.origin}${colors.reset} …`)
     let res
     try {
       res = await doRequest()
     } catch (err) {
-      error(`Could not reach the backend at ${url}: ${err.message}`)
+      error(`Could not reach the backend at ${client.origin}: ${err.message}`)
       note('Set the origin with --registry <url> or UNIWEB_REGISTER_URL.')
       return null
     }
@@ -269,8 +265,8 @@ export async function push(args = []) {
   // POST a lane that round-trips entity uuids (content UPDATE + the folder): parse the
   // finalized list (for record back-fill + the changed summary). Returns the finalized
   // array, or null on failure (already reported).
-  const pushLane = async (label, url, doRequest) => {
-    const payload = await postLane(label, url, doRequest)
+  const pushLane = async (label, doRequest) => {
+    const payload = await postLane(label, doRequest)
     if (payload === null) return null
     const finalized = extractFinalized(payload)
     if (!finalized) {
@@ -292,7 +288,6 @@ export async function push(args = []) {
     if (siteContentUuid) {
       const finalized = await pushLane(
         'site-content',
-        `${client.origin}/dev/site/content/push/${encodeURIComponent(siteContentUuid)}`,
         () => client.updateSiteContent(siteContentUuid, siteContent.buffer, { asOrg })
       )
       if (!finalized) return { exitCode: 1 }
@@ -300,7 +295,6 @@ export async function push(args = []) {
     } else {
       const payload = await postLane(
         'site-content',
-        `${client.origin}/dev/site/content`,
         () => client.createSiteContent(siteContent.buffer, { asOrg })
       )
       if (payload === null) return { exitCode: 1 }
@@ -328,7 +322,6 @@ export async function push(args = []) {
     }
     const finalized = await pushLane(
       'collections',
-      `${client.origin}/dev/site/folder/push/${encodeURIComponent(boundSiteUuid)}`,
       () => client.pushFolder(boundSiteUuid, collections.buffer, { asOrg })
     )
     if (!finalized) return { exitCode: 1 }

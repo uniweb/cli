@@ -228,7 +228,7 @@ export async function register(args = []) {
     log('')
     log(json)
     log('')
-    info(`Dry run — would submit to ${client.origin}/dev/registry/register`)
+    info(`Dry run — would submit to ${client.origin}`)
     if (!standalone && !args.includes('--schema-only')) {
       const distFiles = collectDistFiles(join(targetDir, 'dist'))
       log('')
@@ -248,13 +248,12 @@ export async function register(args = []) {
   }
   // Submit — the client carries the bearer (--token › UNIWEB_TOKEN › stored
   // session › login), resolved lazily on this first authed call.
-  const submitUrl = `${client.origin}/dev/registry/register`
-  info(`Submitting to ${colors.dim}${submitUrl}${colors.reset} …`)
+  info(`Submitting to ${colors.dim}${client.origin}${colors.reset} …`)
   let res
   try {
     res = await client.register(json)
   } catch (err) {
-    error(`Could not reach the registry at ${submitUrl}: ${err.message}`)
+    error(`Could not reach the registry at ${client.origin}: ${err.message}`)
     log(`  ${colors.dim}Set the endpoint with --registry <url> or UNIWEB_REGISTER_URL.${colors.reset}`)
     return { exitCode: 2 }
   }
