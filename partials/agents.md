@@ -794,6 +794,7 @@ id: about                   # Stable identity (for page: links, survives moves)
 order: 2                    # Navigation sort position
 pages: [team, history, ...] # Child page order (... = rest). Without ... = strict (hides unlisted)
 redirect: academic          # Redirect to child page (relative or absolute path, or URL)
+slug: { fr: a-propos }      # Localized URL segment per language (multilingual sites)
 ```
 
 **site.yml:**
@@ -804,6 +805,8 @@ pages: [home, about]                # Strict: only listed pages in nav
 ```
 
 **Route mapping:** Folder structure maps 1:1 to routes. Every folder keeps its natural route — `pages:` controls **order only**, not which child "becomes" the parent. The only exception is the site root: `index:` (or first in `pages:`) in site.yml sets the homepage at `/`.
+
+**Localized URLs:** On a multilingual site (`languages:` in site.yml), a page's `slug: { <lang>: <segment> }` gives it a native URL segment per language (`/about` → `/fr/a-propos`); the folder name stays the canonical route. Nested folders compose automatically, and localized URLs flow through navigation, the language switcher, and the sitemap.
 
 **Content-less containers:** Folders with `page.yml` but no markdown are structural groups. They appear in `getPageHierarchy()` with `hasContent: false` and their own title/label. When visited directly, the runtime auto-redirects to the first descendant with content. This supports hierarchical navigation (courses → modules → lessons) at any depth.
 
