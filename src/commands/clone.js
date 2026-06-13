@@ -53,11 +53,9 @@ import { resolvePlacement, SITE_KIND } from '../utils/placement.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { addWorkspaceGlob } from '../utils/config.js'
 import { detectWorkspacePm, installCmd } from '../utils/pm.js'
-import { ensureRegistryAuth } from '../utils/registry-auth.js'
+import { BackendClient } from '../backend/client.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 import { extractFoundationRef } from '../utils/site-content-refs.js'
-
-const DEFAULT_BACKEND_ORIGIN = 'http://localhost:8080'
 
 const colors = {
   reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m',
@@ -150,8 +148,6 @@ function pullExecArgv(pm, extra) {
  *   runPull(siteDir, pm, extraArgs).
  */
 export async function clone(args = [], deps = {}) {
-  const fetchImpl = deps.fetch || globalThis.fetch
-
   const positionals = args.filter((a) => !a.startsWith('-'))
   const siteUuid = positionals[0]
   const target = positionals[1] || null // [name|.]
@@ -167,31 +163,22 @@ export async function clone(args = [], deps = {}) {
   const pathFlag = flagValue(args, '--path')
   const projectFlag = flagValue(args, '--project')
   const tokenFlag = flagValue(args, '--token')
-  const registryFlag = flagValue(args, '--registry') || process.env.UNIWEB_REGISTER_URL || DEFAULT_BACKEND_ORIGIN
+  const explicitRegistry = flagValue(args, '--registry')
+  const client = new BackendClient({
+    originFlag: explicitRegistry,
+    token: tokenFlag,
+    getToken: deps.getToken,
+    fetchImpl: deps.fetch,
+    args,
+    command: 'Cloning',
+  })
 
-  let apiBase
-  try {
-    apiBase = new URL(registryFlag).origin
-  } catch {
-    error(`Invalid --registry / UNIWEB_REGISTER_URL: ${registryFlag}`)
-    return { exitCode: 2 }
-  }
-
-  let cachedToken = null
-  const getToken =
-    deps.getToken ||
-    (async () => {
-      if (cachedToken) return cachedToken
-      cachedToken = tokenFlag || process.env.UNIWEB_TOKEN || (await ensureRegistryAuth({ apiBase, command: 'Cloning', args }))
-      return cachedToken
-    })
-
-  // 1. GET the site-content document (plain fetch — no @uniweb/build).
-  const url = `${apiBase}/dev/site/content/pull/${encodeURIComponent(siteUuid)}`
+  // 1. GET the site-content document (no @uniweb/build needed for a read).
+  const url = `${client.origin}/dev/site/content/pull/${encodeURIComponent(siteUuid)}`
   info(`Reading site ${colors.bright}${siteUuid}${colors.reset} from ${colors.dim}${url}${colors.reset} …`)
   let payload
   try {
-    const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${await getToken()}` } })
+    const res = await client.pullSiteContent(siteUuid)
     if (res.status === 404) {
       error(`Site not found (404) — check the uuid, or you lack access.`)
       return { exitCode: 1 }
@@ -309,7 +296,7 @@ export async function clone(args = [], deps = {}) {
   }
 
   const pullExtra = []
-  if (flagValue(args, '--registry')) pullExtra.push('--registry', registryFlag)
+  if (explicitRegistry) pullExtra.push('--registry', explicitRegistry)
   if (tokenFlag) pullExtra.push('--token', tokenFlag)
   if (noCollections) pullExtra.push('--no-collections')
 

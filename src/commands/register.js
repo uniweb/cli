@@ -4,8 +4,8 @@
  * registry as one names-only `.uwx` document (uwx-format.md §5).
  *
  * `uniweb login && uniweb register`. Distinct from `uniweb publish` (which
- * targets the legacy unicloud / uniweb-edge platform) — `register` talks to the
- * registry over HTTP at a configurable endpoint.
+ * targets the legacy platform) — `register` talks to the registry over HTTP at a
+ * configurable endpoint.
  *
  * Run from a foundation, or from a schemas-only package — a package that exports
  * schemas (e.g. `@uniweb/schemas`, any `@org/schemas`) or a bare `schemas/*.yml`
@@ -32,16 +32,13 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { buildRegistryPackage, buildSchemaOnlyPackage } from '@uniweb/build/uwx'
 import { classifyPackage, isSchemasPackage, collectStandaloneSchemas } from '@uniweb/build'
-import { ensureRegistryAuth, readRegistryAuth } from '../utils/registry-auth.js'
-import { collectDistFiles, uploadFoundationCode } from '../utils/code-upload.js'
+import { readRegistryAuth } from '../utils/registry-auth.js'
+import { collectDistFiles } from '../utils/code-upload.js'
 import { deriveScope } from '../utils/registry-orgs.js'
+import { BackendClient } from '../backend/client.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import { findWorkspaceRoot, findFoundations, promptSelect } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
-
-// The backend route is `/dev/registry/register`; the host defaults to a local
-// server and is overridable via --registry / UNIWEB_REGISTER_URL (full URL).
-const DEFAULT_REGISTER_URL = 'http://localhost:8080/dev/registry/register'
 
 const colors = {
   reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m',
@@ -135,7 +132,7 @@ export async function register(args = []) {
   const output = flagValue(args, '-o') || flagValue(args, '--output')
   const scopeFlag = flagValue(args, '--scope')
   const tokenFlag = flagValue(args, '--token')
-  const registryUrl = flagValue(args, '--registry') || process.env.UNIWEB_REGISTER_URL || DEFAULT_REGISTER_URL
+  const client = new BackendClient({ originFlag: flagValue(args, '--registry'), token: tokenFlag, args, command: 'Registering' })
 
   // Target: a schemas-only package (standalone data-schema register) or a
   // foundation (foundation + the schemas it renders). A schemas package is only
@@ -150,8 +147,6 @@ export async function register(args = []) {
   let scope = scopeFlag || pkgScope
   let scopeSource = scopeFlag ? '--scope' : pkgScope ? 'package.json uniweb.scope' : null
   const isPreview = !!output || dryRun
-  const apiBase = new URL(registryUrl).origin
-  let token = null
 
   // Each path supplies a different schema source: the standalone path discovers
   // the package's own schemas; the foundation path reads its built schema.json.
@@ -187,9 +182,9 @@ export async function register(args = []) {
   // No scope for a real submit → derive it from login membership (list → 1 use /
   // 0 create / N pick), persist to package.json, and reuse the session token.
   if (!scope && !isPreview) {
-    token = tokenFlag || (await ensureRegistryAuth({ apiBase, command: 'Registering', args }))
+    const token = await client.token()
     const sess = await readRegistryAuth()
-    const derived = await deriveScope({ apiBase, token, accountHandle: sess?.handle || null, args })
+    const derived = await deriveScope({ apiBase: client.origin, token, accountHandle: sess?.handle || null, args })
     if (!derived) return { exitCode: 0 }
     scope = `@${derived}`
     scopeSource = 'login'
@@ -233,7 +228,7 @@ export async function register(args = []) {
     log('')
     log(json)
     log('')
-    info(`Dry run — would submit to ${registryUrl}`)
+    info(`Dry run — would submit to ${client.origin}/dev/registry/register`)
     if (!standalone && !args.includes('--schema-only')) {
       const distFiles = collectDistFiles(join(targetDir, 'dist'))
       log('')
@@ -251,19 +246,15 @@ export async function register(args = []) {
     log(`  ${colors.dim}Without a scope, names stay @/… and the registry rejects them.${colors.reset}`)
     return { exitCode: 2 }
   }
-  // Submit auth: reuse the token from the scope bootstrap if it ran, else
-  // --token › UNIWEB_TOKEN › stored session › login (ensureRegistryAuth).
-  token = token || tokenFlag || (await ensureRegistryAuth({ apiBase, command: 'Registering', args }))
-  info(`Submitting to ${colors.dim}${registryUrl}${colors.reset} …`)
+  // Submit — the client carries the bearer (--token › UNIWEB_TOKEN › stored
+  // session › login), resolved lazily on this first authed call.
+  const submitUrl = `${client.origin}/dev/registry/register`
+  info(`Submitting to ${colors.dim}${submitUrl}${colors.reset} …`)
   let res
   try {
-    res = await fetch(registryUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: json,
-    })
+    res = await client.register(json)
   } catch (err) {
-    error(`Could not reach the registry at ${registryUrl}: ${err.message}`)
+    error(`Could not reach the registry at ${submitUrl}: ${err.message}`)
     log(`  ${colors.dim}Set the endpoint with --registry <url> or UNIWEB_REGISTER_URL.${colors.reset}`)
     return { exitCode: 2 }
   }
@@ -310,9 +301,7 @@ export async function register(args = []) {
     const version = schema._self.version
     info(`Delivering code for ${colors.bright}${name}@${version}${colors.reset} …`)
     try {
-      const result = await uploadFoundationCode({
-        apiBase,
-        token,
+      const result = await client.uploadFoundationCode({
         name,
         version,
         distDir,

@@ -45,12 +45,8 @@ import {
   backfillEntityUuids,
   writeSiteEntityUuid,
 } from '@uniweb/build/uwx'
-import { ensureRegistryAuth } from '../utils/registry-auth.js'
+import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir } from './deploy.js'
-
-// Same backend host as `uniweb register`; only the path differs (the restore
-// lane). Overridable via --registry / UNIWEB_REGISTER_URL (a URL; origin taken).
-const DEFAULT_BACKEND_ORIGIN = 'http://localhost:8080'
 
 const colors = {
   reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m',
@@ -124,45 +120,15 @@ function changedSummary(finalized) {
   return parts.length ? parts.join(', ') : null
 }
 
-// Build the data-schema-read path for a registry name. `@scope/name` →
-// /dev/registry/data-schemas/{scope}/{name}; a bare name →
-// /dev/registry/data-schemas/{name}. The `@` sigil is not part of the path
-// segment. (Path segment encoding to confirm at live e2e.)
-export function modelPathFor(modelName) {
-  const m = /^@([^/]+)\/(.+)$/.exec(modelName)
-  if (m) return `/dev/registry/data-schemas/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}`
-  return `/dev/registry/data-schemas/${encodeURIComponent(modelName)}`
-}
-
-// Resolve a Model NOT defined by the local foundation by fetching its declaration
-// (the `@uniweb/data-schema` form) from the backend's Model-read route. Cached per
-// run; HTTP 404 → null (the emitter then says "register it first"). The bearer is
-// acquired lazily via getToken, so a fully-local sync never authenticates.
-export function makeModelResolver({ apiBase, getToken, fetchImpl = fetch }) {
+// Resolve a Model NOT defined by the local foundation by reading its declaration
+// (the `@uniweb/data-schema` form) from the backend via the client. Cached per run;
+// HTTP 404 → null (the emitter then says "register it first"). The bearer is acquired
+// lazily by the client, so a fully-local sync never authenticates.
+export function makeModelResolver({ client }) {
   const cache = new Map()
   return async (modelName) => {
     if (cache.has(modelName)) return cache.get(modelName)
-    const url = `${apiBase}${modelPathFor(modelName)}`
-    const token = await getToken()
-    let res
-    try {
-      res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } })
-    } catch (err) {
-      throw new Error(`could not reach the Model-read endpoint ${url}: ${err.message}`)
-    }
-    if (res.status === 404) {
-      cache.set(modelName, null)
-      return null
-    }
-    if (!res.ok) {
-      throw new Error(`Model-read ${url} failed: HTTP ${res.status} ${res.statusText}`)
-    }
-    let decl
-    try {
-      decl = await res.json()
-    } catch (err) {
-      throw new Error(`Model-read ${url} returned non-JSON: ${err.message}`)
-    }
+    const decl = await client.readDataSchema(modelName)
     cache.set(modelName, decl)
     return decl
   }
@@ -196,29 +162,17 @@ export async function push(args = []) {
   const asOrg = flagValue(args, '--as-org')
   const foundationDir = flagValue(args, '--foundation')
   const sendAll = args.includes('--all') // bypass the send-only-changed cache
-  const registryFlag =
-    flagValue(args, '--registry') || process.env.UNIWEB_REGISTER_URL || DEFAULT_BACKEND_ORIGIN
-
-  let apiBase
-  try {
-    apiBase = new URL(registryFlag).origin
-  } catch {
-    error(`Invalid --registry / UNIWEB_REGISTER_URL: ${registryFlag}`)
-    return { exitCode: 2 }
-  }
+  // One front door. The bearer is resolved lazily on first need (a non-local Model
+  // read during the build, or the submit), so a fully-local sync — and --dry-run / -o
+  // — never authenticate when every Model is defined by the local foundation.
+  const client = new BackendClient({
+    originFlag: flagValue(args, '--registry'),
+    token: tokenFlag,
+    args,
+    command: 'Syncing',
+  })
 
   const siteDir = await resolveSiteDir(args, 'push')
-
-  // Lazy bearer — acquired once, on first need (a non-local Model fetch during the
-  // build, or the submit). A fully-local sync never triggers it, so --dry-run / -o
-  // stay offline when every Model is defined by the local foundation.
-  let cachedToken = null
-  const getToken = async () => {
-    if (cachedToken) return cachedToken
-    cachedToken =
-      tokenFlag || process.env.UNIWEB_TOKEN || (await ensureRegistryAuth({ apiBase, command: 'Syncing', args }))
-    return cachedToken
-  }
 
   // Build BOTH directional packages (the producer side). Each carries its own
   // `index` — the per-entity source-file map for back-fill, correlated by submission
@@ -229,7 +183,7 @@ export async function push(args = []) {
   try {
     pkg = await emitSyncPackages(siteDir, {
       ...(foundationDir ? { foundationDir } : {}),
-      resolveModel: makeModelResolver({ apiBase, getToken }),
+      resolveModel: makeModelResolver({ client }),
       priorHashes,
       sendAll,
     })
@@ -268,37 +222,28 @@ export async function push(args = []) {
     if (siteContent) {
       const route = siteContentUuid ? `/dev/site/content/push/${siteContentUuid}` : '/dev/site/content'
       const verb = siteContentUuid ? 'update' : 'create'
-      info(`Dry run — would ${verb} content at ${colors.dim}${apiBase}${route}${colors.reset}`)
+      info(`Dry run — would ${verb} content at ${colors.dim}${client.origin}${route}${colors.reset}`)
     }
     if (collections) {
       const key = siteContentUuid || '{new-site-uuid}'
-      info(`Dry run — would push the folder to ${colors.dim}${apiBase}/dev/site/folder/push/${key}${colors.reset}`)
+      info(`Dry run — would push the folder to ${colors.dim}${client.origin}/dev/site/folder/push/${key}${colors.reset}`)
     }
     return { exitCode: 0 }
   }
 
-  const token = await getToken()
   const wrote = []
   let finalizedTotal = 0
 
-  // POST one lane's .uwx and parse the JSON response. Returns the parsed payload, or
-  // null on any transport/HTTP/parse failure (already reported). `collision=force`
-  // (last-push-wins) rides on every lane; `--as-org` rides as `as_org`. (Both the
-  // scope-param name — `as_org` vs the backend's `as_unit` — and whether `collision`
-  // stays required now that create/update are split are open backend items; preserved
-  // as-is until pinned at the first live run.)
-  const postLane = async (label, path, buffer) => {
-    const params = new URLSearchParams({ collision: 'force' })
-    if (asOrg) params.set('as_org', asOrg)
-    const url = `${apiBase}${path}?${params.toString()}`
+  // POST one lane via the client and parse the JSON response. `doRequest` is a thunk
+  // returning the client's Response promise (so the "Pushing …" line prints before the
+  // request fires). The client carries `collision=force` (last-push-wins) + the optional
+  // `--as-org`. Returns the parsed payload, or null on any transport/HTTP/parse failure
+  // (already reported).
+  const postLane = async (label, url, doRequest) => {
     info(`Pushing ${label} to ${colors.dim}${url}${colors.reset} …`)
     let res
     try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/zip', Authorization: `Bearer ${token}` },
-        body: buffer,
-      })
+      res = await doRequest()
     } catch (err) {
       error(`Could not reach the backend at ${url}: ${err.message}`)
       note('Set the origin with --registry <url> or UNIWEB_REGISTER_URL.')
@@ -324,8 +269,8 @@ export async function push(args = []) {
   // POST a lane that round-trips entity uuids (content UPDATE + the folder): parse the
   // finalized list (for record back-fill + the changed summary). Returns the finalized
   // array, or null on failure (already reported).
-  const pushLane = async (label, path, buffer) => {
-    const payload = await postLane(label, path, buffer)
+  const pushLane = async (label, url, doRequest) => {
+    const payload = await postLane(label, url, doRequest)
     if (payload === null) return null
     const finalized = extractFinalized(payload)
     if (!finalized) {
@@ -347,13 +292,17 @@ export async function push(args = []) {
     if (siteContentUuid) {
       const finalized = await pushLane(
         'site-content',
-        `/dev/site/content/push/${encodeURIComponent(siteContentUuid)}`,
-        siteContent.buffer
+        `${client.origin}/dev/site/content/push/${encodeURIComponent(siteContentUuid)}`,
+        () => client.updateSiteContent(siteContentUuid, siteContent.buffer, { asOrg })
       )
       if (!finalized) return { exitCode: 1 }
       finalizedTotal += finalized.length
     } else {
-      const payload = await postLane('site-content', '/dev/site/content', siteContent.buffer)
+      const payload = await postLane(
+        'site-content',
+        `${client.origin}/dev/site/content`,
+        () => client.createSiteContent(siteContent.buffer, { asOrg })
+      )
       if (payload === null) return { exitCode: 1 }
       const minted = extractMintedSiteUuid(payload)
       if (!minted) {
@@ -379,8 +328,8 @@ export async function push(args = []) {
     }
     const finalized = await pushLane(
       'collections',
-      `/dev/site/folder/push/${encodeURIComponent(boundSiteUuid)}`,
-      collections.buffer
+      `${client.origin}/dev/site/folder/push/${encodeURIComponent(boundSiteUuid)}`,
+      () => client.pushFolder(boundSiteUuid, collections.buffer, { asOrg })
     )
     if (!finalized) return { exitCode: 1 }
     const bf = backfillEntityUuids({ index: collections.index, finalized })

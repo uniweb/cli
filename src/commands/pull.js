@@ -46,10 +46,9 @@ import {
   resolveCollectionsConfig,
 } from '@uniweb/build/uwx'
 import { makeModelResolver } from './push.js'
-import { ensureRegistryAuth } from '../utils/registry-auth.js'
+import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir } from './deploy.js'
 
-const DEFAULT_BACKEND_ORIGIN = 'http://localhost:8080'
 const FOLDER_MODEL = '@uniweb/folder'
 
 const colors = { reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', green: '\x1b[32m', blue: '\x1b[36m' }
@@ -111,22 +110,20 @@ export function splitCollectionsPull(payload) {
  *   fetch), `resolveSiteDir`, `getToken` (skip auth).
  */
 export async function pull(args = [], deps = {}) {
-  const fetchImpl = deps.fetch || globalThis.fetch
   const resolveSiteDir = deps.resolveSiteDir || defaultResolveSiteDir
 
   const dryRun = args.includes('--dry-run')
   const tokenFlag = flagValue(args, '--token')
   const prune = !(args.includes('--no-delete') || args.includes('--no-prune')) // git-like by default
   const noCollections = args.includes('--no-collections') || args.includes('--content-only')
-  const registryFlag = flagValue(args, '--registry') || process.env.UNIWEB_REGISTER_URL || DEFAULT_BACKEND_ORIGIN
-
-  let apiBase
-  try {
-    apiBase = new URL(registryFlag).origin
-  } catch {
-    error(`Invalid --registry / UNIWEB_REGISTER_URL: ${registryFlag}`)
-    return { exitCode: 2 }
-  }
+  const client = new BackendClient({
+    originFlag: flagValue(args, '--registry'),
+    token: tokenFlag,
+    getToken: deps.getToken,
+    fetchImpl: deps.fetch,
+    args,
+    command: 'Pulling',
+  })
 
   const siteDir = await resolveSiteDir(args, 'pull')
   // One identity per site: `site.yml::$uuid`. Both lanes (content + folder) are keyed
@@ -138,31 +135,20 @@ export async function pull(args = [], deps = {}) {
     return { exitCode: 0 }
   }
 
-  // Lazy bearer — acquired on first GET (a dry run stays offline). Tests inject
-  // deps.getToken to skip auth entirely.
-  let cachedToken = null
-  const getToken =
-    deps.getToken ||
-    (async () => {
-      if (cachedToken) return cachedToken
-      cachedToken = tokenFlag || process.env.UNIWEB_TOKEN || (await ensureRegistryAuth({ apiBase, command: 'Pulling', args }))
-      return cachedToken
-    })
-
   if (dryRun) {
-    info(`Dry run — would GET ${colors.dim}${apiBase}/dev/site/content/pull/${siteContentUuid}${colors.reset}`)
-    if (!noCollections) info(`Dry run — would GET ${colors.dim}${apiBase}/dev/site/folder/pull/${siteContentUuid}${colors.reset}`)
+    info(`Dry run — would GET ${colors.dim}${client.origin}/dev/site/content/pull/${siteContentUuid}${colors.reset}`)
+    if (!noCollections) info(`Dry run — would GET ${colors.dim}${client.origin}/dev/site/folder/pull/${siteContentUuid}${colors.reset}`)
     return { exitCode: 0 }
   }
 
-  // GET a pull lane and parse it as JSON. 404 → null (deleted / no access); any
+  // GET a pull lane via the client and parse it as JSON. `doRequest` is a thunk
+  // returning the client's Response promise. 404 → null (deleted / no access); any
   // failure is reported and returns null (the lane is skipped, not fatal).
-  const getJson = async (path, label) => {
-    const url = `${apiBase}${path}`
+  const getJson = async (label, url, doRequest) => {
     info(`Pulling ${colors.bright}${label}${colors.reset} from ${colors.dim}${url}${colors.reset} …`)
     let res
     try {
-      res = await fetchImpl(url, { headers: { Authorization: `Bearer ${await getToken()}` } })
+      res = await doRequest()
     } catch (err) {
       error(`Could not reach the backend at ${url}: ${err.message}`)
       note('Set the origin with --registry <url> or UNIWEB_REGISTER_URL.')
@@ -192,7 +178,11 @@ export async function pull(args = [], deps = {}) {
 
   // Lane 1 — content → config + pages/** + layout/**.
   const siteDoc = extractDocument(
-    await getJson(`/dev/site/content/pull/${encodeURIComponent(siteContentUuid)}`, 'content')
+    await getJson(
+      'content',
+      `${client.origin}/dev/site/content/pull/${encodeURIComponent(siteContentUuid)}`,
+      () => client.pullSiteContent(siteContentUuid)
+    )
   )
   if (siteDoc) {
     const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
@@ -206,10 +196,14 @@ export async function pull(args = [], deps = {}) {
   // holds a folder uuid). Models are resolved by name (async) up front, so
   // collectionsToProject keeps its synchronous contract.
   if (!noCollections) {
-    const payload = await getJson(`/dev/site/folder/pull/${encodeURIComponent(siteContentUuid)}`, 'collections')
+    const payload = await getJson(
+      'collections',
+      `${client.origin}/dev/site/folder/pull/${encodeURIComponent(siteContentUuid)}`,
+      () => client.pullFolder(siteContentUuid)
+    )
     if (payload) {
       const { folderDoc, recordDocs } = splitCollectionsPull(payload)
-      const resolveModel = makeModelResolver({ apiBase, getToken, fetchImpl })
+      const resolveModel = makeModelResolver({ client })
       const declByModel = new Map()
       for (const model of [...new Set(recordDocs.map((d) => d.$model).filter(Boolean))]) {
         try {

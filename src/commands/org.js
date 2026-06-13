@@ -8,9 +8,8 @@
  * the legacy platform (publish/deploy); this talks to the registry backend.
  */
 
-import { getRegistryApiBaseUrl } from '../utils/config.js'
-import { ensureRegistryAuth } from '../utils/registry-auth.js'
-import { listOrgs, createOrg, validateHandle, bareHandle } from '../utils/registry-orgs.js'
+import { BackendClient } from '../backend/client.js'
+import { validateHandle, bareHandle } from '../utils/registry-orgs.js'
 
 const colors = { reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', green: '\x1b[32m' }
 const error = (m) => console.error(`${colors.red}✗${colors.reset} ${m}`)
@@ -18,11 +17,10 @@ const success = (m) => console.log(`${colors.green}✓${colors.reset} ${m}`)
 
 export async function org(args = []) {
   const sub = args[0]
-  const apiBase = getRegistryApiBaseUrl()
 
   if (sub === 'list') {
-    const token = await ensureRegistryAuth({ apiBase, command: 'Listing orgs', args })
-    const orgs = await listOrgs({ apiBase, token })
+    const client = new BackendClient({ args, command: 'Listing orgs' })
+    const { orgs } = await client.fetchOrgs()
     if (!orgs.length) {
       console.log('You have no orgs yet. Create one: uniweb org create <handle>')
       return { exitCode: 0 }
@@ -45,9 +43,9 @@ export async function org(args = []) {
       error(invalid)
       return { exitCode: 2 }
     }
-    const token = await ensureRegistryAuth({ apiBase, command: 'Creating an org', args })
+    const client = new BackendClient({ args, command: 'Creating an org' })
     try {
-      const org = await createOrg({ apiBase, token, handle })
+      const org = await client.createOrg(handle)
       success(`Created ${colors.bright}@${org.handle}${colors.reset} — you're a member${org.is_primary ? ' (primary)' : ''}.`)
       console.log(`${colors.dim}Publish under it: uniweb register --scope @${org.handle}${colors.reset}`)
       return { exitCode: 0 }
