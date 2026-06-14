@@ -21,7 +21,7 @@ import { readFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 
 import { BackendClient } from '../backend/client.js'
-import { collectRuntimeFiles, hasWorkerRuntime } from '../utils/runtime-upload.js'
+import { collectRuntimeFiles, hasWorkerRuntime, hasShims } from '../utils/runtime-upload.js'
 import { readFlagValue } from '../utils/args.js'
 
 const c = {
@@ -81,9 +81,14 @@ export async function runtime(args = []) {
     say.dim('Build it first: `pnpm build` in framework/runtime.')
     return { exitCode: 2 }
   }
+  // The ssr-edge artifact is a SET: worker-runtime.js + its shims/*.js. Warn when
+  // the set is absent or incomplete (a worker without shims can't resolve react).
   if (!hasWorkerRuntime(files)) {
     say.warn("dist/worker-runtime.js is missing — the SSR isolate bundle won't be uploaded.")
     say.dim('JIT prerender needs it; it comes from the runtime worker-bundling step (see /deploy-runtime).')
+  } else if (!hasShims(files)) {
+    say.warn('dist/worker-runtime.js is present but dist/shims/ is missing — the SSR isolate set is incomplete.')
+    say.dim('The isolate resolves react/jsx-runtime/@uniweb/core through those shims; re-run the worker-bundling step.')
   }
 
   if (dryRun) {

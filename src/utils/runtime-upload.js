@@ -12,7 +12,12 @@
  *   - dist/app/**            → /gateway/runtime/{version}/...        (browser SPA:
  *                              _importmap/, assets/, index.html, manifest.json)
  *   - dist/worker-runtime.js → /gateway/runtime/{version}/worker-runtime.js
- *                              (the Workers-isolate SSR bundle)
+ *                              (the SSR-isolate bundle)
+ *   - dist/shims/*.js        → /gateway/runtime/{version}/shims/...  (the SSR
+ *                              isolate's globalThis-bridge shims: react,
+ *                              react/jsx-runtime, @uniweb/core — a SET with the
+ *                              worker bundle; the isolate can't resolve react
+ *                              without them)
  *
  * ASSUMED backend contract — built our-side-first (Diego, 2026-06-14); reconcile
  * with the backend before relying on it (the delivery-lane design named a
@@ -31,6 +36,7 @@ import { join } from 'node:path'
 import { contentTypeFor } from './code-upload.js'
 
 const WORKER_RUNTIME = 'worker-runtime.js'
+const SHIMS_DIR = 'shims'
 
 function fileEntry(diskPath, path) {
   const bytes = readFileSync(diskPath)
@@ -45,9 +51,10 @@ function fileEntry(diskPath, path) {
 
 /**
  * Collect a built runtime's upload set from `distDir` (framework/runtime/dist):
- * everything under `dist/app/**` at the root, plus `dist/worker-runtime.js`.
- * Sourcemaps (`*.map`) are excluded (dev-only, not CDN-served). Returns `[]` when
- * `dist/app/` is missing (the runtime isn't built).
+ * everything under `dist/app/**` at the root, plus `dist/worker-runtime.js` and
+ * the `dist/shims/*.js` it depends on. Sourcemaps (`*.map`) are excluded (dev-only,
+ * not CDN-served). Returns `[]` when `dist/app/` is missing (the runtime isn't
+ * built). The worker bundle + shims are collected when present (graceful when not).
  *
  * @param {string} distDir - framework/runtime/dist
  * @returns {Array<{ path, content_type, size, sha256, diskPath }>}
@@ -68,12 +75,22 @@ export function collectRuntimeFiles(distDir) {
   walk(appDir, '')
   const worker = join(distDir, WORKER_RUNTIME)
   if (existsSync(worker)) files.push(fileEntry(worker, WORKER_RUNTIME))
+  // The SSR isolate's globalThis-bridge shims ride alongside worker-runtime.js,
+  // served at shims/*.js. They're part of the ssr-edge artifact SET — the isolate
+  // can't resolve `react` without them — so collect the whole dir when present.
+  const shimsDir = join(distDir, SHIMS_DIR)
+  if (existsSync(shimsDir)) walk(shimsDir, SHIMS_DIR)
   return files
 }
 
 /** True when the worker SSR bundle is in the collected set. */
 export function hasWorkerRuntime(files) {
   return files.some((f) => f.path === WORKER_RUNTIME)
+}
+
+/** True when any SSR-isolate shim (shims/*.js) is in the collected set. */
+export function hasShims(files) {
+  return files.some((f) => f.path.startsWith(`${SHIMS_DIR}/`))
 }
 
 /**

@@ -1,8 +1,8 @@
 /**
  * Runtime registration (`uniweb runtime register`) — unit-pins runtime-upload.js
  * against the ASSUMED /dev/registry/runtime contract: collect (dist/app/** +
- * worker-runtime.js, *.map excluded) → plan → PUT-per-file (mode-aware auth +
- * sha256), serve_base back. Mock-backed fetch; a temp dist/ as the real artifact.
+ * worker-runtime.js + shims/*.js, *.map excluded) → plan → PUT-per-file (mode-aware
+ * auth + sha256), serve_base back. Mock-backed fetch; a temp dist/ as the real artifact.
  */
 
 import { test } from 'node:test'
@@ -11,11 +11,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
-import { collectRuntimeFiles, hasWorkerRuntime, uploadRuntime } from '../src/utils/runtime-upload.js'
+import { collectRuntimeFiles, hasWorkerRuntime, hasShims, uploadRuntime } from '../src/utils/runtime-upload.js'
 
 const sha = (s) => createHash('sha256').update(s).digest('hex')
 
-function makeDist({ app = true, worker = true } = {}) {
+function makeDist({ app = true, worker = true, shims = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'uw-rt-'))
   const distDir = join(dir, 'dist')
   mkdirSync(distDir, { recursive: true })
@@ -27,6 +27,13 @@ function makeDist({ app = true, worker = true } = {}) {
     writeFileSync(join(distDir, 'app', 'assets', 'main.js.map'), '{"version":3}') // excluded
   }
   if (worker) writeFileSync(join(distDir, 'worker-runtime.js'), 'export const ssr=1')
+  if (shims) {
+    mkdirSync(join(distDir, 'shims'), { recursive: true })
+    writeFileSync(join(distDir, 'shims', 'react.js'), 'export default {}')
+    writeFileSync(join(distDir, 'shims', 'react-jsx-runtime.js'), 'export const jsx=0')
+    writeFileSync(join(distDir, 'shims', 'uniweb-core.js'), 'export const Uniweb=0')
+    writeFileSync(join(distDir, 'shims', 'react.js.map'), '{"version":3}') // excluded
+  }
   return { dir, distDir }
 }
 
@@ -58,6 +65,35 @@ test('hasWorkerRuntime is false when the worker bundle is absent', () => {
   const { dir, distDir } = makeDist({ worker: false })
   try {
     assert.equal(hasWorkerRuntime(collectRuntimeFiles(distDir)), false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('collectRuntimeFiles gathers dist/shims/*.js as part of the ssr-edge set, excludes *.map', () => {
+  const { dir, distDir } = makeDist({ shims: true })
+  try {
+    const files = collectRuntimeFiles(distDir)
+    const paths = files.map((f) => f.path).sort()
+    assert.deepEqual(paths, [
+      'assets/main.js', 'index.html', 'manifest.json',
+      'shims/react-jsx-runtime.js', 'shims/react.js', 'shims/uniweb-core.js',
+      'worker-runtime.js',
+    ])
+    assert.ok(!files.some((f) => f.path.endsWith('.map')), 'shim sourcemaps excluded')
+    assert.equal(files.find((f) => f.path === 'shims/react.js').content_type, 'text/javascript')
+    assert.equal(hasShims(files), true)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('hasShims is false when shims/ is absent (incomplete ssr-edge set)', () => {
+  const { dir, distDir } = makeDist({ worker: true, shims: false })
+  try {
+    const files = collectRuntimeFiles(distDir)
+    assert.equal(hasWorkerRuntime(files), true)
+    assert.equal(hasShims(files), false, 'worker present but shims missing → incomplete')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
