@@ -384,7 +384,8 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
       for (const lang of Object.keys(localeContents)) {
         localeContents[lang] = rewriteSiteContentPaths(localeContents[lang], urlMapping)
       }
-      say.dim(`Assets         : ${assetResult.uploaded.length} uploaded (${assetResult.mode}) → ${config.assetBase}`)
+      const skippedNote = assetResult.skipped?.length ? `, ${assetResult.skipped.length} already present` : ''
+      say.dim(`Assets         : ${assetResult.uploaded.length} uploaded${skippedNote} (${assetResult.mode}) → ${config.assetBase}`)
     }
   }
 

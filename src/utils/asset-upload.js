@@ -7,14 +7,18 @@
  *
  *   1. PLAN   — POST {apiBase}/dev/assets with the file list ({ path,
  *               content_type, size, sha256 }). `sha256` is REQUIRED — it is the
- *               content address. The response carries one upload target per file
- *               ({ path, id, ext, method, url, headers }) plus mode: 'direct'
- *               (dev — URLs point back at the backend) or 'presigned' (prod —
- *               storage PUTs). `id` is the lowercase-hex sha256 of the bytes; we
- *               READ it from the response (never depend on id == sha256) so the
- *               client stays correct if the derivation ever changes.
- *   2. UPLOAD — PUT each file's raw bytes to its URL with the given headers.
+ *               content address. The response carries one entry per file
+ *               ({ path, id, ext, present?, method, url, headers }) plus mode:
+ *               'direct' (dev — URLs point back at the backend) or 'presigned'
+ *               (prod — storage PUTs). `id` is the lowercase-hex sha256 of the
+ *               bytes; we READ it from the response (never depend on id == sha256)
+ *               so the client stays correct if the derivation ever changes.
+ *   2. UPLOAD — PUT each NEW file's raw bytes to its URL with the given headers.
  *               Order is irrelevant (unlike code-upload, there is no "entry").
+ *               Skip-list: an entry the plan marks `present: true` is already in
+ *               the content-addressed store, so we SKIP the PUT but still record
+ *               its id+ext for the rewrite. Absent `present` ⇒ false — an older
+ *               backend without the flag uploads everything (today's behavior).
  *
  * Assets are GLOBAL + content-addressed: identical bytes → same id → dedup
  * across sites and idempotent re-deploys (a re-PUT is a cheap no-op). This
@@ -68,11 +72,16 @@ export function collectSiteAssets(distDir) {
 }
 
 /**
- * Deliver a site's assets: plan, then PUT each. Returns the rewrite map
- * (`localUrl → { id, ext }`) — populated only for files that uploaded
- * successfully, so a partial failure never injects a broken serve URL into
- * content. Throws only on a plan-level failure; per-file PUT failures surface in
- * `failed`.
+ * Deliver a site's assets: plan, then PUT each NEW file. Returns the rewrite map
+ * (`localUrl → { id, ext }`) — populated for files that uploaded successfully OR
+ * that the plan reports already `present`, so a partial failure never injects a
+ * broken serve URL into content. Throws only on a plan-level failure; per-file
+ * PUT failures surface in `failed`.
+ *
+ * Skip-list (content-addressed dedup): a plan entry with `present: true` is
+ * already in the global store — we don't re-PUT it, but we DO record its id+ext
+ * so the rewrite covers every asset. A backend that omits the flag (absent ⇒
+ * false) uploads everything, exactly as before.
  *
  * @param {object} opts
  * @param {string} opts.apiBase  - backend origin (e.g. http://localhost:8080)
@@ -80,12 +89,12 @@ export function collectSiteAssets(distDir) {
  * @param {string} opts.distDir  - the site's built dist/ directory
  * @param {Array}  [opts.files]  - pre-collected list (default: collectSiteAssets)
  * @param {(msg: string) => void} [opts.onProgress]
- * @returns {Promise<{ mode: string, uploaded: string[], failed: Array<{path, status, detail}>, assetsByLocalUrl: Record<string, { id: string, ext: string }> }>}
+ * @returns {Promise<{ mode: string, uploaded: string[], skipped: string[], failed: Array<{path, status, detail}>, assetsByLocalUrl: Record<string, { id: string, ext: string }> }>}
  */
 export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgress = () => {} }) {
   const list = files || collectSiteAssets(distDir)
   if (!list.length) {
-    return { mode: 'none', uploaded: [], failed: [], assetsByLocalUrl: {} }
+    return { mode: 'none', uploaded: [], skipped: [], failed: [], assetsByLocalUrl: {} }
   }
 
   const origin = apiBase.replace(/\/$/, '')
@@ -108,12 +117,23 @@ export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgr
   const byPath = new Map(list.map((f) => [f.path, f]))
 
   const uploaded = []
+  const skipped = []
   const failed = []
   const assetsByLocalUrl = {}
 
   for (const up of uploads) {
     const src = byPath.get(up.path)
     if (!src) continue // backend echoed a path we didn't send — ignore
+
+    // Skip-list: the bytes are already in the content-addressed store. No PUT,
+    // but still record id+ext so the rewrite covers this asset. `present` absent
+    // ⇒ false (older backend) → falls through to the upload path below.
+    if (up.present) {
+      skipped.push(src.path)
+      assetsByLocalUrl[src.localUrl] = { id: up.id, ext: String(up.ext || '').replace(/^\./, '') }
+      continue
+    }
+
     const headers = { ...(up.headers || {}), 'x-uniweb-sha256': src.sha256 }
     // Direct-mode PUTs are authed requests to the backend; presigned URLs are
     // self-signed, so a foreign auth header can break the SigV4 target. This is
@@ -138,5 +158,5 @@ export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgr
     }
   }
 
-  return { mode, uploaded, failed, assetsByLocalUrl }
+  return { mode, uploaded, skipped, failed, assetsByLocalUrl }
 }

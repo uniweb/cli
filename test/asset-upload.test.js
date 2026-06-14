@@ -103,6 +103,49 @@ test('uploadSiteAssets plans /dev/assets, PUTs each, returns the localUrl→{id,
   }
 })
 
+test('uploadSiteAssets honors the skip-list: present files are recorded but not PUT', async () => {
+  const { dir, distDir } = makeDist()
+  const heroSha = sha('WEBPDATA')
+  const logoSha = sha('<svg/>')
+  const puts = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (url, opts = {}) => {
+    if (String(url).endsWith('/dev/assets')) {
+      const body = JSON.parse(opts.body)
+      // hero already in the content-addressed store → present (no upload target);
+      // logo is new → carries a PUT target. id+ext present on BOTH entries.
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          mode: 'direct',
+          uploads: body.files.map((f) => {
+            const base = { path: f.path, id: f.sha256, ext: f.path.split('.').pop() }
+            if (f.sha256 === heroSha) return { ...base, present: true }
+            return { ...base, present: false, method: 'PUT', url: `/dev/assets/blob/${f.sha256}`, headers: {} }
+          }),
+        }),
+      }
+    }
+    puts.push(String(url))
+    return { ok: true, status: 200, text: async () => '' }
+  }
+  try {
+    const result = await uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', distDir })
+    assert.deepEqual(result.skipped, ['assets/hero-ab12cd34.webp'], 'present file is skipped')
+    assert.deepEqual(result.uploaded, ['assets/logo-9f8e7d6c.svg'], 'new file is uploaded')
+    assert.equal(result.failed.length, 0)
+    assert.equal(puts.length, 1, 'only the new file is PUT — the present one is not')
+    assert.ok(puts[0].includes(logoSha), 'the single PUT is the new (logo) sha')
+    // BOTH assets are in the rewrite map — present and new alike get their refs rewritten.
+    assert.deepEqual(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], { id: heroSha, ext: 'webp' })
+    assert.deepEqual(result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], { id: logoSha, ext: 'svg' })
+  } finally {
+    globalThis.fetch = realFetch
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('uploadSiteAssets surfaces a per-file failure and omits it from the rewrite map', async () => {
   const { dir, distDir } = makeDist()
   const realFetch = globalThis.fetch
@@ -192,7 +235,7 @@ test('uploadSiteAssets is a no-op for an image-free site', async () => {
   globalThis.fetch = async () => { fetched = true; return { ok: true, status: 200, json: async () => ({}) } }
   try {
     const result = await uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', distDir })
-    assert.deepEqual(result, { mode: 'none', uploaded: [], failed: [], assetsByLocalUrl: {} })
+    assert.deepEqual(result, { mode: 'none', uploaded: [], skipped: [], failed: [], assetsByLocalUrl: {} })
     assert.equal(fetched, false, 'no plan call when there are no assets')
   } finally {
     globalThis.fetch = realFetch
