@@ -32,6 +32,7 @@ import { ensureRegistryAuth, fetchMe } from '../utils/registry-auth.js'
 import { fetchOrgs as fetchOrgsImpl, createOrg as createOrgImpl } from '../utils/registry-orgs.js'
 import { uploadFoundationCode } from '../utils/code-upload.js'
 import { uploadSiteAssets } from '../utils/asset-upload.js'
+import { uploadRuntime } from '../utils/runtime-upload.js'
 
 /**
  * Resolve the backend origin: an explicit flag value wins; otherwise defer to
@@ -312,6 +313,16 @@ export class BackendClient {
    */
   async uploadSiteAssets(opts) {
     return uploadSiteAssets({ apiBase: this.origin, token: await this.token(), ...opts })
+  }
+
+  /**
+   * Upload a built `@uniweb/runtime` to the runtime registry (plan → PUT-per-file),
+   * served at `/gateway/runtime/{version}`. @std-gated on the backend. Thin
+   * pass-through to utils/runtime-upload.js with this client's origin + token.
+   * @param {object} opts - { version, distDir, files?, onProgress? }
+   */
+  async uploadRuntime(opts) {
+    return uploadRuntime({ apiBase: this.origin, token: await this.token(), ...opts })
   }
 }
 

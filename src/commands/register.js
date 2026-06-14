@@ -34,6 +34,25 @@
  * Auth (submit only):  --token <bearer>  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
 
+// DEFERRED foundation-registration capabilities (the legacy `uniweb publish` had
+// these; the new backend doesn't yet — captured here so the design intent isn't
+// lost, and the legacy code could be removed). Implement as `register` flags (or
+// backend-side policy) when the need is real:
+//
+//   • ACCESS POLICY — legacy `--edit-access open|restricted`. On the old platform
+//     this gated who could act on the foundation in the app. Its meaning is
+//     unclear for the new model: there is no editing of a foundation's code or
+//     schema, so it is most likely a LICENSING / access-control concern (who may
+//     use/reference the foundation), not "editing". Revisit as `--access` (or an
+//     org/licensing policy on the backend) when foundation licensing lands.
+//
+//   • VERSION PROPAGATION — legacy `--propagate`. Opts a newly-registered version
+//     into the registry's version-update walk: trusting sites whose policy allows
+//     the jump (e.g. auto-patch) adopt it with no rebuild; default was "silent"
+//     (stored, nothing moves). The SAME concept applies to `runtime register`
+//     (legacy deploy-runtime had `--propagate` too). Implement once the backend
+//     has a version-update/propagation policy; until then every register is silent.
+
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { resolve, join } from 'node:path'

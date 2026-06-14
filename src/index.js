@@ -723,6 +723,14 @@ async function main() {
     return
   }
 
+  // Handle runtime command — `runtime register` uploads a built @uniweb/runtime to
+  // the backend's runtime registry (/gateway/runtime/{version}); @std-gated.
+  if (command === 'runtime') {
+    const { runtime } = await import('./commands/runtime.js')
+    const result = await runtime(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
+  }
+
   // Handle invite command
   if (command === 'invite') {
     await invite(args.slice(1))
@@ -1459,6 +1467,7 @@ ${colors.bright}Commands:${colors.reset}
   export             Export a self-contained site for third-party hosting
   publish            Publish a synced site (make its backend state live)
   register           Register a foundation + its data schemas with the backend registry
+  runtime register   Register an @uniweb/runtime version to the backend (@std only)
   push               Push a site's content to the backend
   pull               Pull a site's content from the backend
   inspect <path>     Inspect parsed content shape of a markdown file or folder
