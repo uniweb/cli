@@ -663,11 +663,16 @@ async function main() {
     return
   }
 
-  // Handle publish command (dynamic import — depends on @uniweb/build)
-  if (command === 'publish') {
+  // Handle publish command — CMS-publish a SYNCED site (POST /dev/site/publish).
+  // `release` is the deprecated rollout alias. Distinct from `deploy` (file-built
+  // host) and `register` (foundation publishing — formerly `uniweb publish`).
+  if (command === 'publish' || command === 'release') {
+    if (command === 'release') {
+      console.error('\x1b[33m⚠\x1b[0m `uniweb release` was renamed to `uniweb publish` — please update your scripts.')
+    }
     const { publish } = await importProjectCommand('./commands/publish.js')
-    await publish(args.slice(1))
-    return
+    const result = await publish(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
   }
 
   // Handle deploy command (dynamic import — depends on @uniweb/build)
@@ -675,15 +680,6 @@ async function main() {
     const { deploy } = await importProjectCommand('./commands/deploy.js')
     await deploy(args.slice(1))
     return
-  }
-
-  // Handle release command — CMS-publish a SYNCED site (POST /dev/site/publish).
-  // Distinct from `deploy` (file-built host) and `publish` (foundation catalog).
-  // Interim name; graduates to `publish` when foundation-publish folds into register.
-  if (command === 'release') {
-    const { release } = await importProjectCommand('./commands/release.js')
-    const result = await release(args.slice(1))
-    process.exit(result?.exitCode ?? 0)
   }
 
   // Handle export command (dynamic import — depends on @uniweb/build)
@@ -1122,24 +1118,20 @@ ${colors.bright}Examples:${colors.reset}
   uniweb deploy --target=preview             # Pick named target from deploy.yml
 `,
     publish: `
-${colors.cyan}${colors.bright}uniweb publish${colors.reset} ${colors.dim}— Publish a foundation to the catalog${colors.reset}
+${colors.cyan}${colors.bright}uniweb publish${colors.reset} ${colors.dim}— Publish a synced site (make its backend state live)${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
-  uniweb publish [@org/name] [options]
+  uniweb publish [options]
 
-For site-bound foundations (one foundation, one site), use \`uniweb deploy\`
-instead — it auto-publishes under a site-scoped slot, no naming ceremony.
+Publishes a site that's synced to the backend (has site.yml::\$uuid from
+\`uniweb push\`) — makes its CURRENT backend state live, including edits made
+through the app. Run \`uniweb push\` first to include local edits. For a
+file-only site use \`uniweb deploy\`; to register a FOUNDATION use \`uniweb register\`.
 
 ${colors.bright}Options:${colors.reset}
-  --catalog          Confirm publish to the public catalog (required in CI)
-  --propagate        Walk trusting sites' policy waves (default: silent)
-  --name <id>        Foundation id (overrides package.json::uniweb.id)
-  --namespace <ns>   Force org-scope namespace (overrides package.json)
-  --local            Internal: publish to the unicloud mock (see workspace root CLAUDE.md)
-  --registry <url>   Use a specific registry URL
-  --edit-access <p>  "open" or "restricted" (default: restricted)
-  --dry-run          Show what would be published without uploading
-  --non-interactive  Fail with usage info instead of prompting
+  --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
+  --token <bearer>   Auth bearer (skips \`uniweb login\`)
+  --dry-run          Resolve everything; POST nothing
 `,
     create: `
 ${colors.cyan}${colors.bright}uniweb create${colors.reset} ${colors.dim}— Create a new project${colors.reset}
@@ -1279,8 +1271,9 @@ ${colors.bright}Usage:${colors.reset}
   uniweb register [options]
 
 Builds one \`.uwx\` document and submits it to the registry over HTTP. Run
-\`uniweb login\` first (or pass \`--token\`). Distinct from \`uniweb publish\` (legacy
-hosting platform).
+\`uniweb login\` first (or pass \`--token\`). \`register\` is for FOUNDATIONS (and
+schemas); \`uniweb publish\` makes a synced SITE live; \`uniweb deploy\` hosts a
+file-built site.
 
 Auto-detects what you run it in:
   • a foundation        the foundation + the data schemas it defines/renders
@@ -1353,40 +1346,23 @@ In non-interactive mode (CI / no TTY), pass \`--token <bearer>\`, or set
 not stored). Run \`uniweb logout\` to clear the stored session.
 `,
     invite: `
-${colors.cyan}${colors.bright}uniweb invite${colors.reset} ${colors.dim}— Create a foundation invite for a client${colors.reset}
+${colors.cyan}${colors.bright}uniweb invite${colors.reset} ${colors.dim}— (reserved; not available on the new backend yet)${colors.reset}
 
-${colors.bright}Usage:${colors.reset}
-  uniweb invite <email> [options]
-
-${colors.bright}Options:${colors.reset}
-  --uses <n>         Max sites per invite (default: 1)
-  --expires <days>   Days until expiry (default: 30)
-  --version <n>      Major version to license (default: current)
-  --list             List invites for your foundation
-  --revoke <id>      Revoke an invite
-  --resend <id>      Resend an invite
+The foundation client-invite flow was retired with the legacy backend.
+Invite clients to your foundation from the Uniweb app for now.
 `,
     handoff: `
-${colors.cyan}${colors.bright}uniweb handoff${colors.reset} ${colors.dim}— Hand off a site to a client${colors.reset}
+${colors.cyan}${colors.bright}uniweb handoff${colors.reset} ${colors.dim}— (reserved; not available on the new backend yet)${colors.reset}
 
-${colors.bright}Usage:${colors.reset}
-  uniweb handoff <email> [options]
-
-${colors.bright}Options:${colors.reset}
-  --site <id>        Site identifier (default: auto-generated)
-  --web              Show web-based handoff instructions instead
+The site-handoff flow was retired with the legacy backend.
+Manage client sites from the Uniweb app for now.
 `,
     template: `
-${colors.cyan}${colors.bright}uniweb template${colors.reset} ${colors.dim}— Manage cloud templates${colors.reset}
+${colors.cyan}${colors.bright}uniweb template${colors.reset} ${colors.dim}— (reserved; not available on the new backend yet)${colors.reset}
 
-${colors.bright}Subcommands:${colors.reset}
-  template publish        Publish a site as a cloud template
-
-${colors.bright}Publish Options:${colors.reset}
-  --name <name>      Template registry name (overrides site.yml template: field)
-  --title <title>    Display title (overrides site.yml name: field)
-  --description <t>  Description
-  --registry <url>   Registry URL (default: http://localhost:4001)
+Submitting a site as a cloud template was retired with the legacy backend.
+When rebuilt, a template is REGISTERED (like a foundation) — \`publish\` is for
+sites only. Scaffolding FROM a template still works: \`uniweb create --template <name>\`.
 `,
     docs: `
 ${colors.cyan}${colors.bright}uniweb docs${colors.reset} ${colors.dim}— Generate component documentation${colors.reset}
@@ -1485,20 +1461,18 @@ ${colors.bright}Commands:${colors.reset}
   build              Build the current project
   deploy             Deploy a site to Uniweb hosting
   export             Export a self-contained site for third-party hosting
-  publish            Publish a foundation to the Uniweb registry
+  publish            Publish a synced site (make its backend state live)
   register           Register a foundation + its data schemas with the backend registry
   push               Push a site's content to the backend
   pull               Pull a site's content from the backend
-  invite <email>     Create a foundation invite for a client
-  handoff <email>    Hand off a site to a client
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   doctor             Diagnose project configuration issues
   validate           Check your content against your foundation's data schemas
   update             Align workspace deps + AGENTS.md to the running CLI
   i18n <cmd>         Internationalization (extract, sync, status)
-  template publish   Publish a site as a cloud template
   login              Log in to your Uniweb account
+  logout             Clear the stored session
 
 ${colors.bright}Create Options:${colors.reset}
   --template <type>  Project template (default: starter)
@@ -1519,37 +1493,12 @@ ${colors.bright}Global Options:${colors.reset}
                        Auto-detected when CI=true or no TTY (pipes, agents)
 
 ${colors.bright}Publish Options:${colors.reset}
-  --catalog          Confirm publish to the public catalog (required in CI)
-  --propagate        Walk trusting sites' policy waves (default: silent)
-  --name <id>        Foundation id (overrides package.json::uniweb.id)
-  --namespace <ns>   Force org-scope namespace (overrides package.json)
-  --local            Publish to the local registry (.unicloud/) instead of Uniweb Registry
-  --registry <url>   Use a specific registry URL
-  --edit-access <p>  Set edit access policy: "open" or "restricted" (default: restricted)
-  --dry-run          Show what would be published without uploading
+  --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
+  --token <bearer>   Auth bearer (skips \`uniweb login\`)
+  --dry-run          Resolve everything; POST nothing
 
-  uniweb publish is for cataloging a foundation as a product. For
-  site-bound foundations (one foundation, one site), use uniweb deploy
-  instead — it auto-publishes under a site-scoped slot, no naming
-  ceremony.
-
-${colors.bright}Invite Options:${colors.reset}
-  --uses <n>         Max sites per invite (default: 1)
-  --expires <days>   Days until expiry (default: 30)
-  --version <n>      Major version to license (default: current)
-  --list             List invites for your foundation
-  --revoke <id>      Revoke an invite
-  --resend <id>      Resend an invite
-
-${colors.bright}Handoff Options:${colors.reset}
-  --site <id>        Site identifier (default: auto-generated)
-  --web              Show web-based handoff instructions instead
-
-${colors.bright}Template Options:${colors.reset}
-  --name <name>      Template registry name (overrides site.yml template: field)
-  --title <title>    Display title (overrides site.yml name: field)
-  --description <t>  Description
-  --registry <url>   Registry URL (default: http://localhost:4001)
+  uniweb publish makes a SYNCED site live (run \`uniweb push\` first). To register
+  a foundation use \`uniweb register\`; to host a file-built site use \`uniweb deploy\`.
 
 ${colors.bright}Deploy Options:${colors.reset}
   --target <name>    Pick a target from deploy.yml (default: deploy.yml's \`default:\`)

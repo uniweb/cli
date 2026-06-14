@@ -22,24 +22,14 @@ import yaml from 'js-yaml'
 import { filterCmd } from './pm.js'
 import { writeJsonPreservingStyleAsync } from './json-file.js'
 
-// ── Platform URLs ──────────────────────────────────────────────
-
-// Production defaults — regular users get these out of the box.
-// REGISTRY hosts platform operations (publish, foundations, runtime, admin):
-//   moved to hosting.uniweb.app in the CDN migration (Phase 4c, 2026-05-04).
-// BACKEND hosts the PHP user-facing surface (login, account, orgs, billing,
-//   publish-authorize).
-const PRODUCTION_BACKEND_URL = 'https://www.uniweb.app'
-const PRODUCTION_REGISTRY_URL = 'https://hosting.uniweb.app'
+// ── Backend origin ─────────────────────────────────────────────
 
 /**
- * Read ~/.uniweb/config.json for persistent URL overrides.
- * Platform developers use this to point CLI to local servers.
+ * Read ~/.uniweb/config.json for a persistent backend-origin override (e.g.
+ * `{ "registryApiUrl": "http://localhost:8081" }`) — consumed by
+ * getRegistryApiBaseUrl() below.
  *
- * Example ~/.uniweb/config.json:
- *   { "backendUrl": "http://127.0.0.1:8002", "registryUrl": "http://localhost:4001" }
- *
- * @returns {{ backendUrl?: string, registryUrl?: string }}
+ * @returns {{ registryApiUrl?: string }}
  */
 let _cliConfig = undefined
 function readCliConfig() {
@@ -60,36 +50,13 @@ function readCliConfig() {
 }
 
 /**
- * Get the PHP backend URL.
+ * Get the backend's API base origin. `register` POSTs to
+ * {origin}/dev/registry/register, `login` to {origin}/dev/auth/login, etc.
+ * (BackendClient.resolveBackendOrigin layers the --backend/--registry flag on
+ * top of this.)
  *
- * Priority: env var > ~/.uniweb/config.json > production default
- * @returns {string}
- */
-export function getBackendUrl() {
-  return process.env.UNIWEB_BACKEND_URL
-    || readCliConfig().backendUrl
-    || PRODUCTION_BACKEND_URL
-}
-
-/**
- * Get the registry API URL (Cloudflare Worker or local unicloud).
- *
- * Priority: env var > ~/.uniweb/config.json > production default
- * @returns {string}
- */
-export function getRegistryUrl() {
-  return process.env.UNIWEB_REGISTRY_URL
-    || readCliConfig().registryUrl
-    || PRODUCTION_REGISTRY_URL
-}
-
-/**
- * Get the new registry backend's API base origin — DISTINCT from the
- * legacy PHP getBackendUrl(). `register` POSTs to {origin}/dev/registry/register
- * and the new-backend `login` to {origin}/dev/auth/login.
- *
- * Priority: UNIWEB_REGISTER_URL's origin (the env users already set for
- * register) > ~/.uniweb/config.json registryApiUrl > local default.
+ * Priority: UNIWEB_REGISTER_URL's origin > ~/.uniweb/config.json registryApiUrl
+ * > local default.
  * @returns {string}
  */
 export function getRegistryApiBaseUrl() {

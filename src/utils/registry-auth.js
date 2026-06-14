@@ -24,11 +24,22 @@
 import { existsSync } from 'node:fs'
 import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
-import { getAuthDir, isExpired } from './auth.js'
 
 const LOGIN_PATH = '/dev/auth/login'
+
+/** The shared ~/.uniweb credential directory. */
+export function getAuthDir() {
+  return join(homedir(), '.uniweb')
+}
+
+/** True when a stored session's `expiresAt` is in the past (absent → never expires). */
+export function isExpired(auth) {
+  if (!auth?.expiresAt) return false
+  return new Date(auth.expiresAt) < new Date()
+}
 
 /**
  * Path to the register-scoped credential file (~/.uniweb/registry-auth.json).
