@@ -85,10 +85,10 @@ export async function runtime(args = []) {
   // the set is absent or incomplete (a worker without shims can't resolve react).
   if (!hasWorkerRuntime(files)) {
     say.warn("dist/worker-runtime.js is missing — the SSR isolate bundle won't be uploaded.")
-    say.dim('JIT prerender needs it; it comes from the runtime worker-bundling step (see /deploy-runtime).')
+    say.dim('Build it first: `pnpm build:worker` in @uniweb/runtime (after `pnpm build`).')
   } else if (!hasShims(files)) {
     say.warn('dist/worker-runtime.js is present but dist/shims/ is missing — the SSR isolate set is incomplete.')
-    say.dim('The isolate resolves react/jsx-runtime/@uniweb/core through those shims; re-run the worker-bundling step.')
+    say.dim('The isolate resolves react/jsx-runtime/@uniweb/core through those shims; re-run `pnpm build:worker`.')
   }
 
   if (dryRun) {

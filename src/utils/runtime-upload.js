@@ -8,7 +8,7 @@
  * The runtime is a SYSTEM artifact — the backend gates this route to **@std
  * members** (a non-@std bearer 403s). Versioned by version alone (no scope/name).
  *
- * Artifact set (built by `pnpm build` in framework/runtime + the worker bundle):
+ * Artifact set (built by `pnpm build` then `pnpm build:worker` in @uniweb/runtime):
  *   - dist/app/**            → /gateway/runtime/{version}/...        (browser SPA:
  *                              _importmap/, assets/, index.html, manifest.json)
  *   - dist/worker-runtime.js → /gateway/runtime/{version}/worker-runtime.js
