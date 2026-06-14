@@ -122,7 +122,9 @@ export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgr
     onProgress(`↑ ${src.path}`)
     let putRes
     try {
-      putRes = await fetch(up.url, { method: up.method || 'PUT', headers, body: readFileSync(src.diskPath) })
+      // The plan's url may be origin-relative (direct mode → uniwebd) or
+      // absolute (presigned → storage); new URL() resolves both.
+      putRes = await fetch(new URL(up.url, origin), { method: up.method || 'PUT', headers, body: readFileSync(src.diskPath) })
     } catch (err) {
       failed.push({ path: src.path, status: 0, detail: err.message })
       continue

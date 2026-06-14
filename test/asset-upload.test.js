@@ -74,7 +74,7 @@ test('uploadSiteAssets plans /dev/assets, PUTs each, returns the localUrl→{id,
             id: f.sha256, // backend: id == lowercase-hex sha256
             ext: f.path.split('.').pop(),
             method: 'PUT',
-            url: `http://localhost:8080/dev/assets/blob/${f.sha256}`,
+            url: `/dev/assets/blob/${f.sha256}`, // origin-relative, like the real backend
             headers: { 'content-type': f.content_type },
           })),
         }),
@@ -93,7 +93,10 @@ test('uploadSiteAssets plans /dev/assets, PUTs each, returns the localUrl→{id,
     assert.equal(result.uploaded.length, 2)
     assert.deepEqual(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], { id: sha('WEBPDATA'), ext: 'webp' })
     assert.deepEqual(result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], { id: sha('<svg/>'), ext: 'svg' })
-    assert.equal(calls.filter((c) => c.method === 'PUT').length, 2)
+    const puts = calls.filter((c) => c.method === 'PUT')
+    assert.equal(puts.length, 2)
+    // origin-relative plan urls must resolve to absolute before fetch (Node can't fetch a relative url)
+    assert.ok(puts.every((c) => c.url.startsWith('http://localhost:8080/dev/assets/blob/')), 'relative plan url resolved against origin')
   } finally {
     globalThis.fetch = realFetch
     rmSync(dir, { recursive: true, force: true })

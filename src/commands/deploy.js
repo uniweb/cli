@@ -257,6 +257,7 @@ export async function deploy(args = []) {
 async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRun, resolved, deployYml, autoSave }) {
   const client = new BackendClient({
     originFlag: readFlagValue(args, '--backend') || readFlagValue(args, '--registry'),
+    token: readFlagValue(args, '--token'),
     args,
     command: 'Deploying',
   })
