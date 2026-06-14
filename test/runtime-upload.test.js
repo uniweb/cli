@@ -1,8 +1,8 @@
 /**
  * Runtime registration (`uniweb runtime register`) — unit-pins runtime-upload.js
- * against the ASSUMED /dev/registry/runtime contract: collect (dist/app/** +
- * worker-runtime.js + shims/*.js, *.map excluded) → plan → PUT-per-file (mode-aware
- * auth + sha256), serve_base back. Mock-backed fetch; a temp dist/ as the real artifact.
+ * against the AGREED /dev/runtime contract (collab 2026-06-14): collect (dist/app/**
+ * + worker-runtime.js + shims/*.js, *.map excluded, MANIFEST LAST) → plan →
+ * PUT-per-file (mode-aware auth + sha256), serve_base back. Mock fetch; temp dist/.
  */
 
 import { test } from 'node:test'
@@ -47,6 +47,7 @@ test('collectRuntimeFiles gathers dist/app/** + worker-runtime.js, excludes *.ma
     assert.equal(files.find((f) => f.path === 'index.html').content_type, 'text/html')
     assert.equal(files.find((f) => f.path === 'manifest.json').sha256, sha('{"v":1}'))
     assert.equal(hasWorkerRuntime(files), true)
+    assert.equal(files[files.length - 1].path, 'manifest.json', 'manifest uploads LAST (atomic version advertise)')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -83,6 +84,7 @@ test('collectRuntimeFiles gathers dist/shims/*.js as part of the ssr-edge set, e
     assert.ok(!files.some((f) => f.path.endsWith('.map')), 'shim sourcemaps excluded')
     assert.equal(files.find((f) => f.path === 'shims/react.js').content_type, 'text/javascript')
     assert.equal(hasShims(files), true)
+    assert.equal(files[files.length - 1].path, 'manifest.json', 'manifest still LAST even with worker+shims appended after it')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -99,13 +101,13 @@ test('hasShims is false when shims/ is absent (incomplete ssr-edge set)', () => 
   }
 })
 
-test('uploadRuntime plans /dev/registry/runtime, PUTs each (relative url resolved + auth), returns serveBase', async () => {
+test('uploadRuntime plans /dev/runtime, PUTs each (relative url resolved + auth), returns serveBase', async () => {
   const { dir, distDir } = makeDist()
   const calls = []
   const realFetch = globalThis.fetch
   globalThis.fetch = async (url, opts = {}) => {
     calls.push({ url: String(url), method: opts.method || 'GET', headers: opts.headers || {} })
-    if (String(url).endsWith('/dev/registry/runtime')) {
+    if (String(url).endsWith('/dev/runtime')) {
       const body = JSON.parse(opts.body)
       assert.equal(body.version, '0.9.0')
       assert.ok(body.files.every((f) => f.sha256 && f.path))
@@ -115,7 +117,7 @@ test('uploadRuntime plans /dev/registry/runtime, PUTs each (relative url resolve
           mode: 'direct',
           serve_base: '/gateway/runtime/0.9.0/',
           uploads: body.files.map((f) => ({
-            path: f.path, method: 'PUT', url: `/dev/registry/runtime/blob/${f.sha256}`, headers: {},
+            path: f.path, method: 'PUT', url: `/dev/runtime/blob/${f.sha256}`, headers: {},
           })),
         }),
       }
@@ -131,7 +133,7 @@ test('uploadRuntime plans /dev/registry/runtime, PUTs each (relative url resolve
     assert.equal(result.uploaded.length, 4)
     assert.equal(result.serveBase, '/gateway/runtime/0.9.0/')
     const puts = calls.filter((c) => c.method === 'PUT')
-    assert.ok(puts.every((c) => c.url.startsWith('http://localhost:8080/dev/registry/runtime/blob/')), 'relative url resolved')
+    assert.ok(puts.every((c) => c.url.startsWith('http://localhost:8080/dev/runtime/blob/')), 'relative url resolved')
   } finally {
     globalThis.fetch = realFetch
     rmSync(dir, { recursive: true, force: true })
@@ -158,7 +160,7 @@ test('presigned mode attaches no auth header on the PUT', async () => {
   let sawAuth = false
   const realFetch = globalThis.fetch
   globalThis.fetch = async (url, opts = {}) => {
-    if (String(url).endsWith('/dev/registry/runtime')) {
+    if (String(url).endsWith('/dev/runtime')) {
       const body = JSON.parse(opts.body)
       return {
         ok: true, status: 200,

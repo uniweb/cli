@@ -1,17 +1,18 @@
 /**
- * uniweb runtime register — upload a built `@uniweb/runtime` to the backend's
- * runtime registry, served at `/gateway/runtime/{version}/`. The runtime is a
- * SYSTEM artifact: the backend gates this to **@std members** (a non-@std bearer
- * 403s). Foundations pin a runtime version (`dist/runtime-pin.json`); that version
- * must be registered here, or `uniweb register` of such a foundation fails.
+ * uniweb runtime register — upload a built `@uniweb/runtime` to the backend so it
+ * can serve the runtime version. The runtime is a SYSTEM artifact: registering it
+ * requires **@std membership** (a non-@std bearer 403s). Foundations pin a runtime
+ * version (`dist/runtime-pin.json`); that version must be registered, or `uniweb
+ * register` of such a foundation fails.
  *
- * Build-our-side-first: the backend route (`POST /dev/registry/runtime`) is
- * ASSUMED — reconcile with the backend before relying on it. Contract +
- * artifact set: utils/runtime-upload.js.
+ * Contract AGREED with the backend (2026-06-14): `POST /dev/runtime`, @std-gated,
+ * manifest-last. Wire + the two-half artifact set (SPA + ssr-edge isolate, the
+ * orchestrator stays platform-owned): utils/runtime-upload.js.
  *
  * Usage:
  *   uniweb runtime register                  From framework/runtime (or --path <dir>)
  *   uniweb runtime register --path <dir>     The @uniweb/runtime package dir
+ *   uniweb runtime register --version <v>    Override dist/app/manifest.json's version
  *   uniweb runtime register --backend <url>  Override the backend origin
  *   uniweb runtime register --token <bearer> Auth bearer (skips `uniweb login`)
  *   uniweb runtime register --dry-run        Print the version + file plan; upload nothing
@@ -66,20 +67,28 @@ export async function runtime(args = []) {
     say.dim('Run from framework/runtime, or pass --path <dir>.')
     return { exitCode: 2 }
   }
-  let version
-  try {
-    version = JSON.parse(readFileSync(join(runtimeDir, 'package.json'), 'utf8')).version
-  } catch (err) {
-    say.err(`Could not read package.json: ${err.message}`)
-    return { exitCode: 2 }
-  }
-
   const distDir = join(runtimeDir, 'dist')
   const files = collectRuntimeFiles(distDir)
   if (!files.length) {
     say.err('No built runtime found (dist/app/).')
     say.dim('Build it first: `pnpm build` in framework/runtime.')
     return { exitCode: 2 }
+  }
+
+  // Version from the SPA build's manifest (the backend keys the version on it);
+  // --version overrides, parity with `uniwebd runtime install --version`.
+  let version = readFlagValue(rest, '--version')
+  if (!version) {
+    try {
+      version = JSON.parse(readFileSync(join(distDir, 'app', 'manifest.json'), 'utf8')).version
+    } catch (err) {
+      say.err(`Could not read dist/app/manifest.json: ${err.message}`)
+      return { exitCode: 2 }
+    }
+    if (!version) {
+      say.err('dist/app/manifest.json has no "version" field — rebuild the runtime.')
+      return { exitCode: 2 }
+    }
   }
   // The ssr-edge artifact is a SET: worker-runtime.js + its shims/*.js. Warn when
   // the set is absent or incomplete (a worker without shims can't resolve react).

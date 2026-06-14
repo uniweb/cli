@@ -1,33 +1,38 @@
 /**
  * Runtime registration — the framework half of `uniweb runtime register`.
  *
- * Uploads a built `@uniweb/runtime` to the backend's runtime registry, served at
- * `/gateway/runtime/{version}/`. Mirrors the foundation code lane
- * (utils/code-upload.js): plan → PUT-per-file (content-addressed), one auth rule.
+ * Uploads a built `@uniweb/runtime` to the backend so it can serve the runtime
+ * version. Mirrors the foundation code lane (utils/code-upload.js): plan →
+ * PUT-per-file, one mode-aware auth rule.
  *
- * The runtime is a SYSTEM artifact — the backend gates this route to **@std
- * members** (a non-@std bearer 403s). Versioned by version alone (no scope/name).
+ * The runtime is a SYSTEM artifact — registering it requires **@std membership**
+ * (a non-@std bearer 403s). Versioned by version alone (no scope/name).
  *
- * Artifact set (built by `pnpm build` then `pnpm build:worker` in @uniweb/runtime):
- *   - dist/app/**            → /gateway/runtime/{version}/...        (browser SPA:
- *                              _importmap/, assets/, index.html, manifest.json)
- *   - dist/worker-runtime.js → /gateway/runtime/{version}/worker-runtime.js
- *                              (the SSR-isolate bundle)
- *   - dist/shims/*.js        → /gateway/runtime/{version}/shims/...  (the SSR
- *                              isolate's globalThis-bridge shims: react,
- *                              react/jsx-runtime, @uniweb/core — a SET with the
- *                              worker bundle; the isolate can't resolve react
- *                              without them)
+ * A runtime version is ONE unit with two halves, BOTH uploaded here (the backend
+ * stages the bytes; where/how it serves them is its decision — we don't assume a
+ * serve path, we read `serve_base` back from the plan):
+ *   - dist/app/**          the browser SPA (_importmap/, assets/, index.html,
+ *                          manifest.json) — boots + client-renders a site.
+ *   - dist/worker-runtime.js + dist/shims/*.js   the ssr-edge isolate set (4
+ *                          files): the inlined SSR bundle + its 3 globalThis-bridge
+ *                          shims (react, react/jsx-runtime, @uniweb/core). The
+ *                          isolate can't resolve react without the shims.
  *
- * ASSUMED backend contract — built our-side-first (Diego, 2026-06-14); reconcile
- * with the backend before relying on it (the delivery-lane design named a
- * `/dev/registry/runtime` route as "decided-but-deferred"; this is it):
- *   PLAN   POST {apiBase}/dev/registry/runtime
+ * NOT uploaded: the SSR *orchestrator* (the isolate's `entry.js` boot module). It's
+ * a serverless-isolate fetch handler encoding the platform's isolate dispatch
+ * protocol — owned by the platform's SSR layer, not a framework artifact. The
+ * framework ships the render API the orchestrator imports (worker-runtime.js
+ * exports initPrerenderForLocale / renderPage / injectPageContent / hydrateDataStore).
+ *
+ * Contract — AGREED with the backend (2026-06-14):
+ *   PLAN   POST {apiBase}/dev/runtime
  *          { version, files: [{ path, content_type, size, sha256 }] }
  *          → { mode, expires_in, serve_base, uploads: [{ path, method, url, headers }] }
- *          bearer; @std membership required (403 otherwise).
+ *          bearer; @std required (else 403, RFC7807 problem+json, op "runtime-register").
  *   UPLOAD PUT each file (direct → bearer; presigned → none; x-uniweb-sha256).
- *   SERVE  GET /gateway/runtime/{version}/{path}  (anonymous, immutable, CORS).
+ *          MANIFEST LAST — discovery keys a version's existence on manifest.json,
+ *          so a partial upload never advertises a half-delivered version.
+ *   SERVE  the backend's call (read `serve_base` from the plan; we never construct it).
  */
 
 import { createHash } from 'node:crypto'
@@ -37,6 +42,7 @@ import { contentTypeFor } from './code-upload.js'
 
 const WORKER_RUNTIME = 'worker-runtime.js'
 const SHIMS_DIR = 'shims'
+const MANIFEST = 'manifest.json'
 
 function fileEntry(diskPath, path) {
   const bytes = readFileSync(diskPath)
@@ -80,7 +86,12 @@ export function collectRuntimeFiles(distDir) {
   // can't resolve `react` without them — so collect the whole dir when present.
   const shimsDir = join(distDir, SHIMS_DIR)
   if (existsSync(shimsDir)) walk(shimsDir, SHIMS_DIR)
-  return files
+  // MANIFEST LAST: the backend keys a version's existence on manifest.json (no
+  // server confirm step), so uploading it last means a partial delivery never
+  // advertises a half-built version. Reorder regardless of walk order.
+  const manifest = files.filter((f) => f.path === MANIFEST)
+  if (!manifest.length) return files
+  return [...files.filter((f) => f.path !== MANIFEST), ...manifest]
 }
 
 /** True when the worker SSR bundle is in the collected set. */
@@ -105,7 +116,7 @@ export async function uploadRuntime({ apiBase, token, version, distDir, files, o
   if (!list.length) return { mode: 'none', uploaded: [], failed: [], serveBase: null }
 
   const origin = apiBase.replace(/\/$/, '')
-  const planRes = await fetch(`${origin}/dev/registry/runtime`, {
+  const planRes = await fetch(`${origin}/dev/runtime`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({
