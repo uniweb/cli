@@ -33,7 +33,6 @@ import prompts from 'prompts'
 // Same pattern as `build` and `docs`.
 import { i18n } from './commands/i18n.js'
 import { inspect } from './commands/inspect.js'
-import { login } from './commands/login.js'
 import { invite } from './commands/invite.js'
 import { handoff } from './commands/handoff.js'
 import { update } from './commands/update.js'
@@ -134,7 +133,7 @@ function getCliVersion() {
 // install that's the whole point; delegating to the project-local copy
 // would align the project to the version it already has, i.e. a no-op.
 const STANDALONE_COMMANDS = new Set([
-  'create', 'clone', '--help', '-h', '--version', '-v', 'login', 'update',
+  'create', 'clone', '--help', '-h', '--version', '-v', 'login', 'logout', 'update',
 ])
 
 /**
@@ -701,18 +700,27 @@ async function main() {
     return
   }
 
-  // Handle login command. Default targets the NEW backend (username/password);
-  // `--legacy` runs the old browser/social flow (still used by publish/deploy
-  // internally via ensureAuth, so it stays reachable).
+  // Handle login command — the backend (username/password · paste a token ·
+  // --token <bearer>). Origin from --backend/--registry > UNIWEB_REGISTER_URL >
+  // default, the SAME resolver register/push/pull/deploy use, so a session and
+  // the commands that reuse it always target one backend.
   if (command === 'login') {
     const loginArgs = args.slice(1)
-    if (loginArgs.includes('--legacy')) {
-      await login(loginArgs.filter((a) => a !== '--legacy'))
-    } else {
-      const { getRegistryApiBaseUrl } = await import('./utils/config.js')
-      const { runRegistryLogin } = await import('./utils/registry-auth.js')
-      await runRegistryLogin({ apiBase: getRegistryApiBaseUrl(), args: loginArgs })
-    }
+    const { resolveBackendOrigin } = await import('./backend/client.js')
+    const { readFlagValue } = await import('./utils/args.js')
+    const { runRegistryLogin } = await import('./utils/registry-auth.js')
+    const originFlag = readFlagValue(loginArgs, '--backend') || readFlagValue(loginArgs, '--registry')
+    await runRegistryLogin({ apiBase: resolveBackendOrigin(originFlag), args: loginArgs })
+    return
+  }
+
+  // Handle logout command — clear the stored backend session.
+  if (command === 'logout') {
+    const { clearRegistryAuth, getRegistryAuthPath } = await import('./utils/registry-auth.js')
+    const { existsSync } = await import('node:fs')
+    const had = existsSync(getRegistryAuthPath())
+    await clearRegistryAuth()
+    console.log(had ? '\x1b[32m✓\x1b[0m Logged out (cleared the stored session).' : 'Not logged in — nothing to clear.')
     return
   }
 
@@ -1330,16 +1338,19 @@ ${colors.cyan}${colors.bright}uniweb login${colors.reset} ${colors.dim}— Log i
 ${colors.bright}Usage:${colors.reset}
   uniweb login [options]
 
-Opens a browser to www.uniweb.app for OAuth-style login, then captures
-the token via a loopback callback. Falls back to a paste-token prompt
-if the browser flow fails.
+Authenticates with the backend and stores a session at
+~/.uniweb/registry-auth.json. Every backend command (register, push, pull,
+clone, deploy) reuses it. Interactively, pick username/password or paste a token.
 
 ${colors.bright}Options:${colors.reset}
-  --backend <url>    Override the auth backend (default: https://www.uniweb.app)
+  --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
+  --token <bearer>   Seed + verify a session from a bearer token (non-interactive)
+  --password         Force the username/password method
+  --token-paste      Force the paste-a-token prompt
 
-In non-interactive mode (CI / no TTY / --non-interactive), this command
-errors out — set the \`UNIWEB_TOKEN\` env var instead, or run \`login\`
-once on a machine with a browser to seed ~/.uniweb/auth.json.
+In non-interactive mode (CI / no TTY), pass \`--token <bearer>\`, or set
+\`UNIWEB_USERNAME\` + \`UNIWEB_PASSWORD\`, or set \`UNIWEB_TOKEN\` (used per-command,
+not stored). Run \`uniweb logout\` to clear the stored session.
 `,
     invite: `
 ${colors.cyan}${colors.bright}uniweb invite${colors.reset} ${colors.dim}— Create a foundation invite for a client${colors.reset}

@@ -334,6 +334,29 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
   const { isNonInteractive } = await import('./interactive.js')
   const nonInteractive = isNonInteractive(args)
 
+  // `--token <bearer>` seeds + verifies a session non-interactively (verified
+  // against /dev/auth/me before it's stored, so an invalid token fails loudly
+  // instead of poisoning the session file). Distinct from the per-command
+  // `--token` (ephemeral, never stored) and from UNIWEB_TOKEN env.
+  const { readFlagValue } = await import('./args.js')
+  const tokenFlag = readFlagValue(args, '--token')
+  if (tokenFlag) {
+    let account
+    try {
+      account = await fetchMe({ apiBase, token: tokenFlag })
+    } catch (err) {
+      console.error(`\x1b[31m✗\x1b[0m Token rejected by ${apiBase}: ${err.message}`)
+      process.exit(1)
+    }
+    const record = { token: tokenFlag }
+    if (account?.uuid) record.uuid = account.uuid
+    if (account?.username) record.username = account.username
+    if (account?.handle) record.handle = account.handle
+    await writeRegistryAuth(record)
+    console.log(`\x1b[32m✓\x1b[0m Logged in${account?.username ? ` as \x1b[1m${account.username}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}`)
+    return record
+  }
+
   let method = args.includes('--browser') ? 'browser'
     : args.includes('--password') ? 'password'
     : args.includes('--token-paste') ? 'token-paste'
