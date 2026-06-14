@@ -51,6 +51,22 @@ export function resolveBackendOrigin(flag) {
   return getRegistryApiBaseUrl()
 }
 
+/**
+ * The fallback capability doc when `GET /dev/config` is absent or unreachable
+ * (an older backend, or no backend at all). Keeps the client non-breaking: the
+ * bases mirror a self-serve dev backend, `assetBase` falls back to the historical
+ * production CDN host so published-site asset resolution is unchanged, and
+ * `runtime.installed` is empty so runtime resolution requires an explicit pin.
+ */
+export const DISCOVERY_DEFAULTS = {
+  gatewayBase: '/gateway',
+  assetBase: 'https://assets.uniweb.app/',
+  auth: { loginPath: '/dev/auth/login', required: true },
+  delivery: { deploy: true, publish: true, broker: 'self-serve' },
+  assets: { supported: false },
+  runtime: { installed: [] },
+}
+
 export class BackendClient {
   /**
    * @param {object} [opts]
@@ -70,6 +86,7 @@ export class BackendClient {
     this._args = args
     this._command = command
     this._fetch = fetchImpl || ((url, init) => globalThis.fetch(url, init))
+    this._discovery = null
   }
 
   /**
@@ -118,6 +135,30 @@ export class BackendClient {
       else if (body instanceof Uint8Array || Buffer.isBuffer(body)) h['Content-Type'] = 'application/zip'
     }
     return this._fetch(url.href, { method, headers: h, body })
+  }
+
+  // ── Discovery ─────────────────────────────────────────────────────────────────
+
+  /**
+   * GET /dev/config — the anonymous capability/handshake document. The one route
+   * that answers before login (`auth: false`). Lazy + cached for the client's
+   * lifetime; a missing route or any transport/parse error falls back to
+   * DISCOVERY_DEFAULTS (non-breaking — an older backend still works). Lets the
+   * CLI hardcode nothing about a backend but its origin and discover the rest:
+   * `gatewayBase`/`assetBase` (serve/asset roots — relative ⇒ relative-to-origin),
+   * `auth`, `delivery` (deploy/publish? broker), `assets` (lane built yet?),
+   * `runtime.installed` (the default-runtime source replacing the old /runtime/latest).
+   * @returns {Promise<object>}
+   */
+  async discover() {
+    if (this._discovery) return this._discovery
+    try {
+      const res = await this.request('/dev/config', { auth: false })
+      this._discovery = res.ok ? await res.json() : { ...DISCOVERY_DEFAULTS }
+    } catch {
+      this._discovery = { ...DISCOVERY_DEFAULTS }
+    }
+    return this._discovery
   }
 
   // ── Identity ────────────────────────────────────────────────────────────────
@@ -205,6 +246,60 @@ export class BackendClient {
   /** GET /dev/site/folder/pull/{uuid} — the folder lane (folder + record documents). */
   async pullFolder(uuid) {
     return this.request(`/dev/site/folder/pull/${encodeURIComponent(uuid)}`)
+  }
+
+  // ── Delivery: deploy + site publish ─────────────────────────────────────────────
+
+  /**
+   * POST /dev/deploy — dumb, file-built delivery. Body is the deploy payload (the
+   * runtime-init JSON `build-site-data.js` produces — foundation, runtimeVersion,
+   * theme, languages, locales, optional dataFiles/searchFiles) plus an optional
+   * `site_uuid`. First deploy of a never-synced site omits it → the backend mints
+   * a uuid and returns it for write-back to deploy.yml; later deploys resend it so
+   * `/gateway/site/{uuid}/` stays stable. Returns the raw Response so the caller
+   * messages its own errors and reads `{ site_uuid, url, locales }` on 200.
+   * @param {object} payload - the deploy payload (universal currency)
+   * @param {object} [opts]
+   * @param {string} [opts.siteUuid] - a previously-minted delivery uuid
+   * @returns {Promise<Response>}
+   */
+  async deploy(payload, { siteUuid } = {}) {
+    const body = siteUuid ? { ...payload, site_uuid: siteUuid } : payload
+    return this.request('/dev/deploy', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  /**
+   * POST /dev/site/publish/{uuid} — CMS-publish a synced site (make its CURRENT
+   * backend state live; it does NOT push local files). `{uuid}` is the site-content
+   * uuid (`site.yml::$uuid`); a never-synced site 404s (sync first, or use deploy).
+   * The CLI knows the runtime from its build; the body carries it snake-cased per
+   * the route contract. Returns the raw Response ({ deploy_uuid, url,
+   * published_folder_uuid, status } on 200).
+   * @param {string} uuid - the site-content uuid
+   * @param {object} opts
+   * @param {string} opts.runtimeVersion
+   * @param {string[]} [opts.languages]
+   * @returns {Promise<Response>}
+   */
+  async publishSite(uuid, { runtimeVersion, languages } = {}) {
+    // Runtime rides as a query param (?runtime=<version>) per the shipped /dev
+    // route (D3, "request-carried"), NOT the body. Languages, when present, go in
+    // the body; absent → no body (the route only requires the runtime).
+    return this.request(`/dev/site/publish/${encodeURIComponent(uuid)}`, {
+      method: 'POST',
+      query: { runtime: runtimeVersion },
+      ...(languages ? { body: JSON.stringify({ languages }) } : {}),
+    })
+  }
+
+  /**
+   * POST /dev/site/unpublish/{uuid} — drop the published-folder gate so /gateway
+   * stops serving the site's dynamic content. Returns the raw Response ({ was_published }).
+   * @param {string} uuid - the site-content uuid
+   * @returns {Promise<Response>}
+   */
+  async unpublishSite(uuid) {
+    return this.request(`/dev/site/unpublish/${encodeURIComponent(uuid)}`, { method: 'POST' })
   }
 }
 

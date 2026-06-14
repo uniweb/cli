@@ -678,6 +678,15 @@ async function main() {
     return
   }
 
+  // Handle release command — CMS-publish a SYNCED site (POST /dev/site/publish).
+  // Distinct from `deploy` (file-built host) and `publish` (foundation catalog).
+  // Interim name; graduates to `publish` when foundation-publish folds into register.
+  if (command === 'release') {
+    const { release } = await importProjectCommand('./commands/release.js')
+    const result = await release(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
+  }
+
   // Handle export command (dynamic import — depends on @uniweb/build)
   if (command === 'export') {
     const { exportSite } = await importProjectCommand('./commands/export.js')
