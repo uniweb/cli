@@ -17,8 +17,6 @@
  * A site that was never pushed 404s — push it first, or use `uniweb deploy` for a
  * file-only site.
  *
- * (Was `uniweb release` during the rollout; `release` remains a deprecated alias.)
- *
  * Usage:
  *   uniweb publish                       Publish the synced site's current state
  *   uniweb publish --backend <url>       Override the backend origin
@@ -174,9 +172,5 @@ export async function publish(args = []) {
   if (result.deploy_uuid) say.dim(`deploy: ${result.deploy_uuid}`)
   return { exitCode: 0 }
 }
-
-// `release` was the rollout name; keep it as a deprecated alias so existing
-// scripts keep working (the router prints a one-line deprecation note).
-export const release = publish
 
 export default publish

@@ -664,12 +664,8 @@ async function main() {
   }
 
   // Handle publish command — CMS-publish a SYNCED site (POST /dev/site/publish).
-  // `release` is the deprecated rollout alias. Distinct from `deploy` (file-built
-  // host) and `register` (foundation publishing — formerly `uniweb publish`).
-  if (command === 'publish' || command === 'release') {
-    if (command === 'release') {
-      console.error('\x1b[33m⚠\x1b[0m `uniweb release` was renamed to `uniweb publish` — please update your scripts.')
-    }
+  // Distinct from `deploy` (file-built host) and `register` (foundation publishing).
+  if (command === 'publish') {
     const { publish } = await importProjectCommand('./commands/publish.js')
     const result = await publish(args.slice(1))
     process.exit(result?.exitCode ?? 0)
