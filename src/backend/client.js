@@ -31,6 +31,7 @@ import { getRegistryApiBaseUrl } from '../utils/config.js'
 import { ensureRegistryAuth, fetchMe } from '../utils/registry-auth.js'
 import { fetchOrgs as fetchOrgsImpl, createOrg as createOrgImpl } from '../utils/registry-orgs.js'
 import { uploadFoundationCode } from '../utils/code-upload.js'
+import { uploadSiteAssets } from '../utils/asset-upload.js'
 
 /**
  * Resolve the backend origin: an explicit flag value wins; otherwise defer to
@@ -300,6 +301,17 @@ export class BackendClient {
    */
   async unpublishSite(uuid) {
     return this.request(`/dev/site/unpublish/${encodeURIComponent(uuid)}`, { method: 'POST' })
+  }
+
+  /**
+   * Deliver a site's processed assets (plan → PUT-per-file) to the backend's
+   * content-addressed store. Thin pass-through to utils/asset-upload.js with this
+   * client's origin + token; returns the `localUrl → { id, ext }` rewrite map the
+   * deploy step turns into durable `{assetBase}dist/{id}/base.{ext}` serve URLs.
+   * @param {object} opts - { distDir, files?, onProgress? }
+   */
+  async uploadSiteAssets(opts) {
+    return uploadSiteAssets({ apiBase: this.origin, token: await this.token(), ...opts })
   }
 }
 

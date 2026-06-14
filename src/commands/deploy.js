@@ -50,11 +50,12 @@ import { resolve, join, relative } from 'node:path'
 import { execSync } from 'node:child_process'
 import yaml from 'js-yaml'
 
-import { loadDeployYml, resolveTarget, recordLastDeploy } from '@uniweb/build/site'
+import { loadDeployYml, resolveTarget, recordLastDeploy, rewriteSiteContentPaths } from '@uniweb/build/site'
 import { promptForHost } from '../utils/host-prompt.js'
 import { readFlagValue } from '../utils/args.js'
 import { parseBoolEnv } from '../utils/env.js'
 import { BackendClient } from '../backend/client.js'
+import { collectSiteAssets } from '../utils/asset-upload.js'
 
 import {
   findWorkspaceRoot,
@@ -348,11 +349,42 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
   const searchFiles = await collectSearchFiles(distDir)
   if (Object.keys(searchFiles).length) say.dim(`Search indexes : ${Object.keys(searchFiles).length} (_search/ JSON)`)
 
-  // Assets: the backend's asset lane is a named follow-on (config.assets.supported).
-  // Until it ships, content keeps its build-resolved refs and image-free sites deploy
-  // fully. (Asset upload + the ASSET_BASE_URL parameterization land with the lane.)
+  // Assets: when the backend advertises the lane (config.assets.supported), upload
+  // the site's processed media (dist/assets/*) to the content-addressed store and
+  // rewrite the content's local refs to durable serve URLs. Image-free sites
+  // collect nothing and deploy unchanged; an un-advertised lane is skipped.
+  // Contract: kb/framework/build/delivery-lane.md §Assets (channel f90d).
   if (config?.assets && config.assets.supported === false) {
     say.dim('Asset lane not yet available on this backend — skipping upload (image-free deploy).')
+  } else {
+    const assetFiles = collectSiteAssets(distDir)
+    if (assetFiles.length) {
+      say.info(`Uploading ${assetFiles.length} asset(s)…`)
+      let assetResult
+      try {
+        assetResult = await client.uploadSiteAssets({ distDir, files: assetFiles, onProgress: (m) => say.dim(`  ${m}`) })
+      } catch (err) {
+        say.err(`Asset upload failed: ${err.message}`)
+        process.exit(1)
+      }
+      if (assetResult.failed.length) {
+        say.err(`${assetResult.failed.length} asset(s) failed to upload:`)
+        for (const f of assetResult.failed) say.dim(`  ${f.path} — HTTP ${f.status} ${f.detail}`)
+        process.exit(1)
+      }
+      // Build localUrl → durable serve URL, then re-run the build's own rewrite
+      // over each locale's content (image nodes, marks, dataBlocks, param fields).
+      // assetBase comes from /dev/config (origin-relative in dev → prepend origin;
+      // absolute CDN in prod → used verbatim).
+      const urlMapping = {}
+      for (const [localUrl, { id, ext }] of Object.entries(assetResult.assetsByLocalUrl)) {
+        urlMapping[localUrl] = buildAssetUrl(client.origin, config.assetBase, id, ext)
+      }
+      for (const lang of Object.keys(localeContents)) {
+        localeContents[lang] = rewriteSiteContentPaths(localeContents[lang], urlMapping)
+      }
+      say.dim(`Assets         : ${assetResult.uploaded.length} uploaded (${assetResult.mode}) → ${config.assetBase}`)
+    }
   }
 
   const payload = {
@@ -436,6 +468,15 @@ function absolutizeServeUrl(origin, url) {
   if (!url || typeof url !== 'string') return null
   if (/^https?:\/\//.test(url)) return url
   return `${origin.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`
+}
+
+// Build a durable asset serve URL from /dev/config's assetBase. Origin-relative
+// (`/gateway/asset/` in dev) → prepend the backend origin; absolute (a prod CDN)
+// → used verbatim. Shape: {assetBase}dist/{id}/base.{ext} — basename literally
+// `base`, {ext} the source extension the plan echoed.
+function buildAssetUrl(origin, assetBase, id, ext) {
+  const base = /^https?:\/\//.test(assetBase) ? assetBase : `${origin}${assetBase}`
+  return `${base.replace(/\/$/, '')}/dist/${id}/base.${ext}`
 }
 
 // ─── Static-host deploy (S3+CloudFront, etc.) ─────────────────
