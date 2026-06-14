@@ -25,6 +25,11 @@
  *   - `meta/**` is EXCLUDED from the upload set: schema custody is the
  *     registry's entity store, and the gateway serves anonymously while
  *     schemas are authenticated content everywhere else (no public catalog)
+ *   - `*.map` sourcemaps are EXCLUDED: they are dev-only debugging artifacts,
+ *     not part of the CDN-served runtime. (A Shiki-heavy foundation emits a
+ *     map per highlighted-grammar chunk, which is what pushes a build past the
+ *     plan step's per-version file cap — the cap is an abuse guard, the maps
+ *     simply don't belong on the CDN.)
  *   - a registered version is immutable, code included — changed bytes mean
  *     a new version (re-PUTting identical bytes is a safe no-op)
  */
@@ -67,7 +72,8 @@ export const ENTRY_PATH = 'entry.js'
 
 /**
  * Walk a built dist/ and produce the upload file list.
- * Excludes `meta/**` (see header). Paths are POSIX-relative to distDir.
+ * Excludes `meta/**` and `*.map` sourcemaps (see header). Paths are
+ * POSIX-relative to distDir.
  *
  * @param {string} distDir
  * @returns {Array<{ path: string, content_type: string, size: number, sha256: string }>}
@@ -83,6 +89,7 @@ export function collectDistFiles(distDir) {
         if (rel === 'meta') continue // schema custody + no-public-catalog
         walk(full, rel)
       } else if (st.isFile()) {
+        if (rel.endsWith('.map')) continue // sourcemaps: dev-only, not CDN-served
         const bytes = readFileSync(full)
         files.push({
           path: rel,

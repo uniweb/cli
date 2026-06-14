@@ -32,7 +32,7 @@ function makeDist() {
   return dir
 }
 
-test('collectDistFiles walks dist, excludes meta/, hashes and types files', () => {
+test('collectDistFiles walks dist, excludes meta/ and *.map, hashes and types files', () => {
   const dir = makeDist()
   try {
     const files = collectDistFiles(dir)
@@ -40,10 +40,10 @@ test('collectDistFiles walks dist, excludes meta/, hashes and types files', () =
     assert.deepEqual(paths.sort(), [
       'assets/style.css',
       'entry.js',
-      'entry.js.map',
       'runtime-pin.json',
     ])
     assert.ok(!paths.some((p) => p.startsWith('meta/')), 'meta/ excluded')
+    assert.ok(!paths.some((p) => p.endsWith('.map')), 'sourcemaps excluded')
     const entry = files.find((f) => f.path === 'entry.js')
     assert.equal(entry.content_type, 'text/javascript')
     assert.equal(entry.size, 'export default 42\n'.length)
@@ -51,7 +51,6 @@ test('collectDistFiles walks dist, excludes meta/, hashes and types files', () =
       entry.sha256,
       createHash('sha256').update('export default 42\n').digest('hex')
     )
-    assert.equal(files.find((f) => f.path === 'entry.js.map').content_type, 'application/json')
     assert.equal(files.find((f) => f.path === 'assets/style.css').content_type, 'text/css')
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -126,7 +125,7 @@ test('uploadFoundationCode plans, PUTs entry-last, verifies in direct mode', asy
       distDir: dir,
     })
     assert.equal(result.failed.length, 0)
-    assert.equal(result.uploaded.length, 4)
+    assert.equal(result.uploaded.length, 3) // entry.js, runtime-pin.json, assets/style.css (meta/ + .map excluded)
     assert.equal(result.verified, true)
     const puts = calls.filter((c) => c.method === 'PUT').map((c) => c.url)
     assert.ok(puts[puts.length - 1].endsWith('/entry.js'), 'entry uploaded last')
