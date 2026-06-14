@@ -7,6 +7,12 @@
  * targets the legacy platform) — `register` talks to the registry over HTTP at a
  * configurable endpoint.
  *
+ * If the foundation's `dist/` is missing or version-stale (the baked schema
+ * version differs from package.json), `register` builds it first — the same
+ * build-if-stale `uniweb publish` does, so `register` is a full drop-in.
+ * Preview paths (`--dry-run`, `-o`) never write to `dist/`; they require a
+ * pre-built foundation.
+ *
  * Run from a foundation, or from a schemas-only package — a package that exports
  * schemas (e.g. `@uniweb/schemas`, any `@org/schemas`) or a bare `schemas/*.yml`
  * folder. The schemas-only package is auto-detected and submits its data schemas
@@ -29,6 +35,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 import { resolve, join } from 'node:path'
 import { buildRegistryPackage, buildSchemaOnlyPackage } from '@uniweb/build/uwx'
 import { classifyPackage, isSchemasPackage, collectStandaloneSchemas } from '@uniweb/build'
@@ -127,6 +134,47 @@ async function resolveFoundationDir(args) {
   process.exit(1)
 }
 
+/**
+ * Does the foundation's `dist/` need a (re)build before we can register it?
+ *
+ * Mirrors `uniweb publish`'s build-if-stale so `register` is a full drop-in
+ * for the foundation-publish flow. Two staleness signals:
+ *   - MISSING: no `dist/entry.js` (or the legacy `dist/foundation.js`), or no
+ *     `dist/meta/schema.json` — nothing built yet.
+ *   - STALE: the version baked into `dist/meta/schema.json::_self.version`
+ *     differs from `package.json::version` — a version bump without a rebuild,
+ *     so the artifact encodes the OLD version while the register intends the
+ *     NEW one (we'd otherwise submit a schema whose version disagrees with the
+ *     code we deliver).
+ *
+ * Returns `{ needs: false }` or `{ needs: true, reason }`.
+ *
+ * @param {string} targetDir  the foundation directory
+ */
+export function foundationNeedsBuild(targetDir) {
+  const distDir = join(targetDir, 'dist')
+  const schemaPath = join(distDir, 'meta', 'schema.json')
+  // @uniweb/build emits dist/entry.js; older builds emitted dist/foundation.js.
+  const hasArtifact = existsSync(join(distDir, 'entry.js')) || existsSync(join(distDir, 'foundation.js'))
+  if (!hasArtifact || !existsSync(schemaPath)) return { needs: true, reason: 'no dist/ found' }
+  let pkgVersion = null
+  try {
+    pkgVersion = JSON.parse(readFileSync(join(targetDir, 'package.json'), 'utf8'))?.version || null
+  } catch {
+    // No readable package.json version — fall through; a present schema with no
+    // version to compare is treated as fresh (the submit path validates names).
+  }
+  try {
+    const peek = JSON.parse(readFileSync(schemaPath, 'utf8'))
+    if (peek?._self?.version && pkgVersion && peek._self.version !== pkgVersion) {
+      return { needs: true, reason: `package.json version (${pkgVersion}) differs from built schema (${peek._self.version})` }
+    }
+  } catch {
+    return { needs: true, reason: 'dist/meta/schema.json could not be parsed' }
+  }
+  return { needs: false }
+}
+
 export async function register(args = []) {
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
@@ -165,10 +213,29 @@ export async function register(args = []) {
       return { exitCode: 2 }
     }
   } else {
+    // Build-if-stale (mirrors `uniweb publish`): a missing or version-stale
+    // dist/ gets (re)built before we read its schema. Preview paths
+    // (--dry-run / -o) must not write to dist/, so they require a pre-built
+    // foundation and say so instead of building.
+    const { needs, reason } = foundationNeedsBuild(targetDir)
+    if (needs) {
+      if (isPreview) {
+        error(`No usable build (${reason}).`)
+        log(`  Build the foundation first: ${colors.bright}uniweb build${colors.reset}`)
+        return { exitCode: 2 }
+      }
+      info(`${reason} — building the foundation first …`)
+      try {
+        execSync('npx uniweb build --target foundation', { cwd: targetDir, stdio: 'inherit' })
+      } catch (err) {
+        error(`Build failed: ${err.message}`)
+        return { exitCode: 2 }
+      }
+    }
     const schemaPath = join(targetDir, 'dist', 'meta', 'schema.json')
     if (!existsSync(schemaPath)) {
-      error('No built schema found (dist/meta/schema.json).')
-      log(`  Build the foundation first: ${colors.bright}uniweb build${colors.reset}`)
+      error('No built schema found (dist/meta/schema.json) after build.')
+      log(`  Build the foundation: ${colors.bright}uniweb build${colors.reset}`)
       return { exitCode: 2 }
     }
     try {
