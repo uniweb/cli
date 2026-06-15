@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-06-12T00:10:21.149Z",
+  "generatedAt": "2026-06-15T03:29:50.221Z",
   "packages": {
     "@uniweb/build": {
-      "version": "0.14.10",
+      "version": "0.14.11",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -43,7 +43,7 @@
       "deps": []
     },
     "@uniweb/kit": {
-      "version": "0.9.15",
+      "version": "0.9.16",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core",
@@ -69,12 +69,12 @@
       ]
     },
     "@uniweb/scene": {
-      "version": "0.1.1",
+      "version": "0.1.2",
       "path": "framework/scene",
       "deps": []
     },
     "@uniweb/schemas": {
-      "version": "0.2.2",
+      "version": "0.2.3",
       "path": "framework/schemas",
       "deps": []
     },
@@ -99,7 +99,7 @@
       "deps": []
     },
     "@uniweb/unipress": {
-      "version": "0.4.14",
+      "version": "0.4.15",
       "path": "framework/unipress",
       "deps": [
         "@uniweb/build",
@@ -147,6 +147,17 @@
         "corporate",
         "business",
         "localization"
+      ]
+    },
+    "blog": {
+      "name": "Blog",
+      "description": "A blog built on the @std/article standard schema. Markdown articles render as a card grid and as full posts via dynamic [slug] routes. The first template to use a shared standard data schema — no custom schema file needed.",
+      "tags": [
+        "blog",
+        "articles",
+        "collections",
+        "standard-schema",
+        "data-schema"
       ]
     },
     "dynamic": {
