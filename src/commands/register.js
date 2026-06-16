@@ -27,10 +27,13 @@
  *   uniweb register --schema-only        Skip the code delivery (schemas land, no dist upload)
  *   uniweb register --dry-run            Print the .uwx + the code file plan; submit nothing
  *   uniweb register -o foundation.uwx    Write the .uwx to a file; submit nothing
- *   uniweb register --registry <url>     Override the submit endpoint
+ *   uniweb register --json               Porcelain: ONE compact JSON line on stdout
+ *                                        ({ok,scope,origin,entities:[{name,uuid,version,unchanged}]}),
+ *                                        all human output to stderr — for scripted callers
+ *   uniweb register --registry <url>     Override the submit endpoint (alias: --backend)
  *   uniweb register --token <bearer>     Submit with this bearer; skips `uniweb login`
  *
- * Endpoint resolution: --registry <url>  >  UNIWEB_REGISTER_URL  >  the local default.
+ * Endpoint resolution: --backend / --registry <url>  >  UNIWEB_REGISTER_URL  >  the local default.
  * Auth (submit only):  --token <bearer>  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
 
@@ -70,10 +73,18 @@ const colors = {
   reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m',
   red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', blue: '\x1b[36m',
 }
-const log = console.log
+// Porcelain (`--json`) mode: stdout carries ONLY the final compact JSON line, so
+// all human/colored output diverts to stderr. `emitJson` writes to the REAL
+// stdout (bypassing the redirect). `jsonMode`/`jsonEmitted`/`lastError` are reset
+// per run by the exported `register` wrapper.
+let jsonMode = false
+let jsonEmitted = false
+let lastError = null
+const log = (...a) => (jsonMode ? console.error(...a) : console.log(...a))
 const success = (m) => log(`${colors.green}✓${colors.reset} ${m}`)
-const error = (m) => console.error(`${colors.red}✗${colors.reset} ${m}`)
+const error = (m) => { lastError = String(m); console.error(`${colors.red}✗${colors.reset} ${m}`) }
 const info = (m) => log(`${colors.blue}→${colors.reset} ${m}`)
+const emitJson = (obj) => { jsonEmitted = true; process.stdout.write(JSON.stringify(obj) + '\n') }
 
 function flagValue(args, name) {
   const eq = args.find((a) => a.startsWith(`${name}=`))
@@ -195,11 +206,27 @@ export function foundationNeedsBuild(targetDir) {
 }
 
 export async function register(args = []) {
+  jsonMode = args.includes('--json')
+  jsonEmitted = false
+  lastError = null
+  const result = await runRegister(args)
+  // Guarantee a porcelain line on stdout for every --json exit: the success path
+  // emits its own; here we cover the error / early-return paths so a scripted
+  // caller can always JSON.parse(stdout).
+  if (jsonMode && !jsonEmitted) {
+    emitJson(result?.exitCode === 0 ? { ok: true, entities: [] } : { ok: false, error: lastError || `register failed (exit ${result?.exitCode ?? 1})` })
+  }
+  return result
+}
+
+async function runRegister(args = []) {
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
   const scopeFlag = flagValue(args, '--scope')
   const tokenFlag = flagValue(args, '--token')
-  const client = new BackendClient({ originFlag: flagValue(args, '--registry'), token: tokenFlag, args, command: 'Registering' })
+  // Origin: --backend and --registry are aliases (matches deploy/publish + the
+  // origin-selection convention); either overrides UNIWEB_REGISTER_URL / default.
+  const client = new BackendClient({ originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'), token: tokenFlag, args, command: 'Registering' })
 
   // Target: a schemas-only package (standalone data-schema register) or a
   // foundation (foundation + the schemas it renders). A schemas package is only
@@ -340,12 +367,16 @@ export async function register(args = []) {
     res = await client.register(json)
   } catch (err) {
     error(`Could not reach the registry at ${client.origin}: ${err.message}`)
-    log(`  ${colors.dim}Set the endpoint with --registry <url> or UNIWEB_REGISTER_URL.${colors.reset}`)
+    log(`  ${colors.dim}Set the endpoint with --backend/--registry <url> or UNIWEB_REGISTER_URL.${colors.reset}`)
     return { exitCode: 2 }
   }
+  // Read the response body once: the --json success path needs it for the minted
+  // entity ids; the error path shows it.
+  const rawBody = await res.text().catch(() => '')
+  let parsedBody = null
+  try { parsedBody = rawBody ? JSON.parse(rawBody) : null } catch { parsedBody = null }
   let alreadyRegistered = false
   if (!res.ok) {
-    const body = await res.text().catch(() => '')
     // Resume path: a registered version is immutable, so re-running after a
     // partial code delivery hits the duplicate rejection here — a STRUCTURED
     // 409 (problem+json, title "Conflict") — and proceeds to phase 2 (the
@@ -361,7 +392,7 @@ export async function register(args = []) {
         log(`  ${colors.dim}The registry didn't accept your credentials — it may use different ones than \`uniweb login\`.${colors.reset}`)
         log(`  ${colors.dim}Supply a registry bearer with --token <bearer> (or UNIWEB_TOKEN); an existing one may be wrong or expired.${colors.reset}`)
       }
-      if (body) log(`  ${colors.dim}${body.slice(0, 500)}${colors.reset}`)
+      if (rawBody) log(`  ${colors.dim}${rawBody.slice(0, 500)}${colors.reset}`)
       return { exitCode: 1 }
     }
   }
@@ -414,6 +445,27 @@ export async function register(args = []) {
       log(`  ${colors.dim}The schema registration above succeeded; re-run \`uniweb register\` to deliver the code.${colors.reset}`)
       return { exitCode: 1 }
     }
+  }
+  if (jsonMode) {
+    // Join my authoritative submitted names with the backend's minted ids
+    // (name → {payload_model_uuid, version, unchanged}). Names from doc.entities
+    // are the spine, so the porcelain always reports WHICH names landed even if a
+    // response field is absent.
+    const minted = {}
+    const addMint = (e) => { if (e && typeof e === 'object' && e.name) minted[e.name] = e }
+    if (parsedBody && typeof parsedBody === 'object') {
+      if (Array.isArray(parsedBody.data_schemas)) parsedBody.data_schemas.forEach(addMint)
+      if (parsedBody.foundation_schema) addMint(parsedBody.foundation_schema)
+    }
+    const names = [
+      ...doc.entities.filter((e) => e.model === '@uniweb/data-schema').map((e) => e.name),
+      ...doc.entities.filter((e) => e.model === '@uniweb/foundation-schema').map((e) => e.name),
+    ]
+    const entities = names.map((name) => {
+      const m = minted[name] || {}
+      return { name, uuid: m.payload_model_uuid ?? null, version: m.version ?? null, unchanged: m.unchanged === true }
+    })
+    emitJson({ ok: true, scope: scope || null, origin: client.origin, entities })
   }
   return { exitCode: 0 }
 }
