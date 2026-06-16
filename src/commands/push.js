@@ -122,11 +122,17 @@ function changedSummary(finalized) {
 // (the `@uniweb/data-schema` form) from the backend via the client. Cached per run;
 // HTTP 404 → null (the emitter then says "register it first"). The bearer is acquired
 // lazily by the client, so a fully-local sync never authenticates.
-export function makeModelResolver({ client }) {
+//
+// `offline` (set for `-o` / `--dry-run`) forces every non-local Model to null WITHOUT
+// touching the backend — an offline emit must never authenticate. The collections
+// emitter then soft-skips a convention-defaulted schema with a warning ("not synced")
+// and still emits the site-content lane; an EXPLICIT non-local schema surfaces as a
+// clear "could not be resolved" error rather than an auth prompt.
+export function makeModelResolver({ client, offline = false }) {
   const cache = new Map()
   return async (modelName) => {
     if (cache.has(modelName)) return cache.get(modelName)
-    const decl = await client.readDataSchema(modelName)
+    const decl = offline ? null : await client.readDataSchema(modelName)
     cache.set(modelName, decl)
     return decl
   }
@@ -161,8 +167,10 @@ export async function push(args = []) {
   const foundationDir = flagValue(args, '--foundation')
   const sendAll = args.includes('--all') // bypass the send-only-changed cache
   // One front door. The bearer is resolved lazily on first need (a non-local Model
-  // read during the build, or the submit), so a fully-local sync — and --dry-run / -o
-  // — never authenticate when every Model is defined by the local foundation.
+  // read during the build, or the submit). Offline emit (--dry-run / -o) is fully
+  // offline: it never submits, and its Model resolver never reads from the backend
+  // (the `offline` flag below), so it never authenticates — even when a collection
+  // references a Model the local foundation doesn't define.
   const client = new BackendClient({
     originFlag: flagValue(args, '--registry'),
     token: tokenFlag,
@@ -181,7 +189,7 @@ export async function push(args = []) {
   try {
     pkg = await emitSyncPackages(siteDir, {
       ...(foundationDir ? { foundationDir } : {}),
-      resolveModel: makeModelResolver({ client }),
+      resolveModel: makeModelResolver({ client, offline: Boolean(output) || dryRun }),
       priorHashes,
       sendAll,
     })
