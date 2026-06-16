@@ -464,8 +464,10 @@ async function runRegister(args = []) {
     }
     const names = [
       ...doc.entities.filter((e) => e.model === '@uniweb/data-schema').map((e) => e.name),
-      ...doc.entities.filter((e) => e.model === '@uniweb/foundation-schema').map((e) => e.name),
-    ]
+      // The foundation-schema entity carries its `@scope/name` under `info`, not a
+      // top-level `name` (that's the foundation-schema shape).
+      ...doc.entities.filter((e) => e.model === '@uniweb/foundation-schema').map((e) => e.info?.name ?? e.name),
+    ].filter(Boolean)
     const entities = names.map((name) => ({ name, ...(minted[name] || { uuid: null, version: null, unchanged: false }) }))
     emitJson({ ok: true, scope: scope || null, origin: client.origin, entities })
   }
