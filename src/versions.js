@@ -41,6 +41,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 let resolvedVersions = null
 
 /**
+ * The React major the framework standardizes on.
+ *
+ * React 19 changed the element marker symbol, so mixing React 18 and 19
+ * across the foundation ↔ runtime SSR boundary breaks rendering. The whole
+ * toolchain therefore pins a single major. This is the one place that value
+ * lives: scaffolded `package.json` files reference it through the
+ * `{{version "react"}}` / `{{version "react-dom"}}` template helpers instead
+ * of hardcoding a range.
+ */
+export const REACT_VERSION = '^19.0.0'
+
+/**
  * Get the CLI's own package.json
  */
 function getCliPackageJson() {
@@ -284,6 +296,10 @@ export function getVersionsForTemplates() {
   return {
     // Full package names
     ...versions,
+
+    // React pinned to the framework's official major (single source: REACT_VERSION above).
+    react: REACT_VERSION,
+    'react-dom': REACT_VERSION,
 
     // Simplified names for templates (e.g., {{versions.build}})
     build: versions['@uniweb/build'],
