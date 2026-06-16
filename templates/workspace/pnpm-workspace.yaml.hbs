@@ -2,3 +2,9 @@ packages:
 {{#each workspaceGlobs}}
   - "{{this}}"
 {{/each}}
+
+# Permit install scripts for these native deps. pnpm reads this from
+# pnpm-workspace.yaml; the package.json "pnpm" field is ignored by pnpm 11+.
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
