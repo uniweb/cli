@@ -447,12 +447,17 @@ async function runRegister(args = []) {
     }
   }
   if (jsonMode) {
-    // Join my authoritative submitted names with the backend's minted ids
-    // (name → {payload_model_uuid, version, unchanged}). Names from doc.entities
-    // are the spine, so the porcelain always reports WHICH names landed even if a
-    // response field is absent.
+    // Join my authoritative submitted names with the backend's minted ids. Each
+    // response entry is `{ registered: { name, version, payload_model_uuid, … },
+    // unchanged }` (symmetric on the new-version + unchanged branches); a flat
+    // shape is tolerated as a fallback. Names from doc.entities are the spine, so
+    // the porcelain always reports WHICH names landed even if a field is absent.
     const minted = {}
-    const addMint = (e) => { if (e && typeof e === 'object' && e.name) minted[e.name] = e }
+    const addMint = (e) => {
+      if (!e || typeof e !== 'object') return
+      const reg = e.registered ?? e
+      if (reg.name) minted[reg.name] = { uuid: reg.payload_model_uuid ?? null, version: reg.version ?? null, unchanged: e.unchanged === true }
+    }
     if (parsedBody && typeof parsedBody === 'object') {
       if (Array.isArray(parsedBody.data_schemas)) parsedBody.data_schemas.forEach(addMint)
       if (parsedBody.foundation_schema) addMint(parsedBody.foundation_schema)
@@ -461,10 +466,7 @@ async function runRegister(args = []) {
       ...doc.entities.filter((e) => e.model === '@uniweb/data-schema').map((e) => e.name),
       ...doc.entities.filter((e) => e.model === '@uniweb/foundation-schema').map((e) => e.name),
     ]
-    const entities = names.map((name) => {
-      const m = minted[name] || {}
-      return { name, uuid: m.payload_model_uuid ?? null, version: m.version ?? null, unchanged: m.unchanged === true }
-    })
+    const entities = names.map((name) => ({ name, ...(minted[name] || { uuid: null, version: null, unchanged: false }) }))
     emitJson({ ok: true, scope: scope || null, origin: client.origin, entities })
   }
   return { exitCode: 0 }
