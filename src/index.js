@@ -1105,7 +1105,7 @@ ${colors.bright}Options:${colors.reset}
   --dry-run           Resolve site.yml + foundation/runtime; print summary; no writes
   --no-auto-publish   Don't auto-publish workspace-local foundation as part of deploy
   --no-save           Skip the auto-save of lastDeploy in deploy.yml
-  --local             Internal: target the unicloud mock (see workspace root CLAUDE.md)
+  --backend <url>     Override the default backend origin (\$UNIWEB_REGISTER_URL or built-in)
   --non-interactive   Fail with usage info instead of prompting
 
 ${colors.bright}Auth:${colors.reset}
