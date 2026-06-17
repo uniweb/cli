@@ -9,7 +9,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
@@ -235,6 +235,57 @@ test('pull --no-collections skips the folder lane', async () => {
     assert.equal(res.exitCode, 0)
     assert.ok(pulledUrls.some((u) => u.includes('/dev/site/content/pull/SITE2')), 'content lane ran')
     assert.ok(!pulledUrls.some((u) => u.includes('/dev/site/folder/pull/')), 'folder lane skipped')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (no overwrite)', async () => {
+  const dir = tempSite()
+  try {
+    writeFileSync(join(dir, 'site.yml'), "$uuid: SITE304\nname: Keep\nfoundation: '@a/base'\n")
+    mkdirSync(join(dir, '.uniweb'), { recursive: true })
+    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 1, content: '"abc123"' }))
+    let sentINM
+    const res = await pull(['--no-collections'], {
+      resolveSiteDir: async () => dir,
+      getToken: async () => 'tok',
+      fetch: async (url, opts) => {
+        sentINM = opts?.headers?.['If-None-Match']
+        return { ok: false, status: 304, statusText: 'Not Modified', headers: { get: () => '"abc123"' } }
+      },
+    })
+    assert.equal(res.exitCode, 0)
+    assert.equal(sentINM, '"abc123"', 'cached ETag echoed verbatim')
+    // 304 → no projection, local file untouched
+    assert.equal(yaml.load(readFileSync(join(dir, 'site.yml'), 'utf8')).name, 'Keep')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('pull caches the ETag from a 200 for the next conditional pull', async () => {
+  const dir = tempSite()
+  try {
+    writeFileSync(join(dir, 'site.yml'), "$uuid: SITEET\nname: S\nfoundation: '@a/base'\n")
+    const document = {
+      $model: '@uniweb/site-content',
+      info: { name: { en: 'S' }, foundation: '@a/base' },
+      pages: [], layout_sections: [], extensions: [], collections: [],
+    }
+    await pull(['--no-collections'], {
+      resolveSiteDir: async () => dir,
+      getToken: async () => 'tok',
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        statusText: '',
+        headers: { get: (k) => (String(k).toLowerCase() === 'etag' ? '"deadbeef"' : null) },
+        arrayBuffer: async () => Buffer.from(JSON.stringify(document)),
+      }),
+    })
+    const cache = JSON.parse(readFileSync(join(dir, '.uniweb/pull-cache.json'), 'utf8'))
+    assert.equal(cache.content, '"deadbeef"')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

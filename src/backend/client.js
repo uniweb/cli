@@ -240,14 +240,21 @@ export class BackendClient {
     })
   }
 
-  /** GET /dev/site/content/pull/{uuid} — the content lane document. */
-  async pullSiteContent(uuid) {
-    return this.request(`/dev/site/content/pull/${encodeURIComponent(uuid)}`)
+  /**
+   * GET /dev/site/content/pull/{uuid} — the content lane document. Pass the
+   * last-seen ETag (opaque) to make it conditional: a match returns 304 (empty body).
+   */
+  async pullSiteContent(uuid, { etag } = {}) {
+    return this.request(`/dev/site/content/pull/${encodeURIComponent(uuid)}`, {
+      headers: etag ? { 'If-None-Match': etag } : {},
+    })
   }
 
   /** GET /dev/site/folder/pull/{uuid} — the folder lane (folder + record documents). */
-  async pullFolder(uuid) {
-    return this.request(`/dev/site/folder/pull/${encodeURIComponent(uuid)}`)
+  async pullFolder(uuid, { etag } = {}) {
+    return this.request(`/dev/site/folder/pull/${encodeURIComponent(uuid)}`, {
+      headers: etag ? { 'If-None-Match': etag } : {},
+    })
   }
 
   // ── Delivery: deploy + site publish ─────────────────────────────────────────────

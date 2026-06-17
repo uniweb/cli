@@ -38,8 +38,8 @@
  * against the playground backend, 2026-06-17.
  */
 
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { join, dirname } from 'node:path'
 import yaml from 'js-yaml'
 import {
   siteContentDocumentToProject,
@@ -76,6 +76,27 @@ function readYamlUuid(filePath) {
   } catch {
     return null
   }
+}
+
+// Conditional-pull ETag cache (gitignored `.uniweb/pull-cache.json`): the last ETag
+// seen per lane. The ETag is OPAQUE — cached and echoed verbatim in If-None-Match,
+// never parsed or recomputed (the backend owns the hash; the client treats it as a
+// token). A missing cache just means a full (unconditional) pull.
+function pullCachePath(siteDir) {
+  return join(siteDir, '.uniweb', 'pull-cache.json')
+}
+function readPullCache(siteDir) {
+  try {
+    const obj = JSON.parse(readFileSync(pullCachePath(siteDir), 'utf8'))
+    return obj && typeof obj === 'object' ? obj : {}
+  } catch {
+    return {}
+  }
+}
+function writePullCache(siteDir, { content, folder }) {
+  const p = pullCachePath(siteDir)
+  mkdirSync(dirname(p), { recursive: true })
+  writeFileSync(p, JSON.stringify({ version: 1, content, folder }, null, 2) + '\n')
 }
 
 // Extract a single entity `$`-document from a pull response. Tolerant of a raw
@@ -183,11 +204,11 @@ export async function pull(args = [], deps = {}) {
     return { exitCode: 0 }
   }
 
-  // GET a pull lane via the client and return its entity `$`-documents. The backend
-  // serves a `.uwx` (ZIP); `readPullDocuments` reads the entity files out of it (JSON
-  // fallback included). `doRequest` is a thunk returning the client's Response promise.
-  // 404 → null (deleted / no access); any failure is reported and returns null (the
-  // lane is skipped, not fatal).
+  // GET a pull lane via the client and return `{ docs, etag }` from its `.uwx` (ZIP)
+  // body — `readPullDocuments` reads the entity files out of it (JSON fallback). A
+  // conditional request whose ETag matches returns `{ notModified: true }` (304, empty
+  // body). `doRequest` is a thunk returning the client's Response promise. 404 / any
+  // failure → null (the lane is skipped, not fatal).
   const getDocs = async (label, doRequest) => {
     info(`Pulling ${colors.bright}${label}${colors.reset} from ${colors.dim}${client.origin}${colors.reset} …`)
     let res
@@ -202,13 +223,19 @@ export async function pull(args = [], deps = {}) {
       note(`${label}: not found (404) — it was deleted, or you lack access.`)
       return null
     }
+    if (res.status === 304) {
+      note(`${label}: unchanged (304)`)
+      return { notModified: true }
+    }
     if (!res.ok) {
       error(`${label} pull failed: HTTP ${res.status} ${res.statusText}`)
       if (res.status === 401 || res.status === 403) note("Credentials weren't accepted — supply a bearer with --token <bearer>.")
       return null
     }
     try {
-      return readPullDocuments(Buffer.from(await res.arrayBuffer()))
+      const etag = res.headers?.get?.('etag') ?? null
+      const docs = readPullDocuments(Buffer.from(await res.arrayBuffer()))
+      return { docs, etag }
     } catch (err) {
       error(`Could not read the ${label} response: ${err.message}`)
       return null
@@ -220,25 +247,34 @@ export async function pull(args = [], deps = {}) {
   let records = 0
   let deleted = 0
 
+  // Conditional-pull cache: the last ETag seen per lane (opaque token — cached and
+  // echoed verbatim, never recomputed). Lives in the gitignored `.uniweb/`.
+  const cache = readPullCache(siteDir)
+  let etagContent = cache.content
+  let etagFolder = cache.folder
+
   // Lane 1 — content → config + pages/** + layout/**. The .uwx carries a single
-  // entity (the site-content document).
-  const contentDocs = await getDocs('content', () => client.pullSiteContent(siteContentUuid))
-  const siteDoc = contentDocs && (contentDocs.find((d) => d?.info || d?.$model) || contentDocs[0] || null)
-  if (siteDoc) {
-    const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
-    pages += report.pages.length
-    sections += report.sections.length
-    deleted += report.deleted.length
+  // entity (the site-content document). A 304 (unchanged) leaves local files as-is.
+  const content = await getDocs('content', () => client.pullSiteContent(siteContentUuid, { etag: etagContent }))
+  if (content && !content.notModified) {
+    const siteDoc = content.docs && (content.docs.find((d) => d?.info || d?.$model) || content.docs[0] || null)
+    if (siteDoc) {
+      const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
+      pages += report.pages.length
+      sections += report.sections.length
+      deleted += report.deleted.length
+    }
+    if (content.etag) etagContent = content.etag
   }
 
   // Lane 2 — folder → the folder + record files, keyed by the SAME site-content uuid
   // (the backend resolves the site's `@uniweb/folder` from it; the framework never
   // holds a folder uuid). Models are resolved by name (async) up front, so
-  // collectionsToProject keeps its synchronous contract.
+  // collectionsToProject keeps its synchronous contract. A 304 leaves files as-is.
   if (!noCollections) {
-    const docs = await getDocs('collections', () => client.pullFolder(siteContentUuid))
-    if (docs && docs.length) {
-      const { folderDoc, recordDocs } = splitCollectionsPull(docs)
+    const folder = await getDocs('collections', () => client.pullFolder(siteContentUuid, { etag: etagFolder }))
+    if (folder && !folder.notModified && folder.docs?.length) {
+      const { folderDoc, recordDocs } = splitCollectionsPull(folder.docs)
       const resolveModel = makeModelResolver({ client })
       const declByModel = new Map()
       for (const model of [...new Set(recordDocs.map((d) => d.$model).filter(Boolean))]) {
@@ -259,7 +295,11 @@ export async function pull(args = [], deps = {}) {
       for (const s of report.skipped) note(`↷ ${s.slug ?? s.uuid ?? '(record)'}: ${s.reason}`)
       for (const w of report.warnings) note(`! ${w}`)
     }
+    if (folder?.etag) etagFolder = folder.etag
   }
+
+  // Persist the ETags so the next pull is conditional (304 when unchanged).
+  writePullCache(siteDir, { content: etagContent, folder: etagFolder })
 
   success(
     `Pulled — ${pages} page(s), ${sections} section(s), ${records} record(s)` + (deleted ? `, ${deleted} deleted` : '')
