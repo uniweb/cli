@@ -66,7 +66,7 @@ test('readPullDocuments reads entity docs out of a .uwx zip, and tolerates JSON 
 })
 
 test('splitCollectionsPull partitions the folder from the records', () => {
-  const folder = { $model: '@uniweb/folder', entries: [] }
+  const folder = { $model: '@uniweb/folder', contents: [] }
   const rec = { $model: '@acme/article', article: {} }
   const { folderDoc, recordDocs } = splitCollectionsPull({ entities: [folder, rec] })
   assert.equal(folderDoc, folder)
@@ -149,7 +149,7 @@ test('pull fetches the folder lane by the site-content uuid (no collections.yml 
     // The folder document carries no $uuid of its own (the backend owns it).
     const folderDoc = {
       $id: '@folder', $model: '@uniweb/folder',
-      entries: [{ kind: 'branch', path_segment: 'articles', entries: [{ kind: 'ref', path_segment: 'hello', entry: 'R9' }] }],
+      contents: [{ kind: 'branch', path_segment: 'articles', $children: [{ kind: 'ref', path_segment: 'hello', entry: { model: '@acme/article', entity: 'R9' } }] }],
     }
     const recordDoc = { $uuid: 'R9', $model: '@acme/article', article: { title: { en: 'Hello' }, body: { en: '\n# Hi\n' } } }
     const declaration = {
@@ -185,7 +185,7 @@ test('pull projects the collections lane, resolving the model via a mock model-r
     const folderDoc = {
       $id: '@folder',
       $model: '@uniweb/folder',
-      entries: [{ kind: 'branch', path_segment: 'articles', entries: [{ kind: 'ref', path_segment: 'hello', entry: 'R1' }] }],
+      contents: [{ kind: 'branch', path_segment: 'articles', $children: [{ kind: 'ref', path_segment: 'hello', entry: { model: '@acme/article', entity: 'R1' } }] }],
     }
     const recordDoc = { $uuid: 'R1', $model: '@acme/article', article: { title: { en: 'Hello' }, body: { en: '\n# Hi\n' } } }
     const declaration = {
