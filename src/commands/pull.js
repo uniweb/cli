@@ -32,9 +32,10 @@
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  *
  * A project that never pushed has no `$uuid` to pull by — pull is a no-op with a
- * clear message. NOTE: the backend pull routes have not been exercised live; the
- * response-envelope extraction (extractDocument / splitCollectionsPull) is
- * deliberately tolerant and is the single point to adjust at the first live run.
+ * clear message. The backend serves each lane as a `.uwx` (ZIP: `manifest.json` +
+ * `entities/<uuid>.json`); `readPullDocuments` reads the entity files out of it, with
+ * a tolerant JSON fallback (`extractDocument` / `splitCollectionsPull`). Verified live
+ * against the playground backend, 2026-06-17.
  */
 
 import { readFileSync } from 'node:fs'
@@ -44,6 +45,7 @@ import {
   siteContentDocumentToProject,
   collectionsToProject,
   resolveCollectionsConfig,
+  readZip,
 } from '@uniweb/build/uwx'
 import { makeModelResolver } from './push.js'
 import { BackendClient } from '../backend/client.js'
@@ -104,6 +106,46 @@ export function splitCollectionsPull(payload) {
   }
 }
 
+// Read a pull lane's bytes into entity `$`-documents. The backend serves a `.uwx`
+// (our Stored ZIP: `manifest.json` + `entities/<uuid>.json`); the entity files ARE the
+// documents. Falls back to a JSON body (a raw doc, a `{document}`/`{entity}` envelope,
+// or a list) so the lane survives a future envelope change. Returns an array (possibly
+// empty).
+export function readPullDocuments(buf) {
+  // `.uwx` ZIP — the local-file signature is "PK\x03\x04".
+  if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) {
+    const docs = []
+    for (const [name, data] of readZip(buf)) {
+      if (name === 'manifest.json' || !name.endsWith('.json')) continue
+      try {
+        docs.push(JSON.parse(data.toString('utf8')))
+      } catch {
+        /* skip a non-document entry */
+      }
+    }
+    return docs
+  }
+  // JSON fallback — flatten any envelope splitCollectionsPull understands into a
+  // flat `$`-document list (a raw doc, a list, `{entities}`/`{documents}`, or
+  // `{folder, records}`).
+  let payload
+  try {
+    payload = JSON.parse(buf.toString('utf8'))
+  } catch {
+    return []
+  }
+  if (Array.isArray(payload)) return payload.map(extractDocument).filter(Boolean)
+  if (payload?.folder) return [payload.folder, ...(payload.records || [])].filter(Boolean)
+  const list = Array.isArray(payload?.entities)
+    ? payload.entities
+    : Array.isArray(payload?.documents)
+      ? payload.documents
+      : null
+  if (list) return list.map(extractDocument).filter(Boolean)
+  const single = extractDocument(payload)
+  return single ? [single] : []
+}
+
 /**
  * @param {string[]} args
  * @param {object} [deps] - injectable seams for testing: `fetch` (default global
@@ -141,10 +183,12 @@ export async function pull(args = [], deps = {}) {
     return { exitCode: 0 }
   }
 
-  // GET a pull lane via the client and parse it as JSON. `doRequest` is a thunk
-  // returning the client's Response promise. 404 → null (deleted / no access); any
-  // failure is reported and returns null (the lane is skipped, not fatal).
-  const getJson = async (label, doRequest) => {
+  // GET a pull lane via the client and return its entity `$`-documents. The backend
+  // serves a `.uwx` (ZIP); `readPullDocuments` reads the entity files out of it (JSON
+  // fallback included). `doRequest` is a thunk returning the client's Response promise.
+  // 404 → null (deleted / no access); any failure is reported and returns null (the
+  // lane is skipped, not fatal).
+  const getDocs = async (label, doRequest) => {
     info(`Pulling ${colors.bright}${label}${colors.reset} from ${colors.dim}${client.origin}${colors.reset} …`)
     let res
     try {
@@ -164,9 +208,9 @@ export async function pull(args = [], deps = {}) {
       return null
     }
     try {
-      return await res.json()
+      return readPullDocuments(Buffer.from(await res.arrayBuffer()))
     } catch (err) {
-      error(`Could not parse the ${label} response as JSON: ${err.message}`)
+      error(`Could not read the ${label} response: ${err.message}`)
       return null
     }
   }
@@ -176,10 +220,10 @@ export async function pull(args = [], deps = {}) {
   let records = 0
   let deleted = 0
 
-  // Lane 1 — content → config + pages/** + layout/**.
-  const siteDoc = extractDocument(
-    await getJson('content', () => client.pullSiteContent(siteContentUuid))
-  )
+  // Lane 1 — content → config + pages/** + layout/**. The .uwx carries a single
+  // entity (the site-content document).
+  const contentDocs = await getDocs('content', () => client.pullSiteContent(siteContentUuid))
+  const siteDoc = contentDocs && (contentDocs.find((d) => d?.info || d?.$model) || contentDocs[0] || null)
   if (siteDoc) {
     const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
     pages += report.pages.length
@@ -192,9 +236,9 @@ export async function pull(args = [], deps = {}) {
   // holds a folder uuid). Models are resolved by name (async) up front, so
   // collectionsToProject keeps its synchronous contract.
   if (!noCollections) {
-    const payload = await getJson('collections', () => client.pullFolder(siteContentUuid))
-    if (payload) {
-      const { folderDoc, recordDocs } = splitCollectionsPull(payload)
+    const docs = await getDocs('collections', () => client.pullFolder(siteContentUuid))
+    if (docs && docs.length) {
+      const { folderDoc, recordDocs } = splitCollectionsPull(docs)
       const resolveModel = makeModelResolver({ client })
       const declByModel = new Map()
       for (const model of [...new Set(recordDocs.map((d) => d.$model).filter(Boolean))]) {

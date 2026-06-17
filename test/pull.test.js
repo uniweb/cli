@@ -13,12 +13,21 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
-import { pull, extractDocument, splitCollectionsPull } from '../src/commands/pull.js'
+import { pull, extractDocument, splitCollectionsPull, readPullDocuments } from '../src/commands/pull.js'
+import { createZip } from '@uniweb/build/uwx'
 
 const docOf = (text) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] })
 
-// A minimal Response-like object for the mocked fetch.
-const jsonRes = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, statusText: '', json: async () => body })
+// A minimal Response-like object for the mocked fetch. The live backend serves a
+// `.uwx` (zip) and pull reads `arrayBuffer()`; the mock hands the JSON body as bytes,
+// which readPullDocuments parses via its JSON fallback.
+const jsonRes = (body, status = 200) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  statusText: '',
+  json: async () => body,
+  arrayBuffer: async () => Buffer.from(JSON.stringify(body ?? null)),
+})
 
 function makeFetch(routes) {
   return async (url) => {
@@ -40,6 +49,20 @@ test('extractDocument tolerates raw, {document}, and {entity} envelopes', () => 
   assert.equal(extractDocument({ document: raw }), raw)
   assert.equal(extractDocument({ entity: raw }), raw)
   assert.equal(extractDocument(null), null)
+})
+
+test('readPullDocuments reads entity docs out of a .uwx zip, and tolerates JSON envelopes', () => {
+  const doc = { $model: '@uniweb/site-content', info: { name: 'Z' } }
+  // Zip path — the real backend wire (manifest.json + entities/<uuid>.json).
+  const uwx = createZip([
+    { name: 'manifest.json', data: Buffer.from('{}') },
+    { name: 'entities/e1.json', data: Buffer.from(JSON.stringify(doc)) },
+  ])
+  assert.deepEqual(readPullDocuments(uwx), [doc])
+  // JSON fallbacks.
+  assert.deepEqual(readPullDocuments(Buffer.from(JSON.stringify(doc))), [doc])
+  assert.deepEqual(readPullDocuments(Buffer.from(JSON.stringify({ entities: [doc] }))), [doc])
+  assert.deepEqual(readPullDocuments(Buffer.from('not json')), [])
 })
 
 test('splitCollectionsPull partitions the folder from the records', () => {
