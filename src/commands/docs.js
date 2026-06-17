@@ -138,10 +138,13 @@ ${colors.bright}Section Control:${colors.reset}
                         - stats
 
 ${colors.bright}SEO Options:${colors.reset}
-  ${colors.cyan}seo.noindex${colors.reset}       Prevent search engine indexing
-  ${colors.cyan}seo.image${colors.reset}         Open Graph image URL
-  ${colors.cyan}seo.changefreq${colors.reset}    Sitemap hint (daily, weekly, monthly...)
-  ${colors.cyan}seo.priority${colors.reset}      Sitemap priority (0.0 to 1.0)
+  ${colors.cyan}seo.noindex${colors.reset}        Prevent search engine indexing
+  ${colors.cyan}seo.image${colors.reset}          Open Graph / social-card image URL
+  ${colors.cyan}seo.ogTitle${colors.reset}        Social-card title (defaults to page title)
+  ${colors.cyan}seo.ogDescription${colors.reset}  Social-card description
+  ${colors.cyan}seo.canonical${colors.reset}      Canonical URL for this page
+  ${colors.cyan}seo.changefreq${colors.reset}     Sitemap hint (daily, weekly, monthly...)
+  ${colors.cyan}seo.priority${colors.reset}       Sitemap priority (0.0 to 1.0)
 
 ${colors.bright}Example:${colors.reset}
   ${colors.dim}title: About Us

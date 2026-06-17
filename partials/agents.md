@@ -804,6 +804,22 @@ pages: [home, about, ...]           # Order pages (... = rest, first = homepage)
 pages: [home, about]                # Strict: only listed pages in nav
 ```
 
+**SEO & social cards:** set the site's default social card + keywords in `site.yml`; any page overrides per-field in `page.yml` (page wins, site fills the gaps). These render into every page's static `<head>` — Open Graph, Twitter Card, canonical, robots — so shares and crawlers see them without running JS. The social `image` is the field most worth setting once at the site level.
+```yaml
+# site.yml — defaults for the whole site (incl. the homepage card)
+keywords: [components, react, cms]
+seo:
+  image: /og-default.png            # social-card image
+  ogTitle: Acme
+  noindex: false                    # true keeps the WHOLE site out of search
+
+# page.yml — overrides for one page
+seo:
+  image: /og-about.png
+  ogTitle: About Acme
+  canonical: https://acme.com/about
+```
+
 **Route mapping:** Folder structure maps 1:1 to routes. Every folder keeps its natural route — `pages:` controls **order only**, not which child "becomes" the parent. The only exception is the site root: `index:` (or first in `pages:`) in site.yml sets the homepage at `/`.
 
 **Localized URLs:** On a multilingual site (`languages:` in site.yml), a page's `slug: { <lang>: <segment> }` gives it a native URL segment per language (`/about` → `/fr/a-propos`); the folder name stays the canonical route. Nested folders compose automatically, and localized URLs flow through navigation, the language switcher, and the sitemap.
