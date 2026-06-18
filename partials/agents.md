@@ -1762,6 +1762,8 @@ export default {
 
 The content handler receives `block.parsedContent.data` and reads raw ProseMirror from `block.rawContent`. It returns a new ProseMirror document — the framework re-parses it through the semantic parser. Returning `null` or the same reference as `block.rawContent` signals no change.
 
+> **`instantiateContent` resolves `{placeholders}` in text nodes only** — not in link `href`s or other node/mark attributes. So `[{email}](mailto:{email})` fills the visible label but leaves the `mailto:` URL literal. For dynamic URLs, emit the value as plain text and let the component linkify it, or build the href in the handler yourself.
+
 ### Reserved frontmatter fields
 
 `source` and `where` are convention-level reserved fields — they flow through to both `block.properties` (for handler access) and `params` (visible to components). Components can ignore them. This is consistent with how `background` and `theme` work. List them in `meta.js` params with descriptions so the editor and schema recognize them.
