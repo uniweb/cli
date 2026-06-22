@@ -55,7 +55,7 @@ import { promptForHost } from '../utils/host-prompt.js'
 import { readFlagValue } from '../utils/args.js'
 import { parseBoolEnv } from '../utils/env.js'
 import { BackendClient } from '../backend/client.js'
-import { collectSiteAssets } from '../utils/asset-upload.js'
+import { collectSiteAssets, buildAssetUrl } from '../utils/asset-upload.js'
 
 import {
   findWorkspaceRoot,
@@ -470,15 +470,6 @@ function absolutizeServeUrl(origin, url) {
   if (!url || typeof url !== 'string') return null
   if (/^https?:\/\//.test(url)) return url
   return `${origin.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`
-}
-
-// Build a durable asset serve URL from /dev/config's assetBase. Origin-relative
-// (`/gateway/asset/` in dev) → prepend the backend origin; absolute (a prod CDN)
-// → used verbatim. Shape: {assetBase}dist/{id}/base.{ext} — basename literally
-// `base`, {ext} the source extension the plan echoed.
-function buildAssetUrl(origin, assetBase, id, ext) {
-  const base = /^https?:\/\//.test(assetBase) ? assetBase : `${origin}${assetBase}`
-  return `${base.replace(/\/$/, '')}/dist/${id}/base.${ext}`
 }
 
 // ─── Static-host deploy (S3+CloudFront, etc.) ─────────────────

@@ -144,7 +144,7 @@ export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgr
     try {
       // The plan's url may be origin-relative (direct mode → uniwebd) or
       // absolute (presigned → storage); new URL() resolves both.
-      putRes = await fetch(new URL(up.url, origin), { method: up.method || 'PUT', headers, body: readFileSync(src.diskPath) })
+      putRes = await fetch(new URL(up.url, origin), { method: up.method || 'PUT', headers, body: src.bytes ?? readFileSync(src.diskPath) })
     } catch (err) {
       failed.push({ path: src.path, status: 0, detail: err.message })
       continue
@@ -159,4 +159,13 @@ export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgr
   }
 
   return { mode, uploaded, skipped, failed, assetsByLocalUrl }
+}
+
+// Build a durable asset serve URL from /dev/config's assetBase. Origin-relative
+// (`/gateway/asset/` in dev) → prepend the backend origin; absolute (a prod CDN)
+// → used verbatim. Shape: {assetBase}dist/{id}/base.{ext} — basename literally
+// `base`, {ext} the source extension the plan echoed.
+export function buildAssetUrl(origin, assetBase, id, ext) {
+  const base = /^https?:\/\//.test(assetBase) ? assetBase : `${origin}${assetBase}`
+  return `${base.replace(/\/$/, '')}/dist/${id}/base.${ext}`
 }
