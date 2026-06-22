@@ -16,19 +16,21 @@
  * For static-host artifacts WITHOUT upload, see `uniweb export`. To publish a
  * site that already lives on the backend as a synced draft, see `uniweb release`.
  *
- * Uniweb-host flow (deployToUniwebBackend):
- *   1. Resolve the site dir + the deploy.yml target.
- *   2. discover() — the backend's anonymous capability handshake (GET /dev/config):
- *      delivery support + the installed-runtime list.
- *   3. Resolve the runtime: `site.yml::runtime` if pinned, else the highest
- *      version the backend reports installed (fail closed if neither resolves).
- *   4. Build the site data (link mode): site-content.json (+ per-locale variants),
- *      collection data, search indexes.
- *   5. Assemble the deploy payload (foundation, runtimeVersion, theme, languages,
- *      defaultLanguage, locales, optional dataFiles/searchFiles).
- *   6. POST /dev/deploy via BackendClient — the login bearer authorizes; on first
- *      deploy the backend mints a delivery uuid (round-tripped through
- *      deploy.yml::lastDeploy) and returns the serve URL.
+ * Uniweb-host flow (deployToUniwebBackend) — the composite deploy = build → ball →
+ * media → push → publish:
+ *   1. Resolve the site dir + deploy.yml target; discover() the backend (GET
+ *      /dev/config) and resolve the runtime (`site.yml::runtime` if pinned, else the
+ *      backend's highest installed; fail closed if neither resolves).
+ *   2. Build the site data (link mode): site-content.json (+ per-locale variants),
+ *      collection data, search indexes, processed assets.
+ *   3. Partition collections by schema presence: schema-less → the static-data ball
+ *      (uploaded content-addressed → `info.data_bundle`); schema-backed → typed folder
+ *      entities on the push lane.
+ *   4. Upload the site's local media and map each site-root ref → its backend serve URL.
+ *   5. Push — the SAME two-lane sync `uniweb push` uses (site-content with
+ *      `info.data_bundle` stamped + media refs rewritten, then the folder + records) —
+ *      over the send-only-changed cache; the backend mints/round-trips the site uuid.
+ *   6. Publish — make the just-pushed composite live; the backend returns the serve URL.
  *
  * Usage:
  *   uniweb deploy                  Build + deploy to the resolved target
@@ -58,6 +60,7 @@ import { BackendClient } from '../backend/client.js'
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import { makeModelResolver, readSyncCache, pushSyncPackages } from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
+import { uploadSiteMedia } from '../backend/site-media.js'
 
 import {
   findWorkspaceRoot,
@@ -334,6 +337,7 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
     process.exit(1)
   }
   const schemalessNames = (probe.schemaless || []).map((col) => col.name)
+  const localAssets = probe.localAssets || [] // site-root media refs to upload + rewrite
 
   // 2. Assemble + upload the static-data ball (schema-less collection data + the search
   //    index). `data_bundle` is its content-addressed serve URL; omitted when there is
@@ -351,10 +355,29 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
     say.dim(`Data bundle    : ${Object.keys(ball.data).length} data + ${Object.keys(ball.search).length} search file(s)`)
   }
 
+  // 2b. Upload the site's local media + build the ref→serveUrl map. The producer
+  //     surfaced the site-root refs in `localAssets`; the backend stores the bytes
+  //     content-addressed and the serve URL is what we rewrite the entity refs to
+  //     (assetRewrite, on the real emit below). Co-located refs were warned + skipped.
+  let assetRewrite = null
+  if (localAssets.length) {
+    say.info('Uploading media…')
+    try {
+      const map = await uploadSiteMedia(client, siteDir, localAssets, {
+        onProgress: (m) => say.dim(`  ${m}`),
+        warn: (m) => say.dim(`! ${m}`),
+      })
+      if (Object.keys(map).length) assetRewrite = map
+      say.dim(`Media          : ${Object.keys(map).length}/${localAssets.length} ref(s) → serve URL`)
+    } catch (err) {
+      say.err(`Media upload failed: ${err.message}`)
+      process.exit(1)
+    }
+  }
+
   // 3. Push the site (content + folder) over the send-only-changed cache — the SAME
   //    two-lane submission `uniweb push` uses — stamping info.data_bundle on the
-  //    site-content entity. (Local-media URL rewrite over the entity content is a
-  //    separate pass: a media-bearing site needs it before it renders fully.)
+  //    site-content entity and rewriting local media refs to their backend serve URLs.
   const priorHashes = readSyncCache(siteDir)
   let pkg
   try {
@@ -363,6 +386,7 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
       resolveModel,
       priorHashes,
       ...(dataBundle ? { injectInfo: { data_bundle: dataBundle } } : {}),
+      ...(assetRewrite ? { assetRewrite } : {}),
     })
   } catch (err) {
     say.err(`Could not build the sync package: ${err.message}`)

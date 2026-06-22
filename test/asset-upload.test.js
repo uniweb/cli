@@ -1,8 +1,8 @@
 /**
  * Site asset delivery (deploy asset lane) — unit-pinned against the
  * delivery-lane.md §Assets contract: collect (dist/assets/*) → plan (POST
- * /dev/assets, sha256 required) → PUT-per-file → the localUrl→{id,ext} rewrite
- * map. Mock-backed fetch; a temp dist/ as the real artifact.
+ * /dev/assets, sha256 required) → PUT-per-file → the localUrl→{id,ext,serveUrl}
+ * rewrite map. Mock-backed fetch; a temp dist/ as the real artifact.
  */
 
 import { test } from 'node:test'
@@ -73,6 +73,7 @@ test('uploadSiteAssets plans /dev/assets, PUTs each, returns the localUrl→{id,
             path: f.path,
             id: f.sha256, // backend: id == lowercase-hex sha256
             ext: f.path.split('.').pop(),
+            serve_url: `/gateway/asset/dist/${f.sha256}/base.${f.path.split('.').pop()}`, // backend returns it
             method: 'PUT',
             url: `/dev/assets/blob/${f.sha256}`, // origin-relative, like the real backend
             headers: { 'content-type': f.content_type },
@@ -91,8 +92,8 @@ test('uploadSiteAssets plans /dev/assets, PUTs each, returns the localUrl→{id,
     assert.equal(result.mode, 'direct')
     assert.equal(result.failed.length, 0)
     assert.equal(result.uploaded.length, 2)
-    assert.deepEqual(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], { id: sha('WEBPDATA'), ext: 'webp' })
-    assert.deepEqual(result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], { id: sha('<svg/>'), ext: 'svg' })
+    assert.deepEqual(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], { id: sha('WEBPDATA'), ext: 'webp', serveUrl: `/gateway/asset/dist/${sha('WEBPDATA')}/base.webp` })
+    assert.deepEqual(result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], { id: sha('<svg/>'), ext: 'svg', serveUrl: `/gateway/asset/dist/${sha('<svg/>')}/base.svg` })
     const puts = calls.filter((c) => c.method === 'PUT')
     assert.equal(puts.length, 2)
     // origin-relative plan urls must resolve to absolute before fetch (Node can't fetch a relative url)
@@ -120,7 +121,7 @@ test('uploadSiteAssets honors the skip-list: present files are recorded but not 
         json: async () => ({
           mode: 'direct',
           uploads: body.files.map((f) => {
-            const base = { path: f.path, id: f.sha256, ext: f.path.split('.').pop() }
+            const base = { path: f.path, id: f.sha256, ext: f.path.split('.').pop(), serve_url: `/gateway/asset/dist/${f.sha256}/base.${f.path.split('.').pop()}` }
             if (f.sha256 === heroSha) return { ...base, present: true }
             return { ...base, present: false, method: 'PUT', url: `/dev/assets/blob/${f.sha256}`, headers: {} }
           }),
@@ -138,8 +139,8 @@ test('uploadSiteAssets honors the skip-list: present files are recorded but not 
     assert.equal(puts.length, 1, 'only the new file is PUT — the present one is not')
     assert.ok(puts[0].includes(logoSha), 'the single PUT is the new (logo) sha')
     // BOTH assets are in the rewrite map — present and new alike get their refs rewritten.
-    assert.deepEqual(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], { id: heroSha, ext: 'webp' })
-    assert.deepEqual(result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], { id: logoSha, ext: 'svg' })
+    assert.deepEqual(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], { id: heroSha, ext: 'webp', serveUrl: `/gateway/asset/dist/${heroSha}/base.webp` })
+    assert.deepEqual(result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], { id: logoSha, ext: 'svg', serveUrl: `/gateway/asset/dist/${logoSha}/base.svg` })
   } finally {
     globalThis.fetch = realFetch
     rmSync(dir, { recursive: true, force: true })

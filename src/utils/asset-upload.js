@@ -73,10 +73,15 @@ export function collectSiteAssets(distDir) {
 
 /**
  * Deliver a site's assets: plan, then PUT each NEW file. Returns the rewrite map
- * (`localUrl → { id, ext }`) — populated for files that uploaded successfully OR
- * that the plan reports already `present`, so a partial failure never injects a
- * broken serve URL into content. Throws only on a plan-level failure; per-file
- * PUT failures surface in `failed`.
+ * (`localUrl → { id, ext, serveUrl }`) — populated for files that uploaded
+ * successfully OR that the plan reports already `present`, so a partial failure
+ * never injects a broken serve URL into content. Throws only on a plan-level
+ * failure; per-file PUT failures surface in `failed`.
+ *
+ * `serveUrl` is the backend's canonical, ready-built serve URL for the asset (the
+ * plan entry's `serve_url`; content-addressed, lane-independent). Callers embed it
+ * verbatim; `buildAssetUrl(origin, assetBase, id, ext)` reconstructs the same
+ * string and stays as a fallback for an older backend that omits `serve_url`.
  *
  * Skip-list (content-addressed dedup): a plan entry with `present: true` is
  * already in the global store — we don't re-PUT it, but we DO record its id+ext
@@ -89,7 +94,7 @@ export function collectSiteAssets(distDir) {
  * @param {string} opts.distDir  - the site's built dist/ directory
  * @param {Array}  [opts.files]  - pre-collected list (default: collectSiteAssets)
  * @param {(msg: string) => void} [opts.onProgress]
- * @returns {Promise<{ mode: string, uploaded: string[], skipped: string[], failed: Array<{path, status, detail}>, assetsByLocalUrl: Record<string, { id: string, ext: string }> }>}
+ * @returns {Promise<{ mode: string, uploaded: string[], skipped: string[], failed: Array<{path, status, detail}>, assetsByLocalUrl: Record<string, { id: string, ext: string, serveUrl?: string }> }>}
  */
 export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgress = () => {} }) {
   const list = files || collectSiteAssets(distDir)
@@ -130,7 +135,7 @@ export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgr
     // ⇒ false (older backend) → falls through to the upload path below.
     if (up.present) {
       skipped.push(src.path)
-      assetsByLocalUrl[src.localUrl] = { id: up.id, ext: String(up.ext || '').replace(/^\./, '') }
+      assetsByLocalUrl[src.localUrl] = { id: up.id, ext: String(up.ext || '').replace(/^\./, ''), serveUrl: up.serve_url }
       continue
     }
 
@@ -152,7 +157,7 @@ export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgr
     if (putRes.ok) {
       uploaded.push(src.path)
       // Authoritative id + ext from the plan; mapped only on a successful PUT.
-      assetsByLocalUrl[src.localUrl] = { id: up.id, ext: String(up.ext || '').replace(/^\./, '') }
+      assetsByLocalUrl[src.localUrl] = { id: up.id, ext: String(up.ext || '').replace(/^\./, ''), serveUrl: up.serve_url }
     } else {
       failed.push({ path: src.path, status: putRes.status, detail: await putRes.text().catch(() => '') })
     }
