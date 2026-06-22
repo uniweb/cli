@@ -106,6 +106,22 @@ test('pushSyncPackages: a rejected lane returns exit 1, reports the error, and d
   rmSync(dir, { recursive: true, force: true })
 })
 
+test('pushSyncPackages: a 409 explains the facet-genesis fix (delete + redeploy) instead of a bare error', async () => {
+  const dir = tmpSite()
+  const client = { origin: 'http://x', createSiteContent: async () => fail(409, 'folder facet already established') }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: undefined, hashes: { x: 'y' } }), asOrg: null, report })
+
+  assert.equal(res.exitCode, 1)
+  assert.ok(calls.error.some((m) => /rejected: HTTP 409/.test(m)))
+  // the friendlier guidance — the v1 folder is genesis-owned; delete + redeploy (or clear $uuid)
+  assert.ok(
+    calls.note.some((m) => /delete the deployed site and redeploy/.test(m) && /clear `\$uuid`/.test(m)),
+    'explains the delete+redeploy / clear-$uuid fix'
+  )
+  rmSync(dir, { recursive: true, force: true })
+})
+
 test('pushSyncPackages: the folder lane is keyed by the bound site uuid', async () => {
   const dir = tmpSite()
   let folderKey = null

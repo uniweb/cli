@@ -148,6 +148,15 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
       error(`${label} push rejected: HTTP ${res.status} ${res.statusText}`)
       if (res.status === 401 || res.status === 403) {
         note("Credentials weren't accepted — supply a bearer with --token <bearer> (or UNIWEB_TOKEN).")
+      } else if (res.status === 409) {
+        // The site's @uniweb/folder is genesis-owned: its structure is fixed on first
+        // deploy and not reconciled in place (the v1 rule — see gotcha #20's mode switch).
+        note(
+          "This site's collection structure is already established on the backend and can't be changed " +
+            'in place — e.g. adding or removing a schema-backed collection, or switching one between ' +
+            'static (data-bundle) and schema-backed delivery. To change it: delete the deployed site and ' +
+            'redeploy, or clear `$uuid` in site.yml to deploy a fresh one.'
+        )
       }
       const body = await res.text().catch(() => '')
       if (body) note(body.slice(0, 800))
