@@ -23,10 +23,11 @@
  *      backend's highest installed; fail closed if neither resolves).
  *   2. Build the site data (link mode): site-content.json (+ per-locale variants),
  *      collection data, search indexes, processed assets.
- *   3. Partition collections by schema presence: schema-less → the static-data ball
- *      (uploaded content-addressed → `info.data_bundle`); schema-backed → typed folder
- *      entities on the push lane.
- *   4. Upload the site's local media and map each site-root ref → its backend serve URL.
+ *   3. Partition collections by schema presence: schema-less → the static-data ball;
+ *      schema-backed → typed folder entities on the push lane.
+ *   4. Upload the site's local media (entity refs + the ball's refs, one deduped set) →
+ *      each site-root ref's backend serve URL; rewrite the ball with it, then upload the
+ *      rewritten ball (content-addressed → `info.data_bundle`).
  *   5. Push — the SAME two-lane sync `uniweb push` uses (site-content with
  *      `info.data_bundle` stamped + media refs rewritten, then the folder + records) —
  *      over the send-only-changed cache; the backend mints/round-trips the site uuid.
