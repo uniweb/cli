@@ -45,17 +45,19 @@
  */
 
 import { existsSync } from 'node:fs'
-import { readFile, readdir } from 'node:fs/promises'
-import { resolve, join, relative } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 import yaml from 'js-yaml'
 
-import { loadDeployYml, resolveTarget, recordLastDeploy, rewriteSiteContentPaths } from '@uniweb/build/site'
+import { loadDeployYml, resolveTarget, recordLastDeploy, assembleDataBall } from '@uniweb/build/site'
 import { promptForHost } from '../utils/host-prompt.js'
 import { readFlagValue } from '../utils/args.js'
 import { parseBoolEnv } from '../utils/env.js'
 import { BackendClient } from '../backend/client.js'
-import { collectSiteAssets, buildAssetUrl } from '../utils/asset-upload.js'
+import { emitSyncPackages } from '@uniweb/build/uwx'
+import { makeModelResolver, readSyncCache, pushSyncPackages } from '../backend/site-sync.js'
+import { uploadDataBundle } from '../backend/data-bundle.js'
 
 import {
   findWorkspaceRoot,
@@ -262,27 +264,20 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
     command: 'Deploying',
   })
 
-  // Steer-hint (not enforced): a site that's been synced (has site.yml::$uuid) is
-  // CMS-managed — `uniweb release` publishes its current backend state, including
-  // app-side edits. `deploy` still works: it hosts the LOCAL file-built payload as
-  // a separate delivery (deploy ⊥ publish — alternative lifecycles, your choice).
-  if (siteYml.$uuid) {
-    say.warn('This site is synced (site.yml::$uuid) — CMS-managed.')
-    say.dim('`uniweb release` publishes its current backend state; `deploy` hosts your local files as a separate delivery.')
-  }
+  const foundationDir = readFlagValue(args, '--foundation') // optional local foundation for Model schemas
+  const asOrg = readFlagValue(args, '--as-org')
 
-  // Anonymous capability handshake (cached). Confirms the deploy lane is offered
-  // and supplies the installed-runtime list (the /dev/config replacement for the
-  // retired Worker /runtime/latest).
+  // Anonymous capability handshake (cached). The composite deploy ends in a publish,
+  // so confirm that lane is offered (the push/sync lanes are the backend's baseline).
   const config = await client.discover()
-  if (config?.delivery && config.delivery.deploy === false) {
-    say.err(`Backend at ${client.origin} does not offer the deploy lane (delivery.deploy=false).`)
+  if (config?.delivery && config.delivery.publish === false) {
+    say.err(`Backend at ${client.origin} does not offer the publish lane (delivery.publish=false).`)
     process.exit(1)
   }
 
   // Runtime resolution: an explicit site.yml::runtime pin wins; else the highest
   // version the backend reports installed; else fail closed with a clear
-  // precondition error (better than serving a site with no runtime — §9.4).
+  // precondition error (better than serving a site with no runtime).
   const installed = Array.isArray(config?.runtime?.installed) ? config.runtime.installed : []
   if (siteYml.runtime && installed.length && !installed.includes(siteYml.runtime)) {
     say.err(`Runtime ${siteYml.runtime} (from site.yml) is not installed on the backend.`)
@@ -296,23 +291,18 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
     process.exit(1)
   }
 
-  // deploy.yml uuid round-trip: a prior deploy recorded the minted delivery uuid
-  // under lastDeploy.<target>.siteUuid; resend it so /gateway/site/{uuid}/ stays
-  // stable. First deploy has none → the backend mints one and we write it back.
-  const priorUuid = readDeployedSiteUuid(deployYml, resolved.targetName)
-
   if (dryRun) {
-    say.info('Dry run — would deploy to the Uniweb backend:')
+    say.info('Dry run — would deploy to the Uniweb backend as a composite (ball → push → publish):')
     say.dim(`Backend     : ${client.origin}`)
     say.dim(`Foundation  : ${typeof foundation === 'string' ? foundation : foundation.ref}`)
     say.dim(`Runtime     : ${runtimeVersion}${siteYml.runtime ? '' : ' (highest installed)'}`)
-    say.dim(`site_uuid   : ${priorUuid || '(none — backend will mint)'}`)
+    say.dim(`site_uuid   : ${siteYml.$uuid || '(none — the first push mints it)'}`)
     return
   }
 
-  // Build (link mode): emits dist/site-content.json (+ per-locale variants under
-  // dist/<lang>/), dist/data/*, dist/_search/*. Spawn the SAME CLI binary that's
-  // running so the inner build can't resolve to a different installed version.
+  // Build (link mode): emits dist/data/*, dist/_search/*, dist/assets/*, and
+  // dist/site-content.json. Spawn the SAME CLI binary so the inner build can't resolve
+  // to a different installed version.
   say.info('Building site…')
   console.log('')
   execSync(`node ${JSON.stringify(process.argv[1])} build --link`, {
@@ -329,105 +319,97 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
     process.exit(1)
   }
 
+  // Non-local @std/registry Model schemas resolve through the backend (same as push).
+  const resolveModel = makeModelResolver({ client, offline: false })
+
+  // 1. Partition the collections by schema presence. A first emit reads `schemaless`
+  //    — the collections with no data schema, delivered statically via the ball. Its
+  //    packages are discarded (deploy is not a hot path; the cheap clarity beats a
+  //    schemaless-only fast path, a later optimization).
+  let probe
+  try {
+    probe = await emitSyncPackages(siteDir, { ...(foundationDir ? { foundationDir } : {}), resolveModel })
+  } catch (err) {
+    say.err(`Could not build the sync package: ${err.message}`)
+    process.exit(1)
+  }
+  const schemalessNames = (probe.schemaless || []).map((col) => col.name)
+
+  // 2. Assemble + upload the static-data ball (schema-less collection data + the search
+  //    index). `data_bundle` is its content-addressed serve URL; omitted when there is
+  //    nothing static to deliver.
+  const ball = await assembleDataBall(distDir, schemalessNames)
+  let dataBundle
+  if (ball) {
+    say.info('Uploading data bundle…')
+    try {
+      dataBundle = await uploadDataBundle(client, ball, { onProgress: (m) => say.dim(`  ${m}`) })
+    } catch (err) {
+      say.err(`Data bundle upload failed: ${err.message}`)
+      process.exit(1)
+    }
+    say.dim(`Data bundle    : ${Object.keys(ball.data).length} data + ${Object.keys(ball.search).length} search file(s)`)
+  }
+
+  // 3. Push the site (content + folder) over the send-only-changed cache — the SAME
+  //    two-lane submission `uniweb push` uses — stamping info.data_bundle on the
+  //    site-content entity. (Local-media URL rewrite over the entity content is a
+  //    separate pass: a media-bearing site needs it before it renders fully.)
+  const priorHashes = readSyncCache(siteDir)
+  let pkg
+  try {
+    pkg = await emitSyncPackages(siteDir, {
+      ...(foundationDir ? { foundationDir } : {}),
+      resolveModel,
+      priorHashes,
+      ...(dataBundle ? { injectInfo: { data_bundle: dataBundle } } : {}),
+    })
+  } catch (err) {
+    say.err(`Could not build the sync package: ${err.message}`)
+    process.exit(1)
+  }
+  for (const w of pkg.warnings) say.dim(`! ${w}`)
+  const report = {
+    info: (m) => say.info(m),
+    note: (m) => say.dim(m),
+    error: (m) => say.err(m),
+    dim: (s) => `${c.dim}${s}${c.reset}`,
+  }
+  const pushResult = await pushSyncPackages({ client, siteDir, pkg, asOrg, report })
+  if (pushResult.exitCode !== 0) process.exit(pushResult.exitCode)
+  const siteUuid = pushResult.boundSiteUuid
+  if (!siteUuid) {
+    say.err('Push did not yield a site uuid — cannot publish.')
+    process.exit(1)
+  }
+
+  // 4. Publish: make the just-pushed composite live (its current backend state).
   const siteContent = JSON.parse(await readFile(contentPath, 'utf8'))
   const languages = extractLanguages(siteContent)
-  const defaultLanguage = siteContent?.config?.defaultLanguage || languages[0] || 'en'
-  const theme = await readTheme(siteDir, siteContent)
-
-  // Per-locale content: default + each non-default dist/<lang>/site-content.json.
-  const localeContents = { [defaultLanguage]: siteContent }
-  for (const lang of languages) {
-    if (lang === defaultLanguage) continue
-    const p = join(distDir, lang, 'site-content.json')
-    if (existsSync(p)) localeContents[lang] = JSON.parse(await readFile(p, 'utf8'))
-    else say.warn(`Locale "${lang}" listed in site config but no dist/${lang}/site-content.json — skipping.`)
-  }
-
-  // Collection JSON (→ /data/<key>) and search indexes (→ /_search/<key>) — two
-  // distinct serve namespaces on the backend.
-  const dataFiles = await collectDataFiles(distDir)
-  if (Object.keys(dataFiles).length) say.dim(`Data files     : ${Object.keys(dataFiles).length} (collection JSON)`)
-  const searchFiles = await collectSearchFiles(distDir)
-  if (Object.keys(searchFiles).length) say.dim(`Search indexes : ${Object.keys(searchFiles).length} (_search/ JSON)`)
-
-  // Assets: when the backend advertises the lane (config.assets.supported), upload
-  // the site's processed media (dist/assets/*) to the content-addressed store and
-  // rewrite the content's local refs to durable serve URLs. Image-free sites
-  // collect nothing and deploy unchanged; an un-advertised lane is skipped.
-  // Contract: kb/framework/build/delivery-lane.md §Assets (channel f90d).
-  if (config?.assets && config.assets.supported === false) {
-    say.dim('Asset lane not yet available on this backend — skipping upload (image-free deploy).')
-  } else {
-    const assetFiles = collectSiteAssets(distDir)
-    if (assetFiles.length) {
-      say.info(`Uploading ${assetFiles.length} asset(s)…`)
-      let assetResult
-      try {
-        assetResult = await client.uploadSiteAssets({ distDir, files: assetFiles, onProgress: (m) => say.dim(`  ${m}`) })
-      } catch (err) {
-        say.err(`Asset upload failed: ${err.message}`)
-        process.exit(1)
-      }
-      if (assetResult.failed.length) {
-        say.err(`${assetResult.failed.length} asset(s) failed to upload:`)
-        for (const f of assetResult.failed) say.dim(`  ${f.path} — HTTP ${f.status} ${f.detail}`)
-        process.exit(1)
-      }
-      // Build localUrl → durable serve URL, then re-run the build's own rewrite
-      // over each locale's content (image nodes, marks, dataBlocks, param fields).
-      // assetBase comes from /dev/config (origin-relative in dev → prepend origin;
-      // absolute CDN in prod → used verbatim).
-      const urlMapping = {}
-      for (const [localUrl, { id, ext }] of Object.entries(assetResult.assetsByLocalUrl)) {
-        urlMapping[localUrl] = buildAssetUrl(client.origin, config.assetBase, id, ext)
-      }
-      for (const lang of Object.keys(localeContents)) {
-        localeContents[lang] = rewriteSiteContentPaths(localeContents[lang], urlMapping)
-      }
-      const skippedNote = assetResult.skipped?.length ? `, ${assetResult.skipped.length} already present` : ''
-      say.dim(`Assets         : ${assetResult.uploaded.length} uploaded${skippedNote} (${assetResult.mode}) → ${config.assetBase}`)
-    }
-  }
-
-  const payload = {
-    foundation,
-    runtimeVersion,
-    theme,
-    languages,
-    defaultLanguage,
-    ...(Object.keys(dataFiles).length ? { dataFiles } : {}),
-    ...(Object.keys(searchFiles).length ? { searchFiles } : {}),
-    // One entry per language — single-locale sites end up with { [default]: content };
-    // multi-locale carry per-locale translated content. Same shape as Editor publish.
-    locales: localeContents,
-  }
-
-  say.info(`Deploying to ${c.dim}${client.origin}${c.reset} …`)
-  let res
+  say.info(`Publishing to ${c.dim}${client.origin}${c.reset} …`)
+  let pubRes
   try {
-    res = await client.deploy(payload, { siteUuid: priorUuid || undefined })
+    pubRes = await client.publishSite(siteUuid, { runtimeVersion, ...(languages ? { languages } : {}) })
   } catch (err) {
     say.err(`Could not reach the backend at ${client.origin}: ${err.message}`)
     say.dim('Set the origin with --backend <url> or UNIWEB_REGISTER_URL.')
     process.exit(1)
   }
-  if (!res.ok) {
-    say.err(`Deploy rejected: HTTP ${res.status} ${res.statusText}`)
-    if (res.status === 401 || res.status === 403) {
+  if (!pubRes.ok) {
+    say.err(`Publish rejected: HTTP ${pubRes.status} ${pubRes.statusText}`)
+    if (pubRes.status === 401 || pubRes.status === 403) {
       say.dim("Credentials weren't accepted — run `uniweb login` (or pass --token <bearer>).")
     }
-    const body = await res.text().catch(() => '')
+    const body = await pubRes.text().catch(() => '')
     if (body) say.dim(body.slice(0, 800))
     process.exit(1)
   }
   let result
-  try { result = await res.json() } catch { result = {} }
-
-  const mintedUuid = result.site_uuid || priorUuid || null
+  try { result = await pubRes.json() } catch { result = {} }
   const serveUrl = absolutizeServeUrl(client.origin, result.url)
 
-  // Persist deploy memory + the minted uuid for the next round-trip. recordLastDeploy
-  // touches only lastDeploy.<target>, so siteUuid rides there safely.
+  // Persist deploy memory. One identity: site.yml::$uuid (the push uuid) — no separate
+  // deploy uuid. recordLastDeploy touches only lastDeploy.<target>.
   await persistLastDeploy(siteDir, {
     targetName: resolved.targetName,
     targetConfig: resolved.fromFile ? null : { host: 'uniweb' },
@@ -436,7 +418,7 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
       at: new Date().toISOString(),
       host: 'uniweb',
       backend: client.origin,
-      siteUuid: mintedUuid,
+      siteUuid,
       url: serveUrl,
       foundation: { ref: typeof foundation === 'string' ? foundation : foundation?.ref },
       runtime: runtimeVersion,
@@ -445,7 +427,7 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
   })
 
   console.log('')
-  say.ok(`Deployed ${c.bold}${mintedUuid || 'site'}${c.reset}`)
+  say.ok(`Deployed ${c.bold}${siteUuid}${c.reset}`)
   if (serveUrl) console.log(`  ${c.cyan}${serveUrl}${c.reset}`)
 }
 
@@ -455,12 +437,6 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
 function pickHighestRuntime(installed) {
   if (!Array.isArray(installed) || installed.length === 0) return null
   return [...installed].sort((a, b) => String(b).localeCompare(String(a), undefined, { numeric: true }))[0]
-}
-
-// The previously-minted delivery uuid for `targetName` (lastDeploy.<target>.siteUuid
-// in a loaded deploy.yml), or null on a first deploy / absent file.
-function readDeployedSiteUuid(deployYml, targetName) {
-  return deployYml?.lastDeploy?.[targetName]?.siteUuid || null
 }
 
 // The deploy response `url` is the serve path. When origin-relative (the self-serve
@@ -669,67 +645,4 @@ function extractLanguages(siteContent) {
   if (!Array.isArray(langs) || langs.length === 0) return ['en']
   // Three accepted shapes: plain `'en'`, Editor `{ value, label }`, site.yml `{ code, label }`.
   return langs.map((l) => (typeof l === 'string' ? l : l?.value || l?.code)).filter(Boolean)
-}
-
-// Collect compiled collection JSON files from dist/data/ recursively.
-// Returns `{ '<relPath>': '<utf8-content>' }` keyed by the path under data/
-// so the worker can write each to `${sitePrefix}/data/<relPath>` in R2.
-// Empty object when the site has no `collection:` data sources.
-async function collectDataFiles(distDir) {
-  const dataDir = join(distDir, 'data')
-  if (!existsSync(dataDir)) return {}
-  const files = {}
-  const entries = await readdir(dataDir, { withFileTypes: true, recursive: true })
-  for (const entry of entries) {
-    if (!entry.isFile()) continue
-    if (!entry.name.endsWith('.json')) continue
-    const fullPath = join(entry.parentPath || entry.path, entry.name)
-    const relPath = relative(dataDir, fullPath)
-    files[relPath] = await readFile(fullPath, 'utf8')
-  }
-  return files
-}
-
-// Collect search index files from dist/_search/ recursively.
-// Returns `{ '<locale>/<name>.json': '<utf8-content>' }` so the worker can
-// write each to `${sitePrefix}/_search/<key>` in R2, gated by searchEnabled.
-// Empty object when the build emitted no search indexes.
-async function collectSearchFiles(distDir) {
-  const searchDir = join(distDir, '_search')
-  if (!existsSync(searchDir)) return {}
-  const files = {}
-  const entries = await readdir(searchDir, { withFileTypes: true, recursive: true })
-  for (const entry of entries) {
-    if (!entry.isFile()) continue
-    if (!entry.name.endsWith('.json')) continue
-    const fullPath = join(entry.parentPath || entry.path, entry.name)
-    const relPath = relative(searchDir, fullPath)
-    files[relPath] = await readFile(fullPath, 'utf8')
-  }
-  return files
-}
-
-/**
- * Resolve theme config.
- *
- * The build pipeline does not (today) emit a separate theme.json, so we read
- * the developer-authored theme.yml from the site root. The Worker's
- * `buildTheme()` tolerates an empty config — sites with no theme.yml still
- * publish, they just get default tokens.
- */
-async function readTheme(siteDir, siteContent) {
-  const themePath = join(siteDir, 'theme.yml')
-  if (existsSync(themePath)) {
-    try {
-      const parsed = yaml.load(await readFile(themePath, 'utf8'))
-      if (parsed && typeof parsed === 'object') return parsed
-    } catch {
-      // fall through to site-content.json fallback
-    }
-  }
-  // site-content sometimes carries a `theme` key produced by collectors.
-  if (siteContent?.theme && typeof siteContent.theme === 'object') {
-    return siteContent.theme
-  }
-  return {}
 }
