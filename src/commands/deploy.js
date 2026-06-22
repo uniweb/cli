@@ -52,7 +52,7 @@ import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 import yaml from 'js-yaml'
 
-import { loadDeployYml, resolveTarget, recordLastDeploy, assembleDataBall } from '@uniweb/build/site'
+import { loadDeployYml, resolveTarget, recordLastDeploy, assembleDataBall, collectBallAssets, rewriteBallAssets } from '@uniweb/build/site'
 import { promptForHost } from '../utils/host-prompt.js'
 import { readFlagValue } from '../utils/args.js'
 import { parseBoolEnv } from '../utils/env.js'
@@ -337,12 +337,39 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
     process.exit(1)
   }
   const schemalessNames = (probe.schemaless || []).map((col) => col.name)
-  const localAssets = probe.localAssets || [] // site-root media refs to upload + rewrite
+  const localAssets = probe.localAssets || [] // entity-content site-root media refs
 
-  // 2. Assemble + upload the static-data ball (schema-less collection data + the search
-  //    index). `data_bundle` is its content-addressed serve URL; omitted when there is
-  //    nothing static to deliver.
-  const ball = await assembleDataBall(distDir, schemalessNames)
+  // 2. Assemble the static-data ball (schema-less collection data + the search index) —
+  //    BEFORE uploading it, because its schema-less records can carry local media too,
+  //    which we upload + rewrite to serve URLs exactly like entity content (the backend
+  //    serves a serve_url in the ball identically — it unwraps the ball verbatim).
+  let ball = await assembleDataBall(distDir, schemalessNames)
+  const ballAssets = collectBallAssets(ball)
+
+  // 2b. Upload ALL local media (entity refs + ball refs) on one asset lane → the
+  //     ref→serveUrl map. The same map rewrites the entity content (assetRewrite, real
+  //     emit below) AND the ball (here, before it's uploaded). Co-located refs were
+  //     warned + skipped by the producer; a missing file is skipped here (warned).
+  let assetRewrite = null
+  const mediaRefs = [...new Set([...localAssets, ...ballAssets])]
+  if (mediaRefs.length) {
+    say.info('Uploading media…')
+    try {
+      const map = await uploadSiteMedia(client, siteDir, mediaRefs, {
+        onProgress: (m) => say.dim(`  ${m}`),
+        warn: (m) => say.dim(`! ${m}`),
+      })
+      if (Object.keys(map).length) assetRewrite = map
+      if (ballAssets.length) ball = rewriteBallAssets(ball, map) // swap the ball's local refs → serve URLs
+      say.dim(`Media          : ${Object.keys(map).length}/${mediaRefs.length} ref(s) → serve URL`)
+    } catch (err) {
+      say.err(`Media upload failed: ${err.message}`)
+      process.exit(1)
+    }
+  }
+
+  // 2c. Upload the (media-rewritten) ball. `data_bundle` is its content-addressed serve
+  //     URL; omitted when there is nothing static to deliver.
   let dataBundle
   if (ball) {
     say.info('Uploading data bundle…')
@@ -353,26 +380,6 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
       process.exit(1)
     }
     say.dim(`Data bundle    : ${Object.keys(ball.data).length} data + ${Object.keys(ball.search).length} search file(s)`)
-  }
-
-  // 2b. Upload the site's local media + build the ref→serveUrl map. The producer
-  //     surfaced the site-root refs in `localAssets`; the backend stores the bytes
-  //     content-addressed and the serve URL is what we rewrite the entity refs to
-  //     (assetRewrite, on the real emit below). Co-located refs were warned + skipped.
-  let assetRewrite = null
-  if (localAssets.length) {
-    say.info('Uploading media…')
-    try {
-      const map = await uploadSiteMedia(client, siteDir, localAssets, {
-        onProgress: (m) => say.dim(`  ${m}`),
-        warn: (m) => say.dim(`! ${m}`),
-      })
-      if (Object.keys(map).length) assetRewrite = map
-      say.dim(`Media          : ${Object.keys(map).length}/${localAssets.length} ref(s) → serve URL`)
-    } catch (err) {
-      say.err(`Media upload failed: ${err.message}`)
-      process.exit(1)
-    }
   }
 
   // 3. Push the site (content + folder) over the send-only-changed cache — the SAME
