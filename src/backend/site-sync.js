@@ -13,7 +13,7 @@
 
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import { backfillEntityUuids, writeSiteEntityUuid } from '@uniweb/build/uwx'
+import { backfillEntityUuids, writeSiteEntityUuid, emitSyncPackages } from '@uniweb/build/uwx'
 
 // Pull the finalized entities out of the restore response. The backend returns
 // `{ report: { finalized: [ { index, uuid, changed, document }, … ] } }` — each entry
@@ -104,6 +104,27 @@ export function writeSyncCache(siteDir, hashes) {
   const p = syncCachePath(siteDir)
   mkdirSync(dirname(p), { recursive: true })
   writeFileSync(p, JSON.stringify({ version: 1, hashes }, null, 2) + '\n')
+}
+
+/**
+ * Offline-probe how many of a site's entities differ from the last successful push.
+ * Runs the SAME emit + send-only-changed diff `uniweb push` runs, but with an
+ * OFFLINE Model resolver — no auth, no submit, no backend round-trip. Used by
+ * `uniweb status` and the `uniweb publish` pre-flight. Throws if the producer
+ * can't build the sync packages (e.g. an unresolved data Model); callers report it.
+ *
+ * @param {string} siteDir
+ * @returns {Promise<{ changed: number, unchanged: number, warnings: string[] }>}
+ */
+export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
+  const priorHashes = readSyncCache(siteDir)
+  const pkg = await emitSyncPackages(siteDir, {
+    resolveModel: makeModelResolver({ client: null, offline: true }),
+    priorHashes,
+    sendAll,
+  })
+  const changed = (pkg.siteContent?.entityCount || 0) + (pkg.collections?.entityCount || 0)
+  return { changed, unchanged: pkg.skipped || 0, warnings: pkg.warnings || [] }
 }
 
 /**

@@ -627,6 +627,13 @@ async function main() {
     process.exit(result?.exitCode ?? 0)
   }
 
+  // Handle status command (dynamic import — offline emit via @uniweb/build)
+  if (command === 'status') {
+    const { status } = await importProjectCommand('./commands/status.js')
+    const result = await status(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
+  }
+
   // Handle clone command (global — bootstraps a new project from a backend site;
   // STANDALONE, so a global `uniweb clone` runs here instead of delegating to a
   // project-local CLI that doesn't exist yet. clone.js avoids any static
@@ -1470,6 +1477,7 @@ ${colors.bright}Commands:${colors.reset}
   runtime register   Register an @uniweb/runtime version to the backend (@std only)
   push               Push a site's content to the backend
   pull               Pull a site's content from the backend
+  status             Show a site's sync state (unpushed content, foundation)
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   doctor             Diagnose project configuration issues

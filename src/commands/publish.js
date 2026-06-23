@@ -33,9 +33,13 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 
+import { createInterface } from 'node:readline/promises'
+
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir } from './deploy.js'
 import { readFlagValue } from '../utils/args.js'
+import { isNonInteractive } from '../utils/interactive.js'
+import { probeUnpushed } from '../backend/site-sync.js'
 
 const c = {
   reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
@@ -47,6 +51,18 @@ const say = {
   warn: (m) => console.log(`${c.yellow}⚠${c.reset} ${m}`),
   err: (m) => console.error(`${c.red}✗${c.reset} ${m}`),
   dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`),
+}
+
+// Minimal yes/no prompt. Returns `defaultYes` on an empty answer.
+async function confirm(question, defaultYes = false) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const a = (await rl.question(`${question} ${defaultYes ? '[Y/n]' : '[y/N]'} `)).trim().toLowerCase()
+    if (!a) return defaultYes
+    return a === 'y' || a === 'yes'
+  } finally {
+    rl.close()
+  }
 }
 
 // Highest installed runtime from the backend's /dev/config list (numeric-aware
@@ -76,6 +92,7 @@ function extractLanguages(siteYml) {
 
 export async function publish(args = []) {
   const dryRun = args.includes('--dry-run')
+  const skipVerify = args.includes('--yes') || args.includes('--force') || args.includes('--no-verify')
   const siteDir = await resolveSiteDir(args, 'publish')
 
   // The site-content uuid lives in site.yml::$uuid (written by `uniweb push`).
@@ -132,6 +149,27 @@ export async function publish(args = []) {
     say.dim(`Runtime     : ${runtimeVersion}${siteYml.runtime ? '' : ' (highest installed)'}`)
     if (languages) say.dim(`Languages   : ${languages.join(', ')}`)
     return { exitCode: 0 }
+  }
+
+  // Pre-flight: `publish` makes the BACKEND's current state live — NOT your local
+  // files. If local content differs from the last push, surface it. Interactive
+  // only; --yes / --force / --no-verify skip it, and a build error never blocks.
+  if (!skipVerify && !isNonInteractive(args)) {
+    let probe = null
+    try {
+      probe = await probeUnpushed(siteDir)
+    } catch {
+      probe = null
+    }
+    if (probe && probe.changed > 0) {
+      say.warn(`You have ${probe.changed} unpushed local content change${probe.changed === 1 ? '' : 's'}.`)
+      say.dim('`publish` makes the backend state live as-is; local edits are not included. Push first, or `uniweb deploy` to do both.')
+      const proceed = await confirm('Publish the current backend state anyway?', true)
+      if (!proceed) {
+        say.info('Aborted — run `uniweb push`, then `uniweb publish`.')
+        return { exitCode: 0 }
+      }
+    }
   }
 
   say.info(`Publishing the synced site to ${c.dim}${client.origin}${c.reset} …`)
