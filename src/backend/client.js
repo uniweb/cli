@@ -207,6 +207,25 @@ export class BackendClient {
     return res.json()
   }
 
+  /**
+   * ASSUMED endpoint (not built yet — kb/framework/plans/shipping-verbs-and-freshness.md §6.5).
+   * GET /dev/registry/foundation/{scope}/{name} → { latest_version } for a foundation's
+   * latest registered version, or null on 404 / any failure (callers degrade gracefully).
+   * A bare/unscoped name → null (only `@org/name` can be looked up).
+   * @param {string} scopedName
+   * @returns {Promise<{ latest_version: string }|null>}
+   */
+  async readFoundationLatest(scopedName) {
+    const m = /^@([^/]+)\/([^@/]+)/.exec(String(scopedName || ''))
+    if (!m) return null
+    try {
+      const res = await this.request(`/dev/registry/foundation/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}`)
+      return res.ok ? await res.json().catch(() => null) : null
+    } catch {
+      return null
+    }
+  }
+
   // ── Orgs ──────────────────────────────────────────────────────────────────────
 
   /** GET /dev/orgs → { account_handle, personal_org_exists, orgs[] }. */
@@ -309,6 +328,23 @@ export class BackendClient {
    */
   async unpublishSite(uuid) {
     return this.request(`/dev/site/unpublish/${encodeURIComponent(uuid)}`, { method: 'POST' })
+  }
+
+  /**
+   * ASSUMED endpoint (not built yet — kb/framework/plans/shipping-verbs-and-freshness.md §6.5).
+   * GET /dev/site/{uuid}/status → the site's publish lifecycle:
+   *   { published: boolean, last_pushed_at?: string, last_published_at?: string, draft_dirty?: boolean }
+   * `draft_dirty` = the synced draft differs from what's currently live. null on 404 / any failure.
+   * @param {string} uuid - the site-content uuid
+   * @returns {Promise<object|null>}
+   */
+  async siteStatus(uuid) {
+    try {
+      const res = await this.request(`/dev/site/${encodeURIComponent(uuid)}/status`)
+      return res.ok ? await res.json().catch(() => null) : null
+    } catch {
+      return null
+    }
   }
 
   /**

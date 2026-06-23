@@ -2,15 +2,20 @@
  * uniweb status — show how a site's local files compare to the Uniweb backend:
  * its sync identity, unpushed content changes, and the foundation it references.
  *
- * Fully local + offline: it builds the sync packages with an OFFLINE Model
+ * LOCAL + OFFLINE by default: it builds the sync packages with an OFFLINE Model
  * resolver and diffs them against the send-only-changed cache (the same diff
- * `uniweb push` runs) — no auth, no backend round-trip. The richer
- * "registered foundation version" and "backend draft vs live" signals need
- * backend reads and land later (see kb shipping-verbs-and-freshness.md §5).
+ * `uniweb push` runs) — no auth, no backend round-trip.
+ *
+ * `--remote` adds the backend signals (may prompt for login, like `git fetch`):
+ *   - whether the synced draft differs from what's live (publish needed), and
+ *   - whether a newer foundation version is registered than the site pins.
+ * Those use ASSUMED endpoints (see kb shipping-verbs-and-freshness.md §6.5); until
+ * the backend exposes them, `--remote` degrades silently to the local view.
  *
  * Usage:
- *   uniweb status            Sync identity + unpushed content + foundation ref
- *   uniweb status --json     One JSON line { synced, uuid, foundation, changed, unchanged }
+ *   uniweb status            Sync identity + unpushed content + foundation ref (local)
+ *   uniweb status --remote   Also: draft-vs-live + a newer-registered-foundation check
+ *   uniweb status --json     One JSON line (adds a `remote` object under --remote)
  *
  * Run from a site, or a workspace with one site.
  */
@@ -21,6 +26,8 @@ import yaml from 'js-yaml'
 
 import { resolveSiteDir } from './deploy.js'
 import { probeUnpushed } from '../backend/site-sync.js'
+import { BackendClient } from '../backend/client.js'
+import { readFlagValue } from '../utils/args.js'
 
 const c = {
   reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
@@ -49,21 +56,49 @@ function foundationRef(siteYml) {
   return typeof f === 'string' ? f : f.ref || null
 }
 
+// A versioned registry ref `@org/name@1.2.3` → its scoped name `@org/name` and
+// pinned version `1.2.3`. A bare/local/unversioned ref → nulls.
+function splitFoundationRef(fnd) {
+  if (!fnd || fnd[0] !== '@') return { scope: null, version: null }
+  const at = fnd.lastIndexOf('@')
+  return at > 0 ? { scope: fnd.slice(0, at), version: fnd.slice(at + 1) } : { scope: null, version: null }
+}
+
 export async function status(args = []) {
   const jsonMode = args.includes('--json')
+  const remote = args.includes('--remote')
   const siteDir = await resolveSiteDir(args, 'status')
   const siteYml = readSiteYml(siteDir)
   const uuid = siteYml.$uuid || null
   const fnd = foundationRef(siteYml)
+  const { scope: fndScope, version: fndVersion } = splitFoundationRef(fnd)
 
-  // Offline content diff — builds the sync packages, never authenticates.
-  // Tolerate a build failure (e.g. an unresolved Model) rather than crash.
+  // Local content diff — builds the sync packages, never authenticates.
   let probe = null
   let probeErr = null
   try {
     probe = await probeUnpushed(siteDir)
   } catch (err) {
     probeErr = err.message
+  }
+
+  // Remote signals — opt-in (`--remote`). May prompt for login. Degrades to null
+  // on 404 / any failure, so a backend without the endpoints just shows local.
+  let site = null
+  let fdnLatest = null
+  if (remote) {
+    try {
+      const client = new BackendClient({
+        originFlag: readFlagValue(args, '--backend') || readFlagValue(args, '--registry'),
+        token: readFlagValue(args, '--token') || undefined,
+        args,
+        command: 'Status',
+      })
+      if (uuid) site = await client.siteStatus(uuid)
+      if (fndScope) fdnLatest = await client.readFoundationLatest(fndScope)
+    } catch {
+      // degrade silently
+    }
   }
 
   if (jsonMode) {
@@ -75,6 +110,7 @@ export async function status(args = []) {
         changed: probe ? probe.changed : null,
         unchanged: probe ? probe.unchanged : null,
         ...(probeErr ? { error: probeErr } : {}),
+        ...(remote ? { remote: { site, foundation_latest: fdnLatest?.latest_version ?? null } } : {}),
       })
     )
     return { exitCode: 0 }
@@ -111,6 +147,25 @@ export async function status(args = []) {
 
   // Foundation
   if (fnd) say.dim(`Foundation: ${fnd}`)
+
+  // Remote signals
+  if (remote) {
+    if (site) {
+      if (site.draft_dirty) {
+        say.info('Synced draft has changes not yet live — run `uniweb publish` to go live.')
+      } else if (site.published) {
+        say.ok('Live with the latest synced content.')
+      } else {
+        say.info('Synced but not published yet — run `uniweb publish` to go live.')
+      }
+    }
+    if (fdnLatest?.latest_version && fndVersion && fdnLatest.latest_version !== fndVersion) {
+      say.info(`A newer foundation version (${fdnLatest.latest_version}) is registered than the site pins (${fndVersion}).`)
+    }
+    if (!site && !fdnLatest) {
+      say.dim('(No remote signals — the backend may not expose them yet.)')
+    }
+  }
 
   console.log('')
   return { exitCode: 0 }
