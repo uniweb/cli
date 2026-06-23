@@ -30,9 +30,11 @@
  * (target name already taken, target not found, folder collision,
  * type mismatch) we bail with a clear message and no partial state.
  *
- * Out of scope: registry side. The publish id (package.json::uniweb.id)
- * is independent of the workspace name and stays untouched. Users who
- * want to also rename on the registry run `uniweb publish --name <new>`.
+ * Out of scope: registry side. The registered id (the scoped
+ * `package.json::name` / `uniweb.id`) is independent of the workspace name and
+ * stays untouched. There is no registry-rename flag — a registered version is
+ * immutable; to change a foundation's registered identity, register it under
+ * the new name (consuming sites repoint their `foundation:` ref).
  *
  * Usage:
  *   uniweb rename foundation <old> <new>
