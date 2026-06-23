@@ -153,6 +153,7 @@ uniweb export                     # Build dist/ for any static host (no Uniweb a
 uniweb push                       # Push local content to the backend (creates the site on first push)
 uniweb pull                       # Pull backend content back to local files
 uniweb clone <site-uuid>          # Start a new local project from a site already in the backend
+uniweb status                     # Show what's unpushed / out of sync (local, offline)
 uniweb publish                    # Make the synced site's current backend state live —
                                   # does NOT push; run `uniweb push` first, or just `uniweb deploy`
 
