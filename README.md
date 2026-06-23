@@ -62,7 +62,7 @@ pnpm build      # Build foundation + site for production
 pnpm preview    # Preview the production build
 ```
 
-The `build` command outputs to `site/dist/`. With pre-rendering enabled (the default for official templates), you get static HTML files ready to deploy anywhere. For the actual deploy step (and the `uniweb publish` / `uniweb deploy` commands), see [Deployment](#deployment) below.
+The `build` command outputs to `site/dist/`. With pre-rendering enabled (the default for official templates), you get static HTML files ready to deploy anywhere. For the actual deploy step (and the `uniweb deploy` / `uniweb register` commands), see [Deployment](#deployment) below.
 
 ## What You Get
 
@@ -258,7 +258,7 @@ The `src/` folder (your project's foundation) ships with your project as a conve
 | **Local folder** | Foundation lives in your workspace | Developing site and components together            |
 | **Runtime link** | Foundation loads from a URL        | Independent release cycles, platform-managed sites |
 
-You can delete the `src/` folder entirely and point your site at a published foundation. Or develop a foundation locally, then publish it for other sites to consume. The site doesn't care where its components come from.
+You can delete the `src/` folder entirely and point your site at a registered foundation. Or develop a foundation locally, then register it for other sites to consume. The site doesn't care where its components come from.
 
 **This enables two development patterns:**
 
@@ -327,20 +327,20 @@ uniweb add ci --host=github-pages
 
 ### Path 2 — Someone else manages the content
 
-You're building a foundation for clients, content authors, or any team that won't write markdown. The foundation is your product; the repo's `site/` is a test harness for the code (run `pnpm dev` to preview your components against sample content). You don't deploy a site — you publish a foundation:
+You're building a foundation for clients, content authors, or any team that won't write markdown. The foundation is your product; the repo's `site/` is a test harness for the code (run `pnpm dev` to preview your components against sample content). You don't deploy a site — you register a foundation:
 
 ```bash
 cd src
-uniweb publish @your-org/foundation-name
+uniweb register --scope @your-org
 ```
 
 Real sites built on your foundation are managed in the **Uniweb apps** (web + desktop) — visual editors designed for non-technical authors. They never see git, markdown, yaml, or React. They see *your* components, with live previews and visual controls for the params you defined. The foundation becomes the editor's native vocabulary for that site: you keep creative control of the design system, they get an editor that feels custom-built for them.
 
 This is the best path when site content has a life independent of the foundation's release cycle — agencies, design studios, multi-client teams, or any project where content authors aren't the same people as the developers.
 
-### Roadmap — Hybrid
+### Hybrid
 
-A future version will let markdown in a git repo and content in the Uniweb apps stay in two-way sync. Authors edit visually, devs edit in their IDE, both surfaces work on the same content. On the roadmap; not available today.
+Markdown in a git repo and content in the Uniweb apps can share the same site. Directional sync is available today: `uniweb push` sends local content to the backend, `uniweb pull` brings the backend's content back to local files, and `uniweb clone` bootstraps a local project from a site that already lives in the backend. Authors edit visually, devs edit in their IDE, both surfaces work on the same content. The advanced two-way-merge experience — conflict resolution, branch isolation, and review flows when both surfaces change the same content concurrently — is still evolving.
 
 ### Commands at a glance
 
@@ -349,7 +349,7 @@ A future version will let markdown in a git repo and content in the Uniweb apps 
 | `uniweb add ci --host=<adapter>` | Scaffold a CI workflow in your repo (today: `github-pages`). The host runs `uniweb build` on each push. |
 | `uniweb deploy` | Deploy to Uniweb hosting (default). With `--host=<adapter>`, push directly to a static host — builds, uploads, invalidates in one step. |
 | `uniweb export` | Produce a self-contained `dist/` for any static host. You upload it yourself. `--host=<adapter>` adds host-specific helper files. |
-| `uniweb publish @org/name` | Publish a foundation to the registry (path 2). |
+| `uniweb register --scope @org` | Register a foundation to the registry (path 2). |
 | `uniweb build` | Inspect a build locally. For shipping, use `deploy` or `export`. |
 | `uniweb update` | Align this project with the CLI you're running: bump `@uniweb/*` deps in every `package.json` to the CLI's matrix (then install), and refresh `AGENTS.md`. Pins to *this* CLI's matrix — run `npx uniweb@latest update` to align to the latest release. Updating the CLI itself is your package manager's job (`npm i -g uniweb@latest`). |
 
