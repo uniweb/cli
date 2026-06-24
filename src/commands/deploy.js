@@ -51,6 +51,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
+import { createInterface } from 'node:readline/promises'
 import yaml from 'js-yaml'
 
 import { loadDeployYml, resolveTarget, recordLastDeploy, assembleDataBall, collectBallAssets, rewriteBallAssets } from '@uniweb/build/site'
@@ -149,6 +150,54 @@ const say = {
   warn: (m) => console.log(`${c.yellow}⚠${c.reset} ${m}`),
   err: (m) => console.error(`${c.red}✗${c.reset} ${m}`),
   dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`),
+}
+
+// Minimal yes/no prompt. Returns `defaultYes` on an empty answer.
+async function confirm(question, defaultYes = false) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const a = (await rl.question(`${question} ${defaultYes ? '[Y/n]' : '[y/N]'} `)).trim().toLowerCase()
+    if (!a) return defaultYes
+    return a === 'y' || a === 'yes'
+  } finally {
+    rl.close()
+  }
+}
+
+// Pre-flight for a Uniweb-host deploy: if the site pins a cataloged foundation
+// `@org/name@version` and a NEWER version is registered, surface it and (interactive)
+// confirm before deploying the pinned one. Uses the assumed GET /dev/registry/foundation
+// endpoint (kb shipping-verbs-and-freshness.md §8) — degrades to "proceed" when the
+// backend doesn't expose it. Returns false only on an explicit user decline.
+async function foundationFreshnessGate({ client, foundation, args }) {
+  const ref = typeof foundation === 'string' ? foundation : foundation?.ref
+  if (!ref || ref[0] !== '@') return true // local / URL ref → nothing to compare
+  const at = ref.lastIndexOf('@')
+  if (at <= 0) return true // unversioned scoped ref → nothing pinned
+  const scoped = ref.slice(0, at)
+  const pinned = ref.slice(at + 1)
+
+  let latest = null
+  try {
+    const f = await client.readFoundationLatest(scoped)
+    latest = f?.latest_version || null
+  } catch {
+    return true // degrade silently
+  }
+  if (!latest || latest === pinned) return true // up to date / not registered → proceed
+
+  say.warn(`A newer ${scoped} is registered (${latest}) than this site pins (${pinned}).`)
+  const skipVerify = args.includes('--yes') || args.includes('--force') || args.includes('--no-verify')
+  if (skipVerify || isNonInteractive(args)) {
+    say.dim(`Update site.yml \`foundation:\` to ${scoped}@${latest} to deploy the newer version.`)
+    return true
+  }
+  const proceed = await confirm(`Deploy with the pinned ${pinned} anyway?`, true)
+  if (!proceed) {
+    say.info(`Aborted — set site.yml \`foundation: '${scoped}@${latest}'\` and re-run \`uniweb deploy\`.`)
+    return false
+  }
+  return true
 }
 
 // ─── Main ───────────────────────────────────────────────────
@@ -303,6 +352,10 @@ async function deployToUniwebBackend(siteDir, siteYml, { foundation, args, dryRu
     say.dim(`site_uuid   : ${siteYml.$uuid || '(none — the first push mints it)'}`)
     return
   }
+
+  // Foundation freshness pre-flight (real deploy only — uses the same auth the deploy
+  // needs; never runs on --dry-run). Aborts only on an explicit user decline.
+  if (!(await foundationFreshnessGate({ client, foundation, args }))) return
 
   // Build (link mode): emits dist/data/*, dist/_search/*, dist/assets/*, and
   // dist/site-content.json. Spawn the SAME CLI binary so the inner build can't resolve
