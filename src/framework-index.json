@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-06-23T17:13:47.118Z",
+  "generatedAt": "2026-06-24T03:15:27.555Z",
   "packages": {
     "@uniweb/build": {
-      "version": "0.14.17",
+      "version": "0.14.18",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -99,7 +99,7 @@
       "deps": []
     },
     "@uniweb/unipress": {
-      "version": "0.4.23",
+      "version": "0.4.24",
       "path": "framework/unipress",
       "deps": [
         "@uniweb/build",
