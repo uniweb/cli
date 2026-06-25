@@ -122,7 +122,10 @@ export function uploadOrder(files) {
  * per-file `sha256` (hex) of exactly what `register` ships for a foundation —
  *   - the code-upload set (`collectDistFiles`: entry + chunks + assets, with
  *     `meta/**` and `*.map` already excluded), and
- *   - the schema (`meta/schema.json`), which register submits in the `.uwx`.
+ *   - the schema source (`meta/schema.json`) — NOT uploaded as a file, and not
+ *     sent verbatim: register submits its *content* as the foundation-schema
+ *     ENTITY in the `.uwx`. It's read here only to fold the schema into the
+ *     local freshness fingerprint (so a schema edit shows as "changed").
  * Hashes are SORTED (so the digest is order-independent) and taken over file
  * CONTENTS, not names, so content-hashed chunk filenames don't perturb it.
  * Returns null when there's nothing to hash (no usable dist), so callers skip
