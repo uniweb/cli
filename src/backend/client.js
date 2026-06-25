@@ -361,16 +361,20 @@ export class BackendClient {
   }
 
   /**
-   * ASSUMED endpoint (not built yet — kb/framework/plans/shipping-verbs-and-freshness.md §6.5).
-   * GET /dev/site/{uuid}/status → the site's publish lifecycle:
+   * GET /dev/site/status/{uuid} → the site's publish lifecycle (Contract 3,
+   * shipped backend-side — collab backend-framework-b220):
    *   { published: boolean, last_pushed_at?: string, last_published_at?: string, draft_dirty?: boolean }
-   * `draft_dirty` = the synced draft differs from what's currently live. null on 404 / any failure.
+   * `draft_dirty` = never-published, or the synced draft changed since the last
+   * publish ("pushed but not published"). The path is VERB-FIRST (`status/{uuid}`)
+   * to match the lane (`publish/{uuid}`, `content/push/{uuid}`, `folder/pull/{uuid}`),
+   * not the `{uuid}/status` the shipping-verbs §8 sketch assumed. null on
+   * 404 (unknown/not-yours) / 401 / any failure — `status --remote` degrades to local.
    * @param {string} uuid - the site-content uuid
    * @returns {Promise<object|null>}
    */
   async siteStatus(uuid) {
     try {
-      const res = await this.request(`/dev/site/${encodeURIComponent(uuid)}/status`)
+      const res = await this.request(`/dev/site/status/${encodeURIComponent(uuid)}`)
       return res.ok ? await res.json().catch(() => null) : null
     } catch {
       return null
