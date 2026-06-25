@@ -6,11 +6,11 @@
  * It builds `dist/` in bundle mode and hands it to the adapter for upload +
  * invalidation. No login, no edge.
  *
- * Uniweb hosting is `uniweb publish` (the smart `uniwebd` path — sync + dynamic
- * hosting, and it brings the site's foundation along). `deploy` with no static
- * host resolved points you there; it does NOT target `uniwebd` itself
- * (shipping-model.md §6.2). For a static-host artifact WITHOUT upload, see
- * `uniweb export`.
+ * Uniweb hosting is `uniweb publish` (the smart path — sync + dynamic hosting,
+ * and it brings the site's foundation along). `deploy` with no host given points
+ * you there (or, interactively, lets you pick a third-party host); it does NOT
+ * target the Uniweb backend itself (shipping-model.md §6.2). For a static-host
+ * artifact WITHOUT upload, see `uniweb export`.
  *
  * Host resolution:
  *   1. --target <name> picks a target from deploy.yml (full config)
@@ -101,24 +101,39 @@ export async function deploy(args = []) {
       process.exit(1)
     }
   }
-  const host = hostFromFlag || resolved.host
-  const hostOverridden = !!hostFromFlag && hostFromFlag !== resolved.host
-  // Auto-save scope: 'off' from --no-save OR an ad-hoc --host override
-  // (we don't want a one-off experiment to rewrite the file).
-  const autoSave = noSave || hostOverridden ? 'off' : resolved.autoSave
+  let host = hostFromFlag || resolved.host
 
-  // Uniweb hosting is `uniweb publish`'s job now (the smart uniwebd path —
-  // sync + dynamic hosting + bring-the-foundation-along). `deploy` is for
-  // third-party hosts only; redirect rather than silently doing the wrong
-  // thing. No back-compat shim — we have no external users.
+  // Uniweb hosting is `uniweb publish`'s job now (the smart path — sync +
+  // dynamic hosting + bring-the-foundation-along). `deploy` is third-party only.
+  // When the host resolves to 'uniweb' we DON'T assume it: if the user
+  // explicitly asked for uniweb (a `--host=uniweb`, or a uniweb target in
+  // deploy.yml) or we're non-interactive, point them at `publish`; otherwise
+  // (bare `deploy`, no host given) prompt for a third-party host rather than
+  // guessing. promptForHost lists only third-party adapters.
   if (host === 'uniweb') {
-    say.err('`uniweb deploy` is for third-party hosts. For Uniweb hosting, use `uniweb publish`.')
-    console.log('')
-    say.dim('`uniweb publish`         Smart Uniweb hosting (sync + dynamic hosting; brings the foundation along)')
-    say.dim('`uniweb deploy --host=…` Third-party host (s3-cloudfront, cloudflare-pages, github-pages, generic-static)')
-    say.dim('`uniweb export`          Self-contained dist/ artifact you upload anywhere')
-    process.exit(1)
+    const explicitUniweb = hostFromFlag === 'uniweb' || (resolved.fromFile && resolved.host === 'uniweb')
+    if (explicitUniweb || isNonInteractive(args)) {
+      say.err('`uniweb deploy` is for third-party hosts. For Uniweb hosting, use `uniweb publish`.')
+      console.log('')
+      say.dim('`uniweb publish`          Smart Uniweb hosting (sync + dynamic hosting; brings the foundation along)')
+      say.dim('`uniweb deploy --host=…`  Third-party host (s3-cloudfront, cloudflare-pages, github-pages, generic-static)')
+      say.dim('`uniweb export`           Self-contained dist/ artifact you upload anywhere')
+      process.exit(1)
+    }
+    say.info('`uniweb deploy` targets third-party hosts. (For Uniweb hosting, run `uniweb publish`.)')
+    try {
+      host = await promptForHost({ args })
+    } catch (err) {
+      say.err(err.message)
+      process.exit(1)
+    }
   }
+
+  // Auto-save scope: 'off' from --no-save OR an ad-hoc --host override (we don't
+  // want a one-off experiment to rewrite the file). A host picked interactively
+  // for a bare `deploy` is NOT an override — we DO want to remember it.
+  const hostOverridden = !!hostFromFlag && hostFromFlag !== resolved.host
+  const autoSave = noSave || hostOverridden ? 'off' : resolved.autoSave
 
   await deployStaticHost(siteDir, host, resolved, {
     dryRun,

@@ -183,11 +183,15 @@ export async function publish(args = []) {
   let resolved
   try {
     const deployYml = await loadDeployYml(siteDir)
+    // No --target on publish — it always targets Uniweb hosting; resolveTarget
+    // returns the uniweb default (fromFile:false) when there's no deploy.yml, so
+    // persistLastDeploy scaffolds the file as the "where it's deployed" record.
     resolved = resolveTarget(deployYml, null)
   } catch {
-    resolved = { targetName: 'default', host: 'uniweb', fromFile: false, autoSave: 'on' }
+    // Malformed/ambiguous deploy.yml — don't block the publish on the memo.
+    resolved = { targetName: 'production', host: 'uniweb', config: {}, autoSave: 'lastDeploy', fromFile: false }
   }
-  const autoSave = noSave ? 'off' : (resolved.autoSave || 'on')
+  const autoSave = noSave ? 'off' : (resolved.autoSave || 'lastDeploy')
 
   if (dryRun) {
     say.info('Dry run — would bring the foundation along, sync, and go live:')

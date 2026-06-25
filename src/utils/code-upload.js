@@ -8,7 +8,7 @@
  *   1. PLAN   — POST {apiBase}/dev/registry/code-uploads with the file list
  *               ({ path, content_type, size, sha256? }). The response carries
  *               one upload target per file ({ path, method, url, headers })
- *               plus mode: 'direct' (dev — URLs point back at uniwebd) or
+ *               plus mode: 'direct' (dev — URLs point back at the backend) or
  *               'presigned' (prod — storage PUTs; bytes never transit the
  *               backend). The CLI never branches on the mode.
  *   2. UPLOAD — PUT each file's raw bytes to its URL with the given headers.
@@ -217,7 +217,7 @@ export async function uploadFoundationCode({
   const plan = await planRes.json()
   const targets = new Map((plan.uploads || []).map((u) => [u.path, u]))
   const serveBase = plan.serve_base || null
-  // The ONE mode-aware bit: direct-mode PUTs are bearer-authed uniwebd
+  // The ONE mode-aware bit: direct-mode PUTs are bearer-authed backend
   // routes; presigned URLs are self-authorizing and must NOT carry a
   // bearer (foreign auth headers can break signed-request validation).
   const authHeaders = plan.mode === 'direct' ? { Authorization: `Bearer ${token}` } : {}

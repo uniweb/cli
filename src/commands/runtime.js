@@ -76,7 +76,7 @@ export async function runtime(args = []) {
   }
 
   // Version from the SPA build's manifest (the backend keys the version on it);
-  // --version overrides, parity with `uniwebd runtime install --version`.
+  // --version overrides, parity with the backend's runtime install --version.
   let version = readFlagValue(rest, '--version')
   if (!version) {
     try {
