@@ -3,7 +3,7 @@
  * packages, submit them over the two directional lanes (site-content first, then the
  * folder keyed by the site's uuid), back-fill the minted uuids into the source files,
  * and persist the send-only-changed cache. Extracted from the push command so
- * `uniweb deploy` (the composite path) reuses the exact same lane submission.
+ * `uniweb publish` (the composite path) reuses the exact same lane submission.
  *
  * The command keeps flag parsing, the emit, and the `-o`/`--dry-run` preview;
  * everything from "the packages are built, now POST them" lives here. Logging is

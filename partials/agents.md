@@ -142,11 +142,13 @@ pnpm install                      # Install dependencies
 pnpm build                        # Build for production
 pnpm preview                      # Preview production build (SSG + SPA)
 
-# Ship a site to Uniweb hosting (or a static host)
-uniweb deploy                     # Build + push + publish in one shot (default; needs `uniweb login`)
-uniweb deploy --host=<adapter>    # Deploy to a static host instead: cloudflare-pages, netlify,
+# Ship a site to Uniweb hosting (needs `uniweb login`)
+uniweb publish                    # The smart path: bring the foundation along (releasing it to the
+                                  # catalog if its code changed), sync content, and go live
+
+# Ship a site to a third-party host instead
+uniweb deploy --host=<adapter>    # Deploy to a static host: cloudflare-pages, netlify,
                                   # vercel, github-pages, s3-cloudfront, generic-static
-uniweb deploy --dry-run           # Resolve foundation/runtime + print summary; no writes
 uniweb export                     # Build dist/ for any static host (no Uniweb account)
 
 # Sync a site with the Uniweb backend (git-style; needs `uniweb login`)
@@ -154,8 +156,6 @@ uniweb push                       # Push local content to the backend (creates t
 uniweb pull                       # Pull backend content back to local files
 uniweb clone <site-uuid>          # Start a new local project from a site already in the backend
 uniweb status                     # Show what's unpushed / out of sync (local, offline)
-uniweb publish                    # Make the synced site's current backend state live —
-                                  # does NOT push; run `uniweb push` first, or just `uniweb deploy`
 
 # Register a foundation + its data schemas to the Uniweb registry
 uniweb register                   # Register this foundation + the data schemas it defines
@@ -172,7 +172,7 @@ uniweb --help                     # Top-level help
 uniweb <command> --help           # Per-command help (no side effects)
 ```
 
-`uniweb deploy` auto-registers a workspace-local foundation as part of the deploy under a site-scoped slot — no separate `uniweb register` step needed for site-bound foundations.
+`uniweb publish` brings the site's local foundation along — releasing it to the catalog under your `@org` when its code changed — so a single site needs no separate `uniweb register` step.
 
 **Registering data schemas.** A foundation that defines data schemas (`@/article`, …) uses `uniweb register` to register the foundation together with those schemas in the Uniweb registry — so content authors can create and manage entities of those types. It requires authentication: run `uniweb login`, or supply a bearer token directly with `--token <bearer>` (or the `UNIWEB_TOKEN` env var). Point at a specific registry with `--registry <url>` (or `UNIWEB_REGISTER_URL`). Preview without auth using `--dry-run` (or `-o <file>` to write the submission), and set the org scope with `--scope @org` (default: the foundation's `package.json` `uniweb.scope`).
 
@@ -203,14 +203,14 @@ The `uniweb` block in `package.json` carries platform-specific configuration tha
 
 | Field | Where used | Default | Purpose |
 |---|---|---|---|
-| `id` | `uniweb register` | (the bare segment of a scoped `package.json::name`, or `uniweb.id`) | The foundation's registered id — the bare-name segment in `@org/<id>`. Decoupled from `package.json::name` (a workspace concern), so renaming the foundation on the registry doesn't ripple through site dependencies. Only relevant for catalog-registered foundations; site-bound foundations skip this. |
+| `id` | `uniweb register` | (the bare segment of a scoped `package.json::name`, or `uniweb.id`) | The foundation's registered id — the bare-name segment in `@org/<id>`. Decoupled from `package.json::name` (a workspace concern), so renaming the foundation on the registry doesn't ripple through site dependencies. |
 | `namespace` | `uniweb register` | (none — see scope resolution) | Legacy explicit org-namespace override. Equivalent to using a scoped `package.json::name` (`"@myorg/foundation"`). Rarely needed in modern foundations. |
 | `runtimePolicy` | `dist/runtime-pin.json` (foundation build) | `"auto-minor"` | Controls how sites using this foundation receive runtime updates. Three values: `"exact"`, `"auto-patch"`, `"auto-minor"`. See "Foundation runtime policy" below. |
 
-**Catalog vs site-bound foundations.** Two distribution intents share the same `dist/foundation.js` artifact:
+**How a foundation reaches the catalog.** Foundations on Uniweb hosting always live in the catalog as `@org/name@version`. Two ways to get one there, both from the same `dist/foundation.js` artifact:
 
-- A **catalog foundation** is a deliberate product — named, versioned, listed in the catalog, consumable by other developers' sites. Use `uniweb register --scope @org` for these — cataloging is a deliberate, explicitly-scoped step, so you don't accidentally catalog a foundation that was meant to be site-bound.
-- A **site-bound foundation** powers exactly one site. Don't run `uniweb register` for it. Just run `uniweb deploy` from the site directory — the CLI auto-registers your local foundation as part of the deploy, **uploaded with the site's other assets** (per-site storage, never to the catalog). With no naming ceremony, no catalog visibility, and no developer-vs-site ownership confusion. To later promote the foundation to a catalog product, run `uniweb register --scope @org` from the foundation directory and update the site's `site.yml` to a versioned ref (`foundation: '@org/name@1.2.3'`).
+- **Brought along by `uniweb publish`.** When a foundation powers a single site, don't run `uniweb register` yourself. Run `uniweb publish` from the site directory — it releases the site's local foundation to the catalog under your `@org` (when its code changed) and then goes live, in one step. No separate register ceremony.
+- **Registered deliberately with `uniweb register --scope @org`.** When the foundation is a product meant for multiple sites — listed in the catalog, consumable by other developers' sites — register it on its own schedule. Consuming sites then pin a versioned ref (`foundation: '@org/name@1.2.3'`).
 
 **On the split between `package.json::name` and `uniweb.id`:** the workspace name is what pnpm uses for `file:` linking and what `site.yml::foundation` references. The published id is what the registry stores. Keeping them separate means a workspace rename (e.g. `marketing` → `marketing-pro`) is a one-shot `uniweb rename foundation marketing marketing-pro` — it updates the package, folder, and every dependent site, while the foundation's registered id (`uniweb.id`) stays independent.
 

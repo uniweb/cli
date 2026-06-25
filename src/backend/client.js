@@ -348,6 +348,26 @@ export class BackendClient {
   }
 
   /**
+   * ASSUMED endpoint (not built yet — kb/framework/build/payment-handoff-plan.md).
+   * GET /dev/site/{uuid}/can-go-live — the pre-go-live payment gate:
+   *   { ok: true }                                          // already paid → proceed
+   *   { payment_required: true, checkout_url, wait_token? } // open the URL, settle, retry
+   * The framework is provider-agnostic: it only opens `checkout_url` and waits.
+   * null on 404 / any failure → the caller PROCEEDS (degrade: publish ships
+   * before payment lands; same posture as siteStatus on a missing route).
+   * @param {string} uuid - the site-content uuid
+   * @returns {Promise<object|null>}
+   */
+  async canGoLive(uuid) {
+    try {
+      const res = await this.request(`/dev/site/${encodeURIComponent(uuid)}/can-go-live`)
+      return res.ok ? await res.json().catch(() => null) : null
+    } catch {
+      return null
+    }
+  }
+
+  /**
    * Deliver a site's processed assets (plan → PUT-per-file) to the backend's
    * content-addressed store. Thin pass-through to utils/asset-upload.js with this
    * client's origin + token; returns the `localUrl → { id, ext }` rewrite map the

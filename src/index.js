@@ -606,8 +606,10 @@ async function main() {
     process.exit(result?.exitCode ?? 0)
   }
 
-  // Handle register command (dynamic import — depends on @uniweb/build)
-  if (command === 'register') {
+  // Handle register command (dynamic import — depends on @uniweb/build).
+  // `release` is a code-only synonym: `register` reads naturally the first
+  // time, `release` for updates (shipping-model.md §6.1). Same act, same code.
+  if (command === 'register' || command === 'release') {
     const { register } = await importProjectCommand('./commands/register.js')
     const result = await register(args.slice(1))
     process.exit(result?.exitCode ?? 0)
@@ -670,15 +672,16 @@ async function main() {
     return
   }
 
-  // Handle publish command — CMS-publish a SYNCED site (POST /dev/site/publish).
-  // Distinct from `deploy` (file-built host) and `register` (foundation publishing).
+  // Handle publish command — the smart Uniweb-hosting path: bring the
+  // foundation along, sync, settle payment, go live. Distinct from `deploy`
+  // (third-party hosts) and `register`/`release` (foundation code → catalog).
   if (command === 'publish') {
     const { publish } = await importProjectCommand('./commands/publish.js')
     const result = await publish(args.slice(1))
     process.exit(result?.exitCode ?? 0)
   }
 
-  // Handle deploy command (dynamic import — depends on @uniweb/build)
+  // Handle deploy command — third-party hosts only (dynamic import — @uniweb/build)
   if (command === 'deploy') {
     const { deploy } = await importProjectCommand('./commands/deploy.js')
     await deploy(args.slice(1))
@@ -1086,18 +1089,22 @@ async function main() {
  * without loading @uniweb/build or any project context.
  */
 function printCommandHelp(command) {
+  // `release` is a synonym of `register` (shipping-model.md §6.1) — show the
+  // same help block.
+  if (command === 'release') command = 'register'
   const blocks = {
     deploy: `
-${colors.cyan}${colors.bright}uniweb deploy${colors.reset} ${colors.dim}— Deploy a site${colors.reset}
+${colors.cyan}${colors.bright}uniweb deploy${colors.reset} ${colors.dim}— Deploy a site to a third-party host${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
-  uniweb deploy [options]
+  uniweb deploy --host <name> [options]
 
-The host is determined by the resolved deploy.yml target. Defaults to
-${colors.cyan}uniweb${colors.reset} hosting (link-mode, edge JIT prerender) when no deploy.yml exists.
+Ships a site to a NON-Uniweb host: builds dist/ (bundle mode) and hands it to a
+host adapter for upload + invalidation. For Uniweb hosting (sync + dynamic
+serving; brings the foundation along) use ${colors.cyan}uniweb publish${colors.reset}. For a self-contained
+dist/ artifact you upload yourself, use ${colors.cyan}uniweb export${colors.reset}.
 
 ${colors.bright}Hosts:${colors.reset}
-  uniweb              Uniweb hosting (default; requires \`uniweb login\`)
   cloudflare-pages    Cloudflare Pages (build artifact + adapter postBuild)
   netlify             Netlify (alias of cloudflare-pages adapter)
   vercel              Vercel (build-only — deploy via \`npx vercel\`)
@@ -1106,43 +1113,40 @@ ${colors.bright}Hosts:${colors.reset}
   generic-static      Plain static-host build, no host-specific helpers
 
 ${colors.bright}Options:${colors.reset}
+  --host <name>       The static host to deploy to (no value → interactive picker, TTY only)
   --target <name>     Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
-  --host <name>       Override the resolved target's host (does not persist)
-  --host              No value → interactive picker (TTY only)
-  --dry-run           Resolve site.yml + foundation/runtime; print summary; no writes
-  --no-auto-publish   Don't auto-publish workspace-local foundation as part of deploy
+  --dry-run           Resolve the target + adapter; print summary; upload nothing
   --no-save           Skip the auto-save of lastDeploy in deploy.yml
-  --backend <url>     Override the default backend origin (\$UNIWEB_REGISTER_URL or built-in)
   --non-interactive   Fail with usage info instead of prompting
 
-${colors.bright}Auth:${colors.reset}
-  \`host: uniweb\` requires authentication. Run \`uniweb login\` first, set
-  \`UNIWEB_TOKEN=<bearer>\` env var, or use a static-host adapter that
-  doesn't need a Uniweb account. CI / agents / piped stdin auto-detect
-  non-interactive mode and bail with an actionable error instead of
-  hanging on a browser callback.
-
 ${colors.bright}Examples:${colors.reset}
-  uniweb deploy                              # Default (host=uniweb)
-  uniweb deploy --dry-run                    # Print summary, no writes
-  uniweb deploy --host=cloudflare-pages      # One-off override
-  uniweb deploy --target=preview             # Pick named target from deploy.yml
+  uniweb deploy --host=cloudflare-pages      # Build + upload to Cloudflare Pages
+  uniweb deploy --host=s3-cloudfront         # Build + upload + invalidate
+  uniweb deploy --target=preview             # Named static-host target from deploy.yml
+  uniweb deploy --dry-run --host=github-pages
 `,
     publish: `
-${colors.cyan}${colors.bright}uniweb publish${colors.reset} ${colors.dim}— Publish a synced site (make its backend state live)${colors.reset}
+${colors.cyan}${colors.bright}uniweb publish${colors.reset} ${colors.dim}— Publish a site to Uniweb hosting (the smart path)${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
   uniweb publish [options]
 
-Publishes a site that's synced to the backend (has site.yml::\$uuid from
-\`uniweb push\`) — makes its CURRENT backend state live, including edits made
-through the app. Run \`uniweb push\` first to include local edits. For a
-file-only site use \`uniweb deploy\`; to register a FOUNDATION use \`uniweb register\`.
+The most ergonomic command in the tool: \`uniweb login && uniweb publish\` reads
+your project and makes the site live on Uniweb hosting. It resolves which site,
+BRINGS THE FOUNDATION ALONG (releases the local foundation when its code
+changed), syncs content, settles payment when go-live needs it (a browser
+handoff), and goes live. A published-registry foundation needs no release; an
+already-paid site opens no browser.
+
+For a third-party host use \`uniweb deploy --host=<name>\`; to register a
+FOUNDATION on its own use \`uniweb register\` (alias \`uniweb release\`).
 
 ${colors.bright}Options:${colors.reset}
+  --dry-run          Resolve everything; release/sync/POST nothing
+  --yes              Skip confirmations (CI); never block on a prompt
+  --no-save          Skip the deploy.yml lastDeploy auto-save
   --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
   --token <bearer>   Auth bearer (skips \`uniweb login\`)
-  --dry-run          Resolve everything; POST nothing
 `,
     create: `
 ${colors.cyan}${colors.bright}uniweb create${colors.reset} ${colors.dim}— Create a new project${colors.reset}
@@ -1276,15 +1280,18 @@ ${colors.bright}Options:${colors.reset}
 Exit codes: 0 clean (or warn-only), 1 violations under --strict, 2 setup error.
 `,
     register: `
-${colors.cyan}${colors.bright}uniweb register${colors.reset} ${colors.dim}— Register a foundation + its data schemas with the backend registry${colors.reset}
+${colors.cyan}${colors.bright}uniweb register${colors.reset} ${colors.dim}— Register (release) a foundation + its data schemas with the backend registry${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
   uniweb register [options]
+  uniweb release  [options]      ${colors.dim}(synonym — reads naturally for updates)${colors.reset}
 
 Builds one \`.uwx\` document and submits it to the registry over HTTP. Run
-\`uniweb login\` first (or pass \`--token\`). \`register\` is for FOUNDATIONS (and
-schemas); \`uniweb publish\` makes a synced SITE live; \`uniweb deploy\` hosts a
-file-built site.
+\`uniweb login\` first (or pass \`--token\`). \`register\`/\`release\` are for
+FOUNDATIONS (and schemas) — code only; \`uniweb publish\` makes a synced SITE
+live (and brings its foundation along); \`uniweb deploy\` hosts on a third-party
+host. \`register\` and \`release\` are the same act: \`register\` reads naturally
+the first time, \`release\` for updates.
 
 Auto-detects what you run it in:
   • a foundation        the foundation + the data schemas it defines/renders
@@ -1470,10 +1477,11 @@ ${colors.bright}Commands:${colors.reset}
   rename <type>      Rename a foundation, site, or extension across the workspace
   dev                Start a dev server for a site
   build              Build the current project
-  deploy             Deploy a site to Uniweb hosting
+  publish            Publish a site to Uniweb hosting (smart: foundation + sync + go live)
+  deploy             Deploy a site to a third-party host (--host=<adapter>)
   export             Export a self-contained site for third-party hosting
-  publish            Publish a synced site (make its backend state live)
   register           Register a foundation + its data schemas with the backend registry
+  release            Release a foundation version (synonym of register)
   runtime register   Register an @uniweb/runtime version to the backend (@std only)
   push               Push a site's content to the backend
   pull               Pull a site's content from the backend
@@ -1506,21 +1514,24 @@ ${colors.bright}Global Options:${colors.reset}
                        Auto-detected when CI=true or no TTY (pipes, agents)
 
 ${colors.bright}Publish Options:${colors.reset}
+  --dry-run          Resolve everything; release/sync/POST nothing
+  --yes              Skip confirmations (CI); never block on a prompt
+  --no-save          Skip the deploy.yml lastDeploy auto-save
   --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
   --token <bearer>   Auth bearer (skips \`uniweb login\`)
-  --dry-run          Resolve everything; POST nothing
 
-  uniweb publish makes a SYNCED site live (run \`uniweb push\` first). To register
-  a foundation use \`uniweb register\`; to host a file-built site use \`uniweb deploy\`.
+  uniweb publish is the smart Uniweb-hosting path: it brings the site's
+  foundation along, syncs, and goes live. To register a foundation on its own
+  use \`uniweb register\` (alias \`uniweb release\`); for a third-party host use
+  \`uniweb deploy --host=<name>\`.
 
 ${colors.bright}Deploy Options:${colors.reset}
+  --host <name>      The static host (no value → interactive picker, TTY only).
+                     Hosts: cloudflare-pages, netlify, vercel, github-pages,
+                     s3-cloudfront, generic-static. (For Uniweb hosting use
+                     \`uniweb publish\`.)
   --target <name>    Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
-  --host <name>      Override the resolved target's host (does not persist).
-                     Without a value, opens an interactive picker (TTY only).
-                     Hosts: uniweb, cloudflare-pages, netlify, vercel,
-                     github-pages, s3-cloudfront, generic-static.
-  --dry-run          Resolve site.yml + foundation/runtime; print summary; no writes
-  --no-auto-publish  Don't auto-publish workspace-local foundation as part of deploy
+  --dry-run          Resolve the target + adapter; print summary; upload nothing
   --no-save          Skip the auto-save of lastDeploy in deploy.yml
 
 ${colors.bright}Dev Options:${colors.reset}

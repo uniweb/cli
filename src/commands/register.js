@@ -62,7 +62,7 @@ import { resolve, join } from 'node:path'
 import { buildRegistryPackage, buildSchemaOnlyPackage } from '@uniweb/build/uwx'
 import { classifyPackage, isSchemasPackage, collectStandaloneSchemas } from '@uniweb/build'
 import { readRegistryAuth } from '../utils/registry-auth.js'
-import { collectDistFiles } from '../utils/code-upload.js'
+import { collectDistFiles, computeFoundationDigest } from '../utils/code-upload.js'
 import { deriveScope } from '../utils/registry-orgs.js'
 import { BackendClient } from '../backend/client.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
@@ -309,12 +309,18 @@ async function runRegister(args = []) {
     }
   }
 
+  // Content digest (foundation path only) — the freshness fingerprint over what
+  // register ships (shipping-model.md §4.1). Rides in the foundation-schema
+  // entity's info.digest; the backend stores it opaque and returns it so
+  // publish/status can detect "code changed since release" with no local state.
+  const digest = standalone ? null : computeFoundationDigest(join(targetDir, 'dist'))
+
   const exporter = { tool: 'uniweb', version: cliVersion(), instance: 'build' }
   let doc
   try {
     doc = standalone
       ? buildSchemaOnlyPackage({ schemas, scope, exporter })
-      : buildRegistryPackage({ schema, foundationDir: targetDir, scope, exporter })
+      : buildRegistryPackage({ schema, foundationDir: targetDir, scope, exporter, digest })
   } catch (err) {
     error(`Could not assemble the .uwx: ${err.message}`)
     return { exitCode: 2 }
@@ -330,6 +336,7 @@ async function runRegister(args = []) {
   }
   log(`  ${colors.dim}data schemas ${standalone ? 'registered' : 'defined'}: ${defined.length ? defined.join(', ') : '(none)'}${colors.reset}`)
   if (scope) log(`  ${colors.dim}scope: ${scope} (${scopeSource})${colors.reset}`)
+  if (digest) log(`  ${colors.dim}digest: ${digest}${colors.reset}`)
 
   // Preview paths — no submit, no auth needed.
   if (output) {
@@ -469,7 +476,7 @@ async function runRegister(args = []) {
       ...doc.entities.filter((e) => e.model === '@uniweb/foundation-schema').map((e) => e.info?.name ?? e.name),
     ].filter(Boolean)
     const entities = names.map((name) => ({ name, ...(minted[name] || { uuid: null, version: null, unchanged: false }) }))
-    emitJson({ ok: true, scope: scope || null, origin: client.origin, entities })
+    emitJson({ ok: true, scope: scope || null, origin: client.origin, digest: digest || null, entities })
   }
   return { exitCode: 0 }
 }

@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import {
   collectDistFiles,
+  computeFoundationDigest,
   contentTypeFor,
   uploadOrder,
   gatewayUrl,
@@ -52,6 +53,79 @@ test('collectDistFiles walks dist, excludes meta/ and *.map, hashes and types fi
       createHash('sha256').update('export default 42\n').digest('hex')
     )
     assert.equal(files.find((f) => f.path === 'assets/style.css').content_type, 'text/css')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('computeFoundationDigest is sha256:-prefixed and stable across calls (determinism)', () => {
+  const dir = makeDist()
+  try {
+    const a = computeFoundationDigest(dir)
+    const b = computeFoundationDigest(dir)
+    assert.match(a, /^sha256:[0-9a-f]{64}$/)
+    assert.equal(a, b, 'same dist → same digest (multi-machine safety depends on this)')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('computeFoundationDigest changes when uploaded code changes', () => {
+  const dir = makeDist()
+  try {
+    const before = computeFoundationDigest(dir)
+    writeFileSync(join(dir, 'entry.js'), 'export default 43\n')
+    assert.notEqual(computeFoundationDigest(dir), before)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('computeFoundationDigest changes when meta/schema.json changes (schema is part of the fingerprint)', () => {
+  const dir = makeDist()
+  try {
+    const before = computeFoundationDigest(dir)
+    writeFileSync(join(dir, 'meta', 'schema.json'), '{"_self":{"version":"9.9.9"}}\n')
+    assert.notEqual(computeFoundationDigest(dir), before)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('computeFoundationDigest is filename-independent — same contents, different chunk name → same digest', () => {
+  const a = mkdtempSync(join(tmpdir(), 'uw-dist-a-'))
+  const b = mkdtempSync(join(tmpdir(), 'uw-dist-b-'))
+  try {
+    for (const dir of [a, b]) {
+      writeFileSync(join(dir, 'entry.js'), 'export default 42\n')
+      mkdirSync(join(dir, 'meta'))
+      writeFileSync(join(dir, 'meta', 'schema.json'), '{"_self":{}}\n')
+    }
+    // Identical bytes under a different content-hashed chunk filename.
+    writeFileSync(join(a, 'chunk-AAAA.js'), 'export const x = 1\n')
+    writeFileSync(join(b, 'chunk-BBBB.js'), 'export const x = 1\n')
+    assert.equal(computeFoundationDigest(a), computeFoundationDigest(b))
+  } finally {
+    rmSync(a, { recursive: true, force: true })
+    rmSync(b, { recursive: true, force: true })
+  }
+})
+
+test('computeFoundationDigest excludes *.map — a sourcemap change does not perturb it', () => {
+  const dir = makeDist()
+  try {
+    const before = computeFoundationDigest(dir)
+    writeFileSync(join(dir, 'entry.js.map'), '{"version":3,"changed":true}\n')
+    assert.equal(computeFoundationDigest(dir), before)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('computeFoundationDigest returns null when there is nothing to hash', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'uw-dist-empty-'))
+  try {
+    assert.equal(computeFoundationDigest(dir), null)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

@@ -3,7 +3,8 @@
  *
  * Produces a self-contained, vite-built site artifact in `dist/` for
  * hosting on a third-party CDN (Netlify, Vercel, GitHub Pages, S3 +
- * CloudFront, etc.). Does NOT upload anywhere — that's `uniweb deploy`.
+ * CloudFront, etc.). Does NOT upload anywhere — `uniweb deploy --host`
+ * uploads to a third-party host; `uniweb publish` ships to Uniweb hosting.
  *
  * The `dist/` output bundles the runtime + foundation + content into
  * concatenated packaging, with a vite-built `index.html` + `entry.js` +
@@ -12,7 +13,8 @@
  * Internally this is `uniweb build --bundle` plus user guidance for the
  * upload step. The `--link` / `--bundle` flag pair is internal-only
  * vocabulary now (Phase 2 of the CLI ergonomics overhaul); users see
- * `uniweb deploy` (uniweb-edge) and `uniweb export` (third-party host).
+ * `uniweb publish` (Uniweb hosting), `uniweb deploy --host` (third-party),
+ * and `uniweb export` (self-contained artifact).
  *
  * Usage:
  *   uniweb export                          Produce dist/ for static hosting
@@ -102,5 +104,5 @@ export async function exportSite(args = []) {
   console.log(`    ${c.dim}Vercel:${c.reset}  ${c.cyan}vercel --prod${c.reset}`)
   console.log(`    ${c.dim}S3:${c.reset}      ${c.cyan}aws s3 sync dist/ s3://your-bucket/${c.reset}`)
   console.log('')
-  console.log(`  ${c.dim}For Uniweb-hosted sites instead, use ${c.reset}${c.cyan}uniweb deploy${c.reset}${c.dim}.${c.reset}`)
+  console.log(`  ${c.dim}For Uniweb hosting instead, use ${c.reset}${c.cyan}uniweb publish${c.reset}${c.dim}.${c.reset}`)
 }

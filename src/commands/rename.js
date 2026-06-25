@@ -523,8 +523,9 @@ ${colors.bright}What rename extension does:${colors.reset}
   • Updates pnpm-workspace.yaml + package.json::workspaces.
 
 ${colors.bright}What rename does NOT do (any subcommand):${colors.reset}
-  • Push to the registry. The publish id (package.json::uniweb.id) is
-    independent. To rename on the registry too, run \`${prefix} publish --name <new>\`.
+  • Push to the registry. The registered id (package.json::uniweb.id) is
+    independent. To register under a new name, set it and run \`${prefix} register\`
+    (alias \`${prefix} release\`) — there is no rename flag.
 
 ${colors.bright}Examples:${colors.reset}
   ${prefix} rename foundation src marketing-src

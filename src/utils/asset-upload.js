@@ -1,8 +1,8 @@
 /**
- * Site asset delivery — the asset lane for `uniweb deploy` (channel
+ * Site asset delivery — the asset lane for `uniweb publish` (channel
  * framework-backend-f90d). After the link build processes a site's media into
  * `dist/assets/`, those bytes are delivered to the backend's content-addressed
- * asset store, and the deploy step rewrites the content's local refs to durable
+ * asset store, and the publish step rewrites the content's local refs to durable
  * serve URLs:
  *
  *   1. PLAN   — POST {apiBase}/dev/assets with the file list ({ path,

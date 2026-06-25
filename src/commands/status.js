@@ -28,6 +28,8 @@ import { resolveSiteDir } from './deploy.js'
 import { probeUnpushed } from '../backend/site-sync.js'
 import { BackendClient } from '../backend/client.js'
 import { readFlagValue } from '../utils/args.js'
+import { resolveLocalFoundation } from '../backend/foundation-bring-along.js'
+import { computeFoundationDigest } from '../utils/code-upload.js'
 
 const c = {
   reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
@@ -86,6 +88,7 @@ export async function status(args = []) {
   // on 404 / any failure, so a backend without the endpoints just shows local.
   let site = null
   let fdnLatest = null
+  let foundationFresh = null // true/false when both digests are known; else null
   if (remote) {
     try {
       const client = new BackendClient({
@@ -95,7 +98,17 @@ export async function status(args = []) {
         command: 'Status',
       })
       if (uuid) site = await client.siteStatus(uuid)
-      if (fndScope) fdnLatest = await client.readFoundationLatest(fndScope)
+      // Foundation freshness: prefer the LOCAL foundation's scoped name (so a
+      // local-foundation site can be checked too); fall back to a scoped
+      // site.yml ref. The digest compare is read-only — it never builds, so it
+      // only fires when the local foundation is already built (dist present).
+      const local = resolveLocalFoundation(siteDir, siteYml)
+      const lookupName = local?.scopedName || fndScope
+      if (lookupName) fdnLatest = await client.readFoundationLatest(lookupName)
+      if (local?.dir && fdnLatest?.digest) {
+        const localDigest = computeFoundationDigest(join(local.dir, 'dist'))
+        if (localDigest) foundationFresh = localDigest === fdnLatest.digest
+      }
     } catch {
       // degrade silently
     }
@@ -110,7 +123,7 @@ export async function status(args = []) {
         changed: probe ? probe.changed : null,
         unchanged: probe ? probe.unchanged : null,
         ...(probeErr ? { error: probeErr } : {}),
-        ...(remote ? { remote: { site, foundation_latest: fdnLatest?.latest_version ?? null } } : {}),
+        ...(remote ? { remote: { site, foundation_latest: fdnLatest?.latest_version ?? null, foundation_fresh: foundationFresh } } : {}),
       })
     )
     return { exitCode: 0 }
@@ -123,7 +136,7 @@ export async function status(args = []) {
     say.ok(`Synced — site-content ${c.bold}${uuid}${c.reset}`)
   } else {
     say.warn('Not synced — this site has never been pushed to a backend.')
-    say.dim('Run `uniweb push` to create it, or `uniweb deploy` to ship it in one step.')
+    say.dim('Run `uniweb push` to create it, or `uniweb publish` to sync and go live in one step.')
   }
 
   // Content
@@ -142,7 +155,7 @@ export async function status(args = []) {
         (probe.unchanged ? ` (${probe.unchanged} unchanged)` : '') +
         '.'
     )
-    say.dim('Run `uniweb push` to sync, then `uniweb publish` to go live (or `uniweb deploy` for both).')
+    say.dim('Run `uniweb publish` to sync and go live (or `uniweb push` to sync only).')
   }
 
   // Foundation
@@ -161,6 +174,11 @@ export async function status(args = []) {
     }
     if (fdnLatest?.latest_version && fndVersion && fdnLatest.latest_version !== fndVersion) {
       say.info(`A newer foundation version (${fdnLatest.latest_version}) is registered than the site pins (${fndVersion}).`)
+    }
+    if (foundationFresh === false) {
+      say.info('Local foundation differs from the registered version — `uniweb register` (or `uniweb publish`) to release the change.')
+    } else if (foundationFresh === true) {
+      say.ok('Local foundation matches the registered version.')
     }
     if (!site && !fdnLatest) {
       say.dim('(No remote signals — the backend may not expose them yet.)')

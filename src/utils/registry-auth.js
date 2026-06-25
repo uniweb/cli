@@ -265,35 +265,50 @@ async function openBrowser(url) {
   }
 }
 
-// Browser / social — loopback OAuth against the backend's /cli/authorize.
-// The CLI hosts a one-shot 127.0.0.1 server, opens the browser to authorize, and
-// the backend (after the Google dance) 302s back to the loopback with the token
-// (or an error). state is a CSRF nonce echoed back and verified. The token never
-// leaves browser→localhost. Gated by BROWSER_AVAILABLE until the endpoint is live.
-async function loginViaBrowser({ apiBase }) {
-  if (!BROWSER_AVAILABLE) {
-    throw new Error('browser/social login for the new backend isn’t available yet — use --password or --token-paste.')
-  }
-  const base = apiBase.replace(/\/$/, '')
-  const state = randomBytes(16).toString('hex')
-
+/**
+ * One-shot browser loopback — the reusable primitive behind both `uniweb login`
+ * (token-in-redirect) and `uniweb publish`'s payment handoff (done-signal).
+ *
+ * Hosts a one-shot `127.0.0.1` server on an ephemeral port, opens the browser to
+ * a URL built from that port, and resolves once the browser is redirected back
+ * to `/callback`. The value never leaves browser→localhost. Provider-agnostic:
+ * the CALLER supplies the URL to open (given the loopback redirect URI) and a
+ * validator that inspects the callback query — so the same tested server serves
+ * any "open a page, wait for it to come back" flow.
+ *
+ * @param {object} o
+ * @param {(redirectUri: string) => string} o.buildUrl - the URL to open, given the loopback /callback URI
+ * @param {(params: URLSearchParams) => ({ value: any } | { error: string })} o.validate
+ *        - inspect the callback query; return `{ value }` to succeed or `{ error }` to fail
+ * @param {number} [o.timeoutMs=120000]
+ * @param {string} [o.openingLabel] - the "opening…" line
+ * @param {string} [o.waitingLabel] - the "waiting…" line
+ * @param {string} [o.okTitle='Done'] - success page heading
+ * @param {string} [o.errTitle='Something went wrong'] - failure page heading
+ * @returns {Promise<any>} the validated `value`
+ * @throws on validation error, timeout, or a loopback server error
+ */
+export async function awaitBrowserCallback({
+  buildUrl,
+  validate,
+  timeoutMs = 120000,
+  openingLabel = 'Opening your browser…',
+  waitingLabel,
+  okTitle = 'Done',
+  errTitle = 'Something went wrong',
+} = {}) {
   const result = await new Promise((resolve) => {
     const server = createServer((req, res) => {
       const u = new URL(req.url, 'http://127.0.0.1')
       if (u.pathname !== '/callback') { res.writeHead(404); res.end('Not found'); return }
-      const token = u.searchParams.get('token')
-      const error = u.searchParams.get('error')
-      const gotState = u.searchParams.get('state')
-      const failed = !!error || !token || gotState !== state
+      const verdict = validate(u.searchParams) || { error: 'no result from the callback.' }
+      const failed = !!verdict.error
       res.writeHead(failed ? 400 : 200, { 'Content-Type': 'text/html' })
       res.end(`<!doctype html><html><body style="font-family:system-ui,sans-serif;text-align:center;padding:60px">`
-        + `<h2 style="color:${failed ? '#dc2626' : '#16a34a'}">${failed ? 'Login failed' : 'Login successful'}</h2>`
+        + `<h2 style="color:${failed ? '#dc2626' : '#16a34a'}">${failed ? errTitle : okTitle}</h2>`
         + `<p>You can close this tab and return to your terminal.</p></body></html>`)
       cleanup()
-      if (error) resolve({ error })
-      else if (gotState !== state) resolve({ error: 'state mismatch — please try again.' })
-      else if (!token) resolve({ error: 'no token returned by the callback.' })
-      else resolve({ token })
+      resolve(failed ? { error: verdict.error } : { value: verdict.value })
     })
     let timer
     function cleanup() { clearTimeout(timer); server.close() }
@@ -301,20 +316,51 @@ async function loginViaBrowser({ apiBase }) {
     server.listen(0, '127.0.0.1', async () => {
       const { port } = server.address()
       const redirectUri = `http://127.0.0.1:${port}/callback`
-      const authorizeUrl = `${base}/dev/auth/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
-      console.log('\x1b[36m→\x1b[0m Opening your browser to sign in…')
-      console.log(`  \x1b[2m${authorizeUrl}\x1b[0m`)
-      const opened = await openBrowser(authorizeUrl)
+      const url = buildUrl(redirectUri)
+      console.log(`\x1b[36m→\x1b[0m ${openingLabel}`)
+      console.log(`  \x1b[2m${url}\x1b[0m`)
+      const opened = await openBrowser(url)
       if (!opened) console.log('\x1b[33m⚠\x1b[0m Could not open a browser automatically — open the URL above.')
-      console.log('\x1b[2mWaiting for sign-in to complete (120s)…\x1b[0m')
+      console.log(`\x1b[2m${waitingLabel || `Waiting (${Math.round(timeoutMs / 1000)}s)…`}\x1b[0m`)
     })
-    timer = setTimeout(() => { server.close(); resolve({ error: 'timed out waiting for sign-in (120s).' }) }, 120000)
+    timer = setTimeout(() => { server.close(); resolve({ error: `timed out (${Math.round(timeoutMs / 1000)}s).` }) }, timeoutMs)
+  })
+  if (result.error) throw new Error(result.error)
+  return result.value
+}
+
+// Browser / social — loopback OAuth against the backend's /dev/auth/authorize.
+// The CLI hosts a one-shot 127.0.0.1 server (awaitBrowserCallback), opens the
+// browser to authorize, and the backend (after the Google dance) 302s back to
+// the loopback with the token (or an error). state is a CSRF nonce echoed back
+// and verified. The token never leaves browser→localhost. Gated by
+// BROWSER_AVAILABLE until the endpoint is live.
+async function loginViaBrowser({ apiBase }) {
+  if (!BROWSER_AVAILABLE) {
+    throw new Error('browser/social login for the new backend isn’t available yet — use --password or --token-paste.')
+  }
+  const base = apiBase.replace(/\/$/, '')
+  const state = randomBytes(16).toString('hex')
+
+  const token = await awaitBrowserCallback({
+    buildUrl: (redirectUri) =>
+      `${base}/dev/auth/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`,
+    validate: (params) => {
+      if (params.get('error')) return { error: params.get('error') }
+      if (params.get('state') !== state) return { error: 'state mismatch — please try again.' }
+      const tok = params.get('token')
+      if (!tok) return { error: 'no token returned by the callback.' }
+      return { value: tok }
+    },
+    openingLabel: 'Opening your browser to sign in…',
+    waitingLabel: 'Waiting for sign-in to complete (120s)…',
+    okTitle: 'Login successful',
+    errTitle: 'Login failed',
   })
 
-  if (result.error) throw new Error(result.error)
   let account = null
-  try { account = await fetchMe({ apiBase, token: result.token }) } catch { /* identity optional; token is valid */ }
-  const record = { token: result.token }
+  try { account = await fetchMe({ apiBase, token }) } catch { /* identity optional; token is valid */ }
+  const record = { token }
   if (account?.uuid) record.uuid = account.uuid
   if (account?.username) record.username = account.username
   if (account?.handle) record.handle = account.handle

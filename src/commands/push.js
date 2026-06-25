@@ -36,7 +36,7 @@
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  *
  * The two-lane SUBMISSION (POST both lanes, back-fill uuids, persist the
- * send-only-changed cache) lives in `../backend/site-sync.js` so `uniweb deploy`
+ * send-only-changed cache) lives in `../backend/site-sync.js` so `uniweb publish`
  * (the composite path) reuses the exact same logic. This command owns flag parsing,
  * the emit, and the `-o`/`--dry-run` preview.
  */
@@ -147,7 +147,7 @@ export async function push(args = []) {
   }
 
   // Submit both lanes, back-fill the minted uuids, and persist the send-only-changed
-  // cache. Shared with `uniweb deploy` via ../backend/site-sync.js.
+  // cache. Shared with `uniweb publish` via ../backend/site-sync.js.
   const result = await pushSyncPackages({
     client,
     siteDir,

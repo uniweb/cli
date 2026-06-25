@@ -4,30 +4,31 @@
  * Builds foundations with schema generation, or sites.
  *
  * Two site build pipelines are available, but they're INTERNAL vocabulary
- * after Phase 2 of the CLI ergonomics overhaul. Users see `uniweb deploy`
- * (uniweb-edge — runtime-linked) and `uniweb export` (third-party host —
- * concatenated bundle); the build command itself just dispatches to whichever
- * pipeline the caller requested.
+ * after Phase 2 of the CLI ergonomics overhaul. Users see `uniweb publish`
+ * (Uniweb hosting — runtime-linked), `uniweb deploy --host` (third-party host)
+ * and `uniweb export` (self-contained bundle); the build command itself just
+ * dispatches to whichever pipeline the caller requested.
  *
- *   --bundle (internal; called by `uniweb export`)
+ *   --bundle (internal; called by `uniweb deploy --host` / `uniweb export`)
  *     Full vite + post-vite pipeline. Produces a static-host JS bundle
  *     (`dist/index.html`, `dist/entry.js`, `_importmap/*`, `_pages/*` for
  *     split mode, sitemap/robots/search-index, prerendered HTML when
  *     configured). Foundation is loaded by URL when site.yml's foundation
  *     is a registry ref; statically inlined when it's a workspace-local
- *     ref with no auto-publish (the narrow self-contained case).
+ *     ref (the self-contained case).
  *
- *   --link (internal; called by `uniweb deploy`)
- *     Data-only pipeline. No vite. Emits ONLY what the Uniweb-edge
- *     deploy needs: `dist/site-content.json` (with full sections),
+ *   --link (internal; called by `uniweb publish`)
+ *     Data-only pipeline. No vite. Emits ONLY what Uniweb hosting
+ *     needs: `dist/site-content.json` (with full sections),
  *     `dist/<lang>/site-content.json` per non-default locale,
  *     `dist/data/*.json` (collections), and `dist/assets/<media>` (images,
- *     fonts, video posters). Edge stitches runtime + foundation per
+ *     fonts, video posters). The backend stitches runtime + foundation per
  *     request — the site's JS bundle would be dead weight.
  *
  * Bare `uniweb build` for a site defaults to --bundle (the historical
  * behavior). This is mostly useful for inspecting the build output during
- * development; for shipping, use `uniweb deploy` or `uniweb export`.
+ * development; for shipping, use `uniweb publish` (Uniweb hosting) or
+ * `uniweb deploy --host` / `uniweb export` (third-party / self-contained).
  *
  * Usage:
  *   uniweb build                    # Build current directory (sites default to --bundle)
@@ -40,9 +41,9 @@
  *                                      s3-cloudfront, github-pages,
  *                                      generic-static). Default: cloudflare-pages.
  *
- * Internal flags (called by `uniweb deploy` / `uniweb export`):
- *   --link              # Data-only pipeline (Uniweb-edge)
- *   --bundle            # Full vite pipeline (third-party hosts)
+ * Internal flags:
+ *   --link              # Data-only pipeline (Uniweb hosting; called by `uniweb publish`)
+ *   --bundle            # Full vite pipeline (third-party / self-contained; deploy --host / export)
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
@@ -246,11 +247,12 @@ async function buildFoundation(projectDir, options = {}) {
 /**
  * Ensure a local foundation's `dist/entry.js` is current.
  *
- * Whenever a build or deploy reads a local foundation from disk — bundle
- * mode (vite imports it, prerender loads it for SSG), or link mode where
- * the foundation is uploaded alongside the site — the foundation must be
- * built and current. Otherwise the verb fails with "Foundation not found
- * at .../dist/entry.js" or silently ships stale artifacts.
+ * Bundle mode reads a local foundation from disk (vite imports it, prerender
+ * loads dist/entry.js for SSG), so the foundation must be built and current.
+ * Otherwise the verb fails with "Foundation not found at .../dist/entry.js" or
+ * silently ships stale artifacts. (Link mode does NOT read the built foundation
+ * — it forwards only the `foundation:` ref to the backend and ships no
+ * foundation code — so buildSiteLink does not call this.)
  *
  * `buildWorkspace()` already cascades when invoked from a workspace root,
  * but verbs invoked from a site directory (`uniweb build` in `sites/x/`,
@@ -260,8 +262,8 @@ async function buildFoundation(projectDir, options = {}) {
  *
  * This helper is idempotent: when the workspace-root cascade has already
  * run, the freshness check sees a current `dist/entry.js` and returns
- * without rebuilding. So adding the call inside `buildSite()` /
- * `buildSiteLink()` does not double-build under `buildWorkspace()`.
+ * without rebuilding. So calling it inside `buildSite()` does not
+ * double-build under `buildWorkspace()`.
  *
  * Freshness rule: a built artifact (`dist/entry.js` or the legacy
  * `dist/foundation.js`) exists AND its mtime is >= the newest mtime of
@@ -525,7 +527,7 @@ function resolveFoundationDir(projectDir, siteConfig) {
 /**
  * Build a site in link mode — data only, no vite.
  *
- * Emits exactly what `uniweb deploy` ships to Uniweb-edge:
+ * Emits exactly what `uniweb publish` ships to Uniweb hosting:
  *   dist/site-content.json (full sections inlined)
  *   dist/<lang>/site-content.json per non-default locale
  *   dist/data/<collection>.json (+ per-record files for `deferred:`)
@@ -564,10 +566,12 @@ async function buildSiteLink(projectDir, options = {}) {
   // null and theme defaults come from theme.yml only.
   const foundationDir = await resolveFoundationDirForSite(projectDir, siteConfig).catch(() => null)
 
-  // Cascade: a local foundation in link mode is uploaded alongside the
-  // site (site-bound mode), so its dist must be current. Idempotent under
-  // buildWorkspace() — the freshness check no-ops when already built.
-  if (foundationDir) await ensureFoundationFresh(foundationDir)
+  // Link mode does NOT (re)build the foundation. It reads only the
+  // foundation's SOURCE config (foundation.js::theme.vars, passed as
+  // foundationPath below) for theme defaults, and ships NO foundation code —
+  // the backend serves the foundation from the registry by the `foundation:`
+  // ref. (Bundle mode is the one that needs a current dist/entry.js — see
+  // buildSite — so the ensureFoundationFresh cascade lives there, not here.)
 
   await buildSiteData({
     siteRoot: projectDir,
@@ -637,7 +641,6 @@ async function resolveFoundationDirForSite(siteDir, siteConfig) {
   if (!foundation || typeof foundation !== 'string') return null
   // Registry ref or URL — no local foundation.
   if (/^@[a-z0-9_-]+\/[a-z0-9_-]+@/.test(foundation)) return null
-  if (/^~[A-Za-z0-9_-]+\/[a-z0-9_-]+@/.test(foundation)) return null
   if (foundation.startsWith('http://') || foundation.startsWith('https://')) return null
 
   // Workspace sibling.
@@ -910,14 +913,15 @@ function showNextSteps(hasFoundations, hasSites) {
   if (hasFoundations) {
     log('')
     log(`${colors.bright}Share with clients:${colors.reset}`)
-    log(`  ${colors.bright}uniweb publish${colors.reset}              Register your foundation (one-time setup)`)
+    log(`  ${colors.bright}uniweb register${colors.reset}             Release your foundation to the catalog (alias: uniweb release)`)
     log(`  ${colors.bright}uniweb handoff <email>${colors.reset}      Hand off a site to a client`)
   }
   if (hasSites) {
     log('')
-    log(`${colors.bright}Deploy:${colors.reset}`)
-    log(`  ${colors.bright}uniweb deploy${colors.reset}     Uniweb hosting`)
-    log(`  Or upload ${colors.cyan}dist/${colors.reset} to any static host`)
+    log(`${colors.bright}Ship a site:${colors.reset}`)
+    log(`  ${colors.bright}uniweb publish${colors.reset}            Uniweb hosting (brings the foundation along)`)
+    log(`  ${colors.bright}uniweb deploy --host${colors.reset}=…    Third-party host`)
+    log(`  Or upload ${colors.cyan}dist/${colors.reset} (\`uniweb export\`) to any static host`)
   }
 }
 
@@ -943,10 +947,10 @@ export async function build(args = []) {
   const prerenderFlag = args.includes('--prerender')
   const noPrerenderFlag = args.includes('--no-prerender')
 
-  // Internal flags — called by `uniweb deploy` (always --link) and
-  // `uniweb export` (always --bundle). After Phase 2 of the CLI
-  // ergonomics overhaul, users don't see these flags directly; they
-  // pick the deploy target (deploy vs export) and the corresponding
+  // Internal flags — called by `uniweb publish` (always --link) and
+  // `uniweb deploy --host` / `uniweb export` (always --bundle). After Phase 2
+  // of the CLI ergonomics overhaul, users don't see these flags directly; they
+  // pick the verb (publish vs deploy vs export) and the corresponding
   // pipeline runs. Bare `uniweb build` for a site defaults to --bundle
   // (mostly used during development to inspect the vite output).
   const linkFlag = args.includes('--link')
