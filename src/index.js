@@ -1094,17 +1094,21 @@ function printCommandHelp(command) {
   if (command === 'release') command = 'register'
   const blocks = {
     deploy: `
-${colors.cyan}${colors.bright}uniweb deploy${colors.reset} ${colors.dim}— Deploy a site to a third-party host${colors.reset}
+${colors.cyan}${colors.bright}uniweb deploy${colors.reset} ${colors.dim}— Ship a site to its resolved target${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
   uniweb deploy --host <name> [options]
 
-Ships a site to a NON-Uniweb host: builds dist/ (bundle mode) and hands it to a
-host adapter for upload + invalidation. For Uniweb hosting (sync + dynamic
-serving; brings the foundation along) use ${colors.cyan}uniweb publish${colors.reset}. For a self-contained
-dist/ artifact you upload yourself, use ${colors.cyan}uniweb export${colors.reset}.
+Ships a site to its resolved target. A THIRD-PARTY host builds dist/ (bundle
+mode) and hands it to a host adapter for upload + invalidation. A UNIWEB target
+(\`--host=uniweb\`, or a \`uniweb\` target in deploy.yml) delegates to
+${colors.cyan}uniweb publish${colors.reset} (sync + dynamic serving; brings the foundation along) — the
+canonical direct verb for Uniweb hosting. With no host chosen, deploy prompts for
+a third-party adapter. For a self-contained dist/ you upload yourself, use
+${colors.cyan}uniweb export${colors.reset}.
 
 ${colors.bright}Hosts:${colors.reset}
+  uniweb              Uniweb hosting (delegates to \`uniweb publish\`)
   cloudflare-pages    Cloudflare Pages (build artifact + adapter postBuild)
   netlify             Netlify (alias of cloudflare-pages adapter)
   vercel              Vercel (build-only — deploy via \`npx vercel\`)
@@ -1113,7 +1117,7 @@ ${colors.bright}Hosts:${colors.reset}
   generic-static      Plain static-host build, no host-specific helpers
 
 ${colors.bright}Options:${colors.reset}
-  --host <name>       The static host to deploy to (no value → interactive picker, TTY only)
+  --host <name>       The host to ship to (no value → interactive third-party picker, TTY only)
   --target <name>     Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
   --dry-run           Resolve the target + adapter; print summary; upload nothing
   --no-save           Skip the auto-save of lastDeploy in deploy.yml
@@ -1122,8 +1126,8 @@ ${colors.bright}Options:${colors.reset}
 ${colors.bright}Examples:${colors.reset}
   uniweb deploy --host=cloudflare-pages      # Build + upload to Cloudflare Pages
   uniweb deploy --host=s3-cloudfront         # Build + upload + invalidate
-  uniweb deploy --target=preview             # Named static-host target from deploy.yml
-  uniweb deploy --dry-run --host=github-pages
+  uniweb deploy --host=uniweb                # → delegates to \`uniweb publish\`
+  uniweb deploy --target=preview             # Named target from deploy.yml
 `,
     publish: `
 ${colors.cyan}${colors.bright}uniweb publish${colors.reset} ${colors.dim}— Publish a site to Uniweb hosting (the smart path)${colors.reset}
@@ -1526,10 +1530,10 @@ ${colors.bright}Publish Options:${colors.reset}
   \`uniweb deploy --host=<name>\`.
 
 ${colors.bright}Deploy Options:${colors.reset}
-  --host <name>      The static host (no value → interactive picker, TTY only).
-                     Hosts: cloudflare-pages, netlify, vercel, github-pages,
-                     s3-cloudfront, generic-static. (For Uniweb hosting use
-                     \`uniweb publish\`.)
+  --host <name>      The host to ship to (no value → interactive third-party
+                     picker, TTY only). Third-party: cloudflare-pages, netlify,
+                     vercel, github-pages, s3-cloudfront, generic-static.
+                     \`--host=uniweb\` delegates to \`uniweb publish\`.
   --target <name>    Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
   --dry-run          Resolve the target + adapter; print summary; upload nothing
   --no-save          Skip the auto-save of lastDeploy in deploy.yml

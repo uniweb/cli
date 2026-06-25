@@ -1,27 +1,32 @@
 /**
- * Deploy Command — third-party hosts only.
+ * Deploy Command — ship a site to its resolved target.
  *
- * `uniweb deploy` ships a site to a NON-Uniweb host: a static-host adapter
- * (`s3-cloudfront`, `cloudflare-pages`, `github-pages`, `generic-static`, …).
- * It builds `dist/` in bundle mode and hands it to the adapter for upload +
- * invalidation. No login, no edge.
+ * `uniweb deploy` resolves WHERE a site goes from deploy.yml (+ `--host` /
+ * `--target`) and ships it there:
+ *   - THIRD-PARTY host (`s3-cloudfront`, `cloudflare-pages`, `github-pages`,
+ *     `generic-static`, …): build `dist/` in bundle mode and hand it to the
+ *     host adapter for upload + invalidation.
+ *   - UNIWEB hosting target (an explicit `--host=uniweb`, or a `uniweb` target
+ *     in deploy.yml): DELEGATE to `uniweb publish` — the smart path (sync +
+ *     dynamic hosting, brings the foundation along). So deploy.yml stays one
+ *     actionable "where this site deploys" record, uniweb included.
  *
- * Uniweb hosting is `uniweb publish` (the smart path — sync + dynamic hosting,
- * and it brings the site's foundation along). `deploy` with no host given points
- * you there (or, interactively, lets you pick a third-party host); it does NOT
- * target the Uniweb backend itself (shipping-model.md §6.2). For a static-host
- * artifact WITHOUT upload, see `uniweb export`.
+ * `uniweb publish` is the canonical direct verb for Uniweb hosting (reach for it
+ * by default); `uniweb export` writes a self-contained artifact you upload
+ * yourself.
  *
  * Host resolution:
  *   1. --target <name> picks a target from deploy.yml (full config)
  *   2. deploy.yml's `default:` target when no flag is given
- *   3. with no deploy.yml at all, the implicit default is host: 'uniweb' →
- *      which deploy treats as "you meant `uniweb publish`" and redirects
+ *   3. with no deploy.yml at all, NO host is chosen → deploy prompts for a
+ *      third-party adapter (interactive) rather than assuming Uniweb;
+ *      non-interactive → an actionable error pointing at `publish` / `--host`
  *   4. --host <name> is a one-off override (does NOT persist to deploy.yml)
  *
  * Usage:
  *   uniweb deploy --host <name>    Build bundle-mode dist/ + hand to the host adapter
- *   uniweb deploy --target <name>  Pick a static-host target from deploy.yml
+ *   uniweb deploy --host=uniweb    Delegate to `uniweb publish` (Uniweb hosting)
+ *   uniweb deploy --target <name>  Pick a target from deploy.yml
  *   uniweb deploy --dry-run        Resolve everything; upload nothing
  *   uniweb deploy --no-save        Skip the deploy.yml lastDeploy auto-save
  *
@@ -103,24 +108,32 @@ export async function deploy(args = []) {
   }
   let host = hostFromFlag || resolved.host
 
-  // Uniweb hosting is `uniweb publish`'s job now (the smart path — sync +
-  // dynamic hosting + bring-the-foundation-along). `deploy` is third-party only.
-  // When the host resolves to 'uniweb' we DON'T assume it: if the user
-  // explicitly asked for uniweb (a `--host=uniweb`, or a uniweb target in
-  // deploy.yml) or we're non-interactive, point them at `publish`; otherwise
-  // (bare `deploy`, no host given) prompt for a third-party host rather than
-  // guessing. promptForHost lists only third-party adapters.
+  // A Uniweb-hosting target is `publish`'s flow. When the user EXPLICITLY chose
+  // uniweb (a `--host=uniweb`, or a `uniweb` target in deploy.yml), DELEGATE to
+  // `uniweb publish` so deploy.yml stays one actionable record. When NO host was
+  // chosen (the implicit default with no deploy.yml), don't assume uniweb:
+  // prompt for a third-party adapter (interactive) or point at publish / --host
+  // (non-interactive). promptForHost lists only third-party adapters.
   if (host === 'uniweb') {
     const explicitUniweb = hostFromFlag === 'uniweb' || (resolved.fromFile && resolved.host === 'uniweb')
-    if (explicitUniweb || isNonInteractive(args)) {
-      say.err('`uniweb deploy` is for third-party hosts. For Uniweb hosting, use `uniweb publish`.')
+    if (explicitUniweb) {
+      say.info('Uniweb hosting target → running `uniweb publish`.')
       console.log('')
-      say.dim('`uniweb publish`          Smart Uniweb hosting (sync + dynamic hosting; brings the foundation along)')
+      // publish ignores deploy's --host/--target; --dry-run/--no-save/--backend
+      // /--token pass straight through.
+      const { publish } = await import('./publish.js')
+      const result = await publish(args)
+      process.exit(result?.exitCode ?? 0)
+    }
+    if (isNonInteractive(args)) {
+      say.err('`uniweb deploy` needs a host. For Uniweb hosting use `uniweb publish`; for a third-party host pass `--host=<adapter>`.')
+      console.log('')
+      say.dim('`uniweb publish`          Uniweb hosting (sync + dynamic hosting; brings the foundation along)')
       say.dim('`uniweb deploy --host=…`  Third-party host (s3-cloudfront, cloudflare-pages, github-pages, generic-static)')
       say.dim('`uniweb export`           Self-contained dist/ artifact you upload anywhere')
       process.exit(1)
     }
-    say.info('`uniweb deploy` targets third-party hosts. (For Uniweb hosting, run `uniweb publish`.)')
+    say.info('`uniweb deploy` ships to a third-party host. (For Uniweb hosting, run `uniweb publish`.)')
     try {
       host = await promptForHost({ args })
     } catch (err) {
