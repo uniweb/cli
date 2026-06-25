@@ -289,13 +289,24 @@ export async function publish(args = []) {
   //    the SAME two-lane submission `uniweb push` uses — stamping
   //    info.data_bundle and rewriting local media refs to backend serve URLs.
   const priorHashes = readSyncCache(siteDir)
+  // Stamp deploy-derived info on the site-content entity: the data-bundle URL,
+  // and the PINNED foundation ref (`@scope/name@version`) from the bring-along.
+  // Delivery is version-pinned end-to-end (the gateway serves a foundation only
+  // by a concrete version — collab framework-backend-5c3e), so pinning the
+  // released version on the wire is required when site.yml uses an unversioned
+  // local ref; injectInfo overrides info.foundation. A registry/URL ref → fnd.ref
+  // is null → the site.yml ref is forwarded verbatim (already pinned).
+  const injectInfo = {
+    ...(dataBundle ? { data_bundle: dataBundle } : {}),
+    ...(fnd.ref ? { foundation: fnd.ref } : {}),
+  }
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, {
       ...(foundationDir ? { foundationDir } : {}),
       resolveModel,
       priorHashes,
-      ...(dataBundle ? { injectInfo: { data_bundle: dataBundle } } : {}),
+      ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
       ...(assetRewrite ? { assetRewrite } : {}),
     })
   } catch (err) {
@@ -356,7 +367,10 @@ export async function publish(args = []) {
   //    reuses the resolved target without re-asking). One identity:
   //    site.yml::$uuid. `released` records whether this publish shipped a new
   //    foundation version (the bring-along, §4).
-  const foundationRef = typeof siteYml.foundation === 'string' ? siteYml.foundation : siteYml.foundation?.ref || null
+  // Record the ref that actually went live: the pinned `@scope/name@version`
+  // from the bring-along when present, else the site.yml ref verbatim.
+  const siteYmlRef = typeof siteYml.foundation === 'string' ? siteYml.foundation : siteYml.foundation?.ref || null
+  const recordedRef = fnd.ref || siteYmlRef
   await persistLastDeploy(siteDir, {
     targetName: resolved.targetName,
     targetConfig: resolved.fromFile ? null : { host: 'uniweb' },
@@ -367,7 +381,7 @@ export async function publish(args = []) {
       backend: client.origin,
       siteUuid,
       url: serveUrl,
-      foundation: { ...(foundationRef ? { ref: foundationRef } : {}), released: fnd.released },
+      foundation: { ...(recordedRef ? { ref: recordedRef } : {}), released: fnd.released },
       runtime: runtimeVersion,
       locales: Array.isArray(result.locales) ? result.locales : languages,
     },

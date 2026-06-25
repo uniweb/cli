@@ -109,25 +109,43 @@ function forwardedFlags(args) {
  * @param {(q: string, def?: boolean) => Promise<boolean>} o.confirm
  * @param {string} o.cliBin - the CLI entry (process.argv[1]) to re-spawn
  * @param {boolean} [o.dryRun]
- * @returns {Promise<{ released: boolean, proceed: boolean }>}
- *   proceed:false → the caller should abort the publish (user declined).
+ * @returns {Promise<{ released: boolean, proceed: boolean, ref: string|null }>}
+ *   proceed:false → the caller should abort the publish (user declined). `ref`
+ *   is the pinned `@scope/name@version` to stamp on the pushed site — read AFTER
+ *   any release, so it reflects the released version + the scope register
+ *   derived. Delivery is version-pinned end-to-end (the gateway serves a
+ *   foundation only by a concrete version, no latest-resolution at serve time —
+ *   collab framework-backend-5c3e), so an unversioned local ref MUST be pinned
+ *   on the wire or the live site points at code the gateway can't serve. null
+ *   when the site already references a registry ref / URL (no override needed)
+ *   or no scoped ref can be formed.
  */
 export async function bringFoundationAlong({ client, siteDir, siteYml, args, say, confirm, cliBin, dryRun = false }) {
   const local = resolveLocalFoundation(siteDir, siteYml)
   if (!local) {
     // Published registry ref / URL — the catalog (or the URL host) already
-    // serves the code. Nothing to bring along.
-    return { released: false, proceed: true }
+    // serves the code, and site.yml already pins the version. Nothing to bring
+    // along, and no ref override (forward the site.yml ref verbatim).
+    return { released: false, proceed: true, ref: null }
   }
 
   const label = local.scopedName || local.version ? `${local.scopedName || 'foundation'}${local.version ? `@${local.version}` : ''}` : 'the local foundation'
   const skipPrompts = args.includes('--yes') || args.includes('--force') || args.includes('--no-verify')
 
+  // The pinned ref to stamp on the pushed site — read at RETURN time (after any
+  // release), so it reflects the released version + the scope register derived.
+  // null when no scoped ref can be formed (then the site.yml ref is forwarded).
+  const pinnedRef = () => {
+    const s = foundationScopedName(local.dir)
+    const v = readPkgField(local.dir, 'version')
+    return s && v ? `${s}@${v}` : null
+  }
+
   // Dry-run reports the intent WITHOUT touching the network — it must not force
   // a login (the digest read is auth-gated). The real run does the compare.
   if (dryRun) {
     say.dim(`Foundation  : ${label} — local; would release if changed or not yet registered`)
-    return { released: false, proceed: true }
+    return { released: false, proceed: true, ref: null }
   }
 
   // Ask the catalog what it has. Null → not registered (or the backend can't
@@ -136,7 +154,7 @@ export async function bringFoundationAlong({ client, siteDir, siteYml, args, say
 
   if (!reg) {
     say.info(`Releasing the foundation ${label} (not yet registered)…`)
-    return { released: releaseFoundation(local, args, cliBin, say), proceed: true }
+    return { released: releaseFoundation(local, args, cliBin, say), proceed: true, ref: pinnedRef() }
   }
 
   // Registered — fingerprint the local build and compare. Build first so the
@@ -146,13 +164,13 @@ export async function bringFoundationAlong({ client, siteDir, siteYml, args, say
 
   if (reg.digest && localDigest && reg.digest === localDigest) {
     say.dim(`Foundation  : ${label} — unchanged since release (digest matches); nothing to release.`)
-    return { released: false, proceed: true }
+    return { released: false, proceed: true, ref: pinnedRef() }
   }
 
   // A different version locally → a new version to release.
   if (local.version && local.version !== reg.latest_version) {
     say.info(`Releasing the foundation ${label} (new version; registered latest is ${reg.latest_version})…`)
-    return { released: releaseFoundation(local, args, cliBin, say), proceed: true }
+    return { released: releaseFoundation(local, args, cliBin, say), proceed: true, ref: pinnedRef() }
   }
 
   // Same version, but the digest differs or the backend can't confirm it.
@@ -162,11 +180,11 @@ export async function bringFoundationAlong({ client, siteDir, siteYml, args, say
     say.warn(`Can't verify the registered ${label} matches your local copy (backend returned no digest).`)
     if (skipPrompts || isNonInteractive(args)) {
       say.dim('Proceeding without re-releasing — pass nothing to re-deliver, or bump the version to publish a change.')
-      return { released: false, proceed: true }
+      return { released: false, proceed: true, ref: pinnedRef() }
     }
     const reRelease = await confirm(`Re-release ${label} to be sure its code is current?`, false)
-    if (reRelease) return { released: releaseFoundation(local, args, cliBin, say), proceed: true }
-    return { released: false, proceed: true }
+    if (reRelease) return { released: releaseFoundation(local, args, cliBin, say), proceed: true, ref: pinnedRef() }
+    return { released: false, proceed: true, ref: pinnedRef() }
   }
 
   // Case 3 (§4): the foundation was edited but the version wasn't bumped. The
@@ -176,14 +194,14 @@ export async function bringFoundationAlong({ client, siteDir, siteYml, args, say
   say.dim('A registered version is immutable. Bump the foundation\'s version to release the change, then re-run `uniweb publish`.')
   if (skipPrompts || isNonInteractive(args)) {
     say.dim(`Proceeding with the already-registered ${reg.latest_version}.`)
-    return { released: false, proceed: true }
+    return { released: false, proceed: true, ref: pinnedRef() }
   }
   const proceed = await confirm(`Publish with the already-registered ${reg.latest_version} anyway?`, false)
   if (!proceed) {
     say.info('Aborted — bump the foundation version, then re-run `uniweb publish`.')
-    return { released: false, proceed: false }
+    return { released: false, proceed: false, ref: null }
   }
-  return { released: false, proceed: true }
+  return { released: false, proceed: true, ref: pinnedRef() }
 }
 
 // Build the foundation so its dist/ can be fingerprinted. Idempotent — the
