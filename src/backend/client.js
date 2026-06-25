@@ -28,28 +28,34 @@
  */
 
 import { getRegistryApiBaseUrl } from '../utils/config.js'
-import { ensureRegistryAuth, fetchMe } from '../utils/registry-auth.js'
+import { ensureRegistryAuth, fetchMe, readRegistryAuth, isExpired } from '../utils/registry-auth.js'
 import { fetchOrgs as fetchOrgsImpl, createOrg as createOrgImpl } from '../utils/registry-orgs.js'
 import { uploadFoundationCode } from '../utils/code-upload.js'
 import { uploadSiteAssets } from '../utils/asset-upload.js'
 import { uploadRuntime } from '../utils/runtime-upload.js'
 
 /**
- * Resolve the backend origin: an explicit flag value wins; otherwise defer to
- * the shared origin resolver (env override > saved config > local default). A
- * full URL is reduced to its origin, so callers may pass a whole endpoint URL.
+ * Resolve the backend origin via the resolution ladder (highest precedence
+ * first). A full URL is reduced to its origin, so callers may pass a whole
+ * endpoint URL; an unparseable value falls through to the next tier.
  *
- * One resolver, one place to revisit when we settle the single-origin-input +
- * discovery-handshake decision — kept delegating for now so this stays a pure,
- * behavior-preserving consolidation.
+ *   1. `flag` — the raw --backend / --registry value (this command)
+ *   2. UNIWEB_REGISTER_URL env — session-wide override (CI / local dev)
+ *   3. `siteBackend` — the site's bound backend from deploy.yml (site verbs)
+ *   4–6. the logged-in session origin > ~/.uniweb/config.json > the default
+ *        (uniweb.app) — all via getRegistryApiBaseUrl()
  *
  * @param {string} [flag] - the raw value of --backend / --registry, if supplied
+ * @param {object} [opts]
+ * @param {string} [opts.siteBackend] - a site's deploy.yml-bound backend origin
  * @returns {string} a bare origin with no trailing slash
  */
-export function resolveBackendOrigin(flag) {
-  if (flag) {
-    try { return new URL(flag).origin } catch { /* not a URL — fall through */ }
-  }
+export function resolveBackendOrigin(flag, { siteBackend } = {}) {
+  const norm = (v) => { try { return new URL(v).origin } catch { return null } }
+  if (flag) { const o = norm(flag); if (o) return o }
+  const env = process.env.UNIWEB_REGISTER_URL
+  if (env) { const o = norm(env); if (o) return o }
+  if (siteBackend) { const o = norm(siteBackend); if (o) return o }
   return getRegistryApiBaseUrl()
 }
 
@@ -74,6 +80,7 @@ export class BackendClient {
    * @param {object} [opts]
    * @param {string} [opts.origin] - explicit origin (wins over originFlag/env)
    * @param {string} [opts.originFlag] - raw --backend/--registry value to resolve
+   * @param {string} [opts.siteBackend] - a site's deploy.yml-bound backend (site verbs)
    * @param {string} [opts.token] - explicit bearer (wins over env + stored session)
    * @param {() => Promise<string>} [opts.getToken] - injected bearer resolver (tests, or
    *        callers with their own auth); used when no explicit token/env is present
@@ -81,8 +88,8 @@ export class BackendClient {
    * @param {string} [opts.command] - label for the login prompt ('Pushing', 'Registering', …)
    * @param {typeof fetch} [opts.fetchImpl] - injectable fetch (tests)
    */
-  constructor({ origin, originFlag, token, getToken, args = [], command = 'This command', fetchImpl } = {}) {
-    this.origin = (origin || resolveBackendOrigin(originFlag)).replace(/\/+$/, '')
+  constructor({ origin, originFlag, siteBackend, token, getToken, args = [], command = 'This command', fetchImpl } = {}) {
+    this.origin = (origin || resolveBackendOrigin(originFlag, { siteBackend })).replace(/\/+$/, '')
     this._token = token || process.env.UNIWEB_TOKEN || null
     this._getToken = getToken || null
     this._args = args
@@ -102,6 +109,19 @@ export class BackendClient {
     if (this._getToken) {
       this._token = await this._getToken()
       return this._token
+    }
+    // Origin-mismatch guard: a usable session authed against a DIFFERENT origin
+    // than this command targets means the bearer will be rejected — warn once
+    // and point at the fix (the stored token IS for `stored.origin`, not here).
+    if (!this._warnedOriginMismatch) {
+      this._warnedOriginMismatch = true
+      try {
+        const stored = await readRegistryAuth()
+        if (stored?.token && !isExpired(stored) && stored.origin &&
+            stored.origin.replace(/\/+$/, '') !== this.origin) {
+          console.error(`\x1b[33m⚠\x1b[0m Logged in to ${stored.origin}, but this command targets ${this.origin} — the session may be rejected. Run \`uniweb login --backend ${this.origin}\`, or pass --token.`)
+        }
+      } catch { /* advisory only */ }
     }
     this._token = await ensureRegistryAuth({ apiBase: this.origin, command: this._command, args: this._args })
     return this._token

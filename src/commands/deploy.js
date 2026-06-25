@@ -331,3 +331,21 @@ export async function resolveSiteDir(args, verb = 'deploy') {
   }
   process.exit(1)
 }
+
+// The site's deploy.yml-bound backend origin (for the resolved `uniweb` target),
+// or null when there's no deploy.yml, the target isn't Uniweb hosting, or no
+// backend was recorded. Site verbs pass this to BackendClient as `siteBackend`
+// so a site stays bound to the backend it publishes to — deploy.yml is the
+// record of *where* a site is deployed (the 98% case is uniweb.app, but a B2B
+// university backend is just a `backend:` on the target). Sits below --backend
+// and UNIWEB_REGISTER_URL but above the logged-in session in the resolution
+// ladder (see resolveBackendOrigin). Best-effort: any read/parse error → null.
+export async function resolveSiteBackend(siteDir) {
+  try {
+    const deployYml = await loadDeployYml(siteDir)
+    const resolved = resolveTarget(deployYml, null)
+    return resolved.host === 'uniweb' ? (resolved.config?.backend || null) : null
+  } catch {
+    return null
+  }
+}

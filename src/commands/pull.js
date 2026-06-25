@@ -49,7 +49,7 @@ import {
 } from '@uniweb/build/uwx'
 import { makeModelResolver } from './push.js'
 import { BackendClient } from '../backend/client.js'
-import { resolveSiteDir as defaultResolveSiteDir } from './deploy.js'
+import { resolveSiteDir as defaultResolveSiteDir, resolveSiteBackend } from './deploy.js'
 
 const FOLDER_MODEL = '@uniweb/folder'
 
@@ -179,16 +179,18 @@ export async function pull(args = [], deps = {}) {
   const tokenFlag = flagValue(args, '--token')
   const prune = !(args.includes('--no-delete') || args.includes('--no-prune')) // git-like by default
   const noCollections = args.includes('--no-collections') || args.includes('--content-only')
+
+  const siteDir = await resolveSiteDir(args, 'pull')
+  const siteBackend = await resolveSiteBackend(siteDir)
   const client = new BackendClient({
     originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'),
+    siteBackend,
     token: tokenFlag,
     getToken: deps.getToken,
     fetchImpl: deps.fetch,
     args,
     command: 'Pulling',
   })
-
-  const siteDir = await resolveSiteDir(args, 'pull')
   // One identity per site: `site.yml::$uuid`. Both lanes (content + folder) are keyed
   // by it — the backend resolves the site's `@uniweb/folder` from this uuid.
   const siteContentUuid = readYamlUuid(join(siteDir, 'site.yml'))

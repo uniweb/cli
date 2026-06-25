@@ -45,7 +45,7 @@ import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import { BackendClient } from '../backend/client.js'
-import { resolveSiteDir } from './deploy.js'
+import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { makeModelResolver, readSyncCache, pushSyncPackages } from '../backend/site-sync.js'
 
 // Re-exported for downstream importers (pull.js, push.test.js) that read these
@@ -77,6 +77,9 @@ export async function push(args = []) {
   const asOrg = flagValue(args, '--as-org')
   const foundationDir = flagValue(args, '--foundation')
   const sendAll = args.includes('--all') // bypass the send-only-changed cache
+
+  const siteDir = await resolveSiteDir(args, 'push')
+  const siteBackend = await resolveSiteBackend(siteDir)
   // One front door. The bearer is resolved lazily on first need (a non-local Model
   // read during the build, or the submit). Offline emit (--dry-run / -o) is fully
   // offline: it never submits, and its Model resolver never reads from the backend
@@ -84,12 +87,11 @@ export async function push(args = []) {
   // references a Model the local foundation doesn't define.
   const client = new BackendClient({
     originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'),
+    siteBackend,
     token: tokenFlag,
     args,
     command: 'Syncing',
   })
-
-  const siteDir = await resolveSiteDir(args, 'push')
 
   // Build BOTH directional packages (the producer side). Each carries its own
   // `index` — the per-entity source-file map for back-fill, correlated by submission

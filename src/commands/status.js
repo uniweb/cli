@@ -24,7 +24,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 
-import { resolveSiteDir } from './deploy.js'
+import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { probeUnpushed } from '../backend/site-sync.js'
 import { BackendClient } from '../backend/client.js'
 import { readFlagValue } from '../utils/args.js'
@@ -93,6 +93,7 @@ export async function status(args = []) {
     try {
       const client = new BackendClient({
         originFlag: readFlagValue(args, '--backend') || readFlagValue(args, '--registry'),
+        siteBackend: await resolveSiteBackend(siteDir),
         token: readFlagValue(args, '--token') || undefined,
         args,
         command: 'Status',

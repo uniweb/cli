@@ -50,13 +50,34 @@ function readCliConfig() {
 }
 
 /**
+ * The origin the LAST `uniweb login` authenticated against — persisted on the
+ * session record so subsequent verbs default to the backend you logged into
+ * (no `--backend` per command). Sync read; null when there's no session or it
+ * carries no origin (older sessions). Read directly (not via registry-auth.js)
+ * to keep this module off the optional-peer / import-cycle path.
+ * @returns {string|null}
+ */
+function readSessionOrigin() {
+  try {
+    const p = join(homedir(), '.uniweb', 'registry-auth.json')
+    if (!existsSync(p)) return null
+    const o = JSON.parse(readFileSync(p, 'utf8'))?.origin
+    return o || null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Get the backend's API base origin. `register` POSTs to
  * {origin}/dev/registry/register, `login` to {origin}/dev/auth/login, etc.
- * (BackendClient.resolveBackendOrigin layers the --backend/--registry flag on
- * top of this.)
+ * (BackendClient.resolveBackendOrigin layers the --backend flag and a site's
+ * deploy.yml backend on top of this.)
  *
- * Priority: UNIWEB_REGISTER_URL's origin > ~/.uniweb/config.json registryApiUrl
- * > local default.
+ * Priority: UNIWEB_REGISTER_URL's origin > the logged-in session origin >
+ * ~/.uniweb/config.json registryApiUrl > the default (uniweb.app). Local dev
+ * points at a local backend EXPLICITLY (--backend / UNIWEB_REGISTER_URL /
+ * `uniweb login --backend …`), rather than the default being localhost.
  * @returns {string}
  */
 export function getRegistryApiBaseUrl() {
@@ -64,11 +85,15 @@ export function getRegistryApiBaseUrl() {
   if (fromEnv) {
     try { return new URL(fromEnv).origin } catch { /* fall through */ }
   }
+  const fromSession = readSessionOrigin()
+  if (fromSession) {
+    try { return new URL(fromSession).origin } catch { return fromSession }
+  }
   const fromCfg = readCliConfig().registryApiUrl
   if (fromCfg) {
     try { return new URL(fromCfg).origin } catch { return fromCfg }
   }
-  return 'http://localhost:8080'
+  return 'https://uniweb.app'
 }
 
 /**

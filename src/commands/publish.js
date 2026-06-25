@@ -50,7 +50,7 @@ import {
 import { emitSyncPackages } from '@uniweb/build/uwx'
 
 import { BackendClient } from '../backend/client.js'
-import { resolveSiteDir } from './deploy.js'
+import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { readFlagValue } from '../utils/args.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import { makeModelResolver, readSyncCache, pushSyncPackages } from '../backend/site-sync.js'
@@ -145,9 +145,13 @@ export async function publish(args = []) {
 
   const siteDir = await resolveSiteDir(args, 'publish')
   const siteYml = readSiteYml(join(siteDir, 'site.yml'))
+  // The site's deploy.yml-bound backend (where it was published) feeds the
+  // resolution ladder below an explicit --backend / UNIWEB_REGISTER_URL.
+  const siteBackend = await resolveSiteBackend(siteDir)
 
   const client = new BackendClient({
     originFlag: readFlagValue(args, '--backend') || readFlagValue(args, '--registry'),
+    siteBackend,
     token: readFlagValue(args, '--token') || undefined,
     args,
     command: 'Publishing',
@@ -373,7 +377,10 @@ export async function publish(args = []) {
   const recordedRef = fnd.ref || siteYmlRef
   await persistLastDeploy(siteDir, {
     targetName: resolved.targetName,
-    targetConfig: resolved.fromFile ? null : { host: 'uniweb' },
+    // First publish scaffolds deploy.yml with the backend recorded on the
+    // target, binding the site to where it went live (uniweb.app, or a B2B
+    // backend). resolveSiteBackend reads it back on later publishes.
+    targetConfig: resolved.fromFile ? null : { host: 'uniweb', backend: client.origin },
     autoSave,
     lastDeploy: {
       at: new Date().toISOString(),

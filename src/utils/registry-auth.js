@@ -35,6 +35,11 @@ export function getAuthDir() {
   return join(homedir(), '.uniweb')
 }
 
+/** Normalize a backend URL to a bare origin (for stamping on the session). */
+function normOrigin(u) {
+  try { return new URL(u).origin } catch { return u }
+}
+
 /** True when a stored session's `expiresAt` is in the past (absent → never expires). */
 export function isExpired(auth) {
   if (!auth?.expiresAt) return false
@@ -128,7 +133,7 @@ export async function loginToRegistry({ apiBase, username, password } = {}) {
   // the shared isExpired() works unchanged. Tolerant of the pre-#2 flat body
   // (no `account` key) — token + expiry still resolve, identity is just skipped.
   const account = data.account || {}
-  const record = { token: data.token }
+  const record = { token: data.token, origin: normOrigin(apiBase) }
   if (data.expires_at) record.expiresAt = data.expires_at
   if (account.uuid) record.uuid = account.uuid
   if (account.username) record.username = account.username
@@ -244,7 +249,7 @@ async function loginViaTokenPaste({ apiBase, nonInteractive }) {
   }, { onCancel: () => { console.log('\nLogin cancelled.'); process.exit(0) } })
   if (!token) process.exit(1)
   const account = await fetchMe({ apiBase, token }) // throws if the token is invalid
-  const record = { token }
+  const record = { token, origin: normOrigin(apiBase) }
   if (account?.uuid) record.uuid = account.uuid
   if (account?.username) record.username = account.username
   if (account?.handle) record.handle = account.handle
@@ -360,7 +365,7 @@ async function loginViaBrowser({ apiBase }) {
 
   let account = null
   try { account = await fetchMe({ apiBase, token }) } catch { /* identity optional; token is valid */ }
-  const record = { token }
+  const record = { token, origin: normOrigin(apiBase) }
   if (account?.uuid) record.uuid = account.uuid
   if (account?.username) record.username = account.username
   if (account?.handle) record.handle = account.handle
@@ -405,7 +410,7 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
       console.error(`\x1b[31m✗\x1b[0m Token rejected by ${apiBase}: ${err.message}`)
       process.exit(1)
     }
-    const record = { token: tokenFlag }
+    const record = { token: tokenFlag, origin: normOrigin(apiBase) }
     if (account?.uuid) record.uuid = account.uuid
     if (account?.username) record.username = account.username
     if (account?.handle) record.handle = account.handle
