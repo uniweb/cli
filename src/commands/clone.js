@@ -163,9 +163,9 @@ export async function clone(args = [], deps = {}) {
   const pathFlag = flagValue(args, '--path')
   const projectFlag = flagValue(args, '--project')
   const tokenFlag = flagValue(args, '--token')
-  const explicitRegistry = flagValue(args, '--registry')
+  const explicitBackend = flagValue(args, '--backend') || flagValue(args, '--registry')
   const client = new BackendClient({
-    originFlag: explicitRegistry,
+    originFlag: explicitBackend,
     token: tokenFlag,
     getToken: deps.getToken,
     fetchImpl: deps.fetch,
@@ -295,7 +295,7 @@ export async function clone(args = [], deps = {}) {
   }
 
   const pullExtra = []
-  if (explicitRegistry) pullExtra.push('--registry', explicitRegistry)
+  if (explicitBackend) pullExtra.push('--backend', explicitBackend)
   if (tokenFlag) pullExtra.push('--token', tokenFlag)
   if (noCollections) pullExtra.push('--no-collections')
 

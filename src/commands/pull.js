@@ -180,7 +180,7 @@ export async function pull(args = [], deps = {}) {
   const prune = !(args.includes('--no-delete') || args.includes('--no-prune')) // git-like by default
   const noCollections = args.includes('--no-collections') || args.includes('--content-only')
   const client = new BackendClient({
-    originFlag: flagValue(args, '--registry'),
+    originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'),
     token: tokenFlag,
     getToken: deps.getToken,
     fetchImpl: deps.fetch,
@@ -216,7 +216,7 @@ export async function pull(args = [], deps = {}) {
       res = await doRequest()
     } catch (err) {
       error(`Could not reach the backend at ${client.origin}: ${err.message}`)
-      note('Set the origin with --registry <url> or UNIWEB_REGISTER_URL.')
+      note('Set the origin with --backend <url> or UNIWEB_REGISTER_URL.')
       return null
     }
     if (res.status === 404) {

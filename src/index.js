@@ -1311,7 +1311,7 @@ ${colors.bright}Options:${colors.reset}
   --scope @org       Publish under @org (resolves @/x -> @org/x); default: package.json uniweb.scope
   --dry-run          Print the .uwx; submit nothing
   -o, --output <f>   Write the .uwx to a file; submit nothing
-  --registry <url>   Submit endpoint (default: \$UNIWEB_REGISTER_URL or a local URL)
+  --backend <url>    Backend origin (alias: --registry; default: \$UNIWEB_REGISTER_URL or a local URL)
   --token <bearer>   Submit with this bearer; skips \`uniweb login\` (or set UNIWEB_TOKEN)
   --non-interactive  Fail with usage info instead of prompting
 

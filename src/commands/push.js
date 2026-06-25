@@ -83,7 +83,7 @@ export async function push(args = []) {
   // (the `offline` flag below), so it never authenticates — even when a collection
   // references a Model the local foundation doesn't define.
   const client = new BackendClient({
-    originFlag: flagValue(args, '--registry'),
+    originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'),
     token: tokenFlag,
     args,
     command: 'Syncing',

@@ -162,7 +162,7 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
       res = await doRequest()
     } catch (err) {
       error(`Could not reach the backend at ${client.origin}: ${err.message}`)
-      note('Set the origin with --registry <url> or UNIWEB_REGISTER_URL.')
+      note('Set the origin with --backend <url> or UNIWEB_REGISTER_URL.')
       return null
     }
     if (!res.ok) {
