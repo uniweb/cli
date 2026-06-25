@@ -30,10 +30,11 @@
  *   uniweb register --json               Porcelain: ONE compact JSON line on stdout
  *                                        ({ok,scope,origin,entities:[{name,uuid,version,unchanged}]}),
  *                                        all human output to stderr — for scripted callers
- *   uniweb register --registry <url>     Override the submit endpoint (alias: --backend)
+ *   uniweb register --backend <url>      Override the backend origin (alias: --registry)
  *   uniweb register --token <bearer>     Submit with this bearer; skips `uniweb login`
  *
- * Endpoint resolution: --backend / --registry <url>  >  UNIWEB_REGISTER_URL  >  the local default.
+ * Endpoint resolution: --backend <url> (alias --registry)  >  UNIWEB_REGISTER_URL  >
+ *   the logged-in session origin  >  ~/.uniweb/config.json  >  the default (uniweb.app).
  * Auth (submit only):  --token <bearer>  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
 
