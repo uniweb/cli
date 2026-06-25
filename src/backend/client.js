@@ -208,19 +208,29 @@ export class BackendClient {
   }
 
   /**
-   * ASSUMED endpoint (not built yet — kb/framework/plans/shipping-verbs-and-freshness.md §6.5).
-   * GET /dev/registry/foundation/{scope}/{name} → { latest_version } for a foundation's
-   * latest registered version, or null on 404 / any failure (callers degrade gracefully).
-   * A bare/unscoped name → null (only `@org/name` can be looked up).
+   * GET /dev/registry/{scope}/{name} → the latest registered foundation version
+   * + its content digest, or null on 404 / any failure (callers degrade).
+   *
+   * The bare `{scope}/{name}` path resolves the latest foundation version (the
+   * data-schema sibling is `/dev/registry/data-schemas/{scope}/{name}`). The
+   * backend returns `version` (+ schema ids); we normalize it to `latest_version`
+   * for callers and tolerate either key. `digest` is the framework-computed
+   * fingerprint the backend stores OPAQUE and echoes here (null when the version
+   * carries none) — the freshness signal for publish/status (shipping-model.md
+   * §4.1). A bare/unscoped name → null (only `@org/name` can be looked up).
    * @param {string} scopedName
-   * @returns {Promise<{ latest_version: string }|null>}
+   * @returns {Promise<{ latest_version: string|null, digest: string|null }|null>}
    */
   async readFoundationLatest(scopedName) {
     const m = /^@([^/]+)\/([^@/]+)/.exec(String(scopedName || ''))
     if (!m) return null
     try {
-      const res = await this.request(`/dev/registry/foundation/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}`)
-      return res.ok ? await res.json().catch(() => null) : null
+      const res = await this.request(`/dev/registry/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}`)
+      if (!res.ok) return null
+      const body = await res.json().catch(() => null)
+      if (!body) return null
+      // The read returns `version`; callers use `latest_version`. Tolerate both.
+      return { ...body, latest_version: body.latest_version ?? body.version ?? null }
     } catch {
       return null
     }
