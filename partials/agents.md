@@ -1011,29 +1011,20 @@ Most customization is handled by component params. Both section components and l
 
 Foundation-level CSS variables are for values that must stay consistent **across** multiple components — shared radii, spacing scales, or additional font roles beyond the three the theming system already provides (body, heading, mono). Don't reach for foundation vars when a component or layout param would do.
 
-If you need them, declare vars in two places:
-
-**`main.js`** — metadata for the editor and schema:
+When you do need one, declare it in **`main.js`** — the single source of truth:
 
 ```js
 export const vars = {
-  'radius': { default: '0.5rem', description: 'Default border radius for cards and buttons' },
   'radius-lg': { default: '1rem', description: 'Large border radius' },
   'section-padding-y': { default: 'clamp(4rem, 6vw, 7rem)', description: 'Vertical section padding' },
 }
 ```
 
-**`styles.css`** — the actual CSS that ships with the foundation:
+Each entry does everything at once: it ships the default as a CSS custom property (`--radius-lg`, `--section-padding-y`) so `var(--section-padding-y)` resolves everywhere, it gives the visual editor a description and type, and it's the value a site overrides in `theme.yml` under `vars:` (the site's theme CSS wins). You don't declare these anywhere else — the defaults reach the browser on their own, in dev and in production, whether the foundation is bundled or loaded at runtime.
 
-```css
-@theme inline {
-  --radius: 0.5rem;
-  --radius-lg: 1rem;
-  --section-padding-y: clamp(4rem, 6vw, 7rem);
-}
-```
+A `styles.css` `@theme` block is a separate tool for a different job: registering a token so **Tailwind generates utility classes** from it (`@theme { --breakpoint-xs: 30rem }` → `xs:` variants). Reach for it to extend Tailwind's vocabulary — not to ship a plain default.
 
-The `styles.css` declaration ensures defaults are present in the foundation's CSS output and enables Tailwind shorthand (`rounded-(--radius)` instead of `rounded-[var(--radius)]`). The `main.js` declaration provides descriptions and types for the visual editor. Sites override values in `theme.yml` under `vars:` — the site's theme CSS takes priority over the foundation defaults.
+**A name that matches a Tailwind namespace is an intentional override.** A var named after a Tailwind v4 token scale — `radius-*`, `shadow-*`, `spacing`, `font-*` — redefines that scale wherever the matching utility appears: declaring `radius-lg` retunes every `rounded-lg` in the foundation from Tailwind's default to your value (sites can still override in `theme.yml`). That's the point when you mean it — just name deliberately so you don't reshape a utility by accident.
 
 **Common mistake:** Using foundation vars for values that belong to a specific component. A header height is a layout param, not a foundation var — the layout component owns it. A sidebar width is a layout param too. Foundation vars are for values that multiple unrelated components share — radii, spacing, shadows.
 
