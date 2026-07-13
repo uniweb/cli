@@ -53,6 +53,18 @@ let resolvedVersions = null
 export const REACT_VERSION = '^19.0.0'
 
 /**
+ * The pnpm major the framework's generated CI standardizes on.
+ *
+ * Scaffolded CI workflows (`uniweb add ci --host=github-pages`) pin pnpm
+ * through `pnpm/action-setup`. This is the one place that value lives, so the
+ * pin tracks a single supported major instead of drifting as a hardcoded
+ * literal inside each host adapter. A bare major installs the latest patch of
+ * that major at CI run time. Bump this when the framework moves to a new pnpm
+ * major (latest stable is 11.x as of this writing; pnpm 12 is still alpha).
+ */
+export const PNPM_VERSION = '11'
+
+/**
  * Get the CLI's own package.json
  */
 function getCliPackageJson() {

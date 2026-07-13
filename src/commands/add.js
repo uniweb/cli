@@ -31,7 +31,7 @@ import { detectPackageManager, filterCmd, installCmd } from '../utils/pm.js'
 import { isNonInteractive, getCliPrefix, stripNonInteractiveFlag, formatOptions } from '../utils/interactive.js'
 import { resolveTemplate } from '../templates/index.js'
 import { validateTemplate } from '../templates/validator.js'
-import { getVersionsForTemplates } from '../versions.js'
+import { getVersionsForTemplates, PNPM_VERSION } from '../versions.js'
 
 // Colors for terminal output
 const colors = {
@@ -952,7 +952,7 @@ export default function ${name}({ content, params }) {
  * Add a CI deploy workflow for a host adapter.
  *
  * Wires through the host-adapter registry: each adapter optionally
- * exports `initCi({ rootDir, site, packageManager, nodeVersion })`
+ * exports `initCi({ rootDir, site, packageManager, nodeVersion, pnpmVersion })`
  * returning `{ files, postInstructions }`. The CLI handles file writes,
  * --force overwrite, and consistent output. Today only github-pages
  * implements initCi; the registry's other adapters (cloudflare-pages,
@@ -1069,6 +1069,7 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
     site,
     packageManager: pm,
     nodeVersion,
+    pnpmVersion: PNPM_VERSION,
     domain: resolvedDomain,
   })
 
