@@ -44,7 +44,7 @@ import {
 } from './templates/index.js'
 import { validateTemplate } from './templates/validator.js'
 import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemplateDependencies, getWorkspaceTemplateOutputs } from './utils/scaffold.js'
-import { detectPackageManager, filterCmd, installCmd, runCmd } from './utils/pm.js'
+import { detectPackageManager, filterCmd, installCmd, runCmd, isPnpmAvailable } from './utils/pm.js'
 import { isNonInteractive, getCliPrefix, stripNonInteractiveFlag, formatOptions } from './utils/interactive.js'
 import { findWorkspaceRoot } from './utils/workspace.js'
 
@@ -1054,23 +1054,28 @@ async function main() {
   // Success message
   title('Project created successfully!')
 
+  // Recommend pnpm (the framework's package manager) when it's installed,
+  // otherwise fall back to however the user invoked the CLI. The scaffold
+  // supports both — the root package.json declares npm `workspaces` and a
+  // pnpm-workspace.yaml ships next to it.
+  const recPm = isPnpmAvailable() ? 'pnpm' : pm
+
   if (isBlank) {
     log(`Next steps:\n`)
     if (!inPlace) log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
     log(`  ${colors.cyan}${prefix} add project${colors.reset}`)
-    log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
-    log(`  ${colors.cyan}${prefix} dev${colors.reset}                       ${colors.dim}# Start dev server${colors.reset}`)
+    log(`  ${colors.cyan}${installCmd(recPm)}${colors.reset}`)
+    log(`  ${colors.cyan}${runCmd(recPm, 'dev')}${colors.reset}   ${colors.dim}# start the dev server${colors.reset}`)
   } else {
     log(`Next steps:\n`)
     if (!inPlace) log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
-    log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
-    log(`  ${colors.cyan}${prefix} dev${colors.reset}                       ${colors.dim}# Start dev server${colors.reset}`)
+    log(`  ${colors.cyan}${installCmd(recPm)}${colors.reset}`)
+    log(`  ${colors.cyan}${runCmd(recPm, 'dev')}${colors.reset}   ${colors.dim}# start the dev server${colors.reset}`)
   }
-  log('')
-  log(`When ready to ship:\n`)
-  log(`  ${colors.cyan}${prefix} deploy${colors.reset}                     ${colors.dim}# Uniweb hosting (default; uniweb login first)${colors.reset}`)
-  log(`  ${colors.cyan}${prefix} deploy --host=<adapter>${colors.reset}    ${colors.dim}# cloudflare-pages, netlify, vercel, github-pages, s3-cloudfront${colors.reset}`)
-  log(`  ${colors.cyan}${prefix} export${colors.reset}                     ${colors.dim}# Build dist/ for any static host (no Uniweb account)${colors.reset}`)
+  if (recPm !== 'pnpm') {
+    log('')
+    log(`  ${colors.dim}Tip: pnpm is recommended (https://pnpm.io) — npm works too.${colors.reset}`)
+  }
   log('')
   log(`  ${colors.dim}See ${colors.reset}${colors.cyan}${prefix} <command> --help${colors.reset}${colors.dim} for command-specific options.${colors.reset}`)
   log('')

@@ -7,6 +7,7 @@
 
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { execSync } from 'node:child_process'
 
 /**
  * Detect which package manager invoked the CLI.
@@ -82,6 +83,22 @@ export function filterCmd(pm, pkg, cmd) {
   return pm === 'pnpm'
     ? `pnpm --filter ${pkg} ${cmd}`
     : `npm -w ${pkg} run ${cmd}`
+}
+
+/**
+ * Whether pnpm is available on the current PATH. Used to recommend pnpm
+ * (the framework's package manager) in post-scaffold next steps while still
+ * falling back gracefully when it isn't installed. Mirrors the `git --version`
+ * probe the create flow already uses to feature-detect git.
+ * @returns {boolean}
+ */
+export function isPnpmAvailable() {
+  try {
+    execSync('pnpm --version', { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
