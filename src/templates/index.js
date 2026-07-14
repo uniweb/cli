@@ -7,7 +7,7 @@ import { readFile, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 
-import { parseTemplateId, getTemplateDisplayName, BUILTIN_TEMPLATES, OFFICIAL_TEMPLATES } from './resolver.js'
+import { parseTemplateId, getTemplateDisplayName, BUILTIN_TEMPLATES, OFFICIAL_TEMPLATES, buildTemplateChoices } from './resolver.js'
 import { fetchNpmTemplate } from './fetchers/npm.js'
 import { fetchGitHubTemplate } from './fetchers/github.js'
 import { fetchOfficialTemplate, listOfficialTemplates } from './fetchers/release.js'
@@ -182,4 +182,4 @@ export async function listAvailableTemplates() {
 }
 
 // Re-export for convenience
-export { parseTemplateId, getTemplateDisplayName, BUILTIN_TEMPLATES, OFFICIAL_TEMPLATES }
+export { parseTemplateId, getTemplateDisplayName, BUILTIN_TEMPLATES, OFFICIAL_TEMPLATES, buildTemplateChoices }

@@ -12,7 +12,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 export const BUILTIN_TEMPLATES = ['blank', 'starter', 'none']
 
 /**
- * Load the list of official template names.
+ * Load the official template metadata map — `{ id: { name, description,
+ * tags } }`, keyed by template id.
  *
  * There are two sources of truth depending on where the CLI is running:
  *
@@ -24,59 +25,93 @@ export const BUILTIN_TEMPLATES = ['blank', 'starter', 'none']
  *
  * 2. **Published CLI (npm-installed)** — the monorepo isn't on disk, so
  *    we read the vendored framework index at `../framework-index.json`,
- *    which the publish pipeline's pre-publish hook rewrites just before
- *    `pnpm publish` runs. The framework index is a single snapshot file
- *    that also carries `@uniweb/*` package versions (consumed by
- *    versions.js), so both the template list and the version resolver
- *    share one source of truth.
+ *    which the publish pipeline rewrites just before `pnpm publish` runs,
+ *    copying the manifest's `templates` verbatim. The framework index is a
+ *    single snapshot file that also carries `@uniweb/*` package versions
+ *    (consumed by versions.js), so both the template list and the version
+ *    resolver share one source of truth.
  *
  * When both sources are available (local dev with a committed snapshot),
  * the live workspace manifest wins so newly-added templates are visible
  * without waiting for a CLI republish.
  *
- * The previous implementation hardcoded a string array here, which
- * silently duplicated `framework/templates/manifest.json` and required
- * a two-repo edit whenever a template was added. The one before THAT
- * (v0.9.3) used a separate `./official-templates.snapshot.json` file;
- * it has been retired in favor of the shared framework index.
+ * Both files store `templates` as the same `{ id: { name, description,
+ * tags } }` shape, so one map feeds both name-resolution
+ * (OFFICIAL_TEMPLATES) and the interactive picker (buildTemplateChoices) —
+ * neither hardcodes a list. (An earlier version returned only the keys and
+ * left the `create` picker with its own hardcoded array, which silently
+ * drifted out of sync whenever a template was added.)
  */
-function loadOfficialTemplateList() {
+function loadOfficialTemplateMap() {
   // Local dev: framework/templates/manifest.json relative to this file
   // at framework/cli/src/templates/resolver.js
   const workspaceManifest = join(__dirname, '..', '..', '..', 'templates', 'manifest.json')
-  const picked = tryReadTemplateKeys(workspaceManifest)
+  const picked = tryReadTemplateMap(workspaceManifest)
   if (picked) return picked
 
   // Published CLI fallback: the framework index snapshot, one directory
   // up at framework/cli/src/framework-index.json.
   const indexPath = join(__dirname, '..', 'framework-index.json')
-  const fromIndex = tryReadTemplateKeys(indexPath)
+  const fromIndex = tryReadTemplateMap(indexPath)
   if (fromIndex) return fromIndex
 
-  // If both sources fail, return an empty list rather than a stale
-  // hardcoded array. An unknown template name then falls through to
+  // If both sources fail, return an empty map rather than a stale
+  // hardcoded list. An unknown template name then falls through to
   // the npm `@uniweb/template-<name>` lookup path, which is the
   // intended behavior for third-party templates.
-  return []
+  return {}
 }
 
-function tryReadTemplateKeys(path) {
+function tryReadTemplateMap(path) {
   try {
     if (!statSync(path).isFile()) return null
     const data = JSON.parse(readFileSync(path, 'utf8'))
     if (data && data.templates && typeof data.templates === 'object') {
-      return Object.keys(data.templates)
+      return data.templates
     }
   } catch {}
   return null
 }
 
-// Official templates from the templates repo. Derived from manifest.json
-// (local dev) or framework-index.json (published CLI) at module load
-// time — see loadOfficialTemplateList() for details. If the list needs
-// to reflect a just-added template, restart the CLI process or rerun
-// the scaffolder; this constant is read once per process.
-export const OFFICIAL_TEMPLATES = loadOfficialTemplateList()
+// Official template metadata keyed by id. Derived from manifest.json (local
+// dev) or framework-index.json (published CLI) at module load time — see
+// loadOfficialTemplateMap() for details. Read once per process; to reflect a
+// just-added template, restart the CLI or rerun the scaffolder.
+export const OFFICIAL_TEMPLATE_MAP = loadOfficialTemplateMap()
+
+// Official template ids, e.g. ['marketing', 'docs', 'academic', …].
+export const OFFICIAL_TEMPLATES = Object.keys(OFFICIAL_TEMPLATE_MAP)
+
+// Built-in (programmatic) picker entries — not in the manifest; the CLI
+// generates these itself. "Blank" trails the official templates.
+const BUILTIN_LEAD_CHOICES = [
+  { title: 'None', value: 'none', description: 'Foundation + site with no content' },
+  { title: 'Starter', value: 'starter', description: 'Foundation + site + sample content' }
+]
+const BLANK_CHOICE = {
+  title: 'Blank workspace',
+  value: 'blank',
+  description: 'Empty workspace — grow with uniweb add'
+}
+
+/**
+ * Build the choices for the interactive `create` template prompt: the
+ * built-in leads (None, Starter), then every official template from the
+ * shared manifest in manifest order, then Blank last. Deriving the official
+ * entries from OFFICIAL_TEMPLATE_MAP keeps the picker in lockstep with
+ * framework/templates/manifest.json — adding a template there (and
+ * republishing the CLI) is all it takes for it to appear here.
+ *
+ * @returns {Array<{title: string, value: string, description: string}>}
+ */
+export function buildTemplateChoices() {
+  const official = Object.entries(OFFICIAL_TEMPLATE_MAP).map(([id, info]) => ({
+    title: info?.name || id,
+    value: id,
+    description: info?.description || ''
+  }))
+  return [...BUILTIN_LEAD_CHOICES, ...official, BLANK_CHOICE]
+}
 
 /**
  * Parse a template identifier and determine its source type

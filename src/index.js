@@ -41,6 +41,7 @@ import { template } from './commands/template.js'
 import {
   resolveTemplate,
   parseTemplateId,
+  buildTemplateChoices,
 } from './templates/index.js'
 import { validateTemplate } from './templates/validator.js'
 import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemplateDependencies, getWorkspaceTemplateOutputs } from './utils/scaffold.js'
@@ -59,19 +60,11 @@ const colors = {
   red: '\x1b[31m',
 }
 
-// Template choices for interactive prompt
-const TEMPLATE_CHOICES = [
-  { title: 'None', value: 'none', description: 'Foundation + site with no content' },
-  { title: 'Starter', value: 'starter', description: 'Foundation + site + sample content' },
-  { title: 'Marketing', value: 'marketing', description: 'Landing page, features, pricing, testimonials' },
-  { title: 'Docs', value: 'docs', description: 'Documentation with sidebar and search' },
-  { title: 'Academic', value: 'academic', description: 'Research site with publications and team' },
-  { title: 'Dynamic', value: 'dynamic', description: 'Live API data fetching with loading states' },
-  { title: 'International', value: 'international', description: 'Multilingual site with i18n and blog' },
-  { title: 'Store', value: 'store', description: 'E-commerce with product grid' },
-  { title: 'Extensions', value: 'extensions', description: 'Multi-foundation with visual effects extension' },
-  { title: 'Blank workspace', value: 'blank', description: 'Empty workspace — grow with uniweb add' },
-]
+// Template choices for the interactive prompt — built-ins first, then every
+// official template from the shared manifest (so the list never drifts from
+// framework/templates/manifest.json), with "Blank" last. Composed by
+// buildTemplateChoices() in templates/resolver.js.
+const TEMPLATE_CHOICES = buildTemplateChoices()
 
 // Files that may pre-exist in the target dir during `uniweb create .` and
 // will be silently overwritten by the scaffold. Anything else colliding
