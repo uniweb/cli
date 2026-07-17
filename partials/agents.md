@@ -1023,7 +1023,7 @@ fonts:
   mono: "'Fira Code', monospace"
 ```
 
-Because the site wires the families onto real elements, **components need no font-family classes** — render semantic markup (`<H1>`, `<P>`, `<code>` from the kit) and the roles apply. This is what lets one foundation re-font per site with zero code changes.
+Because the site wires the families onto real elements, **the norm is that a foundation doesn't set fonts itself** — render semantic markup (`<H1>`, `<P>`, `<code>` from the kit) and the roles apply. (It stays Tailwind for everything else — layout, spacing, weights, color.) That convention is what authors can count on: `body`/`heading`/`mono` control the fonts the same way in every foundation, and one foundation re-fonts per site with zero code changes.
 
 **Loading the files** — two site-side options, both config-only, neither adds a dependency:
 
@@ -1048,10 +1048,10 @@ fonts:
 
 **In a component, weight is yours; family is the site's.** Weight / size / style utilities (`font-bold`, `font-black`, `italic`, `text-xl`) are ordinary design vocabulary — use them freely. A font-**family** utility is only safe when the family behind it is site-controlled — and by default `font-sans` / `font-serif` are *not* (they resolve to Tailwind's built-in stacks; only `font-mono` tracks the site's `mono` role, by name-collision). So a bare `font-serif` in a component silently hardcodes a typeface.
 
-**Font-family utilities, made site-controllable.** A `font-serif` / `font-sans` utility is fine *if* the family behind it is a site-controlled variable. Declare that family as a **foundation var** named after its Tailwind slot — one `font-serif` for a single editorial face, or all of `font-sans` / `font-serif` / `font-mono` when a Tailwind foundation's whole type system rides on those utilities. The utility resolves to the var, and the family **loads** (via `fonts.import` / `fonts.faces`) even though it isn't one of the three `body`/`heading`/`mono` role slots:
+**When a design needs typefaces the element convention can't express** — an editorial serif on selected prose, a mono for metadata labels that aren't `<code>` — a foundation manages those explicitly instead of deferring. It uses the `font-serif` / `font-mono` (or `font-sans`) utility and declares each family as a **foundation var**, so the family stays site-controlled. The var drives its utility, and the family **loads** (via `fonts.import` / `fonts.faces`) even though it isn't one of the three `body`/`heading`/`mono` role slots:
 
 ```js
-// foundation src/main.js — a Tailwind foundation's type system.
+// foundation src/main.js — typefaces this foundation manages itself.
 // Defaults are OS stacks, so it renders native until a site opts in.
 export const vars = {
   'font-sans':  { default: 'ui-sans-serif, system-ui, sans-serif', description: 'Base — headlines, UI, body' },
@@ -1060,7 +1060,7 @@ export const vars = {
 }
 ```
 
-Components keep using `font-sans` / `font-serif` / `font-mono` unchanged; the site sets each family in `theme.yml` under `vars:` and loads it with `fonts.import` / `fonts.faces`. (A non-Tailwind name like `font-display` works too — reference it directly with `var(--font-display)`.)
+Components keep using `font-sans` / `font-serif` / `font-mono` unchanged; the site sets each family in `theme.yml` under `vars:` and loads it with `fonts.import` / `fonts.faces`. (A custom name like `font-display` has no built-in utility — reference it with `var(--font-display)`.)
 
 ### Foundation variables
 
