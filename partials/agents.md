@@ -1005,6 +1005,66 @@ contexts:
 
 > **Contrast warning:** Bright brand colors (orange, yellow, light green) at shade 500 may not meet WCAG contrast (4.5:1) with white foreground text. Test buttons for readability — if contrast is insufficient, keep the default shade 600 mapping.
 
+### Fonts
+
+Font families are a **site** setting, configured in `theme.yml` under `fonts:`. A foundation never installs a font package (no `@fontsource/*`) and never hardcodes a family in its code — if you reach for either, you're off the paved path. The framework provides three roles and wires each onto the standard elements for you:
+
+| Role | Wired onto | Typical use |
+|---|---|---|
+| `body` | `body` (all text by default) | paragraphs, UI |
+| `heading` | `h1, h2, h3` | titles |
+| `mono` | `code, pre, kbd, samp` | code, technical text |
+
+```yaml
+# site/theme.yml
+fonts:
+  body: "Inter, system-ui, sans-serif"
+  heading: "Poppins, system-ui, sans-serif"
+  mono: "'Fira Code', monospace"
+```
+
+Because the site wires the families onto real elements, **components need no font-family classes** — render semantic markup (`<H1>`, `<P>`, `<code>` from the kit) and the roles apply. This is what lets one foundation re-font per site with zero code changes.
+
+**Loading the files** — two site-side options, both config-only, neither adds a dependency:
+
+```yaml
+# Hosted (Google Fonts or any provider). The build auto-adds preconnect
+# hints and drops families no role references.
+fonts:
+  heading: "Poppins, sans-serif"
+  import:
+    - url: "https://fonts.googleapis.com/css2?family=Poppins:wght@600;700"
+
+# Self-hosted (no CDN — privacy / offline). Put the files under
+# site/public/fonts/ and declare @font-face faces; the build emits the
+# @font-face rules + preload hints, and skips any face whose family no
+# role uses.
+fonts:
+  heading: "Söhne, sans-serif"
+  faces:
+    - { family: "Söhne", src: /fonts/soehne-bold.woff2, weight: 700 }
+    - { family: "Söhne", src: /fonts/soehne-regular.woff2, weight: 400 }
+```
+
+**In a component, weight is yours; family is the site's.** Weight / size / style utilities (`font-bold`, `font-black`, `italic`, `text-xl`) are ordinary design vocabulary — use them freely. Font-**family** utilities are the trap: `font-sans` / `font-serif` aren't wired to any theme role, so they fall back to Tailwind's built-in stacks and force a hardcoded family (only `font-mono` tracks the site's `mono` role, by name-collision). If an element needs a particular family, that's a *role*, not a utility — use a theme role, or a foundation var.
+
+**A family beyond the three roles** (an editorial serif for pull-quotes, a display face) is a **foundation var** — the site still supplies the value. Declare it in `main.js` and reference the variable; never inline the family name:
+
+```js
+// foundation src/main.js
+export const vars = {
+  'font-display': {
+    default: "'Fraunces', Georgia, serif",
+    description: 'Editorial display face for pull-quotes and taglines',
+  },
+}
+```
+```jsx
+<p style={{ fontFamily: 'var(--font-display)' }}>{content.tagline}</p>
+```
+
+The site retunes it in `theme.yml` under `vars:` (`font-display: "'Playfair Display', serif"`) and loads the file with `fonts.import` / `fonts.faces` — exactly like the three built-in roles.
+
 ### Foundation variables
 
 Most customization is handled by component params. Both section components and layout components declare their own params in `meta.js` — layouts are full components with params, not just structural wrappers. A header height, for example, is typically a layout param, not a foundation var.
