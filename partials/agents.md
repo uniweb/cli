@@ -1048,23 +1048,19 @@ fonts:
 
 **In a component, weight is yours; family is the site's.** Weight / size / style utilities (`font-bold`, `font-black`, `italic`, `text-xl`) are ordinary design vocabulary — use them freely. A font-**family** utility is only safe when the family behind it is site-controlled — and by default `font-sans` / `font-serif` are *not* (they resolve to Tailwind's built-in stacks; only `font-mono` tracks the site's `mono` role, by name-collision). So a bare `font-serif` in a component silently hardcodes a typeface.
 
-**A family beyond the three roles** — an editorial serif, a display face — is a **foundation var**, so the site keeps control. Name it after a Tailwind font slot (`font-serif`) and that utility resolves to it; or give it any name and reference the variable directly:
+**Font-family utilities, made site-controllable.** A `font-serif` / `font-sans` utility is fine *if* the family behind it is a site-controlled variable. Declare that family as a **foundation var** named after its Tailwind slot — one `font-serif` for a single editorial face, or all of `font-sans` / `font-serif` / `font-mono` when a Tailwind foundation's whole type system rides on those utilities. The utility resolves to the var, and the family **loads** (via `fonts.import` / `fonts.faces`) even though it isn't one of the three `body`/`heading`/`mono` role slots:
 
 ```js
-// foundation src/main.js
+// foundation src/main.js — a Tailwind foundation's type system.
+// Defaults are OS stacks, so it renders native until a site opts in.
 export const vars = {
-  'font-serif': {
-    default: "Georgia, 'Times New Roman', serif",
-    description: 'Editorial serif for pull-quotes, taglines, quotes',
-  },
+  'font-sans':  { default: 'ui-sans-serif, system-ui, sans-serif', description: 'Base — headlines, UI, body' },
+  'font-serif': { default: 'ui-serif, Georgia, serif', description: 'Editorial — blurbs, taglines, quotes' },
+  'font-mono':  { default: 'ui-monospace, SFMono-Regular, monospace', description: 'Metadata — labels, dates, code' },
 }
 ```
-```jsx
-<p className="font-serif">{content.tagline}</p>   {/* now site-controlled */}
-// …or a custom-named var:  <p style={{ fontFamily: 'var(--font-display)' }}>
-```
 
-The site sets the family in `theme.yml` under `vars:` (`font-serif: "Fraunces, Georgia, serif"`) and loads it with `fonts.import` / `fonts.faces` — the file loads even though the family isn't one of the three role slots.
+Components keep using `font-sans` / `font-serif` / `font-mono` unchanged; the site sets each family in `theme.yml` under `vars:` and loads it with `fonts.import` / `fonts.faces`. (A non-Tailwind name like `font-display` works too — reference it directly with `var(--font-display)`.)
 
 ### Foundation variables
 
