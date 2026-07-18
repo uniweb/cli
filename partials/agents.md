@@ -1076,15 +1076,27 @@ Two ways to apply a typed font var — choose per var:
 - **`applyTo: [selectors]`** — the framework emits the `font-family` rule for you, exactly like the three built-in roles. Declarative; no font-family classes in components.
 - **Omit `applyTo`** — the component wires it: a Tailwind `font-*` utility when the var is named after a Tailwind scale (`font-serif` → the `font-serif` utility), or `font-family: var(--font-display)` for a custom name.
 
-Either way the site sets the family in `theme.yml` under `vars:` and loads it — no component changes:
+Either way the site sets the family and loads it — no component changes. The `fonts:` block takes **any** role name, built-in or foundation-added, so a site sets its whole type system in one place:
 
 ```yaml
 # site/theme.yml
-vars:
-  font-serif: '"Fraunces", Georgia, serif'
 fonts:
+  body: "Inter, system-ui, sans-serif"
+  serif: '"Fraunces", Georgia, serif'   # a foundation-declared role, set by name
   faces:
     - { family: "Fraunces", src: /fonts/fraunces.woff2, weight: "100 900" }
+```
+
+(`vars: { font-serif: … }` still works — same role. `serif` and `font-serif` are the same font var; the `font-` spelling is just the one Tailwind's `font-serif` utility reads.)
+
+**The three roles are defaults you can retarget.** `body`/`heading`/`code` and their selectors are *defaults*, not a fixed contract — a foundation can **redefine** a role (change which elements it paints) or **add** roles, all through the same `type: 'font'` var. Declaring a role's var with a new `applyTo` retargets it; the site still owns the family.
+
+```js
+// foundation src/main.js — retarget a built-in role, add a new one.
+export const vars = {
+  heading: { type: 'font', applyTo: ['h1', 'h2', 'h3', 'h4'] },        // include h4 in the heading font
+  serif:   { type: 'font', default: 'ui-serif, Georgia, serif', applyTo: ['blockquote'] },
+}
 ```
 
 > The `code` role owns `--font-code`. Tailwind's `font-mono` utility (which reads `--font-mono`) is a **separate** concern — a foundation controls it by declaring its own `font-mono` font var. So setting `fonts.code` styles code without disturbing `font-mono`-styled labels, and vice-versa.
