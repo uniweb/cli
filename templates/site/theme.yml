@@ -19,7 +19,7 @@ colors:
 # fonts:
 #   heading: '"Inter", system-ui, sans-serif'
 #   body: '"Inter", system-ui, sans-serif'
-#   mono: '"JetBrains Mono", ui-monospace, monospace'
+#   code: '"JetBrains Mono", ui-monospace, monospace'
 #   import:
 #     - url: https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap
 #     - url: https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap

@@ -1013,17 +1013,19 @@ Font families are a **site** setting, configured in `theme.yml` under `fonts:`. 
 |---|---|---|
 | `body` | `body` (all text by default) | paragraphs, UI |
 | `heading` | `h1, h2, h3` | titles |
-| `mono` | `code, pre, kbd, samp` | code, technical text |
+| `code` | `code, pre, kbd, samp` | code, monospace |
 
 ```yaml
 # site/theme.yml
 fonts:
   body: "Inter, system-ui, sans-serif"
   heading: "Poppins, system-ui, sans-serif"
-  mono: "'Fira Code', monospace"
+  code: "'Fira Code', monospace"
 ```
 
-Because the site wires the families onto real elements, **the norm is that a foundation doesn't set fonts itself** — render semantic markup (`<H1>`, `<P>`, `<code>` from the kit) and the roles apply. (It stays Tailwind for everything else — layout, spacing, weights, color.) That convention is what authors can count on: `body`/`heading`/`mono` control the fonts the same way in every foundation, and one foundation re-fonts per site with zero code changes.
+(`code` was previously named `mono`; `mono` still works as a deprecated alias.)
+
+Because the site wires the families onto real elements, **the norm is that a foundation doesn't set fonts itself** — render semantic markup (`<H1>`, `<P>`, `<code>` from the kit) and the roles apply. (It stays Tailwind for everything else — layout, spacing, weights, color.) That convention is what authors can count on: `body`/`heading`/`code` control the fonts the same way in every foundation, and one foundation re-fonts per site with zero code changes.
 
 **Loading the files** — two site-side options, both config-only, neither adds a dependency:
 
@@ -1046,27 +1048,52 @@ fonts:
     - { family: "Söhne", src: /fonts/soehne-regular.woff2, weight: 400 }
 ```
 
-**In a component, weight is yours; family is the site's.** Weight / size / style utilities (`font-bold`, `font-black`, `italic`, `text-xl`) are ordinary design vocabulary — use them freely. A font-**family** utility is only safe when the family behind it is site-controlled — and by default `font-sans` / `font-serif` are *not* (they resolve to Tailwind's built-in stacks; only `font-mono` tracks the site's `mono` role, by name-collision). So a bare `font-serif` in a component silently hardcodes a typeface.
+**In a component, weight is yours; family is the site's.** Weight / size / style utilities (`font-bold`, `font-black`, `italic`, `text-xl`) are ordinary design vocabulary — use them freely. A font-**family** utility is a different matter: `font-sans` / `font-serif` resolve to Tailwind's built-in stacks unless the foundation makes them site-controlled (below), so a bare `font-serif` in a component silently hardcodes a typeface.
 
-**When a design needs typefaces the element convention can't express** — an editorial serif on selected prose, a mono for metadata labels that aren't `<code>` — a foundation manages those explicitly instead of deferring. It uses the `font-serif` / `font-mono` (or `font-sans`) utility and declares each family as a **foundation var**, so the family stays site-controlled. The var drives its utility, and the family **loads** (via `fonts.import` / `fonts.faces`) even though it isn't one of the three `body`/`heading`/`mono` role slots:
+**When a design needs typefaces the three roles can't express** — an editorial serif on selected prose, a display face for hero titles, a decorative mono for metadata labels that aren't `<code>` — a foundation declares each as a **typed font var** in `main.js`. Marking it `type: 'font'` is what makes it a *typeface* rather than a generic value: the family loads (via the site's `fonts.import` / `fonts.faces`), it appears in the foundation's schema tagged as a font so the site — and the visual editor's theme panel — can set it, and the family stays site-controlled.
 
 ```js
 // foundation src/main.js — typefaces this foundation manages itself.
 // Defaults are OS stacks, so it renders native until a site opts in.
 export const vars = {
-  'font-sans':  { default: 'ui-sans-serif, system-ui, sans-serif', description: 'Base — headlines, UI, body' },
-  'font-serif': { default: 'ui-serif, Georgia, serif', description: 'Editorial — blurbs, taglines, quotes' },
-  'font-mono':  { default: 'ui-monospace, SFMono-Regular, monospace', description: 'Metadata — labels, dates, code' },
+  'font-serif': {
+    type: 'font',
+    default: 'ui-serif, Georgia, serif',
+    description: 'Editorial serif — blurbs, taglines, quotes',
+    applyTo: ['blockquote', '.tagline'],   // framework applies it here, like a built-in role
+  },
+  'font-display': {
+    type: 'font',
+    default: 'ui-sans-serif, system-ui, sans-serif',
+    description: 'Display — hero titles',
+    // no applyTo → the component wires it (a `font-display` utility, or var(--font-display))
+  },
 }
 ```
 
-Components keep using `font-sans` / `font-serif` / `font-mono` unchanged; the site sets each family in `theme.yml` under `vars:` and loads it with `fonts.import` / `fonts.faces`. (A custom name like `font-display` has no built-in utility — reference it with `var(--font-display)`.)
+Two ways to apply a typed font var — choose per var:
+
+- **`applyTo: [selectors]`** — the framework emits the `font-family` rule for you, exactly like the three built-in roles. Declarative; no font-family classes in components.
+- **Omit `applyTo`** — the component wires it: a Tailwind `font-*` utility when the var is named after a Tailwind scale (`font-serif` → the `font-serif` utility), or `font-family: var(--font-display)` for a custom name.
+
+Either way the site sets the family in `theme.yml` under `vars:` and loads it — no component changes:
+
+```yaml
+# site/theme.yml
+vars:
+  font-serif: '"Fraunces", Georgia, serif'
+fonts:
+  faces:
+    - { family: "Fraunces", src: /fonts/fraunces.woff2, weight: "100 900" }
+```
+
+> The `code` role owns `--font-code`. Tailwind's `font-mono` utility (which reads `--font-mono`) is a **separate** concern — a foundation controls it by declaring its own `font-mono` font var. So setting `fonts.code` styles code without disturbing `font-mono`-styled labels, and vice-versa.
 
 ### Foundation variables
 
 Most customization is handled by component params. Both section components and layout components declare their own params in `meta.js` — layouts are full components with params, not just structural wrappers. A header height, for example, is typically a layout param, not a foundation var.
 
-Foundation-level CSS variables are for values that must stay consistent **across** multiple components — shared radii, spacing scales, or additional font roles beyond the three the theming system already provides (body, heading, mono). Don't reach for foundation vars when a component or layout param would do.
+Foundation-level CSS variables are for values that must stay consistent **across** multiple components — shared radii, spacing scales, or additional typefaces beyond the three built-in roles (body, heading, code), declared as typed font vars (`type: 'font'`, covered in **Fonts** above). Don't reach for foundation vars when a component or layout param would do.
 
 When you do need one, declare it in **`main.js`** — the single source of truth:
 
