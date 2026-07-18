@@ -1023,7 +1023,7 @@ fonts:
   code: "'Fira Code', monospace"
 ```
 
-(`code` was previously named `mono`; `mono` still works as a deprecated alias.)
+(`code` was previously named `mono`; `fonts.mono` is no longer an alias — rename it to `fonts.code`.)
 
 Because the site wires the families onto real elements, **the norm is that a foundation doesn't set fonts itself** — render semantic markup (`<H1>`, `<P>`, `<code>` from the kit) and the roles apply. (It stays Tailwind for everything else — layout, spacing, weights, color.) That convention is what authors can count on: `body`/`heading`/`code` control the fonts the same way in every foundation, and one foundation re-fonts per site with zero code changes.
 
