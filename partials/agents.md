@@ -1050,20 +1050,19 @@ fonts:
 
 **In a component, weight is yours; family is the site's.** Weight / size / style utilities (`font-bold`, `font-black`, `italic`, `text-xl`) are ordinary design vocabulary — use them freely. A font-**family** utility is a different matter: `font-sans` / `font-serif` resolve to Tailwind's built-in stacks unless the foundation makes them site-controlled (below), so a bare `font-serif` in a component silently hardcodes a typeface.
 
-**When a design needs typefaces the three roles can't express** — an editorial serif on selected prose, a display face for hero titles, a decorative mono for metadata labels that aren't `<code>` — a foundation declares each as a **typed font var** in `main.js`. Marking it `type: 'font'` is what makes it a *typeface* rather than a generic value: the family loads (via the site's `fonts.import` / `fonts.faces`), it appears in the foundation's schema tagged as a font so the site — and the visual editor's theme panel — can set it, and the family stays site-controlled.
+**When a design needs typefaces the three roles can't express** — an editorial serif on selected prose, a display face for hero titles, a decorative mono for metadata labels that aren't `<code>` — a foundation declares each as a **font var** in `main.js`. A `font-*`-named var is recognized as a *typeface* automatically (no `type` needed) — a bare-named one takes `type: 'font'`. Either way the family loads (via the site's `fonts.import` / `fonts.faces`), it appears in the foundation's schema tagged as a font so the site — and the visual editor's theme panel — can set it, and the family stays site-controlled.
 
 ```js
 // foundation src/main.js — typefaces this foundation manages itself.
-// Defaults are OS stacks, so it renders native until a site opts in.
+// `font-*` names are recognized as fonts automatically (no `type` needed);
+// defaults are OS stacks, so it renders native until a site opts in.
 export const vars = {
   'font-serif': {
-    type: 'font',
     default: 'ui-serif, Georgia, serif',
     description: 'Editorial serif — blurbs, taglines, quotes',
     applyTo: ['blockquote', '.tagline'],   // framework applies it here, like a built-in role
   },
   'font-display': {
-    type: 'font',
     default: 'ui-sans-serif, system-ui, sans-serif',
     description: 'Display — hero titles',
     // no applyTo → the component wires it (a `font-display` utility, or var(--font-display))
