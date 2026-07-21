@@ -53,34 +53,64 @@ let resolvedVersions = null
 export const REACT_VERSION = '^19.0.0'
 
 /**
- * The pnpm major the framework's generated CI standardizes on.
+ * Default pnpm major for generated CI, used only when the project does not
+ * say which pnpm it uses (see `resolveCiPnpmVersion`).
  *
- * Scaffolded CI workflows (`uniweb add ci --host=github-pages`) pin pnpm
- * through `pnpm/action-setup`. This is the one place that value lives, so the
- * pin tracks a single supported major instead of drifting as a hardcoded
- * literal inside each host adapter. A bare major installs the latest patch of
- * that major at CI run time. Bump this when the framework moves to a new pnpm
- * major (latest stable is 11.x as of this writing; pnpm 12 is still alpha).
+ * **This is deliberately 10, not the newest release.** CI must run the same
+ * toolchain the developer runs, or it reports failures that have nothing to
+ * do with their code. Pinning 11 while projects were on 10 produced exactly
+ * that, twice over, on a real repo:
+ *
+ *   - pnpm 11 refuses any dependency published in the last 24 hours
+ *     (`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`). Publish a package and its
+ *     consumer's CI fails until the next day.
+ *   - pnpm 11 changed build-script approval: `onlyBuiltDependencies` in
+ *     `pnpm-workspace.yaml` no longer suffices, and the install exits 1 with
+ *     `ERR_PNPM_IGNORED_BUILDS`. Uniweb sites use `sharp` for image
+ *     processing, so this breaks essentially every site's first CI run.
+ *
+ * Neither is a bug in pnpm — both are reasonable hardening. They are simply
+ * not things a generated workflow should impose on a project that has not
+ * opted into that major.
+ *
+ * A bare major installs the latest patch of that major at CI run time. Before
+ * bumping this, check the new major's release notes for install-time policy
+ * changes, and update `PNPM_MIN_NODE` in the same commit.
  */
-export const PNPM_VERSION = '11'
+export const PNPM_VERSION = '10'
 
 /**
- * Minimum Node major that `PNPM_VERSION` will actually run on.
+ * Minimum Node major each supported pnpm major will run on, from that
+ * release's own `engines.node`.
  *
- * pnpm 11 declares `engines.node: >=22.13` and imports `node:sqlite`, which
- * does not exist before Node 22. Pairing pnpm 11 with Node 20 in a generated
- * workflow fails at `pnpm install` — before the build is even attempted —
- * with `ERR_UNKNOWN_BUILTIN_MODULE: No such built-in module: node:sqlite`.
+ * pnpm 11 declares `>=22.13` and imports `node:sqlite`, which does not exist
+ * before Node 22 — pairing it with Node 20 fails at `pnpm install` with
+ * `ERR_UNKNOWN_BUILTIN_MODULE` before the build is attempted. That was the
+ * default until 2026-07-21, because the CI node major came from the
+ * project's `engines.node` and the workspace template declares `>=20.19`.
  *
- * That combination used to be the default: the CI node version came from the
- * project's `engines.node`, and the workspace template declares `>=20.19`, so
- * every scaffolded pnpm project got a workflow that could not install. Found
- * on a live GitHub Actions run, 2026-07-21.
- *
- * **Keep in sync with `PNPM_VERSION`** — bumping the pnpm major without
- * revisiting this reintroduces the same class of failure.
+ * Verify with `npm view pnpm@<major> engines` when adding an entry.
  */
-export const PNPM_MIN_NODE_MAJOR = 22
+export const PNPM_MIN_NODE = { '10': 18, '11': 22 }
+
+/**
+ * Resolve the pnpm major a generated CI workflow should install.
+ *
+ * `packageManager` (the corepack field) is authoritative when present — it is
+ * the project stating which pnpm it is developed and locked against, so CI
+ * should honour it rather than impose a different major.
+ *
+ * `pnpm-lock.yaml`'s `lockfileVersion` is NOT usable as a signal: pnpm 10 and
+ * 11 both write `9.0`, so it cannot distinguish them. Checked, not assumed.
+ *
+ * @param {object|null} rootPkg — the workspace root's parsed package.json.
+ * @returns {string} pnpm major, as a string for YAML interpolation.
+ */
+export function resolveCiPnpmVersion(rootPkg) {
+  const declared = rootPkg?.packageManager
+  const match = typeof declared === 'string' ? declared.match(/^pnpm@(\d+)/) : null
+  return match ? match[1] : PNPM_VERSION
+}
 
 /**
  * Resolve the Node major a generated CI workflow should install.
@@ -88,17 +118,19 @@ export const PNPM_MIN_NODE_MAJOR = 22
  * Respects the project's own floor (`engines.node`) but never drops below
  * what the pinned package manager needs. The project's declared minimum is a
  * *lower* bound on what its code needs, not a ceiling — running CI on a newer
- * Node is fine; running it on one the package manager rejects is not.
+ * Node is fine; running it on one the package manager refuses to start on is
+ * not.
  *
  * @param {string|null|undefined} enginesNode — the project's `engines.node`.
  * @param {'pnpm'|'npm'|'yarn'} packageManager
+ * @param {string} [pnpmVersion] — the resolved pnpm major, when pnpm.
  * @param {string} [fallback='20'] — used when engines.node is absent/unparseable.
  * @returns {string} Node major, as a string for YAML interpolation.
  */
-export function resolveCiNodeVersion(enginesNode, packageManager, fallback = '20') {
+export function resolveCiNodeVersion(enginesNode, packageManager, pnpmVersion = PNPM_VERSION, fallback = '20') {
   const match = enginesNode ? String(enginesNode).match(/(\d+)/) : null
   const declared = match ? Number(match[1]) : Number(fallback)
-  const floor = packageManager === 'pnpm' ? PNPM_MIN_NODE_MAJOR : 0
+  const floor = packageManager === 'pnpm' ? (PNPM_MIN_NODE[pnpmVersion] ?? 0) : 0
   return String(Math.max(declared, floor))
 }
 

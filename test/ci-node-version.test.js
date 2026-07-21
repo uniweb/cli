@@ -1,55 +1,76 @@
 /**
- * CI Node version must satisfy the pinned package manager.
+ * The scaffolded CI toolchain must match the project's own.
  *
- * Found on a live GitHub Actions run (2026-07-21): the scaffolded GitHub
- * Pages workflow paired `pnpm 11` with `node-version: '20'` and died at the
- * install step with
+ * Two failures on a real GitHub Actions run drove this, both caused by CI
+ * pinning a newer pnpm major than the project uses:
  *
- *   Error [ERR_UNKNOWN_BUILTIN_MODULE]: No such built-in module: node:sqlite
+ *   1. pnpm 11 + Node 20 → `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`.
+ *      pnpm 11 declares engines.node >=22.13; the CI node major came from
+ *      the project's engines.node, and the workspace template declares
+ *      >=20.19, so every scaffolded pnpm project got an uninstallable
+ *      workflow.
+ *   2. pnpm 11 refuses dependencies published in the last 24h, and changed
+ *      build-script approval so `onlyBuiltDependencies` no longer suffices
+ *      (`ERR_PNPM_IGNORED_BUILDS`) — which breaks any project using sharp.
  *
- * pnpm 11 declares `engines.node: >=22.13` and imports `node:sqlite`, which
- * does not exist before Node 22. The CI node major came from the project's
- * `engines.node`, and the workspace template declares `>=20.19` — so EVERY
- * scaffolded pnpm project got a workflow that could not install, before the
- * build was even attempted. Local testing could not catch it: the failure is
- * in the runner's toolchain setup, not in anything the CLI runs locally.
+ * Neither is reachable from a local build; both need a real runner.
  */
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolveCiNodeVersion, PNPM_VERSION, PNPM_MIN_NODE_MAJOR } from '../src/versions.js'
+import {
+  resolveCiNodeVersion,
+  resolveCiPnpmVersion,
+  PNPM_VERSION,
+  PNPM_MIN_NODE,
+} from '../src/versions.js'
 
-test('pnpm floors the CI node version at what that pnpm major requires', () => {
-  // The exact combination that failed in CI.
-  assert.equal(resolveCiNodeVersion('>=20.19', 'pnpm'), '22')
-  assert.equal(resolveCiNodeVersion(null, 'pnpm'), '22')
-  assert.equal(resolveCiNodeVersion('>=18', 'pnpm'), '22')
+test("the project's packageManager field decides the CI pnpm major", () => {
+  assert.equal(resolveCiPnpmVersion({ packageManager: 'pnpm@10.30.0' }), '10')
+  assert.equal(resolveCiPnpmVersion({ packageManager: 'pnpm@11.15.1' }), '11')
+  // Corepack allows a hash suffix.
+  assert.equal(resolveCiPnpmVersion({ packageManager: 'pnpm@10.30.0+sha512.abc' }), '10')
 })
 
-test("a project's higher floor is respected, not clamped down to the minimum", () => {
-  // engines.node is a lower bound on what the project needs; running CI on
-  // a newer Node than the package manager's minimum is correct.
-  assert.equal(resolveCiNodeVersion('>=24', 'pnpm'), '24')
-  assert.equal(resolveCiNodeVersion('>=22.13', 'pnpm'), '22')
+test('an undeclared or non-pnpm packageManager falls back to the default major', () => {
+  assert.equal(resolveCiPnpmVersion({}), PNPM_VERSION)
+  assert.equal(resolveCiPnpmVersion(null), PNPM_VERSION)
+  assert.equal(resolveCiPnpmVersion({ packageManager: 'yarn@4.0.0' }), PNPM_VERSION)
 })
 
-test('npm and yarn keep the project floor — the pnpm minimum does not apply', () => {
+test('the default pnpm major does not impose a newer toolchain than projects use', () => {
+  // The framework's own monorepo pins pnpm@10.30.0 and templates declare no
+  // packageManager at all. Defaulting CI to a newer major than that means CI
+  // exercises a toolchain nobody develops against — which is precisely how
+  // both production failures above were introduced.
+  assert.equal(PNPM_VERSION, '10')
+})
+
+test('node floor follows the resolved pnpm major', () => {
+  // pnpm 11 cannot start on Node 20 — the exact CI failure.
+  assert.equal(resolveCiNodeVersion('>=20.19', 'pnpm', '11'), '22')
+  // pnpm 10 runs on Node 18+, so the project's own floor stands.
+  assert.equal(resolveCiNodeVersion('>=20.19', 'pnpm', '10'), '20')
+  assert.equal(resolveCiNodeVersion(null, 'pnpm', '10'), '20')
+})
+
+test("a project's higher floor is respected, never clamped down", () => {
+  assert.equal(resolveCiNodeVersion('>=24', 'pnpm', '11'), '24')
+  assert.equal(resolveCiNodeVersion('>=24', 'pnpm', '10'), '24')
+})
+
+test('npm and yarn keep the project floor — no pnpm minimum applies', () => {
   assert.equal(resolveCiNodeVersion('>=20.19', 'npm'), '20')
   assert.equal(resolveCiNodeVersion('>=20.19', 'yarn'), '20')
   assert.equal(resolveCiNodeVersion(null, 'npm'), '20')
 })
 
-test('PNPM_MIN_NODE_MAJOR is kept in sync with PNPM_VERSION', () => {
-  // Guard rail rather than a real assertion: bumping the pnpm major without
-  // revisiting the node floor reintroduces the exact CI failure above.
-  // pnpm 11 → node >=22.13. If PNPM_VERSION moves, re-check pnpm's engines
-  // field and update PNPM_MIN_NODE_MAJOR in the same commit.
-  const knownMinimums = { '11': 22 }
-  const expected = knownMinimums[PNPM_VERSION]
+test('every supported pnpm major declares a node floor', () => {
+  // Bumping PNPM_VERSION without adding its engines.node here would
+  // silently reintroduce the node:sqlite class of failure.
   assert.ok(
-    expected !== undefined,
-    `PNPM_VERSION is now ${PNPM_VERSION}; look up its engines.node ` +
-    `(npm view pnpm@${PNPM_VERSION} engines) and add it to knownMinimums here.`
+    PNPM_MIN_NODE[PNPM_VERSION] !== undefined,
+    `PNPM_VERSION is ${PNPM_VERSION} but PNPM_MIN_NODE has no entry for it — ` +
+    `run \`npm view pnpm@${PNPM_VERSION} engines\` and add it.`
   )
-  assert.equal(PNPM_MIN_NODE_MAJOR, expected)
 })

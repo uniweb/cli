@@ -31,7 +31,7 @@ import { detectPackageManager, detectWorkspacePm, filterCmd, installCmd } from '
 import { isNonInteractive, getCliPrefix, stripNonInteractiveFlag, formatOptions } from '../utils/interactive.js'
 import { resolveTemplate } from '../templates/index.js'
 import { validateTemplate } from '../templates/validator.js'
-import { getVersionsForTemplates, PNPM_VERSION, resolveCiNodeVersion } from '../versions.js'
+import { getVersionsForTemplates, resolveCiPnpmVersion, resolveCiNodeVersion } from '../versions.js'
 
 // Colors for terminal output
 const colors = {
@@ -1153,9 +1153,11 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   const rootPkg = JSON.parse(
     await readFile(join(rootDir, 'package.json'), 'utf-8').catch(() => '{}')
   )
-  // Never below what the pinned package manager can run on — pnpm 11
-  // needs Node 22+, and the workspace template declares >=20.19.
-  const nodeVersion = resolveCiNodeVersion(rootPkg.engines?.node, pm)
+  // CI must run the project's own toolchain. The pnpm major comes from
+  // its `packageManager` field when declared; the node major is the
+  // project's floor, raised if that pnpm needs more.
+  const pnpmVersion = resolveCiPnpmVersion(rootPkg)
+  const nodeVersion = resolveCiNodeVersion(rootPkg.engines?.node, pm, pnpmVersion)
 
   const siteDir = join(rootDir, site.path)
   if (!resolvedDomain) {
@@ -1177,7 +1179,7 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
     target: 'site',
     packageManager: pm,
     nodeVersion,
-    pnpmVersion: PNPM_VERSION,
+    pnpmVersion,
     domain: resolvedDomain,
     previews: opts.previews !== false,
     projectName: resolveHostProjectName(rootDir, rootPkg, site, sites.length, opts),
@@ -1335,9 +1337,11 @@ async function addFoundationCi(rootDir, opts, adapter, pm) {
   const rootPkg = JSON.parse(
     await readFile(join(rootDir, 'package.json'), 'utf-8').catch(() => '{}')
   )
-  // Never below what the pinned package manager can run on — pnpm 11
-  // needs Node 22+, and the workspace template declares >=20.19.
-  const nodeVersion = resolveCiNodeVersion(rootPkg.engines?.node, pm)
+  // CI must run the project's own toolchain. The pnpm major comes from
+  // its `packageManager` field when declared; the node major is the
+  // project's floor, raised if that pnpm needs more.
+  const pnpmVersion = resolveCiPnpmVersion(rootPkg)
+  const nodeVersion = resolveCiNodeVersion(rootPkg.engines?.node, pm, pnpmVersion)
 
   let result
   try {
@@ -1347,7 +1351,7 @@ async function addFoundationCi(rootDir, opts, adapter, pm) {
       target: 'foundation',
       packageManager: pm,
       nodeVersion,
-      pnpmVersion: PNPM_VERSION,
+      pnpmVersion,
     })
   } catch (err) {
     error(err.message)
