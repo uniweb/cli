@@ -1,29 +1,41 @@
 /**
  * Deploy Command — ship a site to its resolved target.
  *
- * `uniweb deploy` resolves WHERE a site goes from deploy.yml (+ `--host` /
- * `--target`) and ships it there:
- *   - THIRD-PARTY host (`s3-cloudfront`, `cloudflare-pages`, `github-pages`,
- *     `generic-static`, …): build `dist/` in bundle mode and hand it to the
- *     host adapter for upload + invalidation.
- *   - UNIWEB hosting target (an explicit `--host=uniweb`, or a `uniweb` target
- *     in deploy.yml): DELEGATE to `uniweb publish` — the smart path (sync +
- *     dynamic hosting, brings the foundation along). So deploy.yml stays one
- *     actionable "where this site deploys" record, uniweb included.
+ * With a destination already known (a `--host` flag, or a target in
+ * deploy.yml) `uniweb deploy` acts on it directly. With NO destination
+ * known it runs the WIZARD — "Where should this site go?" — rather than
+ * assuming one. Assuming a host was the old behavior and it was wrong;
+ * so was the picker that replaced it, which listed every registered
+ * adapter when only one could actually be deployed to. The wizard offers
+ * only destinations that can be acted on, and says what acting will do.
  *
- * `uniweb publish` is the canonical direct verb for Uniweb hosting (reach for it
- * by default); `uniweb export` writes a self-contained artifact you upload
- * yourself.
+ * Four outcomes, from the wizard or resolved directly:
+ *   - THIRD-PARTY host, upload now: build `dist/` in bundle mode and hand
+ *     it to the adapter's deploy hook (`github-pages`, `cloudflare-pages`,
+ *     `netlify`, `vercel`, `s3-cloudfront`).
+ *   - THIRD-PARTY host, set up CI: delegate to `uniweb add ci --host=…`,
+ *     which scaffolds a workflow so every push deploys. For most free
+ *     hosts this is the better answer, and the wizard says so.
+ *   - UNIWEB hosting (`--host=uniweb`, or a `uniweb` target in deploy.yml,
+ *     or "Uniweb Cloud" in the wizard): DELEGATE to `uniweb publish` — the
+ *     smart path (sync + dynamic hosting, brings the foundation along). So
+ *     deploy.yml stays one actionable "where this site deploys" record.
+ *   - SOMEWHERE ELSE: delegate to `uniweb export` for a self-contained
+ *     artifact you upload yourself.
+ *
+ * `uniweb publish` remains the canonical direct verb for Uniweb hosting.
  *
  * Host resolution:
  *   1. --target <name> picks a target from deploy.yml (full config)
  *   2. deploy.yml's `default:` target when no flag is given
- *   3. with no deploy.yml at all, NO host is chosen → deploy prompts for a
- *      third-party adapter (interactive) rather than assuming Uniweb;
- *      non-interactive → an actionable error pointing at `publish` / `--host`
+ *   3. with no deploy.yml at all, NO host is chosen → the wizard runs
+ *      (interactive); non-interactive → an actionable error listing the
+ *      real options
  *   4. --host <name> is a one-off override (does NOT persist to deploy.yml)
+ *   5. --host with no value jumps straight to the wizard
  *
  * Usage:
+ *   uniweb deploy                  Wizard: pick a destination
  *   uniweb deploy --host <name>    Build bundle-mode dist/ + hand to the host adapter
  *   uniweb deploy --host=uniweb    Delegate to `uniweb publish` (Uniweb hosting)
  *   uniweb deploy --target <name>  Pick a target from deploy.yml
@@ -38,7 +50,7 @@ import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 
 import { loadDeployYml, resolveTarget, recordLastDeploy } from '@uniweb/build/site'
-import { promptForHost } from '../utils/host-prompt.js'
+import { promptForDestination } from '../utils/destination-prompt.js'
 import { readFlagValue } from '../utils/args.js'
 import { parseBoolEnv } from '../utils/env.js'
 
@@ -76,10 +88,10 @@ export async function deploy(args = []) {
   // Host dispatch. Resolution order:
   //   1. --target <name> picks a target from deploy.yml
   //   2. deploy.yml's `default:` target when no flag is given
-  //   3. with no deploy.yml, the implicit default is host: 'uniweb'
+  //   3. with no deploy.yml, NO host is chosen → the wizard decides
   //   4. --host <name> is a one-off override (does not persist on success)
   const targetFromFlag = readFlagValue(args, '--target')
-  let hostFromFlag = readFlagValue(args, '--host')
+  const hostFromFlag = readFlagValue(args, '--host')
   const noSave = args.includes('--no-save')
 
   let deployYml
@@ -96,50 +108,70 @@ export async function deploy(args = []) {
     say.err(err.message)
     process.exit(1)
   }
-  // --host with no value → interactive picker. Pre-selects the resolved
-  // target's host so Enter does the obvious thing.
-  if (hostFromFlag === null) {
-    try {
-      hostFromFlag = await promptForHost({ args, preselect: resolved.host })
-    } catch (err) {
-      say.err(err.message)
-      process.exit(1)
-    }
-  }
-  let host = hostFromFlag || resolved.host
 
-  // A Uniweb-hosting target is `publish`'s flow. When the user EXPLICITLY chose
-  // uniweb (a `--host=uniweb`, or a `uniweb` target in deploy.yml), DELEGATE to
-  // `uniweb publish` so deploy.yml stays one actionable record. When NO host was
-  // chosen (the implicit default with no deploy.yml), don't assume uniweb:
-  // prompt for a third-party adapter (interactive) or point at publish / --host
-  // (non-interactive). promptForHost lists only third-party adapters.
-  if (host === 'uniweb') {
-    const explicitUniweb = hostFromFlag === 'uniweb' || (resolved.fromFile && resolved.host === 'uniweb')
-    if (explicitUniweb) {
-      say.info('Uniweb hosting target → running `uniweb publish`.')
-      console.log('')
-      // publish ignores deploy's --host/--target; --dry-run/--no-save/--backend
-      // /--token pass straight through.
-      const { publish } = await import('./publish.js')
-      const result = await publish(args)
-      process.exit(result?.exitCode ?? 0)
-    }
+  // Resolve a PLAN — {kind, host?, action?} — before doing anything. A
+  // destination is "known" when the user named it (--host) or deploy.yml
+  // records one. Otherwise the wizard asks; we never assume.
+  //
+  // resolveTarget returns host:'uniweb' with fromFile:false as its
+  // no-deploy.yml fallback. That is NOT a chosen destination — treat it
+  // as "unknown" so a bare `deploy` in a fresh project opens the wizard
+  // instead of silently heading for the paid product.
+  let plan
+  const knownHost = hostFromFlag || (resolved.fromFile ? resolved.host : null)
+
+  if (knownHost === 'uniweb') {
+    plan = { kind: 'uniweb' }
+  } else if (knownHost) {
+    plan = { kind: 'adapter', host: knownHost, action: 'deploy' }
+  } else {
     if (isNonInteractive(args)) {
-      say.err('`uniweb deploy` needs a host. For Uniweb hosting use `uniweb publish`; for a third-party host pass `--host=<adapter>`.')
+      say.err('`uniweb deploy` needs a destination.')
       console.log('')
-      say.dim('`uniweb publish`          Uniweb hosting (sync + dynamic hosting; brings the foundation along)')
-      say.dim('`uniweb deploy --host=…`  Third-party host (s3-cloudfront, cloudflare-pages, github-pages, generic-static)')
+      say.dim('`uniweb publish`          Uniweb Cloud (sync + dynamic hosting; brings the foundation along)')
+      say.dim('`uniweb deploy --host=…`  A third-party host — run `uniweb deploy --help` for the list')
+      say.dim('`uniweb add ci --host=…`  Set up CI so every push deploys')
       say.dim('`uniweb export`           Self-contained dist/ artifact you upload anywhere')
       process.exit(1)
     }
-    say.info('`uniweb deploy` ships to a third-party host. (For Uniweb hosting, run `uniweb publish`.)')
     try {
-      host = await promptForHost({ args })
+      plan = await promptForDestination({ args, preselect: resolved.fromFile ? resolved.host : null })
     } catch (err) {
       say.err(err.message)
       process.exit(1)
     }
+    if (!plan) {
+      console.log('\nDeploy cancelled.')
+      process.exit(0)
+    }
+  }
+
+  // Uniweb Cloud is `publish`'s flow — delegate so deploy.yml stays one
+  // actionable record and there's a single implementation of go-live.
+  if (plan.kind === 'uniweb') {
+    say.info('Uniweb Cloud → running `uniweb publish`.')
+    console.log('')
+    // publish ignores deploy's --host/--target; --dry-run/--no-save/--backend
+    // /--token pass straight through.
+    const { publish } = await import('./publish.js')
+    const result = await publish(args)
+    process.exit(result?.exitCode ?? 0)
+  }
+
+  if (plan.kind === 'export') {
+    say.info('Building a self-contained artifact → running `uniweb export`.')
+    console.log('')
+    const { exportSite } = await import('./export.js')
+    await exportSite(dryRun ? ['--dry-run'] : [])
+    return
+  }
+
+  // CI setup is `add ci`'s job. Shell out rather than re-implement: add
+  // owns site discovery, package-manager detection, the --force guard,
+  // and the deploy.yml target write.
+  if (plan.action === 'ci') {
+    await delegateToAddCi(siteDir, plan.host, dryRun)
+    return
   }
 
   // Auto-save scope: 'off' from --no-save OR an ad-hoc --host override (we don't
@@ -148,11 +180,32 @@ export async function deploy(args = []) {
   const hostOverridden = !!hostFromFlag && hostFromFlag !== resolved.host
   const autoSave = noSave || hostOverridden ? 'off' : resolved.autoSave
 
-  await deployStaticHost(siteDir, host, resolved, {
+  await deployStaticHost(siteDir, plan.host, resolved, {
     dryRun,
     autoSave,
     hostOverridden,
   })
+}
+
+// ─── CI delegation ──────────────────────────────────────────
+
+async function delegateToAddCi(siteDir, host, dryRun) {
+  const workspaceRoot = findWorkspaceRoot(siteDir) || siteDir
+  if (dryRun) {
+    say.info(`Dry run — would run \`uniweb add ci --host=${host}\` in ${workspaceRoot}`)
+    return
+  }
+  say.info(`Setting up CI → running \`uniweb add ci --host=${host}\`.`)
+  console.log('')
+  try {
+    execSync(
+      `node ${JSON.stringify(process.argv[1])} add ci --host ${JSON.stringify(host)}`,
+      { cwd: workspaceRoot, stdio: 'inherit' }
+    )
+  } catch {
+    // add ci already printed the reason and set the exit code.
+    process.exit(1)
+  }
 }
 
 // ─── Static-host deploy (S3+CloudFront, etc.) ─────────────────
@@ -193,13 +246,23 @@ async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave,
 
   if (dryRun) {
     say.info(`Dry run — would deploy via host adapter: ${c.bold}${adapter.name}${c.reset}`)
-    say.dim(`Site dir       : ${siteDir}`)
-    say.dim(`dist/          : ${existsSync(distDir) ? 'exists (would not rebuild)' : 'missing (would build)'}`)
-    say.dim(`Target         : ${resolved.targetName}`)
-    say.dim(`bucket         : ${deployConfig.bucket || '(unset)'}`)
-    say.dim(`distributionId : ${deployConfig.distributionId || '(unset)'}`)
-    say.dim(`region         : ${deployConfig.region || '(unset)'}`)
-    say.dim(`profile        : ${deployConfig.profile || '(default AWS chain)'}`)
+    say.dim(`Site dir  : ${siteDir}`)
+    say.dim(`dist/     : ${existsSync(distDir) ? 'exists (would not rebuild)' : 'missing (would build)'}`)
+    say.dim(`Target    : ${resolved.targetName}`)
+    if (adapter.display?.pushWith) say.dim(`Uploads by: ${adapter.display.pushWith}`)
+    // Echo the resolved target's config as-is. Each adapter reads
+    // different keys (bucket/distributionId for s3, projectName for
+    // Cloudflare, siteId for Netlify), so listing a fixed set would be
+    // wrong for four of the five.
+    const configKeys = Object.keys(deployConfig)
+    if (configKeys.length) {
+      say.dim('Config    :')
+      for (const key of configKeys.sort()) {
+        say.dim(`  ${key}: ${typeof deployConfig[key] === 'object' ? JSON.stringify(deployConfig[key]) : deployConfig[key]}`)
+      }
+    } else {
+      say.dim('Config    : (none in deploy.yml — the adapter will say what it needs)')
+    }
     return
   }
 
@@ -234,8 +297,9 @@ async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave,
 
   // Hand off to the adapter. DeployError is the structured shape from
   // @uniweb/build/hosts/s3-cloudfront — translate to user-facing output.
+  let deployResult
   try {
-    await adapter.deploy({
+    deployResult = await adapter.deploy({
       distDir,
       deployConfig,
       env: process.env,
@@ -262,8 +326,12 @@ async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave,
     lastDeploy: {
       at: new Date().toISOString(),
       host: hostName,
-      // Static hosts know their public URL only via the user's CDN config;
-      // we don't have it on hand. Future: pull from a known field.
+      // Adapters that drive a host CLI get the public URL back from it
+      // (wrangler/netlify/vercel print it; github-pages derives it from
+      // the git remote). s3-cloudfront can't — the public URL lives in
+      // the user's CloudFront/DNS config, which we never see — so the
+      // field is simply omitted there rather than guessed.
+      ...(deployResult?.url ? { url: deployResult.url } : {}),
     },
   })
   if (hostOverridden && !dryRun) {

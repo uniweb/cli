@@ -1092,40 +1092,42 @@ function printCommandHelp(command) {
   if (command === 'release') command = 'register'
   const blocks = {
     deploy: `
-${colors.cyan}${colors.bright}uniweb deploy${colors.reset} ${colors.dim}— Ship a site to its resolved target${colors.reset}
+${colors.cyan}${colors.bright}uniweb deploy${colors.reset} ${colors.dim}— Ship a site to a host${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
-  uniweb deploy --host <name> [options]
+  uniweb deploy [options]
 
-Ships a site to its resolved target. A THIRD-PARTY host builds dist/ (bundle
-mode) and hands it to a host adapter for upload + invalidation. A UNIWEB target
-(\`--host=uniweb\`, or a \`uniweb\` target in deploy.yml) delegates to
-${colors.cyan}uniweb publish${colors.reset} (sync + dynamic serving; brings the foundation along) — the
-canonical direct verb for Uniweb hosting. With no host chosen, deploy prompts for
-a third-party adapter. For a self-contained dist/ you upload yourself, use
-${colors.cyan}uniweb export${colors.reset}.
+With no destination configured, opens the WIZARD — "Where should this site go?" —
+and only offers destinations that can actually be acted on. Pick a host and it
+asks whether to set up CI (every push deploys) or upload from this machine now.
+Your answer is remembered in deploy.yml, so later runs go straight there.
+
+Choosing ${colors.bright}Uniweb Cloud${colors.reset} delegates to ${colors.cyan}uniweb publish${colors.reset} (sync + dynamic serving;
+brings the foundation along). Choosing ${colors.bright}Somewhere else${colors.reset} runs ${colors.cyan}uniweb export${colors.reset}.
 
 ${colors.bright}Hosts:${colors.reset}
-  uniweb              Uniweb hosting (delegates to \`uniweb publish\`)
-  cloudflare-pages    Cloudflare Pages (build artifact + adapter postBuild)
-  netlify             Netlify (alias of cloudflare-pages adapter)
-  vercel              Vercel (build-only — deploy via \`npx vercel\`)
-  github-pages        GitHub Pages (build-only — push dist/ to gh-pages)
-  s3-cloudfront       AWS S3 + CloudFront (uploads + invalidates via CLI)
-  generic-static      Plain static-host build, no host-specific helpers
+  github-pages        GitHub Pages — CI workflow, or commit dist/ to gh-pages
+  cloudflare-pages    Cloudflare Pages — CI workflow + PR previews, or wrangler
+  netlify             Netlify — CI workflow + PR previews, or the netlify CLI
+  vercel              Vercel — CI workflow + PR previews, or the vercel CLI
+  s3-cloudfront       AWS S3 + CloudFront — uploads + invalidates via the aws CLI
+  uniweb              Uniweb Cloud (delegates to \`uniweb publish\`)
 
 ${colors.bright}Options:${colors.reset}
-  --host <name>       The host to ship to (no value → interactive third-party picker, TTY only)
+  --host <name>       The host to ship to (no value → the wizard, TTY only)
   --target <name>     Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
   --dry-run           Resolve the target + adapter; print summary; upload nothing
   --no-save           Skip the auto-save of lastDeploy in deploy.yml
   --non-interactive   Fail with usage info instead of prompting
 
 ${colors.bright}Examples:${colors.reset}
-  uniweb deploy --host=cloudflare-pages      # Build + upload to Cloudflare Pages
+  uniweb deploy                              # Wizard: pick a destination
+  uniweb deploy --host=cloudflare-pages      # Build + upload via wrangler
   uniweb deploy --host=s3-cloudfront         # Build + upload + invalidate
   uniweb deploy --host=uniweb                # → delegates to \`uniweb publish\`
   uniweb deploy --target=preview             # Named target from deploy.yml
+
+${colors.dim}To deploy on every push instead, see \`uniweb add ci --help\`.${colors.reset}
 `,
     publish: `
 ${colors.cyan}${colors.bright}uniweb publish${colors.reset} ${colors.dim}— Publish a site to Uniweb hosting (the smart path)${colors.reset}
@@ -1223,6 +1225,7 @@ ${colors.bright}Subcommands:${colors.reset}
   add site [name]         Add a site (--from, --foundation, --path, --project)
   add extension <name>    Add an extension (--from, --site, --path)
   add section <name>      Add a section type to a foundation (--foundation)
+  add ci                  Add a CI workflow so every push deploys (--host, --target)
 
 ${colors.bright}Common options:${colors.reset}
   --from <template>       Source content from a template
@@ -1480,7 +1483,7 @@ ${colors.bright}Commands:${colors.reset}
   dev                Start a dev server for a site
   build              Build the current project
   publish            Publish a site to Uniweb hosting (smart: foundation + sync + go live)
-  deploy             Deploy a site to a third-party host (--host=<adapter>)
+  deploy             Ship a site to a host (asks where, if not yet configured)
   export             Export a self-contained site for third-party hosting
   register           Register a foundation + its data schemas with the backend registry
   release            Release a foundation version (synonym of register)
@@ -1509,6 +1512,7 @@ ${colors.bright}Add Subcommands:${colors.reset}
   add site [name]         Add a site (--from, --foundation, --path, --project)
   add extension <name>    Add an extension (--from, --site, --path)
   add section <name>      Add a section type to a foundation (--foundation)
+  add ci                  Add a CI workflow so every push deploys (--host, --target)
 
 ${colors.bright}Global Options:${colors.reset}
   --version, -v        Show version
@@ -1528,13 +1532,13 @@ ${colors.bright}Publish Options:${colors.reset}
   \`uniweb deploy --host=<name>\`.
 
 ${colors.bright}Deploy Options:${colors.reset}
-  --host <name>      The host to ship to (no value → interactive third-party
-                     picker, TTY only). Third-party: cloudflare-pages, netlify,
-                     vercel, github-pages, s3-cloudfront, generic-static.
-                     \`--host=uniweb\` delegates to \`uniweb publish\`.
+  --host <name>      The host to ship to. Omit it (TTY) to open the wizard:
+                     github-pages, cloudflare-pages, netlify, vercel,
+                     s3-cloudfront, or \`uniweb\` (delegates to \`uniweb publish\`).
   --target <name>    Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
   --dry-run          Resolve the target + adapter; print summary; upload nothing
   --no-save          Skip the auto-save of lastDeploy in deploy.yml
+  To deploy on every push instead, see \`uniweb add ci --help\`.
 
 ${colors.bright}Dev Options:${colors.reset}
   <site>             Site name to run (positional)

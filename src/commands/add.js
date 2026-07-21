@@ -13,7 +13,7 @@
 
 import { existsSync } from 'node:fs'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { join, relative, basename } from 'node:path'
 import prompts from 'prompts'
 import yaml from 'js-yaml'
 import { resolveFoundationSrcPath } from '@uniweb/build'
@@ -64,11 +64,17 @@ function parseArgs(args) {
     host: null,
     force: false,
     domain: null,
+    // `add ci` only: what the workflow publishes ('site' | 'foundation'),
+    // the name to register under on the host, and whether to also
+    // scaffold PR-preview workflows.
+    target: null,
+    projectName: null,
+    previews: true,
   }
 
   // Booleans (no value) consumed up-front so the value-flag loop below
   // doesn't accidentally swallow the next positional.
-  const BOOLEAN_FLAGS = new Set(['--force'])
+  const BOOLEAN_FLAGS = new Set(['--force', '--no-previews'])
 
   // Find positional name (first arg after subcommand that's not a flag).
   for (let i = 1; i < args.length; i++) {
@@ -97,8 +103,14 @@ function parseArgs(args) {
       result.host = args[++i]
     } else if (args[i] === '--domain' && args[i + 1]) {
       result.domain = args[++i]
+    } else if (args[i] === '--target' && args[i + 1]) {
+      result.target = args[++i]
+    } else if (args[i] === '--project-name' && args[i + 1]) {
+      result.projectName = args[++i]
     } else if (args[i] === '--force') {
       result.force = true
+    } else if (args[i] === '--no-previews') {
+      result.previews = false
     }
   }
 
@@ -962,18 +974,65 @@ export default function ${name}({ content, params }) {
 async function addCi(rootDir, opts, pm = 'pnpm') {
   // Lazy-load the host registry so the CLI doesn't pay this import on
   // every add invocation.
-  let getAdapter
+  let getAdapter, listAdapters
   try {
-    ({ getAdapter } = await import('@uniweb/build/hosts'))
+    ({ getAdapter, listAdapters } = await import('@uniweb/build/hosts'))
   } catch {
     error('Failed to load host adapter registry from @uniweb/build/hosts.')
     process.exit(1)
   }
 
-  // Resolve host. With one CI-capable adapter today (github-pages),
-  // default silently when --host isn't passed. If more adapters add
-  // initCi later, this becomes a picker.
-  const host = opts.host || 'github-pages'
+  // What the workflow publishes. 'foundation' scaffolds the versioned
+  // distribution path (foundations/<name>/<version>/entry.js) — the free
+  // alternative to the catalog for a foundation product. Resolved BEFORE
+  // the host, because it narrows which hosts are even eligible.
+  const target = opts.target || 'site'
+  if (!['site', 'foundation'].includes(target)) {
+    error(`Unknown --target '${target}'. Expected 'site' or 'foundation'.`)
+    process.exit(1)
+  }
+
+  // Every adapter that can scaffold CI for this target. Derived from
+  // capability, never a hardcoded list — an adapter that grows an initCi
+  // shows up here with no edit to this file.
+  const ciHosts = listAdapters()
+    .map(name => getAdapter(name))
+    .filter(a => typeof a.initCi === 'function')
+    .filter(a => (target === 'foundation' ? a.display?.foundationCi === true : true))
+    .sort((a, b) => (a.display?.order ?? 999) - (b.display?.order ?? 999))
+
+  if (ciHosts.length === 0) {
+    error(`No host can scaffold CI for a ${target}.`)
+    process.exit(1)
+  }
+
+  let host = opts.host
+  if (!host) {
+    if (ciHosts.length === 1) {
+      host = ciHosts[0].name
+    } else if (isNonInteractive(process.argv)) {
+      error('`uniweb add ci` needs a host.')
+      log(`Available: ${ciHosts.map(a => a.name).join(', ')}`)
+      process.exit(1)
+    } else {
+      const choice = await prompts({
+        type: 'select',
+        name: 'host',
+        message: 'Which host should the workflow deploy to?',
+        choices: ciHosts.map(a => ({
+          title: `${a.display?.title || a.name} · ${a.display?.qualifier || ''}`.trim().replace(/ ·\s*$/, ''),
+          description: a.display?.summary,
+          value: a.name,
+        })),
+      }, {
+        onCancel: () => {
+          log('\nCancelled.')
+          process.exit(0)
+        },
+      })
+      host = choice.host
+    }
+  }
 
   let adapter
   try {
@@ -984,10 +1043,26 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   }
 
   if (typeof adapter.initCi !== 'function') {
-    error(`Host '${host}' does not provide a CI workflow yet.`)
-    log(`Currently supported: github-pages.`)
-    log(`Other hosts may use platform-side integrations (e.g., Vercel/Netlify connect via dashboard).`)
+    error(`Host '${host}' does not provide a CI workflow.`)
+    log(`Hosts that do: ${ciHosts.map(a => a.name).join(', ')}`)
+    log(`Others are dashboard-driven — connect the repo in the host's UI instead.`)
     process.exit(1)
+  }
+
+  // Guard the explicit-host case. Without this, `--host netlify --target
+  // foundation` would call an initCi that ignores `target` and silently
+  // scaffold a SITE workflow — the wrong artifact, with no error.
+  if (target === 'foundation' && adapter.display?.foundationCi !== true) {
+    error(`Host '${host}' cannot publish a foundation.`)
+    log(`Hosts that can: ${ciHosts.map(a => a.name).join(', ')}`)
+    log('')
+    log('Foundation publishing needs permanent versioned URLs, which the')
+    log('gh-pages branch layout provides. Other hosts overwrite on deploy.')
+    process.exit(1)
+  }
+
+  if (target === 'foundation') {
+    return addFoundationCi(rootDir, { ...opts, host }, adapter, pm)
   }
 
   // Validate --domain (lightweight: must look like a hostname). The
@@ -1067,25 +1142,16 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   const result = await adapter.initCi({
     rootDir,
     site,
+    target: 'site',
     packageManager: pm,
     nodeVersion,
     pnpmVersion: PNPM_VERSION,
     domain: resolvedDomain,
+    previews: opts.previews !== false,
+    projectName: resolveHostProjectName(rootDir, rootPkg, site, sites.length, opts),
   })
 
-  // Write files. Refuse to overwrite without --force so re-running
-  // doesn't silently clobber edits the user made to the workflow.
-  for (const file of result.files) {
-    const fullPath = join(rootDir, file.path)
-    if (existsSync(fullPath) && !opts.force) {
-      error(`File already exists: ${file.path}`)
-      log(`Re-run with --force to overwrite.`)
-      process.exit(1)
-    }
-    await mkdir(join(fullPath, '..'), { recursive: true })
-    await writeFile(fullPath, file.content)
-    success(`Wrote ${file.path}`)
-  }
+  await writeCiFiles(rootDir, result.files, opts.force)
 
   // Persist the adapter's target config into deploy.yml so the user's
   // intent (host + adapter-specific fields like `domain`) is remembered
@@ -1114,6 +1180,147 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
       info(`Warning: could not update deploy.yml: ${err.message}`)
     }
   }
+
+  if (result.postInstructions?.length) {
+    log('')
+    log(`${colors.bright}Next steps:${colors.reset}`)
+    for (const line of result.postInstructions) {
+      log(line ? `  ${line}` : '')
+    }
+  }
+}
+
+/**
+ * The name to register this site under on the host (Cloudflare Pages
+ * project, etc.).
+ *
+ * The site package is very often called literally `site` — the scaffold's
+ * default — which makes a terrible project name on a shared host. So:
+ * an explicit `--project-name` wins; otherwise prefer the workspace's own
+ * name (usually the repo name) when the site's name is one of the generic
+ * scaffold defaults; suffix with the site name only when the workspace
+ * holds more than one site and they'd otherwise collide.
+ */
+const GENERIC_SITE_NAMES = new Set(['site', 'sites', 'www', 'web', 'app'])
+
+/**
+ * Public URL segment for a foundation published to GitHub Pages.
+ *
+ * Same problem as the site project name, and it matters more here:
+ * this segment is baked into a PERMANENT url that consuming sites pin
+ * (`foundations/<name>/<version>/entry.js`), so `src` — the single-project
+ * scaffold's directory *and* package name — would be a poor forever-name.
+ * Prefer a meaningful package/directory name; fall back to the workspace
+ * name; disambiguate only when several foundations would collide.
+ */
+const GENERIC_FOUNDATION_NAMES = new Set(['src', 'foundation', 'foundations', 'lib'])
+
+function resolveFoundationPublicNames(rootDir, rootPkg, foundations) {
+  const workspaceName = stripScope(rootPkg?.name) || basename(rootDir)
+
+  return foundations.map((f, i) => {
+    const pkgName = stripScope(f.name)
+    const dirName = basename(f.path)
+    const candidate = !GENERIC_FOUNDATION_NAMES.has(pkgName)
+      ? pkgName
+      : !GENERIC_FOUNDATION_NAMES.has(dirName)
+        ? dirName
+        : foundations.length > 1
+          ? `${workspaceName}-${i + 1}`
+          : workspaceName
+    return { name: candidate, path: f.path }
+  })
+}
+
+function resolveHostProjectName(rootDir, rootPkg, site, siteCount, opts) {
+  if (opts.projectName) return opts.projectName
+
+  const workspaceName = stripScope(rootPkg?.name) || basename(rootDir)
+  const siteName = stripScope(site.name)
+
+  if (!GENERIC_SITE_NAMES.has(siteName)) return siteName
+  if (siteCount > 1) return `${workspaceName}-${siteName}`
+  return workspaceName
+}
+
+function stripScope(name) {
+  if (!name || typeof name !== 'string') return null
+  return name.startsWith('@') ? name.split('/').pop() : name
+}
+
+/**
+ * Write scaffolded CI files. Refuses to overwrite without --force so
+ * re-running doesn't silently clobber edits the user made to a workflow.
+ */
+async function writeCiFiles(rootDir, files, force) {
+  for (const file of files) {
+    const fullPath = join(rootDir, file.path)
+    if (existsSync(fullPath) && !force) {
+      error(`File already exists: ${file.path}`)
+      log(`Re-run with --force to overwrite.`)
+      process.exit(1)
+    }
+    await mkdir(join(fullPath, '..'), { recursive: true })
+    await writeFile(fullPath, file.content)
+    success(`Wrote ${file.path}`)
+  }
+}
+
+/**
+ * `uniweb add ci --target foundation` — scaffold the workflow that
+ * publishes built foundations at permanent versioned URLs.
+ *
+ * This is the free distribution path for a foundation product: sites
+ * reference `https://<user>.github.io/<repo>/foundations/<name>/<ver>/entry.js`
+ * from site.yml. No catalog, no propagation, no license gating — but no
+ * cost either, and the URLs never break.
+ *
+ * Unlike the site path there is no deploy.yml to write: deploy.yml
+ * records where a *site* is deployed, and a foundation isn't a site.
+ */
+async function addFoundationCi(rootDir, opts, adapter, pm) {
+  const all = await discoverFoundations(rootDir)
+  if (all.length === 0) {
+    error('No foundation found in this workspace.')
+    log('Add one with `uniweb add foundation` first.')
+    process.exit(1)
+  }
+
+  // --foundation <name> narrows to one; otherwise publish them all,
+  // which is what a multi-foundation repo almost always wants (each gets
+  // its own versioned directory, so there's no collision).
+  let foundations = all
+  if (opts.foundation) {
+    const match = all.find(f => f.name === opts.foundation || basename(f.path) === opts.foundation)
+    if (!match) {
+      error(`Foundation '${opts.foundation}' not found.`)
+      log(`Available: ${all.map(f => f.name).join(', ')}`)
+      process.exit(1)
+    }
+    foundations = [match]
+  }
+
+  const rootPkg = JSON.parse(
+    await readFile(join(rootDir, 'package.json'), 'utf-8').catch(() => '{}')
+  )
+  const nodeVersion = parseNodeMajor(rootPkg.engines?.node) || '20'
+
+  let result
+  try {
+    result = await adapter.initCi({
+      rootDir,
+      foundations: resolveFoundationPublicNames(rootDir, rootPkg, foundations),
+      target: 'foundation',
+      packageManager: pm,
+      nodeVersion,
+      pnpmVersion: PNPM_VERSION,
+    })
+  } catch (err) {
+    error(err.message)
+    process.exit(1)
+  }
+
+  await writeCiFiles(rootDir, result.files, opts.force)
 
   if (result.postInstructions?.length) {
     log('')
@@ -1173,10 +1380,21 @@ ${colors.bright}Section Options:${colors.reset}
   --foundation <n>   Foundation to add section to (prompted if multiple exist)
 
 ${colors.bright}CI Options:${colors.reset}
-  --host <name>      Host adapter (default: github-pages)
-  --site <name>      Site the workflow builds (prompted if multiple exist)
-  --domain <host>    Custom domain (writes CNAME, serves at root)
-  --force            Overwrite an existing workflow file
+  --host <name>          github-pages | cloudflare-pages | netlify | vercel
+                         (prompted when omitted)
+  --target <what>        site (default) | foundation
+                         'foundation' publishes built foundations at permanent
+                         versioned URLs — the free alternative to the catalog
+  --site <name>          Site the workflow builds (prompted if multiple exist)
+  --foundation <name>    With --target foundation: publish just this one
+  --domain <host>        Custom domain (GitHub Pages: writes CNAME, serves at root)
+  --project-name <name>  Name to register under on the host (default: the
+                         workspace name; Cloudflare Pages project, etc.)
+  --no-previews          Skip the per-PR preview workflow
+  --force                Overwrite an existing workflow file
+
+${colors.dim}Hosts that support PR previews: cloudflare-pages, netlify, vercel.
+GitHub Pages has no preview environment, so it scaffolds a deploy workflow only.${colors.reset}
 
 ${colors.bright}Examples:${colors.reset}
   uniweb add project docs                              # Create docs/foundation/ + docs/site/
@@ -1190,8 +1408,11 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add section Hero --foundation ui              # Target specific foundation
   uniweb add foundation --project docs                 # Create ./docs/foundation/ (co-located)
   uniweb add site --project docs                       # Create ./docs/site/ (co-located)
-  uniweb add ci                                        # Add GitHub Pages deploy workflow
+  uniweb add ci                                        # Pick a host, add a deploy workflow
   uniweb add ci --host github-pages --site marketing   # Pick host + site explicitly
+  uniweb add ci --host netlify                         # Deploy + PR-preview workflows
+  uniweb add ci --host vercel --no-previews            # Deploy workflow only
   uniweb add ci --domain mysite.com                    # Custom domain → writes CNAME + UNIWEB_BASE=/
+  uniweb add ci --target foundation                    # Publish foundations at versioned URLs
 `)
 }

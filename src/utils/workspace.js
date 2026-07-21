@@ -188,10 +188,16 @@ export function isWorkspaceRoot(dir = process.cwd()) {
 }
 
 /**
- * Interactive prompt to select from multiple options
+ * Interactive prompt to select from multiple options.
+ *
+ * Accepts plain strings (title === value) or `{ title, value, description }`
+ * objects. `prompts` reveals a choice's description only while that row is
+ * highlighted, so put the always-visible qualifier in `title` and the
+ * fuller explanation in `description`.
+ *
  * @param {string} message - Prompt message
- * @param {string[]} choices - Array of choices
- * @returns {Promise<string|null>} - Selected choice or null if cancelled
+ * @param {Array<string|{title: string, value?: any, description?: string}>} choices
+ * @returns {Promise<any|null>} - Selected value, or null if cancelled
  */
 export async function promptSelect(message, choices) {
   const prompts = (await import('prompts')).default
@@ -200,8 +206,12 @@ export async function promptSelect(message, choices) {
     type: 'select',
     name: 'value',
     message,
-    choices: choices.map(c => ({ title: c, value: c })),
+    choices: choices.map(c => (
+      typeof c === 'string'
+        ? { title: c, value: c }
+        : { title: c.title, value: c.value !== undefined ? c.value : c.title, description: c.description }
+    )),
   })
 
-  return response.value || null
+  return response.value ?? null
 }
