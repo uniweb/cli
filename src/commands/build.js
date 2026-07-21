@@ -919,8 +919,9 @@ function showNextSteps(hasFoundations, hasSites) {
   if (hasSites) {
     log('')
     log(`${colors.bright}Ship a site:${colors.reset}`)
-    log(`  ${colors.bright}uniweb publish${colors.reset}            Uniweb hosting (brings the foundation along)`)
-    log(`  ${colors.bright}uniweb deploy --host${colors.reset}=…    Third-party host`)
+    log(`  ${colors.bright}uniweb deploy${colors.reset}             Pick a host and ship (asks where, then remembers)`)
+    log(`  ${colors.bright}uniweb add ci --host${colors.reset}=…    Deploy on every push (free hosts; adds PR previews)`)
+    log(`  ${colors.bright}uniweb publish${colors.reset}            Uniweb Cloud (brings the foundation along)`)
     log(`  Or upload ${colors.cyan}dist/${colors.reset} (\`uniweb export\`) to any static host`)
   }
 }

@@ -142,14 +142,22 @@ pnpm install                      # Install dependencies
 pnpm build                        # Build for production
 pnpm preview                      # Preview production build (SSG + SPA)
 
+# Ship a site — `uniweb deploy` asks where, if you haven't chosen yet
+uniweb deploy                     # Wizard: pick a destination, then deploy (or set up CI)
+
 # Ship a site to Uniweb hosting (needs `uniweb login`)
 uniweb publish                    # The smart path: bring the foundation along (releasing it to the
                                   # catalog if its code changed), sync content, and go live
 
 # Ship a site to a third-party host instead
-uniweb deploy --host=<adapter>    # Deploy to a static host: cloudflare-pages, netlify,
-                                  # vercel, github-pages, s3-cloudfront, generic-static
+uniweb add ci --host=<adapter>    # Set up CI so every push deploys — usually the best answer for a
+                                  # free host. github-pages, cloudflare-pages, netlify, vercel
+uniweb deploy --host=<adapter>    # Build + upload now, from this machine. Same four, plus
+                                  # s3-cloudfront. Drives that host's CLI (wrangler/netlify/vercel/aws)
 uniweb export                     # Build dist/ for any static host (no Uniweb account)
+
+# Publish a foundation for free, at permanent versioned URLs
+uniweb add ci --target foundation # GitHub Pages workflow → foundations/<name>/<version>/entry.js
 
 # Sync a site with the Uniweb backend (git-style; needs `uniweb login`)
 uniweb push                       # Push local content to the backend (creates the site on first push)
@@ -173,6 +181,8 @@ uniweb <command> --help           # Per-command help (no side effects)
 ```
 
 `uniweb publish` brings the site's local foundation along — releasing it to the catalog under your `@org` when its code changed — so a single site needs no separate `uniweb register` step.
+
+**Choosing where a site goes.** `uniweb deploy` never assumes a host: with nothing configured it opens a picker listing only destinations it can actually act on, and records the choice in `deploy.yml` so later runs go straight there. For a free static host, prefer `uniweb add ci --host=<adapter>` over a manual `uniweb deploy` — one command, then every push deploys, and on Cloudflare Pages / Netlify / Vercel it also adds a per-PR preview that comments the URL on the pull request. Destination config (bucket, project name, site id) lives in `deploy.yml` beside `site.yml`; host credentials come from the environment, never from that committed file.
 
 **Registering data schemas.** A foundation that defines data schemas (`@/article`, …) uses `uniweb register` to register the foundation together with those schemas in the Uniweb registry — so content authors can create and manage entities of those types. It requires authentication: run `uniweb login`, or supply a bearer token directly with `--token <bearer>` (or the `UNIWEB_TOKEN` env var). Point at a specific registry with `--registry <url>` (or `UNIWEB_REGISTER_URL`). Preview without auth using `--dry-run` (or `-o <file>` to write the submission), and set the org scope with `--scope @org` (default: the foundation's `package.json` `uniweb.scope`).
 

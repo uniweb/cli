@@ -45,7 +45,7 @@
  * Escape hatch: UNIWEB_SKIP_BUILD=1 reuses an existing dist/.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 
@@ -118,7 +118,14 @@ export async function deploy(args = []) {
   // as "unknown" so a bare `deploy` in a fresh project opens the wizard
   // instead of silently heading for the paid product.
   let plan
-  const knownHost = hostFromFlag || (resolved.fromFile ? resolved.host : null)
+  // `--host` with NO value (readFlagValue → null) is an explicit "ask me",
+  // and it must outrank deploy.yml: the user typed the flag precisely to
+  // choose something other than what's recorded. Omitting the flag
+  // entirely (→ undefined) is the different case where deploy.yml wins.
+  const wantsWizard = hostFromFlag === null
+  const knownHost = wantsWizard
+    ? null
+    : (hostFromFlag || (resolved.fromFile ? resolved.host : null))
 
   if (knownHost === 'uniweb') {
     plan = { kind: 'uniweb' }
@@ -126,6 +133,16 @@ export async function deploy(args = []) {
     plan = { kind: 'adapter', host: knownHost, action: 'deploy' }
   } else {
     if (isNonInteractive(args)) {
+      if (wantsWizard) {
+        // They asked to pick, but there's no way to ask. Never silently
+        // fall back to deploy.yml — that would deploy somewhere the user
+        // was in the middle of overriding.
+        const { listAdapters } = await import('@uniweb/build/hosts')
+        say.err('`--host` requires a value when running non-interactively.')
+        say.dim(`Known adapters: ${listAdapters().join(', ')}.`)
+        say.dim('For Uniweb Cloud use `uniweb publish` (or --host=uniweb).')
+        process.exit(1)
+      }
       say.err('`uniweb deploy` needs a destination.')
       console.log('')
       say.dim('`uniweb publish`          Uniweb Cloud (sync + dynamic hosting; brings the foundation along)')
@@ -159,10 +176,17 @@ export async function deploy(args = []) {
   }
 
   if (plan.kind === 'export') {
+    // `export` has no --dry-run of its own, so handle it here rather than
+    // passing a flag it would ignore — a dry run that actually ran a full
+    // build would be a lie.
+    if (dryRun) {
+      say.info('Dry run — would run `uniweb export` to build a self-contained dist/.')
+      return
+    }
     say.info('Building a self-contained artifact → running `uniweb export`.')
     console.log('')
     const { exportSite } = await import('./export.js')
-    await exportSite(dryRun ? ['--dry-run'] : [])
+    await exportSite([])
     return
   }
 
@@ -191,17 +215,31 @@ export async function deploy(args = []) {
 
 async function delegateToAddCi(siteDir, host, dryRun) {
   const workspaceRoot = findWorkspaceRoot(siteDir) || siteDir
+
+  // Forward the site we already resolved. Without this, `add ci` re-runs
+  // its own discovery and asks "which site?" a second time in a
+  // multi-site workspace — right after the user answered that in the
+  // wizard. `add ci --site` matches on the package name.
+  let siteFlag = ''
+  try {
+    const pkg = JSON.parse(readFileSync(join(siteDir, 'package.json'), 'utf8'))
+    if (pkg.name) siteFlag = ` --site ${JSON.stringify(pkg.name)}`
+  } catch {
+    // No readable package.json — let `add ci` resolve the site itself.
+  }
+
+  const cmd = `add ci --host ${JSON.stringify(host)}${siteFlag}`
   if (dryRun) {
-    say.info(`Dry run — would run \`uniweb add ci --host=${host}\` in ${workspaceRoot}`)
+    say.info(`Dry run — would run \`uniweb ${cmd}\` in ${workspaceRoot}`)
     return
   }
-  say.info(`Setting up CI → running \`uniweb add ci --host=${host}\`.`)
+  say.info(`Setting up CI → running \`uniweb ${cmd}\`.`)
   console.log('')
   try {
-    execSync(
-      `node ${JSON.stringify(process.argv[1])} add ci --host ${JSON.stringify(host)}`,
-      { cwd: workspaceRoot, stdio: 'inherit' }
-    )
+    execSync(`node ${JSON.stringify(process.argv[1])} ${cmd}`, {
+      cwd: workspaceRoot,
+      stdio: 'inherit',
+    })
   } catch {
     // add ci already printed the reason and set the exit code.
     process.exit(1)

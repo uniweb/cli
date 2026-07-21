@@ -321,7 +321,7 @@ uniweb add ci --host=github-pages
 
 `uniweb add ci` scaffolds a GitHub Actions workflow that runs `uniweb build` on each push. Pre-rendering is on by default — static HTML, fast first paint, SEO out of the box. Use `--domain=<domain>` for a custom domain.
 
-**Other free static hosts.** Cloudflare Pages, Netlify, and Vercel auto-build your site when you connect the repo through their dashboard — no scaffolded workflow needed.
+**Other free static hosts.** Cloudflare Pages, Netlify, and Vercel work three ways: `uniweb add ci --host=<adapter>` scaffolds a workflow (and a per-PR preview that comments the URL), connecting the repo through their dashboard lets the host build it with no config at all, or `uniweb deploy --host=<adapter>` uploads from your machine.
 
 **When to choose Uniweb hosting instead** (paid): when you need dynamic-page prerender at the edge (for collections fetched at runtime, not just at build time), foundation/runtime version propagation without redeploying every site, or edge SSR. If your site's content lives in markdown and updates ship via git, free CI is the right call.
 
@@ -346,15 +346,17 @@ Markdown in a git repo and content in the Uniweb apps can share the same site. D
 
 | Command | What it does |
 | --- | --- |
-| `uniweb add ci --host=<adapter>` | Scaffold a CI workflow in your repo (today: `github-pages`). The host runs `uniweb build` on each push. |
+| `uniweb deploy` | Ask where the site should go, then do it. Remembers the answer in `deploy.yml`. |
+| `uniweb add ci --host=<adapter>` | Scaffold a CI workflow (+ PR previews) so every push deploys. `github-pages`, `cloudflare-pages`, `netlify`, `vercel`. |
+| `uniweb add ci --target foundation` | Publish foundations at permanent versioned GitHub Pages URLs — the free alternative to the catalog. |
 | `uniweb publish` | Go live on Uniweb hosting (paid) — syncs content, brings the site's foundation along, and serves dynamically. The canonical verb for Uniweb hosting. |
-| `uniweb deploy --host=<adapter>` | Ship to a third-party static host in one step — builds `dist/`, uploads, invalidates. |
+| `uniweb deploy --host=<adapter>` | Ship to a third-party static host in one step — builds `dist/`, uploads, invalidates. Drives that host's own CLI. |
 | `uniweb export` | Produce a self-contained `dist/` for any static host. You upload it yourself. `--host=<adapter>` adds host-specific helper files. |
 | `uniweb register --scope @org` | Register a foundation to the registry (path 2). |
 | `uniweb build` | Inspect a build locally. For shipping, use `publish` (Uniweb hosting) or `deploy`/`export` (static hosts). |
 | `uniweb update` | Align this project with the CLI you're running: bump `@uniweb/*` deps in every `package.json` to the CLI's matrix (then install), and refresh `AGENTS.md`. Pins to *this* CLI's matrix — run `npx uniweb@latest update` to align to the latest release. Updating the CLI itself is your package manager's job (`npm i -g uniweb@latest`). |
 
-`--host=<adapter>` is the same option across `deploy`, `export`, and `add ci`. Built-in adapters: `cloudflare-pages`, `netlify`, `github-pages`, `vercel`, `s3-cloudfront`, `generic-static`. Each adapter implements only the operations it supports — `add ci` is currently `github-pages`-only because it's the only one that needs a workflow file in the repo.
+`--host=<adapter>` is the same option across `deploy`, `export`, and `add ci`. Built-in adapters: `github-pages`, `cloudflare-pages`, `netlify`, `vercel`, `s3-cloudfront`, and `generic-static` (an artifact shape for `export`, not a deploy target). Each adapter implements only the operations it supports, and the CLI never offers one it can't perform: `add ci` lists only hosts that can scaffold a workflow, and `deploy`'s picker lists only destinations with a working deploy hook.
 
 ---
 
