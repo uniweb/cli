@@ -3,8 +3,24 @@ packages:
   - "{{this}}"
 {{/each}}
 
-# Permit install scripts for these native deps. pnpm reads this from
-# pnpm-workspace.yaml; the package.json "pnpm" field is ignored by pnpm 11+.
+# Permit install scripts for these native deps (esbuild compiles, sharp
+# resolves its platform binary). Both spellings are listed on purpose:
+#
+#   onlyBuiltDependencies — pnpm 10's name for this setting (a list)
+#   allowBuilds           — pnpm 11 renamed it (a map)
+#
+# pnpm 11 ignores the old name entirely, so with only the list a fresh
+# install fails with ERR_PNPM_IGNORED_BUILDS and exits 1 — before anything
+# is built. pnpm 10 understands both, so keeping the pair means the project
+# installs on either major. Drop `onlyBuiltDependencies` once pnpm 10 is no
+# longer in use.
+#
+# Neither applies to npm or yarn, which run install scripts by default;
+# they read `workspaces` in package.json and ignore this file.
 onlyBuiltDependencies:
   - esbuild
   - sharp
+
+allowBuilds:
+  esbuild: true
+  sharp: true
