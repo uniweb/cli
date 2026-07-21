@@ -56,28 +56,32 @@ export const REACT_VERSION = '^19.0.0'
  * Default pnpm major for generated CI, used only when the project does not
  * say which pnpm it uses (see `resolveCiPnpmVersion`).
  *
- * **This is deliberately 10, not the newest release.** CI must run the same
- * toolchain the developer runs, or it reports failures that have nothing to
- * do with their code. Pinning 11 while projects were on 10 produced exactly
- * that, twice over, on a real repo:
+ * **Tracks the current stable major.** `pnpm@latest` is 11.x, so a developer
+ * running `npm i -g pnpm` today gets 11 — and CI should run what they run.
+ * Both of pnpm 11's install-time policies are handled:
  *
- *   - pnpm 11 refuses any dependency published in the last 24 hours
- *     (`ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`). Publish a package and its
- *     consumer's CI fails until the next day.
- *   - pnpm 11 changed build-script approval: `onlyBuiltDependencies` in
- *     `pnpm-workspace.yaml` no longer suffices, and the install exits 1 with
- *     `ERR_PNPM_IGNORED_BUILDS`. Uniweb sites use `sharp` for image
- *     processing, so this breaks essentially every site's first CI run.
+ *   - Build-script approval. pnpm 11 renamed `onlyBuiltDependencies` (list)
+ *     to `allowBuilds` (map) and ignores the old name, so an unprepared
+ *     project fails with `ERR_PNPM_IGNORED_BUILDS`. The workspace template
+ *     emits both spellings, so scaffolds install on either major.
+ *   - Minimum release age. pnpm 11 refuses dependencies published in the
+ *     last 24 hours. Installing locally with pnpm 11 auto-collects the
+ *     needed `minimumReleaseAgeExclude` entries into `pnpm-workspace.yaml`,
+ *     and CI then honours them — verified end to end.
  *
- * Neither is a bug in pnpm — both are reasonable hardening. They are simply
- * not things a generated workflow should impose on a project that has not
- * opted into that major.
+ * **The one combination that breaks is installing locally with pnpm 10 while
+ * CI runs 11**: pnpm 10 never writes those exclude entries, so CI rejects any
+ * dependency in the lockfile published within the last day — including
+ * unrelated transitive ones. A project still on pnpm 10 should say so with
+ * `"packageManager": "pnpm@10.x.y"`, which `resolveCiPnpmVersion` honours and
+ * which pins CI to match. `uniweb add ci` prints the resolved toolchain so
+ * that choice is visible rather than silent.
  *
  * A bare major installs the latest patch of that major at CI run time. Before
  * bumping this, check the new major's release notes for install-time policy
  * changes, and update `PNPM_MIN_NODE` in the same commit.
  */
-export const PNPM_VERSION = '10'
+export const PNPM_VERSION = '11'
 
 /**
  * Minimum Node major each supported pnpm major will run on, from that

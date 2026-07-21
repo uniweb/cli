@@ -38,12 +38,18 @@ test('an undeclared or non-pnpm packageManager falls back to the default major',
   assert.equal(resolveCiPnpmVersion({ packageManager: 'yarn@4.0.0' }), PNPM_VERSION)
 })
 
-test('the default pnpm major does not impose a newer toolchain than projects use', () => {
-  // The framework's own monorepo pins pnpm@10.30.0 and templates declare no
-  // packageManager at all. Defaulting CI to a newer major than that means CI
-  // exercises a toolchain nobody develops against — which is precisely how
-  // both production failures above were introduced.
-  assert.equal(PNPM_VERSION, '10')
+test('the default pnpm major tracks the current stable release', () => {
+  // `pnpm@latest` is 11.x, so `npm i -g pnpm` gives a developer 11 and CI
+  // should run what they run. This was briefly 10 while pnpm 11 could not
+  // install a Uniweb project at all — the workspace template now emits
+  // `allowBuilds` alongside `onlyBuiltDependencies`, so both majors work.
+  //
+  // Revisit when pnpm 12 goes stable: check its release notes for
+  // install-time policy changes (11 added build-approval renaming and a
+  // 24h minimum release age, both of which broke generated CI) and add its
+  // engines.node to PNPM_MIN_NODE in the same commit.
+  assert.equal(PNPM_VERSION, '11')
+  assert.equal(PNPM_MIN_NODE['11'], 22, 'pnpm 11 declares engines.node >=22.13')
 })
 
 test('node floor follows the resolved pnpm major', () => {
@@ -72,5 +78,27 @@ test('every supported pnpm major declares a node floor', () => {
     PNPM_MIN_NODE[PNPM_VERSION] !== undefined,
     `PNPM_VERSION is ${PNPM_VERSION} but PNPM_MIN_NODE has no entry for it — ` +
     `run \`npm view pnpm@${PNPM_VERSION} engines\` and add it.`
+  )
+})
+
+test("@uniweb/build's fallback pnpm major agrees with the CLI's", async () => {
+  // The two constants live in different packages — @uniweb/build cannot
+  // import the CLI's (the dependency runs the other way), so the value is
+  // duplicated. It drifted twice in one week: stale at '11' while the CLI
+  // said '10', then stale at '10' when the CLI moved back to '11'.
+  //
+  // Generate a workflow WITHOUT passing a version, so the build package's
+  // own fallback is what lands, and compare it to the CLI's authority.
+  const { getAdapter } = await import('@uniweb/build/hosts')
+  const result = await getAdapter('github-pages').initCi({
+    site: { name: 'acme', path: 'site' },
+    packageManager: 'pnpm',
+    // pnpmVersion deliberately omitted → exercises the fallback
+  })
+  const emitted = result.files[0].content.match(/pnpm\/action-setup[\s\S]*?version: (\d+)/)?.[1]
+  assert.equal(
+    emitted, PNPM_VERSION,
+    `@uniweb/build falls back to pnpm ${emitted} but the CLI resolves ${PNPM_VERSION} — ` +
+    'update FALLBACK_PNPM_VERSION in build/src/hosts/ci-workflow.js to match.'
   )
 })

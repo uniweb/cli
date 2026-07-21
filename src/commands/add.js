@@ -1158,6 +1158,7 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   // project's floor, raised if that pnpm needs more.
   const pnpmVersion = resolveCiPnpmVersion(rootPkg)
   const nodeVersion = resolveCiNodeVersion(rootPkg.engines?.node, pm, pnpmVersion)
+  reportCiToolchain({ pm, pnpmVersion, nodeVersion, rootPkg })
 
   const siteDir = join(rootDir, site.path)
   if (!resolvedDomain) {
@@ -1283,6 +1284,23 @@ function stripScope(name) {
 }
 
 /**
+ * Print the toolchain the generated workflow will install.
+ *
+ * These versions are inferred whenever the project doesn't state them, and a
+ * silent inference is exactly what let a wrong pnpm/Node pairing ship
+ * unnoticed. Showing what resolved — and how to override it — follows the
+ * same "resolve, then show what resolved" rule the publish scope picker uses.
+ */
+function reportCiToolchain({ pm, pnpmVersion, nodeVersion, rootPkg }) {
+  const declared = typeof rootPkg?.packageManager === 'string'
+  const tool = pm === 'pnpm' ? `pnpm ${pnpmVersion}` : pm === 'yarn' ? 'yarn' : 'npm'
+  info(`CI will use ${tool} + Node ${nodeVersion}${declared ? '' : ' (inferred)'}`)
+  if (!declared && pm === 'pnpm') {
+    info(`Pin with "packageManager": "pnpm@<version>" in package.json to use a different major.`)
+  }
+}
+
+/**
  * Write scaffolded CI files. Refuses to overwrite without --force so
  * re-running doesn't silently clobber edits the user made to a workflow.
  */
@@ -1342,6 +1360,7 @@ async function addFoundationCi(rootDir, opts, adapter, pm) {
   // project's floor, raised if that pnpm needs more.
   const pnpmVersion = resolveCiPnpmVersion(rootPkg)
   const nodeVersion = resolveCiNodeVersion(rootPkg.engines?.node, pm, pnpmVersion)
+  reportCiToolchain({ pm, pnpmVersion, nodeVersion, rootPkg })
 
   let result
   try {
