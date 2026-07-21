@@ -65,6 +65,44 @@ export const REACT_VERSION = '^19.0.0'
 export const PNPM_VERSION = '11'
 
 /**
+ * Minimum Node major that `PNPM_VERSION` will actually run on.
+ *
+ * pnpm 11 declares `engines.node: >=22.13` and imports `node:sqlite`, which
+ * does not exist before Node 22. Pairing pnpm 11 with Node 20 in a generated
+ * workflow fails at `pnpm install` — before the build is even attempted —
+ * with `ERR_UNKNOWN_BUILTIN_MODULE: No such built-in module: node:sqlite`.
+ *
+ * That combination used to be the default: the CI node version came from the
+ * project's `engines.node`, and the workspace template declares `>=20.19`, so
+ * every scaffolded pnpm project got a workflow that could not install. Found
+ * on a live GitHub Actions run, 2026-07-21.
+ *
+ * **Keep in sync with `PNPM_VERSION`** — bumping the pnpm major without
+ * revisiting this reintroduces the same class of failure.
+ */
+export const PNPM_MIN_NODE_MAJOR = 22
+
+/**
+ * Resolve the Node major a generated CI workflow should install.
+ *
+ * Respects the project's own floor (`engines.node`) but never drops below
+ * what the pinned package manager needs. The project's declared minimum is a
+ * *lower* bound on what its code needs, not a ceiling — running CI on a newer
+ * Node is fine; running it on one the package manager rejects is not.
+ *
+ * @param {string|null|undefined} enginesNode — the project's `engines.node`.
+ * @param {'pnpm'|'npm'|'yarn'} packageManager
+ * @param {string} [fallback='20'] — used when engines.node is absent/unparseable.
+ * @returns {string} Node major, as a string for YAML interpolation.
+ */
+export function resolveCiNodeVersion(enginesNode, packageManager, fallback = '20') {
+  const match = enginesNode ? String(enginesNode).match(/(\d+)/) : null
+  const declared = match ? Number(match[1]) : Number(fallback)
+  const floor = packageManager === 'pnpm' ? PNPM_MIN_NODE_MAJOR : 0
+  return String(Math.max(declared, floor))
+}
+
+/**
  * Get the CLI's own package.json
  */
 function getCliPackageJson() {

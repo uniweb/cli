@@ -27,11 +27,11 @@ import {
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { validatePackageName, getExistingPackageNames, resolveUniqueName } from '../utils/names.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
-import { detectPackageManager, filterCmd, installCmd } from '../utils/pm.js'
+import { detectPackageManager, detectWorkspacePm, filterCmd, installCmd } from '../utils/pm.js'
 import { isNonInteractive, getCliPrefix, stripNonInteractiveFlag, formatOptions } from '../utils/interactive.js'
 import { resolveTemplate } from '../templates/index.js'
 import { validateTemplate } from '../templates/validator.js'
-import { getVersionsForTemplates, PNPM_VERSION } from '../versions.js'
+import { getVersionsForTemplates, PNPM_VERSION, resolveCiNodeVersion } from '../versions.js'
 
 // Colors for terminal output
 const colors = {
@@ -76,10 +76,41 @@ function parseArgs(args) {
   // doesn't accidentally swallow the next positional.
   const BOOLEAN_FLAGS = new Set(['--force', '--no-previews'])
 
+  // Value flags, mapped to their result key. Both spellings are accepted:
+  // `--host github-pages` and `--host=github-pages`.
+  //
+  // The `=` form used to be dropped silently — every branch matched on an
+  // exact `args[i] === '--flag'`, so `--host=github-pages` fell through
+  // and left `host` null. It went unnoticed because `add ci` defaulted to
+  // github-pages when no host was given, making the one command our docs
+  // print (`uniweb add ci --host=github-pages`) appear to work while
+  // actually ignoring the flag. Requiring a real host surfaced it.
+  const VALUE_FLAGS = {
+    '--path': 'path',
+    '--project': 'project',
+    '--foundation': 'foundation',
+    '--site': 'site',
+    '--from': 'from',
+    '--host': 'host',
+    '--domain': 'domain',
+    '--target': 'target',
+    '--project-name': 'projectName',
+  }
+
+  /** Split `--flag=value` into [flag, value]; `--flag` into [flag, null]. */
+  const splitFlag = (arg) => {
+    const eq = arg.indexOf('=')
+    return eq === -1 ? [arg, null] : [arg.slice(0, eq), arg.slice(eq + 1)]
+  }
+
   // Find positional name (first arg after subcommand that's not a flag).
   for (let i = 1; i < args.length; i++) {
     if (args[i].startsWith('--')) {
-      if (!BOOLEAN_FLAGS.has(args[i])) i++ // skip flag value
+      const [flag, inlineValue] = splitFlag(args[i])
+      // Only skip the next arg when the value is genuinely separate.
+      // Previously an `=`-form flag also consumed the following arg,
+      // which could swallow the positional name.
+      if (!BOOLEAN_FLAGS.has(flag) && inlineValue === null) i++
       continue
     }
     if (!result.name) {
@@ -89,27 +120,17 @@ function parseArgs(args) {
 
   // Parse flags
   for (let i = 1; i < args.length; i++) {
-    if (args[i] === '--path' && args[i + 1]) {
-      result.path = args[++i]
-    } else if (args[i] === '--project' && args[i + 1]) {
-      result.project = args[++i]
-    } else if (args[i] === '--foundation' && args[i + 1]) {
-      result.foundation = args[++i]
-    } else if (args[i] === '--site' && args[i + 1]) {
-      result.site = args[++i]
-    } else if (args[i] === '--from' && args[i + 1]) {
-      result.from = args[++i]
-    } else if (args[i] === '--host' && args[i + 1]) {
-      result.host = args[++i]
-    } else if (args[i] === '--domain' && args[i + 1]) {
-      result.domain = args[++i]
-    } else if (args[i] === '--target' && args[i + 1]) {
-      result.target = args[++i]
-    } else if (args[i] === '--project-name' && args[i + 1]) {
-      result.projectName = args[++i]
-    } else if (args[i] === '--force') {
+    const [flag, inlineValue] = splitFlag(args[i])
+    const key = VALUE_FLAGS[flag]
+    if (key) {
+      if (inlineValue !== null) {
+        result[key] = inlineValue
+      } else if (args[i + 1] !== undefined && !args[i + 1].startsWith('--')) {
+        result[key] = args[++i]
+      }
+    } else if (flag === '--force') {
       result.force = true
-    } else if (args[i] === '--no-previews') {
+    } else if (flag === '--no-previews') {
       result.previews = false
     }
   }
@@ -204,7 +225,16 @@ export async function add(rawArgs) {
       await addSection(rootDir, parsed)
       break
     case 'ci':
-      await addCi(rootDir, parsed, pm)
+      // The scaffolded workflow must install the way THIS WORKSPACE
+      // installs, which is a property of the repo (its lockfile), not of
+      // how the CLI happened to be launched. `detectPackageManager()`
+      // reads npm_config_user_agent, so `npx uniweb add ci` in a pnpm
+      // workspace produced a workflow running `npm ci` — which fails on
+      // the first CI run, because there is no package-lock.json to
+      // install from. npx is a normal way to run the CLI, so this broke
+      // the common case. Fall back to the invocation only when the repo
+      // has no lockfile to read.
+      await addCi(rootDir, parsed, detectWorkspacePm(rootDir) || pm)
       break
     default:
       error(`Unknown subcommand: ${parsed.subcommand}`)
@@ -1123,7 +1153,9 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   const rootPkg = JSON.parse(
     await readFile(join(rootDir, 'package.json'), 'utf-8').catch(() => '{}')
   )
-  const nodeVersion = parseNodeMajor(rootPkg.engines?.node) || '20'
+  // Never below what the pinned package manager can run on — pnpm 11
+  // needs Node 22+, and the workspace template declares >=20.19.
+  const nodeVersion = resolveCiNodeVersion(rootPkg.engines?.node, pm)
 
   const siteDir = join(rootDir, site.path)
   if (!resolvedDomain) {
@@ -1303,7 +1335,9 @@ async function addFoundationCi(rootDir, opts, adapter, pm) {
   const rootPkg = JSON.parse(
     await readFile(join(rootDir, 'package.json'), 'utf-8').catch(() => '{}')
   )
-  const nodeVersion = parseNodeMajor(rootPkg.engines?.node) || '20'
+  // Never below what the pinned package manager can run on — pnpm 11
+  // needs Node 22+, and the workspace template declares >=20.19.
+  const nodeVersion = resolveCiNodeVersion(rootPkg.engines?.node, pm)
 
   let result
   try {
