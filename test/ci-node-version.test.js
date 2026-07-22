@@ -102,3 +102,79 @@ test("@uniweb/build's fallback pnpm major agrees with the CLI's", async () => {
     'update FALLBACK_PNPM_VERSION in build/src/hosts/ci-workflow.js to match.'
   )
 })
+
+/* ---------------------------------------------------------------- *
+ * pnpm major: observed, never inferred from how the CLI was invoked  *
+ * ---------------------------------------------------------------- */
+
+test('what actually installed the project outranks the built-in default', async () => {
+  // The default is a last resort, not a policy. A project installed with
+  // pnpm 10 must get pnpm 10 in CI even while the default is 11 —
+  // otherwise it lands in the one broken combination (pnpm 10 lockfile,
+  // pnpm 11 CI), where CI rejects any dependency published in the last 24h.
+  assert.equal(resolveCiPnpmVersion({}, '10'), '10')
+  assert.equal(resolveCiPnpmVersion({}, '11'), '11')
+})
+
+test('an explicit packageManager outranks the installed version', () => {
+  // The project stating its intent beats a record of one install — someone
+  // mid-migration may have installed with the old major on purpose.
+  assert.equal(resolveCiPnpmVersion({ packageManager: 'pnpm@11.15.1' }, '10'), '11')
+  assert.equal(resolveCiPnpmVersion({ packageManager: 'pnpm@10.30.0' }, '11'), '10')
+})
+
+test('the default applies only when nothing can be observed', () => {
+  assert.equal(resolveCiPnpmVersion({}, null), PNPM_VERSION)
+  assert.equal(resolveCiPnpmVersion(null, null), PNPM_VERSION)
+})
+
+test('detectInstalledPnpmVersion reads the major pnpm recorded, or null', async () => {
+  const { detectInstalledPnpmVersion } = await import('../src/utils/pm.js')
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+
+  const dir = mkdtempSync(join(tmpdir(), 'uniweb-modules-'))
+  try {
+    assert.equal(detectInstalledPnpmVersion(dir), null, 'no node_modules → null')
+
+    mkdirSync(join(dir, 'node_modules'), { recursive: true })
+    // Current pnpm writes JSON despite the .yaml extension.
+    writeFileSync(
+      join(dir, 'node_modules', '.modules.yaml'),
+      JSON.stringify({ nodeLinker: 'isolated', packageManager: 'pnpm@10.30.0' }, null, 2)
+    )
+    assert.equal(detectInstalledPnpmVersion(dir), '10')
+
+    // The file is named .yaml and YAML permits the bare form, so accept
+    // it too rather than depending on which serializer pnpm used. (Not a
+    // format observed in the wild — defensive, and free.)
+    writeFileSync(
+      join(dir, 'node_modules', '.modules.yaml'),
+      'nodeLinker: isolated\npackageManager: pnpm@11.15.1\n'
+    )
+    assert.equal(detectInstalledPnpmVersion(dir), '11')
+
+    // A yarn/npm install leaves no such record.
+    writeFileSync(join(dir, 'node_modules', '.modules.yaml'), 'nodeLinker: isolated\n')
+    assert.equal(detectInstalledPnpmVersion(dir), null)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('never infers the pnpm major from how the CLI was invoked', () => {
+  // `npm create uniweb` is the documented entry point and is commonly
+  // followed by `pnpm install`, so the invoking manager says nothing about
+  // the project's. resolveCiPnpmVersion takes only observed inputs — there
+  // is no env/user-agent path into it, and this asserts that stays true.
+  const before = process.env.npm_config_user_agent
+  try {
+    process.env.npm_config_user_agent = 'pnpm/11.15.1 npm/? node/v22.0.0 darwin arm64'
+    assert.equal(resolveCiPnpmVersion({}, '10'), '10', 'invocation must not override the observed install')
+    assert.equal(resolveCiPnpmVersion({}, null), PNPM_VERSION, 'invocation must not stand in for the default')
+  } finally {
+    if (before === undefined) delete process.env.npm_config_user_agent
+    else process.env.npm_config_user_agent = before
+  }
+})

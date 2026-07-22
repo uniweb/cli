@@ -27,7 +27,7 @@ import {
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { validatePackageName, getExistingPackageNames, resolveUniqueName } from '../utils/names.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
-import { detectPackageManager, detectWorkspacePm, filterCmd, installCmd } from '../utils/pm.js'
+import { detectPackageManager, detectWorkspacePm, detectInstalledPnpmVersion, filterCmd, installCmd } from '../utils/pm.js'
 import { isNonInteractive, getCliPrefix, stripNonInteractiveFlag, formatOptions } from '../utils/interactive.js'
 import { resolveTemplate } from '../templates/index.js'
 import { validateTemplate } from '../templates/validator.js'
@@ -1156,9 +1156,13 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   // CI must run the project's own toolchain. The pnpm major comes from
   // its `packageManager` field when declared; the node major is the
   // project's floor, raised if that pnpm needs more.
-  const pnpmVersion = resolveCiPnpmVersion(rootPkg)
+  const installedPnpm = detectInstalledPnpmVersion(rootDir)
+  const pnpmVersion = resolveCiPnpmVersion(rootPkg, installedPnpm)
   const nodeVersion = resolveCiNodeVersion(rootPkg.engines?.node, pm, pnpmVersion)
-  reportCiToolchain({ pm, pnpmVersion, nodeVersion, rootPkg })
+  reportCiToolchain({
+    pm, pnpmVersion, nodeVersion,
+    source: rootPkg?.packageManager ? 'declared' : installedPnpm ? 'installed' : 'fallback',
+  })
 
   const siteDir = join(rootDir, site.path)
   if (!resolvedDomain) {
@@ -1284,19 +1288,28 @@ function stripScope(name) {
 }
 
 /**
- * Print the toolchain the generated workflow will install.
+ * Print the toolchain the generated workflow will install, and where each
+ * part came from.
  *
- * These versions are inferred whenever the project doesn't state them, and a
- * silent inference is exactly what let a wrong pnpm/Node pairing ship
- * unnoticed. Showing what resolved — and how to override it — follows the
- * same "resolve, then show what resolved" rule the publish scope picker uses.
+ * These values are resolved rather than stated whenever the project is
+ * silent, and a silent resolution is what let a broken pnpm/Node pairing
+ * ship unnoticed. Naming the source matters too: "we read this from your
+ * install" invites a different reaction than "we guessed", and only the
+ * latter needs an override hint.
  */
-function reportCiToolchain({ pm, pnpmVersion, nodeVersion, rootPkg }) {
-  const declared = typeof rootPkg?.packageManager === 'string'
-  const tool = pm === 'pnpm' ? `pnpm ${pnpmVersion}` : pm === 'yarn' ? 'yarn' : 'npm'
-  info(`CI will use ${tool} + Node ${nodeVersion}${declared ? '' : ' (inferred)'}`)
-  if (!declared && pm === 'pnpm') {
-    info(`Pin with "packageManager": "pnpm@<version>" in package.json to use a different major.`)
+function reportCiToolchain({ pm, pnpmVersion, nodeVersion, source }) {
+  if (pm !== 'pnpm') {
+    info(`CI will use ${pm} + Node ${nodeVersion}`)
+    return
+  }
+  const origin = {
+    declared: '',
+    installed: ' (matching your install)',
+    fallback: ' (no pnpm detected — using the default)',
+  }[source] ?? ''
+  info(`CI will use pnpm ${pnpmVersion} + Node ${nodeVersion}${origin}`)
+  if (source === 'fallback') {
+    info(`Pin with "packageManager": "pnpm@<version>" in package.json to choose a major.`)
   }
 }
 
@@ -1358,9 +1371,13 @@ async function addFoundationCi(rootDir, opts, adapter, pm) {
   // CI must run the project's own toolchain. The pnpm major comes from
   // its `packageManager` field when declared; the node major is the
   // project's floor, raised if that pnpm needs more.
-  const pnpmVersion = resolveCiPnpmVersion(rootPkg)
+  const installedPnpm = detectInstalledPnpmVersion(rootDir)
+  const pnpmVersion = resolveCiPnpmVersion(rootPkg, installedPnpm)
   const nodeVersion = resolveCiNodeVersion(rootPkg.engines?.node, pm, pnpmVersion)
-  reportCiToolchain({ pm, pnpmVersion, nodeVersion, rootPkg })
+  reportCiToolchain({
+    pm, pnpmVersion, nodeVersion,
+    source: rootPkg?.packageManager ? 'declared' : installedPnpm ? 'installed' : 'fallback',
+  })
 
   let result
   try {

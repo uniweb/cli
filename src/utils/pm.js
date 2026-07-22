@@ -5,7 +5,7 @@
  * and generate PM-appropriate commands for output messages.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 
@@ -39,6 +39,48 @@ export function detectWorkspacePm(workspaceRoot) {
   if (existsSync(join(workspaceRoot, 'yarn.lock'))) return 'yarn'
   if (existsSync(join(workspaceRoot, 'package-lock.json'))) return 'npm'
   return null
+}
+
+/**
+ * The pnpm major that actually installed this workspace.
+ *
+ * pnpm records the version it ran as in `node_modules/.modules.yaml`:
+ *
+ *     "packageManager": "pnpm@10.30.0"
+ *
+ * This is a *record of what happened*, not a guess about intent — which
+ * matters, because intent cannot be inferred. The documented way to
+ * scaffold is `npm create uniweb`, and plenty of people follow it with
+ * `pnpm install`; the invoking package manager therefore says nothing
+ * about the one the project uses. The lockfile says WHICH manager
+ * (`detectWorkspacePm`); this says which pnpm MAJOR, which the lockfile
+ * cannot — pnpm 10 and 11 both write `lockfileVersion: 9.0`.
+ *
+ * Despite the extension the file is JSON in current pnpm; `js-yaml`
+ * parses both, since YAML is a superset. Older pnpm wrote real YAML.
+ *
+ * @param {string} workspaceRoot
+ * @returns {string|null} pnpm major (e.g. '10'), or null when the file is
+ *   absent or unreadable — callers fall back to their own default.
+ */
+export function detectInstalledPnpmVersion(workspaceRoot) {
+  if (!workspaceRoot) return null
+  const path = join(workspaceRoot, 'node_modules', '.modules.yaml')
+  if (!existsSync(path)) return null
+  try {
+    // Cheap targeted read: the file is large (hoisted-dependency maps run
+    // to hundreds of KB) and we want exactly one field, so match it
+    // directly rather than parsing the whole document.
+    const text = readFileSync(path, 'utf8')
+    // Quotes optional on both key and value: current pnpm writes JSON
+    // (`"packageManager": "pnpm@10.30.0"`), but the file is named .yaml and
+    // YAML permits the bare form, so accept either rather than depending on
+    // which serializer the installing pnpm happened to use.
+    const match = text.match(/["']?packageManager["']?\s*:\s*["']?pnpm@(\d+)/)
+    return match ? match[1] : null
+  } catch {
+    return null
+  }
 }
 
 /**

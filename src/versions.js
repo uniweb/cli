@@ -100,20 +100,37 @@ export const PNPM_MIN_NODE = { '10': 18, '11': 22 }
 /**
  * Resolve the pnpm major a generated CI workflow should install.
  *
- * `packageManager` (the corepack field) is authoritative when present — it is
- * the project stating which pnpm it is developed and locked against, so CI
- * should honour it rather than impose a different major.
+ * Observed, not assumed, in this order:
  *
- * `pnpm-lock.yaml`'s `lockfileVersion` is NOT usable as a signal: pnpm 10 and
- * 11 both write `9.0`, so it cannot distinguish them. Checked, not assumed.
+ *   1. `packageManager` in package.json — the project stating explicitly
+ *      which pnpm it is developed and locked against. Honour it.
+ *   2. What actually installed the project, from
+ *      `node_modules/.modules.yaml` (`detectInstalledPnpmVersion`). A record
+ *      of fact: the developer running `add ci` is the developer who ran
+ *      `pnpm install`, and `add ci` refuses to run before install, so this
+ *      is normally present.
+ *   3. `PNPM_VERSION` — a last resort that should rarely apply.
+ *
+ * There is deliberately no inference from *how the CLI was invoked*. The
+ * documented way to scaffold is `npm create uniweb`, commonly followed by
+ * `pnpm install`, so the invoking manager says nothing about the project's.
+ * Writing a `packageManager` field at scaffold time was considered and
+ * rejected for the same reason — it would guess intent and, being enforced
+ * by corepack, would be a hard pin rather than a hint.
+ *
+ * `pnpm-lock.yaml`'s `lockfileVersion` is NOT usable here: pnpm 10 and 11
+ * both write `9.0`, so it cannot distinguish them. Checked, not assumed.
  *
  * @param {object|null} rootPkg — the workspace root's parsed package.json.
+ * @param {string|null} [installedMajor] — from `detectInstalledPnpmVersion`.
  * @returns {string} pnpm major, as a string for YAML interpolation.
  */
-export function resolveCiPnpmVersion(rootPkg) {
+export function resolveCiPnpmVersion(rootPkg, installedMajor = null) {
   const declared = rootPkg?.packageManager
   const match = typeof declared === 'string' ? declared.match(/^pnpm@(\d+)/) : null
-  return match ? match[1] : PNPM_VERSION
+  if (match) return match[1]
+  if (installedMajor) return String(installedMajor)
+  return PNPM_VERSION
 }
 
 /**
