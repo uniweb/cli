@@ -454,6 +454,17 @@ async function runRegister(args = []) {
       return { exitCode: 1 }
     }
   }
+  // Registering ≠ delivering the file. A registered schema is a content type
+  // authors use in the app; a FOUNDATION build still resolves '@scope/name' from
+  // disk (a package or a routed folder). This is the moment that belief forms —
+  // you just registered it — so correct it here, not in a doc nobody's reading.
+  if (!jsonMode && defined.length > 0 && scope) {
+    log('')
+    info('Registered schemas are content types authors can use in the Uniweb app.')
+    log(`  ${colors.dim}Delivery is separate: a foundation that binds ${scope}/<name> resolves it from${colors.reset}`)
+    log(`  ${colors.dim}disk — an ${scope}/schemas package, or a folder routed in schemas.config.js.${colors.reset}`)
+  }
+
   if (jsonMode) {
     // Join my authoritative submitted names with the backend's minted ids. Each
     // response entry is `{ registered: { name, version, payload_model_uuid, … },
