@@ -845,6 +845,8 @@ seo:
 
 **Localized URLs:** On a multilingual site (`languages:` in site.yml), a page's `slug: { <lang>: <segment> }` gives it a native URL segment per language (`/about` → `/fr/a-propos`); the folder name stays the canonical route. Nested folders compose automatically, and localized URLs flow through navigation, the language switcher, and the sitemap.
 
+**Draft languages:** `publishLanguages: [en, fr]` in site.yml lists which declared languages a published build ships — unlisted ones stay dev-previewable drafts. Absent field = publish all declared; the default language must be listed.
+
 **Content-less containers:** Folders with `page.yml` but no markdown are structural groups. They appear in `getPageHierarchy()` with `hasContent: false` and their own title/label. When visited directly, the runtime auto-redirects to the first descendant with content. This supports hierarchical navigation (courses → modules → lessons) at any depth.
 
 ### Lists as Navigation Menus
