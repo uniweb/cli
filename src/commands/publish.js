@@ -48,6 +48,7 @@ import {
   rewriteBallAssets,
 } from '@uniweb/build/site'
 import { emitSyncPackages } from '@uniweb/build/uwx'
+import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
@@ -117,7 +118,9 @@ function languagesFromContent(siteContent) {
 
 // Languages from site.yml — used only for the dry-run summary (no build yet).
 function languagesFromSiteYml(siteYml) {
-  const def = siteYml.defaultLanguage || siteYml.lang || 'en'
+  // Legacy `lang:` still honored between defaultLanguage and the shared
+  // `defaultLanguage || languages[0] || 'en'` rule.
+  const def = siteYml.defaultLanguage || siteYml.lang || resolveDefaultLocale(siteYml)
   const locales = siteYml.i18n?.locales || siteYml.languages
   if (!Array.isArray(locales) || locales.length === 0) return null
   const norm = locales.map((l) => (typeof l === 'string' ? l : l?.value || l?.code)).filter(Boolean)

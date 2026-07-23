@@ -60,6 +60,7 @@ import {
   classifyPackage,
   isExtensionPackage,
 } from '@uniweb/build'
+import { resolveDefaultLocale, normalizeLanguageList } from '@uniweb/core/locale-config'
 import { readSiteConfig } from '@uniweb/build/site'
 import { readWorkspaceConfig, resolveGlob } from '../utils/config.js'
 
@@ -373,12 +374,26 @@ async function loadI18nConfig(projectDir, siteConfig = null) {
 
   // Resolve locales (undefined/'*' → all available, array → specific)
   const { resolveLocales } = await import('@uniweb/build/i18n')
-  const locales = await resolveLocales(config.languages, localesPath)
+  let locales = await resolveLocales(config.languages, localesPath)
+
+  // Publish filter: build outputs are visitor artifacts. With an explicit
+  // `publishLanguages:`, only listed locales get dist/{locale}/ content,
+  // per-locale HTML, hreflang, and translated collections. Draft locales
+  // stay previewable in dev, which doesn't run this path. Intersecting the
+  // DISK-resolved list here also covers wildcard (`languages: '*'`) sites.
+  if (config.publishLanguages != null) {
+    const publishSet = new Set(normalizeLanguageList(config.publishLanguages))
+    const dropped = locales.filter((l) => !publishSet.has(l))
+    locales = locales.filter((l) => publishSet.has(l))
+    if (dropped.length > 0) {
+      info(`Skipping non-publishable locale(s): ${dropped.join(', ')} (not in publishLanguages)`)
+    }
+  }
 
   if (locales.length === 0) return null
 
   return {
-    defaultLocale: config.defaultLanguage || 'en',
+    defaultLocale: resolveDefaultLocale(config),
     locales,
     localesDir,
   }

@@ -19,6 +19,7 @@ import { resolve, join, dirname, basename, relative } from 'path'
 import { existsSync } from 'fs'
 import { readFile, writeFile, mkdir, readdir, unlink, rename } from 'fs/promises'
 import yaml from 'js-yaml'
+import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 import {
   isWorkspaceRoot,
   findSites,
@@ -216,7 +217,7 @@ async function loadSiteConfig(siteRoot) {
   const locales = await resolveLocales(config.languages, localesPath)
 
   return {
-    defaultLocale: config.defaultLanguage || 'en',
+    defaultLocale: resolveDefaultLocale(config),
     locales,
     localesDir,
     ...config.i18n,
