@@ -1203,7 +1203,7 @@ export default {
 export default { '@acme': '../shared/acme-schemas', '@brand': process.env.BRAND_SCHEMAS }
 ```
 
-Plain JS, so paths can be relative, absolute, or read from an env var. A routed scope wins over the package convention; `@/` and `@uniweb` are never routable; an empty value (e.g. an unset env var) falls back to the package convention.
+Plain JS, so paths can be relative, absolute, or read from an env var. A routed scope wins over the package convention; `@/` and `@uniweb` are never routable; an empty value (e.g. an unset env var) falls back to the package convention. A routed scope has no package fallback for a *missing* schema (it errors rather than silently load a different definition). To override a single schema — keeping the rest of the scope routed to the shared folder — add a per-schema key pointing at a file: `'@acme/person': './schemas/acme-person.yml'` (most-specific wins: file › directory › package).
 
 **Validate your data.** `uniweb validate` checks your file-based data against these declared schemas — missing required fields, type/enum/format mismatches, nested fields — before you ship. Warns by default, `--strict` for a non-zero CI exit. It's distinct from `uniweb doctor` (which checks project structure): `validate` checks your *data* against the schemas you *declared*. Remote (`url:`), `ref`/`options`, and rich `sections`-form inputs are reported deferred — validate those against live data.
 
