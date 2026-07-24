@@ -497,8 +497,14 @@ async function refreshAgents(ctx) {
   return 'created'
 }
 
-/** Print a compact recap of what changed, plus a review hint. */
-function printSummary({ editedPaths, depsEdited, installRan, installPm, agentsResult, cliVersion }) {
+/**
+ * Print a compact recap of what changed, plus a review hint.
+ *
+ * Exported for tests: the dev-server restart notice must fire exactly when the
+ * installed packages changed, and stay quiet otherwise (this runs on every
+ * `uniweb update`, including no-op ones).
+ */
+export function printSummary({ editedPaths, depsEdited, installRan, installPm, agentsResult, cliVersion }) {
   log(`${colors.bright}Summary${colors.reset}`)
   if (depsEdited) {
     log(`  ${colors.green}✓${colors.reset} package.json updated in ${editedPaths.length} file${editedPaths.length === 1 ? '' : 's'}`)
@@ -512,5 +518,18 @@ function printSummary({ editedPaths, depsEdited, installRan, installPm, agentsRe
   else if (agentsResult === 'updated') log(`  ${colors.green}✓${colors.reset} AGENTS.md updated (v${cliVersion})`)
   else if (agentsResult === 'skipped' && depsEdited) log(`  ${colors.dim}·${colors.reset} AGENTS.md not refreshed (see above)`)
   log(`${colors.dim}Review changes with${colors.reset} ${colors.cyan}git diff${colors.reset}${colors.dim}, then commit.${colors.reset}`)
+
+  // Only when the installed packages actually changed under a process that may
+  // still be running. This failure is nastier than it sounds: hot reload picks
+  // up your source but not a swapped dependency, so a dev server started before
+  // the update keeps serving the OLD framework against your NEW project code.
+  // The result looks like a bug you just introduced, and the one place nobody
+  // thinks to look is the server that has been running fine all along.
+  if (depsEdited && installRan) {
+    log('')
+    log(`${colors.yellow}↻${colors.reset}  ${colors.bright}Restart any running dev server.${colors.reset}`)
+    log(`${colors.dim}Hot reload picks up your source, not swapped dependencies — a running${colors.reset} ${colors.cyan}uniweb dev${colors.reset} ${colors.dim}keeps using the framework version it started with.${colors.reset}`)
+  }
+
   log('')
 }
