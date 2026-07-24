@@ -1146,6 +1146,79 @@ seo:
 
 ---
 
+## Localization
+
+**Content reaches components already translated.** There is no `t()`, no runtime lookup, no string wrapping — each language is a complete static build with its own HTML, `hreflang` tags, and search index. The default language has no URL prefix (`/about`); others are prefixed (`/es/about`).
+
+**Translations live in `locales/`, a sibling of `pages/` at the site root — never inside `pages/`.** The markdown under `pages/` is one language: the default.
+
+```yaml
+# site.yml
+defaultLanguage: en
+languages: [en, es, fr]        # or [{ code: es, label: Español }, …], or '*' to
+                               # auto-discover from the locales/ folder
+publishLanguages: [en, es]     # optional — fr stays a dev-previewable draft,
+                               # excluded from production output entirely
+```
+
+### The workflow
+
+```bash
+uniweb build                   # FIRST — extract scans built content, not source
+uniweb i18n extract            # → locales/manifest.json, keyed by 8-char content hash
+uniweb i18n init es fr         # → locales/es.json, locales/fr.json, pre-filled with source
+#  …translate the values…
+uniweb build                   # merges translations, emits dist/es/, dist/fr/
+```
+
+Running `extract` before a build is the usual first mistake — it reads the compiled content, so a stale build yields a stale manifest. After content changes, `uniweb i18n sync` updates the manifest and `init` refreshes the language files; `status` and `audit` report coverage and stale entries.
+
+### Two mechanisms
+
+**Hash-based strings** (the default) — `locales/{locale}.json` maps content hash → translation, so structure stays identical across languages. When one source string needs different translations depending on where it appears, the value takes an override form:
+
+```json
+{ "e5f6g7h8": { "default": "Learn More", "overrides": { "/pricing:cta": "See Pricing" } } }
+```
+
+**Free-form bodies** — when a language needs different structure, different images, or copy rewritten rather than translated. The file replaces one section's content:
+
+```
+locales/freeform/es/pages/about/hero.md        # by page route
+locales/freeform/es/collections/articles/x.md  # collections work too
+```
+
+These are **body only — no frontmatter**; params and config still come from the source section. `uniweb i18n init-freeform es pages/about hero` creates one pre-filled, and records a source hash so `uniweb i18n status --freeform` can tell you when the original moved on (`update-hash` to acknowledge). `move`, `rename`, and `prune --freeform` keep them aligned when pages get reorganized.
+
+**Collections translate in the same `extract` run**, into their own manifest at `locales/collections/manifest.json`.
+
+Localized URL segments are `slug:` in `page.yml` — see *Page organization* above.
+
+### Component side
+
+Nothing to do: `content.title` arrives in the active language. The one thing a foundation builds is a switcher.
+
+```jsx
+import { useWebsite, Link, getLocaleLabel } from '@uniweb/kit'
+
+function LanguageSwitcher() {
+  const { website } = useWebsite()
+  if (!website.hasMultipleLocales()) return null
+
+  return website.getLocales().map(locale => (
+    <Link reload key={locale.code} href={website.getLocaleUrl(locale.code)}>
+      {getLocaleLabel(locale)}
+    </Link>
+  ))
+}
+```
+
+> **Use `<Link reload>` — not a plain `<a>`, and not `window.location.href`.** `getLocaleUrl()` returns a root-relative path that does **not** include the deployment base path, so under a subdirectory deploy (`base: /docs/` in `site.yml`) a raw href sends the visitor outside the site. `<Link reload>` prepends `website.basePath` and forces the full page load a locale switch requires — an SPA `<Link>` won't do, because the other language is a different build.
+
+Locale API: `website.hasMultipleLocales()`, `getLocales()` → `[{ code, label, isDefault }]`, `getActiveLocale()`, `getLocaleUrl(code)`. `getLocaleLabel(locale)` from the kit supplies a display name for any locale the site didn't label.
+
+---
+
 ## Data
 
 A component on a page with a `data:` or `fetch:` declaration automatically receives that data in `content.data.{key}` — no opt-in in `meta.js`.
@@ -1343,6 +1416,9 @@ uniweb push / pull / clone / status   # Git-style content sync with the Uniweb b
 uniweb register [--scope @org]        # Register a foundation + its data schemas to the registry
 
 uniweb rename <foundation|site|extension> <old> <new>   # Rename across the whole workspace
+uniweb i18n extract / init / sync / status / audit    # Translation workflow (build first)
+uniweb i18n init-freeform / update-hash / move / rename / prune --freeform
+
 uniweb doctor                     # Diagnose project configuration (--fix to auto-repair)
 uniweb validate                   # Check file-based data against declared schemas (--strict for CI)
 uniweb update                     # Align @uniweb/* deps + AGENTS.md to the CLI (--dry-run, --yes)
@@ -1410,9 +1486,11 @@ Full documentation: **https://github.com/uniweb/docs** · fetch any page as raw 
 |------|------|
 | Writing page content | `authoring/writing-content.md` |
 | Theming and styling | `authoring/theming.md` |
+| Translating a site (author view) | `authoring/translating.md` |
 | Where-object predicate format | `authoring/predicates.md` |
 | Building components | `development/creating-components.md` |
 | Workspace layouts and their wiring | `development/project-structures.md` |
+| Internationalization (full model) | `development/internationalization.md` |
 | Migrating an existing design | `development/converting-existing.md` |
 | Kit API (hooks, components) | `reference/kit-reference.md` |
 | Content shape reference | `reference/content-structure.md` |
