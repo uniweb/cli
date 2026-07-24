@@ -555,7 +555,7 @@ This is [less important]{muted} context.
 
 `accent` and `callout` (both accent-colored + bold) and `muted` (subtle) are built-in defaults that adapt to context automatically. `--accent` is your brand color unless you declare a separate `colors.accent`, and resolves to the shade you authored — not a darkened one, since accent is decorative emphasis rather than body-size link text. Components receive HTML strings with spans applied: `<span accent="true">faster</span>`.
 
-Sites can override these or define additional named styles in `theme.yml`'s `inline:` section.
+Sites can adjust these or define additional named styles in `theme.yml`'s `inline:` section. Overrides merge **property by property**, so declare only what differs (`accent: { font-weight: inherit }` keeps the default color); to drop a default property rather than change it, give it a neutral value (`initial`, `inherit`, `unset`).
 
 ### Fenced Code in Content
 
