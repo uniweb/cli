@@ -1044,6 +1044,17 @@ Shorthand strings work too: `appearance: light` / `appearance: dark` (fixed, no 
 
 A site **has dark mode** whenever it offers a toggle, defaults to `dark`/`system`, or lists `dark` in `schemes:`. Any such site follows the visitor's OS on first visit (unless `respectSystemPreference: false`) and remembers a manual choice. Precedence: a stored choice wins over the OS, which wins over `default:`.
 
+Common intents:
+
+| Goal | `theme.yml` |
+|---|---|
+| Always light, no switch | `appearance: light` |
+| Always dark, no switch | `appearance: dark` |
+| Toggle, follow the OS on first visit | `appearance: { default: system, allowToggle: true }` |
+| Toggle, but always start light | `appearance: { default: light, allowToggle: true, respectSystemPreference: false }` |
+
+Note that `default: light` is a *fallback*, not a guarantee: a dark OS still wins on first visit unless you set `respectSystemPreference: false` (the last row). `default: system` is just the honest way to say "there is no fixed default — use the OS."
+
 **Rendering a toggle (foundation side).** The runtime resolves the scheme and applies it to `<html>` (`scheme-dark` / `scheme-light`) *before the page paints* — you never touch `localStorage` or `document` yourself, and there's no flash of the wrong scheme. A section type only renders the button:
 
 ```jsx
