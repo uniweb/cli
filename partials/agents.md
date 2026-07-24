@@ -217,7 +217,7 @@ The `uniweb` block in `package.json` carries platform-specific configuration tha
 | `namespace` | `uniweb register` | (none — see scope resolution) | Legacy explicit org-namespace override. Equivalent to using a scoped `package.json::name` (`"@myorg/foundation"`). Rarely needed in modern foundations. |
 | `runtimePolicy` | `dist/runtime-pin.json` (foundation build) | `"auto-minor"` | Controls how sites using this foundation receive runtime updates. Three values: `"exact"`, `"auto-patch"`, `"auto-minor"`. See "Foundation runtime policy" below. |
 
-**How a foundation reaches the catalog.** Foundations on Uniweb hosting always live in the catalog as `@org/name@version`. Two ways to get one there, both from the same `dist/foundation.js` artifact:
+**How a foundation reaches the catalog.** Foundations on Uniweb hosting always live in the catalog as `@org/name@version`. Two ways to get one there, both from the same `dist/entry.js` artifact:
 
 - **Brought along by `uniweb publish`.** When a foundation powers a single site, don't run `uniweb register` yourself. Run `uniweb publish` from the site directory — it releases the site's local foundation to the catalog under your `@org` (when its code changed) and then goes live, in one step. No separate register ceremony.
 - **Registered deliberately with `uniweb register --scope @org`.** When the foundation is a product meant for multiple sites — listed in the catalog, consumable by other developers' sites — register it on its own schedule. Consuming sites then pin a versioned ref (`foundation: '@org/name@1.2.3'`).
@@ -1400,6 +1400,8 @@ import { Visual } from '@uniweb/kit'
 
 **Utilities:** `cn()` (Tailwind class merge — `cn('px-4', condition && 'bg-primary')` resolves conflicts), `Link`, `Image`, `Asset`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`
 
+> **`cn()` gotcha — a later `text-<size>` silently drops an earlier `leading-*`.** Tailwind's size classes set line height too, so `cn()` treats the size as replacing the leading: `cn('leading-[1.1] text-4xl')` → `text-4xl`. Put the size first, or fold the leading into it (`text-[clamp(2rem,5vw,4rem)]/[1.1]`). Most likely to bite when the size comes from a lookup and the leading sits in a shared base string.
+
 **Other styled:** `SidebarLayout`, `Prose`, `Article`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
 ### Hook Signatures
@@ -1682,7 +1684,7 @@ import LessonHeader from '../../components/LessonHeader'
 
 Within the same directory (e.g., one component importing a sibling), use normal relative imports (`./AIFeedbackCard`).
 
-**Foundation entry shape (`main.js`).** A single `export default { … }` whose top-level keys are the capabilities the foundation provides — e.g. `name`, `description`, `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers`. Optionally a named `vars` export for theme-variable metadata (see *Foundation variables*). Everything else (section types, layouts) is auto-discovered from `sections/` and `layouts/` and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in the produced `dist/foundation.js`; you don't write that wrapper yourself, and most foundation code never sees it. The one place it matters: when you import your **own** `main.js` from a foundation component (e.g., a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
+**Foundation entry shape (`main.js`).** A single `export default { … }` whose top-level keys are the capabilities the foundation provides — e.g. `name`, `description`, `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers`. Optionally a named `vars` export for theme-variable metadata (see *Foundation variables*). Everything else (section types, layouts) is auto-discovered from `sections/` and `layouts/` and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in the produced `dist/entry.js`; you don't write that wrapper yourself, and most foundation code never sees it. The one place it matters: when you import your **own** `main.js` from a foundation component (e.g., a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
 
 ### Website and Page APIs
 
