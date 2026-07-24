@@ -978,6 +978,10 @@ contexts:
   light:
     section: '#fafaf9'        # Override individual tokens per context
 
+appearance:
+  default: light              # 'light' | 'dark' | 'system'; see Light/dark appearance below
+  allowToggle: true           # offer a visitor light/dark switch
+
 fonts:
   import:
     - url: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
@@ -1016,6 +1020,49 @@ contexts:
 ```
 
 > **Contrast warning:** Bright brand colors (orange, yellow, light green) at shade 500 may not meet WCAG contrast (4.5:1) with white foreground text. Test buttons for readability — if contrast is insufficient, keep the default shade 600 mapping.
+
+### Light/dark appearance (scheme vs. context)
+
+Uniweb splits what other frameworks fuse into one "dark mode" into two independent ideas:
+
+- **Section context** — the `theme:` field on a section (`light` / `medium` / `dark`). It sets the color tokens for *that one section*, so a single page can move through light, dark, and colored sections. Per-section, author-controlled, covered above.
+- **Site scheme** — the global light/dark preference, configured under `appearance:` in `theme.yml`. This is the site-wide toggle a visitor flips (or that follows their OS).
+
+They compose rather than fight: a section with **no `theme:`** inherits the site scheme, so it follows the toggle; a section that **pins** `theme: dark` stays dark in either scheme. A dark-scheme site can still carry one bright white CTA; a light-scheme site can carry one dramatic dark hero. You never write `isDark ? … : …` — components built on semantic tokens (`text-heading`, `bg-card`, `border`, …) adapt to whichever scheme and context resolve around them.
+
+Configure the scheme in `theme.yml`:
+
+```yaml
+appearance:
+  default: light                # 'light' | 'dark' | 'system' (start by following the OS)
+  allowToggle: true             # offer a visitor switch (also generates the dark tokens)
+  respectSystemPreference: true # first visit follows the OS; set false to pin `default`
+  schemes: [light, dark]        # optional — declares the available set
+```
+
+Shorthand strings work too: `appearance: light` / `appearance: dark` (fixed, no toggle), `appearance: system` (follow the OS).
+
+A site **has dark mode** whenever it offers a toggle, defaults to `dark`/`system`, or lists `dark` in `schemes:`. Any such site follows the visitor's OS on first visit (unless `respectSystemPreference: false`) and remembers a manual choice. Precedence: a stored choice wins over the OS, which wins over `default:`.
+
+**Rendering a toggle (foundation side).** The runtime resolves the scheme and applies it to `<html>` (`scheme-dark` / `scheme-light`) *before the page paints* — you never touch `localStorage` or `document` yourself, and there's no flash of the wrong scheme. A section type only renders the button:
+
+```jsx
+import { useAppearance } from '@uniweb/kit'
+
+function SchemeToggle() {
+  const { scheme, toggle, canToggle } = useAppearance()
+  if (!canToggle) return null            // hidden unless the site enables toggling
+  return <button onClick={toggle}>{scheme === 'dark' ? 'Light' : 'Dark'}</button>
+}
+```
+
+**Tailwind `dark:` variant.** If your foundation uses Tailwind's `dark:` utilities, bind them to the site scheme (not the OS media query) so they track the toggle. In `styles.css`:
+
+```css
+@custom-variant dark (&:where(.scheme-dark, .scheme-dark *));
+```
+
+Without this, `dark:` defaults to `@media (prefers-color-scheme: dark)` and ignores the site's own light/dark setting. Prefer semantic tokens over `dark:` where you can — they adapt to per-section context, which a global `dark:` cannot.
 
 ### Fonts
 
@@ -1356,7 +1403,7 @@ useThemeData()      → Theme                             // programmatic color 
 useColorContext(block) → 'light' | 'medium' | 'dark'   // current section context
 ```
 
-`isActive` and `isActiveOrAncestor` accept a Page object or a route string. `useAppearance` reads `appearance:` from `theme.yml` — `scheme` is `'light'`|`'dark'`, `canToggle` reflects `allowToggle` config. Stores preference in localStorage, respects system preference.
+`isActive` and `isActiveOrAncestor` accept a Page object or a route string. `useAppearance` reflects the site scheme from `appearance:` in `theme.yml` — `scheme` is `'light'`|`'dark'`, `canToggle` reflects `allowToggle`. The runtime applies the scheme to `<html>` before paint; the hook reads it, `toggle`/`setScheme` flip it and persist the choice to localStorage. First visit follows the OS when the site has dark mode. Full model: *Light/dark appearance* above.
 
 ### Icon Component
 
