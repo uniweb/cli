@@ -33,28 +33,50 @@ Components *should* contain: layout (`grid`, `flex`, `max-w-7xl`), spacing (`p-6
 
 The rest of this guide explains how Uniweb works. This section is what to do *first* when you've been handed a project that already uses it, plus a task.
 
-### 1. Orient — what kind of project is this?
+### 1. Orient — what kind of workspace is this?
 
-Find the site package: it's the one with a `site.yml` and a `pages/` folder. `site/` is the convention, but a workspace can hold several (under `sites/`, or as co-located pairs like `docs/site` + `docs/src`).
+**There is no single layout. Read `pnpm-workspace.yaml` first** — its `packages:` globs name the shape in one glance:
 
-Then read `site.yml` and look at `foundation:`. It decides what you're able to change at all:
+| Globs | Layout | What it implies |
+|---|---|---|
+| `src`, `site` | **single** (the default) | foundation in `src/`, site in `site/` |
+| `foundations/*`, `sites/*` | **segregated** | several sites may share one foundation — a foundation edit hits all of them |
+| `*/src`, `*/site` | **co-located projects** | one self-contained pair per project: `docs/src` + `docs/site` |
+| `extensions/*` (alongside any of the above) | extensions present | extra section types, runtime-loaded — see step 2 |
+
+Those names are convention; the globs are the truth. Full guide with the wiring for each: `development/project-structures.md`.
+
+**A site is any package with a `site.yml` and a `pages/` folder** — a workspace can hold several. Everything below calls yours `<site>/`.
+
+**Find the foundation by following the wiring, not by guessing the folder.** `foundation:` in `site.yml` is a **package name**, not a path, and folder name matches package name only by convention — co-located projects break it deliberately (folder `docs/src`, package `docs-src`). Go from name to folder via the matching `file:` dependency in `<site>/package.json`:
+
+```json
+// docs/site/package.json  →  the foundation is at docs/src/
+{ "dependencies": { "docs-src": "file:../src" } }
+```
+
+If `foundation:` isn't a workspace package name, the source isn't in this repo at all:
 
 | `foundation:` value | What it means | Can you add a section type? |
 |---|---|---|
-| a workspace package name (`src`, `docs-src`) | the foundation's source is in this repo | **Yes** — in `src/` (or the named folder) |
-| a versioned registry ref (`@org/name@1.2.3`) | the foundation is published; **its source is not in this repo** | **No** — work within the types it already offers |
+| a workspace package name (`src`, `docs-src`, `marketing`) | source is in this repo — follow the `file:` dep to it | **Yes** |
+| a versioned registry ref (`@org/name@1.2.3`) | published; **its source is not in this repo** | **No** — work within the types it offers |
 | an `https://…` URL, or `{ url: … }` | same, loaded from that URL | **No** |
 
 A versionless `@org/name` is an error rather than a shorthand — the build rejects it and asks for a version.
 
+**Check `paths:` in `site.yml` before going looking for content.** It mounts outside directories into the page tree (`paths: { pages/docs: ../../../docs }`), so a route's markdown may live in another repo or a submodule rather than under `<site>/pages/`.
+
 ### 2. Learn this project's vocabulary — before you write anything
 
-**A foundation is a fixed vocabulary of section types, and every project's is different.** Nothing in the framework tells you what a given project offers; you read it:
+**A foundation is a fixed vocabulary of section types, and every project's is different.** Nothing in the framework tells you what a given project offers; you read it — in the foundation folder you resolved in step 1, not a guessed `src/`:
 
 ```bash
-ls src/sections/                    # the section types this project has
-cat src/sections/Hero/meta.js       # what one expects and accepts
+ls <foundation>/sections/                    # the section types available
+cat <foundation>/sections/Hero/meta.js       # what one expects and accepts
 ```
+
+**Extensions add to that vocabulary.** If `site.yml` carries an `extensions:` list, each entry is a second foundation contributing its own section types, usable by name in exactly the same way. Enumerate their `sections/` too. The primary foundation wins on a name collision, and extensions are checked in declared order.
 
 Each `meta.js` is a catalog entry: `description` (what the type is for), `content:` (what markdown it expects), `params:` (what frontmatter it accepts, with defaults), `presets:` (named param bundles). Read them as a menu — that is what they are. There is no CLI command that lists them; reading the folder *is* the discovery step.
 
@@ -66,15 +88,15 @@ The architecture exists to keep content and code separate. Your task sits in one
 
 | Task | Lane | Files you touch |
 |---|---|---|
-| Add / edit / reorder a section on a page | content | `site/pages/**` |
-| Add a page | content | `site/pages/<name>/` |
-| Change colors, fonts, light/dark | content | `site/theme.yml` |
-| Change header, footer, or nav content | content | `site/layout/*.md`, or page order in `site.yml` |
-| Change how a section type *looks* everywhere | foundation | `src/sections/<Type>/` |
-| Add a new section type | foundation | `src/sections/<NewType>/` |
-| Expose a new knob to authors | foundation | `src/sections/<Type>/meta.js` + the component |
+| Add / edit / reorder a section on a page | content | `<site>/pages/**` |
+| Add a page | content | `<site>/pages/<name>/` |
+| Change colors, fonts, light/dark | content | `<site>/theme.yml` |
+| Change header, footer, or nav content | content | `<site>/layout/*.md`, or page order in `site.yml` |
+| Change how a section type *looks* everywhere | foundation | `<foundation>/sections/<Type>/` |
+| Add a new section type | foundation | `<foundation>/sections/<NewType>/` |
+| Expose a new knob to authors | foundation | `<foundation>/sections/<Type>/meta.js` + the component |
 
-**If you're on a content task and find yourself wanting to open `src/`, stop.** Usually it means you missed a param the section type already exposes — re-read its `meta.js`. If the knob genuinely doesn't exist, that's a foundation change: say so explicitly rather than quietly crossing the boundary, because editing a section type changes it for every page — and every other site — using that foundation.
+**If you're on a content task and find yourself wanting to open the foundation, stop.** Usually it means you missed a param the section type already exposes — re-read its `meta.js`. If the knob genuinely doesn't exist, that's a foundation change: say so explicitly rather than quietly crossing the boundary. Editing a section type changes it for every page that uses it — and in a segregated workspace, for **every site in the repo sharing that foundation**, which is exactly the layout chosen when a foundation is the primary deliverable. Check who else depends on it before you edit.
 
 ### 4. The loop
 
@@ -98,13 +120,15 @@ This settles any question in *Content Shape* below — whether a heading became 
 
 ### 5. Recipes
 
-**Add a section to a page.** `ls site/pages/<page>/` to see the existing sections and their numeric prefixes → pick a `type:` from the vocabulary (step 2) → create `site/pages/<page>/N-name.md` with frontmatter plus markdown. Use a decimal (`2.5-…`) to slot between existing sections without renaming them.
+Paths below are relative to the site package you identified in step 1 — `site/` in the default layout, `sites/main/` or `docs/site/` in others.
 
-**Add a page.** Create `site/pages/<name>/`, add `page.yml` (at minimum `title:`), add one or more section `.md` files. It gets the route `/<name>` automatically. Only touch `pages:` in the parent `page.yml` / `site.yml` if you need a specific order.
+**Add a section to a page.** `ls <site>/pages/<page>/` to see the existing sections and their numeric prefixes → pick a `type:` from the vocabulary (step 2) → create `<site>/pages/<page>/N-name.md` with frontmatter plus markdown. Use a decimal (`2.5-…`) to slot between existing sections without renaming them.
 
-**Change the brand color.** `site/theme.yml` → `colors.primary`. One line, and every component follows. Do **not** edit Tailwind color classes in components to change brand color — that is the exact anti-pattern this system removes.
+**Add a page.** Create `<site>/pages/<name>/`, add `page.yml` (at minimum `title:`), add one or more section `.md` files. It gets the route `/<name>` automatically. Only touch `pages:` in the parent `page.yml` / `site.yml` if you need a specific order.
 
-**Change a nav item.** First check how nav is produced. If `site/layout/header.md` lists the links (a markdown list, or a `yaml:nav` block), edit it there. If it doesn't, the Header is generating nav from the page hierarchy — change page titles and order in `site.yml` / `page.yml` instead.
+**Change the brand color.** `<site>/theme.yml` → `colors.primary`. One line, and every component follows. Do **not** edit Tailwind color classes in components to change brand color — that is the exact anti-pattern this system removes.
+
+**Change a nav item.** First check how nav is produced. If `<site>/layout/header.md` lists the links (a markdown list, or a `yaml:nav` block), edit it there. If it doesn't, the Header is generating nav from the page hierarchy — change page titles and order in `site.yml` / `page.yml` instead.
 
 **Change one section's columns / spacing / variant.** Check that type's `meta.js` `params:` first. If the knob exists, set it in that section's frontmatter and you're done, in the content lane. If it doesn't, it's a foundation change — see the warning in step 3.
 
@@ -1378,6 +1402,7 @@ Full documentation: **https://github.com/uniweb/docs** · fetch any page as raw 
 | Theming and styling | `authoring/theming.md` |
 | Where-object predicate format | `authoring/predicates.md` |
 | Building components | `development/creating-components.md` |
+| Workspace layouts and their wiring | `development/project-structures.md` |
 | Migrating an existing design | `development/converting-existing.md` |
 | Kit API (hooks, components) | `reference/kit-reference.md` |
 | Content shape reference | `reference/content-structure.md` |
