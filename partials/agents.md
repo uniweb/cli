@@ -2002,6 +2002,10 @@ Foundation styles in `styles.css`:
 
 Semantic tokens come from `theme-tokens.css` (populated from `theme.yml`). Use `@theme` only for values tokens don't cover. **Custom CSS is expected alongside Tailwind** — shadow systems, border hierarchies, gradients, glassmorphism. Tailwind handles layout; tokens handle context; `styles.css` handles everything else.
 
+**Don't set `scroll-behavior: smooth` globally.** It's a common line in a hand-written `html { … }` reset, and porting one into a foundation breaks navigation. The runtime owns scrolling: it already smooth-scrolls anchor targets itself (`scrollIntoView({ behavior: 'smooth' })`), so the CSS adds nothing there — but it resets and restores scroll on route changes with the two-argument `scrollTo(x, y)`, which *inherits* the property. Route changes then animate their scroll-to-top, and back-button restoration (which scrolls, checks the position on the next frame, and retries) keeps interrupting its own animation. Scope it to a specific scrollable element if you need it; never to `html` or `body`.
+
+**Font smoothing is a per-scheme decision, not a reset.** `-webkit-font-smoothing: antialiased` (macOS only) forces grayscale rasterization, which thins strokes. On dark surfaces that usefully counteracts the bloom of light text on near-black; on light surfaces it costs contrast and makes body text spindly. If you want it, scope it — `.scheme-dark { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }` — rather than putting it on `html` the way most CSS resets do.
+
 ## Troubleshooting
 
 **"Could not load foundation"** — Check `site/package.json` has `"foundation": "file:../foundation"`.
