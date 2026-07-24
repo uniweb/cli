@@ -29,6 +29,87 @@ Components *should* contain: layout (`grid`, `flex`, `max-w-7xl`), spacing (`p-6
 
 ---
 
+## Working in an Existing Project
+
+The rest of this guide explains how Uniweb works. This section is what to do *first* when you've been handed a project that already uses it, plus a task.
+
+### 1. Orient — what kind of project is this?
+
+Find the site package: it's the one with a `site.yml` and a `pages/` folder. `site/` is the convention, but a workspace can hold several (under `sites/`, or as co-located pairs like `docs/site` + `docs/src`).
+
+Then read `site.yml` and look at `foundation:`. It decides what you're able to change at all:
+
+| `foundation:` value | What it means | Can you add a section type? |
+|---|---|---|
+| a workspace package name (`src`, `docs-src`) | the foundation's source is in this repo | **Yes** — in `src/` (or the named folder) |
+| a versioned registry ref (`@org/name@1.2.3`) | the foundation is published; **its source is not in this repo** | **No** — work within the types it already offers |
+| an `https://…` URL, or `{ url: … }` | same, loaded from that URL | **No** |
+
+A versionless `@org/name` is an error rather than a shorthand — the build rejects it and asks for a version.
+
+### 2. Learn this project's vocabulary — before you write anything
+
+**A foundation is a fixed vocabulary of section types, and every project's is different.** Nothing in the framework tells you what a given project offers; you read it:
+
+```bash
+ls src/sections/                    # the section types this project has
+cat src/sections/Hero/meta.js       # what one expects and accepts
+```
+
+Each `meta.js` is a catalog entry: `description` (what the type is for), `content:` (what markdown it expects), `params:` (what frontmatter it accepts, with defaults), `presets:` (named param bundles). Read them as a menu — that is what they are. There is no CLI command that lists them; reading the folder *is* the discovery step.
+
+> **Never write a `type:` or a param you haven't confirmed exists.** An unknown section type does **not** fail the build. The build goes green and the page renders a red box reading `Component not found: <Type>` where your section should be. A param that no `meta.js` declares is accepted silently and does nothing. Both failures are invisible from the terminal — you will report success on a broken page.
+
+### 3. Find your lane
+
+The architecture exists to keep content and code separate. Your task sits in one of them. Decide before you edit, then stay there.
+
+| Task | Lane | Files you touch |
+|---|---|---|
+| Add / edit / reorder a section on a page | content | `site/pages/**` |
+| Add a page | content | `site/pages/<name>/` |
+| Change colors, fonts, light/dark | content | `site/theme.yml` |
+| Change header, footer, or nav content | content | `site/layout/*.md`, or page order in `site.yml` |
+| Change how a section type *looks* everywhere | foundation | `src/sections/<Type>/` |
+| Add a new section type | foundation | `src/sections/<NewType>/` |
+| Expose a new knob to authors | foundation | `src/sections/<Type>/meta.js` + the component |
+
+**If you're on a content task and find yourself wanting to open `src/`, stop.** Usually it means you missed a param the section type already exposes — re-read its `meta.js`. If the knob genuinely doesn't exist, that's a foundation change: say so explicitly rather than quietly crossing the boundary, because editing a section type changes it for every page — and every other site — using that foundation.
+
+### 4. The loop
+
+```bash
+uniweb dev                         # from the workspace root; it picks the site
+```
+
+Markdown, `theme.yml`, and component edits hot-reload. New section types are picked up without a restart.
+
+**When you're unsure what shape your markdown produces, don't reason about it — run it.** From the *site* directory (paths resolve against your shell's working directory):
+
+```bash
+uniweb inspect pages/home/hero.md              # the parsed content shape
+uniweb inspect pages/home/                     # every section on the page
+uniweb inspect pages/home/hero.md --full       # include empty fields (matches runtime)
+uniweb inspect pages/home/hero.md --sequence   # include the sequence array
+uniweb inspect pages/home/hero.md --raw        # the ProseMirror AST
+```
+
+This settles any question in *Content Shape* below — whether a heading became a subtitle or an item, whether the parser saw your data block, why `content.title` is an array. One command beats re-deriving the rules.
+
+### 5. Recipes
+
+**Add a section to a page.** `ls site/pages/<page>/` to see the existing sections and their numeric prefixes → pick a `type:` from the vocabulary (step 2) → create `site/pages/<page>/N-name.md` with frontmatter plus markdown. Use a decimal (`2.5-…`) to slot between existing sections without renaming them.
+
+**Add a page.** Create `site/pages/<name>/`, add `page.yml` (at minimum `title:`), add one or more section `.md` files. It gets the route `/<name>` automatically. Only touch `pages:` in the parent `page.yml` / `site.yml` if you need a specific order.
+
+**Change the brand color.** `site/theme.yml` → `colors.primary`. One line, and every component follows. Do **not** edit Tailwind color classes in components to change brand color — that is the exact anti-pattern this system removes.
+
+**Change a nav item.** First check how nav is produced. If `site/layout/header.md` lists the links (a markdown list, or a `yaml:nav` block), edit it there. If it doesn't, the Header is generating nav from the page hierarchy — change page titles and order in `site.yml` / `page.yml` instead.
+
+**Change one section's columns / spacing / variant.** Check that type's `meta.js` `params:` first. If the knob exists, set it in that section's frontmatter and you're done, in the content lane. If it doesn't, it's a foundation change — see the warning in step 3.
+
+---
+
 ## Content Shape
 
 ### Section format
@@ -84,6 +165,8 @@ content = {
   sequence: [],     // All elements in document order
 }
 ```
+
+> **Don't predict this — print it.** `uniweb inspect <path>` (run from the site directory) shows the actual parsed shape of any section or page. Every rule in this section is faster to confirm than to re-derive, and the rules below are the ones most often gotten wrong from memory.
 
 ### Markdown → content, side by side
 
@@ -175,7 +258,7 @@ Grouped fields and `sequence` are two interpretations of the same content. Group
 
 The decision rule: **would a content author need to change this?** Yes → markdown, frontmatter, or a tagged data block. No → component code.
 
-Start with the content, not the component. Write the markdown an author would naturally write, check what shape the parser produces, *then* build the component to receive it. You have three layers, and most of the design skill is choosing between them:
+Start with the content, not the component. Write the markdown an author would naturally write, check what shape the parser produces (`uniweb inspect <file>`), *then* build the component to receive it. You have three layers, and most of the design skill is choosing between them:
 
 **Pure markdown** — headings, paragraphs, links, images, lists, items. The default. If the content reads naturally as markdown and the parser captures it, stop here.
 
@@ -185,7 +268,9 @@ Start with the content, not the component. Write the markdown an author would na
 
 Read the markdown out loud. If an author would understand what every line does, you've chosen right. The moment markdown feels like it's encoding data rather than expressing content, step up to a tagged block.
 
-**You are designing these, not choosing from a menu.** The examples in this guide illustrate patterns, not exhaustive inventories. Any param name works in `meta.js`, any tag name works for data blocks, any section type name works. The framework has fixed mechanisms (content shape, context modes, token system); nearly everything else is yours to define.
+**When you are building the foundation, you are designing these, not choosing from a menu.** The examples in this guide illustrate patterns, not exhaustive inventories. Any param name works in `meta.js`, any tag name works for data blocks, any section type name works. The framework has fixed mechanisms (content shape, context modes, token system); nearly everything else is yours to define.
+
+**When you are writing content against a foundation that already exists, the opposite holds.** The vocabulary is fixed and finite: the section types are exactly what `src/sections/**` declares, and their params are exactly what each `meta.js` lists. Inventing a name there doesn't extend the system — it renders a red `Component not found` box on a build that otherwise reports success. Confirm before you write; see *Working in an existing project* above.
 
 **Parameter naming matters.** Would an author understand it without reading code? `columns: 3` yes, `gridCols: 3` no. `variant: centered` yes, `renderMode: flex-center` no. `align: left` yes, `contentAlignment: flex-start` no.
 
@@ -1255,6 +1340,18 @@ Platform-specific configuration that doesn't belong in npm-standard fields. All 
 ---
 
 ## Troubleshooting
+
+Most Uniweb failures are **silent** — the build succeeds and the page is wrong. Check these first, because nothing in the terminal will point you at them.
+
+**A red `Component not found: <Type>` box where a section should be** — the `type:` in that section's frontmatter names a section type this foundation doesn't have. `ls src/sections/` for the real list. The build does not fail on this, so it only surfaces by looking at the page.
+
+**A param has no effect** — it isn't declared in that section type's `meta.js` `params:`. Undeclared frontmatter is passed through and ignored rather than rejected. Read the `meta.js` for the real knobs; if the one you want doesn't exist, exposing it is a foundation change.
+
+**A section doesn't appear at all** — the file is `@`-prefixed (a child section, only rendered via `nest:`), or `_`-prefixed (treated as a draft and skipped), or it's a section type nested below the root of `src/sections/` without a `meta.js`, which means it was never discovered.
+
+**Content lands in the wrong field** — a heading became a `subtitle` when you wanted an item, or the reverse. That's the level rule (exactly one level deeper = subtitle; skipping a level, or any body content first, starts items). Run `uniweb inspect <path>` on the file rather than re-deriving it.
+
+Loud failures:
 
 **"Could not load foundation"** — check that `site/package.json` depends on the foundation *by its workspace package name*. For the default layout that's `"src": "file:../src"`; for a co-located project (`docs/src` + `docs/site`) it's `"docs-src": "file:../src"`. The key must match the foundation's `package.json::name`, not the folder it happens to sit in.
 
