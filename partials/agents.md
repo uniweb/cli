@@ -2,17 +2,13 @@
 
 ## The Architecture in One Sentence
 
-A Uniweb project separates **what the site says** from **how it's built**. Content authors write markdown — choosing section types, setting params, composing layouts. Component developers build reusable section types that receive pre-parsed content and render it. Neither touches the other's files. Neither can break the other's work.
+A Uniweb project separates **what the site says** from **how it's built**. Content authors write markdown — choosing section types, setting params, composing layouts. Component developers build reusable section types that receive pre-parsed content and render it. Neither touches the other's files.
 
-Every pattern in this guide serves that separation: markdown for content, frontmatter for configuration, `meta.js` for the contract between the two roles, semantic tokens for context adaptation, and a runtime that handles section wrapping, backgrounds, theming, and token resolution so components don't have to.
+Every pattern here serves that separation: markdown for content, frontmatter for configuration, `meta.js` for the contract between the two roles, semantic tokens for context adaptation, and a runtime that handles section wrapping, backgrounds, theming, and token resolution so components don't have to.
 
-Once the runtime parses content and hands it to your component as `{ content, params }`, **it's standard React.** Standard Tailwind. Standard anything — import any library, use any pattern, build any UI. The `{ content, params }` interface is only for section types (components that content authors select in markdown). Everything else in your foundation is ordinary React with ordinary props. The framework handles the content pipeline and the boilerplate; you handle the design and interaction.
+Once the runtime parses content and hands it to your component as `{ content, params }`, **it's standard React.** Standard Tailwind. Import any library, use any pattern. The `{ content, params }` interface applies only to *section types* (components authors select in markdown); everything else in your foundation is ordinary React with ordinary props.
 
-### What this replaces
-
-In conventional React, content lives in JSX or ad-hoc data files. Theming means conditional logic in every component. Dark mode means `isDark ? 'text-white' : 'text-gray-900'` scattered everywhere. Each component handles its own background, its own null checks, its own i18n wrapping. A "simple" marketing page becomes hundreds of lines of undifferentiated boilerplate — and when a non-developer needs to change a headline, they open a pull request into code they don't understand.
-
-Uniweb eliminates these categories of work. The runtime handles theming, backgrounds, and context adaptation. Components receive guaranteed content shapes — empty strings and arrays, never null. You build a *system* of section types, not individual pages. Authors compose pages from your system. That's what makes i18n, theming, and multi-site tractable: they're properties of the system, not things bolted onto individual components.
+You build a *system* of section types, not individual pages. That's what makes i18n, theming, and multi-site tractable — they're properties of the system rather than things bolted onto each component.
 
 ### Before you start: what the runtime already does
 
@@ -29,298 +25,13 @@ The most common mistake is reimplementing what the framework provides for free. 
 
 Components *should* contain: layout (`grid`, `flex`, `max-w-7xl`), spacing (`p-6`, `gap-8`), typography scale (`text-3xl`, `font-bold`), animations, border-radius — anything that stays the same regardless of theme context.
 
----
-
-## Documentation
-
-This project was created with [Uniweb CLI](https://github.com/uniweb/cli). Full documentation (markdown, fetchable): https://github.com/uniweb/docs
-
-**To read a specific page:** `https://raw.githubusercontent.com/uniweb/docs/main/{section}/{page}.md`
-
-**By task:**
-
-| Task | Doc page |
-|------|----------|
-| Writing page content | `authoring/writing-content.md` |
-| Theming and styling | `authoring/theming.md` |
-| Building components | `development/creating-components.md` |
-| Kit API (hooks, components) | `reference/kit-reference.md` |
-| Site configuration | `reference/site-configuration.md` |
-| Content shape reference | `reference/content-structure.md` |
-| Component metadata (meta.js) | `reference/component-metadata.md` |
-| Migrating existing designs | `development/converting-existing.md` |
-
-## Project Structure
-
-Most projects start as a workspace with two packages:
-
-```
-project/
-├── src/            # Component developer's domain (the foundation package)
-├── site/           # Content author's domain
-└── pnpm-workspace.yaml
-```
-
-A site is pure content. A foundation is the site's source code — that's why it lives in `src/`. The foundation's `package.json::name` is `src` (a unique workspace package name; symmetric with `site`).
-
-- **Foundation** (developer, in `src/`): React components. Those in `src/sections` and `src/layouts` are *section types* — selectable by content authors via `type:` in frontmatter, or used for site-level layout areas (header, footer, panel). Most have a `meta.js` with metadata in them. Everything in `src/components` (or elsewhere) is ordinary React — the developer's workbench for helper components that section types import and compose internally.
-- **Site** (content author, in `site/`): Markdown content + configuration. Each section file references a section type. Authors work here without touching foundation code. It may also contain collections of structured content and/or references to external data sources.
-
-**The composition boundary:** Authors compose pages from finished section types — choosing types, writing content, setting params. Developers compose section types from building blocks — importing helpers from `components/`, using libraries, writing JSX. These are two different levels of composition. The section type is the boundary between them. Don't expose building-block composition to authors; build complete, self-contained section types that handle their own internal structure.
-
-> Multi-site projects use sub-folders with site/foundation pairs in them (each project gets its own `src/` + `site/`), or segregate foundations and sites into separate folders (`foundations/`, `sites/`).
-
-## Project Setup
-
-Always use the CLI to scaffold projects — never write `package.json`, `vite.config.js`, `entry.js`, or `index.html` manually. The CLI resolves correct versions and structure.
-
-**npm or pnpm.** Projects include both `pnpm-workspace.yaml` and npm workspaces. Replace `pnpm` with `npm` in any command below.
-
-### New workspace
-
-```bash
-pnpm create uniweb my-project --template <n>
-cd my-project && pnpm install
-```
-Use `--template <n>` for an official template (`none`, `starter`, `marketing`, `docs`, `academic`, etc.), `--template none` for foundation + site with no content, or `--blank` for an empty workspace.
-
-### Adding a co-located project
-
-```bash
-uniweb add project docs
-pnpm install
-```
-
-This creates `docs/src/` + `docs/site/` with package names `docs-src` and `docs-site`. Use `--from <template>` to apply template content to both packages.
-
-### Adding individual packages
-
-The CLI creates exactly the folder you ask for. No silent nesting under `foundations/` or `sites/` — the framework doesn't require a particular folder layout, so the CLI doesn't impose one.
-
-```bash
-uniweb add foundation           # No name → ./src/                    (package: src)
-uniweb add foundation ui        # Bare name → ./ui/                   (package: ui)
-uniweb add foundation foundations/effects   # Slash → folder is the path  (package: effects)
-uniweb add foundation marketing --path libs # name + parent → ./libs/marketing/  (package: marketing)
-
-uniweb add site                 # No name → ./site/                   (package: site)
-uniweb add site blog            # Bare name → ./blog/                 (package: blog)
-uniweb add site sites/store     # Slash → folder is the path           (package: store)
-```
-
-If the target folder already exists, or the package name is already taken by another package in the workspace, the CLI stops with a precise error and suggests alternatives. The check uses the same `classifyPackage` logic the build uses, so cross-type collisions are caught (you can't `add site marketing` if a foundation named `marketing` is already in the workspace).
-
-Use `--project <n>` to co-locate a foundation+site pair under a project directory: `--project docs` → `docs/src/` (package `docs-src`) + `docs/site/` (package `docs-site`). The `-src` / `-site` suffix is the convention for co-located projects only — single-foundation workspaces use bare `src`.
-
-### Adding section types
-
-```bash
-uniweb add section Hero
-uniweb add section Hero --foundation ui   # When multiple foundations exist
-```
-
-Creates `sections/Hero/index.jsx` and `meta.js` with a minimal CCA-proper starter. The dev server picks it up automatically — no build or install needed.
-
-### What the CLI generates
-
-**Foundation** (`vite.config.js`, `package.json`, `main.js`, `styles.css`):
-- `defineFoundationConfig()` in vite.config.js
-- Dependencies pinned to current npm versions
-- `@import "@uniweb/kit/theme-tokens.css"` in styles.css
-
-**Site** (`vite.config.js`, `package.json`, `entry.js`, `index.html`, `site.yml`):
-- `defineSiteConfig()` in vite.config.js
-- `react-router-dom` in devDependencies (required by pnpm strict mode)
-- Standard `start()` call in entry.js
-
-## Commands
-
-```bash
-# Local development
-uniweb dev                        # Start dev server (picks the site for you)
-pnpm install                      # Install dependencies
-pnpm build                        # Build for production
-pnpm preview                      # Preview production build (SSG + SPA)
-
-# Ship a site — `uniweb deploy` asks where, if you haven't chosen yet
-uniweb deploy                     # Wizard: pick a destination, then deploy (or set up CI)
-
-# Ship a site to Uniweb hosting (needs `uniweb login`)
-uniweb publish                    # The smart path: bring the foundation along (releasing it to the
-                                  # catalog if its code changed), sync content, and go live
-
-# Ship a site to a third-party host instead
-uniweb add ci --host=<adapter>    # Set up CI so every push deploys — usually the best answer for a
-                                  # free host. github-pages, cloudflare-pages, netlify, vercel
-uniweb deploy --host=<adapter>    # Build + upload now, from this machine. Same four, plus
-                                  # s3-cloudfront. Drives that host's CLI (wrangler/netlify/vercel/aws)
-uniweb export                     # Build dist/ for any static host (no Uniweb account)
-
-# Publish a foundation for free, at permanent versioned URLs
-uniweb add ci --target foundation # GitHub Pages workflow → foundations/<name>/<version>/entry.js
-
-# Sync a site with the Uniweb backend (git-style; needs `uniweb login`)
-uniweb push                       # Push local content to the backend (creates the site on first push)
-uniweb pull                       # Pull backend content back to local files
-uniweb clone <site-uuid>          # Start a new local project from a site already in the backend
-uniweb status                     # Show what's unpushed / out of sync (local, offline)
-
-# Register a foundation + its data schemas to the Uniweb registry
-uniweb register                   # Register this foundation + the data schemas it defines
-uniweb register --scope @org      # Register under @org (also works from a schemas-only package)
-
-# Project health + maintenance
-uniweb doctor                     # Diagnose project configuration issues (--fix to auto-repair)
-uniweb validate                   # Check file-based data against your declared schemas (--strict for CI)
-uniweb update                     # Align @uniweb/* deps + this AGENTS.md with the CLI's matrix
-                                  # (--dry-run to preview, --yes for non-interactive)
-
-# Help
-uniweb --help                     # Top-level help
-uniweb <command> --help           # Per-command help (no side effects)
-```
-
-`uniweb publish` brings the site's local foundation along — releasing it to the catalog under your `@org` when its code changed — so a single site needs no separate `uniweb register` step.
-
-**Choosing where a site goes.** `uniweb deploy` never assumes a host: with nothing configured it opens a picker listing only destinations it can actually act on, and records the choice in `deploy.yml` so later runs go straight there. For a free static host, prefer `uniweb add ci --host=<adapter>` over a manual `uniweb deploy` — one command, then every push deploys, and on Cloudflare Pages / Netlify / Vercel it also adds a per-PR preview that comments the URL on the pull request. Destination config (bucket, project name, site id) lives in `deploy.yml` beside `site.yml`; host credentials come from the environment, never from that committed file.
-
-**Registering data schemas.** A foundation that defines data schemas (`@/article`, …) uses `uniweb register` to register the foundation together with those schemas in the Uniweb registry — so content authors can create and manage entities of those types. It requires authentication: run `uniweb login`, or supply a bearer token directly with `--token <bearer>` (or the `UNIWEB_TOKEN` env var). Point at a specific registry with `--registry <url>` (or `UNIWEB_REGISTER_URL`). Preview without auth using `--dry-run` (or `-o <file>` to write the submission), and set the org scope with `--scope @org` (default: the foundation's `package.json` `uniweb.scope`).
-
-**Registering standard or shared schemas (no foundation).** Data schemas can also be registered on their own — without a foundation — straight from a schemas package. Run `uniweb register` from a package that *exports* schemas (`@uniweb/schemas`, or any `@org/schemas` you maintain), or from a bare folder of `schemas/*.{yml,json,js}` files: it detects the schemas-only package automatically and submits just the data schemas (no foundation) under `--scope`. This is how the standard schemas are published under `@std`, and how an org publishes its own shared `@org/schemas` once for many foundations to reference. The same flags apply (`--scope`, `--dry-run`, `-o`, `--token`, `--registry`); `--dry-run` (or `-o <file>`) previews the exact submission without authenticating.
-
-**Staying current.** `uniweb update` aligns this project's `@uniweb/*` deps and `AGENTS.md` to the CLI that runs it; `uniweb doctor` reports drift without mutating. To pin to the newest published release, run `npx uniweb@latest update --yes` — no global install needed. The verb won't refresh AGENTS.md while declared deps still lag the CLI, or while edited deps haven't been installed: both would put the doc ahead of the code. Updating the CLI itself is your package manager's job (`npm i -g uniweb@latest`, `pnpm add -g uniweb@latest`, …); `uniweb update` does not do that.
+> Full documentation is fetchable markdown at `https://raw.githubusercontent.com/uniweb/docs/main/{section}/{page}.md`. This guide covers what you can't derive by reading code; the index at the end points to everything else. Fetch a page rather than guessing.
 
 ---
 
-## `package.json` `uniweb` configuration
+## Content Shape
 
-The `uniweb` block in `package.json` carries platform-specific configuration that doesn't belong in the npm-standard fields. All fields are optional; defaults apply when omitted.
-
-```json
-{
-  "name": "src",
-  "version": "1.0.0",
-  "uniweb": {
-    "id": "marketing",
-    "runtimePolicy": "auto-minor"
-  },
-  "dependencies": {
-    "@uniweb/core": "0.7.8",
-    "@uniweb/runtime": "0.8.9"
-  }
-}
-```
-
-| Field | Where used | Default | Purpose |
-|---|---|---|---|
-| `id` | `uniweb register` | (the bare segment of a scoped `package.json::name`, or `uniweb.id`) | The foundation's registered id — the bare-name segment in `@org/<id>`. Decoupled from `package.json::name` (a workspace concern), so renaming the foundation on the registry doesn't ripple through site dependencies. |
-| `namespace` | `uniweb register` | (none — see scope resolution) | Legacy explicit org-namespace override. Equivalent to using a scoped `package.json::name` (`"@myorg/foundation"`). Rarely needed in modern foundations. |
-| `runtimePolicy` | `dist/runtime-pin.json` (foundation build) | `"auto-minor"` | Controls how sites using this foundation receive runtime updates. Three values: `"exact"`, `"auto-patch"`, `"auto-minor"`. See "Foundation runtime policy" below. |
-
-**How a foundation reaches the catalog.** Foundations on Uniweb hosting always live in the catalog as `@org/name@version`. Two ways to get one there, both from the same `dist/entry.js` artifact:
-
-- **Brought along by `uniweb publish`.** When a foundation powers a single site, don't run `uniweb register` yourself. Run `uniweb publish` from the site directory — it releases the site's local foundation to the catalog under your `@org` (when its code changed) and then goes live, in one step. No separate register ceremony.
-- **Registered deliberately with `uniweb register --scope @org`.** When the foundation is a product meant for multiple sites — listed in the catalog, consumable by other developers' sites — register it on its own schedule. Consuming sites then pin a versioned ref (`foundation: '@org/name@1.2.3'`).
-
-**On the split between `package.json::name` and `uniweb.id`:** the workspace name is what pnpm uses for `file:` linking and what `site.yml::foundation` references. The published id is what the registry stores. Keeping them separate means a workspace rename (e.g. `marketing` → `marketing-pro`) is a one-shot `uniweb rename foundation marketing marketing-pro` — it updates the package, folder, and every dependent site, while the foundation's registered id (`uniweb.id`) stays independent.
-
-These are the only fields the platform consumes today. Future platform features that need static configuration will land here too.
-
----
-
-## Foundation runtime policy
-
-(Foundation authors only — sites don't set this.)
-
-When a foundation builds, it pins the `@uniweb/runtime` version it was built against (from its own dependencies) into `dist/runtime-pin.json`. Foundations can also declare a *policy* that controls how the runtime version moves forward on already-published sites:
-
-```json
-// foundation's package.json
-{
-  "name": "@uniweb/votiverse",
-  "version": "0.1.1",
-  "uniweb": {
-    "runtimePolicy": "auto-minor"
-  },
-  "dependencies": {
-    "@uniweb/core": "0.7.8"
-  }
-}
-```
-
-Three valid values:
-
-| Value | Meaning |
-|---|---|
-| `exact` | The site stays on exactly the runtime version this foundation built against. Newer runtime versions are not auto-applied. |
-| `auto-patch` | The site auto-updates within the same `MAJOR.MINOR.x` (e.g. `0.8.9` → `0.8.10`). Conservative; matches typical npm patch semantics. |
-| `auto-minor` | The site auto-updates within the same `MAJOR.x.y` (e.g. `0.8.9` → `0.9.0`). |
-
-**Default when unset:** `auto-minor`. Most foundations don't need to set this field — the platform's runtime is internally backwards-compatible at the minor level by convention, and `auto-minor` lets your foundation's sites pick up bug fixes and additive features without rebuilding the foundation.
-
-Set `exact` if your foundation depends on undocumented runtime internals or has been audited against one specific runtime release and you don't want to allow drift.
-
-The field is read by `@uniweb/build` at build time and emitted into `dist/runtime-pin.json` next to the runtime version:
-
-```json
-// dist/runtime-pin.json (auto-generated)
-{ "runtime": "0.8.9", "policy": "auto-minor" }
-```
-
-Sites using your foundation will see this pin + policy when they're served. Site owners cannot override your policy choice — this is the foundation author's contract with the platform.
-
-### Where does the pinned runtime version come from?
-
-You may notice your foundation's `dist/runtime-pin.json` reports a runtime version (e.g. `0.8.9`) without your `package.json` declaring `@uniweb/runtime` anywhere. This is intentional.
-
-`@uniweb/runtime` is pulled in **transitively** through `@uniweb/build` (which every foundation has as a devDependency). The runtime version baked into your foundation's pin is whichever version your `@uniweb/build` version pulled in at install time:
-
-```
-your foundation
-  └─ devDependencies: "@uniweb/build": "0.12.0"
-       └─ pulls in @uniweb/runtime  (whatever version that build version locks)
-            → resolved at install time → version goes into dist/runtime-pin.json
-```
-
-Practical implications:
-
-- **You don't need to add `@uniweb/runtime` to your foundation's dependencies.** Runtime is the host environment, not a foundation import.
-- **To bump the runtime version your foundation pins, bump your `@uniweb/build` dep.** When a newer build version ships pulling in a newer runtime, updating your devDependency is how you adopt it.
-- **You can override by adding `@uniweb/runtime` directly to your foundation's `dependencies`** — but this is rarely needed and creates two sources of truth for the runtime version. Don't do this unless you have a specific reason.
-- **Whichever runtime version is pinned, your `runtimePolicy` controls how sites can move forward beyond it.** Pinning `0.8.9` with `auto-minor` lets sites pick up `0.9.0` or higher (within the same major); pinning with `exact` locks them at `0.8.9` until you rebuild your foundation.
-
-### What happens when fields aren't set
-
-The system has multi-layer fallbacks so missing or partial information is always handled gracefully:
-
-| Scenario | What happens |
-|---|---|
-| **`uniweb.runtimePolicy` not set in `package.json`** | `dist/runtime-pin.json` is emitted with the runtime version but no `policy` field. At serve time the platform applies `auto-minor` as the implicit default. Most foundations don't need to set `runtimePolicy` — leaving it unset is the correct choice when you want default behavior. |
-| **`@uniweb/runtime` not resolvable at build time** | The build silently skips emitting `runtime-pin.json`. This was the pre-Strategy-S behavior — your foundation falls back to the legacy self-contained build path. New foundations created with `npx uniweb create` always have `@uniweb/runtime` as a dependency, so this only affects unusual workspace setups. |
-| **`runtime-pin.json` is missing or malformed** | The platform's edge dispatcher detects the absence and serves the foundation through the legacy bundling path (the foundation's own `ssr-worker-bundle.js` is used). Your sites still work; they just don't participate in runtime propagation. |
-| **`runtime-pin.json` has a `runtime` version that's not actually deployed to the platform** | The site publish flow rejects the publish with a clear error message asking you to deploy the pinned runtime version first. This is caught at publish time, not at serve time. |
-| **You set `policy: "auto-minor"` but no compatible newer version exists** | The site stays on the version you pinned. The resolver only moves forward when a newer version satisfying the policy is actually available. |
-
-Bottom line: a foundation that doesn't set `runtimePolicy` gets `auto-minor` behavior automatically. A foundation that doesn't ship `runtime-pin.json` at all (e.g. a legacy build) still serves correctly through the platform's compatibility path — you just don't get the propagation benefits. Set `runtimePolicy` explicitly only when you want to override the default (typically to `exact` for stability-critical builds).
-
----
-
-## Content Authoring
-
-The decision rule: **would a content author need to change this?** Yes → it belongs in markdown, frontmatter, or a tagged data block. No → it belongs in component code.
-
-Start with the content, not the component. Write the markdown a content author would naturally write, check what content shape the parser produces, *then* build the component to receive it.
-
-**Markdown order ≠ rendering order.** The parser extracts content into a flat structure (`title`, `icons`, `images`, `paragraphs`). The component decides how to arrange these visually. Don't write markdown in visual order — write it in semantic order. Start sections with the heading, then add icons, images, and text in any order:
-
-```markdown
-# Site Name               ← title — always start with the heading
-![](lu-graduation-cap)    ← icon — component controls where this renders
-```
-
-Placing content *before* the first heading changes the parse: headings after body content become items, not the section title. This is by design — it's how repeating content groups (cards, features) are created.
-
-### Section Format
+### Section format
 
 Each `.md` file is a section. Frontmatter on top, content below:
 
@@ -334,7 +45,7 @@ theme: dark
 
 # Build the system.       ← title (the big headline)
 
-## Not every page.         ← subtitle
+## Not every page.        ← subtitle
 
 Description paragraph.
 
@@ -343,11 +54,15 @@ Description paragraph.
 ![Image](./image.jpg)
 ```
 
-Content authors don't need to understand *why* `###` means pretitle — just that putting a smaller heading before the main heading creates a small label above it. Heading levels set *structure* (pretitle, title, subtitle), not font size — the component controls visual sizing.
+Heading levels set *structure* (pretitle, title, subtitle), not font size — the component controls visual sizing.
 
-### Content Shape
+**Markdown order ≠ rendering order.** The parser extracts content into a flat structure; the component decides how to arrange it visually. Write markdown in semantic order, not visual order — start with the heading, then add icons, images, and text in any order.
 
-The semantic parser extracts markdown into a flat, guaranteed structure. No null checks needed — empty strings/arrays if content is absent:
+**Placing content *before* the first heading changes the parse:** headings after body content become items, not the section title. This is by design — it's how repeating content groups are created.
+
+### The parsed object
+
+The semantic parser produces a flat, guaranteed structure. No null checks needed — empty strings/arrays when content is absent:
 
 ```js
 content = {
@@ -370,46 +85,7 @@ content = {
 }
 ```
 
-**Items** are repeating content groups (cards, features, FAQ entries). Created when a heading appears after body content:
-
-```markdown
-# Our Features          ← title
-
-We built this for you.  ← paragraph
-
-### Fast                ← items[0].title
-![](lu-zap)             ← items[0].icons[0]
-Lightning quick.        ← items[0].paragraphs[0]
-
-### Secure              ← items[1].title
-![](lu-shield)          ← items[1].icons[0]
-Enterprise-grade.       ← items[1].paragraphs[0]
-```
-
-**Items have the full content shape** — this is the most commonly overlooked feature. Each item has `title`, `pretitle`, `subtitle`, `paragraphs`, `links`, `icons`, `lists`, `snippets`, and even `data` (tagged data blocks). You don't need workarounds for structured content within items:
-
-```markdown
-### The Problem                ← items[0].pretitle
-## Content gets trapped        ← items[0].title
-Body text here.                ← items[0].paragraphs[0]
-
-### The Solution               ← items[1].pretitle
-## Separate content from code  ← items[1].title
-```
-
-If you need an eyebrow label above an item's title, that's `pretitle` — the same heading hierarchy as the top level. Heading hierarchy within items follows the same rules — `####` within a `###` item becomes `items[0].subtitle`. If you need metadata per item, use a tagged block inside the item:
-
-````markdown
-### Starter               ← items[0].title
-$9/month                  ← items[0].paragraphs[0]
-
-```yaml:details
-trial: 14 days
-seats: 1
-```                        ← items[0].data.details = { trial: "14 days", seats: 1 }
-````
-
-**Complete example — markdown and resulting content shape side by side:**
+### Markdown → content, side by side
 
 ```markdown
 ### Eyebrow                    │  content.pretitle = "Eyebrow"
@@ -429,25 +105,57 @@ Lightning quick.               │  content.items[0].paragraphs[0] = "Lightning 
 Enterprise-grade security.     │  content.items[1].paragraphs[0] = "Enterprise-grade..."
 ```
 
-Headings before the main title become `pretitle`. Headings after the main title at a lower importance become `subtitle`. Headings that appear after body content (paragraphs, links, images) start the `items` array.
+The three rules that produce this: headings *before* the main title become `pretitle`; a heading *after* the title at lower importance becomes `subtitle`; headings appearing *after body content* start the `items` array.
 
-**Subtitle vs items:** A heading immediately after the title becomes `subtitle` only when it is **exactly one level deeper** (H1→H2, H2→H3). Skipping levels (H1→H3) breaks the group — the deeper heading starts items instead. If you want items without a subtitle, use a `---` divider or a paragraph to close the title group:
+### Items have the full content shape
+
+This is the most commonly overlooked feature. Each item has `title`, `pretitle`, `subtitle`, `paragraphs`, `links`, `icons`, `lists`, `snippets`, and `data` — you don't need workarounds for structured content inside items. Heading hierarchy within an item follows the same rules (`####` inside a `###` item becomes that item's `subtitle`).
+
+````markdown
+### Starter               ← items[0].title
+$9/month                  ← items[0].paragraphs[0]
+
+```yaml:details
+trial: 14 days
+seats: 1
+```                       ← items[0].data.details = { trial: "14 days", seats: 1 }
+````
+
+### Subtitle vs items — the level rule
+
+A heading immediately after the title becomes `subtitle` **only when it is exactly one level deeper** (H1→H2, H2→H3). Skipping levels (H1→H3) breaks the group and the deeper heading starts items instead. To get items with no subtitle, close the title group with a `---` divider or a paragraph:
 
 ```markdown
 # Our Stats                       │  content.title = "Our Stats"
----                                │  ← divider closes the title group
+---                               │  ← divider closes the title group
 ## 15,000+                        │  content.items[0].title = "15,000+"
 Students from 90 countries        │  content.items[0].paragraphs[0]
-                                   │
+                                  │
 ## 200+                           │  content.items[1].title = "200+"
 Programs offered                  │  content.items[1].paragraphs[0]
 ```
 
-Without the `---`, `## 15,000+` would become `content.subtitle` instead of an item.
+Without the `---`, `## 15,000+` would become `content.subtitle`.
+
+### Multi-line headings
+
+Consecutive headings at the same level merge into a title array — one heading split across visual lines. Kit's `<H1>`, `<H2>`, … render arrays as a single tag with line breaks.
+
+```markdown
+# Build the future              │  content.title = ["Build the future", "with confidence"]
+# with confidence               │
+
+# Build the future              │  content.title = [
+# [with confidence]{accent}     │    "Build the future",
+                                │    "<span accent=\"true\">with confidence</span>"
+                                │  ]
+```
+
+**Rule:** same-level continuation only applies *before* going deeper. Once a subtitle level is reached, same-level headings start new items instead of merging. Use `---` to force separate items where headings would otherwise merge.
 
 ### Sequential content
 
-`content.sequence` is the flat, ordered list of all elements before any grouping. Each element has a `type` (`heading`, `paragraph`, `image`, `codeBlock`, `dataBlock`, `list`, `link`, `divider`, `inset`, etc.) and type-specific fields. Use it when grouping isn't the right lens — for example, rendering prose in document order with `<Prose>`, or finding specific elements regardless of which group they ended up in:
+`content.sequence` is the flat, ordered list of all elements before any grouping. Each element has a `type` (`heading`, `paragraph`, `image`, `codeBlock`, `dataBlock`, `list`, `link`, `divider`, `inset`, …) plus type-specific fields. Use it when grouping isn't the right lens — rendering prose in document order, or finding elements regardless of which group they landed in:
 
 ```js
 // All data blocks, regardless of heading groups
@@ -455,80 +163,37 @@ const allData = {}
 for (const el of content.sequence) {
   if (el.type === 'dataBlock') allData[el.tag] = el.data
 }
-
-// All headings in order
-const headings = content.sequence.filter(e => e.type === 'heading')
 ```
 
-The grouped fields (`title`, `paragraphs`, `items`, `data`) and the sequential view (`sequence`) are two interpretations of the same content. Grouped is better for structured layouts (cards, features). Sequential is better for prose rendering and for finding content without caring about group boundaries.
+Grouped fields and `sequence` are two interpretations of the same content. Grouped suits structured layouts (cards, features); sequential suits prose and cross-group searching.
+
+---
+
+## Authoring Vocabulary
 
 ### Choosing how to model content
 
-You have three layers. Most of the design skill is choosing between them:
+The decision rule: **would a content author need to change this?** Yes → markdown, frontmatter, or a tagged data block. No → component code.
 
-**Pure markdown** — headings, paragraphs, links, images, lists, items. This is the default. If the content reads naturally as markdown and the parser's semantic structure captures it, stop here. Most sections live entirely in this layer.
+Start with the content, not the component. Write the markdown an author would naturally write, check what shape the parser produces, *then* build the component to receive it. You have three layers, and most of the design skill is choosing between them:
 
-**Frontmatter params** — `columns: 3`, `variant: centered`, `theme: dark`. Configuration that an author might change but that isn't *content*. Would changing this value change the section's *meaning*, or just its *presentation*? Presentation → param. Meaning → content.
+**Pure markdown** — headings, paragraphs, links, images, lists, items. The default. If the content reads naturally as markdown and the parser captures it, stop here.
 
-**Tagged data blocks** — for content that doesn't fit markdown patterns. Products with SKUs, team members with roles, event schedules, pricing metadata, form definitions. When the information is genuinely structured data that a content author still owns, a well-named tagged block (`yaml:pricing`, `yaml:speakers`, `yaml:config`) is clearer than contorting markdown into a data format. Supported formats: `yaml` and `json`. The format is a serialization format (how to parse the data), not a language for display. Tagged blocks are parsed at build time into JS objects and delivered as `content.data.tagName`.
+**Frontmatter params** — `columns: 3`, `variant: centered`. Configuration an author might change but that isn't *content*. Would changing this alter the section's *meaning* or just its *presentation*? Presentation → param. Meaning → content.
 
-Read the markdown out loud. If a content author would understand what every line does and how to edit it, you've chosen the right layer. The moment markdown feels like it's encoding data rather than expressing content, step up to a tagged block — that's fine. A well-documented `yaml:pricing` block is better than a markdown structure that puzzles the author.
+**Tagged data blocks** — for content that doesn't fit markdown patterns: products with SKUs, team members with roles, event schedules, form definitions. When information is genuinely structured data that an author still owns, a well-named block (`yaml:pricing`, `yaml:speakers`) is clearer than contorting markdown. Formats: `yaml` and `json`. Parsed at build time into `content.data.tagName`.
 
-**You are designing these, not choosing from a menu.** The examples in this guide illustrate patterns, not exhaustive inventories. Any param name works in `meta.js`. Any tag name works for data blocks. Any section type name works. The framework has fixed mechanisms (the content shape, the context modes, the token system); nearly everything else is yours to define.
+Read the markdown out loud. If an author would understand what every line does, you've chosen right. The moment markdown feels like it's encoding data rather than expressing content, step up to a tagged block.
 
-```js
-// You design this — it's not a fixed schema
-export default {
-  params: {
-    columns: { type: 'number', default: 3 },
-    cardStyle: { type: 'select', options: ['minimal', 'bordered', 'elevated'], default: 'minimal' },
-    showIcon: { type: 'boolean', default: true },
-    maxItems: { type: 'number', default: 6 },
-  }
-}
-```
+**You are designing these, not choosing from a menu.** The examples in this guide illustrate patterns, not exhaustive inventories. Any param name works in `meta.js`, any tag name works for data blocks, any section type name works. The framework has fixed mechanisms (content shape, context modes, token system); nearly everything else is yours to define.
 
-````markdown
-<!-- You invent the tag name — the framework parses it -->
-```yaml:speakers
-- name: Ada Lovelace
-  role: Keynote
-  topic: The Future of Computing
-```
-````
-Access: `content.data?.speakers` — an array of objects. You defined this. The framework parsed it.
-
-**Parameter naming matters.** Would an author understand the param without reading code? `columns: 3` yes. `gridCols: 3` no. `variant: centered` yes. `renderMode: flex-center` no. `align: left` yes. `contentAlignment: flex-start` no.
-
-### Multi-Line Headings
-
-Consecutive headings at the same level merge into a title array — a single heading split across visual lines:
-
-```markdown
-# Build the future              │  content.title = ["Build the future", "with confidence"]
-# with confidence               │
-```
-
-Kit's `<H1>`, `<H2>`, etc. render arrays as a single tag with line breaks. This is how you create dramatic multi-line hero headlines.
-
-**Works with accent styling:**
-
-```markdown
-# Build the future              │  content.title = [
-# [with confidence]{accent}     │    "Build the future",
-                                │    "<span accent=\"true\">with confidence</span>"
-                                │  ]
-```
-
-**Rule:** Same-level continuation only applies before going deeper. Once a subtitle level is reached, same-level headings start new items instead of merging. Use `---` to force separate items when same-level headings would otherwise merge.
+**Parameter naming matters.** Would an author understand it without reading code? `columns: 3` yes, `gridCols: 3` no. `variant: centered` yes, `renderMode: flex-center` no. `align: left` yes, `contentAlignment: flex-start` no.
 
 ### Icons
 
-Use image syntax with library prefix: `![](lu-house)`. Supported libraries: `lu` (Lucide), `hi2` (Heroicons), `fi` (Feather), `pi` (Phosphor), `tb` (Tabler), `bs` (Bootstrap), `md` (Material), `fa6` (Font Awesome 6), and others. Browse at [react-icons.github.io/react-icons](https://react-icons.github.io/react-icons/).
+Image syntax with a library prefix: `![](lu-house)`. Libraries: `lu` (Lucide), `hi2` (Heroicons), `fi` (Feather), `pi` (Phosphor), `tb` (Tabler), `bs` (Bootstrap), `md` (Material), `fa6` (Font Awesome 6), and others — browse at [react-icons.github.io/react-icons](https://react-icons.github.io/react-icons/). Custom SVGs: `![Logo](./logo.svg){role=icon}`.
 
-Custom SVGs: `![Logo](./logo.svg){role=icon}`
-
-### Links and Media Attributes
+### Links and media attributes
 
 ```markdown
 [text](url){target=_blank}              <!-- Open in new tab -->
@@ -536,9 +201,9 @@ Custom SVGs: `![Logo](./logo.svg){role=icon}`
 ![alt](./img.jpg){role=banner}          <!-- Role determines array: images, icons, or videos -->
 ```
 
-**Quote values that contain spaces:** `{note="Ready to go"}` not `{note=Ready to go}`. Unquoted values end at the first space.
+**Quote values containing spaces:** `{note="Ready to go"}`, not `{note=Ready to go}` — unquoted values end at the first space.
 
-Standalone links (alone on a line) become buttons in `content.links[]`. Inline links stay as `<a>` tags within `content.paragraphs[]`. Multiple links sharing a paragraph are all promoted to `content.links[]`:
+Standalone links (alone on a line) become buttons in `content.links[]`. Inline links stay as `<a>` tags inside `content.paragraphs[]`. Multiple links sharing a paragraph are all promoted:
 
 ```markdown
 [Primary](/start)              ← standalone → content.links[0]
@@ -546,22 +211,22 @@ Standalone links (alone on a line) become buttons in `content.links[]`. Inline l
 Check out [this](/a) link.     ← inline → stays in paragraphs as <a> tag
 ```
 
-### Inline Text Styling
+### Inline text styling
 
 ```markdown
 # Build [faster]{accent} with structure
 This is [less important]{muted} context.
 ```
 
-`accent` and `callout` (both accent-colored + bold) and `muted` (subtle) are built-in defaults that adapt to context automatically. `--accent` is your brand color unless you declare a separate `colors.accent`, and resolves to the shade you authored — not a darkened one, since accent is decorative emphasis rather than body-size link text. Components receive HTML strings with spans applied: `<span accent="true">faster</span>`.
+`accent` and `callout` (both accent-colored + bold) and `muted` (subtle) are built-in defaults that adapt to context. `--accent` is your brand color unless you declare a separate `colors.accent`, and resolves to the shade you authored — not a darkened one, since accent is decorative emphasis rather than body-size link text. Components receive HTML strings with spans applied: `<span accent="true">faster</span>`.
 
-Sites can adjust these or define additional named styles in `theme.yml`'s `inline:` section. Overrides merge **property by property**, so declare only what differs (`accent: { font-weight: inherit }` keeps the default color); to drop a default property rather than change it, give it a neutral value (`initial`, `inherit`, `unset`).
+Sites can adjust these or add named styles in `theme.yml`'s `inline:` section. Overrides merge **property by property**, so declare only what differs (`accent: { font-weight: inherit }` keeps the default color); to drop a default property rather than change it, give it a neutral value (`initial`, `inherit`, `unset`).
 
-### Fenced Code in Content
+### Fenced code: data blocks vs snippets
 
-Fenced code in markdown serves two distinct purposes depending on whether it has a tag:
+Fenced code serves two purposes depending on whether it carries a tag.
 
-**Tagged data blocks** — structured data parsed into JS objects. The format (`yaml`/`json`) is a serialization format, not a display language. The tag is the key in `content.data`:
+**Tagged data blocks** — structured data parsed into JS objects. The tag is the key in `content.data`; the format (`yaml`/`yml`/`json`) is a serialization format, not a display language.
 
 ````markdown
 ```yaml:form
@@ -572,307 +237,41 @@ submitLabel: Send
 ```
 ````
 
-Access: `content.data?.form` → `{ fields: [...], submitLabel: "Send" }`. Supported formats: `yaml` (or `yml`) and `json`.
+→ `content.data?.form` = `{ fields: [...], submitLabel: "Send" }`
 
-**Code snippets** — display content with a language for syntax highlighting. Available in `content.snippets` as `[{ language, code }]`:
+**Code snippets** — display content with a language for syntax highlighting, collected in `content.snippets` as `[{ language, code }]`. Filter with `content.snippets.filter(s => s.language === 'css')`.
 
-````markdown
-```jsx
-function Hello() {
-  return <h1>Hello world</h1>
-}
-```
-````
-
-Access: `content.snippets[0]` → `{ language: 'jsx', code: 'function Hello() {...}' }`. The `language` attribute is a display hint for syntax highlighting, not a parsing format. Filter by language: `content.snippets.filter(s => s.language === 'css')`.
-
-Both appear in `content.sequence` for document-order rendering. The difference: tagged data blocks are parsed and extracted to `content.data`; code snippets are preserved and collected in `content.snippets`. `<Prose>` handles this automatically — it renders code snippets with syntax highlighting and skips tagged data blocks, which components access separately via `content.data`.
+Both appear in `content.sequence`. `<Prose>` handles the difference automatically — it renders snippets with highlighting and skips tagged data blocks, which components access separately via `content.data`.
 
 ### Math (LaTeX)
 
-Authors write LaTeX directly in markdown; the browser renders real math natively. The LaTeX is compiled to MathML Core **at build time** — no runtime math library ships to the browser, no CSS from a math package is required.
+Authors write LaTeX directly; it compiles to MathML Core **at build time** — no runtime math library, no extra CSS. Three forms, matching Pandoc / GitHub / VS Code / Jupyter / Obsidian convention:
 
-Three forms, matching Pandoc / GitHub / VS Code / Jupyter / Obsidian convention:
+| Form | Mode |
+|---|---|
+| `$x^2$` | Inline |
+| `$$x^2$$` | Display (block on its own line, inline display mid-paragraph) |
+| ` ```math ` fence | Display (multi-line friendly) |
+| `\$` | Literal `$` |
 
-| Form | Mode | Example |
-|---|---|---|
-| `$x^2$` | Inline | `Let $f(x) = ax + b$ be a function.` |
-| `$$x^2$$` | Display (block when on its own line, inline display mid-paragraph) | `$$\sum_{i=1}^n i$$` |
-| ` ```math ` fence | Display (multi-line friendly) | see below |
-| `\$` | Literal `$` | `The price is \$20.` |
+**Disambiguation gotcha:** a `$…$` span counts as math only when the body has no whitespace next to the delimiters *and* the closing `$` isn't immediately followed by a digit. So `It costs $5 and $10 total` and `Budget: $200` stay prose without escaping, while `Let $f(x) = 5$ be a function` is math. Use `\$` when the rules would otherwise trip.
 
-Multi-line display math uses a `math` code fence:
+Math rides the normal content pipeline — it appears in prerendered HTML, survives `compile('epub')` and `compile('pagedjs')`, and roundtrips through the editor. Component code needs nothing special.
 
-````markdown
-```math
-\int_0^\infty e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2}
-```
-````
-
-Disambiguation for `$...$`: a dollar-delimited span counts as math only when the body has no whitespace next to the delimiters *and* the closing `$` is not immediately followed by a digit. So `It costs $5 and $10 total` and `Budget: $200` stay as prose without any escaping, while `Let $f(x) = 5$ be a function` is math. Use `\$` when you need a literal `$` in content where the rules would otherwise trip it up.
-
-Math rides through the same content pipeline as everything else — it appears in prerendered HTML, survives `compile('epub')` and `compile('pagedjs')`, and roundtrips cleanly through the editor. Component code needs nothing special; `<Prose>` and `<Text>` already render the MathML that the pipeline embedded.
-
-### Composition: Nesting and Embedding
-
-Pages are sequences of sections — that's the obvious composition layer. But the framework supports real nesting: sections containing other sections, and sections containing embedded components. And it does this without leaving markdown.
-
-**Insets — embedding components in content.** Many section types need a "visual" — a hero's illustration, a split-content section's media. The classic is an image or video. But what if it's a JSX + SVG diagram? A ThreeJS animation? An interactive code playground?
-
-In other frameworks, this is where you'd reach for MDX, or prop-drill a component. In Uniweb, the content author writes:
-
-```markdown
-![Architecture overview](@NetworkDiagram){variant=compact}
-```
-
-Standard markdown image syntax — `![alt](@Component){attributes}`. The content author placed a full React component with content and params, and it looks like an image reference. The developer builds `NetworkDiagram` as an ordinary React component with `inset: true` in its `meta.js`. The kit's `<Visual>` component renders the first non-empty candidate — so the same section type works whether the author provides a static image, a video, or an interactive component:
-
-```jsx
-<Visual inset={block.insets[0]} video={content.videos[0]} image={content.images[0]} className="rounded-2xl" />
-```
-
-The content author controls what goes in the visual slot. The developer's component doesn't need to know or care whether it's rendering an image or a ThreeJS scene.
-
-**Child sections — composing layouts from reusable pieces.** You encounter a complex layout — a 2:1 split with a panel and a main area, or a grid with different card types in each cell. Your instinct says: build a specialized component. But step back.
-
-The panel? A reusable section type. The main area? Another one. The split? A Grid with `columns: "1fr 2fr"`. And your child components already adapt to narrow containers — container queries handle that.
-
-But if you hardcode which components go where, the author can't rearrange or swap them. This is where child sections solve it:
-
-```
-pages/home/
-├── 2-dashboard.md          # type: Grid, columns: "1fr 2fr"
-├── @sidebar-stats.md       # type: StatPanel
-└── @main-chart.md          # type: PerformanceChart
-```
-
-```yaml
-# page.yml
-nest:
-  dashboard: [sidebar-stats, main-chart]
-```
-
-Each child is a regular section with its own type, params, and content. The Grid renders them with `<ChildBlocks from={block} />` — and you're in the middle: you can wrap each child, filter by type, reorder, add container classes. The author decides *what* goes in the grid; your component decides *how* it's rendered.
-
-The author can swap a child for a different section type tomorrow without the developer changing a line of code. And the developer's components are reusable wherever child sections are accepted, not locked to this one layout.
-
-**Choosing the right pattern:**
-
-| Pattern | How authored | Use when |
-|---|---|---|
-| **Items** (`content.items`) | Heading groups within one `.md` file | Repeating content within one section: cards, features, FAQ entries |
-| **Child sections** (`block.childBlocks`) | `@`-prefixed `.md` files + `nest:` | Children that need their own section type, rich content, or independent editing |
-| **Insets** (`block.insets`) | `![](@Component)` in markdown | Self-contained visuals/widgets: charts, diagrams, code demos |
-
-Does the content author write content *inside* the nested element? **Yes** → child sections. **No** (self-contained, param-driven) → inset. Repeating same-structure groups within one section → items. These compose: a child section can contain insets, items work inside children.
-
-Inset components declare `inset: true` in meta.js. Don't use `hidden: true` on insets — `hidden` means "don't export this component at all" (for internal helpers), while `inset: true` means "available for `@Component` references in markdown."
-
-**What inset components receive:** Insets are full section types — they get `{ content, params, block }` like any other section. The alt text becomes `content.title`, and attributes become `params`:
-
-```markdown
-![npm create uniweb](@CommandBlock){note="Ready to go"}
-```
-→ CommandBlock receives `content.title = "npm create uniweb"` and `params.note = "Ready to go"`.
-
-**SSG:** Insets, `<ChildBlocks>`, and `<Visual>` all render correctly during prerender. Inset components that use React hooks internally (useState, useEffect) will trigger prerender warnings — this is expected and harmless; the page renders correctly client-side.
-
-### Section Nesting Details
-
-```
-pages/home/
-├── page.yml
-├── 1-hero.md
-├── 2-features.md        # Parent section (type: Grid)
-├── 3-cta.md
-├── @card-a.md           # Child of features (@ = not top-level)
-├── @card-b.md
-└── @card-c.md
-```
-
-```yaml
-# page.yml
-nest:
-  features: [card-a, card-b, card-c]
-```
-
-**Rules:**
-- `@`-prefixed files are excluded from the top-level section list
-- `nest:` declares parent-child relationships (parent name → child names)
-- `@@` prefix for deeper nesting (grandchildren)
-- `nest:` is flat: `{ features: [a, b], a: [sub-1] }`
-- Children ordered by position in the `nest:` array
-
-```jsx
-import { ChildBlocks } from '@uniweb/kit'
-
-export default function Grid({ block, params }) {
-  return (
-    <div className={`grid grid-cols-${params.columns || 2} gap-6`}>
-      <ChildBlocks from={block} />
-    </div>
-  )
-}
-```
-
-`ChildBlocks` renders each child as a bare component by default — no wrapper element, no context classes, no background. This is the right behavior for grid cells, tab panels, carousel slides, and inline children where the parent controls the container.
-
-For the rare case where children should be independent sections with their own theming and backgrounds, pass `wrapAs`:
-
-```jsx
-<ChildBlocks from={block} wrapAs="div" />
-```
-
-**Data and child blocks:** Page-level `data:` is available to all blocks on the page, including children. Each child block resolves data independently through the same page → site hierarchy. If a child component needs data, declare it in the child's `meta.js` or in the child section's frontmatter (`data: articles`).
-
-### Dividers — Content Boundaries
-
-The `---` (horizontal rule) in markdown creates a boundary between content regions. The developer decides what each region means. Two patterns:
-
-**Data-driven iteration (Loom).** Dividers separate header/body/footer in a repeated template. The content handler splits *before* Loom runs because each segment gets a different variable context — the body template contains item-level fields that don't exist on the top-level data. The header and footer are instantiated once against the full data; the body is repeated per data item.
-
-```markdown
----
-type: CvEntry
-source: education
----
-# Education
-{COUNT OF education} degrees.
----
-## {degree}
-{institution} — {field} ({start}–{end})
-```
-
-The `source` frontmatter param names the data array to iterate. The content handler (see "Content Handlers" below) reads it. A second `---` starts a footer, rendered once after all items.
-
-**UI regions (component).** Dividers separate structural areas that the component renders differently — e.g., lesson prose vs challenge content. `splitContent()` from `@uniweb/kit` splits the parsed content at divider elements in the sequence:
-
-```jsx
-import { splitContent } from '@uniweb/kit'
-
-function Lesson({ content, block }) {
-  const [lesson, challenge] = splitContent(content)
-  return (
-    <div>
-      <Prose content={lesson} block={block} />
-      <aside><Prose content={challenge} block={block} /></aside>
-    </div>
-  )
-}
-```
-
-**When to use which:** Different data contexts per region → Loom pre-parse split (handled by the content handler). Same data, different UI treatment → kit post-parse split (`splitContent`). A foundation can use both — Loom splits and iterates to produce final content, then the component splits the result to route regions to different UI.
-
-### Section Backgrounds
-
-Set `background` in frontmatter — the runtime renders it automatically:
-
-```yaml
-background: /images/hero.jpg                             # Image
-background: /videos/hero.mp4                             # Video
-background: linear-gradient(135deg, #667eea, #764ba2)    # Gradient
-background: '#1a1a2e'                                    # Color (hex — quote in YAML)
-background: primary-900                                   # Palette token (bare name or var())
-```
-
-Object form for more control:
-
-```yaml
-background:
-  image: { src: /img.jpg, position: center top }
-  overlay: { enabled: true, type: dark, opacity: 0.5 }
-```
-
-Components that render their own background declare `background: 'self'` in `meta.js`.
-
-### Page Organization
-
-```
-site/layout/
-├── header.md               # type: Header — rendered on every page
-├── footer.md               # type: Footer — rendered on every page
-└── left.md                 # type: Sidebar — optional sidebar
-
-site/pages/
-└── home/
-    ├── page.yml            # title, description, order
-    ├── hero.md             # Single section
-    └── (or for multi-section pages:)
-    ├── 1-hero.md           # Numeric prefix sets order
-    ├── 2-features.md
-    └── 3-cta.md
-```
-
-Decimals insert between: `2.5-testimonials.md` goes between `2-` and `3-`.
-
-**Ignored:** `README.md` (repo docs), `_*.md` or `_*/` (drafts/private).
-
-**page.yml:**
-```yaml
-title: About Us
-description: Learn about our company
-id: about                   # Stable identity (for page: links, survives moves)
-order: 2                    # Navigation sort position
-pages: [team, history, ...] # Child page order (... = rest). Without ... = strict (hides unlisted)
-redirect: academic          # Redirect to child page (relative or absolute path, or URL)
-slug: { fr: a-propos }      # Localized URL segment per language (multilingual sites)
-```
-
-**site.yml:**
-```yaml
-index: home                         # Just set the homepage
-pages: [home, about, ...]           # Order pages (... = rest, first = homepage)
-pages: [home, about]                # Strict: only listed pages in nav
-```
-
-**SEO & social cards:** set the site's default social card + keywords in `site.yml`; any page overrides per-field in `page.yml` (page wins, site fills the gaps). These render into every page's static `<head>` — Open Graph, Twitter Card, canonical, robots — so shares and crawlers see them without running JS. The social `image` is the field most worth setting once at the site level.
-```yaml
-# site.yml — defaults for the whole site (incl. the homepage card)
-keywords: [components, react, cms]
-seo:
-  image: /og-default.png            # social-card image
-  ogTitle: Acme
-  noindex: false                    # true keeps the WHOLE site out of search
-
-# page.yml — overrides for one page
-seo:
-  image: /og-about.png
-  ogTitle: About Acme
-  canonical: https://acme.com/about
-```
-
-**Route mapping:** Folder structure maps 1:1 to routes. Every folder keeps its natural route — `pages:` controls **order only**, not which child "becomes" the parent. The only exception is the site root: `index:` (or first in `pages:`) in site.yml sets the homepage at `/`.
-
-**Localized URLs:** On a multilingual site (`languages:` in site.yml), a page's `slug: { <lang>: <segment> }` gives it a native URL segment per language (`/about` → `/fr/a-propos`); the folder name stays the canonical route. Nested folders compose automatically, and localized URLs flow through navigation, the language switcher, and the sitemap.
-
-**Draft languages:** `publishLanguages: [en, fr]` in site.yml lists which declared languages a published build ships — unlisted ones stay dev-previewable drafts. Absent field = publish all declared; the default language must be listed.
-
-**Content-less containers:** Folders with `page.yml` but no markdown are structural groups. They appear in `getPageHierarchy()` with `hasContent: false` and their own title/label. When visited directly, the runtime auto-redirects to the first descendant with content. This supports hierarchical navigation (courses → modules → lessons) at any depth.
-
-### Lists as Navigation Menus
+### Lists as navigation menus
 
 Markdown lists model nav, menus, and grouped links. Each list item is a full content object with `paragraphs`, `links`, `icons`, and nested `lists`.
 
-**Header nav:**
 ```markdown
-- ![](lu-home) [Home](/)
+- ![](lu-home) [Home](/)          ← content.lists[0], each item.links[0] + item.icons[0]
 - ![](lu-book) [Docs](/docs)
-- ![](lu-mail) [Contact](/contact)
-```
-Access: `content.lists[0]` — each item has `item.links[0]` and `item.icons[0]`.
 
-**Footer columns:**
-```markdown
-- Product
-  - [Features](/features)
+- Product                          ← nested: group.paragraphs[0] is the label,
+  - [Features](/features)          ←   group.lists[0] holds sub-items
   - [Pricing](/pricing)
-- Company
-  - [About](/about)
-  - [Careers](/careers)
 ```
-Access: `content.lists[0]` — `group.paragraphs[0]` (label), `group.lists[0]` (sub-items with `subItem.links[0]`).
 
-Render list item text with Kit components — list items contain HTML strings, not plain text:
+List items contain HTML strings, not plain text — render them with Kit components:
 
 ```jsx
 content.lists[0]?.map((group, i) => (
@@ -887,14 +286,14 @@ content.lists[0]?.map((group, i) => (
 ))
 ```
 
-**For richer navigation with icons, descriptions, or hierarchy**, use `yaml:nav` tagged blocks:
+**For richer navigation** with icons, descriptions, or hierarchy, use a `yaml:nav` tagged block:
 
 ````markdown
 ```yaml:nav
 - label: Dashboard
   href: /
-  icon: lu:layout-grid
-- label: Docs
+  icon: lu:layout-grid       ← note the COLON form here, not the `lu-house` hyphen form
+- label: Docs                   used in markdown image syntax
   href: /docs
   icon: lu:book-open
   children:
@@ -903,23 +302,20 @@ content.lists[0]?.map((group, i) => (
 ```
 ````
 
-Access: `content.data?.nav` — array of `{ label, href, icon, text, children, target }`. Components can support both modes: use `content.data?.nav` when provided, fall back to `website.getPageHierarchy()` for automatic nav. See `reference/navigation-patterns.md` for the full pattern.
+Access: `content.data?.nav` — an array of `{ label, href, icon, text, children, target }`. Components can support both modes: use `content.data?.nav` when provided, fall back to `website.getPageHierarchy()`. Full pattern: `reference/navigation-patterns.md`.
 
 ---
 
 ## Semantic Theming
 
-Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section based on `theme:` frontmatter. The `theme` value is also available as `params.theme` — useful when a component needs conditional logic beyond CSS tokens (e.g., switching between a light and dark logo).
+Components use **semantic CSS tokens** instead of hardcoded colors. The runtime applies a context class (`context-light`, `context-medium`, `context-dark`) to each section from its `theme:` frontmatter. The value is also available as `params.theme`, for the rare case where a component needs logic beyond CSS tokens (switching between a light and dark logo, say).
 
 ```jsx
-// ❌ Hardcoded — breaks in dark context
-<h2 className="text-slate-900">...</h2>
-
-// ✅ Semantic — adapts to any context and brand
-<h2 className="text-heading">...</h2>
+<h2 className="text-slate-900">...</h2>   // ❌ Hardcoded — breaks in dark context
+<h2 className="text-heading">...</h2>     // ✅ Semantic — adapts to any context and brand
 ```
 
-**Semantic tokens** (available as Tailwind classes — `text-*`, `bg-*`, `border-*`):
+**Semantic tokens** (available as Tailwind `text-*`, `bg-*`, `border-*` classes):
 
 | Token | Purpose |
 |-------|---------|
@@ -937,22 +333,9 @@ Components use **semantic CSS tokens** instead of hardcoded colors. The runtime 
 | `success` / `warning` / `error` / `info` | Status colors |
 | `success-subtle` / `warning-subtle` / `error-subtle` / `info-subtle` | Status backgrounds (alerts) |
 
-Use with any Tailwind prefix: `text-heading`, `bg-section`, `border-border`, `bg-primary`, `text-primary-foreground`, `hover:bg-primary-hover`, `bg-error-subtle`, etc.
+**Palette shades** are also available — `text-primary-600`, `bg-neutral-100`, `border-accent-300` — 11 shades (50–950) per palette color (primary, secondary, accent, neutral). See `theme-tokens.css` for the complete mapping.
 
-**Palette shades** are also available: `text-primary-600`, `bg-neutral-100`, `border-accent-300` — 11 shades (50–950) for each palette color (primary, secondary, accent, neutral). See `theme-tokens.css` for the complete mapping.
-
-**Content authors control context** in frontmatter:
-
-```markdown
----
-type: Testimonial
-theme: dark           ← sets context-dark, all tokens resolve to dark values
----
-```
-
-Alternate between `light` (default), `medium`, and `dark` across sections for visual rhythm.
-
-**But the three presets aren't the limit.** The object form gives fine-grained control per section:
+**Authors control context** via `theme: dark` in frontmatter, alternating `light` (default), `medium`, and `dark` across sections for visual rhythm. **The three presets aren't the limit** — the object form overrides any token per section:
 
 ```yaml
 theme:
@@ -962,7 +345,55 @@ theme:
   primary: neutral-900               # Dark buttons instead of brand color
 ```
 
-Any semantic token can be overridden. And `background:` accepts CSS variables and hex colors, so authors can alternate between `var(--neutral-50)`, `var(--neutral-100)`, and `var(--primary-50)` surfaces — all without component code. If a source design uses subtle surface variations (e.g., `--surface-base` vs `--surface-sunken`), map those to specific backgrounds or token overrides in frontmatter, not to component code.
+`background:` also accepts CSS variables and hex, so authors can alternate `var(--neutral-50)` / `var(--primary-50)` surfaces with no component code. If a source design uses subtle surface variations (`--surface-base` vs `--surface-sunken`), map those to backgrounds or token overrides in frontmatter — not to component code.
+
+### Section context vs site scheme
+
+Uniweb splits what other frameworks fuse into one "dark mode":
+
+- **Section context** — the `theme:` field on one section (`light`/`medium`/`dark`). Per-section, author-controlled.
+- **Site scheme** — the global light/dark preference under `appearance:` in `theme.yml`. The site-wide toggle a visitor flips.
+
+They compose rather than fight: a section with **no `theme:`** inherits the site scheme and follows the toggle; a section that **pins** `theme: dark` stays dark in either scheme. A dark site can carry one bright white CTA. You never write `isDark ? … : …` — semantic tokens adapt to whichever scheme and context resolve around them.
+
+```yaml
+appearance:
+  default: light                # 'light' | 'dark' | 'system'
+  allowToggle: true             # offer a visitor switch (also generates the dark tokens)
+  respectSystemPreference: true # first visit follows the OS; false pins `default`
+  schemes: [light, dark]        # optional — declares the available set
+```
+
+Shorthands: `appearance: light` / `dark` (fixed, no toggle), `appearance: system` (follow the OS).
+
+A site **has dark mode** whenever it offers a toggle, defaults to `dark`/`system`, or lists `dark` in `schemes:`. Precedence: a stored choice wins over the OS, which wins over `default:`. Note that `default: light` is a *fallback*, not a guarantee — a dark OS still wins on first visit unless `respectSystemPreference: false`. (`default: system` is just the honest way to say "there is no fixed default — use the OS.")
+
+| Goal | `theme.yml` |
+|---|---|
+| Always light, no switch | `appearance: light` |
+| Always dark, no switch | `appearance: dark` |
+| Toggle, follow the OS on first visit | `appearance: { default: system, allowToggle: true }` |
+| Toggle, but always start light | `appearance: { default: light, allowToggle: true, respectSystemPreference: false }` |
+
+**Rendering a toggle.** The runtime resolves the scheme and applies it to `<html>` (`scheme-dark`/`scheme-light`) *before the page paints* — never touch `localStorage` or `document` yourself, and there's no flash of the wrong scheme. A section type only renders the button:
+
+```jsx
+import { useAppearance } from '@uniweb/kit'
+
+function SchemeToggle() {
+  const { scheme, toggle, canToggle } = useAppearance()
+  if (!canToggle) return null            // hidden unless the site enables toggling
+  return <button onClick={toggle}>{scheme === 'dark' ? 'Light' : 'Dark'}</button>
+}
+```
+
+**Tailwind `dark:` variant.** If your foundation uses `dark:` utilities, bind them to the site scheme so they track the toggle. In `styles.css`:
+
+```css
+@custom-variant dark (&:where(.scheme-dark, .scheme-dark *));
+```
+
+Without this, `dark:` falls back to `@media (prefers-color-scheme: dark)` and ignores the site's setting. Prefer semantic tokens over `dark:` where you can — they adapt to per-section context, which a global `dark:` cannot.
 
 ### theme.yml
 
@@ -978,106 +409,38 @@ contexts:
   light:
     section: '#fafaf9'        # Override individual tokens per context
 
-appearance:
-  default: light              # 'light' | 'dark' | 'system'; see Light/dark appearance below
-  allowToggle: true           # offer a visitor light/dark switch
+appearance: { default: light, allowToggle: true }
 
 fonts:
-  import:
-    - url: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
   heading: "'Inter', system-ui, sans-serif"
   body: "'Inter', system-ui, sans-serif"
 
 inline:
-  accent:
-    color: var(--link)
-    font-weight: '600'
-  callout:
-    color: var(--accent)
-    font-weight: '600'
+  callout: { color: var(--accent), font-weight: '600' }
 
 vars:
   radius: 0.75rem
 ```
 
-Each color generates 11 OKLCH shades (50–950). `neutral` uses a named preset rather than hex. Shade 500 = your exact input color. Context override keys match token names: `section:` not `bg:`, `primary:` not `btn-primary-bg:`.
+Each color generates 11 OKLCH shades (50–950); shade 500 is your exact input. `neutral` takes a named preset rather than hex. Context override keys match token names: `section:` not `bg:`, `primary:` not `btn-primary-bg:`.
 
-### How colors reach components
+**How colors reach components:** your hex → 11 shades → semantic tokens → components. In light/medium, `--primary` uses shade 600, `--link` 600, `--ring` 500; in dark, `--primary` uses 500 and `--link` 400.
 
-Your hex → 11 shades (50–950) → semantic tokens → components.
-
-Semantic tokens map shades to roles. In light/medium: `--primary` uses shade 600, `--link` uses 600, `--ring` uses 500. In dark: `--primary` uses 500, `--link` uses 400.
-
-**Buttons use shade 600 — darker than your input color.** This is an accessibility choice for contrast with white text. For brand-exact buttons:
+**Buttons use shade 600 — darker than your input color.** That's an accessibility choice for contrast with white text. For brand-exact buttons:
 
 ```yaml
-colors:
-  primary: "#E35D25"
+colors: { primary: "#E35D25" }
 contexts:
   light:
     primary: primary-500         # Your exact color on buttons
     primary-hover: primary-600
 ```
 
-> **Contrast warning:** Bright brand colors (orange, yellow, light green) at shade 500 may not meet WCAG contrast (4.5:1) with white foreground text. Test buttons for readability — if contrast is insufficient, keep the default shade 600 mapping.
-
-### Light/dark appearance (scheme vs. context)
-
-Uniweb splits what other frameworks fuse into one "dark mode" into two independent ideas:
-
-- **Section context** — the `theme:` field on a section (`light` / `medium` / `dark`). It sets the color tokens for *that one section*, so a single page can move through light, dark, and colored sections. Per-section, author-controlled, covered above.
-- **Site scheme** — the global light/dark preference, configured under `appearance:` in `theme.yml`. This is the site-wide toggle a visitor flips (or that follows their OS).
-
-They compose rather than fight: a section with **no `theme:`** inherits the site scheme, so it follows the toggle; a section that **pins** `theme: dark` stays dark in either scheme. A dark-scheme site can still carry one bright white CTA; a light-scheme site can carry one dramatic dark hero. You never write `isDark ? … : …` — components built on semantic tokens (`text-heading`, `bg-card`, `border`, …) adapt to whichever scheme and context resolve around them.
-
-Configure the scheme in `theme.yml`:
-
-```yaml
-appearance:
-  default: light                # 'light' | 'dark' | 'system' (start by following the OS)
-  allowToggle: true             # offer a visitor switch (also generates the dark tokens)
-  respectSystemPreference: true # first visit follows the OS; set false to pin `default`
-  schemes: [light, dark]        # optional — declares the available set
-```
-
-Shorthand strings work too: `appearance: light` / `appearance: dark` (fixed, no toggle), `appearance: system` (follow the OS).
-
-A site **has dark mode** whenever it offers a toggle, defaults to `dark`/`system`, or lists `dark` in `schemes:`. Any such site follows the visitor's OS on first visit (unless `respectSystemPreference: false`) and remembers a manual choice. Precedence: a stored choice wins over the OS, which wins over `default:`.
-
-Common intents:
-
-| Goal | `theme.yml` |
-|---|---|
-| Always light, no switch | `appearance: light` |
-| Always dark, no switch | `appearance: dark` |
-| Toggle, follow the OS on first visit | `appearance: { default: system, allowToggle: true }` |
-| Toggle, but always start light | `appearance: { default: light, allowToggle: true, respectSystemPreference: false }` |
-
-Note that `default: light` is a *fallback*, not a guarantee: a dark OS still wins on first visit unless you set `respectSystemPreference: false` (the last row). `default: system` is just the honest way to say "there is no fixed default — use the OS."
-
-**Rendering a toggle (foundation side).** The runtime resolves the scheme and applies it to `<html>` (`scheme-dark` / `scheme-light`) *before the page paints* — you never touch `localStorage` or `document` yourself, and there's no flash of the wrong scheme. A section type only renders the button:
-
-```jsx
-import { useAppearance } from '@uniweb/kit'
-
-function SchemeToggle() {
-  const { scheme, toggle, canToggle } = useAppearance()
-  if (!canToggle) return null            // hidden unless the site enables toggling
-  return <button onClick={toggle}>{scheme === 'dark' ? 'Light' : 'Dark'}</button>
-}
-```
-
-**Tailwind `dark:` variant.** If your foundation uses Tailwind's `dark:` utilities, bind them to the site scheme (not the OS media query) so they track the toggle. In `styles.css`:
-
-```css
-@custom-variant dark (&:where(.scheme-dark, .scheme-dark *));
-```
-
-Without this, `dark:` defaults to `@media (prefers-color-scheme: dark)` and ignores the site's own light/dark setting. Prefer semantic tokens over `dark:` where you can — they adapt to per-section context, which a global `dark:` cannot.
+> **Contrast warning:** bright brand colors (orange, yellow, light green) at shade 500 may fail WCAG 4.5:1 against white text. Test for readability — if contrast is insufficient, keep the default 600 mapping.
 
 ### Fonts
 
-Font families are a **site** setting, configured in `theme.yml` under `fonts:`. A foundation never installs a font package (no `@fontsource/*`) and never hardcodes a family in its code — if you reach for either, you're off the paved path. The framework provides three roles and wires each onto the standard elements for you:
+Font families are a **site** setting, under `fonts:` in `theme.yml`. A foundation never installs a font package (no `@fontsource/*`) and never hardcodes a family — if you reach for either, you're off the paved path. Three roles are wired onto standard elements for you:
 
 | Role | Wired onto | Typical use |
 |---|---|---|
@@ -1085,98 +448,53 @@ Font families are a **site** setting, configured in `theme.yml` under `fonts:`. 
 | `heading` | `h1, h2, h3` | titles |
 | `code` | `code, pre, kbd, samp` | code, monospace |
 
-```yaml
-# site/theme.yml
-fonts:
-  body: "Inter, system-ui, sans-serif"
-  heading: "Poppins, system-ui, sans-serif"
-  code: "'Fira Code', monospace"
-```
+(`code` was previously named `mono`; `fonts.mono` is no longer an alias — rename it.)
 
-(`code` was previously named `mono`; `fonts.mono` is no longer an alias — rename it to `fonts.code`.)
+Because the site wires families onto real elements, **the norm is that a foundation doesn't set fonts itself** — render semantic markup (`<H1>`, `<P>`, `<code>` from the kit) and the roles apply. Everything else stays Tailwind.
 
-Because the site wires the families onto real elements, **the norm is that a foundation doesn't set fonts itself** — render semantic markup (`<H1>`, `<P>`, `<code>` from the kit) and the roles apply. (It stays Tailwind for everything else — layout, spacing, weights, color.) That convention is what authors can count on: `body`/`heading`/`code` control the fonts the same way in every foundation, and one foundation re-fonts per site with zero code changes.
+**In a component, weight is yours; family is the site's.** Weight/size/style utilities (`font-bold`, `italic`, `text-xl`) are ordinary design vocabulary. A font-**family** utility is different: `font-sans`/`font-serif` resolve to Tailwind's built-in stacks unless the foundation makes them site-controlled, so a bare `font-serif` silently hardcodes a typeface.
 
-**Loading the files** — two site-side options, both config-only, neither adds a dependency:
-
-```yaml
-# Hosted (Google Fonts or any provider). The build auto-adds preconnect
-# hints and drops families no role references.
-fonts:
-  heading: "Poppins, sans-serif"
-  import:
-    - url: "https://fonts.googleapis.com/css2?family=Poppins:wght@600;700"
-
-# Self-hosted (no CDN — privacy / offline). Put the files under
-# site/public/fonts/ and declare @font-face faces; the build emits the
-# @font-face rules + preload hints, and skips any face whose family no
-# role uses.
-fonts:
-  heading: "Söhne, sans-serif"
-  faces:
-    - { family: "Söhne", src: /fonts/soehne-bold.woff2, weight: 700 }
-    - { family: "Söhne", src: /fonts/soehne-regular.woff2, weight: 400 }
-```
-
-**In a component, weight is yours; family is the site's.** Weight / size / style utilities (`font-bold`, `font-black`, `italic`, `text-xl`) are ordinary design vocabulary — use them freely. A font-**family** utility is a different matter: `font-sans` / `font-serif` resolve to Tailwind's built-in stacks unless the foundation makes them site-controlled (below), so a bare `font-serif` in a component silently hardcodes a typeface.
-
-**When a design needs typefaces the three roles can't express** — an editorial serif on selected prose, a display face for hero titles, a decorative mono for metadata labels that aren't `<code>` — a foundation declares each as a **font var** in `main.js`. A `font-*`-named var is recognized as a *typeface* automatically (no `type` needed) — a bare-named one takes `type: 'font'`. Either way the family loads (via the site's `fonts.import` / `fonts.faces`), it appears in the foundation's schema tagged as a font so the site — and the visual editor's theme panel — can set it, and the family stays site-controlled.
+**When a design needs typefaces the three roles can't express** — an editorial serif, a display face for hero titles — declare each as a **font var** in `main.js`. A `font-*`-named var is recognized as a typeface automatically (no `type` needed); a bare-named one takes `type: 'font'`. Either way the site loads and owns the family:
 
 ```js
-// foundation src/main.js — typefaces this foundation manages itself.
-// `font-*` names are recognized as fonts automatically (no `type` needed);
-// defaults are OS stacks, so it renders native until a site opts in.
+// foundation src/main.js
 export const vars = {
   'font-serif': {
     default: 'ui-serif, Georgia, serif',
     description: 'Editorial serif — blurbs, taglines, quotes',
-    applyTo: ['blockquote', '.tagline'],   // framework applies it here, like a built-in role
+    applyTo: ['blockquote', '.tagline'],   // framework emits the rule, like a built-in role
   },
   'font-display': {
     default: 'ui-sans-serif, system-ui, sans-serif',
-    description: 'Display — hero titles',
     // no applyTo → the component wires it (a `font-display` utility, or var(--font-display))
   },
 }
 ```
 
-Two ways to apply a typed font var — choose per var:
-
-- **`applyTo: [selectors]`** — the framework emits the `font-family` rule for you, exactly like the three built-in roles. Declarative; no font-family classes in components.
-- **Omit `applyTo`** — the component wires it: a Tailwind `font-*` utility when the var is named after a Tailwind scale (`font-serif` → the `font-serif` utility), or `font-family: var(--font-display)` for a custom name.
-
-Either way the site sets the family and loads it — no component changes. The `fonts:` block takes **any** role name, built-in or foundation-added, so a site sets its whole type system in one place:
+The `fonts:` block takes **any** role name, built-in or foundation-added, so a site sets its whole type system in one place. The three roles are defaults you can **retarget** too — redeclaring a role's var with a new `applyTo` changes which elements it paints, while the site still owns the family.
 
 ```yaml
-# site/theme.yml
+# site/theme.yml — loading, hosted or self-hosted; both config-only, no dependency
 fonts:
-  body: "Inter, system-ui, sans-serif"
-  serif: '"Fraunces", Georgia, serif'   # a foundation-declared role, set by name
+  heading: "Poppins, sans-serif"
+  serif: '"Fraunces", Georgia, serif'      # a foundation-declared role, set by name
+  import:
+    - url: "https://fonts.googleapis.com/css2?family=Poppins:wght@600;700"
   faces:
     - { family: "Fraunces", src: /fonts/fraunces.woff2, weight: "100 900" }
 ```
 
-(`vars: { font-serif: … }` still works — same role. `serif` and `font-serif` are the same font var; the `font-` spelling is just the one Tailwind's `font-serif` utility reads.)
+The build auto-adds preconnect hints for imports, emits `@font-face` + preload for faces, and drops any family no role references.
 
-**The three roles are defaults you can retarget.** `body`/`heading`/`code` and their selectors are *defaults*, not a fixed contract — a foundation can **redefine** a role (change which elements it paints) or **add** roles, all through the same `type: 'font'` var. Declaring a role's var with a new `applyTo` retargets it; the site still owns the family.
+> **`serif` and `font-serif` are the same font var** — the `font-` spelling is just the one Tailwind's `font-serif` utility reads. Declare it either way in `main.js` (`vars: { serif: … }` works identically); the site sets it by the bare role name under `fonts:`.
 
-```js
-// foundation src/main.js — retarget a built-in role, add a new one.
-export const vars = {
-  heading: { type: 'font', applyTo: ['h1', 'h2', 'h3', 'h4'] },        // include h4 in the heading font
-  serif:   { type: 'font', default: 'ui-serif, Georgia, serif', applyTo: ['blockquote'] },
-}
-```
-
-> The `code` role owns `--font-code`. Tailwind's `font-mono` utility (which reads `--font-mono`) is a **separate** concern — a foundation controls it by declaring its own `font-mono` font var. So setting `fonts.code` styles code without disturbing `font-mono`-styled labels, and vice-versa.
+> The `code` role owns `--font-code`. Tailwind's `font-mono` utility (which reads `--font-mono`) is a **separate** concern — control it by declaring your own `font-mono` font var. So `fonts.code` styles code without disturbing `font-mono`-styled labels, and vice-versa.
 
 ### Foundation variables
 
-Most customization is handled by component params. Both section components and layout components declare their own params in `meta.js` — layouts are full components with params, not just structural wrappers. A header height, for example, is typically a layout param, not a foundation var.
+Most customization belongs in component params — both section and layout components declare their own in `meta.js`. A header height is a layout param, not a foundation var.
 
-Foundation-level CSS variables are for values that must stay consistent **across** multiple components — shared radii, spacing scales, or additional typefaces beyond the three built-in roles (body, heading, code), declared as typed font vars (`type: 'font'`, covered in **Fonts** above). Don't reach for foundation vars when a component or layout param would do.
-
-When you do need one, declare it in **`main.js`** — the single source of truth:
+Foundation-level CSS variables are for values that must stay consistent **across** multiple components: shared radii, spacing scales, extra typefaces. Declare them in **`main.js`**, the single source of truth:
 
 ```js
 export const vars = {
@@ -1185,168 +503,55 @@ export const vars = {
 }
 ```
 
-Each entry does everything at once: it ships the default as a CSS custom property (`--radius-lg`, `--section-padding-y`) so `var(--section-padding-y)` resolves everywhere, it gives the visual editor a description and type, and it's the value a site overrides in `theme.yml` under `vars:` (the site's theme CSS wins). You don't declare these anywhere else — the defaults reach the browser on their own, in dev and in production, whether the foundation is bundled or loaded at runtime.
+Each entry ships the default as a CSS custom property (so `var(--section-padding-y)` resolves everywhere), gives the visual editor a description and type, and is what a site overrides under `vars:` in `theme.yml`. You don't declare these anywhere else — the defaults reach the browser on their own, in dev and production, bundled or runtime-loaded.
 
-A `styles.css` `@theme` block is a separate tool for a different job: registering a token so **Tailwind generates utility classes** from it (`@theme { --breakpoint-xs: 30rem }` → `xs:` variants). Reach for it to extend Tailwind's vocabulary — not to ship a plain default.
+A `styles.css` `@theme` block is a different tool: it registers a token so **Tailwind generates utilities** from it (`@theme { --breakpoint-xs: 30rem }` → `xs:` variants). Use it to extend Tailwind's vocabulary, not to ship a plain default.
 
-**A name that matches a Tailwind namespace is an intentional override.** A var named after a Tailwind v4 token scale — `radius-*`, `shadow-*`, `spacing`, `font-*` — redefines that scale wherever the matching utility appears: declaring `radius-lg` retunes every `rounded-lg` in the foundation from Tailwind's default to your value (sites can still override in `theme.yml`). That's the point when you mean it — just name deliberately so you don't reshape a utility by accident.
-
-**Common mistake:** Using foundation vars for values that belong to a specific component. A header height is a layout param, not a foundation var — the layout component owns it. A sidebar width is a layout param too. Foundation vars are for values that multiple unrelated components share — radii, spacing, shadows.
+**A name matching a Tailwind namespace is an intentional override.** A var named after a Tailwind v4 scale — `radius-*`, `shadow-*`, `spacing`, `font-*` — redefines that scale wherever the matching utility appears: declaring `radius-lg` retunes every `rounded-lg` in the foundation. That's the point when you mean it — name deliberately so you don't reshape a utility by accident.
 
 ### Design richness beyond tokens
 
 Tokens handle context adaptation — the hard problem. **They are a floor, not a ceiling.** A great foundation adds design vocabulary on top:
 
 ```css
-/* styles.css */
 .border-subtle { border-color: color-mix(in oklch, var(--border), transparent 50%); }
-.border-strong { border-color: color-mix(in oklch, var(--border), var(--heading) 30%); }
 .text-tertiary { color: color-mix(in oklch, var(--body), var(--subtle) 50%); }
 ```
 
-These compose with tokens — they adapt per context because they reference token variables. But they add nuance the 24-token set doesn't provide. Use palette shades directly (`var(--primary-300)`, `bg-neutral-200`) for fine-grained color control.
-
-**The priority:** Design quality > portability > configurability. A beautiful foundation for one site is more valuable than a generic one that looks flat.
+These compose with tokens — they adapt per context because they reference token variables — while adding nuance the token set doesn't provide. Use palette shades directly (`var(--primary-300)`, `bg-neutral-200`) for fine-grained control. **The priority: design quality > portability > configurability.**
 
 ---
 
 ## Component Development
 
-You're not building pages — you're building a **system** of section types that content authors compose into pages. Name by purpose, not content: `Testimonial` not `WhatClientsSay`, `SplitContent` not `AboutSection`. Expect consolidation: a React site with 30+ components typically maps to 8–15 Uniweb section types.
+You're not building pages — you're building a **system** of section types authors compose into pages. Name by purpose, not content: `Testimonial` not `WhatClientsSay`, `SplitContent` not `AboutSection`. Expect consolidation: a React site with 30+ components typically maps to 8–15 Uniweb section types.
 
-### Props Interface
+### Props interface
 
 ```jsx
 function MyComponent({ content, params, block }) {
-  const { title, paragraphs, links, items } = content  // Guaranteed shape
-  const { columns, variant } = params                    // Defaults from meta.js
+  const { title, paragraphs, links, items } = content   // Guaranteed shape
+  const { columns, variant } = params                   // Defaults from meta.js
   const { website } = useWebsite()                      // Or block.website
 }
 ```
 
-All non-reserved frontmatter fields become `params`. Reserved: `type`, `preset`, `input`, `data`, `id`, `background`, `theme`, `source`, `where`. Everything else flows to the component.
+All non-reserved frontmatter fields become `params`. Reserved: `type`, `preset`, `input`, `data`, `id`, `background`, `theme`, `source`, `where`. Everything else flows through.
 
-### Data
+### Rendering content with Kit
 
-A component on a page with a `data:` or `fetch:` declaration automatically receives that data in `content.data.{key}`. No opt-in required in `meta.js`. **Bound collections always arrive as arrays.** On a list page, `content.data.articles` is the full collection. On a template page (`[slug]/`), the matched record is delivered under the *same* collection key as a single-element array — the detail section reads `content.data.articles[0]`. When nothing matches, the key is `[]`. The runtime never coerces the array to a single object and never synthesizes a separate singular key.
-
-```jsx
-function Article({ content, block }) {
-  if (block.dataLoading) return <DataPlaceholder />
-  const article = content.data.articles?.[0]   // focused record on a [slug] page
-  if (!article) return <NotFound />
-  return <ArticleView article={article} />
-}
-```
-
-Components can ignore keys in `content.data` they don't need — the same way unused `params` are ignored.
-
-**Declaring data schemas.** `meta.js` declares the schema for each `content.data` key with a single `data:` field — there is no separate `schemas:` key. Each entry's value is one of: a **named ref** (`'@/article'` resolves to this foundation's `foundation/schemas/article.{js,json,yml,yaml}`; `'@std/person'` is a shared standard), an **inline field map** (`{ field: { type, default } }`), or an **inline rich-form** (`{ fields: [...] }`, an editor form). Refs use Uniweb namespacing, resolved on disk at build time, never fetched: `@/name` (this foundation's own `foundation/schemas/`), `@std/name` (the shared standard schemas, shipped in the `@uniweb/schemas` package), and `@org/name` (an org's own schemas, from its `@org/schemas` package — define a schema once and share it across foundations). The schema is a hint: it supplies field defaults and drives the editor, not delivery (which is default-on). For an explicit opt-out (rare), set `data: false`.
-
-```js
-// meta.js
-export default {
-  data: {
-    articles: '@/article',                               // named ref (this foundation)
-    authors:  '@std/person',                             // named ref (shared standard)
-    pricing:  { tier: { type: 'string', default: '' } }, // inline field map
-  },
-}
-```
-
-**Routing a scope to a folder.** By default `@org/name` resolves from that org's `@org/schemas` package. A foundation can instead route a scope to a plain folder of schema files — anywhere on disk, no package, no install — via an optional `schemas.config.js` at its root. This is how a team shares one set of schemas across many foundations:
-
-```js
-// schemas.config.js  —  @acme/person → ../shared/acme-schemas/person.{js,yml}
-export default { '@acme': '../shared/acme-schemas', '@brand': process.env.BRAND_SCHEMAS }
-```
-
-Plain JS, so paths can be relative, absolute, or read from an env var. A routed scope wins over the package convention; `@/` and `@uniweb` are never routable; an empty value (e.g. an unset env var) falls back to the package convention. A routed scope has no package fallback for a *missing* schema (it errors rather than silently load a different definition). To override a single schema — keeping the rest of the scope routed to the shared folder — add a per-schema key pointing at a file: `'@acme/person': './schemas/acme-person.yml'` (most-specific wins: file › directory › package).
-
-**Validate your data.** `uniweb validate` checks your file-based data against these declared schemas — missing required fields, type/enum/format mismatches, nested fields — before you ship. Warns by default, `--strict` for a non-zero CI exit. It's distinct from `uniweb doctor` (which checks project structure): `validate` checks your *data* against the schemas you *declared*. Remote (`url:`), `ref`/`options`, and rich `sections`-form inputs are reported deferred — validate those against live data.
-
-When the same record needs to be a single object rather than a one-element array, that's the foundation's job: read `content.data.articles[0]`, or reshape `content.data` once with a `handlers.data` hook.
-
-**Authoring queries.** Fetch declarations (`fetch:` or the `data:` shorthand) accept query operators that describe which records you want, in what order, how many: `where:` (a where-object predicate), `sort:` (e.g. `date desc`), `limit:` (first N records). Whether the source evaluates them or the framework applies them as a runtime fallback is a transport detail controlled by the site's `fetcher.supports:` declaration.
-
-```yaml
-# pages/blog/page.yml
-fetch:
-  collection: articles
-  where: { published: true, tags: featured }
-  sort: date desc
-  limit: 3
-```
-
-**Lean lists with `deferred:`.** Collections with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]` in `site.yml`. The cascade payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json` (file-based collections — markdown, YAML, or JSON) or fetched from an author-declared `detailUrl:` pattern (API-backed collections). On dynamic-route pages the focused entity's full record is delivered automatically; elsewhere components fetch on demand via the `useEntityDetail` kit hook.
-
-**Component-side fetching.** When a component genuinely needs to fetch something on its own (a search box, a "load more" button, a popover that lazy-loads), use the kit hooks (`useFetched`, `useCacheEntry`, `useEntityDetail`). They share the framework's cache and dispatcher with declarative fetches; same-key requests dedupe automatically.
-
-See [Data Fetching](https://github.com/uniweb/docs/blob/main/reference/data-fetching.md) for the full model and [Predicates](https://github.com/uniweb/docs/blob/main/authoring/predicates.md) for the where-object format with examples.
-
-### block properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `block.page` | Page | Parent page |
-| `block.website` | Website | Site-level data and navigation |
-| `block.type` | string | Component type name |
-| `block.childBlocks` | Block[] | File-based child sections |
-| `block.insets` | Block[] | Inline `@Component` references |
-| `block.getInset(refId)` | Block | Lookup inset by refId |
-| `block.properties` | object | Raw frontmatter |
-| `block.rawContent` | object | ProseMirror document — passed internally when using `<Article block={block} />` |
-| `block.themeName` | string | `"light"`, `"medium"`, `"dark"` |
-| `block.stableId` | string | Stable ID from filename or `id:` |
-| `block.key` | string | Unique key across pages (path + id) — use as React key |
-| `block.path` | string | Page route this block belongs to |
-
-### Section Wrapper
-
-The runtime wraps every section in `<section>` with context class and background. Customize with static properties:
-
-```jsx
-function Hero({ content, params }) {
-  return (
-    <div className="max-w-7xl mx-auto px-6">
-      <h1 className="text-heading text-5xl font-bold">{content.title}</h1>
-    </div>
-  )
-}
-
-Hero.className = 'pt-32 md:pt-48'   // Override spacing
-Hero.as = 'div'                      // Change wrapper element
-
-export default Hero
-```
-
-- `Component.className` — adds classes to the runtime wrapper. Section-level spacing, borders, overflow.
-- `Component.as` — changes wrapper element: `'nav'` for headers, `'footer'` for footers.
-
-**Layout components** typically need `p-0` to suppress default padding:
-
-```jsx
-Header.className = 'p-0'
-Header.as = 'header'
-```
-
-### Rendering Content with Kit
-
-Content fields are **HTML strings** — they contain `<strong>`, `<em>`, `<a>` from markdown. Never render them with raw `{content.title}` in JSX — that shows HTML tags as visible text. Use Kit components:
-
-**Extracted fields** (most common — custom layout with content from markdown):
+Content fields are **HTML strings** — they contain `<strong>`, `<em>`, `<a>` from markdown. **Never render them with raw `{content.title}` in JSX** — that shows HTML tags as visible text. Use Kit components:
 
 ```jsx
 import { H1, H2, H3, P, Span } from '@uniweb/kit'
 
 <H1 text={content.title} className="text-heading text-5xl font-bold" />
 <H2 text={content.subtitle} className="text-heading text-2xl" />
-<H3 text={item.title} className="text-heading text-lg font-semibold" />
 <P text={content.paragraphs} className="text-body" />
 <Span text={listItem.paragraphs[0]} className="text-subtle" />
 ```
 
-Kit provides `H1` through `H6` — use the appropriate level for semantic hierarchy. These render their own HTML tag — don't wrap: `<H2 text={...} />` not `<h2><H2 text={...} /></h2>`.
+Kit provides `H1`–`H6`. These render their own HTML tag — **don't wrap them**: `<H2 text={…} />`, not `<h2><H2 text={…} /></h2>`.
 
 **Full content rendering** (article/docs sections where the author controls the flow):
 
@@ -1357,162 +562,74 @@ import { Section, Prose } from '@uniweb/kit'
 <Prose content={content} block={block} />
 ```
 
-`Prose` renders from the parsed content sequence — headings, paragraphs, images, code snippets, lists, etc. — with prose typography. Tagged data blocks are **skipped** (they're structured data, not prose). Access them via `content.data` for custom rendering:
+`Prose` renders from the parsed sequence — headings, paragraphs, images, snippets, lists — with prose typography. Tagged data blocks are **skipped**; access them via `content.data` for custom rendering. Pass `content` (needs `.sequence`), and `block` too if the content uses insets. Also works as a pure typography wrapper: `<Prose>{children}</Prose>`.
 
-```jsx
-function Lesson({ content, block }) {
-  return (
-    <div>
-      <Prose content={content} block={block} />
-      {content.data.quiz && <Quiz data={content.data.quiz} />}
-    </div>
-  )
-}
-```
+`Article` is an older alternative rendering from `block.rawContent` (raw ProseMirror), including data blocks. Prefer `Prose` for new components.
 
-Pass `content` (the parsed content object — has `.sequence`). Pass `block` too if the content uses insets. Also works as a pure typography wrapper: `<Prose>{children}</Prose>`.
+### Kit API by use case
 
-`Article` is an older alternative that renders from `block.rawContent` (raw ProseMirror nodes) — it renders everything including data blocks. Prefer `Prose` for new components.
-
-**Visuals:**
-
-```jsx
-import { Visual } from '@uniweb/kit'
-
-<Visual inset={block.insets[0]} video={content.videos[0]} image={content.images[0]} className="rounded-2xl" />
-```
-
-### Kit API by Use Case
-
-**Rendering text:** `H1`–`H6`, `P`, `Span`, `Div`, `Text` (with `as` prop)
-
-**Rendering content:** `Section` (full section with prose + layout), `Prose` (prose from parsed content sequence, skips data blocks), `Article` (raw ProseMirror rendering), `Render` (ProseMirror nodes → React), `ChildBlocks` (render child sections)
-
-**Rendering media:** `Visual` (first non-empty: inset/video/image), `Image`, `Media`, `Icon`
-
-**Navigation and routing:** `Link` (`to`/`href`, `to="page:about"` for page ID resolution, auto `target="_blank"` for external, `reload` for full page reload), `useActiveRoute()`, `useWebsite()`, `useRouting()`
-
-**Header and layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()`
-
+**Text:** `H1`–`H6`, `P`, `Span`, `Div`, `Text` (with `as`)
+**Content:** `Section`, `Prose`, `Article`, `Render` (ProseMirror → React), `ChildBlocks`
+**Media:** `Visual` (first non-empty: inset/video/image), `Image`, `Media`, `Icon`
+**Navigation:** `Link` (`to`/`href`, `to="page:about"` for page-ID resolution, auto `target="_blank"` for external, `reload` for full page load), `useActiveRoute()`, `useWebsite()`, `useRouting()`
+**Header/layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()`
 **Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`, `useTheme(name)`
+**Theming data:** `useThemeData()`, `useColorContext(block)`
+**Utilities:** `cn()`, `Link`, `Image`, `Asset`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`
+**Other styled:** `SidebarLayout`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
-**Data and theming:** `useThemeData()` (programmatic color access), `useColorContext(block)`
-
-**Utilities:** `cn()` (Tailwind class merge — `cn('px-4', condition && 'bg-primary')` resolves conflicts), `Link`, `Image`, `Asset`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`
+```js
+useActiveRoute()        → { route, rootSegment, isActive(pageOrRoute), isActiveOrAncestor(pageOrRoute) }
+useMobileMenu()         → { isOpen, open, close, toggle }   // auto-closes on route change
+useScrolled(threshold?) → boolean                            // true past threshold (px)
+useAppearance()         → { scheme, setScheme, toggle, canToggle, schemes }
+useWebsite()            → { website }
+useThemeData()          → Theme                              // programmatic color access
+useColorContext(block)  → 'light' | 'medium' | 'dark'
+```
 
 > **`cn()` gotcha — a later `text-<size>` silently drops an earlier `leading-*`.** Tailwind's size classes set line height too, so `cn()` treats the size as replacing the leading: `cn('leading-[1.1] text-4xl')` → `text-4xl`. Put the size first, or fold the leading into it (`text-[clamp(2rem,5vw,4rem)]/[1.1]`). Most likely to bite when the size comes from a lookup and the leading sits in a shared base string.
 
-**Other styled:** `SidebarLayout`, `Prose`, `Article`, `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
-
-### Hook Signatures
-
-```js
-useActiveRoute()    → { route, rootSegment, isActive(pageOrRoute), isActiveOrAncestor(pageOrRoute) }
-useMobileMenu()     → { isOpen, open, close, toggle }  // auto-closes on route change
-useScrolled(threshold?) → boolean                       // true when scrolled past threshold (px)
-useAppearance()     → { scheme, setScheme, toggle, canToggle, schemes }
-useWebsite()        → { website }                       // the Website object
-useThemeData()      → Theme                             // programmatic color access
-useColorContext(block) → 'light' | 'medium' | 'dark'   // current section context
-```
-
-`isActive` and `isActiveOrAncestor` accept a Page object or a route string. `useAppearance` reflects the site scheme from `appearance:` in `theme.yml` — `scheme` is `'light'`|`'dark'`, `canToggle` reflects `allowToggle`. The runtime applies the scheme to `<html>` before paint; the hook reads it, `toggle`/`setScheme` flip it and persist the choice to localStorage. First visit follows the OS when the site has dark mode. Full model: *Light/dark appearance* above.
-
-### Icon Component
-
-The `<Icon>` renders icons from content or explicit props:
+### Icon component
 
 ```jsx
 {content.icons.map((icon, i) => <Icon key={i} {...icon} />)}   // From content
 <Icon name="search" />                                          // Lucide (default)
-<Icon name="hi2-arrow-right" />                                 // Other library
+<Icon name="hi2-arrow-right" />                                 // Other library by prefix
 <Icon name="close" />                                           // Built-in (no network)
 ```
 
-The `name` prop handles everything: built-in names, Lucide icons (default when no library prefix), and other libraries via prefix (`hi2-arrow-right`, `tb-star`). From content, spread the icon object which has `library` + `name` fields.
+Built-ins (instant, no network): `check`, `close`, `menu`, `chevronDown`, `chevronRight`, `externalLink`, `download`, `play`, and a few others. Other props: `svg`, `url`, `size` (default `'24'`), `className`.
 
-Other props: `svg` (direct SVG string), `url` (fetch from URL), `size` (default `'24'`), `className`.
+### Section wrapper
 
-Built-in icons (instant, no network): `check`, `close`, `menu`, `chevronDown`, `chevronRight`, `externalLink`, `download`, `play`, and a few others.
-
-### Content Patterns for Header and Footer
-
-Layout sections (`header.md`, `footer.md`) are regular section types — they support the full content shape including tagged data blocks, lists, links, icons, and items. The only difference is they render on every page instead of one.
-
-Header and Footer combine several content categories. Use different parts of the content shape for each role:
-
-**Header** — title for logo, list for nav, standalone link for CTA:
-
-````markdown
----
-type: Header
----
-
-# Acme Inc
-
-- ![](lu-search) [How It Works](/how-it-works)
-- ![](lu-users) [For Teams](/for-teams)
-- ![](lu-book) [Docs](/docs)
-
-[Get Started](/docs/quickstart)
-
-```yaml:config
-github: https://github.com/acme
-version: v2.1.0
-```
-````
+The runtime wraps every section in `<section>` with context class and background. Customize with static properties:
 
 ```jsx
-function Header({ content, block }) {
-  const logo = content.title
-  const navItems = content.lists[0] || []
-  const cta = content.links[0]
-  const config = content.data?.config
+function Hero({ content, params }) {
+  return <div className="max-w-7xl mx-auto px-6">…</div>
 }
+
+Hero.className = 'pt-32 md:pt-48'   // adds classes to the runtime wrapper
+Hero.as = 'div'                      // changes the wrapper element
+export default Hero
 ```
 
-**Footer** — paragraph for tagline, nested list for columns, YAML for legal:
-
-````markdown
----
-type: Footer
----
-
-Build something great.
-
-- Product
-  - [Features](/features)
-  - [Pricing](/pricing)
-- Developers
-  - [Docs](/docs)
-  - [GitHub](https://github.com/acme){target=_blank}
-
-```yaml:legal
-copyright: © 2025 Acme Inc
-```
-````
+**Layout components typically need `p-0`** to suppress default padding:
 
 ```jsx
-function Footer({ content }) {
-  const tagline = content.paragraphs[0]
-  const columns = content.lists[0] || []
-  const legal = content.data?.legal
-
-  columns.map(group => ({
-    label: group.paragraphs[0],
-    links: group.lists[0]?.map(item => item.links[0])
-  }))
-}
+Header.className = 'p-0'
+Header.as = 'header'
 ```
 
-### meta.js Structure
+### meta.js
 
 ```javascript
 export default {
   title: 'Feature Grid',
   description: 'Grid of feature cards with icons',
   category: 'marketing',
-  // hidden: true,          // Exclude from export
+  // hidden: true,          // Exclude from export entirely (internal helpers)
   // background: 'self',    // Component renders its own background
   // inset: true,           // Available for @ComponentName in markdown
   // visuals: 1,            // Expects 1 visual
@@ -1534,68 +651,32 @@ export default {
     compact: { label: 'Compact', params: { columns: 4 } },
   },
 
-  // context and initialState: keys are developer-defined, not framework fields.
-  // Design your own names for your foundation's cross-block communication.
-
-  // Static — neighbors read via getNextBlockInfo().context
-  context: {
-    // Example: a Hero might declare this so a Header knows it can float.
-    // allowTranslucentTop: true,
-  },
-
-  // Dynamic — neighbors read via getNextBlockInfo().state
-  // Component can update with useBlockState()
-  initialState: {
-    // Example: Hero starts translucent-ready, but component logic may disable it.
-    // allowTranslucentTop: true,
-  },
+  // context / initialState: keys are developer-defined, not framework fields.
+  context: {},        // Static — neighbors read via getNextBlockInfo().context
+  initialState: {},   // Dynamic — neighbors read .state; component updates via useBlockState()
 }
 ```
 
-All defaults belong in `meta.js`, not inline in component code.
+**All defaults belong in `meta.js`, not inline in component code.**
 
-### The Front Desk Pattern
+### The Front Desk pattern
 
-Section types naturally use params to adjust their own rendering — `variant: flipped` reverses a flex direction, `columns: 3` sets a grid. That's not a pattern, that's the baseline.
+Section types naturally use params to adjust their own rendering — that's the baseline, not a pattern. The **Front Desk pattern** is when a section type does virtually no rendering itself: it reads the author's params, picks the right helper component, and translates author-friendly vocabulary into developer-oriented props.
 
-The **Front Desk pattern** is when a section type does virtually no rendering itself. It reads the author's params, picks the right helper component, and translates author-friendly vocabulary into developer-oriented props. The section type is a front desk — it greets the request and routes it to the right specialist.
-
-The workers behind the front desk don't need to share the same interface. A `Hero` might delegate to a `SliderHero` that renders an image carousel and a `ContactHero` that renders a quote request form. They expect different content and different props — that's fine. The front desk declares the **union** of all content its workers might need. Some content won't be used for a given variant, and that's perfectly normal in CCA — params change behavior, and that includes not rendering some content:
-
-```js
-// meta.js — the union of all variants' needs
-export default {
-  params: {
-    variant: { type: 'select', options: ['slider', 'contact'], default: 'slider' },
-    slideInterval: { type: 'number', default: 5 },
-    density: { type: 'select', options: ['default', 'compact'], default: 'default' },
-    style: { type: 'select', options: ['default', 'dramatic'], default: 'default' },
-  }
-}
-```
+The workers behind the desk need not share an interface. A `Hero` might delegate to a `SliderHero` (image carousel) and a `ContactHero` (quote form) expecting different content and props. The front desk declares the **union** of what its workers need — some content goes unused for a given variant, which is normal.
 
 ```jsx
 // sections/Hero/index.jsx — the front desk
-import { SliderHero } from '../../components/SliderHero'
-import { ContactHero } from '../../components/ContactHero'
-
 const variants = { slider: SliderHero, contact: ContactHero }
 
 export default function Hero({ content, block, params }) {
   const Variant = variants[params.variant] || SliderHero
-
   return (
     <Variant
-      // Shared — every variant gets these
-      title={content.title}
-      subtitle={content.paragraphs[0]}
-      links={content.links}
-      block={block}
-      // Content that only some variants use
-      images={content.images}
+      title={content.title} subtitle={content.paragraphs[0]} links={content.links} block={block}
+      images={content.images}                                 // only some variants use these
       formData={content.data?.quote}
-      // Translated params — author vocabulary → developer props
-      interval={params.slideInterval}
+      interval={params.slideInterval}                         // author vocabulary → developer props
       compact={params.density === 'compact'}
       transition={params.style === 'dramatic' ? 'zoom' : 'fade'}
     />
@@ -1603,38 +684,15 @@ export default function Hero({ content, block, params }) {
 }
 ```
 
-`SliderHero` uses `images`, `interval`, and `transition`; it ignores `formData` and `compact`. `ContactHero` uses `formData` and `compact`; it ignores `images` and `interval`. Each worker takes what it needs. Some params only matter for certain variants (`slideInterval` for slider, `density` for contact). Some are high-level names that the front desk translates into developer-oriented values (`style: dramatic` → `transition="zoom"`). The content author writes `variant: contact` — they don't know or care about `ContactHero`.
+This is the system-building pattern at its clearest: **section types are the public interface** (author-friendly names, documented in `meta.js`); **helper components are the implementation** (ordinary React props). The section type is the thin translation layer.
 
-This is the system-building pattern at its clearest: **section types are the public interface** to your content system (author-friendly names, documented in `meta.js`). **Helper components are the implementation** (developer-friendly APIs, ordinary React props). The section type is the thin translation layer that connects the two worlds.
+More generally, a section component is rarely a flat render — it imports helpers from `components/` and utilities from `utils/` to build complex UI behind a single `type:`. Those directories are the developer's workbench: ordinary React, not author-selectable, not auto-discovered.
 
-### Section components are composites
+**When to reach for this pattern:** when a page type has consistent structural elements — header bars, navigation footers, contextual sidebars — that the content author shouldn't have to add as separate sections. If the author would otherwise repeat the same boilerplate sections on every page of a given type, the section component should compose them internally.
 
-A section component is rarely a single flat render. It imports helper components from `components/` and utilities from `utils/` to build a complex UI while presenting a single `type:` to the content author. These directories are the developer's workbench — ordinary React and JS, not selectable by authors, not auto-discovered.
+**Common mistake:** solving structural repetition at the layout level. If only some page types need a content header (lessons do, the homepage doesn't), that's a section concern. The layout owns page-wide chrome; the section owns its internal structure.
 
-```jsx
-// sections/Pricing/index.jsx
-import PricingCard from '#components/PricingCard'
-import formatPrice from '#utils/formatPrice'
-
-export default function Pricing({ content, params }) {
-  const currency = params.currency || 'USD'
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-      {content.items.map((tier, i) => (
-        <PricingCard key={i} tier={tier} price={formatPrice(tier.data, currency)} />
-      ))}
-    </div>
-  )
-}
-```
-
-The content author writes `type: Pricing` and defines tiers as content items. The section component maps items to cards using a helper component from `components/` and a formatting utility from `utils/`. Neither is selectable by authors — they're implementation details behind the section type boundary.
-
-**When to reach for this pattern:** When a page type has consistent structural elements (header bars, navigation footers, contextual sidebars) that the content author shouldn't need to add as separate sections. If the author would have to add the same boilerplate sections to every page of a certain type, the section component should compose them internally.
-
-**Common mistake:** Solving structural repetition at the layout level. If only some page types need a content header (lessons do, the homepage doesn't), it's a section concern, not a layout concern. The layout owns the page-wide chrome (header area, sidebar area). The section owns its own internal structure.
-
-### Foundation Organization
+### Foundation organization
 
 ```
 src/                     # the foundation package (folder name is `src`)
@@ -1644,29 +702,19 @@ src/                     # the foundation package (folder name is `src`)
 │   │   ├── index.jsx
 │   │   └── meta.js
 │   └── insets/          # Organizational subdirectory (lowercase)
-│       └── Diagram/
-│           ├── index.jsx
-│           └── meta.js
 ├── layouts/             # Custom layouts (optional, auto-discovered)
-│   └── DocsLayout/
-│       ├── index.jsx
-│       └── meta.js
 ├── components/          # Your React components (no meta.js, not selectable)
-│   ├── ui/
-│   │   └── button.jsx
-│   └── Card.jsx
 ├── utils/               # Helper functions, non-React logic
-│   └── splitContent.js
 ├── main.js
 ├── styles.css
 └── package.json         # name: "src"
 ```
 
-**Discovery:** PascalCase files/folders at root of `src/sections/` are auto-discovered. Nested levels require `meta.js`. Lowercase directories are organizational only. `hidden: true` excludes a component entirely. Everything outside `src/sections/` is ordinary React.
+**Discovery:** PascalCase files/folders at the root of `src/sections/` are auto-discovered. Nested levels require `meta.js`. Lowercase directories are organizational only. `hidden: true` excludes a component entirely. Everything outside `src/sections/` is ordinary React.
 
-**Source root.** The foundation package's source files live at the package root — the `src/` folder *is* the foundation. The build reads `package.json::main` to know that (for new scaffolds, `main: "./_entry.generated.js"`). Older foundations may use an even-more-nested layout where the source lives in `foundation/src/` and `main` points to `./src/_entry.generated.js`; both shapes work through the same code path.
+**Source root.** The foundation package's source lives at the package root — the `src/` folder *is* the foundation. The build reads `package.json::main` (for new scaffolds, `main: "./_entry.generated.js"`). Older foundations nest source in `foundation/src/` with `main` pointing at `./src/_entry.generated.js`; both work through the same code path.
 
-**Import aliases:** Foundations include subpath imports in `package.json` for shared internals. Use them instead of brittle relative paths:
+**Import aliases.** Foundations include subpath imports for shared internals — use them instead of brittle relative paths:
 
 | Alias | Maps to | Use for |
 |-------|---------|---------|
@@ -1674,148 +722,17 @@ src/                     # the foundation package (folder name is `src`)
 | `#utils/*` | `./utils/*` | Helper functions, non-React logic |
 
 ```jsx
-// ✅ Clean — use aliases
-import LessonHeader from '#components/LessonHeader'
-import splitContent from '#utils/splitContent'
-
-// ❌ Fragile — breaks if you reorganize sections/
-import LessonHeader from '../../components/LessonHeader'
+import LessonHeader from '#components/LessonHeader'      // ✅
+import LessonHeader from '../../components/LessonHeader' // ❌ breaks if you reorganize sections/
 ```
 
-Within the same directory (e.g., one component importing a sibling), use normal relative imports (`./AIFeedbackCard`).
+Within the same directory, use normal relative imports (`./AIFeedbackCard`).
 
-**Foundation entry shape (`main.js`).** A single `export default { … }` whose top-level keys are the capabilities the foundation provides — e.g. `name`, `description`, `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers`. Optionally a named `vars` export for theme-variable metadata (see *Foundation variables*). Everything else (section types, layouts) is auto-discovered from `sections/` and `layouts/` and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in the produced `dist/entry.js`; you don't write that wrapper yourself, and most foundation code never sees it. The one place it matters: when you import your **own** `main.js` from a foundation component (e.g., a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
+**Foundation entry (`main.js`).** A single `export default { … }` whose top-level keys are the capabilities the foundation provides — `name`, `description`, `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers` — plus an optional named `vars` export. Section types and layouts are auto-discovered and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in `dist/entry.js`; you never write that wrapper. The one place it matters: when you import your **own** `main.js` from a component (e.g. a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
 
-### Website and Page APIs
+### Custom layouts
 
-```jsx
-const { website } = useWebsite()
-const page = website.activePage
-
-// Navigation — getPageHierarchy(options)
-// Returns [{ id, route, navigableRoute, translatedRoute, title, label, description, hasContent, version, children }]
-//
-// Options:
-//   for: 'header' | 'footer' | <area>  — filter by nav area (respects the page's hideIn)
-//   nested: true (default)    — nested hierarchy with children; false = flat list
-//   includeHidden: false       — include hidden pages
-//   filter: (page) => bool    — custom filter function
-//   sort: (a, b) => number    — custom sort function
-//
-// Convenience methods:
-//   website.getHeaderPages()  — same as getPageHierarchy({ for: 'header' })
-//   website.getFooterPages()  — same as getPageHierarchy({ for: 'footer' })
-//   website.getAllPages()     — flat list: getPageHierarchy({ nested: false })
-//
-// Common patterns:
-website.getPageHierarchy({ for: 'header' })           // Header nav (excludes pages with 'header' in hideIn)
-website.getPageHierarchy()                             // Full nested hierarchy (no nav filtering)
-website.getPageHierarchy({ nested: false })            // Flat list of all visible pages
-website.getPageHierarchy({ nested: false, includeHidden: true })  // Everything including hidden
-
-// Core properties
-website.name              // Site name from site.yml
-website.basePath          // Deployment base path (e.g., '/docs/')
-
-// Locale
-website.hasMultipleLocales()
-website.getLocales()        // [{ code, label, isDefault }]
-website.getActiveLocale()
-website.getLocaleUrl('es')
-
-// Route detection
-const { isActive, isActiveOrAncestor } = useActiveRoute()
-
-// Appearance
-const { scheme, toggle, canToggle } = useAppearance()
-
-// Page properties
-page.title, page.label, page.route, page.description
-page.isHidden(), page.showInHeader(), page.showInFooter()
-page.hasContent()                   // True if page has its own content (not just a folder)
-page.hasChildren(), page.children   // Direct child Page instances
-page.parent                         // Parent Page instance (null for root pages)
-page.getNavigableRoute()            // First descendant route with content (for linking)
-
-// Hierarchical navigation — content-less containers are group nodes:
-// { route: '/courses/intro', title: 'Introduction', hasContent: false,
-//   navigableRoute: '/courses/intro/lesson-1', children: [...] }
-// Use navigableRoute for links, title for display, hasContent to style differently.
-```
-
-### Cross-Block Communication
-
-Section types sometimes need to coordinate. The typical case: a Header needs to know whether the section below it supports a floating translucent overlay — a Hero with a full-bleed background does, a plain text section doesn't. The section that **owns the capability declares it**; the section that **needs to adapt reads it**.
-
-`getBlockInfo()` exposes two channels:
-
-- **`context`** — Static capabilities from `meta.js`. Never changes. The declaring section type always has this capability.
-- **`state`** — Dynamic runtime state via `useBlockState()`. Can change based on component logic. Initial value comes from `initialState` in `meta.js`.
-
-```jsx
-// Header reads the next section's info to decide how to render
-const nextBlockInfo = block.getNextBlockInfo()
-// nextBlockInfo.context  → static (meta.js)
-// nextBlockInfo.state    → dynamic (useBlockState)
-```
-
-**Static context** — Hero declares a permanent capability, Header reads it:
-
-```js
-// Hero/meta.js — "I always support a translucent header over me"
-export default {
-  context: { allowTranslucentTop: true },
-}
-```
-
-```jsx
-// Header/index.jsx — adapts based on what's below
-const nextBlockInfo = block.getNextBlockInfo()
-const isFloating = nextBlockInfo?.context?.allowTranslucentTop || false
-```
-
-**Dynamic state** — Hero declares an initial value but can change it at runtime:
-
-```js
-// Hero/meta.js — starts as true, but component logic may change it
-export default {
-  initialState: { allowTranslucentTop: true },
-}
-```
-
-```jsx
-// Hero/index.jsx — conditionally updates
-function Hero({ content, block }) {
-  const [state, setState] = block.useBlockState(useState)
-  // state.allowTranslucentTop is true initially (from meta.js)
-  // Component logic can change it: setState({ allowTranslucentTop: false })
-}
-```
-
-```jsx
-// Header/index.jsx — reads dynamic state, falls back to static context
-const nextBlockInfo = block.getNextBlockInfo()
-const isFloating = nextBlockInfo?.state?.allowTranslucentTop
-  ?? nextBlockInfo?.context?.allowTranslucentTop
-  ?? false
-```
-
-The key names (`allowTranslucentTop`, `expanded`, etc.) are yours to design — they're not framework fields. Define whatever protocol your foundation's sections need.
-
-Other navigation methods: `block.getPrevBlockInfo()`, `block.page.getFirstBodyBlockInfo()`.
-
-### Custom Layouts
-
-Layouts live in `layouts/` (inside the foundation package) and are auto-discovered:
-
-```js
-// main.js
-export default {
-  name: 'My Template',
-  description: 'A brief description',
-  defaultLayout: 'DocsLayout',
-}
-```
+Layouts live in `layouts/` inside the foundation and are auto-discovered. Set `defaultLayout` in `main.js`.
 
 ```jsx
 // layouts/DocsLayout/index.jsx
@@ -1834,153 +751,366 @@ export default function DocsLayout({ header, body, footer, left, right, params }
 }
 ```
 
-**Layout meta.js** declares areas and optional scroll behavior: `{ areas: ['header', 'footer', 'left'], scroll: 'self' }`. Area names are arbitrary. The `scroll` property controls how the runtime manages scroll restoration: not set = runtime manages on `window` (default), `'self'` = layout handles its own scrolling, or a CSS selector (e.g. `'main'`) = runtime manages scroll on that element.
+**Layout meta.js** declares areas and optional scroll behavior: `{ areas: ['header', 'footer', 'left'], scroll: 'self' }`. Area names are arbitrary. `scroll` controls scroll restoration: unset = runtime manages `window` (default), `'self'` = the layout scrolls itself, or a CSS selector (`'main'`) = runtime manages that element.
 
-**Layout content** — each layout has section files in `site/layout/`:
+**Layout content** lives in `site/layout/` — `header.md`, `footer.md` for the default layout, or a named subdirectory (`site/layout/marketing/`) for named layouts. Named subdirectories are self-contained — no inheritance. Cascade: `page.yml` → `folder.yml` → `site.yml` → foundation `defaultLayout` → `"default"`.
+
+Layout sections are regular section types — they support the full content shape, including tagged data blocks, lists, links, and items. The only difference is they render on every page. Each content category takes a different role:
+
+````markdown
+---
+type: Header
+---
+# Acme Inc                              ← content.title — the logo
+
+- ![](lu-search) [How It Works](/how)   ← content.lists[0] — the nav
+- ![](lu-book) [Docs](/docs)
+
+[Get Started](/docs/quickstart)         ← content.links[0] — the CTA
+
+```yaml:config
+github: https://github.com/acme         ← content.data.config — everything else
+```
+````
+
+```jsx
+function Header({ content }) {
+  const logo = content.title
+  const navItems = content.lists[0] || []
+  const cta = content.links[0]
+  const config = content.data?.config
+}
+
+function Footer({ content }) {
+  const tagline = content.paragraphs[0]      // a plain paragraph
+  const columns = (content.lists[0] || []).map(group => ({
+    label: group.paragraphs[0],              // nested list → columns
+    links: group.lists[0]?.map(item => item.links[0])
+  }))
+}
+```
+
+### Cross-block communication
+
+Section types sometimes coordinate — the typical case is a Header that needs to know whether the section below supports a floating translucent overlay. The section that **owns the capability declares it**; the section that **needs to adapt reads it**. `getNextBlockInfo()` (and `getPrevBlockInfo()`, `page.getFirstBodyBlockInfo()`) expose two channels:
+
+- **`context`** — static capabilities from `meta.js`. Never changes.
+- **`state`** — dynamic runtime state via `useBlockState()`. Initial value from `initialState` in `meta.js`.
+
+```js
+// Hero/meta.js
+export default {
+  context:      { allowTranslucentTop: true },   // "I always support this"
+  initialState: { allowTranslucentTop: true },   // …or start true and let logic change it
+}
+```
+
+```jsx
+// Hero/index.jsx — dynamic case
+const [state, setState] = block.useBlockState(useState)
+
+// Header/index.jsx — reads dynamic state, falls back to static context
+const info = block.getNextBlockInfo()
+const isFloating = info?.state?.allowTranslucentTop ?? info?.context?.allowTranslucentTop ?? false
+```
+
+The key names are yours to design — they're not framework fields.
+
+### block properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `block.page` | Page | Parent page |
+| `block.website` | Website | Site-level data and navigation |
+| `block.type` | string | Component type name |
+| `block.childBlocks` | Block[] | File-based child sections |
+| `block.insets` | Block[] | Inline `@Component` references |
+| `block.getInset(refId)` | Block | Lookup inset by refId |
+| `block.properties` | object | Raw frontmatter |
+| `block.rawContent` | object | ProseMirror document — passed internally by `<Article block={block} />` |
+| `block.themeName` | string | `"light"`, `"medium"`, `"dark"` |
+| `block.stableId` | string | Stable ID from filename or `id:` |
+| `block.key` | string | Unique key across pages (path + id) — use as React key |
+| `block.path` | string | Page route this block belongs to |
+
+### Website and Page APIs
+
+```jsx
+const { website } = useWebsite()
+const page = website.activePage
+
+// getPageHierarchy(options) →
+//   [{ id, route, navigableRoute, translatedRoute, title, label, description, hasContent, version, children }]
+// Options: for: 'header'|'footer'|<area> (respects hideIn) · nested: true (default)
+//          includeHidden: false · filter: (page) => bool · sort: (a, b) => number
+website.getPageHierarchy({ for: 'header' })      // = website.getHeaderPages()
+website.getPageHierarchy({ nested: false })      // = website.getAllPages()
+
+website.name, website.basePath
+website.hasMultipleLocales(), website.getLocales(), website.getActiveLocale(), website.getLocaleUrl('es')
+
+page.title, page.label, page.route, page.description
+page.isHidden(), page.showInHeader(), page.showInFooter()
+page.hasContent()          // true if the page has its own content (not just a folder)
+page.hasChildren(), page.children, page.parent
+page.getNavigableRoute()   // first descendant route with content (for linking)
+```
+
+Content-less containers appear as group nodes (`hasContent: false`) — use `navigableRoute` for links, `title` for display, `hasContent` to style differently.
+
+---
+
+## Composition: Items, Child Sections, Insets
+
+Pages are sequences of sections — the obvious layer. The framework also supports real nesting, without leaving markdown.
+
+| Pattern | How authored | Use when |
+|---|---|---|
+| **Items** (`content.items`) | Heading groups within one `.md` | Repeating content in one section: cards, features, FAQ entries |
+| **Child sections** (`block.childBlocks`) | `@`-prefixed `.md` files + `nest:` | Children needing their own section type, rich content, or independent editing |
+| **Insets** (`block.insets`) | `![](@Component)` in markdown | Self-contained visuals/widgets: charts, diagrams, code demos |
+
+Does the author write content *inside* the nested element? **Yes** → child sections. **No** (self-contained, param-driven) → inset. Repeating same-structure groups → items. These compose: a child section can contain insets; items work inside children.
+
+### Insets — embedding components in content
+
+Many section types need a "visual" — a hero's illustration, a split-content section's media. Classically an image or video. But what if it's a JSX + SVG diagram, a ThreeJS animation, an interactive playground? Elsewhere you'd reach for MDX or prop-drilling. Here the author writes standard image syntax:
+
+```markdown
+![Architecture overview](@NetworkDiagram){variant=compact}
+```
+
+The developer builds `NetworkDiagram` as an ordinary React component with `inset: true` in `meta.js`. Kit's `<Visual>` renders the first non-empty candidate, so one section type works whether the author supplies an image, a video, or an interactive component:
+
+```jsx
+<Visual inset={block.insets[0]} video={content.videos[0]} image={content.images[0]} className="rounded-2xl" />
+```
+
+**Insets are full section types** — they receive `{ content, params, block }`. The alt text becomes `content.title` and attributes become `params`: `![npm create uniweb](@CommandBlock){note="Ready to go"}` → `content.title = "npm create uniweb"`, `params.note = "Ready to go"`.
+
+**Don't use `hidden: true` on insets.** `hidden` means "don't export this component at all" (internal helpers); `inset: true` means "available for `@Component` references in markdown."
+
+### Child sections
+
+You hit a complex layout — a 2:1 split with a panel and a main area. Your instinct says build a specialized component. Step back: the panel is a reusable section type, the main area is another, and the split is a Grid with `columns: "1fr 2fr"`. But hardcoding which components go where means the author can't rearrange or swap them. Child sections solve that:
 
 ```
-site/layout/
-├── header.md              # Default layout
-├── footer.md
-└── marketing/             # Named layout sections
-    ├── header.md
-    └── footer.md
+pages/home/
+├── page.yml
+├── 2-dashboard.md          # Parent section (type: Grid, columns: "1fr 2fr")
+├── @sidebar-stats.md       # Child (@ = not top-level)
+└── @main-chart.md
 ```
 
-Named subdirectories are self-contained — no inheritance. Layout cascade: `page.yml` → `folder.yml` → `site.yml` → foundation `defaultLayout` → `"default"`.
+```yaml
+# page.yml
+nest:
+  dashboard: [sidebar-stats, main-chart]
+```
+
+**Rules:**
+- `@`-prefixed files are excluded from the top-level section list; `@@` nests deeper (grandchildren)
+- `nest:` maps parent name → child names, and is **flat**: `{ features: [a, b], a: [sub-1] }`
+- Children are ordered by position in the `nest:` array
+
+```jsx
+import { ChildBlocks } from '@uniweb/kit'
+
+export default function Grid({ block, params }) {
+  return <div className={`grid grid-cols-${params.columns || 2} gap-6`}><ChildBlocks from={block} /></div>
+}
+```
+
+`ChildBlocks` renders each child as a **bare component by default** — no wrapper, no context class, no background. That's right for grid cells, tab panels, carousel slides. For the rare case where children should be independent sections with their own theming and backgrounds, pass `wrapAs="div"`.
+
+Each child is a regular section with its own type, params, and content — and you're in the middle: wrap each child, filter by type, reorder, add container classes. The author decides *what* goes in the grid; your component decides *how* it renders. Tomorrow the author can swap a child for a different section type with no code change.
+
+**Data and child blocks:** page-level `data:` is available to all blocks including children, and each child resolves data independently through the page → site hierarchy. If a child needs data, declare it in the child's `meta.js` or its frontmatter (`data: articles`).
+
+**SSG:** insets, `<ChildBlocks>`, and `<Visual>` all render correctly during prerender. Inset components using React hooks internally trigger prerender warnings — expected and harmless; the page renders correctly client-side.
+
+### Dividers — content boundaries
+
+`---` creates a boundary between content regions; the developer decides what each region means. Two patterns:
+
+**UI regions (component).** `splitContent()` from `@uniweb/kit` splits parsed content at divider elements — e.g. lesson prose vs challenge content:
+
+```jsx
+const [lesson, challenge] = splitContent(content)
+```
+
+**Data-driven iteration (Loom).** Dividers separate header/body/footer in a repeated template. The split happens *before* Loom runs, because each segment gets a different variable context — the body contains item-level fields that don't exist on the top-level data. Header and footer are instantiated once against the full data; the body repeats per item.
+
+```markdown
+---
+type: CvEntry
+source: education
+---
+# Education
+{COUNT OF education} degrees.
+---
+## {degree}
+{institution} — {field} ({start}–{end})
+```
+
+**Which to use:** different data contexts per region → Loom pre-parse split (content handler). Same data, different UI treatment → kit post-parse split (`splitContent`). A foundation can use both.
+
+---
+
+## Pages, Backgrounds, and Site Config
+
+### Section backgrounds
+
+Set `background` in frontmatter — the runtime renders it:
+
+```yaml
+background: /images/hero.jpg                             # Image
+background: /videos/hero.mp4                             # Video
+background: linear-gradient(135deg, #667eea, #764ba2)    # Gradient
+background: '#1a1a2e'                                    # Color (hex — quote in YAML)
+background: primary-900                                  # Palette token (bare name or var())
+
+background:                                              # Object form for more control
+  image: { src: /img.jpg, position: center top }
+  overlay: { enabled: true, type: dark, opacity: 0.5 }
+```
+
+Components that render their own background declare `background: 'self'` in `meta.js`.
+
+### Page organization
+
+```
+site/layout/          # header.md, footer.md, left.md — rendered on every page
+site/pages/home/
+    ├── page.yml      # title, description, order
+    ├── 1-hero.md     # Numeric prefix sets order
+    ├── 2-features.md
+    └── 3-cta.md
+```
+
+Decimals insert between: `2.5-testimonials.md` goes between `2-` and `3-`. **Ignored:** `README.md`, and `_*.md` / `_*/` (drafts and private files).
+
+```yaml
+# page.yml
+title: About Us
+id: about                   # Stable identity (for page: links, survives moves)
+order: 2                    # Navigation sort position
+pages: [team, history, ...] # Child page order (... = rest). Without ... = strict (hides unlisted)
+redirect: academic          # Redirect to a child page (relative/absolute path, or URL)
+slug: { fr: a-propos }      # Localized URL segment per language
+
+# site.yml
+index: home                 # Just set the homepage
+pages: [home, about, ...]   # Order pages (... = rest, first = homepage); without ... = strict
+```
+
+**Route mapping:** folder structure maps 1:1 to routes. Every folder keeps its natural route — `pages:` controls **order only**, not which child "becomes" the parent. The only exception is the site root, where `index:` (or first in `pages:`) sets `/`.
+
+**Content-less containers:** folders with `page.yml` but no markdown are structural groups (`hasContent: false`). Visiting one auto-redirects to the first descendant with content — this is what supports courses → modules → lessons at any depth.
+
+**Localized URLs:** on a multilingual site (`languages:` in site.yml), `slug: { <lang>: <segment> }` gives a page a native URL segment per language; the folder name stays the canonical route. Nested folders compose automatically, and localized URLs flow through navigation, the language switcher, and the sitemap. `publishLanguages: [en, fr]` lists which declared languages a published build ships — unlisted ones stay dev-previewable drafts (absent = publish all; the default language must be listed).
+
+**SEO & social cards:** set site-wide defaults in `site.yml`; any page overrides per-field in `page.yml` (page wins, site fills gaps). These render into every page's static `<head>` — Open Graph, Twitter Card, canonical, robots — so shares and crawlers see them without running JS. The social `image` is the field most worth setting once at site level.
+
+```yaml
+# site.yml
+keywords: [components, react, cms]
+seo:
+  image: /og-default.png
+  noindex: false                    # true keeps the WHOLE site out of search
+
+# page.yml
+seo:
+  image: /og-about.png
+  canonical: https://acme.com/about
+```
+
+---
+
+## Data
+
+A component on a page with a `data:` or `fetch:` declaration automatically receives that data in `content.data.{key}` — no opt-in in `meta.js`.
+
+**Bound collections always arrive as arrays.** On a list page, `content.data.articles` is the full collection. On a template page (`[slug]/`), the matched record is delivered under the *same* key as a single-element array — the detail section reads `content.data.articles[0]`. When nothing matches, the key is `[]`. The runtime never coerces to a single object and never synthesizes a singular key.
+
+```jsx
+function Article({ content, block }) {
+  if (block.dataLoading) return <DataPlaceholder />
+  const article = content.data.articles?.[0]   // focused record on a [slug] page
+  if (!article) return <NotFound />
+  return <ArticleView article={article} />
+}
+```
+
+Components can ignore keys in `content.data` they don't need, the same way unused `params` are ignored. When a record genuinely needs to be a single object, that's the foundation's job — read `[0]`, or reshape once with a `handlers.data` hook.
+
+**Declaring schemas.** `meta.js` declares the schema for each `content.data` key with a single `data:` field — there is no separate `schemas:` key. Each value is a **named ref**, an **inline field map**, or an **inline rich-form** (`{ fields: [...] }`, an editor form). Refs resolve on disk at build time, never fetched: `@/name` (this foundation's `foundation/schemas/`), `@std/name` (shared standards, from `@uniweb/schemas`), `@org/name` (an org's own `@org/schemas` package). The schema is a hint — it supplies field defaults and drives the editor, not delivery, which is default-on. For an explicit opt-out (rare), set `data: false`.
+
+```js
+// meta.js
+export default {
+  data: {
+    articles: '@/article',                               // named ref (this foundation)
+    authors:  '@std/person',                             // named ref (shared standard)
+    pricing:  { tier: { type: 'string', default: '' } }, // inline field map
+  },
+}
+```
+
+A foundation can route a scope to a plain folder of schema files instead of a package via an optional `schemas.config.js` at its root — `export default { '@acme': '../shared/acme-schemas' }`. A routed scope wins over the package convention; `@/` and `@uniweb` are never routable; a routed scope has no package fallback for a missing schema (it errors rather than silently loading a different definition). Per-schema keys override single entries (most-specific wins: file › directory › package).
+
+**Authoring queries.** Fetch declarations accept `where:` (a where-object predicate), `sort:` (e.g. `date desc`), and `limit:`. Whether the source evaluates them or the framework applies them as a runtime fallback is a transport detail controlled by the site's `fetcher.supports:` declaration.
+
+```yaml
+# pages/blog/page.yml
+fetch:
+  collection: articles
+  where: { published: true, tags: featured }
+  sort: date desc
+  limit: 3
+```
+
+**Lean lists with `deferred:`.** Collections with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]` in `site.yml`. The cascade payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json` (file-based collections) or fetched from an author-declared `detailUrl:` (API-backed). On dynamic-route pages the focused record's full data is delivered automatically; elsewhere components fetch on demand via `useEntityDetail`.
+
+**Component-side fetching.** When a component genuinely needs to fetch on its own (a search box, "load more", a lazy popover), use the kit hooks — `useFetched`, `useCacheEntry`, `useEntityDetail`. They share the framework's cache and dispatcher with declarative fetches; same-key requests dedupe automatically.
+
+**Validate before shipping.** `uniweb validate` checks file-based data against your declared schemas — missing required fields, type/enum/format mismatches, nested fields. Warns by default; `--strict` for a non-zero CI exit. Distinct from `uniweb doctor` (project structure): `validate` checks your *data* against the schemas you *declared*. Remote (`url:`), `ref`/`options`, and rich `sections`-form inputs are reported deferred.
+
+Full model: `reference/data-fetching.md`. Where-object format with examples: `authoring/predicates.md`.
 
 ---
 
 ## Content Handlers
 
-Content handlers are a transform layer that runs between data assembly and the component. They're declared in `main.js` and apply to every section in the foundation. The standard content shape (title, paragraphs, items, sequence) is the default — handlers can reshape it.
-
-### The three hooks
-
-The foundation declares handlers as an object in its default export:
-
-```js
-// main.js
-export default {
-  handlers: {
-    data:    (data, block) => { /* ... */ },
-    content: (data, block) => { /* ... */ },
-    props:   (content, params, block) => { /* ... */ },
-  },
-}
-```
-
-All three are optional. Each runs per block and is error-isolated (a failing handler logs a warning and falls back to the default behavior).
+Content handlers are a transform layer between data assembly and the component, declared in `main.js` and applied to every section in the foundation. The standard content shape is the default; handlers reshape it. All three are optional, run per block, and are error-isolated — a failing handler logs a warning and falls back to default behavior.
 
 | Handler | When it runs | Receives | Returns | Purpose |
 |---|---|---|---|---|
-| `data` | After data assembly, before content transform | `(data, block)` | New data object, or null | Filter, reshape, or augment the assembled data |
-| `content` | After data handler | `(data, block)` | ProseMirror document, or null | Transform raw content (Loom instantiation, template expansion) |
+| `data` | After data assembly, before content transform | `(data, block)` | New data object, or null | Filter, reshape, or augment assembled data |
+| `content` | After the data handler | `(data, block)` | ProseMirror document, or null | Transform raw content (Loom instantiation, template expansion) |
 | `props` | After parsing, defaults, and guarantees | `(content, params, block)` | `{ content, params }`, or null | Post-process the final shape before the component sees it |
 
-### Loom integration
+The `content` handler reads `block.parsedContent.data` and raw ProseMirror from `block.rawContent`, and returns a new ProseMirror document that the framework re-parses through the semantic parser. Returning `null` — or the same reference as `block.rawContent` — signals no change.
 
-The most common use of content handlers is Loom-based content instantiation — resolving `{placeholder}` expressions in markdown against live data. `@uniweb/loom` provides a factory that creates the handler for you:
+> **`block.rawContent` may or may not be wrapped.** Unwrap it defensively — `const doc = block.rawContent?.doc ?? block.rawContent` — before passing it to `instantiateContent` / `instantiateRepeated`. This is the first thing a hand-written handler gets wrong.
+
+**Loom integration** is the most common use: resolving `{placeholder}` expressions against live data. `@uniweb/loom` provides a factory:
 
 ```js
 import { createLoomHandlers } from '@uniweb/loom'
 
 export default {
-  handlers: createLoomHandlers({
-    vars: (data) => data?.profile?.[0],
-  }),
+  handlers: createLoomHandlers({ vars: (data) => data?.profile?.[0] }),
 }
 ```
 
-The `vars` function extracts the Loom variable namespace from the assembled data. The factory returns a `content` handler that reads the `source` and `where` frontmatter params — without `source`, the handler does simple substitution; with `source`, the handler splits the markdown at `---` dividers and repeats the body per data item (see "Dividers — Content Boundaries" above). When `where` is also set, the source array is filtered first — only items where the expression evaluates to truthy are iterated:
+`vars` extracts the Loom variable namespace. The returned `content` handler reads the `source` and `where` frontmatter params: without `source` it does simple substitution; with `source` it splits the markdown at `---` dividers and repeats the body per data item. `where` filters the source array first — `type = 'book'` (equality), `year > 1870` (comparison), `refereed` (truthy), `type = 'book' AND refereed` (combination). Aggregates like `{COUNT OF publications}` reflect the filtered set.
 
-```yaml
----
-type: PublicationList
-source: publications
-where: "type = 'book'"
----
-```
-
-`where` expressions use Loom Plain form: `type = 'book'` (equality), `year > 1870` (comparison), `refereed` (truthy check), `type = 'book' AND refereed` (boolean combination). Aggregate expressions in the header (like `{COUNT OF publications}`) reflect the filtered set.
-
-### Writing a custom handler
-
-When the factory doesn't cover your case, write handlers directly:
-
-```js
-import { Loom, instantiateContent, instantiateRepeated } from '@uniweb/loom'
-
-const loom = new Loom()
-
-export default {
-  handlers: {
-    content: (data, block) => {
-      const profile = data?.profile?.[0]
-      if (!profile) return null
-
-      const doc = block.rawContent?.doc ?? block.rawContent
-      const source = block.properties?.source
-
-      if (!source) return instantiateContent(doc, loom, profile)
-      return instantiateRepeated(doc, loom, profile, source)
-    },
-  },
-}
-```
-
-The content handler receives `block.parsedContent.data` and reads raw ProseMirror from `block.rawContent`. It returns a new ProseMirror document — the framework re-parses it through the semantic parser. Returning `null` or the same reference as `block.rawContent` signals no change.
+For cases the factory doesn't cover, write handlers directly using `Loom`, `instantiateContent`, and `instantiateRepeated` from `@uniweb/loom`.
 
 > **`instantiateContent` resolves `{placeholders}` in text nodes only** — not in link `href`s or other node/mark attributes. So `[{email}](mailto:{email})` fills the visible label but leaves the `mailto:` URL literal. For dynamic URLs, emit the value as plain text and let the component linkify it, or build the href in the handler yourself.
 
-### Reserved frontmatter fields
-
-`source` and `where` are convention-level reserved fields — they flow through to both `block.properties` (for handler access) and `params` (visible to components). Components can ignore them. This is consistent with how `background` and `theme` work. List them in `meta.js` params with descriptions so the editor and schema recognize them.
-
----
-
-## Migrating From Other Frameworks
-
-Don't port line-by-line. Study the source, then rebuild from first principles. Other frameworks produce far more components than Uniweb needs — expect consolidation, not 1:1 correspondence.
-
-### The mental model shift
-
-| React / conventional | Uniweb equivalent |
-|---|---|
-| Props with typed data | Frontmatter params + `meta.js` |
-| Component variants via props | `variant` param in frontmatter; Front Desk pattern for complex routing |
-| Context / ThemeProvider | `theme:` frontmatter + semantic tokens (automatic) |
-| Wrapper/layout components | Section nesting or custom layouts |
-| Prop-drilling visuals into containers | Insets — `![](@Component)` rendered via `<Visual>` |
-| Content in JSX or `.js` data files | Markdown → parser → `content` prop |
-| CSS color tokens / design systems | `theme.yml` → palette shades + semantic tokens |
-| `isDark ? ... : ...` conditionals | `text-heading` — context classes handle it |
-| Per-component backgrounds | `background:` in frontmatter |
-| Multiple near-identical components | One section type + `variant` param, or Front Desk pattern |
-| i18n wrapping (`t()` / `<Trans>`) | Locale-specific content directories |
-
-### Migration approach
-
-1. **Scaffold the workspace:**
-   ```bash
-   pnpm create uniweb my-project --template none
-   ```
-
-2. **Use named layouts** for different page groups — marketing layout for landing pages, docs layout for `/docs/*`.
-
-3. **Dump legacy components under `components/`** — they're not section types. Import from section types during transition.
-
-4. **Create section types one at a time.** Migration levels:
-   - **Level 0**: Paste the original as one section type. Routing and dev tooling work immediately.
-   - **Level 1**: Decompose into section types. Consolidate duplicates — use `variant` params or the Front Desk pattern.
-   - **Level 2**: Move content from JSX to markdown. Authors can now edit without code.
-   - **Level 3**: Replace hardcoded colors with semantic tokens. Components work in any context.
-
-5. **Map source colors to `theme.yml`.** The most common mistake is recreating source colors as CSS custom properties — this bypasses the token system. Instead: primary color → `colors.primary` in theme.yml. Neutral tone → `colors.neutral`. Context needs → `theme:` frontmatter.
-
-6. **Name by purpose, not content** — `TheModel` → `SplitContent`, `WorkModes` → `FeatureColumns`.
-
-7. **UI helpers → `components/`** — Buttons, badges, cards in `components/` (no `meta.js`, not selectable by authors).
+**Reserved frontmatter:** `source` and `where` are convention-level reserved fields — they flow to both `block.properties` (for handler access) and `params` (visible to components), consistent with `background` and `theme`. Components can ignore them. List them in `meta.js` params with descriptions so the editor and schema recognize them.
 
 ---
 
@@ -2006,64 +1136,164 @@ Semantic tokens come from `theme-tokens.css` (populated from `theme.yml`). Use `
 
 **Font smoothing is a per-scheme decision, not a reset.** `-webkit-font-smoothing: antialiased` (macOS only) forces grayscale rasterization, which thins strokes. On dark surfaces that usefully counteracts the bloom of light text on near-black; on light surfaces it costs contrast and makes body text spindly. If you want it, scope it — `.scheme-dark { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }` — rather than putting it on `html` the way most CSS resets do.
 
+---
+
+## Migrating From Other Frameworks
+
+Don't port line-by-line. Study the source, then rebuild from first principles. Other frameworks produce far more components than Uniweb needs — expect consolidation, not 1:1 correspondence.
+
+| React / conventional | Uniweb equivalent |
+|---|---|
+| Props with typed data | Frontmatter params + `meta.js` |
+| Component variants via props | `variant` param; Front Desk pattern for complex routing |
+| Context / ThemeProvider | `theme:` frontmatter + semantic tokens (automatic) |
+| Wrapper/layout components | Section nesting or custom layouts |
+| Prop-drilling visuals into containers | Insets — `![](@Component)` rendered via `<Visual>` |
+| Content in JSX or `.js` data files | Markdown → parser → `content` prop |
+| CSS color tokens / design systems | `theme.yml` → palette shades + semantic tokens |
+| `isDark ? ... : ...` conditionals | `text-heading` — context classes handle it |
+| Per-component backgrounds | `background:` in frontmatter |
+| Multiple near-identical components | One section type + `variant` param, or Front Desk |
+| i18n wrapping (`t()` / `<Trans>`) | Locale-specific content directories |
+
+**Approach:** scaffold with `--template none` → use named layouts for different page groups → dump legacy components under `components/` (they're not section types; import them from section types during transition) → create section types one at a time.
+
+**Migration levels:** **0** — paste the original as one section type (routing and dev tooling work immediately). **1** — decompose into section types, consolidating duplicates via `variant` params or Front Desk. **2** — move content from JSX to markdown, so authors can edit without code. **3** — replace hardcoded colors with semantic tokens, so components work in any context.
+
+**The most common mistake** is recreating source colors as CSS custom properties — that bypasses the token system. Instead: primary color → `colors.primary` in theme.yml, neutral tone → `colors.neutral`, context needs → `theme:` frontmatter.
+
+Also: name by purpose, not content (`TheModel` → `SplitContent`, `WorkModes` → `FeatureColumns`), and put UI helpers (buttons, badges, cards) in `components/` with no `meta.js`.
+
+Detail: `development/converting-existing.md`.
+
+---
+
+## Project Structure and Setup
+
+Most projects start as a workspace with two packages:
+
+```
+project/
+├── src/            # Component developer's domain (the foundation package)
+├── site/           # Content author's domain
+└── pnpm-workspace.yaml
+```
+
+A site is pure content; a foundation is the site's source code — that's why it lives in `src/`. The foundation's `package.json::name` is `src`, symmetric with `site`.
+
+- **Foundation** (developer, `src/`): React components. Those in `src/sections` and `src/layouts` are *section types* — selectable by authors via `type:`, or used for layout areas. Everything in `src/components` is ordinary React, the developer's workbench.
+- **Site** (author, `site/`): markdown content + configuration, plus optional collections of structured content and references to external data sources.
+
+**The composition boundary:** authors compose pages from finished section types; developers compose section types from building blocks. The section type is the boundary. Don't expose building-block composition to authors — build complete, self-contained section types that handle their own internal structure.
+
+> Multi-site projects use sub-folders with site/foundation pairs (each gets its own `src/` + `site/`), or segregate them into `foundations/` and `sites/`.
+
+**Always use the CLI to scaffold — never hand-write `package.json`, `vite.config.js`, `entry.js`, or `index.html`.** The CLI resolves correct versions and structure.
+
+```bash
+pnpm create uniweb my-project --template <name>   # official template, or --template none / --blank
+uniweb add project docs                            # co-located pair → docs/src + docs/site
+uniweb add foundation [name|path] [--path parent]  # no name → ./src/, bare name → ./name/, slash → that path
+uniweb add site [name|path]
+uniweb add extension <name> [--site <name>]        # secondary foundation, wired to a site
+uniweb add section Hero [--foundation ui]          # sections/Hero/{index.jsx,meta.js}; dev server picks it up
+```
+
+The CLI creates exactly the folder you ask for — no silent nesting. If the target exists or the package name is taken, it stops with a precise error and suggests alternatives (using the same `classifyPackage` logic the build uses, so cross-type collisions are caught). Projects include both `pnpm-workspace.yaml` and npm workspaces — **replace `pnpm` with `npm` in any command here.**
+
+For unfamiliar patterns — data fetching, i18n, layouts, insets, theming — install an official template as a reference project and read its source: `uniweb add project marketing --from marketing`. Templates: `marketing` (tokens, insets, grids, multi-line headings), `docs` (sidebar nav, code highlighting), `dynamic` (live API data, loading states), `international` (i18n, collections, multi-locale routing), `store` (product grids, e-commerce), `academic` (publications, timeline, math), `extensions` (multi-foundation, runtime loading).
+
+---
+
+## Commands
+
+```bash
+uniweb dev                        # Start dev server (picks the site for you)
+pnpm build / pnpm preview         # Build for production / preview the build (SSG + SPA)
+
+uniweb deploy                     # Wizard: pick a destination, then deploy (or set up CI)
+uniweb deploy --host=<adapter>    # Build + upload now, from this machine
+uniweb add ci --host=<adapter>    # CI so every push deploys — usually best for a free host
+uniweb export                     # Build dist/ for any static host (no Uniweb account)
+uniweb publish                    # Ship to Uniweb hosting, foundation included (needs `uniweb login`)
+
+uniweb add ci --target foundation # Publish a foundation for free at permanent versioned URLs
+                                  # (GitHub Pages → foundations/<name>/<version>/entry.js)
+
+uniweb push / pull / clone / status   # Git-style content sync with the Uniweb backend
+uniweb register [--scope @org]        # Register a foundation + its data schemas to the registry
+
+uniweb rename <foundation|site|extension> <old> <new>   # Rename across the whole workspace
+uniweb doctor                     # Diagnose project configuration (--fix to auto-repair)
+uniweb validate                   # Check file-based data against declared schemas (--strict for CI)
+uniweb update                     # Align @uniweb/* deps + AGENTS.md to the CLI (--dry-run, --yes)
+uniweb inspect <path>             # Show parsed content for a section or page (--raw for the AST)
+
+uniweb <command> --help           # Per-command flags — no side effects. Prefer this over guessing.
+```
+
+**Choosing where a site goes.** `uniweb deploy` never assumes a host: with nothing configured it opens a picker listing only destinations it can act on, and records the choice in `deploy.yml` so later runs go straight there. For a free static host, prefer `uniweb add ci --host=<adapter>` — one command, then every push deploys, and on Cloudflare Pages / Netlify / Vercel it also adds per-PR previews that comment the URL. Adapters: `github-pages`, `cloudflare-pages`, `netlify`, `vercel`, plus `s3-cloudfront` for `deploy`. Destination config lives in `deploy.yml` beside `site.yml`; host credentials come from the environment, never from that committed file.
+
+**Publishing vs registering.** Foundations on Uniweb hosting live in the catalog as `@org/name@version`. When a foundation powers a single site, **don't run `uniweb register` yourself** — `uniweb publish` from the site directory releases the local foundation to the catalog (when its code changed) and goes live in one step. Register deliberately only when the foundation is a product meant for multiple sites; consuming sites then pin `foundation: '@org/name@1.2.3'`. Schemas can also be registered on their own from a schemas-only package (`@uniweb/schemas`, any `@org/schemas`, or a bare folder of `schemas/*.{yml,json,js}`) — that's how `@std` schemas are published. Auth via `uniweb login`, `--token`, or `UNIWEB_TOKEN`; preview with `--dry-run`.
+
+**Staying current.** `uniweb update` aligns `@uniweb/*` deps and `AGENTS.md` to the CLI that runs it; `uniweb doctor` reports drift without mutating. To pin to the newest release: `npx uniweb@latest update --yes`. The verb won't refresh AGENTS.md while declared deps still lag the CLI, or while edited deps haven't been installed — both would put the doc ahead of the code. Updating the CLI itself is your package manager's job.
+
+### `package.json` `uniweb` block
+
+Platform-specific configuration that doesn't belong in npm-standard fields. All fields optional.
+
+| Field | Where used | Default | Purpose |
+|---|---|---|---|
+| `id` | `uniweb register` | bare segment of a scoped `name` | The foundation's registered id — the bare name in `@org/<id>`. Decoupled from `package.json::name` (a workspace concern), so renaming on the registry doesn't ripple through site dependencies. |
+| `namespace` | `uniweb register` | none | Legacy explicit org-namespace override; equivalent to a scoped `package.json::name`. Rarely needed. |
+| `runtimePolicy` | `dist/runtime-pin.json` | `"auto-minor"` | How sites using this foundation receive runtime updates. |
+
+**Runtime policy** (foundation authors only — sites don't set this). At build time a foundation pins the `@uniweb/runtime` version it built against into `dist/runtime-pin.json`, alongside a policy controlling how that version moves forward on already-published sites: `exact` (stay put), `auto-patch` (within `MAJOR.MINOR.x`), `auto-minor` (within `MAJOR.x.y`, the default). Most foundations should leave it unset — the runtime is backwards-compatible at the minor level by convention, so `auto-minor` lets sites pick up fixes without a foundation rebuild. Set `exact` only if you depend on undocumented runtime internals or have audited against one release. Site owners cannot override your choice.
+
+`@uniweb/runtime` arrives **transitively** through `@uniweb/build`, so your foundation pins a runtime version without declaring one — that's intentional. **Don't add `@uniweb/runtime` to your foundation's dependencies**; to bump the pinned version, bump `@uniweb/build`. If the pin is missing or malformed, the platform serves the foundation through its legacy compatibility path — sites still work, they just don't participate in runtime propagation.
+
+---
+
 ## Troubleshooting
 
-**"Could not load foundation"** — Check `site/package.json` has `"foundation": "file:../foundation"`.
+**"Could not load foundation"** — check that `site/package.json` depends on the foundation *by its workspace package name*. For the default layout that's `"src": "file:../src"`; for a co-located project (`docs/src` + `docs/site`) it's `"docs-src": "file:../src"`. The key must match the foundation's `package.json::name`, not the folder it happens to sit in.
 
-**Component not appearing** — Verify `meta.js` exists. Check for `hidden: true`. Rebuild: `cd foundation && pnpm build`.
+**Component not appearing** — verify `meta.js` exists; check for `hidden: true`; rebuild with `cd foundation && pnpm build`.
 
-**Styles not applying** — Verify `@source` includes your component paths.
+**Styles not applying** — verify `@source` includes your component paths.
 
-**Prerender warnings about hooks** — Components with useState/useEffect show SSG warnings during build in local symlinked mode. Expected and harmless — the page renders correctly client-side.
+**Prerender warnings about hooks** — components with useState/useEffect show SSG warnings during build in local symlinked mode. Expected and harmless.
 
-**"document is not defined" during build** — Your component accesses `document`, `window`, or `localStorage` during render (not inside `useEffect`). Don't add `typeof document` guards — use the kit hook instead. Dark mode? `useAppearance()`. Scroll detection? `useScrolled()`. Kit hooks are SSR-safe by design.
+**"document is not defined" during build** — your component touches `document`, `window`, or `localStorage` during render rather than inside `useEffect`. **Don't add `typeof document` guards** — use the kit hook instead: dark mode → `useAppearance()`, scroll detection → `useScrolled()`. Kit hooks are SSR-safe by design.
 
-**Content not appearing as expected?**
-```bash
-uniweb inspect pages/home/hero.md         # Single section
-uniweb inspect pages/home/                 # Whole page
-uniweb inspect pages/home/hero.md --raw    # ProseMirror AST
-```
+**Content not parsing as expected** — `uniweb inspect pages/home/hero.md` (add `--raw` for the ProseMirror AST), or point it at a folder for a whole page.
 
-## Learning from Official Templates
+---
 
-When you're unsure how to implement a pattern — data fetching, i18n, layouts, insets, theming — install an official template as a reference project in your workspace:
+## Documentation Index
 
-```bash
-uniweb add project marketing --from marketing
-pnpm install
-```
+Full documentation: **https://github.com/uniweb/docs** · fetch any page as raw markdown at
+`https://raw.githubusercontent.com/uniweb/docs/main/{section}/{page}.md`
 
-This creates `marketing/src/` (the foundation, package `marketing-src`) + `marketing/site/` (the site, package `marketing-site`) alongside your existing project. You don't need to build or run it — just read the source files to see how working components handle content, params, theming, and data.
+| Task | Page |
+|------|------|
+| Writing page content | `authoring/writing-content.md` |
+| Theming and styling | `authoring/theming.md` |
+| Where-object predicate format | `authoring/predicates.md` |
+| Building components | `development/creating-components.md` |
+| Migrating an existing design | `development/converting-existing.md` |
+| Kit API (hooks, components) | `reference/kit-reference.md` |
+| Content shape reference | `reference/content-structure.md` |
+| Component metadata (meta.js) | `reference/component-metadata.md` |
+| Site configuration | `reference/site-configuration.md` |
+| Data fetching model | `reference/data-fetching.md` |
+| Navigation patterns | `reference/navigation-patterns.md` |
 
-**What to study:**
-- `{name}/src/sections/` — components with meta.js (content expectations, params, presets)
-- `{name}/site/pages/` — real content files showing markdown → component mapping
-- `{name}/site/theme.yml` + `site.yml` — theming and configuration patterns
+| Section | Covers |
+|---------|--------|
+| `getting-started/` | What is Uniweb, quickstart, templates |
+| `authoring/` | Writing content, site setup, collections, theming, translations |
+| `development/` | Foundations, component patterns, data fetching, layouts, i18n |
+| `reference/` | site.yml, page.yml, content structure, meta.js, kit API, CLI, deployment |
 
-**Available templates:**
-
-| Template | Demonstrates |
-|----------|-------------|
-| `marketing` | Semantic tokens, insets, grids, multi-line headings, inline styling |
-| `docs` | Sidebar navigation, navigation levels, code highlighting |
-| `dynamic` | Live API data fetching, loading states, transforms |
-| `international` | i18n, blog with collections, multi-locale routing |
-| `store` | Product grid, collections, e-commerce patterns |
-| `academic` | Publications, team grid, timeline, math |
-| `extensions` | Multi-foundation architecture, runtime loading |
-
-You can install multiple templates. Each becomes an independent project in the workspace. To run one in dev: `cd {name}/site && pnpm dev`
-
-## Further Documentation
-
-Full documentation: **https://github.com/uniweb/docs**
-
-| Section | Path | Topics |
-|---------|------|--------|
-| **Getting Started** | `getting-started/` | What is Uniweb, quickstart, templates |
-| **Authoring** | `authoring/` | Writing content, site setup, collections, theming, translations |
-| **Development** | `development/` | Foundations, component patterns, data fetching, layouts, i18n |
-| **Reference** | `reference/` | site.yml, page.yml, content structure, meta.js, kit API, CLI, deployment |
-
-**Quick access:** `https://raw.githubusercontent.com/uniweb/docs/main/{section}/{page}.md`
+For CLI flags, prefer `uniweb <command> --help` over this file — it's always current.
