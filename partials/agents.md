@@ -609,11 +609,40 @@ The build auto-adds preconnect hints for imports, emits `@font-face` + preload f
 
 > The `code` role owns `--font-code`. Tailwind's `font-mono` utility (which reads `--font-mono`) is a **separate** concern — control it by declaring your own `font-mono` font var. So `fonts.code` styles code without disturbing `font-mono`-styled labels, and vice-versa.
 
-### Foundation variables
+### Params, component vars, foundation vars
 
-Most customization belongs in component params — both section and layout components declare their own in `meta.js`. A header height is a layout param, not a foundation var.
+Three places a value can live, and picking the right one is most of the design:
 
-Foundation-level CSS variables are for values that must stay consistent **across** multiple components: shared radii, spacing scales, extra typefaces. Declare them in **`main.js`**, the single source of truth:
+| | Declared in | Reaches the component as | Author overrides in | CSS scope |
+|---|---|---|---|---|
+| **Param** | `meta.js` `params:` | a JS prop | section frontmatter | — |
+| **Component var** | `meta.js` `vars:` | a CSS custom property | section frontmatter `vars:` | `#section-{id}` |
+| **Foundation var** | `main.js` `vars:` | a CSS custom property | `theme.yml` `vars:` | `:root` (global) |
+
+**Param when the value drives logic** — a count, a variant name, a boolean the JSX branches on. **Component var when it only drives CSS** and belongs to one section type; it never enters JS, so it doesn't re-render anything:
+
+```js
+// meta.js — same schema as foundation vars (default, label, type, options, group, description)
+vars: {
+  'card-gap':    { default: '1.5rem', label: 'Card Gap', type: 'select', options: ['1rem', '1.5rem', '2rem'] },
+  'card-radius': { default: 'var(--radius-md)', description: 'Inherits the foundation var by default' },
+}
+```
+
+```jsx
+<div className="grid gap-[var(--card-gap)]">          // emitted on #section-{id}
+```
+
+```yaml
+---
+type: PricingTable
+vars: { card-gap: 2rem }        # author override — only declared names apply
+---
+```
+
+Unknown var names in frontmatter are ignored, and component vars are always context-independent (unlike foundation `color`/`gradient` vars, which resolve per light/dark context).
+
+**Foundation var when the value must stay consistent *across* components** — shared radii, spacing scales, extra typefaces. A header height is a layout param, not a foundation var. Declare them in **`main.js`**, the single source of truth:
 
 ```js
 export const vars = {
@@ -655,7 +684,9 @@ function MyComponent({ content, params, block }) {
 }
 ```
 
-All non-reserved frontmatter fields become `params`. Reserved: `type`, `preset`, `input`, `data`, `id`, `background`, `theme`, `source`, `where`. Everything else flows through.
+Frontmatter becomes `params`, minus the keys the framework consumes outright: `type` (and its legacy alias `component`), `preset`, `input`, `props`, `fetch`, `data`, `id`. `props:` is the one that isn't dropped but merged *into* params.
+
+**Framework fields you'd expect to be stripped are not.** `background`, `theme`, `source`, `where`, and `vars` are acted on by the runtime *and* passed through — so `params.theme` is readable when a component needs logic beyond CSS tokens (a light vs. dark logo, say). Components ignore the keys they don't use, the same way they ignore unused `content.data` keys.
 
 ### Rendering content with Kit
 
@@ -747,7 +778,9 @@ Header.as = 'header'
 export default {
   title: 'Feature Grid',
   description: 'Grid of feature cards with icons',
-  category: 'marketing',
+  category: 'showcase',     // impact | showcase | structure — what kind of
+                            // component this is, not what kind of site it suits
+  purpose: 'Explain',       // single verb: Introduce, Express, Explain, …
   // hidden: true,          // Exclude from export entirely (internal helpers)
   // background: 'self',    // Component renders its own background
   // inset: true,           // Available for @ComponentName in markdown
