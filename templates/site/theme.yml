@@ -9,7 +9,7 @@
 colors:
   primary: '#3b82f6'        # Brand color — buttons, links, focus rings
   # secondary: '#64748b'    # Secondary actions
-  # accent: '#8b5cf6'       # Highlights, decorative elements
+  # accent: '#8b5cf6'       # Highlights, decorative elements (defaults to primary)
   # neutral: stone           # Gray family — stone, zinc, gray, slate, neutral
 
 # ─── Fonts ─────────────────────────────────────────────────────────────────────

@@ -553,7 +553,7 @@ Check out [this](/a) link.     ← inline → stays in paragraphs as <a> tag
 This is [less important]{muted} context.
 ```
 
-`accent` (link-colored + bold), `callout` (accent-colored + bold), and `muted` (subtle) are built-in defaults that adapt to context automatically. Components receive HTML strings with spans applied: `<span accent="true">faster</span>`.
+`accent` and `callout` (both accent-colored + bold) and `muted` (subtle) are built-in defaults that adapt to context automatically. `--accent` is your brand color unless you declare a separate `colors.accent`, and resolves to the shade you authored — not a darkened one, since accent is decorative emphasis rather than body-size link text. Components receive HTML strings with spans applied: `<span accent="true">faster</span>`.
 
 Sites can override these or define additional named styles in `theme.yml`'s `inline:` section.
 
