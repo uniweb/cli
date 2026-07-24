@@ -300,7 +300,17 @@ Read the markdown out loud. If an author would understand what every line does, 
 
 ### Icons
 
-Image syntax with a library prefix: `![](lu-house)`. Libraries: `lu` (Lucide), `hi2` (Heroicons), `fi` (Feather), `pi` (Phosphor), `tb` (Tabler), `bs` (Bootstrap), `md` (Material), `fa6` (Font Awesome 6), and others — browse at [react-icons.github.io/react-icons](https://react-icons.github.io/react-icons/). Custom SVGs: `![Logo](./logo.svg){role=icon}`.
+Image syntax with a library prefix — **two interchangeable spellings, same everywhere** (markdown, and Kit's `<Icon name>`):
+
+```markdown
+![](lucide:house)     colon + friendly name — every library
+![](lu:house)         colon + short code
+![](lu-house)         dash — short codes only, to stay unambiguous with ordinary paths
+```
+
+Short codes: `lu` (Lucide), `hi` / `hi2` (Heroicons v1 / v2), `fi` (Feather), `pi` (Phosphor), `tb` (Tabler), `bs` (Bootstrap), `md` (Material), `ai` (Ant Design), `ri` (Remix), `si` (Simple Icons), `io5` (Ionicons), `bi` (Boxicons), `vsc` (VS Code), `wi` (Weather), `gi` (Game), `fa` / `fa6` (Font Awesome 5 / 6). Browse them at [react-icons.github.io/react-icons](https://react-icons.github.io/react-icons/).
+
+Optional attributes: `{size=20}`, `{color=red}`. Custom SVGs: `![Logo](./logo.svg){role=icon}` (or `![Logo](icon:./logo.svg)`) — always available, no library needed.
 
 ### Links and media attributes
 
@@ -401,10 +411,10 @@ content.lists[0]?.map((group, i) => (
 ```yaml:nav
 - label: Dashboard
   href: /
-  icon: lu:layout-grid       ← note the COLON form here, not the `lu-house` hyphen form
-- label: Docs                   used in markdown image syntax
+  icon: lu:layout-grid       # same icon spellings as anywhere else —
+- label: Docs                # lu:name, lucide:name, lu-name, or an SVG path
   href: /docs
-  icon: lu:book-open
+  icon: /icons/book.svg
   children:
     - label: Getting Started
       href: /docs/quickstart
