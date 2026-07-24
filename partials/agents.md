@@ -778,9 +778,11 @@ Header.as = 'header'
 export default {
   title: 'Feature Grid',
   description: 'Grid of feature cards with icons',
-  category: 'showcase',     // impact | showcase | structure — what kind of
-                            // component this is, not what kind of site it suits
-  purpose: 'Explain',       // single verb: Introduce, Express, Explain, …
+  category: 'showcase',     // free-form editor grouping — nothing validates it.
+                            // impact / showcase / structure is a suggested set.
+                            // It names the kind of *component*, not the kind of
+                            // site: a genre like 'marketing' belongs to a template
+  purpose: 'Explain',       // free-form; a single verb reads well
   // hidden: true,          // Exclude from export entirely (internal helpers)
   // background: 'self',    // Component renders its own background
   // inset: true,           // Available for @ComponentName in markdown
