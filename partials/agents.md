@@ -277,6 +277,8 @@ Paths are relative to the site package you identified in step 1 — `site/` in t
 
 **Change the brand color.** `<site>/theme.yml` → `colors.primary`. One line, and every component follows. Do **not** edit Tailwind color classes in components to change brand color — that is the exact anti-pattern this system removes.
 
+**Change how code blocks look.** `<site>/theme.yml` → `code:`. Name one of Shiki's 65 bundled themes (`code: dracula`), name one per scheme (`code: { light: github-light, dark: github-dark }`), or take a theme and adjust it (`code: { theme: github-dark, background: '#0D0D0D' }`). Hand-picking every syntax colour is possible and is the last thing to reach for.
+
 **Change a nav item.** First check how nav is produced. If `<site>/layout/header.md` lists the links (a markdown list, or a `yaml:nav` block), edit it there. If it doesn't, the Header is generating nav from the page hierarchy — change page titles and order in `site.yml` / `page.yml` instead.
 
 **Update the project's Uniweb dependencies — and this file.** `uniweb update`. One command aligns every `@uniweb/*` dependency *and* refreshes this AGENTS.md together, to the version matrix of the CLI that runs it. Preview with `--dry-run`. **Don't reach for `npm update` / `pnpm update`** — see *Staying current* in Part 5 for why that breaks things quietly.
@@ -812,6 +814,15 @@ Names only — for signatures and props, read the package: it's on disk at `node
 **Media:** `Visual` (first non-empty: inset/video/image), `Image`, `Media`, `Icon`, `Asset`
 **Navigation:** `Link`, `useActiveRoute()`, `useWebsite()`, `useRouting()`
 **Header/layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()`
+**Long-form prose:** `<Prose>` and the container you put `<Render>` output in both use Tailwind Typography's `prose` classes, which come from a plugin your *foundation* installs — kit ships no stylesheet. Without it the markup is right and completely unstyled. Add `@tailwindcss/typography` to the foundation's deps, then:
+
+```css
+@plugin "@tailwindcss/typography";
+@import "@uniweb/kit/prose-tokens.css";   /* makes prose answer to theme.yml */
+```
+
+Use **one** `prose` container per subtree — the `--tw-prose-*` variables are inherited, so a nested one silently resets them and the outer container goes on looking correct. The section that renders the document is usually the better owner; a layout should supply column width and padding.
+
 **Documentation shells:** `useHeadings()` (the page's headings + the one being read, derived from content so it prerenders), `website.getBranchHierarchy({ route, for })` (the page tree for one branch). Kit ships no ready-made layout — a layout is your foundation's design; write it in `src/layouts/` and use these for the behaviour.
 **Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`
 **Theming data:** `useThemeData()`, `useColorContext(block)`
