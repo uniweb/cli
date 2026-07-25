@@ -19,14 +19,20 @@ import { createZip } from '@uniweb/build/uwx'
 // The push staleness gate's read half: pull banks each entity's opaque `version`
 // from the manifest so the next push can echo it as `base_version`. This is the
 // manifest readPullDocuments deliberately skips — we used to drop these on the floor.
-test('readPullVersions harvests extra.version per entity from the pull manifest', () => {
+//
+// The token is TOP-LEVEL on the entry. Reading it from `extra.version` (the
+// backend's Rust field name, which is #[serde(flatten)] and never on the wire)
+// finds nothing and leaves the gate silently disarmed — that shipped once.
+test('readPullVersions harvests the top-level version per entity from the pull manifest', () => {
   const manifest = {
     format: 'uwx/1',
     entries: [
-      { kind: 'entity', uuid: 'U-SITE', file: 'entities/U-SITE.json', sha256: 'x', extra: { version: 'V-SITE' } },
-      { kind: 'entity', uuid: 'U-REC', file: 'entities/U-REC.json', sha256: 'y', extra: { version: 'V-REC' } },
-      // no extra → contributes nothing rather than a null the push would send
+      { kind: 'entity', uuid: 'U-SITE', file: 'entities/U-SITE.json', sha256: 'x', version: 'V-SITE' },
+      { kind: 'entity', uuid: 'U-REC', file: 'entities/U-REC.json', sha256: 'y', version: 'V-REC' },
+      // no version → contributes nothing rather than a null the push would send
       { kind: 'entity', uuid: 'U-NONE', file: 'entities/U-NONE.json', sha256: 'z' },
+      // the wrapper shape must NOT be honored — it would resurrect the silent bug
+      { kind: 'entity', uuid: 'U-WRAP', file: 'entities/U-WRAP.json', sha256: 'w', extra: { version: 'V-WRAP' } },
     ],
   }
   const zip = createZip([

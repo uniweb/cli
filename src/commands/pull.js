@@ -169,11 +169,20 @@ export function readPullDocuments(buf) {
 }
 
 // Read the per-entity optimistic-concurrency tokens out of a pull lane's manifest.
-// The backend stamps each entity entry with `extra.version` (opaque RFC3339); we
-// cache it and echo it back as `extra.base_version` on the next push, so a push
+// The backend stamps each entity entry with a top-level `version` (opaque RFC3339);
+// we cache it and echo it back as `base_version` on the next push, so a push
 // against a base the backend has moved past is refused instead of silently
 // overwriting. Returns a `{ <backend-uuid>: <version> }` map — empty for a JSON
 // fallback body (no manifest ⇒ no tokens ⇒ that lane simply stays unconditional).
+//
+// TOP-LEVEL on the entry. The backend's `Entry::extra` is `#[serde(flatten)]`, so
+// it never appears on the wire; reading `extra.version` finds nothing and silently
+// leaves the gate disarmed (which is exactly what it did before 2026-07-26).
+//
+// Keyed by `entries[].uuid`, which on a PULL manifest is the real backend uuid.
+// Note that is NOT symmetric with what we EMIT: on the push side that field is our
+// `$id` handle, and the backend correlates our `base_version` via the body's
+// `$uuid` instead. Same field name, different meaning by direction.
 //
 // This reads the SAME manifest.json that readPullDocuments deliberately skips:
 // there the entity files are the payload, here the manifest is the index we were
@@ -186,7 +195,7 @@ export function readPullVersions(buf) {
     try {
       const manifest = JSON.parse(data.toString('utf8'))
       for (const entry of manifest?.entries || []) {
-        const version = entry?.extra?.version
+        const version = entry?.version
         if (entry?.uuid && typeof version === 'string') out[entry.uuid] = version
       }
     } catch {
