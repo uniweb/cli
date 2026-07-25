@@ -61,6 +61,7 @@ import {
   makeModelResolver,
   readSyncCache,
   readBaseVersions,
+  readItemUuids,
   ensureItemUuids,
   pushSyncPackages,
 } from '../backend/site-sync.js'
@@ -121,11 +122,16 @@ export async function push(args = []) {
   // position. Non-local Models are fetched from the registry on demand. `priorHashes`
   // (the .uniweb push-cache) drives "send only changed" across both lanes; --all bypasses.
   const priorHashes = readSyncCache(siteDir)
-  // Per-item identity. Recovered from the backend first if this clone has never
-  // seen it (fresh git clone / deleted .uniweb), because an identity-blind push
-  // would otherwise re-mint every page and section row. Offline previews skip it.
+  // Per-item identity, without which the backend reads every record as new and
+  // recreates every page and section row.
+  //
+  // An offline preview (`-o` / `--dry-run`) still stamps from the CACHE — that is a
+  // local file read, so it stays offline, and it keeps the emitted `.uwx` faithful
+  // to what a real push would send. Only the network RECOVERY is skipped, so a
+  // preview never reaches the backend. (Emitting `{}` here instead would make the
+  // preview quietly unrepresentative, which is the one thing `-o` exists to avoid.)
   const itemUuids = (output || dryRun)
-    ? {}
+    ? readItemUuids(siteDir)
     : await ensureItemUuids({ client, siteDir, note })
   let pkg
   try {
