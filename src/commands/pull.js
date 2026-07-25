@@ -50,7 +50,12 @@ import {
   collectUnitUuids,
 } from '@uniweb/build/uwx'
 import { makeModelResolver } from './push.js'
-import { mergeBaseVersions, writeUnitBases, writeItemUuids } from '../backend/site-sync.js'
+import {
+  mergeBaseVersions,
+  mergeItemBaseVersions,
+  writeUnitBases,
+  writeItemUuids,
+} from '../backend/site-sync.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir, resolveSiteBackend } from './deploy.js'
 
@@ -190,15 +195,44 @@ export function readPullDocuments(buf) {
 // there the entity files are the payload, here the manifest is the index we were
 // previously discarding.
 export function readPullVersions(buf) {
-  if (!(buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b)) return {}
-  const out = {}
+  return readManifestTokens(buf).entity
+}
+
+/**
+ * Per-ITEM staleness tokens: `{ <record $uuid>: <opaque version> }`, from the
+ * entry's `item_versions`.
+ *
+ * The entity token can only say "something in this document moved"; these say
+ * which records did, which is what lets two people editing different sections
+ * both land instead of one being refused. Echoed back as `item_base_versions`.
+ *
+ * Keyed by record uuid rather than by our file path deliberately: the token then
+ * joins to the body by the same identity the backend's reconcile uses, and a file
+ * rename cannot silently re-target it. Absent for an entity with no items, and
+ * absent from an older backend — both mean "no per-item precondition", fall back
+ * to the entity grain.
+ */
+export function readPullItemVersions(buf) {
+  return readManifestTokens(buf).item
+}
+
+// One manifest read for both grains — they arrive on the same entry and must not
+// drift apart by being parsed in two places.
+function readManifestTokens(buf) {
+  const out = { entity: {}, item: {} }
+  if (!(buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b)) return out
   for (const [name, data] of readZip(buf)) {
     if (name !== 'manifest.json') continue
     try {
       const manifest = JSON.parse(data.toString('utf8'))
       for (const entry of manifest?.entries || []) {
-        const version = entry?.version
-        if (entry?.uuid && typeof version === 'string') out[entry.uuid] = version
+        if (entry?.uuid && typeof entry.version === 'string') out.entity[entry.uuid] = entry.version
+        const items = entry?.item_versions
+        if (items && typeof items === 'object') {
+          for (const [uuid, v] of Object.entries(items)) {
+            if (typeof v === 'string') out.item[uuid] = v
+          }
+        }
       }
     } catch {
       /* an unreadable manifest just means no tokens this pull */
@@ -283,6 +317,7 @@ export async function pull(args = [], deps = {}) {
       // is gated against the state we just took. A 304 skips this — correctly:
       // unchanged upstream means the token we already hold is still current.
       mergeBaseVersions(siteDir, readPullVersions(buf))
+      mergeItemBaseVersions(siteDir, readPullItemVersions(buf))
       return { docs, etag }
     } catch (err) {
       error(`Could not read the ${label} response: ${err.message}`)

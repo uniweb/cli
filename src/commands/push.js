@@ -61,6 +61,7 @@ import {
   makeModelResolver,
   readSyncCache,
   readBaseVersions,
+  readItemBaseVersions,
   readItemUuids,
   ensureItemUuids,
   pushSyncPackages,
@@ -141,7 +142,9 @@ export async function push(args = []) {
       priorHashes,
       sendAll,
       itemUuids,
-      ...(force ? {} : { baseVersions: readBaseVersions(siteDir) }),
+      // Both grains are dropped together by --force: one flag, one meaning,
+      // no partial-force mode.
+      ...(force ? {} : { baseVersions: readBaseVersions(siteDir), itemBaseVersions: readItemBaseVersions(siteDir) }),
     })
   } catch (err) {
     error(`Could not build the sync package: ${err.message}`)

@@ -204,6 +204,26 @@ export function writeSyncCache(siteDir, hashes) {
 export function readBaseVersions(siteDir) {
   return readMap(siteDir, 'baseVersions')
 }
+
+/**
+ * Per-ITEM staleness tokens: `{ <record $uuid>: <opaque version> }`.
+ *
+ * The entity token gates the whole document, so a stale base on any one record
+ * refuses the entire push — which fires on the common case of two people editing
+ * different sections and teaches them to reach for `--force`. These gate per record
+ * instead. Same contract as the entity token: opaque, cached, echoed, never parsed.
+ *
+ * Merged rather than replaced: a push carries only CHANGED entities, so a response
+ * reports tokens for a subset of the site. Replacing would drop the tokens of every
+ * record that wasn't in this package and silently degrade those to ungated.
+ */
+export function readItemBaseVersions(siteDir) {
+  return readMap(siteDir, 'itemBaseVersions')
+}
+export function mergeItemBaseVersions(siteDir, versions) {
+  if (!versions || !Object.keys(versions).length) return
+  updateSyncCache(siteDir, { itemBaseVersions: { ...readItemBaseVersions(siteDir), ...versions } })
+}
 export function mergeBaseVersions(siteDir, versions) {
   if (!versions || !Object.keys(versions).length) return
   updateSyncCache(siteDir, { baseVersions: { ...readBaseVersions(siteDir), ...versions } })

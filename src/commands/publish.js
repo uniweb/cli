@@ -59,6 +59,7 @@ import {
   makeModelResolver,
   readSyncCache,
   readBaseVersions,
+  readItemBaseVersions,
   ensureItemUuids,
   pushSyncPackages,
 } from '../backend/site-sync.js'
@@ -328,7 +329,7 @@ export async function publish(args = []) {
       resolveModel,
       priorHashes,
       itemUuids,
-      ...(baseVersions ? { baseVersions } : {}),
+      ...(baseVersions ? { baseVersions, itemBaseVersions: readItemBaseVersions(siteDir) } : {}),
       ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
       ...(assetRewrite ? { assetRewrite } : {}),
     })
