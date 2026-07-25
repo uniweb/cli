@@ -464,7 +464,7 @@ async function reportInstallIntegrity(workspaceDir) {
     if (!findings.length) return
 
     log('')
-    warn('The install finished, but the tree does not match what is declared:')
+    warn('The install finished, but dev will not resolve what is declared:')
     for (const finding of findings) {
       log(`  ${finding.message}`)
     }

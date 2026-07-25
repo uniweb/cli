@@ -1,21 +1,33 @@
 /**
- * Does the installed tree match what the workspace declares?
+ * Local development: is the bundler reading the foundation source you are editing?
  *
- * A site reaches its foundation through a `file:` dependency, and a package
- * manager can satisfy that two ways: a symlink to the workspace source, or a
- * materialized copy under its store. Only the first stays correct — a copy is a
- * snapshot, and it carries its own nested `node_modules`, so it keeps resolving
- * whatever `@uniweb/*` versions were current when it was made.
+ * SCOPE — this is a check about CLI scaffolding, and only about one modality.
+ * A site's `package.json`, its `file:` dependency on the foundation, and its
+ * `node_modules` are not part of the site as an artifact; they are the project
+ * shape the CLI hangs tooling on (see the three-ingredient model,
+ * kb/framework/architecture/site-foundation-runtime-model.md, Part 1). Treating
+ * that scaffolding as part of the site is where most of the confusion in this
+ * area comes from, so: nothing here says anything about what a foundation *is*,
+ * how it is distributed, or how it reaches a host.
  *
- * That state is nearly invisible. `uniweb build` resolves the workspace source
- * directly and stays correct throughout; only the dev server, which serves out
- * of `node_modules`, sees the stale copy. So the build is green, the tests pass,
- * and the browser renders a blank page or silently runs an old kit. It is
- * produced by an interrupted or partial install — which means the most likely
- * moment to acquire it is immediately after `uniweb update`.
+ * The one modality it covers is bundled dev mode against a workspace-local
+ * foundation — `uniweb dev` with `foundation:` naming a sibling package. There,
+ * the site imports `#foundation`, which `build/src/site/config.js` aliases to
+ * the foundation's PACKAGE NAME, so Vite resolves it through node_modules. A
+ * linked site (registry ref or URL) never takes that path, and neither does the
+ * desktop app, unipress, or the edge — they load a built `dist/entry.js`, or
+ * read a content folder directly. The check stays silent for all of them
+ * because there is no node_modules entry to look at.
  *
- * Cheap by design: a handful of `lstat` calls and `package.json` reads, so it
- * can run on every `uniweb dev` rather than only when someone thinks to ask.
+ * What goes wrong in that one modality: a `file:` dependency can be satisfied
+ * by a link to the workspace source or by a materialized copy, and a copy is a
+ * snapshot carrying its own nested node_modules — so it keeps resolving
+ * whatever `@uniweb/*` versions were current when it was taken.
+ *
+ * It hides well. `uniweb build` resolves the foundation by PATH and reads the
+ * workspace source, so the build is green and the tests pass while the dev
+ * server serves code from weeks ago. Cheap enough (a few lstats and JSON reads)
+ * to run on every `uniweb dev` rather than waiting for someone to suspect it.
  *
  * Reports; never prints. Callers present findings in their own voice.
  */
@@ -96,16 +108,16 @@ export function checkSiteInstall(site, foundation, workspaceDir) {
 
   if (!isLink) {
     findings.push({
-      id: 'foundation-not-linked',
+      id: 'dev-foundation-source-stale',
       severity: 'error',
       site: site.name,
-      message: `The foundation "${foundation.name}" is installed as a copy, not a link.`,
+      message: `In dev, this site builds against a copy of "${foundation.name}", not your workspace source.`,
       detail:
-        `  ${rel(linkPath)} is a directory, so it is a snapshot of ${rel(foundation.path)}\n` +
-        `  taken at install time. Edits to the foundation will not reach the dev server, and\n` +
-        `  the copy resolves its own @uniweb/* versions. Builds read the source directly and\n` +
-        `  stay correct, which is why this hides.`,
-      remedy: 'Reinstall to replace the copy with a link (e.g. pnpm install)',
+        `  ${rel(linkPath)} is a directory rather than a link, so it is a snapshot of\n` +
+        `  ${rel(foundation.path)} taken when it was installed. Edits you make will not\n` +
+        `  reach the dev server. \`uniweb build\` resolves the foundation by path and reads\n` +
+        `  your source, so builds stay correct — which is why this is easy to miss.`,
+      remedy: 'Reinstall so it links to the workspace source (e.g. pnpm install)',
     })
   } else {
     // Linked, but possibly at the wrong source.
@@ -113,11 +125,11 @@ export function checkSiteInstall(site, foundation, workspaceDir) {
     const expected = realpathSync(foundation.path)
     if (target !== expected) {
       findings.push({
-        id: 'foundation-link-mismatch',
+        id: 'dev-foundation-source-elsewhere',
         severity: 'error',
         site: site.name,
-        message: `The foundation "${foundation.name}" links somewhere other than the workspace source.`,
-        detail: `  links to: ${rel(target)}\n  expected: ${rel(expected)}`,
+        message: `In dev, this site resolves "${foundation.name}" somewhere other than your workspace source.`,
+        detail: `  resolves to: ${rel(target)}\n  workspace source: ${rel(expected)}`,
         remedy: 'Reinstall, and check the site\'s package.json file: reference',
       })
     }
@@ -139,15 +151,16 @@ export function checkSiteInstall(site, foundation, workspaceDir) {
     const reached = readJson(join(reachedDir, 'package.json'))?.version
     if (reached && reached !== spec) {
       findings.push({
-        id: 'foundation-dep-skew',
+        id: 'dev-foundation-dep-skew',
         severity: 'error',
         site: site.name,
-        message: `The foundation runs ${name} ${reached}, but declares ${spec}.`,
+        message: `In dev, "${foundation.name}" compiles against ${name} ${reached}, but declares ${spec}.`,
         detail:
           `  declared in ${rel(join(foundation.path, 'package.json'))}: ${spec}\n` +
-          `  reached from ${rel(linkPath)}: ${reached}\n` +
-          `  The dev server runs what it reaches. A build reads the workspace and may differ.`,
-        remedy: 'Reinstall so the installed tree matches what is declared',
+          `  resolved from ${rel(linkPath)}: ${reached}\n` +
+          `  ${name} is bundled into the foundation, so the dev server runs the version it\n` +
+          `  reaches here. A build reads the workspace tree and may compile a different one.`,
+        remedy: 'Reinstall so the resolved tree matches what is declared',
       })
     }
   }

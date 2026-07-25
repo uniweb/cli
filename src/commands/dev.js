@@ -140,7 +140,7 @@ async function warnOnStaleInstall(rootDir, site) {
     const findings = checkSiteInstall({ name: site.name, path: sitePath }, foundation, rootDir)
     if (!findings.length) return
 
-    console.error(`${YELLOW}⚠${RESET} This site's install is out of date:`)
+    console.error(`${YELLOW}⚠${RESET} Dev will not build against your workspace foundation:`)
     for (const finding of findings) {
       console.error(`  ${finding.message}`)
     }

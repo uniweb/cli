@@ -15,6 +15,13 @@
  *
  * These tests build both trees on disk, because the distinction under test is
  * literally a filesystem one.
+ *
+ * They also pin the SCOPE. This covers exactly one modality — bundled dev
+ * against a workspace-local foundation — and must stay silent for every other
+ * way a foundation reaches a runtime: a linked site (registry ref or URL) loads
+ * a built entry.js by URL, the desktop app reads a content folder directly, and
+ * neither has a node_modules entry to inspect. A diagnostic that fires outside
+ * the situation it understands is worse than none.
  */
 
 import { test } from 'node:test'
@@ -97,8 +104,8 @@ test('a copied foundation is reported', () => {
   const ws = makeWorkspace({ install: 'copy' })
   try {
     const findings = checkSiteInstall(ws.site, ws.foundation, ws.root)
-    assert.ok(ids(findings).includes('foundation-not-linked'))
-    assert.match(findings[0].message, /copy, not a link/)
+    assert.ok(ids(findings).includes('dev-foundation-source-stale'))
+    assert.match(findings[0].message, /builds against a copy/)
     assert.ok(findings[0].remedy.length > 0)
   } finally {
     ws.cleanup()
@@ -111,8 +118,8 @@ test('a copy running an older dependency than declared is reported', () => {
   const ws = makeWorkspace({ install: 'copy', declaredKit: '0.9.34', reachedKit: '0.9.33' })
   try {
     const findings = checkSiteInstall(ws.site, ws.foundation, ws.root)
-    assert.ok(ids(findings).includes('foundation-dep-skew'))
-    const skew = findings.find((f) => f.id === 'foundation-dep-skew')
+    assert.ok(ids(findings).includes('dev-foundation-dep-skew'))
+    const skew = findings.find((f) => f.id === 'dev-foundation-dep-skew')
     assert.match(skew.message, /0\.9\.33/)
     assert.match(skew.message, /0\.9\.34/)
   } finally {
@@ -144,7 +151,7 @@ test('a range spec is not treated as a promise about the exact version', () => {
   // "^0.9.0" says any compatible version; only an exact pin can be violated.
   const ws = makeWorkspace({ install: 'copy', declaredKit: '^0.9.0', reachedKit: '0.9.12' })
   try {
-    assert.ok(!ids(checkSiteInstall(ws.site, ws.foundation, ws.root)).includes('foundation-dep-skew'))
+    assert.ok(!ids(checkSiteInstall(ws.site, ws.foundation, ws.root)).includes('dev-foundation-dep-skew'))
   } finally {
     ws.cleanup()
   }
@@ -155,6 +162,27 @@ test('readDeclaredFoundation reads site.yml, and tolerates its absence', () => {
   try {
     assert.equal(readDeclaredFoundation(ws.site.path), 'src')
     assert.equal(readDeclaredFoundation(ws.root), null)
+  } finally {
+    ws.cleanup()
+  }
+})
+
+test('a linked site has nothing here to check', () => {
+  // `foundation: '@org/name@1.0.0'` or a URL — the foundation is fetched by the
+  // runtime, never resolved through the site's node_modules. Whatever else may
+  // be wrong with such a site, this check knows nothing about it.
+  const ws = makeWorkspace({ install: 'none' })
+  try {
+    writeFileSync(
+      join(ws.site.path, 'site.yml'),
+      "name: Test\nfoundation: '@acme/marketing@1.2.0'\n"
+    )
+    assert.equal(readDeclaredFoundation(ws.site.path), '@acme/marketing@1.2.0')
+    // No node_modules entry for it, so no findings — silence, not a false alarm.
+    assert.deepEqual(
+      checkSiteInstall(ws.site, { name: '@acme/marketing', path: ws.foundation.path }, ws.root),
+      []
+    )
   } finally {
     ws.cleanup()
   }
