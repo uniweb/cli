@@ -12,8 +12,10 @@
  * UPDATE by that uuid. The folder lane is keyed by the SAME site-content uuid —
  * the backend owns the site's `@uniweb/folder`, so the framework never holds a
  * folder uuid. Records still round-trip their own `$uuid`
- * (back-filled into their source files). site-content is pushed wholesale (no per-item
- * uuids on the wire). Push-only, and gated on the backend's per-entity `version`
+ * (back-filled into their source files). site-content items carry a per-item `$uuid`
+ * too, stamped at emit from the identity cache rather than from author files — without
+ * it the backend reads every record as new and recreates every page and section row.
+ * Push-only, and gated on the backend's per-entity `version`
  * (see "Pushes are GATED by default" below); `--force` restores last-push-wins.
  *
  * Order: content first (CREATE or UPDATE — the site must exist before its folder),
@@ -34,7 +36,7 @@
  *   uniweb push --force                  Overwrite upstream changes (drop the staleness gate)
  *
  * Pushes are GATED by default: each entity carries the backend `version` this clone
- * last saw (`extra.base_version`), and the backend refuses the whole package
+ * last saw (a top-level `base_version` on the manifest entry), and the backend refuses the whole package
  * atomically — before any write — if its stored version has moved. That prevents a
  * developer who hasn't pulled from silently destroying an app author's edits (the
  * backend's reconcile deletes items absent from the package, so an author's NEW page
