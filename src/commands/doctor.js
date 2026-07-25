@@ -297,6 +297,26 @@ export async function doctor(args = []) {
       continue
     }
 
+    // The agent index ships by default, but it can only carry absolute links
+    // when the site declares where it lives. Root-relative links still work
+    // for an agent that arrived via the index, so this warns rather than
+    // suppressing the artifact the way sitemap.xml does — a silently absent
+    // index is the exact failure the projections exist to prevent.
+    const agentsConfig = siteYml.agents
+    const indexEnabled = agentsConfig !== false && agentsConfig?.index !== false
+    if (indexEnabled && !siteYml.seo?.baseUrl) {
+      const issue = {
+        id: 'agents-index-relative-links',
+        type: 'warning',
+        site: siteName,
+        message: 'llms.txt will use root-relative links because seo.baseUrl is unset',
+      }
+      issues.push(issue)
+      warn(`[agents-index-relative-links] llms.txt links will be root-relative`)
+      log(`    Set ${colors.green}seo.baseUrl${colors.reset} in site.yml so agents get absolute URLs`)
+      log(`    (this also turns on sitemap.xml and robots.txt, which are skipped without it)`)
+    }
+
     const foundationName = siteYml.foundation
     if (!foundationName) {
       warn('No foundation specified in site.yml (using runtime loading?)')
