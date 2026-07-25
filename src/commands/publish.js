@@ -55,7 +55,13 @@ import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { readFlagValue } from '../utils/args.js'
 import { isNonInteractive } from '../utils/interactive.js'
-import { makeModelResolver, readSyncCache, readBaseVersions, pushSyncPackages } from '../backend/site-sync.js'
+import {
+  makeModelResolver,
+  readSyncCache,
+  readBaseVersions,
+  ensureItemUuids,
+  pushSyncPackages,
+} from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
 import { uploadSiteMedia } from '../backend/site-media.js'
 import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
@@ -301,6 +307,9 @@ export async function publish(args = []) {
   // edited since this clone last synced, the push is refused rather than
   // overwriting them, and nothing goes live. `--force` drops the precondition.
   const baseVersions = args.includes('--force') ? null : readBaseVersions(siteDir)
+  // Per-item identity, recovered from the backend when this clone has never seen it.
+  // Without it the backend re-mints every page and section row (see readItemUuids).
+  const itemUuids = await ensureItemUuids({ client, siteDir, note: (m) => say.dim(m) })
   // Stamp deploy-derived info on the site-content entity: the data-bundle URL,
   // and the PINNED foundation ref (`@scope/name@version`) from the bring-along.
   // Delivery is version-pinned end-to-end (the gateway serves a foundation only
@@ -318,6 +327,7 @@ export async function publish(args = []) {
       ...(foundationDir ? { foundationDir } : {}),
       resolveModel,
       priorHashes,
+      itemUuids,
       ...(baseVersions ? { baseVersions } : {}),
       ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
       ...(assetRewrite ? { assetRewrite } : {}),

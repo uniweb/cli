@@ -47,9 +47,10 @@ import {
   resolveCollectionsConfig,
   readZip,
   computeUnitHashes,
+  collectUnitUuids,
 } from '@uniweb/build/uwx'
 import { makeModelResolver } from './push.js'
-import { mergeBaseVersions, writeUnitBases } from '../backend/site-sync.js'
+import { mergeBaseVersions, writeUnitBases, writeItemUuids } from '../backend/site-sync.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir, resolveSiteBackend } from './deploy.js'
 
@@ -314,6 +315,9 @@ export async function pull(args = [], deps = {}) {
       // The next push re-establishes it; until then our side reports as unknown,
       // which is honest rather than wrong.
       writeUnitBases(siteDir, { remote: computeUnitHashes(siteDoc), local: {} })
+      // Per-item identity for the next push. Without it the backend reads our
+      // records as new and re-mints every page and section row.
+      writeItemUuids(siteDir, collectUnitUuids(siteDoc))
       const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
       pages += report.pages.length
       sections += report.sections.length

@@ -55,7 +55,13 @@ import { resolve } from 'node:path'
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
-import { makeModelResolver, readSyncCache, readBaseVersions, pushSyncPackages } from '../backend/site-sync.js'
+import {
+  makeModelResolver,
+  readSyncCache,
+  readBaseVersions,
+  ensureItemUuids,
+  pushSyncPackages,
+} from '../backend/site-sync.js'
 
 // Re-exported for downstream importers (pull.js, push.test.js) that read these
 // helpers from this module — their canonical home is now ../backend/site-sync.js.
@@ -113,6 +119,12 @@ export async function push(args = []) {
   // position. Non-local Models are fetched from the registry on demand. `priorHashes`
   // (the .uniweb push-cache) drives "send only changed" across both lanes; --all bypasses.
   const priorHashes = readSyncCache(siteDir)
+  // Per-item identity. Recovered from the backend first if this clone has never
+  // seen it (fresh git clone / deleted .uniweb), because an identity-blind push
+  // would otherwise re-mint every page and section row. Offline previews skip it.
+  const itemUuids = (output || dryRun)
+    ? {}
+    : await ensureItemUuids({ client, siteDir, note })
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, {
@@ -120,6 +132,7 @@ export async function push(args = []) {
       resolveModel: makeModelResolver({ client, offline: Boolean(output) || dryRun }),
       priorHashes,
       sendAll,
+      itemUuids,
       ...(force ? {} : { baseVersions: readBaseVersions(siteDir) }),
     })
   } catch (err) {

@@ -13,6 +13,7 @@
 
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
+import yaml from 'js-yaml'
 import {
   backfillEntityUuids,
   writeSiteEntityUuid,
@@ -21,6 +22,7 @@ import {
   diffSiteUnits,
   describeSiteDiff,
   computeUnitHashes,
+  collectUnitUuids,
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -226,6 +228,74 @@ export function mergeBaseVersions(siteDir, versions) {
  * Purely an explanation aid — losing either map costs detail in one message, never a
  * wrong push.
  */
+/**
+ * Per-item identity: `{ <unit path>: <backend $uuid> }`.
+ *
+ * The backend's reconcile matches a record by `$uuid`. `pages`, `page_sections` and
+ * `layout_sections` are all `multi` sections, where a record WITHOUT a uuid is read
+ * as new — inserted, with its stored counterpart deleted as host-only. So pushing
+ * without this map replaces every page and section row on every push. The content
+ * still lands, which is why it went unnoticed, but the app's per-item concurrency
+ * handles are left pointing at rows that no longer exist.
+ *
+ * Cached here rather than written into `page.yml` / section frontmatter: identity is
+ * a sync concern and author files should not carry sync uuids. Populated from
+ * whatever the backend last told us — a pull, or a push response's
+ * `finalized[].document`, which carries `$uuid` for every item at every nesting
+ * level, so a push alone bootstraps it and no pull is required.
+ *
+ * Losing it (gitignored, per-clone) means the next push would be identity-blind,
+ * which is why `push` repopulates it first — see `ensureItemUuids`. The backend also
+ * refuses an all-blank `multi` section, so a producer that skips that step fails
+ * loudly instead of quietly rebuilding the site's identity.
+ */
+export function readItemUuids(siteDir) {
+  return readMap(siteDir, 'itemUuids')
+}
+export function writeItemUuids(siteDir, map) {
+  if (!map || !Object.keys(map).length) return
+  updateSyncCache(siteDir, { itemUuids: map })
+}
+
+/**
+ * Guarantee we have per-item identity before an identity-bearing push.
+ *
+ * Fires only when the site HAS been pushed before (`$uuid` in site.yml) but the
+ * cache is empty — a fresh `git clone`, or a deleted `.uniweb/`. One read of the
+ * backend's current document, no file writes, no `uniweb pull`. A first-ever push
+ * legitimately has nothing to fetch and is left alone.
+ *
+ * @returns {Promise<Object<string,string>>} the map (possibly empty)
+ */
+export async function ensureItemUuids({ client, siteDir, note }) {
+  const cached = readItemUuids(siteDir)
+  if (Object.keys(cached).length) return cached
+  // A site that has never been pushed has no identity to recover — and nothing to
+  // lose, since every item is genuinely new.
+  let siteContentUuid = null
+  try {
+    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
+    siteContentUuid = typeof y?.$uuid === 'string' ? y.$uuid : null
+  } catch { /* unreadable site.yml — nothing to recover against */ }
+  if (!siteContentUuid) return cached
+  try {
+    const res = await client.pullSiteContent(siteContentUuid)
+    if (!res?.ok) return cached
+    const doc = entityDocFromUwx(Buffer.from(await res.arrayBuffer()))
+    if (!doc) return cached
+    const harvested = collectUnitUuids(doc)
+    if (Object.keys(harvested).length) {
+      writeItemUuids(siteDir, harvested)
+      note?.(`Recovered identity for ${Object.keys(harvested).length} item(s) from the backend.`)
+    }
+    return harvested
+  } catch {
+    // Best-effort: a failure here leaves the push identity-blind, which the backend
+    // refuses rather than silently applying. Better to hit that than to guess.
+    return cached
+  }
+}
+
 export function readUnitBases(siteDir) {
   const v = readMap(siteDir, 'unitBases')
   return { local: v.local || {}, remote: v.remote || {} }
@@ -458,6 +528,11 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
     const theirs = siteFinalizedDoc?.pages ? siteFinalizedDoc : null
     if (theirs) patch.remote = computeUnitHashes(theirs)
     if (Object.keys(patch).length) writeUnitBases(siteDir, patch)
+    // The backend's post-write document carries `$uuid` per item at every nesting
+    // level, so the push that just landed also re-arms identity for the next one.
+    // Replaced wholesale: an item that no longer exists must not keep a uuid that
+    // would re-target something else.
+    if (theirs) writeItemUuids(siteDir, collectUnitUuids(theirs))
   }
   return { exitCode: 0, boundSiteUuid, finalizedTotal, wrote }
 }
