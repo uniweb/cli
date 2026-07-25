@@ -48,6 +48,7 @@ import {
   readZip,
 } from '@uniweb/build/uwx'
 import { makeModelResolver } from './push.js'
+import { mergeBaseVersions } from '../backend/site-sync.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir, resolveSiteBackend } from './deploy.js'
 
@@ -167,6 +168,35 @@ export function readPullDocuments(buf) {
   return single ? [single] : []
 }
 
+// Read the per-entity optimistic-concurrency tokens out of a pull lane's manifest.
+// The backend stamps each entity entry with `extra.version` (opaque RFC3339); we
+// cache it and echo it back as `extra.base_version` on the next push, so a push
+// against a base the backend has moved past is refused instead of silently
+// overwriting. Returns a `{ <backend-uuid>: <version> }` map — empty for a JSON
+// fallback body (no manifest ⇒ no tokens ⇒ that lane simply stays unconditional).
+//
+// This reads the SAME manifest.json that readPullDocuments deliberately skips:
+// there the entity files are the payload, here the manifest is the index we were
+// previously discarding.
+export function readPullVersions(buf) {
+  if (!(buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b)) return {}
+  const out = {}
+  for (const [name, data] of readZip(buf)) {
+    if (name !== 'manifest.json') continue
+    try {
+      const manifest = JSON.parse(data.toString('utf8'))
+      for (const entry of manifest?.entries || []) {
+        const version = entry?.extra?.version
+        if (entry?.uuid && typeof version === 'string') out[entry.uuid] = version
+      }
+    } catch {
+      /* an unreadable manifest just means no tokens this pull */
+    }
+    break
+  }
+  return out
+}
+
 /**
  * @param {string[]} args
  * @param {object} [deps] - injectable seams for testing: `fetch` (default global
@@ -236,7 +266,12 @@ export async function pull(args = [], deps = {}) {
     }
     try {
       const etag = res.headers?.get?.('etag') ?? null
-      const docs = readPullDocuments(Buffer.from(await res.arrayBuffer()))
+      const buf = Buffer.from(await res.arrayBuffer())
+      const docs = readPullDocuments(buf)
+      // Bank the per-entity staleness tokens this lane carried, so the next push
+      // is gated against the state we just took. A 304 skips this — correctly:
+      // unchanged upstream means the token we already hold is still current.
+      mergeBaseVersions(siteDir, readPullVersions(buf))
       return { docs, etag }
     } catch (err) {
       error(`Could not read the ${label} response: ${err.message}`)

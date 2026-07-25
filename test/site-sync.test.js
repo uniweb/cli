@@ -11,7 +11,12 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { extractFinalized, pushSyncPackages } from '../src/backend/site-sync.js'
+import {
+  extractFinalized,
+  pushSyncPackages,
+  readBaseVersions,
+  readSyncCache,
+} from '../src/backend/site-sync.js'
 
 const ok = (body) => ({ ok: true, status: 200, statusText: 'OK', json: async () => body, text: async () => JSON.stringify(body) })
 const fail = (status, body = 'boom') => ({ ok: false, status, statusText: 'Error', json: async () => ({}), text: async () => body })
@@ -44,12 +49,69 @@ const siteOnlyPkg = (extra) => ({
 test('extractFinalized tolerates the report.finalized / bare-array shapes and drops invalid entries', () => {
   assert.deepEqual(
     extractFinalized({ report: { finalized: [{ index: 0, uuid: 'A', changed: true }] } }),
-    [{ index: 0, uuid: 'A', changed: true, document: null }]
+    [{ index: 0, uuid: 'A', changed: true, version: null, document: null }]
   )
-  assert.deepEqual(extractFinalized([{ index: 1, uuid: 'B' }]), [{ index: 1, uuid: 'B', changed: undefined, document: null }])
+  assert.deepEqual(extractFinalized([{ index: 1, uuid: 'B' }]), [{ index: 1, uuid: 'B', changed: undefined, version: null, document: null }])
   // entries without a valid index + uuid are dropped; a non-list payload → null
   assert.deepEqual(extractFinalized({ finalized: [{ uuid: 'no-index' }, { index: 2 }] }), [])
   assert.equal(extractFinalized({}), null)
+})
+
+test('extractFinalized carries the post-write version (the push-gate re-arm token)', () => {
+  // The whole point of the field: without it, caching a base only on pull makes
+  // the gate self-defeating — the second consecutive push is stale by construction.
+  assert.deepEqual(
+    extractFinalized([{ index: 0, uuid: 'A', changed: true, version: '2026-07-25T21:09:44.120388Z' }]),
+    [{ index: 0, uuid: 'A', changed: true, version: '2026-07-25T21:09:44.120388Z', document: null }]
+  )
+  // A non-string version is ignored rather than cached as junk.
+  assert.equal(extractFinalized([{ index: 0, uuid: 'A', version: 42 }])[0].version, null)
+})
+
+test('a successful push banks the returned versions; a refused lane still banks what landed', async () => {
+  const dir = tmpSite()
+  const client = {
+    origin: 'http://x',
+    createSiteContent: async () => ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1' }])),
+  }
+  const { report } = makeReport()
+  const pkg = siteOnlyPkg({ siteContentUuid: undefined, hashes: { '@uniweb/site-content site': 'h1' } })
+
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, asOrg: null, report })
+  assert.equal(res.exitCode, 0)
+  assert.deepEqual(readBaseVersions(dir), { S1: 'V1' })
+
+  // The hash cache and the version map share one file and must not clobber each other.
+  assert.deepEqual(readSyncCache(dir), { '@uniweb/site-content site': 'h1' })
+})
+
+test('a stale_base 409 is reported as a staleness refusal, not the structure conflict', async () => {
+  const dir = tmpSite()
+  const problem = {
+    status: 409, title: 'Conflict',
+    detail: 'content changed upstream since your last pull — pull first (…)',
+    reason: 'stale_base',
+    stale_entities: ['0198f2'],
+  }
+  const client = {
+    origin: 'http://x',
+    updateSiteContent: async () => ({
+      ok: false, status: 409, statusText: 'Conflict',
+      text: async () => JSON.stringify(problem),
+      json: async () => problem,
+    }),
+  }
+  const { report, calls } = makeReport()
+  const pkg = siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} })
+
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, asOrg: null, report })
+  assert.equal(res.exitCode, 1)
+  const out = [...calls.error, ...calls.note].join('\n')
+  assert.match(out, /newer content than your last pull/)
+  assert.match(out, /0198f2/)
+  assert.match(out, /--force/)
+  // Must NOT misreport it as the genesis-owned collection-structure conflict.
+  assert.ok(!/collection structure is already established/.test(out))
 })
 
 test('pushSyncPackages CREATE: mints + records the site $uuid, persists the cache, exit 0', async () => {

@@ -27,6 +27,7 @@
  *   uniweb publish                 Bring the foundation along, sync, and go live
  *   uniweb publish --dry-run       Resolve everything; POST nothing
  *   uniweb publish --yes           Skip confirmations (CI); never block on a prompt
+ *   uniweb publish --force         Overwrite upstream app-side edits (drop the push gate)
  *   uniweb publish --no-save       Skip the deploy.yml lastDeploy auto-save
  *   uniweb publish --backend <url> Override the backend origin
  *   uniweb publish --token <bearer> Auth bearer (skips `uniweb login`)
@@ -54,7 +55,7 @@ import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { readFlagValue } from '../utils/args.js'
 import { isNonInteractive } from '../utils/interactive.js'
-import { makeModelResolver, readSyncCache, pushSyncPackages } from '../backend/site-sync.js'
+import { makeModelResolver, readSyncCache, readBaseVersions, pushSyncPackages } from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
 import { uploadSiteMedia } from '../backend/site-media.js'
 import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
@@ -296,6 +297,10 @@ export async function publish(args = []) {
   //    the SAME two-lane submission `uniweb push` uses — stamping
   //    info.data_bundle and rewriting local media refs to backend serve URLs.
   const priorHashes = readSyncCache(siteDir)
+  // publish rides the same gated push as `uniweb push`: if an app author has
+  // edited since this clone last synced, the push is refused rather than
+  // overwriting them, and nothing goes live. `--force` drops the precondition.
+  const baseVersions = args.includes('--force') ? null : readBaseVersions(siteDir)
   // Stamp deploy-derived info on the site-content entity: the data-bundle URL,
   // and the PINNED foundation ref (`@scope/name@version`) from the bring-along.
   // Delivery is version-pinned end-to-end (the gateway serves a foundation only
@@ -313,6 +318,7 @@ export async function publish(args = []) {
       ...(foundationDir ? { foundationDir } : {}),
       resolveModel,
       priorHashes,
+      ...(baseVersions ? { baseVersions } : {}),
       ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
       ...(assetRewrite ? { assetRewrite } : {}),
     })

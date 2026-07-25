@@ -13,8 +13,33 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
-import { pull, extractDocument, splitCollectionsPull, readPullDocuments } from '../src/commands/pull.js'
+import { pull, extractDocument, splitCollectionsPull, readPullDocuments, readPullVersions } from '../src/commands/pull.js'
 import { createZip } from '@uniweb/build/uwx'
+
+// The push staleness gate's read half: pull banks each entity's opaque `version`
+// from the manifest so the next push can echo it as `base_version`. This is the
+// manifest readPullDocuments deliberately skips — we used to drop these on the floor.
+test('readPullVersions harvests extra.version per entity from the pull manifest', () => {
+  const manifest = {
+    format: 'uwx/1',
+    entries: [
+      { kind: 'entity', uuid: 'U-SITE', file: 'entities/U-SITE.json', sha256: 'x', extra: { version: 'V-SITE' } },
+      { kind: 'entity', uuid: 'U-REC', file: 'entities/U-REC.json', sha256: 'y', extra: { version: 'V-REC' } },
+      // no extra → contributes nothing rather than a null the push would send
+      { kind: 'entity', uuid: 'U-NONE', file: 'entities/U-NONE.json', sha256: 'z' },
+    ],
+  }
+  const zip = createZip([
+    { name: 'manifest.json', data: Buffer.from(JSON.stringify(manifest)) },
+    { name: 'entities/U-SITE.json', data: Buffer.from('{}') },
+  ])
+  assert.deepEqual(readPullVersions(zip), { 'U-SITE': 'V-SITE', 'U-REC': 'V-REC' })
+})
+
+test('readPullVersions is empty for a non-ZIP body — that lane just stays unconditional', () => {
+  assert.deepEqual(readPullVersions(Buffer.from('{"a":1}')), {})
+  assert.deepEqual(readPullVersions(Buffer.from('')), {})
+})
 
 const docOf = (text) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] })
 

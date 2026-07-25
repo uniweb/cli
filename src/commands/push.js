@@ -13,7 +13,8 @@
  * the backend owns the site's `@uniweb/folder`, so the framework never holds a
  * folder uuid. Records still round-trip their own `$uuid`
  * (back-filled into their source files). site-content is pushed wholesale (no per-item
- * uuids on the wire). Push-only, last-push-wins (`collision=force`) in v1.
+ * uuids on the wire). Push-only, and gated on the backend's per-entity `version`
+ * (see "Pushes are GATED by default" below); `--force` restores last-push-wins.
  *
  * Order: content first (CREATE or UPDATE — the site must exist before its folder),
  * then the folder, keyed by the site's uuid. On a brand-new site the backend creates
@@ -30,6 +31,14 @@
  *   uniweb push --token <bearer>         Submit with this bearer; skips `uniweb login`
  *   uniweb push --foundation <dir>       Use this local foundation for the Model schema
  *   uniweb push --all                    Send every record (bypass the changed-only cache)
+ *   uniweb push --force                  Overwrite upstream changes (drop the staleness gate)
+ *
+ * Pushes are GATED by default: each entity carries the backend `version` this clone
+ * last saw (`extra.base_version`), and the backend refuses the whole package
+ * atomically — before any write — if its stored version has moved. That prevents a
+ * developer who hasn't pulled from silently destroying an app author's edits (the
+ * backend's reconcile deletes items absent from the package, so an author's NEW page
+ * would be hard-deleted). `--force` omits the token and restores last-push-wins.
  *
  * Backend: via BackendClient (the content + folder sync lanes). Origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
@@ -46,7 +55,7 @@ import { resolve } from 'node:path'
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
-import { makeModelResolver, readSyncCache, pushSyncPackages } from '../backend/site-sync.js'
+import { makeModelResolver, readSyncCache, readBaseVersions, pushSyncPackages } from '../backend/site-sync.js'
 
 // Re-exported for downstream importers (pull.js, push.test.js) that read these
 // helpers from this module — their canonical home is now ../backend/site-sync.js.
@@ -77,6 +86,12 @@ export async function push(args = []) {
   const asOrg = flagValue(args, '--as-org')
   const foundationDir = flagValue(args, '--foundation')
   const sendAll = args.includes('--all') // bypass the send-only-changed cache
+  // --force drops the optimistic-concurrency precondition, making the push
+  // unconditional (the backend then falls back to its `collision` policy). It is
+  // deliberately NOT "send collision=force": when a base_version is present the
+  // backend consults it and never looks at `collision`, so forcing has to mean
+  // OMITTING the token — the HTTP If-Match idiom.
+  const force = args.includes('--force')
 
   const siteDir = await resolveSiteDir(args, 'push')
   const siteBackend = await resolveSiteBackend(siteDir)
@@ -105,6 +120,7 @@ export async function push(args = []) {
       resolveModel: makeModelResolver({ client, offline: Boolean(output) || dryRun }),
       priorHashes,
       sendAll,
+      ...(force ? {} : { baseVersions: readBaseVersions(siteDir) }),
     })
   } catch (err) {
     error(`Could not build the sync package: ${err.message}`)

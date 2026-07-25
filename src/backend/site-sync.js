@@ -35,6 +35,12 @@ export function extractFinalized(payload) {
       index: d?.index,
       uuid: d?.uuid ?? d?.document?.$uuid ?? null,
       changed: d?.changed,
+      // Post-write optimistic-concurrency token, read back from the stored row.
+      // Cache it UNCONDITIONALLY — do not branch on `changed` and do not infer:
+      // the backend pins "zero-write ⇒ version unmoved" with a test, so a no-op
+      // resubmit returns the value we already hold, and anything else is theirs
+      // to report, not ours to derive.
+      version: typeof d?.version === 'string' ? d.version : null,
       document: d?.document ?? null,
     }))
     .filter((e) => Number.isInteger(e.index) && e.uuid)
@@ -92,18 +98,57 @@ export function makeModelResolver({ client, offline = false }) {
 function syncCachePath(siteDir) {
   return join(siteDir, '.uniweb', 'sync-cache.json')
 }
-export function readSyncCache(siteDir) {
+function readSyncCacheFile(siteDir) {
   try {
     const obj = JSON.parse(readFileSync(syncCachePath(siteDir), 'utf8'))
-    return obj && typeof obj.hashes === 'object' && obj.hashes ? obj.hashes : {}
+    return obj && typeof obj === 'object' ? obj : {}
   } catch {
     return {} // missing / unreadable → treat everything as changed
   }
 }
+export function readSyncCache(siteDir) {
+  const obj = readSyncCacheFile(siteDir)
+  return obj.hashes && typeof obj.hashes === 'object' ? obj.hashes : {}
+}
 export function writeSyncCache(siteDir, hashes) {
   const p = syncCachePath(siteDir)
   mkdirSync(dirname(p), { recursive: true })
-  writeFileSync(p, JSON.stringify({ version: 1, hashes }, null, 2) + '\n')
+  // Preserve baseVersions — the two maps are written on different events (hashes
+  // on emit, versions on pull AND on push) and must not clobber each other.
+  const prior = readSyncCacheFile(siteDir)
+  const out = { version: 1, hashes }
+  if (prior.baseVersions && Object.keys(prior.baseVersions).length) out.baseVersions = prior.baseVersions
+  writeFileSync(p, JSON.stringify(out, null, 2) + '\n')
+}
+
+/**
+ * The push gate's optimistic-concurrency tokens: `{ <backend-uuid>: <version> }`.
+ *
+ * Lives beside the content hashes because it is the same kind of thing — "the
+ * backend state this clone last agreed with" — and is already per-entity, which
+ * the per-lane `pull-cache.json` (two ETags) is not. Gitignored, per-clone,
+ * deletable: losing it means the next push is unconditional, i.e. today's
+ * behavior, never a wrong-but-plausible token.
+ *
+ * Fed from BOTH directions, which is what makes the gate usable: `pull` records
+ * the manifest's `extra.version`, and every successful push records the
+ * post-write `finalized[].version` the backend returns. Without the push half a
+ * second consecutive push would be stale by construction and refused.
+ */
+export function readBaseVersions(siteDir) {
+  const obj = readSyncCacheFile(siteDir)
+  return obj.baseVersions && typeof obj.baseVersions === 'object' ? obj.baseVersions : {}
+}
+export function mergeBaseVersions(siteDir, versions) {
+  if (!versions || !Object.keys(versions).length) return
+  const p = syncCachePath(siteDir)
+  mkdirSync(dirname(p), { recursive: true })
+  const prior = readSyncCacheFile(siteDir)
+  const merged = { ...(prior.baseVersions || {}), ...versions }
+  writeFileSync(
+    p,
+    JSON.stringify({ version: 1, hashes: prior.hashes || {}, baseVersions: merged }, null, 2) + '\n'
+  )
 }
 
 /**
@@ -168,6 +213,24 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
       return null
     }
     if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      // Two unrelated conflicts share HTTP 409, so branch on the machine-readable
+      // `reason` — never on `detail`, which is prose the backend may reword.
+      let problem = null
+      if (res.status === 409 && body) {
+        try { problem = JSON.parse(body) } catch { /* not a problem document */ }
+      }
+      if (problem?.reason === 'stale_base') {
+        error(`${label} push refused — the backend has newer content than your last pull.`)
+        const stale = Array.isArray(problem.stale_entities) ? problem.stale_entities : []
+        if (stale.length) {
+          note(`Changed upstream: ${stale.length} entit${stale.length === 1 ? 'y' : 'ies'} (${stale.join(', ')})`)
+        }
+        note('Nothing was written — the whole push was refused before any change.')
+        note('Run `uniweb pull` to take those changes, then push again.')
+        note('To overwrite them anyway, re-run with --force (this discards the upstream edits).')
+        return null
+      }
       error(`${label} push rejected: HTTP ${res.status} ${res.statusText}`)
       if (res.status === 401 || res.status === 403) {
         note("Credentials weren't accepted — supply a bearer with --token <bearer> (or UNIWEB_TOKEN).")
@@ -181,7 +244,6 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
             'redeploy, or clear `$uuid` in site.yml to deploy a fresh one.'
         )
       }
-      const body = await res.text().catch(() => '')
       if (body) note(body.slice(0, 800))
       return null
     }
@@ -215,13 +277,25 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
   // and returns its uuid, which we record into site.yml). `boundSiteUuid` carries the
   // minted/known uuid forward to key the folder push.
   let boundSiteUuid = siteContentUuid
+  // Post-write tokens harvested from every lane, persisted once at the end so a
+  // partial push (lane 1 ok, lane 2 refused) still banks what actually landed —
+  // otherwise the next attempt would re-send lane 1 with a base the backend has
+  // already moved past, and refuse a push the user just made.
+  const newVersions = {}
+  const harvest = (finalized) => {
+    for (const f of finalized || []) if (f.uuid && f.version) newVersions[f.uuid] = f.version
+  }
   if (siteContent) {
     if (siteContentUuid) {
       const finalized = await pushLane(
         'site-content',
         () => client.updateSiteContent(siteContentUuid, siteContent.buffer, { asOrg })
       )
-      if (!finalized) return { exitCode: 1, finalizedTotal, wrote }
+      if (!finalized) {
+        mergeBaseVersions(siteDir, newVersions)
+        return { exitCode: 1, finalizedTotal, wrote }
+      }
+      harvest(finalized)
       finalizedTotal += finalized.length
     } else {
       const payload = await postLane(
@@ -238,7 +312,9 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
       writeSiteEntityUuid(siteDir, minted)
       boundSiteUuid = minted
       wrote.push('recorded site $uuid in site.yml')
-      finalizedTotal += extractFinalized(payload)?.length ?? 1
+      const createdFinalized = extractFinalized(payload)
+      harvest(createdFinalized)
+      finalizedTotal += createdFinalized?.length ?? 1
     }
   }
 
@@ -255,7 +331,11 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
       'collections',
       () => client.pushFolder(boundSiteUuid, collections.buffer, { asOrg })
     )
-    if (!finalized) return { exitCode: 1, finalizedTotal, wrote }
+    if (!finalized) {
+      mergeBaseVersions(siteDir, newVersions)
+      return { exitCode: 1, finalizedTotal, wrote }
+    }
+    harvest(finalized)
     const bf = backfillEntityUuids({ index: collections.index, finalized })
     for (const w of bf.warnings) note(`! ${w}`)
     for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
@@ -263,7 +343,11 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
     finalizedTotal += finalized.length
   }
 
-  // Persist the full content-hash map so the next push skips unchanged entities.
+  // Persist the full content-hash map so the next push skips unchanged entities,
+  // then bank the post-write tokens so the NEXT push carries a current base.
+  // Entities absent from finalized[] (skipped, or not editable) keep their cached
+  // value — absence is not invalidation.
   writeSyncCache(siteDir, hashes)
+  mergeBaseVersions(siteDir, newVersions)
   return { exitCode: 0, boundSiteUuid, finalizedTotal, wrote }
 }
