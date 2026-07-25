@@ -110,8 +110,10 @@ export function writeSyncCache(siteDir, hashes) {
  * Offline-probe how many of a site's entities differ from the last successful push.
  * Runs the SAME emit + send-only-changed diff `uniweb push` runs, but with an
  * OFFLINE Model resolver — no auth, no submit, no backend round-trip. Used by
- * `uniweb status` and the `uniweb publish` pre-flight. Throws if the producer
- * can't build the sync packages (e.g. an unresolved data Model); callers report it.
+ * `uniweb status` only. (It was also `uniweb publish`'s pre-flight back when publish
+ * went live WITHOUT pushing and so had to warn about unpushed content; publish now
+ * always pushes, which makes the warning moot.) Throws if the producer can't build
+ * the sync packages (e.g. an unresolved data Model); callers report it.
  *
  * @param {string} siteDir
  * @returns {Promise<{ changed: number, unchanged: number, warnings: string[] }>}
