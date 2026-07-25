@@ -312,6 +312,8 @@ Description paragraph.
 
 Heading levels set *structure* (pretitle, title, subtitle), not font size — the component controls visual sizing.
 
+**A section with no `type:` renders through the foundation's default section type — a component named `Section`, unless the foundation's `main.js` sets `defaultSection` to something else.** This is what lets a folder of plain markdown with no frontmatter at all become pages: mounted documentation, an imported wiki, anything written before it met this framework. If such content renders blank, the foundation has no `Section` — that, not the markdown, is what to fix.
+
 **Markdown order ≠ rendering order.** The parser extracts content into a flat structure; the component decides how to arrange it visually. Write markdown in semantic order, not visual order — start with the heading, then add icons, images, and text in any order.
 
 **Placing content *before* the first heading changes the parse:** headings after body content become items, not the section title. This is by design — it's how repeating content groups are created.
@@ -604,6 +606,8 @@ pages: [home, about, ...]   # Order pages (... = rest, first = homepage); withou
 **Route mapping:** folder structure maps 1:1 to routes. Every folder keeps its natural route — `pages:` controls **order only**, not which child "becomes" the parent. The only exception is the site root, where `index:` (or first in `pages:`) sets `/`.
 
 **Content-less containers:** folders with `page.yml` but no markdown are structural groups (`hasContent: false`). Visiting one auto-redirects to the first descendant with content — this is what supports courses → modules → lessons at any depth.
+
+**A local folder for a mounted route should use `folder.yml`, not `page.yml`.** The filename is how you say what the folder holds — `page.yml` for a page built from sections, `folder.yml` for a folder of pages — and for a mount that answer also decides how the mounted tree is read. A `page.yml` stub over a mounted folder of pages says "sections", and top-level markdown in the mounted repo collapses into one page instead of becoming pages of its own. Keep `layout:`, `title:` and SEO in that stub; the mounted repo's own `folder.yml` supplies its ordering and title where the stub is silent.
 
 **SEO & social cards:** set site-wide defaults in `site.yml`; any page overrides per-field in `page.yml` (page wins, site fills gaps). These render into every page's static `<head>` — Open Graph, Twitter Card, canonical, robots — so shares and crawlers see them without running JS. The social `image` is the field most worth setting once at site level.
 

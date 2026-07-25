@@ -49,6 +49,7 @@ import { isNonInteractive } from '../utils/interactive.js'
 import { detectWorkspacePm, installCmd, detectGlobalCliPm, globalCliUpdateCmd } from '../utils/pm.js'
 import { writeJsonPreservingStyle } from '../utils/json-file.js'
 import { surveyWorkspaceDeps, compareSemver } from '../utils/dep-survey.js'
+import { checkWorkspaceInstall, readDeclaredFoundation } from '../utils/install-integrity.js'
 
 const colors = {
   reset: '\x1b[0m',
@@ -422,9 +423,54 @@ export async function update(args = []) {
     })
   }
 
+  // ── Verify the install actually took ─────────────────────────────
+  // An install that was interrupted, or that satisfied a `file:` foundation
+  // with a copy instead of a link, leaves a tree that no longer matches what
+  // was just written. Builds keep working — they read the workspace source —
+  // so the mismatch only shows up later, as a dev server serving stale code,
+  // by which point this command is nobody's first suspect. It is the most
+  // likely command to produce that state, so it is the right one to check.
+  if (!dryRun && installRan) {
+    await reportInstallIntegrity(workspaceDir)
+  }
+
   // ── Closing summary ──────────────────────────────────────────────
   if (!dryRun && (depsEdited || agentsResult === 'created' || agentsResult === 'updated')) {
     printSummary({ editedPaths, depsEdited, installRan, installPm, agentsResult, cliVersion })
+  }
+}
+
+/**
+ * Report any drift between the workspace and the tree that was just installed.
+ */
+async function reportInstallIntegrity(workspaceDir) {
+  try {
+    // Imported here, not at the top: discover.js reaches @uniweb/build, an
+    // optional peer that must stay off the CLI's startup path so `npx uniweb
+    // create` works in an empty directory. update.js is loaded at startup.
+    const { discoverSites, discoverFoundations } = await import('../utils/discover.js')
+
+    const sites = (await discoverSites(workspaceDir)).map((s) => ({
+      name: s.name,
+      path: join(workspaceDir, s.path),
+      foundation: readDeclaredFoundation(join(workspaceDir, s.path)),
+    }))
+    const foundations = (await discoverFoundations(workspaceDir)).map((f) => ({
+      name: f.name,
+      path: join(workspaceDir, f.path),
+    }))
+
+    const findings = checkWorkspaceInstall(sites, foundations, workspaceDir)
+    if (!findings.length) return
+
+    log('')
+    warn('The install finished, but the tree does not match what is declared:')
+    for (const finding of findings) {
+      log(`  ${finding.message}`)
+    }
+    log(`  ${colors.dim}${findings[0].remedy}. \`uniweb doctor\` explains in full.${colors.reset}`)
+  } catch {
+    // A post-flight check must never turn a successful update into a failure.
   }
 }
 

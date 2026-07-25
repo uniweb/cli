@@ -26,6 +26,11 @@ index: home
 #   pages/blog: ../../blog-content  # Mount blog content at /blog route
 #   layout: ./custom-layout         # Custom layout directory
 #   collections: ./data             # Collections directory
+#
+# To give a mounted route a layout or a title, add a local folder for it
+# (pages/docs/) holding a folder.yml — folder.yml, not page.yml, because the
+# mounted directory is a folder of pages. Whatever that stub leaves unset comes
+# from the mounted directory's own folder.yml, so it need only say what differs.
 
 # ─── Data Sources ─────────────────────────────────────────────────────────────
 # Define collections (local markdown folders) or fetch remote/local JSON data.

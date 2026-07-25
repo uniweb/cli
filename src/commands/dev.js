@@ -40,6 +40,8 @@ import { readWorkspaceConfig } from '../utils/config.js'
 import { discoverSites } from '../utils/discover.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { readFlagValue } from '../utils/args.js'
+import { checkSiteInstall, readDeclaredFoundation } from '../utils/install-integrity.js'
+import { discoverFoundations } from '../utils/discover.js'
 
 const RED = '\x1b[31m'
 const YELLOW = '\x1b[33m'
@@ -95,6 +97,13 @@ export async function dev(args = []) {
     console.error('')
   }
 
+  // A `file:` foundation dependency can be satisfied by a link or by a copy,
+  // and a copy is a snapshot: the dev server serves it while builds read the
+  // workspace source, so the two disagree and only the browser shows it. The
+  // check is a few stats and package.json reads, so it runs every time rather
+  // than waiting for someone to suspect it.
+  await warnOnStaleInstall(rootDir, site)
+
   const pm = detectPackageManager()
   const command = filterCmd(pm, site.name, 'dev')
   const [bin, ...rest] = command.split(' ')
@@ -109,4 +118,35 @@ export async function dev(args = []) {
     console.error(`${RED}✗${RESET} Failed to start dev server: ${err.message}`)
     process.exit(1)
   })
+}
+
+/**
+ * Say so if the site is about to be served from an install that no longer
+ * matches the workspace. Warns rather than exits — the server may still be
+ * useful, and the author is the one who knows whether it is.
+ */
+async function warnOnStaleInstall(rootDir, site) {
+  try {
+    const sitePath = join(rootDir, site.path)
+    const foundationName = readDeclaredFoundation(sitePath)
+    if (!foundationName) return
+
+    const foundations = await discoverFoundations(rootDir)
+    const foundation = foundations
+      .map(f => ({ ...f, path: join(rootDir, f.path) }))
+      .find(f => f.name === foundationName)
+    if (!foundation) return
+
+    const findings = checkSiteInstall({ name: site.name, path: sitePath }, foundation, rootDir)
+    if (!findings.length) return
+
+    console.error(`${YELLOW}⚠${RESET} This site's install is out of date:`)
+    for (const finding of findings) {
+      console.error(`  ${finding.message}`)
+    }
+    console.error(`  ${findings[0].remedy}. \`uniweb doctor\` explains in full.`)
+    console.error('')
+  } catch {
+    // A diagnostic must never be the reason dev fails to start.
+  }
 }

@@ -13,6 +13,7 @@ import { readAgentsVersion } from '../utils/agents-stamp.js'
 import { writeJsonPreservingStyle } from '../utils/json-file.js'
 import { surveyWorkspaceDeps } from '../utils/dep-survey.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
+import { checkSiteInstall } from '../utils/install-integrity.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 
 /**
@@ -407,6 +408,22 @@ export async function doctor(args = []) {
       success(`Dependency path: ${depValue}`)
     } else {
       success(`Dependency: ${depValue} (npm package)`)
+    }
+
+    // Is what is installed what is declared? A `file:` dependency can be
+    // satisfied by a link or by a copy, and only the link stays true. The copy
+    // is invisible to a build — which reads the workspace source directly — so
+    // it surfaces as a dev server serving stale code, or nothing at all.
+    for (const finding of checkSiteInstall(
+      { name: siteName, path: sitePath },
+      matchingFoundation,
+      workspaceDir
+    )) {
+      issues.push({ id: finding.id, type: finding.severity, site: siteName, message: finding.message })
+      error(`[${finding.id}] ${finding.message}`)
+      log(`${colors.dim}${finding.detail}${colors.reset}`)
+      log('')
+      log(`  ${colors.dim}To fix: ${finding.remedy}${colors.reset}`)
     }
 
     // Check if foundation is built
