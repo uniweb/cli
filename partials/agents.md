@@ -813,7 +813,7 @@ Names only — for signatures and props, read the package: it's on disk at `node
 **Navigation:** `Link`, `useActiveRoute()`, `useWebsite()`, `useRouting()`
 **Header/layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()`
 **Documentation shells:** `useHeadings()` (the page's headings + the one being read, derived from content so it prerenders), `website.getBranchHierarchy({ route, for })` (the page tree for one branch). Kit ships no ready-made layout — a layout is your foundation's design; write it in `src/layouts/` and use these for the behaviour.
-**Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`, `useTheme(name)`
+**Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`
 **Theming data:** `useThemeData()`, `useColorContext(block)`
 **Data fetching:** `useFetched`, `useCacheEntry`, `useEntityDetail`
 **Utilities:** `cn()`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`, `getLocaleLabel(locale)`
