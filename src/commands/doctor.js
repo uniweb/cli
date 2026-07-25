@@ -427,7 +427,7 @@ export async function doctor(args = []) {
     }
 
     // Check if foundation is built
-    const foundationDist = join(matchingFoundation.path, 'dist', 'foundation.js')
+    const foundationDist = join(matchingFoundation.path, 'dist', 'entry.js')
     if (!existsSync(foundationDist)) {
       issues.push({
         type: 'warn',
@@ -437,7 +437,7 @@ export async function doctor(args = []) {
       warn(`Foundation not built yet`)
       log(`  ${colors.dim}Run: uniweb build${colors.reset}`)
     } else {
-      success(`Foundation built: dist/foundation.js exists`)
+      success(`Foundation built: dist/entry.js exists`)
     }
   }
 
@@ -480,7 +480,7 @@ export async function doctor(args = []) {
     }
 
     // Check if built
-    const extensionDist = join(ext.path, 'dist', 'foundation.js')
+    const extensionDist = join(ext.path, 'dist', 'entry.js')
     if (!existsSync(extensionDist)) {
       issues.push({
         type: 'warn',
@@ -489,7 +489,7 @@ export async function doctor(args = []) {
       warn(`Extension not built yet`)
       log(`  ${colors.dim}Run: uniweb build${colors.reset}`)
     } else {
-      success(`Extension built: dist/foundation.js exists`)
+      success(`Extension built: dist/entry.js exists`)
     }
   }
 
@@ -530,7 +530,7 @@ export async function doctor(args = []) {
 
       // Check if a matching extension exists and is built
       const matchingExt = extensions.find(e => e.folderName === extName || e.name === extName)
-      if (matchingExt && !existsSync(join(matchingExt.path, 'dist', 'foundation.js'))) {
+      if (matchingExt && !existsSync(join(matchingExt.path, 'dist', 'entry.js'))) {
         issues.push({
           type: 'warn',
           site: site.name,
