@@ -16,9 +16,9 @@ import {
   pushSyncPackages,
   readBaseVersions,
   readSyncCache,
-  writePageBases,
+  writeUnitBases,
 } from '../src/backend/site-sync.js'
-import { createZip, computePageHashes } from '@uniweb/build/uwx'
+import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
 
 const ok = (body) => ({ ok: true, status: 200, statusText: 'OK', json: async () => body, text: async () => JSON.stringify(body) })
 const fail = (status, body = 'boom') => ({ ok: false, status, statusText: 'Error', json: async () => ({}), text: async () => body })
@@ -100,7 +100,7 @@ test('a stale refusal explains WHICH pages diverged, and attributes them', async
   // Base = what both sides last agreed on. We edited /home; they added /news and
   // edited /about. Forcing would DELETE their new page — the headline.
   const base = { $model: '@uniweb/site-content', pages: [page('h', 'home', 'H0'), page('a', 'about', 'A0')] }
-  writePageBases(dir, { local: computePageHashes(base), remote: computePageHashes(base) })
+  writeUnitBases(dir, { local: computeUnitHashes(base), remote: computeUnitHashes(base) })
   const localDoc = { $model: '@uniweb/site-content', pages: [page('h', 'home', 'H-mine'), page('a', 'about', 'A0')] }
   const remoteDoc = { $model: '@uniweb/site-content', pages: [page('h', 'home', 'H0'), page('a', 'about', 'A-theirs'), page('n', 'news', 'new upstream')] }
 

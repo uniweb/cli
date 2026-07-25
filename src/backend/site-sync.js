@@ -18,9 +18,9 @@ import {
   writeSiteEntityUuid,
   emitSyncPackages,
   readZip,
-  diffSitePages,
+  diffSiteUnits,
   describeSiteDiff,
-  computePageHashes,
+  computeUnitHashes,
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -41,11 +41,12 @@ function entityDocFromUwx(buf) {
 }
 
 /**
- * Turn an entity-grained staleness refusal into a page-level account.
+ * Turn an entity-grained staleness refusal into a file-level account.
  *
  * The gate can only report that the site-content document moved. What the user
- * needs is which pages, and — since we cache per-page hashes of the last agreed
- * state — which side moved them. Fetches the backend's current document (a plain
+ * needs is which FILES — content is split one section per file, so two people
+ * editing different sections of the same page have not conflicted — and, since we
+ * cache per-unit hashes of the last agreed state, which side moved them. Fetches the backend's current document (a plain
  * read; it writes nothing locally, unlike `uniweb pull`) and diffs.
  *
  * Best-effort by design: this runs on a path that has ALREADY failed, so any
@@ -62,7 +63,7 @@ async function explainStaleSiteContent({ client, siteDir, localBuffer, uuid }) {
     const remoteDoc = entityDocFromUwx(Buffer.from(await res.arrayBuffer()))
     const localDoc = entityDocFromUwx(localBuffer)
     if (!remoteDoc || !localDoc) return []
-    return describeSiteDiff(diffSitePages(localDoc, remoteDoc, readPageBases(siteDir)))
+    return describeSiteDiff(diffSiteUnits(localDoc, remoteDoc, readUnitBases(siteDir)))
   } catch {
     return []
   }
@@ -160,7 +161,7 @@ function readSyncCacheFile(siteDir) {
   }
 }
 // The cache holds three maps written on DIFFERENT events — content hashes on a
-// successful push, base versions on push AND pull, page hashes on push and pull —
+// successful push, base versions on push AND pull, unit hashes on push and pull —
 // so every writer must preserve the ones it isn't touching. One merge point rather
 // than three hand-rolled preserves, because getting that wrong silently disarms
 // whichever map got clobbered.
@@ -207,30 +208,31 @@ export function mergeBaseVersions(siteDir, versions) {
 }
 
 /**
- * Per-page content hashes of the last synced state, kept in BOTH representations —
- * the bases for the page-level attribution shown after a staleness refusal
- * (`diffSitePages`).
+ * Per-unit content hashes of the last synced state, kept in BOTH representations —
+ * the bases for the file-level attribution shown after a staleness refusal
+ * (`diffSiteUnits`). A unit is a projected file: a page's `page.yml`, each section
+ * `.md`, each layout section.
  *
  * Two maps, not one, because our document and the backend's are not byte-comparable
  * (they carry fields we don't emit and their own key order). A hash from one side
- * compared against a base from the other differs for a page nobody touched, so each
+ * compared against a base from the other differs for a unit nobody touched, so each
  * side gets a base in its own representation:
  *   `local`  ← our emitted document
  *   `remote` ← the backend's own copy (`finalized[].document`, or a pull)
  *
- * Replaced wholesale rather than merged: a page that no longer exists is a page with
+ * Replaced wholesale rather than merged: a unit that no longer exists is a unit with
  * no base, and a stale entry would attribute its next difference to the wrong side.
  *
  * Purely an explanation aid — losing either map costs detail in one message, never a
  * wrong push.
  */
-export function readPageBases(siteDir) {
-  const v = readMap(siteDir, 'pageBases')
+export function readUnitBases(siteDir) {
+  const v = readMap(siteDir, 'unitBases')
   return { local: v.local || {}, remote: v.remote || {} }
 }
-export function writePageBases(siteDir, patch) {
+export function writeUnitBases(siteDir, patch) {
   if (!patch) return
-  updateSyncCache(siteDir, { pageBases: { ...readPageBases(siteDir), ...patch } })
+  updateSyncCache(siteDir, { unitBases: { ...readUnitBases(siteDir), ...patch } })
 }
 
 /**
@@ -375,7 +377,7 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
     for (const f of finalized || []) if (f.uuid && f.version) newVersions[f.uuid] = f.version
   }
   // The backend's post-write copy of the site-content document, kept for the
-  // remote-side page base (see writePageBases).
+  // remote-side unit base (see writeUnitBases).
   let siteFinalizedDoc = null
   if (siteContent) {
     if (siteContentUuid) {
@@ -450,12 +452,12 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
   if (siteContent) {
     const patch = {}
     const ours = entityDocFromUwx(siteContent.buffer)
-    if (ours) patch.local = computePageHashes(ours)
+    if (ours) patch.local = computeUnitHashes(ours)
     // `finalized[].document` is the backend's own representation, read back from
     // the stored row — the only remote-side base a push can produce.
     const theirs = siteFinalizedDoc?.pages ? siteFinalizedDoc : null
-    if (theirs) patch.remote = computePageHashes(theirs)
-    if (Object.keys(patch).length) writePageBases(siteDir, patch)
+    if (theirs) patch.remote = computeUnitHashes(theirs)
+    if (Object.keys(patch).length) writeUnitBases(siteDir, patch)
   }
   return { exitCode: 0, boundSiteUuid, finalizedTotal, wrote }
 }

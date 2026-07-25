@@ -46,10 +46,10 @@ import {
   collectionsToProject,
   resolveCollectionsConfig,
   readZip,
-  computePageHashes,
+  computeUnitHashes,
 } from '@uniweb/build/uwx'
 import { makeModelResolver } from './push.js'
-import { mergeBaseVersions, writePageBases } from '../backend/site-sync.js'
+import { mergeBaseVersions, writeUnitBases } from '../backend/site-sync.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir, resolveSiteBackend } from './deploy.js'
 
@@ -313,7 +313,7 @@ export async function pull(args = [], deps = {}) {
       // byte-identical to it, so the old local base no longer describes anything.
       // The next push re-establishes it; until then our side reports as unknown,
       // which is honest rather than wrong.
-      writePageBases(siteDir, { remote: computePageHashes(siteDoc), local: {} })
+      writeUnitBases(siteDir, { remote: computeUnitHashes(siteDoc), local: {} })
       const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
       pages += report.pages.length
       sections += report.sections.length
