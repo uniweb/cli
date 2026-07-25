@@ -46,9 +46,10 @@ import {
   collectionsToProject,
   resolveCollectionsConfig,
   readZip,
+  computePageHashes,
 } from '@uniweb/build/uwx'
 import { makeModelResolver } from './push.js'
-import { mergeBaseVersions } from '../backend/site-sync.js'
+import { mergeBaseVersions, writePageBases } from '../backend/site-sync.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir, resolveSiteBackend } from './deploy.js'
 
@@ -305,6 +306,14 @@ export async function pull(args = [], deps = {}) {
   if (content && !content.notModified) {
     const siteDoc = content.docs && (content.docs.find((d) => d?.info || d?.$model) || content.docs[0] || null)
     if (siteDoc) {
+      // Re-base the page attribution. The pulled document IS the backend's own
+      // representation, so it becomes the remote base directly. We deliberately
+      // CLEAR the local base rather than reuse it: our source files were just
+      // rewritten from this document, and what we would emit from them is not
+      // byte-identical to it, so the old local base no longer describes anything.
+      // The next push re-establishes it; until then our side reports as unknown,
+      // which is honest rather than wrong.
+      writePageBases(siteDir, { remote: computePageHashes(siteDoc), local: {} })
       const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
       pages += report.pages.length
       sections += report.sections.length

@@ -13,7 +13,60 @@
 
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import { backfillEntityUuids, writeSiteEntityUuid, emitSyncPackages } from '@uniweb/build/uwx'
+import {
+  backfillEntityUuids,
+  writeSiteEntityUuid,
+  emitSyncPackages,
+  readZip,
+  diffSitePages,
+  describeSiteDiff,
+  computePageHashes,
+} from '@uniweb/build/uwx'
+
+// First entity `$`-document out of a `.uwx` we produced or the backend served.
+// Deliberately NOT pull.js's `readPullDocuments`: that one is tolerant of JSON
+// envelopes for a lane whose shape may change, and importing it here would be a
+// cycle (pull.js already imports this module). Both lanes here are always ZIPs.
+function entityDocFromUwx(buf) {
+  if (!buf || buf.length < 2 || buf[0] !== 0x50 || buf[1] !== 0x4b) return null
+  for (const [name, data] of readZip(buf)) {
+    if (name === 'manifest.json' || !name.endsWith('.json')) continue
+    try {
+      return JSON.parse(data.toString('utf8'))
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+/**
+ * Turn an entity-grained staleness refusal into a page-level account.
+ *
+ * The gate can only report that the site-content document moved. What the user
+ * needs is which pages, and — since we cache per-page hashes of the last agreed
+ * state — which side moved them. Fetches the backend's current document (a plain
+ * read; it writes nothing locally, unlike `uniweb pull`) and diffs.
+ *
+ * Best-effort by design: this runs on a path that has ALREADY failed, so any
+ * problem fetching or parsing must degrade to the plain refusal rather than
+ * replace a clear error with a confusing one.
+ *
+ * @returns {string[]} lines to print, or [] when nothing useful can be said.
+ */
+async function explainStaleSiteContent({ client, siteDir, localBuffer, uuid }) {
+  try {
+    if (!uuid) return []
+    const res = await client.pullSiteContent(uuid)
+    if (!res?.ok) return []
+    const remoteDoc = entityDocFromUwx(Buffer.from(await res.arrayBuffer()))
+    const localDoc = entityDocFromUwx(localBuffer)
+    if (!remoteDoc || !localDoc) return []
+    return describeSiteDiff(diffSitePages(localDoc, remoteDoc, readPageBases(siteDir)))
+  } catch {
+    return []
+  }
+}
 
 // Pull the finalized entities out of the restore response. The backend returns
 // `{ report: { finalized: [ { index, uuid, changed, document }, … ] } }` — each entry
@@ -106,19 +159,29 @@ function readSyncCacheFile(siteDir) {
     return {} // missing / unreadable → treat everything as changed
   }
 }
-export function readSyncCache(siteDir) {
-  const obj = readSyncCacheFile(siteDir)
-  return obj.hashes && typeof obj.hashes === 'object' ? obj.hashes : {}
-}
-export function writeSyncCache(siteDir, hashes) {
+// The cache holds three maps written on DIFFERENT events — content hashes on a
+// successful push, base versions on push AND pull, page hashes on push and pull —
+// so every writer must preserve the ones it isn't touching. One merge point rather
+// than three hand-rolled preserves, because getting that wrong silently disarms
+// whichever map got clobbered.
+function updateSyncCache(siteDir, patch) {
   const p = syncCachePath(siteDir)
   mkdirSync(dirname(p), { recursive: true })
-  // Preserve baseVersions — the two maps are written on different events (hashes
-  // on emit, versions on pull AND on push) and must not clobber each other.
   const prior = readSyncCacheFile(siteDir)
-  const out = { version: 1, hashes }
-  if (prior.baseVersions && Object.keys(prior.baseVersions).length) out.baseVersions = prior.baseVersions
-  writeFileSync(p, JSON.stringify(out, null, 2) + '\n')
+  const out = { version: 1, ...prior, ...patch }
+  delete out.version
+  writeFileSync(p, JSON.stringify({ version: 1, ...out }, null, 2) + '\n')
+}
+const readMap = (siteDir, key) => {
+  const v = readSyncCacheFile(siteDir)[key]
+  return v && typeof v === 'object' ? v : {}
+}
+
+export function readSyncCache(siteDir) {
+  return readMap(siteDir, 'hashes')
+}
+export function writeSyncCache(siteDir, hashes) {
+  updateSyncCache(siteDir, { hashes })
 }
 
 /**
@@ -136,19 +199,38 @@ export function writeSyncCache(siteDir, hashes) {
  * second consecutive push would be stale by construction and refused.
  */
 export function readBaseVersions(siteDir) {
-  const obj = readSyncCacheFile(siteDir)
-  return obj.baseVersions && typeof obj.baseVersions === 'object' ? obj.baseVersions : {}
+  return readMap(siteDir, 'baseVersions')
 }
 export function mergeBaseVersions(siteDir, versions) {
   if (!versions || !Object.keys(versions).length) return
-  const p = syncCachePath(siteDir)
-  mkdirSync(dirname(p), { recursive: true })
-  const prior = readSyncCacheFile(siteDir)
-  const merged = { ...(prior.baseVersions || {}), ...versions }
-  writeFileSync(
-    p,
-    JSON.stringify({ version: 1, hashes: prior.hashes || {}, baseVersions: merged }, null, 2) + '\n'
-  )
+  updateSyncCache(siteDir, { baseVersions: { ...readBaseVersions(siteDir), ...versions } })
+}
+
+/**
+ * Per-page content hashes of the last synced state, kept in BOTH representations —
+ * the bases for the page-level attribution shown after a staleness refusal
+ * (`diffSitePages`).
+ *
+ * Two maps, not one, because our document and the backend's are not byte-comparable
+ * (they carry fields we don't emit and their own key order). A hash from one side
+ * compared against a base from the other differs for a page nobody touched, so each
+ * side gets a base in its own representation:
+ *   `local`  ← our emitted document
+ *   `remote` ← the backend's own copy (`finalized[].document`, or a pull)
+ *
+ * Replaced wholesale rather than merged: a page that no longer exists is a page with
+ * no base, and a stale entry would attribute its next difference to the wrong side.
+ *
+ * Purely an explanation aid — losing either map costs detail in one message, never a
+ * wrong push.
+ */
+export function readPageBases(siteDir) {
+  const v = readMap(siteDir, 'pageBases')
+  return { local: v.local || {}, remote: v.remote || {} }
+}
+export function writePageBases(siteDir, patch) {
+  if (!patch) return
+  updateSyncCache(siteDir, { pageBases: { ...readPageBases(siteDir), ...patch } })
 }
 
 /**
@@ -202,7 +284,7 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
   // request fires). The client carries `collision=force` (last-push-wins) + the optional
   // `--as-org`. Returns the parsed payload, or null on any transport/HTTP/parse failure
   // (already reported).
-  const postLane = async (label, doRequest) => {
+  const postLane = async (label, doRequest, explainStale = async () => []) => {
     info(`Pushing ${label} to ${dim(client.origin)} …`)
     let res
     try {
@@ -222,9 +304,16 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
       }
       if (problem?.reason === 'stale_base') {
         error(`${label} push refused — the backend has newer content than your last pull.`)
-        const stale = Array.isArray(problem.stale_entities) ? problem.stale_entities : []
-        if (stale.length) {
-          note(`Changed upstream: ${stale.length} entit${stale.length === 1 ? 'y' : 'ies'} (${stale.join(', ')})`)
+        // Page-level account, when we can get one. The gate is entity-grained, so
+        // without this the user only learns "the document moved" and has no basis
+        // for choosing between pulling and forcing.
+        const detail = await explainStale()
+        for (const line of detail) note(line)
+        if (!detail.length) {
+          const stale = Array.isArray(problem.stale_entities) ? problem.stale_entities : []
+          if (stale.length) {
+            note(`Changed upstream: ${stale.length} entit${stale.length === 1 ? 'y' : 'ies'} (${stale.join(', ')})`)
+          }
         }
         note('Nothing was written — the whole push was refused before any change.')
         note('Run `uniweb pull` to take those changes, then push again.')
@@ -258,8 +347,8 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
   // POST a lane that round-trips entity uuids (content UPDATE + the folder): parse the
   // finalized list (for record back-fill + the changed summary). Returns the finalized
   // array, or null on failure (already reported).
-  const pushLane = async (label, doRequest) => {
-    const payload = await postLane(label, doRequest)
+  const pushLane = async (label, doRequest, explainStale) => {
+    const payload = await postLane(label, doRequest, explainStale)
     if (payload === null) return null
     const finalized = extractFinalized(payload)
     if (!finalized) {
@@ -285,17 +374,22 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
   const harvest = (finalized) => {
     for (const f of finalized || []) if (f.uuid && f.version) newVersions[f.uuid] = f.version
   }
+  // The backend's post-write copy of the site-content document, kept for the
+  // remote-side page base (see writePageBases).
+  let siteFinalizedDoc = null
   if (siteContent) {
     if (siteContentUuid) {
       const finalized = await pushLane(
         'site-content',
-        () => client.updateSiteContent(siteContentUuid, siteContent.buffer, { asOrg })
+        () => client.updateSiteContent(siteContentUuid, siteContent.buffer, { asOrg }),
+        () => explainStaleSiteContent({ client, siteDir, localBuffer: siteContent.buffer, uuid: siteContentUuid })
       )
       if (!finalized) {
         mergeBaseVersions(siteDir, newVersions)
         return { exitCode: 1, finalizedTotal, wrote }
       }
       harvest(finalized)
+      siteFinalizedDoc = finalized[0]?.document || null
       finalizedTotal += finalized.length
     } else {
       const payload = await postLane(
@@ -314,6 +408,7 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
       wrote.push('recorded site $uuid in site.yml')
       const createdFinalized = extractFinalized(payload)
       harvest(createdFinalized)
+      siteFinalizedDoc = createdFinalized?.[0]?.document || null
       finalizedTotal += createdFinalized?.length ?? 1
     }
   }
@@ -349,5 +444,18 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
   // value — absence is not invalidation.
   writeSyncCache(siteDir, hashes)
   mergeBaseVersions(siteDir, newVersions)
+  // Re-base the page attribution: our emitted document and the backend's post-write
+  // copy of it are the two sides' new agreed state. Only when the site-content lane
+  // actually shipped — a push that skipped it left that state where it was.
+  if (siteContent) {
+    const patch = {}
+    const ours = entityDocFromUwx(siteContent.buffer)
+    if (ours) patch.local = computePageHashes(ours)
+    // `finalized[].document` is the backend's own representation, read back from
+    // the stored row — the only remote-side base a push can produce.
+    const theirs = siteFinalizedDoc?.pages ? siteFinalizedDoc : null
+    if (theirs) patch.remote = computePageHashes(theirs)
+    if (Object.keys(patch).length) writePageBases(siteDir, patch)
+  }
   return { exitCode: 0, boundSiteUuid, finalizedTotal, wrote }
 }

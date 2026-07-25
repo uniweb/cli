@@ -16,7 +16,9 @@ import {
   pushSyncPackages,
   readBaseVersions,
   readSyncCache,
+  writePageBases,
 } from '../src/backend/site-sync.js'
+import { createZip, computePageHashes } from '@uniweb/build/uwx'
 
 const ok = (body) => ({ ok: true, status: 200, statusText: 'OK', json: async () => body, text: async () => JSON.stringify(body) })
 const fail = (status, body = 'boom') => ({ ok: false, status, statusText: 'Error', json: async () => ({}), text: async () => body })
@@ -83,6 +85,66 @@ test('a successful push banks the returned versions; a refused lane still banks 
 
   // The hash cache and the version map share one file and must not clobber each other.
   assert.deepEqual(readSyncCache(dir), { '@uniweb/site-content site': 'h1' })
+})
+
+test('a stale refusal explains WHICH pages diverged, and attributes them', async () => {
+  const dir = tmpSite()
+  const page = (id, slug, body) => ({
+    stable_id: id, slug: { en: slug }, title: { en: slug },
+    page_sections: [{ type: 'Section', stable_id: slug, content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: body }] }] } }],
+  })
+  const uwx = (doc) => createZip([
+    { name: 'manifest.json', data: Buffer.from(JSON.stringify({ format: 'uwx/1', entries: [{ kind: 'entity', uuid: 'S1', file: 'entities/S1.json' }] })) },
+    { name: 'entities/S1.json', data: Buffer.from(JSON.stringify(doc)) },
+  ])
+  // Base = what both sides last agreed on. We edited /home; they added /news and
+  // edited /about. Forcing would DELETE their new page — the headline.
+  const base = { $model: '@uniweb/site-content', pages: [page('h', 'home', 'H0'), page('a', 'about', 'A0')] }
+  writePageBases(dir, { local: computePageHashes(base), remote: computePageHashes(base) })
+  const localDoc = { $model: '@uniweb/site-content', pages: [page('h', 'home', 'H-mine'), page('a', 'about', 'A0')] }
+  const remoteDoc = { $model: '@uniweb/site-content', pages: [page('h', 'home', 'H0'), page('a', 'about', 'A-theirs'), page('n', 'news', 'new upstream')] }
+
+  const problem = { status: 409, title: 'Conflict', detail: 'x', reason: 'stale_base', stale_entities: ['S1'] }
+  const client = {
+    origin: 'http://x',
+    updateSiteContent: async () => ({
+      ok: false, status: 409, statusText: 'Conflict',
+      text: async () => JSON.stringify(problem), json: async () => problem,
+    }),
+    pullSiteContent: async () => ({ ok: true, arrayBuffer: async () => uwx(remoteDoc) }),
+  }
+  const { report, calls } = makeReport()
+  const pkg = siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} })
+  pkg.siteContent.buffer = uwx(localDoc)
+
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, asOrg: null, report })
+  assert.equal(res.exitCode, 1)
+  const out = [...calls.error, ...calls.note].join('\n')
+  assert.match(out, /forcing DELETES these.*news/)
+  assert.match(out, /Changed upstream — forcing discards these.*about/)
+  assert.match(out, /Changed by you — pulling discards these.*home/)
+})
+
+test('the stale explainer degrades to the plain refusal when the remote read fails', async () => {
+  // It runs on an already-failed path: a second failure must not replace a clear
+  // error with a confusing one.
+  const dir = tmpSite()
+  const problem = { status: 409, reason: 'stale_base', stale_entities: ['S1'], title: 'Conflict', detail: 'x' }
+  const client = {
+    origin: 'http://x',
+    updateSiteContent: async () => ({
+      ok: false, status: 409, statusText: 'Conflict',
+      text: async () => JSON.stringify(problem), json: async () => problem,
+    }),
+    pullSiteContent: async () => { throw new Error('network down') },
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }), asOrg: null, report })
+  assert.equal(res.exitCode, 1)
+  const out = [...calls.error, ...calls.note].join('\n')
+  assert.match(out, /newer content than your last pull/)
+  assert.match(out, /Changed upstream: 1 entity \(S1\)/) // the fallback line
+  assert.match(out, /--force/)
 })
 
 test('a stale_base 409 is reported as a staleness refusal, not the structure conflict', async () => {
