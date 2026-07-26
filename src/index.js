@@ -622,6 +622,13 @@ async function main() {
     process.exit(result?.exitCode ?? 0)
   }
 
+  // Handle sync command (refresh + push; both halves imported, never reimplemented)
+  if (command === 'sync') {
+    const { sync } = await importProjectCommand('./commands/sync.js')
+    const result = await sync(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
+  }
+
   // Handle refresh command (dynamic import — depends on @uniweb/build via pull)
   if (command === 'refresh') {
     const { refresh } = await importProjectCommand('./commands/refresh.js')
@@ -1498,6 +1505,7 @@ ${colors.bright}Commands:${colors.reset}
   push               Push a site's content to the backend
   pull               Pull a site's content from the backend
   refresh            Catch up with the git remote AND the backend (never pushes)
+  sync               Catch up, then push (refresh + push)
   status             Show a site's sync state (unpushed content, foundation)
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
