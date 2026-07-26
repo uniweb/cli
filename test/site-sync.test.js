@@ -266,3 +266,28 @@ test('pushSyncPackages: the folder lane is keyed by the bound site uuid', async 
   assert.equal(folderKey, 'SITE', 'the folder push is keyed by the site-content uuid')
   rmSync(dir, { recursive: true, force: true })
 })
+
+test('an identity_required 400 is explained, not surfaced as a raw error', async () => {
+  const dir = tmpSite()
+  const problem = {
+    status: 400, title: 'Identity Required', reason: 'identity_required',
+    detail: 'identity required: entity 77, section 18: …',
+    entity_id: 77, section_id: 18, records_without_uuid: 2, stored_items: 2,
+  }
+  const client = {
+    origin: 'http://x',
+    updateSiteContent: async () => ({
+      ok: false, status: 400, statusText: 'Bad Request',
+      text: async () => JSON.stringify(problem), json: async () => problem,
+    }),
+    pullSiteContent: async () => ({ ok: false, status: 500 }),
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }), asOrg: null, report })
+  assert.equal(res.exitCode, 1)
+  const out = [...calls.error, ...calls.note].join('\n')
+  assert.match(out, /no record of the site's item identity/)
+  assert.match(out, /Nothing was written/)
+  // Must not be mistaken for the staleness refusal — different cause, different fix.
+  assert.ok(!/newer content than your last pull/.test(out))
+})

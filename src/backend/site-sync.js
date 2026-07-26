@@ -391,8 +391,19 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
       // Two unrelated conflicts share HTTP 409, so branch on the machine-readable
       // `reason` — never on `detail`, which is prose the backend may reword.
       let problem = null
-      if (res.status === 409 && body) {
+      if ((res.status === 409 || res.status === 400) && body) {
         try { problem = JSON.parse(body) } catch { /* not a problem document */ }
+      }
+      // The package carried no identity for records the backend already stores, so
+      // applying it would replace every one of them. `ensureItemUuids` is supposed
+      // to make this unreachable, so reaching it means that recovery failed — say so
+      // rather than surfacing a raw 400.
+      if (problem?.reason === 'identity_required') {
+        error(`${label} push refused — this copy has no record of the site's item identity.`)
+        note('Nothing was written. Pushing without it would have replaced the identity of every stored item.')
+        note('The recovery normally runs automatically, so it likely could not reach the backend.')
+        note('Check your connection and re-run; `uniweb pull` also restores it.')
+        return null
       }
       if (problem?.reason === 'stale_base') {
         error(`${label} push refused — the backend has newer content than your last pull.`)
