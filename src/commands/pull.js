@@ -12,9 +12,17 @@
  *     pages/**, layout/**), and
  *   - folder lane  → `collectionsToProject` (the folder + record files).
  *
- * Pull is git-pull-like: it reconciles the working tree to the backend, DELETING
- * pages/sections that no longer exist there (toggle off with `--no-delete`). The
- * deletion is guarded so an empty/partial payload never wipes the tree.
+ * Pull is a CHECKOUT, not a merge — the "git-pull-like" it used to claim here was
+ * misleading. It reconciles the working tree to the backend: section bodies are
+ * rewritten from the fetched document, and pages/sections the backend no longer has
+ * are DELETED (toggle off with `--no-delete`). The deletion is guarded so an
+ * empty/partial payload never wipes the tree.
+ *
+ * Because it overwrites rather than merges, it REFUSES when there is uncommitted
+ * work under the directories it owns — that was the one remaining way the CLI could
+ * destroy a user's work without them agreeing to it. Commit or stash first, or pass
+ * `--force`. Outside a git repository there is nothing to fall back on, so it asks
+ * instead (and refuses when it cannot).
  *
  * `uniweb login && uniweb pull`. Run from a site, or a workspace with one site.
  *
@@ -22,6 +30,7 @@
  *   uniweb pull                          GET both lanes, project to files, prune orphans
  *   uniweb pull --no-collections         Pull pages only; skip the folder (collections) lane
  *   uniweb pull --no-delete              Project, but keep files with no backend item
+ *   uniweb pull --force                  Pull over uncommitted local changes (discards them)
  *   uniweb pull --dry-run                Report what it would GET; write nothing
  *   uniweb pull --registry <url>         Override the backend origin
  *   uniweb pull --token <bearer>         Read with this bearer; skips `uniweb login`
@@ -39,7 +48,9 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { createHash } from 'node:crypto'
+import { createInterface } from 'node:readline/promises'
+import { join, dirname, relative } from 'node:path'
 import yaml from 'js-yaml'
 import {
   siteContentDocumentToProject,
@@ -56,6 +67,8 @@ import {
   writeUnitBases,
   writeItemUuids,
 } from '../backend/site-sync.js'
+import { uncommittedUnder } from '../utils/git.js'
+import { isNonInteractive } from '../utils/interactive.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir, resolveSiteBackend } from './deploy.js'
 
@@ -247,6 +260,131 @@ function readManifestTokens(buf) {
  * @param {object} [deps] - injectable seams for testing: `fetch` (default global
  *   fetch), `resolveSiteDir`, `getToken` (skip auth).
  */
+// The directories and files pull writes into. `paths:` can relocate the content
+// roots, so the local site.yml is consulted rather than assuming the defaults.
+function ownedRoots(siteDir) {
+  const roots = new Set(['site.yml', 'theme.yml', 'head.html', 'collections.yml', 'locales'])
+  let paths = {}
+  try {
+    paths = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))?.paths || {}
+  } catch { /* no or unreadable site.yml — defaults are right */ }
+  roots.add(paths.pages || 'pages')
+  roots.add(paths.layout || 'layout')
+  roots.add(paths.collections || 'collections')
+  return [...roots]
+}
+
+/**
+ * Refuse a pull that would overwrite unsaved work. Returns a result object to
+ * return from `pull`, or null to proceed.
+ *
+ * With a repo: uncommitted work under pull's roots blocks, naming the files.
+ * Without one: there is nothing standing behind the tree, so ask — and in a
+ * non-interactive context refuse rather than assume consent.
+ */
+async function checkWorkingTree(siteDir, args) {
+  const roots = ownedRoots(siteDir)
+  let dirty = uncommittedUnder(siteDir, roots)
+
+  if (dirty === null) {
+    // Not a git work tree. Nothing to fall back on if this goes wrong.
+    if (isNonInteractive(args)) {
+      error('Refusing to pull: this site is not in a git repository.')
+      note('Pull rewrites pages, sections and layout from the backend and deletes what it no longer has.')
+      note('Without version control there is no way back, and this session cannot ask.')
+      note('Re-run with --force to accept that, or put the site under git first.')
+      return { exitCode: 1 }
+    }
+    const ok = await confirm(`Pull will overwrite ${roots.length} content location(s) and this site is not in git. Continue?`)
+    if (!ok) {
+      info('Nothing pulled.')
+      return { exitCode: 0 }
+    }
+    return null
+  }
+
+  const written = readWritten(siteDir)
+  dirty = dirty.filter((f) => !isPullOutput(siteDir, f, written))
+  if (!dirty.length) return null
+
+  error(`Refusing to pull: ${dirty.length} uncommitted change(s) under the files pull rewrites.`)
+  for (const f of dirty.slice(0, 12)) note(`  ${f}`)
+  if (dirty.length > 12) note(`  … and ${dirty.length - 12} more`)
+  note('Pull reconciles the working tree to the backend, so these would be overwritten or deleted.')
+  note('Commit or stash them first — then pull, and your work is still in git either way.')
+  note('To discard them and take the backend version, re-run with --force.')
+  return { exitCode: 1 }
+}
+
+// What the last pull wrote: `{ <repo-relative path>: <sha256 of the bytes it wrote> }`.
+//
+// Without this the guard cries wolf: pull rewrites the tree, so the very next pull
+// sees its OWN output as uncommitted work and refuses, listing files the user never
+// touched. A guard that fires on nothing teaches people to reach for --force, which
+// is the destructive option — the same failure mode as a gate that refuses disjoint
+// edits. A file still byte-identical to what pull last wrote is not user work.
+function writtenCachePath(siteDir) {
+  return join(siteDir, '.uniweb', 'pull-written.json')
+}
+function readWritten(siteDir) {
+  try {
+    const o = JSON.parse(readFileSync(writtenCachePath(siteDir), 'utf8'))
+    return {
+      files: o && typeof o.files === 'object' ? o.files : {},
+      deleted: Array.isArray(o?.deleted) ? o.deleted : [],
+    }
+  } catch {
+    return { files: {}, deleted: [] }
+  }
+}
+function recordWritten(siteDir, absPaths, deletedAbs = []) {
+  // MERGE, don't replace. A conditional pull that 304s writes nothing, and a
+  // partial pull writes only some lanes — in both cases the previous record is
+  // still "the last thing pull wrote there". Replacing would forget those paths and
+  // the next pull would see them as the user's work again, which is the false alarm
+  // this cache exists to prevent. A stale entry for a file that no longer exists is
+  // harmless: the hash read fails and it counts as a local change.
+  const prior = readWritten(siteDir)
+  const files = prior.files
+  for (const abs of absPaths) {
+    try {
+      files[relative(siteDir, abs)] = createHash('sha256').update(readFileSync(abs)).digest('hex')
+    } catch { /* deleted or unreadable — nothing to remember */ }
+  }
+  // Pull PRUNES too, and a deletion is a dirty path git reports just like an edit.
+  // Without recording them, pull's own pruning reads as the user having deleted
+  // files — the same false alarm as its writes, arriving by the other door.
+  const deleted = [...new Set([...prior.deleted, ...deletedAbs.map((a) => relative(siteDir, a))])]
+  try {
+    mkdirSync(dirname(writtenCachePath(siteDir)), { recursive: true })
+    writeFileSync(writtenCachePath(siteDir), JSON.stringify({ version: 1, files, deleted }, null, 2) + '\n')
+  } catch { /* best-effort: losing it only costs a spurious refusal */ }
+}
+// Is this dirty path just pull's own untouched output?
+function isPullOutput(siteDir, relPath, written) {
+  let exists = true
+  let hash = null
+  try {
+    hash = createHash('sha256').update(readFileSync(join(siteDir, relPath))).digest('hex')
+  } catch {
+    exists = false
+  }
+  // Absent because pull pruned it — not because the user deleted it.
+  if (!exists) return written.deleted.includes(relPath)
+  return written.files[relPath] === hash
+}
+
+// Minimal yes/no prompt; defaults to no, because the default must not destroy.
+async function confirm(question) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const a = (await rl.question(`${question} [y/N] `)).trim().toLowerCase()
+    return a === 'y' || a === 'yes'
+  } finally {
+    rl.close()
+  }
+}
+
 export async function pull(args = [], deps = {}) {
   const resolveSiteDir = deps.resolveSiteDir || defaultResolveSiteDir
 
@@ -254,8 +392,23 @@ export async function pull(args = [], deps = {}) {
   const tokenFlag = flagValue(args, '--token')
   const prune = !(args.includes('--no-delete') || args.includes('--no-prune')) // git-like by default
   const noCollections = args.includes('--no-collections') || args.includes('--content-only')
+  const force = args.includes('--force')
 
   const siteDir = await resolveSiteDir(args, 'pull')
+
+  // Don't overwrite work that isn't saved anywhere. Pull reconciles the working
+  // tree to the backend — it rewrites section bodies from the fetched document and
+  // prunes what the backend doesn't have — so uncommitted work under the
+  // directories it owns is destroyed with no way back. That is the one place the
+  // CLI could still lose a user's work without them agreeing to it.
+  //
+  // Checked coarsely, by root, on purpose: pull rewrites essentially every file
+  // under those roots, so an exact per-file intersection would refuse the same
+  // cases while being able to miss one.
+  if (!dryRun && !force) {
+    const blocked = await checkWorkingTree(siteDir, args)
+    if (blocked) return blocked
+  }
   const siteBackend = await resolveSiteBackend(siteDir)
   const client = new BackendClient({
     originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'),
@@ -325,6 +478,10 @@ export async function pull(args = [], deps = {}) {
     }
   }
 
+  // Every file the projection writes, so the next pull can tell its own output
+  // apart from the user's work (see readWritten).
+  const wrote = []
+  const removed = []
   let pages = 0
   let sections = 0
   let records = 0
@@ -354,6 +511,8 @@ export async function pull(args = [], deps = {}) {
       // records as new and re-mints every page and section row.
       writeItemUuids(siteDir, collectUnitUuids(siteDoc))
       const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
+      wrote.push(...report.pages, ...report.sections, ...report.layout)
+      removed.push(...(report.deleted || []), ...(report.renamed || []).map((r) => r.from))
       pages += report.pages.length
       sections += report.sections.length
       deleted += report.deleted.length
@@ -394,6 +553,13 @@ export async function pull(args = [], deps = {}) {
 
   // Persist the ETags so the next pull is conditional (304 when unchanged).
   writePullCache(siteDir, { content: etagContent, folder: etagFolder })
+  // Config files are rewritten every pull whether or not they changed; include the
+  // ones the projector owns so a pull-then-pull doesn't trip on them either.
+  recordWritten(
+    siteDir,
+    [...wrote, ...['site.yml', 'theme.yml', 'head.html', 'collections.yml'].map((f) => join(siteDir, f))],
+    removed
+  )
 
   success(
     `Pulled — ${pages} page(s), ${sections} section(s), ${records} record(s)` + (deleted ? `, ${deleted} deleted` : '')

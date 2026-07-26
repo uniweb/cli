@@ -3,7 +3,11 @@
  *
  * Drives the pull orchestration with an injected fetch (synthetic pull payloads)
  * and getToken (no auth), against a temp site dir, and asserts the projection
- * layer wrote canonical files. The live backend routes are unexercised; this
+ * layer wrote canonical files.
+ *
+ * These pass `--force` because a temp dir is not a git repository, and pull now
+ * refuses to overwrite a working tree with nothing standing behind it. That guard
+ * has its own tests below; these are about the projection. The live backend routes are unexercised; this
  * pins the wiring (uuid read → GET → extract → project) end to end.
  */
 
@@ -11,6 +15,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 import { pull, extractDocument, splitCollectionsPull, readPullDocuments, readPullVersions } from '../src/commands/pull.js'
@@ -108,7 +114,7 @@ test('pull is a no-op with no $uuid in files', async () => {
   const dir = tempSite()
   try {
     writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
-    const res = await pull([], { resolveSiteDir: async () => dir, getToken: async () => 'tok', fetch: async () => jsonRes(null, 404) })
+    const res = await pull(['--force'], { resolveSiteDir: async () => dir, getToken: async () => 'tok', fetch: async () => jsonRes(null, 404) })
     assert.equal(res.exitCode, 0)
     assert.equal(existsSync(join(dir, 'pages')), false) // nothing projected
   } finally {
@@ -142,7 +148,7 @@ test('pull projects the site-content lane (pages + sections + config) from a moc
       collections: [],
     }
 
-    const res = await pull([], {
+    const res = await pull(['--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: makeFetch([['/dev/site/content/pull/SITE', document]]),
@@ -188,7 +194,7 @@ test('pull fetches the folder lane by the site-content uuid (no collections.yml 
       sections: { article: { brief: true, fields: { title: { type: 'string', localized: true }, body: { type: 'text', format: 'markdown', localized: true } } } },
     }
 
-    const res = await pull([], {
+    const res = await pull(['--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: makeFetch([
@@ -224,7 +230,7 @@ test('pull projects the collections lane, resolving the model via a mock model-r
       sections: { article: { brief: true, fields: { title: { type: 'string', localized: true }, body: { type: 'text', format: 'markdown', localized: true } } } },
     }
 
-    const res = await pull([], {
+    const res = await pull(['--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: makeFetch([
@@ -254,7 +260,7 @@ test('pull --no-collections skips the folder lane', async () => {
       pages: [], layout_sections: [], extensions: [], collections: [],
     }
 
-    const res = await pull(['--no-collections'], {
+    const res = await pull(['--no-collections', '--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: async (url) => {
@@ -278,7 +284,7 @@ test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (
     mkdirSync(join(dir, '.uniweb'), { recursive: true })
     writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 1, content: '"abc123"' }))
     let sentINM
-    const res = await pull(['--no-collections'], {
+    const res = await pull(['--no-collections', '--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: async (url, opts) => {
@@ -304,7 +310,7 @@ test('pull caches the ETag from a 200 for the next conditional pull', async () =
       info: { name: { en: 'S' }, foundation: '@a/base' },
       pages: [], layout_sections: [], extensions: [], collections: [],
     }
-    await pull(['--no-collections'], {
+    await pull(['--no-collections', '--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: async () => ({
@@ -320,4 +326,143 @@ test('pull caches the ETag from a 200 for the next conditional pull', async () =
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+// ── the working-tree guard ──────────────────────────────────────────────────
+// Pull is a checkout: it rewrites section bodies and prunes what the backend
+// doesn't have. It was the last place the CLI could destroy a user's work without
+// them agreeing to it.
+
+test('pull refuses in a non-git dir when it cannot ask', async () => {
+  const dir = tempSite()              // a temp dir — not a git work tree
+  writeFileSync(join(dir, 'site.yml'), "$uuid: SITE\nname: S\n")
+  let fetched = false
+  const res = await pull(['--non-interactive'], {
+    resolveSiteDir: async () => dir,
+    getToken: async () => 'tok',
+    fetch: async () => { fetched = true; return jsonRes({}) },
+  })
+  assert.equal(res.exitCode, 1)
+  // It must refuse BEFORE touching the backend — the guard is about the local
+  // tree, so there is no reason to have fetched anything.
+  assert.equal(fetched, false)
+})
+
+test('pull --force proceeds in a non-git dir', async () => {
+  const dir = tempSite()
+  writeFileSync(join(dir, 'site.yml'), "$uuid: SITE\nname: S\n")
+  const res = await pull(['--force', '--non-interactive'], {
+    resolveSiteDir: async () => dir,
+    getToken: async () => 'tok',
+    fetch: async () => jsonRes(null, 404),
+  })
+  // 404 on the lane, not a refusal — the guard let it through.
+  assert.notEqual(res.exitCode, 1)
+})
+
+test('pull --dry-run is never blocked by the guard — it writes nothing', async () => {
+  const dir = tempSite()
+  writeFileSync(join(dir, 'site.yml'), "$uuid: SITE\nname: S\n")
+  const res = await pull(['--dry-run', '--non-interactive'], {
+    resolveSiteDir: async () => dir,
+    getToken: async () => 'tok',
+    fetch: async () => jsonRes(null, 404),
+  })
+  assert.notEqual(res.exitCode, 1)
+})
+
+// Real git, because the parsing of `git status --porcelain` and the
+// pull-output filtering are exactly the parts a mock would paper over.
+const hasGit = (() => {
+  try { execFileSync('git', ['--version'], { stdio: 'ignore' }); return true } catch { return false }
+})()
+
+function gitSite() {
+  const dir = tempSite()
+  writeFileSync(join(dir, 'site.yml'), "$uuid: SITE\nname: S\n")
+  mkdirSync(join(dir, 'pages/home'), { recursive: true })
+  writeFileSync(join(dir, 'pages/home/hero.md'), '---\ntype: Hero\n---\n# committed\n')
+  const g = (a) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' })
+  g(['init', '-q'])
+  g(['add', '-A'])
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base'], { cwd: dir, stdio: 'ignore' })
+  return dir
+}
+
+test('pull proceeds when the tree is clean', { skip: !hasGit }, async () => {
+  const dir = gitSite()
+  try {
+    const res = await pull(['--non-interactive'], {
+      resolveSiteDir: async () => dir, getToken: async () => 'tok', fetch: async () => jsonRes(null, 404),
+    })
+    assert.notEqual(res.exitCode, 1)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('pull refuses on an uncommitted edit, and names it', { skip: !hasGit }, async () => {
+  const dir = gitSite()
+  try {
+    writeFileSync(join(dir, 'pages/home/hero.md'), '---\ntype: Hero\n---\n# UNSAVED\n')
+    let fetched = false
+    const res = await pull(['--non-interactive'], {
+      resolveSiteDir: async () => dir, getToken: async () => 'tok',
+      fetch: async () => { fetched = true; return jsonRes(null, 404) },
+    })
+    assert.equal(res.exitCode, 1)
+    assert.equal(fetched, false) // refuses before touching the backend
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('pull refuses on an UNTRACKED file — pruning would delete work committed nowhere', { skip: !hasGit }, async () => {
+  const dir = gitSite()
+  try {
+    writeFileSync(join(dir, 'pages/home/brand-new.md'), '---\ntype: Section\n---\n# new\n')
+    const res = await pull(['--non-interactive'], {
+      resolveSiteDir: async () => dir, getToken: async () => 'tok', fetch: async () => jsonRes(null, 404),
+    })
+    assert.equal(res.exitCode, 1)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('pull does not cry wolf over its OWN output', { skip: !hasGit }, async () => {
+  // The false alarm that makes a guard useless: pull rewrites the tree, so without
+  // remembering what it wrote the next pull refuses on files the user never touched
+  // — and teaches them to reach for --force, the destructive option.
+  const dir = gitSite()
+  try {
+    mkdirSync(join(dir, '.uniweb'), { recursive: true })
+    const body = '---\ntype: Hero\n---\n# rewritten by pull\n'
+    writeFileSync(join(dir, 'pages/home/hero.md'), body)
+    writeFileSync(join(dir, '.uniweb/pull-written.json'), JSON.stringify({
+      version: 1,
+      files: { 'pages/home/hero.md': createHash('sha256').update(body).digest('hex') },
+      deleted: [],
+    }))
+    const res = await pull(['--non-interactive'], {
+      resolveSiteDir: async () => dir, getToken: async () => 'tok', fetch: async () => jsonRes(null, 404),
+    })
+    assert.notEqual(res.exitCode, 1)
+
+    // …but an edit ON TOP of pull's output is the user's work again.
+    writeFileSync(join(dir, 'pages/home/hero.md'), body + '\nmine\n')
+    const res2 = await pull(['--non-interactive'], {
+      resolveSiteDir: async () => dir, getToken: async () => 'tok', fetch: async () => jsonRes(null, 404),
+    })
+    assert.equal(res2.exitCode, 1)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('a file pull PRUNED is not mistaken for a user deletion', { skip: !hasGit }, async () => {
+  const dir = gitSite()
+  try {
+    mkdirSync(join(dir, '.uniweb'), { recursive: true })
+    rmSync(join(dir, 'pages/home/hero.md'))
+    writeFileSync(join(dir, '.uniweb/pull-written.json'), JSON.stringify({
+      version: 1, files: {}, deleted: ['pages/home/hero.md'],
+    }))
+    const res = await pull(['--non-interactive'], {
+      resolveSiteDir: async () => dir, getToken: async () => 'tok', fetch: async () => jsonRes(null, 404),
+    })
+    assert.notEqual(res.exitCode, 1)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
 })
