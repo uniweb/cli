@@ -1571,6 +1571,46 @@ Recipes for staying on the default fetcher, and for writing a custom transport: 
 
 Full model: `reference/data-fetching.md`. Where-object format with examples: `authoring/predicates.md`.
 
+### Search (`search:`)
+
+Search follows the same arrangement as `fetcher:` — the **site** declares where results come from, and a search UI reads them the same way regardless. Never hardcode a search endpoint in a component; that couples the foundation to one host.
+
+```yaml
+# site.yml
+search:
+  enabled: true
+  provider: index        # default — download an index, match in the browser
+```
+
+| Provider | Answers with | Trade-off |
+|---|---|---|
+| `index` (default) | `search-index.json` + Fuse.js in the browser | Free, works on **any** host including a plain static one, tolerates typos. Contains only what existed at build time. |
+| `endpoint` | A server-side search API | Can cover records fetched from an API, and can be re-indexed without rebuilding the site. Requires a host that serves one. |
+| *any other name* | A foundation-supplied search transport | Fully open — Typesense, Meilisearch, Pagefind, a vendor API |
+
+```yaml
+search:
+  provider: endpoint
+  endpoint: _search      # optional; base-RELATIVE, so one spelling works everywhere
+```
+
+`endpoint:` resolves against the site's base path — `/` → `/_search`, `base: /docs/` → `/docs/_search`, a subpath-served site follows its subpath. An absolute `https://…` URL points at another origin.
+
+**Results have one shape, whatever the provider.** Always present: `id`, `type`, `route`, `href`, `title`, `pageTitle`, `excerpt`, `snippetHtml`. Provider-optional (`null` when absent): `sectionId`, `anchor`, `description`, `component`, `snippetText`, `matches`, `collection`, `item`. Whether an optional field arrives is a deployment fact, not a content fact — the same site yields `item` from a server provider and `null` from the local index — so guard them: `result.item?.image`.
+
+`snippetHtml` is HTML with `<mark>`. Render it through `SafeHtml`, never as text.
+
+**Failures degrade rather than break** — a failing provider falls back to the local index when one exists, otherwise returns no results with a console warning. A search box never throws at a visitor.
+
+```jsx
+import { useSearch } from '@uniweb/kit'
+
+const { results, isLoading, query } = useSearch(website)   // `query` is a function
+<input onChange={e => query(e.target.value)} />            // debounced internally
+```
+
+Full reference: `authoring/search.md`.
+
 <!-- template:loom -->
 ### Content handlers
 
