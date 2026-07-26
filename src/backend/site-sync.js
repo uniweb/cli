@@ -424,10 +424,13 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
         // work — it is why they pushed — and if it is uncommitted then `pull`
         // refuses too, so bare "run pull" advice walks them into a dead end.
         if (hasUncommittedContent(siteDir)) {
-          note('Commit or stash your changes, then `uniweb pull`, then push again.')
-          note('(Pull rewrites these files, so it declines while the work is unsaved.)')
+          // `--merge` is the recovery that keeps both sides: most of these are two
+          // people editing different parts of one section, which merges silently.
+          // Offer it first, and keep the take-theirs route for anyone who wants it.
+          note('Commit your changes, then `uniweb pull --merge` to combine them with the backend\'s.')
+          note('(Plain `uniweb pull` declines while the work is unsaved — it overwrites rather than merges.)')
         } else {
-          note('Run `uniweb pull` to take those changes, then push again.')
+          note('Run `uniweb pull --merge` to combine the changes, or `uniweb pull` to take the backend version.')
         }
         note('To overwrite them anyway, re-run with --force (this discards the upstream edits).')
         return null

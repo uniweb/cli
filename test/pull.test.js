@@ -466,3 +466,108 @@ test('a file pull PRUNED is not mistaken for a user deletion', { skip: !hasGit }
     assert.notEqual(res.exitCode, 1)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
+
+// ── pull --merge ────────────────────────────────────────────────────────────
+// The merge is entirely client-side: the backend supplies "theirs" via the
+// ordinary pull lane and contributes nothing else. The ancestor is the COMMITTED
+// version of the file, which is why this needs a real repo rather than a mock.
+
+const twoPara = (a, b) => ({
+  type: 'doc',
+  content: [
+    { type: 'paragraph', content: [{ type: 'text', text: a }] },
+    { type: 'paragraph', content: [{ type: 'text', text: b }] },
+  ],
+})
+const siteDocWith = (content) => ({
+  $uuid: 'SITE', $id: 'site-content', $model: '@uniweb/site-content',
+  info: { name: { en: 'S' }, foundation: '@a/base' },
+  pages: [{
+    $id: 'home', $uuid: 'P1', slug: 'home', mode: 'page', stable_id: 'home',
+    page_sections: [{ $id: 'welcome', $uuid: 'S1', stable_id: 'welcome', type: 'Section', content }],
+  }],
+  layout_sections: [], extensions: [], collections: [],
+})
+
+async function pulledGitSite(baseContent) {
+  const dir = tempSite()
+  writeFileSync(join(dir, 'site.yml'), "$uuid: SITE\nname: S\nfoundation: '@a/base'\n")
+  const g = (a) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' })
+  g(['init', '-q'])
+  writeFileSync(join(dir, '.gitignore'), '.uniweb\n')
+  // Establish the file the way it really gets established: by pulling it.
+  await pull(['--force'], {
+    resolveSiteDir: async () => dir, getToken: async () => 'tok',
+    fetch: makeFetch([['/dev/site/content/pull/SITE', siteDocWith(baseContent)]]),
+  })
+  g(['add', '-A'])
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base'], { cwd: dir, stdio: 'ignore' })
+  return dir
+}
+
+test('pull --merge keeps both sides when they touched different parts of one section', { skip: !hasGit }, async () => {
+  // The case that otherwise forces commit → pull → re-apply by hand. Two people
+  // edited one section, but not the same words, so there is no real conflict.
+  const dir = await pulledGitSite(twoPara('First paragraph about pricing.', 'Second paragraph about support.'))
+  try {
+    const file = join(dir, 'pages/home/welcome.md')
+    writeFileSync(file, readFileSync(file, 'utf8').replace('about pricing.', 'about pricing, now with tiers.'))
+
+    const res = await pull(['--merge'], {
+      resolveSiteDir: async () => dir, getToken: async () => 'tok',
+      fetch: makeFetch([['/dev/site/content/pull/SITE',
+        siteDocWith(twoPara('First paragraph about pricing.', 'Second paragraph about support, now 24/7.'))]]),
+    })
+    assert.equal(res.exitCode, 0)
+
+    const merged = readFileSync(file, 'utf8')
+    assert.match(merged, /now with tiers/)  // mine survived
+    assert.match(merged, /now 24\/7/)       // theirs arrived
+    assert.ok(!merged.includes('<<<<<<<'))  // and it was not a conflict
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('pull --merge marks a genuine overlap instead of silently picking a side', { skip: !hasGit }, async () => {
+  const dir = await pulledGitSite(twoPara('Shared line.', 'Untouched.'))
+  try {
+    const file = join(dir, 'pages/home/welcome.md')
+    writeFileSync(file, readFileSync(file, 'utf8').replace('Shared line.', 'MY version of the line.'))
+
+    await pull(['--merge'], {
+      resolveSiteDir: async () => dir, getToken: async () => 'tok',
+      fetch: makeFetch([['/dev/site/content/pull/SITE', siteDocWith(twoPara('THEIR version of the line.', 'Untouched.'))]]),
+    })
+
+    const merged = readFileSync(file, 'utf8')
+    assert.match(merged, /<<<<<<</)
+    assert.match(merged, /MY version of the line\./)
+    assert.match(merged, /THEIR version of the line\./)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('pull --merge keeps a locally-added file the backend does not have', { skip: !hasGit }, async () => {
+  // No committed ancestor, so no three-way merge is defined. Keeping it is the
+  // non-destructive reading; discarding it would lose work to honour a deletion
+  // the user never saw.
+  const dir = await pulledGitSite(twoPara('A.', 'B.'))
+  try {
+    const mine = join(dir, 'pages/home/only-mine.md')
+    writeFileSync(mine, '---\ntype: Section\n---\n# only mine\n')
+    await pull(['--merge'], {
+      resolveSiteDir: async () => dir, getToken: async () => 'tok',
+      fetch: makeFetch([['/dev/site/content/pull/SITE', siteDocWith(twoPara('A.', 'B.'))]]),
+    })
+    assert.equal(readFileSync(mine, 'utf8').includes('only mine'), true)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('pull --merge refuses outside a repo rather than pretending', { skip: !hasGit }, async () => {
+  const dir = tempSite()
+  writeFileSync(join(dir, 'site.yml'), '$uuid: SITE\nname: S\n')
+  try {
+    const res = await pull(['--merge', '--non-interactive'], {
+      resolveSiteDir: async () => dir, getToken: async () => 'tok', fetch: async () => jsonRes(null, 404),
+    })
+    assert.equal(res.exitCode, 1)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})

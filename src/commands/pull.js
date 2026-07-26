@@ -24,12 +24,21 @@
  * `--force`. Outside a git repository there is nothing to fall back on, so it asks
  * instead (and refuses when it cannot).
  *
+ * `--merge` is the third option, and usually the one you want after a refused push:
+ * three-way merge local work with what the backend sends, instead of choosing
+ * between them. Most "conflicts" are two people editing different paragraphs of one
+ * section, which merges silently; only genuine overlaps get conflict markers. The
+ * common ancestor is the COMMITTED version of each file — the backend keeps no
+ * per-version history and does not need to — so `--merge` requires a repo, and the
+ * merge itself is `git merge-file`.
+ *
  * `uniweb login && uniweb pull`. Run from a site, or a workspace with one site.
  *
  * Usage:
  *   uniweb pull                          GET both lanes, project to files, prune orphans
  *   uniweb pull --no-collections         Pull pages only; skip the folder (collections) lane
  *   uniweb pull --no-delete              Project, but keep files with no backend item
+ *   uniweb pull --merge                  Three-way merge local changes with the backend's
  *   uniweb pull --force                  Pull over uncommitted local changes (discards them)
  *   uniweb pull --dry-run                Report what it would GET; write nothing
  *   uniweb pull --registry <url>         Override the backend origin
@@ -47,7 +56,8 @@
  * against the playground backend, 2026-06-17.
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { createInterface } from 'node:readline/promises'
 import { join, dirname, relative } from 'node:path'
@@ -67,7 +77,7 @@ import {
   writeUnitBases,
   writeItemUuids,
 } from '../backend/site-sync.js'
-import { uncommittedUnder, siteContentRoots } from '../utils/git.js'
+import { uncommittedUnder, siteContentRoots, showAtHead, mergeFile } from '../utils/git.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir, resolveSiteBackend } from './deploy.js'
@@ -360,6 +370,97 @@ function isPullOutput(siteDir, relPath, written) {
   return written.files[relPath] === hash
 }
 
+/**
+ * `--merge`: keep local work instead of refusing, by three-way merging it with what
+ * the backend sends.
+ *
+ * Without this the recovery from a same-section conflict is commit → pull (which
+ * overwrites your version) → re-apply by hand → push. Yet most such "conflicts"
+ * aren't: two people edited different paragraphs of one section, and a real merge
+ * takes both. Only genuine overlaps need a human.
+ *
+ * Works by capturing local content BEFORE the projection overwrites it, then
+ * merging afterwards — so the projector stays a plain writer and needs no hook, and
+ * nothing is lost in between because "mine" is already in memory.
+ *
+ * Requires a repo, and that is not a mandate creeping in: the ancestor IS the
+ * committed version, and the merge is git's. There is nothing to merge against
+ * without one.
+ *
+ * @returns {Map<string, {content: Buffer, inHead: boolean}>|null} captured work, or
+ *   null when merging isn't possible here (the caller reports and stops).
+ */
+function captureLocalWork(siteDir) {
+  const dirty = uncommittedUnder(siteDir, siteContentRoots(siteDir))
+  if (dirty === null) return null
+  const written = readWritten(siteDir)
+  const out = new Map()
+  for (const rel of dirty) {
+    if (isPullOutput(siteDir, rel, written)) continue // pull's own output, not work
+    try {
+      out.set(rel, { content: readFileSync(join(siteDir, rel)), inHead: showAtHead(siteDir, rel) !== null })
+    } catch {
+      // Locally deleted. Pull will restore the backend's copy, which is the
+      // sensible reading of "I removed this and then asked for their version".
+    }
+  }
+  return out
+}
+
+// Merge captured work back over what the projection just wrote. Returns a report.
+function mergeLocalWork(siteDir, captured) {
+  const clean = []
+  const conflicted = []
+  const kept = []
+  for (const [rel, { content: mine, inHead }] of captured) {
+    const abs = join(siteDir, rel)
+    let theirs = null
+    try { theirs = readFileSync(abs) } catch { /* pruned by the pull */ }
+
+    if (theirs === null) {
+      // The backend no longer has it, but we changed it. Restoring is the
+      // non-destructive reading; the alternative silently discards local work to
+      // honour a deletion the user never saw.
+      mkdirSync(dirname(abs), { recursive: true })
+      writeFileSync(abs, mine)
+      kept.push(`${rel} (removed upstream, kept yours)`)
+      continue
+    }
+    if (theirs.equals(mine)) continue // both sides agree already
+
+    const base = inHead ? showAtHead(siteDir, rel) : null
+    if (!base) {
+      // No committed ancestor — a file added locally and never committed. There is
+      // no third input, so a three-way merge is not defined. Keep ours rather than
+      // guess, and say so.
+      writeFileSync(abs, mine)
+      kept.push(`${rel} (no committed ancestor, kept yours)`)
+      continue
+    }
+
+    const dir = mkdtempSync(join(tmpdir(), 'uniweb-merge-'))
+    try {
+      const basePath = join(dir, 'base')
+      const theirsPath = join(dir, 'theirs')
+      writeFileSync(basePath, base)
+      writeFileSync(theirsPath, theirs)
+      writeFileSync(abs, mine) // merge-file rewrites this in place
+      const r = mergeFile(siteDir, abs, basePath, theirsPath)
+      if (!r.merged) {
+        writeFileSync(abs, mine) // merge couldn't run — never leave a half-state
+        kept.push(`${rel} (merge unavailable, kept yours)`)
+      } else if (r.conflicted) {
+        conflicted.push(rel)
+      } else {
+        clean.push(rel)
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+  return { clean, conflicted, kept }
+}
+
 // Minimal yes/no prompt; defaults to no, because the default must not destroy.
 async function confirm(question) {
   const rl = createInterface({ input: process.stdin, output: process.stdout })
@@ -379,6 +480,7 @@ export async function pull(args = [], deps = {}) {
   const prune = !(args.includes('--no-delete') || args.includes('--no-prune')) // git-like by default
   const noCollections = args.includes('--no-collections') || args.includes('--content-only')
   const force = args.includes('--force')
+  const mergeMode = args.includes('--merge')
 
   const siteDir = await resolveSiteDir(args, 'pull')
 
@@ -391,7 +493,18 @@ export async function pull(args = [], deps = {}) {
   // Checked coarsely, by root, on purpose: pull rewrites essentially every file
   // under those roots, so an exact per-file intersection would refuse the same
   // cases while being able to miss one.
-  if (!dryRun && !force) {
+  // `--merge` keeps local work instead of refusing it: capture what is dirty now,
+  // let the projection write the backend's version, then merge ours back over it.
+  let captured = null
+  if (!dryRun && mergeMode) {
+    captured = captureLocalWork(siteDir)
+    if (captured === null) {
+      error('Cannot merge: this site is not in a git repository.')
+      note('The common ancestor a merge needs is the committed version of each file.')
+      note('Without a repo there is nothing to merge against — use `uniweb pull --force` to take the backend version.')
+      return { exitCode: 1 }
+    }
+  } else if (!dryRun && !force) {
     const blocked = await checkWorkingTree(siteDir, args)
     if (blocked) return blocked
   }
@@ -541,6 +654,22 @@ export async function pull(args = [], deps = {}) {
   writePullCache(siteDir, { content: etagContent, folder: etagFolder })
   // Config files are rewritten every pull whether or not they changed; include the
   // ones the projector owns so a pull-then-pull doesn't trip on them either.
+  // Merge captured local work back over what the projection just wrote. Runs after
+  // BOTH lanes, so a file either lane produced is merged the same way.
+  if (captured && captured.size) {
+    const r = mergeLocalWork(siteDir, captured)
+    if (r.clean.length) {
+      info(`Merged your changes into ${r.clean.length} file(s):`)
+      for (const f of r.clean) note(`  ${f}`)
+    }
+    for (const f of r.kept) note(`\u21b7 ${f}`)
+    if (r.conflicted.length) {
+      error(`${r.conflicted.length} file(s) have conflicts to resolve:`)
+      for (const f of r.conflicted) note(`  ${f}`)
+      note('Conflict markers are in place. Resolve them, then commit and push.')
+    }
+  }
+
   recordWritten(
     siteDir,
     [...wrote, ...['site.yml', 'theme.yml', 'head.html', 'collections.yml'].map((f) => join(siteDir, f))],

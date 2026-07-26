@@ -94,6 +94,67 @@ export function uncommittedUnder(dir, relPaths) {
 }
 
 /**
+ * A file's committed content — the COMMON ANCESTOR for a three-way merge.
+ *
+ * This is the input a merge needs and the backend cannot supply: it keeps no
+ * per-version item content, and retaining some so it could feed a merge running on
+ * the client would put a permanent second write on its hottest table. It doesn't
+ * have to. `uniweb pull` writes the backend's content into these files, so the
+ * committed version IS the state both sides diverged from — the ancestor was always
+ * on this side, in the tool that already knows how to merge.
+ *
+ * @returns {Buffer|null} null when the path isn't in HEAD (a file added locally and
+ *   never committed has no ancestor, so there is nothing to merge against).
+ */
+export function showAtHead(dir, relPath) {
+  try {
+    return execFileSync('git', ['show', `HEAD:${relPath}`], {
+      cwd: dir,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 64 * 1024 * 1024,
+    })
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Three-way merge, in place: `minePath` is rewritten with the merged result.
+ *
+ * Delegates to `git merge-file`, which is the same machinery git uses for a merge —
+ * text that only one side touched is taken silently, and only genuine overlaps get
+ * conflict markers. Building our own would be a worse version of a solved problem.
+ *
+ * @returns {{ merged: boolean, conflicted: boolean }} `merged:false` means the merge
+ *   could not be attempted at all, which is different from attempting it and finding
+ *   conflicts — the caller must not conflate them.
+ */
+export function mergeFile(dir, minePath, basePath, theirsPath, labels = {}) {
+  try {
+    execFileSync(
+      'git',
+      [
+        'merge-file',
+        '-L', labels.mine || 'yours (local)',
+        '-L', labels.base || 'common ancestor',
+        '-L', labels.theirs || 'theirs (backend)',
+        minePath, basePath, theirsPath,
+      ],
+      { cwd: dir, stdio: ['ignore', 'ignore', 'ignore'] }
+    )
+    return { merged: true, conflicted: false }
+  } catch (err) {
+    // A positive status is the CONFLICT COUNT and the file still holds a valid
+    // merge with markers. Anything else (git missing, unreadable input) means no
+    // merge happened and the caller must fall back rather than trust the file.
+    if (typeof err?.status === 'number' && err.status > 0 && err.status < 128) {
+      return { merged: true, conflicted: true }
+    }
+    return { merged: false, conflicted: false }
+  }
+}
+
+/**
  * Provenance for a deploy record: `{ sha, dirty }`, or null outside a repo.
  * Answers "what is actually live?" later, which a version number cannot.
  */
