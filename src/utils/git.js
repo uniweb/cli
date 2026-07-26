@@ -154,6 +154,39 @@ export function mergeFile(dir, minePath, basePath, theirsPath, labels = {}) {
   }
 }
 
+/** Does this repo have a remote configured to pull from? */
+export function hasRemote(dir) {
+  try {
+    return git(['remote'], dir).trim().length > 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * `git pull --ff-only` — bring in teammates' commits.
+ *
+ * Fast-forward only, deliberately. A refresh should never silently create a merge
+ * commit or drop the user into a rebase they didn't ask for; if the branches have
+ * genuinely diverged, that is a git problem the user should handle in git, with
+ * git's own vocabulary. We report and step back.
+ *
+ * @returns {{ ok: boolean, changed: boolean, message: string }}
+ */
+export function pullRemote(dir) {
+  const before = (() => { try { return git(['rev-parse', 'HEAD'], dir).trim() } catch { return null } })()
+  try {
+    const out = execFileSync('git', ['pull', '--ff-only'], {
+      cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const after = (() => { try { return git(['rev-parse', 'HEAD'], dir).trim() } catch { return null } })()
+    return { ok: true, changed: Boolean(before && after && before !== after), message: out.trim() }
+  } catch (err) {
+    const msg = [err?.stderr, err?.stdout].map((b) => (b ? String(b) : '')).join('\n').trim()
+    return { ok: false, changed: false, message: msg || 'git pull failed' }
+  }
+}
+
 /**
  * Provenance for a deploy record: `{ sha, dirty }`, or null outside a repo.
  * Answers "what is actually live?" later, which a version number cannot.

@@ -622,6 +622,13 @@ async function main() {
     process.exit(result?.exitCode ?? 0)
   }
 
+  // Handle refresh command (dynamic import — depends on @uniweb/build via pull)
+  if (command === 'refresh') {
+    const { refresh } = await importProjectCommand('./commands/refresh.js')
+    const result = await refresh(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
+  }
+
   // Handle status command (dynamic import — offline emit via @uniweb/build)
   if (command === 'status') {
     const { status } = await importProjectCommand('./commands/status.js')
@@ -1490,6 +1497,7 @@ ${colors.bright}Commands:${colors.reset}
   runtime register   Register an @uniweb/runtime version to the backend (@std only)
   push               Push a site's content to the backend
   pull               Pull a site's content from the backend
+  refresh            Catch up with the git remote AND the backend (never pushes)
   status             Show a site's sync state (unpushed content, foundation)
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation

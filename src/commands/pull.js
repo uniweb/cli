@@ -496,6 +496,7 @@ export async function pull(args = [], deps = {}) {
   // `--merge` keeps local work instead of refusing it: capture what is dirty now,
   // let the projection write the backend's version, then merge ours back over it.
   let captured = null
+  let mergeReport = null
   if (!dryRun && mergeMode) {
     captured = captureLocalWork(siteDir)
     if (captured === null) {
@@ -657,7 +658,8 @@ export async function pull(args = [], deps = {}) {
   // Merge captured local work back over what the projection just wrote. Runs after
   // BOTH lanes, so a file either lane produced is merged the same way.
   if (captured && captured.size) {
-    const r = mergeLocalWork(siteDir, captured)
+    mergeReport = mergeLocalWork(siteDir, captured)
+    const r = mergeReport
     if (r.clean.length) {
       info(`Merged your changes into ${r.clean.length} file(s):`)
       for (const f of r.clean) note(`  ${f}`)
@@ -679,5 +681,10 @@ export async function pull(args = [], deps = {}) {
   success(
     `Pulled — ${pages} page(s), ${sections} section(s), ${records} record(s)` + (deleted ? `, ${deleted} deleted` : '')
   )
-  return { exitCode: 0 }
+  // Unresolved conflicts are a non-zero exit, the way a conflicted `git merge` is.
+  // The pull itself worked; there is work left for a human. This is what makes a
+  // chained `uniweb pull --merge && uniweb push` safe by construction — without it,
+  // the obvious one-liner pushes conflict markers into live content.
+  const conflicts = mergeReport?.conflicted?.length ?? 0
+  return { exitCode: conflicts ? 1 : 0, merge: mergeReport }
 }
