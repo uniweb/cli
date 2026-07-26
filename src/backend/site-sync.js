@@ -14,6 +14,7 @@
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import yaml from 'js-yaml'
+import { hasUncommittedContent } from '../utils/git.js'
 import {
   backfillEntityUuids,
   writeSiteEntityUuid,
@@ -419,7 +420,15 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
           }
         }
         note('Nothing was written — the whole push was refused before any change.')
-        note('Run `uniweb pull` to take those changes, then push again.')
+        // Say what will actually work from HERE. Anyone hitting this has local
+        // work — it is why they pushed — and if it is uncommitted then `pull`
+        // refuses too, so bare "run pull" advice walks them into a dead end.
+        if (hasUncommittedContent(siteDir)) {
+          note('Commit or stash your changes, then `uniweb pull`, then push again.')
+          note('(Pull rewrites these files, so it declines while the work is unsaved.)')
+        } else {
+          note('Run `uniweb pull` to take those changes, then push again.')
+        }
         note('To overwrite them anyway, re-run with --force (this discards the upstream edits).')
         return null
       }

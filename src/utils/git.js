@@ -18,6 +18,36 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import yaml from 'js-yaml'
+
+/**
+ * The files and directories `uniweb pull` writes into.
+ *
+ * ONE definition, shared by the guard that blocks a pull and the message that
+ * tells someone how to recover from a refused push — a second copy would drift,
+ * and a stale list here means either a guard that misses or advice that is wrong.
+ * `paths:` can relocate the content roots, so the local site.yml is consulted
+ * rather than assuming the defaults.
+ */
+export function siteContentRoots(siteDir) {
+  const roots = new Set(['site.yml', 'theme.yml', 'head.html', 'collections.yml', 'locales'])
+  let paths = {}
+  try {
+    paths = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))?.paths || {}
+  } catch { /* no or unreadable site.yml — the defaults are right */ }
+  roots.add(paths.pages || 'pages')
+  roots.add(paths.layout || 'layout')
+  roots.add(paths.collections || 'collections')
+  return [...roots]
+}
+
+/** Is there uncommitted work where a pull would write? False outside a repo. */
+export function hasUncommittedContent(siteDir) {
+  const dirty = uncommittedUnder(siteDir, siteContentRoots(siteDir))
+  return Array.isArray(dirty) && dirty.length > 0
+}
 
 function git(args, cwd) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })

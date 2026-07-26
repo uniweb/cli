@@ -67,7 +67,7 @@ import {
   writeUnitBases,
   writeItemUuids,
 } from '../backend/site-sync.js'
-import { uncommittedUnder } from '../utils/git.js'
+import { uncommittedUnder, siteContentRoots } from '../utils/git.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir, resolveSiteBackend } from './deploy.js'
@@ -260,20 +260,6 @@ function readManifestTokens(buf) {
  * @param {object} [deps] - injectable seams for testing: `fetch` (default global
  *   fetch), `resolveSiteDir`, `getToken` (skip auth).
  */
-// The directories and files pull writes into. `paths:` can relocate the content
-// roots, so the local site.yml is consulted rather than assuming the defaults.
-function ownedRoots(siteDir) {
-  const roots = new Set(['site.yml', 'theme.yml', 'head.html', 'collections.yml', 'locales'])
-  let paths = {}
-  try {
-    paths = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))?.paths || {}
-  } catch { /* no or unreadable site.yml — defaults are right */ }
-  roots.add(paths.pages || 'pages')
-  roots.add(paths.layout || 'layout')
-  roots.add(paths.collections || 'collections')
-  return [...roots]
-}
-
 /**
  * Refuse a pull that would overwrite unsaved work. Returns a result object to
  * return from `pull`, or null to proceed.
@@ -283,7 +269,7 @@ function ownedRoots(siteDir) {
  * non-interactive context refuse rather than assume consent.
  */
 async function checkWorkingTree(siteDir, args) {
-  const roots = ownedRoots(siteDir)
+  const roots = siteContentRoots(siteDir)
   let dirty = uncommittedUnder(siteDir, roots)
 
   if (dirty === null) {
