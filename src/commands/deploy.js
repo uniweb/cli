@@ -53,6 +53,7 @@ import { loadDeployYml, resolveTarget, recordLastDeploy } from '@uniweb/build/si
 import { promptForDestination } from '../utils/destination-prompt.js'
 import { readFlagValue } from '../utils/args.js'
 import { parseBoolEnv } from '../utils/env.js'
+import { headProvenance } from '../utils/git.js'
 
 import {
   findWorkspaceRoot,
@@ -357,12 +358,13 @@ async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave,
 
   // Record a fresh lastDeploy.<target> entry. Skipped on --no-save and
   // on ad-hoc --host overrides — see autoSave gating in deploy().
+  const gitStamp = { at: new Date().toISOString(), git: headProvenance(siteDir) }
   await persistLastDeploy(siteDir, {
     targetName: resolved.targetName,
     targetConfig: resolved.fromFile ? null : { host: hostName, ...deployConfig },
     autoSave,
     lastDeploy: {
-      at: new Date().toISOString(),
+      at: gitStamp.at,
       host: hostName,
       // Adapters that drive a host CLI get the public URL back from it
       // (wrangler/netlify/vercel print it; github-pages derives it from
@@ -370,6 +372,9 @@ async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave,
       // the user's CloudFront/DNS config, which we never see — so the
       // field is simply omitted there rather than guessed.
       ...(deployResult?.url ? { url: deployResult.url } : {}),
+      // Same provenance the Uniweb path records: which commit this artifact came
+      // from, and whether the tree was clean when it was built.
+      ...(gitStamp.git ? { git: gitStamp.git } : {}),
     },
   })
   if (hostOverridden && !dryRun) {

@@ -291,3 +291,25 @@ test('an identity_required 400 is explained, not surfaced as a raw error', async
   // Must not be mistaken for the staleness refusal — different cause, different fix.
   assert.ok(!/newer content than your last pull/.test(out))
 })
+
+test('headProvenance reports the commit and whether the tree was clean', async () => {
+  // A version number cannot answer "what is actually live" — two publishes of the
+  // same version are not the same content. `dirty` carries as much weight as the
+  // sha: it says the deploy matched no commit, so the sha alone would mislead.
+  const { execFileSync } = await import('node:child_process')
+  const { headProvenance } = await import('../src/utils/git.js')
+  const dir = tmpSite()
+  assert.equal(headProvenance(dir), null) // not a repo
+
+  const g = (a) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' })
+  try { g(['init', '-q']) } catch { return } // no git available — nothing to assert
+  g(['add', '-A'])
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'x'], { cwd: dir, stdio: 'ignore' })
+
+  const clean = headProvenance(dir)
+  assert.match(clean.sha, /^[0-9a-f]{40}$/)
+  assert.equal(clean.dirty, false)
+
+  writeFileSync(join(dir, 'site.yml'), 'name: changed\n')
+  assert.equal(headProvenance(dir).dirty, true)
+})

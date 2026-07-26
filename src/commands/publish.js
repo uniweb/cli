@@ -55,6 +55,7 @@ import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { readFlagValue } from '../utils/args.js'
 import { isNonInteractive } from '../utils/interactive.js'
+import { headProvenance } from '../utils/git.js'
 import {
   makeModelResolver,
   readSyncCache,
@@ -393,6 +394,7 @@ export async function publish(args = []) {
   //    foundation version (the bring-along, §4).
   // Record the ref that actually went live: the pinned `@scope/name@version`
   // from the bring-along when present, else the site.yml ref verbatim.
+  const gitAt = headProvenance(siteDir)
   const siteYmlRef = typeof siteYml.foundation === 'string' ? siteYml.foundation : siteYml.foundation?.ref || null
   const recordedRef = fnd.ref || siteYmlRef
   await persistLastDeploy(siteDir, {
@@ -405,6 +407,11 @@ export async function publish(args = []) {
     lastDeploy: {
       at: new Date().toISOString(),
       host: 'uniweb',
+      // What was actually shipped. A version number can't answer that — two
+      // publishes of "0.1.0" are not the same content — and after the fact the
+      // working tree has moved on. `dirty` matters as much as the sha: it says the
+      // publish did NOT correspond to any commit, so the sha alone would mislead.
+      ...(gitAt ? { git: gitAt } : {}),
       backend: client.origin,
       siteUuid,
       url: serveUrl,

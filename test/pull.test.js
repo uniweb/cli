@@ -159,7 +159,7 @@ test('pull projects the site-content lane (pages + sections + config) from a moc
     assert.equal(yaml.load(readFileSync(join(dir, 'site.yml'), 'utf8')).name, 'Pulled')
     // page + section projected; page.yml stays clean (identity → .uniweb/ index)
     const pageYml = yaml.load(readFileSync(join(dir, 'pages/home/page.yml'), 'utf8'))
-    assert.deepEqual(pageYml.sections, ['hero'])
+    assert.deepEqual(pageYml.sections, ['hero', '...']) // rest marker keeps the page open to new sections
     assert.equal(pageYml.uuid, undefined)
     assert.equal(pageYml.ids, undefined)
     assert.ok(existsSync(join(dir, 'pages/home/hero.md')))
