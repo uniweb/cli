@@ -31,6 +31,8 @@
  *   --no-agents         Skip the AGENTS.md step.
  *   --no-deps           Skip the deps-alignment step.
  *   --dry-run           Print survey + would-be writes; no mutations.
+ *   --verbose           List every surveyed dep, including aligned ones
+ *                       (the default collapses those to a count).
  *   --allow-mismatch    Refresh AGENTS.md even if declared deps lag.
  *   --yes               Don't prompt — apply edits and run the install.
  *   --non-interactive   Auto-detected; prints the plan, never mutates
@@ -50,6 +52,7 @@ import { detectWorkspacePm, installCmd, detectGlobalCliPm, globalCliUpdateCmd } 
 import { writeJsonPreservingStyle } from '../utils/json-file.js'
 import { surveyWorkspaceDeps, compareSemver } from '../utils/dep-survey.js'
 import { checkWorkspaceInstall, readDeclaredFoundation } from '../utils/install-integrity.js'
+import { getLatestVersion } from '../utils/update-check.js'
 
 const colors = {
   reset: '\x1b[0m',
@@ -110,16 +113,45 @@ function findUniwebWorkspace(cwd) {
   }
 }
 
-/** Fetch the latest published CLI version. Returns null on network error. */
-async function fetchLatestVersion() {
-  try {
-    const res = await fetch('https://registry.npmjs.org/uniweb/latest')
-    if (!res.ok) return null
-    const data = await res.json()
-    return data?.version || null
-  } catch {
-    return null
+/**
+ * Trailing advisory: a newer CLI exists, and this run could not have used it.
+ *
+ * Placed AFTER the work, not before, because it is a what-to-do-next — the
+ * same reason update-check calls its post-command notice the 'soft' tone.
+ * It also has to be the last thing on screen when it fires: a run that ends
+ * on `✓ deps aligned` + `✓ AGENTS.md up to date` reads as "all good", and
+ * those ticks are measured against THIS CLI's matrix. True, and beside the
+ * point, when the CLI itself is two releases back.
+ *
+ * The remedy is per-provenance because the wrong one is useless advice:
+ *   - project-local — the version is pinned by the project's package.json,
+ *     so a global install is irrelevant. `npx uniweb@latest update` both
+ *     aligns the deps AND rewrites that pin, so it is self-healing; say so,
+ *     or the reader assumes they'll be back here next release.
+ *   - global — updating the global install is the durable fix.
+ *   - npx — skipped entirely. The version was chosen explicitly on the
+ *     command line, and the lead-in already named it.
+ *
+ * Exported for tests: this notice must fire when behind and stay silent
+ * when current, and it's the half of the command that had no coverage.
+ *
+ * @returns {boolean} true if a notice was printed.
+ */
+export function printStaleCliNotice({ cliVersion, latest, isNpx, isGlobal, globalPm }) {
+  if (isNpx) return false
+  if (!latest || compareSemver(latest, cliVersion) <= 0) return false
+
+  log('')
+  log(`${colors.yellow}⚠${colors.reset}  ${colors.bright}A newer uniweb is available:${colors.reset} ${colors.dim}v${cliVersion}${colors.reset} → ${colors.cyan}v${latest}${colors.reset}`)
+  if (isGlobal) {
+    log(`${colors.dim}This run aligned the project to v${cliVersion}'s matrix. To update the CLI:${colors.reset} ${colors.cyan}${globalCliUpdateCmd(globalPm)}${colors.reset}`)
+    log(`${colors.dim}Or align to the latest release without a global install:${colors.reset} ${colors.cyan}npx uniweb@latest update${colors.reset}`)
+  } else {
+    log(`${colors.dim}This run aligned the project to v${cliVersion}'s matrix — the version your project pins.${colors.reset}`)
+    log(`${colors.dim}To move to v${latest}:${colors.reset} ${colors.cyan}npx uniweb@latest update${colors.reset} ${colors.dim}(updates the pin too).${colors.reset}`)
   }
+  log('')
+  return true
 }
 
 /** Run a shell command, inheriting stdio. Resolves with the exit code. */
@@ -132,8 +164,22 @@ function runCommand(cmd, cwd) {
   })
 }
 
-/** Print the survey report grouped by package directory. */
-function printSurvey(report, cliVersion, agentsVersion) {
+/**
+ * Print the survey report grouped by package directory.
+ *
+ * Only rows that need attention get a line. An aligned dep renders as
+ * `0.9.37 → 0.9.37  aligned` — an identity mapping that says nothing, and
+ * on a typical workspace there are six of them. That is the whole screen
+ * on the command's most common outcome (a no-op), and it buries the one
+ * line that isn't noise. Aligned deps collapse to a count instead.
+ *
+ * `--verbose` restores the full table for anyone auditing the matrix.
+ *
+ * Exported for tests: the collapse is the point of the function, and a
+ * regression here is invisible — the command still works, it just stops
+ * being readable.
+ */
+export function printSurvey(report, cliVersion, agentsVersion, { verbose = false } = {}) {
   log('')
   log(`${colors.bright}uniweb CLI:${colors.reset}             v${cliVersion}`)
   log(`${colors.bright}AGENTS.md stamp:${colors.reset}        ${agentsVersion ? 'v' + agentsVersion : colors.dim + '(none)' + colors.reset}`)
@@ -145,8 +191,16 @@ function printSurvey(report, cliVersion, agentsVersion) {
     return
   }
 
+  const needsAttention = report.rows.filter(r => r.status !== 'aligned')
+  const shown = verbose ? report.rows : needsAttention
+  const alignedCount = report.rows.length - needsAttention.length
+
+  // Everything aligned and not auditing: step 1's success line says so in
+  // one sentence. A header over an empty table is worse than no header.
+  if (shown.length === 0) return
+
   const byDir = {}
-  for (const row of report.rows) {
+  for (const row of shown) {
     if (!byDir[row.relDir]) byDir[row.relDir] = []
     byDir[row.relDir].push(row)
   }
@@ -170,6 +224,9 @@ function printSurvey(report, cliVersion, agentsVersion) {
       }
       log(`    ${icon} ${row.name}${padding}  ${row.current.padEnd(10)} → ${row.target.padEnd(10)}  ${statusText}`)
     }
+  }
+  if (!verbose && alignedCount > 0) {
+    log(`  ${colors.dim}(${alignedCount} other${alignedCount === 1 ? '' : 's'} already aligned — ${colors.reset}${colors.cyan}--verbose${colors.reset}${colors.dim} to list)${colors.reset}`)
   }
   log('')
 }
@@ -228,6 +285,7 @@ export async function update(args = []) {
   const skipDeps = args.includes('--no-deps') || agentsOnly
   const dryRun = args.includes('--dry-run')
   const allowMismatch = args.includes('--allow-mismatch')
+  const verbose = args.includes('--verbose')
   const hasYes = args.includes('--yes')
   const nonInteractive = isNonInteractive(args)
   const isGlobal = isGlobalInstall()
@@ -248,30 +306,39 @@ export async function update(args = []) {
   if (inProject) {
     survey = await surveyWorkspaceDeps(workspaceDir)
     agentsVersion = readAgentsVersion(join(workspaceDir, 'AGENTS.md'))
-    printSurvey(survey, cliVersion, agentsVersion)
+    printSurvey(survey, cliVersion, agentsVersion, { verbose })
   }
 
   // ── This command reconciles the *project*, not the CLI ───────────
-  // Surface (but don't act on) a newer published CLI: this run aligns
-  // the project to *this* CLI's matrix.
+  // Which CLI is running is a lead-in — it belongs before the work. Whether
+  // that CLI is STALE is a what-to-do-next, and it is printed after the work
+  // by printStaleCliNotice() so it lands last instead of under two green
+  // ticks. The lookup happens here because the check must run on every
+  // provenance, not just a global install.
+  //
+  // Why the project-local path needs it MORE than the global one: a global
+  // CLI also gets the general notifier in index.js, but that is gated on
+  // `if (global)` — so a project-local run gets no staleness signal from
+  // anywhere. That is exactly the case where the user cannot work it out
+  // themselves, because the project pins the version. It was the quiet path
+  // and it should have been the loud one.
   let installPm = inProject ? detectWorkspacePm(workspaceDir) : null
+  const globalPm = isGlobal ? detectGlobalCliPm() : null
+  // Non-TTY reads cache only: scripted runs stay fast and offline-safe, the
+  // same convention `--version` follows in index.js. Skipped entirely when
+  // there is nothing to reconcile — the notice is never reached from those
+  // paths, and looking it up anyway would spend a network call on nothing.
+  const latestCli = (isNpx || !inProject)
+    ? null
+    : await getLatestVersion({ allowNetwork: !!process.stdout.isTTY })
+
   if (isNpx) {
     log(`${colors.dim}Running${colors.reset} ${colors.cyan}uniweb@${cliVersion}${colors.reset} ${colors.dim}via npx — aligning this project to v${cliVersion}'s matrix.${colors.reset}`)
     log(`${colors.dim}(To install the CLI:${colors.reset} ${colors.cyan}npm i -g uniweb${colors.reset}${colors.dim}.)${colors.reset}`)
     log('')
-  } else if (isGlobal) {
-    const latest = await fetchLatestVersion()
-    if (latest && compareSemver(latest, cliVersion) > 0) {
-      const pm = detectGlobalCliPm()
-      log(`${colors.yellow}A newer uniweb is available:${colors.reset} ${colors.dim}v${cliVersion}${colors.reset} → ${colors.cyan}v${latest}${colors.reset}`)
-      log(`${colors.dim}This run aligns the project to v${cliVersion}. To update the CLI:${colors.reset} ${colors.cyan}${globalCliUpdateCmd(pm)}${colors.reset}`)
-      log(`${colors.dim}Or, to align to the latest release without a global install:${colors.reset} ${colors.cyan}npx uniweb@latest update${colors.reset}`)
-      log('')
-    }
-  } else {
+  } else if (!isGlobal) {
     // Project-local copy (lives in this project's node_modules).
     log(`${colors.dim}Running the project-local CLI (v${cliVersion}) — pinned by your project's${colors.reset} ${colors.cyan}package.json${colors.reset}${colors.dim}.${colors.reset}`)
-    log(`${colors.dim}To use a newer CLI, bump${colors.reset} ${colors.cyan}uniweb${colors.reset}${colors.dim} in${colors.reset} ${colors.cyan}package.json${colors.reset}${colors.dim} and re-install, or run${colors.reset} ${colors.cyan}npx uniweb@latest update${colors.reset}${colors.dim}.${colors.reset}`)
     log('')
   }
 
@@ -289,7 +356,8 @@ export async function update(args = []) {
 
   if (!skipDeps && survey) {
     if (!survey.anyDrift) {
-      success('Workspace deps are aligned with the CLI.')
+      // The count carries the work the collapsed table no longer shows.
+      success(`Workspace deps are aligned with the CLI (${survey.rows.length} checked).`)
       if (survey.anyAhead) {
         log(`${colors.dim}(Some deps are ahead of the CLI's bundled matrix — left untouched.)${colors.reset}`)
       }
@@ -438,6 +506,11 @@ export async function update(args = []) {
   if (!dryRun && (depsEdited || agentsResult === 'created' || agentsResult === 'updated')) {
     printSummary({ editedPaths, depsEdited, installRan, installPm, agentsResult, cliVersion })
   }
+
+  // Last, deliberately — see printStaleCliNotice. Everything above reports
+  // against THIS CLI's matrix; if the CLI itself is behind, that is the note
+  // the reader should leave with.
+  printStaleCliNotice({ cliVersion, latest: latestCli, isNpx, isGlobal, globalPm })
 }
 
 /**

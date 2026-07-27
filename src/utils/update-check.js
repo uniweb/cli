@@ -104,6 +104,61 @@ export function maybeNotifyFromCache(currentVersion, tone = 'eager') {
 export const maybeEagerNotification = maybeNotifyFromCache
 
 /**
+ * Resolve the latest published CLI version WITHOUT printing anything.
+ *
+ * The notify helpers in this module own both the lookup and the message.
+ * That's right for callers who want the house notice, and wrong for callers
+ * whose remedy differs — `uniweb update` running from a project's
+ * node_modules can't tell the user to `npm i -g uniweb`, because the version
+ * they're on is pinned by their own package.json. Those callers need the
+ * fact, not the sentence.
+ *
+ * Caching and the timeout live here rather than at the call site so every
+ * lookup gets them. `update.js` previously had its own copy with neither: an
+ * unbounded `await fetch()` before the command did any work, which turns a
+ * flaky network into a hang on a routine verb.
+ *
+ * @param {object} [opts]
+ * @param {number} [opts.timeoutMs=1500] Network cap. Slow/offline returns
+ *   whatever the cache holds rather than blocking.
+ * @param {boolean} [opts.allowNetwork=true] False = cache-only. Pass false
+ *   for non-TTY callers; scripts must stay fast and offline-safe (the same
+ *   convention `--version` follows).
+ * @param {number} [opts.maxAgeMs] How old a cache entry may be before a
+ *   refetch is attempted. Defaults to the module's 1-day interval.
+ * @returns {Promise<string|null>} The latest version, or null if unknown.
+ */
+export async function getLatestVersion({
+  timeoutMs = 1500,
+  allowNetwork = true,
+  maxAgeMs = CHECK_INTERVAL,
+} = {}) {
+  const state = readState()
+  const cached = state.latestVersion || null
+  const fresh = state.lastCheck && (Date.now() - state.lastCheck) < maxAgeMs
+  if (fresh && cached) return cached
+  // A stale cache entry still beats nothing for an advisory, so it's the
+  // fallback for every failure path below rather than a hard null.
+  if (!allowNetwork) return cached
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch('https://registry.npmjs.org/uniweb/latest', { signal: controller.signal })
+    if (!res.ok) return cached
+    const data = await res.json()
+    const latest = data?.version || null
+    if (!latest) return cached
+    writeState({ lastCheck: Date.now(), latestVersion: latest })
+    return latest
+  } catch {
+    return cached
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
  * Fetch the latest version (with a tight timeout) and print a notice if
  * a newer version is found. Updates the on-disk cache as a side effect
  * so future cache-only callers benefit too.
