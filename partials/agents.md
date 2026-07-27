@@ -472,6 +472,8 @@ Optional attributes: `{size=20}`, `{color=red}`. Custom SVGs: `![Logo](./logo.sv
 
 **Quote values containing spaces:** `{note="Ready to go"}`, not `{note=Ready to go}` — unquoted values end at the first space.
 
+**Separators are forgiving.** `:` works wherever `=` does, and pairs may be separated by whitespace, a comma, or both — `{role=banner width=1200}`, `{role:banner, width:1200}` and `{role:banner,width:1200}` are identical. `=` and spaces are canonical, and that is what gets written back on save. Two rules keep it unambiguous: the separator must **touch** the key (`{note:warning}` is one pair, `{note : warning}` is two flags), and a value containing a **comma** must be quoted (`{style="a, b"}`). A value containing a colon needs no quoting — only the first colon separates, so `{href:https://example.com}` is fine.
+
 Standalone links (alone on a line) become buttons in `content.links[]`. Inline links stay as `<a>` tags inside `content.paragraphs[]`. Multiple links sharing a paragraph are all promoted:
 
 ```markdown
@@ -1278,8 +1280,9 @@ Pages are sequences of sections — the obvious layer. The framework also suppor
 | **Items** (`content.items`) | Heading groups within one `.md` | Repeating content in one section: cards, features, FAQ entries |
 | **Child sections** (`block.childBlocks`) | `@`-prefixed `.md` files + `nest:` | Children needing their own section type, rich content, or independent editing |
 | **Insets** (`block.insets`) | `![](@Component)` in markdown | Self-contained visuals/widgets: charts, diagrams, code demos |
+| **Block insets** (`block.insets`) | ` ```@Component ` fence around markdown | A component that *wraps* authored prose: callouts, disclosures, admonitions |
 
-Does the author write content *inside* the nested element? **Yes** → child sections. **No** (self-contained, param-driven) → inset. Repeating same-structure groups → items. These compose: a child section can contain insets; items work inside children.
+Does the author write content *inside* the nested element? **Yes** → child sections, or a block inset when the wrapper is presentational and lives mid-page. **No** (self-contained, param-driven) → inset. Repeating same-structure groups → items. These compose: a child section can contain insets; items work inside children; a block inset can contain both.
 
 **Insets — embedding components in content.** Many section types need a "visual" — a hero's illustration, a split-content section's media. Classically an image or video. But what if it's a JSX + SVG diagram, a ThreeJS animation, an interactive playground? Elsewhere you'd reach for MDX or prop-drilling. Here the author writes standard image syntax:
 
@@ -1296,6 +1299,23 @@ The developer builds `NetworkDiagram` as an ordinary React component with `inset
 **Insets are full section types** — they receive `{ content, params, block }`. The alt text becomes `content.title` and attributes become `params`: `![npm create uniweb](@CommandBlock){note="Ready to go"}` → `content.title = "npm create uniweb"`, `params.note = "Ready to go"`.
 
 **Don't use `hidden: true` on insets.** `hidden` means "don't export this component at all" (internal helpers); `inset: true` means "available for `@Component` references in markdown."
+
+**Block insets — a component that wraps content.** The image form is a leaf: it takes params but no body. When the component should surround authored prose — a callout, a disclosure, an admonition — use the fenced form instead. Same `@Component{params}` reference, written as a code fence's info string:
+
+````markdown
+```@Alert{type=warning}
+Back up your database **before** running this.
+
+- The migration is not reversible
+- Allow ten minutes of downtime
+```
+````
+
+The body is ordinary content, not text: it is parsed exactly like the rest of the page, so headings, lists, tables, icons, inline styling, leaf insets and further containers all work inside one. To nest a code block or another container, open the outer fence with more backticks than the inner one.
+
+Prefer a **child section** when the author needs their own section type and independent editing; prefer a **block inset** when the wrapper is presentational and belongs inline in a single file's prose.
+
+> **Status:** the syntax is stable and round-trips through the visual editor without loss, but resolving the component name against the foundation is still landing. Until it does, a container renders as a plain bordered box that shows its body. Don't build a foundation component that depends on it yet.
 
 **Child sections.** You hit a complex layout — a 2:1 split with a panel and a main area. Your instinct says build a specialized component. Step back: the panel is a reusable section type, the main area is another, and the split is a Grid with `columns: "1fr 2fr"`. Your child components already adapt to narrow containers — container queries handle that. But hardcoding which components go where means the author can't rearrange or swap them. Child sections solve that:
 
