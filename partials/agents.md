@@ -1684,6 +1684,9 @@ uniweb add ci --target foundation # Publish a foundation for free at permanent v
 
 uniweb push / pull / clone / status   # Git-style content sync with the Uniweb backend
 uniweb register [--scope @org]        # Register a foundation + its data schemas to the registry
+uniweb login / logout                 # Start or clear the backend session the verbs above reuse
+uniweb org list / create <handle>     # Publish orgs you belong to — the @org in a scoped ref
+uniweb content export [dir]           # Package a site (or a built foundation's schema) as .uwx
 
 uniweb rename <foundation|site|extension> <old> <new>   # Rename across the whole workspace
 uniweb i18n extract / init / sync / status / audit      # Translation workflow (build first)
@@ -1697,6 +1700,8 @@ uniweb inspect <path>             # Show parsed content for a section or page (-
 
 uniweb <command> --help           # Per-command flags — no side effects. Prefer this over guessing.
 ```
+
+**Four verbs dispatch but are deliberately not listed above.** `invite`, `handoff` and `template` are **reserved names with no implementation** — the flows they named ran against a backend the CLI no longer talks to, and the names are held so a future rebuild doesn't need a breaking change. `runtime register` uploads a built runtime and is internal. Running any of them is not useful; their absence from this list is the answer, not an omission to fix.
 
 ### Where a site can live
 
