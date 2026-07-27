@@ -816,6 +816,8 @@ Names only — for signatures and props, read the package: it's on disk at `node
 **Media:** `Visual` (first non-empty: inset/video/image), `Image`, `Media`, `Icon`, `Asset`
 **Navigation:** `Link`, `useActiveRoute()`, `useWebsite()`, `useRouting()`
 **Header/layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()`
+**Overlays:** `Overlay` (modals, palettes, drawers — read the note below before hand-rolling one)
+**Keyboard:** `useShortcut('mod+k', fn)`, `useShortcuts({…})`, `useShortcutLabel('mod+k')` — `mod` is Cmd on Apple platforms and Ctrl elsewhere, and the label renders per-platform so a hint never shows the wrong key
 **Long-form prose:** `<Prose>` and the container you put `<Render>` output in both use Tailwind Typography's `prose` classes, which come from a plugin your *foundation* installs — kit ships no stylesheet. Without it the markup is right and completely unstyled. Add `@tailwindcss/typography` to the foundation's deps, then:
 
 ```css
@@ -841,6 +843,8 @@ Four things you won't discover by reading exports:
 > **`cn()` gotcha — a later `text-<size>` silently drops an earlier `leading-*`.** Tailwind's size classes set line height too, so `cn()` treats the size as replacing the leading: `cn('leading-[1.1] text-4xl')` → `text-4xl`. Put the size first, or fold the leading into it (`text-[clamp(2rem,5vw,4rem)]/[1.1]`). Most likely to bite when the size comes from a lookup and the leading sits in a shared base string.
 
 > **Kit hooks are SSR-safe by design.** If you hit "document is not defined" during a build, don't add `typeof document` guards — reach for the hook instead (`useAppearance()` for scheme, `useScrolled()` for scroll position).
+
+> **A modal needs `<Overlay>`, not a bigger z-index.** The runtime gives each layout area its own `view-transition-name` so header, rails and body animate independently. That makes each area a stacking context *and* a containing block for `fixed` children — so a dialog rendered from inside your Header is sealed into the header's context and paints *under* the page body no matter what z-index it carries. Raising the number looks like it should work and never does. `<Overlay onClose={close}>…</Overlay>` renders into `document.body`, where the z-index means what you expect; it also handles Escape, the scrim click and the page-scroll lock, and emits nothing during prerender. Your dialog's markup stays yours.
 
 ### Icon component
 
@@ -1885,6 +1889,8 @@ Loud failures:
 **Prerender warnings about hooks** — components with `useState`/`useEffect` show SSG warnings during build in local symlinked mode. Expected and harmless.
 
 **"document is not defined" during build** — your component touches `document`, `window`, or `localStorage` during render rather than inside `useEffect`. **Don't add `typeof document` guards** — use the kit hook instead: dark mode → `useAppearance()`, scroll detection → `useScrolled()`. Kit hooks are SSR-safe by design.
+
+**A modal renders behind the page** — page content or a sidebar paints over your dialog and its backdrop, and raising the z-index changes nothing. Each layout area carries a `view-transition-name`, which makes it a stacking context your `fixed` element cannot escape. Render through `<Overlay>` from `@uniweb/kit` (see Part 4) instead of a bare `fixed inset-0 z-…` div.
 
 **Content not parsing as expected** — `uniweb inspect pages/home/hero.md` (add `--raw` for the ProseMirror AST), or point it at a folder for a whole page.
 
