@@ -1313,9 +1313,9 @@ Back up your database **before** running this.
 
 The body is ordinary content, not text: it is parsed exactly like the rest of the page, so headings, lists, tables, icons, inline styling, leaf insets and further containers all work inside one. To nest a code block or another container, open the outer fence with more backticks than the inner one.
 
-Prefer a **child section** when the author needs their own section type and independent editing; prefer a **block inset** when the wrapper is presentational and belongs inline in a single file's prose.
+**The component is yours, and it receives parsed content.** `@Alert` resolves against the foundation through the same lookup as `![](@NetworkDiagram)` — declare it with `inset: true` in `meta.js`. Where a leaf inset gets its alt text as `content.title` and nothing else, a container gets its whole body parsed: `title`, `paragraphs`, `items`, `sequence`. Render it with `<Prose content={content} block={block} />` or read the fields directly. A name the foundation doesn't define falls back to a plain bordered box that still shows the body — never a drop.
 
-> **Status:** the syntax is stable and round-trips through the visual editor without loss, but resolving the component name against the foundation is still landing. Until it does, a container renders as a plain bordered box that shows its body. Don't build a foundation component that depends on it yet.
+Prefer a **child section** when the author needs their own section type and independent editing; prefer a **block inset** when the wrapper is presentational and belongs inline in a single file's prose.
 
 **Child sections.** You hit a complex layout — a 2:1 split with a panel and a main area. Your instinct says build a specialized component. Step back: the panel is a reusable section type, the main area is another, and the split is a Grid with `columns: "1fr 2fr"`. Your child components already adapt to narrow containers — container queries handle that. But hardcoding which components go where means the author can't rearrange or swap them. Child sections solve that:
 
