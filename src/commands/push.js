@@ -55,6 +55,7 @@
 import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { emitSyncPackages } from '@uniweb/build/uwx'
+import { uploadSiteMedia, isStorageRefusal } from '../backend/site-media.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import {
@@ -131,6 +132,75 @@ export async function push(args = []) {
   // to what a real push would send. Only the network RECOVERY is skipped, so a
   // preview never reaches the backend. (Emitting `{}` here instead would make the
   // preview quietly unrepresentative, which is the one thing `-o` exists to avoid.)
+  // Local media rides the SAME asset lane `publish` uses, and it rides it FIRST.
+  //
+  // Push is the collaboration verb: a teammate opens the site in the visual app
+  // right after it. Content that still points at `/images/hero.png` — bytes the
+  // backend never received — shows them a broken image, which is precisely what
+  // push exists to avoid. `publish` uploaded and rewrote; push dropped
+  // `localAssets` on the floor.
+  //
+  // Ordering is deliberate: BEFORE `ensureItemUuids`, which mints uuids on the
+  // backend. A refusal here then leaves nothing minted and nothing submitted.
+  //
+  // The probe emit runs WITHOUT `priorHashes`, so it surfaces every local ref
+  // rather than only the changed ones. That is not waste — the lane is
+  // content-addressed with a `present` skip-list, so unchanged bytes are a no-op
+  // PUT. It is also what makes the storage rule fall out of the mechanism instead
+  // of needing a special case: a content-only push presents the same plan as last
+  // time, every file is already present, zero new bytes are requested, and no
+  // quota check can refuse it. Only a push that genuinely ADDS bytes can be
+  // blocked.
+  //
+  // It also has to be this emit that carries `assetRewrite` below: the push cache
+  // stores hashes of the REWRITTEN content, so the emit compared against it must
+  // rewrite too, or every entity reads as changed forever.
+  let assetRewrite = null
+  if (!output && !dryRun) {
+    let mediaRefs = []
+    try {
+      const probe = await emitSyncPackages(siteDir, {
+        ...(foundationDir ? { foundationDir } : {}),
+        resolveModel: makeModelResolver({ client, offline: false }),
+      })
+      mediaRefs = probe.localAssets || []
+    } catch (err) {
+      error(`Could not scan the site for local media: ${err.message}`)
+      return { exitCode: 2 }
+    }
+    if (mediaRefs.length) {
+      info('Uploading media…')
+      try {
+        const { map, failed } = await uploadSiteMedia(client, siteDir, mediaRefs, {
+          onProgress: (m) => note(`  ${m}`),
+          warn: (m) => note(`! ${m}`),
+        })
+        // Bytes that did not land must not be pushed around: the content would go
+        // up still naming the local path, so the teammate sees the broken image
+        // this whole change exists to prevent, and the only trace is a warning. A
+        // missing FILE is a different thing — already broken before us, warned by
+        // the uploader, and not worth blocking a push over.
+        if (failed.length) {
+          error(`${failed.length} asset(s) failed to upload — nothing was pushed.`)
+          for (const f of failed) note(`  ${f.path} (HTTP ${f.status})`)
+          return { exitCode: 1 }
+        }
+        if (Object.keys(map).length) assetRewrite = map
+        note(`${Object.keys(map).length}/${mediaRefs.length} media ref(s) → serve URL`)
+      } catch (err) {
+        if (isStorageRefusal(err)) {
+          error('Storage quota reached — this push adds media that does not fit.')
+          note('  A push that changes only content costs no storage and still works.')
+          note('  Remove or shrink the new assets, or raise the plan limit, then re-run.')
+          note(`  ${err.message}`)
+          return { exitCode: 1 }
+        }
+        error(`Media upload failed: ${err.message}`)
+        return { exitCode: 1 }
+      }
+    }
+  }
+
   const itemUuids = (output || dryRun)
     ? readItemUuids(siteDir)
     : await ensureItemUuids({ client, siteDir, note })
@@ -145,6 +215,7 @@ export async function push(args = []) {
       // Both grains are dropped together by --force: one flag, one meaning,
       // no partial-force mode.
       ...(force ? {} : { baseVersions: readBaseVersions(siteDir), itemBaseVersions: readItemBaseVersions(siteDir) }),
+      ...(assetRewrite ? { assetRewrite } : {}),
     })
   } catch (err) {
     error(`Could not build the sync package: ${err.message}`)

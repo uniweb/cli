@@ -24,16 +24,24 @@ import { contentTypeFor } from '../utils/code-upload.js'
  * @param {string} siteDir - the site root (site-root refs resolve under public/)
  * @param {string[]} refs - site-root local asset refs (`/images/x.png`)
  * @param {{ onProgress?: (m: string) => void, warn?: (m: string) => void }} [opts]
- * @returns {Promise<Record<string,string>>} ref → serve URL (only resolved + uploaded refs)
+ * @returns {Promise<{ map: Record<string,string>, missing: string[], failed: Array<{path:string,status:number,detail?:string}> }>}
+ *   `map` is ref → serve URL for refs that resolved AND uploaded. The two failure
+ *   kinds are reported SEPARATELY because callers must treat them differently:
+ *   `missing` is a ref with no file under the site — an authoring mistake, already
+ *   broken before us, worth a warning; `failed` is a ref whose bytes we could not
+ *   store — a transport or QUOTA refusal, and shipping content that still points at
+ *   the local path would publish a broken image while only warning about it.
  */
 export async function uploadSiteMedia(client, siteDir, refs, { onProgress, warn } = {}) {
-  if (!refs?.length) return {}
+  if (!refs?.length) return { map: {}, missing: [], failed: [] }
 
   const files = []
+  const missing = []
   for (const ref of refs) {
     const { resolved } = resolveAssetPath(ref, siteDir, siteDir)
     if (!resolved || !existsSync(resolved)) {
       warn?.(`local-media: ${ref} not found under the site (skipped)`)
+      missing.push(ref)
       continue
     }
     const bytes = readFileSync(resolved)
@@ -46,10 +54,11 @@ export async function uploadSiteMedia(client, siteDir, refs, { onProgress, warn 
       diskPath: resolved,
     })
   }
-  if (!files.length) return {}
+  if (!files.length) return { map: {}, missing, failed: [] }
 
   const result = await client.uploadSiteAssets({ files, onProgress })
-  for (const f of result.failed || []) warn?.(`local-media: upload failed for ${f.path} (HTTP ${f.status})`)
+  const failed = result.failed || []
+  for (const f of failed) warn?.(`local-media: upload failed for ${f.path} (HTTP ${f.status})`)
 
   const config = await client.discover()
   const map = {}
@@ -57,5 +66,25 @@ export async function uploadSiteMedia(client, siteDir, refs, { onProgress, warn 
     const entry = result.assetsByLocalUrl[ref]
     if (entry) map[ref] = entry.serveUrl || buildAssetUrl(client.origin, config.assetBase, entry.id, entry.ext)
   }
-  return map
+  return { map, missing, failed }
+}
+
+/**
+ * Is this asset-lane error the backend refusing on storage grounds?
+ *
+ * The plan step throws `Asset plan failed: HTTP <status>` for any non-2xx, so a quota
+ * refusal is currently indistinguishable from any other rejection except by status.
+ * These three are the plausible spellings — 402 (payment required), 413 (payload too
+ * large), 507 (insufficient storage).
+ *
+ * DELIBERATELY a heuristic, and it should not stay one: the backend owes a typed
+ * error carrying used / limit / needed so the CLI can say what a push costs and what
+ * is left. Until that contract exists this at least turns an opaque HTTP number into
+ * the right advice. See the collab charter in the handoff.
+ *
+ * @param {Error} err
+ * @returns {boolean}
+ */
+export function isStorageRefusal(err) {
+  return /Asset plan failed: HTTP (402|413|507)\b/.test(err?.message || '')
 }
