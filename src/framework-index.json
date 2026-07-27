@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-27T21:43:39.088Z",
+  "generatedAt": "2026-07-27T22:17:55.860Z",
   "packages": {
     "@uniweb/build": {
       "version": "0.15.11",
@@ -44,7 +44,7 @@
       "deps": []
     },
     "@uniweb/kit": {
-      "version": "0.9.43",
+      "version": "0.9.44",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core",
@@ -108,7 +108,7 @@
       "deps": []
     },
     "@uniweb/unipress": {
-      "version": "0.5.10",
+      "version": "0.5.11",
       "path": "framework/unipress",
       "deps": [
         "@uniweb/build",
