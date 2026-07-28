@@ -816,7 +816,7 @@ Names only — for signatures and props, read the package: it's on disk at `node
 **Media:** `Visual` (first non-empty: inset/video/image), `Image`, `Media`, `Icon`, `Asset`
 **Navigation:** `Link`, `useActiveRoute()`, `useWebsite()`, `useRouting()`
 **Header/layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()`
-**Overlays:** `Overlay` (modals, palettes, drawers — read the note below before hand-rolling one)
+**Overlays:** `Overlay` (modals, palettes, drawers, toasts — portals out of the layout, contains focus; read the note below before hand-rolling one)
 **Keyboard:** `useShortcut('mod+k', fn)`, `useShortcuts({…})`, `useShortcutLabel('mod+k')` — `mod` is Cmd on Apple platforms and Ctrl elsewhere, and the label renders per-platform so a hint never shows the wrong key
 **Long-form prose:** `<Prose>` and the container you put `<Render>` output in both use Tailwind Typography's `prose` classes, which come from a plugin your *foundation* installs — kit ships no stylesheet. Without it the markup is right and completely unstyled. Add `@tailwindcss/typography` to the foundation's deps, then:
 
@@ -844,7 +844,9 @@ Four things you won't discover by reading exports:
 
 > **Kit hooks are SSR-safe by design.** If you hit "document is not defined" during a build, don't add `typeof document` guards — reach for the hook instead (`useAppearance()` for scheme, `useScrolled()` for scroll position).
 
-> **A modal needs `<Overlay>`, not a bigger z-index.** The runtime gives each layout area its own `view-transition-name` so header, rails and body animate independently. That makes each area a stacking context *and* a containing block for `fixed` children — so a dialog rendered from inside your Header is sealed into the header's context and paints *under* the page body no matter what z-index it carries. Raising the number looks like it should work and never does. `<Overlay onClose={close}>…</Overlay>` renders into `document.body`, where the z-index means what you expect; it also handles Escape, the scrim click and the page-scroll lock, and emits nothing during prerender. Your dialog's markup stays yours.
+> **A modal needs `<Overlay>`, not a bigger z-index.** The runtime gives each layout area its own `view-transition-name` so header, rails and body animate independently. That makes each area a stacking context *and* a containing block for `fixed` children — so a dialog rendered from inside your Header is sealed into the header's context and paints *under* the page body no matter what z-index it carries. Raising the number looks like it should work and never does. `<Overlay onClose={close}>…</Overlay>` renders into `document.body`, where the z-index means what you expect.
+>
+> It also does the part that is easy to skip: a modal overlay **contains focus** — moves focus in, cycles Tab within, marks the rest of the page `inert`, and returns focus to whatever opened it. That is what makes the `role="dialog" aria-modal="true"` on your box true rather than merely asserted; without it a keyboard user Tabs straight out into a page a screen-reader user has been told is unreachable. Plus Escape, the scrim click, the scroll lock, and a dimmed scrim you override with `className` (`bg-transparent` removes it). `modal={false}` for a toast: it escapes the stacking context and nothing else, so the page stays usable. Your dialog's markup stays yours.
 
 ### Icon component
 
