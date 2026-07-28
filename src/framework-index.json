@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-27T22:17:55.860Z",
+  "generatedAt": "2026-07-28T11:03:23.347Z",
   "packages": {
     "@uniweb/build": {
       "version": "0.15.11",
@@ -44,7 +44,7 @@
       "deps": []
     },
     "@uniweb/kit": {
-      "version": "0.9.44",
+      "version": "0.9.45",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core",
