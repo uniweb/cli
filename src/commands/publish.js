@@ -65,7 +65,7 @@ import {
   pushSyncPackages,
 } from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
-import { uploadSiteMedia } from '../backend/site-media.js'
+import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
 import { settlePaymentIfNeeded } from '../backend/payment-handoff.js'
 
@@ -292,7 +292,16 @@ export async function publish(args = []) {
       if (ballAssets.length) ball = rewriteBallAssets(ball, map)
       say.dim(`Media          : ${Object.keys(map).length}/${mediaRefs.length} ref(s) → serve URL`)
     } catch (err) {
-      say.err(`Media upload failed: ${err.message}`)
+      // A typed plan refusal gets its own account (quota, per-file cap, plan caps);
+      // anything else falls through to the raw message. Nothing has been pushed at
+      // this point, so either way the site is untouched.
+      const refusal = describeAssetRefusal(err)
+      if (refusal) {
+        say.err(refusal.headline)
+        for (const line of refusal.notes) say.dim(line)
+      } else {
+        say.err(`Media upload failed: ${err.message}`)
+      }
       return { exitCode: 1 }
     }
   }
@@ -304,7 +313,14 @@ export async function publish(args = []) {
     try {
       dataBundle = await uploadDataBundle(client, ball, { onProgress: (m) => say.dim(`  ${m}`) })
     } catch (err) {
-      say.err(`Data bundle upload failed: ${err.message}`)
+      // The ball rides the same asset lane, so it hits the same typed refusals.
+      const refusal = describeAssetRefusal(err)
+      if (refusal) {
+        say.err(refusal.headline)
+        for (const line of refusal.notes) say.dim(line)
+      } else {
+        say.err(`Data bundle upload failed: ${err.message}`)
+      }
       return { exitCode: 1 }
     }
     say.dim(`Data bundle    : ${Object.keys(ball.data).length} data + ${Object.keys(ball.search).length} search file(s)`)

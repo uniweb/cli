@@ -1,6 +1,6 @@
 /**
- * Site asset delivery — the asset lane for `uniweb publish` (channel
- * framework-backend-f90d). After the link build processes a site's media into
+ * Site asset delivery — the asset lane for `uniweb publish`. After the link
+ * build processes a site's media into
  * `dist/assets/`, those bytes are delivered to the backend's content-addressed
  * asset store, and the publish step rewrites the content's local refs to durable
  * serve URLs:
@@ -26,7 +26,6 @@
  * difference is that the backend MINTS the per-asset id, so the plan response is
  * what the deploy step rewrites content references to.
  *
- * Contract: kb/framework/build/delivery-lane.md §Assets.
  */
 
 import { createHash } from 'node:crypto'
@@ -112,9 +111,28 @@ export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgr
   })
   if (!planRes.ok) {
     const detail = await planRes.text().catch(() => '')
-    throw new Error(
+    // The plan refuses with an RFC7807 body carrying a machine-readable `reason`.
+    // The message keeps its historical shape so anything reading it still works,
+    // but the PARSED body has
+    // to survive the throw: flattening it to a string here is what made
+    // "branch on `reason`" unimplementable and left the old caller no choice but a
+    // status regex. Callers read `err.problem`; `describeAssetRefusal` in
+    // backend/site-media.js turns it into user-facing lines.
+    let problem = null
+    if (detail) {
+      try {
+        const parsed = JSON.parse(detail)
+        if (parsed && typeof parsed === 'object') problem = parsed
+      } catch {
+        /* not a problem document — prose refusal, or an upstream error page */
+      }
+    }
+    const err = new Error(
       `Asset plan failed: HTTP ${planRes.status} ${planRes.statusText}${detail ? ` — ${detail.slice(0, 300)}` : ''}`
     )
+    err.status = planRes.status
+    err.problem = problem
+    throw err
   }
   const plan = await planRes.json()
   const mode = plan.mode || 'direct'

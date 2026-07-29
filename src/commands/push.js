@@ -55,7 +55,7 @@
 import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { emitSyncPackages } from '@uniweb/build/uwx'
-import { uploadSiteMedia } from '../backend/site-media.js'
+import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import {
@@ -151,8 +151,8 @@ export async function push(args = []) {
   // a quota has nothing to refuse. Only a push that genuinely ADDS bytes can be
   // blocked.
   //
-  // Two claims live here and only ONE is a guarantee — accounting model ratified
-  // with the backend 2026-07-29 (channel `backend-framework-eb96`):
+  // Two claims live here and only ONE is a guarantee, per the backend's asset
+  // accounting model:
   //   - "moves zero bytes" is the COMMON CASE, not a property. `present` is an
   //     optimization: a failed presence probe degrades to all-absent, so unchanged
   //     bytes may be re-PUT. It is never a false positive, so skipping stays safe.
@@ -177,7 +177,6 @@ export async function push(args = []) {
   // "charged on distinct stored content", and "the quota fails open on a
   // presence-probe failure" (retired — `needed_bytes` reads the ledger, not the
   // probe, so the property no longer depends on that error path behaving).
-  // Contract + refusal table: `kb/framework/build/delivery-lane.md` §Assets.
   //
   // It also has to be this emit that carries `assetRewrite` below: the push cache
   // stores hashes of the REWRITTEN content, so the emit compared against it must
@@ -215,7 +214,16 @@ export async function push(args = []) {
         if (Object.keys(map).length) assetRewrite = map
         note(`${Object.keys(map).length}/${mediaRefs.length} media ref(s) → serve URL`)
       } catch (err) {
-        error(`Media upload failed: ${err.message}`)
+        // Typed plan refusals get their own account. Note the storage one must not
+        // be phrased from what moved — see describeAssetRefusal's rule 1; a push can
+        // print no `↑` line at all and still be refused.
+        const refusal = describeAssetRefusal(err)
+        if (refusal) {
+          error(refusal.headline)
+          for (const line of refusal.notes) note(line)
+        } else {
+          error(`Media upload failed: ${err.message}`)
+        }
         return { exitCode: 1 }
       }
     }

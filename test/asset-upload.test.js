@@ -243,3 +243,55 @@ test('uploadSiteAssets is a no-op for an image-free site', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('a plan refusal preserves status + the PARSED problem body on the thrown error', async () => {
+  // The structured body has to survive the throw, or "branch on `reason`" is
+  // unimplementable and callers are left with a status regex — which is exactly
+  // what the deleted `isStorageRefusal` heuristic was. The message keeps its old
+  // shape so anything reading it still works.
+  const { dir, distDir } = makeDist()
+  const problem = {
+    status: 507,
+    title: 'Insufficient Storage',
+    detail: 'workspace storage quota exceeded',
+    reason: 'storage_quota_exceeded',
+    used_bytes: 5368709120,
+    limit_bytes: 5368709120,
+    needed_bytes: 12582912,
+  }
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async () => ({ ok: false, status: 507, statusText: 'Insufficient Storage', text: async () => JSON.stringify(problem) })
+  try {
+    const err = await uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', distDir }).then(
+      () => null,
+      (e) => e
+    )
+    assert.ok(err, 'expected the plan refusal to throw')
+    assert.match(err.message, /Asset plan failed: HTTP 507/)
+    assert.equal(err.status, 507)
+    assert.equal(err.problem.reason, 'storage_quota_exceeded')
+    assert.equal(err.problem.needed_bytes, 12582912)
+  } finally {
+    globalThis.fetch = realFetch
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a prose (non-JSON) plan refusal leaves problem null rather than throwing', async () => {
+  // Today's shipped refusals are prose. Parsing must degrade, not blow up — a
+  // null problem is what makes describeAssetRefusal fall through to the generic
+  // message instead of swallowing the error.
+  const { dir, distDir } = makeDist()
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async () => ({ ok: false, status: 400, statusText: 'Bad Request', text: async () => 'plain prose refusal' })
+  try {
+    const err = await uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', distDir }).then(() => null, (e) => e)
+    assert.ok(err)
+    assert.equal(err.status, 400)
+    assert.equal(err.problem, null)
+    assert.match(err.message, /plain prose refusal/)
+  } finally {
+    globalThis.fetch = realFetch
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
