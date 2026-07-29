@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { uploadSiteMedia, isStorageRefusal } from '../src/backend/site-media.js'
+import { uploadSiteMedia } from '../src/backend/site-media.js'
 
 function makeSite() {
   const dir = mkdtempSync(join(tmpdir(), 'uw-media-'))
@@ -113,16 +113,4 @@ test('uploadSiteMedia reports a failed upload separately from a missing file', a
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
-})
-
-test('isStorageRefusal recognises the storage-shaped plan rejections', () => {
-  // A heuristic on status until the backend carries a typed error with
-  // used / limit / needed — see the collab charter in the handoff.
-  for (const status of [402, 413, 507]) {
-    assert.equal(isStorageRefusal(new Error(`Asset plan failed: HTTP ${status} Payload`)), true)
-  }
-  assert.equal(isStorageRefusal(new Error('Asset plan failed: HTTP 500 Server Error')), false)
-  assert.equal(isStorageRefusal(new Error('Asset plan failed: HTTP 4020 Weird')), false)
-  assert.equal(isStorageRefusal(new Error('something else entirely')), false)
-  assert.equal(isStorageRefusal(null), false)
 })

@@ -55,7 +55,7 @@
 import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { emitSyncPackages } from '@uniweb/build/uwx'
-import { uploadSiteMedia, isStorageRefusal } from '../backend/site-media.js'
+import { uploadSiteMedia } from '../backend/site-media.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import {
@@ -147,10 +147,37 @@ export async function push(args = []) {
   // rather than only the changed ones. That is not waste — the lane is
   // content-addressed with a `present` skip-list, so unchanged bytes are a no-op
   // PUT. It is also what makes the storage rule fall out of the mechanism instead
-  // of needing a special case: a content-only push presents the same plan as last
-  // time, every file is already present, zero new bytes are requested, and no
-  // quota check can refuse it. Only a push that genuinely ADDS bytes can be
+  // of needing a special case: a content-only push adds no new stored content, so
+  // a quota has nothing to refuse. Only a push that genuinely ADDS bytes can be
   // blocked.
+  //
+  // Two claims live here and only ONE is a guarantee — accounting model ratified
+  // with the backend 2026-07-29 (channel `backend-framework-eb96`):
+  //   - "moves zero bytes" is the COMMON CASE, not a property. `present` is an
+  //     optimization: a failed presence probe degrades to all-absent, so unchanged
+  //     bytes may be re-PUT. It is never a false positive, so skipping stays safe.
+  //   - "is never refused for storage" IS a property, because metering is
+  //     IDEMPOTENT per (workspace, asset) and recorded at PLAN time. Presenting an
+  //     asset already on this workspace's books charges nothing, so a push that
+  //     changes only content meters nothing and cannot be refused.
+  //
+  // ⚠️ "unchanged bytes skip the transfer" is TRUE. "…and are therefore FREE" is
+  // NOT — do not write it into a message, a summary, or a comment. Every upload is
+  // chargeable; deduplication is the backend's storage optimization, not the user's
+  // discount, so an asset another workspace already uploaded comes back
+  // `present: true`, never PUTs, and is STILL charged to this one. What is free is
+  // copying URLs around (duplicating a site, a snapshot, a backup).
+  //
+  // Consequently `needed_bytes` = "assets not yet on this workspace's books", which
+  // can be NON-ZERO with zero transfers — so a push can print no `↑` line at all and
+  // still be refused. A refusal message must talk about assets new to the workspace,
+  // never "the files being uploaded", and must not size itself from what moved.
+  //
+  // Two framings were proposed and WITHDRAWN in-channel; do not reintroduce either:
+  // "charged on distinct stored content", and "the quota fails open on a
+  // presence-probe failure" (retired — `needed_bytes` reads the ledger, not the
+  // probe, so the property no longer depends on that error path behaving).
+  // Contract + refusal table: `kb/framework/build/delivery-lane.md` §Assets.
   //
   // It also has to be this emit that carries `assetRewrite` below: the push cache
   // stores hashes of the REWRITTEN content, so the emit compared against it must
@@ -188,13 +215,6 @@ export async function push(args = []) {
         if (Object.keys(map).length) assetRewrite = map
         note(`${Object.keys(map).length}/${mediaRefs.length} media ref(s) → serve URL`)
       } catch (err) {
-        if (isStorageRefusal(err)) {
-          error('Storage quota reached — this push adds media that does not fit.')
-          note('  A push that changes only content costs no storage and still works.')
-          note('  Remove or shrink the new assets, or raise the plan limit, then re-run.')
-          note(`  ${err.message}`)
-          return { exitCode: 1 }
-        }
         error(`Media upload failed: ${err.message}`)
         return { exitCode: 1 }
       }

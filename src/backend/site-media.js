@@ -69,22 +69,20 @@ export async function uploadSiteMedia(client, siteDir, refs, { onProgress, warn 
   return { map, missing, failed }
 }
 
-/**
- * Is this asset-lane error the backend refusing on storage grounds?
- *
- * The plan step throws `Asset plan failed: HTTP <status>` for any non-2xx, so a quota
- * refusal is currently indistinguishable from any other rejection except by status.
- * These three are the plausible spellings — 402 (payment required), 413 (payload too
- * large), 507 (insufficient storage).
- *
- * DELIBERATELY a heuristic, and it should not stay one: the backend owes a typed
- * error carrying used / limit / needed so the CLI can say what a push costs and what
- * is left. Until that contract exists this at least turns an opaque HTTP number into
- * the right advice. See the collab charter in the handoff.
- *
- * @param {Error} err
- * @returns {boolean}
- */
-export function isStorageRefusal(err) {
-  return /Asset plan failed: HTTP (402|413|507)\b/.test(err?.message || '')
-}
+// There is deliberately NO storage-refusal predicate here, and re-adding one that
+// branches on status would be a mistake. Settled with the backend 2026-07-29
+// (channel `framework-backend-303c`): the asset lane has **no storage quota today**,
+// and none of the three statuses such a heuristic would match means what it looks
+// like —
+//   507  never emitted anywhere in the backend;
+//   402  never from assets — it is the publish billing-consent gate, so matching it
+//        labels a billing refusal a storage problem and tells the user to free space
+//        they do not need;
+//   413  comes from the upload PUT, which collects into `failed[]` and never throws,
+//        so it cannot reach a catch around the plan.
+// The plan's real caps (64 MiB/file, 512 MiB/plan, 1024 files) refuse with `400`.
+//
+// When the quota ships, its refusal carries a machine-readable `reason` plus
+// used/limit/needed bytes — branch on `reason`, never on status, and never on
+// `detail` (prose, subject to rewording). Same house style as the push-staleness
+// `reason: "stale_base"`. Contract: `kb/framework/build/delivery-lane.md` §Assets.

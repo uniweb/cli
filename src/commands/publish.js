@@ -65,7 +65,7 @@ import {
   pushSyncPackages,
 } from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
-import { uploadSiteMedia, isStorageRefusal } from '../backend/site-media.js'
+import { uploadSiteMedia } from '../backend/site-media.js'
 import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
 import { settlePaymentIfNeeded } from '../backend/payment-handoff.js'
 
@@ -292,12 +292,6 @@ export async function publish(args = []) {
       if (ballAssets.length) ball = rewriteBallAssets(ball, map)
       say.dim(`Media          : ${Object.keys(map).length}/${mediaRefs.length} ref(s) → serve URL`)
     } catch (err) {
-      if (isStorageRefusal(err)) {
-        say.err('Storage quota reached — the media in this publish does not fit.')
-        say.dim('  Remove or shrink assets, or raise the plan limit, then re-run.')
-        say.dim(`  ${err.message}`)
-        return { exitCode: 1 }
-      }
       say.err(`Media upload failed: ${err.message}`)
       return { exitCode: 1 }
     }

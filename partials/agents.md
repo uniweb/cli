@@ -630,6 +630,49 @@ seo:
 
 **Localized URLs:** on a multilingual site (`languages:` in site.yml), `slug: { <lang>: <segment> }` gives a page a native URL segment per language; the folder name stays the canonical route. Nested folders compose automatically, and localized URLs flow through navigation, the language switcher, and the sitemap. See Part 5 for the translation workflow.
 
+### Your site is readable by agents, automatically
+
+Every build emits two things an AI agent can use directly, alongside the HTML. **Free, on by default, nothing to install.**
+
+| Artifact | What it is |
+|---|---|
+| `/llms.txt` | An annotated index of the site — every page, with a one-line description, linking to the `.md` below |
+| `/{route}.md` | Each page as clean markdown: the content, no navigation, no chrome |
+
+The point is the pair. An agent fetches the index, *reads* what each page is about, and goes straight to the one it needs — two requests, no HTML stripping, no guessing at URLs. Descriptions come from `page.yml`'s `description:`, then `seo.ogDescription`, then the page's opening paragraph, so a site usually gets a complete index without writing any of them.
+
+**Large sites also get per-branch indexes.** A branch with at least 5 pages gets its own — `/docs/llms.txt` lists just the docs, titled by that folder. The site index still lists everything; a branch index is an extra entry point, not a replacement, so an agent that starts at `/llms.txt` still reaches any page in two hops.
+
+```yaml
+# site.yml — all optional; these are the defaults
+agents:
+  index: true            # /llms.txt
+  markdown: true         # /{route}.md
+  branchIndexes: true    # /docs/llms.txt for branches big enough to want one
+  branchMinPages: 5      # how big is big enough
+  exclude: [/internal]   # keep a branch out of both (cascades)
+
+agents: false            # or turn the whole thing off in one word
+```
+
+**Set `seo.baseUrl` if you want absolute links** in the index — without it the links are root-relative, which still works for an agent that arrived via the index. `uniweb doctor` warns when it's unset.
+
+**What's excluded, and it's deliberate:** `seo.noindex` pages, `hidden` pages, `_`-prefixed drafts, and dynamic route templates. An index *describes* pages rather than merely listing them, so an unlinked page would become both discoverable and summarized — which is why these exclusions are load-bearing rather than tidy-up. `noindex` or `hidden` on a **folder** takes the whole branch with it.
+
+**Declaring how your content may be used** is a separate axis from whether it may be fetched, and it goes in `seo.robots`:
+
+```yaml
+# site.yml
+seo:
+  robots:
+    contentSignals:
+      search: true       # may appear in search results
+      ai-input: true     # may be retrieved at inference time
+      ai-train: false    # may not be used to train a model
+```
+
+That emits a `Content-Signal:` line in `robots.txt`. Declare only what you mean — an omitted signal says nothing, which is not the same as saying no.
+
 ### Collections and dynamic routes
 
 Most content lives in `pages/` — a fixed composition of sections on a fixed set of pages. **Collections are the other kind: repeating content managed as a set of files**, one item per file, that pages pull from. Blog posts, team members, products, case studies, bibliographies.
