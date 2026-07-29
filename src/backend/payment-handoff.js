@@ -37,7 +37,8 @@ function withParams(url, params) {
  *
  * @param {object} o
  * @param {import('./client.js').BackendClient} o.client
- * @param {string|null} o.uuid - the site-content uuid (null before the first push mints it)
+ * @param {string|null} o.uuid - the site-content uuid (null only on a dry run; a
+ *   real publish creates the site before anything uploads, so it is set by here)
  * @param {string[]} o.args
  * @param {object} o.say - { ok, info, warn, err, dim } reporters
  * @param {boolean} [o.dryRun]

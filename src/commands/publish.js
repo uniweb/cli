@@ -255,7 +255,7 @@ export async function publish(args = []) {
       `Runtime     : ${runtimeVersion || '(unresolved — needs a backend or a site.yml runtime: pin)'}${runtimeVersion && !siteYml.runtime ? ' (highest installed)' : ''}`
     )
     say.dim(
-      `site_uuid   : ${siteYml.$uuid || '(none — the first push mints it)'}`
+      `site_uuid   : ${siteYml.$uuid || '(none — the site is created before anything uploads)'}`
     )
     const langs = languagesFromSiteYml(siteYml)
     if (langs) say.dim(`Languages   : ${langs.join(', ')}`)
