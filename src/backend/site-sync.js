@@ -217,6 +217,27 @@ const readMap = (siteDir, key) => {
  * Call this BEFORE `ensureSiteExists`, which mints a uuid and would otherwise make
  * the clone look bound before the check runs.
  */
+/**
+ * Drop the four remote-derived maps unconditionally, stamping the site they now
+ * describe (or clearing the stamp when there is none). Shared by the pre-flight
+ * guard and the `item_uuid_conflict` recovery — the guard decides WHETHER, this
+ * decides WHAT, and they must not drift.
+ */
+export function clearRemoteSyncState(siteDir, siteUuid = null) {
+  const prior = readSyncCacheFile(siteDir)
+  const dropped = ['itemUuids', 'hashes', 'baseVersions', 'unitBases'].filter(
+    (k) => prior[k] && Object.keys(prior[k]).length
+  )
+  updateSyncCache(siteDir, {
+    itemUuids: {},
+    hashes: {},
+    baseVersions: {},
+    unitBases: {},
+    siteUuid: siteUuid || null
+  })
+  return dropped
+}
+
 export function clearRemoteSyncStateIfUnbound(siteDir) {
   let current = null
   try {
@@ -264,13 +285,7 @@ export function clearRemoteSyncStateIfUnbound(siteDir) {
     return []
   }
 
-  updateSyncCache(siteDir, {
-    itemUuids: {},
-    hashes: {},
-    baseVersions: {},
-    unitBases: {},
-    ...(current ? { siteUuid: current } : { siteUuid: null })
-  })
+  clearRemoteSyncState(siteDir, current)
   return stale
 }
 
@@ -620,6 +635,35 @@ export async function pushSyncPackages({
       // applying it would replace every one of them. `ensureItemUuids` is supposed
       // to make this unreachable, so reaching it means that recovery failed — say so
       // rather than surfacing a raw 400.
+      // The cache is offering another site's item identities. Recoverable without
+      // the user knowing what a sync cache is: the stale maps are unambiguously
+      // wrong (they describe a different entity), so clear them and say re-run.
+      //
+      // Reachable only for a clone broken BEFORE the pre-flight guard existed —
+      // an unstamped legacy cache on a bound site, which the guard deliberately
+      // leaves alone rather than wiping every existing clone. This is the exit.
+      if (problem?.reason === 'item_uuid_conflict') {
+        const dropped = clearRemoteSyncState(siteDir, boundUuid)
+        error(
+          `${label} push refused — this copy's sync cache is describing a different site.`
+        )
+        note('Nothing was written.')
+        if (Number.isInteger(problem.stored_entity_id)) {
+          note(
+            `Item ${problem.item_uuid ?? '(unnamed)'} already belongs to entity ${problem.stored_entity_id}; this push is for entity ${problem.document_entity_id}.`
+          )
+        }
+        if (dropped.length) {
+          note(
+            `Cleared the stale cache (${dropped.join(', ')}) — re-run the same command and it will push cleanly.`
+          )
+        } else {
+          note(
+            'The cache held nothing to clear, so this is not the usual cause — please report it.'
+          )
+        }
+        return null
+      }
       if (problem?.reason === 'identity_required') {
         error(
           `${label} push refused — this copy has no record of the site's item identity.`

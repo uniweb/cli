@@ -839,3 +839,54 @@ test('an empty cache is a no-op, and still records identity', () => {
   assert.deepEqual(clearRemoteSyncStateIfUnbound(dir), [])
   assert.equal(readCache(dir).siteUuid, 'SITE-A')
 })
+
+test('an item_uuid_conflict clears the stale cache and says re-run', async () => {
+  // The exit for a clone broken BEFORE the pre-flight guard existed: an unstamped
+  // legacy cache on a bound site, which the guard deliberately leaves alone rather
+  // than wiping every existing clone. Branches on `reason` — the backend types this
+  // as 409 alongside `stale_base`; `detail` is prose and must not be matched.
+  const dir = tmpSite()
+  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-NEW\n')
+  writeCache(dir, { itemUuids: { 'site.yml': 'OLD-ITEM' }, hashes: { a: 'h' } })
+
+  const client = {
+    origin: 'http://x',
+    updateSiteContent: async () => ({
+      ok: false,
+      status: 409,
+      statusText: 'Conflict',
+      text: async () =>
+        JSON.stringify({
+          title: 'Item UUID Conflict',
+          reason: 'item_uuid_conflict',
+          item_uuid: 'OLD-ITEM',
+          document_entity_id: 161,
+          stored_entity_id: 156,
+          detail: 'prose that may be reworded at any time'
+        })
+    })
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: siteOnlyPkg({ siteContentUuid: 'SITE-NEW' }),
+    asOrg: null,
+    report
+  })
+
+  assert.equal(res.exitCode, 1)
+  const said = [...calls.error, ...calls.note].join('\n')
+  assert.match(said, /describing a different site/)
+  assert.match(said, /entity 156/) // the entity that actually holds it
+  assert.match(said, /entity 161/) // the one being pushed to
+  assert.match(said, /re-run the same command/)
+  // The prose must not be echoed as if it were the contract.
+  assert.ok(!/may be reworded/.test(said))
+
+  // And the recovery actually happened, so the re-run it promises will work.
+  const c = readCache(dir)
+  assert.deepEqual(c.itemUuids, {})
+  assert.deepEqual(c.hashes, {})
+  assert.equal(c.siteUuid, 'SITE-NEW')
+})
