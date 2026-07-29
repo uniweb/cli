@@ -397,7 +397,16 @@ export async function pushSyncPackages({
   // request fires). The client carries `collision=force` (last-push-wins) + the optional
   // `--as-org`. Returns the parsed payload, or null on any transport/HTTP/parse failure
   // (already reported).
-  const postLane = async (label, doRequest, explainStale = async () => []) => {
+  // `boundUuid` is set only for the lanes that address an EXISTING site by uuid
+  // (content UPDATE, folder push) — never for the CREATE, which has no uuid to be
+  // wrong about. It is what lets a 404 be read as "the site this clone is bound to
+  // is gone" rather than "the route is missing".
+  const postLane = async (
+    label,
+    doRequest,
+    explainStale = async () => [],
+    { boundUuid = null } = {}
+  ) => {
     info(`Pushing ${label} to ${dim(client.origin)} …`)
     let res
     try {
@@ -488,6 +497,17 @@ export async function pushSyncPackages({
         note(
           "Credentials weren't accepted — supply a bearer with --token <bearer> (or UNIWEB_TOKEN)."
         )
+      } else if (res.status === 404 && boundUuid) {
+        // The clone is bound to a site the backend does not have. There is no CLI
+        // verb that could have removed it — a site is deleted in the Uniweb app,
+        // and that is what severs the sync — so the raw 404 leaves the user with
+        // no idea that the fix is local and one line.
+        note(
+          `The backend has no site with uuid ${boundUuid} — the usual cause is that it was deleted in the Uniweb app.`
+        )
+        note(
+          'Deleting this folder removes only your local copy; clearing `$uuid` from site.yml re-publishes it as a new site.'
+        )
       } else if (res.status === 409) {
         // The site's @uniweb/folder is genesis-owned: its structure is fixed on first
         // deploy and not reconciled in place (the v1 rule — see gotcha #20's mode switch).
@@ -512,8 +532,8 @@ export async function pushSyncPackages({
   // POST a lane that round-trips entity uuids (content UPDATE + the folder): parse the
   // finalized list (for record back-fill + the changed summary). Returns the finalized
   // array, or null on failure (already reported).
-  const pushLane = async (label, doRequest, explainStale) => {
-    const payload = await postLane(label, doRequest, explainStale)
+  const pushLane = async (label, doRequest, explainStale, opts) => {
+    const payload = await postLane(label, doRequest, explainStale, opts)
     if (payload === null) return null
     const finalized = extractFinalized(payload)
     if (!finalized) {
@@ -559,7 +579,8 @@ export async function pushSyncPackages({
             siteDir,
             localBuffer: siteContent.buffer,
             uuid: siteContentUuid
-          })
+          }),
+        { boundUuid: siteContentUuid }
       )
       if (!finalized) {
         mergeBaseVersions(siteDir, newVersions)
@@ -602,8 +623,11 @@ export async function pushSyncPackages({
       )
       return { exitCode: 1, finalizedTotal, wrote }
     }
-    const finalized = await pushLane('collections', () =>
-      client.pushFolder(boundSiteUuid, collections.buffer, { asOrg })
+    const finalized = await pushLane(
+      'collections',
+      () => client.pushFolder(boundSiteUuid, collections.buffer, { asOrg }),
+      undefined,
+      { boundUuid: boundSiteUuid }
     )
     if (!finalized) {
       mergeBaseVersions(siteDir, newVersions)

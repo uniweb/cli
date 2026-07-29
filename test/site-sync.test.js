@@ -549,3 +549,64 @@ test('headProvenance reports the commit and whether the tree was clean', async (
   writeFileSync(join(dir, 'site.yml'), 'name: changed\n')
   assert.equal(headProvenance(dir).dirty, true)
 })
+
+test('a 404 on a uuid-bound lane explains that the site is gone and the fix is local', async () => {
+  // There is no CLI verb that deletes a site — it is deleted in the Uniweb app, and
+  // that is what severs the sync. A bare 404 leaves the user with no idea that the
+  // remedy is one line in site.yml.
+  const dir = tmpSite()
+  const client = {
+    origin: 'http://x',
+    updateSiteContent: async () => ({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      text: async () => ''
+    })
+  }
+  const { report, calls } = makeReport()
+  const pkg = siteOnlyPkg({ siteContentUuid: 'GONE-1' })
+
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg,
+    asOrg: null,
+    report
+  })
+  assert.equal(res.exitCode, 1)
+  const notes = calls.note.join('\n')
+  assert.match(notes, /no site with uuid GONE-1/)
+  assert.match(notes, /deleted in the Uniweb app/)
+  assert.match(notes, /clearing `\$uuid` from site\.yml/)
+})
+
+test('a 404 on the CREATE lane does NOT claim a site was deleted', async () => {
+  // The create carries no uuid, so a 404 there means the route is missing, not that
+  // a site is gone — advising the user to clear a `$uuid` they do not have would be
+  // a confident wrong answer.
+  const dir = tmpSite()
+  const client = {
+    origin: 'http://x',
+    createSiteContent: async () => ({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      text: async () => ''
+    })
+  }
+  const { report, calls } = makeReport()
+  const pkg = siteOnlyPkg({ siteContentUuid: undefined })
+
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg,
+    asOrg: null,
+    report
+  })
+  assert.equal(res.exitCode, 1)
+  const notes = calls.note.join('\n')
+  assert.ok(!/deleted in the Uniweb app/.test(notes))
+  assert.ok(!/clearing `\$uuid`/.test(notes))
+})
