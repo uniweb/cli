@@ -493,9 +493,9 @@ This is [less important]{muted} context.
 
 Sites can adjust these or add named styles in `theme.yml`'s `inline:` section. Overrides merge **property by property**, so declare only what differs (`accent: { font-weight: inherit }` keeps the default color); to drop a default property rather than change it, give it a neutral value (`initial`, `inherit`, `unset`).
 
-> **On a site synced with Uniweb Cloud, these styles render correctly but are not yet editable in the visual editor.** An author who opens a page containing `[Get started]{accent}` sees it styled exactly as it renders, and it survives every edit and save untouched — but the editor's own styling controls will not change or remove it, the way they would for text an author styled there. Two spans that look identical behave differently depending on where they were written, and nothing on screen says which is which.
+> **On a site synced with Uniweb Cloud, the built-in style names round-trip *editable*** — an author who opens a page containing `[Get started]{accent}` gets the editor's own styling control for it, and can change or remove it like any text they styled there.
 >
-> Nothing is lost, so this costs an author a correction they cannot make rather than any content. If that matters for your project, prefer styling such text in the editor, or keep the markdown as the place it is maintained. This is a current limitation and expected to go; the note goes with it.
+> **A name the editor doesn't know is preserved exactly, but not editable** — a style you defined yourself in `inline:`, two names on one span, or a `class`/`id` set. Nothing is lost and nothing is approximated: it survives every edit and save untouched, the editor simply offers no control for it. That is a permanent property rather than a gap, because the name set is open by design — you can add styles the editor has no way to know about.
 
 ### Fenced code: data blocks vs snippets
 
