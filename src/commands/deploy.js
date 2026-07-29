@@ -49,7 +49,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { execSync } from 'node:child_process'
 
-import { loadDeployYml, resolveTarget, recordLastDeploy } from '@uniweb/build/site'
+import {
+  loadDeployYml,
+  resolveTarget,
+  recordLastDeploy
+} from '@uniweb/build/site'
 import { promptForDestination } from '../utils/destination-prompt.js'
 import { readFlagValue } from '../utils/args.js'
 import { parseBoolEnv } from '../utils/env.js'
@@ -59,7 +63,7 @@ import {
   findWorkspaceRoot,
   findSites,
   classifyPackage,
-  promptSelect,
+  promptSelect
 } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
@@ -70,14 +74,14 @@ const c = {
   cyan: '\x1b[36m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
-  red: '\x1b[31m',
+  red: '\x1b[31m'
 }
 const say = {
   ok: (m) => console.log(`${c.green}✓${c.reset} ${m}`),
   info: (m) => console.log(`${c.cyan}→${c.reset} ${m}`),
   warn: (m) => console.log(`${c.yellow}⚠${c.reset} ${m}`),
   err: (m) => console.error(`${c.red}✗${c.reset} ${m}`),
-  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`),
+  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`)
 }
 
 // ─── Main ───────────────────────────────────────────────────
@@ -126,7 +130,7 @@ export async function deploy(args = []) {
   const wantsWizard = hostFromFlag === null
   const knownHost = wantsWizard
     ? null
-    : (hostFromFlag || (resolved.fromFile ? resolved.host : null))
+    : hostFromFlag || (resolved.fromFile ? resolved.host : null)
 
   if (knownHost === 'uniweb') {
     plan = { kind: 'uniweb' }
@@ -146,14 +150,23 @@ export async function deploy(args = []) {
       }
       say.err('`uniweb deploy` needs a destination.')
       console.log('')
-      say.dim('`uniweb publish`          Uniweb Cloud (sync + dynamic hosting; brings the foundation along)')
-      say.dim('`uniweb deploy --host=…`  A third-party host — run `uniweb deploy --help` for the list')
+      say.dim(
+        '`uniweb publish`          Uniweb Cloud (sync + dynamic hosting; brings the foundation along)'
+      )
+      say.dim(
+        '`uniweb deploy --host=…`  A third-party host — run `uniweb deploy --help` for the list'
+      )
       say.dim('`uniweb add ci --host=…`  Set up CI so every push deploys')
-      say.dim('`uniweb export`           Self-contained dist/ artifact you upload anywhere')
+      say.dim(
+        '`uniweb export`           Self-contained dist/ artifact you upload anywhere'
+      )
       process.exit(1)
     }
     try {
-      plan = await promptForDestination({ args, preselect: resolved.fromFile ? resolved.host : null })
+      plan = await promptForDestination({
+        args,
+        preselect: resolved.fromFile ? resolved.host : null
+      })
     } catch (err) {
       say.err(err.message)
       process.exit(1)
@@ -181,7 +194,9 @@ export async function deploy(args = []) {
     // passing a flag it would ignore — a dry run that actually ran a full
     // build would be a lie.
     if (dryRun) {
-      say.info('Dry run — would run `uniweb export` to build a self-contained dist/.')
+      say.info(
+        'Dry run — would run `uniweb export` to build a self-contained dist/.'
+      )
       return
     }
     say.info('Building a self-contained artifact → running `uniweb export`.')
@@ -208,7 +223,7 @@ export async function deploy(args = []) {
   await deployStaticHost(siteDir, plan.host, resolved, {
     dryRun,
     autoSave,
-    hostOverridden,
+    hostOverridden
   })
 }
 
@@ -239,7 +254,7 @@ async function delegateToAddCi(siteDir, host, dryRun) {
   try {
     execSync(`node ${JSON.stringify(process.argv[1])} ${cmd}`, {
       cwd: workspaceRoot,
-      stdio: 'inherit',
+      stdio: 'inherit'
     })
   } catch {
     // add ci already printed the reason and set the exit code.
@@ -254,10 +269,15 @@ async function delegateToAddCi(siteDir, host, dryRun) {
 // `uniweb build` (bundle mode + prerender) first, then hands dist/ to the
 // adapter's deploy hook for upload + invalidation.
 
-async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave, hostOverridden }) {
+async function deployStaticHost(
+  siteDir,
+  hostName,
+  resolved,
+  { dryRun, autoSave, hostOverridden }
+) {
   let getAdapter
   try {
-    ({ getAdapter } = await import('@uniweb/build/hosts'))
+    ;({ getAdapter } = await import('@uniweb/build/hosts'))
   } catch (err) {
     say.err('Failed to load host adapter registry from @uniweb/build/hosts.')
     say.dim(err.message)
@@ -269,14 +289,20 @@ async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave,
     adapter = getAdapter(hostName)
   } catch (err) {
     say.err(err.message)
-    say.dim('Set the host in deploy.yml or pass --host=<name>. See `uniweb deploy --help`.')
+    say.dim(
+      'Set the host in deploy.yml or pass --host=<name>. See `uniweb deploy --help`.'
+    )
     process.exit(1)
   }
 
   if (typeof adapter.deploy !== 'function') {
     say.err(`Host adapter '${hostName}' does not implement a deploy step.`)
-    say.dim(`Build with \`uniweb build --host=${hostName}\` and upload \`dist/\` manually,`)
-    say.dim(`or use a host whose adapter ships a deploy hook (e.g., s3-cloudfront).`)
+    say.dim(
+      `Build with \`uniweb build --host=${hostName}\` and upload \`dist/\` manually,`
+    )
+    say.dim(
+      `or use a host whose adapter ships a deploy hook (e.g., s3-cloudfront).`
+    )
     process.exit(1)
   }
 
@@ -284,11 +310,16 @@ async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave,
   const distDir = join(siteDir, 'dist')
 
   if (dryRun) {
-    say.info(`Dry run — would deploy via host adapter: ${c.bold}${adapter.name}${c.reset}`)
+    say.info(
+      `Dry run — would deploy via host adapter: ${c.bold}${adapter.name}${c.reset}`
+    )
     say.dim(`Site dir  : ${siteDir}`)
-    say.dim(`dist/     : ${existsSync(distDir) ? 'exists (would not rebuild)' : 'missing (would build)'}`)
+    say.dim(
+      `dist/     : ${existsSync(distDir) ? 'exists (would not rebuild)' : 'missing (would build)'}`
+    )
     say.dim(`Target    : ${resolved.targetName}`)
-    if (adapter.display?.pushWith) say.dim(`Uploads by: ${adapter.display.pushWith}`)
+    if (adapter.display?.pushWith)
+      say.dim(`Uploads by: ${adapter.display.pushWith}`)
     // Echo the resolved target's config as-is. Each adapter reads
     // different keys (bucket/distributionId for s3, projectName for
     // Cloudflare, siteId for Netlify), so listing a fixed set would be
@@ -297,10 +328,14 @@ async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave,
     if (configKeys.length) {
       say.dim('Config    :')
       for (const key of configKeys.sort()) {
-        say.dim(`  ${key}: ${typeof deployConfig[key] === 'object' ? JSON.stringify(deployConfig[key]) : deployConfig[key]}`)
+        say.dim(
+          `  ${key}: ${typeof deployConfig[key] === 'object' ? JSON.stringify(deployConfig[key]) : deployConfig[key]}`
+        )
       }
     } else {
-      say.dim('Config    : (none in deploy.yml — the adapter will say what it needs)')
+      say.dim(
+        'Config    : (none in deploy.yml — the adapter will say what it needs)'
+      )
     }
     return
   }
@@ -342,7 +377,7 @@ async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave,
       distDir,
       deployConfig,
       env: process.env,
-      log: (m) => console.log(m),
+      log: (m) => console.log(m)
     })
   } catch (err) {
     if (err && err.name === 'DeployError') {
@@ -358,10 +393,15 @@ async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave,
 
   // Record a fresh lastDeploy.<target> entry. Skipped on --no-save and
   // on ad-hoc --host overrides — see autoSave gating in deploy().
-  const gitStamp = { at: new Date().toISOString(), git: headProvenance(siteDir) }
+  const gitStamp = {
+    at: new Date().toISOString(),
+    git: headProvenance(siteDir)
+  }
   await persistLastDeploy(siteDir, {
     targetName: resolved.targetName,
-    targetConfig: resolved.fromFile ? null : { host: hostName, ...deployConfig },
+    targetConfig: resolved.fromFile
+      ? null
+      : { host: hostName, ...deployConfig },
     autoSave,
     lastDeploy: {
       at: gitStamp.at,
@@ -374,11 +414,13 @@ async function deployStaticHost(siteDir, hostName, resolved, { dryRun, autoSave,
       ...(deployResult?.url ? { url: deployResult.url } : {}),
       // Same provenance the Uniweb path records: which commit this artifact came
       // from, and whether the tree was clean when it was built.
-      ...(gitStamp.git ? { git: gitStamp.git } : {}),
-    },
+      ...(gitStamp.git ? { git: gitStamp.git } : {})
+    }
   })
   if (hostOverridden && !dryRun) {
-    say.dim('--host override active — did not write to deploy.yml. Edit deploy.yml to make this permanent.')
+    say.dim(
+      '--host override active — did not write to deploy.yml. Edit deploy.yml to make this permanent.'
+    )
   }
 }
 
@@ -425,7 +467,9 @@ export async function resolveSiteDir(args, verb = 'deploy') {
       }
       const choice = await promptSelect('Which site?', sites)
       if (!choice) {
-        console.log(`\n${verb.charAt(0).toUpperCase() + verb.slice(1)} cancelled.`)
+        console.log(
+          `\n${verb.charAt(0).toUpperCase() + verb.slice(1)} cancelled.`
+        )
         process.exit(0)
       }
       return resolve(workspaceRoot, choice)
@@ -434,9 +478,13 @@ export async function resolveSiteDir(args, verb = 'deploy') {
 
   say.err('No site found in this workspace.')
   if (verb === 'export') {
-    say.dim('`export` produces a self-contained dist/ artifact for third-party hosting.')
+    say.dim(
+      '`export` produces a self-contained dist/ artifact for third-party hosting.'
+    )
   } else if (verb === 'deploy') {
-    say.dim('`deploy` ships a built site to a third-party host (use `uniweb publish` for Uniweb hosting).')
+    say.dim(
+      '`deploy` ships a built site to a third-party host (use `uniweb publish` for Uniweb hosting).'
+    )
   } else {
     say.dim(`\`${verb}\` operates on a site.`)
   }
@@ -455,7 +503,7 @@ export async function resolveSiteBackend(siteDir) {
   try {
     const deployYml = await loadDeployYml(siteDir)
     const resolved = resolveTarget(deployYml, null)
-    return resolved.host === 'uniweb' ? (resolved.config?.backend || null) : null
+    return resolved.host === 'uniweb' ? resolved.config?.backend || null : null
   } catch {
     return null
   }

@@ -33,7 +33,10 @@ import yaml from 'js-yaml'
 
 const TEMPLATE = join(
   dirname(fileURLToPath(import.meta.url)),
-  '..', 'templates', 'workspace', 'pnpm-workspace.yaml.hbs'
+  '..',
+  'templates',
+  'workspace',
+  'pnpm-workspace.yaml.hbs'
 )
 
 /** The packages that carry install scripts in a scaffolded project. */
@@ -45,8 +48,10 @@ const NATIVE_DEPS = ['esbuild', 'sharp']
  * keeps this test independent of the handlebars runtime.
  */
 function renderTemplate() {
-  return readFileSync(TEMPLATE, 'utf8')
-    .replace(/\{\{#each workspaceGlobs\}\}[\s\S]*?\{\{\/each\}\}/, '  - "site"\n  - "src"')
+  return readFileSync(TEMPLATE, 'utf8').replace(
+    /\{\{#each workspaceGlobs\}\}[\s\S]*?\{\{\/each\}\}/,
+    '  - "site"\n  - "src"'
+  )
 }
 
 test('the scaffolded workspace file is valid YAML', () => {
@@ -67,12 +72,15 @@ test('pnpm 10 approval (onlyBuiltDependencies) covers every native dep', () => {
 test('pnpm 11 approval (allowBuilds) covers every native dep', () => {
   const doc = yaml.load(renderTemplate())
   assert.ok(
-    doc.allowBuilds && !Array.isArray(doc.allowBuilds) && typeof doc.allowBuilds === 'object',
+    doc.allowBuilds &&
+      !Array.isArray(doc.allowBuilds) &&
+      typeof doc.allowBuilds === 'object',
     'allowBuilds must be a MAP — pnpm 11 renamed the list form and ignores it'
   )
   for (const dep of NATIVE_DEPS) {
     assert.equal(
-      doc.allowBuilds[dep], true,
+      doc.allowBuilds[dep],
+      true,
       `allowBuilds is missing ${dep} — pnpm 11 install exits 1 with ERR_PNPM_IGNORED_BUILDS`
     )
   }
@@ -86,7 +94,8 @@ test('both spellings stay in sync, so neither major is left behind', () => {
     .map(([name]) => name)
     .sort()
   assert.deepEqual(
-    fromMap, fromList,
+    fromMap,
+    fromList,
     'adding a native dep to one approval list but not the other breaks that pnpm major'
   )
 })

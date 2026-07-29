@@ -30,14 +30,14 @@ export const UNIWEB_DESTINATION = {
   value: { kind: 'uniweb' },
   title: 'Uniweb Cloud · paid, dynamic + visual editing',
   description:
-    'Sync + dynamic SSR, visual editing for content authors, foundation propagation. Runs `uniweb publish`.',
+    'Sync + dynamic SSR, visual editing for content authors, foundation propagation. Runs `uniweb publish`.'
 }
 
 export const EXPORT_DESTINATION = {
   value: { kind: 'export' },
   title: 'Somewhere else · export a folder',
   description:
-    'Builds a self-contained dist/ you upload yourself. Runs `uniweb export`.',
+    'Builds a self-contained dist/ you upload yourself. Runs `uniweb export`.'
 }
 
 /**
@@ -49,16 +49,20 @@ export async function buildDestinationChoices() {
   const { listAdapters, getAdapter } = await import('@uniweb/build/hosts')
 
   const adapters = listAdapters()
-    .map(name => getAdapter(name))
-    .filter(a => a.display?.wizard !== false)
+    .map((name) => getAdapter(name))
+    .filter((a) => a.display?.wizard !== false)
     // Never offer a door that doesn't open.
-    .filter(a => typeof a.deploy === 'function' || typeof a.initCi === 'function')
+    .filter(
+      (a) => typeof a.deploy === 'function' || typeof a.initCi === 'function'
+    )
     .sort((a, b) => (a.display?.order ?? 999) - (b.display?.order ?? 999))
 
-  const choices = adapters.map(a => ({
+  const choices = adapters.map((a) => ({
     value: { kind: 'adapter', host: a.name },
-    title: `${a.display?.title || a.name} · ${a.display?.qualifier || ''}`.trim().replace(/ ·\s*$/, ''),
-    description: a.display?.summary || '',
+    title: `${a.display?.title || a.name} · ${a.display?.qualifier || ''}`
+      .trim()
+      .replace(/ ·\s*$/, ''),
+    description: a.display?.summary || ''
   }))
 
   return [...choices, UNIWEB_DESTINATION, EXPORT_DESTINATION]
@@ -87,15 +91,13 @@ async function promptForAction(adapter) {
     {
       value: 'ci',
       title: 'Set it up to deploy on every push · recommended',
-      description:
-        `Writes a GitHub Actions workflow. One-time setup — after this, pushing to the default branch deploys.${previews}`,
+      description: `Writes a GitHub Actions workflow. One-time setup — after this, pushing to the default branch deploys.${previews}`
     },
     {
       value: 'deploy',
       title: 'Upload from this machine now',
-      description:
-        `Builds dist/ here and pushes it with ${adapter.display?.pushWith || 'the host CLI'}.`,
-    },
+      description: `Builds dist/ here and pushes it with ${adapter.display?.pushWith || 'the host CLI'}.`
+    }
   ])
 }
 
@@ -110,17 +112,25 @@ async function promptForAction(adapter) {
  *   null when the user cancels.
  * @throws {Error} When non-interactive — the caller prints the guidance.
  */
-export async function promptForDestination({ args = [], preselect = null } = {}) {
+export async function promptForDestination({
+  args = [],
+  preselect = null
+} = {}) {
   if (isNonInteractive(args)) {
-    throw new Error('Cannot prompt for a destination when running non-interactively.')
+    throw new Error(
+      'Cannot prompt for a destination when running non-interactively.'
+    )
   }
 
   let choices = await buildDestinationChoices()
 
   // Float the remembered target so Enter does the obvious thing.
   if (preselect) {
-    const idx = choices.findIndex(c => c.value.kind === 'adapter' && c.value.host === preselect)
-    if (idx > 0) choices = [choices[idx], ...choices.filter((_, i) => i !== idx)]
+    const idx = choices.findIndex(
+      (c) => c.value.kind === 'adapter' && c.value.host === preselect
+    )
+    if (idx > 0)
+      choices = [choices[idx], ...choices.filter((_, i) => i !== idx)]
   }
 
   const picked = await promptSelect('Where should this site go?', choices)

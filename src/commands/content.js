@@ -28,14 +28,14 @@ const c = {
   cyan: '\x1b[36m',
   green: '\x1b[32m',
   red: '\x1b[31m',
-  yellow: '\x1b[33m',
+  yellow: '\x1b[33m'
 }
 const say = {
   ok: (m) => console.log(`${c.green}✓${c.reset} ${m}`),
   info: (m) => console.log(`${c.cyan}→${c.reset} ${m}`),
   err: (m) => console.error(`${c.red}✗${c.reset} ${m}`),
   warn: (m) => console.log(`${c.yellow}!${c.reset} ${m}`),
-  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`),
+  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`)
 }
 
 function usage() {
@@ -103,16 +103,18 @@ async function contentExport(args) {
       // export), so a fresh project exports a uuid-less document.
       buf = await uwx.emitSiteSyncPackage(dir, {
         sidecar: useSidecar, // read <dir>/.uniweb/uwx-ids.json if present
-        sourceLocale,
+        sourceLocale
       })
       defaultName = basename(dir)
     } else {
       const schema = JSON.parse(readFileSync(schemaPath, 'utf8'))
-      say.info(`Packaging foundation schema → @uniweb/foundation-schema (.uwx)…`)
+      say.info(
+        `Packaging foundation schema → @uniweb/foundation-schema (.uwx)…`
+      )
       buf = uwx.emitFoundationSchemaPackage(schema, {
         sidecar: useSidecar ? join(dir, uwx.SIDECAR_RELPATH) : undefined,
         foundationDir: dir,
-        sourceLocale,
+        sourceLocale
       })
       defaultName = (schema?._self?.name || basename(dir)).replace(
         /[^a-z0-9._-]+/gi,
@@ -157,9 +159,11 @@ async function contentExport(args) {
     const pg = countPages(entity.pages)
     if (pg.p) counts.pages = pg.p
     if (pg.s) counts.page_sections = pg.s
-    if (entity.layout_sections?.length) counts.layout_sections = entity.layout_sections.length
+    if (entity.layout_sections?.length)
+      counts.layout_sections = entity.layout_sections.length
     if (entity.extensions?.length) counts.extensions = entity.extensions.length
-    if (entity.collections?.length) counts.collections = entity.collections.length
+    if (entity.collections?.length)
+      counts.collections = entity.collections.length
   }
 
   console.log('')

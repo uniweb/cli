@@ -40,7 +40,7 @@ export async function fetchManifest(options = {}) {
     : `${GITHUB_API}/repos/${TEMPLATES_REPO}/releases/latest`
 
   const releaseResponse = await fetchWithRetry(releaseUrl, {
-    headers: getGitHubHeaders(),
+    headers: getGitHubHeaders()
   })
 
   if (!releaseResponse.ok) {
@@ -57,18 +57,21 @@ export async function fetchManifest(options = {}) {
   const release = await releaseResponse.json()
 
   // Find manifest.json asset
-  const manifestAsset = release.assets?.find(a => a.name === 'manifest.json')
+  const manifestAsset = release.assets?.find((a) => a.name === 'manifest.json')
   if (!manifestAsset) {
     throw new Error(
       `Release ${release.tag_name} does not contain manifest.json. ` +
-      `This may be an older release format.`
+        `This may be an older release format.`
     )
   }
 
   // Download manifest
-  const manifestResponse = await fetchWithRetry(manifestAsset.browser_download_url, {
-    headers: getGitHubHeaders(),
-  })
+  const manifestResponse = await fetchWithRetry(
+    manifestAsset.browser_download_url,
+    {
+      headers: getGitHubHeaders()
+    }
+  )
 
   if (!manifestResponse.ok) {
     throw new Error(`Failed to download manifest: ${manifestResponse.status}`)
@@ -81,7 +84,7 @@ export async function fetchManifest(options = {}) {
     version: release.tag_name,
     templates: manifest.templates || {},
     // Base URL for downloading template tarballs
-    downloadUrlBase: `https://github.com/${TEMPLATES_REPO}/releases/download/${release.tag_name}`,
+    downloadUrlBase: `https://github.com/${TEMPLATES_REPO}/releases/download/${release.tag_name}`
   }
 
   // Cache if this was a "latest" fetch
@@ -113,7 +116,7 @@ export async function fetchOfficialTemplate(name, options = {}) {
     const available = Object.keys(manifest.templates).join(', ')
     throw new Error(
       `Template "${name}" not found in release ${manifest.version}.\n` +
-      `Available templates: ${available || 'none'}`
+        `Available templates: ${available || 'none'}`
     )
   }
 
@@ -122,14 +125,14 @@ export async function fetchOfficialTemplate(name, options = {}) {
   // Download template tarball
   const tarballUrl = `${manifest.downloadUrlBase}/${name}.tar.gz`
   const tarballResponse = await fetchWithRetry(tarballUrl, {
-    headers: getGitHubHeaders(),
+    headers: getGitHubHeaders()
   })
 
   if (!tarballResponse.ok) {
     if (tarballResponse.status === 404) {
       throw new Error(
         `Template tarball not found: ${name}.tar.gz\n` +
-        `The release may be incomplete or corrupted.`
+          `The release may be incomplete or corrupted.`
       )
     }
     throw new Error(`Failed to download template: ${tarballResponse.status}`)
@@ -153,7 +156,7 @@ export async function fetchOfficialTemplate(name, options = {}) {
       tempDir: join(tempDir, name),
       baseTempDir: tempDir, // For cleanup
       version: manifest.version,
-      metadata: templateInfo,
+      metadata: templateInfo
     }
   } catch (err) {
     // Clean up on error
@@ -174,7 +177,7 @@ export async function listOfficialTemplates(options = {}) {
     const manifest = await fetchManifest(options)
     return Object.entries(manifest.templates).map(([id, info]) => ({
       id,
-      ...info,
+      ...info
     }))
   } catch {
     // Return empty list if can't fetch
@@ -194,12 +197,12 @@ export function clearManifestCache() {
  */
 function getGitHubHeaders() {
   return {
-    'Accept': 'application/vnd.github+json',
+    Accept: 'application/vnd.github+json',
     'User-Agent': 'uniweb-cli',
     // Support private repos or higher rate limits if GITHUB_TOKEN is set
     ...(process.env.GITHUB_TOKEN && {
-      'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`
-    }),
+      Authorization: `Bearer ${process.env.GITHUB_TOKEN}`
+    })
   }
 }
 
@@ -212,7 +215,7 @@ async function handleGitHubError(response) {
     if (remaining === '0') {
       throw new Error(
         'GitHub API rate limit exceeded.\n' +
-        'Set GITHUB_TOKEN environment variable for higher limits.'
+          'Set GITHUB_TOKEN environment variable for higher limits.'
       )
     }
   }
@@ -228,13 +231,13 @@ async function fetchWithRetry(url, options = {}, maxRetries = 3) {
       const response = await fetch(url, {
         ...options,
         redirect: 'follow',
-        signal: AbortSignal.timeout(60000), // 60s timeout
+        signal: AbortSignal.timeout(60000) // 60s timeout
       })
       return response
     } catch (err) {
       if (attempt === maxRetries) throw err
       const delay = Math.min(1000 * Math.pow(2, attempt), 10000)
-      await new Promise(r => setTimeout(r, delay))
+      await new Promise((r) => setTimeout(r, delay))
     }
   }
 }

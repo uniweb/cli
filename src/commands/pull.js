@@ -56,7 +56,13 @@
  * against the playground backend, 2026-06-17.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { createInterface } from 'node:readline/promises'
@@ -68,23 +74,38 @@ import {
   resolveCollectionsConfig,
   readZip,
   computeUnitHashes,
-  collectUnitUuids,
+  collectUnitUuids
 } from '@uniweb/build/uwx'
 import { makeModelResolver } from './push.js'
 import {
   mergeBaseVersions,
   mergeItemBaseVersions,
   writeUnitBases,
-  writeItemUuids,
+  writeItemUuids
 } from '../backend/site-sync.js'
-import { uncommittedUnder, siteContentRoots, showAtHead, mergeFile } from '../utils/git.js'
+import {
+  uncommittedUnder,
+  siteContentRoots,
+  showAtHead,
+  mergeFile
+} from '../utils/git.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import { BackendClient } from '../backend/client.js'
-import { resolveSiteDir as defaultResolveSiteDir, resolveSiteBackend } from './deploy.js'
+import {
+  resolveSiteDir as defaultResolveSiteDir,
+  resolveSiteBackend
+} from './deploy.js'
 
 const FOLDER_MODEL = '@uniweb/folder'
 
-const colors = { reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', green: '\x1b[32m', blue: '\x1b[36m' }
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  blue: '\x1b[36m'
+}
 const log = console.log
 const success = (m) => log(`${colors.green}✓${colors.reset} ${m}`)
 const error = (m) => console.error(`${colors.red}✗${colors.reset} ${m}`)
@@ -95,7 +116,8 @@ function flagValue(args, name) {
   const eq = args.find((a) => a.startsWith(`${name}=`))
   if (eq) return eq.slice(name.length + 1)
   const i = args.indexOf(name)
-  if (i !== -1 && args[i + 1] && !args[i + 1].startsWith('-')) return args[i + 1]
+  if (i !== -1 && args[i + 1] && !args[i + 1].startsWith('-'))
+    return args[i + 1]
   return null
 }
 
@@ -127,7 +149,10 @@ function readPullCache(siteDir) {
 function writePullCache(siteDir, { content, folder }) {
   const p = pullCachePath(siteDir)
   mkdirSync(dirname(p), { recursive: true })
-  writeFileSync(p, JSON.stringify({ version: 1, content, folder }, null, 2) + '\n')
+  writeFileSync(
+    p,
+    JSON.stringify({ version: 1, content, folder }, null, 2) + '\n'
+  )
 }
 
 // Extract a single entity `$`-document from a pull response. Tolerant of a raw
@@ -142,7 +167,8 @@ export function extractDocument(payload) {
 // folder document and the record documents. Tolerant of an array, an
 // `{ entities }` / `{ documents }` list, or an explicit `{ folder, records }`.
 export function splitCollectionsPull(payload) {
-  if (payload?.folder) return { folderDoc: payload.folder, recordDocs: payload.records || [] }
+  if (payload?.folder)
+    return { folderDoc: payload.folder, recordDocs: payload.records || [] }
   const list = Array.isArray(payload)
     ? payload
     : Array.isArray(payload?.entities)
@@ -154,7 +180,7 @@ export function splitCollectionsPull(payload) {
   const docs = list.map(extractDocument).filter(Boolean)
   return {
     folderDoc: docs.find((d) => d.$model === FOLDER_MODEL) || null,
-    recordDocs: docs.filter((d) => d.$model !== FOLDER_MODEL),
+    recordDocs: docs.filter((d) => d.$model !== FOLDER_MODEL)
   }
 }
 
@@ -186,8 +212,10 @@ export function readPullDocuments(buf) {
   } catch {
     return []
   }
-  if (Array.isArray(payload)) return payload.map(extractDocument).filter(Boolean)
-  if (payload?.folder) return [payload.folder, ...(payload.records || [])].filter(Boolean)
+  if (Array.isArray(payload))
+    return payload.map(extractDocument).filter(Boolean)
+  if (payload?.folder)
+    return [payload.folder, ...(payload.records || [])].filter(Boolean)
   const list = Array.isArray(payload?.entities)
     ? payload.entities
     : Array.isArray(payload?.documents)
@@ -249,7 +277,8 @@ function readManifestTokens(buf) {
     try {
       const manifest = JSON.parse(data.toString('utf8'))
       for (const entry of manifest?.entries || []) {
-        if (entry?.uuid && typeof entry.version === 'string') out.entity[entry.uuid] = entry.version
+        if (entry?.uuid && typeof entry.version === 'string')
+          out.entity[entry.uuid] = entry.version
         const items = entry?.item_versions
         if (items && typeof items === 'object') {
           for (const [uuid, v] of Object.entries(items)) {
@@ -286,12 +315,20 @@ async function checkWorkingTree(siteDir, args) {
     // Not a git work tree. Nothing to fall back on if this goes wrong.
     if (isNonInteractive(args)) {
       error('Refusing to pull: this site is not in a git repository.')
-      note('Pull rewrites pages, sections and layout from the backend and deletes what it no longer has.')
-      note('Without version control there is no way back, and this session cannot ask.')
-      note('Re-run with --force to accept that, or put the site under git first.')
+      note(
+        'Pull rewrites pages, sections and layout from the backend and deletes what it no longer has.'
+      )
+      note(
+        'Without version control there is no way back, and this session cannot ask.'
+      )
+      note(
+        'Re-run with --force to accept that, or put the site under git first.'
+      )
       return { exitCode: 1 }
     }
-    const ok = await confirm(`Pull will overwrite ${roots.length} content location(s) and this site is not in git. Continue?`)
+    const ok = await confirm(
+      `Pull will overwrite ${roots.length} content location(s) and this site is not in git. Continue?`
+    )
     if (!ok) {
       info('Nothing pulled.')
       return { exitCode: 0 }
@@ -303,11 +340,17 @@ async function checkWorkingTree(siteDir, args) {
   dirty = dirty.filter((f) => !isPullOutput(siteDir, f, written))
   if (!dirty.length) return null
 
-  error(`Refusing to pull: ${dirty.length} uncommitted change(s) under the files pull rewrites.`)
+  error(
+    `Refusing to pull: ${dirty.length} uncommitted change(s) under the files pull rewrites.`
+  )
   for (const f of dirty.slice(0, 12)) note(`  ${f}`)
   if (dirty.length > 12) note(`  … and ${dirty.length - 12} more`)
-  note('Pull reconciles the working tree to the backend, so these would be overwritten or deleted.')
-  note('Commit or stash them first — then pull, and your work is still in git either way.')
+  note(
+    'Pull reconciles the working tree to the backend, so these would be overwritten or deleted.'
+  )
+  note(
+    'Commit or stash them first — then pull, and your work is still in git either way.'
+  )
   note('To discard them and take the backend version, re-run with --force.')
   return { exitCode: 1 }
 }
@@ -327,7 +370,7 @@ function readWritten(siteDir) {
     const o = JSON.parse(readFileSync(writtenCachePath(siteDir), 'utf8'))
     return {
       files: o && typeof o.files === 'object' ? o.files : {},
-      deleted: Array.isArray(o?.deleted) ? o.deleted : [],
+      deleted: Array.isArray(o?.deleted) ? o.deleted : []
     }
   } catch {
     return { files: {}, deleted: [] }
@@ -344,24 +387,40 @@ function recordWritten(siteDir, absPaths, deletedAbs = []) {
   const files = prior.files
   for (const abs of absPaths) {
     try {
-      files[relative(siteDir, abs)] = createHash('sha256').update(readFileSync(abs)).digest('hex')
-    } catch { /* deleted or unreadable — nothing to remember */ }
+      files[relative(siteDir, abs)] = createHash('sha256')
+        .update(readFileSync(abs))
+        .digest('hex')
+    } catch {
+      /* deleted or unreadable — nothing to remember */
+    }
   }
   // Pull PRUNES too, and a deletion is a dirty path git reports just like an edit.
   // Without recording them, pull's own pruning reads as the user having deleted
   // files — the same false alarm as its writes, arriving by the other door.
-  const deleted = [...new Set([...prior.deleted, ...deletedAbs.map((a) => relative(siteDir, a))])]
+  const deleted = [
+    ...new Set([
+      ...prior.deleted,
+      ...deletedAbs.map((a) => relative(siteDir, a))
+    ])
+  ]
   try {
     mkdirSync(dirname(writtenCachePath(siteDir)), { recursive: true })
-    writeFileSync(writtenCachePath(siteDir), JSON.stringify({ version: 1, files, deleted }, null, 2) + '\n')
-  } catch { /* best-effort: losing it only costs a spurious refusal */ }
+    writeFileSync(
+      writtenCachePath(siteDir),
+      JSON.stringify({ version: 1, files, deleted }, null, 2) + '\n'
+    )
+  } catch {
+    /* best-effort: losing it only costs a spurious refusal */
+  }
 }
 // Is this dirty path just pull's own untouched output?
 function isPullOutput(siteDir, relPath, written) {
   let exists = true
   let hash = null
   try {
-    hash = createHash('sha256').update(readFileSync(join(siteDir, relPath))).digest('hex')
+    hash = createHash('sha256')
+      .update(readFileSync(join(siteDir, relPath)))
+      .digest('hex')
   } catch {
     exists = false
   }
@@ -398,7 +457,10 @@ function captureLocalWork(siteDir) {
   for (const rel of dirty) {
     if (isPullOutput(siteDir, rel, written)) continue // pull's own output, not work
     try {
-      out.set(rel, { content: readFileSync(join(siteDir, rel)), inHead: showAtHead(siteDir, rel) !== null })
+      out.set(rel, {
+        content: readFileSync(join(siteDir, rel)),
+        inHead: showAtHead(siteDir, rel) !== null
+      })
     } catch {
       // Locally deleted. Pull will restore the backend's copy, which is the
       // sensible reading of "I removed this and then asked for their version".
@@ -415,7 +477,11 @@ function mergeLocalWork(siteDir, captured) {
   for (const [rel, { content: mine, inHead }] of captured) {
     const abs = join(siteDir, rel)
     let theirs = null
-    try { theirs = readFileSync(abs) } catch { /* pruned by the pull */ }
+    try {
+      theirs = readFileSync(abs)
+    } catch {
+      /* pruned by the pull */
+    }
 
     if (theirs === null) {
       // The backend no longer has it, but we changed it. Restoring is the
@@ -478,7 +544,8 @@ export async function pull(args = [], deps = {}) {
   const dryRun = args.includes('--dry-run')
   const tokenFlag = flagValue(args, '--token')
   const prune = !(args.includes('--no-delete') || args.includes('--no-prune')) // git-like by default
-  const noCollections = args.includes('--no-collections') || args.includes('--content-only')
+  const noCollections =
+    args.includes('--no-collections') || args.includes('--content-only')
   const force = args.includes('--force')
   const mergeMode = args.includes('--merge')
 
@@ -501,8 +568,12 @@ export async function pull(args = [], deps = {}) {
     captured = captureLocalWork(siteDir)
     if (captured === null) {
       error('Cannot merge: this site is not in a git repository.')
-      note('The common ancestor a merge needs is the committed version of each file.')
-      note('Without a repo there is nothing to merge against — use `uniweb pull --force` to take the backend version.')
+      note(
+        'The common ancestor a merge needs is the committed version of each file.'
+      )
+      note(
+        'Without a repo there is nothing to merge against — use `uniweb pull --force` to take the backend version.'
+      )
       return { exitCode: 1 }
     }
   } else if (!dryRun && !force) {
@@ -517,19 +588,23 @@ export async function pull(args = [], deps = {}) {
     getToken: deps.getToken,
     fetchImpl: deps.fetch,
     args,
-    command: 'Pulling',
+    command: 'Pulling'
   })
   // One identity per site: `site.yml::$uuid`. Both lanes (content + folder) are keyed
   // by it — the backend resolves the site's `@uniweb/folder` from this uuid.
   const siteContentUuid = readYamlUuid(join(siteDir, 'site.yml'))
 
   if (!siteContentUuid) {
-    info('Nothing to pull — this project has no $uuid yet. Run `uniweb push` first.')
+    info(
+      'Nothing to pull — this project has no $uuid yet. Run `uniweb push` first.'
+    )
     return { exitCode: 0 }
   }
 
   if (dryRun) {
-    info(`Dry run — would pull content from ${colors.dim}${client.origin}${colors.reset}`)
+    info(
+      `Dry run — would pull content from ${colors.dim}${client.origin}${colors.reset}`
+    )
     if (!noCollections) info(`Dry run — would also pull collections`)
     return { exitCode: 0 }
   }
@@ -540,7 +615,9 @@ export async function pull(args = [], deps = {}) {
   // body). `doRequest` is a thunk returning the client's Response promise. 404 / any
   // failure → null (the lane is skipped, not fatal).
   const getDocs = async (label, doRequest) => {
-    info(`Pulling ${colors.bright}${label}${colors.reset} from ${colors.dim}${client.origin}${colors.reset} …`)
+    info(
+      `Pulling ${colors.bright}${label}${colors.reset} from ${colors.dim}${client.origin}${colors.reset} …`
+    )
     let res
     try {
       res = await doRequest()
@@ -559,7 +636,10 @@ export async function pull(args = [], deps = {}) {
     }
     if (!res.ok) {
       error(`${label} pull failed: HTTP ${res.status} ${res.statusText}`)
-      if (res.status === 401 || res.status === 403) note("Credentials weren't accepted — supply a bearer with --token <bearer>.")
+      if (res.status === 401 || res.status === 403)
+        note(
+          "Credentials weren't accepted — supply a bearer with --token <bearer>."
+        )
       return null
     }
     try {
@@ -595,9 +675,15 @@ export async function pull(args = [], deps = {}) {
 
   // Lane 1 — content → config + pages/** + layout/**. The .uwx carries a single
   // entity (the site-content document). A 304 (unchanged) leaves local files as-is.
-  const content = await getDocs('content', () => client.pullSiteContent(siteContentUuid, { etag: etagContent }))
+  const content = await getDocs('content', () =>
+    client.pullSiteContent(siteContentUuid, { etag: etagContent })
+  )
   if (content && !content.notModified) {
-    const siteDoc = content.docs && (content.docs.find((d) => d?.info || d?.$model) || content.docs[0] || null)
+    const siteDoc =
+      content.docs &&
+      (content.docs.find((d) => d?.info || d?.$model) ||
+        content.docs[0] ||
+        null)
     if (siteDoc) {
       // Re-base the page attribution. The pulled document IS the backend's own
       // representation, so it becomes the remote base directly. We deliberately
@@ -610,9 +696,16 @@ export async function pull(args = [], deps = {}) {
       // Per-item identity for the next push. Without it the backend reads our
       // records as new and re-mints every page and section row.
       writeItemUuids(siteDir, collectUnitUuids(siteDoc))
-      const report = siteContentDocumentToProject({ document: siteDoc, siteRoot: siteDir, prune })
+      const report = siteContentDocumentToProject({
+        document: siteDoc,
+        siteRoot: siteDir,
+        prune
+      })
       wrote.push(...report.pages, ...report.sections, ...report.layout)
-      removed.push(...(report.deleted || []), ...(report.renamed || []).map((r) => r.from))
+      removed.push(
+        ...(report.deleted || []),
+        ...(report.renamed || []).map((r) => r.from)
+      )
       pages += report.pages.length
       sections += report.sections.length
       deleted += report.deleted.length
@@ -625,27 +718,37 @@ export async function pull(args = [], deps = {}) {
   // holds a folder uuid). Models are resolved by name (async) up front, so
   // collectionsToProject keeps its synchronous contract. A 304 leaves files as-is.
   if (!noCollections) {
-    const folder = await getDocs('collections', () => client.pullFolder(siteContentUuid, { etag: etagFolder }))
+    const folder = await getDocs('collections', () =>
+      client.pullFolder(siteContentUuid, { etag: etagFolder })
+    )
     if (folder && !folder.notModified && folder.docs?.length) {
       const { folderDoc, recordDocs } = splitCollectionsPull(folder.docs)
       const resolveModel = makeModelResolver({ client })
       const declByModel = new Map()
-      for (const model of [...new Set(recordDocs.map((d) => d.$model).filter(Boolean))]) {
+      for (const model of [
+        ...new Set(recordDocs.map((d) => d.$model).filter(Boolean))
+      ]) {
         try {
           declByModel.set(model, await resolveModel(model))
         } catch (err) {
           note(`! could not resolve model ${model}: ${err.message}`)
         }
       }
-      const collectionsConfig = await resolveCollectionsConfig(siteDir).catch(() => null)
+      const collectionsConfig = await resolveCollectionsConfig(siteDir).catch(
+        () => null
+      )
       const report = collectionsToProject({
         folderDoc,
         recordDocs,
         siteRoot: siteDir,
-        opts: { resolveDeclaration: (name) => declByModel.get(name) || null, collectionsConfig },
+        opts: {
+          resolveDeclaration: (name) => declByModel.get(name) || null,
+          collectionsConfig
+        }
       })
       records += report.placed.length + report.updated.length
-      for (const s of report.skipped) note(`↷ ${s.slug ?? s.uuid ?? '(record)'}: ${s.reason}`)
+      for (const s of report.skipped)
+        note(`↷ ${s.slug ?? s.uuid ?? '(record)'}: ${s.reason}`)
       for (const w of report.warnings) note(`! ${w}`)
     }
     if (folder?.etag) etagFolder = folder.etag
@@ -674,12 +777,18 @@ export async function pull(args = [], deps = {}) {
 
   recordWritten(
     siteDir,
-    [...wrote, ...['site.yml', 'theme.yml', 'head.html', 'collections.yml'].map((f) => join(siteDir, f))],
+    [
+      ...wrote,
+      ...['site.yml', 'theme.yml', 'head.html', 'collections.yml'].map((f) =>
+        join(siteDir, f)
+      )
+    ],
     removed
   )
 
   success(
-    `Pulled — ${pages} page(s), ${sections} section(s), ${records} record(s)` + (deleted ? `, ${deleted} deleted` : '')
+    `Pulled — ${pages} page(s), ${sections} section(s), ${records} record(s)` +
+      (deleted ? `, ${deleted} deleted` : '')
   )
   // Unresolved conflicts are a non-zero exit, the way a conflicted `git merge` is.
   // The pull itself worked; there is work left for a human. This is what makes a

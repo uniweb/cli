@@ -17,14 +17,17 @@
 
 import { resolve, join, dirname, basename, relative } from 'path'
 import { existsSync } from 'fs'
-import { readFile, writeFile, mkdir, readdir, unlink, rename } from 'fs/promises'
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  readdir,
+  unlink,
+  rename
+} from 'fs/promises'
 import yaml from 'js-yaml'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
-import {
-  isWorkspaceRoot,
-  findSites,
-  promptSelect,
-} from '../utils/workspace.js'
+import { isWorkspaceRoot, findSites, promptSelect } from '../utils/workspace.js'
 
 // Colors for terminal output
 const colors = {
@@ -34,7 +37,7 @@ const colors = {
   cyan: '\x1b[36m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
-  red: '\x1b[31m',
+  red: '\x1b[31m'
 }
 
 function log(message) {
@@ -61,7 +64,7 @@ function parseTargetOption(args) {
     if (args[i] === '--target' || args[i] === '-t') {
       return {
         target: args[i + 1],
-        remainingArgs: [...args.slice(0, i), ...args.slice(i + 2)],
+        remainingArgs: [...args.slice(0, i), ...args.slice(i + 2)]
       }
     }
   }
@@ -85,13 +88,19 @@ export async function i18n(args) {
 
   // Default to 'extract' if no subcommand (or if first arg is an option)
   const firstArg = remainingArgs[0]
-  const effectiveSubcommand = !firstArg || firstArg.startsWith('-') ? 'extract' : firstArg
-  const effectiveArgs = !firstArg || firstArg.startsWith('-') ? remainingArgs : remainingArgs.slice(1)
+  const effectiveSubcommand =
+    !firstArg || firstArg.startsWith('-') ? 'extract' : firstArg
+  const effectiveArgs =
+    !firstArg || firstArg.startsWith('-')
+      ? remainingArgs
+      : remainingArgs.slice(1)
 
   // Find site root
   const siteRoot = await findSiteRoot(target)
   if (!siteRoot) {
-    error('Could not find site root. Make sure you are in a Uniweb site directory.')
+    error(
+      'Could not find site root. Make sure you are in a Uniweb site directory.'
+    )
     process.exit(1)
   }
 
@@ -162,7 +171,9 @@ async function findSiteRoot(target) {
 
     if (sites.length === 0) {
       error('No sites found in this workspace.')
-      log(`${colors.dim}Sites have @uniweb/runtime in dependencies.${colors.reset}`)
+      log(
+        `${colors.dim}Sites have @uniweb/runtime in dependencies.${colors.reset}`
+      )
       process.exit(1)
     }
 
@@ -220,7 +231,7 @@ async function loadSiteConfig(siteRoot) {
     defaultLocale: resolveDefaultLocale(config),
     locales,
     localesDir,
-    ...config.i18n,
+    ...config.i18n
   }
 }
 
@@ -230,18 +241,22 @@ async function loadSiteConfig(siteRoot) {
 async function runExtract(siteRoot, config, args) {
   const verbose = args.includes('--verbose') || args.includes('-v')
   const dryRun = args.includes('--dry-run')
-  const collectionsOnly = args.includes('--collections-only') || args.includes('--collections')
+  const collectionsOnly =
+    args.includes('--collections-only') || args.includes('--collections')
   const noCollections = args.includes('--no-collections')
   // --with-collections is now a no-op (collections are included by default)
 
   // Extract page content (unless --collections-only)
   if (!collectionsOnly) {
-    log(`\n${colors.cyan}Extracting translatable content${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`)
+    log(
+      `\n${colors.cyan}Extracting translatable content${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`
+    )
 
     try {
       // Collect site content directly from source files (no build required)
       const { collectSiteContent } = await import('@uniweb/build/site')
-      const { extractManifest, formatSyncReport } = await import('@uniweb/build/i18n')
+      const { extractManifest, formatSyncReport } =
+        await import('@uniweb/build/i18n')
 
       log(`${colors.dim}Collecting site content...${colors.reset}`)
       const siteContent = await collectSiteContent(siteRoot)
@@ -250,11 +265,15 @@ async function runExtract(siteRoot, config, args) {
       const manifestPath = join(siteRoot, config.localesDir, 'manifest.json')
       const isUpdate = existsSync(manifestPath)
 
-      const { manifest, report } = await extractManifest(siteRoot, siteContent, {
-        localesDir: config.localesDir,
-        verbose,
-        dryRun,
-      })
+      const { manifest, report } = await extractManifest(
+        siteRoot,
+        siteContent,
+        {
+          localesDir: config.localesDir,
+          verbose,
+          dryRun
+        }
+      )
 
       // Show results
       const unitCount = Object.keys(manifest.units).length
@@ -269,12 +288,18 @@ async function runExtract(siteRoot, config, args) {
       if (dryRun) {
         log(`\n${colors.dim}Dry run — no files were modified.${colors.reset}`)
       } else {
-        log(`\nManifest written to: ${colors.dim}${config.localesDir}/manifest.json${colors.reset}`)
+        log(
+          `\nManifest written to: ${colors.dim}${config.localesDir}/manifest.json${colors.reset}`
+        )
       }
 
       if (config.locales.length === 0) {
-        log(`\n${colors.dim}No translation files found in ${config.localesDir}/.`)
-        log(`After translating, create locale files like ${config.localesDir}/es.json${colors.reset}`)
+        log(
+          `\n${colors.dim}No translation files found in ${config.localesDir}/.`
+        )
+        log(
+          `After translating, create locale files like ${config.localesDir}/es.json${colors.reset}`
+        )
       }
     } catch (err) {
       error(`Extraction failed: ${err.message}`)
@@ -285,7 +310,9 @@ async function runExtract(siteRoot, config, args) {
 
   // Extract collection content (by default, skip with --no-collections)
   if (!noCollections) {
-    log(`\n${colors.cyan}Extracting collection content${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`)
+    log(
+      `\n${colors.cyan}Extracting collection content${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`
+    )
 
     // Check if collections exist
     const dataDir = join(siteRoot, 'public', 'data')
@@ -299,14 +326,20 @@ async function runExtract(siteRoot, config, args) {
     }
 
     try {
-      const { extractCollectionManifest, formatSyncReport } = await import('@uniweb/build/i18n')
+      const { extractCollectionManifest, formatSyncReport } =
+        await import('@uniweb/build/i18n')
 
-      const collectionsManifestPath = join(siteRoot, config.localesDir, 'collections', 'manifest.json')
+      const collectionsManifestPath = join(
+        siteRoot,
+        config.localesDir,
+        'collections',
+        'manifest.json'
+      )
       const isUpdate = existsSync(collectionsManifestPath)
 
       const { manifest, report } = await extractCollectionManifest(siteRoot, {
         localesDir: config.localesDir,
-        dryRun,
+        dryRun
       })
 
       const unitCount = Object.keys(manifest.units).length
@@ -321,10 +354,14 @@ async function runExtract(siteRoot, config, args) {
         if (dryRun) {
           log(`\n${colors.dim}Dry run — no files were modified.${colors.reset}`)
         } else {
-          log(`\nManifest written to: ${colors.dim}${config.localesDir}/collections/manifest.json${colors.reset}`)
+          log(
+            `\nManifest written to: ${colors.dim}${config.localesDir}/collections/manifest.json${colors.reset}`
+          )
         }
       } else {
-        log(`${colors.dim}No translatable content found in collections.${colors.reset}`)
+        log(
+          `${colors.dim}No translatable content found in collections.${colors.reset}`
+        )
       }
     } catch (err) {
       error(`Collection extraction failed: ${err.message}`)
@@ -348,7 +385,7 @@ async function runInit(siteRoot, config, args) {
   const force = args.includes('--force')
 
   // Collect locale codes from positional args (skip flags)
-  const positionalLocales = args.filter(a => !a.startsWith('-'))
+  const positionalLocales = args.filter((a) => !a.startsWith('-'))
 
   // Read manifest
   const localesPath = join(siteRoot, config.localesDir)
@@ -370,13 +407,14 @@ async function runInit(siteRoot, config, args) {
   }
 
   // Determine target locales
-  let targetLocales = positionalLocales.length > 0
-    ? positionalLocales
-    : config.locales
+  let targetLocales =
+    positionalLocales.length > 0 ? positionalLocales : config.locales
 
   if (!targetLocales || targetLocales.length === 0) {
     error('No target locales specified.')
-    log(`${colors.dim}Specify locales as arguments (e.g., "uniweb i18n generate es fr")`)
+    log(
+      `${colors.dim}Specify locales as arguments (e.g., "uniweb i18n generate es fr")`
+    )
     log(`or configure them in site.yml under languages.${colors.reset}`)
     process.exit(1)
   }
@@ -401,7 +439,9 @@ async function runInit(siteRoot, config, args) {
       try {
         existing = JSON.parse(existingRaw)
       } catch {
-        warn(`${locale}.json has invalid JSON, skipping (use --force to overwrite)`)
+        warn(
+          `${locale}.json has invalid JSON, skipping (use --force to overwrite)`
+        )
         continue
       }
 
@@ -418,7 +458,9 @@ async function runInit(siteRoot, config, args) {
       if (added > 0) {
         await writeFile(localePath, JSON.stringify(existing, null, 2) + '\n')
         const alreadyCount = existingKeys.size
-        success(`Updated ${locale}.json (${added} new string${added !== 1 ? 's' : ''} added, ${alreadyCount} already translated)`)
+        success(
+          `Updated ${locale}.json (${added} new string${added !== 1 ? 's' : ''} added, ${alreadyCount} already translated)`
+        )
       } else {
         success(`${locale}.json already has all ${unitCount} strings`)
       }
@@ -431,7 +473,9 @@ async function runInit(siteRoot, config, args) {
       }
 
       await writeFile(localePath, JSON.stringify(localeData, null, 2) + '\n')
-      success(`Created ${locale}.json (${unitCount} string${unitCount !== 1 ? 's' : ''})`)
+      success(
+        `Created ${locale}.json (${unitCount} string${unitCount !== 1 ? 's' : ''})`
+      )
     }
   }
 
@@ -445,7 +489,7 @@ async function runInit(siteRoot, config, args) {
  * Status command - show translation coverage
  */
 async function runStatus(siteRoot, config, args) {
-  const locale = args.find(a => !a.startsWith('-'))
+  const locale = args.find((a) => !a.startsWith('-'))
   const showMissing = args.includes('--missing')
   const showFreeform = args.includes('--freeform')
   const outputJson = args.includes('--json')
@@ -478,22 +522,31 @@ async function runStatus(siteRoot, config, args) {
 
   if (config.locales.length === 0) {
     if (outputJson) {
-      log(JSON.stringify({ error: 'No translation files found', locales: [] }, null, 2))
+      log(
+        JSON.stringify(
+          { error: 'No translation files found', locales: [] },
+          null,
+          2
+        )
+      )
     } else {
       log(`${colors.dim}No translation files found in ${config.localesDir}/.`)
-      log(`Create locale files like ${config.localesDir}/es.json to add translations.${colors.reset}`)
+      log(
+        `Create locale files like ${config.localesDir}/es.json to add translations.${colors.reset}`
+      )
     }
     return
   }
 
   try {
-    const { getTranslationStatus, formatTranslationStatus } = await import('@uniweb/build/i18n')
+    const { getTranslationStatus, formatTranslationStatus } =
+      await import('@uniweb/build/i18n')
 
     const localesToCheck = locale ? [locale] : config.locales
 
     const status = await getTranslationStatus(siteRoot, {
       localesDir: config.localesDir,
-      locales: localesToCheck,
+      locales: localesToCheck
     })
 
     if (outputJson) {
@@ -504,10 +557,14 @@ async function runStatus(siteRoot, config, args) {
     log(formatTranslationStatus(status))
 
     // Show next steps if there are missing translations
-    const hasMissing = Object.values(status.locales).some(l => l.missing > 0)
+    const hasMissing = Object.values(status.locales).some((l) => l.missing > 0)
     if (hasMissing) {
-      log(`\n${colors.dim}To translate missing strings, edit the locale files in ${config.localesDir}/`)
-      log(`Or use: uniweb i18n status --missing --json > missing.json${colors.reset}`)
+      log(
+        `\n${colors.dim}To translate missing strings, edit the locale files in ${config.localesDir}/`
+      )
+      log(
+        `Or use: uniweb i18n status --missing --json > missing.json${colors.reset}`
+      )
     }
   } catch (err) {
     error(`Status check failed: ${err.message}`)
@@ -525,9 +582,17 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
 
   if (!existsSync(freeformPath)) {
     if (outputJson) {
-      log(JSON.stringify({ error: 'No free-form translations found', locales: {} }, null, 2))
+      log(
+        JSON.stringify(
+          { error: 'No free-form translations found', locales: {} },
+          null,
+          2
+        )
+      )
     } else {
-      log(`${colors.dim}No free-form translations found in ${config.localesDir}/freeform/.${colors.reset}`)
+      log(
+        `${colors.dim}No free-form translations found in ${config.localesDir}/freeform/.${colors.reset}`
+      )
     }
     return
   }
@@ -572,7 +637,7 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
 
     // Find all locales
     const entries = await readdir(freeformPath, { withFileTypes: true })
-    const locales = entries.filter(e => e.isDirectory()).map(e => e.name)
+    const locales = entries.filter((e) => e.isDirectory()).map((e) => e.name)
     const localesToCheck = locale ? [locale] : locales
 
     const results = {}
@@ -583,22 +648,33 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
 
       // Discover translations
       const discovered = await discoverFreeformTranslations(loc, localesPath)
-      const allPaths = [...discovered.pages, ...discovered.pageIds, ...discovered.collections]
+      const allPaths = [
+        ...discovered.pages,
+        ...discovered.pageIds,
+        ...discovered.collections
+      ]
 
       // Check staleness
       const stale = await getStaleTranslations(localeDir, sourceHashes)
       const orphaned = await getOrphanedTranslations(localeDir, validPaths)
 
-      const upToDate = allPaths.filter(p =>
-        !stale.some(s => s.path === p) &&
-        !orphaned.some(o => o.path === p)
+      const upToDate = allPaths.filter(
+        (p) =>
+          !stale.some((s) => s.path === p) &&
+          !orphaned.some((o) => o.path === p)
       )
 
       results[loc] = {
         total: allPaths.length,
         upToDate: upToDate.length,
-        stale: stale.map(s => ({ path: s.path, recordedDate: s.recordedDate })),
-        orphaned: orphaned.map(o => ({ path: o.path, recordedDate: o.recordedDate }))
+        stale: stale.map((s) => ({
+          path: s.path,
+          recordedDate: s.recordedDate
+        })),
+        orphaned: orphaned.map((o) => ({
+          path: o.path,
+          recordedDate: o.recordedDate
+        }))
       }
     }
 
@@ -621,7 +697,9 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
       if (info.stale.length > 0) {
         log(`  ${colors.yellow}Stale (source changed):${colors.reset}`)
         for (const item of info.stale) {
-          log(`    ${colors.yellow}⚠${colors.reset} ${item.path} ${colors.dim}(${item.recordedDate})${colors.reset}`)
+          log(
+            `    ${colors.yellow}⚠${colors.reset} ${item.path} ${colors.dim}(${item.recordedDate})${colors.reset}`
+          )
         }
       }
 
@@ -632,19 +710,27 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
         }
       }
 
-      log(`  ${colors.dim}Summary: ${info.upToDate} up to date, ${info.stale.length} stale, ${info.orphaned.length} orphaned${colors.reset}`)
+      log(
+        `  ${colors.dim}Summary: ${info.upToDate} up to date, ${info.stale.length} stale, ${info.orphaned.length} orphaned${colors.reset}`
+      )
       log('')
     }
 
     // Show next steps
-    const hasStale = Object.values(results).some(r => r.stale.length > 0)
-    const hasOrphaned = Object.values(results).some(r => r.orphaned.length > 0)
+    const hasStale = Object.values(results).some((r) => r.stale.length > 0)
+    const hasOrphaned = Object.values(results).some(
+      (r) => r.orphaned.length > 0
+    )
 
     if (hasStale) {
-      log(`${colors.dim}Run 'uniweb i18n update-hash <locale> --all-stale' to update hashes after reviewing.${colors.reset}`)
+      log(
+        `${colors.dim}Run 'uniweb i18n update-hash <locale> --all-stale' to update hashes after reviewing.${colors.reset}`
+      )
     }
     if (hasOrphaned) {
-      log(`${colors.dim}Run 'uniweb i18n prune --freeform' to remove orphaned translations.${colors.reset}`)
+      log(
+        `${colors.dim}Run 'uniweb i18n prune --freeform' to remove orphaned translations.${colors.reset}`
+      )
     }
   } catch (err) {
     error(`Status check failed: ${err.message}`)
@@ -661,9 +747,17 @@ async function runStatusMissing(siteRoot, config, locale, options = {}) {
 
   if (config.locales.length === 0) {
     if (outputJson) {
-      log(JSON.stringify({ error: 'No translation files found', missing: [] }, null, 2))
+      log(
+        JSON.stringify(
+          { error: 'No translation files found', missing: [] },
+          null,
+          2
+        )
+      )
     } else {
-      log(`${colors.dim}No translation files found in ${config.localesDir}/.${colors.reset}`)
+      log(
+        `${colors.dim}No translation files found in ${config.localesDir}/.${colors.reset}`
+      )
     }
     return
   }
@@ -683,9 +777,10 @@ async function runStatusMissing(siteRoot, config, locale, options = {}) {
         total: result.total,
         translated: result.valid.length,
         missing: result.missing.length,
-        coverage: result.total > 0
-          ? Math.round((result.valid.length / result.total) * 100)
-          : 100
+        coverage:
+          result.total > 0
+            ? Math.round((result.valid.length / result.total) * 100)
+            : 100
       }
 
       // Add locale info to each missing entry
@@ -746,11 +841,15 @@ async function runStatusMissing(siteRoot, config, locale, options = {}) {
       }
 
       if (allMissing.length > 20) {
-        log(`\n  ${colors.dim}... and ${allMissing.length - 20} more${colors.reset}`)
+        log(
+          `\n  ${colors.dim}... and ${allMissing.length - 20} more${colors.reset}`
+        )
       }
     }
 
-    log(`\n${colors.dim}Use --json to export for translation tools.${colors.reset}`)
+    log(
+      `\n${colors.dim}Use --json to export for translation tools.${colors.reset}`
+    )
   } catch (err) {
     error(`Status check failed: ${err.message}`)
     process.exit(1)
@@ -782,7 +881,7 @@ function truncateString(str, maxLen) {
  * Audit command - find stale and missing translations
  */
 async function runAudit(siteRoot, config, args) {
-  const locale = args.find(a => !a.startsWith('-'))
+  const locale = args.find((a) => !a.startsWith('-'))
   const clean = args.includes('--clean')
   const verbose = args.includes('--verbose') || args.includes('-v')
 
@@ -798,12 +897,15 @@ async function runAudit(siteRoot, config, args) {
 
   if (config.locales.length === 0) {
     log(`${colors.dim}No translation files found in ${config.localesDir}/.`)
-    log(`Create locale files like ${config.localesDir}/es.json to add translations.${colors.reset}`)
+    log(
+      `Create locale files like ${config.localesDir}/es.json to add translations.${colors.reset}`
+    )
     return
   }
 
   try {
-    const { auditLocale, cleanLocale, formatAuditReport } = await import('@uniweb/build/i18n')
+    const { auditLocale, cleanLocale, formatAuditReport } =
+      await import('@uniweb/build/i18n')
 
     const localesToAudit = locale ? [locale] : config.locales
     const results = []
@@ -823,10 +925,16 @@ async function runAudit(siteRoot, config, args) {
 
       for (const result of results) {
         if (result.stale.length > 0) {
-          const staleHashes = result.stale.map(s => s.hash)
-          const removed = await cleanLocale(localesPath, result.locale, staleHashes)
+          const staleHashes = result.stale.map((s) => s.hash)
+          const removed = await cleanLocale(
+            localesPath,
+            result.locale,
+            staleHashes
+          )
           if (removed > 0) {
-            success(`Removed ${removed} stale entries from ${result.locale}.json`)
+            success(
+              `Removed ${removed} stale entries from ${result.locale}.json`
+            )
             totalRemoved += removed
           }
         }
@@ -837,19 +945,30 @@ async function runAudit(siteRoot, config, args) {
       }
     } else {
       // Suggest --clean if there are stale entries
-      const hasStale = results.some(r => r.stale.length > 0)
+      const hasStale = results.some((r) => r.stale.length > 0)
       if (hasStale) {
-        log(`\n${colors.dim}Run with --clean to remove stale entries.${colors.reset}`)
+        log(
+          `\n${colors.dim}Run with --clean to remove stale entries.${colors.reset}`
+        )
       }
     }
 
     // Report entries that need inline tag updates
-    const needsTagsTotal = results.reduce((sum, r) => sum + (r.needsTags?.length || 0), 0)
+    const needsTagsTotal = results.reduce(
+      (sum, r) => sum + (r.needsTags?.length || 0),
+      0
+    )
     if (needsTagsTotal > 0) {
-      log(`\n${colors.yellow}${needsTagsTotal} translation(s) have inline marks in the source but not in the translation.`)
-      log(`These translations won't preserve accent/span styling.${colors.reset}`)
+      log(
+        `\n${colors.yellow}${needsTagsTotal} translation(s) have inline marks in the source but not in the translation.`
+      )
+      log(
+        `These translations won't preserve accent/span styling.${colors.reset}`
+      )
       if (!verbose) {
-        log(`${colors.dim}Run with --verbose to see which entries are affected.${colors.reset}`)
+        log(
+          `${colors.dim}Run with --verbose to see which entries are affected.${colors.reset}`
+        )
       }
     }
   } catch (err) {
@@ -880,7 +999,9 @@ async function runInitFreeform(siteRoot, config, args) {
     log(`${colors.dim}Examples:`)
     log('  uniweb i18n init-freeform es pages/about hero')
     log('  uniweb i18n init-freeform es page-ids/installation intro')
-    log(`  uniweb i18n init-freeform es collections/articles getting-started${colors.reset}`)
+    log(
+      `  uniweb i18n init-freeform es collections/articles getting-started${colors.reset}`
+    )
     process.exit(1)
   }
 
@@ -894,7 +1015,9 @@ async function runInitFreeform(siteRoot, config, args) {
   // Check if already exists
   if (existsSync(targetPath)) {
     error(`Translation already exists: ${relativePath}`)
-    log(`${colors.dim}Edit it directly or use 'update-hash' after changes.${colors.reset}`)
+    log(
+      `${colors.dim}Edit it directly or use 'update-hash' after changes.${colors.reset}`
+    )
     process.exit(1)
   }
 
@@ -936,7 +1059,12 @@ async function runInitFreeform(siteRoot, config, args) {
     } else if (pathType.startsWith('collections/')) {
       // Find item in collection data
       const collectionName = pathType.replace('collections/', '')
-      const dataPath = join(siteRoot, 'public', 'data', `${collectionName}.json`)
+      const dataPath = join(
+        siteRoot,
+        'public',
+        'data',
+        `${collectionName}.json`
+      )
 
       if (existsSync(dataPath)) {
         const dataRaw = await readFile(dataPath, 'utf-8')
@@ -971,7 +1099,9 @@ async function runInitFreeform(siteRoot, config, args) {
     await recordHash(freeformDir, relativePath, sourceHash)
 
     success(`Created free-form translation: ${relativePath}`)
-    log(`${colors.dim}Edit the file, then run 'update-hash' when source changes.${colors.reset}`)
+    log(
+      `${colors.dim}Edit the file, then run 'update-hash' when source changes.${colors.reset}`
+    )
   } catch (err) {
     error(`Failed to initialize free-form translation: ${err.message}`)
     process.exit(1)
@@ -1058,7 +1188,9 @@ async function runUpdateHash(siteRoot, config, args) {
 
   if (!locale) {
     error('Usage: uniweb i18n update-hash <locale> [path] [section-id]')
-    log(`${colors.dim}Or: uniweb i18n update-hash <locale> --all-stale${colors.reset}`)
+    log(
+      `${colors.dim}Or: uniweb i18n update-hash <locale> --all-stale${colors.reset}`
+    )
     process.exit(1)
   }
 
@@ -1089,7 +1221,11 @@ async function runUpdateHash(siteRoot, config, args) {
     } = await import('@uniweb/build/i18n')
 
     // Build source hashes map
-    const sourceHashes = buildSourceHashMap(siteContent, buildFreeformPath, computeSourceHash)
+    const sourceHashes = buildSourceHashMap(
+      siteContent,
+      buildFreeformPath,
+      computeSourceHash
+    )
 
     if (allStale) {
       // Update all stale translations
@@ -1165,7 +1301,9 @@ async function runMove(siteRoot, config, args) {
 
   if (!oldPath || !newPath) {
     error('Usage: uniweb i18n move <old-path> <new-path>')
-    log(`${colors.dim}Example: uniweb i18n move pages/docs/setup pages/getting-started${colors.reset}`)
+    log(
+      `${colors.dim}Example: uniweb i18n move pages/docs/setup pages/getting-started${colors.reset}`
+    )
     process.exit(1)
   }
 
@@ -1182,7 +1320,7 @@ async function runMove(siteRoot, config, args) {
 
     // Find all locales with free-form translations
     const entries = await readdir(freeformPath, { withFileTypes: true })
-    const locales = entries.filter(e => e.isDirectory()).map(e => e.name)
+    const locales = entries.filter((e) => e.isDirectory()).map((e) => e.name)
 
     let totalMoved = 0
 
@@ -1220,7 +1358,9 @@ async function runMove(siteRoot, config, args) {
     }
 
     if (totalMoved > 0) {
-      success(`Moved ${totalMoved} translation file(s) across ${locales.length} locale(s)`)
+      success(
+        `Moved ${totalMoved} translation file(s) across ${locales.length} locale(s)`
+      )
     } else {
       log(`${colors.dim}No translations found at: ${oldPath}${colors.reset}`)
     }
@@ -1243,7 +1383,9 @@ async function runRename(siteRoot, config, args) {
 
   if (!path || !oldName || !newName) {
     error('Usage: uniweb i18n rename <path> <old-name> <new-name>')
-    log(`${colors.dim}Example: uniweb i18n rename pages/about hero welcome${colors.reset}`)
+    log(
+      `${colors.dim}Example: uniweb i18n rename pages/about hero welcome${colors.reset}`
+    )
     process.exit(1)
   }
 
@@ -1260,7 +1402,7 @@ async function runRename(siteRoot, config, args) {
 
     // Find all locales with free-form translations
     const entries = await readdir(freeformPath, { withFileTypes: true })
-    const locales = entries.filter(e => e.isDirectory()).map(e => e.name)
+    const locales = entries.filter((e) => e.isDirectory()).map((e) => e.name)
 
     let totalRenamed = 0
 
@@ -1285,7 +1427,9 @@ async function runRename(siteRoot, config, args) {
     if (totalRenamed > 0) {
       success(`Renamed translation in ${totalRenamed} locale(s)`)
     } else {
-      log(`${colors.dim}No translations found: ${path}/${oldName}.md${colors.reset}`)
+      log(
+        `${colors.dim}No translations found: ${path}/${oldName}.md${colors.reset}`
+      )
     }
   } catch (err) {
     error(`Failed to rename translation: ${err.message}`)
@@ -1316,7 +1460,9 @@ async function runPrune(siteRoot, config, args) {
     return
   }
 
-  log(`\n${colors.cyan}Pruning orphaned free-form translations${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`)
+  log(
+    `\n${colors.cyan}Pruning orphaned free-form translations${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`
+  )
 
   try {
     // Load site content
@@ -1349,7 +1495,7 @@ async function runPrune(siteRoot, config, args) {
 
     // Find all locales
     const entries = await readdir(freeformPath, { withFileTypes: true })
-    const locales = entries.filter(e => e.isDirectory()).map(e => e.name)
+    const locales = entries.filter((e) => e.isDirectory()).map((e) => e.name)
 
     let totalPruned = 0
 
@@ -1379,14 +1525,16 @@ async function runPrune(siteRoot, config, args) {
 
       // Update manifest
       if (!dryRun && orphaned.length > 0) {
-        const paths = orphaned.map(o => o.path)
+        const paths = orphaned.map((o) => o.path)
         await removeManifestEntries(localeDir, paths)
       }
     }
 
     if (totalPruned > 0) {
       if (dryRun) {
-        log(`\n${colors.dim}Would remove ${totalPruned} orphaned translation(s). Run without --dry-run to delete.${colors.reset}`)
+        log(
+          `\n${colors.dim}Would remove ${totalPruned} orphaned translation(s). Run without --dry-run to delete.${colors.reset}`
+        )
       } else {
         success(`\nRemoved ${totalPruned} orphaned translation(s)`)
       }
@@ -1412,7 +1560,7 @@ async function discoverFiles(dir) {
   for (const entry of entries) {
     const fullPath = join(dir, entry.name)
     if (entry.isDirectory()) {
-      files.push(...await discoverFiles(fullPath))
+      files.push(...(await discoverFiles(fullPath)))
     } else {
       files.push(fullPath)
     }

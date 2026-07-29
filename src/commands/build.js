@@ -58,9 +58,12 @@ import {
   discoverComponents,
   resolveFoundationSrcPath,
   classifyPackage,
-  isExtensionPackage,
+  isExtensionPackage
 } from '@uniweb/build'
-import { resolveDefaultLocale, normalizeLanguageList } from '@uniweb/core/locale-config'
+import {
+  resolveDefaultLocale,
+  normalizeLanguageList
+} from '@uniweb/core/locale-config'
 import { readSiteConfig } from '@uniweb/build/site'
 import { readWorkspaceConfig, resolveGlob } from '../utils/config.js'
 
@@ -72,7 +75,7 @@ const colors = {
   cyan: '\x1b[36m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
-  red: '\x1b[31m',
+  red: '\x1b[31m'
 }
 
 function log(message) {
@@ -138,7 +141,7 @@ function runCommand(command, args, cwd) {
     const proc = spawn(command, args, {
       cwd,
       stdio: 'inherit',
-      shell: true,
+      shell: true
     })
 
     proc.on('close', (code) => {
@@ -172,7 +175,7 @@ function resolveLocalVite(projectDir) {
   } catch {
     throw new Error(
       `Vite is not installed in ${projectDir}.\n` +
-      `Run \`pnpm install\` (or npm/yarn install) in the project before building.`
+        `Run \`pnpm install\` (or npm/yarn install) in the project before building.`
     )
   }
   const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf8'))
@@ -209,11 +212,15 @@ async function buildFoundation(projectDir, options = {}) {
 
   if (componentNames.length === 0) {
     error('No components found with meta.js files')
-    error(`Make sure components are in ${srcDir}/components/[Name]/ with a meta.js file`)
+    error(
+      `Make sure components are in ${srcDir}/components/[Name]/ with a meta.js file`
+    )
     process.exit(1)
   }
 
-  success(`Found ${componentNames.length} components: ${componentNames.join(', ')}`)
+  success(
+    `Found ${componentNames.length} components: ${componentNames.join(', ')}`
+  )
 
   // 2. Generate entry point
   log('')
@@ -241,8 +248,12 @@ async function buildFoundation(projectDir, options = {}) {
 
   log('')
   log(`${colors.bright}Share with clients:${colors.reset}`)
-  log(`  ${colors.bright}uniweb publish${colors.reset}              Register your foundation (one-time setup)`)
-  log(`  ${colors.bright}uniweb handoff <email>${colors.reset}      Hand off a site to a client`)
+  log(
+    `  ${colors.bright}uniweb publish${colors.reset}              Register your foundation (one-time setup)`
+  )
+  log(
+    `  ${colors.bright}uniweb handoff <email>${colors.reset}      Hand off a site to a client`
+  )
 }
 
 /**
@@ -283,7 +294,9 @@ async function ensureFoundationFresh(foundationDir, label = 'foundation') {
   const distArtifact = findFoundationDistArtifact(foundationDir)
 
   if (!distArtifact) {
-    info(`Local ${label} not built yet — building ${basename(foundationDir)} first`)
+    info(
+      `Local ${label} not built yet — building ${basename(foundationDir)} first`
+    )
     log('')
     await buildFoundation(foundationDir)
     log('')
@@ -294,7 +307,9 @@ async function ensureFoundationFresh(foundationDir, label = 'foundation') {
   const stale = isFoundationSourceNewerThan(foundationDir, distMtime)
 
   if (stale) {
-    info(`Local ${label} sources changed — rebuilding ${basename(foundationDir)}`)
+    info(
+      `Local ${label} sources changed — rebuilding ${basename(foundationDir)}`
+    )
     log('')
     await buildFoundation(foundationDir)
     log('')
@@ -342,7 +357,12 @@ function isFoundationSourceNewerThan(foundationDir, referenceMtime) {
       continue
     }
     for (const e of entries) {
-      if (e.name === 'node_modules' || e.name === 'dist' || e.name.startsWith('.')) continue
+      if (
+        e.name === 'node_modules' ||
+        e.name === 'dist' ||
+        e.name.startsWith('.')
+      )
+        continue
       const full = join(dir, e.name)
       if (e.isDirectory()) {
         stack.push(full)
@@ -351,7 +371,9 @@ function isFoundationSourceNewerThan(foundationDir, referenceMtime) {
       if (!e.isFile()) continue
       try {
         if (statSync(full).mtimeMs > referenceMtime) return true
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -386,7 +408,9 @@ async function loadI18nConfig(projectDir, siteConfig = null) {
     const dropped = locales.filter((l) => !publishSet.has(l))
     locales = locales.filter((l) => publishSet.has(l))
     if (dropped.length > 0) {
-      info(`Skipping non-publishable locale(s): ${dropped.join(', ')} (not in publishLanguages)`)
+      info(
+        `Skipping non-publishable locale(s): ${dropped.join(', ')} (not in publishLanguages)`
+      )
     }
   }
 
@@ -395,7 +419,7 @@ async function loadI18nConfig(projectDir, siteConfig = null) {
   return {
     defaultLocale: resolveDefaultLocale(config),
     locales,
-    localesDir,
+    localesDir
   }
 }
 
@@ -409,7 +433,7 @@ async function buildLocalizedContent(projectDir, i18nConfig) {
     localesDir: i18nConfig.localesDir,
     locales: i18nConfig.locales,
     outputDir: join(projectDir, 'dist'),
-    fallbackToSource: true,
+    fallbackToSource: true
   })
 
   return outputs
@@ -419,7 +443,8 @@ async function buildLocalizedContent(projectDir, i18nConfig) {
  * Generate index.html for each locale with hreflang tags
  */
 async function generateLocalizedHtml(projectDir, i18nConfig) {
-  const { readFile, writeFile, mkdir, copyFile } = await import('node:fs/promises')
+  const { readFile, writeFile, mkdir, copyFile } =
+    await import('node:fs/promises')
   const distDir = join(projectDir, 'dist')
   const baseHtmlPath = join(distDir, 'index.html')
 
@@ -430,9 +455,12 @@ async function generateLocalizedHtml(projectDir, i18nConfig) {
   let baseHtml = await readFile(baseHtmlPath, 'utf-8')
 
   // Build hreflang tags
-  const hreflangTags = i18nConfig.locales.map(locale =>
-    `<link rel="alternate" hreflang="${locale}" href="/${locale}/" />`
-  ).join('\n    ')
+  const hreflangTags = i18nConfig.locales
+    .map(
+      (locale) =>
+        `<link rel="alternate" hreflang="${locale}" href="/${locale}/" />`
+    )
+    .join('\n    ')
 
   const defaultHreflang = `<link rel="alternate" hreflang="x-default" href="/" />`
   const allHreflangTags = `${hreflangTags}\n    ${defaultHreflang}`
@@ -453,7 +481,10 @@ async function generateLocalizedHtml(projectDir, i18nConfig) {
     let localeHtml = baseHtml
 
     // Update html lang attribute
-    localeHtml = localeHtml.replace(/<html[^>]*lang="[^"]*"/, `<html lang="${locale}"`)
+    localeHtml = localeHtml.replace(
+      /<html[^>]*lang="[^"]*"/,
+      `<html lang="${locale}"`
+    )
     if (!localeHtml.includes('lang=')) {
       localeHtml = localeHtml.replace('<html', `<html lang="${locale}"`)
     }
@@ -511,11 +542,16 @@ function resolveFoundationDir(projectDir, siteConfig) {
   // Check if we're in a multi-site structure (site is under sites/)
   const parentDir = join(projectDir, '..')
   const grandParentDir = join(projectDir, '..', '..')
-  const isMultiSite = parentDir.endsWith('/sites') || parentDir.endsWith('\\sites')
+  const isMultiSite =
+    parentDir.endsWith('/sites') || parentDir.endsWith('\\sites')
 
   if (isMultiSite && foundationName) {
     // Multi-site: look for foundations/{name}
-    const multiFoundationDir = join(grandParentDir, 'foundations', foundationName)
+    const multiFoundationDir = join(
+      grandParentDir,
+      'foundations',
+      foundationName
+    )
     if (existsSync(multiFoundationDir)) {
       return multiFoundationDir
     }
@@ -579,7 +615,10 @@ async function buildSiteLink(projectDir, options = {}) {
   // theme variable defaults from `foundation.js::theme.vars`. When the
   // foundation is purely a registry ref (no local sibling), this stays
   // null and theme defaults come from theme.yml only.
-  const foundationDir = await resolveFoundationDirForSite(projectDir, siteConfig).catch(() => null)
+  const foundationDir = await resolveFoundationDirForSite(
+    projectDir,
+    siteConfig
+  ).catch(() => null)
 
   // Link mode does NOT (re)build the foundation. It reads only the
   // foundation's SOURCE config (foundation.js::theme.vars, passed as
@@ -592,7 +631,7 @@ async function buildSiteLink(projectDir, options = {}) {
     siteRoot: projectDir,
     distDir,
     foundationPath: foundationDir,
-    assets: siteConfig?.build?.assets || {},
+    assets: siteConfig?.build?.assets || {}
   })
   success(`Wrote ${join('dist', 'site-content.json')}`)
 
@@ -617,17 +656,24 @@ async function buildSiteLink(projectDir, options = {}) {
         const collectionOutputs = await buildLocalizedCollections(projectDir, {
           locales: i18nConfig.locales,
           outputDir: distDir,
-          collectionsLocalesDir: join(projectDir, i18nConfig.localesDir, 'collections'),
+          collectionsLocalesDir: join(
+            projectDir,
+            i18nConfig.localesDir,
+            'collections'
+          )
         })
         const collectionCount = Object.values(collectionOutputs).reduce(
           (sum, localeOutputs) => sum + Object.keys(localeOutputs).length,
           0
         )
         if (collectionCount > 0) {
-          success(`Translated collections for ${Object.keys(collectionOutputs).length} locale(s)`)
+          success(
+            `Translated collections for ${Object.keys(collectionOutputs).length} locale(s)`
+          )
         }
       } catch (err) {
-        if (process.env.UNIWEB_DEBUG) console.error('Collection translation:', err.message)
+        if (process.env.UNIWEB_DEBUG)
+          console.error('Collection translation:', err.message)
       }
     } catch (err) {
       error(`i18n build failed: ${err.message}`)
@@ -637,7 +683,9 @@ async function buildSiteLink(projectDir, options = {}) {
   }
 
   log('')
-  log(`${colors.green}${colors.bright}Build complete (link mode)${colors.reset}`)
+  log(
+    `${colors.green}${colors.bright}Build complete (link mode)${colors.reset}`
+  )
 }
 
 /**
@@ -656,7 +704,8 @@ async function resolveFoundationDirForSite(siteDir, siteConfig) {
   if (!foundation || typeof foundation !== 'string') return null
   // Registry ref or URL — no local foundation.
   if (/^@[a-z0-9_-]+\/[a-z0-9_-]+@/.test(foundation)) return null
-  if (foundation.startsWith('http://') || foundation.startsWith('https://')) return null
+  if (foundation.startsWith('http://') || foundation.startsWith('https://'))
+    return null
 
   // Workspace sibling.
   const sibling = resolve(siteDir, '..', foundation)
@@ -670,7 +719,9 @@ async function resolveFoundationDirForSite(siteDir, siteConfig) {
       const filePath = resolve(siteDir, dep.slice(5))
       if (existsSync(filePath)) return filePath
     }
-  } catch { /* no package.json or malformed — fall through */ }
+  } catch {
+    /* no package.json or malformed — fall through */
+  }
 
   return null
 }
@@ -679,7 +730,12 @@ async function resolveFoundationDirForSite(siteDir, siteConfig) {
  * Build a site
  */
 async function buildSite(projectDir, options = {}) {
-  const { prerender = false, foundationDir, siteConfig = null, host = null } = options
+  const {
+    prerender = false,
+    foundationDir,
+    siteConfig = null,
+    host = null
+  } = options
 
   info('Building site...')
 
@@ -721,16 +777,23 @@ async function buildSite(projectDir, options = {}) {
         const collectionOutputs = await buildLocalizedCollections(projectDir, {
           locales: i18nConfig.locales,
           outputDir: join(projectDir, 'dist'),
-          collectionsLocalesDir: join(projectDir, i18nConfig.localesDir, 'collections')
+          collectionsLocalesDir: join(
+            projectDir,
+            i18nConfig.localesDir,
+            'collections'
+          )
         })
 
         // Count collections translated
         const collectionCount = Object.values(collectionOutputs).reduce(
-          (sum, localeOutputs) => sum + Object.keys(localeOutputs).length, 0
+          (sum, localeOutputs) => sum + Object.keys(localeOutputs).length,
+          0
         )
 
         if (collectionCount > 0) {
-          success(`Translated collections for ${Object.keys(collectionOutputs).length} locale(s)`)
+          success(
+            `Translated collections for ${Object.keys(collectionOutputs).length} locale(s)`
+          )
         }
       } catch (err) {
         // Collection translation is optional, don't fail build
@@ -757,12 +820,15 @@ async function buildSite(projectDir, options = {}) {
       const { prerenderSite } = await import('@uniweb/build/prerender')
 
       const result = await prerenderSite(projectDir, {
-        foundationDir: foundationDir || resolveFoundationDir(projectDir, siteConfig),
+        foundationDir:
+          foundationDir || resolveFoundationDir(projectDir, siteConfig),
         host,
         onProgress: (msg) => log(`  ${colors.dim}${msg}${colors.reset}`)
       })
 
-      success(`Pre-rendered ${result.pages} page${result.pages !== 1 ? 's' : ''} to static HTML`)
+      success(
+        `Pre-rendered ${result.pages} page${result.pages !== 1 ? 's' : ''} to static HTML`
+      )
 
       // Summary
       log('')
@@ -780,13 +846,21 @@ async function buildSite(projectDir, options = {}) {
       if (err.message.includes('Foundation not found')) {
         log('')
         log(`${colors.yellow}This usually means:${colors.reset}`)
-        log(`  1. The foundation hasn't been built yet (run foundation build first)`)
+        log(
+          `  1. The foundation hasn't been built yet (run foundation build first)`
+        )
         log(`  2. The foundation name in site.yml doesn't match your setup`)
         log('')
         log(`${colors.dim}Check that:${colors.reset}`)
-        log(`  • site.yml 'foundation:' matches the package name in your foundation's package.json`)
-        log(`  • site's package.json has a dependency pointing to the correct foundation path`)
-        log(`  • The foundation's dist/entry.js exists (build the foundation first)`)
+        log(
+          `  • site.yml 'foundation:' matches the package name in your foundation's package.json`
+        )
+        log(
+          `  • site's package.json has a dependency pointing to the correct foundation path`
+        )
+        log(
+          `  • The foundation's dist/entry.js exists (build the foundation first)`
+        )
       }
 
       if (process.env.UNIWEB_DEBUG) {
@@ -861,9 +935,14 @@ async function buildWorkspace(workspaceDir, options = {}) {
   log(`${colors.cyan}${colors.bright}Building workspace...${colors.reset}`)
   log('')
 
-  const { foundations, extensions, sites } = await discoverWorkspacePackages(workspaceDir)
+  const { foundations, extensions, sites } =
+    await discoverWorkspacePackages(workspaceDir)
 
-  if (foundations.length === 0 && extensions.length === 0 && sites.length === 0) {
+  if (
+    foundations.length === 0 &&
+    extensions.length === 0 &&
+    sites.length === 0
+  ) {
     error('No foundations, extensions, or sites found in workspace')
     log('')
     log('Expected structure (matching pnpm-workspace.yaml globs):')
@@ -884,7 +963,9 @@ async function buildWorkspace(workspaceDir, options = {}) {
   // Build extensions (they are foundations, but logged distinctly)
   for (const extension of extensions) {
     const label = isExtensionDir(extension.path) ? 'extension' : 'foundation'
-    log(`${colors.bright}[${extension.name}]${colors.reset} ${colors.dim}(${label})${colors.reset}`)
+    log(
+      `${colors.bright}[${extension.name}]${colors.reset} ${colors.dim}(${label})${colors.reset}`
+    )
     await buildFoundation(extension.path)
     log('')
   }
@@ -928,16 +1009,28 @@ function showNextSteps(hasFoundations, hasSites) {
   if (hasFoundations) {
     log('')
     log(`${colors.bright}Share with clients:${colors.reset}`)
-    log(`  ${colors.bright}uniweb register${colors.reset}             Release your foundation to the catalog (alias: uniweb release)`)
-    log(`  ${colors.bright}uniweb handoff <email>${colors.reset}      Hand off a site to a client`)
+    log(
+      `  ${colors.bright}uniweb register${colors.reset}             Release your foundation to the catalog (alias: uniweb release)`
+    )
+    log(
+      `  ${colors.bright}uniweb handoff <email>${colors.reset}      Hand off a site to a client`
+    )
   }
   if (hasSites) {
     log('')
     log(`${colors.bright}Ship a site:${colors.reset}`)
-    log(`  ${colors.bright}uniweb deploy${colors.reset}             Pick a host and ship (asks where, then remembers)`)
-    log(`  ${colors.bright}uniweb add ci --host${colors.reset}=…    Deploy on every push (free hosts; adds PR previews)`)
-    log(`  ${colors.bright}uniweb publish${colors.reset}            Uniweb Cloud (brings the foundation along)`)
-    log(`  Or upload ${colors.cyan}dist/${colors.reset} (\`uniweb export\`) to any static host`)
+    log(
+      `  ${colors.bright}uniweb deploy${colors.reset}             Pick a host and ship (asks where, then remembers)`
+    )
+    log(
+      `  ${colors.bright}uniweb add ci --host${colors.reset}=…    Deploy on every push (free hosts; adds PR previews)`
+    )
+    log(
+      `  ${colors.bright}uniweb publish${colors.reset}            Uniweb Cloud (brings the foundation along)`
+    )
+    log(
+      `  Or upload ${colors.cyan}dist/${colors.reset} (\`uniweb export\`) to any static host`
+    )
   }
 }
 
@@ -972,7 +1065,9 @@ export async function build(args = []) {
   const linkFlag = args.includes('--link')
   const bundleFlag = args.includes('--bundle')
   if (linkFlag && bundleFlag) {
-    error('Cannot pass both --link and --bundle (they select different build pipelines)')
+    error(
+      'Cannot pass both --link and --bundle (they select different build pipelines)'
+    )
     process.exit(1)
   }
 
@@ -1010,7 +1105,9 @@ export async function build(args = []) {
 
     if (!targetType) {
       error('Could not detect project type')
-      log('Use --target foundation or --target site, or run from workspace root')
+      log(
+        'Use --target foundation or --target site, or run from workspace root'
+      )
       process.exit(1)
     }
 
@@ -1021,7 +1118,9 @@ export async function build(args = []) {
 
   // Validate prerender flags are only used with site/workspace target
   if ((prerenderFlag || noPrerenderFlag) && targetType === 'foundation') {
-    error('--prerender/--no-prerender can only be used with site or workspace builds')
+    error(
+      '--prerender/--no-prerender can only be used with site or workspace builds'
+    )
     process.exit(1)
   }
 
@@ -1052,7 +1151,9 @@ export async function build(args = []) {
       // emitted (and what doesn't).
       if (linkFlag) {
         if (prerenderFlag) {
-          error('--prerender does not apply to link mode (no static HTML is produced)')
+          error(
+            '--prerender does not apply to link mode (no static HTML is produced)'
+          )
           process.exit(1)
         }
         await buildSiteLink(projectDir, { siteConfig })
@@ -1072,14 +1173,16 @@ export async function build(args = []) {
       // to the local foundation when the user runs `uniweb build` from a
       // site dir on a fresh checkout where dist/ doesn't exist yet.
       const resolvedFoundationDir =
-        foundationDir
-        || (await resolveFoundationDirForSite(projectDir, siteConfig).catch(() => null))
+        foundationDir ||
+        (await resolveFoundationDirForSite(projectDir, siteConfig).catch(
+          () => null
+        ))
 
       await buildSite(projectDir, {
         prerender,
         foundationDir: resolvedFoundationDir,
         siteConfig,
-        host,
+        host
       })
     }
   } catch (err) {

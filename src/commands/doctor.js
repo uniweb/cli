@@ -2,10 +2,20 @@
  * uniweb doctor - Diagnose project configuration issues
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs'
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+  mkdirSync
+} from 'node:fs'
 import { join, resolve, basename, dirname, relative } from 'node:path'
 import yaml from 'js-yaml'
-import { resolveFoundationSrcPath, classifyPackage, isExtensionPackage as buildIsExtensionPackage } from '@uniweb/build'
+import {
+  resolveFoundationSrcPath,
+  classifyPackage,
+  isExtensionPackage as buildIsExtensionPackage
+} from '@uniweb/build'
 import { loadDeployYml } from '@uniweb/build/site'
 import { listAdapters } from '@uniweb/build/hosts'
 import { getCliVersion } from '../versions.js'
@@ -125,7 +135,11 @@ function loadPackageJson(dir) {
 function loadSiteYml(dir) {
   const ymlPath = join(dir, 'site.yml')
   const yamlPath = join(dir, 'site.yaml')
-  const configPath = existsSync(ymlPath) ? ymlPath : existsSync(yamlPath) ? yamlPath : null
+  const configPath = existsSync(ymlPath)
+    ? ymlPath
+    : existsSync(yamlPath)
+      ? yamlPath
+      : null
   if (!configPath) return null
   try {
     return yaml.load(readFileSync(configPath, 'utf8'))
@@ -147,7 +161,8 @@ export async function doctor(args = []) {
   // each diagnostic below so the rewrite happens with full context.
   const fixFlag = parseFixFlag(args)
   const shouldFix = (id) => fixFlag === 'all' || fixFlag === id
-  const fixed = (msg) => console.log(`  ${colors.green}↳ Fixed:${colors.reset} ${msg}`)
+  const fixed = (msg) =>
+    console.log(`  ${colors.green}↳ Fixed:${colors.reset} ${msg}`)
 
   const projectDir = resolve(process.cwd())
 
@@ -157,7 +172,9 @@ export async function doctor(args = []) {
 
   if (!workspaceDir) {
     error('Not in a Uniweb workspace')
-    log(`${colors.dim}Run this command from your project root or a site/foundation directory.${colors.reset}`)
+    log(
+      `${colors.dim}Run this command from your project root or a site/foundation directory.${colors.reset}`
+    )
     process.exit(1)
   }
 
@@ -181,31 +198,42 @@ export async function doctor(args = []) {
       issues.push({
         id: 'workspace-yaml-malformed',
         type: 'error',
-        message: 'pnpm-workspace.yaml is malformed and could not be parsed.',
+        message: 'pnpm-workspace.yaml is malformed and could not be parsed.'
       })
       error('pnpm-workspace.yaml is malformed and could not be parsed.')
     }
     const rootPkg = loadPackageJson(workspaceDir)
-    const pkgWorkspaces = Array.isArray(rootPkg?.workspaces) ? rootPkg.workspaces : []
+    const pkgWorkspaces = Array.isArray(rootPkg?.workspaces)
+      ? rootPkg.workspaces
+      : []
     const ymlSet = new Set(ymlPackages)
     const pkgSet = new Set(pkgWorkspaces)
-    const onlyInYml = [...ymlSet].filter(g => !pkgSet.has(g))
-    const onlyInPkg = [...pkgSet].filter(g => !ymlSet.has(g))
+    const onlyInYml = [...ymlSet].filter((g) => !pkgSet.has(g))
+    const onlyInPkg = [...pkgSet].filter((g) => !ymlSet.has(g))
     if (onlyInYml.length || onlyInPkg.length) {
       const issue = {
         id: 'workspace-manifests-out-of-sync',
         type: 'warn',
         message: `pnpm-workspace.yaml and package.json::workspaces declare different package globs.`,
-        details: { onlyInYml, onlyInPkg },
+        details: { onlyInYml, onlyInPkg }
       }
       issues.push(issue)
-      warn(`[workspace-manifests-out-of-sync] pnpm-workspace.yaml and package.json::workspaces are out of sync:`)
-      if (onlyInYml.length) log(`    only in pnpm-workspace.yaml:        ${onlyInYml.join(', ')}`)
-      if (onlyInPkg.length) log(`    only in package.json::workspaces:    ${onlyInPkg.join(', ')}`)
+      warn(
+        `[workspace-manifests-out-of-sync] pnpm-workspace.yaml and package.json::workspaces are out of sync:`
+      )
+      if (onlyInYml.length)
+        log(`    only in pnpm-workspace.yaml:        ${onlyInYml.join(', ')}`)
+      if (onlyInPkg.length)
+        log(`    only in package.json::workspaces:    ${onlyInPkg.join(', ')}`)
       if (shouldFix('workspace-manifests-out-of-sync')) {
         // Canonical resolution: write the union to both manifests.
-        const union = Array.from(new Set([...ymlPackages, ...pkgWorkspaces])).sort()
-        writeFileSync(ymlPath, yaml.dump({ packages: union }, { flowLevel: -1, quotingType: '"' }))
+        const union = Array.from(
+          new Set([...ymlPackages, ...pkgWorkspaces])
+        ).sort()
+        writeFileSync(
+          ymlPath,
+          yaml.dump({ packages: union }, { flowLevel: -1, quotingType: '"' })
+        )
         const rootPkgPath = join(workspaceDir, 'package.json')
         const rootPkgSrc = readFileSync(rootPkgPath, 'utf-8')
         const rootPkg = JSON.parse(rootPkgSrc)
@@ -214,7 +242,9 @@ export async function doctor(args = []) {
         issue.fixed = true
         fixed(`wrote union [${union.join(', ')}] to both manifests`)
       } else {
-        log(`  ${colors.dim}Pick one set of globs and copy it to the other manifest. The two should always match — pnpm reads pnpm-workspace.yaml, npm/yarn read package.json::workspaces.${colors.reset}`)
+        log(
+          `  ${colors.dim}Pick one set of globs and copy it to the other manifest. The two should always match — pnpm reads pnpm-workspace.yaml, npm/yarn read package.json::workspaces.${colors.reset}`
+        )
       }
     }
   }
@@ -243,7 +273,10 @@ export async function doctor(args = []) {
   } else {
     success(`Found ${foundations.length} foundation(s):`)
     for (const f of foundations) {
-      const nameMismatch = f.name !== f.folderName ? ` ${colors.dim}(folder: ${f.folderName}/)${colors.reset}` : ''
+      const nameMismatch =
+        f.name !== f.folderName
+          ? ` ${colors.dim}(folder: ${f.folderName}/)${colors.reset}`
+          : ''
       log(`    • ${f.name}${nameMismatch}`)
     }
   }
@@ -252,16 +285,19 @@ export async function doctor(args = []) {
     log('')
     success(`Found ${extensions.length} extension(s):`)
     for (const e of extensions) {
-      const nameMismatch = e.name !== e.folderName ? ` ${colors.dim}(folder: ${e.folderName}/)${colors.reset}` : ''
+      const nameMismatch =
+        e.name !== e.folderName
+          ? ` ${colors.dim}(folder: ${e.folderName}/)${colors.reset}`
+          : ''
       log(`    • ${e.name}${nameMismatch}`)
     }
   }
 
   // Discover sites via the canonical workspace globs (same rationale as
   // foundations above: respects whatever layout the user chose).
-  const sites = (await discoverSites(workspaceDir)).map(s => ({
+  const sites = (await discoverSites(workspaceDir)).map((s) => ({
     path: join(workspaceDir, s.path),
-    name: s.name,
+    name: s.name
   }))
 
   if (sites.length === 0) {
@@ -286,13 +322,21 @@ export async function doctor(args = []) {
     info(`Checking site: ${siteName}`)
 
     if (!siteYml) {
-      issues.push({ type: 'error', site: siteName, message: 'Missing site.yml' })
+      issues.push({
+        type: 'error',
+        site: siteName,
+        message: 'Missing site.yml'
+      })
       error('Missing site.yml')
       continue
     }
 
     if (!sitePkg) {
-      issues.push({ type: 'error', site: siteName, message: 'Missing package.json' })
+      issues.push({
+        type: 'error',
+        site: siteName,
+        message: 'Missing package.json'
+      })
       error('Missing package.json')
       continue
     }
@@ -309,12 +353,17 @@ export async function doctor(args = []) {
         id: 'agents-index-relative-links',
         type: 'warning',
         site: siteName,
-        message: 'llms.txt will use root-relative links because seo.baseUrl is unset',
+        message:
+          'llms.txt will use root-relative links because seo.baseUrl is unset'
       }
       issues.push(issue)
       warn(`[agents-index-relative-links] llms.txt links will be root-relative`)
-      log(`    Set ${colors.green}seo.baseUrl${colors.reset} in site.yml so agents get absolute URLs`)
-      log(`    (this also turns on sitemap.xml and robots.txt, which are skipped without it)`)
+      log(
+        `    Set ${colors.green}seo.baseUrl${colors.reset} in site.yml so agents get absolute URLs`
+      )
+      log(
+        `    (this also turns on sitemap.xml and robots.txt, which are skipped without it)`
+      )
     }
 
     const foundationName = siteYml.foundation
@@ -324,28 +373,41 @@ export async function doctor(args = []) {
     }
 
     // Check if foundation name matches a known foundation
-    const matchingFoundation = foundations.find(f => f.name === foundationName)
+    const matchingFoundation = foundations.find(
+      (f) => f.name === foundationName
+    )
 
     if (!matchingFoundation) {
       // Check if it might match a folder name instead
-      const folderMatch = foundations.find(f => f.folderName === foundationName)
+      const folderMatch = foundations.find(
+        (f) => f.folderName === foundationName
+      )
       if (folderMatch) {
         const issue = {
           id: 'foundation-name-mismatch',
           type: 'error',
           site: siteName,
-          message: `Foundation mismatch: site.yml uses folder name "${foundationName}" instead of package name "${folderMatch.name}"`,
+          message: `Foundation mismatch: site.yml uses folder name "${foundationName}" instead of package name "${folderMatch.name}"`
         }
         issues.push(issue)
         error(`[foundation-name-mismatch] Foundation mismatch:`)
-        log(`    site.yml says: ${colors.yellow}foundation: ${foundationName}${colors.reset}`)
-        log(`    This matches the folder name, but the package name is: ${colors.green}${folderMatch.name}${colors.reset}`)
+        log(
+          `    site.yml says: ${colors.yellow}foundation: ${foundationName}${colors.reset}`
+        )
+        log(
+          `    This matches the folder name, but the package name is: ${colors.green}${folderMatch.name}${colors.reset}`
+        )
         if (shouldFix('foundation-name-mismatch')) {
           const siteYmlPath = join(sitePath, 'site.yml')
           const updated = { ...siteYml, foundation: folderMatch.name }
-          writeFileSync(siteYmlPath, yaml.dump(updated, { flowLevel: -1, quotingType: "'" }))
+          writeFileSync(
+            siteYmlPath,
+            yaml.dump(updated, { flowLevel: -1, quotingType: "'" })
+          )
           issue.fixed = true
-          fixed(`${relative(workspaceDir, siteYmlPath)} now references "${folderMatch.name}"`)
+          fixed(
+            `${relative(workspaceDir, siteYmlPath)} now references "${folderMatch.name}"`
+          )
         } else {
           log('')
           log(`  ${colors.dim}To fix, update site.yml:${colors.reset}`)
@@ -379,21 +441,30 @@ export async function doctor(args = []) {
         id: 'missing-foundation-dep',
         type: 'error',
         site: siteName,
-        message: `Missing dependency "${foundationName}" in package.json`,
+        message: `Missing dependency "${foundationName}" in package.json`
       }
       issues.push(issue)
-      error(`[missing-foundation-dep] Missing dependency "${foundationName}" in package.json`)
+      error(
+        `[missing-foundation-dep] Missing dependency "${foundationName}" in package.json`
+      )
       const expectedPath = `file:${relative(sitePath, matchingFoundation.path)}`
       if (shouldFix('missing-foundation-dep')) {
         const sitePkgPath = join(sitePath, 'package.json')
         const updatedPkg = { ...sitePkg }
-        updatedPkg.dependencies = { ...(updatedPkg.dependencies || {}), [foundationName]: expectedPath }
+        updatedPkg.dependencies = {
+          ...(updatedPkg.dependencies || {}),
+          [foundationName]: expectedPath
+        }
         writeJsonPreservingStyle(sitePkgPath, updatedPkg)
         issue.fixed = true
-        fixed(`added "${foundationName}": "${expectedPath}" to ${relative(workspaceDir, sitePkgPath)}`)
+        fixed(
+          `added "${foundationName}": "${expectedPath}" to ${relative(workspaceDir, sitePkgPath)}`
+        )
       } else {
         log('')
-        log(`  ${colors.dim}Add to site's package.json dependencies:${colors.reset}`)
+        log(
+          `  ${colors.dim}Add to site's package.json dependencies:${colors.reset}`
+        )
         log(`    "${foundationName}": "${expectedPath}"`)
       }
       continue
@@ -406,7 +477,7 @@ export async function doctor(args = []) {
           id: 'stale-file-path',
           type: 'error',
           site: siteName,
-          message: `Dependency path doesn't exist: ${depValue}`,
+          message: `Dependency path doesn't exist: ${depValue}`
         }
         issues.push(issue)
         error(`[stale-file-path] Dependency path doesn't exist: ${depValue}`)
@@ -414,10 +485,15 @@ export async function doctor(args = []) {
         if (shouldFix('stale-file-path')) {
           const sitePkgPath = join(sitePath, 'package.json')
           const updatedPkg = { ...sitePkg }
-          updatedPkg.dependencies = { ...(updatedPkg.dependencies || {}), [foundationName]: expectedPath }
+          updatedPkg.dependencies = {
+            ...(updatedPkg.dependencies || {}),
+            [foundationName]: expectedPath
+          }
           writeJsonPreservingStyle(sitePkgPath, updatedPkg)
           issue.fixed = true
-          fixed(`updated "${foundationName}" to "${expectedPath}" in ${relative(workspaceDir, sitePkgPath)}`)
+          fixed(
+            `updated "${foundationName}" to "${expectedPath}" in ${relative(workspaceDir, sitePkgPath)}`
+          )
         } else {
           log('')
           log(`  ${colors.dim}Update site's package.json:${colors.reset}`)
@@ -439,7 +515,12 @@ export async function doctor(args = []) {
       matchingFoundation,
       workspaceDir
     )) {
-      issues.push({ id: finding.id, type: finding.severity, site: siteName, message: finding.message })
+      issues.push({
+        id: finding.id,
+        type: finding.severity,
+        site: siteName,
+        message: finding.message
+      })
       error(`[${finding.id}] ${finding.message}`)
       log(`${colors.dim}${finding.detail}${colors.reset}`)
       log('')
@@ -516,7 +597,7 @@ export async function doctor(args = []) {
   // Check if any foundation with extension: true is wired as a primary foundation
   for (const f of foundations) {
     if (isExtensionPackage(f.path)) {
-      const sitesUsingAsPrimary = sites.filter(s => {
+      const sitesUsingAsPrimary = sites.filter((s) => {
         const siteYml = loadSiteYml(s.path)
         return siteYml?.foundation === f.name
       })
@@ -526,8 +607,12 @@ export async function doctor(args = []) {
           site: site.name,
           message: `Foundation "${f.name}" declares extension: true but is wired as the primary foundation. It should be in extensions: instead.`
         })
-        warn(`"${f.name}" is an extension but used as primary foundation in site "${site.name}"`)
-        log(`  ${colors.dim}Move it to extensions: in site.yml instead of foundation:${colors.reset}`)
+        warn(
+          `"${f.name}" is an extension but used as primary foundation in site "${site.name}"`
+        )
+        log(
+          `  ${colors.dim}Move it to extensions: in site.yml instead of foundation:${colors.reset}`
+        )
       }
     }
   }
@@ -541,16 +626,23 @@ export async function doctor(args = []) {
       if (typeof extUrl !== 'string') continue
 
       // Skip remote URLs — can't validate those
-      if (extUrl.startsWith('http://') || extUrl.startsWith('https://')) continue
+      if (extUrl.startsWith('http://') || extUrl.startsWith('https://'))
+        continue
 
       // Local extension URL: check if it maps to a known extension
       // URLs like /effects/foundation.js or /extensions/effects/foundation.js
       const urlParts = extUrl.replace(/^\//, '').split('/')
-      const extName = urlParts.length >= 2 ? urlParts[urlParts.length - 2] : urlParts[0]
+      const extName =
+        urlParts.length >= 2 ? urlParts[urlParts.length - 2] : urlParts[0]
 
       // Check if a matching extension exists and is built
-      const matchingExt = extensions.find(e => e.folderName === extName || e.name === extName)
-      if (matchingExt && !existsSync(join(matchingExt.path, 'dist', 'entry.js'))) {
+      const matchingExt = extensions.find(
+        (e) => e.folderName === extName || e.name === extName
+      )
+      if (
+        matchingExt &&
+        !existsSync(join(matchingExt.path, 'dist', 'entry.js'))
+      ) {
         issues.push({
           type: 'warn',
           site: site.name,
@@ -582,9 +674,11 @@ export async function doctor(args = []) {
         id: 'deploy-yml-malformed',
         type: 'error',
         site: siteName,
-        message: `deploy.yml is malformed: ${err.message}`,
+        message: `deploy.yml is malformed: ${err.message}`
       })
-      error(`[deploy-yml-malformed] ${relative(workspaceDir, deployYmlPath)}: ${err.message}`)
+      error(
+        `[deploy-yml-malformed] ${relative(workspaceDir, deployYmlPath)}: ${err.message}`
+      )
       continue
     }
     if (!deployYml) continue
@@ -598,10 +692,14 @@ export async function doctor(args = []) {
         id: 'deploy-yml-default-unknown-target',
         type: 'error',
         site: siteName,
-        message: `deploy.yml: default '${deployYml.default}' is not in targets (known: ${targetNames.join(', ') || '(none)'})`,
+        message: `deploy.yml: default '${deployYml.default}' is not in targets (known: ${targetNames.join(', ') || '(none)'})`
       })
-      error(`[deploy-yml-default-unknown-target] ${siteName}: default '${deployYml.default}' is not declared under \`targets:\`.`)
-      log(`    ${colors.dim}Add it to targets: or change default: to one of: ${targetNames.join(', ') || '(none)'}.${colors.reset}`)
+      error(
+        `[deploy-yml-default-unknown-target] ${siteName}: default '${deployYml.default}' is not declared under \`targets:\`.`
+      )
+      log(
+        `    ${colors.dim}Add it to targets: or change default: to one of: ${targetNames.join(', ') || '(none)'}.${colors.reset}`
+      )
     }
 
     // Each target must have a host, and host should be a known adapter.
@@ -612,9 +710,11 @@ export async function doctor(args = []) {
           id: 'deploy-yml-target-missing-host',
           type: 'error',
           site: siteName,
-          message: `deploy.yml: targets.${name} is missing \`host\``,
+          message: `deploy.yml: targets.${name} is missing \`host\``
         })
-        error(`[deploy-yml-target-missing-host] ${siteName}: targets.${name} has no \`host\` field.`)
+        error(
+          `[deploy-yml-target-missing-host] ${siteName}: targets.${name} has no \`host\` field.`
+        )
         continue
       }
       // 'uniweb' is the platform default and isn't in the static-host
@@ -624,10 +724,14 @@ export async function doctor(args = []) {
           id: 'deploy-yml-unknown-host',
           type: 'warn',
           site: siteName,
-          message: `deploy.yml: targets.${name}.host '${cfg.host}' is not a known adapter`,
+          message: `deploy.yml: targets.${name}.host '${cfg.host}' is not a known adapter`
         })
-        warn(`[deploy-yml-unknown-host] ${siteName}: targets.${name}.host: '${cfg.host}' is not a known built-in adapter.`)
-        log(`    ${colors.dim}Known: ${[...knownAdapters].sort().join(', ')}, plus 'uniweb'.${colors.reset}`)
+        warn(
+          `[deploy-yml-unknown-host] ${siteName}: targets.${name}.host: '${cfg.host}' is not a known built-in adapter.`
+        )
+        log(
+          `    ${colors.dim}Known: ${[...knownAdapters].sort().join(', ')}, plus 'uniweb'.${colors.reset}`
+        )
       }
     }
 
@@ -637,7 +741,9 @@ export async function doctor(args = []) {
     // configured. A drift here means a deploy will silently lose the
     // custom domain.
     const cnamePath = join(sitePath, 'public', 'CNAME')
-    const ghTarget = Object.entries(targets).find(([, c]) => c?.host === 'github-pages')
+    const ghTarget = Object.entries(targets).find(
+      ([, c]) => c?.host === 'github-pages'
+    )
     if (ghTarget) {
       const [ghName, ghCfg] = ghTarget
       if (ghCfg.domain) {
@@ -655,9 +761,10 @@ export async function doctor(args = []) {
             id: 'github-pages-cname-mismatch',
             type: 'warn',
             site: siteName,
-            message: actual === null
-              ? `deploy.yml: targets.${ghName}.domain is '${expected}' but ${relative(workspaceDir, cnamePath)} is missing`
-              : `deploy.yml: targets.${ghName}.domain is '${expected}' but ${relative(workspaceDir, cnamePath)} contains '${actual}'`,
+            message:
+              actual === null
+                ? `deploy.yml: targets.${ghName}.domain is '${expected}' but ${relative(workspaceDir, cnamePath)} is missing`
+                : `deploy.yml: targets.${ghName}.domain is '${expected}' but ${relative(workspaceDir, cnamePath)} contains '${actual}'`
           }
           issues.push(issue)
           warn(`[github-pages-cname-mismatch] ${siteName}: ${issue.message}`)
@@ -668,7 +775,9 @@ export async function doctor(args = []) {
             issue.fixed = true
             fixed(`wrote ${relative(workspaceDir, cnamePath)} = ${expected}`)
           } else {
-            log(`    ${colors.dim}Re-run \`uniweb add ci --domain ${expected} --force\` (or pass --fix to write CNAME from deploy.yml).${colors.reset}`)
+            log(
+              `    ${colors.dim}Re-run \`uniweb add ci --domain ${expected} --force\` (or pass --fix to write CNAME from deploy.yml).${colors.reset}`
+            )
           }
         }
       } else if (existsSync(cnamePath)) {
@@ -685,10 +794,14 @@ export async function doctor(args = []) {
           id: 'github-pages-cname-orphan',
           type: 'warn',
           site: siteName,
-          message: `${relative(workspaceDir, cnamePath)} exists ('${actual}') but deploy.yml's github-pages target has no \`domain\``,
+          message: `${relative(workspaceDir, cnamePath)} exists ('${actual}') but deploy.yml's github-pages target has no \`domain\``
         })
-        warn(`[github-pages-cname-orphan] ${siteName}: ${relative(workspaceDir, cnamePath)} exists ('${actual}') but the github-pages target has no \`domain\` set.`)
-        log(`    ${colors.dim}Either add \`domain: ${actual}\` to targets.${ghName}, or delete the CNAME if you no longer want a custom domain.${colors.reset}`)
+        warn(
+          `[github-pages-cname-orphan] ${siteName}: ${relative(workspaceDir, cnamePath)} exists ('${actual}') but the github-pages target has no \`domain\` set.`
+        )
+        log(
+          `    ${colors.dim}Either add \`domain: ${actual}\` to targets.${ghName}, or delete the CNAME if you no longer want a custom domain.${colors.reset}`
+        )
       }
     }
 
@@ -698,17 +811,26 @@ export async function doctor(args = []) {
     // Not an error — site.yml's value is just dormant for that target —
     // but worth flagging so the user knows the value isn't taking effect.
     const siteYml = loadSiteYml(sitePath)
-    const workflowPath = join(workspaceDir, '.github/workflows/deploy-github-pages.yml')
+    const workflowPath = join(
+      workspaceDir,
+      '.github/workflows/deploy-github-pages.yml'
+    )
     if (siteYml?.base && existsSync(workflowPath) && ghTarget) {
       issues.push({
         id: 'site-base-overridden-by-workflow',
         type: 'warn',
         site: siteName,
-        message: `site.yml::base ('${siteYml.base}') is dormant — the GH Pages workflow sets UNIWEB_BASE at build time, which takes precedence`,
+        message: `site.yml::base ('${siteYml.base}') is dormant — the GH Pages workflow sets UNIWEB_BASE at build time, which takes precedence`
       })
-      warn(`[site-base-overridden-by-workflow] ${siteName}: site.yml has \`base: ${siteYml.base}\`, but the GH Pages workflow sets UNIWEB_BASE.`)
-      log(`    ${colors.dim}site.yml::base is the fallback when no UNIWEB_BASE env var is set. The workflow always sets it, so this value is ignored on GH Pages deploys.${colors.reset}`)
-      log(`    ${colors.dim}If the GH Pages deploy is the only target, you can remove \`base:\` from site.yml. Otherwise leave it — it still applies to other deploy targets.${colors.reset}`)
+      warn(
+        `[site-base-overridden-by-workflow] ${siteName}: site.yml has \`base: ${siteYml.base}\`, but the GH Pages workflow sets UNIWEB_BASE.`
+      )
+      log(
+        `    ${colors.dim}site.yml::base is the fallback when no UNIWEB_BASE env var is set. The workflow always sets it, so this value is ignored on GH Pages deploys.${colors.reset}`
+      )
+      log(
+        `    ${colors.dim}If the GH Pages deploy is the only target, you can remove \`base:\` from site.yml. Otherwise leave it — it still applies to other deploy targets.${colors.reset}`
+      )
     }
   }
 
@@ -717,12 +839,17 @@ export async function doctor(args = []) {
   // Check @uniweb/* dep alignment with the running CLI
   log('')
   const depSurvey = await surveyWorkspaceDeps(workspaceDir)
-  const behindDeps = depSurvey.rows.filter(r => r.status === 'behind')
+  const behindDeps = depSurvey.rows.filter((r) => r.status === 'behind')
   if (behindDeps.length > 0) {
-    const names = [...new Set(behindDeps.map(r => r.name))].sort()
-    warn(`${behindDeps.length} workspace dep declaration${behindDeps.length === 1 ? '' : 's'} lag the CLI (v${cliVersion}): ${names.join(', ')}`)
+    const names = [...new Set(behindDeps.map((r) => r.name))].sort()
+    warn(
+      `${behindDeps.length} workspace dep declaration${behindDeps.length === 1 ? '' : 's'} lag the CLI (v${cliVersion}): ${names.join(', ')}`
+    )
     info(`Run: uniweb update`)
-    issues.push({ type: 'warn', message: `${behindDeps.length} @uniweb/* dep declaration(s) behind CLI v${cliVersion}` })
+    issues.push({
+      type: 'warn',
+      message: `${behindDeps.length} @uniweb/* dep declaration(s) behind CLI v${cliVersion}`
+    })
   } else if (depSurvey.anyAhead) {
     success(`@uniweb/* deps are aligned or ahead of the CLI (v${cliVersion})`)
   } else {
@@ -746,7 +873,10 @@ export async function doctor(args = []) {
   } else if (agentsVersion !== cliVersion) {
     warn(`AGENTS.md is outdated (v${agentsVersion} → v${cliVersion})`)
     info(`Run: uniweb update`)
-    issues.push({ type: 'warn', message: `AGENTS.md outdated (v${agentsVersion} → v${cliVersion})` })
+    issues.push({
+      type: 'warn',
+      message: `AGENTS.md outdated (v${agentsVersion} → v${cliVersion})`
+    })
   } else {
     success(`AGENTS.md is up to date (v${cliVersion})`)
   }
@@ -757,9 +887,9 @@ export async function doctor(args = []) {
 
   // Fixed issues no longer count toward errors/warnings — they're
   // resolved during this run. Exit code is based on what remains.
-  const errors = issues.filter(i => i.type === 'error' && !i.fixed)
-  const warnings = issues.filter(i => i.type === 'warn' && !i.fixed)
-  const fixedCount = issues.filter(i => i.fixed).length
+  const errors = issues.filter((i) => i.type === 'error' && !i.fixed)
+  const warnings = issues.filter((i) => i.type === 'warn' && !i.fixed)
+  const fixedCount = issues.filter((i) => i.fixed).length
 
   if (errors.length === 0 && warnings.length === 0 && fixedCount === 0) {
     log('')
@@ -774,13 +904,22 @@ export async function doctor(args = []) {
       log(`${colors.red}${errors.length} error(s) remaining${colors.reset}`)
     }
     if (warnings.length > 0) {
-      log(`${colors.yellow}${warnings.length} warning(s) remaining${colors.reset}`)
+      log(
+        `${colors.yellow}${warnings.length} warning(s) remaining${colors.reset}`
+      )
     }
     if (fixFlag && (errors.length > 0 || warnings.length > 0)) {
-      log(`${colors.dim}Some issues were not auto-fixable. See the diagnostics above.${colors.reset}`)
+      log(
+        `${colors.dim}Some issues were not auto-fixable. See the diagnostics above.${colors.reset}`
+      )
     }
     log('')
   }
 
-  return { issues, errors: errors.length, warnings: warnings.length, fixed: fixedCount }
+  return {
+    issues,
+    errors: errors.length,
+    warnings: warnings.length,
+    fixed: fixedCount
+  }
 }

@@ -39,19 +39,29 @@ import { join } from 'node:path'
 import yaml from 'js-yaml'
 
 import { resolveSiteDir } from './deploy.js'
-import { isGitRepo, hasRemote, pullRemote, headProvenance } from '../utils/git.js'
+import {
+  isGitRepo,
+  hasRemote,
+  pullRemote,
+  headProvenance
+} from '../utils/git.js'
 import { probeUnpushed } from '../backend/site-sync.js'
 
 const c = {
-  reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
-  cyan: '\x1b[36m', green: '\x1b[32m', yellow: '\x1b[33m', red: '\x1b[31m',
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  dim: '\x1b[2m',
+  cyan: '\x1b[36m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  red: '\x1b[31m'
 }
 const say = {
   ok: (m) => console.log(`${c.green}✓${c.reset} ${m}`),
   info: (m) => console.log(`${c.cyan}→${c.reset} ${m}`),
   warn: (m) => console.log(`${c.yellow}⚠${c.reset} ${m}`),
   err: (m) => console.error(`${c.red}✗${c.reset} ${m}`),
-  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`),
+  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`)
 }
 
 // Forward a flag AND its value to the delegated verb. `--backend http://x` is two
@@ -65,7 +75,8 @@ function collectPassthrough(args, names) {
     const name = names.find((n) => a === n || a.startsWith(`${n}=`))
     if (!name) continue
     out.push(a)
-    if (a === name && args[i + 1] && !args[i + 1].startsWith('-')) out.push(args[++i])
+    if (a === name && args[i + 1] && !args[i + 1].startsWith('-'))
+      out.push(args[++i])
   }
   return out
 }
@@ -119,7 +130,11 @@ export async function refresh(args = [], deps = {}) {
       // order to address them in.
       return { exitCode: 1 }
     }
-    say.dim(r.changed ? 'Took new commits from the remote.' : 'Already up to date with the remote.')
+    say.dim(
+      r.changed
+        ? 'Took new commits from the remote.'
+        : 'Already up to date with the remote.'
+    )
     consulted.push('git')
   }
 
@@ -133,7 +148,11 @@ export async function refresh(args = [], deps = {}) {
     const pull = deps.pull || (await import('./pull.js')).pull
     // `--merge` rather than a plain pull: an author editing a different part of the
     // same section is not a conflict, and should not be presented as one.
-    const passthrough = collectPassthrough(args, ['--backend', '--registry', '--token'])
+    const passthrough = collectPassthrough(args, [
+      '--backend',
+      '--registry',
+      '--token'
+    ])
     const res = await pull(['--merge', ...passthrough])
     conflicts = res?.merge?.conflicted?.length ?? 0
     if (res?.exitCode && !conflicts) {
@@ -151,14 +170,20 @@ export async function refresh(args = [], deps = {}) {
   for (const s of skipped) say.dim(`Skipped: ${s}`)
 
   const git = headProvenance(siteDir)
-  if (git) say.dim(`Commit : ${git.sha.slice(0, 8)}${git.dirty ? ' (working tree has changes)' : ''}`)
+  if (git)
+    say.dim(
+      `Commit : ${git.sha.slice(0, 8)}${git.dirty ? ' (working tree has changes)' : ''}`
+    )
 
   // What is still yours to send. The point of a milestone check is knowing both
   // directions, not just that you took what was waiting.
   if (!skipBackend && siteContentUuid(siteDir)) {
     try {
       const probe = await probeUnpushed(siteDir)
-      if (probe.changed) say.dim(`Unpushed: ${probe.changed} entit${probe.changed === 1 ? 'y' : 'ies'} changed locally`)
+      if (probe.changed)
+        say.dim(
+          `Unpushed: ${probe.changed} entit${probe.changed === 1 ? 'y' : 'ies'} changed locally`
+        )
     } catch {
       /* the probe is a courtesy; never fail a refresh over it */
     }
@@ -166,7 +191,9 @@ export async function refresh(args = [], deps = {}) {
 
   console.log('')
   if (conflicts) {
-    say.err(`${conflicts} file(s) need you to resolve conflicts before pushing.`)
+    say.err(
+      `${conflicts} file(s) need you to resolve conflicts before pushing.`
+    )
     return { exitCode: 1 }
   }
   say.ok('Up to date.')

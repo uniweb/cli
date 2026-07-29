@@ -8,10 +8,18 @@
  */
 
 /** Foundation placement defaults (folder `src/`, package `src`). */
-export const FOUNDATION_KIND = { defaultDir: 'src', defaultPkg: 'src', projectSub: 'src' }
+export const FOUNDATION_KIND = {
+  defaultDir: 'src',
+  defaultPkg: 'src',
+  projectSub: 'src'
+}
 
 /** Site placement defaults (folder `site/`, package `site`). */
-export const SITE_KIND = { defaultDir: 'site', defaultPkg: 'site', projectSub: 'site' }
+export const SITE_KIND = {
+  defaultDir: 'site',
+  defaultPkg: 'site',
+  projectSub: 'site'
+}
 
 /**
  * Resolve where a foundation or site should be placed, given the user's input.
@@ -56,13 +64,13 @@ export function resolvePlacement(rootDir, name, opts, kind) {
       const last = name.split('/').filter(Boolean).pop()
       return {
         relativePath: `${parent}/${name}`.replace(/\/+/g, '/'),
-        packageName: last,
+        packageName: last
       }
     }
     const lastSegment = parent.split('/').filter(Boolean).pop() || parent
     return {
       relativePath: parent,
-      packageName: lastSegment,
+      packageName: lastSegment
     }
   }
 
@@ -72,7 +80,7 @@ export function resolvePlacement(rootDir, name, opts, kind) {
     const lastSegment = relativePath.split('/').filter(Boolean).pop()
     return {
       relativePath,
-      packageName: lastSegment,
+      packageName: lastSegment
     }
   }
 
@@ -80,7 +88,7 @@ export function resolvePlacement(rootDir, name, opts, kind) {
   if (name) {
     return {
       relativePath: name,
-      packageName: name,
+      packageName: name
     }
   }
 
@@ -88,13 +96,13 @@ export function resolvePlacement(rootDir, name, opts, kind) {
   if (opts.project) {
     return {
       relativePath: `${opts.project}/${kind.projectSub}`,
-      packageName: `${opts.project}-${kind.projectSub}`,
+      packageName: `${opts.project}-${kind.projectSub}`
     }
   }
 
   // 5. Default placement.
   return {
     relativePath: kind.defaultDir,
-    packageName: kind.defaultPkg,
+    packageName: kind.defaultPkg
   }
 }

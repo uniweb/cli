@@ -83,15 +83,27 @@ function readSessionOrigin() {
 export function getRegistryApiBaseUrl() {
   const fromEnv = process.env.UNIWEB_REGISTER_URL
   if (fromEnv) {
-    try { return new URL(fromEnv).origin } catch { /* fall through */ }
+    try {
+      return new URL(fromEnv).origin
+    } catch {
+      /* fall through */
+    }
   }
   const fromSession = readSessionOrigin()
   if (fromSession) {
-    try { return new URL(fromSession).origin } catch { return fromSession }
+    try {
+      return new URL(fromSession).origin
+    } catch {
+      return fromSession
+    }
   }
   const fromCfg = readCliConfig().registryApiUrl
   if (fromCfg) {
-    try { return new URL(fromCfg).origin } catch { return fromCfg }
+    try {
+      return new URL(fromCfg).origin
+    } catch {
+      return fromCfg
+    }
   }
   return 'https://uniweb.app'
 }
@@ -199,7 +211,7 @@ export async function writeRootPackageJson(rootDir, pkg) {
  */
 export function computeRootScripts(sites, pm = 'pnpm') {
   const scripts = {
-    build: 'uniweb build',
+    build: 'uniweb build'
   }
 
   if (sites.length === 0) {
@@ -218,7 +230,11 @@ export function computeRootScripts(sites, pm = 'pnpm') {
     // Subsequent sites get qualified dev:{name}/preview:{name}
     for (let i = 1; i < sites.length; i++) {
       scripts[`dev:${sites[i].name}`] = `uniweb dev ${sites[i].name}`
-      scripts[`preview:${sites[i].name}`] = filterCmd(pm, sites[i].name, 'preview')
+      scripts[`preview:${sites[i].name}`] = filterCmd(
+        pm,
+        sites[i].name,
+        'preview'
+      )
     }
   }
 
@@ -262,8 +278,8 @@ export async function resolveGlob(rootDir, pattern) {
       const { readdirSync } = await import('node:fs')
       const entries = readdirSync(fullPath, { withFileTypes: true })
       return entries
-        .filter(e => e.isDirectory() && !e.name.startsWith('.'))
-        .map(e => join(baseDir, e.name))
+        .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+        .map((e) => join(baseDir, e.name))
     } catch {
       return []
     }
@@ -276,9 +292,14 @@ export async function resolveGlob(rootDir, pattern) {
     try {
       const entries = readdirSync(rootDir, { withFileTypes: true })
       return entries
-        .filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
-        .filter(e => existsSync(join(rootDir, e.name, suffix)))
-        .map(e => join(e.name, suffix))
+        .filter(
+          (e) =>
+            e.isDirectory() &&
+            !e.name.startsWith('.') &&
+            e.name !== 'node_modules'
+        )
+        .filter((e) => existsSync(join(rootDir, e.name, suffix)))
+        .map((e) => join(e.name, suffix))
     } catch {
       return []
     }

@@ -27,9 +27,16 @@ export async function uploadDataBundle(client, ball, { onProgress } = {}) {
 
   const result = await client.uploadSiteAssets({
     files: [
-      { path: 'data-bundle/base.json', content_type: 'application/json', size: bytes.length, sha256, localUrl, bytes },
+      {
+        path: 'data-bundle/base.json',
+        content_type: 'application/json',
+        size: bytes.length,
+        sha256,
+        localUrl,
+        bytes
+      }
     ],
-    onProgress,
+    onProgress
   })
   if (result.failed?.length) {
     const f = result.failed[0]

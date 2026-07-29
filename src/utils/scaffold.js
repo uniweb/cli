@@ -11,7 +11,11 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
 import Handlebars from 'handlebars'
-import { copyTemplateDirectory, enumerateTemplateOutputs, registerVersions } from '../templates/processor.js'
+import {
+  copyTemplateDirectory,
+  enumerateTemplateOutputs,
+  registerVersions
+} from '../templates/processor.js'
 import { getVersionsForTemplates, getCliVersion } from '../versions.js'
 import { writeJsonPreservingStyleAsync } from './json-file.js'
 
@@ -45,7 +49,7 @@ export async function scaffoldWorkspace(targetDir, context, options = {}) {
   await copyTemplateDirectory(templatePath, targetDir, context, {
     onProgress: options.onProgress,
     onWarning: options.onWarning,
-    skip,
+    skip
   })
 }
 
@@ -87,7 +91,7 @@ export async function scaffoldFoundation(targetDir, context, options = {}) {
   const templatePath = join(TEMPLATES_DIR, 'foundation')
   await copyTemplateDirectory(templatePath, targetDir, context, {
     onProgress: options.onProgress,
-    onWarning: options.onWarning,
+    onWarning: options.onWarning
   })
 }
 
@@ -120,7 +124,7 @@ export async function scaffoldSite(targetDir, context, options = {}) {
   const templatePath = join(TEMPLATES_DIR, 'site')
   await copyTemplateDirectory(templatePath, targetDir, context, {
     onProgress: options.onProgress,
-    onWarning: options.onWarning,
+    onWarning: options.onWarning
   })
 }
 
@@ -146,7 +150,12 @@ export async function scaffoldSite(targetDir, context, options = {}) {
  *   directories. Used to migrate legacy `foundation/foundation.js`
  *   templates onto the new flat `src/main.js` layout.
  */
-export async function applyContent(contentDir, targetDir, context, options = {}) {
+export async function applyContent(
+  contentDir,
+  targetDir,
+  context,
+  options = {}
+) {
   if (!existsSync(contentDir)) return
 
   registerVersions(getVersionsForTemplates())
@@ -157,16 +166,24 @@ export async function applyContent(contentDir, targetDir, context, options = {})
     'vite.config.js',
     'entry.js',
     'index.html',
-    '.gitignore',
+    '.gitignore'
   ])
 
   // Config files that should be merged, not overwritten.
   // Keys listed here are preserved from the scaffolded version.
   const MERGE_FILES = {
-    'site.yml': ['name', 'foundation'],
+    'site.yml': ['name', 'foundation']
   }
 
-  await copyContentRecursive(contentDir, targetDir, context, STRUCTURAL_FILES, MERGE_FILES, options, 0)
+  await copyContentRecursive(
+    contentDir,
+    targetDir,
+    context,
+    STRUCTURAL_FILES,
+    MERGE_FILES,
+    options,
+    0
+  )
 }
 
 /**
@@ -178,7 +195,15 @@ export async function applyContent(contentDir, targetDir, context, options = {})
  * nested `sections/foo/foundation.js` if one existed, which is not the
  * intent.
  */
-async function copyContentRecursive(sourceDir, targetDir, context, structuralFiles, mergeFiles, options, depth = 0) {
+async function copyContentRecursive(
+  sourceDir,
+  targetDir,
+  context,
+  structuralFiles,
+  mergeFiles,
+  options,
+  depth = 0
+) {
   await fs.mkdir(targetDir, { recursive: true })
 
   const entries = readdirSync(sourceDir, { withFileTypes: true })
@@ -189,7 +214,15 @@ async function copyContentRecursive(sourceDir, targetDir, context, structuralFil
 
     if (entry.isDirectory()) {
       const targetSubDir = join(targetDir, entry.name)
-      await copyContentRecursive(sourcePath, targetSubDir, context, structuralFiles, mergeFiles, options, depth + 1)
+      await copyContentRecursive(
+        sourcePath,
+        targetSubDir,
+        context,
+        structuralFiles,
+        mergeFiles,
+        options,
+        depth + 1
+      )
     } else {
       // Determine the output filename (strip .hbs extension)
       let outputName = entry.name.endsWith('.hbs')
@@ -197,7 +230,10 @@ async function copyContentRecursive(sourceDir, targetDir, context, structuralFil
         : entry.name
 
       // Apply top-level rename (e.g. legacy `foundation.js` → `main.js`)
-      if (renames && Object.prototype.hasOwnProperty.call(renames, outputName)) {
+      if (
+        renames &&
+        Object.prototype.hasOwnProperty.call(renames, outputName)
+      ) {
         outputName = renames[outputName]
       }
 
@@ -236,7 +272,7 @@ async function copyContentRecursive(sourceDir, targetDir, context, structuralFil
       if (preserveKeys && existsSync(targetPath)) {
         const existingContent = await fs.readFile(targetPath, 'utf-8')
         const existing = yaml.load(existingContent) || {}
-        let merged = newContent ?? await fs.readFile(sourcePath, 'utf-8')
+        let merged = newContent ?? (await fs.readFile(sourcePath, 'utf-8'))
 
         for (const key of preserveKeys) {
           if (existing[key] === undefined) continue
@@ -292,7 +328,12 @@ export async function applyStarter(projectDir, context, options = {}) {
   // Apply foundation starter content
   const foundationContentDir = join(STARTER_DIR, 'foundation')
   const foundationTargetDir = join(projectDir, foundationDir)
-  await applyContent(foundationContentDir, foundationTargetDir, context, options)
+  await applyContent(
+    foundationContentDir,
+    foundationTargetDir,
+    context,
+    options
+  )
 
   // Apply site starter content
   const siteContentDir = join(STARTER_DIR, 'site')
@@ -328,7 +369,7 @@ function matchTopLevelLine(content, key) {
 function replaceTopLevelLine(content, key, replacement) {
   return content.replace(
     new RegExp(`^${escapeRegex(key)}:.*$`, 'm'),
-    () => replacement,
+    () => replacement
   )
 }
 

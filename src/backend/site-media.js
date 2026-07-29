@@ -32,7 +32,12 @@ import { contentTypeFor } from '../utils/code-upload.js'
  *   store — a transport or QUOTA refusal, and shipping content that still points at
  *   the local path would publish a broken image while only warning about it.
  */
-export async function uploadSiteMedia(client, siteDir, refs, { onProgress, warn } = {}) {
+export async function uploadSiteMedia(
+  client,
+  siteDir,
+  refs,
+  { onProgress, warn } = {}
+) {
   if (!refs?.length) return { map: {}, missing: [], failed: [] }
 
   const files = []
@@ -51,28 +56,32 @@ export async function uploadSiteMedia(client, siteDir, refs, { onProgress, warn 
       size: bytes.length,
       sha256: createHash('sha256').update(bytes).digest('hex'),
       localUrl: ref, // the rewrite key — the original content ref
-      diskPath: resolved,
+      diskPath: resolved
     })
   }
   if (!files.length) return { map: {}, missing, failed: [] }
 
   const result = await client.uploadSiteAssets({ files, onProgress })
   const failed = result.failed || []
-  for (const f of failed) warn?.(`local-media: upload failed for ${f.path} (HTTP ${f.status})`)
+  for (const f of failed)
+    warn?.(`local-media: upload failed for ${f.path} (HTTP ${f.status})`)
 
   const config = await client.discover()
   const map = {}
   for (const ref of refs) {
     const entry = result.assetsByLocalUrl[ref]
-    if (entry) map[ref] = entry.serveUrl || buildAssetUrl(client.origin, config.assetBase, entry.id, entry.ext)
+    if (entry)
+      map[ref] =
+        entry.serveUrl ||
+        buildAssetUrl(client.origin, config.assetBase, entry.id, entry.ext)
   }
   return { map, missing, failed }
 }
 
 // ─── Asset-plan refusals ──────────────────────────────────────────────────────
 //
-// There is deliberately NO status-based refusal predicate here, and re-adding one
-// would be a mistake. None of the statuses such a heuristic would match
+// There is deliberately NO status-based refusal predicate here, and re-adding
+// one would be a mistake. None of the statuses such a heuristic would match
 // means what it looks like —
 //   507  reserved for `storage_quota_exceeded`, but status alone cannot tell it
 //        from any other 507, and carries none of the numbers a user needs;
@@ -145,12 +154,20 @@ export function describeAssetRefusal(err) {
       pushBytes(notes, 'Limit', p.limit_bytes)
       // Rule 1: this is what the workspace must take on, not what would transfer.
       pushBytes(notes, 'This publish adds', p.needed_bytes)
-      notes.push('Assets already on this workspace\'s books cost nothing to re-present,')
+      notes.push(
+        "Assets already on this workspace's books cost nothing to re-present,"
+      )
       notes.push('so a change that touches only content is never refused here.')
       // Rule 2.
-      notes.push('Quota is returned by deleting the site or entity an asset was uploaded')
+      notes.push(
+        'Quota is returned by deleting the site or entity an asset was uploaded'
+      )
       notes.push('for — removing an image from content does not free it.')
-      return { headline: 'Storage quota reached — this workspace cannot take on more assets.', notes }
+      return {
+        headline:
+          'Storage quota reached — this workspace cannot take on more assets.',
+        notes
+      }
     }
     case 'asset_file_too_large': {
       const path = typeof p.path === 'string' ? p.path : null
@@ -158,7 +175,7 @@ export function describeAssetRefusal(err) {
       pushBytes(notes, 'Per-file limit', p.limit_bytes)
       return {
         headline: `Asset too large${path ? `: ${path}` : ''}`,
-        notes: [...notes, 'Shrink or re-encode the file, then re-run.'],
+        notes: [...notes, 'Shrink or re-encode the file, then re-run.']
       }
     }
     case 'asset_plan_too_large': {
@@ -166,20 +183,27 @@ export function describeAssetRefusal(err) {
       pushBytes(notes, 'Per-publish limit', p.limit_bytes)
       return {
         headline: 'Too many bytes in one publish.',
-        notes: [...notes, 'Split the media across publishes, or shrink the largest files.'],
+        notes: [
+          ...notes,
+          'Split the media across publishes, or shrink the largest files.'
+        ]
       }
     }
     case 'asset_plan_too_many_files': {
       if (Number.isFinite(p.files)) notes.push(`  Files: ${p.files}`)
-      if (Number.isFinite(p.limit)) notes.push(`  Per-publish limit: ${p.limit}`)
+      if (Number.isFinite(p.limit))
+        notes.push(`  Per-publish limit: ${p.limit}`)
       return {
         headline: 'Too many asset files in one publish.',
-        notes: [...notes, 'Split the media across publishes.'],
+        notes: [...notes, 'Split the media across publishes.']
       }
     }
     default:
       // An unrecognised reason is still more useful than nothing, but we do not
       // invent advice for it — surface it and let the generic detail follow.
-      return { headline: `Asset upload refused by the backend (${reason}).`, notes: [] }
+      return {
+        headline: `Asset upload refused by the backend (${reason}).`,
+        notes: []
+      }
   }
 }

@@ -50,16 +50,33 @@ function capture(fn) {
   return out.replace(/\x1b\[[0-9;]*m/g, '')
 }
 
-const row = (name, status, relDir = 'site', current = '1.0.0', target = '1.0.0') => ({
-  relDir, section: 'dependencies', name, current, target, status,
+const row = (
+  name,
+  status,
+  relDir = 'site',
+  current = '1.0.0',
+  target = '1.0.0'
+) => ({
+  relDir,
+  section: 'dependencies',
+  name,
+  current,
+  target,
+  status
 })
 
 // ── The stale-CLI notice ────────────────────────────────────────────
 
 test('project-local run warns when a newer CLI exists', () => {
-  const out = capture(() => printStaleCliNotice({
-    cliVersion: '0.13.5', latest: '0.13.7', isNpx: false, isGlobal: false, globalPm: null,
-  }))
+  const out = capture(() =>
+    printStaleCliNotice({
+      cliVersion: '0.13.5',
+      latest: '0.13.7',
+      isNpx: false,
+      isGlobal: false,
+      globalPm: null
+    })
+  )
 
   assert.match(out, /A newer uniweb is available/)
   assert.match(out, /v0\.13\.5/)
@@ -73,43 +90,77 @@ test('project-local run warns when a newer CLI exists', () => {
 })
 
 test('project-local run stays silent when the CLI is current', () => {
-  const out = capture(() => printStaleCliNotice({
-    cliVersion: '0.13.7', latest: '0.13.7', isNpx: false, isGlobal: false, globalPm: null,
-  }))
+  const out = capture(() =>
+    printStaleCliNotice({
+      cliVersion: '0.13.7',
+      latest: '0.13.7',
+      isNpx: false,
+      isGlobal: false,
+      globalPm: null
+    })
+  )
   assert.equal(out, '', 'a current CLI must print nothing')
 })
 
 test('a CLI ahead of the registry stays silent', () => {
   // Local dev runs unpublished versions constantly; a "newer available"
   // notice pointing backwards would be noise on every run.
-  const out = capture(() => printStaleCliNotice({
-    cliVersion: '0.14.0', latest: '0.13.7', isNpx: false, isGlobal: false, globalPm: null,
-  }))
+  const out = capture(() =>
+    printStaleCliNotice({
+      cliVersion: '0.14.0',
+      latest: '0.13.7',
+      isNpx: false,
+      isGlobal: false,
+      globalPm: null
+    })
+  )
   assert.equal(out, '')
 })
 
 test('an unknown latest version stays silent', () => {
   // Offline, or a cache miss on a non-TTY run. Absence of evidence is not
   // evidence of staleness — say nothing rather than guess.
-  const out = capture(() => printStaleCliNotice({
-    cliVersion: '0.13.5', latest: null, isNpx: false, isGlobal: false, globalPm: null,
-  }))
+  const out = capture(() =>
+    printStaleCliNotice({
+      cliVersion: '0.13.5',
+      latest: null,
+      isNpx: false,
+      isGlobal: false,
+      globalPm: null
+    })
+  )
   assert.equal(out, '')
 })
 
 test('npx runs stay silent — the version was chosen on the command line', () => {
-  const out = capture(() => printStaleCliNotice({
-    cliVersion: '0.13.5', latest: '0.13.7', isNpx: true, isGlobal: false, globalPm: null,
-  }))
+  const out = capture(() =>
+    printStaleCliNotice({
+      cliVersion: '0.13.5',
+      latest: '0.13.7',
+      isNpx: true,
+      isGlobal: false,
+      globalPm: null
+    })
+  )
   assert.equal(out, '')
 })
 
 test('global run points at the global update command, not just npx', () => {
-  const out = capture(() => printStaleCliNotice({
-    cliVersion: '0.13.5', latest: '0.13.7', isNpx: false, isGlobal: true, globalPm: 'npm',
-  }))
+  const out = capture(() =>
+    printStaleCliNotice({
+      cliVersion: '0.13.5',
+      latest: '0.13.7',
+      isNpx: false,
+      isGlobal: true,
+      globalPm: 'npm'
+    })
+  )
   assert.match(out, /A newer uniweb is available/)
-  assert.match(out, /-g uniweb/, 'a global install should be told to update itself')
+  assert.match(
+    out,
+    /-g uniweb/,
+    'a global install should be told to update itself'
+  )
 })
 
 // ── The collapsed survey ────────────────────────────────────────────
@@ -118,11 +169,15 @@ test('aligned deps do not print a row', () => {
   const report = {
     rows: [row('@uniweb/core', 'aligned'), row('@uniweb/kit', 'aligned')],
     anyDrift: false,
-    anyAhead: false,
+    anyAhead: false
   }
   const out = capture(() => printSurvey(report, '0.13.5', '0.13.5'))
 
-  assert.equal(/aligned/.test(out), false, 'identity mappings must not be listed')
+  assert.equal(
+    /aligned/.test(out),
+    false,
+    'identity mappings must not be listed'
+  )
   assert.equal(/@uniweb\/core/.test(out), false)
   // The header block still reports what is running and what the doc is stamped at.
   assert.match(out, /uniweb CLI:\s+v0\.13\.5/)
@@ -134,10 +189,10 @@ test('deps needing attention still print, with aligned ones counted', () => {
     rows: [
       row('@uniweb/core', 'behind', 'src', '0.7.29', '0.7.31'),
       row('@uniweb/kit', 'aligned'),
-      row('@uniweb/build', 'aligned'),
+      row('@uniweb/build', 'aligned')
     ],
     anyDrift: true,
-    anyAhead: false,
+    anyAhead: false
   }
   const out = capture(() => printSurvey(report, '0.13.7', '0.13.7'))
 
@@ -151,9 +206,11 @@ test('--verbose restores the full table', () => {
   const report = {
     rows: [row('@uniweb/core', 'aligned'), row('@uniweb/kit', 'aligned')],
     anyDrift: false,
-    anyAhead: false,
+    anyAhead: false
   }
-  const out = capture(() => printSurvey(report, '0.13.5', '0.13.5', { verbose: true }))
+  const out = capture(() =>
+    printSurvey(report, '0.13.5', '0.13.5', { verbose: true })
+  )
 
   assert.match(out, /@uniweb\/core/)
   assert.match(out, /@uniweb\/kit/)
@@ -161,6 +218,8 @@ test('--verbose restores the full table', () => {
 })
 
 test('an empty workspace still says so', () => {
-  const out = capture(() => printSurvey({ rows: [], anyDrift: false, anyAhead: false }, '0.13.5', null))
+  const out = capture(() =>
+    printSurvey({ rows: [], anyDrift: false, anyAhead: false }, '0.13.5', null)
+  )
   assert.match(out, /No @uniweb\/\* deps found/)
 })

@@ -17,5 +17,7 @@
  * site.yml; the runtime loads it as a federated module.
  */
 export function extractFoundationRef(info = {}, document = {}) {
-  return info?.foundation ?? info?.foundation_name ?? document?.foundation ?? null
+  return (
+    info?.foundation ?? info?.foundation_name ?? document?.foundation ?? null
+  )
 }

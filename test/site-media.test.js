@@ -9,7 +9,10 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { uploadSiteMedia, describeAssetRefusal } from '../src/backend/site-media.js'
+import {
+  uploadSiteMedia,
+  describeAssetRefusal
+} from '../src/backend/site-media.js'
 
 function makeSite() {
   const dir = mkdtempSync(join(tmpdir(), 'uw-media-'))
@@ -26,8 +29,17 @@ test('uploadSiteMedia resolves site-root refs under public/, uploads, returns re
     discover: async () => ({ assetBase: '/gateway/asset/' }),
     uploadSiteAssets: async ({ files }) => {
       captured = files
-      return { failed: [], assetsByLocalUrl: { '/images/banner.png': { id: 'SHA1', ext: 'png', serveUrl: '/gateway/asset/dist/SHA1/base.png' } } }
-    },
+      return {
+        failed: [],
+        assetsByLocalUrl: {
+          '/images/banner.png': {
+            id: 'SHA1',
+            ext: 'png',
+            serveUrl: '/gateway/asset/dist/SHA1/base.png'
+          }
+        }
+      }
+    }
   }
   try {
     const { map } = await uploadSiteMedia(client, dir, ['/images/banner.png'])
@@ -37,7 +49,9 @@ test('uploadSiteMedia resolves site-root refs under public/, uploads, returns re
     assert.equal(captured[0].content_type, 'image/png')
     assert.ok(captured[0].sha256)
     // the map embeds the backend's canonical serve_url
-    assert.deepEqual(map, { '/images/banner.png': '/gateway/asset/dist/SHA1/base.png' })
+    assert.deepEqual(map, {
+      '/images/banner.png': '/gateway/asset/dist/SHA1/base.png'
+    })
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -51,13 +65,25 @@ test('uploadSiteMedia skips (and warns) a ref whose file is missing', async () =
     discover: async () => ({ assetBase: '/gateway/asset/' }),
     uploadSiteAssets: async ({ files }) => ({
       failed: [],
-      assetsByLocalUrl: Object.fromEntries(files.map((f) => [f.localUrl, { id: 'S', ext: 'png', serveUrl: `srv:${f.localUrl}` }])),
-    }),
+      assetsByLocalUrl: Object.fromEntries(
+        files.map((f) => [
+          f.localUrl,
+          { id: 'S', ext: 'png', serveUrl: `srv:${f.localUrl}` }
+        ])
+      )
+    })
   }
   try {
-    const { map, missing, failed } = await uploadSiteMedia(client, dir, ['/images/banner.png', '/images/missing.png'], { warn: (m) => warnings.push(m) })
+    const { map, missing, failed } = await uploadSiteMedia(
+      client,
+      dir,
+      ['/images/banner.png', '/images/missing.png'],
+      { warn: (m) => warnings.push(m) }
+    )
     assert.deepEqual(Object.keys(map), ['/images/banner.png']) // only the existing file
-    assert.ok(warnings.some((m) => m.includes('missing.png') && m.includes('not found')))
+    assert.ok(
+      warnings.some((m) => m.includes('missing.png') && m.includes('not found'))
+    )
     // A missing FILE is an authoring mistake, reported apart from a failed upload:
     // callers block a push on `failed`, not on `missing`.
     assert.deepEqual(missing, ['/images/missing.png'])
@@ -72,11 +98,17 @@ test('uploadSiteMedia falls back to buildAssetUrl when the lane omits serve_url'
   const client = {
     origin: 'http://x',
     discover: async () => ({ assetBase: '/gateway/asset/' }),
-    uploadSiteAssets: async () => ({ failed: [], assetsByLocalUrl: { '/images/banner.png': { id: 'SHA9', ext: 'png' } } }), // no serveUrl
+    uploadSiteAssets: async () => ({
+      failed: [],
+      assetsByLocalUrl: { '/images/banner.png': { id: 'SHA9', ext: 'png' } }
+    }) // no serveUrl
   }
   try {
     const { map } = await uploadSiteMedia(client, dir, ['/images/banner.png'])
-    assert.equal(map['/images/banner.png'], 'http://x/gateway/asset/dist/SHA9/base.png')
+    assert.equal(
+      map['/images/banner.png'],
+      'http://x/gateway/asset/dist/SHA9/base.png'
+    )
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -86,9 +118,15 @@ test('uploadSiteMedia is a no-op for no refs (never touches the lane)', async ()
   const client = {
     origin: 'http://x',
     discover: async () => ({ assetBase: '/' }),
-    uploadSiteAssets: async () => { throw new Error('should not upload') },
+    uploadSiteAssets: async () => {
+      throw new Error('should not upload')
+    }
   }
-  assert.deepEqual(await uploadSiteMedia(client, '/tmp', []), { map: {}, missing: [], failed: [] })
+  assert.deepEqual(await uploadSiteMedia(client, '/tmp', []), {
+    map: {},
+    missing: [],
+    failed: []
+  })
 })
 
 test('uploadSiteMedia reports a failed upload separately from a missing file', async () => {
@@ -100,12 +138,16 @@ test('uploadSiteMedia reports a failed upload separately from a missing file', a
     origin: 'http://x',
     discover: async () => ({ assetBase: '/gateway/asset/' }),
     uploadSiteAssets: async () => ({
-      failed: [{ path: 'images/banner.png', status: 507, detail: 'over quota' }],
-      assetsByLocalUrl: {},
-    }),
+      failed: [
+        { path: 'images/banner.png', status: 507, detail: 'over quota' }
+      ],
+      assetsByLocalUrl: {}
+    })
   }
   try {
-    const { map, missing, failed } = await uploadSiteMedia(client, dir, ['/images/banner.png'])
+    const { map, missing, failed } = await uploadSiteMedia(client, dir, [
+      '/images/banner.png'
+    ])
     assert.deepEqual(map, {})
     assert.deepEqual(missing, [])
     assert.equal(failed.length, 1)
@@ -123,16 +165,32 @@ test('uploadSiteMedia reports a failed upload separately from a missing file', a
 test('describeAssetRefusal returns null for a refusal carrying no problem body', () => {
   // Every refusal shipped TODAY is prose — the typed reasons are agreed but not yet
   // emitted. Null means "fall through to the generic message", so this must degrade.
-  assert.equal(describeAssetRefusal(new Error('Asset plan failed: HTTP 500 Server Error')), null)
-  assert.equal(describeAssetRefusal(Object.assign(new Error('x'), { problem: null })), null)
-  assert.equal(describeAssetRefusal(Object.assign(new Error('x'), { problem: { detail: 'prose' } })), null)
+  assert.equal(
+    describeAssetRefusal(new Error('Asset plan failed: HTTP 500 Server Error')),
+    null
+  )
+  assert.equal(
+    describeAssetRefusal(Object.assign(new Error('x'), { problem: null })),
+    null
+  )
+  assert.equal(
+    describeAssetRefusal(
+      Object.assign(new Error('x'), { problem: { detail: 'prose' } })
+    ),
+    null
+  )
   assert.equal(describeAssetRefusal(null), null)
 })
 
 test('describeAssetRefusal reports a storage refusal with its numbers', () => {
   const err = Object.assign(new Error('Asset plan failed: HTTP 507'), {
     status: 507,
-    problem: { reason: 'storage_quota_exceeded', used_bytes: 5 * 1024 * 1024 * 1024, limit_bytes: 5368709120, needed_bytes: 12582912 },
+    problem: {
+      reason: 'storage_quota_exceeded',
+      used_bytes: 5 * 1024 * 1024 * 1024,
+      limit_bytes: 5368709120,
+      needed_bytes: 12582912
+    }
   })
   const out = describeAssetRefusal(err)
   assert.match(out.headline, /Storage quota reached/)
@@ -144,7 +202,12 @@ test('describeAssetRefusal reports a storage refusal with its numbers', () => {
 
 test('a storage refusal never advises removing an image, and never sizes itself from what transferred', () => {
   const err = Object.assign(new Error('x'), {
-    problem: { reason: 'storage_quota_exceeded', used_bytes: 1024, limit_bytes: 2048, needed_bytes: 4096 },
+    problem: {
+      reason: 'storage_quota_exceeded',
+      used_bytes: 1024,
+      limit_bytes: 2048,
+      needed_bytes: 4096
+    }
   })
   const body = describeAssetRefusal(err).notes.join('\n').toLowerCase()
   // Rule 2 — freeing is entity-deletion-granular; the old predicate's "remove or
@@ -160,34 +223,59 @@ test('a storage refusal never advises removing an image, and never sizes itself 
 
 test('describeAssetRefusal names the offending file for a per-file cap', () => {
   const err = Object.assign(new Error('x'), {
-    problem: { reason: 'asset_file_too_large', path: 'images/huge.png', size_bytes: 100 * 1024 * 1024, limit_bytes: 64 * 1024 * 1024 },
+    problem: {
+      reason: 'asset_file_too_large',
+      path: 'images/huge.png',
+      size_bytes: 100 * 1024 * 1024,
+      limit_bytes: 64 * 1024 * 1024
+    }
   })
   const out = describeAssetRefusal(err)
   assert.match(out.headline, /images\/huge\.png/)
-  assert.match(out.notes.join('\n'), /Size: 100 MiB[\s\S]*Per-file limit: 64 MiB/)
+  assert.match(
+    out.notes.join('\n'),
+    /Size: 100 MiB[\s\S]*Per-file limit: 64 MiB/
+  )
 })
 
 test('describeAssetRefusal covers the two plan caps and surfaces an unknown reason', () => {
-  const big = describeAssetRefusal(Object.assign(new Error('x'), {
-    problem: { reason: 'asset_plan_too_large', requested_bytes: 600 * 1024 * 1024, limit_bytes: 512 * 1024 * 1024 },
-  }))
+  const big = describeAssetRefusal(
+    Object.assign(new Error('x'), {
+      problem: {
+        reason: 'asset_plan_too_large',
+        requested_bytes: 600 * 1024 * 1024,
+        limit_bytes: 512 * 1024 * 1024
+      }
+    })
+  )
   assert.match(big.headline, /Too many bytes/)
   assert.match(big.notes.join('\n'), /Per-publish limit: 512 MiB/)
 
-  const many = describeAssetRefusal(Object.assign(new Error('x'), {
-    problem: { reason: 'asset_plan_too_many_files', files: 2000, limit: 1024 },
-  }))
+  const many = describeAssetRefusal(
+    Object.assign(new Error('x'), {
+      problem: { reason: 'asset_plan_too_many_files', files: 2000, limit: 1024 }
+    })
+  )
   assert.match(many.headline, /Too many asset files/)
-  assert.match(many.notes.join('\n'), /Files: 2000[\s\S]*Per-publish limit: 1024/)
+  assert.match(
+    many.notes.join('\n'),
+    /Files: 2000[\s\S]*Per-publish limit: 1024/
+  )
 
   // An unrecognised reason is surfaced, not swallowed — but we invent no advice.
-  const odd = describeAssetRefusal(Object.assign(new Error('x'), { problem: { reason: 'some_new_reason' } }))
+  const odd = describeAssetRefusal(
+    Object.assign(new Error('x'), { problem: { reason: 'some_new_reason' } })
+  )
   assert.match(odd.headline, /some_new_reason/)
   assert.deepEqual(odd.notes, [])
 })
 
 test('a refusal with a missing extra still produces usable lines (no "undefined" at the user)', () => {
-  const out = describeAssetRefusal(Object.assign(new Error('x'), { problem: { reason: 'storage_quota_exceeded' } }))
+  const out = describeAssetRefusal(
+    Object.assign(new Error('x'), {
+      problem: { reason: 'storage_quota_exceeded' }
+    })
+  )
   assert.match(out.headline, /Storage quota reached/)
   assert.ok(!out.notes.join('\n').includes('undefined'))
 })

@@ -25,9 +25,15 @@ import { join } from 'node:path'
  * that's a real constraint, not aesthetic.
  */
 const RESERVED_NAMES = new Set([
-  'default', 'undefined', 'null', 'true', 'false',
-  'node_modules', 'package',
-  'dist', 'build',
+  'default',
+  'undefined',
+  'null',
+  'true',
+  'false',
+  'node_modules',
+  'package',
+  'dist',
+  'build'
 ])
 
 /**
@@ -38,9 +44,12 @@ const RESERVED_NAMES = new Set([
  */
 export function validatePackageName(name, existingNames) {
   if (!name) return 'Name is required'
-  if (!/^[a-z0-9-]+$/.test(name)) return 'Use lowercase letters, numbers, and hyphens'
-  if (RESERVED_NAMES.has(name)) return `"${name}" is a reserved name — choose a different one`
-  if (existingNames?.has(name)) return `"${name}" already exists in this workspace`
+  if (!/^[a-z0-9-]+$/.test(name))
+    return 'Use lowercase letters, numbers, and hyphens'
+  if (RESERVED_NAMES.has(name))
+    return `"${name}" is a reserved name — choose a different one`
+  if (existingNames?.has(name))
+    return `"${name}" already exists in this workspace`
   return true
 }
 

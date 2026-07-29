@@ -27,7 +27,12 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'index.js')
+const CLI = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'src',
+  'index.js'
+)
 
 /** A minimal site directory, optionally carrying a deploy.yml. */
 function makeSite({ deployYml = null } = {}) {
@@ -58,11 +63,14 @@ function runDeploy(cwd, args) {
       cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, UNIWEB_SKIP_BUILD: '1', NO_COLOR: '1' },
+      env: { ...process.env, UNIWEB_SKIP_BUILD: '1', NO_COLOR: '1' }
     })
     return { code: 0, out }
   } catch (err) {
-    return { code: err.status ?? 1, out: `${err.stdout || ''}${err.stderr || ''}` }
+    return {
+      code: err.status ?? 1,
+      out: `${err.stdout || ''}${err.stderr || ''}`
+    }
   }
 }
 
@@ -96,7 +104,10 @@ test('an omitted --host lets deploy.yml decide', () => {
 test('an explicit --host=<name> overrides deploy.yml', () => {
   const dir = makeSite({ deployYml: S3_TARGET })
   try {
-    const { code, out } = runDeploy(dir, ['--host=cloudflare-pages', '--dry-run'])
+    const { code, out } = runDeploy(dir, [
+      '--host=cloudflare-pages',
+      '--dry-run'
+    ])
     assert.equal(code, 0)
     assert.match(out, /cloudflare-pages/)
     assert.doesNotMatch(out, /would deploy via host adapter: s3-cloudfront/)
@@ -127,7 +138,13 @@ test('every adapter reachable by --host can be acted on, not just resolved', () 
   // five had no deploy hook, so choosing them dead-ended after the build.
   const dir = makeSite()
   try {
-    for (const host of ['github-pages', 'cloudflare-pages', 'netlify', 'vercel', 's3-cloudfront']) {
+    for (const host of [
+      'github-pages',
+      'cloudflare-pages',
+      'netlify',
+      'vercel',
+      's3-cloudfront'
+    ]) {
       const { out } = runDeploy(dir, [`--host=${host}`, '--dry-run'])
       assert.doesNotMatch(
         out,

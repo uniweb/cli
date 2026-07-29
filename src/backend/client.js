@@ -28,8 +28,16 @@
  */
 
 import { getRegistryApiBaseUrl } from '../utils/config.js'
-import { ensureRegistryAuth, fetchMe, readRegistryAuth, isExpired } from '../utils/registry-auth.js'
-import { fetchOrgs as fetchOrgsImpl, createOrg as createOrgImpl } from '../utils/registry-orgs.js'
+import {
+  ensureRegistryAuth,
+  fetchMe,
+  readRegistryAuth,
+  isExpired
+} from '../utils/registry-auth.js'
+import {
+  fetchOrgs as fetchOrgsImpl,
+  createOrg as createOrgImpl
+} from '../utils/registry-orgs.js'
 import { uploadFoundationCode } from '../utils/code-upload.js'
 import { uploadSiteAssets } from '../utils/asset-upload.js'
 import { uploadRuntime } from '../utils/runtime-upload.js'
@@ -51,11 +59,26 @@ import { uploadRuntime } from '../utils/runtime-upload.js'
  * @returns {string} a bare origin with no trailing slash
  */
 export function resolveBackendOrigin(flag, { siteBackend } = {}) {
-  const norm = (v) => { try { return new URL(v).origin } catch { return null } }
-  if (flag) { const o = norm(flag); if (o) return o }
+  const norm = (v) => {
+    try {
+      return new URL(v).origin
+    } catch {
+      return null
+    }
+  }
+  if (flag) {
+    const o = norm(flag)
+    if (o) return o
+  }
   const env = process.env.UNIWEB_REGISTER_URL
-  if (env) { const o = norm(env); if (o) return o }
-  if (siteBackend) { const o = norm(siteBackend); if (o) return o }
+  if (env) {
+    const o = norm(env)
+    if (o) return o
+  }
+  if (siteBackend) {
+    const o = norm(siteBackend)
+    if (o) return o
+  }
   return getRegistryApiBaseUrl()
 }
 
@@ -72,7 +95,7 @@ export const DISCOVERY_DEFAULTS = {
   auth: { loginPath: '/dev/auth/login', required: true },
   delivery: { deploy: true, publish: true, broker: 'self-serve' },
   assets: { supported: false },
-  runtime: { installed: [] },
+  runtime: { installed: [] }
 }
 
 export class BackendClient {
@@ -88,8 +111,19 @@ export class BackendClient {
    * @param {string} [opts.command] - label for the login prompt ('Pushing', 'Registering', …)
    * @param {typeof fetch} [opts.fetchImpl] - injectable fetch (tests)
    */
-  constructor({ origin, originFlag, siteBackend, token, getToken, args = [], command = 'This command', fetchImpl } = {}) {
-    this.origin = (origin || resolveBackendOrigin(originFlag, { siteBackend })).replace(/\/+$/, '')
+  constructor({
+    origin,
+    originFlag,
+    siteBackend,
+    token,
+    getToken,
+    args = [],
+    command = 'This command',
+    fetchImpl
+  } = {}) {
+    this.origin = (
+      origin || resolveBackendOrigin(originFlag, { siteBackend })
+    ).replace(/\/+$/, '')
     this._token = token || process.env.UNIWEB_TOKEN || null
     this._getToken = getToken || null
     this._args = args
@@ -117,13 +151,25 @@ export class BackendClient {
       this._warnedOriginMismatch = true
       try {
         const stored = await readRegistryAuth()
-        if (stored?.token && !isExpired(stored) && stored.origin &&
-            stored.origin.replace(/\/+$/, '') !== this.origin) {
-          console.error(`\x1b[33m⚠\x1b[0m Logged in to ${stored.origin}, but this command targets ${this.origin} — the session may be rejected. Run \`uniweb login --backend ${this.origin}\`, or pass --token.`)
+        if (
+          stored?.token &&
+          !isExpired(stored) &&
+          stored.origin &&
+          stored.origin.replace(/\/+$/, '') !== this.origin
+        ) {
+          console.error(
+            `\x1b[33m⚠\x1b[0m Logged in to ${stored.origin}, but this command targets ${this.origin} — the session may be rejected. Run \`uniweb login --backend ${this.origin}\`, or pass --token.`
+          )
         }
-      } catch { /* advisory only */ }
+      } catch {
+        /* advisory only */
+      }
     }
-    this._token = await ensureRegistryAuth({ apiBase: this.origin, command: this._command, args: this._args })
+    this._token = await ensureRegistryAuth({
+      apiBase: this.origin,
+      command: this._command,
+      args: this._args
+    })
     return this._token
   }
 
@@ -143,7 +189,10 @@ export class BackendClient {
    * @param {boolean} [opts.auth=true]
    * @returns {Promise<Response>}
    */
-  async request(path, { method = 'GET', body, headers = {}, query, auth = true } = {}) {
+  async request(
+    path,
+    { method = 'GET', body, headers = {}, query, auth = true } = {}
+  ) {
     const url = new URL(path, this.origin)
     if (query) {
       for (const [k, v] of Object.entries(query)) {
@@ -154,7 +203,8 @@ export class BackendClient {
     if (auth) h.Authorization = `Bearer ${await this.token()}`
     if (body != null && h['Content-Type'] == null) {
       if (typeof body === 'string') h['Content-Type'] = 'application/json'
-      else if (body instanceof Uint8Array || Buffer.isBuffer(body)) h['Content-Type'] = 'application/zip'
+      else if (body instanceof Uint8Array || Buffer.isBuffer(body))
+        h['Content-Type'] = 'application/zip'
     }
     return this._fetch(url.href, { method, headers: h, body })
   }
@@ -201,7 +251,10 @@ export class BackendClient {
    * @returns {Promise<Response>}
    */
   async register(uwxJson) {
-    return this.request('/dev/registry/register', { method: 'POST', body: uwxJson })
+    return this.request('/dev/registry/register', {
+      method: 'POST',
+      body: uwxJson
+    })
   }
 
   /**
@@ -210,7 +263,11 @@ export class BackendClient {
    * @param {object} opts - { name, version, distDir, files?, onProgress? }
    */
   async uploadFoundationCode(opts) {
-    return uploadFoundationCode({ apiBase: this.origin, token: await this.token(), ...opts })
+    return uploadFoundationCode({
+      apiBase: this.origin,
+      token: await this.token(),
+      ...opts
+    })
   }
 
   /**
@@ -223,7 +280,10 @@ export class BackendClient {
   async readDataSchema(modelName) {
     const res = await this.request(dataSchemaPath(modelName))
     if (res.status === 404) return null
-    if (!res.ok) throw new Error(`Model-read ${modelName} failed: HTTP ${res.status} ${res.statusText}`)
+    if (!res.ok)
+      throw new Error(
+        `Model-read ${modelName} failed: HTTP ${res.status} ${res.statusText}`
+      )
     return res.json()
   }
 
@@ -245,12 +305,17 @@ export class BackendClient {
     const m = /^@([^/]+)\/([^@/]+)/.exec(String(scopedName || ''))
     if (!m) return null
     try {
-      const res = await this.request(`/dev/registry/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}`)
+      const res = await this.request(
+        `/dev/registry/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}`
+      )
       if (!res.ok) return null
       const body = await res.json().catch(() => null)
       if (!body) return null
       // The read returns `version`; callers use `latest_version`. Tolerate both.
-      return { ...body, latest_version: body.latest_version ?? body.version ?? null }
+      return {
+        ...body,
+        latest_version: body.latest_version ?? body.version ?? null
+      }
     } catch {
       return null
     }
@@ -265,27 +330,39 @@ export class BackendClient {
 
   /** POST /dev/orgs { handle } → { handle, uuid, is_primary }. Throws with the server's detail on 409/422. */
   async createOrg(handle) {
-    return createOrgImpl({ apiBase: this.origin, token: await this.token(), handle })
+    return createOrgImpl({
+      apiBase: this.origin,
+      token: await this.token(),
+      handle
+    })
   }
 
   // ── Site sync (push / pull) ─────────────────────────────────────────────────────
 
   /** POST /dev/site/content — CREATE a site from its content lane (.uwx zip). */
   async createSiteContent(buffer, { asOrg } = {}) {
-    return this.request('/dev/site/content', { method: 'POST', body: buffer, query: pushQuery(asOrg) })
+    return this.request('/dev/site/content', {
+      method: 'POST',
+      body: buffer,
+      query: pushQuery(asOrg)
+    })
   }
 
   /** POST /dev/site/content/push/{uuid} — UPDATE the content lane by site uuid (.uwx zip). */
   async updateSiteContent(uuid, buffer, { asOrg } = {}) {
     return this.request(`/dev/site/content/push/${encodeURIComponent(uuid)}`, {
-      method: 'POST', body: buffer, query: pushQuery(asOrg),
+      method: 'POST',
+      body: buffer,
+      query: pushQuery(asOrg)
     })
   }
 
   /** POST /dev/site/folder/push/{uuid} — push the folder lane, keyed by the site uuid (.uwx zip). */
   async pushFolder(uuid, buffer, { asOrg } = {}) {
     return this.request(`/dev/site/folder/push/${encodeURIComponent(uuid)}`, {
-      method: 'POST', body: buffer, query: pushQuery(asOrg),
+      method: 'POST',
+      body: buffer,
+      query: pushQuery(asOrg)
     })
   }
 
@@ -295,14 +372,14 @@ export class BackendClient {
    */
   async pullSiteContent(uuid, { etag } = {}) {
     return this.request(`/dev/site/content/pull/${encodeURIComponent(uuid)}`, {
-      headers: etag ? { 'If-None-Match': etag } : {},
+      headers: etag ? { 'If-None-Match': etag } : {}
     })
   }
 
   /** GET /dev/site/folder/pull/{uuid} — the folder lane (folder + record documents). */
   async pullFolder(uuid, { etag } = {}) {
     return this.request(`/dev/site/folder/pull/${encodeURIComponent(uuid)}`, {
-      headers: etag ? { 'If-None-Match': etag } : {},
+      headers: etag ? { 'If-None-Match': etag } : {}
     })
   }
 
@@ -323,7 +400,10 @@ export class BackendClient {
    */
   async deploy(payload, { siteUuid } = {}) {
     const body = siteUuid ? { ...payload, site_uuid: siteUuid } : payload
-    return this.request('/dev/deploy', { method: 'POST', body: JSON.stringify(body) })
+    return this.request('/dev/deploy', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
   }
 
   /**
@@ -346,7 +426,7 @@ export class BackendClient {
     return this.request(`/dev/site/publish/${encodeURIComponent(uuid)}`, {
       method: 'POST',
       query: { runtime: runtimeVersion },
-      ...(languages ? { body: JSON.stringify({ languages }) } : {}),
+      ...(languages ? { body: JSON.stringify({ languages }) } : {})
     })
   }
 
@@ -357,7 +437,9 @@ export class BackendClient {
    * @returns {Promise<Response>}
    */
   async unpublishSite(uuid) {
-    return this.request(`/dev/site/unpublish/${encodeURIComponent(uuid)}`, { method: 'POST' })
+    return this.request(`/dev/site/unpublish/${encodeURIComponent(uuid)}`, {
+      method: 'POST'
+    })
   }
 
   /**
@@ -374,7 +456,9 @@ export class BackendClient {
    */
   async siteStatus(uuid) {
     try {
-      const res = await this.request(`/dev/site/status/${encodeURIComponent(uuid)}`)
+      const res = await this.request(
+        `/dev/site/status/${encodeURIComponent(uuid)}`
+      )
       return res.ok ? await res.json().catch(() => null) : null
     } catch {
       return null
@@ -394,7 +478,9 @@ export class BackendClient {
    */
   async canGoLive(uuid) {
     try {
-      const res = await this.request(`/dev/site/${encodeURIComponent(uuid)}/can-go-live`)
+      const res = await this.request(
+        `/dev/site/${encodeURIComponent(uuid)}/can-go-live`
+      )
       return res.ok ? await res.json().catch(() => null) : null
     } catch {
       return null
@@ -409,7 +495,11 @@ export class BackendClient {
    * @param {object} opts - { distDir, files?, onProgress? }
    */
   async uploadSiteAssets(opts) {
-    return uploadSiteAssets({ apiBase: this.origin, token: await this.token(), ...opts })
+    return uploadSiteAssets({
+      apiBase: this.origin,
+      token: await this.token(),
+      ...opts
+    })
   }
 
   /**
@@ -419,14 +509,19 @@ export class BackendClient {
    * @param {object} opts - { version, distDir, files?, onProgress? }
    */
   async uploadRuntime(opts) {
-    return uploadRuntime({ apiBase: this.origin, token: await this.token(), ...opts })
+    return uploadRuntime({
+      apiBase: this.origin,
+      token: await this.token(),
+      ...opts
+    })
   }
 }
 
 /** `@scope/name` → /dev/registry/data-schemas/{scope}/{name}; a bare name → …/{name}. */
 export function dataSchemaPath(modelName) {
   const m = /^@([^/]+)\/(.+)$/.exec(modelName)
-  if (m) return `/dev/registry/data-schemas/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}`
+  if (m)
+    return `/dev/registry/data-schemas/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}`
   return `/dev/registry/data-schemas/${encodeURIComponent(modelName)}`
 }
 

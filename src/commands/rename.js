@@ -53,7 +53,7 @@ import {
   writeWorkspaceConfig,
   readRootPackageJson,
   writeRootPackageJson,
-  updateRootScripts,
+  updateRootScripts
 } from '../utils/config.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
@@ -68,7 +68,7 @@ const colors = {
   cyan: '\x1b[36m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
-  red: '\x1b[31m',
+  red: '\x1b[31m'
 }
 
 const success = (msg) => console.log(`${colors.green}✓${colors.reset} ${msg}`)
@@ -107,7 +107,9 @@ export async function rename(args = []) {
   const rootDir = findWorkspaceRoot()
   if (!rootDir) {
     error('Not in a Uniweb workspace.')
-    log(`Run this command from your project root or a site/foundation directory.`)
+    log(
+      `Run this command from your project root or a site/foundation directory.`
+    )
     process.exit(1)
   }
 
@@ -133,7 +135,11 @@ function computeNewFolderPath(rootDir, oldPath, oldName, newName) {
   const leaf = basename(oldPath)
   const folderWillRename = leaf === oldName
   if (!folderWillRename) {
-    return { folderWillRename, newPath: oldPath, newDir: join(rootDir, oldPath) }
+    return {
+      folderWillRename,
+      newPath: oldPath,
+      newDir: join(rootDir, oldPath)
+    }
   }
   const parent = dirname(oldPath)
   const newPath = parent === '.' ? newName : join(parent, newName)
@@ -146,7 +152,11 @@ function computeNewFolderPath(rootDir, oldPath, oldName, newName) {
  * (the multi-PM compatibility invariant). Wildcard entries
  * (`extensions/*`) are left alone — only specific paths get rewritten.
  */
-async function updateWorkspaceManifestsForFolderMove(rootDir, oldPath, newPath) {
+async function updateWorkspaceManifestsForFolderMove(
+  rootDir,
+  oldPath,
+  newPath
+) {
   const wsConfig = await readWorkspaceConfig(rootDir)
   const rootPkg = await readRootPackageJson(rootDir)
   if (wsConfig.packages.includes(oldPath)) {
@@ -154,7 +164,10 @@ async function updateWorkspaceManifestsForFolderMove(rootDir, oldPath, newPath) 
     wsConfig.packages[idx] = newPath
     await writeWorkspaceConfig(rootDir, wsConfig)
   }
-  if (Array.isArray(rootPkg.workspaces) && rootPkg.workspaces.includes(oldPath)) {
+  if (
+    Array.isArray(rootPkg.workspaces) &&
+    rootPkg.workspaces.includes(oldPath)
+  ) {
     const idx = rootPkg.workspaces.indexOf(oldPath)
     rootPkg.workspaces[idx] = newPath
     await writeRootPackageJson(rootDir, rootPkg)
@@ -178,7 +191,9 @@ async function validateRenameName(rootDir, newName) {
   }
   const existingNames = await getExistingPackageNames(rootDir)
   if (existingNames.has(newName)) {
-    error(`Cannot rename: a package named ${colors.bright}${newName}${colors.reset} already exists in this workspace.`)
+    error(
+      `Cannot rename: a package named ${colors.bright}${newName}${colors.reset} already exists in this workspace.`
+    )
     process.exit(1)
   }
 }
@@ -199,11 +214,13 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
   await validateRenameName(rootDir, newName)
 
   const foundations = await discoverFoundations(rootDir)
-  const target = foundations.find(f => f.name === oldName)
+  const target = foundations.find((f) => f.name === oldName)
   if (!target) {
-    error(`No foundation named ${colors.bright}${oldName}${colors.reset} in this workspace.`)
+    error(
+      `No foundation named ${colors.bright}${oldName}${colors.reset} in this workspace.`
+    )
     if (foundations.length > 0) {
-      log(`Available: ${foundations.map(f => f.name).join(', ')}`)
+      log(`Available: ${foundations.map((f) => f.name).join(', ')}`)
     }
     process.exit(1)
   }
@@ -214,17 +231,24 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
   // sites' deps + site.yml::foundation; extension rename touches
   // site.yml::extensions URLs).
   if (isExtensionPackage(join(rootDir, target.path))) {
-    error(`${colors.bright}${oldName}${colors.reset} is an extension, not a foundation.`)
+    error(
+      `${colors.bright}${oldName}${colors.reset} is an extension, not a foundation.`
+    )
     log(`Use \`${prefix} rename extension ${oldName} ${newName}\` instead.`)
     process.exit(1)
   }
 
   const oldFoundationPath = target.path
   const oldFoundationDir = join(rootDir, oldFoundationPath)
-  const { folderWillRename, newPath: newFoundationPath, newDir: newFoundationDir } =
-    computeNewFolderPath(rootDir, oldFoundationPath, oldName, newName)
+  const {
+    folderWillRename,
+    newPath: newFoundationPath,
+    newDir: newFoundationDir
+  } = computeNewFolderPath(rootDir, oldFoundationPath, oldName, newName)
   if (folderWillRename && existsSync(newFoundationDir)) {
-    error(`Cannot rename: target folder ${colors.bright}${newFoundationPath}/${colors.reset} already exists.`)
+    error(
+      `Cannot rename: target folder ${colors.bright}${newFoundationPath}/${colors.reset} already exists.`
+    )
     process.exit(1)
   }
 
@@ -263,7 +287,7 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
         siteYmlPath,
         ymlData,
         hasDep,
-        ymlMatches,
+        ymlMatches
       })
     }
   }
@@ -271,12 +295,16 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
   // ─── Print plan, then execute ────────────────────────────────
 
   log('')
-  log(`${colors.bright}Rename foundation${colors.reset}: ${colors.yellow}${oldName}${colors.reset} → ${colors.green}${newName}${colors.reset}`)
+  log(
+    `${colors.bright}Rename foundation${colors.reset}: ${colors.yellow}${oldName}${colors.reset} → ${colors.green}${newName}${colors.reset}`
+  )
   log('')
   if (folderWillRename) {
     info(`  Folder:  ${oldFoundationPath}/  →  ${newFoundationPath}/`)
   } else {
-    info(`  Folder:  ${oldFoundationPath}/  (unchanged — leaf doesn't match package name)`)
+    info(
+      `  Folder:  ${oldFoundationPath}/  (unchanged — leaf doesn't match package name)`
+    )
   }
   info(`  package.json::name:  "${oldName}"  →  "${newName}"`)
   if (affectedSites.length === 0) {
@@ -301,17 +329,24 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
       delete s.pkg.dependencies[oldName]
       s.pkg.dependencies[newName] = oldValue.startsWith('file:')
         ? `file:${newRel}`
-        : oldValue  // npm-pinned, leave it; rename-then-republish is out of scope.
+        : oldValue // npm-pinned, leave it; rename-then-republish is out of scope.
       await writeJsonPreservingStyleAsync(s.sitePkgPath, s.pkg, s.pkgSrc)
     }
     if (s.ymlMatches) {
       const newYmlData = { ...s.ymlData, foundation: newName }
-      await writeFile(s.siteYmlPath, yaml.dump(newYmlData, { flowLevel: -1, quotingType: "'" }))
+      await writeFile(
+        s.siteYmlPath,
+        yaml.dump(newYmlData, { flowLevel: -1, quotingType: "'" })
+      )
     }
   }
 
   if (folderWillRename) {
-    await updateWorkspaceManifestsForFolderMove(rootDir, oldFoundationPath, newFoundationPath)
+    await updateWorkspaceManifestsForFolderMove(
+      rootDir,
+      oldFoundationPath,
+      newFoundationPath
+    )
   }
 
   // Root scripts can reference the foundation by name (e.g. `pnpm --filter
@@ -322,7 +357,9 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
   await updateRootScripts(rootDir, freshSites, pm)
 
   log('')
-  success(`Renamed foundation ${colors.bright}${oldName}${colors.reset} → ${colors.bright}${newName}${colors.reset}`)
+  success(
+    `Renamed foundation ${colors.bright}${oldName}${colors.reset} → ${colors.bright}${newName}${colors.reset}`
+  )
   printNextSteps(prefix, pm)
 }
 
@@ -332,31 +369,42 @@ async function renameSite(rootDir, oldName, newName, prefix) {
   await validateRenameName(rootDir, newName)
 
   const sites = await discoverSites(rootDir)
-  const target = sites.find(s => s.name === oldName)
+  const target = sites.find((s) => s.name === oldName)
   if (!target) {
-    error(`No site named ${colors.bright}${oldName}${colors.reset} in this workspace.`)
+    error(
+      `No site named ${colors.bright}${oldName}${colors.reset} in this workspace.`
+    )
     if (sites.length > 0) {
-      log(`Available: ${sites.map(s => s.name).join(', ')}`)
+      log(`Available: ${sites.map((s) => s.name).join(', ')}`)
     }
     process.exit(1)
   }
 
   const oldSitePath = target.path
   const oldSiteDir = join(rootDir, oldSitePath)
-  const { folderWillRename, newPath: newSitePath, newDir: newSiteDir } =
-    computeNewFolderPath(rootDir, oldSitePath, oldName, newName)
+  const {
+    folderWillRename,
+    newPath: newSitePath,
+    newDir: newSiteDir
+  } = computeNewFolderPath(rootDir, oldSitePath, oldName, newName)
   if (folderWillRename && existsSync(newSiteDir)) {
-    error(`Cannot rename: target folder ${colors.bright}${newSitePath}/${colors.reset} already exists.`)
+    error(
+      `Cannot rename: target folder ${colors.bright}${newSitePath}/${colors.reset} already exists.`
+    )
     process.exit(1)
   }
 
   log('')
-  log(`${colors.bright}Rename site${colors.reset}: ${colors.yellow}${oldName}${colors.reset} → ${colors.green}${newName}${colors.reset}`)
+  log(
+    `${colors.bright}Rename site${colors.reset}: ${colors.yellow}${oldName}${colors.reset} → ${colors.green}${newName}${colors.reset}`
+  )
   log('')
   if (folderWillRename) {
     info(`  Folder:  ${oldSitePath}/  →  ${newSitePath}/`)
   } else {
-    info(`  Folder:  ${oldSitePath}/  (unchanged — leaf doesn't match package name)`)
+    info(
+      `  Folder:  ${oldSitePath}/  (unchanged — leaf doesn't match package name)`
+    )
   }
   info(`  package.json::name:  "${oldName}"  →  "${newName}"`)
   log('')
@@ -366,7 +414,11 @@ async function renameSite(rootDir, oldName, newName, prefix) {
   }
   await rewritePackageJsonName(join(newSiteDir, 'package.json'), newName)
   if (folderWillRename) {
-    await updateWorkspaceManifestsForFolderMove(rootDir, oldSitePath, newSitePath)
+    await updateWorkspaceManifestsForFolderMove(
+      rootDir,
+      oldSitePath,
+      newSitePath
+    )
   }
 
   // Root scripts include `pnpm --filter <site-name>` style invocations
@@ -377,7 +429,9 @@ async function renameSite(rootDir, oldName, newName, prefix) {
   await updateRootScripts(rootDir, freshSites, pm)
 
   log('')
-  success(`Renamed site ${colors.bright}${oldName}${colors.reset} → ${colors.bright}${newName}${colors.reset}`)
+  success(
+    `Renamed site ${colors.bright}${oldName}${colors.reset} → ${colors.bright}${newName}${colors.reset}`
+  )
   printNextSteps(prefix, pm)
 }
 
@@ -390,23 +444,32 @@ async function renameExtension(rootDir, oldName, newName, prefix) {
   // by `extension: true` declaration). Find via discoverFoundations,
   // then verify the extension marker.
   const foundations = await discoverFoundations(rootDir)
-  const target = foundations.find(f => f.name === oldName)
+  const target = foundations.find((f) => f.name === oldName)
   if (!target) {
-    error(`No package named ${colors.bright}${oldName}${colors.reset} in this workspace.`)
+    error(
+      `No package named ${colors.bright}${oldName}${colors.reset} in this workspace.`
+    )
     process.exit(1)
   }
   if (!isExtensionPackage(join(rootDir, target.path))) {
-    error(`${colors.bright}${oldName}${colors.reset} is a foundation, not an extension.`)
+    error(
+      `${colors.bright}${oldName}${colors.reset} is a foundation, not an extension.`
+    )
     log(`Use \`${prefix} rename foundation ${oldName} ${newName}\` instead.`)
     process.exit(1)
   }
 
   const oldExtPath = target.path
   const oldExtDir = join(rootDir, oldExtPath)
-  const { folderWillRename, newPath: newExtPath, newDir: newExtDir } =
-    computeNewFolderPath(rootDir, oldExtPath, oldName, newName)
+  const {
+    folderWillRename,
+    newPath: newExtPath,
+    newDir: newExtDir
+  } = computeNewFolderPath(rootDir, oldExtPath, oldName, newName)
   if (folderWillRename && existsSync(newExtDir)) {
-    error(`Cannot rename: target folder ${colors.bright}${newExtPath}/${colors.reset} already exists.`)
+    error(
+      `Cannot rename: target folder ${colors.bright}${newExtPath}/${colors.reset} already exists.`
+    )
     process.exit(1)
   }
 
@@ -429,19 +492,25 @@ async function renameExtension(rootDir, oldName, newName, prefix) {
       continue
     }
     const exts = Array.isArray(ymlData.extensions) ? ymlData.extensions : []
-    const hits = exts.filter(e => typeof e === 'string' && e.startsWith(oldUrlPrefix))
+    const hits = exts.filter(
+      (e) => typeof e === 'string' && e.startsWith(oldUrlPrefix)
+    )
     if (hits.length > 0) {
       affectedSites.push({ site, ymlData, siteYmlPath, hits })
     }
   }
 
   log('')
-  log(`${colors.bright}Rename extension${colors.reset}: ${colors.yellow}${oldName}${colors.reset} → ${colors.green}${newName}${colors.reset}`)
+  log(
+    `${colors.bright}Rename extension${colors.reset}: ${colors.yellow}${oldName}${colors.reset} → ${colors.green}${newName}${colors.reset}`
+  )
   log('')
   if (folderWillRename) {
     info(`  Folder:  ${oldExtPath}/  →  ${newExtPath}/`)
   } else {
-    info(`  Folder:  ${oldExtPath}/  (unchanged — leaf doesn't match package name)`)
+    info(
+      `  Folder:  ${oldExtPath}/  (unchanged — leaf doesn't match package name)`
+    )
   }
   info(`  package.json::name:  "${oldName}"  →  "${newName}"`)
   if (affectedSites.length === 0) {
@@ -449,7 +518,9 @@ async function renameExtension(rootDir, oldName, newName, prefix) {
   } else {
     info(`  Sites referencing this extension:`)
     for (const { site, hits } of affectedSites) {
-      info(`    • ${site.name} at ${site.path}/  (${hits.length} entr${hits.length === 1 ? 'y' : 'ies'})`)
+      info(
+        `    • ${site.name} at ${site.path}/  (${hits.length} entr${hits.length === 1 ? 'y' : 'ies'})`
+      )
     }
   }
   log('')
@@ -460,13 +531,16 @@ async function renameExtension(rootDir, oldName, newName, prefix) {
   await rewritePackageJsonName(join(newExtDir, 'package.json'), newName)
 
   for (const a of affectedSites) {
-    const newExts = (a.ymlData.extensions || []).map(e =>
+    const newExts = (a.ymlData.extensions || []).map((e) =>
       typeof e === 'string' && e.startsWith(oldUrlPrefix)
         ? newUrlPrefix + e.slice(oldUrlPrefix.length)
         : e
     )
     const newYmlData = { ...a.ymlData, extensions: newExts }
-    await writeFile(a.siteYmlPath, yaml.dump(newYmlData, { flowLevel: -1, quotingType: "'" }))
+    await writeFile(
+      a.siteYmlPath,
+      yaml.dump(newYmlData, { flowLevel: -1, quotingType: "'" })
+    )
   }
 
   if (folderWillRename) {
@@ -479,7 +553,9 @@ async function renameExtension(rootDir, oldName, newName, prefix) {
 
   const pm = detectPackageManager()
   log('')
-  success(`Renamed extension ${colors.bright}${oldName}${colors.reset} → ${colors.bright}${newName}${colors.reset}`)
+  success(
+    `Renamed extension ${colors.bright}${oldName}${colors.reset} → ${colors.bright}${newName}${colors.reset}`
+  )
   printNextSteps(prefix, pm)
 }
 
@@ -487,8 +563,12 @@ async function renameExtension(rootDir, oldName, newName, prefix) {
 
 function printNextSteps(prefix, pm) {
   log('')
-  log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}  ${colors.dim}(refresh symlinks under the new name)${colors.reset}`)
-  log(`      ${colors.cyan}${prefix} doctor${colors.reset}  ${colors.dim}(verify wiring)${colors.reset}`)
+  log(
+    `Next: ${colors.cyan}${installCmd(pm)}${colors.reset}  ${colors.dim}(refresh symlinks under the new name)${colors.reset}`
+  )
+  log(
+    `      ${colors.cyan}${prefix} doctor${colors.reset}  ${colors.dim}(verify wiring)${colors.reset}`
+  )
 }
 
 function showHelp(prefix) {

@@ -37,7 +37,9 @@ function readState() {
     if (existsSync(STATE_FILE)) {
       return JSON.parse(readFileSync(STATE_FILE, 'utf8'))
     }
-  } catch { /* ignore corrupt cache */ }
+  } catch {
+    /* ignore corrupt cache */
+  }
   return {}
 }
 
@@ -48,7 +50,9 @@ function writeState(state) {
   try {
     if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true })
     writeFileSync(STATE_FILE, JSON.stringify(state))
-  } catch { /* ignore write errors */ }
+  } catch {
+    /* ignore write errors */
+  }
 }
 
 /**
@@ -66,12 +70,22 @@ function printNotification(current, latest, tone = 'soft') {
   const updateCmd = globalCliUpdateCmd(detectGlobalCliPm())
   console.error('')
   if (tone === 'eager') {
-    console.error(`${yellow}Heads up:${reset} this CLI is ${dim}${current}${reset}; latest is ${cyan}${latest}${reset}.`)
-    console.error(`${dim}Templates ship with the CLI — consider updating first:${reset} ${updateCmd}`)
-    console.error(`${dim}Or run a one-shot fresh:${reset} npx uniweb@latest <command>`)
+    console.error(
+      `${yellow}Heads up:${reset} this CLI is ${dim}${current}${reset}; latest is ${cyan}${latest}${reset}.`
+    )
+    console.error(
+      `${dim}Templates ship with the CLI — consider updating first:${reset} ${updateCmd}`
+    )
+    console.error(
+      `${dim}Or run a one-shot fresh:${reset} npx uniweb@latest <command>`
+    )
   } else {
-    console.error(`${yellow}Update available:${reset} ${dim}${current}${reset} → ${cyan}${latest}${reset}`)
-    console.error(`${dim}Run${reset} ${updateCmd} ${dim}to update the CLI${reset}`)
+    console.error(
+      `${yellow}Update available:${reset} ${dim}${current}${reset} → ${cyan}${latest}${reset}`
+    )
+    console.error(
+      `${dim}Run${reset} ${updateCmd} ${dim}to update the CLI${reset}`
+    )
   }
 }
 
@@ -131,11 +145,11 @@ export const maybeEagerNotification = maybeNotifyFromCache
 export async function getLatestVersion({
   timeoutMs = 1500,
   allowNetwork = true,
-  maxAgeMs = CHECK_INTERVAL,
+  maxAgeMs = CHECK_INTERVAL
 } = {}) {
   const state = readState()
   const cached = state.latestVersion || null
-  const fresh = state.lastCheck && (Date.now() - state.lastCheck) < maxAgeMs
+  const fresh = state.lastCheck && Date.now() - state.lastCheck < maxAgeMs
   if (fresh && cached) return cached
   // A stale cache entry still beats nothing for an advisory, so it's the
   // fallback for every failure path below rather than a hard null.
@@ -144,7 +158,9 @@ export async function getLatestVersion({
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const res = await fetch('https://registry.npmjs.org/uniweb/latest', { signal: controller.signal })
+    const res = await fetch('https://registry.npmjs.org/uniweb/latest', {
+      signal: controller.signal
+    })
     if (!res.ok) return cached
     const data = await res.json()
     const latest = data?.version || null
@@ -175,12 +191,17 @@ export async function getLatestVersion({
  * @param {'eager'|'soft'} [opts.tone='soft'] Notification copy.
  * @returns {Promise<boolean>} true if a notice was printed.
  */
-export async function fetchAndNotifyIfNewer(currentVersion, { timeoutMs = 1500, tone = 'soft' } = {}) {
+export async function fetchAndNotifyIfNewer(
+  currentVersion,
+  { timeoutMs = 1500, tone = 'soft' } = {}
+) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   let latest = null
   try {
-    const res = await fetch('https://registry.npmjs.org/uniweb/latest', { signal: controller.signal })
+    const res = await fetch('https://registry.npmjs.org/uniweb/latest', {
+      signal: controller.signal
+    })
     if (res.ok) {
       const data = await res.json()
       latest = data?.version || null
@@ -213,8 +234,11 @@ export function startUpdateCheck(currentVersion) {
   const state = readState()
 
   // Use cached result if checked recently
-  if (state.lastCheck && (Date.now() - state.lastCheck) < CHECK_INTERVAL) {
-    if (state.latestVersion && compareSemver(state.latestVersion, currentVersion) > 0) {
+  if (state.lastCheck && Date.now() - state.lastCheck < CHECK_INTERVAL) {
+    if (
+      state.latestVersion &&
+      compareSemver(state.latestVersion, currentVersion) > 0
+    ) {
       notification = state.latestVersion
     }
     return () => {
@@ -224,15 +248,17 @@ export function startUpdateCheck(currentVersion) {
 
   // Background fetch (non-blocking)
   const fetchPromise = fetch('https://registry.npmjs.org/uniweb/latest')
-    .then(r => r.json())
-    .then(data => {
+    .then((r) => r.json())
+    .then((data) => {
       const latest = data.version
       writeState({ lastCheck: Date.now(), latestVersion: latest })
       if (compareSemver(latest, currentVersion) > 0) {
         notification = latest
       }
     })
-    .catch(() => { /* network error — ignore silently */ })
+    .catch(() => {
+      /* network error — ignore silently */
+    })
 
   return async () => {
     await fetchPromise

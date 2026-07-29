@@ -28,7 +28,7 @@ const colors = {
   red: '\x1b[31m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
-  blue: '\x1b[36m',
+  blue: '\x1b[36m'
 }
 
 const log = console.log
@@ -44,7 +44,8 @@ function flagValue(args, name) {
   const eq = args.find((a) => a.startsWith(`${name}=`))
   if (eq) return eq.slice(name.length + 1)
   const idx = args.indexOf(name)
-  if (idx !== -1 && args[idx + 1] && !args[idx + 1].startsWith('--')) return args[idx + 1]
+  if (idx !== -1 && args[idx + 1] && !args[idx + 1].startsWith('--'))
+    return args[idx + 1]
   return null
 }
 
@@ -76,19 +77,28 @@ async function validateSite(site, foundations, workspaceDir) {
   // No local foundation to check against → out of static scope (the schemas
   // live in the foundation; a registry-ref / URL foundation isn't on disk).
   if (!foundationName) {
-    return { site: site.name, status: 'skipped', reason: 'no foundation declared in site.yml (runtime-loaded?)' }
+    return {
+      site: site.name,
+      status: 'skipped',
+      reason: 'no foundation declared in site.yml (runtime-loaded?)'
+    }
   }
-  const match = foundations.find((f) => f.name === foundationName || basename(f.path) === foundationName)
+  const match = foundations.find(
+    (f) => f.name === foundationName || basename(f.path) === foundationName
+  )
   if (!match) {
     return {
       site: site.name,
       status: 'skipped',
-      reason: `foundation "${foundationName}" is not a local workspace foundation — its schemas aren't on disk to check against`,
+      reason: `foundation "${foundationName}" is not a local workspace foundation — its schemas aren't on disk to check against`
     }
   }
 
   const foundationPath = join(workspaceDir, match.path)
-  const report = await validateDataInputs({ siteRoot: sitePath, foundationPath })
+  const report = await validateDataInputs({
+    siteRoot: sitePath,
+    foundationPath
+  })
   return { site: site.name, foundation: match.name, status: 'checked', report }
 }
 
@@ -101,7 +111,9 @@ async function validateSite(site, foundations, workspaceDir) {
 function printSiteHuman(result) {
   log('')
   if (result.status === 'skipped') {
-    warn(`${colors.bright}${result.site}${colors.reset} — skipped: ${result.reason}`)
+    warn(
+      `${colors.bright}${result.site}${colors.reset} — skipped: ${result.reason}`
+    )
     return
   }
 
@@ -110,7 +122,9 @@ function printSiteHuman(result) {
   const header = `${colors.bright}${result.site}${colors.reset} ${colors.dim}(foundation: ${foundation})${colors.reset}`
 
   if (violations.length === 0 && setupErrors.length === 0) {
-    success(`${header} — ${summary.records} record(s) / ${summary.schemas} schema(s) conform`)
+    success(
+      `${header} — ${summary.records} record(s) / ${summary.schemas} schema(s) conform`
+    )
   } else {
     info(header)
   }
@@ -119,31 +133,51 @@ function printSiteHuman(result) {
   const groups = new Map()
   for (const v of violations) {
     const key = `${v.file} ${v.schema}`
-    if (!groups.has(key)) groups.set(key, { file: v.file, schema: v.schema, users: v.users, findings: [] })
+    if (!groups.has(key))
+      groups.set(key, {
+        file: v.file,
+        schema: v.schema,
+        users: v.users,
+        findings: []
+      })
     groups.get(key).findings.push(v)
   }
   for (const g of groups.values()) {
-    log(`  ${colors.red}✗${colors.reset} ${g.file} ${colors.dim}· schema ${g.schema}${colors.reset}`)
+    log(
+      `  ${colors.red}✗${colors.reset} ${g.file} ${colors.dim}· schema ${g.schema}${colors.reset}`
+    )
     for (const u of dedupeUsers(g.users)) {
-      log(`      ${colors.dim}used by${colors.reset} ${u.route} › ${u.section} › data.${u.key}`)
+      log(
+        `      ${colors.dim}used by${colors.reset} ${u.route} › ${u.section} › data.${u.key}`
+      )
     }
     for (const f of g.findings) {
-      log(`      ${colors.yellow}•${colors.reset} item ${colors.bright}"${f.item}"${colors.reset} › ${f.field} — ${f.message}`)
+      log(
+        `      ${colors.yellow}•${colors.reset} item ${colors.bright}"${f.item}"${colors.reset} › ${f.field} — ${f.message}`
+      )
     }
   }
 
   for (const e of setupErrors) {
     log(`  ${colors.red}✗${colors.reset} ${e.file} — ${e.message}`)
     for (const u of dedupeUsers(e.users)) {
-      log(`      ${colors.dim}used by${colors.reset} ${u.route} › ${u.section} › data.${u.key}`)
+      log(
+        `      ${colors.dim}used by${colors.reset} ${u.route} › ${u.section} › data.${u.key}`
+      )
     }
   }
 
   if (deferred.length > 0) {
     log(`  ${colors.dim}↪ deferred (not statically checkable):${colors.reset}`)
     for (const d of deferred) {
-      const extra = d.url ? ` ${colors.dim}(${d.url})${colors.reset}` : d.ref ? ` ${colors.dim}(${d.ref})${colors.reset}` : ''
-      log(`      ${colors.dim}•${colors.reset} ${d.route} › ${d.section} › data.${d.key} — ${d.reason}${extra}`)
+      const extra = d.url
+        ? ` ${colors.dim}(${d.url})${colors.reset}`
+        : d.ref
+          ? ` ${colors.dim}(${d.ref})${colors.reset}`
+          : ''
+      log(
+        `      ${colors.dim}•${colors.reset} ${d.route} › ${d.section} › data.${d.key} — ${d.reason}${extra}`
+      )
     }
   }
 
@@ -169,27 +203,55 @@ export async function validate(args = []) {
   const asJson = args.includes('--json')
   const strict = args.includes('--strict')
   const siteFilter = flagValue(args, '--site')
-  const positional = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--site')
+  const positional = args.find(
+    (a, i) => !a.startsWith('--') && args[i - 1] !== '--site'
+  )
 
   const target = positional ? resolve(process.cwd(), positional) : process.cwd()
   const workspaceDir = findWorkspaceRoot(target)
 
   if (!workspaceDir) {
-    if (asJson) log(JSON.stringify({ ok: false, error: 'not in a Uniweb workspace' }, null, 2))
-    else error('Not in a Uniweb workspace. Run this from a project root or a site directory.')
+    if (asJson)
+      log(
+        JSON.stringify(
+          { ok: false, error: 'not in a Uniweb workspace' },
+          null,
+          2
+        )
+      )
+    else
+      error(
+        'Not in a Uniweb workspace. Run this from a project root or a site directory.'
+      )
     return { exitCode: 2 }
   }
 
-  const [sites, foundations] = await Promise.all([discoverSites(workspaceDir), discoverFoundations(workspaceDir)])
+  const [sites, foundations] = await Promise.all([
+    discoverSites(workspaceDir),
+    discoverFoundations(workspaceDir)
+  ])
 
   // Select which sites to check: --site filter, an explicitly targeted site
   // directory, or all sites in the workspace.
   let selected = sites
   if (siteFilter) {
-    selected = sites.filter((s) => s.name === siteFilter || basename(s.path) === siteFilter)
+    selected = sites.filter(
+      (s) => s.name === siteFilter || basename(s.path) === siteFilter
+    )
     if (selected.length === 0) {
       const names = sites.map((s) => s.name).join(', ') || '(none)'
-      if (asJson) log(JSON.stringify({ ok: false, error: `site "${siteFilter}" not found`, sites: sites.map((s) => s.name) }, null, 2))
+      if (asJson)
+        log(
+          JSON.stringify(
+            {
+              ok: false,
+              error: `site "${siteFilter}" not found`,
+              sites: sites.map((s) => s.name)
+            },
+            null,
+            2
+          )
+        )
       else error(`Site "${siteFilter}" not found. Available: ${names}`)
       return { exitCode: 2 }
     }
@@ -199,7 +261,10 @@ export async function validate(args = []) {
   }
 
   if (selected.length === 0) {
-    if (asJson) log(JSON.stringify({ ok: true, sites: [], note: 'no sites found' }, null, 2))
+    if (asJson)
+      log(
+        JSON.stringify({ ok: true, sites: [], note: 'no sites found' }, null, 2)
+      )
     else warn('No sites found in this workspace.')
     return { exitCode: 0 }
   }
@@ -223,8 +288,14 @@ export async function validate(args = []) {
     console.log = origConsoleLog
   }
 
-  const totalViolations = results.reduce((n, r) => n + (r.report?.violations.length || 0), 0)
-  const totalSetupErrors = results.reduce((n, r) => n + (r.report?.setupErrors.length || 0), 0)
+  const totalViolations = results.reduce(
+    (n, r) => n + (r.report?.violations.length || 0),
+    0
+  )
+  const totalSetupErrors = results.reduce(
+    (n, r) => n + (r.report?.setupErrors.length || 0),
+    0
+  )
   const hadError = results.some((r) => r.status === 'error')
 
   if (asJson) {
@@ -236,24 +307,31 @@ export async function validate(args = []) {
         foundation: r.foundation || null,
         status: r.status,
         reason: r.reason || null,
-        ...(r.report || {}),
+        ...(r.report || {})
       })),
       summary: {
         sites: results.length,
         violations: totalViolations,
         setupErrors: totalSetupErrors,
-        deferred: results.reduce((n, r) => n + (r.report?.deferred.length || 0), 0),
-      },
+        deferred: results.reduce(
+          (n, r) => n + (r.report?.deferred.length || 0),
+          0
+        )
+      }
     }
     log(JSON.stringify(payload, null, 2))
   } else {
     log('')
     log(`${colors.blue}${colors.bright}Uniweb Validate${colors.reset}`)
-    log(`${colors.dim}Checking content against the data schemas your foundation declares…${colors.reset}`)
+    log(
+      `${colors.dim}Checking content against the data schemas your foundation declares…${colors.reset}`
+    )
     for (const r of results) {
       if (r.status === 'error') {
         log('')
-        error(`${colors.bright}${r.site}${colors.reset} — could not check: ${r.reason}`)
+        error(
+          `${colors.bright}${r.site}${colors.reset} — could not check: ${r.reason}`
+        )
       } else {
         printSiteHuman(r)
       }
@@ -271,10 +349,15 @@ export async function validate(args = []) {
     } else {
       log('')
       if (totalViolations > 0) {
-        const mode = strict ? `${colors.red}error${colors.reset}` : `${colors.yellow}warning${colors.reset}`
-        log(`${totalViolations} violation(s) — reported as ${mode}${strict ? '' : ` ${colors.dim}(pass --strict to fail CI)${colors.reset}`}`)
+        const mode = strict
+          ? `${colors.red}error${colors.reset}`
+          : `${colors.yellow}warning${colors.reset}`
+        log(
+          `${totalViolations} violation(s) — reported as ${mode}${strict ? '' : ` ${colors.dim}(pass --strict to fail CI)${colors.reset}`}`
+        )
       }
-      if (hadError) log(`${colors.red}Some sites could not be checked.${colors.reset}`)
+      if (hadError)
+        log(`${colors.red}Some sites could not be checked.${colors.reset}`)
       log('')
     }
   }

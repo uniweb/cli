@@ -8,8 +8,12 @@
  */
 
 export async function handoff() {
-  console.error("\x1b[31m✗\x1b[0m `uniweb handoff` isn't available on the new backend yet.")
-  console.error('  The legacy site-handoff flow was retired with the PHP backend.')
+  console.error(
+    "\x1b[31m✗\x1b[0m `uniweb handoff` isn't available on the new backend yet."
+  )
+  console.error(
+    '  The legacy site-handoff flow was retired with the PHP backend.'
+  )
   console.error('  Manage client sites from the Uniweb app for now.')
   process.exit(1)
 }

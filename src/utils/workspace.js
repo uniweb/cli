@@ -160,9 +160,11 @@ export async function classifyPackage(packagePath) {
 export async function findFoundations(workspaceRoot) {
   const [packages, classify] = await Promise.all([
     getWorkspacePackages(workspaceRoot),
-    getClassifier(),
+    getClassifier()
   ])
-  return packages.filter(pkg => classify(join(workspaceRoot, pkg)) === 'foundation')
+  return packages.filter(
+    (pkg) => classify(join(workspaceRoot, pkg)) === 'foundation'
+  )
 }
 
 /**
@@ -173,9 +175,9 @@ export async function findFoundations(workspaceRoot) {
 export async function findSites(workspaceRoot) {
   const [packages, classify] = await Promise.all([
     getWorkspacePackages(workspaceRoot),
-    getClassifier(),
+    getClassifier()
   ])
-  return packages.filter(pkg => classify(join(workspaceRoot, pkg)) === 'site')
+  return packages.filter((pkg) => classify(join(workspaceRoot, pkg)) === 'site')
 }
 
 /**
@@ -206,11 +208,15 @@ export async function promptSelect(message, choices) {
     type: 'select',
     name: 'value',
     message,
-    choices: choices.map(c => (
+    choices: choices.map((c) =>
       typeof c === 'string'
         ? { title: c, value: c }
-        : { title: c.title, value: c.value !== undefined ? c.value : c.title, description: c.description }
-    )),
+        : {
+            title: c.title,
+            value: c.value !== undefined ? c.value : c.title,
+            description: c.description
+          }
+    )
   })
 
   return response.value ?? null

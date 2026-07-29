@@ -40,7 +40,10 @@ import { readWorkspaceConfig } from '../utils/config.js'
 import { discoverSites } from '../utils/discover.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { readFlagValue } from '../utils/args.js'
-import { checkSiteInstall, readDeclaredFoundation } from '../utils/install-integrity.js'
+import {
+  checkSiteInstall,
+  readDeclaredFoundation
+} from '../utils/install-integrity.js'
 import { discoverFoundations } from '../utils/discover.js'
 
 const RED = '\x1b[31m'
@@ -62,8 +65,12 @@ export async function dev(args = []) {
     workspaceConfig = { packages: [] }
   }
   if (workspaceConfig.packages.length === 0) {
-    console.error(`${RED}✗${RESET} Not in a Uniweb workspace (no pnpm-workspace.yaml or package.json::workspaces).`)
-    console.error(`  Run \`uniweb create <name>\` to scaffold a project, or cd into an existing one.`)
+    console.error(
+      `${RED}✗${RESET} Not in a Uniweb workspace (no pnpm-workspace.yaml or package.json::workspaces).`
+    )
+    console.error(
+      `  Run \`uniweb create <name>\` to scaffold a project, or cd into an existing one.`
+    )
     process.exit(1)
   }
 
@@ -76,24 +83,29 @@ export async function dev(args = []) {
 
   // Pick the site
   const siteFlag = readFlagValue(args, '--site')
-  const positional = args.find(a => !a.startsWith('-'))
-  const requested = (typeof siteFlag === 'string' ? siteFlag : null) || positional || null
+  const positional = args.find((a) => !a.startsWith('-'))
+  const requested =
+    (typeof siteFlag === 'string' ? siteFlag : null) || positional || null
 
   let site
   if (requested) {
-    site = sites.find(s => s.name === requested) || sites.find(s => s.path === requested)
+    site =
+      sites.find((s) => s.name === requested) ||
+      sites.find((s) => s.path === requested)
     if (!site) {
       console.error(`${RED}✗${RESET} Site "${requested}" not found.`)
-      console.error(`  Available: ${sites.map(s => s.name).join(', ')}`)
+      console.error(`  Available: ${sites.map((s) => s.name).join(', ')}`)
       process.exit(1)
     }
   } else if (sites.length === 1) {
     site = sites[0]
   } else {
     site = sites[0]
-    console.error(`${YELLOW}⚠${RESET} Multiple sites found; using ${CYAN}${site.name}${RESET}.`)
+    console.error(
+      `${YELLOW}⚠${RESET} Multiple sites found; using ${CYAN}${site.name}${RESET}.`
+    )
     console.error(`  Pick a different one with \`uniweb dev --site <name>\`.`)
-    console.error(`  Available: ${sites.map(s => s.name).join(', ')}`)
+    console.error(`  Available: ${sites.map((s) => s.name).join(', ')}`)
     console.error('')
   }
 
@@ -109,12 +121,14 @@ export async function dev(args = []) {
   const [bin, ...rest] = command.split(' ')
   const sitePath = join(rootDir, site.path)
 
-  console.error(`${DIM}→ ${command}${RESET} ${DIM}(site: ${site.name}, dir: ${sitePath})${RESET}`)
+  console.error(
+    `${DIM}→ ${command}${RESET} ${DIM}(site: ${site.name}, dir: ${sitePath})${RESET}`
+  )
   console.error('')
 
   const child = spawn(bin, rest, { cwd: rootDir, stdio: 'inherit' })
-  child.on('close', code => process.exit(code ?? 0))
-  child.on('error', err => {
+  child.on('close', (code) => process.exit(code ?? 0))
+  child.on('error', (err) => {
     console.error(`${RED}✗${RESET} Failed to start dev server: ${err.message}`)
     process.exit(1)
   })
@@ -133,18 +147,26 @@ async function warnOnStaleInstall(rootDir, site) {
 
     const foundations = await discoverFoundations(rootDir)
     const foundation = foundations
-      .map(f => ({ ...f, path: join(rootDir, f.path) }))
-      .find(f => f.name === foundationName)
+      .map((f) => ({ ...f, path: join(rootDir, f.path) }))
+      .find((f) => f.name === foundationName)
     if (!foundation) return
 
-    const findings = checkSiteInstall({ name: site.name, path: sitePath }, foundation, rootDir)
+    const findings = checkSiteInstall(
+      { name: site.name, path: sitePath },
+      foundation,
+      rootDir
+    )
     if (!findings.length) return
 
-    console.error(`${YELLOW}⚠${RESET} Dev will not build against your workspace foundation:`)
+    console.error(
+      `${YELLOW}⚠${RESET} Dev will not build against your workspace foundation:`
+    )
     for (const finding of findings) {
       console.error(`  ${finding.message}`)
     }
-    console.error(`  ${findings[0].remedy}. \`uniweb doctor\` explains in full.`)
+    console.error(
+      `  ${findings[0].remedy}. \`uniweb doctor\` explains in full.`
+    )
     console.error('')
   } catch {
     // A diagnostic must never be the reason dev fails to start.

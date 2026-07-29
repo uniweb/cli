@@ -11,7 +11,10 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
-import { collectSiteAssets, uploadSiteAssets } from '../src/utils/asset-upload.js'
+import {
+  collectSiteAssets,
+  uploadSiteAssets
+} from '../src/utils/asset-upload.js'
 
 const sha = (s) => createHash('sha256').update(s).digest('hex')
 
@@ -32,13 +35,19 @@ test('collectSiteAssets walks dist/assets, hashes + types, sets localUrl', () =>
   const { dir, distDir } = makeDist()
   try {
     const files = collectSiteAssets(distDir)
-    assert.deepEqual(files.map((f) => f.path).sort(), ['assets/hero-ab12cd34.webp', 'assets/logo-9f8e7d6c.svg'])
+    assert.deepEqual(files.map((f) => f.path).sort(), [
+      'assets/hero-ab12cd34.webp',
+      'assets/logo-9f8e7d6c.svg'
+    ])
     const hero = files.find((f) => f.path === 'assets/hero-ab12cd34.webp')
     assert.equal(hero.localUrl, '/assets/hero-ab12cd34.webp')
     assert.equal(hero.content_type, 'image/webp')
     assert.equal(hero.size, 'WEBPDATA'.length)
     assert.equal(hero.sha256, sha('WEBPDATA'))
-    assert.equal(files.find((f) => f.path === 'assets/logo-9f8e7d6c.svg').content_type, 'image/svg+xml')
+    assert.equal(
+      files.find((f) => f.path === 'assets/logo-9f8e7d6c.svg').content_type,
+      'image/svg+xml'
+    )
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -58,7 +67,11 @@ test('uploadSiteAssets plans /dev/assets, PUTs each, returns the localUrl→{id,
   const calls = []
   const realFetch = globalThis.fetch
   globalThis.fetch = async (url, opts = {}) => {
-    calls.push({ url: String(url), method: opts.method || 'GET', headers: opts.headers || {} })
+    calls.push({
+      url: String(url),
+      method: opts.method || 'GET',
+      headers: opts.headers || {}
+    })
     if (String(url).endsWith('/dev/assets')) {
       const body = JSON.parse(opts.body)
       // sha256 is required on every file
@@ -76,28 +89,48 @@ test('uploadSiteAssets plans /dev/assets, PUTs each, returns the localUrl→{id,
             serve_url: `/gateway/asset/dist/${f.sha256}/base.${f.path.split('.').pop()}`, // backend returns it
             method: 'PUT',
             url: `/dev/assets/blob/${f.sha256}`, // origin-relative, like the real backend
-            headers: { 'content-type': f.content_type },
-          })),
-        }),
+            headers: { 'content-type': f.content_type }
+          }))
+        })
       }
     }
     // a PUT to a blob url
     assert.equal(opts.method, 'PUT')
-    assert.ok(opts.headers['x-uniweb-sha256'], 'integrity header rides every PUT')
+    assert.ok(
+      opts.headers['x-uniweb-sha256'],
+      'integrity header rides every PUT'
+    )
     assert.ok(opts.headers.Authorization, 'direct-mode PUT carries the bearer')
     return { ok: true, status: 200, text: async () => '' }
   }
   try {
-    const result = await uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', distDir })
+    const result = await uploadSiteAssets({
+      apiBase: 'http://localhost:8080',
+      token: 't',
+      distDir
+    })
     assert.equal(result.mode, 'direct')
     assert.equal(result.failed.length, 0)
     assert.equal(result.uploaded.length, 2)
-    assert.deepEqual(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], { id: sha('WEBPDATA'), ext: 'webp', serveUrl: `/gateway/asset/dist/${sha('WEBPDATA')}/base.webp` })
-    assert.deepEqual(result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], { id: sha('<svg/>'), ext: 'svg', serveUrl: `/gateway/asset/dist/${sha('<svg/>')}/base.svg` })
+    assert.deepEqual(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], {
+      id: sha('WEBPDATA'),
+      ext: 'webp',
+      serveUrl: `/gateway/asset/dist/${sha('WEBPDATA')}/base.webp`
+    })
+    assert.deepEqual(result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], {
+      id: sha('<svg/>'),
+      ext: 'svg',
+      serveUrl: `/gateway/asset/dist/${sha('<svg/>')}/base.svg`
+    })
     const puts = calls.filter((c) => c.method === 'PUT')
     assert.equal(puts.length, 2)
     // origin-relative plan urls must resolve to absolute before fetch (Node can't fetch a relative url)
-    assert.ok(puts.every((c) => c.url.startsWith('http://localhost:8080/dev/assets/blob/')), 'relative plan url resolved against origin')
+    assert.ok(
+      puts.every((c) =>
+        c.url.startsWith('http://localhost:8080/dev/assets/blob/')
+      ),
+      'relative plan url resolved against origin'
+    )
   } finally {
     globalThis.fetch = realFetch
     rmSync(dir, { recursive: true, force: true })
@@ -121,26 +154,61 @@ test('uploadSiteAssets honors the skip-list: present files are recorded but not 
         json: async () => ({
           mode: 'direct',
           uploads: body.files.map((f) => {
-            const base = { path: f.path, id: f.sha256, ext: f.path.split('.').pop(), serve_url: `/gateway/asset/dist/${f.sha256}/base.${f.path.split('.').pop()}` }
+            const base = {
+              path: f.path,
+              id: f.sha256,
+              ext: f.path.split('.').pop(),
+              serve_url: `/gateway/asset/dist/${f.sha256}/base.${f.path.split('.').pop()}`
+            }
             if (f.sha256 === heroSha) return { ...base, present: true }
-            return { ...base, present: false, method: 'PUT', url: `/dev/assets/blob/${f.sha256}`, headers: {} }
-          }),
-        }),
+            return {
+              ...base,
+              present: false,
+              method: 'PUT',
+              url: `/dev/assets/blob/${f.sha256}`,
+              headers: {}
+            }
+          })
+        })
       }
     }
     puts.push(String(url))
     return { ok: true, status: 200, text: async () => '' }
   }
   try {
-    const result = await uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', distDir })
-    assert.deepEqual(result.skipped, ['assets/hero-ab12cd34.webp'], 'present file is skipped')
-    assert.deepEqual(result.uploaded, ['assets/logo-9f8e7d6c.svg'], 'new file is uploaded')
+    const result = await uploadSiteAssets({
+      apiBase: 'http://localhost:8080',
+      token: 't',
+      distDir
+    })
+    assert.deepEqual(
+      result.skipped,
+      ['assets/hero-ab12cd34.webp'],
+      'present file is skipped'
+    )
+    assert.deepEqual(
+      result.uploaded,
+      ['assets/logo-9f8e7d6c.svg'],
+      'new file is uploaded'
+    )
     assert.equal(result.failed.length, 0)
-    assert.equal(puts.length, 1, 'only the new file is PUT — the present one is not')
+    assert.equal(
+      puts.length,
+      1,
+      'only the new file is PUT — the present one is not'
+    )
     assert.ok(puts[0].includes(logoSha), 'the single PUT is the new (logo) sha')
     // BOTH assets are in the rewrite map — present and new alike get their refs rewritten.
-    assert.deepEqual(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], { id: heroSha, ext: 'webp', serveUrl: `/gateway/asset/dist/${heroSha}/base.webp` })
-    assert.deepEqual(result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], { id: logoSha, ext: 'svg', serveUrl: `/gateway/asset/dist/${logoSha}/base.svg` })
+    assert.deepEqual(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], {
+      id: heroSha,
+      ext: 'webp',
+      serveUrl: `/gateway/asset/dist/${heroSha}/base.webp`
+    })
+    assert.deepEqual(result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], {
+      id: logoSha,
+      ext: 'svg',
+      serveUrl: `/gateway/asset/dist/${logoSha}/base.svg`
+    })
   } finally {
     globalThis.fetch = realFetch
     rmSync(dir, { recursive: true, force: true })
@@ -159,23 +227,38 @@ test('uploadSiteAssets surfaces a per-file failure and omits it from the rewrite
         json: async () => ({
           mode: 'direct',
           uploads: body.files.map((f) => ({
-            path: f.path, id: f.sha256, ext: f.path.split('.').pop(),
-            method: 'PUT', url: `http://x/${f.sha256}`, headers: {},
-          })),
-        }),
+            path: f.path,
+            id: f.sha256,
+            ext: f.path.split('.').pop(),
+            method: 'PUT',
+            url: `http://x/${f.sha256}`,
+            headers: {}
+          }))
+        })
       }
     }
-    if (String(url).includes(sha('<svg/>'))) return { ok: false, status: 413, text: async () => 'too large' }
+    if (String(url).includes(sha('<svg/>')))
+      return { ok: false, status: 413, text: async () => 'too large' }
     return { ok: true, status: 200, text: async () => '' }
   }
   try {
-    const result = await uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', distDir })
+    const result = await uploadSiteAssets({
+      apiBase: 'http://localhost:8080',
+      token: 't',
+      distDir
+    })
     assert.equal(result.uploaded.length, 1)
     assert.equal(result.failed.length, 1)
     assert.equal(result.failed[0].path, 'assets/logo-9f8e7d6c.svg')
     assert.equal(result.failed[0].status, 413)
-    assert.ok(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], 'successful asset is mapped')
-    assert.ok(!result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], 'failed asset is NOT mapped (no broken URL)')
+    assert.ok(
+      result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'],
+      'successful asset is mapped'
+    )
+    assert.ok(
+      !result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'],
+      'failed asset is NOT mapped (no broken URL)'
+    )
   } finally {
     globalThis.fetch = realFetch
     rmSync(dir, { recursive: true, force: true })
@@ -190,24 +273,37 @@ test('uploadSiteAssets attaches NO auth header in presigned mode', async () => {
     if (String(url).endsWith('/dev/assets')) {
       const body = JSON.parse(opts.body)
       return {
-        ok: true, status: 200,
+        ok: true,
+        status: 200,
         json: async () => ({
           mode: 'presigned',
           uploads: body.files.map((f) => ({
-            path: f.path, id: f.sha256, ext: f.path.split('.').pop(),
-            method: 'PUT', url: `https://s3.example/${f.sha256}?sig=abc`, headers: {},
-          })),
-        }),
+            path: f.path,
+            id: f.sha256,
+            ext: f.path.split('.').pop(),
+            method: 'PUT',
+            url: `https://s3.example/${f.sha256}?sig=abc`,
+            headers: {}
+          }))
+        })
       }
     }
     if (opts.headers?.Authorization) sawAuthOnPut = true
     return { ok: true, status: 200, text: async () => '' }
   }
   try {
-    const result = await uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', distDir })
+    const result = await uploadSiteAssets({
+      apiBase: 'http://localhost:8080',
+      token: 't',
+      distDir
+    })
     assert.equal(result.mode, 'presigned')
     assert.equal(result.uploaded.length, 2)
-    assert.equal(sawAuthOnPut, false, 'presigned PUT must not carry a foreign auth header')
+    assert.equal(
+      sawAuthOnPut,
+      false,
+      'presigned PUT must not carry a foreign auth header'
+    )
   } finally {
     globalThis.fetch = realFetch
     rmSync(dir, { recursive: true, force: true })
@@ -217,10 +313,20 @@ test('uploadSiteAssets attaches NO auth header in presigned mode', async () => {
 test('uploadSiteAssets throws on a plan-level failure', async () => {
   const { dir, distDir } = makeDist()
   const realFetch = globalThis.fetch
-  globalThis.fetch = async () => ({ ok: false, status: 400, statusText: 'Bad Request', text: async () => 'nope' })
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 400,
+    statusText: 'Bad Request',
+    text: async () => 'nope'
+  })
   try {
     await assert.rejects(
-      () => uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', distDir }),
+      () =>
+        uploadSiteAssets({
+          apiBase: 'http://localhost:8080',
+          token: 't',
+          distDir
+        }),
       /Asset plan failed: HTTP 400/
     )
   } finally {
@@ -233,10 +339,23 @@ test('uploadSiteAssets is a no-op for an image-free site', async () => {
   const { dir, distDir } = makeDist({ withAssets: false })
   const realFetch = globalThis.fetch
   let fetched = false
-  globalThis.fetch = async () => { fetched = true; return { ok: true, status: 200, json: async () => ({}) } }
+  globalThis.fetch = async () => {
+    fetched = true
+    return { ok: true, status: 200, json: async () => ({}) }
+  }
   try {
-    const result = await uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', distDir })
-    assert.deepEqual(result, { mode: 'none', uploaded: [], skipped: [], failed: [], assetsByLocalUrl: {} })
+    const result = await uploadSiteAssets({
+      apiBase: 'http://localhost:8080',
+      token: 't',
+      distDir
+    })
+    assert.deepEqual(result, {
+      mode: 'none',
+      uploaded: [],
+      skipped: [],
+      failed: [],
+      assetsByLocalUrl: {}
+    })
     assert.equal(fetched, false, 'no plan call when there are no assets')
   } finally {
     globalThis.fetch = realFetch
@@ -257,12 +376,21 @@ test('a plan refusal preserves status + the PARSED problem body on the thrown er
     reason: 'storage_quota_exceeded',
     used_bytes: 5368709120,
     limit_bytes: 5368709120,
-    needed_bytes: 12582912,
+    needed_bytes: 12582912
   }
   const realFetch = globalThis.fetch
-  globalThis.fetch = async () => ({ ok: false, status: 507, statusText: 'Insufficient Storage', text: async () => JSON.stringify(problem) })
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 507,
+    statusText: 'Insufficient Storage',
+    text: async () => JSON.stringify(problem)
+  })
   try {
-    const err = await uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', distDir }).then(
+    const err = await uploadSiteAssets({
+      apiBase: 'http://localhost:8080',
+      token: 't',
+      distDir
+    }).then(
       () => null,
       (e) => e
     )
@@ -283,9 +411,21 @@ test('a prose (non-JSON) plan refusal leaves problem null rather than throwing',
   // message instead of swallowing the error.
   const { dir, distDir } = makeDist()
   const realFetch = globalThis.fetch
-  globalThis.fetch = async () => ({ ok: false, status: 400, statusText: 'Bad Request', text: async () => 'plain prose refusal' })
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 400,
+    statusText: 'Bad Request',
+    text: async () => 'plain prose refusal'
+  })
   try {
-    const err = await uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', distDir }).then(() => null, (e) => e)
+    const err = await uploadSiteAssets({
+      apiBase: 'http://localhost:8080',
+      token: 't',
+      distDir
+    }).then(
+      () => null,
+      (e) => e
+    )
     assert.ok(err)
     assert.equal(err.status, 400)
     assert.equal(err.problem, null)

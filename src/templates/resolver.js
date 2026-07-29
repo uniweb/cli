@@ -45,7 +45,14 @@ export const BUILTIN_TEMPLATES = ['blank', 'starter', 'none']
 function loadOfficialTemplateMap() {
   // Local dev: framework/templates/manifest.json relative to this file
   // at framework/cli/src/templates/resolver.js
-  const workspaceManifest = join(__dirname, '..', '..', '..', 'templates', 'manifest.json')
+  const workspaceManifest = join(
+    __dirname,
+    '..',
+    '..',
+    '..',
+    'templates',
+    'manifest.json'
+  )
   const picked = tryReadTemplateMap(workspaceManifest)
   if (picked) return picked
 
@@ -85,8 +92,16 @@ export const OFFICIAL_TEMPLATES = Object.keys(OFFICIAL_TEMPLATE_MAP)
 // Built-in (programmatic) picker entries — not in the manifest; the CLI
 // generates these itself. "Blank" trails the official templates.
 const BUILTIN_LEAD_CHOICES = [
-  { title: 'None', value: 'none', description: 'Foundation + site with no content' },
-  { title: 'Starter', value: 'starter', description: 'Foundation + site + sample content' }
+  {
+    title: 'None',
+    value: 'none',
+    description: 'Foundation + site with no content'
+  },
+  {
+    title: 'Starter',
+    value: 'starter',
+    description: 'Foundation + site + sample content'
+  }
 ]
 const BLANK_CHOICE = {
   title: 'Blank workspace',
@@ -130,7 +145,7 @@ export function parseTemplateId(identifier) {
   if (BUILTIN_TEMPLATES.includes(identifier)) {
     return {
       type: 'builtin',
-      name: identifier,
+      name: identifier
     }
   }
 
@@ -138,7 +153,7 @@ export function parseTemplateId(identifier) {
   if (OFFICIAL_TEMPLATES.includes(identifier)) {
     return {
       type: 'official',
-      name: identifier,
+      name: identifier
     }
   }
 
@@ -149,19 +164,25 @@ export function parseTemplateId(identifier) {
   }
 
   // GitHub URL: https://github.com/user/repo
-  if (identifier.startsWith('https://github.com/') || identifier.startsWith('http://github.com/')) {
+  if (
+    identifier.startsWith('https://github.com/') ||
+    identifier.startsWith('http://github.com/')
+  ) {
     const url = new URL(identifier)
     const pathParts = url.pathname.split('/').filter(Boolean)
     if (pathParts.length >= 2) {
       const [owner, repo] = pathParts
       // Check for tree/branch in URL
       const treeIndex = pathParts.indexOf('tree')
-      const ref = treeIndex >= 0 && pathParts[treeIndex + 1] ? pathParts[treeIndex + 1] : undefined
+      const ref =
+        treeIndex >= 0 && pathParts[treeIndex + 1]
+          ? pathParts[treeIndex + 1]
+          : undefined
       return {
         type: 'github',
         owner,
         repo: repo.replace(/\.git$/, ''),
-        ref,
+        ref
       }
     }
     throw new Error(`Invalid GitHub URL: ${identifier}`)
@@ -171,16 +192,20 @@ export function parseTemplateId(identifier) {
   if (identifier.startsWith('@')) {
     return {
       type: 'npm',
-      package: identifier,
+      package: identifier
     }
   }
 
   // Local path (relative, absolute, or home directory)
-  if (identifier.startsWith('./') || identifier.startsWith('../') ||
-      identifier.startsWith('/') || identifier.startsWith('~')) {
+  if (
+    identifier.startsWith('./') ||
+    identifier.startsWith('../') ||
+    identifier.startsWith('/') ||
+    identifier.startsWith('~')
+  ) {
     return {
       type: 'local',
-      path: identifier,
+      path: identifier
     }
   }
 
@@ -188,7 +213,7 @@ export function parseTemplateId(identifier) {
   // This allows users to type `uniweb create foo --template blog` for @uniweb/template-blog
   return {
     type: 'npm',
-    package: `@uniweb/template-${identifier}`,
+    package: `@uniweb/template-${identifier}`
   }
 }
 
@@ -200,14 +225,16 @@ function parseGitHubIdentifier(identifier) {
   const [owner, repo] = repoPath.split('/')
 
   if (!owner || !repo) {
-    throw new Error(`Invalid GitHub identifier: ${identifier}. Expected format: user/repo or user/repo#ref`)
+    throw new Error(
+      `Invalid GitHub identifier: ${identifier}. Expected format: user/repo or user/repo#ref`
+    )
   }
 
   return {
     type: 'github',
     owner,
     repo: repo.replace(/\.git$/, ''),
-    ref: ref || undefined,
+    ref: ref || undefined
   }
 }
 

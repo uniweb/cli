@@ -9,9 +9,15 @@
  */
 
 export async function invite() {
-  console.error("\x1b[31m✗\x1b[0m `uniweb invite` isn't available on the new backend yet.")
-  console.error('  The legacy client-invite flow was retired with the PHP backend.')
-  console.error('  Invite clients to your foundation from the Uniweb app for now.')
+  console.error(
+    "\x1b[31m✗\x1b[0m `uniweb invite` isn't available on the new backend yet."
+  )
+  console.error(
+    '  The legacy client-invite flow was retired with the PHP backend.'
+  )
+  console.error(
+    '  Invite clients to your foundation from the Uniweb app for now.'
+  )
   process.exit(1)
 }
 

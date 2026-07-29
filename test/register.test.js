@@ -15,11 +15,18 @@ import { foundationNeedsBuild } from '../src/commands/register.js'
 /** A foundation dir with package.json version + (optionally) a built dist/. */
 function makeFoundation({ pkgVersion = '1.0.0', dist = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'uw-reg-'))
-  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'src', version: pkgVersion }))
+  writeFileSync(
+    join(dir, 'package.json'),
+    JSON.stringify({ name: 'src', version: pkgVersion })
+  )
   if (dist) {
     const distDir = join(dir, 'dist')
     mkdirSync(join(distDir, 'meta'), { recursive: true })
-    if (dist.entry !== false) writeFileSync(join(distDir, dist.entry || 'entry.js'), 'export default 1\n')
+    if (dist.entry !== false)
+      writeFileSync(
+        join(distDir, dist.entry || 'entry.js'),
+        'export default 1\n'
+      )
     if (dist.schema !== undefined) {
       writeFileSync(join(distDir, 'meta', 'schema.json'), dist.schema)
     }
@@ -30,7 +37,10 @@ function makeFoundation({ pkgVersion = '1.0.0', dist = null } = {}) {
 test('no dist/ → needs build', () => {
   const dir = makeFoundation({ dist: null })
   try {
-    assert.deepEqual(foundationNeedsBuild(dir), { needs: true, reason: 'no dist/ found' })
+    assert.deepEqual(foundationNeedsBuild(dir), {
+      needs: true,
+      reason: 'no dist/ found'
+    })
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -48,7 +58,9 @@ test('entry.js but no schema.json → needs build', () => {
 test('fresh dist (schema version matches package.json) → no build', () => {
   const dir = makeFoundation({
     pkgVersion: '2.3.1',
-    dist: { schema: JSON.stringify({ _self: { name: '@a/b', version: '2.3.1' } }) },
+    dist: {
+      schema: JSON.stringify({ _self: { name: '@a/b', version: '2.3.1' } })
+    }
   })
   try {
     assert.deepEqual(foundationNeedsBuild(dir), { needs: false })
@@ -60,7 +72,9 @@ test('fresh dist (schema version matches package.json) → no build', () => {
 test('stale dist (schema version differs from package.json) → needs build', () => {
   const dir = makeFoundation({
     pkgVersion: '2.4.0',
-    dist: { schema: JSON.stringify({ _self: { name: '@a/b', version: '2.3.1' } }) },
+    dist: {
+      schema: JSON.stringify({ _self: { name: '@a/b', version: '2.3.1' } })
+    }
   })
   try {
     const r = foundationNeedsBuild(dir)
@@ -74,7 +88,10 @@ test('stale dist (schema version differs from package.json) → needs build', ()
 test('legacy dist/foundation.js artifact is accepted (no rebuild forced)', () => {
   const dir = makeFoundation({
     pkgVersion: '1.0.0',
-    dist: { entry: 'foundation.js', schema: JSON.stringify({ _self: { version: '1.0.0' } }) },
+    dist: {
+      entry: 'foundation.js',
+      schema: JSON.stringify({ _self: { version: '1.0.0' } })
+    }
   })
   try {
     assert.deepEqual(foundationNeedsBuild(dir), { needs: false })
@@ -86,14 +103,19 @@ test('legacy dist/foundation.js artifact is accepted (no rebuild forced)', () =>
 test('unparseable schema.json → needs build', () => {
   const dir = makeFoundation({ dist: { schema: '{ not json' } })
   try {
-    assert.deepEqual(foundationNeedsBuild(dir), { needs: true, reason: 'dist/meta/schema.json could not be parsed' })
+    assert.deepEqual(foundationNeedsBuild(dir), {
+      needs: true,
+      reason: 'dist/meta/schema.json could not be parsed'
+    })
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })
 
 test('schema without _self.version is treated as fresh (nothing to compare)', () => {
-  const dir = makeFoundation({ dist: { schema: JSON.stringify({ _self: { name: '@a/b' } }) } })
+  const dir = makeFoundation({
+    dist: { schema: JSON.stringify({ _self: { name: '@a/b' } }) }
+  })
   try {
     assert.deepEqual(foundationNeedsBuild(dir), { needs: false })
   } finally {

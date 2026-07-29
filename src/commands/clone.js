@@ -58,8 +58,14 @@ import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 import { extractFoundationRef } from '../utils/site-content-refs.js'
 
 const colors = {
-  reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m',
-  red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', blue: '\x1b[36m', cyan: '\x1b[36m',
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[36m',
+  cyan: '\x1b[36m'
 }
 const log = console.log
 const success = (m) => log(`${colors.green}✓${colors.reset} ${m}`)
@@ -71,12 +77,16 @@ function flagValue(args, name) {
   const eq = args.find((a) => a.startsWith(`${name}=`))
   if (eq) return eq.slice(name.length + 1)
   const i = args.indexOf(name)
-  if (i !== -1 && args[i + 1] && !args[i + 1].startsWith('-')) return args[i + 1]
+  if (i !== -1 && args[i + 1] && !args[i + 1].startsWith('-'))
+    return args[i + 1]
   return null
 }
 
 function slugify(s) {
-  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
 
 // Tolerant single-entity document extraction (mirrors pull.js; duplicated rather
@@ -110,7 +120,7 @@ export function extractCloneSeeds(document) {
   const info = document?.info || {}
   return {
     foundationRef: extractFoundationRef(info, document),
-    name: unwrapScalar(info.name) ?? unwrapScalar(document?.name) ?? null,
+    name: unwrapScalar(info.name) ?? unwrapScalar(document?.name) ?? null
   }
 }
 
@@ -154,27 +164,35 @@ export async function clone(args = [], deps = {}) {
 
   if (!siteUuid) {
     error('Missing site uuid.')
-    log(`\nUsage: ${getCliPrefix()} clone <site-uuid> [name|.] [--path <dir>] [--project <name>] [--no-collections]`)
-    log(`${colors.dim}Sites are private — run \`uniweb login\` first.${colors.reset}`)
+    log(
+      `\nUsage: ${getCliPrefix()} clone <site-uuid> [name|.] [--path <dir>] [--project <name>] [--no-collections]`
+    )
+    log(
+      `${colors.dim}Sites are private — run \`uniweb login\` first.${colors.reset}`
+    )
     return { exitCode: 2 }
   }
 
-  const noCollections = args.includes('--no-collections') || args.includes('--content-only')
+  const noCollections =
+    args.includes('--no-collections') || args.includes('--content-only')
   const pathFlag = flagValue(args, '--path')
   const projectFlag = flagValue(args, '--project')
   const tokenFlag = flagValue(args, '--token')
-  const explicitBackend = flagValue(args, '--backend') || flagValue(args, '--registry')
+  const explicitBackend =
+    flagValue(args, '--backend') || flagValue(args, '--registry')
   const client = new BackendClient({
     originFlag: explicitBackend,
     token: tokenFlag,
     getToken: deps.getToken,
     fetchImpl: deps.fetch,
     args,
-    command: 'Cloning',
+    command: 'Cloning'
   })
 
   // 1. GET the site-content document (no @uniweb/build needed for a read).
-  info(`Reading site ${colors.bright}${siteUuid}${colors.reset} from ${colors.dim}${client.origin}${colors.reset} …`)
+  info(
+    `Reading site ${colors.bright}${siteUuid}${colors.reset} from ${colors.dim}${client.origin}${colors.reset} …`
+  )
   let payload
   try {
     const res = await client.pullSiteContent(siteUuid)
@@ -184,7 +202,8 @@ export async function clone(args = [], deps = {}) {
     }
     if (!res.ok) {
       error(`Could not read the site: HTTP ${res.status} ${res.statusText}`)
-      if (res.status === 401 || res.status === 403) note('Run `uniweb login` first (or pass --token <bearer>).')
+      if (res.status === 401 || res.status === 403)
+        note('Run `uniweb login` first (or pass --token <bearer>).')
       return { exitCode: 1 }
     }
     payload = await res.json()
@@ -200,7 +219,9 @@ export async function clone(args = [], deps = {}) {
   }
   const { foundationRef, name: siteDisplayName } = extractCloneSeeds(document)
   if (!foundationRef) {
-    note('! The pulled site declares no foundation ref — set `foundation:` in site.yml after clone.')
+    note(
+      '! The pulled site declares no foundation ref — set `foundation:` in site.yml after clone.'
+    )
   }
 
   // 2. Resolve placement (one verb, context-aware).
@@ -224,7 +245,12 @@ export async function clone(args = [], deps = {}) {
   } else if (existingRoot) {
     isNewWorkspace = false
     projectDir = existingRoot
-    placement = resolvePlacement(existingRoot, target, { path: pathFlag, project: projectFlag }, SITE_KIND)
+    placement = resolvePlacement(
+      existingRoot,
+      target,
+      { path: pathFlag, project: projectFlag },
+      SITE_KIND
+    )
     siteDir = join(existingRoot, placement.relativePath)
     sitePkgName = placement.packageName
     workspaceName = sitePkgName
@@ -232,11 +258,15 @@ export async function clone(args = [], deps = {}) {
     isNewWorkspace = true
     workspaceName = target || slugify(siteDisplayName) || null
     if (!workspaceName) {
-      error('Could not derive a project name from the site. Pass one: `uniweb clone <uuid> <name>`.')
+      error(
+        'Could not derive a project name from the site. Pass one: `uniweb clone <uuid> <name>`.'
+      )
       return { exitCode: 2 }
     }
     if (!/^[a-z0-9-]+$/.test(workspaceName)) {
-      error(`Invalid project name "${workspaceName}" — use lowercase letters, numbers, and hyphens.`)
+      error(
+        `Invalid project name "${workspaceName}" — use lowercase letters, numbers, and hyphens.`
+      )
       return { exitCode: 2 }
     }
     projectDir = resolve(cwd, workspaceName)
@@ -256,18 +286,28 @@ export async function clone(args = [], deps = {}) {
 
   // 3. Scaffold the harness (ref-only site: foundationRef, no foundationPath).
   const onProgress = (m) => note(m)
-  const siteContext = { name: sitePkgName, projectName: workspaceName, ...(foundationRef ? { foundationRef } : {}) }
+  const siteContext = {
+    name: sitePkgName,
+    projectName: workspaceName,
+    ...(foundationRef ? { foundationRef } : {})
+  }
 
   if (isNewWorkspace) {
     info(`Scaffolding ${colors.bright}${workspaceName}${colors.reset} …`)
     await scaffoldWorkspace(
       projectDir,
-      { projectName: workspaceName, workspaceGlobs: ['site'], scripts: { dev: 'uniweb dev', build: 'uniweb build' } },
-      { onProgress },
+      {
+        projectName: workspaceName,
+        workspaceGlobs: ['site'],
+        scripts: { dev: 'uniweb dev', build: 'uniweb build' }
+      },
+      { onProgress }
     )
     await scaffoldSite(siteDir, siteContext, { onProgress })
   } else {
-    info(`Adding site ${colors.bright}${sitePkgName}${colors.reset} to the workspace at ${colors.dim}${placement.relativePath}/${colors.reset} …`)
+    info(
+      `Adding site ${colors.bright}${sitePkgName}${colors.reset} to the workspace at ${colors.dim}${placement.relativePath}/${colors.reset} …`
+    )
     await scaffoldSite(siteDir, siteContext, { onProgress })
     await addWorkspaceGlob(existingRoot, placement.relativePath)
   }
@@ -276,7 +316,9 @@ export async function clone(args = [], deps = {}) {
   // same uuid (the backend resolves the site's @uniweb/folder from it), so there is no
   // separate folder uuid to seed.
   seedYamlUuid(join(siteDir, 'site.yml'), siteUuid)
-  success(`Scaffolded the site harness${foundationRef ? ` (foundation: ${foundationRef})` : ''}.`)
+  success(
+    `Scaffolded the site harness${foundationRef ? ` (foundation: ${foundationRef})` : ''}.`
+  )
 
   // 5. Install, then delegate the projection to the project-local `uniweb pull`.
   const pm = detectWorkspacePm(projectDir) || 'pnpm'
@@ -289,7 +331,9 @@ export async function clone(args = [], deps = {}) {
     info(`Installing dependencies (${installCmd(pm)}) …`)
     const r = spawnSync(pm, ['install'], { cwd: projectDir, stdio: 'inherit' })
     if (r.status !== 0) {
-      error(`Install failed. Once it succeeds, run \`uniweb pull\` from ${siteDir} to fetch the content.`)
+      error(
+        `Install failed. Once it succeeds, run \`uniweb pull\` from ${siteDir} to fetch the content.`
+      )
       return { exitCode: 1 }
     }
   }
@@ -305,17 +349,26 @@ export async function clone(args = [], deps = {}) {
     await deps.runPull(siteDir, pm, pullExtra)
   } else {
     info('Pulling content …')
-    const r = spawnSync(pm, pullExecArgv(pm, pullExtra), { cwd: siteDir, stdio: 'inherit' })
+    const r = spawnSync(pm, pullExecArgv(pm, pullExtra), {
+      cwd: siteDir,
+      stdio: 'inherit'
+    })
     if (r.status !== 0) {
-      error(`Content pull failed. Fix the issue, then run \`uniweb pull\` from ${siteDir}.`)
+      error(
+        `Content pull failed. Fix the issue, then run \`uniweb pull\` from ${siteDir}.`
+      )
       return { exitCode: 1 }
     }
   }
 
   log('')
-  success(`Cloned site into ${colors.bright}${isNewWorkspace && !inPlace ? workspaceName : siteDir}${colors.reset}`)
+  success(
+    `Cloned site into ${colors.bright}${isNewWorkspace && !inPlace ? workspaceName : siteDir}${colors.reset}`
+  )
   if (isNewWorkspace && !inPlace) {
-    log(`\nNext: ${colors.cyan}cd ${workspaceName} && uniweb dev${colors.reset}`)
+    log(
+      `\nNext: ${colors.cyan}cd ${workspaceName} && uniweb dev${colors.reset}`
+    )
   } else {
     log(`\nNext: ${colors.cyan}uniweb dev${colors.reset}`)
   }

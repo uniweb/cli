@@ -61,18 +61,34 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { resolve, join } from 'node:path'
 import { buildRegistryPackage, buildSchemaOnlyPackage } from '@uniweb/build/uwx'
-import { classifyPackage, isSchemasPackage, collectStandaloneSchemas } from '@uniweb/build'
+import {
+  classifyPackage,
+  isSchemasPackage,
+  collectStandaloneSchemas
+} from '@uniweb/build'
 import { readRegistryAuth } from '../utils/registry-auth.js'
-import { collectDistFiles, computeFoundationDigest } from '../utils/code-upload.js'
+import {
+  collectDistFiles,
+  computeFoundationDigest
+} from '../utils/code-upload.js'
 import { deriveScope } from '../utils/registry-orgs.js'
 import { BackendClient } from '../backend/client.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
-import { findWorkspaceRoot, findFoundations, promptSelect } from '../utils/workspace.js'
+import {
+  findWorkspaceRoot,
+  findFoundations,
+  promptSelect
+} from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 
 const colors = {
-  reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m',
-  red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', blue: '\x1b[36m',
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[36m'
 }
 // Porcelain (`--json`) mode: stdout carries ONLY the final compact JSON line, so
 // all human/colored output diverts to stderr. `emitJson` writes to the REAL
@@ -83,15 +99,22 @@ let jsonEmitted = false
 let lastError = null
 const log = (...a) => (jsonMode ? console.error(...a) : console.log(...a))
 const success = (m) => log(`${colors.green}✓${colors.reset} ${m}`)
-const error = (m) => { lastError = String(m); console.error(`${colors.red}✗${colors.reset} ${m}`) }
+const error = (m) => {
+  lastError = String(m)
+  console.error(`${colors.red}✗${colors.reset} ${m}`)
+}
 const info = (m) => log(`${colors.blue}→${colors.reset} ${m}`)
-const emitJson = (obj) => { jsonEmitted = true; process.stdout.write(JSON.stringify(obj) + '\n') }
+const emitJson = (obj) => {
+  jsonEmitted = true
+  process.stdout.write(JSON.stringify(obj) + '\n')
+}
 
 function flagValue(args, name) {
   const eq = args.find((a) => a.startsWith(`${name}=`))
   if (eq) return eq.slice(name.length + 1)
   const i = args.indexOf(name)
-  if (i !== -1 && args[i + 1] && !args[i + 1].startsWith('-')) return args[i + 1]
+  if (i !== -1 && args[i + 1] && !args[i + 1].startsWith('-'))
+    return args[i + 1]
   return null
 }
 
@@ -99,7 +122,9 @@ function flagValue(args, name) {
 // package.json isn't reachable.
 function cliVersion() {
   try {
-    return JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version
+    return JSON.parse(
+      readFileSync(new URL('../../package.json', import.meta.url), 'utf8')
+    ).version
   } catch {
     return '0.0.0'
   }
@@ -109,7 +134,9 @@ function cliVersion() {
 // (`{ "uniweb": { "scope": "@acme" } }`) — the default when `--scope` is absent.
 function readPkgScope(foundationDir) {
   try {
-    const pkg = JSON.parse(readFileSync(join(foundationDir, 'package.json'), 'utf8'))
+    const pkg = JSON.parse(
+      readFileSync(join(foundationDir, 'package.json'), 'utf8')
+    )
     return pkg?.uniweb?.scope || null
   } catch {
     return null
@@ -130,7 +157,9 @@ async function writePkgScope(foundationDir, scope) {
 // register has no foundation `_self` to name, so it labels by package name.
 function readPkgName(dir) {
   try {
-    return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))?.name || null
+    return (
+      JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))?.name || null
+    )
   } catch {
     return null
   }
@@ -152,16 +181,24 @@ async function resolveFoundationDir(args) {
     if (foundations.length > 1) {
       if (isNonInteractive(args)) {
         error('Multiple foundations found. Run register from the one you mean.')
-        for (const f of foundations) log(`  ${colors.cyan || ''}cd ${f} && ${getCliPrefix()} register${colors.reset}`)
+        for (const f of foundations)
+          log(
+            `  ${colors.cyan || ''}cd ${f} && ${getCliPrefix()} register${colors.reset}`
+          )
         process.exit(1)
       }
       const choice = await promptSelect('Which foundation?', foundations)
-      if (!choice) { log('\nRegister cancelled.'); process.exit(0) }
+      if (!choice) {
+        log('\nRegister cancelled.')
+        process.exit(0)
+      }
       return resolve(workspaceRoot, choice)
     }
   }
 
-  error('No foundation found. Run register from a foundation directory or a workspace that has one.')
+  error(
+    'No foundation found. Run register from a foundation directory or a workspace that has one.'
+  )
   process.exit(1)
 }
 
@@ -186,19 +223,31 @@ export function foundationNeedsBuild(targetDir) {
   const distDir = join(targetDir, 'dist')
   const schemaPath = join(distDir, 'meta', 'schema.json')
   // @uniweb/build emits dist/entry.js; older builds emitted dist/foundation.js.
-  const hasArtifact = existsSync(join(distDir, 'entry.js')) || existsSync(join(distDir, 'foundation.js'))
-  if (!hasArtifact || !existsSync(schemaPath)) return { needs: true, reason: 'no dist/ found' }
+  const hasArtifact =
+    existsSync(join(distDir, 'entry.js')) ||
+    existsSync(join(distDir, 'foundation.js'))
+  if (!hasArtifact || !existsSync(schemaPath))
+    return { needs: true, reason: 'no dist/ found' }
   let pkgVersion = null
   try {
-    pkgVersion = JSON.parse(readFileSync(join(targetDir, 'package.json'), 'utf8'))?.version || null
+    pkgVersion =
+      JSON.parse(readFileSync(join(targetDir, 'package.json'), 'utf8'))
+        ?.version || null
   } catch {
     // No readable package.json version — fall through; a present schema with no
     // version to compare is treated as fresh (the submit path validates names).
   }
   try {
     const peek = JSON.parse(readFileSync(schemaPath, 'utf8'))
-    if (peek?._self?.version && pkgVersion && peek._self.version !== pkgVersion) {
-      return { needs: true, reason: `package.json version (${pkgVersion}) differs from built schema (${peek._self.version})` }
+    if (
+      peek?._self?.version &&
+      pkgVersion &&
+      peek._self.version !== pkgVersion
+    ) {
+      return {
+        needs: true,
+        reason: `package.json version (${pkgVersion}) differs from built schema (${peek._self.version})`
+      }
     }
   } catch {
     return { needs: true, reason: 'dist/meta/schema.json could not be parsed' }
@@ -215,7 +264,15 @@ export async function register(args = []) {
   // emits its own; here we cover the error / early-return paths so a scripted
   // caller can always JSON.parse(stdout).
   if (jsonMode && !jsonEmitted) {
-    emitJson(result?.exitCode === 0 ? { ok: true, entities: [] } : { ok: false, error: lastError || `register failed (exit ${result?.exitCode ?? 1})` })
+    emitJson(
+      result?.exitCode === 0
+        ? { ok: true, entities: [] }
+        : {
+            ok: false,
+            error:
+              lastError || `register failed (exit ${result?.exitCode ?? 1})`
+          }
+    )
   }
   return result
 }
@@ -227,20 +284,31 @@ async function runRegister(args = []) {
   const tokenFlag = flagValue(args, '--token')
   // Origin: --backend and --registry are aliases (matches deploy/publish + the
   // origin-selection convention); either overrides UNIWEB_REGISTER_URL / default.
-  const client = new BackendClient({ originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'), token: tokenFlag, args, command: 'Registering' })
+  const client = new BackendClient({
+    originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'),
+    token: tokenFlag,
+    args,
+    command: 'Registering'
+  })
 
   // Target: a schemas-only package (standalone data-schema register) or a
   // foundation (foundation + the schemas it renders). A schemas package is only
   // detected when the cwd isn't a foundation, so the foundation path — including
   // its workspace-scan + prompt (resolveFoundationDir) — is unchanged.
   const standalone = isSchemasPackage(process.cwd())
-  const targetDir = standalone ? process.cwd() : await resolveFoundationDir(args)
+  const targetDir = standalone
+    ? process.cwd()
+    : await resolveFoundationDir(args)
 
   // Scope: --scope flag, else package.json `uniweb.scope`, else (real submit
   // only) derived from login membership in the bootstrap below.
   const pkgScope = readPkgScope(targetDir)
   let scope = scopeFlag || pkgScope
-  let scopeSource = scopeFlag ? '--scope' : pkgScope ? 'package.json uniweb.scope' : null
+  let scopeSource = scopeFlag
+    ? '--scope'
+    : pkgScope
+      ? 'package.json uniweb.scope'
+      : null
   const isPreview = !!output || dryRun
 
   // Each path supplies a different schema source: the standalone path discovers
@@ -256,7 +324,9 @@ async function runRegister(args = []) {
     }
     if (!schemas || Object.keys(schemas).length === 0) {
       error('No data schemas found in this package.')
-      log(`  ${colors.dim}Expected a package that exports schemas (getSchema / schemas), or a schemas/ directory of *.yml files.${colors.reset}`)
+      log(
+        `  ${colors.dim}Expected a package that exports schemas (getSchema / schemas), or a schemas/ directory of *.yml files.${colors.reset}`
+      )
       return { exitCode: 2 }
     }
   } else {
@@ -268,12 +338,17 @@ async function runRegister(args = []) {
     if (needs) {
       if (isPreview) {
         error(`No usable build (${reason}).`)
-        log(`  Build the foundation first: ${colors.bright}uniweb build${colors.reset}`)
+        log(
+          `  Build the foundation first: ${colors.bright}uniweb build${colors.reset}`
+        )
         return { exitCode: 2 }
       }
       info(`${reason} — building the foundation first …`)
       try {
-        execSync('npx uniweb build --target foundation', { cwd: targetDir, stdio: 'inherit' })
+        execSync('npx uniweb build --target foundation', {
+          cwd: targetDir,
+          stdio: 'inherit'
+        })
       } catch (err) {
         error(`Build failed: ${err.message}`)
         return { exitCode: 2 }
@@ -298,15 +373,24 @@ async function runRegister(args = []) {
   if (!scope && !isPreview) {
     const token = await client.token()
     const sess = await readRegistryAuth()
-    const derived = await deriveScope({ apiBase: client.origin, token, accountHandle: sess?.handle || null, args })
+    const derived = await deriveScope({
+      apiBase: client.origin,
+      token,
+      accountHandle: sess?.handle || null,
+      args
+    })
     if (!derived) return { exitCode: 0 }
     scope = `@${derived}`
     scopeSource = 'login'
     try {
       await writePkgScope(targetDir, scope)
-      info(`Saved ${colors.bright}${scope}${colors.reset} as this ${standalone ? 'package' : 'foundation'}'s publish scope (package.json).`)
+      info(
+        `Saved ${colors.bright}${scope}${colors.reset} as this ${standalone ? 'package' : 'foundation'}'s publish scope (package.json).`
+      )
     } catch {
-      log(`  ${colors.dim}(Could not save the scope to package.json — pass --scope ${scope} next time.)${colors.reset}`)
+      log(
+        `  ${colors.dim}(Could not save the scope to package.json — pass --scope ${scope} next time.)${colors.reset}`
+      )
     }
   }
 
@@ -314,29 +398,46 @@ async function runRegister(args = []) {
   // register ships (shipping-model.md §4.1). Rides in the foundation-schema
   // entity's info.digest; the backend stores it opaque and returns it so
   // publish/status can detect "code changed since release" with no local state.
-  const digest = standalone ? null : computeFoundationDigest(join(targetDir, 'dist'))
+  const digest = standalone
+    ? null
+    : computeFoundationDigest(join(targetDir, 'dist'))
 
   const exporter = { tool: 'uniweb', version: cliVersion(), instance: 'build' }
   let doc
   try {
     doc = standalone
       ? buildSchemaOnlyPackage({ schemas, scope, exporter })
-      : buildRegistryPackage({ schema, foundationDir: targetDir, scope, exporter, digest })
+      : buildRegistryPackage({
+          schema,
+          foundationDir: targetDir,
+          scope,
+          exporter,
+          digest
+        })
   } catch (err) {
     error(`Could not assemble the .uwx: ${err.message}`)
     return { exitCode: 2 }
   }
   const json = JSON.stringify(doc, null, 2)
 
-  const defined = doc.entities.filter((e) => e.model === '@uniweb/data-schema').map((e) => e.name)
+  const defined = doc.entities
+    .filter((e) => e.model === '@uniweb/data-schema')
+    .map((e) => e.name)
   log('')
   if (standalone) {
-    info(`${colors.bright}${readPkgName(targetDir) || 'schemas'}${colors.reset} ${colors.dim}(schemas-only — no foundation)${colors.reset}`)
+    info(
+      `${colors.bright}${readPkgName(targetDir) || 'schemas'}${colors.reset} ${colors.dim}(schemas-only — no foundation)${colors.reset}`
+    )
   } else {
-    info(`${colors.bright}${schema._self.name}@${schema._self.version}${colors.reset}`)
+    info(
+      `${colors.bright}${schema._self.name}@${schema._self.version}${colors.reset}`
+    )
   }
-  log(`  ${colors.dim}data schemas ${standalone ? 'registered' : 'defined'}: ${defined.length ? defined.join(', ') : '(none)'}${colors.reset}`)
-  if (scope) log(`  ${colors.dim}scope: ${scope} (${scopeSource})${colors.reset}`)
+  log(
+    `  ${colors.dim}data schemas ${standalone ? 'registered' : 'defined'}: ${defined.length ? defined.join(', ') : '(none)'}${colors.reset}`
+  )
+  if (scope)
+    log(`  ${colors.dim}scope: ${scope} (${scopeSource})${colors.reset}`)
   if (digest) log(`  ${colors.dim}digest: ${digest}${colors.reset}`)
 
   // Preview paths — no submit, no auth needed.
@@ -353,9 +454,13 @@ async function runRegister(args = []) {
     if (!standalone && !args.includes('--schema-only')) {
       const distFiles = collectDistFiles(join(targetDir, 'dist'))
       log('')
-      info(`Would then deliver ${distFiles.length} code file(s) (meta/ excluded):`)
+      info(
+        `Would then deliver ${distFiles.length} code file(s) (meta/ excluded):`
+      )
       for (const f of distFiles) {
-        log(`  ${colors.dim}${f.path}  ${f.size} bytes  ${f.content_type}${colors.reset}`)
+        log(
+          `  ${colors.dim}${f.path}  ${f.size} bytes  ${f.content_type}${colors.reset}`
+        )
       }
     }
     return { exitCode: 0 }
@@ -363,8 +468,12 @@ async function runRegister(args = []) {
 
   // Submit requires a concrete scope — the registry rejects @/… fail-closed.
   if (!scope) {
-    error('No publish scope — set "uniweb.scope" in package.json, or pass --scope @org.')
-    log(`  ${colors.dim}Without a scope, names stay @/… and the registry rejects them.${colors.reset}`)
+    error(
+      'No publish scope — set "uniweb.scope" in package.json, or pass --scope @org.'
+    )
+    log(
+      `  ${colors.dim}Without a scope, names stay @/… and the registry rejects them.${colors.reset}`
+    )
     return { exitCode: 2 }
   }
   // Submit — the client carries the bearer (--token › UNIWEB_TOKEN › stored
@@ -375,14 +484,20 @@ async function runRegister(args = []) {
     res = await client.register(json)
   } catch (err) {
     error(`Could not reach the registry at ${client.origin}: ${err.message}`)
-    log(`  ${colors.dim}Set the endpoint with --backend/--registry <url> or UNIWEB_REGISTER_URL.${colors.reset}`)
+    log(
+      `  ${colors.dim}Set the endpoint with --backend/--registry <url> or UNIWEB_REGISTER_URL.${colors.reset}`
+    )
     return { exitCode: 2 }
   }
   // Read the response body once: the --json success path needs it for the minted
   // entity ids; the error path shows it.
   const rawBody = await res.text().catch(() => '')
   let parsedBody = null
-  try { parsedBody = rawBody ? JSON.parse(rawBody) : null } catch { parsedBody = null }
+  try {
+    parsedBody = rawBody ? JSON.parse(rawBody) : null
+  } catch {
+    parsedBody = null
+  }
   let alreadyRegistered = false
   if (!res.ok) {
     // Resume path: a registered version is immutable, so re-running after a
@@ -393,12 +508,20 @@ async function runRegister(args = []) {
     const isDuplicate = !standalone && res.status === 409
     if (isDuplicate) {
       alreadyRegistered = true
-      info(`${colors.dim}Schema for this version is already registered — resuming code delivery.${colors.reset}`)
+      info(
+        `${colors.dim}Schema for this version is already registered — resuming code delivery.${colors.reset}`
+      )
     } else {
-      error(`Registry rejected the submission: HTTP ${res.status} ${res.statusText}`)
+      error(
+        `Registry rejected the submission: HTTP ${res.status} ${res.statusText}`
+      )
       if (res.status === 401 || res.status === 403) {
-        log(`  ${colors.dim}The registry didn't accept your credentials — it may use different ones than \`uniweb login\`.${colors.reset}`)
-        log(`  ${colors.dim}Supply a registry bearer with --token <bearer> (or UNIWEB_TOKEN); an existing one may be wrong or expired.${colors.reset}`)
+        log(
+          `  ${colors.dim}The registry didn't accept your credentials — it may use different ones than \`uniweb login\`.${colors.reset}`
+        )
+        log(
+          `  ${colors.dim}Supply a registry bearer with --token <bearer> (or UNIWEB_TOKEN); an existing one may be wrong or expired.${colors.reset}`
+        )
       }
       if (rawBody) log(`  ${colors.dim}${rawBody.slice(0, 500)}${colors.reset}`)
       return { exitCode: 1 }
@@ -423,34 +546,48 @@ async function runRegister(args = []) {
     const bareName = schema._self.name
     const name = bareName.startsWith('@') ? bareName : `${scope}/${bareName}`
     const version = schema._self.version
-    info(`Delivering code for ${colors.bright}${name}@${version}${colors.reset} …`)
+    info(
+      `Delivering code for ${colors.bright}${name}@${version}${colors.reset} …`
+    )
     try {
       const result = await client.uploadFoundationCode({
         name,
         version,
         distDir,
-        onProgress: (m) => log(`  ${colors.dim}${m}${colors.reset}`),
+        onProgress: (m) => log(`  ${colors.dim}${m}${colors.reset}`)
       })
       if (result.failed.length) {
         error(`${result.failed.length} file(s) failed to upload:`)
         for (const f of result.failed) {
-          log(`  ${colors.red}${f.path}${colors.reset} ${colors.dim}HTTP ${f.status} ${f.detail}${colors.reset}`)
+          log(
+            `  ${colors.red}${f.path}${colors.reset} ${colors.dim}HTTP ${f.status} ${f.detail}${colors.reset}`
+          )
         }
-        log(`  ${colors.dim}Re-run \`uniweb register\` to resume — completed files are safe no-ops.${colors.reset}`)
+        log(
+          `  ${colors.dim}Re-run \`uniweb register\` to resume — completed files are safe no-ops.${colors.reset}`
+        )
         return { exitCode: 1 }
       }
       const where = result.serveBase || 'the registry gateway'
       if (result.verified === true) {
-        success(`Code delivered (${result.uploaded.length} files) — entry verified live at ${colors.dim}${where}${colors.reset}`)
+        success(
+          `Code delivered (${result.uploaded.length} files) — entry verified live at ${colors.dim}${where}${colors.reset}`
+        )
       } else if (result.verified === false) {
-        error('Code uploaded but the entry verification fetch did not match — investigate before using this version.')
+        error(
+          'Code uploaded but the entry verification fetch did not match — investigate before using this version.'
+        )
         return { exitCode: 1 }
       } else {
-        success(`Code delivered (${result.uploaded.length} files, ${result.mode} mode)`)
+        success(
+          `Code delivered (${result.uploaded.length} files, ${result.mode} mode)`
+        )
       }
     } catch (err) {
       error(`Code delivery failed: ${err.message}`)
-      log(`  ${colors.dim}The schema registration above succeeded; re-run \`uniweb register\` to deliver the code.${colors.reset}`)
+      log(
+        `  ${colors.dim}The schema registration above succeeded; re-run \`uniweb register\` to deliver the code.${colors.reset}`
+      )
       return { exitCode: 1 }
     }
   }
@@ -460,9 +597,15 @@ async function runRegister(args = []) {
   // you just registered it — so correct it here, not in a doc nobody's reading.
   if (!jsonMode && defined.length > 0 && scope) {
     log('')
-    info('Registered schemas are content types authors can use in the Uniweb app.')
-    log(`  ${colors.dim}Delivery is separate: a foundation that binds ${scope}/<name> resolves it from${colors.reset}`)
-    log(`  ${colors.dim}disk — an ${scope}/schemas package, or a folder routed in schemas.config.js.${colors.reset}`)
+    info(
+      'Registered schemas are content types authors can use in the Uniweb app.'
+    )
+    log(
+      `  ${colors.dim}Delivery is separate: a foundation that binds ${scope}/<name> resolves it from${colors.reset}`
+    )
+    log(
+      `  ${colors.dim}disk — an ${scope}/schemas package, or a folder routed in schemas.config.js.${colors.reset}`
+    )
   }
 
   if (jsonMode) {
@@ -475,20 +618,39 @@ async function runRegister(args = []) {
     const addMint = (e) => {
       if (!e || typeof e !== 'object') return
       const reg = e.registered ?? e
-      if (reg.name) minted[reg.name] = { uuid: reg.payload_model_uuid ?? null, version: reg.version ?? null, unchanged: e.unchanged === true }
+      if (reg.name)
+        minted[reg.name] = {
+          uuid: reg.payload_model_uuid ?? null,
+          version: reg.version ?? null,
+          unchanged: e.unchanged === true
+        }
     }
     if (parsedBody && typeof parsedBody === 'object') {
-      if (Array.isArray(parsedBody.data_schemas)) parsedBody.data_schemas.forEach(addMint)
+      if (Array.isArray(parsedBody.data_schemas))
+        parsedBody.data_schemas.forEach(addMint)
       if (parsedBody.foundation_schema) addMint(parsedBody.foundation_schema)
     }
     const names = [
-      ...doc.entities.filter((e) => e.model === '@uniweb/data-schema').map((e) => e.name),
+      ...doc.entities
+        .filter((e) => e.model === '@uniweb/data-schema')
+        .map((e) => e.name),
       // The foundation-schema entity carries its `@scope/name` under `info`, not a
       // top-level `name` (that's the foundation-schema shape).
-      ...doc.entities.filter((e) => e.model === '@uniweb/foundation-schema').map((e) => e.info?.name ?? e.name),
+      ...doc.entities
+        .filter((e) => e.model === '@uniweb/foundation-schema')
+        .map((e) => e.info?.name ?? e.name)
     ].filter(Boolean)
-    const entities = names.map((name) => ({ name, ...(minted[name] || { uuid: null, version: null, unchanged: false }) }))
-    emitJson({ ok: true, scope: scope || null, origin: client.origin, digest: digest || null, entities })
+    const entities = names.map((name) => ({
+      name,
+      ...(minted[name] || { uuid: null, version: null, unchanged: false })
+    }))
+    emitJson({
+      ok: true,
+      scope: scope || null,
+      origin: client.origin,
+      digest: digest || null,
+      entities
+    })
   }
   return { exitCode: 0 }
 }

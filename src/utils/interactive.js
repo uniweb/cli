@@ -37,7 +37,7 @@ export function getCliPrefix() {
  * @returns {string[]}
  */
 export function stripNonInteractiveFlag(args) {
-  return args.filter(a => a !== '--non-interactive')
+  return args.filter((a) => a !== '--non-interactive')
 }
 
 /**
@@ -46,8 +46,8 @@ export function stripNonInteractiveFlag(args) {
  * @returns {string}
  */
 export function formatOptions(options) {
-  const maxLen = Math.max(...options.map(o => o.label.length))
+  const maxLen = Math.max(...options.map((o) => o.label.length))
   return options
-    .map(o => `  ${o.label.padEnd(maxLen + 3)}${o.description}`)
+    .map((o) => `  ${o.label.padEnd(maxLen + 3)}${o.description}`)
     .join('\n')
 }

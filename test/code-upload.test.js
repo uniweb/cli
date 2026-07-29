@@ -18,7 +18,7 @@ import {
   uploadOrder,
   gatewayUrl,
   uploadFoundationCode,
-  ENTRY_PATH,
+  ENTRY_PATH
 } from '../src/utils/code-upload.js'
 
 function makeDist() {
@@ -41,7 +41,7 @@ test('collectDistFiles walks dist, excludes meta/ and *.map, hashes and types fi
     assert.deepEqual(paths.sort(), [
       'assets/style.css',
       'entry.js',
-      'runtime-pin.json',
+      'runtime-pin.json'
     ])
     assert.ok(!paths.some((p) => p.startsWith('meta/')), 'meta/ excluded')
     assert.ok(!paths.some((p) => p.endsWith('.map')), 'sourcemaps excluded')
@@ -52,7 +52,10 @@ test('collectDistFiles walks dist, excludes meta/ and *.map, hashes and types fi
       entry.sha256,
       createHash('sha256').update('export default 42\n').digest('hex')
     )
-    assert.equal(files.find((f) => f.path === 'assets/style.css').content_type, 'text/css')
+    assert.equal(
+      files.find((f) => f.path === 'assets/style.css').content_type,
+      'text/css'
+    )
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -64,7 +67,11 @@ test('computeFoundationDigest is sha256:-prefixed and stable across calls (deter
     const a = computeFoundationDigest(dir)
     const b = computeFoundationDigest(dir)
     assert.match(a, /^sha256:[0-9a-f]{64}$/)
-    assert.equal(a, b, 'same dist → same digest (multi-machine safety depends on this)')
+    assert.equal(
+      a,
+      b,
+      'same dist → same digest (multi-machine safety depends on this)'
+    )
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -85,7 +92,10 @@ test('computeFoundationDigest changes when meta/schema.json changes (schema is p
   const dir = makeDist()
   try {
     const before = computeFoundationDigest(dir)
-    writeFileSync(join(dir, 'meta', 'schema.json'), '{"_self":{"version":"9.9.9"}}\n')
+    writeFileSync(
+      join(dir, 'meta', 'schema.json'),
+      '{"_self":{"version":"9.9.9"}}\n'
+    )
     assert.notEqual(computeFoundationDigest(dir), before)
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -141,7 +151,7 @@ test('uploadOrder puts the entry last', () => {
   const order = uploadOrder([
     { path: ENTRY_PATH },
     { path: 'assets/style.css' },
-    { path: 'entry.js.map' },
+    { path: 'entry.js.map' }
   ]).map((f) => f.path)
   assert.equal(order[order.length - 1], ENTRY_PATH)
   assert.equal(order.length, 3)
@@ -174,20 +184,24 @@ test('uploadFoundationCode plans, PUTs entry-last, verifies in direct mode', asy
             path: f.path,
             method: 'PUT',
             url: `http://localhost:8080/dev/registry/code/std/starter/1.0.2/${f.path}`,
-            headers: { 'content-type': f.content_type },
-          })),
-        }),
+            headers: { 'content-type': f.content_type }
+          }))
+        })
       }
     }
     if (opts.method === 'PUT') {
-      assert.ok(opts.headers['x-uniweb-sha256'], 'integrity header rides every PUT')
+      assert.ok(
+        opts.headers['x-uniweb-sha256'],
+        'integrity header rides every PUT'
+      )
       return { ok: true, status: 200, text: async () => '' }
     }
     // the verification GET of the entry
     return {
       ok: true,
       status: 200,
-      arrayBuffer: async () => new TextEncoder().encode('export default 42\n').buffer,
+      arrayBuffer: async () =>
+        new TextEncoder().encode('export default 42\n').buffer
     }
   }
   try {
@@ -196,16 +210,23 @@ test('uploadFoundationCode plans, PUTs entry-last, verifies in direct mode', asy
       token: 't',
       name: '@std/starter',
       version: '1.0.2',
-      distDir: dir,
+      distDir: dir
     })
     assert.equal(result.failed.length, 0)
     assert.equal(result.uploaded.length, 3) // entry.js, runtime-pin.json, assets/style.css (meta/ + .map excluded)
     assert.equal(result.verified, true)
     const puts = calls.filter((c) => c.method === 'PUT').map((c) => c.url)
-    assert.ok(puts[puts.length - 1].endsWith('/entry.js'), 'entry uploaded last')
+    assert.ok(
+      puts[puts.length - 1].endsWith('/entry.js'),
+      'entry uploaded last'
+    )
     const gets = calls.filter((c) => c.method === 'GET')
     assert.ok(
-      gets.some((c) => c.url === 'http://localhost:8080/gateway/foundation/std/starter/1.0.2/entry.js'),
+      gets.some(
+        (c) =>
+          c.url ===
+          'http://localhost:8080/gateway/foundation/std/starter/1.0.2/entry.js'
+      ),
       'verification fetch hits the gateway'
     )
   } finally {
@@ -225,8 +246,12 @@ test('uploadFoundationCode surfaces per-file failures and skips verification', a
         status: 200,
         json: async () => ({
           mode: 'direct',
-          uploads: body.files.map((f) => ({ path: f.path, method: 'PUT', url: `http://x/${f.path}` })),
-        }),
+          uploads: body.files.map((f) => ({
+            path: f.path,
+            method: 'PUT',
+            url: `http://x/${f.path}`
+          }))
+        })
       }
     }
     if (String(url).endsWith('/style.css')) {
@@ -240,7 +265,7 @@ test('uploadFoundationCode surfaces per-file failures and skips verification', a
       token: 't',
       name: '@std/starter',
       version: '1.0.2',
-      distDir: dir,
+      distDir: dir
     })
     assert.equal(result.failed.length, 1)
     assert.equal(result.failed[0].path, 'assets/style.css')
@@ -265,16 +290,22 @@ test('origin-relative serve_base resolves against the registry origin', async ()
         json: async () => ({
           mode: 'direct',
           serve_base: '/gateway/foundation/@std/starter/1.0.2/',
-          uploads: body.files.map((f) => ({ path: f.path, method: 'PUT', url: `/dev/registry/code/std/starter/1.0.2/${f.path}` })),
-        }),
+          uploads: body.files.map((f) => ({
+            path: f.path,
+            method: 'PUT',
+            url: `/dev/registry/code/std/starter/1.0.2/${f.path}`
+          }))
+        })
       }
     }
-    if (opts.method === 'PUT') return { ok: true, status: 200, text: async () => '' }
+    if (opts.method === 'PUT')
+      return { ok: true, status: 200, text: async () => '' }
     gets.push(String(url))
     return {
       ok: true,
       status: 200,
-      arrayBuffer: async () => new TextEncoder().encode('export default 42\n').buffer,
+      arrayBuffer: async () =>
+        new TextEncoder().encode('export default 42\n').buffer
     }
   }
   try {
@@ -283,10 +314,12 @@ test('origin-relative serve_base resolves against the registry origin', async ()
       token: 't',
       name: '@std/starter',
       version: '1.0.2',
-      distDir: dir,
+      distDir: dir
     })
     assert.equal(result.verified, true)
-    assert.deepEqual(gets, ['http://localhost:8080/gateway/foundation/@std/starter/1.0.2/entry.js'])
+    assert.deepEqual(gets, [
+      'http://localhost:8080/gateway/foundation/@std/starter/1.0.2/entry.js'
+    ])
   } finally {
     globalThis.fetch = realFetch
     rmSync(dir, { recursive: true, force: true })

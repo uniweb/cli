@@ -33,13 +33,13 @@ export async function fetchGitHubTemplate(owner, repo, options = {}) {
   try {
     const response = await fetchWithRetry(tarballUrl, {
       headers: {
-        'Accept': 'application/vnd.github+json',
+        Accept: 'application/vnd.github+json',
         'User-Agent': 'uniweb-cli',
         // Support private repos if GITHUB_TOKEN is set
         ...(process.env.GITHUB_TOKEN && {
-          'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`
-        }),
-      },
+          Authorization: `Bearer ${process.env.GITHUB_TOKEN}`
+        })
+      }
     })
 
     if (!response.ok) {
@@ -69,7 +69,7 @@ export async function fetchGitHubTemplate(owner, repo, options = {}) {
 
     return {
       tempDir,
-      ref: displayRef,
+      ref: displayRef
     }
   } catch (err) {
     // Clean up on error
@@ -86,13 +86,13 @@ async function fetchWithRetry(url, options = {}, maxRetries = 3) {
     try {
       const response = await fetch(url, {
         ...options,
-        signal: AbortSignal.timeout(60000), // 60s timeout for GitHub (can be slow)
+        signal: AbortSignal.timeout(60000) // 60s timeout for GitHub (can be slow)
       })
       return response
     } catch (err) {
       if (attempt === maxRetries) throw err
       const delay = Math.min(1000 * Math.pow(2, attempt), 10000)
-      await new Promise(r => setTimeout(r, delay))
+      await new Promise((r) => setTimeout(r, delay))
     }
   }
 }

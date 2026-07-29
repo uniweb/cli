@@ -45,13 +45,24 @@ import { spawn } from 'node:child_process'
 import prompts from 'prompts'
 
 import { findWorkspaceRoot } from '../utils/workspace.js'
-import { readAgentsVersion, generateAgentsContent } from '../utils/agents-stamp.js'
+import {
+  readAgentsVersion,
+  generateAgentsContent
+} from '../utils/agents-stamp.js'
 import { getCliVersion } from '../versions.js'
 import { isNonInteractive } from '../utils/interactive.js'
-import { detectWorkspacePm, installCmd, detectGlobalCliPm, globalCliUpdateCmd } from '../utils/pm.js'
+import {
+  detectWorkspacePm,
+  installCmd,
+  detectGlobalCliPm,
+  globalCliUpdateCmd
+} from '../utils/pm.js'
 import { writeJsonPreservingStyle } from '../utils/json-file.js'
 import { surveyWorkspaceDeps, compareSemver } from '../utils/dep-survey.js'
-import { checkWorkspaceInstall, readDeclaredFoundation } from '../utils/install-integrity.js'
+import {
+  checkWorkspaceInstall,
+  readDeclaredFoundation
+} from '../utils/install-integrity.js'
 import { getLatestVersion } from '../utils/update-check.js'
 
 const colors = {
@@ -61,7 +72,7 @@ const colors = {
   red: '\x1b[31m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
-  cyan: '\x1b[36m',
+  cyan: '\x1b[36m'
 }
 
 const success = (msg) => console.log(`${colors.green}✓${colors.reset} ${msg}`)
@@ -78,8 +89,10 @@ const log = console.log
 function isGlobalInstall() {
   const scriptPath = process.argv[1]
   if (!scriptPath) return false
-  return !scriptPath.split('/').includes('node_modules') &&
-         !scriptPath.split('\\').includes('node_modules')
+  return (
+    !scriptPath.split('/').includes('node_modules') &&
+    !scriptPath.split('\\').includes('node_modules')
+  )
 }
 
 /**
@@ -106,7 +119,9 @@ function findUniwebWorkspace(cwd) {
   if (!existsSync(pkgPath)) return null
   try {
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-    const hasUniwebDep = !!(pkg.devDependencies?.uniweb || pkg.dependencies?.uniweb)
+    const hasUniwebDep = !!(
+      pkg.devDependencies?.uniweb || pkg.dependencies?.uniweb
+    )
     return hasUniwebDep ? workspaceDir : null
   } catch {
     return null
@@ -137,18 +152,34 @@ function findUniwebWorkspace(cwd) {
  *
  * @returns {boolean} true if a notice was printed.
  */
-export function printStaleCliNotice({ cliVersion, latest, isNpx, isGlobal, globalPm }) {
+export function printStaleCliNotice({
+  cliVersion,
+  latest,
+  isNpx,
+  isGlobal,
+  globalPm
+}) {
   if (isNpx) return false
   if (!latest || compareSemver(latest, cliVersion) <= 0) return false
 
   log('')
-  log(`${colors.yellow}⚠${colors.reset}  ${colors.bright}A newer uniweb is available:${colors.reset} ${colors.dim}v${cliVersion}${colors.reset} → ${colors.cyan}v${latest}${colors.reset}`)
+  log(
+    `${colors.yellow}⚠${colors.reset}  ${colors.bright}A newer uniweb is available:${colors.reset} ${colors.dim}v${cliVersion}${colors.reset} → ${colors.cyan}v${latest}${colors.reset}`
+  )
   if (isGlobal) {
-    log(`${colors.dim}This run aligned the project to v${cliVersion}'s matrix. To update the CLI:${colors.reset} ${colors.cyan}${globalCliUpdateCmd(globalPm)}${colors.reset}`)
-    log(`${colors.dim}Or align to the latest release without a global install:${colors.reset} ${colors.cyan}npx uniweb@latest update${colors.reset}`)
+    log(
+      `${colors.dim}This run aligned the project to v${cliVersion}'s matrix. To update the CLI:${colors.reset} ${colors.cyan}${globalCliUpdateCmd(globalPm)}${colors.reset}`
+    )
+    log(
+      `${colors.dim}Or align to the latest release without a global install:${colors.reset} ${colors.cyan}npx uniweb@latest update${colors.reset}`
+    )
   } else {
-    log(`${colors.dim}This run aligned the project to v${cliVersion}'s matrix — the version your project pins.${colors.reset}`)
-    log(`${colors.dim}To move to v${latest}:${colors.reset} ${colors.cyan}npx uniweb@latest update${colors.reset} ${colors.dim}(updates the pin too).${colors.reset}`)
+    log(
+      `${colors.dim}This run aligned the project to v${cliVersion}'s matrix — the version your project pins.${colors.reset}`
+    )
+    log(
+      `${colors.dim}To move to v${latest}:${colors.reset} ${colors.cyan}npx uniweb@latest update${colors.reset} ${colors.dim}(updates the pin too).${colors.reset}`
+    )
   }
   log('')
   return true
@@ -159,7 +190,7 @@ function runCommand(cmd, cwd) {
   return new Promise((resolve) => {
     const [bin, ...rest] = cmd.split(' ')
     const child = spawn(bin, rest, { stdio: 'inherit', cwd })
-    child.on('close', code => resolve(code ?? 0))
+    child.on('close', (code) => resolve(code ?? 0))
     child.on('error', () => resolve(1))
   })
 }
@@ -179,19 +210,28 @@ function runCommand(cmd, cwd) {
  * regression here is invisible — the command still works, it just stops
  * being readable.
  */
-export function printSurvey(report, cliVersion, agentsVersion, { verbose = false } = {}) {
+export function printSurvey(
+  report,
+  cliVersion,
+  agentsVersion,
+  { verbose = false } = {}
+) {
   log('')
   log(`${colors.bright}uniweb CLI:${colors.reset}             v${cliVersion}`)
-  log(`${colors.bright}AGENTS.md stamp:${colors.reset}        ${agentsVersion ? 'v' + agentsVersion : colors.dim + '(none)' + colors.reset}`)
+  log(
+    `${colors.bright}AGENTS.md stamp:${colors.reset}        ${agentsVersion ? 'v' + agentsVersion : colors.dim + '(none)' + colors.reset}`
+  )
   log('')
 
   if (report.rows.length === 0) {
-    log(`${colors.dim}No @uniweb/* deps found in workspace package.json files.${colors.reset}`)
+    log(
+      `${colors.dim}No @uniweb/* deps found in workspace package.json files.${colors.reset}`
+    )
     log('')
     return
   }
 
-  const needsAttention = report.rows.filter(r => r.status !== 'aligned')
+  const needsAttention = report.rows.filter((r) => r.status !== 'aligned')
   const shown = verbose ? report.rows : needsAttention
   const alignedCount = report.rows.length - needsAttention.length
 
@@ -208,7 +248,7 @@ export function printSurvey(report, cliVersion, agentsVersion, { verbose = false
   log(`${colors.bright}Workspace deps (declared):${colors.reset}`)
   for (const [dir, dirRows] of Object.entries(byDir)) {
     log(`  ${colors.dim}${dir}/${colors.reset}`)
-    const maxName = Math.max(...dirRows.map(r => r.name.length))
+    const maxName = Math.max(...dirRows.map((r) => r.name.length))
     for (const row of dirRows) {
       const padding = ' '.repeat(maxName - row.name.length)
       let icon, statusText
@@ -222,11 +262,15 @@ export function printSurvey(report, cliVersion, agentsVersion, { verbose = false
         icon = `${colors.cyan}↑${colors.reset}`
         statusText = `${colors.cyan}ahead of CLI${colors.reset}`
       }
-      log(`    ${icon} ${row.name}${padding}  ${row.current.padEnd(10)} → ${row.target.padEnd(10)}  ${statusText}`)
+      log(
+        `    ${icon} ${row.name}${padding}  ${row.current.padEnd(10)} → ${row.target.padEnd(10)}  ${statusText}`
+      )
     }
   }
   if (!verbose && alignedCount > 0) {
-    log(`  ${colors.dim}(${alignedCount} other${alignedCount === 1 ? '' : 's'} already aligned — ${colors.reset}${colors.cyan}--verbose${colors.reset}${colors.dim} to list)${colors.reset}`)
+    log(
+      `  ${colors.dim}(${alignedCount} other${alignedCount === 1 ? '' : 's'} already aligned — ${colors.reset}${colors.cyan}--verbose${colors.reset}${colors.dim} to list)${colors.reset}`
+    )
   }
   log('')
 }
@@ -239,7 +283,7 @@ export function printSurvey(report, cliVersion, agentsVersion, { verbose = false
  * reflow the whole file). Returns the list of paths that actually changed.
  */
 function applyDepUpdates(workspaceDir, surveyRows, dryRun) {
-  const behind = surveyRows.filter(r => r.status === 'behind')
+  const behind = surveyRows.filter((r) => r.status === 'behind')
   const byDir = {}
   for (const row of behind) {
     const dir = row.relDir === '(root)' ? '' : row.relDir
@@ -254,12 +298,20 @@ function applyDepUpdates(workspaceDir, surveyRows, dryRun) {
     if (!existsSync(pkgPath)) continue
     const original = readFileSync(pkgPath, 'utf8')
     let pkg
-    try { pkg = JSON.parse(original) } catch { continue }
+    try {
+      pkg = JSON.parse(original)
+    } catch {
+      continue
+    }
 
     let changed = false
     for (const row of dirRows) {
       const section = pkg[row.section]
-      if (section && section[row.name] !== undefined && section[row.name] !== row.target) {
+      if (
+        section &&
+        section[row.name] !== undefined &&
+        section[row.name] !== row.target
+      ) {
         section[row.name] = row.target
         changed = true
       }
@@ -295,8 +347,12 @@ export async function update(args = []) {
   const cliVersion = getCliVersion()
 
   if ((agentsOnly || depsOnly) && !inProject) {
-    error(`${agentsOnly ? '--agents-only' : '--deps-only'} requires a Uniweb project (no \`uniweb\` dep in the workspace root).`)
-    log(`${colors.dim}Run this command from inside a project created by${colors.reset} ${colors.cyan}uniweb create${colors.reset}${colors.dim}.${colors.reset}`)
+    error(
+      `${agentsOnly ? '--agents-only' : '--deps-only'} requires a Uniweb project (no \`uniweb\` dep in the workspace root).`
+    )
+    log(
+      `${colors.dim}Run this command from inside a project created by${colors.reset} ${colors.cyan}uniweb create${colors.reset}${colors.dim}.${colors.reset}`
+    )
     process.exit(1)
   }
 
@@ -328,45 +384,64 @@ export async function update(args = []) {
   // same convention `--version` follows in index.js. Skipped entirely when
   // there is nothing to reconcile — the notice is never reached from those
   // paths, and looking it up anyway would spend a network call on nothing.
-  const latestCli = (isNpx || !inProject)
-    ? null
-    : await getLatestVersion({ allowNetwork: !!process.stdout.isTTY })
+  const latestCli =
+    isNpx || !inProject
+      ? null
+      : await getLatestVersion({ allowNetwork: !!process.stdout.isTTY })
 
   if (isNpx) {
-    log(`${colors.dim}Running${colors.reset} ${colors.cyan}uniweb@${cliVersion}${colors.reset} ${colors.dim}via npx — aligning this project to v${cliVersion}'s matrix.${colors.reset}`)
-    log(`${colors.dim}(To install the CLI:${colors.reset} ${colors.cyan}npm i -g uniweb${colors.reset}${colors.dim}.)${colors.reset}`)
+    log(
+      `${colors.dim}Running${colors.reset} ${colors.cyan}uniweb@${cliVersion}${colors.reset} ${colors.dim}via npx — aligning this project to v${cliVersion}'s matrix.${colors.reset}`
+    )
+    log(
+      `${colors.dim}(To install the CLI:${colors.reset} ${colors.cyan}npm i -g uniweb${colors.reset}${colors.dim}.)${colors.reset}`
+    )
     log('')
   } else if (!isGlobal) {
     // Project-local copy (lives in this project's node_modules).
-    log(`${colors.dim}Running the project-local CLI (v${cliVersion}) — pinned by your project's${colors.reset} ${colors.cyan}package.json${colors.reset}${colors.dim}.${colors.reset}`)
+    log(
+      `${colors.dim}Running the project-local CLI (v${cliVersion}) — pinned by your project's${colors.reset} ${colors.cyan}package.json${colors.reset}${colors.dim}.${colors.reset}`
+    )
     log('')
   }
 
   if (!inProject) {
-    log(`${colors.dim}Not inside a Uniweb project — nothing to reconcile.${colors.reset}`)
-    log(`${colors.dim}Run this from a project created by${colors.reset} ${colors.cyan}uniweb create${colors.reset}${colors.dim}.${colors.reset}`)
+    log(
+      `${colors.dim}Not inside a Uniweb project — nothing to reconcile.${colors.reset}`
+    )
+    log(
+      `${colors.dim}Run this from a project created by${colors.reset} ${colors.cyan}uniweb create${colors.reset}${colors.dim}.${colors.reset}`
+    )
     log('')
     return
   }
 
   // ── Step 1: Deps alignment ───────────────────────────────────────
-  let depsEdited = false      // package.json files were rewritten
-  let installRan = false      // `<pm> install` ran and succeeded
+  let depsEdited = false // package.json files were rewritten
+  let installRan = false // `<pm> install` ran and succeeded
   let editedPaths = []
 
   if (!skipDeps && survey) {
     if (!survey.anyDrift) {
       // The count carries the work the collapsed table no longer shows.
-      success(`Workspace deps are aligned with the CLI (${survey.rows.length} checked).`)
+      success(
+        `Workspace deps are aligned with the CLI (${survey.rows.length} checked).`
+      )
       if (survey.anyAhead) {
-        log(`${colors.dim}(Some deps are ahead of the CLI's bundled matrix — left untouched.)${colors.reset}`)
+        log(
+          `${colors.dim}(Some deps are ahead of the CLI's bundled matrix — left untouched.)${colors.reset}`
+        )
       }
       if (!existsSync(join(workspaceDir, 'node_modules'))) {
-        warn(`No ${colors.bright}node_modules${colors.reset} in the workspace — run ${colors.cyan}${installCmd(installPm || 'pnpm')}${colors.reset} to install.`)
+        warn(
+          `No ${colors.bright}node_modules${colors.reset} in the workspace — run ${colors.cyan}${installCmd(installPm || 'pnpm')}${colors.reset} to install.`
+        )
       }
       log('')
     } else {
-      log(`${colors.yellow}⚠${colors.reset}  Some workspace deps lag the CLI's bundled matrix.`)
+      log(
+        `${colors.yellow}⚠${colors.reset}  Some workspace deps lag the CLI's bundled matrix.`
+      )
       log('')
 
       // Decide whether to write the package.json edits.
@@ -377,8 +452,12 @@ export async function update(args = []) {
         proceed = true
       } else if (nonInteractive) {
         proceed = false
-        info(`${colors.dim}Non-interactive — printing the alignment plan; not editing files.${colors.reset}`)
-        log(`${colors.dim}To apply, re-run with${colors.reset} ${colors.cyan}--yes${colors.reset}${colors.dim}, or align manually:${colors.reset}`)
+        info(
+          `${colors.dim}Non-interactive — printing the alignment plan; not editing files.${colors.reset}`
+        )
+        log(
+          `${colors.dim}To apply, re-run with${colors.reset} ${colors.cyan}--yes${colors.reset}${colors.dim}, or align manually:${colors.reset}`
+        )
         log(`  ${colors.cyan}pnpm update "@uniweb/*" uniweb -r${colors.reset}`)
         log('')
       } else {
@@ -386,7 +465,7 @@ export async function update(args = []) {
           type: 'confirm',
           name: 'go',
           message: `Edit workspace package.json files to align with v${cliVersion}?`,
-          initial: true,
+          initial: true
         })
         proceed = !!go
       }
@@ -395,11 +474,18 @@ export async function update(args = []) {
         const wouldEdit = applyDepUpdates(workspaceDir, survey.rows, true)
         if (wouldEdit.length > 0) {
           info('Dry-run: would update package.json in:')
-          for (const path of wouldEdit) log(`  ${colors.dim}- ${relativize(path, workspaceDir)}${colors.reset}`)
+          for (const path of wouldEdit)
+            log(
+              `  ${colors.dim}- ${relativize(path, workspaceDir)}${colors.reset}`
+            )
           if (installPm) {
-            log(`${colors.dim}Then would run:${colors.reset} ${colors.cyan}${installCmd(installPm)}${colors.reset}`)
+            log(
+              `${colors.dim}Then would run:${colors.reset} ${colors.cyan}${installCmd(installPm)}${colors.reset}`
+            )
           } else {
-            log(`${colors.dim}Then would prompt for an install command (no lockfile detected).${colors.reset}`)
+            log(
+              `${colors.dim}Then would prompt for an install command (no lockfile detected).${colors.reset}`
+            )
           }
           log('')
         }
@@ -410,26 +496,32 @@ export async function update(args = []) {
           info('No package.json files needed changes.')
           log('')
         } else {
-          for (const path of editedPaths) success(`Updated ${relativize(path, workspaceDir)}`)
+          for (const path of editedPaths)
+            success(`Updated ${relativize(path, workspaceDir)}`)
           log('')
 
           // Resolve the workspace PM (lockfile-driven). If absent, ask.
           if (!installPm) {
             if (nonInteractive) {
-              warn('No lockfile in workspace root — cannot pick an install command for you.')
-              log(`${colors.dim}Run one of:${colors.reset} ${colors.cyan}pnpm install${colors.reset} ${colors.dim}/${colors.reset} ${colors.cyan}yarn install${colors.reset} ${colors.dim}/${colors.reset} ${colors.cyan}npm install${colors.reset}`)
+              warn(
+                'No lockfile in workspace root — cannot pick an install command for you.'
+              )
+              log(
+                `${colors.dim}Run one of:${colors.reset} ${colors.cyan}pnpm install${colors.reset} ${colors.dim}/${colors.reset} ${colors.cyan}yarn install${colors.reset} ${colors.dim}/${colors.reset} ${colors.cyan}npm install${colors.reset}`
+              )
               log('')
             } else {
               const { picked } = await prompts({
                 type: 'select',
                 name: 'picked',
-                message: 'No lockfile found. Which package manager does this workspace use?',
+                message:
+                  'No lockfile found. Which package manager does this workspace use?',
                 choices: [
                   { title: 'pnpm', value: 'pnpm' },
                   { title: 'yarn', value: 'yarn' },
                   { title: 'npm', value: 'npm' },
-                  { title: 'skip — I\'ll install manually', value: null },
-                ],
+                  { title: "skip — I'll install manually", value: null }
+                ]
               })
               installPm = picked || null
             }
@@ -442,14 +534,16 @@ export async function update(args = []) {
               runInstall = true
             } else if (nonInteractive) {
               runInstall = false
-              info(`${colors.dim}Non-interactive — run the install yourself:${colors.reset} ${colors.cyan}${cmd}${colors.reset}`)
+              info(
+                `${colors.dim}Non-interactive — run the install yourself:${colors.reset} ${colors.cyan}${cmd}${colors.reset}`
+              )
               log('')
             } else {
               const { go } = await prompts({
                 type: 'confirm',
                 name: 'go',
                 message: `Run \`${cmd}\` now?`,
-                initial: true,
+                initial: true
               })
               runInstall = !!go
             }
@@ -461,15 +555,25 @@ export async function update(args = []) {
                 success('Install complete.')
                 log('')
               } else {
-                error(`Install failed (exit ${code}). package.json edits are intact.`)
-                const editedRel = editedPaths.map(p => relativize(p, workspaceDir)).join(' ')
-                log(`${colors.dim}To revert:${colors.reset} ${colors.cyan}git checkout -- ${editedRel}${colors.reset}`)
-                log(`${colors.dim}To retry: ${colors.reset} ${colors.cyan}${cmd}${colors.reset}`)
+                error(
+                  `Install failed (exit ${code}). package.json edits are intact.`
+                )
+                const editedRel = editedPaths
+                  .map((p) => relativize(p, workspaceDir))
+                  .join(' ')
+                log(
+                  `${colors.dim}To revert:${colors.reset} ${colors.cyan}git checkout -- ${editedRel}${colors.reset}`
+                )
+                log(
+                  `${colors.dim}To retry: ${colors.reset} ${colors.cyan}${cmd}${colors.reset}`
+                )
                 log('')
                 process.exit(code)
               }
             } else {
-              log(`${colors.dim}Skipped install. Edits saved; run${colors.reset} ${colors.cyan}${cmd}${colors.reset} ${colors.dim}to apply them.${colors.reset}`)
+              log(
+                `${colors.dim}Skipped install. Edits saved; run${colors.reset} ${colors.cyan}${cmd}${colors.reset} ${colors.dim}to apply them.${colors.reset}`
+              )
               log('')
             }
           }
@@ -482,12 +586,20 @@ export async function update(args = []) {
   }
 
   // ── Step 2: AGENTS.md ────────────────────────────────────────────
-  let agentsResult = null     // 'created' | 'updated' | 'current' | 'skipped'
+  let agentsResult = null // 'created' | 'updated' | 'current' | 'skipped'
 
   if (!skipAgents) {
     agentsResult = await refreshAgents({
-      workspaceDir, cliVersion, allowMismatch, dryRun,
-      hasYes, nonInteractive, agentsOnly, depsEdited, installRan, installPm,
+      workspaceDir,
+      cliVersion,
+      allowMismatch,
+      dryRun,
+      hasYes,
+      nonInteractive,
+      agentsOnly,
+      depsEdited,
+      installRan,
+      installPm
     })
   }
 
@@ -503,14 +615,30 @@ export async function update(args = []) {
   }
 
   // ── Closing summary ──────────────────────────────────────────────
-  if (!dryRun && (depsEdited || agentsResult === 'created' || agentsResult === 'updated')) {
-    printSummary({ editedPaths, depsEdited, installRan, installPm, agentsResult, cliVersion })
+  if (
+    !dryRun &&
+    (depsEdited || agentsResult === 'created' || agentsResult === 'updated')
+  ) {
+    printSummary({
+      editedPaths,
+      depsEdited,
+      installRan,
+      installPm,
+      agentsResult,
+      cliVersion
+    })
   }
 
   // Last, deliberately — see printStaleCliNotice. Everything above reports
   // against THIS CLI's matrix; if the CLI itself is behind, that is the note
   // the reader should leave with.
-  printStaleCliNotice({ cliVersion, latest: latestCli, isNpx, isGlobal, globalPm })
+  printStaleCliNotice({
+    cliVersion,
+    latest: latestCli,
+    isNpx,
+    isGlobal,
+    globalPm
+  })
 }
 
 /**
@@ -521,16 +649,17 @@ async function reportInstallIntegrity(workspaceDir) {
     // Imported here, not at the top: discover.js reaches @uniweb/build, an
     // optional peer that must stay off the CLI's startup path so `npx uniweb
     // create` works in an empty directory. update.js is loaded at startup.
-    const { discoverSites, discoverFoundations } = await import('../utils/discover.js')
+    const { discoverSites, discoverFoundations } =
+      await import('../utils/discover.js')
 
     const sites = (await discoverSites(workspaceDir)).map((s) => ({
       name: s.name,
       path: join(workspaceDir, s.path),
-      foundation: readDeclaredFoundation(join(workspaceDir, s.path)),
+      foundation: readDeclaredFoundation(join(workspaceDir, s.path))
     }))
     const foundations = (await discoverFoundations(workspaceDir)).map((f) => ({
       name: f.name,
-      path: join(workspaceDir, f.path),
+      path: join(workspaceDir, f.path)
     }))
 
     const findings = checkWorkspaceInstall(sites, foundations, workspaceDir)
@@ -541,7 +670,9 @@ async function reportInstallIntegrity(workspaceDir) {
     for (const finding of findings) {
       log(`  ${finding.message}`)
     }
-    log(`  ${colors.dim}${findings[0].remedy}. \`uniweb doctor\` explains in full.${colors.reset}`)
+    log(
+      `  ${colors.dim}${findings[0].remedy}. \`uniweb doctor\` explains in full.${colors.reset}`
+    )
   } catch {
     // A post-flight check must never turn a successful update into a failure.
   }
@@ -557,8 +688,16 @@ async function reportInstallIntegrity(workspaceDir) {
  */
 async function refreshAgents(ctx) {
   const {
-    workspaceDir, cliVersion, allowMismatch, dryRun,
-    hasYes, nonInteractive, agentsOnly, depsEdited, installRan, installPm,
+    workspaceDir,
+    cliVersion,
+    allowMismatch,
+    dryRun,
+    hasYes,
+    nonInteractive,
+    agentsOnly,
+    depsEdited,
+    installRan,
+    installPm
   } = ctx
 
   // Deps were rewritten but not installed → node_modules is now behind
@@ -566,8 +705,12 @@ async function refreshAgents(ctx) {
   // installed code doesn't have. No override — run the install first.
   if (depsEdited && !installRan) {
     const cmd = installCmd(installPm || 'pnpm')
-    warn('AGENTS.md refresh skipped: package.json was updated but not installed.')
-    log(`${colors.dim}Your${colors.reset} ${colors.bright}node_modules${colors.reset} ${colors.dim}is behind your${colors.reset} ${colors.bright}package.json${colors.reset}${colors.dim}. Run${colors.reset} ${colors.cyan}${cmd}${colors.reset}${colors.dim}, then re-run${colors.reset} ${colors.cyan}uniweb update${colors.reset}${colors.dim}.${colors.reset}`)
+    warn(
+      'AGENTS.md refresh skipped: package.json was updated but not installed.'
+    )
+    log(
+      `${colors.dim}Your${colors.reset} ${colors.bright}node_modules${colors.reset} ${colors.dim}is behind your${colors.reset} ${colors.bright}package.json${colors.reset}${colors.dim}. Run${colors.reset} ${colors.cyan}${cmd}${colors.reset}${colors.dim}, then re-run${colors.reset} ${colors.cyan}uniweb update${colors.reset}${colors.dim}.${colors.reset}`
+    )
     log('')
     return 'skipped'
   }
@@ -577,8 +720,12 @@ async function refreshAgents(ctx) {
   const finalSurvey = await surveyWorkspaceDeps(workspaceDir)
   if (finalSurvey.anyDrift && !allowMismatch) {
     warn('AGENTS.md refresh skipped: workspace deps still lag the CLI.')
-    log(`${colors.dim}AGENTS.md from v${cliVersion} would document features not in your installed packages.${colors.reset}`)
-    log(`${colors.dim}Re-run without ${colors.reset}${colors.cyan}--no-deps${colors.reset}${colors.dim}, or pass ${colors.reset}${colors.cyan}--allow-mismatch${colors.reset}${colors.dim} to override.${colors.reset}`)
+    log(
+      `${colors.dim}AGENTS.md from v${cliVersion} would document features not in your installed packages.${colors.reset}`
+    )
+    log(
+      `${colors.dim}Re-run without ${colors.reset}${colors.cyan}--no-deps${colors.reset}${colors.dim}, or pass ${colors.reset}${colors.cyan}--allow-mismatch${colors.reset}${colors.dim} to override.${colors.reset}`
+    )
     log('')
     if (agentsOnly) process.exit(1)
     return 'skipped'
@@ -592,7 +739,9 @@ async function refreshAgents(ctx) {
   }
 
   if (dryRun) {
-    info(`Dry-run: would ${currentAgentsVersion ? `update AGENTS.md (v${currentAgentsVersion} → v${cliVersion})` : `create AGENTS.md (v${cliVersion})`}.`)
+    info(
+      `Dry-run: would ${currentAgentsVersion ? `update AGENTS.md (v${currentAgentsVersion} → v${cliVersion})` : `create AGENTS.md (v${cliVersion})`}.`
+    )
     return 'skipped'
   }
 
@@ -600,7 +749,12 @@ async function refreshAgents(ctx) {
     const action = currentAgentsVersion
       ? `Update AGENTS.md (v${currentAgentsVersion} → v${cliVersion})?`
       : `Create AGENTS.md (v${cliVersion})?`
-    const { yes } = await prompts({ type: 'confirm', name: 'yes', message: action, initial: true })
+    const { yes } = await prompts({
+      type: 'confirm',
+      name: 'yes',
+      message: action,
+      initial: true
+    })
     if (!yes) {
       log(`${colors.dim}Skipped AGENTS.md.${colors.reset}`)
       return 'skipped'
@@ -623,20 +777,38 @@ async function refreshAgents(ctx) {
  * installed packages changed, and stay quiet otherwise (this runs on every
  * `uniweb update`, including no-op ones).
  */
-export function printSummary({ editedPaths, depsEdited, installRan, installPm, agentsResult, cliVersion }) {
+export function printSummary({
+  editedPaths,
+  depsEdited,
+  installRan,
+  installPm,
+  agentsResult,
+  cliVersion
+}) {
   log(`${colors.bright}Summary${colors.reset}`)
   if (depsEdited) {
-    log(`  ${colors.green}✓${colors.reset} package.json updated in ${editedPaths.length} file${editedPaths.length === 1 ? '' : 's'}`)
+    log(
+      `  ${colors.green}✓${colors.reset} package.json updated in ${editedPaths.length} file${editedPaths.length === 1 ? '' : 's'}`
+    )
     if (installRan) {
-      log(`  ${colors.green}✓${colors.reset} ${installCmd(installPm || 'pnpm')} completed`)
+      log(
+        `  ${colors.green}✓${colors.reset} ${installCmd(installPm || 'pnpm')} completed`
+      )
     } else {
-      log(`  ${colors.yellow}⚠${colors.reset} install NOT run — run ${colors.cyan}${installCmd(installPm || 'pnpm')}${colors.reset} to apply`)
+      log(
+        `  ${colors.yellow}⚠${colors.reset} install NOT run — run ${colors.cyan}${installCmd(installPm || 'pnpm')}${colors.reset} to apply`
+      )
     }
   }
-  if (agentsResult === 'created') log(`  ${colors.green}✓${colors.reset} AGENTS.md created (v${cliVersion})`)
-  else if (agentsResult === 'updated') log(`  ${colors.green}✓${colors.reset} AGENTS.md updated (v${cliVersion})`)
-  else if (agentsResult === 'skipped' && depsEdited) log(`  ${colors.dim}·${colors.reset} AGENTS.md not refreshed (see above)`)
-  log(`${colors.dim}Review changes with${colors.reset} ${colors.cyan}git diff${colors.reset}${colors.dim}, then commit.${colors.reset}`)
+  if (agentsResult === 'created')
+    log(`  ${colors.green}✓${colors.reset} AGENTS.md created (v${cliVersion})`)
+  else if (agentsResult === 'updated')
+    log(`  ${colors.green}✓${colors.reset} AGENTS.md updated (v${cliVersion})`)
+  else if (agentsResult === 'skipped' && depsEdited)
+    log(`  ${colors.dim}·${colors.reset} AGENTS.md not refreshed (see above)`)
+  log(
+    `${colors.dim}Review changes with${colors.reset} ${colors.cyan}git diff${colors.reset}${colors.dim}, then commit.${colors.reset}`
+  )
 
   // Only when the installed packages actually changed under a process that may
   // still be running. This failure is nastier than it sounds: hot reload picks
@@ -646,8 +818,12 @@ export function printSummary({ editedPaths, depsEdited, installRan, installPm, a
   // thinks to look is the server that has been running fine all along.
   if (depsEdited && installRan) {
     log('')
-    log(`${colors.yellow}↻${colors.reset}  ${colors.bright}Restart any running dev server.${colors.reset}`)
-    log(`${colors.dim}Hot reload picks up your source, not swapped dependencies — a running${colors.reset} ${colors.cyan}uniweb dev${colors.reset} ${colors.dim}keeps using the framework version it started with.${colors.reset}`)
+    log(
+      `${colors.yellow}↻${colors.reset}  ${colors.bright}Restart any running dev server.${colors.reset}`
+    )
+    log(
+      `${colors.dim}Hot reload picks up your source, not swapped dependencies — a running${colors.reset} ${colors.cyan}uniweb dev${colors.reset} ${colors.dim}keeps using the framework version it started with.${colors.reset}`
+    )
   }
 
   log('')

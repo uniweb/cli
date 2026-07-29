@@ -32,14 +32,18 @@ import { resolveLocalFoundation } from '../backend/foundation-bring-along.js'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 
 const c = {
-  reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
-  cyan: '\x1b[36m', green: '\x1b[32m', yellow: '\x1b[33m',
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  dim: '\x1b[2m',
+  cyan: '\x1b[36m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m'
 }
 const say = {
   ok: (m) => console.log(`${c.green}✓${c.reset} ${m}`),
   info: (m) => console.log(`${c.cyan}→${c.reset} ${m}`),
   warn: (m) => console.log(`${c.yellow}⚠${c.reset} ${m}`),
-  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`),
+  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`)
 }
 
 function readSiteYml(siteDir) {
@@ -63,7 +67,9 @@ function foundationRef(siteYml) {
 function splitFoundationRef(fnd) {
   if (!fnd || fnd[0] !== '@') return { scope: null, version: null }
   const at = fnd.lastIndexOf('@')
-  return at > 0 ? { scope: fnd.slice(0, at), version: fnd.slice(at + 1) } : { scope: null, version: null }
+  return at > 0
+    ? { scope: fnd.slice(0, at), version: fnd.slice(at + 1) }
+    : { scope: null, version: null }
 }
 
 export async function status(args = []) {
@@ -92,11 +98,12 @@ export async function status(args = []) {
   if (remote) {
     try {
       const client = new BackendClient({
-        originFlag: readFlagValue(args, '--backend') || readFlagValue(args, '--registry'),
+        originFlag:
+          readFlagValue(args, '--backend') || readFlagValue(args, '--registry'),
         siteBackend: await resolveSiteBackend(siteDir),
         token: readFlagValue(args, '--token') || undefined,
         args,
-        command: 'Status',
+        command: 'Status'
       })
       if (uuid) site = await client.siteStatus(uuid)
       // Foundation freshness: prefer the LOCAL foundation's scoped name (so a
@@ -124,7 +131,15 @@ export async function status(args = []) {
         changed: probe ? probe.changed : null,
         unchanged: probe ? probe.unchanged : null,
         ...(probeErr ? { error: probeErr } : {}),
-        ...(remote ? { remote: { site, foundation_latest: fdnLatest?.latest_version ?? null, foundation_fresh: foundationFresh } } : {}),
+        ...(remote
+          ? {
+              remote: {
+                site,
+                foundation_latest: fdnLatest?.latest_version ?? null,
+                foundation_fresh: foundationFresh
+              }
+            }
+          : {})
       })
     )
     return { exitCode: 0 }
@@ -137,13 +152,17 @@ export async function status(args = []) {
     say.ok(`Synced — site-content ${c.bold}${uuid}${c.reset}`)
   } else {
     say.warn('Not synced — this site has never been pushed to a backend.')
-    say.dim('Run `uniweb push` to create it, or `uniweb publish` to sync and go live in one step.')
+    say.dim(
+      'Run `uniweb push` to create it, or `uniweb publish` to sync and go live in one step.'
+    )
   }
 
   // Content
   if (probeErr) {
     say.warn(`Couldn't compute content changes: ${probeErr}`)
-    say.dim('A build error or an unresolved data Model can block the offline diff.')
+    say.dim(
+      'A build error or an unresolved data Model can block the offline diff.'
+    )
   } else if (!uuid) {
     const n = probe.changed
     say.info(`${n} content ${n === 1 ? 'entity' : 'entities'} ready to push.`)
@@ -156,7 +175,9 @@ export async function status(args = []) {
         (probe.unchanged ? ` (${probe.unchanged} unchanged)` : '') +
         '.'
     )
-    say.dim('Run `uniweb publish` to sync and go live (or `uniweb push` to sync only).')
+    say.dim(
+      'Run `uniweb publish` to sync and go live (or `uniweb push` to sync only).'
+    )
   }
 
   // Foundation
@@ -166,18 +187,30 @@ export async function status(args = []) {
   if (remote) {
     if (site) {
       if (site.draft_dirty) {
-        say.info('Synced draft has changes not yet live — run `uniweb publish` to go live.')
+        say.info(
+          'Synced draft has changes not yet live — run `uniweb publish` to go live.'
+        )
       } else if (site.published) {
         say.ok('Live with the latest synced content.')
       } else {
-        say.info('Synced but not published yet — run `uniweb publish` to go live.')
+        say.info(
+          'Synced but not published yet — run `uniweb publish` to go live.'
+        )
       }
     }
-    if (fdnLatest?.latest_version && fndVersion && fdnLatest.latest_version !== fndVersion) {
-      say.info(`A newer foundation version (${fdnLatest.latest_version}) is registered than the site pins (${fndVersion}).`)
+    if (
+      fdnLatest?.latest_version &&
+      fndVersion &&
+      fdnLatest.latest_version !== fndVersion
+    ) {
+      say.info(
+        `A newer foundation version (${fdnLatest.latest_version}) is registered than the site pins (${fndVersion}).`
+      )
     }
     if (foundationFresh === false) {
-      say.info('Local foundation differs from the registered version — `uniweb register` (or `uniweb publish`) to release the change.')
+      say.info(
+        'Local foundation differs from the registered version — `uniweb register` (or `uniweb publish`) to release the change.'
+      )
     } else if (foundationFresh === true) {
       say.ok('Local foundation matches the registered version.')
     }

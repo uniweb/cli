@@ -23,7 +23,7 @@ import {
   diffSiteUnits,
   describeSiteDiff,
   computeUnitHashes,
-  collectUnitUuids,
+  collectUnitUuids
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -66,7 +66,9 @@ async function explainStaleSiteContent({ client, siteDir, localBuffer, uuid }) {
     const remoteDoc = entityDocFromUwx(Buffer.from(await res.arrayBuffer()))
     const localDoc = entityDocFromUwx(localBuffer)
     if (!remoteDoc || !localDoc) return []
-    return describeSiteDiff(diffSiteUnits(localDoc, remoteDoc, readUnitBases(siteDir)))
+    return describeSiteDiff(
+      diffSiteUnits(localDoc, remoteDoc, readUnitBases(siteDir))
+    )
   } catch {
     return []
   }
@@ -98,7 +100,7 @@ export function extractFinalized(payload) {
       // resubmit returns the value we already hold, and anything else is theirs
       // to report, not ours to derive.
       version: typeof d?.version === 'string' ? d.version : null,
-      document: d?.document ?? null,
+      document: d?.document ?? null
     }))
     .filter((e) => Number.isInteger(e.index) && e.uuid)
 }
@@ -109,7 +111,8 @@ export function extractFinalized(payload) {
 // envelope the update/folder lanes return (the site entity is submitted alone, so its
 // minted uuid is the first finalized entry). Returns null if none is present.
 export function extractMintedSiteUuid(payload) {
-  if (typeof payload?.siteContentUuid === 'string') return payload.siteContentUuid
+  if (typeof payload?.siteContentUuid === 'string')
+    return payload.siteContentUuid
   if (typeof payload?.$uuid === 'string') return payload.$uuid
   if (typeof payload?.uuid === 'string') return payload.uuid
   const finalized = extractFinalized(payload)
@@ -223,11 +226,15 @@ export function readItemBaseVersions(siteDir) {
 }
 export function mergeItemBaseVersions(siteDir, versions) {
   if (!versions || !Object.keys(versions).length) return
-  updateSyncCache(siteDir, { itemBaseVersions: { ...readItemBaseVersions(siteDir), ...versions } })
+  updateSyncCache(siteDir, {
+    itemBaseVersions: { ...readItemBaseVersions(siteDir), ...versions }
+  })
 }
 export function mergeBaseVersions(siteDir, versions) {
   if (!versions || !Object.keys(versions).length) return
-  updateSyncCache(siteDir, { baseVersions: { ...readBaseVersions(siteDir), ...versions } })
+  updateSyncCache(siteDir, {
+    baseVersions: { ...readBaseVersions(siteDir), ...versions }
+  })
 }
 
 /**
@@ -297,7 +304,9 @@ export async function ensureItemUuids({ client, siteDir, note }) {
   try {
     const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
     siteContentUuid = typeof y?.$uuid === 'string' ? y.$uuid : null
-  } catch { /* unreadable site.yml — nothing to recover against */ }
+  } catch {
+    /* unreadable site.yml — nothing to recover against */
+  }
   if (!siteContentUuid) return cached
   try {
     const res = await client.pullSiteContent(siteContentUuid)
@@ -307,7 +316,9 @@ export async function ensureItemUuids({ client, siteDir, note }) {
     const harvested = collectUnitUuids(doc)
     if (Object.keys(harvested).length) {
       writeItemUuids(siteDir, harvested)
-      note?.(`Recovered identity for ${Object.keys(harvested).length} item(s) from the backend.`)
+      note?.(
+        `Recovered identity for ${Object.keys(harvested).length} item(s) from the backend.`
+      )
     }
     return harvested
   } catch {
@@ -323,7 +334,9 @@ export function readUnitBases(siteDir) {
 }
 export function writeUnitBases(siteDir, patch) {
   if (!patch) return
-  updateSyncCache(siteDir, { unitBases: { ...readUnitBases(siteDir), ...patch } })
+  updateSyncCache(siteDir, {
+    unitBases: { ...readUnitBases(siteDir), ...patch }
+  })
 }
 
 /**
@@ -343,9 +356,10 @@ export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
   const pkg = await emitSyncPackages(siteDir, {
     resolveModel: makeModelResolver({ client: null, offline: true }),
     priorHashes,
-    sendAll,
+    sendAll
   })
-  const changed = (pkg.siteContent?.entityCount || 0) + (pkg.collections?.entityCount || 0)
+  const changed =
+    (pkg.siteContent?.entityCount || 0) + (pkg.collections?.entityCount || 0)
   return { changed, unchanged: pkg.skipped || 0, warnings: pkg.warnings || [] }
 }
 
@@ -364,7 +378,13 @@ export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
  * @returns {Promise<{ exitCode: number, boundSiteUuid?: string, finalizedTotal: number, wrote: string[] }>}
  *   exitCode 1 on any lane failure (already reported, cache NOT persisted); 0 on success.
  */
-export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) {
+export async function pushSyncPackages({
+  client,
+  siteDir,
+  pkg,
+  asOrg,
+  report
+}) {
   const { siteContent, collections, siteContentUuid, hashes } = pkg
   const { info, note, error } = report
   const dim = report.dim || ((s) => s)
@@ -393,33 +413,53 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
       // `reason` — never on `detail`, which is prose the backend may reword.
       let problem = null
       if ((res.status === 409 || res.status === 400) && body) {
-        try { problem = JSON.parse(body) } catch { /* not a problem document */ }
+        try {
+          problem = JSON.parse(body)
+        } catch {
+          /* not a problem document */
+        }
       }
       // The package carried no identity for records the backend already stores, so
       // applying it would replace every one of them. `ensureItemUuids` is supposed
       // to make this unreachable, so reaching it means that recovery failed — say so
       // rather than surfacing a raw 400.
       if (problem?.reason === 'identity_required') {
-        error(`${label} push refused — this copy has no record of the site's item identity.`)
-        note('Nothing was written. Pushing without it would have replaced the identity of every stored item.')
-        note('The recovery normally runs automatically, so it likely could not reach the backend.')
-        note('Check your connection and re-run; `uniweb pull` also restores it.')
+        error(
+          `${label} push refused — this copy has no record of the site's item identity.`
+        )
+        note(
+          'Nothing was written. Pushing without it would have replaced the identity of every stored item.'
+        )
+        note(
+          'The recovery normally runs automatically, so it likely could not reach the backend.'
+        )
+        note(
+          'Check your connection and re-run; `uniweb pull` also restores it.'
+        )
         return null
       }
       if (problem?.reason === 'stale_base') {
-        error(`${label} push refused — the backend has newer content than your last pull.`)
+        error(
+          `${label} push refused — the backend has newer content than your last pull.`
+        )
         // Page-level account, when we can get one. The gate is entity-grained, so
         // without this the user only learns "the document moved" and has no basis
         // for choosing between pulling and forcing.
         const detail = await explainStale()
         for (const line of detail) note(line)
         if (!detail.length) {
-          const stale = Array.isArray(problem.stale_entities) ? problem.stale_entities : []
+          const stale = Array.isArray(problem.stale_entities)
+            ? problem.stale_entities
+            : []
           if (stale.length) {
-            note(`Changed upstream: ${stale.length} entit${stale.length === 1 ? 'y' : 'ies'} (${stale.join(', ')})`)
+            note(
+              `Changed upstream: ${stale.length} entit${stale.length === 1 ? 'y' : 'ies'} (${stale.join(', ')})`
+            )
           }
         }
-        note('Nothing was written — the whole push was refused before any change.')
+        note(
+          'Nothing was written — the whole push was refused before any change.'
+        )
         // Say what will actually work from HERE. Anyone hitting this has local
         // work — it is why they pushed — and if it is uncommitted then `pull`
         // refuses too, so bare "run pull" advice walks them into a dead end.
@@ -427,17 +467,27 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
           // `--merge` is the recovery that keeps both sides: most of these are two
           // people editing different parts of one section, which merges silently.
           // Offer it first, and keep the take-theirs route for anyone who wants it.
-          note('Commit your changes, then `uniweb pull --merge` to combine them with the backend\'s.')
-          note('(Plain `uniweb pull` declines while the work is unsaved — it overwrites rather than merges.)')
+          note(
+            "Commit your changes, then `uniweb pull --merge` to combine them with the backend's."
+          )
+          note(
+            '(Plain `uniweb pull` declines while the work is unsaved — it overwrites rather than merges.)'
+          )
         } else {
-          note('Run `uniweb pull --merge` to combine the changes, or `uniweb pull` to take the backend version.')
+          note(
+            'Run `uniweb pull --merge` to combine the changes, or `uniweb pull` to take the backend version.'
+          )
         }
-        note('To overwrite them anyway, re-run with --force (this discards the upstream edits).')
+        note(
+          'To overwrite them anyway, re-run with --force (this discards the upstream edits).'
+        )
         return null
       }
       error(`${label} push rejected: HTTP ${res.status} ${res.statusText}`)
       if (res.status === 401 || res.status === 403) {
-        note("Credentials weren't accepted — supply a bearer with --token <bearer> (or UNIWEB_TOKEN).")
+        note(
+          "Credentials weren't accepted — supply a bearer with --token <bearer> (or UNIWEB_TOKEN)."
+        )
       } else if (res.status === 409) {
         // The site's @uniweb/folder is genesis-owned: its structure is fixed on first
         // deploy and not reconciled in place (the v1 rule — see gotcha #20's mode switch).
@@ -467,7 +517,9 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
     if (payload === null) return null
     const finalized = extractFinalized(payload)
     if (!finalized) {
-      error(`The ${label} response carried no recognizable finalized list (expected report.finalized[] with index + uuid).`)
+      error(
+        `The ${label} response carried no recognizable finalized list (expected report.finalized[] with index + uuid).`
+      )
       note(JSON.stringify(payload).slice(0, 800))
       return null
     }
@@ -487,7 +539,8 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
   // already moved past, and refuse a push the user just made.
   const newVersions = {}
   const harvest = (finalized) => {
-    for (const f of finalized || []) if (f.uuid && f.version) newVersions[f.uuid] = f.version
+    for (const f of finalized || [])
+      if (f.uuid && f.version) newVersions[f.uuid] = f.version
   }
   // The backend's post-write copy of the site-content document, kept for the
   // remote-side unit base (see writeUnitBases).
@@ -496,8 +549,17 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
     if (siteContentUuid) {
       const finalized = await pushLane(
         'site-content',
-        () => client.updateSiteContent(siteContentUuid, siteContent.buffer, { asOrg }),
-        () => explainStaleSiteContent({ client, siteDir, localBuffer: siteContent.buffer, uuid: siteContentUuid })
+        () =>
+          client.updateSiteContent(siteContentUuid, siteContent.buffer, {
+            asOrg
+          }),
+        () =>
+          explainStaleSiteContent({
+            client,
+            siteDir,
+            localBuffer: siteContent.buffer,
+            uuid: siteContentUuid
+          })
       )
       if (!finalized) {
         mergeBaseVersions(siteDir, newVersions)
@@ -507,14 +569,15 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
       siteFinalizedDoc = finalized[0]?.document || null
       finalizedTotal += finalized.length
     } else {
-      const payload = await postLane(
-        'site-content',
-        () => client.createSiteContent(siteContent.buffer, { asOrg })
+      const payload = await postLane('site-content', () =>
+        client.createSiteContent(siteContent.buffer, { asOrg })
       )
       if (payload === null) return { exitCode: 1, finalizedTotal, wrote }
       const minted = extractMintedSiteUuid(payload)
       if (!minted) {
-        error('The create response carried no minted site-content uuid — cannot record the site identity or push its folder.')
+        error(
+          'The create response carried no minted site-content uuid — cannot record the site identity or push its folder.'
+        )
         note(JSON.stringify(payload).slice(0, 800))
         return { exitCode: 1, finalizedTotal, wrote }
       }
@@ -534,12 +597,13 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
   // itself has no uuid (the backend owns it).
   if (collections) {
     if (!boundSiteUuid) {
-      error('Cannot push collections — the site has no uuid yet. Push the site-content lane first.')
+      error(
+        'Cannot push collections — the site has no uuid yet. Push the site-content lane first.'
+      )
       return { exitCode: 1, finalizedTotal, wrote }
     }
-    const finalized = await pushLane(
-      'collections',
-      () => client.pushFolder(boundSiteUuid, collections.buffer, { asOrg })
+    const finalized = await pushLane('collections', () =>
+      client.pushFolder(boundSiteUuid, collections.buffer, { asOrg })
     )
     if (!finalized) {
       mergeBaseVersions(siteDir, newVersions)
@@ -549,7 +613,8 @@ export async function pushSyncPackages({ client, siteDir, pkg, asOrg, report }) 
     const bf = backfillEntityUuids({ index: collections.index, finalized })
     for (const w of bf.warnings) note(`! ${w}`)
     for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
-    if (bf.updated.length) wrote.push(`wrote ${bf.updated.length} record file(s)`)
+    if (bf.updated.length)
+      wrote.push(`wrote ${bf.updated.length} record file(s)`)
     finalizedTotal += finalized.length
   }
 

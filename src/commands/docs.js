@@ -23,13 +23,21 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { resolve, join, dirname } from 'node:path'
-import { generateDocs, resolveFoundationSrcPath, classifyPackage } from '@uniweb/build'
+import {
+  generateDocs,
+  resolveFoundationSrcPath,
+  classifyPackage
+} from '@uniweb/build'
 import {
   isWorkspaceRoot,
   findFoundations,
-  promptSelect,
+  promptSelect
 } from '../utils/workspace.js'
-import { isNonInteractive, getCliPrefix, formatOptions } from '../utils/interactive.js'
+import {
+  isNonInteractive,
+  getCliPrefix,
+  formatOptions
+} from '../utils/interactive.js'
 
 // Colors for terminal output
 const colors = {
@@ -39,7 +47,7 @@ const colors = {
   cyan: '\x1b[36m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
-  red: '\x1b[31m',
+  red: '\x1b[31m'
 }
 
 function log(message) {
@@ -258,7 +266,7 @@ function parseArgs(args) {
   const options = {
     output: 'COMPONENTS.md',
     fromSource: false,
-    target: null,
+    target: null
   }
 
   for (let i = 0; i < args.length; i++) {
@@ -376,8 +384,12 @@ async function generateComponentDocs(args) {
     foundationDir = resolve(projectDir, options.target)
     outputDir = foundationDir
     if (!isFoundation(foundationDir)) {
-      error(`Target directory does not appear to be a foundation: ${options.target}`)
-      log(`${colors.dim}Foundations have a src/components/ directory.${colors.reset}`)
+      error(
+        `Target directory does not appear to be a foundation: ${options.target}`
+      )
+      log(
+        `${colors.dim}Foundations have a src/components/ directory.${colors.reset}`
+      )
       process.exit(1)
     }
     info(`Using foundation: ${options.target}`)
@@ -388,7 +400,9 @@ async function generateComponentDocs(args) {
 
     if (foundations.length === 0) {
       error('No foundations found in this workspace.')
-      log(`${colors.dim}Foundations have @uniweb/build in devDependencies.${colors.reset}`)
+      log(
+        `${colors.dim}Foundations have @uniweb/build in devDependencies.${colors.reset}`
+      )
       process.exit(1)
     }
 
@@ -398,12 +412,16 @@ async function generateComponentDocs(args) {
       info(`Found foundation: ${targetFoundation}`)
     } else if (isNonInteractive(process.argv)) {
       error(`Multiple foundations found. Specify which to target:\n`)
-      log(formatOptions(foundations.map(f => ({ label: f, description: '' }))))
+      log(
+        formatOptions(foundations.map((f) => ({ label: f, description: '' })))
+      )
       log('')
       log(`Usage: ${getCliPrefix()} docs --target <path>`)
       process.exit(1)
     } else {
-      log(`${colors.dim}Multiple foundations found in workspace.${colors.reset}\n`)
+      log(
+        `${colors.dim}Multiple foundations found in workspace.${colors.reset}\n`
+      )
       targetFoundation = await promptSelect('Select foundation:', foundations)
       if (!targetFoundation) {
         log('Cancelled.')
@@ -419,7 +437,9 @@ async function generateComponentDocs(args) {
     const foundation = await resolveFoundationFromSite(projectDir)
     if (!foundation) {
       error('Could not find a linked foundation in this site.')
-      log(`${colors.dim}Make sure package.json has a foundation dependency like:${colors.reset}`)
+      log(
+        `${colors.dim}Make sure package.json has a foundation dependency like:${colors.reset}`
+      )
       log(`${colors.dim}  "foundation": "file:../foundation"${colors.reset}`)
       process.exit(1)
     }
@@ -429,7 +449,9 @@ async function generateComponentDocs(args) {
     info(`Found foundation: ${foundation.name} (${foundation.path})`)
   } else if (!isFoundation(projectDir)) {
     error('This directory does not appear to be a foundation or site.')
-    log(`${colors.dim}Foundations have a src/components/ directory.${colors.reset}`)
+    log(
+      `${colors.dim}Foundations have a src/components/ directory.${colors.reset}`
+    )
     log(`${colors.dim}Sites have a site.yml file.${colors.reset}`)
     process.exit(1)
   }
@@ -437,8 +459,12 @@ async function generateComponentDocs(args) {
   // Check if schema.json exists (if not using --from-source)
   const schemaPath = join(foundationDir, 'dist', 'schema.json')
   if (!options.fromSource && !existsSync(schemaPath)) {
-    log(`${colors.yellow}⚠${colors.reset} No dist/schema.json found in foundation.`)
-    log(`${colors.dim}Run 'uniweb build' in the foundation first, or use '--from-source'.${colors.reset}`)
+    log(
+      `${colors.yellow}⚠${colors.reset} No dist/schema.json found in foundation.`
+    )
+    log(
+      `${colors.dim}Run 'uniweb build' in the foundation first, or use '--from-source'.${colors.reset}`
+    )
     log('')
     info('Falling back to --from-source mode')
     options.fromSource = true
@@ -449,11 +475,13 @@ async function generateComponentDocs(args) {
 
     const result = await generateDocs(foundationDir, {
       output: join(outputDir, options.output),
-      fromSource: options.fromSource,
+      fromSource: options.fromSource
     })
 
     success(`Generated ${result.outputPath}`)
-    log(`${colors.dim}Documented ${result.componentCount} components${colors.reset}`)
+    log(
+      `${colors.dim}Documented ${result.componentCount} components${colors.reset}`
+    )
   } catch (err) {
     error(`Failed to generate docs: ${err.message}`)
     process.exit(1)

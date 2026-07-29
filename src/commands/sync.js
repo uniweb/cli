@@ -38,11 +38,16 @@
  *   uniweb sync --backend <url>    override the backend origin
  */
 
-const c = { reset: '\x1b[0m', dim: '\x1b[2m', cyan: '\x1b[36m', red: '\x1b[31m' }
+const c = {
+  reset: '\x1b[0m',
+  dim: '\x1b[2m',
+  cyan: '\x1b[36m',
+  red: '\x1b[31m'
+}
 const say = {
   info: (m) => console.log(`${c.cyan}→${c.reset} ${m}`),
   err: (m) => console.error(`${c.red}✗${c.reset} ${m}`),
-  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`),
+  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`)
 }
 
 /**

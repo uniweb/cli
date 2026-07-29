@@ -46,7 +46,7 @@ import {
   recordLastDeploy,
   assembleDataBall,
   collectBallAssets,
-  rewriteBallAssets,
+  rewriteBallAssets
 } from '@uniweb/build/site'
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
@@ -62,7 +62,7 @@ import {
   readBaseVersions,
   readItemBaseVersions,
   ensureItemUuids,
-  pushSyncPackages,
+  pushSyncPackages
 } from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
@@ -70,22 +70,31 @@ import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
 import { settlePaymentIfNeeded } from '../backend/payment-handoff.js'
 
 const c = {
-  reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
-  cyan: '\x1b[36m', green: '\x1b[32m', yellow: '\x1b[33m', red: '\x1b[31m',
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  dim: '\x1b[2m',
+  cyan: '\x1b[36m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  red: '\x1b[31m'
 }
 const say = {
   ok: (m) => console.log(`${c.green}✓${c.reset} ${m}`),
   info: (m) => console.log(`${c.cyan}→${c.reset} ${m}`),
   warn: (m) => console.log(`${c.yellow}⚠${c.reset} ${m}`),
   err: (m) => console.error(`${c.red}✗${c.reset} ${m}`),
-  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`),
+  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`)
 }
 
 // Minimal yes/no prompt. Returns `defaultYes` on an empty answer.
 async function confirm(question, defaultYes = false) {
   const rl = createInterface({ input: process.stdin, output: process.stdout })
   try {
-    const a = (await rl.question(`${question} ${defaultYes ? '[Y/n]' : '[y/N]'} `)).trim().toLowerCase()
+    const a = (
+      await rl.question(`${question} ${defaultYes ? '[Y/n]' : '[y/N]'} `)
+    )
+      .trim()
+      .toLowerCase()
     if (!a) return defaultYes
     return a === 'y' || a === 'yes'
   } finally {
@@ -97,7 +106,9 @@ async function confirm(question, defaultYes = false) {
 // sort). Null when the list is empty.
 function pickHighestRuntime(installed) {
   if (!Array.isArray(installed) || installed.length === 0) return null
-  return [...installed].sort((a, b) => String(b).localeCompare(String(a), undefined, { numeric: true }))[0]
+  return [...installed].sort((a, b) =>
+    String(b).localeCompare(String(a), undefined, { numeric: true })
+  )[0]
 }
 
 // Origin-relative serve path → clickable absolute URL (self-serve default).
@@ -122,17 +133,22 @@ function readSiteYml(path) {
 function languagesFromContent(siteContent) {
   const langs = siteContent?.config?.languages
   if (!Array.isArray(langs) || langs.length === 0) return ['en']
-  return langs.map((l) => (typeof l === 'string' ? l : l?.value || l?.code)).filter(Boolean)
+  return langs
+    .map((l) => (typeof l === 'string' ? l : l?.value || l?.code))
+    .filter(Boolean)
 }
 
 // Languages from site.yml — used only for the dry-run summary (no build yet).
 function languagesFromSiteYml(siteYml) {
   // Legacy `lang:` still honored between defaultLanguage and the shared
   // `defaultLanguage || languages[0] || 'en'` rule.
-  const def = siteYml.defaultLanguage || siteYml.lang || resolveDefaultLocale(siteYml)
+  const def =
+    siteYml.defaultLanguage || siteYml.lang || resolveDefaultLocale(siteYml)
   const locales = siteYml.i18n?.locales || siteYml.languages
   if (!Array.isArray(locales) || locales.length === 0) return null
-  const norm = locales.map((l) => (typeof l === 'string' ? l : l?.value || l?.code)).filter(Boolean)
+  const norm = locales
+    .map((l) => (typeof l === 'string' ? l : l?.value || l?.code))
+    .filter(Boolean)
   return [def, ...norm.filter((l) => l !== def)]
 }
 
@@ -141,7 +157,8 @@ async function persistLastDeploy(siteDir, opts) {
   if (opts.autoSave === 'off') return
   try {
     const result = await recordLastDeploy(siteDir, opts)
-    if (result?.created) say.dim(`Wrote deploy.yml (target: ${opts.targetName})`)
+    if (result?.created)
+      say.dim(`Wrote deploy.yml (target: ${opts.targetName})`)
   } catch (err) {
     // The publish itself succeeded — never fail the whole command on a
     // memo-write error. Surface it so the user can fix the file.
@@ -162,34 +179,49 @@ export async function publish(args = []) {
   const siteBackend = await resolveSiteBackend(siteDir)
 
   const client = new BackendClient({
-    originFlag: readFlagValue(args, '--backend') || readFlagValue(args, '--registry'),
+    originFlag:
+      readFlagValue(args, '--backend') || readFlagValue(args, '--registry'),
     siteBackend,
     token: readFlagValue(args, '--token') || undefined,
     args,
-    command: 'Publishing',
+    command: 'Publishing'
   })
 
   // Capability handshake (cached). Publish ends in a go-live, so the publish
   // lane must be offered.
   const config = await client.discover()
   if (config?.delivery && config.delivery.publish === false) {
-    say.err(`Backend at ${client.origin} does not offer the publish lane (delivery.publish=false).`)
+    say.err(
+      `Backend at ${client.origin} does not offer the publish lane (delivery.publish=false).`
+    )
     return { exitCode: 1 }
   }
 
   // Runtime: an explicit site.yml::runtime pin wins; else the highest installed;
   // else fail closed (better than serving a site with no runtime). A dry-run is
   // a pure preview, so it only WARNS — it stays useful with no backend reachable.
-  const installed = Array.isArray(config?.runtime?.installed) ? config.runtime.installed : []
-  if (siteYml.runtime && installed.length && !installed.includes(siteYml.runtime)) {
-    say.err(`Runtime ${siteYml.runtime} (from site.yml) is not installed on the backend.`)
-    say.dim(`Installed: ${installed.join(', ') || '(none)'} — pin one of these in site.yml (\`runtime:\`), or have it installed on the backend.`)
+  const installed = Array.isArray(config?.runtime?.installed)
+    ? config.runtime.installed
+    : []
+  if (
+    siteYml.runtime &&
+    installed.length &&
+    !installed.includes(siteYml.runtime)
+  ) {
+    say.err(
+      `Runtime ${siteYml.runtime} (from site.yml) is not installed on the backend.`
+    )
+    say.dim(
+      `Installed: ${installed.join(', ') || '(none)'} — pin one of these in site.yml (\`runtime:\`), or have it installed on the backend.`
+    )
     if (!dryRun) return { exitCode: 1 }
   }
   const runtimeVersion = siteYml.runtime || pickHighestRuntime(installed)
   if (!runtimeVersion && !dryRun) {
     say.err('Could not resolve a runtime version.')
-    say.dim('Pin one with `runtime:` in site.yml, or install one on the backend so /dev/config reports it.')
+    say.dim(
+      'Pin one with `runtime:` in site.yml, or install one on the backend so /dev/config reports it.'
+    )
     return { exitCode: 1 }
   }
 
@@ -205,19 +237,44 @@ export async function publish(args = []) {
     resolved = resolveTarget(deployYml, null)
   } catch {
     // Malformed/ambiguous deploy.yml — don't block the publish on the memo.
-    resolved = { targetName: 'production', host: 'uniweb', config: {}, autoSave: 'lastDeploy', fromFile: false }
+    resolved = {
+      targetName: 'production',
+      host: 'uniweb',
+      config: {},
+      autoSave: 'lastDeploy',
+      fromFile: false
+    }
   }
-  const autoSave = noSave ? 'off' : (resolved.autoSave || 'lastDeploy')
+  const autoSave = noSave ? 'off' : resolved.autoSave || 'lastDeploy'
 
   if (dryRun) {
     say.info('Dry run — would bring the foundation along, sync, and go live:')
     say.dim(`Backend     : ${client.origin}`)
-    say.dim(`Runtime     : ${runtimeVersion || '(unresolved — needs a backend or a site.yml runtime: pin)'}${runtimeVersion && !siteYml.runtime ? ' (highest installed)' : ''}`)
-    say.dim(`site_uuid   : ${siteYml.$uuid || '(none — the first push mints it)'}`)
+    say.dim(
+      `Runtime     : ${runtimeVersion || '(unresolved — needs a backend or a site.yml runtime: pin)'}${runtimeVersion && !siteYml.runtime ? ' (highest installed)' : ''}`
+    )
+    say.dim(
+      `site_uuid   : ${siteYml.$uuid || '(none — the first push mints it)'}`
+    )
     const langs = languagesFromSiteYml(siteYml)
     if (langs) say.dim(`Languages   : ${langs.join(', ')}`)
-    await bringFoundationAlong({ client, siteDir, siteYml, args, say, confirm, cliBin: process.argv[1], dryRun: true })
-    await settlePaymentIfNeeded({ client, uuid: siteYml.$uuid || null, args, say, dryRun: true })
+    await bringFoundationAlong({
+      client,
+      siteDir,
+      siteYml,
+      args,
+      say,
+      confirm,
+      cliBin: process.argv[1],
+      dryRun: true
+    })
+    await settlePaymentIfNeeded({
+      client,
+      uuid: siteYml.$uuid || null,
+      args,
+      say,
+      dryRun: true
+    })
     return { exitCode: 0 }
   }
 
@@ -225,7 +282,15 @@ export async function publish(args = []) {
   //    changed (or isn't registered). Never ship a site pointing at stale code.
   let fnd
   try {
-    fnd = await bringFoundationAlong({ client, siteDir, siteYml, args, say, confirm, cliBin: process.argv[1] })
+    fnd = await bringFoundationAlong({
+      client,
+      siteDir,
+      siteYml,
+      args,
+      say,
+      confirm,
+      cliBin: process.argv[1]
+    })
   } catch (err) {
     say.err(`Foundation release failed: ${err.message}`)
     say.dim('Fix the foundation, then re-run `uniweb publish`.')
@@ -238,7 +303,11 @@ export async function publish(args = []) {
   //    the inner build can't resolve to a different installed version.
   say.info('Building site…')
   console.log('')
-  execSync(`node ${JSON.stringify(process.argv[1])} build --link`, { cwd: siteDir, stdio: 'inherit', env: process.env })
+  execSync(`node ${JSON.stringify(process.argv[1])} build --link`, {
+    cwd: siteDir,
+    stdio: 'inherit',
+    env: process.env
+  })
   console.log('')
 
   const distDir = join(siteDir, 'dist')
@@ -255,7 +324,10 @@ export async function publish(args = []) {
   //    — collections with no data schema, delivered statically via the ball).
   let probe
   try {
-    probe = await emitSyncPackages(siteDir, { ...(foundationDir ? { foundationDir } : {}), resolveModel })
+    probe = await emitSyncPackages(siteDir, {
+      ...(foundationDir ? { foundationDir } : {}),
+      resolveModel
+    })
   } catch (err) {
     say.err(`Could not build the sync package: ${err.message}`)
     return { exitCode: 1 }
@@ -275,10 +347,15 @@ export async function publish(args = []) {
   if (mediaRefs.length) {
     say.info('Uploading media…')
     try {
-      const { map, failed } = await uploadSiteMedia(client, siteDir, mediaRefs, {
-        onProgress: (m) => say.dim(`  ${m}`),
-        warn: (m) => say.dim(`! ${m}`),
-      })
+      const { map, failed } = await uploadSiteMedia(
+        client,
+        siteDir,
+        mediaRefs,
+        {
+          onProgress: (m) => say.dim(`  ${m}`),
+          warn: (m) => say.dim(`! ${m}`)
+        }
+      )
       // A ref whose bytes did not land must NOT be published: the content would go
       // out still pointing at the local path, so the site ships a broken image and
       // the only trace is a warning nobody reads. A missing FILE is different —
@@ -290,7 +367,9 @@ export async function publish(args = []) {
       }
       if (Object.keys(map).length) assetRewrite = map
       if (ballAssets.length) ball = rewriteBallAssets(ball, map)
-      say.dim(`Media          : ${Object.keys(map).length}/${mediaRefs.length} ref(s) → serve URL`)
+      say.dim(
+        `Media          : ${Object.keys(map).length}/${mediaRefs.length} ref(s) → serve URL`
+      )
     } catch (err) {
       // A typed plan refusal gets its own account (quota, per-file cap, plan caps);
       // anything else falls through to the raw message. Nothing has been pushed at
@@ -311,7 +390,9 @@ export async function publish(args = []) {
   if (ball) {
     say.info('Uploading data bundle…')
     try {
-      dataBundle = await uploadDataBundle(client, ball, { onProgress: (m) => say.dim(`  ${m}`) })
+      dataBundle = await uploadDataBundle(client, ball, {
+        onProgress: (m) => say.dim(`  ${m}`)
+      })
     } catch (err) {
       // The ball rides the same asset lane, so it hits the same typed refusals.
       const refusal = describeAssetRefusal(err)
@@ -323,7 +404,9 @@ export async function publish(args = []) {
       }
       return { exitCode: 1 }
     }
-    say.dim(`Data bundle    : ${Object.keys(ball.data).length} data + ${Object.keys(ball.search).length} search file(s)`)
+    say.dim(
+      `Data bundle    : ${Object.keys(ball.data).length} data + ${Object.keys(ball.search).length} search file(s)`
+    )
   }
 
   // 5. Push the site (content + folder) over the send-only-changed cache —
@@ -333,10 +416,16 @@ export async function publish(args = []) {
   // publish rides the same gated push as `uniweb push`: if an app author has
   // edited since this clone last synced, the push is refused rather than
   // overwriting them, and nothing goes live. `--force` drops the precondition.
-  const baseVersions = args.includes('--force') ? null : readBaseVersions(siteDir)
+  const baseVersions = args.includes('--force')
+    ? null
+    : readBaseVersions(siteDir)
   // Per-item identity, recovered from the backend when this clone has never seen it.
   // Without it the backend re-mints every page and section row (see readItemUuids).
-  const itemUuids = await ensureItemUuids({ client, siteDir, note: (m) => say.dim(m) })
+  const itemUuids = await ensureItemUuids({
+    client,
+    siteDir,
+    note: (m) => say.dim(m)
+  })
   // Stamp deploy-derived info on the site-content entity: the data-bundle URL,
   // and the PINNED foundation ref (`@scope/name@version`) from the bring-along.
   // Delivery is version-pinned end-to-end (the gateway serves a foundation only
@@ -346,7 +435,7 @@ export async function publish(args = []) {
   // is null → the site.yml ref is forwarded verbatim (already pinned).
   const injectInfo = {
     ...(dataBundle ? { data_bundle: dataBundle } : {}),
-    ...(fnd.ref ? { foundation: fnd.ref } : {}),
+    ...(fnd.ref ? { foundation: fnd.ref } : {})
   }
   let pkg
   try {
@@ -355,9 +444,11 @@ export async function publish(args = []) {
       resolveModel,
       priorHashes,
       itemUuids,
-      ...(baseVersions ? { baseVersions, itemBaseVersions: readItemBaseVersions(siteDir) } : {}),
+      ...(baseVersions
+        ? { baseVersions, itemBaseVersions: readItemBaseVersions(siteDir) }
+        : {}),
       ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
-      ...(assetRewrite ? { assetRewrite } : {}),
+      ...(assetRewrite ? { assetRewrite } : {})
     })
   } catch (err) {
     say.err(`Could not build the sync package: ${err.message}`)
@@ -368,9 +459,15 @@ export async function publish(args = []) {
     info: (m) => say.info(m),
     note: (m) => say.dim(m),
     error: (m) => say.err(m),
-    dim: (s) => `${c.dim}${s}${c.reset}`,
+    dim: (s) => `${c.dim}${s}${c.reset}`
   }
-  const pushResult = await pushSyncPackages({ client, siteDir, pkg, asOrg, report })
+  const pushResult = await pushSyncPackages({
+    client,
+    siteDir,
+    pkg,
+    asOrg,
+    report
+  })
   if (pushResult.exitCode !== 0) return { exitCode: pushResult.exitCode }
   const siteUuid = pushResult.boundSiteUuid
   if (!siteUuid) {
@@ -384,7 +481,9 @@ export async function publish(args = []) {
   //    decline leaves a recoverable state (re-run after paying).
   const pay = await settlePaymentIfNeeded({ client, uuid: siteUuid, args, say })
   if (!pay.proceed) {
-    say.info('Site synced as a draft but not made live. Re-run `uniweb publish` once payment is complete.')
+    say.info(
+      'Site synced as a draft but not made live. Re-run `uniweb publish` once payment is complete.'
+    )
     return { exitCode: 0 }
   }
 
@@ -394,7 +493,10 @@ export async function publish(args = []) {
   say.info(`Publishing to ${c.dim}${client.origin}${c.reset} …`)
   let pubRes
   try {
-    pubRes = await client.publishSite(siteUuid, { runtimeVersion, ...(languages ? { languages } : {}) })
+    pubRes = await client.publishSite(siteUuid, {
+      runtimeVersion,
+      ...(languages ? { languages } : {})
+    })
   } catch (err) {
     say.err(`Could not reach the backend at ${client.origin}: ${err.message}`)
     say.dim('Set the origin with --backend <url> or UNIWEB_REGISTER_URL.')
@@ -403,14 +505,20 @@ export async function publish(args = []) {
   if (!pubRes.ok) {
     say.err(`Publish rejected: HTTP ${pubRes.status} ${pubRes.statusText}`)
     if (pubRes.status === 401 || pubRes.status === 403) {
-      say.dim("Credentials weren't accepted — run `uniweb login` (or pass --token <bearer>).")
+      say.dim(
+        "Credentials weren't accepted — run `uniweb login` (or pass --token <bearer>)."
+      )
     }
     const body = await pubRes.text().catch(() => '')
     if (body) say.dim(body.slice(0, 800))
     return { exitCode: 1 }
   }
   let result
-  try { result = await pubRes.json() } catch { result = {} }
+  try {
+    result = await pubRes.json()
+  } catch {
+    result = {}
+  }
   const serveUrl = absolutizeServeUrl(client.origin, result.url)
 
   // 8. Persist deploy.yml memory — a record of what went live (and so a re-run
@@ -420,14 +528,19 @@ export async function publish(args = []) {
   // Record the ref that actually went live: the pinned `@scope/name@version`
   // from the bring-along when present, else the site.yml ref verbatim.
   const gitAt = headProvenance(siteDir)
-  const siteYmlRef = typeof siteYml.foundation === 'string' ? siteYml.foundation : siteYml.foundation?.ref || null
+  const siteYmlRef =
+    typeof siteYml.foundation === 'string'
+      ? siteYml.foundation
+      : siteYml.foundation?.ref || null
   const recordedRef = fnd.ref || siteYmlRef
   await persistLastDeploy(siteDir, {
     targetName: resolved.targetName,
     // First publish scaffolds deploy.yml with the backend recorded on the
     // target, binding the site to where it went live (uniweb.app, or a B2B
     // backend). resolveSiteBackend reads it back on later publishes.
-    targetConfig: resolved.fromFile ? null : { host: 'uniweb', backend: client.origin },
+    targetConfig: resolved.fromFile
+      ? null
+      : { host: 'uniweb', backend: client.origin },
     autoSave,
     lastDeploy: {
       at: new Date().toISOString(),
@@ -440,14 +553,19 @@ export async function publish(args = []) {
       backend: client.origin,
       siteUuid,
       url: serveUrl,
-      foundation: { ...(recordedRef ? { ref: recordedRef } : {}), released: fnd.released },
+      foundation: {
+        ...(recordedRef ? { ref: recordedRef } : {}),
+        released: fnd.released
+      },
       runtime: runtimeVersion,
-      locales: Array.isArray(result.locales) ? result.locales : languages,
-    },
+      locales: Array.isArray(result.locales) ? result.locales : languages
+    }
   })
 
   console.log('')
-  say.ok(`Published ${c.bold}${siteUuid}${c.reset}${result.status ? ` (${result.status})` : ''}`)
+  say.ok(
+    `Published ${c.bold}${siteUuid}${c.reset}${result.status ? ` (${result.status})` : ''}`
+  )
   if (serveUrl) console.log(`  ${c.cyan}${serveUrl}${c.reset}`)
   if (result.deploy_uuid) say.dim(`deploy: ${result.deploy_uuid}`)
   return { exitCode: 0 }

@@ -36,13 +36,13 @@ const c = {
   dim: '\x1b[2m',
   cyan: '\x1b[36m',
   green: '\x1b[32m',
-  red: '\x1b[31m',
+  red: '\x1b[31m'
 }
 const say = {
   ok: (m) => console.log(`${c.green}✓${c.reset} ${m}`),
   info: (m) => console.log(`${c.cyan}→${c.reset} ${m}`),
   err: (m) => console.error(`${c.red}✗${c.reset} ${m}`),
-  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`),
+  dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`)
 }
 
 export async function exportSite(args = []) {
@@ -81,7 +81,7 @@ export async function exportSite(args = []) {
   try {
     execSync(`node ${JSON.stringify(process.argv[1])} ${buildArgs.join(' ')}`, {
       cwd: siteDir,
-      stdio: 'inherit',
+      stdio: 'inherit'
     })
   } catch {
     say.err('Build failed. See output above.')
@@ -99,10 +99,18 @@ export async function exportSite(args = []) {
   console.log('')
   console.log(`  ${c.dim}Artifact:${c.reset} ${c.cyan}${distDir}${c.reset}`)
   console.log('')
-  console.log(`  ${c.dim}Upload the contents of ${c.reset}${c.cyan}dist/${c.reset}${c.dim} to your static host. Examples:${c.reset}`)
-  console.log(`    ${c.dim}Netlify:${c.reset} ${c.cyan}netlify deploy --prod --dir=dist${c.reset}`)
+  console.log(
+    `  ${c.dim}Upload the contents of ${c.reset}${c.cyan}dist/${c.reset}${c.dim} to your static host. Examples:${c.reset}`
+  )
+  console.log(
+    `    ${c.dim}Netlify:${c.reset} ${c.cyan}netlify deploy --prod --dir=dist${c.reset}`
+  )
   console.log(`    ${c.dim}Vercel:${c.reset}  ${c.cyan}vercel --prod${c.reset}`)
-  console.log(`    ${c.dim}S3:${c.reset}      ${c.cyan}aws s3 sync dist/ s3://your-bucket/${c.reset}`)
+  console.log(
+    `    ${c.dim}S3:${c.reset}      ${c.cyan}aws s3 sync dist/ s3://your-bucket/${c.reset}`
+  )
   console.log('')
-  console.log(`  ${c.dim}For Uniweb hosting instead, use ${c.reset}${c.cyan}uniweb publish${c.reset}${c.dim}.${c.reset}`)
+  console.log(
+    `  ${c.dim}For Uniweb hosting instead, use ${c.reset}${c.cyan}uniweb publish${c.reset}${c.dim}.${c.reset}`
+  )
 }

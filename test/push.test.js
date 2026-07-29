@@ -17,7 +17,10 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { extractMintedSiteUuid, makeModelResolver } from '../src/commands/push.js'
+import {
+  extractMintedSiteUuid,
+  makeModelResolver
+} from '../src/commands/push.js'
 
 test('extractMintedSiteUuid reads a bare { siteContentUuid }', () => {
   assert.equal(extractMintedSiteUuid({ siteContentUuid: 'SITE-1' }), 'SITE-1')
@@ -29,12 +32,16 @@ test('extractMintedSiteUuid reads a bare { $uuid } or { uuid }', () => {
 })
 
 test('extractMintedSiteUuid reads the report.finalized[] envelope (the site entity, index 0)', () => {
-  const payload = { report: { finalized: [{ index: 0, uuid: 'SITE-4', changed: true }] } }
+  const payload = {
+    report: { finalized: [{ index: 0, uuid: 'SITE-4', changed: true }] }
+  }
   assert.equal(extractMintedSiteUuid(payload), 'SITE-4')
 })
 
 test('extractMintedSiteUuid falls back to document.$uuid inside finalized', () => {
-  const payload = { report: { finalized: [{ index: 0, document: { $uuid: 'SITE-5' } }] } }
+  const payload = {
+    report: { finalized: [{ index: 0, document: { $uuid: 'SITE-5' } }] }
+  }
   assert.equal(extractMintedSiteUuid(payload), 'SITE-5')
 })
 
@@ -46,16 +53,30 @@ test('extractMintedSiteUuid returns null when no uuid is present', () => {
 
 test('makeModelResolver offline mode resolves a non-local Model to null without reading the backend', async () => {
   let reads = 0
-  const client = { readDataSchema: async () => { reads++; return { name: 'should-not-be-reached' } } }
+  const client = {
+    readDataSchema: async () => {
+      reads++
+      return { name: 'should-not-be-reached' }
+    }
+  }
   const resolve = makeModelResolver({ client, offline: true })
   assert.equal(await resolve('@/product'), null)
-  assert.equal(reads, 0, 'an offline resolver must never call client.readDataSchema (no fetch ⇒ no auth)')
+  assert.equal(
+    reads,
+    0,
+    'an offline resolver must never call client.readDataSchema (no fetch ⇒ no auth)'
+  )
 })
 
 test('makeModelResolver online mode reads the declaration from the backend', async () => {
   let reads = 0
   const decl = { name: '@std/article', fields: {} }
-  const client = { readDataSchema: async (n) => { reads++; return n === '@std/article' ? decl : null } }
+  const client = {
+    readDataSchema: async (n) => {
+      reads++
+      return n === '@std/article' ? decl : null
+    }
+  }
   const resolve = makeModelResolver({ client }) // offline defaults to false
   assert.equal(await resolve('@std/article'), decl)
   assert.equal(reads, 1)
@@ -63,9 +84,18 @@ test('makeModelResolver online mode reads the declaration from the backend', asy
 
 test('makeModelResolver caches per run — one backend read per Model name', async () => {
   let reads = 0
-  const client = { readDataSchema: async () => { reads++; return { name: 'x' } } }
+  const client = {
+    readDataSchema: async () => {
+      reads++
+      return { name: 'x' }
+    }
+  }
   const resolve = makeModelResolver({ client })
   await resolve('@std/x')
   await resolve('@std/x')
-  assert.equal(reads, 1, 'the second resolve of the same Model is served from cache')
+  assert.equal(
+    reads,
+    1,
+    'the second resolve of the same Model is served from cache'
+  )
 })

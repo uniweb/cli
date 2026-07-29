@@ -32,7 +32,7 @@ function runCliWithoutOptionalPeers(...args) {
   return spawnSync(
     process.execPath,
     ['--experimental-loader', LOADER, '--no-warnings', CLI_ENTRY, ...args],
-    { encoding: 'utf8' },
+    { encoding: 'utf8' }
   )
 }
 
@@ -41,7 +41,7 @@ test('--version runs without optional peers', () => {
   assert.equal(
     r.status,
     0,
-    `exit ${r.status}\nstdout: ${r.stdout}\nstderr: ${r.stderr}`,
+    `exit ${r.status}\nstdout: ${r.stdout}\nstderr: ${r.stderr}`
   )
   assert.match(r.stdout, /uniweb \d+\.\d+\.\d+/)
 })
@@ -51,7 +51,7 @@ test('--help runs without optional peers', () => {
   assert.equal(
     r.status,
     0,
-    `exit ${r.status}\nstdout: ${r.stdout}\nstderr: ${r.stderr}`,
+    `exit ${r.status}\nstdout: ${r.stdout}\nstderr: ${r.stderr}`
   )
   assert.match(r.stdout, /Uniweb CLI/)
   assert.match(r.stdout, /Usage:/)

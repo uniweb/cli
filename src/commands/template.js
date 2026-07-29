@@ -12,10 +12,18 @@
  */
 
 export async function template() {
-  console.error("\x1b[31m✗\x1b[0m `uniweb template register` isn't available on the new backend yet.")
-  console.error('  Submitting a site as a cloud template was retired with the PHP backend.')
-  console.error('  A template is REGISTERED, like a foundation — `publish` is for sites only.')
-  console.error('  (Scaffolding FROM a template still works: `uniweb create --template <name>`.)')
+  console.error(
+    "\x1b[31m✗\x1b[0m `uniweb template register` isn't available on the new backend yet."
+  )
+  console.error(
+    '  Submitting a site as a cloud template was retired with the PHP backend.'
+  )
+  console.error(
+    '  A template is REGISTERED, like a foundation — `publish` is for sites only.'
+  )
+  console.error(
+    '  (Scaffolding FROM a template still works: `uniweb create --template <name>`.)'
+  )
   process.exit(1)
 }
 

@@ -95,7 +95,7 @@ export const PNPM_VERSION = '11'
  *
  * Verify with `npm view pnpm@<major> engines` when adding an entry.
  */
-export const PNPM_MIN_NODE = { '10': 18, '11': 22 }
+export const PNPM_MIN_NODE = { 10: 18, 11: 22 }
 
 /**
  * Resolve the pnpm major a generated CI workflow should install.
@@ -127,7 +127,8 @@ export const PNPM_MIN_NODE = { '10': 18, '11': 22 }
  */
 export function resolveCiPnpmVersion(rootPkg, installedMajor = null) {
   const declared = rootPkg?.packageManager
-  const match = typeof declared === 'string' ? declared.match(/^pnpm@(\d+)/) : null
+  const match =
+    typeof declared === 'string' ? declared.match(/^pnpm@(\d+)/) : null
   if (match) return match[1]
   if (installedMajor) return String(installedMajor)
   return PNPM_VERSION
@@ -148,10 +149,16 @@ export function resolveCiPnpmVersion(rootPkg, installedMajor = null) {
  * @param {string} [fallback='20'] — used when engines.node is absent/unparseable.
  * @returns {string} Node major, as a string for YAML interpolation.
  */
-export function resolveCiNodeVersion(enginesNode, packageManager, pnpmVersion = PNPM_VERSION, fallback = '20') {
+export function resolveCiNodeVersion(
+  enginesNode,
+  packageManager,
+  pnpmVersion = PNPM_VERSION,
+  fallback = '20'
+) {
   const match = enginesNode ? String(enginesNode).match(/(\d+)/) : null
   const declared = match ? Number(match[1]) : Number(fallback)
-  const floor = packageManager === 'pnpm' ? (PNPM_MIN_NODE[pnpmVersion] ?? 0) : 0
+  const floor =
+    packageManager === 'pnpm' ? (PNPM_MIN_NODE[pnpmVersion] ?? 0) : 0
   return String(Math.max(declared, floor))
 }
 
@@ -340,7 +347,11 @@ export function getResolvedVersions() {
   if (resolvedVersions) return resolvedVersions
 
   const pkg = getCliPackageJson()
-  const deps = { ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies }
+  const deps = {
+    ...pkg.dependencies,
+    ...pkg.devDependencies,
+    ...pkg.peerDependencies
+  }
 
   // Seed from the CLI's own deps (the authoritative set when installed from npm).
   const result = {}
@@ -410,7 +421,7 @@ export function getVersionsForTemplates() {
     core: versions['@uniweb/core'],
     kit: versions['@uniweb/kit'],
     templates: versions['@uniweb/templates'],
-    cli: versions['uniweb'],
+    cli: versions['uniweb']
   }
 }
 
@@ -440,6 +451,6 @@ export function updatePackageVersions(pkg) {
     ...pkg,
     dependencies: updateDeps(pkg.dependencies),
     devDependencies: updateDeps(pkg.devDependencies),
-    peerDependencies: updateDeps(pkg.peerDependencies),
+    peerDependencies: updateDeps(pkg.peerDependencies)
   }
 }

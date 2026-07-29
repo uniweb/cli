@@ -49,7 +49,7 @@ test('shows the restart notice when packages were installed', () => {
     editedPaths: ['package.json', 'site/package.json'],
     depsEdited: true,
     installRan: true,
-    agentsResult: 'updated',
+    agentsResult: 'updated'
   })
 
   assert.ok(mentionsRestart(out), 'expected the restart notice')
@@ -63,10 +63,14 @@ test('stays quiet when nothing changed', () => {
     editedPaths: [],
     depsEdited: false,
     installRan: false,
-    agentsResult: 'unchanged',
+    agentsResult: 'unchanged'
   })
 
-  assert.equal(mentionsRestart(out), false, 'a no-op run must not warn about restarting')
+  assert.equal(
+    mentionsRestart(out),
+    false,
+    'a no-op run must not warn about restarting'
+  )
 })
 
 test('stays quiet when only AGENTS.md was refreshed', () => {
@@ -76,7 +80,7 @@ test('stays quiet when only AGENTS.md was refreshed', () => {
     editedPaths: [],
     depsEdited: false,
     installRan: false,
-    agentsResult: 'updated',
+    agentsResult: 'updated'
   })
 
   assert.equal(mentionsRestart(out), false)
@@ -90,7 +94,7 @@ test('stays quiet when the install was skipped', () => {
     editedPaths: ['package.json'],
     depsEdited: true,
     installRan: false,
-    agentsResult: 'skipped',
+    agentsResult: 'skipped'
   })
 
   assert.equal(mentionsRestart(out), false)

@@ -8,7 +8,13 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
+import {
+  mkdtempSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  rmSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -16,12 +22,24 @@ import {
   pushSyncPackages,
   readBaseVersions,
   readSyncCache,
-  writeUnitBases,
+  writeUnitBases
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
 
-const ok = (body) => ({ ok: true, status: 200, statusText: 'OK', json: async () => body, text: async () => JSON.stringify(body) })
-const fail = (status, body = 'boom') => ({ ok: false, status, statusText: 'Error', json: async () => ({}), text: async () => body })
+const ok = (body) => ({
+  ok: true,
+  status: 200,
+  statusText: 'OK',
+  json: async () => body,
+  text: async () => JSON.stringify(body)
+})
+const fail = (status, body = 'boom') => ({
+  ok: false,
+  status,
+  statusText: 'Error',
+  json: async () => ({}),
+  text: async () => body
+})
 const finalized = (entries) => ({ report: { finalized: entries } })
 
 function tmpSite() {
@@ -36,26 +54,38 @@ function makeReport() {
     info: (m) => calls.info.push(m),
     note: (m) => calls.note.push(m),
     error: (m) => calls.error.push(m),
-    dim: (s) => s,
+    dim: (s) => s
   }
   return { report, calls }
 }
 
 const siteOnlyPkg = (extra) => ({
-  siteContent: { buffer: Buffer.from('site'), entityCount: 1, models: ['@uniweb/site-content'], index: [{ kind: 'site' }] },
+  siteContent: {
+    buffer: Buffer.from('site'),
+    entityCount: 1,
+    models: ['@uniweb/site-content'],
+    index: [{ kind: 'site' }]
+  },
   collections: null,
   hashes: {},
-  ...extra,
+  ...extra
 })
 
 test('extractFinalized tolerates the report.finalized / bare-array shapes and drops invalid entries', () => {
   assert.deepEqual(
-    extractFinalized({ report: { finalized: [{ index: 0, uuid: 'A', changed: true }] } }),
+    extractFinalized({
+      report: { finalized: [{ index: 0, uuid: 'A', changed: true }] }
+    }),
     [{ index: 0, uuid: 'A', changed: true, version: null, document: null }]
   )
-  assert.deepEqual(extractFinalized([{ index: 1, uuid: 'B' }]), [{ index: 1, uuid: 'B', changed: undefined, version: null, document: null }])
+  assert.deepEqual(extractFinalized([{ index: 1, uuid: 'B' }]), [
+    { index: 1, uuid: 'B', changed: undefined, version: null, document: null }
+  ])
   // entries without a valid index + uuid are dropped; a non-list payload → null
-  assert.deepEqual(extractFinalized({ finalized: [{ uuid: 'no-index' }, { index: 2 }] }), [])
+  assert.deepEqual(
+    extractFinalized({ finalized: [{ uuid: 'no-index' }, { index: 2 }] }),
+    []
+  )
   assert.equal(extractFinalized({}), null)
 })
 
@@ -63,23 +93,51 @@ test('extractFinalized carries the post-write version (the push-gate re-arm toke
   // The whole point of the field: without it, caching a base only on pull makes
   // the gate self-defeating — the second consecutive push is stale by construction.
   assert.deepEqual(
-    extractFinalized([{ index: 0, uuid: 'A', changed: true, version: '2026-07-25T21:09:44.120388Z' }]),
-    [{ index: 0, uuid: 'A', changed: true, version: '2026-07-25T21:09:44.120388Z', document: null }]
+    extractFinalized([
+      {
+        index: 0,
+        uuid: 'A',
+        changed: true,
+        version: '2026-07-25T21:09:44.120388Z'
+      }
+    ]),
+    [
+      {
+        index: 0,
+        uuid: 'A',
+        changed: true,
+        version: '2026-07-25T21:09:44.120388Z',
+        document: null
+      }
+    ]
   )
   // A non-string version is ignored rather than cached as junk.
-  assert.equal(extractFinalized([{ index: 0, uuid: 'A', version: 42 }])[0].version, null)
+  assert.equal(
+    extractFinalized([{ index: 0, uuid: 'A', version: 42 }])[0].version,
+    null
+  )
 })
 
 test('a successful push banks the returned versions; a refused lane still banks what landed', async () => {
   const dir = tmpSite()
   const client = {
     origin: 'http://x',
-    createSiteContent: async () => ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1' }])),
+    createSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1' }]))
   }
   const { report } = makeReport()
-  const pkg = siteOnlyPkg({ siteContentUuid: undefined, hashes: { '@uniweb/site-content site': 'h1' } })
+  const pkg = siteOnlyPkg({
+    siteContentUuid: undefined,
+    hashes: { '@uniweb/site-content site': 'h1' }
+  })
 
-  const res = await pushSyncPackages({ client, siteDir: dir, pkg, asOrg: null, report })
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg,
+    asOrg: null,
+    report
+  })
   assert.equal(res.exitCode, 0)
   assert.deepEqual(readBaseVersions(dir), { S1: 'V1' })
 
@@ -90,34 +148,90 @@ test('a successful push banks the returned versions; a refused lane still banks 
 test('a stale refusal explains WHICH pages diverged, and attributes them', async () => {
   const dir = tmpSite()
   const page = (id, slug, body) => ({
-    stable_id: id, slug: { en: slug }, title: { en: slug },
-    page_sections: [{ type: 'Section', stable_id: slug, content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: body }] }] } }],
+    stable_id: id,
+    slug: { en: slug },
+    title: { en: slug },
+    page_sections: [
+      {
+        type: 'Section',
+        stable_id: slug,
+        content: {
+          type: 'doc',
+          content: [
+            { type: 'paragraph', content: [{ type: 'text', text: body }] }
+          ]
+        }
+      }
+    ]
   })
-  const uwx = (doc) => createZip([
-    { name: 'manifest.json', data: Buffer.from(JSON.stringify({ format: 'uwx/1', entries: [{ kind: 'entity', uuid: 'S1', file: 'entities/S1.json' }] })) },
-    { name: 'entities/S1.json', data: Buffer.from(JSON.stringify(doc)) },
-  ])
+  const uwx = (doc) =>
+    createZip([
+      {
+        name: 'manifest.json',
+        data: Buffer.from(
+          JSON.stringify({
+            format: 'uwx/1',
+            entries: [{ kind: 'entity', uuid: 'S1', file: 'entities/S1.json' }]
+          })
+        )
+      },
+      { name: 'entities/S1.json', data: Buffer.from(JSON.stringify(doc)) }
+    ])
   // Base = what both sides last agreed on. We edited /home; they added /news and
   // edited /about. Forcing would DELETE their new page — the headline.
-  const base = { $model: '@uniweb/site-content', pages: [page('h', 'home', 'H0'), page('a', 'about', 'A0')] }
-  writeUnitBases(dir, { local: computeUnitHashes(base), remote: computeUnitHashes(base) })
-  const localDoc = { $model: '@uniweb/site-content', pages: [page('h', 'home', 'H-mine'), page('a', 'about', 'A0')] }
-  const remoteDoc = { $model: '@uniweb/site-content', pages: [page('h', 'home', 'H0'), page('a', 'about', 'A-theirs'), page('n', 'news', 'new upstream')] }
+  const base = {
+    $model: '@uniweb/site-content',
+    pages: [page('h', 'home', 'H0'), page('a', 'about', 'A0')]
+  }
+  writeUnitBases(dir, {
+    local: computeUnitHashes(base),
+    remote: computeUnitHashes(base)
+  })
+  const localDoc = {
+    $model: '@uniweb/site-content',
+    pages: [page('h', 'home', 'H-mine'), page('a', 'about', 'A0')]
+  }
+  const remoteDoc = {
+    $model: '@uniweb/site-content',
+    pages: [
+      page('h', 'home', 'H0'),
+      page('a', 'about', 'A-theirs'),
+      page('n', 'news', 'new upstream')
+    ]
+  }
 
-  const problem = { status: 409, title: 'Conflict', detail: 'x', reason: 'stale_base', stale_entities: ['S1'] }
+  const problem = {
+    status: 409,
+    title: 'Conflict',
+    detail: 'x',
+    reason: 'stale_base',
+    stale_entities: ['S1']
+  }
   const client = {
     origin: 'http://x',
     updateSiteContent: async () => ({
-      ok: false, status: 409, statusText: 'Conflict',
-      text: async () => JSON.stringify(problem), json: async () => problem,
+      ok: false,
+      status: 409,
+      statusText: 'Conflict',
+      text: async () => JSON.stringify(problem),
+      json: async () => problem
     }),
-    pullSiteContent: async () => ({ ok: true, arrayBuffer: async () => uwx(remoteDoc) }),
+    pullSiteContent: async () => ({
+      ok: true,
+      arrayBuffer: async () => uwx(remoteDoc)
+    })
   }
   const { report, calls } = makeReport()
   const pkg = siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} })
   pkg.siteContent.buffer = uwx(localDoc)
 
-  const res = await pushSyncPackages({ client, siteDir: dir, pkg, asOrg: null, report })
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg,
+    asOrg: null,
+    report
+  })
   assert.equal(res.exitCode, 1)
   const out = [...calls.error, ...calls.note].join('\n')
   assert.match(out, /forcing DELETES these.*news/)
@@ -129,17 +243,34 @@ test('the stale explainer degrades to the plain refusal when the remote read fai
   // It runs on an already-failed path: a second failure must not replace a clear
   // error with a confusing one.
   const dir = tmpSite()
-  const problem = { status: 409, reason: 'stale_base', stale_entities: ['S1'], title: 'Conflict', detail: 'x' }
+  const problem = {
+    status: 409,
+    reason: 'stale_base',
+    stale_entities: ['S1'],
+    title: 'Conflict',
+    detail: 'x'
+  }
   const client = {
     origin: 'http://x',
     updateSiteContent: async () => ({
-      ok: false, status: 409, statusText: 'Conflict',
-      text: async () => JSON.stringify(problem), json: async () => problem,
+      ok: false,
+      status: 409,
+      statusText: 'Conflict',
+      text: async () => JSON.stringify(problem),
+      json: async () => problem
     }),
-    pullSiteContent: async () => { throw new Error('network down') },
+    pullSiteContent: async () => {
+      throw new Error('network down')
+    }
   }
   const { report, calls } = makeReport()
-  const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }), asOrg: null, report })
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
+    asOrg: null,
+    report
+  })
   assert.equal(res.exitCode, 1)
   const out = [...calls.error, ...calls.note].join('\n')
   assert.match(out, /newer content than your last pull/)
@@ -150,23 +281,32 @@ test('the stale explainer degrades to the plain refusal when the remote read fai
 test('a stale_base 409 is reported as a staleness refusal, not the structure conflict', async () => {
   const dir = tmpSite()
   const problem = {
-    status: 409, title: 'Conflict',
+    status: 409,
+    title: 'Conflict',
     detail: 'content changed upstream since your last pull — pull first (…)',
     reason: 'stale_base',
-    stale_entities: ['0198f2'],
+    stale_entities: ['0198f2']
   }
   const client = {
     origin: 'http://x',
     updateSiteContent: async () => ({
-      ok: false, status: 409, statusText: 'Conflict',
+      ok: false,
+      status: 409,
+      statusText: 'Conflict',
       text: async () => JSON.stringify(problem),
-      json: async () => problem,
-    }),
+      json: async () => problem
+    })
   }
   const { report, calls } = makeReport()
   const pkg = siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} })
 
-  const res = await pushSyncPackages({ client, siteDir: dir, pkg, asOrg: null, report })
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg,
+    asOrg: null,
+    report
+  })
   assert.equal(res.exitCode, 1)
   const out = [...calls.error, ...calls.note].join('\n')
   assert.match(out, /newer content than your last pull/)
@@ -181,20 +321,37 @@ test('pushSyncPackages CREATE: mints + records the site $uuid, persists the cach
   let created = 0
   const client = {
     origin: 'http://x',
-    createSiteContent: async () => { created++; return ok(finalized([{ index: 0, uuid: 'NEW-UUID', changed: true }])) },
+    createSiteContent: async () => {
+      created++
+      return ok(finalized([{ index: 0, uuid: 'NEW-UUID', changed: true }]))
+    }
   }
   const { report } = makeReport()
-  const pkg = siteOnlyPkg({ siteContentUuid: undefined, hashes: { '@uniweb/site-content site': 'h1' } })
+  const pkg = siteOnlyPkg({
+    siteContentUuid: undefined,
+    hashes: { '@uniweb/site-content site': 'h1' }
+  })
 
-  const res = await pushSyncPackages({ client, siteDir: dir, pkg, asOrg: null, report })
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg,
+    asOrg: null,
+    report
+  })
 
   assert.equal(created, 1)
   assert.equal(res.exitCode, 0)
   assert.equal(res.boundSiteUuid, 'NEW-UUID')
-  assert.match(readFileSync(join(dir, 'site.yml'), 'utf8'), /^\$uuid: NEW-UUID$/m)
+  assert.match(
+    readFileSync(join(dir, 'site.yml'), 'utf8'),
+    /^\$uuid: NEW-UUID$/m
+  )
   assert.ok(res.wrote.includes('recorded site $uuid in site.yml'))
   // the send-only-changed cache is persisted on success
-  const cache = JSON.parse(readFileSync(join(dir, '.uniweb/sync-cache.json'), 'utf8'))
+  const cache = JSON.parse(
+    readFileSync(join(dir, '.uniweb/sync-cache.json'), 'utf8')
+  )
   assert.equal(cache.hashes['@uniweb/site-content site'], 'h1')
   rmSync(dir, { recursive: true, force: true })
 })
@@ -205,11 +362,23 @@ test('pushSyncPackages UPDATE: a known $uuid updates by uuid (never CREATE)', as
   let created = 0
   const client = {
     origin: 'http://x',
-    createSiteContent: async () => { created++; return ok(finalized([])) },
-    updateSiteContent: async (uuid) => { updatedWith = uuid; return ok(finalized([{ index: 0, uuid: 'EXIST', changed: false }])) },
+    createSiteContent: async () => {
+      created++
+      return ok(finalized([]))
+    },
+    updateSiteContent: async (uuid) => {
+      updatedWith = uuid
+      return ok(finalized([{ index: 0, uuid: 'EXIST', changed: false }]))
+    }
   }
   const { report } = makeReport()
-  const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: 'EXIST' }), asOrg: null, report })
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: siteOnlyPkg({ siteContentUuid: 'EXIST' }),
+    asOrg: null,
+    report
+  })
 
   assert.equal(created, 0, 'a known uuid must UPDATE, never CREATE')
   assert.equal(updatedWith, 'EXIST')
@@ -220,27 +389,53 @@ test('pushSyncPackages UPDATE: a known $uuid updates by uuid (never CREATE)', as
 
 test('pushSyncPackages: a rejected lane returns exit 1, reports the error, and does NOT persist the cache', async () => {
   const dir = tmpSite()
-  const client = { origin: 'http://x', createSiteContent: async () => fail(500, 'server boom') }
+  const client = {
+    origin: 'http://x',
+    createSiteContent: async () => fail(500, 'server boom')
+  }
   const { report, calls } = makeReport()
-  const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: undefined, hashes: { x: 'y' } }), asOrg: null, report })
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: siteOnlyPkg({ siteContentUuid: undefined, hashes: { x: 'y' } }),
+    asOrg: null,
+    report
+  })
 
   assert.equal(res.exitCode, 1)
   assert.ok(calls.error.some((m) => /rejected: HTTP 500/.test(m)))
-  assert.equal(existsSync(join(dir, '.uniweb/sync-cache.json')), false, 'a failed push must not persist the cache')
+  assert.equal(
+    existsSync(join(dir, '.uniweb/sync-cache.json')),
+    false,
+    'a failed push must not persist the cache'
+  )
   rmSync(dir, { recursive: true, force: true })
 })
 
 test('pushSyncPackages: a 409 explains the facet-genesis fix (delete + redeploy) instead of a bare error', async () => {
   const dir = tmpSite()
-  const client = { origin: 'http://x', createSiteContent: async () => fail(409, 'folder facet already established') }
+  const client = {
+    origin: 'http://x',
+    createSiteContent: async () => fail(409, 'folder facet already established')
+  }
   const { report, calls } = makeReport()
-  const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: undefined, hashes: { x: 'y' } }), asOrg: null, report })
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: siteOnlyPkg({ siteContentUuid: undefined, hashes: { x: 'y' } }),
+    asOrg: null,
+    report
+  })
 
   assert.equal(res.exitCode, 1)
   assert.ok(calls.error.some((m) => /rejected: HTTP 409/.test(m)))
   // the friendlier guidance — the v1 folder is genesis-owned; delete + redeploy (or clear $uuid)
   assert.ok(
-    calls.note.some((m) => /delete the deployed site and redeploy/.test(m) && /clear `\$uuid`/.test(m)),
+    calls.note.some(
+      (m) =>
+        /delete the deployed site and redeploy/.test(m) &&
+        /clear `\$uuid`/.test(m)
+    ),
     'explains the delete+redeploy / clear-$uuid fix'
   )
   rmSync(dir, { recursive: true, force: true })
@@ -251,39 +446,72 @@ test('pushSyncPackages: the folder lane is keyed by the bound site uuid', async 
   let folderKey = null
   const client = {
     origin: 'http://x',
-    updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'SITE', changed: true }])),
-    pushFolder: async (uuid) => { folderKey = uuid; return ok(finalized([{ index: 0, uuid: 'FOLDER', changed: true }])) },
+    updateSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'SITE', changed: true }])),
+    pushFolder: async (uuid) => {
+      folderKey = uuid
+      return ok(finalized([{ index: 0, uuid: 'FOLDER', changed: true }]))
+    }
   }
   const { report } = makeReport()
   const pkg = siteOnlyPkg({
     siteContentUuid: 'SITE',
-    collections: { buffer: Buffer.from('c'), entityCount: 1, models: ['@uniweb/folder'], index: [{ kind: 'folder' }] },
+    collections: {
+      buffer: Buffer.from('c'),
+      entityCount: 1,
+      models: ['@uniweb/folder'],
+      index: [{ kind: 'folder' }]
+    }
   })
 
-  const res = await pushSyncPackages({ client, siteDir: dir, pkg, asOrg: null, report })
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg,
+    asOrg: null,
+    report
+  })
 
   assert.equal(res.exitCode, 0)
-  assert.equal(folderKey, 'SITE', 'the folder push is keyed by the site-content uuid')
+  assert.equal(
+    folderKey,
+    'SITE',
+    'the folder push is keyed by the site-content uuid'
+  )
   rmSync(dir, { recursive: true, force: true })
 })
 
 test('an identity_required 400 is explained, not surfaced as a raw error', async () => {
   const dir = tmpSite()
   const problem = {
-    status: 400, title: 'Identity Required', reason: 'identity_required',
+    status: 400,
+    title: 'Identity Required',
+    reason: 'identity_required',
     detail: 'identity required: entity 77, section 18: …',
-    entity_id: 77, section_id: 18, records_without_uuid: 2, stored_items: 2,
+    entity_id: 77,
+    section_id: 18,
+    records_without_uuid: 2,
+    stored_items: 2
   }
   const client = {
     origin: 'http://x',
     updateSiteContent: async () => ({
-      ok: false, status: 400, statusText: 'Bad Request',
-      text: async () => JSON.stringify(problem), json: async () => problem,
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      text: async () => JSON.stringify(problem),
+      json: async () => problem
     }),
-    pullSiteContent: async () => ({ ok: false, status: 500 }),
+    pullSiteContent: async () => ({ ok: false, status: 500 })
   }
   const { report, calls } = makeReport()
-  const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }), asOrg: null, report })
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
+    asOrg: null,
+    report
+  })
   assert.equal(res.exitCode, 1)
   const out = [...calls.error, ...calls.note].join('\n')
   assert.match(out, /no record of the site's item identity/)
@@ -302,9 +530,17 @@ test('headProvenance reports the commit and whether the tree was clean', async (
   assert.equal(headProvenance(dir), null) // not a repo
 
   const g = (a) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' })
-  try { g(['init', '-q']) } catch { return } // no git available — nothing to assert
+  try {
+    g(['init', '-q'])
+  } catch {
+    return
+  } // no git available — nothing to assert
   g(['add', '-A'])
-  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'x'], { cwd: dir, stdio: 'ignore' })
+  execFileSync(
+    'git',
+    ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'x'],
+    { cwd: dir, stdio: 'ignore' }
+  )
 
   const clean = headProvenance(dir)
   assert.match(clean.sha, /^[0-9a-f]{40}$/)

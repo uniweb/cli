@@ -38,9 +38,10 @@ export async function promptForHost({ args, preselect = null } = {}) {
 
   // promptSelect doesn't expose initial-index, so move the preselect to
   // the top of the list — the menu still highlights index 0 by default.
-  const ordered = preselect && adapters.includes(preselect)
-    ? [preselect, ...adapters.filter(a => a !== preselect)]
-    : adapters
+  const ordered =
+    preselect && adapters.includes(preselect)
+      ? [preselect, ...adapters.filter((a) => a !== preselect)]
+      : adapters
 
   const choice = await promptSelect('Pick a host adapter:', ordered)
   if (!choice) {

@@ -18,7 +18,10 @@ test('sync does NOT push when refresh reports conflicts', async () => {
   let pushed = false
   const res = await sync([], {
     refresh: async () => ({ exitCode: 1 }),
-    push: async () => { pushed = true; return { exitCode: 0 } },
+    push: async () => {
+      pushed = true
+      return { exitCode: 0 }
+    }
   })
   assert.equal(res.exitCode, 1)
   assert.equal(pushed, false)
@@ -28,7 +31,10 @@ test('sync pushes when refresh is clean, and returns the push result', async () 
   let pushed = false
   const res = await sync([], {
     refresh: async () => ({ exitCode: 0 }),
-    push: async () => { pushed = true; return { exitCode: 0 } },
+    push: async () => {
+      pushed = true
+      return { exitCode: 0 }
+    }
   })
   assert.equal(pushed, true)
   assert.equal(res.exitCode, 0)
@@ -36,7 +42,7 @@ test('sync pushes when refresh is clean, and returns the push result', async () 
   // A failing push is the command's failure — not swallowed by a clean refresh.
   const res2 = await sync([], {
     refresh: async () => ({ exitCode: 0 }),
-    push: async () => ({ exitCode: 1 }),
+    push: async () => ({ exitCode: 1 })
   })
   assert.equal(res2.exitCode, 1)
 })
@@ -48,8 +54,14 @@ test('sync keeps --force away from the refresh half', async () => {
   let refreshArgs = null
   let pushArgs = null
   await sync(['--force', '--backend', 'http://x'], {
-    refresh: async (a) => { refreshArgs = a; return { exitCode: 0 } },
-    push: async (a) => { pushArgs = a; return { exitCode: 0 } },
+    refresh: async (a) => {
+      refreshArgs = a
+      return { exitCode: 0 }
+    },
+    push: async (a) => {
+      pushArgs = a
+      return { exitCode: 0 }
+    }
   })
   assert.ok(!refreshArgs.includes('--force'))
   assert.ok(refreshArgs.includes('--backend'))
@@ -59,8 +71,15 @@ test('sync keeps --force away from the refresh half', async () => {
 test('sync reimplements neither half', () => {
   // The deploy/publish lesson: two paths doing nearly the same thing drift until
   // one is quietly wrong. This one must stay a composition.
-  const src = readFileSync(new URL('../src/commands/sync.js', import.meta.url), 'utf8')
-  assert.ok(!/pushSyncPackages|emitSyncPackages|siteContentDocumentToProject|pullRemote/.test(src))
+  const src = readFileSync(
+    new URL('../src/commands/sync.js', import.meta.url),
+    'utf8'
+  )
+  assert.ok(
+    !/pushSyncPackages|emitSyncPackages|siteContentDocumentToProject|pullRemote/.test(
+      src
+    )
+  )
   assert.match(src, /await import\('\.\/refresh\.js'\)/)
   assert.match(src, /await import\('\.\/push\.js'\)/)
 })

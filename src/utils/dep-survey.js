@@ -25,7 +25,12 @@ import { getWorkspacePackages } from './workspace.js'
  * @returns {string}
  */
 export function stripVersionRange(spec) {
-  return (spec || '').replace(/^[\^~>=<\s]+/, '').trim().split(/\s+/)[0] || ''
+  return (
+    (spec || '')
+      .replace(/^[\^~>=<\s]+/, '')
+      .trim()
+      .split(/\s+/)[0] || ''
+  )
 }
 
 /**
@@ -76,9 +81,17 @@ export async function surveyWorkspaceDeps(workspaceDir) {
     const pkgPath = join(pkgDir, 'package.json')
     if (!existsSync(pkgPath)) continue
     let pkg
-    try { pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) } catch { continue }
+    try {
+      pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+    } catch {
+      continue
+    }
 
-    for (const sectionName of ['dependencies', 'devDependencies', 'peerDependencies']) {
+    for (const sectionName of [
+      'dependencies',
+      'devDependencies',
+      'peerDependencies'
+    ]) {
       const section = pkg[sectionName]
       if (!section) continue
       for (const [name, current] of Object.entries(section)) {
@@ -87,10 +100,23 @@ export async function surveyWorkspaceDeps(workspaceDir) {
         if (!target) continue
         const cmp = compareSemver(target, current)
         let status
-        if (cmp > 0) { status = 'behind'; anyDrift = true }
-        else if (cmp < 0) { status = 'ahead'; anyAhead = true }
-        else { status = 'aligned' }
-        rows.push({ relDir: relDir || '(root)', section: sectionName, name, current, target, status })
+        if (cmp > 0) {
+          status = 'behind'
+          anyDrift = true
+        } else if (cmp < 0) {
+          status = 'ahead'
+          anyAhead = true
+        } else {
+          status = 'aligned'
+        }
+        rows.push({
+          relDir: relDir || '(root)',
+          section: sectionName,
+          name,
+          current,
+          target,
+          status
+        })
       }
     }
   }

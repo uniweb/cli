@@ -51,7 +51,7 @@ function fileEntry(diskPath, path) {
     content_type: contentTypeFor(path),
     size: bytes.length,
     sha256: createHash('sha256').update(bytes).digest('hex'),
-    diskPath,
+    diskPath
   }
 }
 
@@ -75,7 +75,8 @@ export function collectRuntimeFiles(distDir) {
       const rel = prefix ? `${prefix}/${name}` : name
       const st = statSync(full)
       if (st.isDirectory()) walk(full, rel)
-      else if (st.isFile() && !rel.endsWith('.map')) files.push(fileEntry(full, rel))
+      else if (st.isFile() && !rel.endsWith('.map'))
+        files.push(fileEntry(full, rel))
     }
   }
   walk(appDir, '')
@@ -111,22 +112,40 @@ export function hasShims(files) {
  * @param {object} opts - { apiBase, token, version, distDir, files?, onProgress? }
  * @returns {Promise<{ mode, uploaded: string[], failed: Array, serveBase: string|null }>}
  */
-export async function uploadRuntime({ apiBase, token, version, distDir, files, onProgress = () => {} }) {
+export async function uploadRuntime({
+  apiBase,
+  token,
+  version,
+  distDir,
+  files,
+  onProgress = () => {}
+}) {
   const list = files || collectRuntimeFiles(distDir)
-  if (!list.length) return { mode: 'none', uploaded: [], failed: [], serveBase: null }
+  if (!list.length)
+    return { mode: 'none', uploaded: [], failed: [], serveBase: null }
 
   const origin = apiBase.replace(/\/$/, '')
   const planRes = await fetch(`${origin}/dev/runtime`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
     body: JSON.stringify({
       version,
-      files: list.map(({ path, content_type, size, sha256 }) => ({ path, content_type, size, sha256 })),
-    }),
+      files: list.map(({ path, content_type, size, sha256 }) => ({
+        path,
+        content_type,
+        size,
+        sha256
+      }))
+    })
   })
   if (!planRes.ok) {
     const detail = await planRes.text().catch(() => '')
-    const err = new Error(`runtime plan rejected: HTTP ${planRes.status}${detail ? ` — ${detail.slice(0, 300)}` : ''}`)
+    const err = new Error(
+      `runtime plan rejected: HTTP ${planRes.status}${detail ? ` — ${detail.slice(0, 300)}` : ''}`
+    )
     err.status = planRes.status
     throw err
   }
@@ -134,14 +153,19 @@ export async function uploadRuntime({ apiBase, token, version, distDir, files, o
   const targets = new Map((plan.uploads || []).map((u) => [u.path, u]))
   // The one mode-aware bit: direct PUTs are bearer-authed backend routes;
   // presigned URLs are self-authorizing and must NOT carry a foreign bearer.
-  const authHeaders = plan.mode === 'presigned' ? {} : { Authorization: `Bearer ${token}` }
+  const authHeaders =
+    plan.mode === 'presigned' ? {} : { Authorization: `Bearer ${token}` }
 
   const uploaded = []
   const failed = []
   for (const f of list) {
     const target = targets.get(f.path)
     if (!target) {
-      failed.push({ path: f.path, status: 0, detail: 'no upload target in plan' })
+      failed.push({
+        path: f.path,
+        status: 0,
+        detail: 'no upload target in plan'
+      })
       continue
     }
     onProgress(`↑ ${f.path}`)
@@ -149,15 +173,29 @@ export async function uploadRuntime({ apiBase, token, version, distDir, files, o
     try {
       res = await fetch(new URL(target.url, origin), {
         method: target.method || 'PUT',
-        headers: { ...(target.headers || {}), ...authHeaders, 'x-uniweb-sha256': f.sha256 },
-        body: readFileSync(f.diskPath),
+        headers: {
+          ...(target.headers || {}),
+          ...authHeaders,
+          'x-uniweb-sha256': f.sha256
+        },
+        body: readFileSync(f.diskPath)
       })
     } catch (err) {
       failed.push({ path: f.path, status: 0, detail: err.message })
       continue
     }
     if (res.ok) uploaded.push(f.path)
-    else failed.push({ path: f.path, status: res.status, detail: (await res.text().catch(() => '')).slice(0, 200) })
+    else
+      failed.push({
+        path: f.path,
+        status: res.status,
+        detail: (await res.text().catch(() => '')).slice(0, 200)
+      })
   }
-  return { mode: plan.mode || 'direct', uploaded, failed, serveBase: plan.serve_base || null }
+  return {
+    mode: plan.mode || 'direct',
+    uploaded,
+    failed,
+    serveBase: plan.serve_base || null
+  }
 }

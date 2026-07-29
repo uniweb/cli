@@ -117,7 +117,8 @@ export function checkSiteInstall(site, foundation, workspaceDir) {
         `  ${rel(foundation.path)} taken when it was installed. Edits you make will not\n` +
         `  reach the dev server. \`uniweb build\` resolves the foundation by path and reads\n` +
         `  your source, so builds stay correct — which is why this is easy to miss.`,
-      remedy: 'Reinstall so it links to the workspace source (e.g. pnpm install)',
+      remedy:
+        'Reinstall so it links to the workspace source (e.g. pnpm install)'
     })
   } else {
     // Linked, but possibly at the wrong source.
@@ -130,7 +131,7 @@ export function checkSiteInstall(site, foundation, workspaceDir) {
         site: site.name,
         message: `In dev, this site resolves "${foundation.name}" somewhere other than your workspace source.`,
         detail: `  resolves to: ${rel(target)}\n  workspace source: ${rel(expected)}`,
-        remedy: 'Reinstall, and check the site\'s package.json file: reference',
+        remedy: "Reinstall, and check the site's package.json file: reference"
       })
     }
   }
@@ -138,7 +139,10 @@ export function checkSiteInstall(site, foundation, workspaceDir) {
   // What the site actually reaches, versus what the foundation asks for. These
   // agree through a link and drift through a copy — the drift is what runs.
   const foundationPkg = readJson(join(foundation.path, 'package.json'))
-  const declared = { ...foundationPkg?.dependencies, ...foundationPkg?.peerDependencies }
+  const declared = {
+    ...foundationPkg?.dependencies,
+    ...foundationPkg?.peerDependencies
+  }
 
   for (const [name, spec] of Object.entries(declared)) {
     if (!name.startsWith('@uniweb/')) continue
@@ -160,7 +164,7 @@ export function checkSiteInstall(site, foundation, workspaceDir) {
           `  resolved from ${rel(linkPath)}: ${reached}\n` +
           `  ${name} is bundled into the foundation, so the dev server runs the version it\n` +
           `  reaches here. A build reads the workspace tree and may compile a different one.`,
-        remedy: 'Reinstall so the resolved tree matches what is declared',
+        remedy: 'Reinstall so the resolved tree matches what is declared'
       })
     }
   }

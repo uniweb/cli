@@ -56,7 +56,7 @@ export function resolveLocalFoundation(siteDir, siteYml) {
   return {
     dir: info.path,
     scopedName: foundationScopedName(info.path),
-    version: readPkgField(info.path, 'version'),
+    version: readPkgField(info.path, 'version')
   }
 }
 
@@ -79,7 +79,10 @@ function foundationScopedName(dir) {
 
 function readPkgField(dir, field) {
   try {
-    return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))?.[field] || null
+    return (
+      JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))?.[field] ||
+      null
+    )
   } catch {
     return null
   }
@@ -120,7 +123,16 @@ function forwardedFlags(args) {
  *   when the site already references a registry ref / URL (no override needed)
  *   or no scoped ref can be formed.
  */
-export async function bringFoundationAlong({ client, siteDir, siteYml, args, say, confirm, cliBin, dryRun = false }) {
+export async function bringFoundationAlong({
+  client,
+  siteDir,
+  siteYml,
+  args,
+  say,
+  confirm,
+  cliBin,
+  dryRun = false
+}) {
   const local = resolveLocalFoundation(siteDir, siteYml)
   if (!local) {
     // Published registry ref / URL — the catalog (or the URL host) already
@@ -129,8 +141,14 @@ export async function bringFoundationAlong({ client, siteDir, siteYml, args, say
     return { released: false, proceed: true, ref: null }
   }
 
-  const label = local.scopedName || local.version ? `${local.scopedName || 'foundation'}${local.version ? `@${local.version}` : ''}` : 'the local foundation'
-  const skipPrompts = args.includes('--yes') || args.includes('--force') || args.includes('--no-verify')
+  const label =
+    local.scopedName || local.version
+      ? `${local.scopedName || 'foundation'}${local.version ? `@${local.version}` : ''}`
+      : 'the local foundation'
+  const skipPrompts =
+    args.includes('--yes') ||
+    args.includes('--force') ||
+    args.includes('--no-verify')
 
   // The pinned ref to stamp on the pushed site — read at RETURN time (after any
   // release), so it reflects the released version + the scope register derived.
@@ -144,17 +162,25 @@ export async function bringFoundationAlong({ client, siteDir, siteYml, args, say
   // Dry-run reports the intent WITHOUT touching the network — it must not force
   // a login (the digest read is auth-gated). The real run does the compare.
   if (dryRun) {
-    say.dim(`Foundation  : ${label} — local; would release if changed or not yet registered`)
+    say.dim(
+      `Foundation  : ${label} — local; would release if changed or not yet registered`
+    )
     return { released: false, proceed: true, ref: null }
   }
 
   // Ask the catalog what it has. Null → not registered (or the backend can't
   // answer / no scoped name to look up) → release.
-  const reg = local.scopedName ? await client.readFoundationLatest(local.scopedName) : null
+  const reg = local.scopedName
+    ? await client.readFoundationLatest(local.scopedName)
+    : null
 
   if (!reg) {
     say.info(`Releasing the foundation ${label} (not yet registered)…`)
-    return { released: releaseFoundation(local, args, cliBin, say), proceed: true, ref: pinnedRef() }
+    return {
+      released: releaseFoundation(local, args, cliBin, say),
+      proceed: true,
+      ref: pinnedRef()
+    }
   }
 
   // Registered — fingerprint the local build and compare. Build first so the
@@ -163,42 +189,71 @@ export async function bringFoundationAlong({ client, siteDir, siteYml, args, say
   const localDigest = computeFoundationDigest(join(local.dir, 'dist'))
 
   if (reg.digest && localDigest && reg.digest === localDigest) {
-    say.dim(`Foundation  : ${label} — unchanged since release (digest matches); nothing to release.`)
+    say.dim(
+      `Foundation  : ${label} — unchanged since release (digest matches); nothing to release.`
+    )
     return { released: false, proceed: true, ref: pinnedRef() }
   }
 
   // A different version locally → a new version to release.
   if (local.version && local.version !== reg.latest_version) {
-    say.info(`Releasing the foundation ${label} (new version; registered latest is ${reg.latest_version})…`)
-    return { released: releaseFoundation(local, args, cliBin, say), proceed: true, ref: pinnedRef() }
+    say.info(
+      `Releasing the foundation ${label} (new version; registered latest is ${reg.latest_version})…`
+    )
+    return {
+      released: releaseFoundation(local, args, cliBin, say),
+      proceed: true,
+      ref: pinnedRef()
+    }
   }
 
   // Same version, but the digest differs or the backend can't confirm it.
   if (!reg.digest) {
     // Degrade: the backend doesn't return the stored digest yet, so we can't
     // be sure the registered version matches local. Offer to re-deliver.
-    say.warn(`Can't verify the registered ${label} matches your local copy (backend returned no digest).`)
+    say.warn(
+      `Can't verify the registered ${label} matches your local copy (backend returned no digest).`
+    )
     if (skipPrompts || isNonInteractive(args)) {
-      say.dim('Proceeding without re-releasing — pass nothing to re-deliver, or bump the version to publish a change.')
+      say.dim(
+        'Proceeding without re-releasing — pass nothing to re-deliver, or bump the version to publish a change.'
+      )
       return { released: false, proceed: true, ref: pinnedRef() }
     }
-    const reRelease = await confirm(`Re-release ${label} to be sure its code is current?`, false)
-    if (reRelease) return { released: releaseFoundation(local, args, cliBin, say), proceed: true, ref: pinnedRef() }
+    const reRelease = await confirm(
+      `Re-release ${label} to be sure its code is current?`,
+      false
+    )
+    if (reRelease)
+      return {
+        released: releaseFoundation(local, args, cliBin, say),
+        proceed: true,
+        ref: pinnedRef()
+      }
     return { released: false, proceed: true, ref: pinnedRef() }
   }
 
   // Case 3 (§4): the foundation was edited but the version wasn't bumped. The
   // registered version is immutable, so we never silently ship the old code —
   // the deliberate release gate is a version bump (§3.1).
-  say.warn(`Your local ${label} differs from the registered version ${reg.latest_version}, but the version wasn't bumped.`)
-  say.dim('A registered version is immutable. Bump the foundation\'s version to release the change, then re-run `uniweb publish`.')
+  say.warn(
+    `Your local ${label} differs from the registered version ${reg.latest_version}, but the version wasn't bumped.`
+  )
+  say.dim(
+    "A registered version is immutable. Bump the foundation's version to release the change, then re-run `uniweb publish`."
+  )
   if (skipPrompts || isNonInteractive(args)) {
     say.dim(`Proceeding with the already-registered ${reg.latest_version}.`)
     return { released: false, proceed: true, ref: pinnedRef() }
   }
-  const proceed = await confirm(`Publish with the already-registered ${reg.latest_version} anyway?`, false)
+  const proceed = await confirm(
+    `Publish with the already-registered ${reg.latest_version} anyway?`,
+    false
+  )
   if (!proceed) {
-    say.info('Aborted — bump the foundation version, then re-run `uniweb publish`.')
+    say.info(
+      'Aborted — bump the foundation version, then re-run `uniweb publish`.'
+    )
     return { released: false, proceed: false, ref: null }
   }
   return { released: false, proceed: true, ref: pinnedRef() }
@@ -210,7 +265,7 @@ function buildFoundation(local, cliBin) {
   execFileSync('node', [cliBin, 'build', '--target', 'foundation'], {
     cwd: local.dir,
     stdio: 'inherit',
-    env: process.env,
+    env: process.env
   })
 }
 
@@ -222,7 +277,7 @@ function releaseFoundation(local, args, cliBin, say) {
   execFileSync('node', [cliBin, 'register', ...forwardedFlags(args)], {
     cwd: local.dir,
     stdio: 'inherit',
-    env: process.env,
+    env: process.env
   })
   console.log('')
   return true

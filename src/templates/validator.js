@@ -43,7 +43,8 @@ export function satisfiesVersion(version, range) {
     // ^x.y.z means >=x.y.z and <(x+1).0.0
     const min = parseVersion(range.slice(1))
     if (!min) return true
-    if (current.major !== min.major) return current.major > min.major && min.major === 0
+    if (current.major !== min.major)
+      return current.major > min.major && min.major === 0
     if (current.minor > min.minor) return true
     if (current.minor < min.minor) return false
     return current.patch >= min.patch
@@ -71,9 +72,11 @@ export function satisfiesVersion(version, range) {
   // Exact match
   const exact = parseVersion(range)
   if (!exact) return true
-  return current.major === exact.major &&
-         current.minor === exact.minor &&
-         current.patch === exact.patch
+  return (
+    current.major === exact.major &&
+    current.minor === exact.minor &&
+    current.patch === exact.patch
+  )
 }
 
 /**
@@ -93,7 +96,7 @@ export const ErrorCodes = {
   INVALID_TEMPLATE_JSON: 'INVALID_TEMPLATE_JSON',
   MISSING_CONTENT_DIR: 'MISSING_CONTENT_DIR',
   MISSING_REQUIRED_FIELD: 'MISSING_REQUIRED_FIELD',
-  VERSION_MISMATCH: 'VERSION_MISMATCH',
+  VERSION_MISMATCH: 'VERSION_MISMATCH'
 }
 
 /**
@@ -189,7 +192,7 @@ export function resolveContentDirs(templateRoot, metadata) {
           type: pkg.type,
           name: pkg.name,
           dir,
-          ...(pkg.foundation ? { foundation: pkg.foundation } : {}),
+          ...(pkg.foundation ? { foundation: pkg.foundation } : {})
         }
         if (entry.type === 'foundation' || entry.type === 'extension') {
           applyLegacyFoundationLayout(entry)
@@ -201,7 +204,11 @@ export function resolveContentDirs(templateRoot, metadata) {
     // Standard template: look for foundation/ and site/
     const foundationDir = path.join(templateRoot, 'foundation')
     if (existsSync(foundationDir)) {
-      const entry = { type: 'foundation', name: 'foundation', dir: foundationDir }
+      const entry = {
+        type: 'foundation',
+        name: 'foundation',
+        dir: foundationDir
+      }
       applyLegacyFoundationLayout(entry)
       dirs.push(entry)
     }

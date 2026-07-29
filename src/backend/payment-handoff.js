@@ -43,7 +43,13 @@ function withParams(url, params) {
  * @param {boolean} [o.dryRun]
  * @returns {Promise<{ proceed: boolean }>} proceed:false → the caller aborts go-live.
  */
-export async function settlePaymentIfNeeded({ client, uuid, args, say, dryRun = false }) {
+export async function settlePaymentIfNeeded({
+  client,
+  uuid,
+  args,
+  say,
+  dryRun = false
+}) {
   // No uuid yet (a first publish mints it on push) → nothing to check here; the
   // post-push go-live is the moment the backend gates on payment.
   if (!uuid) return { proceed: true }
@@ -51,17 +57,22 @@ export async function settlePaymentIfNeeded({ client, uuid, args, say, dryRun = 
   // Dry-run reports the intent WITHOUT touching the network — the can-go-live
   // read is auth-gated and must not force a login on a dry-run.
   if (dryRun) {
-    say.dim(`Payment     : would check whether go-live needs payment for ${uuid}`)
+    say.dim(
+      `Payment     : would check whether go-live needs payment for ${uuid}`
+    )
     return { proceed: true }
   }
 
   const verdict = await client.canGoLive(uuid)
   // Degrade (no route) or already-paid → proceed.
-  if (!verdict || verdict.ok || !verdict.payment_required) return { proceed: true }
+  if (!verdict || verdict.ok || !verdict.payment_required)
+    return { proceed: true }
 
   const checkoutUrl = verdict.checkout_url
   if (!checkoutUrl) {
-    say.warn('The backend reports payment is required but returned no checkout URL — proceeding.')
+    say.warn(
+      'The backend reports payment is required but returned no checkout URL — proceeding.'
+    )
     return { proceed: true }
   }
 
@@ -71,7 +82,9 @@ export async function settlePaymentIfNeeded({ client, uuid, args, say, dryRun = 
   }
 
   if (isNonInteractive(args)) {
-    say.err('Payment is required to publish this site, and the CLI is non-interactive.')
+    say.err(
+      'Payment is required to publish this site, and the CLI is non-interactive.'
+    )
     say.dim(`Complete it in a browser, then re-run: ${checkoutUrl}`)
     return { proceed: false }
   }
@@ -83,17 +96,22 @@ export async function settlePaymentIfNeeded({ client, uuid, args, say, dryRun = 
   try {
     await awaitBrowserCallback({
       buildUrl: (redirectUri) =>
-        withParams(checkoutUrl, { redirect_uri: redirectUri, state, wait_token: verdict.wait_token }),
+        withParams(checkoutUrl, {
+          redirect_uri: redirectUri,
+          state,
+          wait_token: verdict.wait_token
+        }),
       validate: (params) => {
         if (params.get('error')) return { error: params.get('error') }
-        if (params.get('state') !== state) return { error: 'state mismatch — please retry.' }
+        if (params.get('state') !== state)
+          return { error: 'state mismatch — please retry.' }
         return { value: true } // ok=1 / any non-error return = the app settled with the backend
       },
       openingLabel: 'Opening uniweb.app to complete payment…',
       waitingLabel: 'Waiting for payment to complete (5 min)…',
       timeoutMs: 5 * 60 * 1000,
       okTitle: 'Payment complete',
-      errTitle: 'Payment failed',
+      errTitle: 'Payment failed'
     })
   } catch (err) {
     say.err(`Payment was not completed: ${err.message}`)

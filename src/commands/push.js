@@ -65,16 +65,24 @@ import {
   readItemBaseVersions,
   readItemUuids,
   ensureItemUuids,
-  pushSyncPackages,
+  pushSyncPackages
 } from '../backend/site-sync.js'
 
 // Re-exported for downstream importers (pull.js, push.test.js) that read these
 // helpers from this module — their canonical home is now ../backend/site-sync.js.
-export { extractMintedSiteUuid, makeModelResolver } from '../backend/site-sync.js'
+export {
+  extractMintedSiteUuid,
+  makeModelResolver
+} from '../backend/site-sync.js'
 
 const colors = {
-  reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m',
-  red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', blue: '\x1b[36m',
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[36m'
 }
 const log = console.log
 const success = (m) => log(`${colors.green}✓${colors.reset} ${m}`)
@@ -86,7 +94,8 @@ function flagValue(args, name) {
   const eq = args.find((a) => a.startsWith(`${name}=`))
   if (eq) return eq.slice(name.length + 1)
   const i = args.indexOf(name)
-  if (i !== -1 && args[i + 1] && !args[i + 1].startsWith('-')) return args[i + 1]
+  if (i !== -1 && args[i + 1] && !args[i + 1].startsWith('-'))
+    return args[i + 1]
   return null
 }
 
@@ -116,7 +125,7 @@ export async function push(args = []) {
     siteBackend,
     token: tokenFlag,
     args,
-    command: 'Syncing',
+    command: 'Syncing'
   })
 
   // Build BOTH directional packages (the producer side). Each carries its own
@@ -187,7 +196,7 @@ export async function push(args = []) {
     try {
       const probe = await emitSyncPackages(siteDir, {
         ...(foundationDir ? { foundationDir } : {}),
-        resolveModel: makeModelResolver({ client, offline: false }),
+        resolveModel: makeModelResolver({ client, offline: false })
       })
       mediaRefs = probe.localAssets || []
     } catch (err) {
@@ -197,22 +206,31 @@ export async function push(args = []) {
     if (mediaRefs.length) {
       info('Uploading media…')
       try {
-        const { map, failed } = await uploadSiteMedia(client, siteDir, mediaRefs, {
-          onProgress: (m) => note(`  ${m}`),
-          warn: (m) => note(`! ${m}`),
-        })
+        const { map, failed } = await uploadSiteMedia(
+          client,
+          siteDir,
+          mediaRefs,
+          {
+            onProgress: (m) => note(`  ${m}`),
+            warn: (m) => note(`! ${m}`)
+          }
+        )
         // Bytes that did not land must not be pushed around: the content would go
         // up still naming the local path, so the teammate sees the broken image
         // this whole change exists to prevent, and the only trace is a warning. A
         // missing FILE is a different thing — already broken before us, warned by
         // the uploader, and not worth blocking a push over.
         if (failed.length) {
-          error(`${failed.length} asset(s) failed to upload — nothing was pushed.`)
+          error(
+            `${failed.length} asset(s) failed to upload — nothing was pushed.`
+          )
           for (const f of failed) note(`  ${f.path} (HTTP ${f.status})`)
           return { exitCode: 1 }
         }
         if (Object.keys(map).length) assetRewrite = map
-        note(`${Object.keys(map).length}/${mediaRefs.length} media ref(s) → serve URL`)
+        note(
+          `${Object.keys(map).length}/${mediaRefs.length} media ref(s) → serve URL`
+        )
       } catch (err) {
         // Typed plan refusals get their own account. Note the storage one must not
         // be phrased from what moved — see describeAssetRefusal's rule 1; a push can
@@ -229,21 +247,30 @@ export async function push(args = []) {
     }
   }
 
-  const itemUuids = (output || dryRun)
-    ? readItemUuids(siteDir)
-    : await ensureItemUuids({ client, siteDir, note })
+  const itemUuids =
+    output || dryRun
+      ? readItemUuids(siteDir)
+      : await ensureItemUuids({ client, siteDir, note })
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, {
       ...(foundationDir ? { foundationDir } : {}),
-      resolveModel: makeModelResolver({ client, offline: Boolean(output) || dryRun }),
+      resolveModel: makeModelResolver({
+        client,
+        offline: Boolean(output) || dryRun
+      }),
       priorHashes,
       sendAll,
       itemUuids,
       // Both grains are dropped together by --force: one flag, one meaning,
       // no partial-force mode.
-      ...(force ? {} : { baseVersions: readBaseVersions(siteDir), itemBaseVersions: readItemBaseVersions(siteDir) }),
-      ...(assetRewrite ? { assetRewrite } : {}),
+      ...(force
+        ? {}
+        : {
+            baseVersions: readBaseVersions(siteDir),
+            itemBaseVersions: readItemBaseVersions(siteDir)
+          }),
+      ...(assetRewrite ? { assetRewrite } : {})
     })
   } catch (err) {
     error(`Could not build the sync package: ${err.message}`)
@@ -253,36 +280,53 @@ export async function push(args = []) {
   log('')
   for (const w of warnings) note(`! ${w}`)
 
-  const totalEntities = (siteContent?.entityCount || 0) + (collections?.entityCount || 0)
+  const totalEntities =
+    (siteContent?.entityCount || 0) + (collections?.entityCount || 0)
 
   // Nothing changed since the last push — the backend is already up to date.
   if (totalEntities === 0) {
-    success(`Nothing to push — ${skipped} entit${skipped === 1 ? 'y' : 'ies'} unchanged since the last push.`)
+    success(
+      `Nothing to push — ${skipped} entit${skipped === 1 ? 'y' : 'ies'} unchanged since the last push.`
+    )
     return { exitCode: 0 }
   }
-  if (siteContent) info(`${colors.bright}site-content${colors.reset} → ${siteContent.models.join(', ')}`)
+  if (siteContent)
+    info(
+      `${colors.bright}site-content${colors.reset} → ${siteContent.models.join(', ')}`
+    )
   if (collections) {
     const n = collections.entityCount
-    info(`${colors.bright}collections${colors.reset} (${n} entit${n === 1 ? 'y' : 'ies'}) → ${collections.models.join(', ')}`)
+    info(
+      `${colors.bright}collections${colors.reset} (${n} entit${n === 1 ? 'y' : 'ies'}) → ${collections.models.join(', ')}`
+    )
   }
   if (skipped) note(`${skipped} unchanged, skipped`)
 
   // Preview paths — no submit, no auth. Two lanes → up to two files / two routes.
   if (output) {
     const base = output.replace(/\.uwx$/, '')
-    if (siteContent) writeFileSync(resolve(`${base}.site-content.uwx`), siteContent.buffer)
-    if (collections) writeFileSync(resolve(`${base}.collections.uwx`), collections.buffer)
-    const lanes = [siteContent && 'site-content', collections && 'collections'].filter(Boolean)
+    if (siteContent)
+      writeFileSync(resolve(`${base}.site-content.uwx`), siteContent.buffer)
+    if (collections)
+      writeFileSync(resolve(`${base}.collections.uwx`), collections.buffer)
+    const lanes = [
+      siteContent && 'site-content',
+      collections && 'collections'
+    ].filter(Boolean)
     success(`Wrote ${lanes.join(' + ')} .uwx — not submitted`)
     return { exitCode: 0 }
   }
   if (dryRun) {
     if (siteContent) {
       const verb = siteContentUuid ? 'update' : 'create'
-      info(`Dry run — would ${verb} content at ${colors.dim}${client.origin}${colors.reset}`)
+      info(
+        `Dry run — would ${verb} content at ${colors.dim}${client.origin}${colors.reset}`
+      )
     }
     if (collections) {
-      info(`Dry run — would push the folder at ${colors.dim}${client.origin}${colors.reset}`)
+      info(
+        `Dry run — would push the folder at ${colors.dim}${client.origin}${colors.reset}`
+      )
     }
     return { exitCode: 0 }
   }
@@ -294,7 +338,12 @@ export async function push(args = []) {
     siteDir,
     pkg,
     asOrg,
-    report: { info, note, error, dim: (s) => `${colors.dim}${s}${colors.reset}` },
+    report: {
+      info,
+      note,
+      error,
+      dim: (s) => `${colors.dim}${s}${colors.reset}`
+    }
   })
   if (result.exitCode !== 0) return { exitCode: result.exitCode }
   success(

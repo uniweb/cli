@@ -34,11 +34,23 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtemp, mkdir, rm, readFile, writeFile, access } from 'node:fs/promises'
+import {
+  mkdtemp,
+  mkdir,
+  rm,
+  readFile,
+  writeFile,
+  access
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent } from '../src/utils/scaffold.js'
+import {
+  scaffoldWorkspace,
+  scaffoldFoundation,
+  scaffoldSite,
+  applyContent
+} from '../src/utils/scaffold.js'
 import { enumerateTemplateOutputs } from '../src/templates/processor.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -63,26 +75,28 @@ function tmp(prefix) {
 test('npm tarball ships _gitignore for every package template (npm strips literal .gitignore)', () => {
   const stdout = execFileSync('npm', ['pack', '--dry-run', '--json'], {
     cwd: CLI_ROOT,
-    encoding: 'utf8',
+    encoding: 'utf8'
   })
-  const files = JSON.parse(stdout)[0].files.map((f) => f.path.replace(/\\/g, '/'))
+  const files = JSON.parse(stdout)[0].files.map((f) =>
+    f.path.replace(/\\/g, '/')
+  )
 
   // A file literally named `.gitignore` anywhere under templates/ would be
   // silently dropped by npm at publish — exactly the bug this guards. The fix
   // is to store such files as `_gitignore`; none should slip back to `.`.
   const stripped = files.filter(
-    (f) => f.startsWith('templates/') && path.posix.basename(f) === '.gitignore',
+    (f) => f.startsWith('templates/') && path.posix.basename(f) === '.gitignore'
   )
   assert.deepEqual(
     stripped,
     [],
-    `templates ship .gitignore files npm will strip from the tarball: ${stripped.join(', ')}`,
+    `templates ship .gitignore files npm will strip from the tarball: ${stripped.join(', ')}`
   )
 
   for (const pkg of PACKAGE_TEMPLATES) {
     assert.ok(
       files.includes(`templates/${pkg}/_gitignore`),
-      `templates/${pkg}/_gitignore is missing from the npm tarball (scaffolded projects would have no .gitignore)`,
+      `templates/${pkg}/_gitignore is missing from the npm tarball (scaffolded projects would have no .gitignore)`
     )
   }
 })
@@ -95,12 +109,16 @@ test('scaffolding via the real CLI path writes .gitignore into each package', as
         scaffoldWorkspace(dir, {
           projectName: 'test-project',
           workspaceGlobs: ['site', 'foundation'],
-          scripts: {},
-        }),
+          scripts: {}
+        })
     },
     {
       pkg: 'foundation',
-      run: (dir) => scaffoldFoundation(dir, { name: 'foundation', projectName: 'test-project' }),
+      run: (dir) =>
+        scaffoldFoundation(dir, {
+          name: 'foundation',
+          projectName: 'test-project'
+        })
     },
     {
       pkg: 'site',
@@ -109,23 +127,40 @@ test('scaffolding via the real CLI path writes .gitignore into each package', as
           name: 'site',
           projectName: 'test-project',
           foundationName: 'foundation',
-          foundationPath: 'file:../foundation',
-        }),
-    },
+          foundationPath: 'file:../foundation'
+        })
+    }
   ]
 
   for (const { pkg, run } of cases) {
     const dir = await tmp(`uniweb-gi-${pkg}-`)
     try {
       await run(dir)
-      assert.ok(await exists(path.join(dir, '.gitignore')), `${pkg}: scaffolded project is missing .gitignore`)
-      assert.ok(!(await exists(path.join(dir, '_gitignore'))), `${pkg}: _gitignore leaked into scaffolded output`)
+      assert.ok(
+        await exists(path.join(dir, '.gitignore')),
+        `${pkg}: scaffolded project is missing .gitignore`
+      )
+      assert.ok(
+        !(await exists(path.join(dir, '_gitignore'))),
+        `${pkg}: _gitignore leaked into scaffolded output`
+      )
 
       // Content must match the template source verbatim (raw copy, no Handlebars).
       const rendered = await readFile(path.join(dir, '.gitignore'), 'utf8')
-      const source = await readFile(path.join(TEMPLATES_DIR, pkg, '_gitignore'), 'utf8')
-      assert.equal(rendered, source, `${pkg}: scaffolded .gitignore differs from template source`)
-      assert.match(rendered, /node_modules/, `${pkg}: .gitignore should ignore node_modules`)
+      const source = await readFile(
+        path.join(TEMPLATES_DIR, pkg, '_gitignore'),
+        'utf8'
+      )
+      assert.equal(
+        rendered,
+        source,
+        `${pkg}: scaffolded .gitignore differs from template source`
+      )
+      assert.match(
+        rendered,
+        /node_modules/,
+        `${pkg}: .gitignore should ignore node_modules`
+      )
       assert.match(rendered, /dist/, `${pkg}: .gitignore should ignore dist`)
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -135,9 +170,17 @@ test('scaffolding via the real CLI path writes .gitignore into each package', as
 
 test('enumerateTemplateOutputs renames _gitignore -> .gitignore for the in-place create flow', async () => {
   for (const pkg of PACKAGE_TEMPLATES) {
-    const outputs = await enumerateTemplateOutputs(path.join(TEMPLATES_DIR, pkg))
-    assert.ok(outputs.includes('.gitignore'), `${pkg}: enumerated outputs missing .gitignore (${outputs.join(', ')})`)
-    assert.ok(!outputs.includes('_gitignore'), `${pkg}: enumerated outputs leaked _gitignore`)
+    const outputs = await enumerateTemplateOutputs(
+      path.join(TEMPLATES_DIR, pkg)
+    )
+    assert.ok(
+      outputs.includes('.gitignore'),
+      `${pkg}: enumerated outputs missing .gitignore (${outputs.join(', ')})`
+    )
+    assert.ok(
+      !outputs.includes('_gitignore'),
+      `${pkg}: enumerated outputs leaked _gitignore`
+    )
   }
 })
 
@@ -155,7 +198,10 @@ test('a content-template overlay cannot remove or replace the base .gitignore', 
 
     // Adversarial overlay: a .gitignore that would erase the standard ignores,
     // plus a normal content file that SHOULD be copied through.
-    await writeFile(path.join(content, '.gitignore'), '# overlay junk — must not win\n')
+    await writeFile(
+      path.join(content, '.gitignore'),
+      '# overlay junk — must not win\n'
+    )
     await writeFile(path.join(content, 'page.md'), '# hello\n')
 
     await applyContent(content, target, { projectName: 'test' })
@@ -163,9 +209,12 @@ test('a content-template overlay cannot remove or replace the base .gitignore', 
     assert.equal(
       await readFile(path.join(target, '.gitignore'), 'utf8'),
       base,
-      'overlay clobbered the base .gitignore (it must be treated as structural)',
+      'overlay clobbered the base .gitignore (it must be treated as structural)'
     )
-    assert.ok(await exists(path.join(target, 'page.md')), 'overlay content (page.md) was not applied')
+    assert.ok(
+      await exists(path.join(target, 'page.md')),
+      'overlay content (page.md) was not applied'
+    )
   } finally {
     await rm(target, { recursive: true, force: true })
     await rm(content, { recursive: true, force: true })
@@ -181,22 +230,46 @@ test('end-to-end: creating from a content template yields .gitignore at every le
   const workdir = await tmp('uniweb-gi-work-')
   try {
     // Minimal valid format-2 content template: template.json + foundation/ + site/.
-    await writeFile(path.join(fixture, 'template.json'), JSON.stringify({ name: 'e2e-gitignore-template' }))
-    await mkdir(path.join(fixture, 'foundation', 'sections', 'Hero'), { recursive: true })
-    await writeFile(path.join(fixture, 'foundation', 'sections', 'Hero', 'index.jsx'), 'export default () => null\n')
+    await writeFile(
+      path.join(fixture, 'template.json'),
+      JSON.stringify({ name: 'e2e-gitignore-template' })
+    )
+    await mkdir(path.join(fixture, 'foundation', 'sections', 'Hero'), {
+      recursive: true
+    })
+    await writeFile(
+      path.join(fixture, 'foundation', 'sections', 'Hero', 'index.jsx'),
+      'export default () => null\n'
+    )
     await mkdir(path.join(fixture, 'site', 'pages'), { recursive: true })
     await writeFile(path.join(fixture, 'site', 'pages', 'home.md'), '# Home\n')
 
     const r = spawnSync(
       process.execPath,
-      [CLI_ENTRY, 'create', 'proj', '--template', fixture, '--no-git', '--non-interactive'],
-      { cwd: workdir, encoding: 'utf8' },
+      [
+        CLI_ENTRY,
+        'create',
+        'proj',
+        '--template',
+        fixture,
+        '--no-git',
+        '--non-interactive'
+      ],
+      { cwd: workdir, encoding: 'utf8' }
     )
-    assert.equal(r.status, 0, `create failed (exit ${r.status})\nstdout:\n${r.stdout}\nstderr:\n${r.stderr}`)
+    assert.equal(
+      r.status,
+      0,
+      `create failed (exit ${r.status})\nstdout:\n${r.stdout}\nstderr:\n${r.stderr}`
+    )
 
     // Workspace (root), foundation (src/), and site (site/) must each be ignored.
     const projDir = path.join(workdir, 'proj')
-    for (const rel of ['.gitignore', path.join('src', '.gitignore'), path.join('site', '.gitignore')]) {
+    for (const rel of [
+      '.gitignore',
+      path.join('src', '.gitignore'),
+      path.join('site', '.gitignore')
+    ]) {
       const p = path.join(projDir, rel)
       assert.ok(await exists(p), `missing ${rel} in scaffolded project`)
       const body = await readFile(p, 'utf8')

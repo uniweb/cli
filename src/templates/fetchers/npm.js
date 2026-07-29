@@ -67,7 +67,7 @@ export async function fetchNpmTemplate(packageName, options = {}) {
     return {
       tempDir,
       version,
-      metadata: versionMeta,
+      metadata: versionMeta
     }
   } catch (err) {
     // Clean up on error
@@ -84,13 +84,13 @@ async function fetchWithRetry(url, options = {}, maxRetries = 3) {
     try {
       const response = await fetch(url, {
         ...options,
-        signal: AbortSignal.timeout(30000), // 30s timeout
+        signal: AbortSignal.timeout(30000) // 30s timeout
       })
       return response
     } catch (err) {
       if (attempt === maxRetries) throw err
       const delay = Math.min(1000 * Math.pow(2, attempt), 10000)
-      await new Promise(r => setTimeout(r, delay))
+      await new Promise((r) => setTimeout(r, delay))
     }
   }
 }

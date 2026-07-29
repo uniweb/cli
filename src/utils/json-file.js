@@ -62,7 +62,11 @@ export function writeJsonPreservingStyle(filePath, obj, originalSrc = null) {
  * @param {object} obj
  * @param {string|null} [originalSrc]
  */
-export async function writeJsonPreservingStyleAsync(filePath, obj, originalSrc = null) {
-  const src = originalSrc ?? await readFile(filePath, 'utf8')
+export async function writeJsonPreservingStyleAsync(
+  filePath,
+  obj,
+  originalSrc = null
+) {
+  const src = originalSrc ?? (await readFile(filePath, 'utf8'))
   await writeFile(filePath, stringifyJsonLike(obj, src))
 }

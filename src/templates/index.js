@@ -7,10 +7,19 @@ import { readFile, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 
-import { parseTemplateId, getTemplateDisplayName, BUILTIN_TEMPLATES, OFFICIAL_TEMPLATES, buildTemplateChoices } from './resolver.js'
+import {
+  parseTemplateId,
+  getTemplateDisplayName,
+  BUILTIN_TEMPLATES,
+  OFFICIAL_TEMPLATES,
+  buildTemplateChoices
+} from './resolver.js'
 import { fetchNpmTemplate } from './fetchers/npm.js'
 import { fetchGitHubTemplate } from './fetchers/github.js'
-import { fetchOfficialTemplate, listOfficialTemplates } from './fetchers/release.js'
+import {
+  fetchOfficialTemplate,
+  listOfficialTemplates
+} from './fetchers/release.js'
 import { validateTemplate } from './validator.js'
 
 /**
@@ -29,7 +38,7 @@ export async function resolveTemplate(identifier, options = {}) {
     case 'builtin':
       return {
         type: 'builtin',
-        name: parsed.name,
+        name: parsed.name
         // Built-in templates are handled programmatically by the CLI
         // No path or cleanup needed
       }
@@ -57,7 +66,9 @@ export async function resolveTemplate(identifier, options = {}) {
 async function resolveOfficialTemplate(name, options = {}) {
   const { onProgress } = options
 
-  const { tempDir, baseTempDir, version } = await fetchOfficialTemplate(name, { onProgress })
+  const { tempDir, baseTempDir, version } = await fetchOfficialTemplate(name, {
+    onProgress
+  })
 
   onProgress?.(`Using official template: ${name} (${version})`)
 
@@ -69,7 +80,7 @@ async function resolveOfficialTemplate(name, options = {}) {
     cleanup: async () => {
       // Clean up the base temp directory (parent of the template)
       await rm(baseTempDir, { recursive: true, force: true }).catch(() => {})
-    },
+    }
   }
 }
 
@@ -81,7 +92,9 @@ async function resolveNpmTemplate(packageName, options = {}) {
 
   onProgress?.(`Resolving npm template: ${packageName}`)
 
-  const { tempDir, version, metadata } = await fetchNpmTemplate(packageName, { onProgress })
+  const { tempDir, version, metadata } = await fetchNpmTemplate(packageName, {
+    onProgress
+  })
 
   return {
     type: 'npm',
@@ -90,7 +103,7 @@ async function resolveNpmTemplate(packageName, options = {}) {
     path: tempDir,
     cleanup: async () => {
       await rm(tempDir, { recursive: true, force: true }).catch(() => {})
-    },
+    }
   }
 }
 
@@ -103,7 +116,10 @@ async function resolveGitHubTemplate(parsed, options = {}) {
 
   onProgress?.(`Resolving GitHub template: ${owner}/${repo}`)
 
-  const { tempDir } = await fetchGitHubTemplate(owner, repo, { ref, onProgress })
+  const { tempDir } = await fetchGitHubTemplate(owner, repo, {
+    ref,
+    onProgress
+  })
 
   return {
     type: 'github',
@@ -113,7 +129,7 @@ async function resolveGitHubTemplate(parsed, options = {}) {
     path: tempDir,
     cleanup: async () => {
       await rm(tempDir, { recursive: true, force: true }).catch(() => {})
-    },
+    }
   }
 }
 
@@ -153,7 +169,7 @@ async function resolveLocalTemplate(templatePath, options = {}) {
     type: 'local',
     name,
     path: resolvedPath,
-    cleanup: null,
+    cleanup: null
   }
 }
 
@@ -171,7 +187,7 @@ export async function listAvailableTemplates() {
         type: 'official',
         id: t.id,
         name: t.name || t.id,
-        description: t.description || '',
+        description: t.description || ''
       })
     }
   } catch {
@@ -182,4 +198,10 @@ export async function listAvailableTemplates() {
 }
 
 // Re-export for convenience
-export { parseTemplateId, getTemplateDisplayName, BUILTIN_TEMPLATES, OFFICIAL_TEMPLATES, buildTemplateChoices }
+export {
+  parseTemplateId,
+  getTemplateDisplayName,
+  BUILTIN_TEMPLATES,
+  OFFICIAL_TEMPLATES,
+  buildTemplateChoices
+}

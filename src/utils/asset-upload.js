@@ -1,9 +1,8 @@
 /**
  * Site asset delivery — the asset lane for `uniweb publish`. After the link
- * build processes a site's media into
- * `dist/assets/`, those bytes are delivered to the backend's content-addressed
- * asset store, and the publish step rewrites the content's local refs to durable
- * serve URLs:
+ * build processes a site's media into `dist/assets/`, those bytes are delivered
+ * to the backend's content-addressed asset store, and the publish step rewrites
+ * the content's local refs to durable serve URLs:
  *
  *   1. PLAN   — POST {apiBase}/dev/assets with the file list ({ path,
  *               content_type, size, sha256 }). `sha256` is REQUIRED — it is the
@@ -25,7 +24,6 @@
  * mirrors the foundation code lane (utils/code-upload.js); the one structural
  * difference is that the backend MINTS the per-asset id, so the plan response is
  * what the deploy step rewrites content references to.
- *
  */
 
 import { createHash } from 'node:crypto'
@@ -61,7 +59,7 @@ export function collectSiteAssets(distDir) {
           size: st.size,
           sha256: createHash('sha256').update(bytes).digest('hex'),
           localUrl: `/assets/${rel}`,
-          diskPath: full,
+          diskPath: full
         })
       }
     }
@@ -95,29 +93,49 @@ export function collectSiteAssets(distDir) {
  * @param {(msg: string) => void} [opts.onProgress]
  * @returns {Promise<{ mode: string, uploaded: string[], skipped: string[], failed: Array<{path, status, detail}>, assetsByLocalUrl: Record<string, { id: string, ext: string, serveUrl?: string }> }>}
  */
-export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgress = () => {} }) {
+export async function uploadSiteAssets({
+  apiBase,
+  token,
+  distDir,
+  files,
+  onProgress = () => {}
+}) {
   const list = files || collectSiteAssets(distDir)
   if (!list.length) {
-    return { mode: 'none', uploaded: [], skipped: [], failed: [], assetsByLocalUrl: {} }
+    return {
+      mode: 'none',
+      uploaded: [],
+      skipped: [],
+      failed: [],
+      assetsByLocalUrl: {}
+    }
   }
 
   const origin = apiBase.replace(/\/$/, '')
   const planRes = await fetch(`${origin}/dev/assets`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
     body: JSON.stringify({
-      files: list.map(({ path, content_type, size, sha256 }) => ({ path, content_type, size, sha256 })),
-    }),
+      files: list.map(({ path, content_type, size, sha256 }) => ({
+        path,
+        content_type,
+        size,
+        sha256
+      }))
+    })
   })
   if (!planRes.ok) {
     const detail = await planRes.text().catch(() => '')
     // The plan refuses with an RFC7807 body carrying a machine-readable `reason`.
     // The message keeps its historical shape so anything reading it still works,
-    // but the PARSED body has
-    // to survive the throw: flattening it to a string here is what made
-    // "branch on `reason`" unimplementable and left the old caller no choice but a
-    // status regex. Callers read `err.problem`; `describeAssetRefusal` in
-    // backend/site-media.js turns it into user-facing lines.
+    // but the PARSED body has to survive the throw: flattening it to a string
+    // here is what made "branch on `reason`" unimplementable and left the old
+    // caller no choice but a status regex. Callers read `err.problem`;
+    // `describeAssetRefusal` in backend/site-media.js turns it into user-facing
+    // lines.
     let problem = null
     if (detail) {
       try {
@@ -153,7 +171,11 @@ export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgr
     // ⇒ false (older backend) → falls through to the upload path below.
     if (up.present) {
       skipped.push(src.path)
-      assetsByLocalUrl[src.localUrl] = { id: up.id, ext: String(up.ext || '').replace(/^\./, ''), serveUrl: up.serve_url }
+      assetsByLocalUrl[src.localUrl] = {
+        id: up.id,
+        ext: String(up.ext || '').replace(/^\./, ''),
+        serveUrl: up.serve_url
+      }
       continue
     }
 
@@ -167,7 +189,11 @@ export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgr
     try {
       // The plan's url may be origin-relative (direct mode → the backend) or
       // absolute (presigned → storage); new URL() resolves both.
-      putRes = await fetch(new URL(up.url, origin), { method: up.method || 'PUT', headers, body: src.bytes ?? readFileSync(src.diskPath) })
+      putRes = await fetch(new URL(up.url, origin), {
+        method: up.method || 'PUT',
+        headers,
+        body: src.bytes ?? readFileSync(src.diskPath)
+      })
     } catch (err) {
       failed.push({ path: src.path, status: 0, detail: err.message })
       continue
@@ -175,9 +201,17 @@ export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgr
     if (putRes.ok) {
       uploaded.push(src.path)
       // Authoritative id + ext from the plan; mapped only on a successful PUT.
-      assetsByLocalUrl[src.localUrl] = { id: up.id, ext: String(up.ext || '').replace(/^\./, ''), serveUrl: up.serve_url }
+      assetsByLocalUrl[src.localUrl] = {
+        id: up.id,
+        ext: String(up.ext || '').replace(/^\./, ''),
+        serveUrl: up.serve_url
+      }
     } else {
-      failed.push({ path: src.path, status: putRes.status, detail: await putRes.text().catch(() => '') })
+      failed.push({
+        path: src.path,
+        status: putRes.status,
+        detail: await putRes.text().catch(() => '')
+      })
     }
   }
 
@@ -189,6 +223,8 @@ export async function uploadSiteAssets({ apiBase, token, distDir, files, onProgr
 // → used verbatim. Shape: {assetBase}dist/{id}/base.{ext} — basename literally
 // `base`, {ext} the source extension the plan echoed.
 export function buildAssetUrl(origin, assetBase, id, ext) {
-  const base = /^https?:\/\//.test(assetBase) ? assetBase : `${origin}${assetBase}`
+  const base = /^https?:\/\//.test(assetBase)
+    ? assetBase
+    : `${origin}${assetBase}`
   return `${base.replace(/\/$/, '')}/dist/${id}/base.${ext}`
 }

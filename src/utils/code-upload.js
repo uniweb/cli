@@ -59,7 +59,7 @@ const CONTENT_TYPES = {
   avif: 'image/avif',
   ico: 'image/x-icon',
   txt: 'text/plain',
-  html: 'text/html',
+  html: 'text/html'
 }
 
 export function contentTypeFor(path) {
@@ -95,7 +95,7 @@ export function collectDistFiles(distDir) {
           path: rel,
           content_type: contentTypeFor(rel),
           size: st.size,
-          sha256: createHash('sha256').update(bytes).digest('hex'),
+          sha256: createHash('sha256').update(bytes).digest('hex')
         })
       }
     }
@@ -144,11 +144,15 @@ export function computeFoundationDigest(distDir) {
   // it in explicitly — a schema-only change is still a foundation change.
   const schemaPath = join(distDir, 'meta', 'schema.json')
   if (existsSync(schemaPath)) {
-    hashes.push(createHash('sha256').update(readFileSync(schemaPath)).digest('hex'))
+    hashes.push(
+      createHash('sha256').update(readFileSync(schemaPath)).digest('hex')
+    )
   }
   if (!hashes.length) return null
   hashes.sort()
-  return 'sha256:' + createHash('sha256').update(hashes.join('\n')).digest('hex')
+  return (
+    'sha256:' + createHash('sha256').update(hashes.join('\n')).digest('hex')
+  )
 }
 
 /**
@@ -185,17 +189,26 @@ export async function uploadFoundationCode({
   version,
   distDir,
   files,
-  onProgress = () => {},
+  onProgress = () => {}
 }) {
   const list = files || collectDistFiles(distDir)
   if (!list.length) {
-    return { mode: 'none', uploaded: [], failed: [], verified: null, serveBase: null }
+    return {
+      mode: 'none',
+      uploaded: [],
+      failed: [],
+      verified: null,
+      serveBase: null
+    }
   }
 
   const origin = apiBase.replace(/\/$/, '')
   const planRes = await fetch(`${origin}/dev/registry/code-uploads`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
     body: JSON.stringify({
       name,
       version,
@@ -205,9 +218,9 @@ export async function uploadFoundationCode({
         size,
         // Optional integrity hint (ignored by the v1 backend; flows so a
         // future checksum-bearing presign needs no CLI change).
-        sha256,
-      })),
-    }),
+        sha256
+      }))
+    })
   })
   if (!planRes.ok) {
     const body = await planRes.text().catch(() => '')
@@ -223,14 +236,19 @@ export async function uploadFoundationCode({
   // The ONE mode-aware bit: direct-mode PUTs are bearer-authed backend
   // routes; presigned URLs are self-authorizing and must NOT carry a
   // bearer (foreign auth headers can break signed-request validation).
-  const authHeaders = plan.mode === 'direct' ? { Authorization: `Bearer ${token}` } : {}
+  const authHeaders =
+    plan.mode === 'direct' ? { Authorization: `Bearer ${token}` } : {}
 
   const uploaded = []
   const failed = []
   for (const file of uploadOrder(list)) {
     const target = targets.get(file.path)
     if (!target) {
-      failed.push({ path: file.path, status: 0, detail: 'no upload target in plan' })
+      failed.push({
+        path: file.path,
+        status: 0,
+        detail: 'no upload target in plan'
+      })
       continue
     }
     const bytes = readFileSync(join(distDir, file.path))
@@ -239,8 +257,12 @@ export async function uploadFoundationCode({
         method: target.method || 'PUT',
         // x-uniweb-sha256: optional integrity guard — direct mode verifies
         // the received bytes and 400s on mismatch (corruption-in-flight).
-        headers: { ...(target.headers || {}), ...authHeaders, 'x-uniweb-sha256': file.sha256 },
-        body: bytes,
+        headers: {
+          ...(target.headers || {}),
+          ...authHeaders,
+          'x-uniweb-sha256': file.sha256
+        },
+        body: bytes
       })
       if (res.ok) {
         uploaded.push(file.path)
@@ -249,7 +271,7 @@ export async function uploadFoundationCode({
         failed.push({
           path: file.path,
           status: res.status,
-          detail: (await res.text().catch(() => '')).slice(0, 200),
+          detail: (await res.text().catch(() => '')).slice(0, 200)
         })
       }
     } catch (err) {
@@ -266,7 +288,10 @@ export async function uploadFoundationCode({
       // serve_base is origin-relative in direct mode — resolve against the
       // registry origin before fetching.
       const url = serveBase
-        ? new URL(`${serveBase.replace(/\/$/, '')}/${ENTRY_PATH}`, origin).toString()
+        ? new URL(
+            `${serveBase.replace(/\/$/, '')}/${ENTRY_PATH}`,
+            origin
+          ).toString()
         : gatewayUrl(origin, name, version, ENTRY_PATH)
       const res = await fetch(url)
       if (res.ok) {

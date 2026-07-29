@@ -41,12 +41,31 @@ import { template } from './commands/template.js'
 import {
   resolveTemplate,
   parseTemplateId,
-  buildTemplateChoices,
+  buildTemplateChoices
 } from './templates/index.js'
 import { validateTemplate } from './templates/validator.js'
-import { scaffoldWorkspace, scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemplateDependencies, getWorkspaceTemplateOutputs } from './utils/scaffold.js'
-import { detectPackageManager, filterCmd, installCmd, runCmd, isPnpmAvailable } from './utils/pm.js'
-import { isNonInteractive, getCliPrefix, stripNonInteractiveFlag, formatOptions } from './utils/interactive.js'
+import {
+  scaffoldWorkspace,
+  scaffoldFoundation,
+  scaffoldSite,
+  applyContent,
+  applyStarter,
+  mergeTemplateDependencies,
+  getWorkspaceTemplateOutputs
+} from './utils/scaffold.js'
+import {
+  detectPackageManager,
+  filterCmd,
+  installCmd,
+  runCmd,
+  isPnpmAvailable
+} from './utils/pm.js'
+import {
+  isNonInteractive,
+  getCliPrefix,
+  stripNonInteractiveFlag,
+  formatOptions
+} from './utils/interactive.js'
 import { findWorkspaceRoot } from './utils/workspace.js'
 
 // Colors for terminal output
@@ -57,7 +76,7 @@ const colors = {
   cyan: '\x1b[36m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
-  red: '\x1b[31m',
+  red: '\x1b[31m'
 }
 
 // Template choices for the interactive prompt — built-ins first, then every
@@ -111,7 +130,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 let _cliVersion = null
 function getCliVersion() {
   if (!_cliVersion) {
-    const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'))
+    const pkg = JSON.parse(
+      readFileSync(join(__dirname, '..', 'package.json'), 'utf8')
+    )
     _cliVersion = pkg.version
   }
   return _cliVersion
@@ -126,7 +147,15 @@ function getCliVersion() {
 // install that's the whole point; delegating to the project-local copy
 // would align the project to the version it already has, i.e. a no-op.
 const STANDALONE_COMMANDS = new Set([
-  'create', 'clone', '--help', '-h', '--version', '-v', 'login', 'logout', 'update',
+  'create',
+  'clone',
+  '--help',
+  '-h',
+  '--version',
+  '-v',
+  'login',
+  'logout',
+  'update'
 ])
 
 /**
@@ -138,8 +167,10 @@ function isGlobalInstall() {
   const scriptPath = process.argv[1]
   if (!scriptPath) return false
   // Normalize path separators for Windows compatibility
-  return !scriptPath.split('/').includes('node_modules') &&
-         !scriptPath.split('\\').includes('node_modules')
+  return (
+    !scriptPath.split('/').includes('node_modules') &&
+    !scriptPath.split('\\').includes('node_modules')
+  )
 }
 
 /**
@@ -173,9 +204,13 @@ function delegateToLocal(localCliPath) {
       const yellow = '\x1b[33m'
       const dim = '\x1b[2m'
       const reset = '\x1b[0m'
-      console.error(`${yellow}Note:${reset} Global CLI is ${dim}${globalVersion}${reset}, project has ${dim}${localPkg.version}${reset} ${dim}(using project version)${reset}`)
+      console.error(
+        `${yellow}Note:${reset} Global CLI is ${dim}${globalVersion}${reset}, project has ${dim}${localPkg.version}${reset} ${dim}(using project version)${reset}`
+      )
     }
-  } catch { /* ignore — version check is best-effort */ }
+  } catch {
+    /* ignore — version check is best-effort */
+  }
 
   return new Promise((resolve, reject) => {
     const child = spawnChild(
@@ -198,10 +233,15 @@ async function importProjectCommand(modulePath) {
   try {
     return await import(modulePath)
   } catch (err) {
-    if (err.code === 'ERR_MODULE_NOT_FOUND' && err.message?.includes('@uniweb/')) {
+    if (
+      err.code === 'ERR_MODULE_NOT_FOUND' &&
+      err.message?.includes('@uniweb/')
+    ) {
       error('This command must be run from inside a Uniweb project.')
       log('')
-      log(`Make sure you're in a project directory with dependencies installed:`)
+      log(
+        `Make sure you're in a project directory with dependencies installed:`
+      )
       log(`  ${colors.cyan}cd your-project${colors.reset}`)
       log(`  ${colors.cyan}npm install${colors.reset}`)
       log('')
@@ -216,7 +256,11 @@ async function importProjectCommand(modulePath) {
 /**
  * Create a project using the new package template flow (default)
  */
-async function createFromPackageTemplates(projectDir, projectName, options = {}) {
+async function createFromPackageTemplates(
+  projectDir,
+  projectName,
+  options = {}
+) {
   const { onProgress, onWarning, pm = 'pnpm', includeStarter = true } = options
 
   onProgress?.('Setting up workspace...')
@@ -226,36 +270,48 @@ async function createFromPackageTemplates(projectDir, projectName, options = {})
   // (the verb resolves the right PM at runtime instead of locking the
   // root scripts to whichever PM ran `npx uniweb create`). preview stays
   // PM-filtered until a `uniweb preview` verb exists.
-  await scaffoldWorkspace(projectDir, {
-    projectName,
-    workspaceGlobs: ['site', 'src'],
-    scripts: {
-      dev: 'uniweb dev',
-      build: 'uniweb build',
-      preview: filterCmd(pm, 'site', 'preview'),
+  await scaffoldWorkspace(
+    projectDir,
+    {
+      projectName,
+      workspaceGlobs: ['site', 'src'],
+      scripts: {
+        dev: 'uniweb dev',
+        build: 'uniweb build',
+        preview: filterCmd(pm, 'site', 'preview')
+      }
     },
-  }, { onProgress, onWarning })
+    { onProgress, onWarning }
+  )
 
   // 2. Scaffold foundation (folder: src/, package name: src)
   // The folder name 'src' carries the meaning — a foundation is the site's
   // source code. The package name 'src' keeps it unique within the
   // workspace, since 'site' is taken by the site package.
   onProgress?.('Creating foundation...')
-  await scaffoldFoundation(join(projectDir, 'src'), {
-    name: 'src',
-    projectName,
-    isExtension: false,
-  }, { onProgress, onWarning })
+  await scaffoldFoundation(
+    join(projectDir, 'src'),
+    {
+      name: 'src',
+      projectName,
+      isExtension: false
+    },
+    { onProgress, onWarning }
+  )
 
   // 3. Scaffold site
   onProgress?.('Creating site...')
-  await scaffoldSite(join(projectDir, 'site'), {
-    name: 'site',
-    projectName,
-    foundationName: 'src',
-    foundationPath: 'file:../src',
-    foundationRef: 'src',
-  }, { onProgress, onWarning })
+  await scaffoldSite(
+    join(projectDir, 'site'),
+    {
+      name: 'site',
+      projectName,
+      foundationName: 'src',
+      foundationPath: 'file:../src',
+      foundationRef: 'src'
+    },
+    { onProgress, onWarning }
+  )
 
   // 4. Apply starter content (unless creating a "none" project)
   if (includeStarter) {
@@ -274,13 +330,17 @@ async function createBlankWorkspace(projectDir, projectName, options = {}) {
 
   onProgress?.('Setting up blank workspace...')
 
-  await scaffoldWorkspace(projectDir, {
-    projectName,
-    workspaceGlobs: [],
-    scripts: {
-      build: 'uniweb build',
+  await scaffoldWorkspace(
+    projectDir,
+    {
+      projectName,
+      workspaceGlobs: [],
+      scripts: {
+        build: 'uniweb build'
+      }
     },
-  }, { onProgress, onWarning })
+    { onProgress, onWarning }
+  )
 
   success(`Created blank workspace: ${projectName}`)
 }
@@ -291,7 +351,13 @@ async function createBlankWorkspace(projectDir, projectName, options = {}) {
  * Scaffolds workspace structure from package templates, then overlays
  * content (sections, pages, theme) from the content template.
  */
-async function createFromContentTemplate(projectDir, projectName, metadata, templateRootPath, options = {}) {
+async function createFromContentTemplate(
+  projectDir,
+  projectName,
+  metadata,
+  templateRootPath,
+  options = {}
+) {
   const { onProgress, onWarning, pm = 'pnpm' } = options
 
   // Determine packages to create
@@ -300,17 +366,17 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
   // convention is set in computePlacement() below.
   const packages = metadata.packages || [
     { type: 'foundation', name: 'src' },
-    { type: 'site', name: 'site', foundation: 'src' },
+    { type: 'site', name: 'site', foundation: 'src' }
   ]
 
   // Compute placement for each package
   const placed = computePlacement(packages)
 
   // Compute workspace globs and scripts from placement
-  const workspaceGlobs = placed.map(p => p.relativePath)
-  const sites = placed.filter(p => p.type === 'site')
+  const workspaceGlobs = placed.map((p) => p.relativePath)
+  const sites = placed.filter((p) => p.type === 'site')
   const scripts = {
-    build: 'uniweb build',
+    build: 'uniweb build'
   }
   // dev goes through `uniweb` (PM-agnostic; see computeRootScripts).
   // preview stays PM-filtered until a `uniweb preview` verb exists.
@@ -331,11 +397,15 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
 
   // 1. Scaffold workspace
   onProgress?.('Setting up workspace...')
-  await scaffoldWorkspace(projectDir, {
-    projectName,
-    workspaceGlobs,
-    scripts,
-  }, { onProgress, onWarning })
+  await scaffoldWorkspace(
+    projectDir,
+    {
+      projectName,
+      workspaceGlobs,
+      scripts
+    },
+    { onProgress, onWarning }
+  )
 
   // 2. Scaffold and apply content for each package
   for (const pkg of placed) {
@@ -343,19 +413,26 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
 
     if (pkg.type === 'foundation' || pkg.type === 'extension') {
       onProgress?.(`Creating ${pkg.type}: ${pkg.name}...`)
-      await scaffoldFoundation(fullPath, {
-        name: pkg.name,
-        projectName,
-        isExtension: pkg.type === 'extension',
-      }, { onProgress, onWarning })
+      await scaffoldFoundation(
+        fullPath,
+        {
+          name: pkg.name,
+          projectName,
+          isExtension: pkg.type === 'extension'
+        },
+        { onProgress, onWarning }
+      )
     } else if (pkg.type === 'site') {
       // Find the foundation this site wires to
       const foundationName = pkg.foundation || 'src'
-      const foundationPkg = placed.find(p =>
-        (p.type === 'foundation') && (p.name === foundationName)
+      const foundationPkg = placed.find(
+        (p) => p.type === 'foundation' && p.name === foundationName
       )
       const foundationPath = foundationPkg
-        ? computeFoundationFilePath(pkg.relativePath, foundationPkg.relativePath)
+        ? computeFoundationFilePath(
+            pkg.relativePath,
+            foundationPkg.relativePath
+          )
         : 'file:../src'
 
       onProgress?.(`Creating site: ${pkg.name}...`)
@@ -363,29 +440,39 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
       // never the implicit default in the new layout (the build's
       // `detectFoundationType` defaults to 'foundation' when absent,
       // which doesn't match 'src').
-      await scaffoldSite(fullPath, {
-        name: pkg.name,
-        projectName,
-        foundationName,
-        foundationPath,
-        foundationRef: foundationName,
-      }, { onProgress, onWarning })
+      await scaffoldSite(
+        fullPath,
+        {
+          name: pkg.name,
+          projectName,
+          foundationName,
+          foundationPath,
+          foundationRef: foundationName
+        },
+        { onProgress, onWarning }
+      )
     }
 
     // Apply content from the matching content directory
     const contentDir = findContentDirFor(metadata.contentDirs, pkg)
     if (contentDir) {
       onProgress?.(`Applying ${metadata.name} content to ${pkg.name}...`)
-      await applyContent(contentDir.dir, fullPath, { projectName }, {
-        onProgress,
-        onWarning,
-        renames: contentDir.renames,
-      })
+      await applyContent(
+        contentDir.dir,
+        fullPath,
+        { projectName },
+        {
+          onProgress,
+          onWarning,
+          renames: contentDir.renames
+        }
+      )
     }
 
     // Merge template dependencies into package.json
     if (metadata.dependencies) {
-      const deps = metadata.dependencies[pkg.name] || metadata.dependencies[pkg.type]
+      const deps =
+        metadata.dependencies[pkg.name] || metadata.dependencies[pkg.type]
       if (deps) {
         await mergeTemplateDependencies(join(fullPath, 'package.json'), deps)
       }
@@ -408,9 +495,9 @@ async function createFromContentTemplate(projectDir, projectName, metadata, temp
  * - Multiple sites → sites/{name}/
  */
 function computePlacement(packages) {
-  const foundations = packages.filter(p => p.type === 'foundation')
-  const extensions = packages.filter(p => p.type === 'extension')
-  const sites = packages.filter(p => p.type === 'site')
+  const foundations = packages.filter((p) => p.type === 'foundation')
+  const extensions = packages.filter((p) => p.type === 'extension')
+  const sites = packages.filter((p) => p.type === 'site')
 
   const placed = []
 
@@ -443,8 +530,10 @@ function computePlacement(packages) {
 function findContentDirFor(contentDirs, pkg) {
   if (!contentDirs) return null
   // Match by name first, then by type
-  return contentDirs.find(d => d.name === pkg.name) ||
-         contentDirs.find(d => d.type === pkg.type && d.name === pkg.type)
+  return (
+    contentDirs.find((d) => d.name === pkg.name) ||
+    contentDirs.find((d) => d.type === pkg.type && d.name === pkg.type)
+  )
 }
 
 /**
@@ -481,13 +570,16 @@ async function main() {
     console.log(`uniweb ${getCliVersion()}`)
     if (isGlobalInstall()) {
       try {
-        const { fetchAndNotifyIfNewer, maybeNotifyFromCache } = await import('./utils/update-check.js')
+        const { fetchAndNotifyIfNewer, maybeNotifyFromCache } =
+          await import('./utils/update-check.js')
         if (process.stdout.isTTY) {
           await fetchAndNotifyIfNewer(getCliVersion(), { tone: 'soft' })
         } else {
           maybeNotifyFromCache(getCliVersion(), 'soft')
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     return
   }
@@ -519,7 +611,8 @@ async function main() {
   let showUpdateNotification = () => {}
   if (global) {
     try {
-      const { startUpdateCheck, maybeEagerNotification } = await import('./utils/update-check.js')
+      const { startUpdateCheck, maybeEagerNotification } =
+        await import('./utils/update-check.js')
       showUpdateNotification = startUpdateCheck(getCliVersion())
       if (command === 'create') {
         maybeEagerNotification(getCliVersion())
@@ -540,7 +633,7 @@ async function main() {
   // Critical for `deploy --help` (used to open a browser to production for
   // login because deploy.js doesn't parse --help and ensureAuth ran first).
   // Falls back to the global help when a command has no dedicated block.
-  if (args.slice(1).some(a => a === '--help' || a === '-h')) {
+  if (args.slice(1).some((a) => a === '--help' || a === '-h')) {
     const printed = printCommandHelp(command)
     if (printed) {
       await showUpdateNotification()
@@ -718,18 +811,28 @@ async function main() {
     const { resolveBackendOrigin } = await import('./backend/client.js')
     const { readFlagValue } = await import('./utils/args.js')
     const { runRegistryLogin } = await import('./utils/registry-auth.js')
-    const originFlag = readFlagValue(loginArgs, '--backend') || readFlagValue(loginArgs, '--registry')
-    await runRegistryLogin({ apiBase: resolveBackendOrigin(originFlag), args: loginArgs })
+    const originFlag =
+      readFlagValue(loginArgs, '--backend') ||
+      readFlagValue(loginArgs, '--registry')
+    await runRegistryLogin({
+      apiBase: resolveBackendOrigin(originFlag),
+      args: loginArgs
+    })
     return
   }
 
   // Handle logout command — clear the stored backend session.
   if (command === 'logout') {
-    const { clearRegistryAuth, getRegistryAuthPath } = await import('./utils/registry-auth.js')
+    const { clearRegistryAuth, getRegistryAuthPath } =
+      await import('./utils/registry-auth.js')
     const { existsSync } = await import('node:fs')
     const had = existsSync(getRegistryAuthPath())
     await clearRegistryAuth()
-    console.log(had ? '\x1b[32m✓\x1b[0m Logged out (cleared the stored session).' : 'Not logged in — nothing to clear.')
+    console.log(
+      had
+        ? '\x1b[32m✓\x1b[0m Logged out (cleared the stored session).'
+        : 'Not logged in — nothing to clear.'
+    )
     return
   }
 
@@ -782,13 +885,15 @@ async function main() {
     log(`\nTo add packages to this workspace, use:`)
     log(`  ${colors.cyan}uniweb add foundation [name]${colors.reset}`)
     log(`  ${colors.cyan}uniweb add site [name]${colors.reset}`)
-    log(`  ${colors.cyan}uniweb add foundation --from <template>${colors.reset}\n`)
+    log(
+      `  ${colors.cyan}uniweb add foundation --from <template>${colors.reset}\n`
+    )
     process.exit(1)
   }
 
   // Parse arguments
   let projectName = args[1]
-  let templateType = null  // null = use new package template flow
+  let templateType = null // null = use new package template flow
 
   // In-place mode: `uniweb create .` scaffolds into the current working
   // directory instead of creating a new one. Pairs with the GitHub-first
@@ -821,7 +926,7 @@ async function main() {
   if (nameIndex !== -1 && args[nameIndex + 1]) {
     displayName = args[nameIndex + 1]
   } else {
-    const nameEq = args.find(a => a.startsWith('--name='))
+    const nameEq = args.find((a) => a.startsWith('--name='))
     if (nameEq) displayName = nameEq.slice('--name='.length)
   }
 
@@ -853,13 +958,17 @@ async function main() {
       const dirName = basename(process.cwd())
       const slug = slugifyName(dirName)
       if (!slug) {
-        error(`Could not derive a valid project name from the current directory ("${dirName}").`)
+        error(
+          `Could not derive a valid project name from the current directory ("${dirName}").`
+        )
         log(`Re-run with ${colors.cyan}--name=<your-name>${colors.reset}.`)
         process.exit(1)
       }
       projectName = slug
       if (slug !== dirName) {
-        log(`${colors.dim}Project name:${colors.reset} ${slug} ${colors.dim}(slugified from "${dirName}")${colors.reset}`)
+        log(
+          `${colors.dim}Project name:${colors.reset} ${slug} ${colors.dim}(slugified from "${dirName}")${colors.reset}`
+        )
       } else {
         log(`${colors.dim}Project name:${colors.reset} ${slug}`)
       }
@@ -879,26 +988,29 @@ async function main() {
   }
 
   // Interactive prompts (skipped in in-place mode — name was derived above)
-  const response = await prompts([
-    {
-      type: projectName ? null : 'text',
-      name: 'projectName',
-      message: 'Project name:',
-      initial: 'website',
-      validate: (value) => {
-        if (!value) return 'Project name is required'
-        if (!/^[a-z0-9-]+$/.test(value)) {
-          return 'Project name can only contain lowercase letters, numbers, and hyphens'
+  const response = await prompts(
+    [
+      {
+        type: projectName ? null : 'text',
+        name: 'projectName',
+        message: 'Project name:',
+        initial: 'website',
+        validate: (value) => {
+          if (!value) return 'Project name is required'
+          if (!/^[a-z0-9-]+$/.test(value)) {
+            return 'Project name can only contain lowercase letters, numbers, and hyphens'
+          }
+          return true
         }
-        return true
-      },
-    },
-  ], {
-    onCancel: () => {
-      log('\nScaffolding cancelled.')
-      process.exit(0)
-    },
-  })
+      }
+    ],
+    {
+      onCancel: () => {
+        log('\nScaffolding cancelled.')
+        process.exit(0)
+      }
+    }
+  )
 
   projectName = projectName || response.projectName
 
@@ -909,18 +1021,21 @@ async function main() {
 
   // Prompt for template if not specified via --template or --blank
   if (!templateType && !isBlank) {
-    const templateResponse = await prompts({
-      type: 'select',
-      name: 'template',
-      message: 'Template:',
-      choices: TEMPLATE_CHOICES,
-      initial: 1,
-    }, {
-      onCancel: () => {
-        log('\nScaffolding cancelled.')
-        process.exit(0)
+    const templateResponse = await prompts(
+      {
+        type: 'select',
+        name: 'template',
+        message: 'Template:',
+        choices: TEMPLATE_CHOICES,
+        initial: 1
       },
-    })
+      {
+        onCancel: () => {
+          log('\nScaffolding cancelled.')
+          process.exit(0)
+        }
+      }
+    )
     templateType = templateResponse.template
     // Handle "blank" selection from interactive prompt
     if (templateType === 'blank') {
@@ -933,7 +1048,9 @@ async function main() {
 
   // Resolve target directory. In-place mode scaffolds into the cwd;
   // otherwise create `./<projectName>`.
-  const projectDir = inPlace ? process.cwd() : resolve(process.cwd(), projectName)
+  const projectDir = inPlace
+    ? process.cwd()
+    : resolve(process.cwd(), projectName)
 
   if (!inPlace && existsSync(projectDir)) {
     error(`Directory already exists: ${projectName}`)
@@ -960,21 +1077,24 @@ async function main() {
       error(`Cannot scaffold in place — these files would be overwritten:`)
       for (const c of conflicts) log(`  ${colors.yellow}${c}${colors.reset}`)
       log('')
-      log(`Move or remove them, then re-run ${colors.cyan}uniweb create .${colors.reset}.`)
+      log(
+        `Move or remove them, then re-run ${colors.cyan}uniweb create .${colors.reset}.`
+      )
       process.exit(1)
     }
   }
 
   // Template routing logic
   const progressCb = (msg) => log(`  ${colors.dim}${msg}${colors.reset}`)
-  const warningCb = (msg) => log(`  ${colors.yellow}Warning: ${msg}${colors.reset}`)
+  const warningCb = (msg) =>
+    log(`  ${colors.yellow}Warning: ${msg}${colors.reset}`)
 
   if (isBlank) {
     // Blank workspace (--blank or --template blank)
     log('\nCreating blank workspace...')
     await createBlankWorkspace(projectDir, effectiveName, {
       onProgress: progressCb,
-      onWarning: warningCb,
+      onWarning: warningCb
     })
   } else if (templateType === 'none') {
     // Foundation + site with no content
@@ -983,7 +1103,7 @@ async function main() {
       onProgress: progressCb,
       onWarning: warningCb,
       pm,
-      includeStarter: false,
+      includeStarter: false
     })
   } else if (templateType === 'starter') {
     // Starter: foundation + site + sample content
@@ -991,7 +1111,7 @@ async function main() {
     await createFromPackageTemplates(projectDir, effectiveName, {
       onProgress: progressCb,
       onWarning: warningCb,
-      pm,
+      pm
     })
   } else {
     // External: official/npm/github/local
@@ -999,20 +1119,28 @@ async function main() {
 
     try {
       const resolved = await resolveTemplate(templateType, {
-        onProgress: progressCb,
+        onProgress: progressCb
       })
 
-      log(`\nCreating project from ${resolved.name || resolved.package || `${resolved.owner}/${resolved.repo}`}...`)
+      log(
+        `\nCreating project from ${resolved.name || resolved.package || `${resolved.owner}/${resolved.repo}`}...`
+      )
 
       // Validate and apply as format 2 content template
       const metadata = await validateTemplate(resolved.path, {})
 
       try {
-        await createFromContentTemplate(projectDir, effectiveName, metadata, resolved.path, {
-          onProgress: progressCb,
-          onWarning: warningCb,
-          pm,
-        })
+        await createFromContentTemplate(
+          projectDir,
+          effectiveName,
+          metadata,
+          resolved.path,
+          {
+            onProgress: progressCb,
+            onWarning: warningCb,
+            pm
+          }
+        )
       } finally {
         if (resolved.cleanup) await resolved.cleanup()
       }
@@ -1021,8 +1149,12 @@ async function main() {
       log('')
       log(`${colors.yellow}Troubleshooting:${colors.reset}`)
       log(`  • Check your network connection`)
-      log(`  • Official templates require GitHub access (may be blocked by corporate networks)`)
-      log(`  • Try the starter template instead: ${colors.cyan}uniweb create ${projectName} --template starter${colors.reset}`)
+      log(
+        `  • Official templates require GitHub access (may be blocked by corporate networks)`
+      )
+      log(
+        `  • Try the starter template instead: ${colors.cyan}uniweb create ${projectName} --template starter${colors.reset}`
+      )
       process.exit(1)
     }
   }
@@ -1032,25 +1164,37 @@ async function main() {
     // Skip git init if already inside a git repo (common for monorepos/workspaces)
     let insideGitRepo = false
     try {
-      execSync('git rev-parse --is-inside-work-tree', { cwd: projectDir, stdio: 'ignore' })
+      execSync('git rev-parse --is-inside-work-tree', {
+        cwd: projectDir,
+        stdio: 'ignore'
+      })
       insideGitRepo = true
     } catch {
       // Not inside a git repo — proceed with init
     }
 
     if (insideGitRepo) {
-      log(`  ${colors.dim}Skipping git init — already inside a git repository${colors.reset}`)
+      log(
+        `  ${colors.dim}Skipping git init — already inside a git repository${colors.reset}`
+      )
     } else {
       try {
         execSync('git --version', { stdio: 'ignore' })
         try {
           execSync('git init', { cwd: projectDir, stdio: 'ignore' })
           execSync('git add -A', { cwd: projectDir, stdio: 'ignore' })
-          execSync('git commit -m "Initial commit from uniweb"', { cwd: projectDir, stdio: 'ignore' })
+          execSync('git commit -m "Initial commit from uniweb"', {
+            cwd: projectDir,
+            stdio: 'ignore'
+          })
           success('Git repository initialized')
         } catch {
-          log(`  ${colors.yellow}Warning: Git repository initialized but initial commit failed${colors.reset}`)
-          log(`  ${colors.dim}Run 'git commit -m "Initial commit"' after configuring git${colors.reset}`)
+          log(
+            `  ${colors.yellow}Warning: Git repository initialized but initial commit failed${colors.reset}`
+          )
+          log(
+            `  ${colors.dim}Run 'git commit -m "Initial commit"' after configuring git${colors.reset}`
+          )
         }
       } catch {
         // git not available — skip silently
@@ -1072,19 +1216,27 @@ async function main() {
     if (!inPlace) log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
     log(`  ${colors.cyan}${prefix} add project${colors.reset}`)
     log(`  ${colors.cyan}${installCmd(recPm)}${colors.reset}`)
-    log(`  ${colors.cyan}${runCmd(recPm, 'dev')}${colors.reset}   ${colors.dim}# start the dev server${colors.reset}`)
+    log(
+      `  ${colors.cyan}${runCmd(recPm, 'dev')}${colors.reset}   ${colors.dim}# start the dev server${colors.reset}`
+    )
   } else {
     log(`Next steps:\n`)
     if (!inPlace) log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
     log(`  ${colors.cyan}${installCmd(recPm)}${colors.reset}`)
-    log(`  ${colors.cyan}${runCmd(recPm, 'dev')}${colors.reset}   ${colors.dim}# start the dev server${colors.reset}`)
+    log(
+      `  ${colors.cyan}${runCmd(recPm, 'dev')}${colors.reset}   ${colors.dim}# start the dev server${colors.reset}`
+    )
   }
   if (recPm !== 'pnpm') {
     log('')
-    log(`  ${colors.dim}Tip: pnpm is recommended (https://pnpm.io) — npm works too.${colors.reset}`)
+    log(
+      `  ${colors.dim}Tip: pnpm is recommended (https://pnpm.io) — npm works too.${colors.reset}`
+    )
   }
   log('')
-  log(`  ${colors.dim}See ${colors.reset}${colors.cyan}${prefix} <command> --help${colors.reset}${colors.dim} for command-specific options.${colors.reset}`)
+  log(
+    `  ${colors.dim}See ${colors.reset}${colors.cyan}${prefix} <command> --help${colors.reset}${colors.dim} for command-specific options.${colors.reset}`
+  )
   log('')
 
   await showUpdateNotification()
@@ -1474,7 +1626,7 @@ ${colors.bright}Project-local installs:${colors.reset}
   When run from a project-local CLI (in node_modules), it aligns the
   project to that pinned version — bump \`uniweb\` in package.json (or use
   \`npx uniweb@latest update\`) to align to something newer.
-`,
+`
   }
 
   if (!blocks[command]) return false

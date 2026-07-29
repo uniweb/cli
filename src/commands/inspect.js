@@ -18,7 +18,7 @@ const colors = {
   reset: '\x1b[0m',
   red: '\x1b[31m',
   yellow: '\x1b[33m',
-  dim: '\x1b[2m',
+  dim: '\x1b[2m'
 }
 
 /**
@@ -30,7 +30,7 @@ function parseArgs(args) {
     raw: false,
     full: false,
     sequence: false,
-    help: false,
+    help: false
   }
 
   for (const arg of args) {
@@ -52,15 +52,19 @@ async function loadDependencies() {
   try {
     const [contentReader, semanticParser] = await Promise.all([
       import('@uniweb/content-reader'),
-      import('@uniweb/semantic-parser'),
+      import('@uniweb/semantic-parser')
     ])
     return {
       markdownToProseMirror: contentReader.markdownToProseMirror,
-      parseContent: semanticParser.parseContent,
+      parseContent: semanticParser.parseContent
     }
   } catch {
-    console.error(`${colors.red}✗${colors.reset} Could not load @uniweb/content-reader or @uniweb/semantic-parser.`)
-    console.error(`  These packages must be installed in the workspace (they come with @uniweb/build).`)
+    console.error(
+      `${colors.red}✗${colors.reset} Could not load @uniweb/content-reader or @uniweb/semantic-parser.`
+    )
+    console.error(
+      `  These packages must be installed in the workspace (they come with @uniweb/build).`
+    )
     process.exit(1)
   }
 }
@@ -79,7 +83,9 @@ function extractFrontmatter(content) {
       try {
         frontMatter = yaml.load(parts[1]) || {}
       } catch (err) {
-        console.warn(`${colors.yellow}Warning: YAML parse error: ${err.message}${colors.reset}`)
+        console.warn(
+          `${colors.yellow}Warning: YAML parse error: ${err.message}${colors.reset}`
+        )
         frontMatter = {}
       }
       markdown = parts.slice(2).join('---\n')
@@ -94,12 +100,24 @@ function extractFrontmatter(content) {
  * Exact match of content-collector line 642.
  */
 function splitParams(frontMatter) {
-  const { type, component, preset, input, props, fetch, data, id, background, theme, ...params } = frontMatter
+  const {
+    type,
+    component,
+    preset,
+    input,
+    props,
+    fetch,
+    data,
+    id,
+    background,
+    theme,
+    ...params
+  } = frontMatter
   return {
     type: type || component || null,
     preset: preset || null,
     reserved: { data, id, background, theme, input },
-    params,
+    params
   }
 }
 
@@ -125,12 +143,12 @@ function extractInsets(doc) {
         refId,
         type: component,
         params: Object.keys(params).length > 0 ? params : {},
-        description: alt || null,
+        description: alt || null
       })
       // Replace in-place with placeholder
       doc.content[i] = {
         type: 'inset_placeholder',
-        attrs: { refId },
+        attrs: { refId }
       }
     }
   }
@@ -159,7 +177,7 @@ function guaranteeItemStructure(item) {
     documents: item.documents || [],
     forms: item.forms || [],
     quotes: item.quotes || [],
-    headings: item.headings || [],
+    headings: item.headings || []
   }
 }
 
@@ -191,7 +209,7 @@ function guaranteeContentStructure(parsedContent) {
     headings: content.headings || [],
     items: (content.items || []).map(guaranteeItemStructure),
     sequence: content.sequence || [],
-    raw: content.raw,
+    raw: content.raw
   }
 }
 
@@ -205,11 +223,16 @@ function removeEmptyFields(obj) {
     if (value === null || value === undefined) continue
     if (value === '') continue
     if (Array.isArray(value) && value.length === 0) continue
-    if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) continue
+    if (
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      Object.keys(value).length === 0
+    )
+      continue
 
     // Recursively clean items
     if (key === 'items' && Array.isArray(value)) {
-      result[key] = value.map(item => removeEmptyFields(item))
+      result[key] = value.map((item) => removeEmptyFields(item))
     } else {
       result[key] = value
     }
@@ -329,7 +352,9 @@ Options:
 
   if (stat.isFile()) {
     if (extname(target) !== '.md') {
-      console.error(`${colors.red}✗${colors.reset} Expected a .md file: ${flags.target}`)
+      console.error(
+        `${colors.red}✗${colors.reset} Expected a .md file: ${flags.target}`
+      )
       process.exit(1)
     }
     const content = readFileSync(target, 'utf8')
@@ -337,15 +362,19 @@ Options:
     console.log(JSON.stringify(result, null, 2))
   } else if (stat.isDirectory()) {
     const files = readdirSync(target)
-      .filter(f => extname(f) === '.md' && !f.startsWith('_') && f !== 'README.md')
+      .filter(
+        (f) => extname(f) === '.md' && !f.startsWith('_') && f !== 'README.md'
+      )
       .sort(naturalSort)
 
     if (files.length === 0) {
-      console.error(`${colors.yellow}No .md files found in: ${flags.target}${colors.reset}`)
+      console.error(
+        `${colors.yellow}No .md files found in: ${flags.target}${colors.reset}`
+      )
       return
     }
 
-    const results = files.map(file => {
+    const results = files.map((file) => {
       const content = readFileSync(resolve(target, file), 'utf8')
       const result = processFile(content, file, deps, options)
       result._file = file

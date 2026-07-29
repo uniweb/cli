@@ -11,7 +11,13 @@
 import { BackendClient } from '../backend/client.js'
 import { validateHandle, bareHandle } from '../utils/registry-orgs.js'
 
-const colors = { reset: '\x1b[0m', bright: '\x1b[1m', dim: '\x1b[2m', red: '\x1b[31m', green: '\x1b[32m' }
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  red: '\x1b[31m',
+  green: '\x1b[32m'
+}
 const error = (m) => console.error(`${colors.red}✗${colors.reset} ${m}`)
 const success = (m) => console.log(`${colors.green}✓${colors.reset} ${m}`)
 
@@ -22,12 +28,16 @@ export async function org(args = []) {
     const client = new BackendClient({ args, command: 'Listing orgs' })
     const { orgs } = await client.fetchOrgs()
     if (!orgs.length) {
-      console.log('You have no orgs yet. Create one: uniweb org create <handle>')
+      console.log(
+        'You have no orgs yet. Create one: uniweb org create <handle>'
+      )
       return { exitCode: 0 }
     }
     console.log('Your orgs:')
     for (const u of orgs) {
-      console.log(`  ${colors.bright}@${u.handle}${colors.reset}${u.is_primary ? `${colors.dim} (primary)${colors.reset}` : ''}`)
+      console.log(
+        `  ${colors.bright}@${u.handle}${colors.reset}${u.is_primary ? `${colors.dim} (primary)${colors.reset}` : ''}`
+      )
     }
     return { exitCode: 0 }
   }
@@ -46,8 +56,12 @@ export async function org(args = []) {
     const client = new BackendClient({ args, command: 'Creating an org' })
     try {
       const org = await client.createOrg(handle)
-      success(`Created ${colors.bright}@${org.handle}${colors.reset} — you're a member${org.is_primary ? ' (primary)' : ''}.`)
-      console.log(`${colors.dim}Publish under it: uniweb register --scope @${org.handle}${colors.reset}`)
+      success(
+        `Created ${colors.bright}@${org.handle}${colors.reset} — you're a member${org.is_primary ? ' (primary)' : ''}.`
+      )
+      console.log(
+        `${colors.dim}Publish under it: uniweb register --scope @${org.handle}${colors.reset}`
+      )
       return { exitCode: 0 }
     } catch (err) {
       error(err.message)

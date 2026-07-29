@@ -13,24 +13,37 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { clone, extractCloneSeeds, extractDocument } from '../src/commands/clone.js'
+import {
+  clone,
+  extractCloneSeeds,
+  extractDocument
+} from '../src/commands/clone.js'
 
-const jsonRes = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, statusText: '', json: async () => body })
+const jsonRes = (body, status = 200) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  statusText: '',
+  json: async () => body
+})
 
 // A site-content $-document as the backend would return it on the pull lane.
 const siteDoc = () => ({
   $model: '@uniweb/site-content',
   $uuid: 'SITE-1',
-  info: { name: 'My Site', foundation: '@acme/base@1.0.0' },
+  info: { name: 'My Site', foundation: '@acme/base@1.0.0' }
 })
 
 const tmpCwd = () => mkdtempSync(join(tmpdir(), 'uniweb-clone-'))
-const noSpawn = { getToken: async () => 'tok', skipInstall: true, skipPull: true }
+const noSpawn = {
+  getToken: async () => 'tok',
+  skipInstall: true,
+  skipPull: true
+}
 
 test('extractCloneSeeds reads the foundation ref and name (no folder uuid)', () => {
   assert.deepEqual(extractCloneSeeds(siteDoc()), {
     foundationRef: '@acme/base@1.0.0',
-    name: 'My Site',
+    name: 'My Site'
   })
 })
 
@@ -56,7 +69,11 @@ test('clone errors without a site uuid', async () => {
 test('clone reports a 404 cleanly', async () => {
   const dir = tmpCwd()
   try {
-    const res = await clone(['MISSING', 'x'], { ...noSpawn, cwd: dir, fetch: async () => jsonRes(null, 404) })
+    const res = await clone(['MISSING', 'x'], {
+      ...noSpawn,
+      cwd: dir,
+      fetch: async () => jsonRes(null, 404)
+    })
     assert.equal(res.exitCode, 1)
     assert.equal(existsSync(join(dir, 'x')), false)
   } finally {
@@ -70,7 +87,10 @@ test('clone scaffolds a ref-only harness and seeds the uuids (new workspace)', a
     const res = await clone(['SITE-1', 'my-site'], {
       ...noSpawn,
       cwd: dir,
-      fetch: async (url) => (url.includes('/dev/site/content/pull/SITE-1') ? jsonRes(siteDoc()) : jsonRes(null, 404)),
+      fetch: async (url) =>
+        url.includes('/dev/site/content/pull/SITE-1')
+          ? jsonRes(siteDoc())
+          : jsonRes(null, 404)
     })
     assert.equal(res.exitCode, 0)
 
@@ -91,7 +111,10 @@ test('clone scaffolds a ref-only harness and seeds the uuids (new workspace)', a
     assert.deepEqual(Object.keys(pkg.dependencies), ['@uniweb/runtime'])
 
     // No folder uuid is seeded — the folder is pulled by the site-content uuid.
-    assert.equal(existsSync(join(siteDir, 'collections', 'collections.yml')), false)
+    assert.equal(
+      existsSync(join(siteDir, 'collections', 'collections.yml')),
+      false
+    )
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -108,10 +131,13 @@ test('clone forwards --no-collections to the delegated pull', async () => {
         pulledArgs = extra
       },
       cwd: dir,
-      fetch: async () => jsonRes(siteDoc()),
+      fetch: async () => jsonRes(siteDoc())
     })
     assert.equal(res.exitCode, 0)
-    assert.ok(pulledArgs && pulledArgs.includes('--no-collections'), 'forwarded --no-collections to pull')
+    assert.ok(
+      pulledArgs && pulledArgs.includes('--no-collections'),
+      'forwarded --no-collections to pull'
+    )
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

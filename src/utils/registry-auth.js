@@ -37,7 +37,11 @@ export function getAuthDir() {
 
 /** Normalize a backend URL to a bare origin (for stamping on the session). */
 function normOrigin(u) {
-  try { return new URL(u).origin } catch { return u }
+  try {
+    return new URL(u).origin
+  } catch {
+    return u
+  }
 }
 
 /** True when a stored session's `expiresAt` is in the past (absent → never expires). */
@@ -109,22 +113,31 @@ export async function loginToRegistry({ apiBase, username, password } = {}) {
     res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password })
     })
   } catch (err) {
-    throw new Error(`Could not reach the login endpoint at ${url}: ${err.message}`)
+    throw new Error(
+      `Could not reach the login endpoint at ${url}: ${err.message}`
+    )
   }
 
   if (!res.ok) {
     let detail = ''
-    try { detail = (await res.text()).slice(0, 300) } catch { /* ignore */ }
-    const e = new Error(`Login failed: HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail}` : ''}`)
+    try {
+      detail = (await res.text()).slice(0, 300)
+    } catch {
+      /* ignore */
+    }
+    const e = new Error(
+      `Login failed: HTTP ${res.status} ${res.statusText}${detail ? ` — ${detail}` : ''}`
+    )
     e.status = res.status
     throw e
   }
 
   const data = await res.json().catch(() => null)
-  if (!data?.token) throw new Error('Login succeeded but the response carried no token.')
+  if (!data?.token)
+    throw new Error('Login succeeded but the response carried no token.')
 
   // New-backend login body (agreed with backend, 2026-05-26):
   //   { token, expires_at, account: { uuid, username, handle } }
@@ -157,7 +170,11 @@ export async function loginToRegistry({ apiBase, username, password } = {}) {
  * @param {string[]} [options.args] - argv slice; checked for --non-interactive
  * @returns {Promise<string>} bearer token
  */
-export async function ensureRegistryAuth({ apiBase, command = 'This command', args = [] } = {}) {
+export async function ensureRegistryAuth({
+  apiBase,
+  command = 'This command',
+  args = []
+} = {}) {
   if (process.env.UNIWEB_TOKEN) return process.env.UNIWEB_TOKEN
 
   const stored = await readRegistryAuth()
@@ -167,24 +184,37 @@ export async function ensureRegistryAuth({ apiBase, command = 'This command', ar
   const envUser = process.env.UNIWEB_USERNAME
   const envPass = process.env.UNIWEB_PASSWORD
   if (envUser && envPass) {
-    const record = await loginToRegistry({ apiBase, username: envUser, password: envPass })
+    const record = await loginToRegistry({
+      apiBase,
+      username: envUser,
+      password: envPass
+    })
     return record.token
   }
 
   const { isNonInteractive, getCliPrefix } = await import('./interactive.js')
   if (isNonInteractive(args)) {
     const prefix = getCliPrefix()
-    const reason = stored && isExpired(stored) ? 'Session expired.' : 'Not logged in.'
-    console.error(`\x1b[31m✗\x1b[0m ${reason} ${command} requires a Uniweb account, and the CLI is non-interactive (CI / no TTY / --non-interactive).`)
+    const reason =
+      stored && isExpired(stored) ? 'Session expired.' : 'Not logged in.'
+    console.error(
+      `\x1b[31m✗\x1b[0m ${reason} ${command} requires a Uniweb account, and the CLI is non-interactive (CI / no TTY / --non-interactive).`
+    )
     console.error('  Options:')
     console.error(`    • Set UNIWEB_TOKEN to a bearer token.`)
-    console.error(`    • Set UNIWEB_USERNAME + UNIWEB_PASSWORD to log in non-interactively.`)
-    console.error(`    • Run \`${prefix} login\` interactively first, then re-run.`)
+    console.error(
+      `    • Set UNIWEB_USERNAME + UNIWEB_PASSWORD to log in non-interactively.`
+    )
+    console.error(
+      `    • Run \`${prefix} login\` interactively first, then re-run.`
+    )
     process.exit(1)
   }
 
   if (stored && isExpired(stored)) {
-    console.log(`\x1b[33mSession expired.\x1b[0m ${command} requires a Uniweb account.\n`)
+    console.log(
+      `\x1b[33mSession expired.\x1b[0m ${command} requires a Uniweb account.\n`
+    )
   } else {
     console.log(`${command} requires a Uniweb account.\n`)
   }
@@ -207,10 +237,12 @@ const BROWSER_AVAILABLE = false
  */
 export async function fetchMe({ apiBase, token }) {
   const res = await fetch(`${apiBase.replace(/\/$/, '')}/dev/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}` }
   })
   if (!res.ok) {
-    const e = new Error(`token check failed: HTTP ${res.status} ${res.statusText}`)
+    const e = new Error(
+      `token check failed: HTTP ${res.status} ${res.statusText}`
+    )
     e.status = res.status
     throw e
   }
@@ -224,13 +256,33 @@ async function loginViaPassword({ apiBase, nonInteractive }) {
   let password = process.env.UNIWEB_PASSWORD
   if (!username || !password) {
     if (nonInteractive) {
-      throw new Error('username/password login needs a terminal — set UNIWEB_USERNAME + UNIWEB_PASSWORD (or UNIWEB_TOKEN).')
+      throw new Error(
+        'username/password login needs a terminal — set UNIWEB_USERNAME + UNIWEB_PASSWORD (or UNIWEB_TOKEN).'
+      )
     }
     const prompts = (await import('prompts')).default
-    const resp = await prompts([
-      { type: 'text', name: 'username', message: 'Username:', validate: (v) => (v ? true : 'Username is required') },
-      { type: 'password', name: 'password', message: 'Password:', validate: (v) => (v ? true : 'Password is required') },
-    ], { onCancel: () => { console.log('\nLogin cancelled.'); process.exit(0) } })
+    const resp = await prompts(
+      [
+        {
+          type: 'text',
+          name: 'username',
+          message: 'Username:',
+          validate: (v) => (v ? true : 'Username is required')
+        },
+        {
+          type: 'password',
+          name: 'password',
+          message: 'Password:',
+          validate: (v) => (v ? true : 'Password is required')
+        }
+      ],
+      {
+        onCancel: () => {
+          console.log('\nLogin cancelled.')
+          process.exit(0)
+        }
+      }
+    )
     username = resp.username
     password = resp.password
     if (!username || !password) process.exit(1)
@@ -244,9 +296,20 @@ async function loginViaTokenPaste({ apiBase, nonInteractive }) {
     throw new Error('token paste needs a terminal — set UNIWEB_TOKEN instead.')
   }
   const prompts = (await import('prompts')).default
-  const { token } = await prompts({
-    type: 'password', name: 'token', message: 'Paste your token:', validate: (v) => (v ? true : 'Token is required'),
-  }, { onCancel: () => { console.log('\nLogin cancelled.'); process.exit(0) } })
+  const { token } = await prompts(
+    {
+      type: 'password',
+      name: 'token',
+      message: 'Paste your token:',
+      validate: (v) => (v ? true : 'Token is required')
+    },
+    {
+      onCancel: () => {
+        console.log('\nLogin cancelled.')
+        process.exit(0)
+      }
+    }
+  )
   if (!token) process.exit(1)
   const account = await fetchMe({ apiBase, token }) // throws if the token is invalid
   const record = { token, origin: normOrigin(apiBase) }
@@ -261,9 +324,12 @@ async function loginViaTokenPaste({ apiBase, nonInteractive }) {
 async function openBrowser(url) {
   try {
     const { exec } = await import('node:child_process')
-    const cmd = process.platform === 'darwin' ? `open "${url}"`
-      : process.platform === 'win32' ? `start "" "${url}"`
-        : `xdg-open "${url}"`
+    const cmd =
+      process.platform === 'darwin'
+        ? `open "${url}"`
+        : process.platform === 'win32'
+          ? `start "" "${url}"`
+          : `xdg-open "${url}"`
     return await new Promise((resolve) => exec(cmd, (err) => resolve(!err)))
   } catch {
     return false
@@ -300,24 +366,37 @@ export async function awaitBrowserCallback({
   openingLabel = 'Opening your browser…',
   waitingLabel,
   okTitle = 'Done',
-  errTitle = 'Something went wrong',
+  errTitle = 'Something went wrong'
 } = {}) {
   const result = await new Promise((resolve) => {
     const server = createServer((req, res) => {
       const u = new URL(req.url, 'http://127.0.0.1')
-      if (u.pathname !== '/callback') { res.writeHead(404); res.end('Not found'); return }
-      const verdict = validate(u.searchParams) || { error: 'no result from the callback.' }
+      if (u.pathname !== '/callback') {
+        res.writeHead(404)
+        res.end('Not found')
+        return
+      }
+      const verdict = validate(u.searchParams) || {
+        error: 'no result from the callback.'
+      }
       const failed = !!verdict.error
       res.writeHead(failed ? 400 : 200, { 'Content-Type': 'text/html' })
-      res.end(`<!doctype html><html><body style="font-family:system-ui,sans-serif;text-align:center;padding:60px">`
-        + `<h2 style="color:${failed ? '#dc2626' : '#16a34a'}">${failed ? errTitle : okTitle}</h2>`
-        + `<p>You can close this tab and return to your terminal.</p></body></html>`)
+      res.end(
+        `<!doctype html><html><body style="font-family:system-ui,sans-serif;text-align:center;padding:60px">` +
+          `<h2 style="color:${failed ? '#dc2626' : '#16a34a'}">${failed ? errTitle : okTitle}</h2>` +
+          `<p>You can close this tab and return to your terminal.</p></body></html>`
+      )
       cleanup()
       resolve(failed ? { error: verdict.error } : { value: verdict.value })
     })
     let timer
-    function cleanup() { clearTimeout(timer); server.close() }
-    server.on('error', (e) => resolve({ error: `loopback server error: ${e.message}` }))
+    function cleanup() {
+      clearTimeout(timer)
+      server.close()
+    }
+    server.on('error', (e) =>
+      resolve({ error: `loopback server error: ${e.message}` })
+    )
     server.listen(0, '127.0.0.1', async () => {
       const { port } = server.address()
       const redirectUri = `http://127.0.0.1:${port}/callback`
@@ -325,10 +404,18 @@ export async function awaitBrowserCallback({
       console.log(`\x1b[36m→\x1b[0m ${openingLabel}`)
       console.log(`  \x1b[2m${url}\x1b[0m`)
       const opened = await openBrowser(url)
-      if (!opened) console.log('\x1b[33m⚠\x1b[0m Could not open a browser automatically — open the URL above.')
-      console.log(`\x1b[2m${waitingLabel || `Waiting (${Math.round(timeoutMs / 1000)}s)…`}\x1b[0m`)
+      if (!opened)
+        console.log(
+          '\x1b[33m⚠\x1b[0m Could not open a browser automatically — open the URL above.'
+        )
+      console.log(
+        `\x1b[2m${waitingLabel || `Waiting (${Math.round(timeoutMs / 1000)}s)…`}\x1b[0m`
+      )
     })
-    timer = setTimeout(() => { server.close(); resolve({ error: `timed out (${Math.round(timeoutMs / 1000)}s).` }) }, timeoutMs)
+    timer = setTimeout(() => {
+      server.close()
+      resolve({ error: `timed out (${Math.round(timeoutMs / 1000)}s).` })
+    }, timeoutMs)
   })
   if (result.error) throw new Error(result.error)
   return result.value
@@ -342,7 +429,9 @@ export async function awaitBrowserCallback({
 // BROWSER_AVAILABLE until the endpoint is live.
 async function loginViaBrowser({ apiBase }) {
   if (!BROWSER_AVAILABLE) {
-    throw new Error('browser/social login for the new backend isn’t available yet — use --password or --token-paste.')
+    throw new Error(
+      'browser/social login for the new backend isn’t available yet — use --password or --token-paste.'
+    )
   }
   const base = apiBase.replace(/\/$/, '')
   const state = randomBytes(16).toString('hex')
@@ -352,7 +441,8 @@ async function loginViaBrowser({ apiBase }) {
       `${base}/dev/auth/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`,
     validate: (params) => {
       if (params.get('error')) return { error: params.get('error') }
-      if (params.get('state') !== state) return { error: 'state mismatch — please try again.' }
+      if (params.get('state') !== state)
+        return { error: 'state mismatch — please try again.' }
       const tok = params.get('token')
       if (!tok) return { error: 'no token returned by the callback.' }
       return { value: tok }
@@ -360,11 +450,15 @@ async function loginViaBrowser({ apiBase }) {
     openingLabel: 'Opening your browser to sign in…',
     waitingLabel: 'Waiting for sign-in to complete (120s)…',
     okTitle: 'Login successful',
-    errTitle: 'Login failed',
+    errTitle: 'Login failed'
   })
 
   let account = null
-  try { account = await fetchMe({ apiBase, token }) } catch { /* identity optional; token is valid */ }
+  try {
+    account = await fetchMe({ apiBase, token })
+  } catch {
+    /* identity optional; token is valid */
+  }
   const record = { token, origin: normOrigin(apiBase) }
   if (account?.uuid) record.uuid = account.uuid
   if (account?.username) record.username = account.username
@@ -388,8 +482,13 @@ async function loginViaBrowser({ apiBase }) {
 export async function runRegistryLogin({ apiBase, args = [] } = {}) {
   const existing = await readRegistryAuth()
   if (existing?.token && !isExpired(existing)) {
-    const who = existing.username || existing.handle || (existing.uuid ? `account ${existing.uuid}` : '')
-    console.log(`Already logged in${who ? ` as \x1b[1m${who}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}.`)
+    const who =
+      existing.username ||
+      existing.handle ||
+      (existing.uuid ? `account ${existing.uuid}` : '')
+    console.log(
+      `Already logged in${who ? ` as \x1b[1m${who}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}.`
+    )
     console.log('\x1b[2mContinuing will replace the existing session.\x1b[0m\n')
   }
 
@@ -407,7 +506,9 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
     try {
       account = await fetchMe({ apiBase, token: tokenFlag })
     } catch (err) {
-      console.error(`\x1b[31m✗\x1b[0m Token rejected by ${apiBase}: ${err.message}`)
+      console.error(
+        `\x1b[31m✗\x1b[0m Token rejected by ${apiBase}: ${err.message}`
+      )
       process.exit(1)
     }
     const record = { token: tokenFlag, origin: normOrigin(apiBase) }
@@ -415,34 +516,58 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
     if (account?.username) record.username = account.username
     if (account?.handle) record.handle = account.handle
     await writeRegistryAuth(record)
-    console.log(`\x1b[32m✓\x1b[0m Logged in${account?.username ? ` as \x1b[1m${account.username}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}`)
+    console.log(
+      `\x1b[32m✓\x1b[0m Logged in${account?.username ? ` as \x1b[1m${account.username}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}`
+    )
     return record
   }
 
-  let method = args.includes('--browser') ? 'browser'
-    : args.includes('--password') ? 'password'
-    : args.includes('--token-paste') ? 'token-paste'
-    : null
+  let method = args.includes('--browser')
+    ? 'browser'
+    : args.includes('--password')
+      ? 'password'
+      : args.includes('--token-paste')
+        ? 'token-paste'
+        : null
 
   if (!method) {
     if (nonInteractive) {
       if (process.env.UNIWEB_USERNAME && process.env.UNIWEB_PASSWORD) {
         method = 'password'
       } else {
-        console.error('\x1b[31m✗\x1b[0m Cannot log in non-interactively without a method.')
-        console.error('  Set UNIWEB_USERNAME + UNIWEB_PASSWORD, set UNIWEB_TOKEN, or run `uniweb login` in a terminal.')
+        console.error(
+          '\x1b[31m✗\x1b[0m Cannot log in non-interactively without a method.'
+        )
+        console.error(
+          '  Set UNIWEB_USERNAME + UNIWEB_PASSWORD, set UNIWEB_TOKEN, or run `uniweb login` in a terminal.'
+        )
         console.error('  Or force one: --password / --token-paste.')
         process.exit(1)
       }
     } else {
       const prompts = (await import('prompts')).default
       const choices = []
-      if (BROWSER_AVAILABLE) choices.push({ title: 'Browser / social (Google, etc.)', value: 'browser' })
+      if (BROWSER_AVAILABLE)
+        choices.push({
+          title: 'Browser / social (Google, etc.)',
+          value: 'browser'
+        })
       choices.push({ title: 'Username and password', value: 'password' })
       choices.push({ title: 'Paste a token', value: 'token-paste' })
-      const { picked } = await prompts({
-        type: 'select', name: 'picked', message: 'How do you want to log in?', choices,
-      }, { onCancel: () => { console.log('\nLogin cancelled.'); process.exit(0) } })
+      const { picked } = await prompts(
+        {
+          type: 'select',
+          name: 'picked',
+          message: 'How do you want to log in?',
+          choices
+        },
+        {
+          onCancel: () => {
+            console.log('\nLogin cancelled.')
+            process.exit(0)
+          }
+        }
+      )
       if (!picked) process.exit(0)
       method = picked
     }
@@ -451,7 +576,8 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
   let record
   try {
     if (method === 'browser') record = await loginViaBrowser({ apiBase })
-    else if (method === 'token-paste') record = await loginViaTokenPaste({ apiBase, nonInteractive })
+    else if (method === 'token-paste')
+      record = await loginViaTokenPaste({ apiBase, nonInteractive })
     else record = await loginViaPassword({ apiBase, nonInteractive })
   } catch (err) {
     console.error(`\x1b[31m✗\x1b[0m ${err.message}`)
@@ -459,7 +585,9 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
   }
 
   if (record?.token) {
-    console.log(`\x1b[32m✓\x1b[0m Logged in${record.username ? ` as \x1b[1m${record.username}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}`)
+    console.log(
+      `\x1b[32m✓\x1b[0m Logged in${record.username ? ` as \x1b[1m${record.username}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}`
+    )
   }
   return record
 }

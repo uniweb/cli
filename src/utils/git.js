@@ -32,11 +32,20 @@ import yaml from 'js-yaml'
  * rather than assuming the defaults.
  */
 export function siteContentRoots(siteDir) {
-  const roots = new Set(['site.yml', 'theme.yml', 'head.html', 'collections.yml', 'locales'])
+  const roots = new Set([
+    'site.yml',
+    'theme.yml',
+    'head.html',
+    'collections.yml',
+    'locales'
+  ])
   let paths = {}
   try {
-    paths = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))?.paths || {}
-  } catch { /* no or unreadable site.yml — the defaults are right */ }
+    paths =
+      yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))?.paths || {}
+  } catch {
+    /* no or unreadable site.yml — the defaults are right */
+  }
   roots.add(paths.pages || 'pages')
   roots.add(paths.layout || 'layout')
   roots.add(paths.collections || 'collections')
@@ -50,7 +59,11 @@ export function hasUncommittedContent(siteDir) {
 }
 
 function git(args, cwd) {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore']
+  })
 }
 
 /**
@@ -78,14 +91,19 @@ export function isGitRepo(dir) {
 export function uncommittedUnder(dir, relPaths) {
   if (!isGitRepo(dir)) return null
   try {
-    const out = git(['status', '--porcelain', '--untracked-files=all', '--', ...relPaths], dir)
-    return out
-      .split('\n')
-      .filter(Boolean)
-      // porcelain v1: XY<space>path, and a rename is "orig -> new".
-      .map((line) => line.slice(3).trim())
-      .map((p) => (p.includes(' -> ') ? p.split(' -> ')[1] : p))
-      .filter(Boolean)
+    const out = git(
+      ['status', '--porcelain', '--untracked-files=all', '--', ...relPaths],
+      dir
+    )
+    return (
+      out
+        .split('\n')
+        .filter(Boolean)
+        // porcelain v1: XY<space>path, and a rename is "orig -> new".
+        .map((line) => line.slice(3).trim())
+        .map((p) => (p.includes(' -> ') ? p.split(' -> ')[1] : p))
+        .filter(Boolean)
+    )
   } catch {
     // A path git doesn't know (e.g. none of the roots exist yet) is not an error
     // worth failing a pull over.
@@ -111,7 +129,7 @@ export function showAtHead(dir, relPath) {
     return execFileSync('git', ['show', `HEAD:${relPath}`], {
       cwd: dir,
       stdio: ['ignore', 'pipe', 'ignore'],
-      maxBuffer: 64 * 1024 * 1024,
+      maxBuffer: 64 * 1024 * 1024
     })
   } catch {
     return null
@@ -135,10 +153,15 @@ export function mergeFile(dir, minePath, basePath, theirsPath, labels = {}) {
       'git',
       [
         'merge-file',
-        '-L', labels.mine || 'yours (local)',
-        '-L', labels.base || 'common ancestor',
-        '-L', labels.theirs || 'theirs (backend)',
-        minePath, basePath, theirsPath,
+        '-L',
+        labels.mine || 'yours (local)',
+        '-L',
+        labels.base || 'common ancestor',
+        '-L',
+        labels.theirs || 'theirs (backend)',
+        minePath,
+        basePath,
+        theirsPath
       ],
       { cwd: dir, stdio: ['ignore', 'ignore', 'ignore'] }
     )
@@ -174,15 +197,36 @@ export function hasRemote(dir) {
  * @returns {{ ok: boolean, changed: boolean, message: string }}
  */
 export function pullRemote(dir) {
-  const before = (() => { try { return git(['rev-parse', 'HEAD'], dir).trim() } catch { return null } })()
+  const before = (() => {
+    try {
+      return git(['rev-parse', 'HEAD'], dir).trim()
+    } catch {
+      return null
+    }
+  })()
   try {
     const out = execFileSync('git', ['pull', '--ff-only'], {
-      cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: dir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
     })
-    const after = (() => { try { return git(['rev-parse', 'HEAD'], dir).trim() } catch { return null } })()
-    return { ok: true, changed: Boolean(before && after && before !== after), message: out.trim() }
+    const after = (() => {
+      try {
+        return git(['rev-parse', 'HEAD'], dir).trim()
+      } catch {
+        return null
+      }
+    })()
+    return {
+      ok: true,
+      changed: Boolean(before && after && before !== after),
+      message: out.trim()
+    }
   } catch (err) {
-    const msg = [err?.stderr, err?.stdout].map((b) => (b ? String(b) : '')).join('\n').trim()
+    const msg = [err?.stderr, err?.stdout]
+      .map((b) => (b ? String(b) : ''))
+      .join('\n')
+      .trim()
     return { ok: false, changed: false, message: msg || 'git pull failed' }
   }
 }

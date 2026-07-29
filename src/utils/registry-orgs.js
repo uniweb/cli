@@ -34,7 +34,9 @@ const HANDLE_RE = /^[a-z0-9][a-z0-9-]{1,37}[a-z0-9]$/
 
 /** Strip a leading `@` and any `/suffix`, returning the bare handle segment. */
 export function bareHandle(scope) {
-  return String(scope || '').replace(/^@/, '').replace(/\/.*$/, '')
+  return String(scope || '')
+    .replace(/^@/, '')
+    .replace(/\/.*$/, '')
 }
 
 /**
@@ -57,14 +59,17 @@ export function validateHandle(handle) {
  */
 export async function fetchOrgs({ apiBase, token }) {
   const res = await fetch(`${apiBase.replace(/\/$/, '')}${ORGS_PATH}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}` }
   })
-  if (!res.ok) throw new Error(`Could not list your orgs: HTTP ${res.status} ${res.statusText}`)
+  if (!res.ok)
+    throw new Error(
+      `Could not list your orgs: HTTP ${res.status} ${res.statusText}`
+    )
   const data = await res.json().catch(() => null)
   return {
     account_handle: data?.account_handle ?? null,
     personal_org_exists: data?.personal_org_exists === true,
-    orgs: Array.isArray(data?.orgs) ? data.orgs : [],
+    orgs: Array.isArray(data?.orgs) ? data.orgs : []
   }
 }
 
@@ -82,8 +87,11 @@ export async function createOrg({ apiBase, token, handle }) {
   const h = bareHandle(handle)
   const res = await fetch(`${apiBase.replace(/\/$/, '')}${ORGS_PATH}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ handle: h }),
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ handle: h })
   })
   if (res.ok) return res.json()
 
@@ -93,11 +101,15 @@ export async function createOrg({ apiBase, token, handle }) {
   try {
     const body = await res.json()
     detail = body?.detail || ''
-  } catch { /* non-JSON body — keep the generic line */ }
+  } catch {
+    /* non-JSON body — keep the generic line */
+  }
   const fallback =
-    res.status === 409 ? `@${h} is not available.`
-    : res.status === 422 ? `@${h} is not a valid handle.`
-    : `Could not create @${h}: HTTP ${res.status}`
+    res.status === 409
+      ? `@${h} is not available.`
+      : res.status === 422
+        ? `@${h} is not a valid handle.`
+        : `Could not create @${h}: HTTP ${res.status}`
   const e = new Error(detail || fallback)
   e.status = res.status
   throw e
@@ -118,10 +130,17 @@ export async function createOrg({ apiBase, token, handle }) {
  * @param {string[]} [p.args] - argv slice; checked for --non-interactive
  * @returns {Promise<string|null>}
  */
-export async function deriveScope({ apiBase, token, accountHandle = null, args = [] }) {
+export async function deriveScope({
+  apiBase,
+  token,
+  accountHandle = null,
+  args = []
+}) {
   const envelope = await fetchOrgs({ apiBase, token })
   const { orgs } = envelope
-  const personal = envelope.account_handle || (accountHandle ? bareHandle(accountHandle) : null)
+  const personal =
+    envelope.account_handle ||
+    (accountHandle ? bareHandle(accountHandle) : null)
   const personalOrgExists = envelope.personal_org_exists
   const { isNonInteractive } = await import('./interactive.js')
   const nonInteractive = isNonInteractive(args)
@@ -131,15 +150,30 @@ export async function deriveScope({ apiBase, token, accountHandle = null, args =
     const h = orgs[0].handle
     const label = isPersonal(h) ? `your personal org @${h}` : `your org @${h}`
     if (nonInteractive) {
-      console.log(`Publishing under ${label.replace(`@${h}`, `\x1b[1m@${h}\x1b[0m`)}.`)
+      console.log(
+        `Publishing under ${label.replace(`@${h}`, `\x1b[1m@${h}\x1b[0m`)}.`
+      )
       return h
     }
     const prompts = (await import('prompts')).default
-    const { ok } = await prompts({
-      type: 'confirm', name: 'ok', message: `Publish under ${label}?`, initial: true,
-    }, { onCancel: () => { console.log('\nCancelled.'); process.exit(0) } })
+    const { ok } = await prompts(
+      {
+        type: 'confirm',
+        name: 'ok',
+        message: `Publish under ${label}?`,
+        initial: true
+      },
+      {
+        onCancel: () => {
+          console.log('\nCancelled.')
+          process.exit(0)
+        }
+      }
+    )
     if (!ok) {
-      console.log('Pass --scope @org, or create another with `uniweb org create <handle>`.')
+      console.log(
+        'Pass --scope @org, or create another with `uniweb org create <handle>`.'
+      )
       return null
     }
     return h
@@ -147,32 +181,54 @@ export async function deriveScope({ apiBase, token, accountHandle = null, args =
 
   if (orgs.length > 1) {
     // Personal org first; the rest in server order (primary-first).
-    const ordered = [...orgs].sort((a, b) => (isPersonal(b.handle) ? 1 : 0) - (isPersonal(a.handle) ? 1 : 0))
+    const ordered = [...orgs].sort(
+      (a, b) => (isPersonal(b.handle) ? 1 : 0) - (isPersonal(a.handle) ? 1 : 0)
+    )
     if (nonInteractive) {
-      const pick = ordered.find((u) => isPersonal(u.handle)) || orgs.find((u) => u.is_primary) || orgs[0]
-      console.log(`Multiple orgs; using \x1b[1m@${pick.handle}\x1b[0m (non-interactive).`)
+      const pick =
+        ordered.find((u) => isPersonal(u.handle)) ||
+        orgs.find((u) => u.is_primary) ||
+        orgs[0]
+      console.log(
+        `Multiple orgs; using \x1b[1m@${pick.handle}\x1b[0m (non-interactive).`
+      )
       return pick.handle
     }
     const prompts = (await import('prompts')).default
-    const { choice } = await prompts({
-      type: 'select',
-      name: 'choice',
-      message: 'Publish under which org?',
-      choices: ordered.map((u) => ({
-        title: `@${u.handle}${isPersonal(u.handle) ? ' — your personal org' : u.is_primary ? ' (primary)' : ''}`,
-        value: u.handle,
-      })),
-      initial: 0,
-    }, { onCancel: () => { console.log('\nCancelled.'); process.exit(0) } })
+    const { choice } = await prompts(
+      {
+        type: 'select',
+        name: 'choice',
+        message: 'Publish under which org?',
+        choices: ordered.map((u) => ({
+          title: `@${u.handle}${isPersonal(u.handle) ? ' — your personal org' : u.is_primary ? ' (primary)' : ''}`,
+          value: u.handle
+        })),
+        initial: 0
+      },
+      {
+        onCancel: () => {
+          console.log('\nCancelled.')
+          process.exit(0)
+        }
+      }
+    )
     return choice || null
   }
 
   // 0 orgs → the first-publish picker.
   if (nonInteractive) {
-    console.error('\x1b[31m✗\x1b[0m You have no org to publish under. Create one with `uniweb org create <handle>`, or pass --scope @org.')
+    console.error(
+      '\x1b[31m✗\x1b[0m You have no org to publish under. Create one with `uniweb org create <handle>`, or pass --scope @org.'
+    )
     process.exit(1)
   }
-  return offerCreateOrg({ apiBase, token, accountHandle: personal, personalOrgExists })
+  return offerCreateOrg({
+    apiBase,
+    token,
+    accountHandle: personal,
+    personalOrgExists
+  })
 }
 
 /**
@@ -192,14 +248,22 @@ export async function deriveScope({ apiBase, token, accountHandle = null, args =
  *    (created-then-left) → the lazy claim would 409; don't offer it.
  * Returns the chosen bare handle, or null if cancelled/failed.
  */
-export async function offerCreateOrg({ apiBase, token, accountHandle = null, personalOrgExists = false }) {
+export async function offerCreateOrg({
+  apiBase,
+  token,
+  accountHandle = null,
+  personalOrgExists = false
+}) {
   const prompts = (await import('prompts')).default
-  const personal = accountHandle && !validateHandle(accountHandle) ? bareHandle(accountHandle) : null
+  const personal =
+    accountHandle && !validateHandle(accountHandle)
+      ? bareHandle(accountHandle)
+      : null
 
   if (!personal) {
     console.error(
-      '\x1b[31m✗\x1b[0m This account has no handle (service accounts don\'t get one), so there is no ready-to-go org.\n' +
-      '  Log in with a personal account or set a handle in the app — or pass --scope @org / `uniweb org create <handle>`.'
+      "\x1b[31m✗\x1b[0m This account has no handle (service accounts don't get one), so there is no ready-to-go org.\n" +
+        '  Log in with a personal account or set a handle in the app — or pass --scope @org / `uniweb org create <handle>`.'
     )
     return null
   }
@@ -207,38 +271,63 @@ export async function offerCreateOrg({ apiBase, token, accountHandle = null, per
   const canClaimPersonal = !personalOrgExists
   const choices = [
     ...(canClaimPersonal
-      ? [{ title: `@${personal} — your personal org (created on first publish)`, value: personal }]
+      ? [
+          {
+            title: `@${personal} — your personal org (created on first publish)`,
+            value: personal
+          }
+        ]
       : []),
-    { title: 'A new organization…', value: ':new' },
+    { title: 'A new organization…', value: ':new' }
   ]
   if (!canClaimPersonal) {
-    console.log(`\x1b[2m@${personal} exists but you're not a member of it — ask its admin, or create another org.\x1b[0m`)
+    console.log(
+      `\x1b[2m@${personal} exists but you're not a member of it — ask its admin, or create another org.\x1b[0m`
+    )
   }
 
-  const { choice } = await prompts({
-    type: 'select',
-    name: 'choice',
-    message: 'Publish under which org?',
-    choices,
-    initial: 0,
-  }, { onCancel: () => { console.log('\nCancelled.'); process.exit(0) } })
+  const { choice } = await prompts(
+    {
+      type: 'select',
+      name: 'choice',
+      message: 'Publish under which org?',
+      choices,
+      initial: 0
+    },
+    {
+      onCancel: () => {
+        console.log('\nCancelled.')
+        process.exit(0)
+      }
+    }
+  )
   if (!choice) return null
 
   let handle = choice
   if (choice === ':new') {
-    const answer = await prompts({
-      type: 'text',
-      name: 'handle',
-      message: 'Org handle (e.g. acme):',
-      validate: (v) => validateHandle(v) || true,
-    }, { onCancel: () => { console.log('\nCancelled.'); process.exit(0) } })
+    const answer = await prompts(
+      {
+        type: 'text',
+        name: 'handle',
+        message: 'Org handle (e.g. acme):',
+        validate: (v) => validateHandle(v) || true
+      },
+      {
+        onCancel: () => {
+          console.log('\nCancelled.')
+          process.exit(0)
+        }
+      }
+    )
     if (!answer.handle) return null
     handle = answer.handle
   }
 
   try {
     const org = await createOrg({ apiBase, token, handle })
-    console.log(`\x1b[32m✓\x1b[0m Created \x1b[1m@${org.handle}\x1b[0m — you're a member${org.is_primary ? ' (primary)' : ''}.`)
+    console.log(
+      `\x1b[32m✓\x1b[0m Created \x1b[1m@${org.handle}\x1b[0m — you're a member${org.is_primary ? ' (primary)' : ''}.`
+    )
     return org.handle
   } catch (err) {
     console.error(`\x1b[31m✗\x1b[0m ${err.message}`)

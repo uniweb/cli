@@ -26,11 +26,20 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs'
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  symlinkSync,
+  rmSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { checkSiteInstall, readDeclaredFoundation } from '../src/utils/install-integrity.js'
+import {
+  checkSiteInstall,
+  readDeclaredFoundation
+} from '../src/utils/install-integrity.js'
 
 /**
  * A workspace with a site and the foundation it declares.
@@ -40,7 +49,11 @@ import { checkSiteInstall, readDeclaredFoundation } from '../src/utils/install-i
  * @param {string} opts.declaredKit - what the foundation's package.json asks for
  * @param {string} [opts.reachedKit] - what is actually installed where the site looks
  */
-function makeWorkspace({ install = 'link', declaredKit = '0.9.34', reachedKit = null } = {}) {
+function makeWorkspace({
+  install = 'link',
+  declaredKit = '0.9.34',
+  reachedKit = null
+} = {}) {
   const root = mkdtempSync(join(tmpdir(), 'uniweb-integrity-'))
   const sitePath = join(root, 'site')
   const foundationPath = join(root, 'src')
@@ -55,14 +68,20 @@ function makeWorkspace({ install = 'link', declaredKit = '0.9.34', reachedKit = 
   mkdirSync(foundationPath, { recursive: true })
   writeFileSync(
     join(foundationPath, 'package.json'),
-    JSON.stringify({ name: 'src', dependencies: { '@uniweb/kit': declaredKit } })
+    JSON.stringify({
+      name: 'src',
+      dependencies: { '@uniweb/kit': declaredKit }
+    })
   )
 
   // What the foundation source itself resolves — always what it declares.
   const writeKit = (under, version) => {
     const dir = join(under, 'node_modules', '@uniweb', 'kit')
     mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@uniweb/kit', version }))
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: '@uniweb/kit', version })
+    )
   }
   writeKit(foundationPath, declaredKit)
 
@@ -76,7 +95,10 @@ function makeWorkspace({ install = 'link', declaredKit = '0.9.34', reachedKit = 
     mkdirSync(linkPath, { recursive: true })
     writeFileSync(
       join(linkPath, 'package.json'),
-      JSON.stringify({ name: 'src', dependencies: { '@uniweb/kit': declaredKit } })
+      JSON.stringify({
+        name: 'src',
+        dependencies: { '@uniweb/kit': declaredKit }
+      })
     )
     writeKit(linkPath, reachedKit ?? declaredKit)
   }
@@ -85,7 +107,7 @@ function makeWorkspace({ install = 'link', declaredKit = '0.9.34', reachedKit = 
     root,
     site: { name: 'site', path: sitePath },
     foundation: { name: 'src', path: foundationPath },
-    cleanup: () => rmSync(root, { recursive: true, force: true }),
+    cleanup: () => rmSync(root, { recursive: true, force: true })
   }
 }
 
@@ -115,7 +137,11 @@ test('a copied foundation is reported', () => {
 test('a copy running an older dependency than declared is reported', () => {
   // The exact shape of the real incident: declared 0.9.34, running 0.9.33,
   // build green, dev serving the old one.
-  const ws = makeWorkspace({ install: 'copy', declaredKit: '0.9.34', reachedKit: '0.9.33' })
+  const ws = makeWorkspace({
+    install: 'copy',
+    declaredKit: '0.9.34',
+    reachedKit: '0.9.33'
+  })
   try {
     const findings = checkSiteInstall(ws.site, ws.foundation, ws.root)
     assert.ok(ids(findings).includes('dev-foundation-dep-skew'))
@@ -130,7 +156,10 @@ test('a copy running an older dependency than declared is reported', () => {
 test('a link never skews, because both sides are one tree', () => {
   const ws = makeWorkspace({ install: 'link', declaredKit: '0.9.34' })
   try {
-    assert.equal(ids(checkSiteInstall(ws.site, ws.foundation, ws.root)).length, 0)
+    assert.equal(
+      ids(checkSiteInstall(ws.site, ws.foundation, ws.root)).length,
+      0
+    )
   } finally {
     ws.cleanup()
   }
@@ -149,9 +178,17 @@ test('nothing installed is left to the checks that own it', () => {
 
 test('a range spec is not treated as a promise about the exact version', () => {
   // "^0.9.0" says any compatible version; only an exact pin can be violated.
-  const ws = makeWorkspace({ install: 'copy', declaredKit: '^0.9.0', reachedKit: '0.9.12' })
+  const ws = makeWorkspace({
+    install: 'copy',
+    declaredKit: '^0.9.0',
+    reachedKit: '0.9.12'
+  })
   try {
-    assert.ok(!ids(checkSiteInstall(ws.site, ws.foundation, ws.root)).includes('dev-foundation-dep-skew'))
+    assert.ok(
+      !ids(checkSiteInstall(ws.site, ws.foundation, ws.root)).includes(
+        'dev-foundation-dep-skew'
+      )
+    )
   } finally {
     ws.cleanup()
   }
@@ -180,7 +217,11 @@ test('a linked site has nothing here to check', () => {
     assert.equal(readDeclaredFoundation(ws.site.path), '@acme/marketing@1.2.0')
     // No node_modules entry for it, so no findings — silence, not a false alarm.
     assert.deepEqual(
-      checkSiteInstall(ws.site, { name: '@acme/marketing', path: ws.foundation.path }, ws.root),
+      checkSiteInstall(
+        ws.site,
+        { name: '@acme/marketing', path: ws.foundation.path },
+        ws.root
+      ),
       []
     )
   } finally {

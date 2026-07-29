@@ -69,7 +69,7 @@ function registerPartials() {
  * Handlebars helper to get a package version
  * Usage: {{version "@uniweb/build"}} or {{version "build"}}
  */
-Handlebars.registerHelper('version', function(packageName) {
+Handlebars.registerHelper('version', function (packageName) {
   // Try exact match first
   if (versionData[packageName]) {
     return versionData[packageName]
@@ -85,10 +85,27 @@ Handlebars.registerHelper('version', function(packageName) {
 
 // Text file extensions that should be processed for variables
 const TEXT_EXTENSIONS = new Set([
-  '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs',
-  '.json', '.yml', '.yaml', '.md', '.mdx',
-  '.html', '.htm', '.css', '.scss', '.less',
-  '.txt', '.xml', '.svg', '.vue', '.astro'
+  '.js',
+  '.jsx',
+  '.ts',
+  '.tsx',
+  '.mjs',
+  '.cjs',
+  '.json',
+  '.yml',
+  '.yaml',
+  '.md',
+  '.mdx',
+  '.html',
+  '.htm',
+  '.css',
+  '.scss',
+  '.less',
+  '.txt',
+  '.xml',
+  '.svg',
+  '.vue',
+  '.astro'
 ])
 
 /**
@@ -96,7 +113,7 @@ const TEXT_EXTENSIONS = new Set([
  */
 function findUnresolvedPlaceholders(content) {
   const patterns = [
-    /\{\{([^#/}>][^}]*)\}\}/g, // {{variable}} - not blocks or partials
+    /\{\{([^#/}>][^}]*)\}\}/g // {{variable}} - not blocks or partials
   ]
 
   const unresolved = []
@@ -146,7 +163,9 @@ async function processFile(sourcePath, targetPath, data, options = {}) {
     // Check for unresolved placeholders
     const unresolved = findUnresolvedPlaceholders(content)
     if (unresolved.length > 0 && options.onWarning) {
-      options.onWarning(`Unresolved placeholders in ${path.basename(targetPath)}: ${unresolved.join(', ')}`)
+      options.onWarning(
+        `Unresolved placeholders in ${path.basename(targetPath)}: ${unresolved.join(', ')}`
+      )
     }
 
     await fs.writeFile(targetPath, content)
@@ -182,7 +201,9 @@ async function processFile(sourcePath, targetPath, data, options = {}) {
  * directory-only behavior.
  */
 function dotfileRename(name) {
-  return name.startsWith('_') && !name.startsWith('__') ? `.${name.slice(1)}` : name
+  return name.startsWith('_') && !name.startsWith('__')
+    ? `.${name.slice(1)}`
+    : name
 }
 
 /**
@@ -191,7 +212,9 @@ function dotfileRename(name) {
  * `.gitignore` and `_env.local.hbs` → `.env.local`.
  */
 function templateOutputName(sourceName) {
-  const base = sourceName.endsWith('.hbs') ? sourceName.slice(0, -4) : sourceName
+  const base = sourceName.endsWith('.hbs')
+    ? sourceName.slice(0, -4)
+    : sourceName
   return dotfileRename(base)
 }
 
@@ -205,7 +228,12 @@ function templateOutputName(sourceName) {
  * @param {Function} options.onWarning - Warning callback
  * @param {Function} options.onProgress - Progress callback
  */
-export async function copyTemplateDirectory(sourcePath, targetPath, data, options = {}) {
+export async function copyTemplateDirectory(
+  sourcePath,
+  targetPath,
+  data,
+  options = {}
+) {
   const { onWarning, onProgress, skip } = options
 
   await fs.mkdir(targetPath, { recursive: true })
@@ -219,7 +247,11 @@ export async function copyTemplateDirectory(sourcePath, targetPath, data, option
       // Rename _prefix directories to .prefix (e.g., _vscode → .vscode).
       const targetFullPath = path.join(targetPath, dotfileRename(sourceName))
 
-      await copyTemplateDirectory(sourceFullPath, targetFullPath, data, { onWarning, onProgress, skip })
+      await copyTemplateDirectory(sourceFullPath, targetFullPath, data, {
+        onWarning,
+        onProgress,
+        skip
+      })
     } else {
       // Skip template.json as it's metadata for the template, not for the output
       if (sourceName === 'template.json') {
@@ -282,7 +314,7 @@ async function enumerateInto(sourcePath, relPath, outputs, skip) {
         path.join(sourcePath, sourceName),
         relPath ? path.join(relPath, targetName) : targetName,
         outputs,
-        skip,
+        skip
       )
     } else {
       if (sourceName === 'template.json') continue

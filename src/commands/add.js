@@ -17,21 +17,50 @@ import { join, relative, basename } from 'node:path'
 import prompts from 'prompts'
 import yaml from 'js-yaml'
 import { resolveFoundationSrcPath } from '@uniweb/build'
-import { scaffoldFoundation, scaffoldSite, applyContent, applyStarter, mergeTemplateDependencies } from '../utils/scaffold.js'
-import { resolvePlacement, SITE_KIND, FOUNDATION_KIND } from '../utils/placement.js'
+import {
+  scaffoldFoundation,
+  scaffoldSite,
+  applyContent,
+  applyStarter,
+  mergeTemplateDependencies
+} from '../utils/scaffold.js'
+import {
+  resolvePlacement,
+  SITE_KIND,
+  FOUNDATION_KIND
+} from '../utils/placement.js'
 import {
   readWorkspaceConfig,
   addWorkspaceGlob,
-  updateRootScripts,
+  updateRootScripts
 } from '../utils/config.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
-import { validatePackageName, getExistingPackageNames, resolveUniqueName } from '../utils/names.js'
+import {
+  validatePackageName,
+  getExistingPackageNames,
+  resolveUniqueName
+} from '../utils/names.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
-import { detectPackageManager, detectWorkspacePm, detectInstalledPnpmVersion, filterCmd, installCmd } from '../utils/pm.js'
-import { isNonInteractive, getCliPrefix, stripNonInteractiveFlag, formatOptions } from '../utils/interactive.js'
+import {
+  detectPackageManager,
+  detectWorkspacePm,
+  detectInstalledPnpmVersion,
+  filterCmd,
+  installCmd
+} from '../utils/pm.js'
+import {
+  isNonInteractive,
+  getCliPrefix,
+  stripNonInteractiveFlag,
+  formatOptions
+} from '../utils/interactive.js'
 import { resolveTemplate } from '../templates/index.js'
 import { validateTemplate } from '../templates/validator.js'
-import { getVersionsForTemplates, resolveCiPnpmVersion, resolveCiNodeVersion } from '../versions.js'
+import {
+  getVersionsForTemplates,
+  resolveCiPnpmVersion,
+  resolveCiNodeVersion
+} from '../versions.js'
 
 // Colors for terminal output
 const colors = {
@@ -41,20 +70,28 @@ const colors = {
   cyan: '\x1b[36m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
-  red: '\x1b[31m',
+  red: '\x1b[31m'
 }
 
-function log(message) { console.log(message) }
-function success(message) { console.log(`${colors.green}✓${colors.reset} ${message}`) }
-function error(message) { console.error(`${colors.red}✗${colors.reset} ${message}`) }
-function info(message) { console.log(`${colors.dim}${message}${colors.reset}`) }
+function log(message) {
+  console.log(message)
+}
+function success(message) {
+  console.log(`${colors.green}✓${colors.reset} ${message}`)
+}
+function error(message) {
+  console.error(`${colors.red}✗${colors.reset} ${message}`)
+}
+function info(message) {
+  console.log(`${colors.dim}${message}${colors.reset}`)
+}
 
 /**
  * Parse add command arguments
  */
 function parseArgs(args) {
   const result = {
-    subcommand: args[0],   // foundation, site, extension, ci, …
+    subcommand: args[0], // foundation, site, extension, ci, …
     name: null,
     path: null,
     project: null,
@@ -69,7 +106,7 @@ function parseArgs(args) {
     // scaffold PR-preview workflows.
     target: null,
     projectName: null,
-    previews: true,
+    previews: true
   }
 
   // Booleans (no value) consumed up-front so the value-flag loop below
@@ -94,7 +131,7 @@ function parseArgs(args) {
     '--host': 'host',
     '--domain': 'domain',
     '--target': 'target',
-    '--project-name': 'projectName',
+    '--project-name': 'projectName'
   }
 
   /** Split `--flag=value` into [flag, value]; `--flag` into [flag, null]. */
@@ -156,7 +193,9 @@ export async function add(rawArgs) {
   // Find workspace root
   const rootDir = findWorkspaceRoot()
   if (!rootDir) {
-    error('Not in a Uniweb workspace. Run this command from a project directory.')
+    error(
+      'Not in a Uniweb workspace. Run this command from a project directory.'
+    )
     error('Use "uniweb create" to create a new project first.')
     process.exit(1)
   }
@@ -166,37 +205,73 @@ export async function add(rawArgs) {
   if (!args.length || (args[0] && args[0].startsWith('--'))) {
     if (nonInteractive) {
       error(`Missing subcommand.\n`)
-      log(formatOptions([
-        { label: 'project', description: 'Co-located foundation + site pair' },
-        { label: 'foundation', description: 'Component system for content authors' },
-        { label: 'site', description: 'Content site' },
-        { label: 'extension', description: 'Additional component package' },
-        { label: 'section', description: 'Section type in a foundation' },
-        { label: 'ci', description: 'CI deploy workflow for a host (e.g., GitHub Pages)' },
-      ]))
+      log(
+        formatOptions([
+          {
+            label: 'project',
+            description: 'Co-located foundation + site pair'
+          },
+          {
+            label: 'foundation',
+            description: 'Component system for content authors'
+          },
+          { label: 'site', description: 'Content site' },
+          { label: 'extension', description: 'Additional component package' },
+          { label: 'section', description: 'Section type in a foundation' },
+          {
+            label: 'ci',
+            description: 'CI deploy workflow for a host (e.g., GitHub Pages)'
+          }
+        ])
+      )
       log('')
-      log(`Usage: ${prefix} add <project|foundation|site|extension|section|ci> [name]`)
+      log(
+        `Usage: ${prefix} add <project|foundation|site|extension|section|ci> [name]`
+      )
       process.exit(1)
     }
 
-    const response = await prompts({
-      type: 'select',
-      name: 'subcommand',
-      message: 'What would you like to add?',
-      choices: [
-        { title: 'Project', value: 'project', description: 'Co-located foundation + site pair' },
-        { title: 'Foundation', value: 'foundation', description: 'Component system for content authors' },
-        { title: 'Site', value: 'site', description: 'Content site' },
-        { title: 'Extension', value: 'extension', description: 'Additional component package' },
-        { title: 'Section', value: 'section', description: 'Section type in a foundation' },
-        { title: 'CI workflow', value: 'ci', description: 'Deploy workflow for a host (e.g., GitHub Pages)' },
-      ],
-    }, {
-      onCancel: () => {
-        log('\nCancelled.')
-        process.exit(0)
+    const response = await prompts(
+      {
+        type: 'select',
+        name: 'subcommand',
+        message: 'What would you like to add?',
+        choices: [
+          {
+            title: 'Project',
+            value: 'project',
+            description: 'Co-located foundation + site pair'
+          },
+          {
+            title: 'Foundation',
+            value: 'foundation',
+            description: 'Component system for content authors'
+          },
+          { title: 'Site', value: 'site', description: 'Content site' },
+          {
+            title: 'Extension',
+            value: 'extension',
+            description: 'Additional component package'
+          },
+          {
+            title: 'Section',
+            value: 'section',
+            description: 'Section type in a foundation'
+          },
+          {
+            title: 'CI workflow',
+            value: 'ci',
+            description: 'Deploy workflow for a host (e.g., GitHub Pages)'
+          }
+        ]
       },
-    })
+      {
+        onCancel: () => {
+          log('\nCancelled.')
+          process.exit(0)
+        }
+      }
+    )
     parsed = parseArgs([response.subcommand, ...args])
   } else {
     parsed = parseArgs(args)
@@ -238,7 +313,9 @@ export async function add(rawArgs) {
       break
     default:
       error(`Unknown subcommand: ${parsed.subcommand}`)
-      log(`Valid subcommands: project, foundation, site, extension, section, ci`)
+      log(
+        `Valid subcommands: project, foundation, site, extension, section, ci`
+      )
       process.exit(1)
   }
 }
@@ -273,11 +350,17 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Collision check 1: target folder already exists.
   if (existsSync(fullPath)) {
-    error(`Cannot create foundation: ${colors.bright}${relativePath}/${colors.reset} already exists.`)
+    error(
+      `Cannot create foundation: ${colors.bright}${relativePath}/${colors.reset} already exists.`
+    )
     log('')
     log(`Pick a different name, or pass --path to choose a different folder:`)
-    log(`  ${colors.cyan}${getCliPrefix()} add foundation <name>${colors.reset}`)
-    log(`  ${colors.cyan}${getCliPrefix()} add foundation <name> --path <parent-dir>${colors.reset}`)
+    log(
+      `  ${colors.cyan}${getCliPrefix()} add foundation <name>${colors.reset}`
+    )
+    log(
+      `  ${colors.cyan}${getCliPrefix()} add foundation <name> --path <parent-dir>${colors.reset}`
+    )
     process.exit(1)
   }
 
@@ -293,33 +376,47 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   // situation, not a disambiguation case.
   if (existingNames.has(packageName)) {
     const sites = await discoverSites(rootDir)
-    const isSiteCollision = sites.some(s => s.name === packageName)
+    const isSiteCollision = sites.some((s) => s.name === packageName)
     if (isSiteCollision) {
       const suffixed = `${packageName}-src`
       if (existingNames.has(suffixed)) {
-        error(`Cannot create foundation: both ${colors.bright}${packageName}${colors.reset} and ${colors.bright}${suffixed}${colors.reset} are taken in this workspace.`)
+        error(
+          `Cannot create foundation: both ${colors.bright}${packageName}${colors.reset} and ${colors.bright}${suffixed}${colors.reset} are taken in this workspace.`
+        )
         log(`Pick a different name:`)
-        log(`  ${colors.cyan}${getCliPrefix()} add foundation <other-name>${colors.reset}`)
+        log(
+          `  ${colors.cyan}${getCliPrefix()} add foundation <other-name>${colors.reset}`
+        )
         process.exit(1)
       }
-      info(`Package "${packageName}" is taken by a site; using "${suffixed}" for this foundation.`)
+      info(
+        `Package "${packageName}" is taken by a site; using "${suffixed}" for this foundation.`
+      )
       packageName = suffixed
     } else {
-      error(`Cannot create foundation: a foundation named ${colors.bright}${packageName}${colors.reset} already exists in this workspace.`)
+      error(
+        `Cannot create foundation: a foundation named ${colors.bright}${packageName}${colors.reset} already exists in this workspace.`
+      )
       log(`Pick a different name:`)
-      log(`  ${colors.cyan}${getCliPrefix()} add foundation <other-name>${colors.reset}`)
+      log(
+        `  ${colors.cyan}${getCliPrefix()} add foundation <other-name>${colors.reset}`
+      )
       process.exit(1)
     }
   }
 
   // Scaffold
-  await scaffoldFoundation(fullPath, {
-    name: packageName,
-    projectName,
-    isExtension: false,
-  }, {
-    onProgress: (msg) => info(`  ${msg}`),
-  })
+  await scaffoldFoundation(
+    fullPath,
+    {
+      name: packageName,
+      projectName,
+      isExtension: false
+    },
+    {
+      onProgress: (msg) => info(`  ${msg}`)
+    }
+  )
 
   // Apply template content if --from specified
   if (opts.from) {
@@ -335,7 +432,9 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   const sites = await discoverSites(rootDir)
   await updateRootScripts(rootDir, sites, pm)
 
-  success(`Created foundation ${colors.bright}${packageName}${colors.reset} at ${relativePath}/`)
+  success(
+    `Created foundation ${colors.bright}${packageName}${colors.reset} at ${relativePath}/`
+  )
   log('')
   log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}`)
 }
@@ -364,11 +463,15 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Collision check 1: target folder exists.
   if (existsSync(fullPath)) {
-    error(`Cannot create site: ${colors.bright}${relativePath}/${colors.reset} already exists.`)
+    error(
+      `Cannot create site: ${colors.bright}${relativePath}/${colors.reset} already exists.`
+    )
     log('')
     log(`Pick a different name, or pass --path to choose a different folder:`)
     log(`  ${colors.cyan}${getCliPrefix()} add site <name>${colors.reset}`)
-    log(`  ${colors.cyan}${getCliPrefix()} add site <name> --path <parent-dir>${colors.reset}`)
+    log(
+      `  ${colors.cyan}${getCliPrefix()} add site <name> --path <parent-dir>${colors.reset}`
+    )
     process.exit(1)
   }
 
@@ -377,21 +480,31 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
   // addFoundation for the rationale.
   if (existingNames.has(siteName)) {
     const foundations = await discoverFoundations(rootDir)
-    const isFoundationCollision = foundations.some(f => f.name === siteName)
+    const isFoundationCollision = foundations.some((f) => f.name === siteName)
     if (isFoundationCollision) {
       const suffixed = `${siteName}-site`
       if (existingNames.has(suffixed)) {
-        error(`Cannot create site: both ${colors.bright}${siteName}${colors.reset} and ${colors.bright}${suffixed}${colors.reset} are taken in this workspace.`)
+        error(
+          `Cannot create site: both ${colors.bright}${siteName}${colors.reset} and ${colors.bright}${suffixed}${colors.reset} are taken in this workspace.`
+        )
         log(`Pick a different name:`)
-        log(`  ${colors.cyan}${getCliPrefix()} add site <other-name>${colors.reset}`)
+        log(
+          `  ${colors.cyan}${getCliPrefix()} add site <other-name>${colors.reset}`
+        )
         process.exit(1)
       }
-      info(`Package "${siteName}" is taken by a foundation; using "${suffixed}" for this site.`)
+      info(
+        `Package "${siteName}" is taken by a foundation; using "${suffixed}" for this site.`
+      )
       siteName = suffixed
     } else {
-      error(`Cannot create site: a site named ${colors.bright}${siteName}${colors.reset} already exists in this workspace.`)
+      error(
+        `Cannot create site: a site named ${colors.bright}${siteName}${colors.reset} already exists in this workspace.`
+      )
       log(`Pick a different name:`)
-      log(`  ${colors.cyan}${getCliPrefix()} add site <other-name>${colors.reset}`)
+      log(
+        `  ${colors.cyan}${getCliPrefix()} add site <other-name>${colors.reset}`
+      )
       process.exit(1)
     }
   }
@@ -404,26 +517,36 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
     const foundationPath = computeFoundationPath(relativePath, foundation.path)
 
     // Scaffold
-    await scaffoldSite(fullPath, {
-      name: siteName,
-      projectName,
-      foundationName: foundation.name,
-      foundationPath,
-      foundationRef: foundation.name,
-    }, {
-      onProgress: (msg) => info(`  ${msg}`),
-    })
+    await scaffoldSite(
+      fullPath,
+      {
+        name: siteName,
+        projectName,
+        foundationName: foundation.name,
+        foundationPath,
+        foundationRef: foundation.name
+      },
+      {
+        onProgress: (msg) => info(`  ${msg}`)
+      }
+    )
   } else {
     // No foundation — scaffold without wiring
-    await scaffoldSite(fullPath, {
-      name: siteName,
-      projectName,
-      foundationName: '',
-      foundationPath: '',
-    }, {
-      onProgress: (msg) => info(`  ${msg}`),
-    })
-    log(`  ${colors.yellow}⚠ No foundation wired. Add one later with: uniweb add foundation${colors.reset}`)
+    await scaffoldSite(
+      fullPath,
+      {
+        name: siteName,
+        projectName,
+        foundationName: '',
+        foundationPath: ''
+      },
+      {
+        onProgress: (msg) => info(`  ${msg}`)
+      }
+    )
+    log(
+      `  ${colors.yellow}⚠ No foundation wired. Add one later with: uniweb add foundation${colors.reset}`
+    )
   }
 
   // Apply template content if --from specified
@@ -436,22 +559,32 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Update root scripts (discover sites after registration — includes the new one)
   const sites = await discoverSites(rootDir)
-  if (!sites.find(s => s.path === relativePath)) {
+  if (!sites.find((s) => s.path === relativePath)) {
     sites.push({ name: siteName, path: relativePath })
   }
   await updateRootScripts(rootDir, sites, pm)
 
   if (foundation) {
-    success(`Created site ${colors.bright}${siteName}${colors.reset} at ${relativePath}/ → foundation '${foundation.name}'`)
+    success(
+      `Created site ${colors.bright}${siteName}${colors.reset} at ${relativePath}/ → foundation '${foundation.name}'`
+    )
   } else {
-    success(`Created site ${colors.bright}${siteName}${colors.reset} at ${relativePath}/`)
+    success(
+      `Created site ${colors.bright}${siteName}${colors.reset} at ${relativePath}/`
+    )
   }
   log('')
-  log(`Next: ${colors.cyan}${installCmd(pm)} && uniweb dev ${siteName}${colors.reset}`)
+  log(
+    `Next: ${colors.cyan}${installCmd(pm)} && uniweb dev ${siteName}${colors.reset}`
+  )
   if (!opts.from) {
     log('')
-    log(`${colors.dim}To add your first page, create ${relativePath}/pages/home/page.yml and a .md file.${colors.reset}`)
-    log(`${colors.dim}Or use --from to start with template content: uniweb add site --from starter${colors.reset}`)
+    log(
+      `${colors.dim}To add your first page, create ${relativePath}/pages/home/page.yml and a .md file.${colors.reset}`
+    )
+    log(
+      `${colors.dim}Or use --from to start with template content: uniweb add site --from starter${colors.reset}`
+    )
   }
 }
 
@@ -479,17 +612,20 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
       process.exit(1)
     }
 
-    const response = await prompts({
-      type: 'text',
-      name: 'name',
-      message: 'Extension name:',
-      validate: (value) => validatePackageName(value),
-    }, {
-      onCancel: () => {
-        log('\nCancelled.')
-        process.exit(0)
+    const response = await prompts(
+      {
+        type: 'text',
+        name: 'name',
+        message: 'Extension name:',
+        validate: (value) => validatePackageName(value)
       },
-    })
+      {
+        onCancel: () => {
+          log('\nCancelled.')
+          process.exit(0)
+        }
+      }
+    )
     name = response.name
   }
 
@@ -514,13 +650,17 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   }
 
   // Scaffold foundation with extension flag
-  await scaffoldFoundation(fullPath, {
-    name: extensionPackageName,
-    projectName,
-    isExtension: true,
-  }, {
-    onProgress: (msg) => info(`  ${msg}`),
-  })
+  await scaffoldFoundation(
+    fullPath,
+    {
+      name: extensionPackageName,
+      projectName,
+      isExtension: true
+    },
+    {
+      onProgress: (msg) => info(`  ${msg}`)
+    }
+  )
 
   // Apply template content if --from specified
   if (opts.from) {
@@ -546,25 +686,44 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   } else {
     const sites = await discoverSites(rootDir)
     if (sites.length === 1) {
-      wiredSite = await wireExtensionToSite(rootDir, sites[0].name, name, target)
+      wiredSite = await wireExtensionToSite(
+        rootDir,
+        sites[0].name,
+        name,
+        target
+      )
     } else if (sites.length > 1) {
       if (isNonInteractive(process.argv)) {
         unwiredReason = `Multiple sites in workspace; extension not wired. Re-run with --site <name>, or edit <site>/site.yml::extensions: manually.`
       } else {
-        const sortedSites = [...sites].sort((a, b) => a.name.localeCompare(b.name))
-        const response = await prompts({
-          type: 'select',
-          name: 'site',
-          message: 'Which site is this extension for?',
-          choices: sortedSites.map(s => ({ title: s.name, description: s.path, value: s.name })),
-        }, {
-          onCancel: () => {
-            log('\nCancelled.')
-            process.exit(0)
+        const sortedSites = [...sites].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        )
+        const response = await prompts(
+          {
+            type: 'select',
+            name: 'site',
+            message: 'Which site is this extension for?',
+            choices: sortedSites.map((s) => ({
+              title: s.name,
+              description: s.path,
+              value: s.name
+            }))
           },
-        })
+          {
+            onCancel: () => {
+              log('\nCancelled.')
+              process.exit(0)
+            }
+          }
+        )
         if (response.site) {
-          wiredSite = await wireExtensionToSite(rootDir, response.site, name, target)
+          wiredSite = await wireExtensionToSite(
+            rootDir,
+            response.site,
+            name,
+            target
+          )
         }
       }
     } else {
@@ -612,17 +771,20 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
       process.exit(1)
     }
 
-    const response = await prompts({
-      type: 'text',
-      name: 'name',
-      message: 'Project name:',
-      validate: (value) => validatePackageName(value),
-    }, {
-      onCancel: () => {
-        log('\nCancelled.')
-        process.exit(0)
+    const response = await prompts(
+      {
+        type: 'text',
+        name: 'name',
+        message: 'Project name:',
+        validate: (value) => validatePackageName(value)
       },
-    })
+      {
+        onCancel: () => {
+          log('\nCancelled.')
+          process.exit(0)
+        }
+      }
+    )
     name = response.name
   }
 
@@ -652,26 +814,44 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Scaffold foundation (folder: src/, package name: <project>-src)
   info(`Creating foundation: ${foundationPkgName}...`)
-  await scaffoldFoundation(join(projectDir, 'src'), {
-    name: foundationPkgName,
-    projectName,
-    isExtension: false,
-  }, { onProgress: progressCb })
+  await scaffoldFoundation(
+    join(projectDir, 'src'),
+    {
+      name: foundationPkgName,
+      projectName,
+      isExtension: false
+    },
+    { onProgress: progressCb }
+  )
 
   // Scaffold site
   info(`Creating site: ${sitePkgName}...`)
-  await scaffoldSite(join(projectDir, 'site'), {
-    name: sitePkgName,
-    projectName,
-    foundationName: foundationPkgName,
-    foundationPath: 'file:../src',
-    foundationRef: foundationPkgName,
-  }, { onProgress: progressCb })
+  await scaffoldSite(
+    join(projectDir, 'site'),
+    {
+      name: sitePkgName,
+      projectName,
+      foundationName: foundationPkgName,
+      foundationPath: 'file:../src',
+      foundationRef: foundationPkgName
+    },
+    { onProgress: progressCb }
+  )
 
   // Apply template content if --from specified
   if (opts.from) {
-    await applyFromTemplate(opts.from, 'foundation', join(projectDir, 'src'), projectName)
-    await applyFromTemplate(opts.from, 'site', join(projectDir, 'site'), projectName)
+    await applyFromTemplate(
+      opts.from,
+      'foundation',
+      join(projectDir, 'src'),
+      projectName
+    )
+    await applyFromTemplate(
+      opts.from,
+      'site',
+      join(projectDir, 'site'),
+      projectName
+    )
   }
 
   // Update workspace globs for co-located layout
@@ -680,18 +860,21 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Update root scripts
   const sites = await discoverSites(rootDir)
-  if (!sites.find(s => s.path === `${name}/site`)) {
+  if (!sites.find((s) => s.path === `${name}/site`)) {
     sites.push({ name: sitePkgName, path: `${name}/site` })
   }
   await updateRootScripts(rootDir, sites, pm)
 
   success(`Created project '${name}' at ${name}/`)
-  log(`  ${colors.dim}Foundation: ${name}/src/ (${foundationPkgName})${colors.reset}`)
+  log(
+    `  ${colors.dim}Foundation: ${name}/src/ (${foundationPkgName})${colors.reset}`
+  )
   log(`  ${colors.dim}Site: ${name}/site/ (${sitePkgName})${colors.reset}`)
   log('')
-  log(`Next: ${colors.cyan}${installCmd(pm)} && uniweb dev ${sitePkgName}${colors.reset}`)
+  log(
+    `Next: ${colors.cyan}${installCmd(pm)} && uniweb dev ${sitePkgName}${colors.reset}`
+  )
 }
-
 
 /**
  * Resolve which foundation to wire a site to
@@ -701,12 +884,14 @@ async function resolveFoundation(rootDir, foundationFlag) {
 
   if (foundationFlag) {
     // Find by name
-    const found = foundations.find(f => f.name === foundationFlag)
+    const found = foundations.find((f) => f.name === foundationFlag)
     if (found) return found
 
     // Not found — could be a URL or new foundation
     error(`Foundation '${foundationFlag}' not found in workspace.`)
-    log(`Available foundations: ${foundations.map(f => f.name).join(', ') || 'none'}`)
+    log(
+      `Available foundations: ${foundations.map((f) => f.name).join(', ') || 'none'}`
+    )
     process.exit(1)
   }
 
@@ -722,30 +907,37 @@ async function resolveFoundation(rootDir, foundationFlag) {
   // Multiple foundations — prompt (or fail in non-interactive mode)
   if (isNonInteractive(process.argv)) {
     error(`Multiple foundations found. Specify which to use:\n`)
-    log(formatOptions(foundations.map(f => ({
-      label: f.name,
-      description: f.path,
-    }))))
+    log(
+      formatOptions(
+        foundations.map((f) => ({
+          label: f.name,
+          description: f.path
+        }))
+      )
+    )
     log('')
     log(`Usage: ${getCliPrefix()} add site <name> --foundation <name>`)
     process.exit(1)
   }
 
-  const response = await prompts({
-    type: 'select',
-    name: 'foundation',
-    message: 'Which foundation should this site use?',
-    choices: foundations.map(f => ({
-      title: f.name,
-      description: f.path,
-      value: f,
-    })),
-  }, {
-    onCancel: () => {
-      log('\nCancelled.')
-      process.exit(0)
+  const response = await prompts(
+    {
+      type: 'select',
+      name: 'foundation',
+      message: 'Which foundation should this site use?',
+      choices: foundations.map((f) => ({
+        title: f.name,
+        description: f.path,
+        value: f
+      }))
     },
-  })
+    {
+      onCancel: () => {
+        log('\nCancelled.')
+        process.exit(0)
+      }
+    }
+  )
 
   return response.foundation
 }
@@ -759,7 +951,6 @@ function computeFoundationPath(sitePath, foundationPath) {
   return `file:${rel}`
 }
 
-
 /**
  * Apply content from a template to a scaffolded package
  *
@@ -768,34 +959,47 @@ function computeFoundationPath(sitePath, foundationPath) {
  * @param {string} targetDir - Absolute path to the scaffolded package
  * @param {string} projectName - Project name for template context
  */
-async function applyFromTemplate(templateId, packageType, targetDir, projectName) {
+async function applyFromTemplate(
+  templateId,
+  packageType,
+  targetDir,
+  projectName
+) {
   info(`Resolving template: ${templateId}...`)
 
   const resolved = await resolveTemplate(templateId, {
-    onProgress: (msg) => info(`  ${msg}`),
+    onProgress: (msg) => info(`  ${msg}`)
   })
 
   try {
     const metadata = await validateTemplate(resolved.path, {})
 
     // Look in contentDirs for matching package type
-    const match = metadata.contentDirs.find(d => d.type === packageType) ||
-                  metadata.contentDirs.find(d => d.name === packageType)
+    const match =
+      metadata.contentDirs.find((d) => d.type === packageType) ||
+      metadata.contentDirs.find((d) => d.name === packageType)
     const contentDir = match ? match.dir : null
 
     if (contentDir) {
       info(`Applying ${metadata.name} content...`)
-      await applyContent(contentDir, targetDir, {
-        projectName,
-        versions: getVersionsForTemplates(),
-      }, {
-        onProgress: (msg) => info(`  ${msg}`),
-        renames: match.renames,
-      })
+      await applyContent(
+        contentDir,
+        targetDir,
+        {
+          projectName,
+          versions: getVersionsForTemplates()
+        },
+        {
+          onProgress: (msg) => info(`  ${msg}`),
+          renames: match.renames
+        }
+      )
 
       // Merge template dependencies
       if (metadata.dependencies) {
-        const deps = metadata.dependencies[packageType] || metadata.dependencies[match?.name]
+        const deps =
+          metadata.dependencies[packageType] ||
+          metadata.dependencies[match?.name]
         if (deps) {
           await mergeTemplateDependencies(join(targetDir, 'package.json'), deps)
         }
@@ -804,11 +1008,15 @@ async function applyFromTemplate(templateId, packageType, targetDir, projectName
       // If site content applied, inform about expected section types
       if (packageType === 'site' && metadata.components) {
         log('')
-        info(`This template expects section types: ${metadata.components.join(', ')}`)
+        info(
+          `This template expects section types: ${metadata.components.join(', ')}`
+        )
         info(`Make sure your foundation provides them.`)
       }
     } else {
-      info(`Template '${metadata.name}' has no ${packageType} content to apply.`)
+      info(
+        `Template '${metadata.name}' has no ${packageType} content to apply.`
+      )
     }
   } finally {
     if (resolved.cleanup) await resolved.cleanup()
@@ -818,10 +1026,15 @@ async function applyFromTemplate(templateId, packageType, targetDir, projectName
 /**
  * Wire an extension URL to a site's site.yml
  */
-async function wireExtensionToSite(rootDir, siteName, extensionName, extensionPath) {
+async function wireExtensionToSite(
+  rootDir,
+  siteName,
+  extensionName,
+  extensionPath
+) {
   // Find the site directory
   const sites = await discoverSites(rootDir)
-  const site = sites.find(s => s.name === siteName)
+  const site = sites.find((s) => s.name === siteName)
   if (!site) {
     info(`Could not find site '${siteName}' to wire extension.`)
     return null
@@ -846,7 +1059,10 @@ async function wireExtensionToSite(rootDir, siteName, extensionName, extensionPa
       config.extensions.push(extensionUrl)
     }
 
-    await writeFile(siteYmlPath, yaml.dump(config, { flowLevel: -1, quotingType: "'" }))
+    await writeFile(
+      siteYmlPath,
+      yaml.dump(config, { flowLevel: -1, quotingType: "'" })
+    )
     return siteName
   } catch (err) {
     info(`Warning: Could not update site.yml: ${err.message}`)
@@ -869,23 +1085,30 @@ async function addSection(rootDir, opts) {
       process.exit(1)
     }
 
-    const response = await prompts({
-      type: 'text',
-      name: 'name',
-      message: 'Section name (PascalCase):',
-      validate: (value) => /^[A-Z][a-zA-Z0-9]*$/.test(value) || 'Use PascalCase: Hero, FeatureGrid, CallToAction',
-    }, {
-      onCancel: () => {
-        log('\nCancelled.')
-        process.exit(0)
+    const response = await prompts(
+      {
+        type: 'text',
+        name: 'name',
+        message: 'Section name (PascalCase):',
+        validate: (value) =>
+          /^[A-Z][a-zA-Z0-9]*$/.test(value) ||
+          'Use PascalCase: Hero, FeatureGrid, CallToAction'
       },
-    })
+      {
+        onCancel: () => {
+          log('\nCancelled.')
+          process.exit(0)
+        }
+      }
+    )
     name = response.name
   }
 
   // Validate PascalCase
   if (!/^[A-Z][a-zA-Z0-9]*$/.test(name)) {
-    error(`Section name must be PascalCase (e.g., Hero, FeatureGrid, CallToAction).`)
+    error(
+      `Section name must be PascalCase (e.g., Hero, FeatureGrid, CallToAction).`
+    )
     process.exit(1)
   }
 
@@ -900,30 +1123,41 @@ async function addSection(rootDir, opts) {
   } else if (foundations.length === 1) {
     foundation = foundations[0]
   } else if (opts.foundation) {
-    foundation = foundations.find(f => f.name === opts.foundation)
+    foundation = foundations.find((f) => f.name === opts.foundation)
     if (!foundation) {
       error(`Foundation '${opts.foundation}' not found.`)
-      log(`Available: ${foundations.map(f => f.name).join(', ')}`)
+      log(`Available: ${foundations.map((f) => f.name).join(', ')}`)
       process.exit(1)
     }
   } else if (isNonInteractive(process.argv)) {
     error(`Multiple foundations found. Specify which to use:\n`)
-    log(formatOptions(foundations.map(f => ({ label: f.name, description: f.path }))))
+    log(
+      formatOptions(
+        foundations.map((f) => ({ label: f.name, description: f.path }))
+      )
+    )
     log('')
     log(`Usage: ${getCliPrefix()} add section ${name} --foundation <name>`)
     process.exit(1)
   } else {
-    const response = await prompts({
-      type: 'select',
-      name: 'foundation',
-      message: 'Which foundation?',
-      choices: foundations.map(f => ({ title: f.name, description: f.path, value: f })),
-    }, {
-      onCancel: () => {
-        log('\nCancelled.')
-        process.exit(0)
+    const response = await prompts(
+      {
+        type: 'select',
+        name: 'foundation',
+        message: 'Which foundation?',
+        choices: foundations.map((f) => ({
+          title: f.name,
+          description: f.path,
+          value: f
+        }))
       },
-    })
+      {
+        onCancel: () => {
+          log('\nCancelled.')
+          process.exit(0)
+        }
+      }
+    )
     foundation = response.foundation
   }
 
@@ -936,7 +1170,9 @@ async function addSection(rootDir, opts) {
   const relSectionPath = relative(foundationDir, sectionDir)
 
   if (existsSync(sectionDir)) {
-    error(`Section '${name}' already exists at ${foundation.path}/${relSectionPath}/`)
+    error(
+      `Section '${name}' already exists at ${foundation.path}/${relSectionPath}/`
+    )
     process.exit(1)
   }
 
@@ -982,11 +1218,17 @@ export default function ${name}({ content, params }) {
   await writeFile(join(sectionDir, 'meta.js'), metaContent)
 
   success(`Created section '${name}' at ${foundation.path}/${relSectionPath}/`)
-  log(`  ${colors.dim}index.jsx${colors.reset}  — component (customize the JSX)`)
-  log(`  ${colors.dim}meta.js${colors.reset}    — metadata (add content expectations, params, presets)`)
+  log(
+    `  ${colors.dim}index.jsx${colors.reset}  — component (customize the JSX)`
+  )
+  log(
+    `  ${colors.dim}meta.js${colors.reset}    — metadata (add content expectations, params, presets)`
+  )
   if (foundations.length === 1) {
     log('')
-    log(`${colors.dim}The dev server will pick it up automatically.${colors.reset}`)
+    log(
+      `${colors.dim}The dev server will pick it up automatically.${colors.reset}`
+    )
   }
 }
 
@@ -1006,7 +1248,7 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   // every add invocation.
   let getAdapter, listAdapters
   try {
-    ({ getAdapter, listAdapters } = await import('@uniweb/build/hosts'))
+    ;({ getAdapter, listAdapters } = await import('@uniweb/build/hosts'))
   } catch {
     error('Failed to load host adapter registry from @uniweb/build/hosts.')
     process.exit(1)
@@ -1026,9 +1268,11 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   // capability, never a hardcoded list — an adapter that grows an initCi
   // shows up here with no edit to this file.
   const ciHosts = listAdapters()
-    .map(name => getAdapter(name))
-    .filter(a => typeof a.initCi === 'function')
-    .filter(a => (target === 'foundation' ? a.display?.foundationCi === true : true))
+    .map((name) => getAdapter(name))
+    .filter((a) => typeof a.initCi === 'function')
+    .filter((a) =>
+      target === 'foundation' ? a.display?.foundationCi === true : true
+    )
     .sort((a, b) => (a.display?.order ?? 999) - (b.display?.order ?? 999))
 
   if (ciHosts.length === 0) {
@@ -1042,24 +1286,30 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
       host = ciHosts[0].name
     } else if (isNonInteractive(process.argv)) {
       error('`uniweb add ci` needs a host.')
-      log(`Available: ${ciHosts.map(a => a.name).join(', ')}`)
+      log(`Available: ${ciHosts.map((a) => a.name).join(', ')}`)
       process.exit(1)
     } else {
-      const choice = await prompts({
-        type: 'select',
-        name: 'host',
-        message: 'Which host should the workflow deploy to?',
-        choices: ciHosts.map(a => ({
-          title: `${a.display?.title || a.name} · ${a.display?.qualifier || ''}`.trim().replace(/ ·\s*$/, ''),
-          description: a.display?.summary,
-          value: a.name,
-        })),
-      }, {
-        onCancel: () => {
-          log('\nCancelled.')
-          process.exit(0)
+      const choice = await prompts(
+        {
+          type: 'select',
+          name: 'host',
+          message: 'Which host should the workflow deploy to?',
+          choices: ciHosts.map((a) => ({
+            title:
+              `${a.display?.title || a.name} · ${a.display?.qualifier || ''}`
+                .trim()
+                .replace(/ ·\s*$/, ''),
+            description: a.display?.summary,
+            value: a.name
+          }))
         },
-      })
+        {
+          onCancel: () => {
+            log('\nCancelled.')
+            process.exit(0)
+          }
+        }
+      )
       host = choice.host
     }
   }
@@ -1074,8 +1324,10 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
 
   if (typeof adapter.initCi !== 'function') {
     error(`Host '${host}' does not provide a CI workflow.`)
-    log(`Hosts that do: ${ciHosts.map(a => a.name).join(', ')}`)
-    log(`Others are dashboard-driven — connect the repo in the host's UI instead.`)
+    log(`Hosts that do: ${ciHosts.map((a) => a.name).join(', ')}`)
+    log(
+      `Others are dashboard-driven — connect the repo in the host's UI instead.`
+    )
     process.exit(1)
   }
 
@@ -1084,7 +1336,7 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   // scaffold a SITE workflow — the wrong artifact, with no error.
   if (target === 'foundation' && adapter.display?.foundationCi !== true) {
     error(`Host '${host}' cannot publish a foundation.`)
-    log(`Hosts that can: ${ciHosts.map(a => a.name).join(', ')}`)
+    log(`Hosts that can: ${ciHosts.map((a) => a.name).join(', ')}`)
     log('')
     log('Foundation publishing needs permanent versioned URLs, which the')
     log('gh-pages branch layout provides. Other hosts overwrite on deploy.')
@@ -1100,7 +1352,9 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   // it (writes a CNAME, switches UNIWEB_BASE to root).
   if (opts.domain && !isLikelyDomain(opts.domain)) {
     error(`Invalid --domain value: '${opts.domain}'`)
-    log(`Expected a bare hostname (e.g., 'mysite.com' or 'docs.mysite.com'). No scheme, no path.`)
+    log(
+      `Expected a bare hostname (e.g., 'mysite.com' or 'docs.mysite.com'). No scheme, no path.`
+    )
     process.exit(1)
   }
 
@@ -1114,37 +1368,46 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   // Resolve site: --site flag, single site auto, prompt, or error.
   const sites = await discoverSites(rootDir)
   if (sites.length === 0) {
-    error('No site found in this workspace. Add one with `uniweb add site` first.')
+    error(
+      'No site found in this workspace. Add one with `uniweb add site` first.'
+    )
     process.exit(1)
   }
 
   let site
   if (opts.site) {
-    site = sites.find(s => s.name === opts.site)
+    site = sites.find((s) => s.name === opts.site)
     if (!site) {
       error(`Site '${opts.site}' not found.`)
-      log(`Available sites: ${sites.map(s => s.name).join(', ')}`)
+      log(`Available sites: ${sites.map((s) => s.name).join(', ')}`)
       process.exit(1)
     }
   } else if (sites.length === 1) {
     site = sites[0]
   } else if (isNonInteractive(process.argv)) {
     error(`Multiple sites in workspace. Specify --site <name>.`)
-    log(`Available sites: ${sites.map(s => s.name).join(', ')}`)
+    log(`Available sites: ${sites.map((s) => s.name).join(', ')}`)
     process.exit(1)
   } else {
     const sortedSites = [...sites].sort((a, b) => a.name.localeCompare(b.name))
-    const response = await prompts({
-      type: 'select',
-      name: 'site',
-      message: 'Which site should the workflow build?',
-      choices: sortedSites.map(s => ({ title: s.name, description: s.path, value: s })),
-    }, {
-      onCancel: () => {
-        log('\nCancelled.')
-        process.exit(0)
+    const response = await prompts(
+      {
+        type: 'select',
+        name: 'site',
+        message: 'Which site should the workflow build?',
+        choices: sortedSites.map((s) => ({
+          title: s.name,
+          description: s.path,
+          value: s
+        }))
       },
-    })
+      {
+        onCancel: () => {
+          log('\nCancelled.')
+          process.exit(0)
+        }
+      }
+    )
     site = response.site
   }
 
@@ -1158,10 +1421,20 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   // project's floor, raised if that pnpm needs more.
   const installedPnpm = detectInstalledPnpmVersion(rootDir)
   const pnpmVersion = resolveCiPnpmVersion(rootPkg, installedPnpm)
-  const nodeVersion = resolveCiNodeVersion(rootPkg.engines?.node, pm, pnpmVersion)
+  const nodeVersion = resolveCiNodeVersion(
+    rootPkg.engines?.node,
+    pm,
+    pnpmVersion
+  )
   reportCiToolchain({
-    pm, pnpmVersion, nodeVersion,
-    source: rootPkg?.packageManager ? 'declared' : installedPnpm ? 'installed' : 'fallback',
+    pm,
+    pnpmVersion,
+    nodeVersion,
+    source: rootPkg?.packageManager
+      ? 'declared'
+      : installedPnpm
+        ? 'installed'
+        : 'fallback'
   })
 
   const siteDir = join(rootDir, site.path)
@@ -1187,7 +1460,13 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
     pnpmVersion,
     domain: resolvedDomain,
     previews: opts.previews !== false,
-    projectName: resolveHostProjectName(rootDir, rootPkg, site, sites.length, opts),
+    projectName: resolveHostProjectName(
+      rootDir,
+      rootPkg,
+      site,
+      sites.length,
+      opts
+    )
   })
 
   await writeCiFiles(rootDir, result.files, opts.force)
@@ -1206,7 +1485,7 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
       const { recordTarget } = await import('@uniweb/build/site')
       const writeResult = await recordTarget(siteDir, {
         targetName: host,
-        targetConfig: result.targetConfig,
+        targetConfig: result.targetConfig
       })
       success(
         writeResult.action === 'scaffold'
@@ -1252,7 +1531,12 @@ const GENERIC_SITE_NAMES = new Set(['site', 'sites', 'www', 'web', 'app'])
  * Prefer a meaningful package/directory name; fall back to the workspace
  * name; disambiguate only when several foundations would collide.
  */
-const GENERIC_FOUNDATION_NAMES = new Set(['src', 'foundation', 'foundations', 'lib'])
+const GENERIC_FOUNDATION_NAMES = new Set([
+  'src',
+  'foundation',
+  'foundations',
+  'lib'
+])
 
 function resolveFoundationPublicNames(rootDir, rootPkg, foundations) {
   const workspaceName = stripScope(rootPkg?.name) || basename(rootDir)
@@ -1302,14 +1586,17 @@ function reportCiToolchain({ pm, pnpmVersion, nodeVersion, source }) {
     info(`CI will use ${pm} + Node ${nodeVersion}`)
     return
   }
-  const origin = {
-    declared: '',
-    installed: ' (matching your install)',
-    fallback: ' (no pnpm detected — using the default)',
-  }[source] ?? ''
+  const origin =
+    {
+      declared: '',
+      installed: ' (matching your install)',
+      fallback: ' (no pnpm detected — using the default)'
+    }[source] ?? ''
   info(`CI will use pnpm ${pnpmVersion} + Node ${nodeVersion}${origin}`)
   if (source === 'fallback') {
-    info(`Pin with "packageManager": "pnpm@<version>" in package.json to choose a major.`)
+    info(
+      `Pin with "packageManager": "pnpm@<version>" in package.json to choose a major.`
+    )
   }
 }
 
@@ -1356,10 +1643,12 @@ async function addFoundationCi(rootDir, opts, adapter, pm) {
   // its own versioned directory, so there's no collision).
   let foundations = all
   if (opts.foundation) {
-    const match = all.find(f => f.name === opts.foundation || basename(f.path) === opts.foundation)
+    const match = all.find(
+      (f) => f.name === opts.foundation || basename(f.path) === opts.foundation
+    )
     if (!match) {
       error(`Foundation '${opts.foundation}' not found.`)
-      log(`Available: ${all.map(f => f.name).join(', ')}`)
+      log(`Available: ${all.map((f) => f.name).join(', ')}`)
       process.exit(1)
     }
     foundations = [match]
@@ -1373,10 +1662,20 @@ async function addFoundationCi(rootDir, opts, adapter, pm) {
   // project's floor, raised if that pnpm needs more.
   const installedPnpm = detectInstalledPnpmVersion(rootDir)
   const pnpmVersion = resolveCiPnpmVersion(rootPkg, installedPnpm)
-  const nodeVersion = resolveCiNodeVersion(rootPkg.engines?.node, pm, pnpmVersion)
+  const nodeVersion = resolveCiNodeVersion(
+    rootPkg.engines?.node,
+    pm,
+    pnpmVersion
+  )
   reportCiToolchain({
-    pm, pnpmVersion, nodeVersion,
-    source: rootPkg?.packageManager ? 'declared' : installedPnpm ? 'installed' : 'fallback',
+    pm,
+    pnpmVersion,
+    nodeVersion,
+    source: rootPkg?.packageManager
+      ? 'declared'
+      : installedPnpm
+        ? 'installed'
+        : 'fallback'
   })
 
   let result
@@ -1387,7 +1686,7 @@ async function addFoundationCi(rootDir, opts, adapter, pm) {
       target: 'foundation',
       packageManager: pm,
       nodeVersion,
-      pnpmVersion,
+      pnpmVersion
     })
   } catch (err) {
     error(err.message)
@@ -1406,11 +1705,14 @@ async function addFoundationCi(rootDir, opts, adapter, pm) {
 }
 
 function isLikelyDomain(value) {
-  if (typeof value !== 'string' || value.length === 0 || value.length > 253) return false
+  if (typeof value !== 'string' || value.length === 0 || value.length > 253)
+    return false
   // Reject schemes, paths, ports, whitespace, leading/trailing dots/hyphens.
   // Each label is 1–63 chars of [a-z0-9-], no leading/trailing hyphen.
   // The TLD must be at least 2 characters of letters.
-  return /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i.test(value)
+  return /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i.test(
+    value
+  )
 }
 
 function parseNodeMajor(engines) {
