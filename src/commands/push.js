@@ -66,6 +66,7 @@ import {
   readItemUuids,
   ensureItemUuids,
   ensureSiteExists,
+  clearRemoteSyncStateIfUnbound,
   pushSyncPackages
 } from '../backend/site-sync.js'
 
@@ -215,6 +216,12 @@ export async function push(args = []) {
       // The site has to exist before its bytes do — an upload with no owning
       // entity is charged and cannot be freed, because freeing means deleting the
       // owner. A no-op once `$uuid` is set, so only a never-synced site pays.
+      const dropped = clearRemoteSyncStateIfUnbound(siteDir)
+      if (dropped.length) {
+        note(
+          `Cleared stale sync state from a previous site (${dropped.join(', ')}).`
+        )
+      }
       const site = await ensureSiteExists({ client, siteDir, asOrg, note })
       if (!site.uuid) {
         error(`Could not create the site on the backend: ${site.reason}`)

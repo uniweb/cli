@@ -10,6 +10,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   mkdtempSync,
+  mkdirSync,
   writeFileSync,
   readFileSync,
   existsSync,
@@ -21,6 +22,7 @@ import {
   extractFinalized,
   pushSyncPackages,
   ensureSiteExists,
+  clearRemoteSyncStateIfUnbound,
   readBaseVersions,
   readSyncCache,
   writeUnitBases
@@ -753,4 +755,87 @@ test('ensureSiteExists names the missing site.yml key instead of letting the cre
   writeFileSync(join(dir2, 'site.yml'), 'name: Acme\n')
   const res2 = await ensureSiteExists({ client, siteDir: dir2 })
   assert.match(res2.reason, /missing foundation/)
+})
+
+// ─── clearRemoteSyncStateIfUnbound ───────────────────────────────────────────
+// `.uniweb/sync-cache.json` keys every map by UNIT PATH (`site.yml`,
+// `pages/about/about.md`) — the same string for every site — so it does not
+// self-invalidate when the clone stops being bound to the site it describes.
+// That is a state we actively tell people to enter: the 404 guidance says to
+// clear `$uuid` to re-publish as a new site.
+
+const cachePath = (dir) => join(dir, '.uniweb', 'sync-cache.json')
+const writeCache = (dir, obj) => {
+  mkdirSync(join(dir, '.uniweb'), { recursive: true })
+  writeFileSync(cachePath(dir), JSON.stringify({ version: 1, ...obj }))
+}
+const readCache = (dir) => JSON.parse(readFileSync(cachePath(dir), 'utf8'))
+
+test('an UNBOUND clone drops every map that describes a backend site', () => {
+  const dir = tmpSite() // no $uuid
+  writeCache(dir, {
+    itemUuids: { 'site.yml': 'OLD-1' },
+    hashes: { 'x y': 'h' },
+    baseVersions: { OLD: 'v' },
+    unitBases: { 'a.md': 'h' }
+  })
+  const dropped = clearRemoteSyncStateIfUnbound(dir)
+  assert.deepEqual(dropped.sort(), [
+    'baseVersions',
+    'hashes',
+    'itemUuids',
+    'unitBases'
+  ])
+  const c = readCache(dir)
+  // itemUuids: the backend refuses outright — "item uuid … is already stored on
+  // entity N; cross-entity move is not supported".
+  assert.deepEqual(c.itemUuids, {})
+  // hashes is the SILENT one: send-only-changed would skip every entity that had
+  // not changed since the old site's last push, so the new site would come up
+  // missing exactly the content that did not change — and publish successfully.
+  assert.deepEqual(c.hashes, {})
+  assert.deepEqual(c.baseVersions, {})
+  assert.deepEqual(c.unitBases, {})
+})
+
+test('a clone bound to the SAME site keeps its cache and gets stamped', () => {
+  const dir = tmpSite()
+  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-A\n')
+  writeCache(dir, { siteUuid: 'SITE-A', itemUuids: { 'site.yml': 'I1' } })
+  assert.deepEqual(clearRemoteSyncStateIfUnbound(dir), [])
+  assert.deepEqual(readCache(dir).itemUuids, { 'site.yml': 'I1' })
+})
+
+test('a clone bound to a DIFFERENT site than the cache describes is cleared', () => {
+  // Reachable in one step before the stamp existed: the create mints a uuid and
+  // writes it BEFORE the push, so a push that then fails leaves exactly this.
+  const dir = tmpSite()
+  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-NEW\n')
+  writeCache(dir, { siteUuid: 'SITE-OLD', itemUuids: { 'site.yml': 'I1' } })
+  assert.deepEqual(clearRemoteSyncStateIfUnbound(dir), ['itemUuids'])
+  const c = readCache(dir)
+  assert.deepEqual(c.itemUuids, {})
+  assert.equal(c.siteUuid, 'SITE-NEW')
+})
+
+test('a legacy cache with no siteUuid on a bound clone is LEFT ALONE', () => {
+  // Deliberate: that is every pre-existing clone, and assuming it matches is
+  // right far more often than wiping it would be. The cost is that a clone
+  // already broken before the stamp existed stays broken until `.uniweb/` is
+  // removed — an accepted trade, recorded so it is not read as an oversight.
+  const dir = tmpSite()
+  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-A\n')
+  writeCache(dir, { itemUuids: { 'site.yml': 'I1' } })
+  assert.deepEqual(clearRemoteSyncStateIfUnbound(dir), [])
+  assert.deepEqual(readCache(dir).itemUuids, { 'site.yml': 'I1' })
+  // ...but it IS stamped now, so a later divergence becomes detectable.
+  assert.equal(readCache(dir).siteUuid, 'SITE-A')
+})
+
+test('an empty cache is a no-op, and still records identity', () => {
+  const dir = tmpSite()
+  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-A\n')
+  writeCache(dir, {})
+  assert.deepEqual(clearRemoteSyncStateIfUnbound(dir), [])
+  assert.equal(readCache(dir).siteUuid, 'SITE-A')
 })

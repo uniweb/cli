@@ -63,6 +63,7 @@ import {
   readItemBaseVersions,
   ensureItemUuids,
   ensureSiteExists,
+  clearRemoteSyncStateIfUnbound,
   pushSyncPackages
 } from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
@@ -335,6 +336,17 @@ export async function publish(args = []) {
   }
   const schemalessNames = (probe.schemaless || []).map((col) => col.name)
   const localAssets = probe.localAssets || []
+
+  // 3a. A clone with no `$uuid` is bound to no backend site, so every cached map
+  //     that describes one is stale — including after the documented "clear
+  //     `$uuid` to re-publish as a new site" recovery. Must run BEFORE the create,
+  //     which mints a uuid and would make the clone look bound.
+  const droppedState = clearRemoteSyncStateIfUnbound(siteDir)
+  if (droppedState.length) {
+    say.dim(
+      `Cleared stale sync state from a previous site (${droppedState.join(', ')}).`
+    )
+  }
 
   // 3b. Make sure the SITE EXISTS before a single byte is uploaded.
   //

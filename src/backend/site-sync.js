@@ -189,6 +189,91 @@ const readMap = (siteDir, key) => {
   return v && typeof v === 'object' ? v : {}
 }
 
+/**
+ * Drop every cache map that describes a BACKEND site, when this clone is bound to
+ * none. Returns the names dropped (empty when there was nothing to do).
+ *
+ * `.uniweb/sync-cache.json` holds four maps keyed by *unit path* — item uuids,
+ * content hashes, entity base versions, unit bases — and a unit path (`site.yml`,
+ * `pages/about/about.md`) is the same string for every site. So the cache does not
+ * self-invalidate when `site.yml::$uuid` goes away: it keeps describing the site
+ * this folder used to be.
+ *
+ * Which is a state we ACTIVELY TELL PEOPLE TO ENTER. The 404 guidance on a
+ * uuid-bound lane says to clear `$uuid` to re-publish as a new site — the documented
+ * recovery after a site is deleted in the app. Following it left the stale maps in
+ * place, and the next publish failed two ways:
+ *
+ *   - **item uuids** — the new site's document carried the OLD site's item
+ *     identities, and the backend correctly refused: *"item uuid … is already
+ *     stored on entity 156 — item uuids are globally unique; cross-entity move is
+ *     not supported"*. A raw 400 for following our own advice.
+ *   - **content hashes** — worse, because it is silent. Send-only-changed would
+ *     skip every entity whose content had not changed since the OLD site's last
+ *     push, so the NEW site would come up **missing exactly the content that did
+ *     not change** — a partial site, published successfully, with nothing to
+ *     indicate it.
+ *
+ * Call this BEFORE `ensureSiteExists`, which mints a uuid and would otherwise make
+ * the clone look bound before the check runs.
+ */
+export function clearRemoteSyncStateIfUnbound(siteDir) {
+  let current = null
+  try {
+    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
+    if (typeof y?.$uuid === 'string') current = y.$uuid
+  } catch {
+    /* unreadable site.yml — treat as unbound and clear, which is the safe side */
+  }
+
+  const prior = readSyncCacheFile(siteDir)
+  const REMOTE_MAPS = ['itemUuids', 'hashes', 'baseVersions', 'unitBases']
+  const populated = REMOTE_MAPS.filter(
+    (k) => prior[k] && Object.keys(prior[k]).length
+  )
+  if (!populated.length) {
+    // Nothing to invalidate, but still stamp identity so a LATER divergence is
+    // detectable. A cache that never records its site can only be checked by the
+    // unbound rule, which misses the bound-but-wrong case below.
+    if (current && prior.siteUuid !== current) {
+      updateSyncCache(siteDir, { siteUuid: current })
+    }
+    return []
+  }
+
+  // Two ways the cache can describe a site this clone is not working with:
+  //
+  //   1. UNBOUND — no `$uuid` at all, so there is no backend site for any of it to
+  //      be about. This is the state the documented "clear `$uuid` to re-publish as
+  //      a new site" recovery puts you in.
+  //   2. BOUND TO A DIFFERENT SITE — `$uuid` names one site and the cache was
+  //      written for another. Reachable in one step: the create mints a uuid and
+  //      writes it BEFORE the push, so a push that then fails leaves exactly this.
+  //      Without the identity stamp it is invisible, and every later publish fails
+  //      the same way with no path out but deleting `.uniweb/` by hand.
+  //
+  // A cache with NO `siteUuid` and a bound site is left alone: that is every
+  // pre-existing clone, and assuming it matches is right far more often than
+  // wiping it would be.
+  const stale =
+    !current || (prior.siteUuid && prior.siteUuid !== current) ? populated : []
+  if (!stale.length) {
+    if (current && prior.siteUuid !== current) {
+      updateSyncCache(siteDir, { siteUuid: current })
+    }
+    return []
+  }
+
+  updateSyncCache(siteDir, {
+    itemUuids: {},
+    hashes: {},
+    baseVersions: {},
+    unitBases: {},
+    ...(current ? { siteUuid: current } : { siteUuid: null })
+  })
+  return stale
+}
+
 export function readSyncCache(siteDir) {
   return readMap(siteDir, 'hashes')
 }
@@ -380,6 +465,10 @@ export async function ensureSiteExists({
     }
   }
   writeSiteEntityUuid(siteDir, minted)
+  // Stamp the cache with the site it now describes, so a push that fails after
+  // this point cannot leave a cache pointing at a different site with no way to
+  // detect it.
+  updateSyncCache(siteDir, { siteUuid: minted })
   note?.(`Created the site on the backend (recorded $uuid in site.yml).`)
   return { uuid: minted, created: true }
 }
@@ -702,6 +791,7 @@ export async function pushSyncPackages({
         return { exitCode: 1, finalizedTotal, wrote }
       }
       writeSiteEntityUuid(siteDir, minted)
+      updateSyncCache(siteDir, { siteUuid: minted })
       boundSiteUuid = minted
       wrote.push('recorded site $uuid in site.yml')
       const createdFinalized = extractFinalized(payload)
