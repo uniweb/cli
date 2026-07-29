@@ -332,11 +332,27 @@ export async function ensureSiteExists({
     return { uuid: siteYml.$uuid, created: false }
   }
 
+  // Both are required by the create. Catching it here turns a 400 into a sentence
+  // naming the file and the key — the difference between "fix this line of
+  // site.yml" and reading a status code.
+  const siteName = name ?? siteYml.name
+  const siteFoundation = foundation ?? siteYml.foundation
+  const missing = [!siteName && 'name', !siteFoundation && 'foundation'].filter(
+    Boolean
+  )
+  if (missing.length) {
+    return {
+      uuid: null,
+      created: false,
+      reason: `site.yml is missing ${missing.join(' and ')} — the backend requires ${missing.length > 1 ? 'them' : 'it'} to create a site`
+    }
+  }
+
   let res
   try {
     res = await client.createSite({
-      name: name ?? siteYml.name,
-      foundation: foundation ?? siteYml.foundation,
+      name: siteName,
+      foundation: siteFoundation,
       asOrg
     })
   } catch (err) {

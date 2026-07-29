@@ -349,21 +349,27 @@ export class BackendClient {
    * empty site instead of unfreeable bytes.
    *
    * A thin re-projection of the same op the app's blank-site create uses, so the
-   * two lanes cannot drift. `foundation` is adopted best-effort — an unreleased
-   * ref just leaves it null and the site still exists.
+   * two lanes cannot drift. Adoption of `foundation` is best-effort — an
+   * unreleased ref leaves the resolved ref null and the site still exists — but
+   * the field itself is required and cannot be blank.
    *
-   * @param {{ name?: string, foundation?: string|null, asOrg?: string|null }} opts
+   * NOT idempotent: two calls mint two sites (a name is not a unique key, by
+   * design). Callers must guard on `site.yml::$uuid` and write the result back
+   * immediately — see `ensureSiteExists`.
+   *
+   * @param {{ name: string, foundation: string, asOrg?: string|null }} opts
    * @returns {Promise<Response>} `{ site_content_uuid }`
    */
   async createSite({ name, foundation, asOrg } = {}) {
     return this.request('/dev/site', {
       method: 'POST',
-      body: JSON.stringify({
-        ...(name ? { name } : {}),
-        // Omit rather than send an unpinned ref: delivery is version-pinned, so a
-        // bare `@org/name` is not a thing the backend can adopt.
-        ...(foundation && /@[^@]+@/.test(foundation) ? { foundation } : {})
-      }),
+      // Both fields are REQUIRED: `info.name` is `required: true` on the model
+      // (and is a plain string — an identity label, never a `{lang: …}` map, since
+      // a localized value can vanish under locale projection and a name must always
+      // render), and a site must resolve to a foundation. Adoption of the ref is
+      // best-effort on the backend, but the field itself cannot be blank — so send
+      // whatever the site declares and let the backend judge it.
+      body: JSON.stringify({ name, foundation }),
       query: { as_org: asOrg }
     })
   }

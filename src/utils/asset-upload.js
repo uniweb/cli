@@ -120,13 +120,18 @@ export async function uploadSiteAssets({
       Authorization: `Bearer ${token}`
     },
     body: JSON.stringify({
-      // The owner these bytes are charged to. Storage is metered per
-      // (workspace, asset) and freed by deleting the owning entity, so an upload
-      // with no owner is charged and can never be reclaimed — there is nothing to
-      // delete. Callers create the site first precisely so this is never null;
-      // it stays optional only so a backend that predates the owner field, or a
-      // caller that genuinely has no site yet, still works.
-      ...(siteUuid ? { site: siteUuid } : {}),
+      // The owner these bytes are charged to. Storage is metered against the
+      // owning entity and reclaimed by deleting it, so an upload with no owner is
+      // charged and can never be freed — there is nothing to delete. Callers
+      // create the site first precisely so this is never null; it stays optional
+      // only so a backend predating the field still works.
+      //
+      // The wire key is `entity`, not `site`, and deliberately so: it names the
+      // entity the upload is FOR. On this lane that is always the site-content
+      // entity — hence the local `siteUuid`, which is the more informative name
+      // here — but the visual app sends an article on the same route. A field
+      // called `site` would be a lie for half its callers.
+      ...(siteUuid ? { entity: siteUuid } : {}),
       files: list.map(({ path, content_type, size, sha256 }) => ({
         path,
         content_type,

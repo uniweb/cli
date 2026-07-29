@@ -194,6 +194,7 @@ test('describeAssetRefusal reports a storage refusal with its numbers', () => {
   })
   const out = describeAssetRefusal(err)
   assert.match(out.headline, /Storage quota reached/)
+  assert.match(out.headline, /site owner's workspace/)
   const body = out.notes.join('\n')
   assert.match(body, /Used: 5 GiB/)
   assert.match(body, /Limit: 5 GiB/)
@@ -218,6 +219,9 @@ test('a storage refusal never advises removing an image, and never sizes itself 
   // Rule 1 — needed_bytes can be non-zero with ZERO transfers, so the message must
   // not describe "the files being uploaded".
   assert.ok(!/files being uploaded/.test(body))
+  // Rule 3 — the allowance is the site OWNER's; "your storage" misdirects every
+  // contributor who is not the owner.
+  assert.ok(!/your storage/.test(body))
   assert.ok(!/bytes uploaded/.test(body))
 })
 

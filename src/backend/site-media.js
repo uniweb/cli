@@ -158,17 +158,23 @@ export function describeAssetRefusal(err) {
       // Rule 1: this is what the workspace must take on, not what would transfer.
       pushBytes(notes, 'This publish adds', p.needed_bytes)
       notes.push(
-        "Assets already on this workspace's books cost nothing to re-present,"
+        'Assets already on its books cost nothing to re-present, so a change'
       )
-      notes.push('so a change that touches only content is never refused here.')
+      notes.push('that touches only content is never refused here.')
       // Rule 2.
       notes.push(
         'Quota is returned by deleting the site or entity an asset was uploaded'
       )
       notes.push('for — removing an image from content does not free it.')
+      // Rule 3: the allowance belongs to whoever OWNS the site, not to whoever is
+      // pushing — an asset is charged to the workspace of the entity it is for, so
+      // a push to an org site spends the org's allowance whatever context the
+      // pusher acts in. "Your storage" would be wrong for every contributor who is
+      // not the owner, and wrong in the direction that sends them looking through
+      // their own files for space that was never theirs.
       return {
         headline:
-          'Storage quota reached — this workspace cannot take on more assets.',
+          "Storage quota reached — the site owner's workspace cannot take on more assets.",
         notes
       }
     }

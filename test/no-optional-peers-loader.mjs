@@ -18,14 +18,14 @@
 const OPTIONAL_PEERS = [
   '@uniweb/build',
   '@uniweb/content-reader',
-  '@uniweb/semantic-parser',
+  '@uniweb/semantic-parser'
 ]
 
 export function resolve(specifier, context, nextResolve) {
   for (const peer of OPTIONAL_PEERS) {
     if (specifier === peer || specifier.startsWith(peer + '/')) {
       const err = new Error(
-        `Cannot find package '${specifier}' (smoke-test stub: optional peer must not be reached during CLI startup)`,
+        `Cannot find package '${specifier}' (smoke-test stub: optional peer must not be reached during CLI startup)`
       )
       err.code = 'ERR_MODULE_NOT_FOUND'
       throw err

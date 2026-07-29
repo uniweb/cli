@@ -28,10 +28,7 @@
     "@uniweb/core": {
       "version": "0.7.34",
       "path": "framework/core",
-      "deps": [
-        "@uniweb/semantic-parser",
-        "@uniweb/theming"
-      ]
+      "deps": ["@uniweb/semantic-parser", "@uniweb/theming"]
     },
     "@uniweb/frame-bridge": {
       "version": "0.2.3",
@@ -46,10 +43,7 @@
     "@uniweb/kit": {
       "version": "0.9.46",
       "path": "framework/kit",
-      "deps": [
-        "@uniweb/core",
-        "@uniweb/scene"
-      ]
+      "deps": ["@uniweb/core", "@uniweb/scene"]
     },
     "@uniweb/loom": {
       "version": "0.2.3",
@@ -64,18 +58,12 @@
     "@uniweb/projections": {
       "version": "0.1.6",
       "path": "framework/projections",
-      "deps": [
-        "@uniweb/content-writer",
-        "@uniweb/core"
-      ]
+      "deps": ["@uniweb/content-writer", "@uniweb/core"]
     },
     "@uniweb/runtime": {
       "version": "0.8.42",
       "path": "framework/runtime",
-      "deps": [
-        "@uniweb/core",
-        "@uniweb/theming"
-      ]
+      "deps": ["@uniweb/core", "@uniweb/theming"]
     },
     "@uniweb/scene": {
       "version": "0.1.2",
@@ -123,40 +111,22 @@
     "marketing": {
       "name": "Marketing",
       "description": "Landing pages and marketing sites with Tailwind CSS v4",
-      "tags": [
-        "marketing",
-        "landing-page",
-        "tailwind"
-      ]
+      "tags": ["marketing", "landing-page", "tailwind"]
     },
     "academic": {
       "name": "Academic",
       "description": "Academic sites for researchers, labs, and departments",
-      "tags": [
-        "academic",
-        "research",
-        "portfolio"
-      ]
+      "tags": ["academic", "research", "portfolio"]
     },
     "docs": {
       "name": "Docs",
       "description": "Documentation sites with navigation levels",
-      "tags": [
-        "docs",
-        "documentation",
-        "technical"
-      ]
+      "tags": ["docs", "documentation", "technical"]
     },
     "international": {
       "name": "International",
       "description": "Multilingual corporate website with English, Spanish, and French",
-      "tags": [
-        "i18n",
-        "multilingual",
-        "corporate",
-        "business",
-        "localization"
-      ]
+      "tags": ["i18n", "multilingual", "corporate", "business", "localization"]
     },
     "blog": {
       "name": "Blog",
@@ -172,46 +142,22 @@
     "dynamic": {
       "name": "Dynamic",
       "description": "Live API data fetching with loading states, transforms, and the portable data pattern",
-      "tags": [
-        "data",
-        "api",
-        "fetch",
-        "loading-states",
-        "dynamic"
-      ]
+      "tags": ["data", "api", "fetch", "loading-states", "dynamic"]
     },
     "store": {
       "name": "Store",
       "description": "Artisan e-commerce with product collections, Shopify Buy Button, journal blog, and stone-amber design",
-      "tags": [
-        "store",
-        "e-commerce",
-        "shopify",
-        "artisan",
-        "products"
-      ]
+      "tags": ["store", "e-commerce", "shopify", "artisan", "products"]
     },
     "learning": {
       "name": "Learning",
       "description": "Course-based learning site with quizzes, code challenges, and AI grading integration",
-      "tags": [
-        "learning",
-        "course",
-        "education",
-        "quiz",
-        "lms",
-        "tutorial"
-      ]
+      "tags": ["learning", "course", "education", "quiz", "lms", "tutorial"]
     },
     "extensions": {
       "name": "Extensions",
       "description": "Primary foundation with a visual effects extension, demonstrating multi-foundation sites",
-      "tags": [
-        "extensions",
-        "multi-foundation",
-        "visual-effects",
-        "runtime"
-      ]
+      "tags": ["extensions", "multi-foundation", "visual-effects", "runtime"]
     },
     "cv-loom": {
       "name": "CV (Loom)",
@@ -269,13 +215,7 @@
     "paste": {
       "name": "Paste a Design (Level 0)",
       "description": "Bring an existing React design (AI-generated or hand-built) into Uniweb with zero rewiring — replace App.jsx and run. Ships lucide-react preinstalled and SPA-first. The Level 0 conversion starting point.",
-      "tags": [
-        "paste",
-        "level-0",
-        "convert",
-        "ai-generated",
-        "starter"
-      ]
+      "tags": ["paste", "level-0", "convert", "ai-generated", "starter"]
     }
   }
 }

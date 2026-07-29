@@ -731,3 +731,26 @@ test('ensureSiteExists falls back to site.yml for name and foundation', async ()
   })
   assert.equal(sent.foundation, '@a/base@2.0.0', 'explicit ref wins')
 })
+
+test('ensureSiteExists names the missing site.yml key instead of letting the create 400', async () => {
+  // `name` and `foundation` are both required by POST /dev/site. Catching it here
+  // is the difference between "fix this line of site.yml" and a status code.
+  const dir = mkdtempSync(join(tmpdir(), 'site-sync-bare-'))
+  writeFileSync(join(dir, 'site.yml'), 'foundation: "@a/base@1.0.0"\n')
+  let called = false
+  const client = {
+    createSite: async () => {
+      called = true
+      return okJson({ site_content_uuid: 'X' })
+    }
+  }
+  const res = await ensureSiteExists({ client, siteDir: dir })
+  assert.equal(res.uuid, null)
+  assert.match(res.reason, /missing name/)
+  assert.equal(called, false, 'must not make a call it knows will be refused')
+
+  const dir2 = mkdtempSync(join(tmpdir(), 'site-sync-bare2-'))
+  writeFileSync(join(dir2, 'site.yml'), 'name: Acme\n')
+  const res2 = await ensureSiteExists({ client, siteDir: dir2 })
+  assert.match(res2.reason, /missing foundation/)
+})
