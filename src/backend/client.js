@@ -339,6 +339,35 @@ export class BackendClient {
 
   // ── Site sync (push / pull) ─────────────────────────────────────────────────────
 
+  /**
+   * POST /dev/site — CREATE an EMPTY site and return its site-content uuid.
+   *
+   * The uuid exists before any content or asset does, which is the whole point:
+   * uploaded bytes are metered against an owning entity and freed by deleting it,
+   * so an upload with no site to charge is billed and can never be reclaimed.
+   * Creating the site first is what makes a failed first publish leave a clearable
+   * empty site instead of unfreeable bytes.
+   *
+   * A thin re-projection of the same op the app's blank-site create uses, so the
+   * two lanes cannot drift. `foundation` is adopted best-effort — an unreleased
+   * ref just leaves it null and the site still exists.
+   *
+   * @param {{ name?: string, foundation?: string|null, asOrg?: string|null }} opts
+   * @returns {Promise<Response>} `{ site_content_uuid }`
+   */
+  async createSite({ name, foundation, asOrg } = {}) {
+    return this.request('/dev/site', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...(name ? { name } : {}),
+        // Omit rather than send an unpinned ref: delivery is version-pinned, so a
+        // bare `@org/name` is not a thing the backend can adopt.
+        ...(foundation && /@[^@]+@/.test(foundation) ? { foundation } : {})
+      }),
+      query: { as_org: asOrg }
+    })
+  }
+
   /** POST /dev/site/content — CREATE a site from its content lane (.uwx zip). */
   async createSiteContent(buffer, { asOrg } = {}) {
     return this.request('/dev/site/content', {

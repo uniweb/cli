@@ -62,6 +62,7 @@ import {
   readBaseVersions,
   readItemBaseVersions,
   ensureItemUuids,
+  ensureSiteExists,
   pushSyncPackages
 } from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
@@ -335,6 +336,32 @@ export async function publish(args = []) {
   const schemalessNames = (probe.schemaless || []).map((col) => col.name)
   const localAssets = probe.localAssets || []
 
+  // 3b. Make sure the SITE EXISTS before a single byte is uploaded.
+  //
+  //     Uploaded bytes are metered against an owning entity and reclaimed by
+  //     deleting it. Uploading before the site exists therefore produces bytes
+  //     that are charged and can never be freed — there is nothing to delete —
+  //     so a repeatedly-failing first publish would burn quota with no recovery
+  //     short of support. Creating the site first makes the artifact of a failed
+  //     publish an EMPTY SITE instead: it costs nothing to keep and the owner can
+  //     clear it. A no-op once `$uuid` is set, so only a first publish pays.
+  //
+  //     This ordering is load-bearing, not incidental — the asset plan requires an
+  //     owner. A test asserts the create precedes the upload.
+  const site = await ensureSiteExists({
+    client,
+    siteDir,
+    name: siteYml.name,
+    foundation: fnd.ref || siteYml.foundation,
+    asOrg,
+    note: (m) => say.dim(m)
+  })
+  if (!site.uuid) {
+    say.err(`Could not create the site on the backend: ${site.reason}`)
+    say.dim('Nothing was uploaded and nothing was charged.')
+    return { exitCode: 1 }
+  }
+
   // 4. Assemble the static-data ball (schema-less data + search index) BEFORE
   //    uploading, since its records can carry local media too.
   let ball = await assembleDataBall(distDir, schemalessNames)
@@ -352,6 +379,7 @@ export async function publish(args = []) {
         siteDir,
         mediaRefs,
         {
+          siteUuid: site.uuid,
           onProgress: (m) => say.dim(`  ${m}`),
           warn: (m) => say.dim(`! ${m}`)
         }
@@ -391,6 +419,7 @@ export async function publish(args = []) {
     say.info('Uploading data bundle…')
     try {
       dataBundle = await uploadDataBundle(client, ball, {
+        siteUuid: site.uuid,
         onProgress: (m) => say.dim(`  ${m}`)
       })
     } catch (err) {

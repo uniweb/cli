@@ -20,6 +20,7 @@ import { join } from 'node:path'
 import {
   extractFinalized,
   pushSyncPackages,
+  ensureSiteExists,
   readBaseVersions,
   readSyncCache,
   writeUnitBases
@@ -609,4 +610,124 @@ test('a 404 on the CREATE lane does NOT claim a site was deleted', async () => {
   const notes = calls.note.join('\n')
   assert.ok(!/deleted in the Uniweb app/.test(notes))
   assert.ok(!/clearing `\$uuid`/.test(notes))
+})
+
+// ─── ensureSiteExists ─────────────────────────────────────────────────────────
+// The site must exist before any byte is uploaded: bytes are metered against an
+// owning entity and freed by deleting it, so an upload made before the site
+// exists is charged with nothing to delete. These pin the contract that makes the
+// ordering safe to rely on.
+
+const okJson = (body) => ({ ok: true, status: 200, json: async () => body })
+
+test('ensureSiteExists is a no-op when the site is already bound', async () => {
+  const dir = tmpSite()
+  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: EXISTING-1\n')
+  let called = false
+  const client = {
+    createSite: async () => {
+      called = true
+      return okJson({ site_content_uuid: 'NEW' })
+    }
+  }
+  const res = await ensureSiteExists({ client, siteDir: dir })
+  assert.deepEqual(res, { uuid: 'EXISTING-1', created: false })
+  assert.equal(called, false, 'must not mint a second site for a bound clone')
+})
+
+test('ensureSiteExists creates, reads the snake_case uuid, and writes it back at once', async () => {
+  const dir = tmpSite()
+  let sent = null
+  const client = {
+    createSite: async (opts) => {
+      sent = opts
+      return okJson({ site_content_uuid: 'MINTED-9' })
+    }
+  }
+  const notes = []
+  const res = await ensureSiteExists({
+    client,
+    siteDir: dir,
+    name: 'Acme',
+    foundation: '@a/base@1.2.3',
+    asOrg: '@acme',
+    note: (m) => notes.push(m)
+  })
+  assert.deepEqual(res, { uuid: 'MINTED-9', created: true })
+  assert.deepEqual(sent, {
+    name: 'Acme',
+    foundation: '@a/base@1.2.3',
+    asOrg: '@acme'
+  })
+  // Written back immediately — the window where a crash strands a site is one write.
+  assert.match(readFileSync(join(dir, 'site.yml'), 'utf8'), /MINTED-9/)
+  assert.ok(notes.some((m) => /Created the site/.test(m)))
+})
+
+test('ensureSiteExists distinguishes a backend without the route from a refusal', async () => {
+  const dir = tmpSite()
+  const missing = await ensureSiteExists({
+    client: {
+      createSite: async () => ({
+        ok: false,
+        status: 404,
+        statusText: 'Not Found',
+        text: async () => ''
+      })
+    },
+    siteDir: dir
+  })
+  assert.equal(missing.uuid, null)
+  assert.match(missing.reason, /no \/dev\/site route/)
+
+  const refused = await ensureSiteExists({
+    client: {
+      createSite: async () => ({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        text: async () => 'not a member'
+      })
+    },
+    siteDir: dir
+  })
+  assert.equal(refused.uuid, null)
+  assert.match(refused.reason, /HTTP 403/)
+  // A failed create must not leave a half-bound site.yml behind.
+  assert.ok(!/\$uuid/.test(readFileSync(join(dir, 'site.yml'), 'utf8')))
+})
+
+test('ensureSiteExists reports a create that returns no uuid rather than binding null', async () => {
+  const dir = tmpSite()
+  const res = await ensureSiteExists({
+    client: { createSite: async () => okJson({ ok: true }) },
+    siteDir: dir
+  })
+  assert.equal(res.uuid, null)
+  assert.match(res.reason, /no site uuid/)
+})
+
+test('ensureSiteExists falls back to site.yml for name and foundation', async () => {
+  // push has no reason to hold site.yml; one read serves both the binding check
+  // and the create's defaults. An explicit argument still wins — publish passes
+  // the PINNED foundation ref, which site.yml may not carry.
+  const dir = tmpSite() // name: Acme, foundation: '@a/base'
+  let sent = null
+  const client = {
+    createSite: async (o) => {
+      sent = o
+      return okJson({ site_content_uuid: 'M1' })
+    }
+  }
+  await ensureSiteExists({ client, siteDir: dir })
+  assert.equal(sent.name, 'Acme')
+  assert.equal(sent.foundation, '@a/base')
+
+  const dir2 = tmpSite()
+  await ensureSiteExists({
+    client,
+    siteDir: dir2,
+    foundation: '@a/base@2.0.0'
+  })
+  assert.equal(sent.foundation, '@a/base@2.0.0', 'explicit ref wins')
 })

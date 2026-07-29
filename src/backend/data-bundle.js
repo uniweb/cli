@@ -20,7 +20,11 @@ import { buildAssetUrl } from '../utils/asset-upload.js'
  * @param {{ onProgress?: (m: string) => void }} [opts]
  * @returns {Promise<string>} the content-addressed serve URL (→ `info.data_bundle`)
  */
-export async function uploadDataBundle(client, ball, { onProgress } = {}) {
+export async function uploadDataBundle(
+  client,
+  ball,
+  { siteUuid = null, onProgress } = {}
+) {
   const bytes = Buffer.from(JSON.stringify(ball))
   const sha256 = createHash('sha256').update(bytes).digest('hex')
   const localUrl = '/data-bundle/base.json' // bookkeeping key into assetsByLocalUrl
@@ -36,6 +40,7 @@ export async function uploadDataBundle(client, ball, { onProgress } = {}) {
         bytes
       }
     ],
+    siteUuid,
     onProgress
   })
   if (result.failed?.length) {

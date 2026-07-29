@@ -65,6 +65,7 @@ import {
   readItemBaseVersions,
   readItemUuids,
   ensureItemUuids,
+  ensureSiteExists,
   pushSyncPackages
 } from '../backend/site-sync.js'
 
@@ -211,6 +212,15 @@ export async function push(args = []) {
       return { exitCode: 2 }
     }
     if (mediaRefs.length) {
+      // The site has to exist before its bytes do — an upload with no owning
+      // entity is charged and cannot be freed, because freeing means deleting the
+      // owner. A no-op once `$uuid` is set, so only a never-synced site pays.
+      const site = await ensureSiteExists({ client, siteDir, asOrg, note })
+      if (!site.uuid) {
+        error(`Could not create the site on the backend: ${site.reason}`)
+        note('Nothing was uploaded and nothing was charged.')
+        return { exitCode: 1 }
+      }
       info('Uploading media…')
       try {
         const { map, failed } = await uploadSiteMedia(
@@ -218,6 +228,7 @@ export async function push(args = []) {
           siteDir,
           mediaRefs,
           {
+            siteUuid: site.uuid,
             onProgress: (m) => note(`  ${m}`),
             warn: (m) => note(`! ${m}`)
           }

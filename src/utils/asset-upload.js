@@ -98,6 +98,7 @@ export async function uploadSiteAssets({
   token,
   distDir,
   files,
+  siteUuid = null,
   onProgress = () => {}
 }) {
   const list = files || collectSiteAssets(distDir)
@@ -119,6 +120,13 @@ export async function uploadSiteAssets({
       Authorization: `Bearer ${token}`
     },
     body: JSON.stringify({
+      // The owner these bytes are charged to. Storage is metered per
+      // (workspace, asset) and freed by deleting the owning entity, so an upload
+      // with no owner is charged and can never be reclaimed — there is nothing to
+      // delete. Callers create the site first precisely so this is never null;
+      // it stays optional only so a backend that predates the owner field, or a
+      // caller that genuinely has no site yet, still works.
+      ...(siteUuid ? { site: siteUuid } : {}),
       files: list.map(({ path, content_type, size, sha256 }) => ({
         path,
         content_type,

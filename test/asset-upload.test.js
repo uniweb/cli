@@ -435,3 +435,45 @@ test('a prose (non-JSON) plan refusal leaves problem null rather than throwing',
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('the plan call carries the owning site, and omits it when there is none', async () => {
+  // `entity_id` is NOT NULL on the backend's ledger: an upload names the entity it
+  // is charged to. Callers create the site first so this is always set; the omit
+  // path exists only for a backend predating the field.
+  const { dir, distDir } = makeDist()
+  const bodies = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (url, opts = {}) => {
+    if (String(url).endsWith('/dev/assets')) {
+      bodies.push(JSON.parse(opts.body))
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ mode: 'direct', uploads: [] })
+      }
+    }
+    return { ok: true, status: 200 }
+  }
+  try {
+    await uploadSiteAssets({
+      apiBase: 'http://localhost:8080',
+      token: 't',
+      distDir,
+      siteUuid: 'SITE-7'
+    })
+    assert.equal(bodies[0].site, 'SITE-7')
+
+    await uploadSiteAssets({
+      apiBase: 'http://localhost:8080',
+      token: 't',
+      distDir
+    })
+    assert.ok(
+      !('site' in bodies[1]),
+      'no owner ⇒ the key is absent, not null — a null would assert an owner that does not exist'
+    )
+  } finally {
+    globalThis.fetch = realFetch
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

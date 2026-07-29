@@ -23,7 +23,10 @@ import { contentTypeFor } from '../utils/code-upload.js'
  * @param {object} client - BackendClient (origin + uploadSiteAssets + discover)
  * @param {string} siteDir - the site root (site-root refs resolve under public/)
  * @param {string[]} refs - site-root local asset refs (`/images/x.png`)
- * @param {{ onProgress?: (m: string) => void, warn?: (m: string) => void }} [opts]
+ * @param {{ siteUuid?: string|null, onProgress?: (m: string) => void, warn?: (m: string) => void }} [opts]
+ *   `siteUuid` is the owner the uploaded bytes are charged to. Callers create the
+ *   site before uploading precisely so this is set — an unowned upload is charged
+ *   and cannot be freed, because freeing means deleting the owning entity.
  * @returns {Promise<{ map: Record<string,string>, missing: string[], failed: Array<{path:string,status:number,detail?:string}> }>}
  *   `map` is ref → serve URL for refs that resolved AND uploaded. The two failure
  *   kinds are reported SEPARATELY because callers must treat them differently:
@@ -36,7 +39,7 @@ export async function uploadSiteMedia(
   client,
   siteDir,
   refs,
-  { onProgress, warn } = {}
+  { siteUuid = null, onProgress, warn } = {}
 ) {
   if (!refs?.length) return { map: {}, missing: [], failed: [] }
 
@@ -61,7 +64,7 @@ export async function uploadSiteMedia(
   }
   if (!files.length) return { map: {}, missing, failed: [] }
 
-  const result = await client.uploadSiteAssets({ files, onProgress })
+  const result = await client.uploadSiteAssets({ files, siteUuid, onProgress })
   const failed = result.failed || []
   for (const f of failed)
     warn?.(`local-media: upload failed for ${f.path} (HTTP ${f.status})`)

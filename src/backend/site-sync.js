@@ -111,6 +111,11 @@ export function extractFinalized(payload) {
 // envelope the update/folder lanes return (the site entity is submitted alone, so its
 // minted uuid is the first finalized entry). Returns null if none is present.
 export function extractMintedSiteUuid(payload) {
+  // `POST /dev/site` (the empty-site create) answers with the snake_case spelling;
+  // the content-lane CREATE has historically used the others. Both are the same
+  // identity — the uuid `/dev/site/content/pull/{uuid}` accepts.
+  if (typeof payload?.site_content_uuid === 'string')
+    return payload.site_content_uuid
   if (typeof payload?.siteContentUuid === 'string')
     return payload.siteContentUuid
   if (typeof payload?.$uuid === 'string') return payload.$uuid
@@ -283,6 +288,84 @@ export function readItemUuids(siteDir) {
 export function writeItemUuids(siteDir, map) {
   if (!map || !Object.keys(map).length) return
   updateSyncCache(siteDir, { itemUuids: map })
+}
+
+/**
+ * Guarantee the site EXISTS on the backend before anything is uploaded against it.
+ *
+ * Ordering is the point, and it is load-bearing rather than incidental. Uploaded
+ * bytes are metered against an owning entity and reclaimed by deleting it, so an
+ * upload made before any site exists is charged and can never be freed — there is
+ * nothing to delete. Creating the site first turns the artifact of a failed first
+ * publish from *unfreeable bytes* into *an empty site*, which costs nothing to
+ * keep and can be cleared. (The reverse ordering was justified by a claim that
+ * `ensureItemUuids` mints on the backend, which it does not — see push.js.)
+ *
+ * A no-op when `site.yml::$uuid` is already set, so only the first publish of a
+ * site pays for it. The uuid is written back immediately, keeping the window in
+ * which a crash could strand a site as small as one file write.
+ *
+ * @returns {Promise<{ uuid: string|null, created: boolean, reason?: string }>}
+ *   `uuid: null` means the site could not be created; the caller decides whether
+ *   that is fatal (it is, for any flow that uploads).
+ */
+export async function ensureSiteExists({
+  client,
+  siteDir,
+  name,
+  foundation,
+  asOrg,
+  note
+}) {
+  // One read serves both the binding check and the create's defaults, so callers
+  // that have no reason to hold site.yml (push) need not load it just to pass it
+  // back. An explicit argument still wins — publish supplies the PINNED foundation
+  // ref from the bring-along, which site.yml may not carry.
+  let siteYml = {}
+  try {
+    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
+    if (y && typeof y === 'object') siteYml = y
+  } catch {
+    /* unreadable site.yml — treat as un-synced and let the create decide */
+  }
+  if (typeof siteYml.$uuid === 'string') {
+    return { uuid: siteYml.$uuid, created: false }
+  }
+
+  let res
+  try {
+    res = await client.createSite({
+      name: name ?? siteYml.name,
+      foundation: foundation ?? siteYml.foundation,
+      asOrg
+    })
+  } catch (err) {
+    return { uuid: null, created: false, reason: err.message }
+  }
+  if (!res?.ok) {
+    const body = await res?.text?.().catch(() => '')
+    return {
+      uuid: null,
+      created: false,
+      // 404 here means the backend predates the route, which is a materially
+      // different problem from being refused — say which.
+      reason:
+        res?.status === 404
+          ? 'this backend has no /dev/site route (it predates the empty-site create)'
+          : `HTTP ${res?.status} ${res?.statusText || ''}${body ? ` — ${body.slice(0, 200)}` : ''}`
+    }
+  }
+  const minted = extractMintedSiteUuid(await res.json().catch(() => null))
+  if (!minted) {
+    return {
+      uuid: null,
+      created: false,
+      reason: 'the create returned no site uuid'
+    }
+  }
+  writeSiteEntityUuid(siteDir, minted)
+  note?.(`Created the site on the backend (recorded $uuid in site.yml).`)
+  return { uuid: minted, created: true }
 }
 
 /**
