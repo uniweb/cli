@@ -493,6 +493,10 @@ This is [less important]{muted} context.
 
 Sites can adjust these or add named styles in `theme.yml`'s `inline:` section. Overrides merge **property by property**, so declare only what differs (`accent: { font-weight: inherit }` keeps the default color); to drop a default property rather than change it, give it a neutral value (`initial`, `inherit`, `unset`).
 
+> **On a site synced with Uniweb Cloud, these styles render correctly but are not yet editable in the visual editor.** An author who opens a page containing `[Get started]{accent}` sees it styled exactly as it renders, and it survives every edit and save untouched — but the editor's own styling controls will not change or remove it, the way they would for text an author styled there. Two spans that look identical behave differently depending on where they were written, and nothing on screen says which is which.
+>
+> Nothing is lost, so this costs an author a correction they cannot make rather than any content. If that matters for your project, prefer styling such text in the editor, or keep the markdown as the place it is maintained. This is a current limitation and expected to go; the note goes with it.
+
 ### Fenced code: data blocks vs snippets
 
 Fenced code serves two purposes depending on whether it carries a tag.
