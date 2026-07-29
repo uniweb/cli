@@ -149,8 +149,15 @@ export async function push(args = []) {
   // push exists to avoid. `publish` uploaded and rewrote; push dropped
   // `localAssets` on the floor.
   //
-  // Ordering is deliberate: BEFORE `ensureItemUuids`, which mints uuids on the
-  // backend. A refusal here then leaves nothing minted and nothing submitted.
+  // The upload runs before `ensureItemUuids`, and the reason once recorded here —
+  // "BEFORE `ensureItemUuids`, which mints uuids on the backend, so a refusal
+  // leaves nothing minted" — is FALSE. `ensureItemUuids` mints nothing: it reads a
+  // local cache, and if that is empty it reads `site.yml::$uuid` and returns
+  // immediately when there is none (the first-push case). Its only backend call is
+  // a GET (`pullSiteContent`); its only write is a local file. So this ordering is
+  // not protecting what that comment claimed, and is under review — an upload is a
+  // durable, metered write, which makes uploading first the thing that leaves bytes
+  // behind when a later step fails.
   //
   // The probe emit runs WITHOUT `priorHashes`, so it surfaces every local ref
   // rather than only the changed ones. That is not waste — the lane is
