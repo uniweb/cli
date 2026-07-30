@@ -338,7 +338,9 @@ content = {
   lists: [],        // [[{ paragraphs, links, lists, … }]] — each item is an object, not a string
   quotes: [],       // Blockquotes
   snippets: [],     // Fenced code — [{ language, code }]
-  data: {},         // From tagged data blocks (```yaml:tagname, ```json:tagname)
+  data: {},         // Tagged blocks — ```yaml:tag / ```json:tag give the parsed value,
+                    //   ```md:tag gives { items, sequence } (see Concept blocks)
+  tables: [],       // Only when present — [{ rows: [{ cells: [{ children, header, align }] }] }]
   headings: [],     // Headings after subtitle, in document order
   items: [],        // Each has the same flat structure — from headings after body content
   sequence: [],     // All elements in document order
@@ -503,7 +505,7 @@ Sites can adjust these or add named styles in `theme.yml`'s `inline:` section. O
 
 ### Fenced code: data blocks vs snippets
 
-Fenced code serves two purposes depending on whether it carries a tag.
+Fenced code serves three purposes depending on its info string: `yaml:`/`json:` for data, `md:` for a named kind of prose (see *Concept blocks*), and a bare language for a code sample.
 
 **Tagged data blocks** — structured data parsed into JS objects. The tag is the key in `content.data`; the format (`yaml`/`yml`/`json`) is a serialization format, not a display language.
 
@@ -1334,11 +1336,57 @@ Pages are sequences of sections — the obvious layer. The framework also suppor
 | Pattern | How authored | Use when |
 |---|---|---|
 | **Items** (`content.items`) | Heading groups within one `.md` | Repeating content in one section: cards, features, FAQ entries |
+| **Concept blocks** (`content.data[tag]`) | ` ```md:<tag> ` fence around markdown | A named *kind* of content — an FAQ, a callout, a set of steps |
 | **Child sections** (`block.childBlocks`) | `@`-prefixed `.md` files + `nest:` | Children needing their own section type, rich content, or independent editing |
 | **Insets** (`block.insets`) | `![](@Component)` in markdown | Self-contained visuals/widgets: charts, diagrams, code demos |
 | **Block insets** (`block.insets`) | ` ```@Component ` fence around markdown | A component that *wraps* authored prose: callouts, disclosures, admonitions |
 
 Does the author write content *inside* the nested element? **Yes** → child sections, or a block inset when the wrapper is presentational and lives mid-page. **No** (self-contained, param-driven) → inset. Repeating same-structure groups → items. These compose: a child section can contain insets; items work inside children; a block inset can contain both.
+
+### Concept blocks — naming *what* content is
+
+A ` ```md:<tag> ` fence marks a run of prose as a named kind of thing. The author writes ordinary markdown; the tag says what it is:
+
+````markdown
+```md:faq
+# What plans do you have?
+Three — Starter, Team and Enterprise.
+
+# Can I change later?
+Any time, and we prorate the difference.
+```
+````
+
+Every `#` heading starts an item, so this arrives as `content.data.faq`:
+
+```js
+{
+  items:    [ { title, paragraphs, links, … }, … ],  // one per heading
+  sequence: [ … ]                                    // the same content, in document order
+}
+```
+
+**The shape is fixed by the fence, not by the tag.** Any tag works and none is special — the framework never learns what `faq` means. A body with **no** headings is the same block with a single titleless item, which is what a callout is:
+
+````markdown
+```md:warning
+Back up your database **before** running this. It is not reversible.
+```
+````
+
+**Why this instead of a component reference.** ` ```@Alert ` names *which component renders this*, which is a rendering decision sitting in content. `md:warning` names *what the content is* and leaves rendering to the foundation — so the same content works under a different foundation, and an editor can recognize the concept and offer a surface built for it.
+
+**Reading one in a component.** `content.data[tag]` gives you both views: `items` for anything row-shaped (an accordion, a step list), `sequence` when you don't recognize the tag and want to render it faithfully in document order. Both are derived, so nothing is stored twice.
+
+```jsx
+function Faq({ content }) {
+  const faq = content.data?.faq
+  if (!faq) return null
+  return faq.items.map((item, i) => <Disclosure key={i} q={item.title} a={item.paragraphs} />)
+}
+```
+
+**Two tags, not a tag plus a variant.** A warning and a note are different concepts, so they are `md:warning` and `md:note`. The fence takes no params.
 
 **Insets — embedding components in content.** Many section types need a "visual" — a hero's illustration, a split-content section's media. Classically an image or video. But what if it's a JSX + SVG diagram, a ThreeJS animation, an interactive playground? Elsewhere you'd reach for MDX or prop-drilling. Here the author writes standard image syntax:
 
