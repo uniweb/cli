@@ -26,7 +26,7 @@ test('uploadSiteMedia resolves site-root refs under public/, uploads, returns re
   let captured = null
   const client = {
     origin: 'http://x',
-    discover: async () => ({ assetBase: '/gateway/asset/' }),
+    discover: async () => ({ assetBase: '/media-root/' }),
     uploadSiteAssets: async ({ files }) => {
       captured = files
       return {
@@ -35,7 +35,7 @@ test('uploadSiteMedia resolves site-root refs under public/, uploads, returns re
           '/images/banner.png': {
             id: 'SHA1',
             ext: 'png',
-            serveUrl: '/gateway/asset/dist/SHA1/base.png'
+            serveUrl: '/media-root/dist/SHA1/base.png'
           }
         }
       }
@@ -50,7 +50,7 @@ test('uploadSiteMedia resolves site-root refs under public/, uploads, returns re
     assert.ok(captured[0].sha256)
     // the map embeds the backend's canonical serve_url
     assert.deepEqual(map, {
-      '/images/banner.png': '/gateway/asset/dist/SHA1/base.png'
+      '/images/banner.png': '/media-root/dist/SHA1/base.png'
     })
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -62,7 +62,7 @@ test('uploadSiteMedia skips (and warns) a ref whose file is missing', async () =
   const warnings = []
   const client = {
     origin: 'http://x',
-    discover: async () => ({ assetBase: '/gateway/asset/' }),
+    discover: async () => ({ assetBase: '/media-root/' }),
     uploadSiteAssets: async ({ files }) => ({
       failed: [],
       assetsByLocalUrl: Object.fromEntries(
@@ -97,7 +97,7 @@ test('uploadSiteMedia falls back to buildAssetUrl when the lane omits serve_url'
   const dir = makeSite()
   const client = {
     origin: 'http://x',
-    discover: async () => ({ assetBase: '/gateway/asset/' }),
+    discover: async () => ({ assetBase: '/media-root/' }),
     uploadSiteAssets: async () => ({
       failed: [],
       assetsByLocalUrl: { '/images/banner.png': { id: 'SHA9', ext: 'png' } }
@@ -107,7 +107,7 @@ test('uploadSiteMedia falls back to buildAssetUrl when the lane omits serve_url'
     const { map } = await uploadSiteMedia(client, dir, ['/images/banner.png'])
     assert.equal(
       map['/images/banner.png'],
-      'http://x/gateway/asset/dist/SHA9/base.png'
+      'http://x/media-root/dist/SHA9/base.png'
     )
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -136,7 +136,7 @@ test('uploadSiteMedia reports a failed upload separately from a missing file', a
   const dir = makeSite()
   const client = {
     origin: 'http://x',
-    discover: async () => ({ assetBase: '/gateway/asset/' }),
+    discover: async () => ({ assetBase: '/media-root/' }),
     uploadSiteAssets: async () => ({
       failed: [
         { path: 'images/banner.png', status: 507, detail: 'over quota' }

@@ -173,7 +173,7 @@ test('uploadRuntime plans /dev/runtime, PUTs each (relative url resolved + auth)
         status: 200,
         json: async () => ({
           mode: 'direct',
-          serve_base: '/gateway/runtime/0.9.0/',
+          serve_base: '/served/runtime/0.9.0/',
           uploads: body.files.map((f) => ({
             path: f.path,
             method: 'PUT',
@@ -200,7 +200,7 @@ test('uploadRuntime plans /dev/runtime, PUTs each (relative url resolved + auth)
     })
     assert.equal(result.failed.length, 0)
     assert.equal(result.uploaded.length, 4)
-    assert.equal(result.serveBase, '/gateway/runtime/0.9.0/')
+    assert.equal(result.serveBase, '/served/runtime/0.9.0/')
     const puts = calls.filter((c) => c.method === 'PUT')
     assert.ok(
       puts.every((c) =>

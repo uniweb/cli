@@ -360,7 +360,7 @@ Markdown in a git repo and content in the Uniweb apps can share the same site. D
 
 ---
 
-Both paths use the same framework. The difference is who edits content, where it lives, and what gets deployed. For the deeper menu — site-bound vs cataloged foundations, S3+CloudFront, manual exports, per-host recipes, foundation propagation — see → **[Deploying](https://github.com/uniweb/docs/blob/main/development/deploying.md)**.
+Both paths use the same framework. The difference is who edits content, where it lives, and what gets deployed. For the deeper menu — standalone vs cataloged foundations, S3+CloudFront, manual exports, per-host recipes, foundation propagation — see → **[Deploying](https://github.com/uniweb/docs/blob/main/development/deploying.md)**.
 
 ---
 

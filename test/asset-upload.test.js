@@ -86,7 +86,7 @@ test('uploadSiteAssets plans /dev/assets, PUTs each, returns the localUrl→{id,
             path: f.path,
             id: f.sha256, // backend: id == lowercase-hex sha256
             ext: f.path.split('.').pop(),
-            serve_url: `/gateway/asset/dist/${f.sha256}/base.${f.path.split('.').pop()}`, // backend returns it
+            serve_url: `/media-root/dist/${f.sha256}/base.${f.path.split('.').pop()}`, // backend returns it
             method: 'PUT',
             url: `/dev/assets/blob/${f.sha256}`, // origin-relative, like the real backend
             headers: { 'content-type': f.content_type }
@@ -115,12 +115,12 @@ test('uploadSiteAssets plans /dev/assets, PUTs each, returns the localUrl→{id,
     assert.deepEqual(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], {
       id: sha('WEBPDATA'),
       ext: 'webp',
-      serveUrl: `/gateway/asset/dist/${sha('WEBPDATA')}/base.webp`
+      serveUrl: `/media-root/dist/${sha('WEBPDATA')}/base.webp`
     })
     assert.deepEqual(result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], {
       id: sha('<svg/>'),
       ext: 'svg',
-      serveUrl: `/gateway/asset/dist/${sha('<svg/>')}/base.svg`
+      serveUrl: `/media-root/dist/${sha('<svg/>')}/base.svg`
     })
     const puts = calls.filter((c) => c.method === 'PUT')
     assert.equal(puts.length, 2)
@@ -158,7 +158,7 @@ test('uploadSiteAssets honors the skip-list: present files are recorded but not 
               path: f.path,
               id: f.sha256,
               ext: f.path.split('.').pop(),
-              serve_url: `/gateway/asset/dist/${f.sha256}/base.${f.path.split('.').pop()}`
+              serve_url: `/media-root/dist/${f.sha256}/base.${f.path.split('.').pop()}`
             }
             if (f.sha256 === heroSha) return { ...base, present: true }
             return {
@@ -202,12 +202,12 @@ test('uploadSiteAssets honors the skip-list: present files are recorded but not 
     assert.deepEqual(result.assetsByLocalUrl['/assets/hero-ab12cd34.webp'], {
       id: heroSha,
       ext: 'webp',
-      serveUrl: `/gateway/asset/dist/${heroSha}/base.webp`
+      serveUrl: `/media-root/dist/${heroSha}/base.webp`
     })
     assert.deepEqual(result.assetsByLocalUrl['/assets/logo-9f8e7d6c.svg'], {
       id: logoSha,
       ext: 'svg',
-      serveUrl: `/gateway/asset/dist/${logoSha}/base.svg`
+      serveUrl: `/media-root/dist/${logoSha}/base.svg`
     })
   } finally {
     globalThis.fetch = realFetch

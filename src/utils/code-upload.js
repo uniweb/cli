@@ -16,9 +16,13 @@
  *               loadable version (practical atomicity — there is no server
  *               confirm step by design).
  *
- * In direct mode the entry is fetched back from the anonymous serve route
- * (GET /gateway/foundation/{scope}/{name}/{version}/{path}) and compared
- * byte-for-byte — the e2e proof that the version is live.
+ * When the plan tells us where the version will be readable, the entry is
+ * fetched back from that location and compared byte-for-byte — the e2e proof
+ * that the version is live. The location is ALWAYS read from the plan's
+ * `serve_base`, never derived: where a backend serves uploaded code is its
+ * own business, and a producer that reconstructs the path is both coupled to
+ * it and wrong wherever a delivery tier mints the URL instead. No
+ * `serve_base` simply means "not verifiable from here" — not a fallback guess.
  *
  * Rules encoded here (the backend validates too — reject, never repair):
  *   - paths are dist/-relative, '/'-separated, URL-safe verbatim
@@ -155,18 +159,14 @@ export function computeFoundationDigest(distDir) {
   )
 }
 
-/**
- * The gateway serve URL for a file of a registered foundation version.
- * Mirrors the backend storage convention: scope WITHOUT the '@'.
- * Prefer the plan response's `serve_base` when present.
+/*
+ * There is deliberately no serve-URL builder here. A previous version exported
+ * `gatewayUrl()`, which reconstructed the backend's serve path from the ref —
+ * mirroring its storage convention, scope-without-the-'@' and all. That was
+ * wrong twice over: it encoded another service's route layout in a public
+ * package, and it can only ever be right on the one deployment shape where the
+ * backend also serves the bytes. Read `serve_base` from the upload plan.
  */
-export function gatewayUrl(apiBase, name, version, path) {
-  const m = /^@([^/]+)\/(.+)$/.exec(name)
-  const scope = m ? m[1] : ''
-  const base = m ? m[2] : name
-  const origin = apiBase.replace(/\/$/, '')
-  return `${origin}/gateway/foundation/${scope}/${base}/${version}/${path}`
-}
 
 /**
  * Deliver a foundation's code: plan, upload (entry last), verify (direct
@@ -279,20 +279,20 @@ export async function uploadFoundationCode({
     }
   }
 
-  // Direct mode: prove the version is live — fetch the entry back and
-  // compare bytes (the channel's e2e proof, made a default).
+  // Prove the version is live — fetch the entry back and compare bytes.
+  // Gated on `serveBase`, NOT on the plan's mode: the question is only ever
+  // "did the backend tell us where to look", and inferring a location from the
+  // mode is the coupling this lane used to carry. A plan without a serve_base
+  // (a delivery tier owns the URL) leaves `verified` null.
   let verified = null
   const entry = list.find((f) => f.path === ENTRY_PATH)
-  if (plan.mode === 'direct' && entry && !failed.length) {
+  if (serveBase && entry && !failed.length) {
     try {
-      // serve_base is origin-relative in direct mode — resolve against the
-      // registry origin before fetching.
-      const url = serveBase
-        ? new URL(
-            `${serveBase.replace(/\/$/, '')}/${ENTRY_PATH}`,
-            origin
-          ).toString()
-        : gatewayUrl(origin, name, version, ENTRY_PATH)
+      // serve_base may be origin-relative — resolve against the backend origin.
+      const url = new URL(
+        `${serveBase.replace(/\/$/, '')}/${ENTRY_PATH}`,
+        origin
+      ).toString()
       const res = await fetch(url)
       if (res.ok) {
         const served = Buffer.from(await res.arrayBuffer())

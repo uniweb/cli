@@ -90,7 +90,10 @@ export function resolveBackendOrigin(flag, { siteBackend } = {}) {
  * `runtime.installed` is empty so runtime resolution requires an explicit pin.
  */
 export const DISCOVERY_DEFAULTS = {
-  gatewayBase: '/gateway',
+  // No serve-root default. Serve locations are read from discovery or from an
+  // upload plan's `serve_base`; nothing here reconstructs one, so a default
+  // would be a route name with no consumer. (A `gatewayBase` entry lived here
+  // unread until 2026-07-29.)
   assetBase: 'https://assets.uniweb.app/',
   auth: { loginPath: '/dev/auth/login', required: true },
   delivery: { deploy: true, publish: true, broker: 'self-serve' },
@@ -217,7 +220,7 @@ export class BackendClient {
    * lifetime; a missing route or any transport/parse error falls back to
    * DISCOVERY_DEFAULTS (non-breaking — an older backend still works). Lets the
    * CLI hardcode nothing about a backend but its origin and discover the rest:
-   * `gatewayBase`/`assetBase` (serve/asset roots — relative ⇒ relative-to-origin),
+   * `assetBase` (the asset root — relative ⇒ relative-to-origin),
    * `auth`, `delivery` (deploy/publish? broker), `assets` (lane built yet?),
    * `runtime.installed` (the default-runtime source replacing the old /runtime/latest).
    * @returns {Promise<object>}
@@ -426,7 +429,7 @@ export class BackendClient {
    * theme, languages, locales, optional dataFiles/searchFiles) plus an optional
    * `site_uuid`. First deploy of a never-synced site omits it → the backend mints
    * a uuid and returns it for write-back to deploy.yml; later deploys resend it so
-   * `/gateway/site/{uuid}/` stays stable. Returns the raw Response so the caller
+   * the site's published URL stays stable. Returns the raw Response so the caller
    * messages its own errors and reads `{ site_uuid, url, locales }` on 200.
    * @param {object} payload - the deploy payload (universal currency)
    * @param {object} [opts]
@@ -466,7 +469,7 @@ export class BackendClient {
   }
 
   /**
-   * POST /dev/site/unpublish/{uuid} — drop the published-folder gate so /gateway
+   * POST /dev/site/unpublish/{uuid} — drop the published-folder gate so the host
    * stops serving the site's dynamic content. Returns the raw Response ({ was_published }).
    * @param {string} uuid - the site-content uuid
    * @returns {Promise<Response>}
@@ -539,7 +542,7 @@ export class BackendClient {
 
   /**
    * Upload a built `@uniweb/runtime` to the runtime registry (plan → PUT-per-file),
-   * served at `/gateway/runtime/{version}`. @std-gated on the backend. Thin
+   * served by the backend at a location it reports. @std-gated on the backend. Thin
    * pass-through to utils/runtime-upload.js with this client's origin + token.
    * @param {object} opts - { version, distDir, files?, onProgress? }
    */

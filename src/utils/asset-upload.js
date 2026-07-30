@@ -232,9 +232,10 @@ export async function uploadSiteAssets({
 }
 
 // Build a durable asset serve URL from /dev/config's assetBase. Origin-relative
-// (`/gateway/asset/` in dev) → prepend the backend origin; absolute (a prod CDN)
-// → used verbatim. Shape: {assetBase}dist/{id}/base.{ext} — basename literally
-// `base`, {ext} the source extension the plan echoed.
+// → prepend the backend origin; absolute (a CDN host) → used verbatim. Shape:
+// {assetBase}dist/{id}/base.{ext} — basename literally `base`, {ext} the source
+// extension the plan echoed. The root itself is never assumed: it is whatever
+// discovery returned.
 export function buildAssetUrl(origin, assetBase, id, ext) {
   const base = /^https?:\/\//.test(assetBase)
     ? assetBase

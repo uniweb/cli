@@ -23,7 +23,7 @@ test('uploadDataBundle uploads the ball as content-addressed JSON bytes and retu
   let captured = null
   const client = {
     origin: 'http://x',
-    discover: async () => ({ assetBase: '/gateway/asset/' }),
+    discover: async () => ({ assetBase: '/media-root/' }),
     uploadSiteAssets: async ({ files }) => {
       captured = files
       return {
@@ -44,15 +44,15 @@ test('uploadDataBundle uploads the ball as content-addressed JSON bytes and retu
   // the serve URL is built from the plan's id+ext (content-addressed)
   assert.equal(
     url,
-    buildAssetUrl('http://x', '/gateway/asset/', 'SHA123', 'json')
+    buildAssetUrl('http://x', '/media-root/', 'SHA123', 'json')
   )
-  assert.equal(url, 'http://x/gateway/asset/dist/SHA123/base.json')
+  assert.equal(url, 'http://x/media-root/dist/SHA123/base.json')
 })
 
 test('uploadDataBundle throws when the upload fails', async () => {
   const client = {
     origin: 'http://x',
-    discover: async () => ({ assetBase: '/gateway/asset/' }),
+    discover: async () => ({ assetBase: '/media-root/' }),
     uploadSiteAssets: async () => ({
       failed: [{ status: 500, detail: 'boom' }],
       assetsByLocalUrl: {}

@@ -568,10 +568,10 @@ async function runRegister(args = []) {
         )
         return { exitCode: 1 }
       }
-      const where = result.serveBase || 'the registry gateway'
       if (result.verified === true) {
+        // serveBase is guaranteed here — it is what gated the check.
         success(
-          `Code delivered (${result.uploaded.length} files) — entry verified live at ${colors.dim}${where}${colors.reset}`
+          `Code delivered (${result.uploaded.length} files) — entry verified live at ${colors.dim}${result.serveBase}${colors.reset}`
         )
       } else if (result.verified === false) {
         error(
@@ -582,6 +582,15 @@ async function runRegister(args = []) {
         success(
           `Code delivered (${result.uploaded.length} files, ${result.mode} mode)`
         )
+        // Say WHY nothing was checked, rather than skipping in silence. The CLI
+        // never reconstructs a serve URL (see utils/code-upload.js), so a plan
+        // without `serve_base` means the location is not ours to know — name it
+        // as a backend gap so it surfaces there instead of looking like a pass.
+        if (!result.serveBase) {
+          log(
+            `  ${colors.dim}Not verified: the backend reported no serve location for this version.${colors.reset}`
+          )
+        }
       }
     } catch (err) {
       error(`Code delivery failed: ${err.message}`)

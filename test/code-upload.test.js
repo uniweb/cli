@@ -16,10 +16,10 @@ import {
   computeFoundationDigest,
   contentTypeFor,
   uploadOrder,
-  gatewayUrl,
   uploadFoundationCode,
   ENTRY_PATH
 } from '../src/utils/code-upload.js'
+import * as codeUpload from '../src/utils/code-upload.js'
 
 function makeDist() {
   const dir = mkdtempSync(join(tmpdir(), 'uw-dist-'))
@@ -157,14 +157,17 @@ test('uploadOrder puts the entry last', () => {
   assert.equal(order.length, 3)
 })
 
-test('gatewayUrl mirrors the storage convention (scope without @)', () => {
-  assert.equal(
-    gatewayUrl('http://localhost:8080/', '@std/starter', '1.0.2', 'entry.js'),
-    'http://localhost:8080/gateway/foundation/std/starter/1.0.2/entry.js'
-  )
+// Regression guard, replacing a test that asserted the opposite. This module used
+// to export `gatewayUrl()`, which rebuilt the backend's serve path from the ref;
+// the old test pinned that route shape verbatim — in a public package — and so
+// made reintroducing the coupling look like passing behaviour. A serve location is
+// read from the upload plan's `serve_base` or not known at all.
+test('exports no serve-URL builder (locations are read, never constructed)', () => {
+  const builders = Object.keys(codeUpload).filter((k) => /url|Url|URL/.test(k))
+  assert.deepEqual(builders, [])
 })
 
-test('uploadFoundationCode plans, PUTs entry-last, verifies in direct mode', async () => {
+test('uploadFoundationCode plans, PUTs entry-last, verifies against the plan serve_base', async () => {
   const dir = makeDist()
   const calls = []
   const realFetch = globalThis.fetch
@@ -180,6 +183,11 @@ test('uploadFoundationCode plans, PUTs entry-last, verifies in direct mode', asy
         json: async () => ({
           mode: 'direct',
           expires_in: null,
+          // Deliberately NOT the real backend's serve shape. The point of the
+          // contract is that the producer uses whatever location it is handed,
+          // so the test hands it an arbitrary one — if this ever has to match a
+          // real route for the test to pass, the coupling is back.
+          serve_base: '/served/somewhere/else/',
           uploads: body.files.map((f) => ({
             path: f.path,
             method: 'PUT',
@@ -224,10 +232,64 @@ test('uploadFoundationCode plans, PUTs entry-last, verifies in direct mode', asy
     assert.ok(
       gets.some(
         (c) =>
-          c.url ===
-          'http://localhost:8080/gateway/foundation/std/starter/1.0.2/entry.js'
+          c.url === 'http://localhost:8080/served/somewhere/else/entry.js'
       ),
-      'verification fetch hits the gateway'
+      'verification fetch resolves the plan serve_base against the origin'
+    )
+  } finally {
+    globalThis.fetch = realFetch
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('uploadFoundationCode does NOT verify when the plan returns no serve_base', async () => {
+  // The case that used to guess. When a delivery tier owns the URL the backend
+  // returns serve_base: null, and the producer has no way to know where the
+  // bytes will be readable — so it reports "not verified" rather than deriving a
+  // location. Previously this path silently fell back to a reconstructed route,
+  // which could only ever be right on a deployment where the backend also serves.
+  const dir = makeDist()
+  const calls = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (url, opts = {}) => {
+    calls.push({ url: String(url), method: opts.method || 'GET' })
+    if (String(url).endsWith('/dev/registry/code-uploads')) {
+      const body = JSON.parse(opts.body)
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          mode: 'presigned',
+          expires_in: 900,
+          serve_base: null,
+          uploads: body.files.map((f) => ({
+            path: f.path,
+            method: 'PUT',
+            url: `https://example-object-store.test/${f.path}?sig=x`,
+            headers: {}
+          }))
+        })
+      }
+    }
+    if (opts.method === 'PUT') return { ok: true, status: 200, text: async () => '' }
+    throw new Error('no GET should be attempted without a serve_base')
+  }
+  try {
+    const result = await uploadFoundationCode({
+      apiBase: 'http://localhost:8080',
+      token: 't',
+      name: '@std/starter',
+      version: '1.0.2',
+      distDir: dir
+    })
+    assert.equal(result.failed.length, 0)
+    assert.equal(result.uploaded.length, 3)
+    assert.equal(result.verified, null, 'unverifiable, not falsely verified')
+    assert.equal(result.serveBase, null)
+    assert.equal(
+      calls.filter((c) => c.method === 'GET').length,
+      0,
+      'no verification fetch is attempted'
     )
   } finally {
     globalThis.fetch = realFetch
@@ -289,7 +351,7 @@ test('origin-relative serve_base resolves against the registry origin', async ()
         status: 200,
         json: async () => ({
           mode: 'direct',
-          serve_base: '/gateway/foundation/@std/starter/1.0.2/',
+          serve_base: '/served/code/@std/starter/1.0.2/',
           uploads: body.files.map((f) => ({
             path: f.path,
             method: 'PUT',
@@ -318,7 +380,7 @@ test('origin-relative serve_base resolves against the registry origin', async ()
     })
     assert.equal(result.verified, true)
     assert.deepEqual(gets, [
-      'http://localhost:8080/gateway/foundation/@std/starter/1.0.2/entry.js'
+      'http://localhost:8080/served/code/@std/starter/1.0.2/entry.js'
     ])
   } finally {
     globalThis.fetch = realFetch
