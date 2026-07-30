@@ -869,14 +869,13 @@ Names only — for signatures and props, read the package: it's on disk at `node
 **Header/layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()`
 **Overlays:** `Overlay` (modals, palettes, drawers, toasts — portals out of the layout, contains focus; read the note below before hand-rolling one)
 **Keyboard:** `useShortcut('mod+k', fn)`, `useShortcuts({…})`, `useShortcutLabel('mod+k')` — `mod` is Cmd on Apple platforms and Ctrl elsewhere, and the label renders per-platform so a hint never shows the wrong key
-**Long-form prose:** `<Prose>` and the container you put `<Render>` output in both use Tailwind Typography's `prose` classes, which come from a plugin your *foundation* installs — kit ships no stylesheet. Without it the markup is right and completely unstyled. Add `@tailwindcss/typography` to the foundation's deps, then:
+**Long-form prose:** `<Prose>` and the container you put `<Render>` output in both use Tailwind Typography's `prose` classes. One line in the foundation's `styles.css` supplies them and points them at the site's theme:
 
 ```css
-@plugin "@tailwindcss/typography";
-@import "@uniweb/kit/prose-tokens.css";   /* makes prose answer to theme.yml */
+@import "@uniweb/kit/prose-tokens.css";   /* the plugin, wired to theme.yml */
 ```
 
-Use **one** `prose` container per subtree — the `--tw-prose-*` variables are inherited, so a nested one silently resets them and the outer container goes on looking correct. The section that renders the document is usually the better owner; a layout should supply column width and padding.
+Nothing to install — the import brings the plugin with it. **Skip the import and prose is completely unstyled**, silently: the class is there and no rules are behind it. `uniweb doctor` flags that. Use **one** `prose` container per subtree — the `--tw-prose-*` variables are inherited, so a nested one silently resets them and the outer container goes on looking correct. The section that renders the document is usually the better owner; a layout should supply column width and padding.
 
 **Documentation shells:** `useHeadings()` (the page's headings + the one being read, derived from content so it prerenders), `website.getBranchHierarchy({ route, for })` (the page tree for one branch). Kit ships no ready-made layout — a layout is your foundation's design; write it in `src/layouts/` and use these for the behaviour.
 **Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`

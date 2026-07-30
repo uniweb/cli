@@ -169,6 +169,41 @@ function loadSiteYml(dir) {
  *    committed, and then looks like something you may edit. That is how
  *    hand-authored files ended up there in the first place.
  */
+/**
+ * Whether any component source under `dir` matches `pattern`.
+ *
+ * Only the directories a foundation puts components in, and never
+ * `node_modules` — this answers "did the developer write this", so a match
+ * inside a dependency is the wrong answer.
+ */
+function sourceMatches(dir, pattern) {
+  const roots = ['sections', 'layouts', 'components']
+  const walk = (d, depth = 0) => {
+    if (depth > 6) return false
+    let entries
+    try {
+      entries = readdirSync(d, { withFileTypes: true })
+    } catch {
+      return false
+    }
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue
+      const p = join(d, entry.name)
+      if (entry.isDirectory()) {
+        if (walk(p, depth + 1)) return true
+      } else if (/\.(jsx?|tsx?)$/.test(entry.name)) {
+        try {
+          if (pattern.test(readFileSync(p, 'utf8'))) return true
+        } catch {
+          // unreadable file — not this check's problem to report
+        }
+      }
+    }
+    return false
+  }
+  return roots.some((r) => walk(join(dir, r)))
+}
+
 function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix, fixed }) {
   const dataDir = join(sitePath, 'public', DATA_DIR)
   const declared = new Set(Object.keys(siteYml.collections || {}))
@@ -378,6 +413,52 @@ export async function doctor(args = []) {
           : ''
       log(`    • ${f.name}${nameMismatch}`)
     }
+  }
+
+  // Prose without the tokens — a silent, total loss of styling.
+  //
+  // `@uniweb/kit/prose-tokens.css` brings Tailwind Typography with it and then
+  // points it at the site's theme.yml. A foundation that writes `prose` (or
+  // renders <Prose>/<Article>, which emit it) and does NOT import that file
+  // gets the class and no rules behind it: correct markup, zero styling, and
+  // nothing reported anywhere. Measured 2026-07-30 on a foundation missing only
+  // the plugin — every paragraph `margin-top: 0px`, no warning from Vite,
+  // Tailwind or the browser.
+  //
+  // kit closes this for anyone who imports the file; this closes it for anyone
+  // who does not, which is the case kit cannot reach.
+  for (const f of foundations) {
+    // `f.path` is already absolute (built above with join(workspaceDir, …)).
+    const stylesPath = join(f.path, 'styles.css')
+    if (!existsSync(stylesPath)) continue
+
+    const styles = readFileSync(stylesPath, 'utf8')
+    if (styles.includes('@uniweb/kit/prose-tokens.css')) continue
+
+    // Does anything here actually ask for prose? Either the class in the
+    // stylesheet, or kit's components, which render it.
+    const usesProseClass = /(^|[\s"'`])prose(\s|["'`]|$)/m.test(styles)
+    const usesProseComponent = sourceMatches(f.path, /<(Prose|Article)\b/)
+
+    if (!usesProseClass && !usesProseComponent) continue
+
+    const id = 'prose-without-tokens'
+    const reason = usesProseComponent
+      ? 'renders <Prose> or <Article>'
+      : 'uses the `prose` class'
+    issues.push({
+      id,
+      type: 'warning',
+      foundation: f.name,
+      message: `${f.name} ${reason} but does not import prose-tokens.css`
+    })
+    warn(`[${id}] ${f.name} ${reason}, with no prose styling behind it`)
+    log(
+      `    Tailwind Typography supplies the rules and it is not loaded, so the ` +
+      `markup is correct and completely unstyled — silently.`
+    )
+    log(`    Add to ${f.folderName}/styles.css:`)
+    log(`      ${colors.dim}@import "@uniweb/kit/prose-tokens.css";${colors.reset}`)
   }
 
   if (extensions.length > 0) {
