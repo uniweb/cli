@@ -27,6 +27,7 @@ import {
 } from 'fs/promises'
 import yaml from 'js-yaml'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
+import { DATA_DIR } from '@uniweb/core/data-paths'
 import { isWorkspaceRoot, findSites, promptSelect } from '../utils/workspace.js'
 
 // Colors for terminal output
@@ -315,7 +316,7 @@ async function runExtract(siteRoot, config, args) {
     )
 
     // Check if collections exist
-    const dataDir = join(siteRoot, 'public', 'data')
+    const dataDir = join(siteRoot, 'public', DATA_DIR)
     if (!existsSync(dataDir)) {
       if (collectionsOnly) {
         error('No collections found. Create collection data in public/data/.')
