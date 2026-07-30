@@ -468,7 +468,11 @@ Optional attributes: `{size=20}`, `{color=red}`. Custom SVGs: `![Logo](./logo.sv
 [text](url){target=_blank}              <!-- Open in new tab -->
 [text](./file.pdf){download}            <!-- Download -->
 ![alt](./img.jpg){role=banner}          <!-- Role determines array: images, icons, or videos -->
+![alt](./demo.mp4){role=video}          <!-- → content.videos[], not content.images[] -->
+![alt](./img.jpg){href=/products}       <!-- Clickable media: href + target ride along -->
 ```
+
+Sizing and loading ride on the image: `{width=800 height=600 loading=lazy fit=cover position=center}`. A video adds `{poster=./thumb.jpg autoplay muted loop controls}`; a `{role=pdf}` document adds `{preview=./cover.jpg author=… description=…}`.
 
 **Quote values containing spaces:** `{note="Ready to go"}`, not `{note=Ready to go}` — unquoted values end at the first space.
 
