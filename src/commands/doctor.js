@@ -7,7 +7,8 @@ import {
   readFileSync,
   readdirSync,
   writeFileSync,
-  mkdirSync
+  mkdirSync,
+  rmSync
 } from 'node:fs'
 import { join, resolve, basename, dirname, relative } from 'node:path'
 import yaml from 'js-yaml'
@@ -25,6 +26,7 @@ import { surveyWorkspaceDeps } from '../utils/dep-survey.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { checkSiteInstall } from '../utils/install-integrity.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
+import { DATA_DIR } from '@uniweb/core/data-paths'
 
 /**
  * Parse the `--fix [<issue-id>]` flag.
@@ -145,6 +147,103 @@ function loadSiteYml(dir) {
     return yaml.load(readFileSync(configPath, 'utf8'))
   } catch {
     return null
+  }
+}
+
+/**
+ * Diagnose the compiled-collection output directory.
+ *
+ * `public/<DATA_DIR>/` holds what the build compiles from `collections/`, and
+ * nothing else — `collections/` is the only supported way to provide
+ * structured data. Two consequences, both checked here:
+ *
+ * 1. **The mapping is a bijection.** Every entry should be backed by a
+ *    declared collection. An entry that isn't is stale — most often a
+ *    collection removed from `site.yml`, whose compiled records stay on disk
+ *    and keep being deployed. The build reconciles *within* a collection it
+ *    still knows about; it cannot reconcile one it has never heard of, which
+ *    is exactly the case that needs a declaration to compare against.
+ *
+ * 2. **It should not be committed.** It is generated into the source tree
+ *    rather than `dist/`, so without an ignore rule it looks permanent, gets
+ *    committed, and then looks like something you may edit. That is how
+ *    hand-authored files ended up there in the first place.
+ */
+function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix, fixed }) {
+  const dataDir = join(sitePath, 'public', DATA_DIR)
+  const declared = new Set(Object.keys(siteYml.collections || {}))
+
+  if (existsSync(dataDir)) {
+    // A collection `x` owns `x.json` (the cascade) and `x/` (per-record files
+    // when it declares `deferred:`). Anything else is unaccounted for.
+    const orphans = readdirSync(dataDir, { withFileTypes: true })
+      .filter((entry) => {
+        const name = entry.isDirectory()
+          ? entry.name
+          : entry.name.replace(/\.json$/i, '')
+        return !declared.has(name)
+      })
+      .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name))
+
+    if (orphans.length > 0) {
+      const id = 'orphaned-collection-output'
+      issues.push({
+        id,
+        type: 'warning',
+        site: siteName,
+        message: `${orphans.length} entr${orphans.length === 1 ? 'y' : 'ies'} in public/${DATA_DIR}/ with no declared collection`
+      })
+      warn(`[${id}] Stale output in public/${DATA_DIR}/: ${orphans.join(', ')}`)
+      log(
+        `    No collection in site.yml produces ${orphans.length === 1 ? 'it' : 'these'}. ` +
+        `${orphans.length === 1 ? 'It is' : 'They are'} still served and deployed.`
+      )
+      if (shouldFix(id)) {
+        for (const entry of orphans) {
+          rmSync(join(dataDir, entry.replace(/\/$/, '')), { recursive: true, force: true })
+        }
+        fixed(`removed ${orphans.length} stale entr${orphans.length === 1 ? 'y' : 'ies'} from public/${DATA_DIR}/`)
+      } else {
+        log(`    ${colors.dim}Run \`uniweb doctor --fix ${id}\` to remove ${orphans.length === 1 ? 'it' : 'them'}.${colors.reset}`)
+      }
+    }
+  }
+
+  // The ignore rule. Checked whether or not the directory exists yet — the
+  // point is to have it in place *before* the first build writes there.
+  const gitignorePath = join(sitePath, '.gitignore')
+  const rule = `public/${DATA_DIR}/`
+  const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : null
+  const covered =
+    existing !== null &&
+    existing
+      .split('\n')
+      .map((line) => line.trim().replace(/\/$/, ''))
+      .includes(rule.replace(/\/$/, ''))
+
+  if (!covered) {
+    const id = 'generated-data-not-ignored'
+    issues.push({
+      id,
+      type: 'warning',
+      site: siteName,
+      message: `public/${DATA_DIR}/ is generated but not gitignored`
+    })
+    warn(`[${id}] public/${DATA_DIR}/ is build output but not in .gitignore`)
+    log(`    Committing it means a diff on every build, and it invites editing what the build overwrites.`)
+    if (shouldFix(id)) {
+      const body = existing === null ? '' : existing.replace(/\n*$/, '\n')
+      writeFileSync(
+        gitignorePath,
+        `${body}\n# Compiled collections — generated from collections/\n${rule}\n`
+      )
+      fixed(`added ${rule} to ${gitignorePath}`)
+      if (existsSync(dataDir)) {
+        log(`    ${colors.dim}Already-committed files need \`git rm -r --cached public/${DATA_DIR}\`.${colors.reset}`)
+      }
+    } else {
+      log(`    ${colors.dim}Run \`uniweb doctor --fix ${id}\` to add it.${colors.reset}`)
+    }
   }
 }
 
@@ -365,6 +464,24 @@ export async function doctor(args = []) {
         `    (this also turns on sitemap.xml and robots.txt, which are skipped without it)`
       )
     }
+
+    // `public/<DATA_DIR>/` is the build's output directory and nothing else —
+    // `collections/` is the only supported way to provide structured data. That
+    // makes the mapping a bijection: every entry there should be backed by a
+    // declared collection, so anything else is stale, and identifiable.
+    //
+    // It matters because the directory is written into the source tree rather
+    // than dist/, so what lands there persists and gets deployed. A collection
+    // removed from site.yml leaves its compiled records behind — visible to
+    // anyone who knows the URL, listed by nothing.
+    checkGeneratedDataDir({
+      sitePath,
+      siteName,
+      siteYml,
+      issues,
+      shouldFix,
+      fixed
+    })
 
     const foundationName = siteYml.foundation
     if (!foundationName) {

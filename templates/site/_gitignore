@@ -3,3 +3,8 @@ dist
 .uniweb/
 .DS_Store
 *.local
+
+# Compiled collections. Generated from collections/ on every build — it lands
+# in the source tree rather than dist/, so without this it looks permanent,
+# gets committed, and then looks like something you may edit. It isn't.
+public/data/
