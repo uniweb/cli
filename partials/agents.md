@@ -1376,6 +1376,8 @@ Back up your database **before** running this. It is not reversible.
 
 **Why this instead of a component reference.** ` ```@Alert ` names *which component renders this*, which is a rendering decision sitting in content. `md:warning` names *what the content is* and leaves rendering to the foundation — so the same content works under a different foundation, and an editor can recognize the concept and offer a surface built for it.
 
+**A data block whose value is itself a schema — don't declare it.** An author can design a form in the visual editor; it lands as a ` ```yaml:form ` block at `content.data.form`. A component that renders one is the inverse of every other component: it doesn't declare the fields, it *receives* them and draws whatever it's given. If it also writes `data: { form: … }` in its `meta.js`, the runtime applies that declaration to the form's **definition** — filling in defaults and enum fallbacks in the design itself, silently. Read `content.data[tag]` and declare nothing; a tag is a binding, not a gate, so the value arrives either way.
+
 **Reading one in a component.** `content.data[tag]` gives you both views: `items` for anything row-shaped (an accordion, a step list), `sequence` when you don't recognize the tag and want to render it faithfully in document order. Both are derived, so nothing is stored twice.
 
 ```jsx
