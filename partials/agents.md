@@ -1511,6 +1511,8 @@ Layouts are full components with their own `params` in `meta.js`, not just struc
 
 **Layout `meta.js`** declares areas and optional scroll behavior: `{ areas: ['header', 'footer', 'left'], scroll: 'self' }`. Area names are arbitrary. `scroll` controls scroll restoration: unset = runtime manages `window` (default), `'self'` = the layout scrolls itself, or a CSS selector (`'main'`) = runtime manages that element.
 
+Two optional keys tune how areas behave across a navigation. `transitions` renames or opts regions out of per-area view transitions (`{ left: null }`, or `false` for the whole layout). `layers` sets which area paints on top — every area is stacked above the body by default, so a fixed header works without declaring anything, but areas are equal to each other, so a layout whose chrome overlaps says which wins: `layers: { header: 2, left: 1 }`. Both take an object to override per region, or `false` to opt out. **A `z-index` inside an area cannot lift it past another area** — each area is its own stacking context — so reach for `layers` rather than a bigger number, and for `<Overlay>` when a modal needs to escape the area entirely.
+
 **Layout content** lives in `site/layout/` — `header.md`, `footer.md` for the default layout, or a named subdirectory (`site/layout/marketing/`) for named layouts. Named subdirectories are self-contained — no inheritance. Cascade: `page.yml` → `folder.yml` → `site.yml` → foundation `defaultLayout` → `"default"`.
 
 Layout sections are regular section types — they support the full content shape, including tagged data blocks, lists, links, and items. The only difference is they render on every page. Each content category takes a different role:
