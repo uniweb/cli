@@ -883,6 +883,7 @@ Nothing to install — the import brings the plugin with it. **Skip the import a
 **Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`
 **Theming data:** `useThemeData()`, `useColorContext(block)`
 **Data fetching:** `useFetched`, `useCacheEntry`, `useEntityDetail`
+**Forms:** `useFormSubmit`, `submitForm`, `resolveSubmitTarget` — see *Forms* below
 **Utilities:** `cn()`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`, `getLocaleLabel(locale)`
 **Other styled:** `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
@@ -1740,6 +1741,60 @@ const { results, isLoading, query } = useSearch(website)   // `query` is a funct
 ```
 
 Full reference: `authoring/search.md`.
+
+### Forms (`submit:`)
+
+Drawing a form is a foundation's job; delivering what a visitor typed needs a
+server. Where that server is comes from the **site or its host** — never from a
+section type, same arrangement as `fetcher:` and `search:`.
+
+A form gets its destination from the first of these that applies:
+
+1. **`submit:` in `site.yml`** — an endpoint you name yourself.
+2. **One the host supplies.** A site published to Uniweb Cloud gets submission
+   handling from the platform, so it normally needs **no `submit:` at all**.
+3. **Neither** — there is no destination, and the form says so instead of
+   guessing at one.
+
+```yaml
+# site.yml — only when YOU are providing the endpoint. Publishing to Uniweb
+# Cloud needs nothing here; `uniweb export` and most `deploy --host` targets do.
+submit: /forms                              # base-relative, resolved like search.endpoint
+submit: https://forms.example.com/intake    # or another origin
+```
+
+```jsx
+import { useFormSubmit } from '@uniweb/kit'
+
+const { submit, status, error, canSubmit, unavailableReason } = useFormSubmit({
+  block,                                    // supplies section + page context
+  context: { formId: 'contact' },
+  summary: (v) => ({ title: v.name, subtitle: v.email }),
+})
+
+<button type="submit" disabled={!canSubmit || status === 'submitting'}>Send</button>
+{!canSubmit && <p role="status">{unavailableReason}</p>}
+```
+
+> **The framework never invents an endpoint — but a host may supply one.** Don't
+> reach for `submit:` reflexively: on Uniweb Cloud it is redundant, and setting
+> it there overrides what the platform provides. Reach for it when you are the
+> one hosting.
+>
+> `canSubmit` is false only when neither a declaration nor a host supplies a
+> destination. **Check it when you render, not only on the button press**, so the
+> control is visibly disabled before anyone fills the form in, and show
+> `unavailableReason` — it explains which case you are in. A read that 404s
+> degrades to `[]` and the page still renders; a write that 404s loses what a
+> person typed, so it gets no silent fallback.
+
+`status` runs `idle → submitting → success | error`; a non-2xx becomes a thrown
+`Error` carrying the endpoint's own `error` message when it sends one. For file
+fields, declare `fileSlots` and the endpoint replies with `uploadUrls` — the
+bytes never ride inside the JSON. `submitForm()` / `resolveSubmitTarget(website)`
+are the same behaviour without React.
+
+Full reference: `development/receiving-form-submissions.md`.
 
 <!-- template:loom -->
 ### Content handlers
