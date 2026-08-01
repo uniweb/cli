@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T23:11:07.347Z",
+  "generatedAt": "2026-08-01T11:04:49.789Z",
   "packages": {
     "@uniweb/build": {
-      "version": "0.16.8",
+      "version": "0.16.9",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -45,7 +45,7 @@
       "deps": []
     },
     "@uniweb/kit": {
-      "version": "0.10.12",
+      "version": "0.10.13",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core",
@@ -110,7 +110,7 @@
       "deps": []
     },
     "@uniweb/unipress": {
-      "version": "0.6.6",
+      "version": "0.6.7",
       "path": "framework/unipress",
       "deps": [
         "@uniweb/build",
@@ -277,6 +277,17 @@
         "convert",
         "ai-generated",
         "starter"
+      ]
+    },
+    "services": {
+      "name": "Services",
+      "description": "Local-services site built around an author-designed quote request form",
+      "tags": [
+        "services",
+        "local-business",
+        "forms",
+        "quote",
+        "trades"
       ]
     }
   }
