@@ -204,6 +204,106 @@ function sourceMatches(dir, pattern) {
   return roots.some((r) => walk(join(dir, r)))
 }
 
+// A fenced data block tagged `form`, in any of the serialization formats the
+// parser accepts for one. Matched on the info string only — the body is the
+// author's business.
+//
+// No whitespace is allowed around the colon, because the parser allows none:
+// `processCodeInfo` in @uniweb/content-reader does a bare `info.split(':')` and
+// trims neither half, so ```` ```yaml: form ```` yields the tag `" form"` and
+// lands at `content.data[" form"]`. Matching it here would warn about a block
+// that is not a form.
+const FORM_BLOCK = /^\s*`{3,}\s*(?:yaml|yml|json):form\b/m
+
+/**
+ * Find the content files declaring a form, so we can tell whether having no
+ * submission destination matters for this site.
+ *
+ * Scans the page tree and layout only. A form is authored where it renders, and
+ * widening this to collections would trade a slower check for cases that do not
+ * occur.
+ */
+export function findFormContent(sitePath, siteYml) {
+  const roots = [
+    siteYml?.paths?.pages ? join(sitePath, siteYml.paths.pages) : join(sitePath, 'pages'),
+    join(sitePath, 'layout')
+  ]
+  const found = []
+
+  const walk = (dir) => {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return // absent or unreadable — not this check's problem to report
+    }
+    for (const entry of entries) {
+      const p = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(p)
+      } else if (entry.name.endsWith('.md')) {
+        try {
+          if (FORM_BLOCK.test(readFileSync(p, 'utf8'))) found.push(relative(sitePath, p))
+        } catch {
+          // unreadable file — skip
+        }
+      }
+    }
+  }
+
+  for (const root of roots) walk(root)
+  return found
+}
+
+/**
+ * A site whose content declares a form needs somewhere to send it.
+ *
+ * Two things can supply that: `submit:` in site.yml, or the host at serve time.
+ * Doctor can only see the first — so it warns only when *nothing* could
+ * plausibly supply one: no declaration, and no deploy target that would put a
+ * host in the picture. On a site bound to a host, having no `submit:` is the
+ * correct configuration, and warning there would nag exactly the people who got
+ * it right.
+ *
+ * The consequence of being wrong in the other direction is what justifies the
+ * check at all: a form with no destination renders disabled, which is visible
+ * on the page but easy to ship without noticing.
+ */
+export async function checkFormSubmitTarget({ sitePath, siteName, siteYml, issues }) {
+  if (siteYml?.submit) return
+
+  const forms = findFormContent(sitePath, siteYml)
+  if (forms.length === 0) return
+
+  // A configured deploy target means a host is in the picture and may supply a
+  // destination we cannot see from here.
+  let deployYml = null
+  try {
+    deployYml = await loadDeployYml(sitePath)
+  } catch {
+    // malformed deploy.yml is reported by its own check; treat as absent here
+  }
+  if (deployYml?.targets && Object.keys(deployYml.targets).length > 0) return
+
+  const id = 'form-without-submit-target'
+  const n = forms.length
+  issues.push({
+    id,
+    type: 'warning',
+    site: siteName,
+    message: `${n} content file${n === 1 ? '' : 's'} declare${n === 1 ? 's' : ''} a form, but no submission destination is configured`
+  })
+  warn(`[${id}] ${n} content file${n === 1 ? '' : 's'} declare${n === 1 ? 's' : ''} a form with nowhere to send it`)
+  for (const f of forms.slice(0, 5)) log(`    • ${f}`)
+  if (n > 5) log(`    ${colors.dim}…and ${n - 5} more${colors.reset}`)
+  log(
+    `    Set ${colors.green}submit${colors.reset} in site.yml if you are providing the endpoint.`
+  )
+  log(
+    `    ${colors.dim}A host that handles submissions supplies one itself — this check is skipped once a deploy target is configured.${colors.reset}`
+  )
+}
+
 function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix, fixed }) {
   const dataDir = join(sitePath, 'public', DATA_DIR)
   const declared = new Set(Object.keys(siteYml.collections || {}))
@@ -555,6 +655,9 @@ export async function doctor(args = []) {
     // than dist/, so what lands there persists and gets deployed. A collection
     // removed from site.yml leaves its compiled records behind — visible to
     // anyone who knows the URL, listed by nothing.
+    // Forms need a destination, and having none is only visible on the page.
+    await checkFormSubmitTarget({ sitePath, siteName, siteYml, issues })
+
     checkGeneratedDataDir({
       sitePath,
       siteName,
