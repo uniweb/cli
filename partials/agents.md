@@ -1751,10 +1751,26 @@ section type, same arrangement as `fetcher:` and `search:`.
 A form gets its destination from the first of these that applies:
 
 1. **`submit:` in `site.yml`** — an endpoint you name yourself.
-2. **One the host supplies.** A site published to Uniweb Cloud gets submission
-   handling from the platform, so it normally needs **no `submit:` at all**.
+2. **One the host supplies** — `services.submit` in the served payload. A site
+   published to Uniweb Cloud gets submission handling from the platform, so it
+   normally needs **no `submit:` at all**.
 3. **Neither** — there is no destination, and the form says so instead of
    guessing at one.
+
+That is the general arrangement, not a forms-only one. A host declares
+everything it offers under `services`, keyed by name, and every service resolves
+by the same rule — your declaration, then the host's, then neither:
+
+```jsx
+import { resolveService } from '@uniweb/kit'
+
+const { url, reason } = resolveService(website, 'assistant')   // or 'search', or your own
+```
+
+**The name is open**: the framework ships clients for what it implements and
+resolution for anything, so a foundation can define a service the framework has
+never heard of and a host can fill it. Same escalation `fetcher.transports`
+offers for data.
 
 ```yaml
 # site.yml — only when YOU are providing the endpoint. Publishing to Uniweb
