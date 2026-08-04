@@ -38,7 +38,6 @@ For pointing the CLI at a non-production backend or registry. Standard fallback 
 
 | Variable | Read by | Effect |
 |---|---|---|
-| `UNIWEB_FOUNDATION_REF` | `@uniweb/build` → `src/site/config.js` | Override `site.yml::foundation` for the duration of a build. ⚠️ **Read, but nothing in the CLI sets it.** It served the `uniweb deploy` auto-publish flow, which was removed; the reader is what remains. Setting it by hand still works. |
 | `UNIWEB_BASE` | `framework/build/src/site/config.js:261` | Override `site.yml::base` (subdirectory deployments). |
 | `VITE_FOUNDATION_MODE=runtime` | `framework/build/src/site/config.js:271-272` | Force runtime-linked foundation mode for sites with a workspace-local foundation ref. Used by e2e tests (`framework/_e2e/dev-server.test.js`) and as an internal escape hatch. **Not** prefixed `UNIWEB_` because Vite loads it as a build-time `import.meta.env.VITE_*` value. |
 
