@@ -216,6 +216,8 @@ A versionless `@org/name` is an error rather than a shorthand — the build reje
 
 > **Foundations are never npm packages.** They're runtime federated modules, not libraries. Don't `npm install` one, and don't add one to `dependencies` by hand. The four supported shapes are exactly the ones above: a workspace sibling, a `file:` dependency, a versioned registry ref, or a full URL.
 
+> **The same `@scope/name` shape means different things in different places.** As a `foundation:` value it is a **catalog** ref (never npm). As a data-schema ref in `meta.js` it resolves on disk from an **npm package** — `@std/*` from `@uniweb/schemas`, any other `@org/*` from that org's `@org/schemas`. And `@uniweb/kit` in `dependencies` is an ordinary npm package. Position decides the registry; the shape tells you nothing.
+
 **Check `paths:` in `site.yml` before going looking for content.** It mounts outside directories into the page tree (`paths: { pages/docs: ../../../docs }`), so a route's markdown may live in another repo or a submodule rather than under `<site>/pages/`.
 
 ### 2. Learn this project's vocabulary — before you write anything
