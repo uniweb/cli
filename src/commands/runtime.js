@@ -1,9 +1,22 @@
 /**
  * uniweb runtime register — upload a built `@uniweb/runtime` to the backend so it
  * can serve the runtime version. The runtime is a SYSTEM artifact: registering it
- * requires **@std membership** (a non-@std bearer 403s). Foundations pin a runtime
- * version (`dist/runtime-pin.json`); that version must be registered, or `uniweb
- * register` of such a foundation fails.
+ * requires **@std membership** (a non-@std bearer 403s).
+ *
+ * A foundation emits `dist/runtime-pin.json`, but NOTHING READS IT — not this CLI,
+ * not the backend, not the edge (verified across all three lanes 2026-08-04,
+ * channel `platform-backend-framework-8de5`). An earlier version of this comment
+ * claimed `uniweb register` of a foundation fails when its pinned version isn't
+ * registered. That was never true, and it propagated into a kb doc before anyone
+ * checked it against `commands/register.js` three files away.
+ *
+ * The pin is a **compatibility floor**, not a selector: a site loads a primary
+ * foundation plus N extensions, each emitting its own pin, and a site has exactly
+ * one runtime — so pins are plural and the selector must be singular. The selector
+ * is `site.yml::runtime` (see commands/publish.js), which the backend stamps into
+ * the site's meta at publish. The pin's designed use is publish-time VALIDATION
+ * (is the selected runtime inside every foundation's compatible interval?), which
+ * is producer-side and not yet implemented.
  *
  * Contract AGREED with the backend (2026-06-14): `POST /dev/runtime`, @std-gated,
  * manifest-last. Wire + the two-half artifact set (SPA + ssr-edge isolate, the
