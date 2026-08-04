@@ -108,15 +108,6 @@ async function confirm(question, defaultYes = false) {
   }
 }
 
-// Highest installed runtime from the backend's /dev/config list (numeric-aware
-// sort). Null when the list is empty.
-function pickHighestRuntime(installed) {
-  if (!Array.isArray(installed) || installed.length === 0) return null
-  return [...installed].sort((a, b) =>
-    String(b).localeCompare(String(a), undefined, { numeric: true })
-  )[0]
-}
-
 // Origin-relative serve path → clickable absolute URL (self-serve default).
 function absolutizeServeUrl(origin, url) {
   if (!url || typeof url !== 'string') return null
@@ -222,14 +213,24 @@ export async function publish(args = []) {
     )
     if (!dryRun) return { exitCode: 1 }
   }
-  const runtimeVersion = siteYml.runtime || pickHighestRuntime(installed)
-  if (!runtimeVersion && !dryRun) {
-    say.err('Could not resolve a runtime version.')
-    say.dim(
-      'Pin one with `runtime:` in site.yml, or install one on the backend so /dev/config reports it.'
-    )
-    return { exitCode: 1 }
-  }
+  // An explicit pin is sent; NOTHING is synthesized when site.yml is silent.
+  //
+  // This used to fall back to the highest version the backend reported
+  // installed. That is the producer guessing at a fact the control plane owns —
+  // and once propagation moves sites, actively wrong: a walk advances a site to
+  // X, and the next publish would restate a *different* version the producer
+  // computed locally, silently undoing it.
+  //
+  // Silence is not a request to change the runtime, so the backend resolves it:
+  // the site's CURRENT resolved runtime → UNIWEBD_DEFAULT_RUNTIME → (self-serve)
+  // highest installed → 400. That keeps a propagated site where the walk put it,
+  // and it is the authority's answer rather than ours.
+  //
+  // ⚠️ Do NOT reintroduce a local fallback. Sending our own guess when the site
+  // did not ask is what makes an unpinned republish regress. (The pinned path is
+  // unaffected — an explicit pin is still validated fail-closed above, and the
+  // backend refuses a backward move unless forced.)
+  const runtimeVersion = siteYml.runtime || null
 
   // deploy.yml target (the Uniweb hosting memory). No --target on publish — it
   // always targets Uniweb hosting; resolveTarget gives us the target name +
@@ -292,7 +293,7 @@ export async function publish(args = []) {
     say.info('Dry run — would bring the foundation along, sync, and go live:')
     say.dim(`Backend     : ${client.origin}`)
     say.dim(
-      `Runtime     : ${runtimeVersion || '(unresolved — needs a backend or a site.yml runtime: pin)'}${runtimeVersion && !siteYml.runtime ? ' (highest installed)' : ''}`
+      `Runtime     : ${runtimeVersion || '(not pinned — the backend keeps this site on its current runtime)'}`
     )
     say.dim(
       `site_uuid   : ${siteYml.$uuid || '(none — the site is created before anything uploads)'}`
@@ -671,7 +672,11 @@ export async function publish(args = []) {
         ...(recordedRef ? { ref: recordedRef } : {}),
         released: fnd.released
       },
-      runtime: runtimeVersion,
+      // Only when the site pinned one. An unpinned site's runtime is resolved by
+      // the backend and can move under propagation, so recording a value here
+      // would be a snapshot that silently goes stale — and `deploy.yml` is a
+      // record of what this publish did, not a cache of backend state.
+      ...(runtimeVersion ? { runtime: runtimeVersion } : {}),
       locales: Array.isArray(result.locales) ? result.locales : languages
     }
   })

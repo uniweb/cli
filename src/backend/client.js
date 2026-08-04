@@ -461,9 +461,14 @@ export class BackendClient {
     // Runtime rides as a query param (?runtime=<version>) per the shipped /dev
     // route (D3, "request-carried"), NOT the body. Languages, when present, go in
     // the body; absent → no body (the route only requires the runtime).
+    // Omitted when the site pins no runtime — silence is NOT a request to change
+    // it, so the backend keeps the site on its current resolved version (its
+    // order: body → current → UNIWEBD_DEFAULT_RUNTIME → highest installed → 400).
+    // Sending a locally-computed guess instead would undo a propagation walk on
+    // the next publish.
     return this.request(`/dev/site/publish/${encodeURIComponent(uuid)}`, {
       method: 'POST',
-      query: { runtime: runtimeVersion },
+      ...(runtimeVersion ? { query: { runtime: runtimeVersion } } : {}),
       ...(languages ? { body: JSON.stringify({ languages }) } : {})
     })
   }
