@@ -231,6 +231,10 @@ cat <foundation>/sections/Hero/meta.js       # what one expects and accepts
 
 **Extensions add to that vocabulary.** If `site.yml` carries an `extensions:` list, each entry is a second foundation contributing its own section types, usable by name in exactly the same way. Enumerate their `sections/` too. The primary foundation wins on a name collision, and extensions are checked in declared order.
 
+**An extension *is* a foundation** — same build, same output; it just contributes no Layout or theme variables. So each entry takes the **same shapes** `foundation:` does: a workspace package name, a versioned catalog ref (`@org/name@1.2.3`), or a full URL. Use the same table above to decide whether you can add a section type to one.
+
+> **A site-relative URL (`/effects/entry.js`) only works where the site serves its own files** — `uniweb export` and `uniweb deploy --host=<adapter>`. A site published to Uniweb hosting ships no JS, so nothing serves that path, and `uniweb publish` rejects it with a pointer to the catalog-ref form. Register the extension (`uniweb register` in its directory) and reference it like any other foundation. When you reference a workspace-local extension, `uniweb publish` brings it along exactly as it does the primary — releasing it if its code changed, and pinning the released version on the published site.
+
 Each `meta.js` is a catalog entry: `description` (what the type is for), `content:` (what markdown it expects), `params:` (what frontmatter it accepts, with defaults), `presets:` (named param bundles). Read them as a menu — that is what they are. There is no CLI command that lists them; reading the folder *is* the discovery step.
 
 > **Never write a `type:` or a param you haven't confirmed exists.** Both failures are silent (Part 0) — invisible from the terminal, visible only on the page.
@@ -615,6 +619,9 @@ slug: { fr: a-propos }      # Localized URL segment per language
 # site.yml
 index: home                 # Just set the homepage
 pages: [home, about, ...]   # Order pages (... = rest, first = homepage); without ... = strict
+foundation: '@acme/ui@1.2.0'  # The component system (see Part 2, step 1)
+extensions: ['@acme/fx@0.3.1'] # Secondary foundations — same shapes as foundation:
+runtime: 0.9.6              # Optional runtime pin; omit and the host chooses
 ```
 
 **Configuration cascades: `page.yml` → `folder.yml` → `site.yml` → foundation defaults.** Each level inherits from the one above and overrides specific values, the way CSS specificity works. This is what makes bulk assignment natural — put `layout: marketing` in a `folder.yml` and every page in that folder inherits it, while one page can still override with its own `page.yml`. Reach for `folder.yml` before editing the same key into a dozen `page.yml` files.
