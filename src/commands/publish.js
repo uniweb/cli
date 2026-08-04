@@ -49,6 +49,7 @@ import {
   rewriteBallAssets
 } from '@uniweb/build/site'
 import { emitSyncPackages } from '@uniweb/build/uwx'
+import { isSiteRelativeExtensionUrl } from '@uniweb/build'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 
 import { BackendClient } from '../backend/client.js'
@@ -68,7 +69,10 @@ import {
 } from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
-import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
+import {
+  bringFoundationAlong,
+  bringExtensionsAlong
+} from '../backend/foundation-bring-along.js'
 import { settlePaymentIfNeeded } from '../backend/payment-handoff.js'
 
 const c = {
@@ -249,6 +253,41 @@ export async function publish(args = []) {
   }
   const autoSave = noSave ? 'off' : resolved.autoSave || 'lastDeploy'
 
+  // A SITE-RELATIVE extension URL cannot work on Uniweb hosting: the published
+  // site ships no JS, so nothing serves that path. The request falls through to
+  // the SPA shell and returns 200 with `text/html`, which `import()` then fails
+  // to parse — and `loadExtensions` uses Promise.allSettled, so nothing throws
+  // and every section the extension provides silently renders "Component not
+  // found". A 200-with-HTML is strictly worse to debug than a 404 (the same
+  // shape that forced the `/data/` carve-out at the edge), so fail here, at the
+  // author's screen, rather than at a visitor's.
+  //
+  // `export` / `deploy --host` are unaffected — there the site serves its own
+  // files and a relative URL is exactly right.
+  const relativeExtensions = (
+    Array.isArray(siteYml.extensions) ? siteYml.extensions : []
+  )
+    .map((e) => (e && typeof e === 'object' ? e.url || e.ref || e.name : e))
+    .filter((d) => isSiteRelativeExtensionUrl(d))
+  if (relativeExtensions.length) {
+    say.err(
+      `Site-relative extension URL${relativeExtensions.length > 1 ? 's' : ''} cannot be served by Uniweb hosting: ${relativeExtensions.join(', ')}`
+    )
+    say.dim(
+      'A published site ships no JS, so nothing serves that path. An extension is a foundation —'
+    )
+    say.dim(
+      'register it (`uniweb register` in the extension directory) and reference it by name or'
+    )
+    say.dim(
+      '`@org/name@version` in site.yml::extensions, the same way the primary foundation is declared.'
+    )
+    say.dim(
+      'Site-relative URLs keep working with `uniweb export` and `uniweb deploy --host=<adapter>`.'
+    )
+    return { exitCode: 1 }
+  }
+
   if (dryRun) {
     say.info('Dry run — would bring the foundation along, sync, and go live:')
     say.dim(`Backend     : ${client.origin}`)
@@ -261,6 +300,16 @@ export async function publish(args = []) {
     const langs = languagesFromSiteYml(siteYml)
     if (langs) say.dim(`Languages   : ${langs.join(', ')}`)
     await bringFoundationAlong({
+      client,
+      siteDir,
+      siteYml,
+      args,
+      say,
+      confirm,
+      cliBin: process.argv[1],
+      dryRun: true
+    })
+    await bringExtensionsAlong({
       client,
       siteDir,
       siteYml,
@@ -298,6 +347,27 @@ export async function publish(args = []) {
     say.dim('Fix the foundation, then re-run `uniweb publish`.')
     return { exitCode: 1 }
   }
+
+  // 1b. Same for the site's LOCAL extensions. An extension is a foundation, so
+  //     it gets the same freshness guarantee — otherwise a site could go live
+  //     against stale extension code with nothing noticing.
+  let ext
+  try {
+    ext = await bringExtensionsAlong({
+      client,
+      siteDir,
+      siteYml,
+      args,
+      say,
+      confirm,
+      cliBin: process.argv[1]
+    })
+  } catch (err) {
+    say.err(`Extension release failed: ${err.message}`)
+    say.dim('Fix the extension, then re-run `uniweb publish`.')
+    return { exitCode: 1 }
+  }
+  if (!ext.proceed) return { exitCode: 1 }
   if (!fnd.proceed) return { exitCode: 0 }
 
   // 2. Build the site data (link mode): dist/site-content.json (+ per-locale),
@@ -489,6 +559,9 @@ export async function publish(args = []) {
         ? { baseVersions, itemBaseVersions: readItemBaseVersions(siteDir) }
         : {}),
       ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
+      ...(Object.keys(ext.pins).length
+        ? { injectExtensions: ext.pins }
+        : {}),
       ...(assetRewrite ? { assetRewrite } : {})
     })
   } catch (err) {

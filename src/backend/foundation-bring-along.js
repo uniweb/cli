@@ -26,7 +26,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
-import { detectFoundationType } from '@uniweb/build'
+import { detectFoundationType, isExtensionUrl } from '@uniweb/build'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { readFlagValue } from '../utils/args.js'
 import { isNonInteractive } from '../utils/interactive.js'
@@ -58,6 +58,52 @@ export function resolveLocalFoundation(siteDir, siteYml) {
     scopedName: foundationScopedName(info.path),
     version: readPkgField(info.path, 'version')
   }
+}
+
+/**
+ * The site's LOCAL extensions — the ones publish must bring along. An extension IS
+ * a foundation (same build, same output), so it is declared and resolved the same
+ * way and goes through the SAME resolver, for the same reason `resolveLocalFoundation`
+ * does: "which code" must never drift between the build and the publish.
+ *
+ * A declaration that resolves to a URL or a catalog ref yields nothing local — the
+ * host already serves that code. Only workspace-local extensions need releasing.
+ *
+ * @param {string} siteDir
+ * @param {object} siteYml - parsed site.yml
+ * @returns {Array<{ decl: string, dir: string, scopedName: string|null, version: string|null }>}
+ *   `decl` is the authored declaration, which is the wire entry's `$id` — the key
+ *   publish stamps the pinned ref back onto.
+ */
+export function resolveLocalExtensions(siteDir, siteYml) {
+  const list = siteYml?.extensions
+  if (!Array.isArray(list)) return []
+  const out = []
+  for (const entry of list) {
+    // Only the name/ref form can be local; an explicit `url` never is.
+    const decl =
+      entry && typeof entry === 'object'
+        ? entry.ref || entry.name || null
+        : typeof entry === 'string'
+          ? entry
+          : null
+    if (!decl || isExtensionUrl(decl)) continue
+    let info
+    try {
+      info = detectFoundationType(decl, siteDir)
+    } catch {
+      // Unresolved — the site build surfaces the canonical error; nothing local.
+      continue
+    }
+    if (!info || info.type !== 'local' || !info.path) continue
+    out.push({
+      decl,
+      dir: info.path,
+      scopedName: foundationScopedName(info.path),
+      version: readPkgField(info.path, 'version')
+    })
+  }
+  return out
 }
 
 // The foundation's scoped catalog name (`@org/name`) from its package.json — an
@@ -140,11 +186,43 @@ export async function bringFoundationAlong({
     // along, and no ref override (forward the site.yml ref verbatim).
     return { released: false, proceed: true, ref: null }
   }
+  return bringLocalCodeAlong({
+    client,
+    local,
+    kind: 'foundation',
+    args,
+    say,
+    confirm,
+    cliBin,
+    dryRun
+  })
+}
 
+/**
+ * Bring ONE piece of local code along — the primary foundation or one extension.
+ * Identical logic for both because an extension is a foundation; `kind` only names
+ * it in the messages.
+ *
+ * @param {object} o
+ * @param {{dir: string, scopedName: string|null, version: string|null}} o.local
+ * @param {'foundation'|'extension'} o.kind
+ * @returns {Promise<{ released: boolean, proceed: boolean, ref: string|null }>}
+ */
+async function bringLocalCodeAlong({
+  client,
+  local,
+  kind,
+  args,
+  say,
+  confirm,
+  cliBin,
+  dryRun = false
+}) {
+  const Kind = kind === 'extension' ? 'Extension ' : 'Foundation'
   const label =
     local.scopedName || local.version
-      ? `${local.scopedName || 'foundation'}${local.version ? `@${local.version}` : ''}`
-      : 'the local foundation'
+      ? `${local.scopedName || kind}${local.version ? `@${local.version}` : ''}`
+      : `the local ${kind}`
   const skipPrompts =
     args.includes('--yes') ||
     args.includes('--force') ||
@@ -163,7 +241,7 @@ export async function bringFoundationAlong({
   // a login (the digest read is auth-gated). The real run does the compare.
   if (dryRun) {
     say.dim(
-      `Foundation  : ${label} — local; would release if changed or not yet registered`
+      `${Kind}  : ${label} — local; would release if changed or not yet registered`
     )
     return { released: false, proceed: true, ref: null }
   }
@@ -175,7 +253,7 @@ export async function bringFoundationAlong({
     : null
 
   if (!reg) {
-    say.info(`Releasing the foundation ${label} (not yet registered)…`)
+    say.info(`Releasing the ${kind} ${label} (not yet registered)…`)
     return {
       released: releaseFoundation(local, args, cliBin, say),
       proceed: true,
@@ -190,7 +268,7 @@ export async function bringFoundationAlong({
 
   if (reg.digest && localDigest && reg.digest === localDigest) {
     say.dim(
-      `Foundation  : ${label} — unchanged since release (digest matches); nothing to release.`
+      `${Kind}  : ${label} — unchanged since release (digest matches); nothing to release.`
     )
     return { released: false, proceed: true, ref: pinnedRef() }
   }
@@ -198,7 +276,7 @@ export async function bringFoundationAlong({
   // A different version locally → a new version to release.
   if (local.version && local.version !== reg.latest_version) {
     say.info(
-      `Releasing the foundation ${label} (new version; registered latest is ${reg.latest_version})…`
+      `Releasing the ${kind} ${label} (new version; registered latest is ${reg.latest_version})…`
     )
     return {
       released: releaseFoundation(local, args, cliBin, say),
@@ -233,14 +311,14 @@ export async function bringFoundationAlong({
     return { released: false, proceed: true, ref: pinnedRef() }
   }
 
-  // Case 3 (§4): the foundation was edited but the version wasn't bumped. The
+  // Case 3 (§4): the code was edited but the version wasn't bumped. The
   // registered version is immutable, so we never silently ship the old code —
   // the deliberate release gate is a version bump (§3.1).
   say.warn(
     `Your local ${label} differs from the registered version ${reg.latest_version}, but the version wasn't bumped.`
   )
   say.dim(
-    "A registered version is immutable. Bump the foundation's version to release the change, then re-run `uniweb publish`."
+    `A registered version is immutable. Bump the ${kind}'s version to release the change, then re-run \`uniweb publish\`.`
   )
   if (skipPrompts || isNonInteractive(args)) {
     say.dim(`Proceeding with the already-registered ${reg.latest_version}.`)
@@ -252,7 +330,7 @@ export async function bringFoundationAlong({
   )
   if (!proceed) {
     say.info(
-      'Aborted — bump the foundation version, then re-run `uniweb publish`.'
+      `Aborted — bump the ${kind} version, then re-run \`uniweb publish\`.`
     )
     return { released: false, proceed: false, ref: null }
   }
@@ -281,4 +359,53 @@ function releaseFoundation(local, args, cliBin, say) {
   })
   console.log('')
   return true
+}
+
+/**
+ * Bring the site's LOCAL extensions along — the exact parallel of
+ * `bringFoundationAlong`, run for each workspace-local extension.
+ *
+ * An extension is a foundation, so it gets a foundation's freshness guarantee:
+ * released when unregistered or newly versioned, skipped on a digest match, and
+ * never silently shipped stale. Before this, a site could go live against a stale
+ * extension with nothing noticing — the primary was covered and the rest were not.
+ *
+ * @param {object} o - same shape as bringFoundationAlong
+ * @returns {Promise<{ proceed: boolean, released: number, pins: Object<string,string> }>}
+ *   `pins` maps each authored declaration (the wire entry's `$id`) → the pinned
+ *   `@scope/name@version`, for `emitSyncPackages({ injectExtensions })`. Delivery is
+ *   version-pinned, so an unpinned local name on the wire points at code the host
+ *   cannot serve — the same reason the primary's ref is stamped.
+ */
+export async function bringExtensionsAlong({
+  client,
+  siteDir,
+  siteYml,
+  args,
+  say,
+  confirm,
+  cliBin,
+  dryRun = false
+}) {
+  const locals = resolveLocalExtensions(siteDir, siteYml)
+  const pins = {}
+  let released = 0
+  for (const local of locals) {
+    const r = await bringLocalCodeAlong({
+      client,
+      local,
+      kind: 'extension',
+      args,
+      say,
+      confirm,
+      cliBin,
+      dryRun
+    })
+    // A declined prompt aborts the whole publish, exactly as it does for the
+    // primary — a site live against half its code is worse than not shipping.
+    if (!r.proceed) return { proceed: false, released, pins: {} }
+    if (r.released) released += 1
+    if (r.ref) pins[local.decl] = r.ref
+  }
+  return { proceed: true, released, pins }
 }
