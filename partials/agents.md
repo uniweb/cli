@@ -892,7 +892,7 @@ Nothing to install — the import brings the plugin with it. **Skip the import a
 **Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`
 **Theming data:** `useThemeData()`, `useColorContext(block)`
 **Data fetching:** `useFetched`, `useCacheEntry`, `useEntityDetail`
-**Forms:** `useFormSubmit`, `submitForm`, `resolveSubmitTarget` — see *Forms* below
+**Forms:** `useFormValues` (an author-designed form's state), `useFormSubmit`, `submitForm`, `resolveSubmitTarget` — see *Forms* below
 **Utilities:** `cn()`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`, `getLocaleLabel(locale)`
 **Other styled:** `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
@@ -1818,6 +1818,33 @@ const { submit, status, error, canSubmit, unavailableReason } = useFormSubmit({
 fields, declare `fileSlots` and the endpoint replies with `uploadUrls` — the
 bytes never ride inside the JSON. `submitForm()` / `resolveSubmitTarget(website)`
 are the same behaviour without React.
+
+**Rendering a form the AUTHOR designed** — a `yaml:form` block at
+`content.data.form` — is the inverse of every other component: you don't declare
+the fields, you receive them and draw whatever you're given. `useFormValues` owns
+the part that's identical in every such component, so you write only the controls:
+
+```jsx
+import { useFormValues, useFormSubmit, valueAt } from '@uniweb/kit'
+
+const { controls, values, setValue, missing, formData, files } =
+  useFormValues(content.data.form)
+const { submit, canSubmit, status } = useFormSubmit({ block })
+
+{controls.map((c) => (
+  <MyControl key={c.path} control={c}          // branch on c.type — your design
+             value={valueAt(values, c.path)}
+             onChange={(v) => setValue(c.path, v)} />
+))}
+<button disabled={!canSubmit || missing.length > 0} onClick={() => submit(formData, { files })}>
+```
+
+It seeds each control's `default`, tracks edits, and reports `missing` — the
+`required` controls still empty — without enforcing anything, the same line
+`canSubmit` draws. **Submit `formData`, not `values`:** they differ because a
+`File` inside `formData` would be JSON-serialized to `{}`, so file controls are
+omitted from it and ride in `files` instead, each tagged with the control it came
+from. `values` keeps the `File` so your input can show its selection.
 
 Full reference: `development/receiving-form-submissions.md`.
 
