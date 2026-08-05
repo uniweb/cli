@@ -4,11 +4,12 @@
  * requires **@std membership** (a non-@std bearer 403s).
  *
  * A foundation emits `dist/runtime-pin.json`, but NOTHING READS IT — not this CLI,
- * not the backend, not the edge (verified across all three lanes 2026-08-04,
- * channel `platform-backend-framework-8de5`). An earlier version of this comment
- * claimed `uniweb register` of a foundation fails when its pinned version isn't
- * registered. That was never true, and it propagated into a kb doc before anyone
- * checked it against `commands/register.js` three files away.
+ * not any backend or serving lane we have checked (2026-08-04, confirmed again
+ * 2026-08-06). An earlier version of this comment claimed `uniweb register` of a
+ * foundation fails when its pinned version isn't registered. That was never true,
+ * and it propagated into internal notes AND into four public documentation
+ * surfaces before anyone checked it against `commands/register.js` three files
+ * away.
  *
  * The pin is a **compatibility floor**, not a selector: a site loads a primary
  * foundation plus N extensions, each emitting its own pin, and a site has exactly
