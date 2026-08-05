@@ -69,7 +69,8 @@ import {
 import { readRegistryAuth } from '../utils/registry-auth.js'
 import {
   collectDistFiles,
-  computeFoundationDigest
+  computeFoundationDigest,
+  readRuntimePin
 } from '../utils/code-upload.js'
 import { deriveScope } from '../utils/registry-orgs.js'
 import { BackendClient } from '../backend/client.js'
@@ -410,6 +411,17 @@ async function runRegister(args = []) {
     ? null
     : computeFoundationDigest(join(targetDir, 'dist'))
 
+  // Compatibility floor (foundation path only) — the @uniweb/runtime version
+  // this build linked against. Rides in info.runtime beside info.digest.
+  //
+  // Until this shipped, `dist/runtime-pin.json` was written by the build and
+  // read by NOTHING, so a floor a foundation stated could never reach anyone
+  // able to act on it. It cannot be acted on here either: a site's floor is
+  // max() over its primary foundation AND its extensions, and this command
+  // publishes one foundation without sight of the others. So the producer
+  // states its own floor and whoever resolves a whole site does the arithmetic.
+  const runtime = standalone ? null : readRuntimePin(join(targetDir, 'dist'))
+
   const exporter = { tool: 'uniweb', version: cliVersion(), instance: 'build' }
   let doc
   try {
@@ -420,7 +432,8 @@ async function runRegister(args = []) {
           foundationDir: targetDir,
           scope,
           exporter,
-          digest
+          digest,
+          runtime
         })
   } catch (err) {
     error(`Could not assemble the .uwx: ${err.message}`)
@@ -447,6 +460,7 @@ async function runRegister(args = []) {
   if (scope)
     log(`  ${colors.dim}scope: ${scope} (${scopeSource})${colors.reset}`)
   if (digest) log(`  ${colors.dim}digest: ${digest}${colors.reset}`)
+  if (runtime) log(`  ${colors.dim}runtime floor: ${runtime}${colors.reset}`)
 
   // Preview paths — no submit, no auth needed.
   if (output) {

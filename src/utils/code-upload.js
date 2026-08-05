@@ -142,6 +142,40 @@ export function uploadOrder(files) {
  * @param {string} distDir - the built `dist/` directory
  * @returns {string|null} `sha256:<hex>` or null when there's nothing to hash
  */
+/**
+ * The `@uniweb/runtime` version a built foundation linked against, from
+ * `dist/runtime-pin.json`.
+ *
+ * ⭐ **This is the ONLY reader of that file, and it exists so the pin can reach
+ * a party that can act on it.** The pin is a compatibility FLOOR — the lowest
+ * runtime this build is known to work against. A site loads a primary
+ * foundation plus N extensions, so a site's floor is `max()` over all of their
+ * pins, and the producer publishing one foundation cannot compute that: it does
+ * not hold the others. Whoever holds every foundation a site loads can.
+ *
+ * So the split is: the producer STATES its own floor, and a party that resolves
+ * a whole site CHECKS them. Riding it in the identity card next to `digest` is
+ * what makes the first half possible — and until it did, a consumer storing the
+ * value had no way to ever receive one.
+ *
+ * Returns null when the pin is absent (the build could not resolve
+ * `@uniweb/runtime`) or malformed. ⚠️ **null means UNKNOWN, not unconstrained** —
+ * a floor that is absent cannot be proven satisfied by anything, and a
+ * consumer's `max()` that skips nulls silently computes a floor over only the
+ * foundations that happened to declare one.
+ *
+ * @param {string} distDir - the built `dist/` directory
+ * @returns {string|null} e.g. `'0.9.8'`
+ */
+export function readRuntimePin(distDir) {
+  try {
+    const pin = JSON.parse(readFileSync(join(distDir, 'runtime-pin.json'), 'utf8'))
+    return typeof pin?.runtime === 'string' && pin.runtime ? pin.runtime : null
+  } catch {
+    return null // absent or unparseable — both are "unknown"
+  }
+}
+
 export function computeFoundationDigest(distDir) {
   const hashes = collectDistFiles(distDir).map((f) => f.sha256)
   // The schema rides in the register `.uwx`, not the code-upload set, so fold

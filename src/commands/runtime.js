@@ -3,21 +3,23 @@
  * can serve the runtime version. The runtime is a SYSTEM artifact: registering it
  * requires **@std membership** (a non-@std bearer 403s).
  *
- * A foundation emits `dist/runtime-pin.json`, but NOTHING READS IT — not this CLI,
- * not any backend or serving lane we have checked (2026-08-04, confirmed again
- * 2026-08-06). An earlier version of this comment claimed `uniweb register` of a
- * foundation fails when its pinned version isn't registered. That was never true,
- * and it propagated into internal notes AND into four public documentation
- * surfaces before anyone checked it against `commands/register.js` three files
- * away.
+ * A foundation emits `dist/runtime-pin.json`. `uniweb register` now reads it and
+ * ships it as the foundation's `info.runtime` — but **NOTHING ENFORCES IT** in
+ * any lane. An earlier version of this comment claimed `uniweb register` of a
+ * foundation fails when its pinned version isn't registered. That was never
+ * true, and it propagated into internal notes AND into four public
+ * documentation surfaces before anyone checked it against `commands/register.js`
+ * three files away.
  *
  * The pin is a **compatibility floor**, not a selector: a site loads a primary
  * foundation plus N extensions, each emitting its own pin, and a site has exactly
  * one runtime — so pins are plural and the selector must be singular. The selector
  * is `site.yml::runtime` (see commands/publish.js), which the backend stamps into
- * the site's meta at publish. The pin's designed use is publish-time VALIDATION
- * (is the selected runtime inside every foundation's compatible interval?), which
- * is producer-side and not yet implemented.
+ * the site's meta at publish. The pin's use is VALIDATION — is the selected
+ * runtime at or above max() of every loaded foundation's floor? — and it belongs
+ * wherever all of a site's foundations are held. The producer publishes one
+ * foundation at a time and cannot see the others, so it STATES its floor and
+ * something holding the whole set does the arithmetic.
  *
  * Contract AGREED with the backend (2026-06-14): `POST /dev/runtime`, @std-gated,
  * manifest-last. Wire + the two-half artifact set (SPA + ssr-edge isolate, the

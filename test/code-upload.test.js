@@ -5,7 +5,7 @@
  * verification fetch. Mock-backed fetch; a temp dist/ as the real artifact.
  */
 
-import { test } from 'node:test'
+import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto'
 import {
   collectDistFiles,
   computeFoundationDigest,
+  readRuntimePin,
   contentTypeFor,
   uploadOrder,
   uploadFoundationCode,
@@ -386,4 +387,40 @@ test('origin-relative serve_base resolves against the registry origin', async ()
     globalThis.fetch = realFetch
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+describe('readRuntimePin — the compatibility floor a foundation states', () => {
+  /**
+   * Until this existed, `dist/runtime-pin.json` was written by the build and
+   * read by nothing, so a floor could never reach anyone able to act on it.
+   * A consumer storing the value had no way to ever receive one.
+   */
+  test('reads the runtime version from a built dist/', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pin-'))
+    writeFileSync(join(dir, 'runtime-pin.json'), '{"runtime":"0.9.8","policy":"auto-minor"}\n')
+    assert.equal(readRuntimePin(dir), '0.9.8')
+  })
+
+  /**
+   * ⚠️ null is UNKNOWN, not unconstrained. Every one of these is a floor nobody
+   * stated, and a floor nobody stated cannot be shown to be satisfied — a
+   * consumer's max() that skips nulls computes a floor over only the
+   * foundations that happened to declare one, then reports the site compatible.
+   */
+  test('returns null for absent, malformed, or empty — all meaning "unknown"', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pin-'))
+    assert.equal(readRuntimePin(dir), null, 'no pin file at all')
+
+    writeFileSync(join(dir, 'runtime-pin.json'), '{ not json')
+    assert.equal(readRuntimePin(dir), null, 'unparseable')
+
+    writeFileSync(join(dir, 'runtime-pin.json'), '{"policy":"exact"}')
+    assert.equal(readRuntimePin(dir), null, 'policy but no runtime')
+
+    writeFileSync(join(dir, 'runtime-pin.json'), '{"runtime":""}')
+    assert.equal(readRuntimePin(dir), null, 'empty string is not a version')
+
+    writeFileSync(join(dir, 'runtime-pin.json'), '{"runtime":{"version":"0.9.8"}}')
+    assert.equal(readRuntimePin(dir), null, 'wrong type rather than coerced')
+  })
 })
