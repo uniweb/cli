@@ -892,7 +892,7 @@ Nothing to install — the import brings the plugin with it. **Skip the import a
 **Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`
 **Theming data:** `useThemeData()`, `useColorContext(block)`
 **Data fetching:** `useFetched`, `useCacheEntry`, `useEntityDetail`
-**Forms:** `useFormValues` (an author-designed form's state), `useFormSubmit`, `submitForm`, `resolveSubmitTarget` — see *Forms* below
+**Forms:** `useFormValues` (an author-designed form's state), `valueAt(values, path)`, `useFormSubmit`, `submitForm`, `resolveSubmitTarget` — see *Forms* below
 **Utilities:** `cn()`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`, `getLocaleLabel(locale)`
 **Other styled:** `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
@@ -1838,6 +1838,12 @@ const { submit, canSubmit, status } = useFormSubmit({ block })
 ))}
 <button disabled={!canSubmit || missing.length > 0} onClick={() => submit(formData, { files })}>
 ```
+
+`valueAt(values, path)` reads one control's value back out. It is the companion
+of `setValue` and is exported for exactly this loop: `values` is **nested**, so a
+control at `address.street` lives at `values.address.street`, and `values[c.path]`
+returns `undefined` for every nested control — a form that silently renders blank
+inputs and submits empty answers. Use `valueAt`, never index by path.
 
 It seeds each control's `default`, tracks edits, and reports `missing` — the
 `required` controls still empty — without enforcing anything, the same line
