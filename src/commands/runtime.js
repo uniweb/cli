@@ -3,6 +3,37 @@
  * can serve the runtime version. The runtime is a SYSTEM artifact: registering it
  * requires **@std membership** (a non-@std bearer 403s).
  *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ⛔ THIS IS AN ESCAPE HATCH. IT IS NOT HOW A RUNTIME NORMALLY REACHES A BACKEND.
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * The normal path is **publish to npm**, which CI mirrors into the public
+ * distribution channel, from which a backend acquires the version itself — no
+ * login, no per-backend push, no credentials leaving the backend.
+ *
+ * This verb pushes ONE build to ONE backend, by hand. Its cost is not the
+ * upload, it is that the result is **invisible to every other backend and to
+ * the channel**: a version installed this way exists nowhere else, cannot be
+ * verified against a published digest, and will not be what a second
+ * environment resolves. Two backends can end up serving different bytes under
+ * one version number, which is the exact defect the channel's immutability
+ * exists to make impossible.
+ *
+ * It stays because three cases have no other path, and they are all LOCAL or
+ * pre-release:
+ *
+ *   • **an unpublished build** — npm versions are immutable, so you cannot
+ *     iterate on a published one. Testing a runtime before releasing it goes
+ *     through here.
+ *   • **local workspace development** — `@uniweb/runtime` is a pnpm symlink to
+ *     the working tree; there is no published artifact for the code you are
+ *     editing.
+ *   • **a deployment that cannot pull** — air-gapped or policy-restricted, or
+ *     any environment without the egress the channel needs.
+ *
+ * ⇒ **If the version you are pushing is on npm, you almost certainly want the
+ * channel instead.** The command warns at runtime for that reason.
+ *
  * A foundation emits `dist/runtime-pin.json`. `uniweb register` now reads it and
  * ships it as the foundation's `info.runtime` — but **NOTHING ENFORCES IT** in
  * any lane. An earlier version of this comment claimed `uniweb register` of a
@@ -25,7 +56,7 @@
  * manifest-last. Wire + the two-half artifact set (SPA + ssr-edge isolate, the
  * orchestrator stays platform-owned): utils/runtime-upload.js.
  *
- * Usage:
+ * Usage (escape hatch — prefer publishing to npm; see above):
  *   uniweb runtime register                  From framework/runtime (or --path <dir>)
  *   uniweb runtime register --path <dir>     The @uniweb/runtime package dir
  *   uniweb runtime register --version <v>    Override dist/app/manifest.json's version
@@ -94,6 +125,17 @@ export async function runtime(args = []) {
   }
   const rest = args.slice(1)
   const dryRun = rest.includes('--dry-run')
+
+  // Say it at the moment of use, not only in the header. A verb that works
+  // fine is a verb people keep reaching for: this one succeeds quietly and
+  // leaves a version that exists on exactly one backend, unverifiable against
+  // any published digest.
+  say.warn('`runtime register` is an escape hatch, not the normal path.')
+  say.dim('A published runtime reaches a backend through the distribution channel — no push, no login.')
+  say.dim('Use this for a build npm does not have: an unreleased version, a local workspace tree,')
+  say.dim('or a deployment that cannot reach the channel. Pushing a version that IS on npm installs')
+  say.dim('bytes nothing else can verify, and a second environment will resolve something different.')
+  console.log('')
 
   const runtimeDir = resolveRuntimeDir(rest)
   if (!runtimeDir) {

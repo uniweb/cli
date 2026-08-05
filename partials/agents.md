@@ -1924,7 +1924,7 @@ uniweb inspect <path>             # Show parsed content for a section or page (-
 uniweb <command> --help           # Per-command flags — no side effects. Prefer this over guessing.
 ```
 
-**Four verbs dispatch but are deliberately not listed above.** `invite`, `handoff` and `template` are **reserved names with no implementation** — the flows they named ran against a backend the CLI no longer talks to, and the names are held so a future rebuild doesn't need a breaking change. `runtime register` uploads a built runtime and is internal. Running any of them is not useful; their absence from this list is the answer, not an omission to fix.
+**Four verbs dispatch but are deliberately not listed above.** `invite`, `handoff` and `template` are **reserved names with no implementation** — the flows they named ran against a backend the CLI no longer talks to, and the names are held so a future rebuild doesn't need a breaking change. `runtime register` uploads a built runtime and is internal — an **escape hatch** for a build npm does not have (an unreleased version, a local workspace tree, or a deployment that cannot reach the distribution channel), never the normal way a runtime reaches a backend. Running any of them is not useful; their absence from this list is the answer, not an omission to fix.
 
 ### Where a site can live
 

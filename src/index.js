@@ -1654,7 +1654,7 @@ ${colors.bright}Commands:${colors.reset}
   export             Export a self-contained site for third-party hosting
   register           Register a foundation + its data schemas with the backend registry
   release            Release a foundation version (synonym of register)
-  runtime register   Register an @uniweb/runtime version to the backend (@std only)
+  runtime register   Escape hatch: push a LOCAL/unreleased runtime build (@std only)
   push               Push a site's content to the backend
   pull               Pull a site's content from the backend
   refresh            Catch up with the git remote AND the backend (never pushes)
