@@ -228,6 +228,14 @@ export function foundationNeedsBuild(targetDir) {
     existsSync(join(distDir, 'foundation.js'))
   if (!hasArtifact || !existsSync(schemaPath))
     return { needs: true, reason: 'no dist/ found' }
+  // The SSR bundle is required by any host that server-renders, and a dist can
+  // lack one for two reasons that both reach here looking complete: it was left
+  // by a `uniweb dev` session (which skips that sub-build), or it was built by
+  // a toolchain older than @uniweb/build@0.14.25, which did not emit it at all.
+  // Shipping either produces a site that renders client-side at HTTP 200 with
+  // nothing reporting why, so treat it as stale and rebuild.
+  if (!existsSync(join(distDir, 'entry-ssr.js')))
+    return { needs: true, reason: 'dist/ has no entry-ssr.js (SSR bundle)' }
   let pkgVersion = null
   try {
     pkgVersion =
