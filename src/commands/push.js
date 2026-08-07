@@ -58,6 +58,7 @@ import { emitSyncPackages } from '@uniweb/build/uwx'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
+import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import {
   makeModelResolver,
   readSyncCache,
@@ -116,6 +117,10 @@ export async function push(args = []) {
   const force = args.includes('--force')
 
   const siteDir = await resolveSiteDir(args, 'push')
+
+  // Advisory only — warns and pushes. A malformed data block otherwise rides
+  // the sync wire unchecked; see utils/conformance.js.
+  await warnIfContentDoesNotConform(siteDir, { args })
   const siteBackend = await resolveSiteBackend(siteDir)
   // One front door. The bearer is resolved lazily on first need (a non-local Model
   // read during the build, or the submit). Offline emit (--dry-run / -o) is fully

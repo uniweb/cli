@@ -54,6 +54,7 @@ import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
+import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { readFlagValue } from '../utils/args.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import { headProvenance } from '../utils/git.js'
@@ -170,6 +171,10 @@ export async function publish(args = []) {
   const foundationDir = readFlagValue(args, '--foundation') // optional local foundation for Model schemas
 
   const siteDir = await resolveSiteDir(args, 'publish')
+
+  // Advisory only — warns and ships. See utils/conformance.js for why this
+  // is not a gate.
+  await warnIfContentDoesNotConform(siteDir, { args })
   const siteYml = readSiteYml(join(siteDir, 'site.yml'))
   // The site's deploy.yml-bound backend (where it was published) feeds the
   // resolution ladder below an explicit --backend / UNIWEB_REGISTER_URL.

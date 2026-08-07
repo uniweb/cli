@@ -1285,6 +1285,7 @@ ${colors.bright}Options:${colors.reset}
   --target <name>     Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
   --dry-run           Resolve the target + adapter; print summary; upload nothing
   --no-save           Skip the auto-save of lastDeploy in deploy.yml
+  --no-validate       Skip the content-conformance check (it only warns)
   --non-interactive   Fail with usage info instead of prompting
 
 ${colors.bright}Examples:${colors.reset}
@@ -1316,6 +1317,7 @@ ${colors.bright}Options:${colors.reset}
   --dry-run          Resolve everything; release/sync/POST nothing
   --yes              Skip confirmations (CI); never block on a prompt
   --no-save          Skip the deploy.yml lastDeploy auto-save
+  --no-validate      Skip the content-conformance check (it only warns)
   --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
   --token <bearer>   Auth bearer (skips \`uniweb login\`)
 `,
@@ -1692,6 +1694,7 @@ ${colors.bright}Publish Options:${colors.reset}
   --dry-run          Resolve everything; release/sync/POST nothing
   --yes              Skip confirmations (CI); never block on a prompt
   --no-save          Skip the deploy.yml lastDeploy auto-save
+  --no-validate      Skip the content-conformance check (it only warns)
   --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
   --token <bearer>   Auth bearer (skips \`uniweb login\`)
 
@@ -1707,6 +1710,7 @@ ${colors.bright}Deploy Options:${colors.reset}
   --target <name>    Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
   --dry-run          Resolve the target + adapter; print summary; upload nothing
   --no-save          Skip the auto-save of lastDeploy in deploy.yml
+  --no-validate      Skip the content-conformance check (it only warns)
   To deploy on every push instead, see \`uniweb add ci --help\`.
 
 ${colors.bright}Dev Options:${colors.reset}

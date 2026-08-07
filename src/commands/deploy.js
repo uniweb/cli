@@ -58,6 +58,7 @@ import { promptForDestination } from '../utils/destination-prompt.js'
 import { readFlagValue } from '../utils/args.js'
 import { parseBoolEnv } from '../utils/env.js'
 import { headProvenance } from '../utils/git.js'
+import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 
 import {
   findWorkspaceRoot,
@@ -89,6 +90,10 @@ const say = {
 export async function deploy(args = []) {
   const dryRun = args.includes('--dry-run')
   const siteDir = await resolveSiteDir(args)
+
+  // Advisory only — warns and ships. See utils/conformance.js for why this
+  // is not a gate.
+  await warnIfContentDoesNotConform(siteDir, { args, warn: say.warn, dim: say.dim })
 
   // Host dispatch. Resolution order:
   //   1. --target <name> picks a target from deploy.yml
@@ -185,7 +190,9 @@ export async function deploy(args = []) {
     // publish ignores deploy's --host/--target; --dry-run/--no-save/--backend
     // /--token pass straight through.
     const { publish } = await import('./publish.js')
-    const result = await publish(args)
+    // Conformance was already reported above, and publish runs the same check
+    // — without this the user reads one warning twice and learns to skim it.
+    const result = await publish([...args, '--no-validate'])
     process.exit(result?.exitCode ?? 0)
   }
 
