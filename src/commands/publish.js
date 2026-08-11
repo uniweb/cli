@@ -210,11 +210,22 @@ export async function publish(args = []) {
     installed.length &&
     !installed.includes(siteYml.runtime)
   ) {
+    // ⚠️ Leads with REMOVING the pin, deliberately. A site ships no JS, so it
+    // has no basis for holding a runtime version, and `runtime:` is an
+    // operator-level override that is no longer part of the documented
+    // authoring surface. This message used to say "pin one of these in
+    // site.yml" — which pushed a reader deeper into a mechanism they should
+    // not be using, and named a key the docs no longer describe. Keep the
+    // installed list (it is the actionable part when a pin IS intended), but
+    // do not restore pin-first phrasing.
     say.err(
-      `Runtime ${siteYml.runtime} (from site.yml) is not installed on the backend.`
+      `Runtime ${siteYml.runtime} (pinned in site.yml) is not installed on the backend.`
     )
     say.dim(
-      `Installed: ${installed.join(', ') || '(none)'} — pin one of these in site.yml (\`runtime:\`), or have it installed on the backend.`
+      `Remove the \`runtime:\` pin and the backend chooses — a site ships no code, so it has no reason to hold one.`
+    )
+    say.dim(
+      `Installed: ${installed.join(', ') || '(none)'} — or pin one of those, or have ${siteYml.runtime} installed.`
     )
     if (!dryRun) return { exitCode: 1 }
   }
