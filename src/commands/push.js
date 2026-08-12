@@ -31,6 +31,9 @@
  *                                        which org owns it (and whose storage its
  *                                        assets are charged to). Recorded as
  *                                        `site.yml::$org` and replayed after that.
+ *   uniweb push --personal               Own the new site personally, deliberately.
+ *                                        Sends NO `as_org` — the same wire as before
+ *                                        this prompt existed. First push only.
  *   uniweb push --dry-run                Report what would be pushed; submit nothing
  *   uniweb push -o out.uwx               Write the .uwx file(s) per lane; submit nothing
  *   uniweb push --registry <url>         Override the backend origin
@@ -73,7 +76,7 @@ import {
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
   pushSyncPackages,
-  readSiteOrg
+  resolveSiteOrgForCreate
 } from '../backend/site-sync.js'
 
 // Re-exported for downstream importers (pull.js, push.test.js) that read these
@@ -122,13 +125,6 @@ export async function push(args = []) {
 
   const siteDir = await resolveSiteDir(args, 'push')
 
-  // The acting org: the flag verbatim, else the one this site was CREATED under
-  // (`site.yml::$org`). The org is consumed by the create that mints `$uuid`, so
-  // a site that already exists is already owned — replaying the recorded handle
-  // reasserts that rather than choosing anything new. A site with no `$org`
-  // recorded sends no `as_org`, exactly as before.
-  const asOrg = flagValue(args, '--as-org') || readSiteOrg(siteDir)
-
   // Advisory only — warns and pushes. A malformed data block otherwise rides
   // the sync wire unchecked; see utils/conformance.js.
   await warnIfContentDoesNotConform(siteDir, { args })
@@ -145,6 +141,25 @@ export async function push(args = []) {
     args,
     command: 'Syncing'
   })
+
+  // WHO will own this site, if this push is the one that creates it. Resolved
+  // before any lane runs, because both create paths below consume it and neither
+  // should be reached with the question still open. A site that already exists
+  // resolves to null without asking — ownership was settled at its create.
+  const org = await resolveSiteOrgForCreate({
+    client,
+    siteDir,
+    args,
+    flag: flagValue(args, '--as-org'),
+    personal: args.includes('--personal'),
+    offline: !!output || dryRun
+  })
+  if (org.refused) {
+    error('Refusing to create this site without naming an owner.')
+    note(org.reason)
+    return { exitCode: 2 }
+  }
+  const asOrg = org.asOrg
 
   // Build BOTH directional packages (the producer side). Each carries its own
   // `index` — the per-entity source-file map for back-fill, correlated by submission

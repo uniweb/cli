@@ -445,6 +445,159 @@ function recordSiteOrg(siteDir, asOrg) {
 }
 
 /**
+ * Resolve WHICH ORG will own a site that is about to be created.
+ *
+ * The create that mints `$uuid` is the only call that reads `as_org`, and the
+ * backend never moves ownership afterwards. There is also no CLI verb to transfer
+ * or delete a site. So this is a **one-shot, unrepealable** decision — and until
+ * this function existed the CLI made it silently, by sending nothing and letting
+ * the backend fall back to the session's personal context. A developer who belongs
+ * to several orgs could put a company site, and the storage it bills, somewhere
+ * they never named.
+ *
+ * `register` has refused to guess a scope for the foundation lane since it shipped
+ * (`deriveScope` → `package.json::uniweb.scope`). This is the same refusal, one
+ * lane over.
+ *
+ * Order, and only the last step is new:
+ *   1. `--as-org @org`      — explicit, rides verbatim
+ *   2. `--personal`         — explicit "no org, I mean it" → sends NO `as_org`
+ *   3. `site.yml::$org`     — recorded at this site's own create
+ *   4. the site already exists (`$uuid`) → null; ownership is settled, ask nothing
+ *   5. otherwise ASK (TTY) or REFUSE (non-interactive)
+ *
+ * ⛔ **`--personal` sends no `as_org`, and is NOT the same as `--as-org @<handle>`.**
+ * The personal *org* `@jane` is an org like any other, lazily created on first use;
+ * the session's personal context is not an org at all. Whether the backend gives
+ * them the same owning unit is **its** business and unverified here, so the
+ * deliberate-personal spelling reproduces today's wire byte-for-byte rather than
+ * asserting an equivalence this lane cannot check.
+ *
+ * @returns {Promise<{ asOrg: string|null, refused?: true, reason?: string }>}
+ *   `asOrg: null` with no `refused` means "send no as_org" — either a settled site
+ *   or a deliberate personal choice.
+ */
+export async function resolveSiteOrgForCreate({
+  client,
+  siteDir,
+  args = [],
+  flag,
+  personal = false,
+  offline = false
+}) {
+  if (flag) return { asOrg: flag }
+  if (personal) return { asOrg: null }
+
+  const recorded = readSiteOrg(siteDir)
+  if (recorded) return { asOrg: recorded }
+
+  // Already created ⇒ nothing to decide. This is what keeps every existing site
+  // silent: ownership was settled at its create, and re-asking would be theatre.
+  let siteYml = {}
+  try {
+    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
+    if (y && typeof y === 'object') siteYml = y
+  } catch {
+    /* unreadable — treat as un-created and let the resolution below decide */
+  }
+  if (typeof siteYml.$uuid === 'string') return { asOrg: null }
+
+  // An offline preview (`--dry-run` / `-o`) must never authenticate, and it is
+  // creating nothing, so there is no decision to force. Say what is unresolved
+  // instead of prompting for an answer the run will not use.
+  if (offline) return { asOrg: null }
+
+  const { isNonInteractive } = await import('../utils/interactive.js')
+  if (isNonInteractive(args)) {
+    return {
+      asOrg: null,
+      refused: true,
+      reason:
+        'This site does not exist on the backend yet, and no org was named.\n' +
+        '  The create decides who OWNS it — and which workspace its storage is billed to —\n' +
+        '  one time, with no CLI way to change it afterwards. Name it explicitly:\n' +
+        '    --as-org @org     create it under an organization\n' +
+        '    --personal        create it under your personal account, deliberately'
+    }
+  }
+
+  // Interactive: offer the real choice. Deliberately NOT `deriveScope` — that one
+  // serves the foundation lane, where every answer is an org and 0-orgs means
+  // "claim your personal org". Here "personal" must stay reachable as *no org*,
+  // and reusing deriveScope would quietly turn it into an org creation.
+  const { fetchOrgs, createOrg, validateHandle, bareHandle } = await import(
+    '../utils/registry-orgs.js'
+  )
+  let envelope
+  try {
+    envelope = await fetchOrgs({
+      apiBase: client.origin,
+      token: await client.token()
+    })
+  } catch (err) {
+    return { asOrg: null, refused: true, reason: err.message }
+  }
+  const personalHandle = envelope.account_handle || null
+  const prompts = (await import('prompts')).default
+  const choices = [
+    ...envelope.orgs.map((o) => ({
+      title: `@${o.handle}${o.handle === personalHandle ? ' — your personal org' : o.is_primary ? ' (primary)' : ''}`,
+      value: o.handle
+    })),
+    {
+      title: `Personal — no organization${personalHandle ? ` (${personalHandle})` : ''}`,
+      value: ':personal'
+    },
+    { title: 'A new organization…', value: ':new' }
+  ]
+  const { choice } = await prompts(
+    {
+      type: 'select',
+      name: 'choice',
+      message: 'Create this site under which owner?',
+      choices,
+      initial: 0
+    },
+    {
+      onCancel: () => {
+        console.log('\nCancelled.')
+        process.exit(0)
+      }
+    }
+  )
+  if (!choice) return { asOrg: null, refused: true, reason: 'No owner chosen.' }
+  if (choice === ':personal') return { asOrg: null }
+  if (choice !== ':new') return { asOrg: `@${choice}` }
+
+  const answer = await prompts(
+    {
+      type: 'text',
+      name: 'handle',
+      message: 'Org handle (e.g. acme):',
+      validate: (v) => validateHandle(v) || true
+    },
+    {
+      onCancel: () => {
+        console.log('\nCancelled.')
+        process.exit(0)
+      }
+    }
+  )
+  if (!answer.handle)
+    return { asOrg: null, refused: true, reason: 'No org handle given.' }
+  try {
+    const org = await createOrg({
+      apiBase: client.origin,
+      token: await client.token(),
+      handle: bareHandle(answer.handle)
+    })
+    return { asOrg: `@${org.handle}` }
+  } catch (err) {
+    return { asOrg: null, refused: true, reason: err.message }
+  }
+}
+
+/**
  * Guarantee the site EXISTS on the backend before anything is uploaded against it.
  *
  * Ordering is the point, and it is load-bearing rather than incidental. Uploaded
@@ -525,7 +678,8 @@ export async function ensureSiteExists({
           : `HTTP ${res?.status} ${res?.statusText || ''}${body ? ` — ${body.slice(0, 200)}` : ''}`
     }
   }
-  const minted = extractMintedSiteUuid(await res.json().catch(() => null))
+  const payload = await res.json().catch(() => null)
+  const minted = extractMintedSiteUuid(payload)
   if (!minted) {
     return {
       uuid: null,
@@ -538,16 +692,65 @@ export async function ensureSiteExists({
   // this point cannot leave a cache pointing at a different site with no way to
   // detect it.
   updateSyncCache(siteDir, { siteUuid: minted })
-  // Ownership is decided HERE and nowhere else — this is the one call that reads
-  // `as_org`. Recording it beside the uuid is what makes the answer readable later,
-  // and naming it now is the "show what resolved" half of the ask-once pattern.
-  const org = recordSiteOrg(siteDir, asOrg)
+  const org = await recordAndDescribeOwner({
+    client,
+    siteDir,
+    payload,
+    asOrg,
+    note
+  })
+  return { uuid: minted, created: true, org }
+}
+
+/**
+ * Record and announce who owns a just-created site, from the backend's own echo.
+ *
+ * The echo reports what the site **is**; `asOrg` is only what we asked for. They
+ * agree in the normal case and the echo is the one to trust — it is read back off
+ * the created entity, so it also covers the case we could never record before: no
+ * `--as-org` at all, where the backend picked and we had nothing true to write.
+ *
+ * ⚠️ `org: null` is MEANINGFUL (personal), not missing. An older backend omits the
+ * key entirely, which is the only case that falls back to what we asked for.
+ *
+ * @returns {Promise<string|null>} the display handle recorded, or null for personal
+ */
+async function recordAndDescribeOwner({ client, siteDir, payload, asOrg, note }) {
+  const echoed = payload && 'org' in payload ? payload.org : undefined
+  const owner =
+    echoed === undefined ? asOrg : typeof echoed === 'string' ? echoed : null
+  const org = recordSiteOrg(siteDir, owner)
+
   note?.(
     org
       ? `Created the site on the backend under ${org} (recorded $uuid + $org in site.yml).`
-      : `Created the site on the backend (recorded $uuid in site.yml).`
+      : `Created the site on the backend, owned personally (recorded $uuid in site.yml).`
   )
-  return { uuid: minted, created: true, org }
+
+  // The billing line needs the JOIN of two independent facts, and either alone
+  // gives a wrong answer:
+  //   hosts_free               — a property of the SCOPE (is this owner exempt?)
+  //   siteSubscriptionRequired — a property of the DEPLOYMENT (does it charge at all?)
+  // Keyed on the scope alone, this fires on every local publish — where nothing
+  // enforces — until the warning is trained away. Keyed on the deployment alone it
+  // fires at exempt owners. An older backend supplies neither, so both read falsy
+  // and nothing is said: silence beats a claim we cannot justify.
+  const hostsFree = payload?.hosts_free === true
+  let enforces = false
+  try {
+    const cfg = await client.discover()
+    enforces = cfg?.delivery?.siteSubscriptionRequired === true
+  } catch {
+    /* discovery is advisory here — never fail a create over a message */
+  }
+  if (hostsFree) {
+    note?.('This owner is hosted free — publishing will not require a subscription.')
+  } else if (enforces) {
+    note?.(
+      'Publishing this site live will require a hosting subscription on this backend.'
+    )
+  }
+  return org
 }
 
 /**
@@ -904,7 +1107,15 @@ export async function pushSyncPackages({
       // which is gated on the site having local media). Both mint a site, so both
       // owe the same record — recording it in only one place would make `$org`
       // present or absent depending on whether the site happens to have images.
-      const createdOrg = recordSiteOrg(siteDir, asOrg)
+      // The backend echoes `org`/`hosts_free` top-level here too, beside `report`
+      // and `site` (NOT beside `finalized`, which lives at report.finalized).
+      const createdOrg = await recordAndDescribeOwner({
+        client,
+        siteDir,
+        payload,
+        asOrg,
+        note
+      })
       if (createdOrg) wrote.push(`recorded site $org (${createdOrg}) in site.yml`)
       const createdFinalized = extractFinalized(payload)
       harvest(createdFinalized)

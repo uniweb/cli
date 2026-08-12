@@ -27,6 +27,7 @@ import {
   readBaseVersions,
   readSyncCache,
   readSiteOrg,
+  resolveSiteOrgForCreate,
   writeUnitBases
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
@@ -729,6 +730,165 @@ test('no --as-org records NO org — the backend chose, and we do not guess one'
   assert.doesNotMatch(readFileSync(join(dir, 'site.yml'), 'utf8'), /\$org/)
   assert.equal(readSiteOrg(dir), null)
   assert.equal(res.org, null)
+})
+
+// ─── resolveSiteOrgForCreate — the one-shot ownership decision ────────────────
+// The create that mints $uuid is the only call that reads as_org, and there is no
+// CLI path to change ownership afterwards. These pin that the CLI never makes that
+// choice silently, and — just as important — that it never ASKS when there is no
+// choice left to make.
+
+const NEVER_CALLED = {
+  origin: 'http://b',
+  token: async () => {
+    throw new Error('must not authenticate')
+  }
+}
+
+test('an explicit --as-org rides verbatim and asks nothing', async () => {
+  const dir = tmpSite()
+  const r = await resolveSiteOrgForCreate({
+    client: NEVER_CALLED,
+    siteDir: dir,
+    args: ['--non-interactive'],
+    flag: '@acme'
+  })
+  assert.deepEqual(r, { asOrg: '@acme' })
+})
+
+test('--personal sends NO as_org — the pre-prompt wire, byte for byte', async () => {
+  const dir = tmpSite()
+  const r = await resolveSiteOrgForCreate({
+    client: NEVER_CALLED,
+    siteDir: dir,
+    args: ['--non-interactive'],
+    personal: true
+  })
+  // Deliberately null, NOT '@<handle>': the personal ORG is an org like any other,
+  // and whether the backend resolves it to the same owning unit as the session's
+  // personal context is unverified here.
+  assert.deepEqual(r, { asOrg: null })
+  assert.equal(r.refused, undefined)
+})
+
+test('AN ALREADY-CREATED SITE IS NEVER ASKED — this is the compat property', async () => {
+  const dir = tmpSite()
+  // Every site that predates this feature is exactly this shape: $uuid, no $org.
+  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: EXISTING-1\n')
+  const r = await resolveSiteOrgForCreate({
+    client: NEVER_CALLED,
+    siteDir: dir,
+    args: ['--non-interactive'] // would REFUSE if it thought a create were coming
+  })
+  assert.deepEqual(r, { asOrg: null }, 'settled ownership must not be re-litigated')
+})
+
+test('a recorded $org is replayed without asking', async () => {
+  const dir = tmpSite()
+  writeFileSync(join(dir, 'site.yml'), '$org: acme\nname: Acme\n')
+  const r = await resolveSiteOrgForCreate({
+    client: NEVER_CALLED,
+    siteDir: dir,
+    args: ['--non-interactive']
+  })
+  assert.deepEqual(r, { asOrg: '@acme' })
+})
+
+test('non-interactive + a REAL create + no owner named ⇒ refuse, naming both exits', async () => {
+  const dir = tmpSite()
+  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n') // no $uuid → a create is coming
+  const r = await resolveSiteOrgForCreate({
+    client: NEVER_CALLED,
+    siteDir: dir,
+    args: ['--non-interactive']
+  })
+  assert.equal(r.refused, true)
+  assert.equal(r.asOrg, null)
+  // The refusal has to be actionable, and BOTH exits must appear — naming only
+  // --as-org would read as "you must have an org", which is not true.
+  assert.match(r.reason, /--as-org @org/)
+  assert.match(r.reason, /--personal/)
+})
+
+test('an offline preview never authenticates and never prompts', async () => {
+  const dir = tmpSite()
+  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n')
+  // `-o` / --dry-run create nothing, so there is no decision to force — and the
+  // client here throws if anything reaches for a token.
+  const r = await resolveSiteOrgForCreate({
+    client: NEVER_CALLED,
+    siteDir: dir,
+    args: [],
+    offline: true
+  })
+  assert.deepEqual(r, { asOrg: null })
+})
+
+// ─── the create echo — recording what the site IS, not what we asked for ──────
+
+test('the backend echo wins over what we asked for, and null means personal', async () => {
+  const dir = tmpSite()
+  await ensureSiteExists({
+    client: {
+      createSite: async () => okJson({ site_content_uuid: 'M', org: null }),
+      discover: async () => ({})
+    },
+    siteDir: dir,
+    name: 'Acme',
+    foundation: '@a/base@1.0.0',
+    asOrg: '@acme' // we asked for an org…
+  })
+  // …the backend says the site is personal. `org: null` is an ANSWER, not an
+  // absent key, so it must not fall back to the request.
+  assert.doesNotMatch(readFileSync(join(dir, 'site.yml'), 'utf8'), /\$org/)
+  assert.equal(readSiteOrg(dir), null)
+})
+
+test('an older backend omitting `org` falls back to what we asked for', async () => {
+  const dir = tmpSite()
+  await ensureSiteExists({
+    client: {
+      createSite: async () => okJson({ site_content_uuid: 'M' }), // no `org` key
+      discover: async () => ({})
+    },
+    siteDir: dir,
+    name: 'Acme',
+    foundation: '@a/base@1.0.0',
+    asOrg: '@acme'
+  })
+  assert.equal(readSiteOrg(dir), '@acme')
+})
+
+test('the billing line needs BOTH facts — neither alone may speak', async () => {
+  const run = async (org, hostsFree, enforces) => {
+    const dir = tmpSite()
+    const notes = []
+    await ensureSiteExists({
+      client: {
+        createSite: async () =>
+          okJson({ site_content_uuid: 'M', org, hosts_free: hostsFree }),
+        discover: async () => ({
+          delivery: { siteSubscriptionRequired: enforces }
+        })
+      },
+      siteDir: dir,
+      name: 'A',
+      foundation: '@a/b@1.0.0',
+      note: (m) => notes.push(m)
+    })
+    return notes.join('\n')
+  }
+
+  // Personal on an enforcing deployment — the one case that should warn.
+  assert.match(await run(null, false, true), /require a hosting subscription/)
+  // Same site, non-enforcing deployment: keying on the scope alone would fire
+  // here, on every local publish, until the warning was trained away.
+  assert.doesNotMatch(await run(null, false, false), /require a hosting/)
+  // Exempt owner: keying on the deployment alone would fire here.
+  assert.doesNotMatch(await run('proximify', true, true), /require a hosting/)
+  assert.match(await run('proximify', true, true), /hosted free/)
+  // An older backend supplies neither fact — silence beats an unjustifiable claim.
+  assert.doesNotMatch(await run(undefined, undefined, undefined), /subscription|hosted free/)
 })
 
 test('readSiteOrg returns null for every site that predates the record', () => {

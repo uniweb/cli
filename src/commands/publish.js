@@ -34,6 +34,9 @@
  *                                  storage its assets are charged to. It is then
  *                                  recorded as `site.yml::$org` and replayed, so it
  *                                  never has to be re-typed.
+ *   uniweb publish --personal      Own the new site personally, deliberately. Sends
+ *                                  NO `as_org` — byte-identical to the wire before
+ *                                  the owner prompt existed. First publish only.
  *   uniweb publish --no-save       Skip the deploy.yml lastDeploy auto-save
  *   uniweb publish --backend <url> Override the backend origin
  *   uniweb publish --token <bearer> Auth bearer (skips `uniweb login`)
@@ -73,7 +76,7 @@ import {
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
   pushSyncPackages,
-  readSiteOrg
+  resolveSiteOrgForCreate
 } from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
@@ -178,12 +181,6 @@ export async function publish(args = []) {
 
   const siteDir = await resolveSiteDir(args, 'publish')
 
-  // The acting org: the flag verbatim, else the one this site was CREATED under
-  // (`site.yml::$org`). Only the create reads `as_org`, so replaying the recorded
-  // handle reasserts existing ownership rather than choosing new ownership. Absent
-  // both, no `as_org` is sent — unchanged from before the record existed.
-  const asOrg = readFlagValue(args, '--as-org') || readSiteOrg(siteDir)
-
   // Advisory only — warns and ships. See utils/conformance.js for why this
   // is not a gate.
   await warnIfContentDoesNotConform(siteDir, { args })
@@ -200,6 +197,25 @@ export async function publish(args = []) {
     args,
     command: 'Publishing'
   })
+
+  // WHO will own this site, if this publish is the one that creates it. Resolved
+  // up front: `ensureSiteExists` below is the create, and it must not be reached
+  // with the question still open. An already-created site resolves to null without
+  // asking — its ownership was settled once and cannot be changed from here.
+  const org = await resolveSiteOrgForCreate({
+    client,
+    siteDir,
+    args,
+    flag: readFlagValue(args, '--as-org'),
+    personal: args.includes('--personal'),
+    offline: dryRun
+  })
+  if (org.refused) {
+    say.err('Refusing to create this site without naming an owner.')
+    say.dim(org.reason)
+    return { exitCode: 2 }
+  }
+  const asOrg = org.asOrg
 
   // Capability handshake (cached). Publish ends in a go-live, so the publish
   // lane must be offered.

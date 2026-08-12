@@ -1322,6 +1322,9 @@ ${colors.bright}Options:${colors.reset}
                      FIRST publish — that create decides which org owns the site,
                      and whose storage its assets are charged to. Recorded as
                      site.yml \$org and replayed, so it is never re-typed.
+  --personal         Create the site under your personal account, deliberately.
+                     Only needed on a first publish, and only to answer the owner
+                     question without a prompt (CI, agents, scripts).
   --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
   --token <bearer>   Auth bearer (skips \`uniweb login\`)
 `,
@@ -1698,6 +1701,7 @@ ${colors.bright}Publish Options:${colors.reset}
   --dry-run          Resolve everything; release/sync/POST nothing
   --yes              Skip confirmations (CI); never block on a prompt
   --as-org @org      Publish under @org (first publish only; then remembered)
+  --personal         Own the new site personally, deliberately (first publish only)
   --no-save          Skip the deploy.yml lastDeploy auto-save
   --no-validate      Skip the content-conformance check (it only warns)
   --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
