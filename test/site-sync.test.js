@@ -27,6 +27,8 @@ import {
   readBaseVersions,
   readSyncCache,
   readSiteOrg,
+  readItemBaseVersions,
+  mergeItemBaseVersions,
   resolveSiteOrgForCreate,
   writeUnitBases
 } from '../src/backend/site-sync.js'
@@ -82,10 +84,26 @@ test('extractFinalized tolerates the report.finalized / bare-array shapes and dr
     extractFinalized({
       report: { finalized: [{ index: 0, uuid: 'A', changed: true }] }
     }),
-    [{ index: 0, uuid: 'A', changed: true, version: null, document: null }]
+    [
+      {
+        index: 0,
+        uuid: 'A',
+        changed: true,
+        version: null,
+        itemVersions: null,
+        document: null
+      }
+    ]
   )
   assert.deepEqual(extractFinalized([{ index: 1, uuid: 'B' }]), [
-    { index: 1, uuid: 'B', changed: undefined, version: null, document: null }
+    {
+      index: 1,
+      uuid: 'B',
+      changed: undefined,
+      version: null,
+      itemVersions: null,
+      document: null
+    }
   ])
   // entries without a valid index + uuid are dropped; a non-list payload → null
   assert.deepEqual(
@@ -113,6 +131,7 @@ test('extractFinalized carries the post-write version (the push-gate re-arm toke
         uuid: 'A',
         changed: true,
         version: '2026-07-25T21:09:44.120388Z',
+        itemVersions: null,
         document: null
       }
     ]
@@ -149,6 +168,124 @@ test('a successful push banks the returned versions; a refused lane still banks 
 
   // The hash cache and the version map share one file and must not clobber each other.
   assert.deepEqual(readSyncCache(dir), { '@uniweb/site-content site': 'h1' })
+})
+
+// ─── per-item tokens must be re-armed from the PUSH response ──────────────────
+// The entity token was returned on push precisely so consecutive pushes stop being
+// stale by construction. The per-item token had the same hole until backend
+// `d7e46335` began echoing `item_versions`, and the CLI read it on pull only — so a
+// push wrote, every token for a record it just changed went stale, and push 2
+// conflicted on records nobody else had touched. Unrecoverable locally: the tokens
+// are opaque, so only a pull could refresh them, and a pull rewrites the tree.
+
+test('TWO CONSECUTIVE PUSHES: item tokens come from the push response, not a pull', async () => {
+  const dir = tmpSite()
+  const seen = []
+  let round = 0
+  const client = {
+    origin: 'http://x',
+    updateSiteContent: async () => {
+      round += 1
+      return ok(
+        finalized([
+          {
+            index: 0,
+            uuid: 'S1',
+            changed: true,
+            version: `V${round}`,
+            item_versions: { REC: `t${round}` }
+          }
+        ])
+      )
+    }
+  }
+  const { report } = makeReport()
+  const push = async () => {
+    // What THIS push would send is what the cache holds when it starts — the same
+    // read `push.js` does via readItemBaseVersions.
+    seen.push(readItemBaseVersions(dir).REC ?? null)
+    return pushSyncPackages({
+      client,
+      siteDir: dir,
+      pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
+      asOrg: null,
+      report
+    })
+  }
+
+  assert.equal((await push()).exitCode, 0)
+  assert.equal((await push()).exitCode, 0)
+
+  // Push 1 had nothing cached; push 2 carried push 1's token — NOT a stale one, and
+  // with no pull in between. Reading on pull alone is what made this `[null, null]`,
+  // and the backend would then refuse push 2 naming records nobody touched.
+  assert.deepEqual(seen, [null, 't1'])
+  assert.deepEqual(readItemBaseVersions(dir), { REC: 't2' })
+  // The entity grain keeps working alongside it, in the same file.
+  assert.deepEqual(readBaseVersions(dir), { S1: 'V2' })
+})
+
+test('an older backend omitting item_versions leaves the cached tokens alone', async () => {
+  const dir = tmpSite()
+  mergeItemBaseVersions(dir, { REC: 'from-a-pull' })
+  const client = {
+    origin: 'http://x',
+    // No `item_versions` — the pre-d7e46335 shape.
+    updateSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1' }]))
+  }
+  const { report } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
+    asOrg: null,
+    report
+  })
+  assert.equal(res.exitCode, 0)
+  // Absent ≠ empty. Clearing here would silently drop to the entity grain AND throw
+  // away a token a pull had legitimately banked.
+  assert.deepEqual(readItemBaseVersions(dir), { REC: 'from-a-pull' })
+})
+
+test('item tokens are banked even when the push is not the last lane to succeed', async () => {
+  const dir = tmpSite()
+  const client = {
+    origin: 'http://x',
+    updateSiteContent: async () =>
+      ok(
+        finalized([
+          {
+            index: 0,
+            uuid: 'S1',
+            changed: true,
+            version: 'V1',
+            item_versions: { REC: 't1' }
+          }
+        ])
+      ),
+    // The folder lane then fails: what lane 1 banked must survive, or the retry
+    // re-sends a base the backend has already moved past.
+    pushFolder: async () => ({
+      ok: false,
+      status: 500,
+      statusText: 'Server Error',
+      text: async () => 'boom'
+    })
+  }
+  const { report } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: {
+      ...siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
+      collections: { buffer: Buffer.from('PK'), index: [] }
+    },
+    asOrg: null,
+    report
+  })
+  assert.equal(res.exitCode, 1)
+  assert.deepEqual(readItemBaseVersions(dir), { REC: 't1' })
 })
 
 test('a stale refusal explains WHICH pages diverged, and attributes them', async () => {

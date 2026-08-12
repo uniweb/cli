@@ -101,6 +101,15 @@ export function extractFinalized(payload) {
       // resubmit returns the value we already hold, and anything else is theirs
       // to report, not ours to derive.
       version: typeof d?.version === 'string' ? d.version : null,
+      // Per-item post-write tokens, `{ recordUuid: <opaque> }` (backend `d7e46335`).
+      // Same map shape and same key name the PULL manifest entry stamps, deliberately
+      // — one kind of value, cached from whichever lane last handed it over, echoed
+      // as `item_base_versions`. Absent on an older backend ⇒ null ⇒ the cached
+      // tokens are left alone and gating degrades to the entity grain.
+      itemVersions:
+        d?.item_versions && typeof d.item_versions === 'object'
+          ? d.item_versions
+          : null,
       document: d?.document ?? null
     }))
     .filter((e) => Number.isInteger(e.index) && e.uuid)
@@ -1060,9 +1069,37 @@ export async function pushSyncPackages({
   // otherwise the next attempt would re-send lane 1 with a base the backend has
   // already moved past, and refuse a push the user just made.
   const newVersions = {}
+  // Per-item tokens from the SAME response. Keyed by record `$uuid` and flat
+  // across entities (the cache is a single map), unlike `newVersions`, which is
+  // keyed by entity uuid.
+  //
+  // ⛔ Both grains must be re-armed from the push, for one reason: a push writes,
+  // so every token this clone holds for a record it just changed is now stale. Read
+  // on pull only, push 2 classifies that record `pkg != base, host != base` and the
+  // backend refuses it — a conflict naming records nobody else touched, on a second
+  // push with no edit in between. And it is unrecoverable locally, because the
+  // tokens are opaque by contract: a pull would be the only other source, and a
+  // pull rewrites the working tree. That is precisely the `--force` habit the gate
+  // exists to prevent. Returning the entity `version` on push was added to fix this
+  // exact shape one grain up (see delivery-lane.md "Both feed directions are
+  // load-bearing"); the item grain had the same hole until backend `d7e46335`
+  // started echoing `item_versions` here.
+  const newItemVersions = {}
   const harvest = (finalized) => {
-    for (const f of finalized || [])
+    for (const f of finalized || []) {
       if (f.uuid && f.version) newVersions[f.uuid] = f.version
+      // Unconditionally, and NOT gated on `changed` — same rule as the entity
+      // token: the backend pins "zero-write ⇒ version unmoved", so a no-op
+      // resubmit hands back the value we already hold. An older backend omits the
+      // field entirely, which leaves the cached tokens alone and degrades to the
+      // entity grain, exactly as before.
+      if (f.itemVersions) Object.assign(newItemVersions, f.itemVersions)
+    }
+  }
+  // Both grains land together, at every point the old code banked the entity one.
+  const mergeHarvested = () => {
+    mergeBaseVersions(siteDir, newVersions)
+    mergeItemBaseVersions(siteDir, newItemVersions)
   }
   // The backend's post-write copy of the site-content document, kept for the
   // remote-side unit base (see writeUnitBases).
@@ -1085,7 +1122,7 @@ export async function pushSyncPackages({
         { boundUuid: siteContentUuid }
       )
       if (!finalized) {
-        mergeBaseVersions(siteDir, newVersions)
+        mergeHarvested()
         return { exitCode: 1, finalizedTotal, wrote }
       }
       harvest(finalized)
@@ -1147,7 +1184,7 @@ export async function pushSyncPackages({
       { boundUuid: boundSiteUuid }
     )
     if (!finalized) {
-      mergeBaseVersions(siteDir, newVersions)
+      mergeHarvested()
       return { exitCode: 1, finalizedTotal, wrote }
     }
     harvest(finalized)
@@ -1164,7 +1201,7 @@ export async function pushSyncPackages({
   // Entities absent from finalized[] (skipped, or not editable) keep their cached
   // value — absence is not invalidation.
   writeSyncCache(siteDir, hashes)
-  mergeBaseVersions(siteDir, newVersions)
+  mergeHarvested()
   // Re-base the page attribution: our emitted document and the backend's post-write
   // copy of it are the two sides' new agreed state. Only when the site-content lane
   // actually shipped — a push that skipped it left that state where it was.
