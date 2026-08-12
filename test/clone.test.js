@@ -18,12 +18,24 @@ import {
   extractCloneSeeds,
   extractDocument
 } from '../src/commands/clone.js'
+import { makeUwx } from './helpers/uwx-fixture.js'
 
-const jsonRes = (body, status = 200) => ({
+// ⛔ The pull lane answers with `application/vnd.uniweb.exchange.entity+zip`, NOT
+// JSON. This stub used to expose only `json()`, and clone read it with
+// `res.json()` — so the suite was green while the real command died on the ZIP
+// magic with *"Could not reach the backend: Unexpected token 'P'"*. A fixture is
+// a claim about the contract, and that one was false.
+//
+// Deliberately NO `json()` here: if a future change reads the body as JSON again,
+// it must fail loudly rather than pass against an obliging double.
+const uwxRes = (doc, status = 200) => ({
   ok: status >= 200 && status < 300,
   status,
   statusText: '',
-  json: async () => body
+  arrayBuffer: async () => {
+    const buf = doc ? makeUwx(doc) : Buffer.alloc(0)
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+  }
 })
 
 // A site-content $-document as the backend would return it on the pull lane.
@@ -72,7 +84,7 @@ test('clone reports a 404 cleanly', async () => {
     const res = await clone(['MISSING', 'x'], {
       ...noSpawn,
       cwd: dir,
-      fetch: async () => jsonRes(null, 404)
+      fetch: async () => uwxRes(null, 404)
     })
     assert.equal(res.exitCode, 1)
     assert.equal(existsSync(join(dir, 'x')), false)
@@ -89,8 +101,8 @@ test('clone scaffolds a ref-only harness and seeds the uuids (new workspace)', a
       cwd: dir,
       fetch: async (url) =>
         url.includes('/dev/site/content/pull/SITE-1')
-          ? jsonRes(siteDoc())
-          : jsonRes(null, 404)
+          ? uwxRes(siteDoc())
+          : uwxRes(null, 404)
     })
     assert.equal(res.exitCode, 0)
 
@@ -131,7 +143,7 @@ test('clone forwards --no-collections to the delegated pull', async () => {
         pulledArgs = extra
       },
       cwd: dir,
-      fetch: async () => jsonRes(siteDoc())
+      fetch: async () => uwxRes(siteDoc())
     })
     assert.equal(res.exitCode, 0)
     assert.ok(

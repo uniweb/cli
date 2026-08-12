@@ -56,6 +56,7 @@ import { detectWorkspacePm, installCmd } from '../utils/pm.js'
 import { BackendClient } from '../backend/client.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 import { extractFoundationRef } from '../utils/site-content-refs.js'
+import { readUwxDocuments } from '../utils/uwx-read.js'
 
 const colors = {
   reset: '\x1b[0m',
@@ -189,11 +190,19 @@ export async function clone(args = [], deps = {}) {
     command: 'Cloning'
   })
 
-  // 1. GET the site-content document (no @uniweb/build needed for a read).
+  // 1. GET the site-content document.
+  //
+  // ⛔ The body is a `.uwx` ZIP, not JSON — `application/vnd.uniweb.exchange.
+  // entity+zip`, on `content` and `folder` pulls alike. This used to call
+  // `res.json()`, which failed on the ZIP magic and reported *"Could not reach
+  // the backend: Unexpected token 'P'"* — blaming the network for a body we had
+  // received intact and mis-read. Decode with the local reader: this command runs
+  // before a project exists, so `@uniweb/build/uwx`'s `readZip` is out of reach
+  // (see `utils/uwx-read.js`).
   info(
     `Reading site ${colors.bright}${siteUuid}${colors.reset} from ${colors.dim}${client.origin}${colors.reset} …`
   )
-  let payload
+  let documents
   try {
     const res = await client.pullSiteContent(siteUuid)
     if (res.status === 404) {
@@ -206,13 +215,14 @@ export async function clone(args = [], deps = {}) {
         note('Run `uniweb login` first (or pass --token <bearer>).')
       return { exitCode: 1 }
     }
-    payload = await res.json()
+    documents = readUwxDocuments(Buffer.from(await res.arrayBuffer()))
   } catch (err) {
     error(`Could not reach the backend at ${client.origin}: ${err.message}`)
     return { exitCode: 1 }
   }
 
-  const document = extractDocument(payload)
+  const document =
+    documents.map(extractDocument).find(Boolean) || null
   if (!document) {
     error('The site-content response carried no recognizable document.')
     return { exitCode: 1 }
