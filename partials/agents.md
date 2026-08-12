@@ -1906,6 +1906,7 @@ uniweb add ci --target foundation # Publish a foundation for free at permanent v
                                   # (GitHub Pages → foundations/<name>/<version>/entry.js)
 
 uniweb push / pull / clone / status   # Git-style content sync with the Uniweb backend
+uniweb push --org @acme               # First push/publish of a site: who owns it (see below)
 uniweb register [--scope @org]        # Register a foundation + its data schemas to the registry
 uniweb login / logout                 # Start or clear the backend session the verbs above reuse
 uniweb org list / create <handle>     # Publish orgs you belong to — the @org in a scoped ref
@@ -1946,6 +1947,26 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 `uniweb publish` ships to Uniweb Cloud, and it's worth understanding what that buys, because it isn't only hosting — it's how a team of technical and non-technical people works on one site.
 
 **Content authors work visually in the Uniweb App.** They compose the same extended markdown and set the same component params you defined, through a visual editor — never touching code, git, or the CLI. They see exactly the section types your foundation offers and exactly the knobs each one exposes, because **every `meta.js` is registered as the foundation's schema** when you publish. Your `meta.js` is the app's UI (see *meta.js* in Part 4).
+
+> ⚠️ **The FIRST push or publish of a site asks who owns it — and refuses if it cannot ask.**
+> That create decides which organization owns the site (and whose storage its assets are billed
+> to), it is the only moment the choice is made, and there is no CLI command to change it
+> afterwards. At a terminal you get a picker. **Without a terminal — CI, a script, or you, an
+> agent — the command exits non-zero instead of choosing**, and `--yes` refuses too, because
+> guessing an owner is not an answer. Name it and it never asks again:
+>
+> ```bash
+> uniweb publish --org @acme     # an organization
+> uniweb publish --personal      # your personal account, deliberately
+> ```
+>
+> The answer is recorded in `site.yml::$org` and committed, so it is a one-time choice per site,
+> not per machine. **Ask the human which one to use** rather than picking for them — a site in
+> the wrong org cannot be moved from here. Sites that already exist are unaffected: their
+> ownership is settled, so nothing is asked.
+>
+> Relatedly: these commands now **reject flags they do not recognize** instead of ignoring them.
+> If you get `Unknown flag`, read the suggestion — it is usually a near miss.
 
 **Sync is developer-only and one-sided by design.** `uniweb push` and `uniweb pull` are your commands, not theirs:
 
