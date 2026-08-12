@@ -1318,6 +1318,10 @@ ${colors.bright}Options:${colors.reset}
   --yes              Skip confirmations (CI); never block on a prompt
   --no-save          Skip the deploy.yml lastDeploy auto-save
   --no-validate      Skip the content-conformance check (it only warns)
+  --as-org @org      Publish under @org (membership-gated). Read only on a site's
+                     FIRST publish — that create decides which org owns the site,
+                     and whose storage its assets are charged to. Recorded as
+                     site.yml \$org and replayed, so it is never re-typed.
   --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
   --token <bearer>   Auth bearer (skips \`uniweb login\`)
 `,
@@ -1693,6 +1697,7 @@ ${colors.bright}Global Options:${colors.reset}
 ${colors.bright}Publish Options:${colors.reset}
   --dry-run          Resolve everything; release/sync/POST nothing
   --yes              Skip confirmations (CI); never block on a prompt
+  --as-org @org      Publish under @org (first publish only; then remembered)
   --no-save          Skip the deploy.yml lastDeploy auto-save
   --no-validate      Skip the content-conformance check (it only warns)
   --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)

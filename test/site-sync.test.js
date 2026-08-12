@@ -18,6 +18,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import yaml from 'js-yaml'
 import {
   extractFinalized,
   pushSyncPackages,
@@ -25,6 +26,7 @@ import {
   clearRemoteSyncStateIfUnbound,
   readBaseVersions,
   readSyncCache,
+  readSiteOrg,
   writeUnitBases
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
@@ -633,7 +635,7 @@ test('ensureSiteExists is a no-op when the site is already bound', async () => {
     }
   }
   const res = await ensureSiteExists({ client, siteDir: dir })
-  assert.deepEqual(res, { uuid: 'EXISTING-1', created: false })
+  assert.deepEqual(res, { uuid: 'EXISTING-1', created: false, org: null })
   assert.equal(called, false, 'must not mint a second site for a bound clone')
 })
 
@@ -655,7 +657,7 @@ test('ensureSiteExists creates, reads the snake_case uuid, and writes it back at
     asOrg: '@acme',
     note: (m) => notes.push(m)
   })
-  assert.deepEqual(res, { uuid: 'MINTED-9', created: true })
+  assert.deepEqual(res, { uuid: 'MINTED-9', created: true, org: '@acme' })
   assert.deepEqual(sent, {
     name: 'Acme',
     foundation: '@a/base@1.2.3',
@@ -664,6 +666,80 @@ test('ensureSiteExists creates, reads the snake_case uuid, and writes it back at
   // Written back immediately — the window where a crash strands a site is one write.
   assert.match(readFileSync(join(dir, 'site.yml'), 'utf8'), /MINTED-9/)
   assert.ok(notes.some((m) => /Created the site/.test(m)))
+})
+
+// ─── the site's org record (site.yml::$org) ───────────────────────────────────
+// Ownership is decided by the `as_org` on the create that mints `$uuid`, and by
+// nothing afterwards. `$org` records that decision so it is readable from the repo
+// and replayable, closing the asymmetry with the foundation lane's committed
+// `package.json::uniweb.scope`.
+
+test('the created site records its org BARE, and reads back with the @', async () => {
+  const dir = tmpSite()
+  const client = {
+    createSite: async () => okJson({ site_content_uuid: 'MINTED-ORG' })
+  }
+  const notes = []
+  const res = await ensureSiteExists({
+    client,
+    siteDir: dir,
+    name: 'Acme',
+    foundation: '@a/base@1.2.3',
+    asOrg: '@acme',
+    note: (m) => notes.push(m)
+  })
+
+  const text = readFileSync(join(dir, 'site.yml'), 'utf8')
+  // BARE on disk. `@` is a reserved YAML indicator, so a plain scalar may not
+  // start with one — `$org: @acme` would not parse. This assertion is the guard.
+  assert.match(text, /^\$org: acme$/m)
+  assert.doesNotMatch(text, /\$org: @/, '`@` would make site.yml unparseable')
+  assert.doesNotThrow(() => yaml.load(text), 'site.yml must still parse')
+
+  // …and the reader re-dresses it, so callers get the wire/display form.
+  assert.equal(readSiteOrg(dir), '@acme')
+  assert.equal(res.org, '@acme')
+  // "Show what was resolved" — the org is named, not silently recorded.
+  assert.ok(notes.some((m) => m.includes('@acme')))
+})
+
+test('a bare --as-org value is accepted and normalized on the way in', async () => {
+  const dir = tmpSite()
+  await ensureSiteExists({
+    client: { createSite: async () => okJson({ site_content_uuid: 'M' }) },
+    siteDir: dir,
+    name: 'Acme',
+    foundation: '@a/base@1.0.0',
+    asOrg: 'acme' // no leading @
+  })
+  assert.match(readFileSync(join(dir, 'site.yml'), 'utf8'), /^\$org: acme$/m)
+  assert.equal(readSiteOrg(dir), '@acme')
+})
+
+test('no --as-org records NO org — the backend chose, and we do not guess one', async () => {
+  const dir = tmpSite()
+  const res = await ensureSiteExists({
+    client: { createSite: async () => okJson({ site_content_uuid: 'M2' }) },
+    siteDir: dir,
+    name: 'Acme',
+    foundation: '@a/base@1.0.0'
+  })
+  // The create response carries no org, so there is nothing true to record.
+  // Inventing one would be worse than the gap it fills.
+  assert.doesNotMatch(readFileSync(join(dir, 'site.yml'), 'utf8'), /\$org/)
+  assert.equal(readSiteOrg(dir), null)
+  assert.equal(res.org, null)
+})
+
+test('readSiteOrg returns null for every site that predates the record', () => {
+  const dir = tmpSite()
+  // This is the backward-compatibility property: no existing site.yml carries
+  // `$org`, so every existing site keeps sending no `as_org`, exactly as before.
+  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: OLD-1\n')
+  assert.equal(readSiteOrg(dir), null)
+
+  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$org: "   "\n')
+  assert.equal(readSiteOrg(dir), null, 'a blank handle is not an org')
 })
 
 test('ensureSiteExists distinguishes a backend without the route from a refusal', async () => {

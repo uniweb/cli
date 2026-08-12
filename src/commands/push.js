@@ -26,7 +26,11 @@
  *
  * Usage:
  *   uniweb push                          Build, push both lanes, back-fill $uuid
- *   uniweb push --as-org @org            Act as @org (membership-gated)
+ *   uniweb push --as-org @org            Act as @org (membership-gated). Needed only
+ *                                        for the FIRST push of a site — it decides
+ *                                        which org owns it (and whose storage its
+ *                                        assets are charged to). Recorded as
+ *                                        `site.yml::$org` and replayed after that.
  *   uniweb push --dry-run                Report what would be pushed; submit nothing
  *   uniweb push -o out.uwx               Write the .uwx file(s) per lane; submit nothing
  *   uniweb push --registry <url>         Override the backend origin
@@ -68,7 +72,8 @@ import {
   ensureItemUuids,
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
-  pushSyncPackages
+  pushSyncPackages,
+  readSiteOrg
 } from '../backend/site-sync.js'
 
 // Re-exported for downstream importers (pull.js, push.test.js) that read these
@@ -106,7 +111,6 @@ export async function push(args = []) {
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
   const tokenFlag = flagValue(args, '--token')
-  const asOrg = flagValue(args, '--as-org')
   const foundationDir = flagValue(args, '--foundation')
   const sendAll = args.includes('--all') // bypass the send-only-changed cache
   // --force drops the optimistic-concurrency precondition, making the push
@@ -117,6 +121,13 @@ export async function push(args = []) {
   const force = args.includes('--force')
 
   const siteDir = await resolveSiteDir(args, 'push')
+
+  // The acting org: the flag verbatim, else the one this site was CREATED under
+  // (`site.yml::$org`). The org is consumed by the create that mints `$uuid`, so
+  // a site that already exists is already owned — replaying the recorded handle
+  // reasserts that rather than choosing anything new. A site with no `$org`
+  // recorded sends no `as_org`, exactly as before.
+  const asOrg = flagValue(args, '--as-org') || readSiteOrg(siteDir)
 
   // Advisory only — warns and pushes. A malformed data block otherwise rides
   // the sync wire unchecked; see utils/conformance.js.

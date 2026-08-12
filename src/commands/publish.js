@@ -28,6 +28,12 @@
  *   uniweb publish --dry-run       Resolve everything; POST nothing
  *   uniweb publish --yes           Skip confirmations (CI); never block on a prompt
  *   uniweb publish --force         Overwrite upstream app-side edits (drop the push gate)
+ *   uniweb publish --as-org @org   Publish under @org (membership-gated). Only the
+ *                                  FIRST publish of a site reads it — that create is
+ *                                  what decides which org owns the site and whose
+ *                                  storage its assets are charged to. It is then
+ *                                  recorded as `site.yml::$org` and replayed, so it
+ *                                  never has to be re-typed.
  *   uniweb publish --no-save       Skip the deploy.yml lastDeploy auto-save
  *   uniweb publish --backend <url> Override the backend origin
  *   uniweb publish --token <bearer> Auth bearer (skips `uniweb login`)
@@ -66,7 +72,8 @@ import {
   ensureItemUuids,
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
-  pushSyncPackages
+  pushSyncPackages,
+  readSiteOrg
 } from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
@@ -167,10 +174,15 @@ async function persistLastDeploy(siteDir, opts) {
 export async function publish(args = []) {
   const dryRun = args.includes('--dry-run')
   const noSave = args.includes('--no-save')
-  const asOrg = readFlagValue(args, '--as-org')
   const foundationDir = readFlagValue(args, '--foundation') // optional local foundation for Model schemas
 
   const siteDir = await resolveSiteDir(args, 'publish')
+
+  // The acting org: the flag verbatim, else the one this site was CREATED under
+  // (`site.yml::$org`). Only the create reads `as_org`, so replaying the recorded
+  // handle reasserts existing ownership rather than choosing new ownership. Absent
+  // both, no `as_org` is sent — unchanged from before the record existed.
+  const asOrg = readFlagValue(args, '--as-org') || readSiteOrg(siteDir)
 
   // Advisory only — warns and ships. See utils/conformance.js for why this
   // is not a gate.

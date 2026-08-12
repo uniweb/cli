@@ -18,6 +18,7 @@ import { hasUncommittedContent } from '../utils/git.js'
 import {
   backfillEntityUuids,
   writeSiteEntityUuid,
+  writeSiteOrg,
   emitSyncPackages,
   readZip,
   diffSiteUnits,
@@ -391,6 +392,59 @@ export function writeItemUuids(siteDir, map) {
 }
 
 /**
+ * The org this site was created under, as `@handle`, or null.
+ *
+ * Read back from `site.yml::$org` (stored bare — see `writeSiteOrg`) and re-dressed
+ * with the `@` the CLI and the wire both use. Callers pass it as `--as-org`'s default
+ * so an org named once, at create, does not have to be re-typed on every later push.
+ *
+ * Deliberately NOT a fallback for the flag: an explicit `--as-org` always wins and
+ * rides verbatim, so this can only add a value where the CLI previously sent none.
+ *
+ * @param {string} siteDir
+ * @returns {string|null}
+ */
+export function readSiteOrg(siteDir) {
+  try {
+    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
+    const h = y && typeof y === 'object' ? y.$org : null
+    return typeof h === 'string' && h.trim()
+      ? `@${h.trim().replace(/^@/, '')}`
+      : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Record the org a just-minted site was created under, if one was named.
+ *
+ * Only what we were TOLD is recorded — when no `--as-org` was passed the backend
+ * chose the owner and its create response carries no org, so there is nothing to
+ * write and guessing one would be worse than the gap. Returns the display form for
+ * the caller's "here's what resolved" line, or null when nothing was recorded.
+ *
+ * @param {string} siteDir
+ * @param {string|null|undefined} asOrg - the `--as-org` value, `@handle` or bare
+ * @returns {string|null}
+ */
+function recordSiteOrg(siteDir, asOrg) {
+  const handle = String(asOrg || '')
+    .replace(/^@/, '')
+    .replace(/\/.*$/, '')
+    .trim()
+  if (!handle) return null
+  try {
+    writeSiteOrg(siteDir, handle)
+    return `@${handle}`
+  } catch {
+    // The uuid is the load-bearing back-fill; losing the org note must never
+    // fail a push that already succeeded on the backend.
+    return null
+  }
+}
+
+/**
  * Guarantee the site EXISTS on the backend before anything is uploaded against it.
  *
  * Ordering is the point, and it is load-bearing rather than incidental. Uploaded
@@ -429,7 +483,7 @@ export async function ensureSiteExists({
     /* unreadable site.yml — treat as un-synced and let the create decide */
   }
   if (typeof siteYml.$uuid === 'string') {
-    return { uuid: siteYml.$uuid, created: false }
+    return { uuid: siteYml.$uuid, created: false, org: readSiteOrg(siteDir) }
   }
 
   // Both are required by the create. Catching it here turns a 400 into a sentence
@@ -484,8 +538,16 @@ export async function ensureSiteExists({
   // this point cannot leave a cache pointing at a different site with no way to
   // detect it.
   updateSyncCache(siteDir, { siteUuid: minted })
-  note?.(`Created the site on the backend (recorded $uuid in site.yml).`)
-  return { uuid: minted, created: true }
+  // Ownership is decided HERE and nowhere else — this is the one call that reads
+  // `as_org`. Recording it beside the uuid is what makes the answer readable later,
+  // and naming it now is the "show what resolved" half of the ask-once pattern.
+  const org = recordSiteOrg(siteDir, asOrg)
+  note?.(
+    org
+      ? `Created the site on the backend under ${org} (recorded $uuid + $org in site.yml).`
+      : `Created the site on the backend (recorded $uuid in site.yml).`
+  )
+  return { uuid: minted, created: true, org }
 }
 
 /**
@@ -838,6 +900,12 @@ export async function pushSyncPackages({
       updateSyncCache(siteDir, { siteUuid: minted })
       boundSiteUuid = minted
       wrote.push('recorded site $uuid in site.yml')
+      // The OTHER create path (a media-less push never reaches `ensureSiteExists`,
+      // which is gated on the site having local media). Both mint a site, so both
+      // owe the same record — recording it in only one place would make `$org`
+      // present or absent depending on whether the site happens to have images.
+      const createdOrg = recordSiteOrg(siteDir, asOrg)
+      if (createdOrg) wrote.push(`recorded site $org (${createdOrg}) in site.yml`)
       const createdFinalized = extractFinalized(payload)
       harvest(createdFinalized)
       siteFinalizedDoc = createdFinalized?.[0]?.document || null
