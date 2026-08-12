@@ -507,8 +507,13 @@ export async function resolveSiteOrgForCreate({
   // instead of prompting for an answer the run will not use.
   if (offline) return { asOrg: null }
 
+  // `--yes` promises "never block on a prompt", so it has to answer this one too —
+  // and the only honest non-blocking answer to an unanswerable ownership question
+  // is a refusal. Treating it as consent-to-anything would reinstate the silent
+  // default this whole path exists to remove, behind a flag that reads like
+  // approval.
   const { isNonInteractive } = await import('../utils/interactive.js')
-  if (isNonInteractive(args)) {
+  if (isNonInteractive(args) || args.includes('--yes')) {
     return {
       asOrg: null,
       refused: true,

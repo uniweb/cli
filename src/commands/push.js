@@ -66,6 +66,8 @@ import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
+import { readOrgFlag } from '../utils/args.js'
+import { checkFlags } from '../utils/flag-guard.js'
 import {
   makeModelResolver,
   readSyncCache,
@@ -111,6 +113,13 @@ function flagValue(args, name) {
 }
 
 export async function push(args = []) {
+  // An unrecognized flag is invisible to a literal scan, so it silently keeps the
+  // default — including for --backend, where the default can be production.
+  const bad = checkFlags('push', args)
+  if (bad) {
+    error(bad.message)
+    return { exitCode: 2 }
+  }
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
   const tokenFlag = flagValue(args, '--token')
@@ -150,7 +159,7 @@ export async function push(args = []) {
     client,
     siteDir,
     args,
-    flag: flagValue(args, '--as-org'),
+    flag: readOrgFlag(args),
     personal: args.includes('--personal'),
     offline: !!output || dryRun
   })

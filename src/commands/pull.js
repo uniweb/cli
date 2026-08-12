@@ -95,6 +95,7 @@ import {
   resolveSiteDir as defaultResolveSiteDir,
   resolveSiteBackend
 } from './deploy.js'
+import { checkFlags } from '../utils/flag-guard.js'
 
 const FOLDER_MODEL = '@uniweb/folder'
 
@@ -539,6 +540,13 @@ async function confirm(question) {
 }
 
 export async function pull(args = [], deps = {}) {
+  // See utils/flag-guard.js — an unrecognized flag is invisible to a
+  // literal scan, so it silently keeps the default (production, for --backend).
+  const badFlag = checkFlags('pull', args)
+  if (badFlag) {
+    error(badFlag.message)
+    return { exitCode: 2 }
+  }
   const resolveSiteDir = deps.resolveSiteDir || defaultResolveSiteDir
 
   const dryRun = args.includes('--dry-run')

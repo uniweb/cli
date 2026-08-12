@@ -81,6 +81,7 @@ import {
   promptSelect
 } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
+import { checkFlags } from '../utils/flag-guard.js'
 
 const colors = {
   reset: '\x1b[0m',
@@ -265,6 +266,13 @@ export function foundationNeedsBuild(targetDir) {
 }
 
 export async function register(args = []) {
+  // See utils/flag-guard.js — an unrecognized flag is invisible to a
+  // literal scan, so it silently keeps the default (production, for --backend).
+  const badFlag = checkFlags('register', args)
+  if (badFlag) {
+    error(badFlag.message)
+    return { exitCode: 2 }
+  }
   jsonMode = args.includes('--json')
   jsonEmitted = false
   lastError = null

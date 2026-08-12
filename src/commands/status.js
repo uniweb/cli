@@ -30,6 +30,7 @@ import { BackendClient } from '../backend/client.js'
 import { readFlagValue } from '../utils/args.js'
 import { resolveLocalFoundation } from '../backend/foundation-bring-along.js'
 import { computeFoundationDigest } from '../utils/code-upload.js'
+import { checkFlags } from '../utils/flag-guard.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -73,6 +74,14 @@ function splitFoundationRef(fnd) {
 }
 
 export async function status(args = []) {
+  // See utils/flag-guard.js — an unrecognized flag is invisible to a literal scan.
+  // Straight to stderr: this is a usage error, so it must not be mistaken for the
+  // status document even under --json.
+  const badFlag = checkFlags('status', args)
+  if (badFlag) {
+    console.error(`\x1b[31m✗\x1b[0m ${badFlag.message}`)
+    return { exitCode: 2 }
+  }
   const jsonMode = args.includes('--json')
   const remote = args.includes('--remote')
   const siteDir = await resolveSiteDir(args, 'status')

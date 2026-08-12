@@ -57,6 +57,7 @@ import { BackendClient } from '../backend/client.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 import { extractFoundationRef } from '../utils/site-content-refs.js'
 import { readUwxDocuments } from '../utils/uwx-read.js'
+import { checkFlags } from '../utils/flag-guard.js'
 
 const colors = {
   reset: '\x1b[0m',
@@ -159,6 +160,13 @@ function pullExecArgv(pm, extra) {
  *   runPull(siteDir, pm, extraArgs).
  */
 export async function clone(args = [], deps = {}) {
+  // See utils/flag-guard.js — an unrecognized flag is invisible to a
+  // literal scan, so it silently keeps the default (production, for --backend).
+  const badFlag = checkFlags('clone', args)
+  if (badFlag) {
+    error(badFlag.message)
+    return { exitCode: 2 }
+  }
   const positionals = args.filter((a) => !a.startsWith('-'))
   const siteUuid = positionals[0]
   const target = positionals[1] || null // [name|.]

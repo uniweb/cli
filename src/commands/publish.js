@@ -64,7 +64,8 @@ import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
-import { readFlagValue } from '../utils/args.js'
+import { readFlagValue, readOrgFlag } from '../utils/args.js'
+import { checkFlags } from '../utils/flag-guard.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import { headProvenance } from '../utils/git.js'
 import {
@@ -175,6 +176,13 @@ async function persistLastDeploy(siteDir, opts) {
 }
 
 export async function publish(args = []) {
+  // See utils/flag-guard.js — an unrecognized flag is invisible to a literal
+  // scan, and for --backend the silent default can be production.
+  const bad = checkFlags('publish', args)
+  if (bad) {
+    say.err(bad.message)
+    return { exitCode: 2 }
+  }
   const dryRun = args.includes('--dry-run')
   const noSave = args.includes('--no-save')
   const foundationDir = readFlagValue(args, '--foundation') // optional local foundation for Model schemas
@@ -206,7 +214,7 @@ export async function publish(args = []) {
     client,
     siteDir,
     args,
-    flag: readFlagValue(args, '--as-org'),
+    flag: readOrgFlag(args),
     personal: args.includes('--personal'),
     offline: dryRun
   })
