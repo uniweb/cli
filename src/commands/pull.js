@@ -76,13 +76,13 @@ import {
   computeUnitHashes,
   collectUnitUuids
 } from '@uniweb/build/uwx'
-import { makeModelResolver } from './push.js'
 import {
   readWritten,
   recordWritten,
   isPullOutput
 } from '../utils/pull-written.js'
 import {
+  makeModelResolver,
   mergeBaseVersions,
   mergeItemBaseVersions,
   writeUnitBases,

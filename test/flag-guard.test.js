@@ -114,11 +114,16 @@ test('didYouMean suggests a near miss and declines a far one', () => {
 })
 
 test('a distant typo gets NO suggestion, and that is deliberate', () => {
-  // `--orgz` is 3 edits from `--as-org` — over the length-scaled threshold, so
-  // nothing is offered. A confident wrong suggestion sends the user to fix the
+  // Nothing in pull's set is within the length-scaled threshold of this, so no
+  // suggestion is offered. A confident wrong suggestion sends the user to fix the
   // wrong thing; the message still names the verb's --help, so nobody is stranded.
-  const bad = checkFlags('pull', ['--orgz'])
+  const bad = checkFlags('pull', ['--frobnicate'])
   assert.equal(bad.suggestion, null)
   assert.doesNotMatch(bad.message, /Did you mean/)
   assert.match(bad.message, /--help/)
+})
+
+test('a near miss of a newly-inherited flag is still suggested', () => {
+  // `--org` reaches pull through the owner resolver, so `--orgz` resolves to it.
+  assert.equal(checkFlags('pull', ['--orgz']).suggestion, '--org')
 })

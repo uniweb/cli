@@ -31,35 +31,79 @@ import { findUnknownFlags, didYouMean } from './args.js'
 const GLOBAL = ['--non-interactive', '--help', '-h']
 
 /**
+ * Login-method flags. Any verb that can hit an unauthenticated backend may fall
+ * into `ensureRegistryAuth`, which hands `args` to the login picker — so these are
+ * genuinely reachable from all of them, not just from `uniweb login`.
+ */
+const AUTH = ['--browser', '--password', '--token-paste']
+
+/**
+ * Flags a verb inherits by importing `commands/deploy.js` for `resolveSiteDir` /
+ * `resolveSiteBackend`. Inert on these verbs, and listed rather than filtered:
+ * accepting a flag that does nothing is exactly the pre-guard behaviour, while
+ * rejecting one that works is a broken command. The guard's job is catching
+ * `--backed`, not policing inert-but-valid spellings.
+ */
+const VIA_DEPLOY = ['--target', '--host', '--no-save']
+
+/**
  * Per-verb flag sets. Derived by scanning each command for dash-literals AND the
  * helpers it calls — not from the help text, which has drifted from the parser in
  * both directions (`--as-org` was implemented and undocumented; `--yes` is
  * documented on `publish` and consumed two files away).
  */
-export const VERB_FLAGS = {
+const VERBS = {
   push: [
     '--all', '--as-org', '--org', '--backend', '--dry-run', '--force',
     '--foundation', '--output', '-o', '--personal', '--registry', '--token',
-    '--no-validate'
+    // read in utils/conformance.js and backend/site-sync.js respectively —
+    // neither appears in push.js
+    '--no-validate', '--yes', ...VIA_DEPLOY
   ],
   publish: [
     '--as-org', '--org', '--backend', '--dry-run', '--force', '--foundation',
-    '--no-save', '--personal', '--registry', '--token', '--no-validate', '--yes'
+    '--personal', '--registry', '--token',
+    // read in utils/conformance.js, backend/site-sync.js, and
+    // backend/foundation-bring-along.js — none appear in publish.js
+    '--no-validate', '--yes', '--no-verify', ...VIA_DEPLOY
   ],
   pull: [
     '--backend', '--content-only', '--dry-run', '--force', '--merge',
-    '--no-collections', '--no-delete', '--no-prune', '--registry', '--token'
+    '--no-collections', '--no-delete', '--no-prune', '--registry', '--token',
+    // via backend/site-sync.js (the owner resolver) and utils/conformance.js
+    '--yes', '--org', '--as-org', '--no-validate', ...VIA_DEPLOY
   ],
   clone: [
     '--backend', '--content-only', '--no-collections', '--path', '--project',
-    '--registry', '--token'
+    '--registry', '--token', '--org', '--as-org'
   ],
   register: [
     '--backend', '--dry-run', '--json', '--output', '-o', '--registry',
-    '--schema-only', '--scope', '--token'
+    '--schema-only', '--scope', '--token', '--org', '--as-org'
   ],
-  status: ['--backend', '--json', '--registry', '--remote', '--token']
+  status: [
+    '--backend', '--json', '--registry', '--remote', '--token', '--dry-run',
+    '--force', '--no-verify', '--no-validate', '--yes', '--org', '--as-org',
+    ...VIA_DEPLOY
+  ]
 }
+
+/**
+ * The accepted set per verb: its own flags, plus the login-method flags every
+ * backend verb can reach, plus the globals.
+ *
+ * Derived from each verb's IMPORT GRAPH, not from its own source and not from the
+ * help text — `test/flag-guard-coverage.test.js` walks that graph and fails if a
+ * verb can honour a flag this list omits. Deliberately an over-approximation: a
+ * flag accepted here but inert costs nothing (it was ignored before the guard
+ * existed), while one rejected here breaks a working command.
+ */
+export const VERB_FLAGS = Object.fromEntries(
+  Object.entries(VERBS).map(([verb, flags]) => [
+    verb,
+    [...new Set([...flags, ...AUTH])]
+  ])
+)
 
 /**
  * Check `args` against the verb's accepted set. Returns null when everything is
