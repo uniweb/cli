@@ -26,11 +26,12 @@
  *
  * Usage:
  *   uniweb push                          Build, push both lanes, back-fill $uuid
- *   uniweb push --as-org @org            Act as @org (membership-gated). Needed only
- *                                        for the FIRST push of a site — it decides
- *                                        which org owns it (and whose storage its
- *                                        assets are charged to). Recorded as
+ *   uniweb push --org @org               Own the new site under @org (alias: --as-org).
+ *                                        Read only on the FIRST push of a site — it
+ *                                        decides which org owns it, and whose storage
+ *                                        its assets are charged to. Recorded as
  *                                        `site.yml::$org` and replayed after that.
+ *                                        Without it, you are asked once.
  *   uniweb push --personal               Own the new site personally, deliberately.
  *                                        Sends NO `as_org` — the same wire as before
  *                                        this prompt existed. First push only.

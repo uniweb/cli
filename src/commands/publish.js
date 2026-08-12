@@ -28,7 +28,7 @@
  *   uniweb publish --dry-run       Resolve everything; POST nothing
  *   uniweb publish --yes           Skip confirmations (CI); never block on a prompt
  *   uniweb publish --force         Overwrite upstream app-side edits (drop the push gate)
- *   uniweb publish --as-org @org   Publish under @org (membership-gated). Only the
+ *   uniweb publish --org @org      Publish under @org (alias: --as-org). Only the
  *                                  FIRST publish of a site reads it — that create is
  *                                  what decides which org owns the site and whose
  *                                  storage its assets are charged to. It is then
