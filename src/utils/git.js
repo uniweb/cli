@@ -18,8 +18,8 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, realpathSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import yaml from 'js-yaml'
 
 /**
@@ -85,11 +85,44 @@ export function isGitRepo(dir) {
  * as modified here: a section file that exists only locally is not on the backend,
  * so a pruning pull deletes it — losing work that was never committed anywhere.
  *
- * @returns {string[]|null} repo-relative-ish paths as git reports them, or `null`
- *   when this isn't a git work tree (distinct from `[]`, which means "clean").
+ * ⛔ **Returned relative to `dir`, which is NOT what git prints.** `--porcelain`
+ * paths are always relative to the REPOSITORY ROOT, whatever directory it runs
+ * in, so they only coincide with `dir`-relative when the site *is* the repo root.
+ * Both callers do `join(siteDir, rel)` with the result, so the un-normalized form
+ * was wrong for every nested layout — a site at `myproject/site/` inside a repo.
+ *
+ * What that cost, measured 2026-08-12: pull exempts its own previous output from
+ * the uncommitted-work guard by looking each dirty path up in a record keyed
+ * `dir`-relative (`utils/pull-written.js`). Given `myproject/site/site.yml` the
+ * lookup missed, so **pull refused on files pull itself had written** — the exact
+ * false alarm that record exists to prevent, and the one its own comment warns
+ * teaches people to reach for `--force`. `captureLocalWork` had the same defect
+ * one door along: it reads each path back with `join(siteDir, rel)`.
+ *
+ * The earlier `@returns` said "repo-relative-ish paths as git reports them" while
+ * the summary above said "relative to `dir`" — the ambiguity was noticed and left,
+ * and both callers had picked the other reading.
+ *
+ * @returns {string[]|null} paths relative to `dir`, or `null` when this isn't a
+ *   git work tree (distinct from `[]`, which means "clean").
  */
 export function uncommittedUnder(dir, relPaths) {
   if (!isGitRepo(dir)) return null
+  // ⚠️ Both sides must be REAL paths before `relative` can compare them.
+  // `rev-parse --show-toplevel` resolves symlinks; the caller's `dir` usually has
+  // not. On macOS that alone breaks it — `/var` is a symlink to `/private/var`,
+  // so a repo under the temp dir yields a root of `/private/var/…` against a dir
+  // of `/var/…`, and `relative` walks all the way up and back down. The result is
+  // a valid-looking path that matches nothing, i.e. the same silent miss this
+  // normalization exists to fix. Any symlinked checkout does it, not just tmp.
+  let root
+  let base
+  try {
+    root = git(['rev-parse', '--show-toplevel'], dir).trim()
+    base = realpathSync(dir)
+  } catch {
+    return null
+  }
   try {
     const out = git(
       ['status', '--porcelain', '--untracked-files=all', '--', ...relPaths],
@@ -102,6 +135,12 @@ export function uncommittedUnder(dir, relPaths) {
         // porcelain v1: XY<space>path, and a rename is "orig -> new".
         .map((line) => line.slice(3).trim())
         .map((p) => (p.includes(' -> ') ? p.split(' -> ')[1] : p))
+        // Porcelain paths are repo-root-relative; callers want them relative to
+        // `dir`. Quoted paths (git quotes names with spaces or non-ASCII when
+        // `core.quotePath` is on) are left alone rather than half-decoded — a
+        // wrong path is worse than an unmatched one here, since an unmatched
+        // path merely stays "dirty" and the guard errs toward refusing.
+        .map((p) => (p.startsWith('"') ? p : relative(base, join(root, p))))
         .filter(Boolean)
     )
   } catch {

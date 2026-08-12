@@ -78,6 +78,11 @@ import {
 } from '@uniweb/build/uwx'
 import { makeModelResolver } from './push.js'
 import {
+  readWritten,
+  recordWritten,
+  isPullOutput
+} from '../utils/pull-written.js'
+import {
   mergeBaseVersions,
   mergeItemBaseVersions,
   writeUnitBases,
@@ -356,79 +361,10 @@ async function checkWorkingTree(siteDir, args) {
   return { exitCode: 1 }
 }
 
-// What the last pull wrote: `{ <repo-relative path>: <sha256 of the bytes it wrote> }`.
-//
-// Without this the guard cries wolf: pull rewrites the tree, so the very next pull
-// sees its OWN output as uncommitted work and refuses, listing files the user never
-// touched. A guard that fires on nothing teaches people to reach for --force, which
-// is the destructive option — the same failure mode as a gate that refuses disjoint
-// edits. A file still byte-identical to what pull last wrote is not user work.
-function writtenCachePath(siteDir) {
-  return join(siteDir, '.uniweb', 'pull-written.json')
-}
-function readWritten(siteDir) {
-  try {
-    const o = JSON.parse(readFileSync(writtenCachePath(siteDir), 'utf8'))
-    return {
-      files: o && typeof o.files === 'object' ? o.files : {},
-      deleted: Array.isArray(o?.deleted) ? o.deleted : []
-    }
-  } catch {
-    return { files: {}, deleted: [] }
-  }
-}
-function recordWritten(siteDir, absPaths, deletedAbs = []) {
-  // MERGE, don't replace. A conditional pull that 304s writes nothing, and a
-  // partial pull writes only some lanes — in both cases the previous record is
-  // still "the last thing pull wrote there". Replacing would forget those paths and
-  // the next pull would see them as the user's work again, which is the false alarm
-  // this cache exists to prevent. A stale entry for a file that no longer exists is
-  // harmless: the hash read fails and it counts as a local change.
-  const prior = readWritten(siteDir)
-  const files = prior.files
-  for (const abs of absPaths) {
-    try {
-      files[relative(siteDir, abs)] = createHash('sha256')
-        .update(readFileSync(abs))
-        .digest('hex')
-    } catch {
-      /* deleted or unreadable — nothing to remember */
-    }
-  }
-  // Pull PRUNES too, and a deletion is a dirty path git reports just like an edit.
-  // Without recording them, pull's own pruning reads as the user having deleted
-  // files — the same false alarm as its writes, arriving by the other door.
-  const deleted = [
-    ...new Set([
-      ...prior.deleted,
-      ...deletedAbs.map((a) => relative(siteDir, a))
-    ])
-  ]
-  try {
-    mkdirSync(dirname(writtenCachePath(siteDir)), { recursive: true })
-    writeFileSync(
-      writtenCachePath(siteDir),
-      JSON.stringify({ version: 1, files, deleted }, null, 2) + '\n'
-    )
-  } catch {
-    /* best-effort: losing it only costs a spurious refusal */
-  }
-}
-// Is this dirty path just pull's own untouched output?
-function isPullOutput(siteDir, relPath, written) {
-  let exists = true
-  let hash = null
-  try {
-    hash = createHash('sha256')
-      .update(readFileSync(join(siteDir, relPath)))
-      .digest('hex')
-  } catch {
-    exists = false
-  }
-  // Absent because pull pruned it — not because the user deleted it.
-  if (!exists) return written.deleted.includes(relPath)
-  return written.files[relPath] === hash
-}
+// The written-record helpers live in `utils/pull-written.js` so `clone` can share
+// them: clone scaffolds site.yml/theme.yml and then delegates here, and this
+// module cannot be imported from there — it statically imports `@uniweb/build`,
+// which resolves from a project that does not exist yet when clone runs.
 
 /**
  * `--merge`: keep local work instead of refusing, by three-way merging it with what

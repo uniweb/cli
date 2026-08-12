@@ -57,6 +57,7 @@ import { BackendClient } from '../backend/client.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 import { extractFoundationRef } from '../utils/site-content-refs.js'
 import { readUwxDocuments } from '../utils/uwx-read.js'
+import { recordWritten } from '../utils/pull-written.js'
 import { checkFlags } from '../utils/flag-guard.js'
 
 const colors = {
@@ -355,6 +356,31 @@ export async function clone(args = [], deps = {}) {
       return { exitCode: 1 }
     }
   }
+
+  // Tell the delegated pull which files WE wrote, or it refuses on them.
+  //
+  // Pull guards against overwriting uncommitted work under the paths it rewrites,
+  // and `site.yml` / `theme.yml` are exactly those paths — uncommitted here
+  // because clone scaffolded them seconds ago. Without this, clone reliably ends
+  // in "Refusing to pull: 2 uncommitted change(s)" on a project it just created,
+  // where there is no user work to protect. The advice it prints (`--force`) is
+  // both unreachable — clone does not forward that flag — and wrong, since it
+  // means "discard my changes" and the changes are ours.
+  //
+  // ⭐ This exempts them for the RIGHT reason rather than overriding the guard.
+  // `recordWritten` stores a content hash, so a file the user edits between
+  // scaffold and pull no longer matches and the refusal correctly stands. The
+  // guard keeps its teeth; it just stops firing on machine output, which is what
+  // it already does for pull's own writes.
+  //
+  // Recorded AFTER the uuid seeding above — the hash has to be of the final
+  // bytes on disk, not of what the scaffolder first wrote.
+  recordWritten(
+    siteDir,
+    ['site.yml', 'theme.yml', 'head.html', 'collections.yml']
+      .map((f) => join(siteDir, f))
+      .filter((p) => existsSync(p))
+  )
 
   const pullExtra = []
   if (explicitBackend) pullExtra.push('--backend', explicitBackend)
