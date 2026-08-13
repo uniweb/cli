@@ -674,6 +674,20 @@ The artifacts **your build emits** to describe the public site never name them �
 
 Don't confuse it with the visibility flags: `hidden: true` is a **draft** (not published at all), `hideIn` only controls **nav placement** (still reachable by URL), and `knowledge: true` is a **different audience** (never rendered for anyone).
 
+**A site can be nothing but knowledge — that is a real and useful shape.** A site is a set of routes; it does not have to have HTML pages. Mark the root `knowledge: true` and every page inherits it, so the site renders nothing at all and exists to *be* an agent: a `/_agent/chat` URL that a web app, a mobile app, or someone else's backend sends requests to.
+
+```
+site/pages/
+├── page.yml          # knowledge: true — cascades to everything
+├── house-style.md
+├── pricing.md
+└── support.md
+```
+
+Measured on exactly that shape: **the agent corpus holds every page; the public projections hold nothing** — `llms.txt` lists no pages, the search index has 0 entries, and no `.md` files are emitted. Nothing leaks, by construction rather than by configuration, because there is no public surface to leak onto.
+
+⛔ **This shape needs a host that runs an agent — `uniweb deploy`.** On a static host every page is dropped (they have no reader there) and you get an empty SPA shell. The build still says *"complete"*, because 0 pages is not an error: it reports `Collected 0 pages` and pre-renders none. If you meant to build an agent endpoint and got an empty site, that is what happened.
+
 ### Your site is readable by agents, automatically
 
 Every build emits two things an AI agent can use directly, alongside the HTML. **Free, on by default, nothing to install.**
