@@ -718,6 +718,38 @@ agents:
 agents: false            # or turn the whole thing off in one word
 ```
 
+#### Expecting agent traffic from somewhere specific
+
+If your site runs an agent (see *Knowledge pages* above), you can declare where its requests are expected to come from. Useful when the site exists to serve someone else's app rather than its own visitors — a chat endpoint your web app calls.
+
+```yaml
+# site.yml
+agents:
+  expectedOrigins:
+    - https://app.example.com
+    - https://partner.example.org
+```
+
+**It is a declaration, not a gate — the name is the contract.** You are telling the host where you expect callers from; a host that offers an agent may then decline requests whose browser-sent `Origin` is not one of them, before it spends anything answering. Behaviour where it is honoured:
+
+| | |
+|---|---|
+| not declared | no check at all — nothing happens unless you ask for it |
+| your own site's origin | always fine, without listing it — declaring a partner must not take down your own chat box |
+| a request with **no** `Origin` | **allowed** — see below, this is deliberate |
+| matching | exact, per entry; no wildcards |
+
+⛔ **It is not a spend limit, and it cannot be.** `Origin` is set by the browser and enforced by the browser: anything that is not a browser sends whatever it likes, or nothing at all. So this stops **casual misuse and third-party embedding** — someone dropping your endpoint into their own page — and it does **not** stop anyone determined to run up your bill. Do not size your budget on it.
+
+⭐ **And that is why a request with no `Origin` is allowed rather than refused.** There are two shapes of caller and this check only sees one:
+
+- your app's **JavaScript**, in a browser — sends `Origin`, covered here;
+- your app's **server**, calling from its own backend — never sends one, and refusing it would break the integration this feature partly exists for.
+
+Server-to-server callers are authenticated by other means, arranged with your host — not by anything in `site.yml`. **Never put a shared secret in `site.yml`:** everything in it is delivered to every visitor as part of the site payload.
+
+⚠️ Spelling matters and nothing downstream will catch it — the block is forwarded to your host as opaque data, so a typo is carried and simply never acted on. `uniweb doctor` flags unknown keys in `agents:` for exactly this reason; run it before you rely on one.
+
 **Set `seo.baseUrl` if you want absolute links** in the index — without it the links are root-relative, which still works for an agent that arrived via the index. `uniweb doctor` warns when it's unset.
 
 **What's excluded, and it's deliberate:** `seo.noindex` pages, `hidden` pages, `_`-prefixed drafts, and dynamic route templates. An index *describes* pages rather than merely listing them, so an unlinked page would become both discoverable and summarized — which is why these exclusions are load-bearing rather than tidy-up. `noindex` or `hidden` on a **folder** takes the whole branch with it.
