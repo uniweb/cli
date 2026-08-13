@@ -657,6 +657,8 @@ A knowledge page is different in kind, not in audience. It is never a page anyon
 
 ⇒ If what you want is "make this readable by any AI that visits", write an ordinary page. It is already published to them, on the same terms as to everyone else.
 
+⛔ **`knowledge:` is not a security control — don't put secrets there.** "Not published" is about who the prose is *written for*, not about confidentiality. The assistant's job is to answer visitors using this material and it can quote it back to whoever asks, so a visitor who prompts it can surface what a knowledge page says — **by design, not by leak.** The test for what belongs here is "is this written for the assistant to reason with?", not "do I want to keep this from people?" Anything that genuinely must not reach a visitor doesn't belong in your site's content at all.
+
 ```yaml
 # pages/kb/page.yml
 title: Product Knowledge
@@ -665,10 +667,10 @@ knowledge: true
 
 What can actually *read* it depends on where you deploy, because reading it needs a server:
 
-- **`uniweb deploy`** (backend-hosted) — the content travels with the site, and a host offering an agent endpoint can serve it to an agent and control who reaches it.
-- **`uniweb export` / `uniweb deploy --host <adapter>`** (static host) — **the build drops these pages and says so**: `Dropped 2 knowledge page(s) from this build: /kb, /kb/pricing`. A static host has no agent endpoint to read them and no way to gate a request, so shipping them would just publish your agent-only content to anyone with the URL. The warning means the flag was honoured.
+- **`uniweb deploy`** (backend-hosted) — the content travels with the site, so an assistant running over it can grep and read your knowledge material alongside the public content when answering a visitor's question.
+- **`uniweb export` / `uniweb deploy --host <adapter>`** (static host) — **the build drops these pages and says so**: `Dropped 2 knowledge page(s) from this build: /kb, /kb/pricing`. Files are served as files here; there is no assistant, so nothing would read them. The warning means the flag was honoured.
 
-The artifacts **your build emits** to describe the public site never name them — `llms.txt`, the per-page `.md` projections, and the search index all describe pages a visitor can reach, and a knowledge page is not one. Two settings **outrank** `knowledge:` so a contradiction resolves toward less exposure: `agents.exclude` in `site.yml`, and any `_`-prefixed route segment. *(A host that derives these artifacts itself, rather than serving the ones your build produced, applies its own rules — ask your host what it does with `knowledge:` before relying on it there.)*
+The artifacts **your build emits** to describe the public site never name them — `llms.txt`, the per-page `.md` projections, and the search index all describe pages a visitor reads, and a knowledge page's prose was written for the assistant instead. Two settings **outrank** `knowledge:`, so a contradiction resolves toward the narrower reach: `agents.exclude` in `site.yml`, and any `_`-prefixed route segment. *(A host that derives these artifacts itself, rather than serving the ones your build produced, applies its own rules — ask your host what it does with `knowledge:` before relying on it there.)*
 
 Don't confuse it with the visibility flags: `hidden: true` is a **draft** (not published at all), `hideIn` only controls **nav placement** (still reachable by URL), and `knowledge: true` is a **different audience** (never rendered for anyone).
 
