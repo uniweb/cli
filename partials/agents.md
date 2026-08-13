@@ -649,6 +649,23 @@ seo:
 
 **Localized URLs:** on a multilingual site (`languages:` in site.yml), `slug: { <lang>: <segment> }` gives a page a native URL segment per language; the folder name stays the canonical route. Nested folders compose automatically, and localized URLs flow through navigation, the language switcher, and the sitemap. See Part 5 for the translation workflow.
 
+**Knowledge pages — content for an AI agent, not for a visitor.** `knowledge: true` in a `page.yml` or `folder.yml` marks a page as agent-only: it is **never rendered** — no route, no HTML — and it cascades to the whole subtree by route prefix, so one marker on `pages/kb/` covers everything under it and `/kb` never claims `/kbase`. Write plain markdown; a section `type:` there never selects a component, because nothing renders these pages.
+
+```yaml
+# pages/kb/page.yml
+title: Product Knowledge
+knowledge: true
+```
+
+What can actually *read* it depends on where you deploy, because reading it needs a server:
+
+- **`uniweb deploy`** (backend-hosted) — the content travels with the site, and a host offering an agent endpoint can serve it to an agent and control who reaches it.
+- **`uniweb export` / `uniweb deploy --host <adapter>`** (static host) — **the build drops these pages and says so**: `Dropped 2 knowledge page(s) from this build: /kb, /kb/pricing`. A static host has no agent endpoint to read them and no way to gate a request, so shipping them would just publish your agent-only content to anyone with the URL. The warning means the flag was honoured.
+
+On both paths, the artifacts describing your **public** site never name them — `llms.txt`, the per-page `.md` projections, and the search index all describe pages a visitor can reach, and a knowledge page is not one. Two settings **outrank** `knowledge:` so a contradiction resolves toward less exposure: `agents.exclude` in `site.yml`, and any `_`-prefixed route segment.
+
+Don't confuse it with the visibility flags: `hidden: true` is a **draft** (not published at all), `hideIn` only controls **nav placement** (still reachable by URL), and `knowledge: true` is a **different audience** (never rendered for anyone).
+
 ### Your site is readable by agents, automatically
 
 Every build emits two things an AI agent can use directly, alongside the HTML. **Free, on by default, nothing to install.**
