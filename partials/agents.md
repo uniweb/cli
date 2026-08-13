@@ -1806,14 +1806,18 @@ resolution for anything, so a foundation can define a service the framework has
 never heard of and a host can fill it. Same escalation `fetcher.transports`
 offers for data.
 
-**Building an "Ask AI" component?** The service name is `assistant`, and a host that runs an agent for a site typically serves it at the conventional path `/_agent`. **You should never need to write that path.** A host declares its services — and declares them *only for the sites they are enabled on* — so resolving is also how you learn whether this site has an agent at all:
+**Building an "Ask AI" component?** The service name is `assistant`, and a host that runs an agent for a site typically serves it at the conventional path `/_agent`. **You should never need to write that path** — ask the runtime instead:
 
 ```jsx
-const { url, reason } = resolveService(website, 'assistant')
-if (!url) return <Notice>{reason}</Notice>   // correct on a site with no agent
+const { url } = resolveService(website, 'assistant')
+if (!url) return null          // this site has no agent — render nothing, or a static fallback
 ```
 
-⛔ **Absent is an answer, not a lookup failure.** An agent endpoint exists only where a host runs one, so `{ url: null, reason }` means *this site has no assistant* — render accordingly. Hardcoding `/_agent/chat` because nothing was declared turns that into a 404 your component cannot tell from a broken endpoint, on every static host. The convention is named here so you recognize the shape, not so you can construct it.
+**This is a synchronous read, not a request.** Which services a site has was settled when the site was last published and travels in its metadata, so the runtime already holds the answer — there is no handshake, no probe, no await. Your component asks the runtime; the runtime does not ask anyone.
+
+⛔ **Absent is the answer, not a lookup that failed.** No `url` means the site has no agent — because it was never enabled, or because this host runs none at all. Render for that case; don't retry it. And don't hardcode `/_agent/chat` when nothing was declared: on a static host that turns "no agent here" into a 404 your component can't tell from a broken endpoint. The path is named above so you recognize the shape, not so you can construct it.
+
+*(A live agent that errors mid-conversation is a different problem — that's ordinary request failure, handled where you make the request.)*
 
 ```yaml
 # site.yml — only when YOU are providing the endpoint. Publishing to Uniweb
