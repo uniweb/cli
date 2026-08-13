@@ -17,7 +17,7 @@ import {
   classifyPackage,
   isExtensionPackage as buildIsExtensionPackage
 } from '@uniweb/build'
-import { loadDeployYml } from '@uniweb/build/site'
+import { loadDeployYml, AGENTS_KEYS } from '@uniweb/build/site'
 import { listAdapters } from '@uniweb/build/hosts'
 import { getCliVersion } from '../versions.js'
 import { readAgentsVersion } from '../utils/agents-stamp.js'
@@ -253,6 +253,108 @@ export function findFormContent(sitePath, siteYml) {
 
   for (const root of roots) walk(root)
   return found
+}
+
+/**
+ * A misspelled key in `agents:` is silent everywhere else, forever.
+ *
+ * The block reaches a backend as **opaque JSON** — measured 2026-08-13, and it
+ * is the right design: the vocabulary is the framework's, and a backend that
+ * validated it would be inventing our language. The cost is that nothing
+ * downstream can object. A host receives `expectedOrgins`, stores it, forwards
+ * it, and enforces nothing; the author sees a configured site and gets no
+ * check. **This is the only lane that can catch it.**
+ *
+ * ⛔ Severity is deliberate. It is a `warning` for an unknown key generally,
+ * but the failure it prevents is worst for the keys that RESTRICT something —
+ * an author who writes `expectedOrgins` believes they asked for a check they
+ * did not get. A key that silently does nothing is the recurring wart of this
+ * block: `exclude`'s glob spelling excludes nothing, and a carried key nobody
+ * reads enforces nothing.
+ *
+ * `agents: false` turns the capability off in one word and is not an object —
+ * flagging its absence of keys would be nonsense.
+ */
+export function checkAgentsBlock({ siteName, siteYml, issues }) {
+  const agents = siteYml?.agents
+  if (agents === undefined || agents === false) return
+  if (!agents || typeof agents !== 'object' || Array.isArray(agents)) {
+    const id = 'agents-not-an-object'
+    issues.push({
+      id,
+      type: 'warning',
+      site: siteName,
+      message: `site.yml: \`agents:\` should be a map of options, or \`false\` to turn it off`
+    })
+    warn(`[${id}] ${siteName}: \`agents:\` is neither a map of options nor \`false\`.`)
+    return
+  }
+
+  const known = new Set(AGENTS_KEYS)
+  const unknown = Object.keys(agents).filter((k) => !known.has(k))
+  if (unknown.length === 0) return
+
+  const id = 'agents-unknown-key'
+  issues.push({
+    id,
+    type: 'warning',
+    site: siteName,
+    message: `site.yml: \`agents:\` has ${unknown.length === 1 ? 'an unknown key' : 'unknown keys'}: ${unknown.join(', ')}`
+  })
+  warn(
+    `[${id}] ${siteName}: \`agents:\` ${unknown.length === 1 ? 'key' : 'keys'} ${unknown
+      .map((k) => `'${k}'`)
+      .join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not recognized.`
+  )
+  for (const key of unknown) {
+    const near = nearestAgentsKey(key, known)
+    if (near) log(`    ${colors.dim}'${key}' — did you mean ${colors.reset}${colors.green}${near}${colors.reset}${colors.dim}?${colors.reset}`)
+  }
+  log(
+    `    ${colors.dim}Nothing downstream will reject it: the block is forwarded to the host as opaque data,${colors.reset}`
+  )
+  log(
+    `    ${colors.dim}so an unrecognized key is carried and never acted on. Known: ${AGENTS_KEYS.join(', ')}.${colors.reset}`
+  )
+}
+
+/**
+ * The closest known key within a small edit distance, or null.
+ *
+ * Suggestions are capped at distance 3 rather than "closest wins": on a
+ * six-word vocabulary an uncapped nearest-match confidently proposes `index`
+ * for `origins`, and a wrong suggestion is worse than none — it sends the
+ * author to change a line that was not their mistake.
+ */
+function nearestAgentsKey(input, known) {
+  let best = null
+  let bestScore = Infinity
+  for (const candidate of known) {
+    const score = editDistance(input.toLowerCase(), candidate.toLowerCase())
+    if (score < bestScore) {
+      bestScore = score
+      best = candidate
+    }
+  }
+  return bestScore <= 3 ? best : null
+}
+
+/** Levenshtein distance, iterative two-row form. */
+function editDistance(a, b) {
+  if (a === b) return 0
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i]
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(
+        prev[j] + 1,
+        row[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      )
+    }
+    prev = row
+  }
+  return prev[b.length]
 }
 
 /**
@@ -657,6 +759,7 @@ export async function doctor(args = []) {
     // anyone who knows the URL, listed by nothing.
     // Forms need a destination, and having none is only visible on the page.
     await checkFormSubmitTarget({ sitePath, siteName, siteYml, issues })
+    checkAgentsBlock({ siteName, siteYml, issues })
 
     checkGeneratedDataDir({
       sitePath,
