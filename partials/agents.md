@@ -686,7 +686,12 @@ site/pages/
 
 Measured on exactly that shape: **the agent corpus holds every page; the public projections hold nothing** — `llms.txt` lists no pages, the search index has 0 entries, and no `.md` files are emitted. Nothing leaks, by construction rather than by configuration, because there is no public surface to leak onto.
 
-⛔ **This shape needs a host that runs an agent — `uniweb deploy`.** On a static host every page is dropped (they have no reader there) and you get an empty SPA shell. The build still says *"complete"*, because 0 pages is not an error: it reports `Collected 0 pages` and pre-renders none. If you meant to build an agent endpoint and got an empty site, that is what happened.
+⛔ **This shape needs a host that actually runs an agent, and deploying is not the same as having one.** Two ways to end up with nothing:
+
+- **A static host** (`uniweb export`, `deploy --host`) drops every page — they have no reader there — and you get an empty SPA shell. The build still says *"complete"*, because 0 pages is not an error: it reports `Collected 0 pages` and pre-renders none.
+- **A backend-hosted deployment that does not offer the service.** Whether an agent endpoint exists is the host's to decide, per site — it is not implied by deploying successfully.
+
+⇒ **The way to know is to ask, at render:** `resolveService(website, 'assistant')` returns a `url` only where the host declared one. On a site that is *only* knowledge there is no component to ask — so confirm with your host that the agent is enabled for that site before you build an integration against it. If you meant to build an agent endpoint and got silence, this is where to look.
 
 ### Your site is readable by agents, automatically
 
