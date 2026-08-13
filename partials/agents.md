@@ -1806,14 +1806,14 @@ resolution for anything, so a foundation can define a service the framework has
 never heard of and a host can fill it. Same escalation `fetcher.transports`
 offers for data.
 
-**Building an "Ask AI" component?** `assistant` is the service name, and a host that runs an agent for the site normally serves it at the conventional path **`/_agent`** — exported as `AGENT_SERVICE_PATH` from `@uniweb/kit` so the spelling lives in one place.
-
-⛔ **Resolve it; never assume it.** An agent endpoint exists only where a host runs one, so `resolveService` returning `{ url: null, reason }` is the *answer* — this site has no assistant — not a failure to look it up. Fetching the convention anyway turns "no assistant here" into a 404 your component cannot tell from a broken one, on every static host.
+**Building an "Ask AI" component?** The service name is `assistant`, and a host that runs an agent for a site typically serves it at the conventional path `/_agent`. **You should never need to write that path.** A host declares its services — and declares them *only for the sites they are enabled on* — so resolving is also how you learn whether this site has an agent at all:
 
 ```jsx
 const { url, reason } = resolveService(website, 'assistant')
 if (!url) return <Notice>{reason}</Notice>   // correct on a site with no agent
 ```
+
+⛔ **Absent is an answer, not a lookup failure.** An agent endpoint exists only where a host runs one, so `{ url: null, reason }` means *this site has no assistant* — render accordingly. Hardcoding `/_agent/chat` because nothing was declared turns that into a 404 your component cannot tell from a broken endpoint, on every static host. The convention is named here so you recognize the shape, not so you can construct it.
 
 ```yaml
 # site.yml — only when YOU are providing the endpoint. Publishing to Uniweb
