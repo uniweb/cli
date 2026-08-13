@@ -1806,6 +1806,15 @@ resolution for anything, so a foundation can define a service the framework has
 never heard of and a host can fill it. Same escalation `fetcher.transports`
 offers for data.
 
+**Building an "Ask AI" component?** `assistant` is the service name, and a host that runs an agent for the site normally serves it at the conventional path **`/_agent`** — exported as `AGENT_SERVICE_PATH` from `@uniweb/kit` so the spelling lives in one place.
+
+⛔ **Resolve it; never assume it.** An agent endpoint exists only where a host runs one, so `resolveService` returning `{ url: null, reason }` is the *answer* — this site has no assistant — not a failure to look it up. Fetching the convention anyway turns "no assistant here" into a 404 your component cannot tell from a broken one, on every static host.
+
+```jsx
+const { url, reason } = resolveService(website, 'assistant')
+if (!url) return <Notice>{reason}</Notice>   // correct on a site with no agent
+```
+
 ```yaml
 # site.yml — only when YOU are providing the endpoint. Publishing to Uniweb
 # Cloud needs nothing here; `uniweb export` and most `deploy --host` targets do.
