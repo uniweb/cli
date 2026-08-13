@@ -1815,7 +1815,9 @@ if (!url) return null          // this site has no agent — render nothing, or 
 
 **This is a synchronous read, not a request.** Which services a site has was settled when the site was last published and travels in its metadata, so the runtime already holds the answer — there is no handshake, no probe, no await. Your component asks the runtime; the runtime does not ask anyone.
 
-⛔ **Absent is the answer, not a lookup that failed.** No `url` means the site has no agent — because it was never enabled, or because this host runs none at all. Render for that case; don't retry it. And don't hardcode `/_agent/chat` when nothing was declared: on a static host that turns "no agent here" into a 404 your component can't tell from a broken endpoint. The path is named above so you recognize the shape, not so you can construct it.
+⛔ **Absent is the answer, not a lookup that failed.** No `url` means the site has no agent — never enabled, or this host runs none. Render for that case; don't retry it. And don't hardcode `/_agent/chat` when nothing was declared: on a static host that turns "no agent here" into a 404 your component can't tell from a broken endpoint. The path is named above so you recognize the shape, not so you can construct it.
+
+⛔ **And don't tell the visitor.** `resolveService` also returns a `reason`, and it is **not visitor copy** — a visitor has no stake in which services the operator provisioned, and "this site has no assistant configured" reports someone's billing state to the public while reading like a breakage. It is neither. **Absence is a rendering decision, not a message**: a generic component is expected to be smart about it. No assistant → no Ask-AI affordance. No submit endpoint → no form, or degrade to a `mailto:` the site already carries in its content. The `reason` string is there for *you*, while you wire a site up.
 
 *(A live agent that errors mid-conversation is a different problem — that's ordinary request failure, handled where you make the request.)*
 
@@ -1829,14 +1831,16 @@ submit: https://forms.example.com/intake    # or another origin
 ```jsx
 import { useFormSubmit } from '@uniweb/kit'
 
-const { submit, status, error, canSubmit, unavailableReason } = useFormSubmit({
+const { submit, status, error, canSubmit } = useFormSubmit({
   block,                                    // supplies section + page context
   context: { formId: 'contact' },
   summary: (v) => ({ title: v.name, subtitle: v.email }),
 })
 
-<button type="submit" disabled={!canSubmit || status === 'submitting'}>Send</button>
-{!canSubmit && <p role="status">{unavailableReason}</p>}
+if (!canSubmit) return null    // nowhere to send — render no form, or fall back
+                               // to contact details from the site's own content
+
+<button type="submit" disabled={status === 'submitting'}>Send</button>
 ```
 
 > **The framework never invents an endpoint — but a host may supply one.** Don't
@@ -1845,11 +1849,18 @@ const { submit, status, error, canSubmit, unavailableReason } = useFormSubmit({
 > one hosting.
 >
 > `canSubmit` is false only when neither a declaration nor a host supplies a
-> destination. **Check it when you render, not only on the button press**, so the
-> control is visibly disabled before anyone fills the form in, and show
-> `unavailableReason` — it explains which case you are in. A read that 404s
+> destination. **Check it when you render, not only on the button press** — a
+> form nobody can send should not be on the page at all. A read that 404s
 > degrades to `[]` and the page still renders; a write that 404s loses what a
 > person typed, so it gets no silent fallback.
+>
+> ⛔ **Don't tell the visitor why.** There is deliberately no explanatory string:
+> which services an operator bought is none of a visitor's business, "not enabled
+> for this site" reads like a breakage when nothing is broken, and any such
+> sentence would be one language on a site that is often multilingual and rarely
+> English. Text a visitor reads is **site content** — authored, and localized with
+> everything else. Degrade to something useful instead: a `mailto:`, a phone
+> number, an address the site already carries.
 
 `status` runs `idle → submitting → success | error`; a non-2xx becomes a thrown
 `Error` carrying the endpoint's own `error` message when it sends one. For file
