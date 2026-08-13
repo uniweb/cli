@@ -651,7 +651,11 @@ seo:
 
 **Knowledge pages — content for an AI agent, not for a visitor.** `knowledge: true` in a `page.yml` or `folder.yml` marks a page as agent-only: it is **never rendered** — no route, no HTML — and it cascades to the whole subtree by route prefix, so one marker on `pages/kb/` covers everything under it and `/kb` never claims `/kbase`. Write plain markdown; a section `type:` there never selects a component, because nothing renders these pages.
 
-⚠️ **It means an agent your *host* runs — not agents in general.** A knowledge page is for an assistant the host invokes against your content on request. It is deliberately **not** a way to feed crawlers or external agents browsing your site: those read `llms.txt` and the per-page `.md` projections, and knowledge pages are kept out of both. If what you want is "make this readable by any AI that visits", write an ordinary page — that content is already published for them.
+⚠️ **A knowledge page is not published to anyone — it powers a service your site offers.** Everything your site *does* publish is published on equal terms: an AI visiting your site sees exactly what a person sees. `llms.txt` and the per-page `.md` files are a convenience for that reader, not a privileged tier — no visitor, human or machine, gets more than another.
+
+A knowledge page is different in kind, not in audience. It is never a page anyone reads; it is source material for an assistant the site offers **to its visitors** — they ask, they get an answer, and the material behind it stays unpublished. That is why it is kept out of `llms.txt`, the `.md` projections and the search index: not because some readers are trusted less, but because a knowledge page was never a page.
+
+⇒ If what you want is "make this readable by any AI that visits", write an ordinary page. It is already published to them, on the same terms as to everyone else.
 
 ```yaml
 # pages/kb/page.yml
