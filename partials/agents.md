@@ -1954,6 +1954,93 @@ from. `values` keeps the `File` so your input can show its selection.
 
 Full reference: `development/receiving-form-submissions.md`.
 
+### Tracking (`tracking:`)
+
+A site may declare one **tracking destination**, and everything worth counting
+goes there as an event on a single stream. A page visit is just the event the
+runtime emits by itself.
+
+```yaml
+# site.yml — your own collector, on any host
+tracking: https://plausible.io/api/event
+
+# or, when it needs more than an address
+tracking:
+  endpoint: https://plausible.io/api/event
+  consent: required
+```
+
+A host may also supply one under `services.tracking`, and the usual precedence
+applies: yours wins, then the host's, then neither.
+
+**The runtime reports `page_view` on every route change, including the first.**
+That is the only thing it emits on its own — everything else is yours to report:
+
+```jsx
+// In a section type, the block is already in your props.
+block.track('video_milestone', { milestone: 50 })
+```
+
+`block.track` attaches the page path and the section type for you. For an event
+with no block in hand, use the hook:
+
+```jsx
+import { useTracker } from '@uniweb/kit'
+
+const { track } = useTracker()
+<button onClick={() => track('brochure_download', { file: 'specs.pdf' })}>…</button>
+```
+
+The event name is yours — there is no list of permitted names.
+
+⛔ **Never guard a `track()` call.** A site with **no** tracking destination is
+the default and the majority: the call returns having done nothing, opened no
+connection, and thrown nothing. Absent is the normal state, not an error — so
+don't check whether tracking is on, and never render differently because of it.
+There is no "is tracking enabled" question a component should be asking.
+
+⚠️ **If a site asks for consent**, tracking holds everything until a visitor
+answers; granting sends what was buffered, denying discards it. A consent banner
+is an ordinary component:
+
+```jsx
+import { useTrackingConsent } from '@uniweb/kit'
+
+const { status, grant, deny } = useTrackingConsent()
+if (status !== 'pending') return null
+return <CookieBanner onAccept={grant} onReject={deny} />
+```
+
+Without `consent: required`, tracking starts immediately — declaring a
+destination is the site owner's decision to make, not the framework's.
+
+Every event carries a **`visit`** key on the envelope — opaque, generated at page
+load, the same for every event of that page load — so a collector can order what
+happened into a journey.
+
+> **What is never sent:** no visitor id, no fingerprint, no session spanning days
+> or tabs, and **nothing is written to the visitor's device** — no cookie, no
+> local storage. The `visit` key lives in memory and dies with the document, so
+> it identifies one page load rather than a person. A `page_view` carries the
+> path, and — captured once when the page first loads, then replayed on each view
+> — the external referrer and any `utm_*` the visitor arrived with. Nothing else.
+
+### ⛔ Use kit. Never touch the `uniweb` global
+
+Everything above reaches the runtime through `@uniweb/kit` or through something
+handed to your component as a prop. That is the rule, not a stylistic preference:
+
+- ✅ `useWebsite()`, `useTracker()`, `resolveService(website, …)` — kit hooks and
+  utilities.
+- ✅ `block.track(…)`, `block.page`, `block.website` — the block **arrives in your
+  props**, so calling methods on it is not reaching for a global.
+- ⛔ `globalThis.uniweb`, `window.uniweb` — never, in a foundation.
+
+The singleton is framework internals: its shape is not part of the contract with
+foundations, and code that reads it directly breaks on changes that were never
+breaking changes. If you need something kit does not expose yet, that is worth
+reporting — not worth reaching around.
+
 <!-- template:loom -->
 ### Content handlers
 
