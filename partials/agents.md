@@ -1978,7 +1978,7 @@ applies: yours wins, then the host's, then neither.
 is not a third-party analytics product's public API, which expects that
 product's own shape.
 
-A site may also name a vendor's own script under `tracking.tags`, which the
+A site may also name a vendor's own script under `tracking.scripts`, which the
 runtime loads once, after consent when a gate is declared, and never in a frame
 or during prerender. That is a **separate path with no connection to the stream
 below** — the vendor measures its own way, and nothing you `track()` reaches it.
