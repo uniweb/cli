@@ -1962,16 +1962,21 @@ runtime emits by itself.
 
 ```yaml
 # site.yml — your own collector, on any host
-tracking: https://plausible.io/api/event
+tracking: https://collector.example.com/events
 
 # or, when it needs more than an address
 tracking:
-  endpoint: https://plausible.io/api/event
+  endpoint: /collect
   consent: required
 ```
 
 A host may also supply one under `services.tracking`, and the usual precedence
 applies: yours wins, then the host's, then neither.
+
+⚠️ **The endpoint has to accept the framework's own format** — a batched
+`{ "events": [ … ] }` POST, documented in `reference/site-configuration.md`. It
+is not a third-party analytics product's public API, which expects that
+product's own shape.
 
 **The runtime reports `page_view` on every route change, including the first.**
 That is the only thing it emits on its own — everything else is yours to report:
@@ -1991,7 +1996,12 @@ const { track } = useTracker()
 <button onClick={() => track('brochure_download', { file: 'specs.pdf' })}>…</button>
 ```
 
-The event name is yours — there is no list of permitted names.
+The event name is yours — there is no list of permitted names. Three are already
+in use, so reach for these rather than inventing a synonym: **`page_view`** (the
+runtime), **`scroll_depth`** (kit's `useScrollDepth()`, with a `depth` of 25 /
+50 / 75 / 100) and **`video_milestone`** (kit's `<Media>`, with `milestone` and
+`src`). Put the varying part in a **field**, never in the name — four names for
+one event turn a collector's event dimension into a cardinality problem.
 
 ⛔ **Never guard a `track()` call.** A site with **no** tracking destination is
 the default and the majority: the call returns having done nothing, opened no
