@@ -307,7 +307,7 @@ export function checkAgentsBlock({ siteName, siteYml, issues }) {
       .join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not recognized.`
   )
   for (const key of unknown) {
-    const near = nearestAgentsKey(key, known)
+    const near = nearestKnownKey(key, known)
     if (near) log(`    ${colors.dim}'${key}' — did you mean ${colors.reset}${colors.green}${near}${colors.reset}${colors.dim}?${colors.reset}`)
   }
   log(
@@ -326,7 +326,7 @@ export function checkAgentsBlock({ siteName, siteYml, issues }) {
  * for `origins`, and a wrong suggestion is worse than none — it sends the
  * author to change a line that was not their mistake.
  */
-function nearestAgentsKey(input, known) {
+function nearestKnownKey(input, known) {
   let best = null
   let bestScore = Infinity
   for (const candidate of known) {
@@ -337,6 +337,148 @@ function nearestAgentsKey(input, known) {
     }
   }
   return bestScore <= 3 ? best : null
+}
+
+/**
+ * The options `tracking:` actually has a reader.
+ *
+ * ⚠️ **Kept here rather than imported, because nothing at runtime enumerates
+ * them** — `wireTracker` reads named properties off the resolved declaration, it
+ * does not iterate a list. So there is no existing array to import and this
+ * duplicates nothing. It does mean the list can drift: the readers are
+ * `runtime/src/wire-foundation.js::wireTracker` (`consent`, `scripts`, `debug`)
+ * and `core/src/services.js::readEndpoint` (`endpoint`). Add a key there, add it
+ * here.
+ */
+const TRACKING_KEYS = ['endpoint', 'consent', 'scripts', 'debug']
+
+/**
+ * Spellings that read as an ATTEMPT to require consent but do not require it.
+ *
+ * `consentRequired` is `options.consent === 'required'` — an exact match — so
+ * every one of these silently means *no gate*. That is the one field in this
+ * block where a silent no-op has a consequence beyond a missing metric.
+ *
+ * ⚖️ Deliberately not "anything that is not `required`": `consent: none` is a
+ * documented, useful value — it is how a site overrides a gate its **host**
+ * declared, under the per-key tier fill. Flagging that would flag correct code.
+ */
+const CONSENT_NEAR_MISSES = new Set(['require', 'requires', 'required.', 'true', 'yes', 'on', '1'])
+
+/**
+ * `tracking:` — flag the keys and values that are carried and never acted on.
+ *
+ * The block is forwarded to the host as opaque data and resolved at render, so
+ * nothing downstream rejects a mistake in it. Every error here therefore fails
+ * the same way: **silently, at a visitor's browser, as an absence** — which is
+ * also exactly what a site that configured nothing looks like. There is no
+ * symptom to notice and nothing to grep for.
+ *
+ * ⭐ That is the whole argument for checking it at `doctor` time: it is the only
+ * moment in the chain where a person who can fix it is looking at it.
+ *
+ * A bare `tracking: <url>` string is the documented shorthand and carries no
+ * options — there is nothing in it to be wrong.
+ */
+export function checkTrackingBlock({ siteName, siteYml, issues }) {
+  const tracking = siteYml?.tracking
+  if (tracking === undefined || tracking === null) return
+  if (typeof tracking === 'string') return
+
+  if (typeof tracking !== 'object' || Array.isArray(tracking)) {
+    const id = 'tracking-not-an-object'
+    issues.push({
+      id,
+      type: 'warning',
+      site: siteName,
+      message: `site.yml: \`tracking:\` should be an endpoint string, or a map of options`
+    })
+    warn(`[${id}] ${siteName}: \`tracking:\` is neither an endpoint string nor a map of options.`)
+    return
+  }
+
+  const known = new Set(TRACKING_KEYS)
+  const unknown = Object.keys(tracking).filter((k) => !known.has(k))
+  if (unknown.length > 0) {
+    const id = 'tracking-unknown-key'
+    issues.push({
+      id,
+      type: 'warning',
+      site: siteName,
+      message: `site.yml: \`tracking:\` has ${unknown.length === 1 ? 'an unknown key' : 'unknown keys'}: ${unknown.join(', ')}`
+    })
+    warn(
+      `[${id}] ${siteName}: \`tracking:\` ${unknown.length === 1 ? 'key' : 'keys'} ${unknown
+        .map((k) => `'${k}'`)
+        .join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not recognized.`
+    )
+    for (const key of unknown) {
+      const near = nearestKnownKey(key, known)
+      if (near) log(`    ${colors.dim}'${key}' — did you mean ${colors.reset}${colors.green}${near}${colors.reset}${colors.dim}?${colors.reset}`)
+    }
+    log(
+      `    ${colors.dim}Carried to the host as opaque data and never read. Known: ${TRACKING_KEYS.join(', ')}.${colors.reset}`
+    )
+  }
+
+  // `consent` is exact-matched against 'required'. A near miss is not a typo
+  // with a cosmetic cost — it is a consent gate the author believes they asked
+  // for and did not get.
+  if ('consent' in tracking) {
+    const value = tracking.consent
+    const spelling = value === null || value === undefined ? '' : String(value).trim().toLowerCase()
+
+    // ⛔ The gate test is against the RAW value, because the runtime's is:
+    // `options.consent === 'required'`, exact and case-sensitive. Lowercasing
+    // before this comparison made `Required` look correct to the checker — the
+    // check stopped testing the thing it was written to catch. The normalized
+    // spelling is only for deciding whether a wrong value reads as an ATTEMPT.
+    const gateIsOn = value === 'required'
+    const looksIntended =
+      spelling === '' || spelling === 'required' || CONSENT_NEAR_MISSES.has(spelling)
+
+    if (!gateIsOn && looksIntended) {
+      const id = 'tracking-consent-not-required'
+      const shown = spelling === '' ? 'an empty value' : `\`${String(value)}\``
+      issues.push({
+        id,
+        type: 'warning',
+        site: siteName,
+        message: `site.yml: \`tracking.consent:\` is ${shown} — only the exact value \`required\` turns the gate on`
+      })
+      warn(`[${id}] ${siteName}: \`tracking.consent:\` is ${shown}; the gate is OFF.`)
+      log(
+        `    ${colors.dim}Only \`consent: required\` holds events until a visitor answers. Anything else${colors.reset}`
+      )
+      log(
+        `    ${colors.dim}sends immediately — including a blank value, which YAML reads as null.${colors.reset}`
+      )
+    }
+  }
+
+  // An entry that yields no URL is dropped by the loader without a sound.
+  const declared = tracking.scripts
+  if (declared !== undefined) {
+    const list = Array.isArray(declared) ? declared : [declared]
+    const bad = list.filter(
+      (e) => !(typeof e === 'string' ? e.trim() : typeof e?.src === 'string' && e.src.trim())
+    )
+    if (bad.length > 0) {
+      const id = 'tracking-script-without-url'
+      issues.push({
+        id,
+        type: 'warning',
+        site: siteName,
+        message: `site.yml: \`tracking.scripts:\` has ${bad.length} ${bad.length === 1 ? 'entry' : 'entries'} with no URL`
+      })
+      warn(
+        `[${id}] ${siteName}: ${bad.length} \`tracking.scripts:\` ${bad.length === 1 ? 'entry has' : 'entries have'} no URL and will not load.`
+      )
+      log(
+        `    ${colors.dim}An entry is a URL, or an object with a \`src\`. Anything else is dropped silently.${colors.reset}`
+      )
+    }
+  }
 }
 
 /** Levenshtein distance, iterative two-row form. */
@@ -760,6 +902,7 @@ export async function doctor(args = []) {
     // Forms need a destination, and having none is only visible on the page.
     await checkFormSubmitTarget({ sitePath, siteName, siteYml, issues })
     checkAgentsBlock({ siteName, siteYml, issues })
+    checkTrackingBlock({ siteName, siteYml, issues })
 
     checkGeneratedDataDir({
       sitePath,
