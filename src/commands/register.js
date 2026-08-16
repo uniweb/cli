@@ -57,7 +57,13 @@
 //     (legacy deploy-runtime had `--propagate` too). Implement once the backend
 //     has a version-update/propagation policy; until then every register is silent.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  statSync
+} from 'node:fs'
 import { execSync } from 'node:child_process'
 import { resolve, join } from 'node:path'
 import { buildRegistryPackage, buildSchemaOnlyPackage } from '@uniweb/build/uwx'
@@ -204,18 +210,82 @@ async function resolveFoundationDir(args) {
   process.exit(1)
 }
 
+// Directories that are never foundation source. `dist` is the output we compare
+// against; the rest are tooling. Dotted entries are skipped wholesale.
+const NON_SOURCE_DIRS = new Set(['dist', 'node_modules'])
+
+/**
+ * The newest mtime under `dir`, skipping build output and tooling. `0` when the
+ * tree is unreadable — which reads as "no source is newer", i.e. it degrades to
+ * the pre-existing behaviour rather than forcing a build on an fs error.
+ *
+ * @param {string} dir
+ * @returns {number} epoch ms
+ */
+function newestSourceMtime(dir) {
+  let newest = 0
+  const walk = (d) => {
+    let entries
+    try {
+      entries = readdirSync(d, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (e.name.startsWith('.') || NON_SOURCE_DIRS.has(e.name)) continue
+      const p = join(d, e.name)
+      if (e.isDirectory()) {
+        walk(p)
+        continue
+      }
+      try {
+        const m = statSync(p).mtimeMs
+        if (m > newest) newest = m
+      } catch {
+        /* unreadable file — ignore */
+      }
+    }
+  }
+  walk(dir)
+  return newest
+}
+
 /**
  * Does the foundation's `dist/` need a (re)build before we can register it?
  *
- * Mirrors `uniweb publish`'s build-if-stale so `register` is a full drop-in
- * for the foundation-publish flow. Two staleness signals:
+ * Three staleness signals:
  *   - MISSING: no `dist/entry.js` (or the legacy `dist/foundation.js`), or no
  *     `dist/meta/schema.json` — nothing built yet.
- *   - STALE: the version baked into `dist/meta/schema.json::_self.version`
+ *   - STALE VERSION: the version baked into `dist/meta/schema.json::_self.version`
  *     differs from `package.json::version` — a version bump without a rebuild,
  *     so the artifact encodes the OLD version while the register intends the
  *     NEW one (we'd otherwise submit a schema whose version disagrees with the
  *     code we deliver).
+ *   - STALE SOURCE: a source file is newer than `dist/entry.js`.
+ *
+ * ⛔ **The source signal was missing until 2026-08-16, and its absence shipped the
+ * PREVIOUS bundle silently.** Edit a component's rendered output, re-run
+ * `register` with a `dist/` present, and the version signal says fresh (nothing
+ * bumped), the artifact signal says fresh (files exist) — so the old bytes upload
+ * and the content digest legitimately does not move. The developer's freshness
+ * indicator reports "unchanged" and it is telling the truth about an input that
+ * never changed. Found by end-to-end testing against a live backend, which is
+ * the only place the two halves meet: a unit test on this predicate agrees with
+ * it, and the digest agrees with the bytes.
+ *
+ * ⚠️ **This header used to claim it "mirrors `uniweb publish`'s build-if-stale".
+ * It does not, and that sentence is why nobody looked.** `publish` does not do
+ * build-if-stale at all — `backend/foundation-bring-along.js` builds
+ * UNCONDITIONALLY before digesting, precisely so the digest reflects current
+ * source. So publish was already correct and register was not, while a docblock
+ * asserted they matched.
+ *
+ * ⛔ **And do NOT "fix" this by building unconditionally to match publish.**
+ * `publish` builds and then shells out to THIS command
+ * (`foundation-bring-along.js` → `execFileSync(cliBin, ['register', …])`), so an
+ * unconditional build here makes every publish build twice. The mtime signal is
+ * what keeps both paths right: publish's fresh `dist/` is newer than its source,
+ * so this correctly skips.
  *
  * Returns `{ needs: false }` or `{ needs: true, reason }`.
  *
@@ -261,6 +331,26 @@ export function foundationNeedsBuild(targetDir) {
     }
   } catch {
     return { needs: true, reason: 'dist/meta/schema.json could not be parsed' }
+  }
+  // STALE SOURCE — the signal whose absence shipped the previous bundle. Compared
+  // against the built entry rather than the schema: the schema is emitted by a
+  // later plugin hook, so it is always the newer of the two and using it would
+  // widen the window in which an edit reads as already-built.
+  //
+  // Ties count as fresh (`>`, not `>=`). A build writes its output after reading
+  // its input, so equal mtimes mean a same-millisecond build, not a missed edit —
+  // and on a fresh clone, where whole trees share a timestamp, `>=` would rebuild
+  // every foundation once for nothing.
+  try {
+    const entryPath = existsSync(join(distDir, 'entry.js'))
+      ? join(distDir, 'entry.js')
+      : join(distDir, 'foundation.js')
+    const builtAt = statSync(entryPath).mtimeMs
+    if (newestSourceMtime(targetDir) > builtAt)
+      return { needs: true, reason: 'a source file is newer than dist/entry.js' }
+  } catch {
+    // Can't compare — leave the other signals to decide rather than forcing a
+    // build on an fs error.
   }
   return { needs: false }
 }
@@ -364,7 +454,17 @@ async function runRegister(args = []) {
       try {
         execSync('npx uniweb build --target foundation', {
           cwd: targetDir,
-          stdio: 'inherit'
+          // ⛔ `inherit` wires the DELEGATE's stdout to ours, so under --json the
+          // builder's progress lands on stdout ahead of the JSON line and
+          // `JSON.parse(stdout)` throws — on exactly the cold path a fresh
+          // checkout always takes. register's own output is already redirected to
+          // stderr (see `log` above); this child is the one stream it did not own,
+          // so --json was porcelain only when a build was NOT needed.
+          //
+          // fd 2 is our stderr: progress stays visible, stdout stays parseable.
+          // Found by a harness that had to work around it by taking the last
+          // JSON line off stdout.
+          stdio: jsonMode ? ['inherit', 2, 'inherit'] : 'inherit'
         })
       } catch (err) {
         error(`Build failed: ${err.message}`)

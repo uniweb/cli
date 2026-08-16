@@ -1,13 +1,26 @@
 /**
  * `uniweb register` — build-if-stale. Unit-pins `foundationNeedsBuild`: the
  * pure predicate that decides whether a foundation's dist/ must be (re)built
- * before registering. Mirrors `uniweb publish`'s staleness rule (missing dist,
- * or a schema version that disagrees with package.json).
+ * before registering. Three signals: a missing dist, a schema version that
+ * disagrees with package.json, and a source file newer than the built entry.
+ *
+ * ⚠️ This header used to say it "mirrors `uniweb publish`'s staleness rule".
+ * `publish` has no staleness rule — it builds UNCONDITIONALLY before digesting
+ * (`backend/foundation-bring-along.js`). The sentence was in the predicate's own
+ * docblock too, and it is why the missing source signal went unnoticed: it read
+ * as already-verified-elsewhere.
  */
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  utimesSync,
+  statSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { foundationNeedsBuild } from '../src/commands/register.js'
@@ -40,6 +53,115 @@ function makeFoundation({ pkgVersion = '1.0.0', dist = null } = {}) {
   }
   return dir
 }
+
+// ─── the source signal ────────────────────────────────────────────────────────
+//
+// The defect this closes shipped silently: edit a component, re-run `register`
+// with a dist/ present, and the OLD bytes upload with a content digest that
+// honestly reports "unchanged" — because the input it hashes never changed.
+// Found by end-to-end testing against a live backend.
+
+/** Set a file's mtime to an absolute epoch-seconds value. */
+function setMtime(path, epochSeconds) {
+  utimesSync(path, epochSeconds, epochSeconds)
+}
+
+const BASE = 1_000_000
+
+/**
+ * A fresh foundation whose dist/ is internally consistent, plus a source file.
+ *
+ * Every SOURCE file is normalized to `BASE` so a test only has to move the one
+ * it is actually about. ⚠️ `package.json` needs this too — it IS source (a
+ * dependency change changes the build), and the base helper writes it at
+ * wall-clock time, which is ~700_000 times larger than these synthetic stamps.
+ * Leaving it alone made three "should be fresh" cases report stale.
+ */
+function makeWithSource() {
+  const dir = makeFoundation({
+    pkgVersion: '2.3.1',
+    dist: {
+      schema: JSON.stringify({ _self: { name: '@a/b', version: '2.3.1' } })
+    }
+  })
+  mkdirSync(join(dir, 'src', 'sections'), { recursive: true })
+  const srcFile = join(dir, 'src', 'sections', 'Hero.jsx')
+  writeFileSync(srcFile, 'export default () => null\n')
+  const pkg = join(dir, 'package.json')
+  setMtime(pkg, BASE)
+  setMtime(srcFile, BASE)
+  return { dir, srcFile, pkg, entry: join(dir, 'dist', 'entry.js') }
+}
+
+test('a source file NEWER than dist/entry.js → needs build', () => {
+  const { dir, srcFile, entry } = makeWithSource()
+  try {
+    setMtime(entry, BASE)
+    setMtime(srcFile, BASE + 10) // edited after the build
+    const r = foundationNeedsBuild(dir)
+    assert.equal(r.needs, true)
+    assert.match(r.reason, /source file is newer/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a source file OLDER than dist/entry.js → no build — the control', () => {
+  // Without this pairing the test above passes for a predicate that always says
+  // "needs build", which would make every publish build twice (publish shells
+  // out to register after building).
+  const { dir, entry } = makeWithSource()
+  try {
+    setMtime(entry, BASE + 10) // built after the edit — the publish path
+    assert.deepEqual(foundationNeedsBuild(dir), { needs: false })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('dist/ is excluded from the source walk', () => {
+  // Load-bearing, and it fails in the always-rebuild direction if broken: a real
+  // build writes meta/schema.json AFTER entry.js, so walking dist/ would make
+  // every foundation permanently stale against its own output.
+  const { dir, entry } = makeWithSource()
+  try {
+    setMtime(entry, BASE + 10)
+    setMtime(join(dir, 'dist', 'meta', 'schema.json'), BASE + 20) // newer than entry
+    assert.deepEqual(foundationNeedsBuild(dir), { needs: false })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('equal mtimes count as fresh, not stale', () => {
+  // A build writes its output after reading its input, so equal mtimes mean a
+  // same-instant build. `>=` here would rebuild every foundation once on a fresh
+  // clone, where whole trees share a timestamp.
+  const { dir, entry } = makeWithSource()
+  try {
+    setMtime(entry, BASE) // equal to every source file
+    assert.deepEqual(foundationNeedsBuild(dir), { needs: false })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('the walk really reaches nested source — the instrument control', () => {
+  // Proves the recursion works. Without it, every assertion above could pass on a
+  // walker that only ever looks at the foundation root.
+  const { dir, entry } = makeWithSource()
+  try {
+    setMtime(entry, BASE)
+    const nested = join(dir, 'src', 'sections', 'Hero.jsx')
+    setMtime(nested, BASE + 10)
+    assert.equal(foundationNeedsBuild(dir).needs, true)
+    // …and the file really is nested, not at the root.
+    assert.ok(statSync(nested).isFile())
+    assert.notEqual(join(dir, 'Hero.jsx'), nested)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 
 test('no dist/ → needs build', () => {
   const dir = makeFoundation({ dist: null })

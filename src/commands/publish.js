@@ -273,10 +273,32 @@ export async function publish(args = []) {
   // X, and the next publish would restate a *different* version the producer
   // computed locally, silently undoing it.
   //
-  // Silence is not a request to change the runtime, so the backend resolves it:
-  // the site's CURRENT resolved runtime → UNIWEBD_DEFAULT_RUNTIME → (self-serve)
-  // highest installed → 400. That keeps a propagated site where the walk put it,
-  // and it is the authority's answer rather than ours.
+  // The deeper reason, upstream of ownership: a link-mode site is CODELESS. It
+  // ships no JS, so it has nothing that binds to a runtime version and cannot
+  // break when the runtime moves. Asking it to name one is not a hard question,
+  // it is a malformed one. The party that binds is the FOUNDATION, whose build
+  // externalizes react / react-dom / jsx-runtime / @uniweb/core — which is why
+  // the compatibility floor rides on the foundation (`info.runtime`, set by
+  // `register`) and not here. See
+  // kb/framework/architecture/site-foundation-runtime-model.md § "who gets to say
+  // whether a site accepts a newer runtime".
+  //
+  // Silence is therefore not a request to change the runtime, and the backend
+  // resolves it: an explicit pin → the site's CURRENT resolved runtime →
+  // UNIWEBD_DEFAULT_RUNTIME → (self-serve) highest installed.
+  //
+  // ⚠️ THAT LAST SENTENCE IS A CLAIM ABOUT ANOTHER LANE, and it was FALSE when it
+  // was first written here — `/dev/site/publish` required `?runtime=` with no
+  // fallback at all, so an unpinned publish 400'd and no scaffolded project could
+  // publish. It read as true because the `/api` lane did have the fallback, and
+  // the backend's own doc justified the omission with "the CLI always pins from
+  // site.yml" — which was equally false, since no template ships a `runtime:` key.
+  // Two complementary assumptions, each load-bearing for the other lane, neither
+  // ever checked. Found by driving the CLI against a live backend, which is the
+  // only vantage point from which either assumption is visible.
+  // ✅ Now the shipped contract, agreed with the backend and verified end to end
+  // with the workaround removed (2026-08-16). Re-verify against the backend
+  // rather than trusting this comment if it starts mattering again.
   //
   // ⚠️ Do NOT reintroduce a local fallback. Sending our own guess when the site
   // did not ask is what makes an unpinned republish regress. (The pinned path is
