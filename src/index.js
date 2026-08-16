@@ -1545,6 +1545,58 @@ In non-interactive mode (CI / no TTY), pass \`--token <bearer>\`, or set
 \`UNIWEB_USERNAME\` + \`UNIWEB_PASSWORD\`, or set \`UNIWEB_TOKEN\` (used per-command,
 not stored). Run \`uniweb logout\` to clear the stored session.
 `,
+    refresh: `
+${colors.cyan}${colors.bright}uniweb refresh${colors.reset} ${colors.dim}— Catch up with teammates AND app authors${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb refresh [options]
+
+A developer on a synced site has TWO external sources: the git remote (teammates'
+commits) and the backend (content authors' edits in the app). Run only \`git pull\`
+and you miss every app edit; run only \`uniweb pull\` and you miss your teammates.
+This does both — git first, then \`pull --merge\`.
+
+${colors.bright}READ-ONLY.${colors.reset} It never pushes and cannot ship anything, so it is safe to run
+reflexively. Exits non-zero if a merge leaves conflicts.
+
+${colors.bright}Options:${colors.reset}
+  --no-git           Skip the git remote; backend only
+  --no-backend       Skip the backend; git only
+  --backend <url>    Override the backend origin
+  --token <bearer>   Read with this bearer; skips \`uniweb login\`
+
+\`--force\` and \`--merge\` are NOT accepted here: this verb builds the delegated
+pull's arguments itself, and to pull \`--force\` means "discard my local work".
+Use \`uniweb sync\` when you also mean to share.
+`,
+    sync: `
+${colors.cyan}${colors.bright}uniweb sync${colors.reset} ${colors.dim}— Catch up, then share${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb sync [options]
+
+\`uniweb refresh\` followed by \`uniweb push\`, and nothing more. It adds no
+guarantees of its own — refresh stops on conflicts, push refuses when the backend
+has moved under you, and sync inherits both. \`uniweb refresh && uniweb push\`
+behaves identically.
+
+${colors.bright}It does NOT publish.${colors.reset} Sync brings your copy and the backend DRAFT into
+agreement; going live stays a separate act (\`uniweb publish\`). So the worst case
+of an unintended sync is work-in-progress visible to authors, not shipped to
+visitors.
+
+${colors.bright}Options:${colors.reset}
+  Accepts every option of both halves — see \`uniweb refresh --help\` and the push
+  options in \`uniweb --help\`. The common ones:
+
+  --no-git           Skip the git remote half of the refresh
+  --force            Overwrite upstream changes (reaches the PUSH half only)
+  --backend <url>    Override the backend origin
+  --token <bearer>   Auth bearer; skips \`uniweb login\`
+
+\`--force\` means "overwrite upstream" to push but "discard my local work" to pull,
+so it is deliberately kept away from the refresh half.
+`,
     invite: `
 ${colors.cyan}${colors.bright}uniweb invite${colors.reset} ${colors.dim}— (reserved; not available on the new backend yet)${colors.reset}
 

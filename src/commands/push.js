@@ -113,13 +113,18 @@ function flagValue(args, name) {
   return null
 }
 
-export async function push(args = []) {
+export async function push(args = [], deps = {}) {
   // An unrecognized flag is invisible to a literal scan, so it silently keeps the
   // default — including for --backend, where the default can be production.
-  const bad = checkFlags('push', args)
-  if (bad) {
-    error(bad.message)
-    return { exitCode: 2 }
+  //
+  // `sync` validates the UNION of its two halves' flags and forwards raw argv, so a
+  // legal `uniweb sync --no-git` would be rejected here. It passes `skipFlagCheck`.
+  if (!deps.skipFlagCheck) {
+    const bad = checkFlags('push', args)
+    if (bad) {
+      error(bad.message)
+      return { exitCode: 2 }
+    }
   }
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')

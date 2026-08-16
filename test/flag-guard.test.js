@@ -47,11 +47,58 @@ test('a realistic invocation of every guarded verb passes', () => {
     pull: ['--merge', '--no-prune', '--content-only'],
     clone: ['abc-uuid', '--path', './site', '--project', 'p'],
     register: ['--scope', '@acme', '-o', 'out.uwx', '--json'],
-    status: ['--remote', '--json']
+    status: ['--remote', '--json'],
+    refresh: ['--no-git', '--backend', 'http://localhost:8080'],
+    sync: ['--no-git', '--force', '--backend', 'http://localhost:8080']
   }
   for (const [verb, args] of Object.entries(real)) {
     assert.equal(checkFlags(verb, args), null, `${verb} rejected a valid call`)
   }
+  // The name claims EVERY guarded verb; make it a claim the test can keep. A verb
+  // added to VERB_FLAGS without a case here would otherwise pass by absence.
+  assert.deepEqual(
+    Object.keys(VERB_FLAGS).filter((v) => !(v in real)),
+    [],
+    'a guarded verb has no realistic-invocation case here'
+  )
+})
+
+// ─── the delegating verbs ─────────────────────────────────────────────────────
+
+test('a mistyped --backend is caught on refresh, before the delegated pull runs', () => {
+  // The hazard this closes: `--backed` never matches `collectPassthrough`, so it is
+  // not forwarded — and the delegated `pull --merge` then ran against whatever the
+  // origin ladder resolved (the session origin, or https://uniweb.app) while the
+  // user believed they had named a backend. Silent, and read-only only by luck.
+  const bad = checkFlags('refresh', ['--backed', 'http://localhost:8080'])
+  assert.equal(bad.flag, '--backed')
+  assert.equal(bad.suggestion, '--backend')
+})
+
+test('a mistyped --backend is caught on sync, before EITHER half runs', () => {
+  const bad = checkFlags('sync', ['--backed', 'http://localhost:8080'])
+  assert.equal(bad.flag, '--backed')
+  assert.equal(bad.suggestion, '--backend')
+})
+
+test('sync accepts what only ONE of its halves accepts', () => {
+  // The composite's real risk is the opposite of a missed typo: each half's set is
+  // a strict subset of sync's, so a guard applied per-half rejects a documented
+  // invocation. Both of these are in sync.js's usage block.
+  assert.equal(checkFlags('sync', ['--no-git']), null) // refresh's
+  assert.equal(checkFlags('sync', ['--force']), null) // push's
+  assert.equal(checkFlags('sync', ['--all']), null) // push's
+})
+
+test('refresh REJECTS pull-only flags it cannot forward', () => {
+  // refresh constructs the delegated argv itself — `pull --merge` plus exactly
+  // three passthroughs — so pull's own flags are unreachable from a refresh argv.
+  // `--force` matters most: refresh is read-only by design, and to pull the word
+  // means "discard my local work". Accepting it would imply a capability it has
+  // never had. (`uniweb sync --force` is unaffected — see the union test.)
+  assert.equal(checkFlags('refresh', ['--force']).flag, '--force')
+  assert.equal(checkFlags('refresh', ['--merge']).flag, '--merge')
+  assert.equal(checkFlags('refresh', ['--no-delete']).flag, '--no-delete')
 })
 
 test('flags consumed by HELPERS are accepted — the trap this nearly hit', () => {

@@ -38,6 +38,8 @@
  *   uniweb sync --backend <url>    override the backend origin
  */
 
+import { checkFlags } from '../utils/flag-guard.js'
+
 const c = {
   reset: '\x1b[0m',
   dim: '\x1b[2m',
@@ -55,6 +57,18 @@ const say = {
  * @param {object} [deps] - injectable seams for testing: `refresh`, `push`.
  */
 export async function sync(args = [], deps = {}) {
+  // THE ONE flag check for the whole composite, against the union of both halves'
+  // accepted sets (`VERBS.sync`, derived in flag-guard.js). It has to happen here
+  // and only here: each half's set is a strict subset, so `push` would reject
+  // `--no-git` and `refresh` would reject `--force` — both legal on `sync`. Hence
+  // `skipFlagCheck` below; the halves are not being trusted, they are being told
+  // the caller already validated a superset.
+  const bad = checkFlags('sync', args)
+  if (bad) {
+    say.err(bad.message)
+    return { exitCode: 2 }
+  }
+
   const refresh = deps.refresh || (await import('./refresh.js')).refresh
   const push = deps.push || (await import('./push.js')).push
 
@@ -63,7 +77,7 @@ export async function sync(args = [], deps = {}) {
   // to send — the same word meaning opposite things on the two halves.
   const refreshArgs = args.filter((a) => a !== '--force')
 
-  const r = await refresh(refreshArgs)
+  const r = await refresh(refreshArgs, { skipFlagCheck: true })
   if (r?.exitCode) {
     // refresh already explained itself — conflicts, or a git failure. Adding a
     // second summary here would just bury it.
@@ -73,7 +87,7 @@ export async function sync(args = [], deps = {}) {
 
   console.log('')
   say.info('Pushing your changes…')
-  const p = await push(args)
+  const p = await push(args, { skipFlagCheck: true })
   return { exitCode: p?.exitCode ?? 0 }
 }
 

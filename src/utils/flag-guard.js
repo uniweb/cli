@@ -85,8 +85,43 @@ const VERBS = {
     '--backend', '--json', '--registry', '--remote', '--token', '--dry-run',
     '--force', '--no-verify', '--no-validate', '--yes', '--org', '--as-org',
     ...VIA_DEPLOY
+  ],
+  /**
+   * `refresh` = `git pull`, then a DELEGATED `pull --merge`.
+   *
+   * It forwards exactly three flags to that pull — `--backend` / `--registry` /
+   * `--token`, via its own `collectPassthrough` — and constructs the rest of the
+   * argv itself. So pull's own flags (`--merge`, `--force`, `--no-delete`,
+   * `--no-prune`, `--content-only`, …) are NOT reachable from a `refresh` argv and
+   * are deliberately absent here. ⚠️ `--force` especially: `refresh` is read-only by
+   * design, and forwarding it would ask pull to DISCARD local work.
+   *
+   * The trailing group is inert on this verb but reachable through the
+   * `resolveSiteDir` / `probeUnpushed` imports — listed rather than filtered, per
+   * the VIA_DEPLOY note above, and required by `flag-guard-coverage.test.js`.
+   */
+  refresh: [
+    '--backend', '--no-backend', '--no-git', '--registry', '--token',
+    '--as-org', '--org', '--dry-run', '--no-validate', '--yes', ...VIA_DEPLOY
   ]
 }
+
+/**
+ * `sync` is `refresh` + `push`, forwarding RAW argv to both halves — so its
+ * accepted set is exactly the UNION of theirs. Derived, never hand-written.
+ *
+ * Hand-writing it would rot the moment either half gained a flag, and it would rot
+ * in the expensive direction: `uniweb sync --no-git` and `uniweb sync --force` are
+ * both documented in `sync.js`, and a union that forgot either would reject a
+ * working command.
+ *
+ * ⭐ The union is also WHY `sync` checks and the two halves skip (`skipFlagCheck`,
+ * see `sync.js`). Each half's set is a strict subset of this one, so letting them
+ * re-check would have `push` reject `--no-git` and `refresh` reject `--force` —
+ * both legal on `sync`. Validating once, against the union, at the only layer that
+ * knows both halves are in play, is what makes the composite safe.
+ */
+VERBS.sync = [...new Set([...VERBS.refresh, ...VERBS.push])]
 
 /**
  * The accepted set per verb: its own flags, plus the login-method flags every

@@ -35,7 +35,8 @@ const ENTRY = {
   pull: 'commands/pull.js',
   clone: 'commands/clone.js',
   register: 'commands/register.js',
-  status: 'commands/status.js'
+  status: 'commands/status.js',
+  refresh: 'commands/refresh.js'
 }
 
 // Accepted everywhere, so never a gap.
@@ -108,4 +109,43 @@ test('the walk actually reaches helper modules — the control', () => {
     /args\.includes\('--no-verify'\)/,
     'precondition: --no-verify must NOT be readable from publish.js itself'
   )
+})
+
+// ─── `sync` needs a different instrument, and here is why ─────────────────────
+//
+// `importsOf` follows STATIC imports only. That is deliberate: `deploy.js`
+// dynamically imports `publish.js` and `build.js`, so following dynamic imports
+// globally would make every verb inherit every other verb's flags — measured, it
+// reports `--no-prerender` (read only in export.js/build.js) as reachable from
+// push, pull, publish and status. All four are false positives.
+//
+// But `sync` reaches BOTH its halves through `await import(…)`, so a static walk
+// from `sync.js` sees ONE module and ZERO flags. Adding it to ENTRY above would
+// assert nothing at all — a vacuous pass on the one verb whose entire nature is
+// delegation, which is exactly the failure this file exists to prevent.
+//
+// Its correctness is a different property anyway, and that property IS checkable:
+// not "covers its own graph" but "covers the union of the two sets it forwards to".
+
+test('sync accepts the union of both halves — the property the walk cannot see', () => {
+  for (const half of ['refresh', 'push']) {
+    const missing = VERB_FLAGS[half].filter((f) => !VERB_FLAGS.sync.includes(f))
+    assert.deepEqual(
+      missing,
+      [],
+      `\`uniweb sync\` would REJECT flags its ${half} half honours: ${missing.join(', ')}`
+    )
+  }
+})
+
+test('the union covers both invocations sync documents — the control', () => {
+  // Each is legal on exactly ONE half, which is why a hand-written union would
+  // plausibly have dropped one. Without this, the union test above passes for a
+  // `sync` set that is merely a superset of something wrong.
+  assert.ok(VERB_FLAGS.sync.includes('--no-git'), 'from the refresh half')
+  assert.ok(VERB_FLAGS.sync.includes('--force'), 'from the push half')
+  // And the halves really are disjoint on those two — otherwise the control is
+  // testing nothing.
+  assert.ok(!VERB_FLAGS.push.includes('--no-git'))
+  assert.ok(!VERB_FLAGS.refresh.includes('--force'))
 })

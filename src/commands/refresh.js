@@ -46,6 +46,7 @@ import {
   headProvenance
 } from '../utils/git.js'
 import { probeUnpushed } from '../backend/site-sync.js'
+import { checkFlags } from '../utils/flag-guard.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -98,6 +99,21 @@ function siteContentUuid(siteDir) {
  *   network or a real backend).
  */
 export async function refresh(args = [], deps = {}) {
+  // An unrecognized flag is invisible to a literal scan, so it silently keeps the
+  // default — and for `--backend` the default can be production. This verb never
+  // sent data anywhere, which is why it went unguarded; but it DELEGATES to `pull`,
+  // and a mistyped `--backend` is not forwarded, so the pull runs against whatever
+  // the origin ladder resolves instead of the backend the user named.
+  //
+  // `sync` validates the UNION of both halves and forwards raw argv, so a legal
+  // `uniweb sync --force` would be rejected here. It passes `skipFlagCheck`.
+  if (!deps.skipFlagCheck) {
+    const bad = checkFlags('refresh', args)
+    if (bad) {
+      say.err(bad.message)
+      return { exitCode: 2 }
+    }
+  }
   const skipGit = args.includes('--no-git')
   const skipBackend = args.includes('--no-backend')
   const resolveSite = deps.resolveSiteDir || resolveSiteDir
