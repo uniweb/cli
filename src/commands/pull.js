@@ -68,6 +68,7 @@ import { createHash } from 'node:crypto'
 import { createInterface } from 'node:readline/promises'
 import { join, dirname, relative } from 'node:path'
 import yaml from 'js-yaml'
+import { downloadMissingAssets } from '../backend/asset-download.js'
 import {
   siteContentDocumentToProject,
   collectionsToProject,
@@ -125,6 +126,29 @@ function flagValue(args, name) {
   if (i !== -1 && args[i + 1] && !args[i + 1].startsWith('-'))
     return args[i + 1]
   return null
+}
+
+// Whether this pull should fetch the asset bytes it does not have.
+//
+// Two levers, and they are deliberately not the same kind of thing:
+//   - `site.yml::assets.download: false` — the PROJECT's standing choice. "We do
+//     not keep the bytes here" is usually a property of a repo, not of a run, and
+//     a property of a repo belongs in a file every clone reads.
+//   - `--no-assets` — the RUN's override, for CI and one-off checkouts, where the
+//     project's answer is right and this invocation is the exception.
+//
+// The flag can only turn fetching OFF. A project that declared `download: false`
+// meant it, and a flag that could silently re-enable it would make the declared
+// setting advisory.
+function shouldFetchAssets(args, siteDir) {
+  if (args.includes('--no-assets')) return false
+  try {
+    const cfg = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
+    if (cfg?.assets?.download === false) return false
+  } catch {
+    /* no site.yml, or unreadable — fetching is the default */
+  }
+  return true
 }
 
 // Read a top-level `$uuid:` scalar from a YAML file, or null.
@@ -494,6 +518,7 @@ export async function pull(args = [], deps = {}) {
   const mergeMode = args.includes('--merge')
 
   const siteDir = await resolveSiteDir(args, 'pull')
+  const fetchAssets = shouldFetchAssets(args, siteDir)
 
   // Don't overwrite work that isn't saved anywhere. Pull reconciles the working
   // tree to the backend — it rewrites section bodies from the fetched document and
@@ -640,6 +665,33 @@ export async function pull(args = [], deps = {}) {
       // Per-item identity for the next push. Without it the backend reads our
       // records as new and re-mints every page and section row.
       writeItemUuids(siteDir, collectUnitUuids(siteDoc))
+      // Bring the media down BEFORE projecting: a newly-landed asset gains a map
+      // entry, and the projection reads that map to put authored paths back. Run
+      // after, and this pull's new assets would project as URLs and only restore
+      // on the NEXT pull — a lag nobody would attribute to ordering.
+      //
+      // Declining is a project-level choice (`site.yml::assets.download: false`)
+      // with a per-run override (`--no-assets`), because "we do not want the
+      // bytes" is usually a property of the project and only sometimes of the
+      // invocation (CI). Either way the content keeps its URL and still renders.
+      if (fetchAssets) {
+        const dl = await downloadMissingAssets({
+          document: siteDoc,
+          siteDir,
+          origin: client.origin,
+          onProgress: (m) => note(`  ${m}`),
+          warn: (m) => note(`! ${m}`)
+        })
+        if (dl.downloaded.length) {
+          note(`Assets        : ${dl.downloaded.length} downloaded`)
+        }
+        if (dl.failed.length) {
+          note(
+            `Assets        : ${dl.failed.length} could not be fetched — content keeps their URL`
+          )
+        }
+      }
+
       const report = siteContentDocumentToProject({
         document: siteDoc,
         siteRoot: siteDir,
