@@ -528,6 +528,7 @@ export async function publish(args = []) {
   // 4b. Upload ALL local media (entity refs + ball refs) on one asset lane →
   //     the ref→serveUrl map; rewrite the entity content AND the ball with it.
   let assetRewrite = null
+  let assetIds = null
   const mediaRefs = [...new Set([...localAssets, ...ballAssets])]
   if (mediaRefs.length) {
     say.info('Uploading media…')
@@ -552,6 +553,7 @@ export async function publish(args = []) {
         return { exitCode: 1 }
       }
       if (Object.keys(map).length) assetRewrite = map
+      if (Object.keys(ids).length) assetIds = ids
       // Identity into the COMMITTED map — see backend/asset-map.js. Merge, not
       // replace: this publish carries only the refs its content touched.
       const rec = updateAssetMap(siteDir, ids)
@@ -646,7 +648,8 @@ export async function publish(args = []) {
       ...(Object.keys(ext.pins).length
         ? { injectExtensions: ext.pins }
         : {}),
-      ...(assetRewrite ? { assetRewrite } : {})
+      ...(assetRewrite ? { assetRewrite } : {}),
+      ...(assetIds ? { assetIds } : {})
     })
   } catch (err) {
     say.err(`Could not build the sync package: ${err.message}`)

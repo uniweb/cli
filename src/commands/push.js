@@ -247,6 +247,7 @@ export async function push(args = [], deps = {}) {
   // stores hashes of the REWRITTEN content, so the emit compared against it must
   // rewrite too, or every entity reads as changed forever.
   let assetRewrite = null
+  let assetIds = null
   if (!output && !dryRun) {
     let mediaRefs = []
     try {
@@ -300,6 +301,7 @@ export async function push(args = [], deps = {}) {
           return { exitCode: 1 }
         }
         if (Object.keys(map).length) assetRewrite = map
+        if (Object.keys(ids).length) assetIds = ids
         note(
           `${Object.keys(map).length}/${mediaRefs.length} media ref(s) → serve URL`
         )
@@ -350,7 +352,8 @@ export async function push(args = [], deps = {}) {
             baseVersions: readBaseVersions(siteDir),
             itemBaseVersions: readItemBaseVersions(siteDir)
           }),
-      ...(assetRewrite ? { assetRewrite } : {})
+      ...(assetRewrite ? { assetRewrite } : {}),
+      ...(assetIds ? { assetIds } : {})
     })
   } catch (err) {
     error(`Could not build the sync package: ${err.message}`)
