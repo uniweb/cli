@@ -64,6 +64,17 @@ export async function uploadDataBundle(
   // blob-store key, discarding everything before the final `dist/`, so absolute
   // and relative forms resolve to the same key (pinned both ways on their side).
   //
+  // ⚠️ That argument is scoped to a serve URL CONTAINING `dist/`, and the scope is
+  // load-bearing rather than incidental: the key is recovered by splitting on that
+  // segment, so a serve URL without one cannot be resolved to a key at all — the
+  // failure is on the READING side, and this push looks entirely successful.
+  // Reported by the backend 2026-08-17 as a defect on their side, not yet fixed;
+  // not verified here, and not ours to fix. It is unreached only because no
+  // deployment yet mints URLs of the other shape. ⇒ We keep reading `serve_url`
+  // verbatim — composing one would be the worse answer, and it is the very coupling
+  // deleted above. What we must NOT do is infer from "this has always worked" that
+  // any serve URL round-trips; that holds for the shape, not for the field.
+  //
   // Absent is an error, not a cue to invent a location: an unaddressable bundle
   // must stop the publish, never ship a URL nobody claimed. (Confirmed with the
   // backend 2026-08-17; `serve_url` is contractually on every plan entry.)
