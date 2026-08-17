@@ -5,7 +5,7 @@
  * A site's `package.json`, its `file:` dependency on the foundation, and its
  * `node_modules` are not part of the site as an artifact; they are the project
  * shape the CLI hangs tooling on (see the three-ingredient model,
- * kb/framework/architecture/site-foundation-runtime-model.md, Part 1). Treating
+ * the site/foundation/runtime model). Treating
  * that scaffolding as part of the site is where most of the confusion in this
  * area comes from, so: nothing here says anything about what a foundation *is*,
  * how it is distributed, or how it reaches a host.

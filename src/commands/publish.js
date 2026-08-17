@@ -281,7 +281,7 @@ export async function publish(args = []) {
   // externalizes react / react-dom / jsx-runtime / @uniweb/core — which is why
   // the compatibility floor rides on the foundation (`info.runtime`, set by
   // `register`) and not here. See
-  // kb/framework/architecture/site-foundation-runtime-model.md § "who gets to say
+  // the site/foundation/runtime model, § "who gets to say
   // whether a site accepts a newer runtime".
   //
   // Silence is therefore not a request to change the runtime, and the backend

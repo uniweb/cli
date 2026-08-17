@@ -512,7 +512,7 @@ export class BackendClient {
   }
 
   /**
-   * ASSUMED endpoint (not built yet — kb/framework/build/payment-handoff-plan.md).
+   * ASSUMED endpoint (not built yet).
    * GET /dev/site/{uuid}/can-go-live — the pre-go-live payment gate:
    *   { ok: true }                                          // already paid → proceed
    *   { payment_required: true, checkout_url, wait_token? } // open the URL, settle, retry

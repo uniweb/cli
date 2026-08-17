@@ -2,7 +2,7 @@
  * uniweb clone <site-uuid> — materialize a backend site as a local file project.
  *
  * The "git clone" of the site-content remote model (see
- * kb/framework/plans/site-content-remote-model.md): the backend is the remote, a
+ * the site-content remote model): the backend is the remote, a
  * file project is a working clone. `clone` is the create-side sibling of
  * `uniweb pull`/`uniweb push` — it bootstraps a brand-new project from a site that
  * already lives in the backend (typically authored in the visual app).
