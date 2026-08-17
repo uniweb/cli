@@ -33,6 +33,7 @@
 
 import { mkdirSync, existsSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { ASSET_SLOTS } from '@uniweb/semantic-parser'
 import { readAssetMap, updateAssetMap } from '@uniweb/build/uwx'
 
 /**
@@ -47,11 +48,13 @@ export function collectAssetRefs(document) {
   const visit = (node) => {
     if (Array.isArray(node)) return node.forEach(visit)
     if (!node || typeof node !== 'object') return
-    const id = typeof node.assetId === 'string' ? node.assetId : null
-    if (id && !found.has(id)) {
-      const url = typeof node.src === 'string' ? node.src
-        : typeof node.url === 'string' ? node.url : null
-      found.set(id, { id, ext: node.assetExt || '', url })
+    for (const slot of ASSET_SLOTS) {
+      const id = typeof node[slot.id] === 'string' ? node[slot.id] : null
+      if (!id || found.has(id)) continue
+      const url = slot.urls
+        .map((k) => (typeof node[k] === 'string' ? node[k] : null))
+        .find(Boolean)
+      found.set(id, { id, ext: node[slot.ext] || '', url })
     }
     for (const v of Object.values(node)) visit(v)
   }
