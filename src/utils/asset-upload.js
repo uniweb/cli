@@ -77,8 +77,8 @@ export function collectSiteAssets(distDir) {
  *
  * `serveUrl` is the backend's canonical, ready-built serve URL for the asset (the
  * plan entry's `serve_url`; content-addressed, lane-independent). Callers embed it
- * verbatim; `buildAssetUrl(origin, assetBase, id, ext)` reconstructs the same
- * string and stays as a fallback for an older backend that omits `serve_url`.
+ * verbatim — origin-relative forms included. Nothing composes one: see the note at
+ * the foot of this file for why the reconstruction helper was removed.
  *
  * Skip-list (content-addressed dedup): a plan entry with `present: true` is
  * already in the global store — we don't re-PUT it, but we DO record its id+ext
@@ -231,14 +231,17 @@ export async function uploadSiteAssets({
   return { mode, uploaded, skipped, failed, assetsByLocalUrl }
 }
 
-// Build a durable asset serve URL from /dev/config's assetBase. Origin-relative
-// → prepend the backend origin; absolute (a CDN host) → used verbatim. Shape:
-// {assetBase}dist/{id}/base.{ext} — basename literally `base`, {ext} the source
-// extension the plan echoed. The root itself is never assumed: it is whatever
-// discovery returned.
-export function buildAssetUrl(origin, assetBase, id, ext) {
-  const base = /^https?:\/\//.test(assetBase)
-    ? assetBase
-    : `${origin}${assetBase}`
-  return `${base.replace(/\/$/, '')}/dist/${id}/base.${ext}`
-}
+// ⛔ `buildAssetUrl(origin, assetBase, id, ext)` was removed 2026-08-17. Do not
+// bring it back.
+//
+// It composed `{assetBase}dist/{id}/base.{ext}` — i.e. it encoded the BACKEND's
+// path layout inside a published CLI, on a release cadence the backend cannot
+// move, defaulting to one hardcoded production host for every deployment. Read
+// the plan entry's `serve_url` instead. It is part of the asset-plan contract:
+// present on EVERY entry, on both the direct and presigned lanes, including
+// entries the plan reports as already `present` — the backend covers that with a
+// test of its own (confirmed 2026-08-17).
+//
+// An entry without one is UNADDRESSABLE — fail, never guess. A composed location
+// is silently wrong wherever the deployment does not match the guess; a missing
+// one is visibly missing.

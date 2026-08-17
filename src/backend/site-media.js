@@ -7,7 +7,7 @@
  * `emitSyncPackages().localAssets` (`/images/hero.png`); `resolveAssetPath` finds the
  * file under the site's `public/` (or `assets/`). A ref whose file is missing is
  * skipped (warned), never a broken serve URL. The serve URL is the backend's canonical
- * `serve_url` when present, else reconstructed from `id`+`assetBase` (the dev fallback).
+ * `serve_url`, read verbatim — origin-relative forms included; nothing here composes one.
  * Content-addressed like every asset: identical bytes → same id → a re-deploy of
  * unchanged media is a cheap no-op PUT (the lane's `present` skip-list).
  */
@@ -16,11 +16,11 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import { resolveAssetPath } from '@uniweb/build/site'
-import { buildAssetUrl } from '../utils/asset-upload.js'
 import { contentTypeFor } from '../utils/code-upload.js'
 
 /**
- * @param {object} client - BackendClient (origin + uploadSiteAssets + discover)
+ * @param {object} client - BackendClient (uploadSiteAssets). No `discover` — this
+ *        lane stopped consulting the capability doc when `assetBase` was removed.
  * @param {string} siteDir - the site root (site-root refs resolve under public/)
  * @param {string[]} refs - site-root local asset refs (`/images/x.png`)
  * @param {{ siteUuid?: string|null, onProgress?: (m: string) => void, warn?: (m: string) => void }} [opts]
@@ -65,18 +65,35 @@ export async function uploadSiteMedia(
   if (!files.length) return { map: {}, missing, failed: [] }
 
   const result = await client.uploadSiteAssets({ files, siteUuid, onProgress })
-  const failed = result.failed || []
+  const failed = [...(result.failed || [])]
   for (const f of failed)
     warn?.(`local-media: upload failed for ${f.path} (HTTP ${f.status})`)
 
-  const config = await client.discover()
   const map = {}
   for (const ref of refs) {
     const entry = result.assetsByLocalUrl[ref]
-    if (entry)
-      map[ref] =
-        entry.serveUrl ||
-        buildAssetUrl(client.origin, config.assetBase, entry.id, entry.ext)
+    if (!entry) continue
+    // The backend's canonical serve URL, READ — never composed. An entry without
+    // one is an asset we cannot address, and inventing a location for it is the
+    // exact failure this lane exists to avoid: a guessed host is SILENTLY wrong,
+    // where a missing one is visibly missing. So it joins `failed` and publish
+    // refuses, rather than shipping content pointing somewhere nobody claimed.
+    //
+    // `serve_url` is part of the asset-plan contract: on EVERY entry, both
+    // lanes, including entries reported as already `present`. Reconstruction
+    // from a discovered `assetBase` was removed once the backend covered that
+    // with a test of its own; it was the last hardcoded cross-deployment
+    // constant in the CLI. (Confirmed 2026-08-17.)
+    if (!entry.serveUrl) {
+      warn?.(`local-media: ${ref} — the asset plan returned no serve_url`)
+      failed.push({
+        path: ref,
+        status: 0,
+        detail: 'asset plan entry carried no serve_url'
+      })
+      continue
+    }
+    map[ref] = entry.serveUrl
   }
   return { map, missing, failed }
 }

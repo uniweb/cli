@@ -93,10 +93,16 @@ test('uploadSiteMedia skips (and warns) a ref whose file is missing', async () =
   }
 })
 
-test('uploadSiteMedia falls back to buildAssetUrl when the lane omits serve_url', async () => {
+test('uploadSiteMedia REFUSES a ref whose plan entry omits serve_url — never composes one', async () => {
+  // Until 2026-08-17 this fell back to composing `{assetBase}dist/{id}/base.{ext}`,
+  // which defaulted to one hardcoded production host for every deployment the CLI
+  // can target. A guessed location is silently wrong; a missing one is visibly
+  // missing, so the ref joins `failed` and publish refuses.
   const dir = makeSite()
   const client = {
     origin: 'http://x',
+    // Discovery would have supplied a base to compose from — the control: if
+    // anything reconstructs, the ref lands in `map` and this test fails.
     discover: async () => ({ assetBase: '/media-root/' }),
     uploadSiteAssets: async () => ({
       failed: [],
@@ -104,11 +110,18 @@ test('uploadSiteMedia falls back to buildAssetUrl when the lane omits serve_url'
     }) // no serveUrl
   }
   try {
-    const { map } = await uploadSiteMedia(client, dir, ['/images/banner.png'])
-    assert.equal(
-      map['/images/banner.png'],
-      'http://x/media-root/dist/SHA9/base.png'
+    const warnings = []
+    const { map, failed } = await uploadSiteMedia(
+      client,
+      dir,
+      ['/images/banner.png'],
+      { warn: (m) => warnings.push(m) }
     )
+    assert.deepEqual(map, {}, 'must not invent a serve URL')
+    assert.equal(failed.length, 1)
+    assert.equal(failed[0].path, '/images/banner.png')
+    assert.match(failed[0].detail, /serve_url/)
+    assert.ok(warnings.some((w) => w.includes('/images/banner.png')))
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

@@ -85,16 +85,20 @@ export function resolveBackendOrigin(flag, { siteBackend } = {}) {
 /**
  * The fallback capability doc when `GET /dev/config` is absent or unreachable
  * (an older backend, or no backend at all). Keeps the client non-breaking: the
- * bases mirror a self-serve dev backend, `assetBase` falls back to the historical
- * production CDN host so published-site asset resolution is unchanged, and
- * `runtime.installed` is empty so runtime resolution requires an explicit pin.
+ * bases mirror a self-serve dev backend, and `runtime.installed` is empty so
+ * runtime resolution requires an explicit pin.
  */
 export const DISCOVERY_DEFAULTS = {
-  // No serve-root default. Serve locations are read from discovery or from an
-  // upload plan's `serve_base`; nothing here reconstructs one, so a default
-  // would be a route name with no consumer. (A `gatewayBase` entry lived here
-  // unread until 2026-07-29.)
-  assetBase: 'https://assets.uniweb.app/',
+  // ⛔ No serve-root default, and no `assetBase`. Serve locations are read from
+  // discovery or from a per-response field (an upload plan's `serve_base`, an
+  // asset entry's `serve_url`); nothing here reconstructs one, so a default is a
+  // route name with no consumer. (A `gatewayBase` entry lived here unread until
+  // 2026-07-29.)
+  //
+  // `assetBase: 'https://assets.uniweb.app/'` sat here until 2026-08-17 — one
+  // production host, hardcoded, applied to EVERY deployment the CLI can be
+  // pointed at. It was only ever read to compose an asset URL, which the plan
+  // already returns as `serve_url`; both the reader and the composer are gone.
   auth: { loginPath: '/dev/auth/login', required: true },
   delivery: { deploy: true, publish: true, broker: 'self-serve' },
   assets: { supported: false },
@@ -220,7 +224,6 @@ export class BackendClient {
    * lifetime; a missing route or any transport/parse error falls back to
    * DISCOVERY_DEFAULTS (non-breaking — an older backend still works). Lets the
    * CLI hardcode nothing about a backend but its origin and discover the rest:
-   * `assetBase` (the asset root — relative ⇒ relative-to-origin),
    * `auth`, `delivery` (deploy/publish? broker), `assets` (lane built yet?),
    * `runtime.installed` (the default-runtime source replacing the old /runtime/latest).
    * @returns {Promise<object>}
@@ -533,8 +536,8 @@ export class BackendClient {
   /**
    * Deliver a site's processed assets (plan → PUT-per-file) to the backend's
    * content-addressed store. Thin pass-through to utils/asset-upload.js with this
-   * client's origin + token; returns the `localUrl → { id, ext }` rewrite map the
-   * deploy step turns into durable `{assetBase}dist/{id}/base.{ext}` serve URLs.
+   * client's origin + token; returns the `localUrl → { id, ext, serveUrl }` rewrite
+   * map the deploy step reads `serveUrl` from verbatim (never composing one).
    * @param {object} opts - { distDir, files?, onProgress? }
    */
   async uploadSiteAssets(opts) {
