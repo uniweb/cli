@@ -81,7 +81,7 @@ import {
 } from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
-import { updateAssetMap, ASSET_MAP_FILE } from '../backend/asset-map.js'
+import { updateAssetMap, ASSET_MAP_FILE } from '@uniweb/build/uwx'
 import {
   bringFoundationAlong,
   bringExtensionsAlong
