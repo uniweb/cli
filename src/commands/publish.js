@@ -81,6 +81,7 @@ import {
 } from '../backend/site-sync.js'
 import { uploadDataBundle } from '../backend/data-bundle.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
+import { updateAssetMap, ASSET_MAP_FILE } from '../backend/asset-map.js'
 import {
   bringFoundationAlong,
   bringExtensionsAlong
@@ -531,7 +532,7 @@ export async function publish(args = []) {
   if (mediaRefs.length) {
     say.info('Uploading media…')
     try {
-      const { map, failed } = await uploadSiteMedia(
+      const { map, ids, failed } = await uploadSiteMedia(
         client,
         siteDir,
         mediaRefs,
@@ -551,6 +552,14 @@ export async function publish(args = []) {
         return { exitCode: 1 }
       }
       if (Object.keys(map).length) assetRewrite = map
+      // Identity into the COMMITTED map — see backend/asset-map.js. Merge, not
+      // replace: this publish carries only the refs its content touched.
+      const rec = updateAssetMap(siteDir, ids)
+      if (rec.written) {
+        say.dim(
+          `${ASSET_MAP_FILE}   : ${rec.added.length} added, ${rec.changed.length} changed — commit it`
+        )
+      }
       if (ballAssets.length) ball = rewriteBallAssets(ball, map)
       say.dim(
         `Media          : ${Object.keys(map).length}/${mediaRefs.length} ref(s) → serve URL`

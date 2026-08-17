@@ -137,6 +137,7 @@ test('uploadSiteMedia is a no-op for no refs (never touches the lane)', async ()
   }
   assert.deepEqual(await uploadSiteMedia(client, '/tmp', []), {
     map: {},
+    ids: {},
     missing: [],
     failed: []
   })

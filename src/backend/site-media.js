@@ -27,7 +27,7 @@ import { contentTypeFor } from '../utils/code-upload.js'
  *   `siteUuid` is the owner the uploaded bytes are charged to. Callers create the
  *   site before uploading precisely so this is set — an unowned upload is charged
  *   and cannot be freed, because freeing means deleting the owning entity.
- * @returns {Promise<{ map: Record<string,string>, missing: string[], failed: Array<{path:string,status:number,detail?:string}> }>}
+ * @returns {Promise<{ map: Record<string,string>, ids: Record<string,{id:string,ext:string}>, missing: string[], failed: Array<{path:string,status:number,detail?:string}> }>}
  *   `map` is ref → serve URL for refs that resolved AND uploaded. The two failure
  *   kinds are reported SEPARATELY because callers must treat them differently:
  *   `missing` is a ref with no file under the site — an authoring mistake, already
@@ -41,7 +41,7 @@ export async function uploadSiteMedia(
   refs,
   { siteUuid = null, onProgress, warn } = {}
 ) {
-  if (!refs?.length) return { map: {}, missing: [], failed: [] }
+  if (!refs?.length) return { map: {}, ids: {}, missing: [], failed: [] }
 
   const files = []
   const missing = []
@@ -62,7 +62,7 @@ export async function uploadSiteMedia(
       diskPath: resolved
     })
   }
-  if (!files.length) return { map: {}, missing, failed: [] }
+  if (!files.length) return { map: {}, ids: {}, missing, failed: [] }
 
   const result = await client.uploadSiteAssets({ files, siteUuid, onProgress })
   const failed = [...(result.failed || [])]
@@ -70,9 +70,15 @@ export async function uploadSiteMedia(
     warn?.(`local-media: upload failed for ${f.path} (HTTP ${f.status})`)
 
   const map = {}
+  // The identity half, for `assets.json`. The plan returns an authoritative
+  // `id`+`ext` for every entry INCLUDING a `present: true` dedup skip, so a
+  // re-push of unchanged media still records identity without moving bytes —
+  // which is what makes the committed map cheap to keep accurate.
+  const ids = {}
   for (const ref of refs) {
     const entry = result.assetsByLocalUrl[ref]
     if (!entry) continue
+    if (entry.id) ids[ref] = { id: entry.id, ext: entry.ext || '' }
     // The backend's canonical serve URL, READ — never composed. An entry without
     // one is an asset we cannot address, and inventing a location for it is the
     // exact failure this lane exists to avoid: a guessed host is SILENTLY wrong,
@@ -95,7 +101,7 @@ export async function uploadSiteMedia(
     }
     map[ref] = entry.serveUrl
   }
-  return { map, missing, failed }
+  return { map, ids, missing, failed }
 }
 
 // ─── Asset-plan refusals ──────────────────────────────────────────────────────

@@ -64,6 +64,7 @@ import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
+import { updateAssetMap, ASSET_MAP_FILE } from '../backend/asset-map.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
@@ -276,7 +277,7 @@ export async function push(args = [], deps = {}) {
       }
       info('Uploading media…')
       try {
-        const { map, failed } = await uploadSiteMedia(
+        const { map, ids, failed } = await uploadSiteMedia(
           client,
           siteDir,
           mediaRefs,
@@ -302,6 +303,14 @@ export async function push(args = [], deps = {}) {
         note(
           `${Object.keys(map).length}/${mediaRefs.length} media ref(s) → serve URL`
         )
+        // Record identity in the COMMITTED map. Merge, never replace: this push
+        // carries only the refs its content touched.
+        const rec = updateAssetMap(siteDir, ids)
+        if (rec.written) {
+          note(
+            `${ASSET_MAP_FILE}: ${rec.added.length} added, ${rec.changed.length} changed — commit it`
+          )
+        }
       } catch (err) {
         // Typed plan refusals get their own account. Note the storage one must not
         // be phrased from what moved — see describeAssetRefusal's rule 1; a push can
