@@ -88,7 +88,6 @@ import {
 } from '../backend/foundation-bring-along.js'
 import { settlePaymentIfNeeded } from '../backend/payment-handoff.js'
 import { reportSchemalessCollections } from '../utils/schemaless-report.js'
-import { uploadDataFiles } from '../backend/data-files.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -623,33 +622,6 @@ export async function publish(args = []) {
     say.dim(`Data bundle    : ${Object.keys(ball.data).length} file(s)`)
   }
 
-  // 4d. Upload the SAME files individually → `info.data`, the successor to the
-  //     ball. Ships alongside it for one release round: a released CLI still
-  //     sending only a ball must keep working, and no deployment count bounds
-  //     the set of CLIs already installed. See backend/data-files.js.
-  let dataFiles
-  if (ball) {
-    say.info('Uploading data files…')
-    try {
-      dataFiles = await uploadDataFiles(client, ball, {
-        siteUuid: site.uuid,
-        onProgress: (m) => say.dim(`  ${m}`)
-      })
-    } catch (err) {
-      const refusal = describeAssetRefusal(err)
-      if (refusal) {
-        say.err(refusal.headline)
-        for (const line of refusal.notes) say.dim(line)
-      } else {
-        say.err(`Data files upload failed: ${err.message}`)
-      }
-      return { exitCode: 1 }
-    }
-    if (dataFiles) {
-      say.dim(`Data files     : ${Object.keys(dataFiles).length} object(s) → serve URL`)
-    }
-  }
-
   // 5. Push the site (content + folder) over the send-only-changed cache —
   //    the SAME two-lane submission `uniweb push` uses — stamping
   //    info.data_bundle and rewriting local media refs to backend serve URLs.
@@ -674,11 +646,18 @@ export async function publish(args = []) {
   // released version on the wire is required when site.yml uses an unversioned
   // local ref; injectInfo overrides info.foundation. A registry/URL ref → fnd.ref
   // is null → the site.yml ref is forwarded verbatim (already pinned).
+  // ⛔ DO NOT STAMP `info.data` HERE. The name is TAKEN: `uwx/site.js` already
+  // emits `info.data` from `site.yml`'s top-level `data:`/`fetch:` block, and
+  // `injectInfo` WINS the merge (`sync-package.js`: `{...siteDoc.info,
+  // ...injectInfo}`), so stamping a file map here silently replaces the author's
+  // fetch config on the wire. Both are `type: json`, so the store validator
+  // accepts either and nothing errors at any layer.
+  //
+  // A file map needs a name nothing else claims (`static_data` / `data_files`
+  // were proposed) AND a consumer that reads it — neither settled. See
+  // `kb/framework/build/data-ball-retirement.md`.
   const injectInfo = {
-    // Both, deliberately, for one release round. A consumer that reads neither
-    // sees today's publish unchanged; one that reads `data` needs no ball.
     ...(dataBundle ? { data_bundle: dataBundle } : {}),
-    ...(dataFiles ? { data: dataFiles } : {}),
     ...(fnd.ref ? { foundation: fnd.ref } : {})
   }
   let pkg

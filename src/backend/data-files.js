@@ -1,4 +1,30 @@
 /**
+ * 🔴 UNWIRED — HELD 2026-08-18. Nothing calls this. Do not wire it back without
+ * reading `kb/framework/build/data-ball-retirement.md` first; two separate
+ * things stopped it, and only one is a naming problem.
+ *
+ * 1. ⛔ **`info.data` is TAKEN.** `build/src/uwx/site.js` already emits
+ *    `info.data` from `site.yml`'s top-level `data:`/`fetch:` block, and
+ *    `injectInfo` WINS the merge in `uwx/sync-package.js`. Stamping a file map
+ *    there silently replaced the author's fetch config on the wire — both are
+ *    `type: json`, so the store validator accepts either and nothing errors at
+ *    any layer. This shipped in `uniweb` f19284f and was reverted the same day.
+ *    A file map needs a name nothing else claims (`static_data` / `data_files`
+ *    proposed, neither settled).
+ *
+ * 2. 🔴 **The premise is in question.** The charter assumed the backend stays in
+ *    the static-data path and only the carrier changes. That assumption is
+ *    itself under review — it may not custody these bytes at all, or may be
+ *    steering authors off schema-less collections rather than re-plumbing them.
+ *    Held by the backend lane pending a ruling, not by a design objection.
+ *
+ * ⇒ The upload mechanics below are believed correct and are kept for that
+ * reason — one plan call, real relpaths, serve URLs read verbatim, an absent
+ * one failing the publish. What is NOT settled is where the map goes, or
+ * whether there is a map.
+ */
+
+/**
  * Static collection data — one uploaded object per file.
  *
  * The successor to the "data ball" (`backend/data-bundle.js`), which merges the
