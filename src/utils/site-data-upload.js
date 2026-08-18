@@ -43,7 +43,6 @@
  */
 
 import { createHash } from 'node:crypto'
-import { DATA_DIR } from '@uniweb/core'
 
 /**
  * Plan + upload a site's static collection data files.
@@ -76,7 +75,20 @@ export async function uploadSiteData({
   const files = entries.map(([relPath, value]) => {
     const bytes = Buffer.from(JSON.stringify(value))
     return {
-      path: `${DATA_DIR}/${relPath}`,
+      // ⚠️ The tail RELATIVE TO THE DATA ROOT — no `data/` prefix.
+      //
+      // The plan's `serve_base` already ends in `/data/`
+      // (`/gateway/site/{site}/data/`), and the runtime asks for
+      // `{config.base}/data/{name}.json` (`DATA_URL_PREFIX`). Sending
+      // `data/articles.json` would store one level too deep and serve at
+      // `…/data/data/articles.json`, which the runtime never requests.
+      //
+      // ⛔ And the failure is INVISIBLE from here: the plan succeeds, the PUT
+      // succeeds, and only a visitor's fetch 404s. Confirmed against the
+      // shipped contract's own example (`collections/articles.json` with a
+      // `/data/`-bearing `serve_base`), which supersedes an earlier
+      // parenthetical that showed the prefix.
+      path: relPath,
       content_type: 'application/json',
       size: bytes.length,
       sha256: createHash('sha256').update(bytes).digest('hex'),

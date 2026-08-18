@@ -89,12 +89,17 @@ test('ONE plan for the whole set, then one PUT per file', async () => {
   assert.equal(calls.length - plans.length, 2)
 })
 
-test('paths are the SERVING tail, and no map comes back', async () => {
+test('paths are the tail RELATIVE TO THE DATA ROOT — no `data/` prefix', async () => {
+  // ⚠️ The prefix would be invisible if wrong: the plan succeeds, the PUT
+  // succeeds, and only a visitor's fetch 404s. `serve_base` already ends in
+  // `/data/` and the runtime asks `{base}/data/{name}.json`, so a `data/`
+  // prefix here stores one level too deep and serves where nothing looks.
   const calls = stubFetch()
   const r = await uploadSiteData({ ...ARGS, ball: BALL })
 
   const paths = JSON.parse(calls[0].init.body).files.map((f) => f.path).sort()
-  assert.deepEqual(paths, ['data/articles.json', 'data/articles/design-tips.json'])
+  assert.deepEqual(paths, ['articles.json', 'articles/design-tips.json'])
+  assert.ok(!paths.some((p) => p.startsWith('data/')), 'serve_base already carries it')
   assert.deepEqual(r.uploaded.sort(), paths)
   // The point of the lane: the file is at its serving path, so nothing records it.
   assert.ok(!('map' in r), 'this lane returns no map, by design')
@@ -124,10 +129,10 @@ test('a direct PUT DOES carry the bearer, and resolves against the origin', asyn
 })
 
 test('a file the plan did not answer for FAILS rather than being guessed at', async () => {
-  stubFetch({ omit: ['data/articles.json'] })
+  stubFetch({ omit: ['articles.json'] })
   const r = await uploadSiteData({ ...ARGS, ball: BALL })
 
-  assert.deepEqual(r.uploaded, ['data/articles/design-tips.json'])
+  assert.deepEqual(r.uploaded, ['articles/design-tips.json'])
   assert.equal(r.failed.length, 1)
   assert.match(r.failed[0].detail, /no upload target/)
 })
