@@ -39,7 +39,15 @@
  * an upload landed.
  *
  * Contract ratified 2026-08-18; see `kb/framework/build/data-ball-retirement.md`.
- * ⚠️ **The endpoint is not built yet** — this is unwired until it is.
+ * **Wired into `publish.js` and shipped in `uniweb` 0.25.3.** Both arms of the
+ * endpoint exist (presigned landed 2026-08-18, per Diego).
+ *
+ * ⚠️ **The presigned arm has never been exercised against a real backend from
+ * here.** The branch is one line and unit-tested both ways, but a stub is not a
+ * presigning deployment — three claims diverged that way in a single day while
+ * this lane was being built. A local `uniwebd` answers `direct`, so proving it
+ * needs a presigning deployment and one real publish. **Believed correct, not
+ * demonstrated.**
  */
 
 import { createHash } from 'node:crypto'
