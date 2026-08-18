@@ -68,6 +68,7 @@ import { updateAssetMap, ASSET_MAP_FILE } from '@uniweb/build/uwx'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
+import { reportSchemalessCollections } from '../utils/schemaless-report.js'
 import { readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
@@ -104,6 +105,7 @@ const success = (m) => log(`${colors.green}✓${colors.reset} ${m}`)
 const error = (m) => console.error(`${colors.red}✗${colors.reset} ${m}`)
 const info = (m) => log(`${colors.blue}→${colors.reset} ${m}`)
 const note = (m) => log(`  ${colors.dim}${m}${colors.reset}`)
+const warn = (m) => log(`${colors.yellow}\u26a0${colors.reset} ${m}`)
 
 function flagValue(args, name) {
   const eq = args.find((a) => a.startsWith(`${name}=`))
@@ -362,6 +364,8 @@ export async function push(args = [], deps = {}) {
   const { siteContent, collections, siteContentUuid, warnings, skipped } = pkg
   log('')
   for (const w of warnings) note(`! ${w}`)
+  // Warn level, not dim: this is the author choosing entities vs static files.
+  reportSchemalessCollections(pkg.schemaless, { warn, dim: note })
 
   const totalEntities =
     (siteContent?.entityCount || 0) + (collections?.entityCount || 0)

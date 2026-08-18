@@ -87,6 +87,7 @@ import {
   bringExtensionsAlong
 } from '../backend/foundation-bring-along.js'
 import { settlePaymentIfNeeded } from '../backend/payment-handoff.js'
+import { reportSchemalessCollections } from '../utils/schemaless-report.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -481,6 +482,10 @@ export async function publish(args = []) {
     return { exitCode: 1 }
   }
   const schemalessNames = (probe.schemaless || []).map((col) => col.name)
+  // A product decision the author is usually making unknowingly — say it at warn
+  // level, not dim among everything else. See the helper for what the old
+  // message got wrong.
+  reportSchemalessCollections(probe.schemaless, say)
   const localAssets = probe.localAssets || []
 
   // 3a. A clone with no `$uuid` is bound to no backend site, so every cached map
