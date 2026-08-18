@@ -88,6 +88,7 @@ import {
 } from '../backend/foundation-bring-along.js'
 import { settlePaymentIfNeeded } from '../backend/payment-handoff.js'
 import { reportSchemalessCollections } from '../utils/schemaless-report.js'
+import { uploadDataFiles } from '../backend/data-files.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -606,9 +607,47 @@ export async function publish(args = []) {
       }
       return { exitCode: 1 }
     }
-    say.dim(
-      `Data bundle    : ${Object.keys(ball.data).length} data + ${Object.keys(ball.search).length} search file(s)`
-    )
+    // ⛔ This read `ball.search` until 2026-08-18 and THREW — `Object.keys(undefined)`
+    // is a TypeError, and it sits outside the try above, so it crashed the publish
+    // AFTER the bytes were uploaded. `@uniweb/build` removed the ball's `search`
+    // key on 2026-08-01 (be84ed2, "stop producing a search index on the synced
+    // lane"); this line was last touched 2026-06-24 and never followed.
+    //
+    // ⚠️ A cross-repo producer/consumer break: the shape is `@uniweb/build`'s and
+    // the reader is here, so neither repo's tests could see it. Pinned now by
+    // `test/data-ball-shape.test.js`, which reads the real ball rather than a
+    // fixture — a fixture would have been written from the same assumption.
+    //
+    // 📌 It went unreported for 17 days, which is its own finding: the schema-less
+    // publish path has no users to break.
+    say.dim(`Data bundle    : ${Object.keys(ball.data).length} file(s)`)
+  }
+
+  // 4d. Upload the SAME files individually → `info.data`, the successor to the
+  //     ball. Ships alongside it for one release round: a released CLI still
+  //     sending only a ball must keep working, and no deployment count bounds
+  //     the set of CLIs already installed. See backend/data-files.js.
+  let dataFiles
+  if (ball) {
+    say.info('Uploading data files…')
+    try {
+      dataFiles = await uploadDataFiles(client, ball, {
+        siteUuid: site.uuid,
+        onProgress: (m) => say.dim(`  ${m}`)
+      })
+    } catch (err) {
+      const refusal = describeAssetRefusal(err)
+      if (refusal) {
+        say.err(refusal.headline)
+        for (const line of refusal.notes) say.dim(line)
+      } else {
+        say.err(`Data files upload failed: ${err.message}`)
+      }
+      return { exitCode: 1 }
+    }
+    if (dataFiles) {
+      say.dim(`Data files     : ${Object.keys(dataFiles).length} object(s) → serve URL`)
+    }
   }
 
   // 5. Push the site (content + folder) over the send-only-changed cache —
@@ -636,7 +675,10 @@ export async function publish(args = []) {
   // local ref; injectInfo overrides info.foundation. A registry/URL ref → fnd.ref
   // is null → the site.yml ref is forwarded verbatim (already pinned).
   const injectInfo = {
+    // Both, deliberately, for one release round. A consumer that reads neither
+    // sees today's publish unchanged; one that reads `data` needs no ball.
     ...(dataBundle ? { data_bundle: dataBundle } : {}),
+    ...(dataFiles ? { data: dataFiles } : {}),
     ...(fnd.ref ? { foundation: fnd.ref } : {})
   }
   let pkg
