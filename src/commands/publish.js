@@ -79,7 +79,6 @@ import {
   pushSyncPackages,
   resolveSiteOrgForCreate
 } from '../backend/site-sync.js'
-import { uploadDataBundle } from '../backend/data-bundle.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import { updateAssetMap, ASSET_MAP_FILE } from '@uniweb/build/uwx'
 import {
@@ -88,6 +87,7 @@ import {
 } from '../backend/foundation-bring-along.js'
 import { settlePaymentIfNeeded } from '../backend/payment-handoff.js'
 import { reportSchemalessCollections } from '../utils/schemaless-report.js'
+import { uploadSiteData } from '../utils/site-data-upload.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -586,45 +586,56 @@ export async function publish(args = []) {
     }
   }
 
-  // 4c. Upload the (media-rewritten) ball → its content-addressed serve URL.
-  let dataBundle
+  // 4c. Deliver the schema-less collection data — one object per file.
+  //
+  //     Each `dist/data/**` file is PUT to the target `data-uploads` returns,
+  //     landing at its serving tail. Hosting intercepts `/data/**.json` and
+  //     reads `_data/{tail}` from the site bucket, so the file is served from
+  //     where it lands: **nothing records where anything went**, and no `info`
+  //     field is stamped.
+  //
+  //     ⛔ NO BALL. A CLI sends separates or a ball, never both — presence of a
+  //     ball is the backend's signal for which CLI it is talking to, and
+  //     sending both destroys it along with their ability to know when the
+  //     unwrap can be deleted. Released CLIs keep sending one and their unwrap
+  //     keeps serving them; this one does not.
+  //
+  //     📌 No capability gate, deliberately. A backend predating this lane
+  //     answers 404 and the publish fails — accepted while pre-prod [Diego,
+  //     2026-08-18: "we are pre-prod. I'm not concerned about old cli vs new"].
+  //     A gate was written and removed: it is machinery for a population that
+  //     does not exist, which is the failure this work kept catching in others.
+  //     `client.discover()` is the mechanism if that changes — `DISCOVERY_DEFAULTS`
+  //     makes an absent key non-breaking by construction.
   if (ball) {
-    say.info('Uploading data bundle…')
+    say.info('Uploading collection data…')
     try {
-      dataBundle = await uploadDataBundle(client, ball, {
+      const r = await uploadSiteData({
+        apiBase: client.origin,
+        token: await client.token(),
         siteUuid: site.uuid,
+        ball,
         onProgress: (m) => say.dim(`  ${m}`)
       })
-    } catch (err) {
-      // The ball rides the same asset lane, so it hits the same typed refusals.
-      const refusal = describeAssetRefusal(err)
-      if (refusal) {
-        say.err(refusal.headline)
-        for (const line of refusal.notes) say.dim(line)
-      } else {
-        say.err(`Data bundle upload failed: ${err.message}`)
+      if (r.failed.length) {
+        // A file whose bytes did not land must not be published: the site would
+        // serve a stale copy or 404, and the only trace would be a warning.
+        say.err(`${r.failed.length} data file(s) failed to upload — not publishing.`)
+        for (const f of r.failed) say.dim(`  ${f.path} (HTTP ${f.status})`)
+        return { exitCode: 1 }
       }
+      say.dim(`Collection data : ${r.uploaded.length} file(s) [${r.mode}]`)
+    } catch (err) {
+      say.err(`Collection data upload failed: ${err.message}`)
       return { exitCode: 1 }
     }
-    // ⛔ This read `ball.search` until 2026-08-18 and THREW — `Object.keys(undefined)`
-    // is a TypeError, and it sits outside the try above, so it crashed the publish
-    // AFTER the bytes were uploaded. `@uniweb/build` removed the ball's `search`
-    // key on 2026-08-01 (be84ed2, "stop producing a search index on the synced
-    // lane"); this line was last touched 2026-06-24 and never followed.
-    //
-    // ⚠️ A cross-repo producer/consumer break: the shape is `@uniweb/build`'s and
-    // the reader is here, so neither repo's tests could see it. Pinned now by
-    // `test/data-ball-shape.test.js`, which reads the real ball rather than a
-    // fixture — a fixture would have been written from the same assumption.
-    //
-    // 📌 It went unreported for 17 days, which is its own finding: the schema-less
-    // publish path has no users to break.
-    say.dim(`Data bundle    : ${Object.keys(ball.data).length} file(s)`)
   }
 
   // 5. Push the site (content + folder) over the send-only-changed cache —
   //    the SAME two-lane submission `uniweb push` uses — stamping
-  //    info.data_bundle and rewriting local media refs to backend serve URLs.
+  //    the pinned foundation ref and rewriting local media refs to serve URLs.
+  //    (It stamped `info.data_bundle` until 2026-08-18; the ball is gone and
+  //    collection data now lands at its serving tail, so nothing records it.)
   const priorHashes = readSyncCache(siteDir)
   // publish rides the same gated push as `uniweb push`: if an app author has
   // edited since this clone last synced, the push is refused rather than
@@ -657,7 +668,6 @@ export async function publish(args = []) {
   // were proposed) AND a consumer that reads it — neither settled. See
   // `kb/framework/build/data-ball-retirement.md`.
   const injectInfo = {
-    ...(dataBundle ? { data_bundle: dataBundle } : {}),
     ...(fnd.ref ? { foundation: fnd.ref } : {})
   }
   let pkg
