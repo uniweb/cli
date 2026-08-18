@@ -12,16 +12,29 @@
  *    A file map needs a name nothing else claims (`static_data` / `data_files`
  *    proposed, neither settled).
  *
- * 2. 🔴 **The premise is in question.** The charter assumed the backend stays in
- *    the static-data path and only the carrier changes. That assumption is
- *    itself under review — it may not custody these bytes at all, or may be
- *    steering authors off schema-less collections rather than re-plumbing them.
- *    Held by the backend lane pending a ruling, not by a design objection.
+ * 2. 🔴 **The DESTINATION changed, and the map went with it.** Ruled
+ *    2026-08-18: the backend does not host static content — that is the hosting
+ *    platform's mission — and it means to be a **passthrough** for this third
+ *    kind of thing. It brokers the authorization, not the bytes.
  *
- * ⇒ The upload mechanics below are believed correct and are kept for that
- * reason — one plan call, real relpaths, serve URLs read verbatim, an absent
- * one failing the publish. What is NOT settled is where the map goes, or
- * whether there is a map.
+ *    ⇒ **There is no map to build.** The file lands where it is served, so
+ *    nothing records where it went: no `info.data`, no `info.static_data`, no
+ *    replacement field at all. `info.data_bundle` goes away with the ball
+ *    rather than being replaced. That also retires blocker 1 above — the
+ *    collision stops mattering once no field is stamped.
+ *
+ * ⇒ **What survives here** — one plan call, real relpaths, per-file PUT, an
+ * absent target failing the publish rather than inventing a location.
+ * **What goes** — the returned `map`; this should yield nothing, or a count.
+ *
+ * ⛔ **Which plan endpoint to call is the backend's to define and is NOT yet
+ * defined.** They already run three of this shape (assets, foundation code,
+ * runtime), each with its own cap constant. A per-site *serving* path suggests
+ * a fourth rather than the asset lane, which is content-addressed and dedups
+ * across sites. Do not guess it — and note that if it is a new endpoint, the
+ * asset lane's file cap is no longer the one that gates this.
+ *
+ * Full state: `kb/framework/build/data-ball-retirement.md`.
  */
 
 /**
