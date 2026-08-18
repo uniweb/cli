@@ -53,9 +53,9 @@ import {
   loadDeployYml,
   resolveTarget,
   recordLastDeploy,
-  assembleDataBall,
-  collectBallAssets,
-  rewriteBallAssets
+  collectSchemalessData,
+  collectSchemalessDataAssets,
+  rewriteSchemalessDataAssets
 } from '@uniweb/build/site'
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import { isSiteRelativeExtensionUrl } from '@uniweb/build'
@@ -527,8 +527,8 @@ export async function publish(args = []) {
 
   // 4. Assemble the static-data ball (schema-less data + search index) BEFORE
   //    uploading, since its records can carry local media too.
-  let ball = await assembleDataBall(distDir, schemalessNames)
-  const ballAssets = collectBallAssets(ball)
+  let ball = await collectSchemalessData(distDir, schemalessNames)
+  const ballAssets = collectSchemalessDataAssets(ball)
 
   // 4b. Upload ALL local media (entity refs + ball refs) on one asset lane →
   //     the ref→serveUrl map; rewrite the entity content AND the ball with it.
@@ -567,7 +567,7 @@ export async function publish(args = []) {
           `${ASSET_MAP_FILE}   : ${rec.added.length} added, ${rec.changed.length} changed — commit it`
         )
       }
-      if (ballAssets.length) ball = rewriteBallAssets(ball, map)
+      if (ballAssets.length) ball = rewriteSchemalessDataAssets(ball, map)
       say.dim(
         `Media          : ${Object.keys(map).length}/${mediaRefs.length} ref(s) → serve URL`
       )
