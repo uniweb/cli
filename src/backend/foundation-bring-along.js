@@ -338,12 +338,6 @@ async function bringLocalCodeAlong({
   // Case 3 (§4): the code was edited but the version wasn't bumped. The
   // registered version is immutable, so we never silently ship the old code —
   // the deliberate release gate is a version bump (§3.1).
-  say.warn(
-    `Your local ${label} differs from the registered version ${reg.latest_version}, but the version wasn't bumped.`
-  )
-  say.dim(
-    `A registered version is immutable. Bump the ${kind}'s version to release the change, then re-run \`uniweb ${verb}\`.`
-  )
   // ⭐ THREE OUTCOMES, NOT TWO — `--yes` and "no TTY" are not the same answer.
   //
   // They were one condition until 2026-08-19, and conflating them meant the only
@@ -363,7 +357,8 @@ async function bringLocalCodeAlong({
   //    nobody needs to read, and "your changes are not live" is not that.
   if (skipPrompts) {
     say.warn(
-      `Shipping against the registered ${label} — your local changes will NOT be live.`
+      `Local ${label} differs from the registered ${reg.latest_version} and the version wasn't bumped — ` +
+        `shipping against the registered code. Your local changes will NOT be live.`
     )
     return { released: false, proceed: true, ref: pinnedRef() }
   }
@@ -381,7 +376,13 @@ async function bringLocalCodeAlong({
     return { released: false, proceed: false, refused: true, ref: null }
   }
 
-  // 3. A human is here. Ask.
+  // 3. A human is here. State it, then ask.
+  say.warn(
+    `Your local ${label} differs from the registered version ${reg.latest_version}, but the version wasn't bumped.`
+  )
+  say.dim(
+    `A registered version is immutable — bump the ${kind}'s version to release the change.`
+  )
   const proceed = await confirm(
     `Continue with the already-registered ${reg.latest_version} anyway?`,
     false
