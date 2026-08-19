@@ -1316,6 +1316,11 @@ FOUNDATION on its own use \`uniweb register\` (alias \`uniweb release\`).
 ${colors.bright}Options:${colors.reset}
   --dry-run          Resolve everything; release/sync/POST nothing
   --yes              Skip confirmations (CI); never block on a prompt
+  --no-release       Ship the content against the code already released; release
+                     nothing. For editing content and a component in one sitting
+                     when only the content should go live. Refused if the
+                     foundation has never been released — there is nothing to
+                     bind to, and the app cannot open such a site.
   --no-save          Skip the deploy.yml lastDeploy auto-save
   --no-validate      Skip the content-conformance check (it only warns)
   --org @org         Publish under @org (membership-gated; alias: --as-org). Read
@@ -1753,6 +1758,7 @@ ${colors.bright}Global Options:${colors.reset}
 ${colors.bright}Publish Options:${colors.reset}
   --dry-run          Resolve everything; release/sync/POST nothing
   --yes              Skip confirmations (CI); never block on a prompt
+  --no-release       Ship content against the already-released code; release nothing
   --org @org         Publish under @org (first publish only; then remembered)
   --personal         Own the new site personally, deliberately (first publish only)
   --no-save          Skip the deploy.yml lastDeploy auto-save

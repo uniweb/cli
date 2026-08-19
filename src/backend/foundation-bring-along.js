@@ -241,6 +241,21 @@ async function bringLocalCodeAlong({
     args.includes('--force') ||
     args.includes('--no-verify')
 
+  // `--no-release`: ship the site against the code that is ALREADY released, and do
+  // not release the local changes.
+  //
+  // The intent is ordinary and had no name until 2026-08-19 — a developer edits
+  // content and a component in one sitting, and wants the copy fix live without
+  // shipping a half-finished component. Until now the way to get it was `--yes`,
+  // which means "do not ask me": the behaviour was reachable only as a side effect of
+  // a confirmation-skipper, which is discovery by accident.
+  //
+  // ⛔ It skips the RELEASE, never the REGISTRATION REQUIREMENT. A site referencing a
+  // foundation no deployment can resolve cannot be opened in the app at all, so where
+  // this flag cannot be honoured it REFUSES rather than doing the opposite of what it
+  // says (see the `!reg` branch).
+  const noRelease = args.includes('--no-release')
+
   // The pinned ref to stamp on the pushed site — read at RETURN time (after any
   // release), so it reflects the released version + the scope register derived.
   // null when no scoped ref can be formed (then the site.yml ref is forwarded).
@@ -249,6 +264,15 @@ async function bringLocalCodeAlong({
     const v = readPkgField(local.dir, 'version')
     return s && v ? `${s}@${v}` : null
   }
+
+  // The ref for a run that releases NOTHING — the version the catalog actually holds,
+  // which is not always the local one. ⚠️ `pinnedRef()` reads the LOCAL package.json,
+  // so on a bumped-but-unreleased foundation it names a version nobody can serve. Any
+  // branch that skips a release must bind to this instead.
+  const registeredRef = (reg) =>
+    local.scopedName && reg?.latest_version
+      ? `${local.scopedName}@${reg.latest_version}`
+      : null
 
   // Dry-run reports the intent WITHOUT touching the network — it must not force
   // a login (the digest read is auth-gated). The real run does the compare.
@@ -277,6 +301,18 @@ async function bringLocalCodeAlong({
     : null
 
   if (!reg) {
+    // ⛔ Nothing to bind to. Releasing anyway would be the opposite of what was asked,
+    // and shipping anyway would leave a site the app cannot open — so stop and say so.
+    if (noRelease) {
+      say.err(
+        `--no-release, but ${label} has never been released — there is no registered version to bind to.`
+      )
+      say.dim(
+        `A site referencing an unreleased ${kind} cannot be opened in the app, so this cannot be skipped.`
+      )
+      say.dim(`Drop \`--no-release\` to release it now.`)
+      return { released: false, proceed: false, refused: true, ref: null }
+    }
     say.info(`Releasing the ${kind} ${label} (not yet registered)…`)
     return {
       released: releaseFoundation(local, args, cliBin, say),
@@ -299,6 +335,15 @@ async function bringLocalCodeAlong({
 
   // A different version locally → a new version to release.
   if (local.version && local.version !== reg.latest_version) {
+    if (noRelease) {
+      // ⚠️ Bind to the REGISTERED version, not the local one. `pinnedRef()` would
+      // return the bumped-but-unreleased `local.version` here — a ref no deployment
+      // can serve, which is the very failure this flag must not create.
+      say.info(
+        `Keeping the released ${kind} ${reg.latest_version} — local ${local.version} not released (\`--no-release\`).`
+      )
+      return { released: false, proceed: true, ref: registeredRef(reg) }
+    }
     say.info(
       `Releasing the ${kind} ${label} (new version; registered latest is ${reg.latest_version})…`
     )
@@ -313,6 +358,12 @@ async function bringLocalCodeAlong({
   if (!reg.digest) {
     // Degrade: the backend doesn't return the stored digest yet, so we can't
     // be sure the registered version matches local. Offer to re-deliver.
+    if (noRelease) {
+      say.info(
+        `Keeping the released ${kind} ${reg.latest_version} — nothing released (\`--no-release\`).`
+      )
+      return { released: false, proceed: true, ref: registeredRef(reg) }
+    }
     say.warn(
       `Can't verify the registered ${label} matches your local copy (backend returned no digest).`
     )
@@ -338,6 +389,14 @@ async function bringLocalCodeAlong({
   // Case 3 (§4): the code was edited but the version wasn't bumped. The
   // registered version is immutable, so we never silently ship the old code —
   // the deliberate release gate is a version bump (§3.1).
+  // Asked for explicitly: the case this flag exists to name.
+  if (noRelease) {
+    say.info(
+      `Keeping the released ${kind} ${reg.latest_version} — your local changes are not released (\`--no-release\`).`
+    )
+    return { released: false, proceed: true, ref: registeredRef(reg) }
+  }
+
   // ⭐ THREE OUTCOMES, NOT TWO — `--yes` and "no TTY" are not the same answer.
   //
   // They were one condition until 2026-08-19, and conflating them meant the only
@@ -372,7 +431,12 @@ async function bringLocalCodeAlong({
     )
     say.dim(`Nothing was sent. Either release the change, or ship without it:`)
     say.dim(`  • bump the ${kind}'s version in package.json, then re-run \`uniweb ${verb}\``)
-    say.dim(`  • \`uniweb ${verb} --yes\` — sends content bound to the registered ${reg.latest_version}`)
+    // Teach the flag that NAMES this, not `--yes`. Both work, but `--yes` means "do
+    // not ask me" and only does this as a side effect — pointing a stuck user at it
+    // teaches a blunt instrument for a precise job.
+    say.dim(
+      `  • \`uniweb ${verb} --no-release\` — sends content bound to the released ${reg.latest_version}`
+    )
     return { released: false, proceed: false, refused: true, ref: null }
   }
 

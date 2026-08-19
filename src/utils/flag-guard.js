@@ -63,14 +63,16 @@ const VERBS = {
     // one of the three flags that skip its prompts. Found by
     // flag-guard-coverage.test.js the moment push gained the import, which is
     // exactly the hand-enumeration failure that test exists to catch.
-    '--no-verify', ...VIA_DEPLOY
+    '--no-verify',
+    // ship content against the already-released code, releasing nothing
+    '--no-release', ...VIA_DEPLOY
   ],
   publish: [
     '--as-org', '--org', '--backend', '--dry-run', '--force', '--foundation',
     '--personal', '--registry', '--token',
     // read in utils/conformance.js, backend/site-sync.js, and
     // backend/foundation-bring-along.js — none appear in publish.js
-    '--no-validate', '--yes', '--no-verify', ...VIA_DEPLOY
+    '--no-validate', '--yes', '--no-verify', '--no-release', ...VIA_DEPLOY
   ],
   pull: [
     '--backend', '--content-only', '--dry-run', '--force', '--merge',
@@ -90,7 +92,9 @@ const VERBS = {
   status: [
     '--backend', '--json', '--registry', '--remote', '--token', '--dry-run',
     '--force', '--no-verify', '--no-validate', '--yes', '--org', '--as-org',
-    ...VIA_DEPLOY
+    // inert here, reachable through the bring-along module status imports for
+    // `resolveLocalFoundation` — listed per the over-approximation note above
+    '--no-release', ...VIA_DEPLOY
   ],
   /**
    * `refresh` = `git pull`, then a DELEGATED `pull --merge`.

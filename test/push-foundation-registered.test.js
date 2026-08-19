@@ -219,7 +219,11 @@ test('no TTY is ABSENCE, not consent: it refuses, and says what to run', async (
   const guidance = said.dim.join('\n')
   assert.match(guidance, /Nothing was sent/, 'must say the push did not happen')
   assert.match(guidance, /bump/i, 'must offer the release path')
-  assert.match(guidance, /--yes/, 'must offer the ship-anyway path as a command')
+  // ⭐ It must teach `--no-release`, the flag that NAMES this, not `--yes`. Both work;
+  // `--yes` means "do not ask me" and does this only as a side effect, so pointing a
+  // stuck user at it teaches a blunt instrument for a precise job.
+  assert.match(guidance, /--no-release/, 'must offer the ship-anyway path by its own name')
+  assert.doesNotMatch(guidance, /--yes/, 'must not teach the confirmation-skipper for this')
 })
 
 test('CONTROL: --yes wins over a missing TTY — the flag is checked first', async () => {
@@ -295,4 +299,111 @@ test('every ensureSiteExists caller supplies a foundation ref', () => {
     [],
     'a create that omits the pinned ref names a foundation no deployment can resolve'
   )
+})
+
+// ─── `--no-release`: ship against what is already released ──────────────────
+// The intent is ordinary and had no name until 2026-08-19 — edit content and a
+// component in one sitting, want the copy fix live without shipping the half-done
+// component. The only way to get it was `--yes`, i.e. as a side effect of a
+// confirmation-skipper.
+//
+// ⛔ It skips the RELEASE, never the REGISTRATION REQUIREMENT: a site naming a
+// foundation no deployment can resolve cannot be opened in the app at all.
+
+test('--no-release ships against the released version and releases nothing', async () => {
+  const { res, said, asked } = await runCase(['--no-release'])
+  assert.equal(res.proceed, true)
+  assert.equal(res.released, false)
+  assert.equal(asked, false, 'an explicit instruction must not prompt')
+  assert.equal(res.ref, '@acme/base@1.4.2', 'binds to the released version')
+  assert.ok(
+    said.info.some((m) => /not released/i.test(m)),
+    `expected it to say nothing was released, got ${JSON.stringify(said.info)}`
+  )
+})
+
+test('--no-release REFUSES when nothing has ever been released', async () => {
+  // The flag cannot be honoured here: there is no released version to bind to, and
+  // shipping anyway leaves a site the app cannot open. Doing the opposite of what a
+  // flag asks is worse than refusing, so it refuses.
+  const { ws, site, cliBin } = divergedWorkspace()
+  const said = { warn: [], err: [], dim: [], info: [], ok: [] }
+  try {
+    const res = await bringFoundationAlong({
+      client: { readFoundationLatest: async () => null }, // never registered
+      siteDir: site,
+      siteYml: { foundation: 'src' },
+      args: ['--no-release'],
+      say: {
+        ok: (m) => said.ok.push(m), info: (m) => said.info.push(m),
+        warn: (m) => said.warn.push(m), err: (m) => said.err.push(m),
+        dim: (m) => said.dim.push(m)
+      },
+      confirm: noConfirm,
+      cliBin,
+      verb: 'push'
+    })
+    assert.equal(res.proceed, false)
+    assert.equal(res.refused, true)
+    assert.ok(said.err.some((m) => /never been released/i.test(m)))
+    assert.ok(said.dim.some((m) => /cannot be opened in the app/i.test(m)))
+  } finally {
+    rmSync(ws, { recursive: true, force: true })
+  }
+})
+
+test('CONTROL: without the flag, an unreleased foundation IS released', async () => {
+  // Or the refusal above would prove nothing about the flag — only that this
+  // fixture cannot release.
+  const { ws, site, cliBin } = divergedWorkspace()
+  let releasedVia = null
+  try {
+    const res = await bringFoundationAlong({
+      client: { readFoundationLatest: async () => null },
+      siteDir: site,
+      siteYml: { foundation: 'src' },
+      args: [],
+      say: { ok() {}, info: (m) => (releasedVia = m), warn() {}, err() {}, dim() {} },
+      confirm: noConfirm,
+      cliBin,
+      verb: 'push'
+    })
+    assert.equal(res.proceed, true, 'no flag → it proceeds by releasing')
+    assert.match(releasedVia || '', /Releasing/)
+  } finally {
+    rmSync(ws, { recursive: true, force: true })
+  }
+})
+
+test('--no-release binds to the RELEASED version, never a bumped-but-unreleased one', async () => {
+  // The sharp case. `pinnedRef()` reads the LOCAL package.json, so on a foundation
+  // bumped to 2.0.0 but never released it would return `@acme/base@2.0.0` — a ref no
+  // deployment can serve, which is exactly the failure this flag must not create.
+  const ws = mkdtempSync(join(tmpdir(), 'push-bumped-'))
+  const site = join(ws, 'site')
+  const fnd = join(ws, 'src')
+  mkdirSync(site, { recursive: true })
+  mkdirSync(join(fnd, 'dist'), { recursive: true })
+  writeFileSync(join(site, 'site.yml'), 'name: Acme\nfoundation: src\n')
+  writeFileSync(join(fnd, 'package.json'), JSON.stringify({ name: '@acme/base', version: '2.0.0' }))
+  writeFileSync(join(fnd, 'dist', 'entry.js'), 'export default {}\n')
+  const cliBin = join(ws, 'fake-cli.js')
+  writeFileSync(cliBin, 'process.exit(0)\n')
+  try {
+    const res = await bringFoundationAlong({
+      client: { readFoundationLatest: async () => ({ latest_version: '1.4.2', digest: 'sha256:x' }) },
+      siteDir: site,
+      siteYml: { foundation: 'src' },
+      args: ['--no-release'],
+      say: quietSay,
+      confirm: noConfirm,
+      cliBin,
+      verb: 'push'
+    })
+    assert.equal(res.released, false)
+    assert.equal(res.ref, '@acme/base@1.4.2', 'must be the RELEASED version, not local 2.0.0')
+    assert.notEqual(res.ref, '@acme/base@2.0.0')
+  } finally {
+    rmSync(ws, { recursive: true, force: true })
+  }
 })
