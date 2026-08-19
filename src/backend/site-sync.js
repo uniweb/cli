@@ -24,7 +24,8 @@ import {
   diffSiteUnits,
   describeSiteDiff,
   computeUnitHashes,
-  collectUnitUuids
+  collectUnitUuids,
+  readAssetMap
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -181,11 +182,11 @@ function readSyncCacheFile(siteDir) {
     return {} // missing / unreadable → treat everything as changed
   }
 }
-// The cache holds three maps written on DIFFERENT events — content hashes on a
-// successful push, base versions on push AND pull, unit hashes on push and pull —
-// so every writer must preserve the ones it isn't touching. One merge point rather
-// than three hand-rolled preserves, because getting that wrong silently disarms
-// whichever map got clobbered.
+// The cache holds several maps written on DIFFERENT events — content hashes and the
+// injections that produced them on a successful push, base versions on push AND
+// pull, unit hashes on push and pull — so every writer must preserve the ones it
+// isn't touching. One merge point rather than a hand-rolled preserve per writer,
+// because getting that wrong silently disarms whichever map got clobbered.
 function updateSyncCache(siteDir, patch) {
   const p = syncCachePath(siteDir)
   mkdirSync(dirname(p), { recursive: true })
@@ -203,9 +204,10 @@ const readMap = (siteDir, key) => {
  * Drop every cache map that describes a BACKEND site, when this clone is bound to
  * none. Returns the names dropped (empty when there was nothing to do).
  *
- * `.uniweb/sync-cache.json` holds four maps keyed by *unit path* — item uuids,
- * content hashes, entity base versions, unit bases — and a unit path (`site.yml`,
- * `pages/about/about.md`) is the same string for every site. So the cache does not
+ * `.uniweb/sync-cache.json` holds five maps keyed by *unit path* — item uuids,
+ * content hashes, the injections those hashes were taken over, entity base versions,
+ * unit bases — and a unit path (`site.yml`, `pages/about/about.md`) is the same
+ * string for every site. So the cache does not
  * self-invalidate when `site.yml::$uuid` goes away: it keeps describing the site
  * this folder used to be.
  *
@@ -228,21 +230,29 @@ const readMap = (siteDir, key) => {
  * the clone look bound before the check runs.
  */
 /**
- * Drop the four remote-derived maps unconditionally, stamping the site they now
+ * Drop the five remote-derived maps unconditionally, stamping the site they now
  * describe (or clearing the stamp when there is none). Shared by the pre-flight
  * guard and the `item_uuid_conflict` recovery — the guard decides WHETHER, this
  * decides WHAT, and they must not drift.
  */
 export function clearRemoteSyncState(siteDir, siteUuid = null) {
   const prior = readSyncCacheFile(siteDir)
-  const dropped = ['itemUuids', 'hashes', 'baseVersions', 'unitBases'].filter(
-    (k) => prior[k] && Object.keys(prior[k]).length
-  )
+  const dropped = [
+    'itemUuids',
+    'hashes',
+    'baseVersions',
+    'unitBases',
+    'applied'
+  ].filter((k) => prior[k] && Object.keys(prior[k]).length)
   updateSyncCache(siteDir, {
     itemUuids: {},
     hashes: {},
     baseVersions: {},
     unitBases: {},
+    // Remote-derived like the rest, and doubly so: it holds the OLD site's asset
+    // serve URLs. Surviving the drop, it would rewrite the new site's media to
+    // bytes owned by the site this folder used to be.
+    applied: {},
     siteUuid: siteUuid || null
   })
   return dropped
@@ -258,7 +268,13 @@ export function clearRemoteSyncStateIfUnbound(siteDir) {
   }
 
   const prior = readSyncCacheFile(siteDir)
-  const REMOTE_MAPS = ['itemUuids', 'hashes', 'baseVersions', 'unitBases']
+  const REMOTE_MAPS = [
+    'itemUuids',
+    'hashes',
+    'baseVersions',
+    'unitBases',
+    'applied'
+  ]
   const populated = REMOTE_MAPS.filter(
     (k) => prior[k] && Object.keys(prior[k]).length
   )
@@ -302,8 +318,53 @@ export function clearRemoteSyncStateIfUnbound(siteDir) {
 export function readSyncCache(siteDir) {
   return readMap(siteDir, 'hashes')
 }
-export function writeSyncCache(siteDir, hashes) {
-  updateSyncCache(siteDir, { hashes })
+
+/**
+ * The hash-affecting injections the emit that produced those hashes applied, in the
+ * exact shape `emitSyncPackages` takes back as opts.
+ *
+ * ⛔ **Only the ones nothing else records.** `assetIds` is deliberately NOT banked
+ * here even though the emit applies it: `assets.json` is COMMITTED project state
+ * holding exactly that map (local ref → `{id, ext}`), written by the same push, and
+ * a gitignored second copy would be a second thing to disagree — the reason that
+ * file itself refuses to hold a serve URL. It also has the worse lifetime of the
+ * two: `clearRemoteSyncState` wipes this cache, and the committed map correctly
+ * survives. ⇒ Bank what a reader cannot re-derive; re-derive the rest.
+ *
+ * ⛔ Read this whenever you re-emit to COMPARE against `hashes`. A push hashes the
+ * DELIVERED document — local `/images/x.png` rewritten to the backend serve URL it
+ * just uploaded to, `info.foundation` replaced by the version-pinned ref — and banks
+ * that. An offline re-emit produces the AUTHORED document, which is a different
+ * document, so it matches nothing and every entity reads as changed forever. That is
+ * not hypothetical: it is what `uniweb status` did on any site with one local image
+ * (backend-framework-787e, 2026-08-19) — `push` said "1 entity unchanged" and
+ * `status --json` said `changed: 1`, from the same cache, seconds apart.
+ *
+ * ⭐ What is left is what only a backend round-trip produces — an asset **serve URL**
+ * and a released foundation version — and `status` is offline by design (measured at
+ * zero HTTP requests, a property the cross-client flows rely on). ⚠️ Note the serve
+ * URL is REPLAYED, never composed: we re-use the string the host handed us, which is
+ * a different act from reconstructing one, and the distinction is the same one that
+ * keeps `assets.json` id-only. An asset genuinely new to the site has no recorded
+ * mapping and still reads as changed, which is correct.
+ */
+export function readAppliedInjections(siteDir) {
+  return readMap(siteDir, 'applied')
+}
+
+/**
+ * Bank the content hashes and the injections that produced them. ⛔ ONE call, both
+ * maps: they describe the same document, so writing either alone leaves the cache
+ * self-inconsistent — and the failure is silent, since a hash never says which
+ * document it is of. `applied` is written even when empty, so it can never be a
+ * leftover from an earlier push describing hashes it no longer matches.
+ *
+ * `assetIds` is dropped rather than stored — see readAppliedInjections: it has a
+ * committed source of truth in `assets.json`, and the reader re-derives it there.
+ */
+export function writeSyncCache(siteDir, hashes, applied) {
+  const { assetIds: _inAssetsJson, ...bankable } = applied || {}
+  updateSyncCache(siteDir, { hashes, applied: bankable })
 }
 
 /**
@@ -835,10 +896,24 @@ export function writeUnitBases(siteDir, patch) {
  */
 export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
   const priorHashes = readSyncCache(siteDir)
+  // Re-emit the document the last push HASHED, not the one the author wrote — see
+  // readAppliedInjections. Two sources, on purpose:
+  //   · BANKED — the serve URLs and pinned refs only a round-trip produces. Empty
+  //     for a cache written before this was banked (and for a never-pushed site),
+  //     which is the pre-fix behaviour and self-heals on the next push. It can never
+  //     point at the wrong document: it is written with the hashes it belongs to.
+  //   · RE-DERIVED — asset identity, from the COMMITTED `assets.json` the same push
+  //     wrote. Reading the live file rather than a snapshot is what makes a moved
+  //     map (a teammate's push, a pull) read as changed instead of matching a copy
+  //     of itself.
+  const applied = readAppliedInjections(siteDir)
+  const assetIds = readAssetMap(siteDir)
   const pkg = await emitSyncPackages(siteDir, {
     resolveModel: makeModelResolver({ client: null, offline: true }),
     priorHashes,
-    sendAll
+    sendAll,
+    ...applied,
+    ...(Object.keys(assetIds).length ? { assetIds } : {})
   })
   const changed =
     (pkg.siteContent?.entityCount || 0) + (pkg.collections?.entityCount || 0)
@@ -867,7 +942,7 @@ export async function pushSyncPackages({
   asOrg,
   report
 }) {
-  const { siteContent, collections, siteContentUuid, hashes } = pkg
+  const { siteContent, collections, siteContentUuid, hashes, applied } = pkg
   const { info, note, error } = report
   const dim = report.dim || ((s) => s)
 
@@ -1200,7 +1275,7 @@ export async function pushSyncPackages({
   // then bank the post-write tokens so the NEXT push carries a current base.
   // Entities absent from finalized[] (skipped, or not editable) keep their cached
   // value — absence is not invalidation.
-  writeSyncCache(siteDir, hashes)
+  writeSyncCache(siteDir, hashes, applied)
   mergeHarvested()
   // Re-base the page attribution: our emitted document and the backend's post-write
   // copy of it are the two sides' new agreed state. Only when the site-content lane

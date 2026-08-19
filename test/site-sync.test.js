@@ -26,6 +26,7 @@ import {
   clearRemoteSyncStateIfUnbound,
   readBaseVersions,
   readSyncCache,
+  readAppliedInjections,
   readSiteOrg,
   readItemBaseVersions,
   mergeItemBaseVersions,
@@ -168,6 +169,87 @@ test('a successful push banks the returned versions; a refused lane still banks 
 
   // The hash cache and the version map share one file and must not clobber each other.
   assert.deepEqual(readSyncCache(dir), { '@uniweb/site-content site': 'h1' })
+})
+
+// ─── the banked hash and the document it describes ───────────────────────────
+// A push hashes the DELIVERED document — local `/images/x.svg` rewritten to the
+// serve URL it just uploaded to, `info.foundation` replaced by the pinned ref — and
+// banks those hashes. A hash says nothing about WHICH document it is of, so a cache
+// that records the hashes and not the delivery cannot be re-checked offline: the
+// reader rebuilds the AUTHORED document and matches nothing, forever.
+//
+// That is the defect backend reported in `backend-framework-787e` (2026-08-19):
+// `uniweb push` said "1 entity unchanged since the last push" and `uniweb status
+// --json` said `changed: 1`, from one cache, seconds apart.
+
+test('a push banks the injections its emit applied, beside the hashes — except the one with a committed home', async () => {
+  const dir = tmpSite()
+  const applied = {
+    assetRewrite: { '/images/a.svg': 'https://cdn.example/assets/a/base.svg' },
+    injectInfo: { foundation: '@acme/base@1.2.3' },
+    // ⛔ Must NOT be banked: `assets.json` is committed project state holding this
+    // exact map, and the reader re-derives it there. A gitignored second copy is a
+    // second thing to disagree, and it is wiped by clearRemoteSyncState while the
+    // committed map correctly survives.
+    assetIds: { '/images/a.svg': { id: 'aaa', ext: 'svg' } }
+  }
+  const client = {
+    origin: 'http://x',
+    createSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'S1', changed: true }]))
+  }
+  const { report } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    asOrg: null,
+    report,
+    pkg: siteOnlyPkg({ hashes: { '@uniweb/site-content site': 'h1' }, applied })
+  })
+  assert.equal(res.exitCode, 0)
+  const banked = readAppliedInjections(dir)
+  assert.deepEqual(banked, {
+    assetRewrite: applied.assetRewrite,
+    injectInfo: applied.injectInfo
+  })
+  assert.equal(banked.assetIds, undefined)
+  // Still one file, still not clobbering the map beside it.
+  assert.deepEqual(readSyncCache(dir), { '@uniweb/site-content site': 'h1' })
+})
+
+test('a push that applied NOTHING clears the injections an earlier one banked', async () => {
+  // The two maps are written as a pair or the cache lies. A leftover rewrite outliving
+  // the hashes it belongs to would be replayed against a document it does not
+  // describe — and nothing errors on either side, which is how it would go unseen.
+  const dir = tmpSite()
+  const client = {
+    origin: 'http://x',
+    createSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'S1', changed: true }])),
+    updateSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'S1', changed: true }]))
+  }
+  const { report } = makeReport()
+  await pushSyncPackages({
+    client,
+    siteDir: dir,
+    asOrg: null,
+    report,
+    pkg: siteOnlyPkg({
+      hashes: { k: 'h1' },
+      applied: { assetRewrite: { '/images/a.svg': 'https://cdn.example/a' } }
+    })
+  })
+  assert.notDeepEqual(readAppliedInjections(dir), {}) // control: it was banked
+
+  await pushSyncPackages({
+    client,
+    siteDir: dir,
+    asOrg: null,
+    report,
+    pkg: siteOnlyPkg({ hashes: { k: 'h2' }, applied: {} })
+  })
+  assert.deepEqual(readAppliedInjections(dir), {})
 })
 
 // ─── per-item tokens must be re-armed from the PUSH response ──────────────────
@@ -1150,16 +1232,23 @@ test('an UNBOUND clone drops every map that describes a backend site', () => {
     itemUuids: { 'site.yml': 'OLD-1' },
     hashes: { 'x y': 'h' },
     baseVersions: { OLD: 'v' },
-    unitBases: { 'a.md': 'h' }
+    unitBases: { 'a.md': 'h' },
+    applied: {
+      assetRewrite: { '/images/a.svg': 'https://cdn.example/OLD/base.svg' }
+    }
   })
   const dropped = clearRemoteSyncStateIfUnbound(dir)
   assert.deepEqual(dropped.sort(), [
+    'applied',
     'baseVersions',
     'hashes',
     'itemUuids',
     'unitBases'
   ])
   const c = readCache(dir)
+  // applied: it holds the OLD site's asset serve URLs. Surviving the drop, it would
+  // rewrite the NEW site's media to bytes owned by the site this folder used to be.
+  assert.deepEqual(c.applied, {})
   // itemUuids: the backend refuses outright — "item uuid … is already stored on
   // entity N; cross-entity move is not supported".
   assert.deepEqual(c.itemUuids, {})
