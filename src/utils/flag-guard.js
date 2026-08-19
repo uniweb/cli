@@ -58,7 +58,12 @@ const VERBS = {
     '--foundation', '--output', '-o', '--personal', '--registry', '--token',
     // read in utils/conformance.js and backend/site-sync.js respectively —
     // neither appears in push.js
-    '--no-validate', '--yes', ...VIA_DEPLOY
+    '--no-validate', '--yes',
+    // via backend/foundation-bring-along.js, which push runs since 2026-08-19 —
+    // one of the three flags that skip its prompts. Found by
+    // flag-guard-coverage.test.js the moment push gained the import, which is
+    // exactly the hand-enumeration failure that test exists to catch.
+    '--no-verify', ...VIA_DEPLOY
   ],
   publish: [
     '--as-org', '--org', '--backend', '--dry-run', '--force', '--foundation',

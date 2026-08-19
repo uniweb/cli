@@ -60,8 +60,9 @@
  * the emit, and the `-o`/`--dry-run` preview.
  */
 
-import { writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import yaml from 'js-yaml'
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import { updateAssetMap, ASSET_MAP_FILE } from '@uniweb/build/uwx'
@@ -71,6 +72,8 @@ import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { reportSchemalessCollections } from '../utils/schemaless-report.js'
 import { readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
+import { confirm } from '../utils/interactive.js'
+import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
 import {
   makeModelResolver,
   readSyncCache,
@@ -178,6 +181,61 @@ export async function push(args = [], deps = {}) {
     return { exitCode: 2 }
   }
   const asOrg = org.asOrg
+
+  // Bring the foundation along — BEFORE any asset upload, because an upload is
+  // chargeable and a push that aborts after one has spent the user's money for
+  // nothing.
+  //
+  // ⭐ Why push and not just publish. [Diego, 2026-08-19] — *"A published site can
+  // only reference a registered foundation … In fact, not even a push can, because
+  // we can't preview the site in the frontend in that case."* Push is the
+  // collaboration verb: a teammate opens the site in the visual app right after,
+  // and the app can only render against foundation code the backend can serve. So
+  // storing an unregistered ref does not merely defer a problem to publish — it
+  // hands the teammate a site that cannot render, which is where they meet it.
+  //
+  // `fnd.ref` is the pinned `@scope/name@version`, stamped onto the wire below.
+  // That also makes push and publish agree about the document they emit; until now
+  // push sent the authored string and publish sent the pinned ref, so the two saw
+  // each other's pushes as changes.
+  const siteYml = (() => {
+    try {
+      return yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8')) || {}
+    } catch {
+      return {}
+    }
+  })()
+  const say = {
+    ok: success,
+    info,
+    warn,
+    err: error,
+    dim: note
+  }
+  let fnd = { ref: null }
+  try {
+    fnd = await bringFoundationAlong({
+      client,
+      siteDir,
+      siteYml,
+      args,
+      say,
+      confirm,
+      cliBin: process.argv[1],
+      // An offline emit reports what it WOULD do and touches no network; the ref
+      // still comes back (read from the foundation's package.json) so the preview
+      // matches what a real push sends — EXCEPT for a foundation never yet
+      // registered, which has no scope to form a ref from until the first release
+      // writes one. See the dry-run branch in foundation-bring-along.js.
+      dryRun: !!output || dryRun,
+      verb: 'push'
+    })
+  } catch (err) {
+    error(`Foundation release failed: ${err.message}`)
+    note('Fix the foundation, then re-run `uniweb push`.')
+    return { exitCode: 1 }
+  }
+  if (!fnd.proceed) return { exitCode: 1 }
 
   // Build BOTH directional packages (the producer side). Each carries its own
   // `index` — the per-entity source-file map for back-fill, correlated by submission
@@ -346,6 +404,12 @@ export async function push(args = [], deps = {}) {
       priorHashes,
       sendAll,
       itemUuids,
+      // The PINNED foundation ref from the bring-along above, stamped over the
+      // authored `site.yml` string. Delivery is version-pinned end to end, so an
+      // unpinned local name on the wire names code no host can serve. Absent when
+      // the site already references a registry ref or URL — then site.yml's own
+      // value rides verbatim.
+      ...(fnd.ref ? { injectInfo: { foundation: fnd.ref } } : {}),
       // Both grains are dropped together by --force: one flag, one meaning,
       // no partial-force mode.
       ...(force

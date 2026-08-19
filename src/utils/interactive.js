@@ -19,6 +19,33 @@ export function isNonInteractive(args) {
 }
 
 /**
+ * Minimal yes/no prompt. Returns `defaultYes` on an empty answer.
+ *
+ * Shared rather than per-command: every verb that can stop and ask needs one, and
+ * three hand-rolled copies would eventually disagree about what a bare Enter means
+ * — which is the answer the user gives most often and thinks about least.
+ *
+ * ⛔ Callers must decide NOT to ask before calling: this always reads stdin, and a
+ * prompt in a non-interactive run hangs a pipeline. Gate on `isNonInteractive(args)`
+ * (and on any --yes/--force style skip the verb defines).
+ */
+export async function confirm(question, defaultYes = false) {
+  const { createInterface } = await import('node:readline/promises')
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const a = (
+      await rl.question(`${question} ${defaultYes ? '[Y/n]' : '[y/N]'} `)
+    )
+      .trim()
+      .toLowerCase()
+    if (!a) return defaultYes
+    return a === 'y' || a === 'yes'
+  } finally {
+    rl.close()
+  }
+}
+
+/**
  * Get the CLI invocation prefix to use in suggested commands.
  * Mirrors however the user actually ran the CLI.
  * @returns {string}

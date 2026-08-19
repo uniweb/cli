@@ -46,7 +46,6 @@ import { existsSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
-import { createInterface } from 'node:readline/promises'
 import yaml from 'js-yaml'
 
 import {
@@ -66,7 +65,7 @@ import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { readFlagValue, readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
-import { isNonInteractive } from '../utils/interactive.js'
+import { isNonInteractive, confirm } from '../utils/interactive.js'
 import { headProvenance } from '../utils/git.js'
 import {
   makeModelResolver,
@@ -104,22 +103,6 @@ const say = {
   warn: (m) => console.log(`${c.yellow}⚠${c.reset} ${m}`),
   err: (m) => console.error(`${c.red}✗${c.reset} ${m}`),
   dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`)
-}
-
-// Minimal yes/no prompt. Returns `defaultYes` on an empty answer.
-async function confirm(question, defaultYes = false) {
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  try {
-    const a = (
-      await rl.question(`${question} ${defaultYes ? '[Y/n]' : '[y/N]'} `)
-    )
-      .trim()
-      .toLowerCase()
-    if (!a) return defaultYes
-    return a === 'y' || a === 'yes'
-  } finally {
-    rl.close()
-  }
 }
 
 // Origin-relative serve path → clickable absolute URL (self-serve default).

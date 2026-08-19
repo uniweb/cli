@@ -692,10 +692,47 @@ export async function pull(args = [], deps = {}) {
         }
       }
 
+      // ⛔ Do NOT overwrite a workspace project's `site.yml::foundation`.
+      //
+      // Same principle as restoring authored asset paths above, and the same
+      // failure it prevents: a round trip must not mangle what the author wrote.
+      // `publish` stamps the RELEASED, version-pinned ref into `info.foundation`
+      // (delivery is version-pinned end to end), so projecting the stored value
+      // back turns `foundation: src` into `@org/x@1.2.3` — which the build then
+      // REFUSES to resolve, leaving the project unable to `build`, `dev` or
+      // `export`. It stays publishable throughout, so nothing surfaces it.
+      //
+      // ⚖️ Only suppressed when the AUTHORED value resolves to a local foundation.
+      // A project from `uniweb clone` has no local foundation on disk, and there
+      // the pinned ref is exactly what site.yml should say — so this is a
+      // question about which project shape we are writing into, not a blanket
+      // "never project it".
+      //
+      // Lazily imported: the resolver lives behind `@uniweb/build`'s root, which
+      // pulls the vite chain, and this file deliberately imports only the `uwx`
+      // leaf. Reused rather than reimplemented so "which foundation" cannot drift
+      // from what the build itself resolves.
+      let keepAuthoredFoundation = false
+      try {
+        const { resolveLocalFoundation } = await import(
+          '../backend/foundation-bring-along.js'
+        )
+        const authored = yaml.load(
+          readFileSync(join(siteDir, 'site.yml'), 'utf8')
+        )
+        keepAuthoredFoundation = Boolean(
+          resolveLocalFoundation(siteDir, authored)
+        )
+      } catch {
+        // No site.yml, unreadable, or nothing local — project the stored value,
+        // which is the pre-existing behaviour and right for a fresh clone.
+      }
+
       const report = siteContentDocumentToProject({
         document: siteDoc,
         siteRoot: siteDir,
-        prune
+        prune,
+        keepAuthoredFoundation
       })
       wrote.push(...report.pages, ...report.sections, ...report.layout)
       removed.push(

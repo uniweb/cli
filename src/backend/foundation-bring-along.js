@@ -1,10 +1,10 @@
 /**
- * Bring-the-foundation-along — the freshness loop `uniweb publish` runs before
- * it makes a site live (shipping-model.md §4).
+ * Bring-the-foundation-along — the freshness loop `uniweb publish` AND `uniweb
+ * push` run before handing a site to a backend (shipping-model.md §4).
  *
  * A publish must never ship a site pointing at stale or missing foundation code
  * (the footgun: a site goes live referencing a version the catalog doesn't
- * have). So when the site references a LOCAL foundation, publish fingerprints it
+ * have). So when the site references a LOCAL foundation, the verb fingerprints it
  * and reconciles with the catalog. Three cases (§4):
  *
  *   | version not yet registered    | release it, then publish        |
@@ -20,6 +20,16 @@
  * "Release" here is literally `uniweb register` run in the foundation directory
  * — same build-if-stale → schema submit → code upload → digest the standalone
  * verb does, so there is exactly one foundation-release path.
+ *
+ * ⭐ **`push` runs it too, and for a reason publish's framing does not cover.**
+ * [Diego, 2026-08-19] — *"A published site can only reference a registered
+ * foundation … In fact, not even a push can, because we can't preview the site in
+ * the frontend in that case."* A push is the collaboration verb: a teammate opens
+ * the site in the visual app straight after, and the app can only render it against
+ * foundation code the backend can serve. So an unregistered ref is not merely a
+ * publish-time problem — it is a broken preview, which is where a teammate actually
+ * meets it. `verb` names the caller in the messages so the fix the user is told to
+ * run is the command they ran.
  */
 
 import { readFileSync } from 'node:fs'
@@ -177,7 +187,8 @@ export async function bringFoundationAlong({
   say,
   confirm,
   cliBin,
-  dryRun = false
+  dryRun = false,
+  verb = 'publish'
 }) {
   const local = resolveLocalFoundation(siteDir, siteYml)
   if (!local) {
@@ -194,7 +205,8 @@ export async function bringFoundationAlong({
     say,
     confirm,
     cliBin,
-    dryRun
+    dryRun,
+    verb
   })
 }
 
@@ -216,7 +228,8 @@ async function bringLocalCodeAlong({
   say,
   confirm,
   cliBin,
-  dryRun = false
+  dryRun = false,
+  verb = 'publish'
 }) {
   const Kind = kind === 'extension' ? 'Extension ' : 'Foundation'
   const label =
@@ -243,7 +256,18 @@ async function bringLocalCodeAlong({
     say.dim(
       `${Kind}  : ${label} — local; would release if changed or not yet registered`
     )
-    return { released: false, proceed: true, ref: null }
+    // The ref still comes back where one can be formed: it is read from the
+    // foundation's own package.json, so it costs no network, and an offline preview
+    // that omitted it would emit a document the real run would not — the one thing
+    // `-o` exists to avoid.
+    //
+    // ⚠️ It is null for a foundation that has NEVER been registered and carries no
+    // scope (a freshly scaffolded `name: "src"`), because the scope is what
+    // `register` writes back (`writePkgScope`). So the preview shows the authored
+    // value there, and the first real push — which releases, and so acquires the
+    // scope — sends the pinned ref instead. That gap is unavoidable offline: before
+    // the first release there is no registered name to name.
+    return { released: false, proceed: true, ref: pinnedRef() }
   }
 
   // Ask the catalog what it has. Null → not registered (or the backend can't
@@ -294,7 +318,7 @@ async function bringLocalCodeAlong({
     )
     if (skipPrompts || isNonInteractive(args)) {
       say.dim(
-        'Proceeding without re-releasing — pass nothing to re-deliver, or bump the version to publish a change.'
+        'Proceeding without re-releasing — pass nothing to re-deliver, or bump the version to release a change.'
       )
       return { released: false, proceed: true, ref: pinnedRef() }
     }
@@ -318,19 +342,19 @@ async function bringLocalCodeAlong({
     `Your local ${label} differs from the registered version ${reg.latest_version}, but the version wasn't bumped.`
   )
   say.dim(
-    `A registered version is immutable. Bump the ${kind}'s version to release the change, then re-run \`uniweb publish\`.`
+    `A registered version is immutable. Bump the ${kind}'s version to release the change, then re-run \`uniweb ${verb}\`.`
   )
   if (skipPrompts || isNonInteractive(args)) {
     say.dim(`Proceeding with the already-registered ${reg.latest_version}.`)
     return { released: false, proceed: true, ref: pinnedRef() }
   }
   const proceed = await confirm(
-    `Publish with the already-registered ${reg.latest_version} anyway?`,
+    `Continue with the already-registered ${reg.latest_version} anyway?`,
     false
   )
   if (!proceed) {
     say.info(
-      `Aborted — bump the ${kind} version, then re-run \`uniweb publish\`.`
+      `Aborted — bump the ${kind} version, then re-run \`uniweb ${verb}\`.`
     )
     return { released: false, proceed: false, ref: null }
   }
