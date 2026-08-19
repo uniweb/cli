@@ -1983,8 +1983,19 @@ runtime loads once, after consent when a gate is declared, and never in a frame
 or during prerender. That is a **separate path with no connection to the stream
 below** — the vendor measures its own way, and nothing you `track()` reaches it.
 
-**The runtime reports `page_view` on every route change, including the first.**
-That is the only thing it emits on its own — everything else is yours to report:
+**Some events you get for free.** These are reported for you, with no call from
+your foundation and regardless of how it renders:
+
+| event | when |
+|---|---|
+| `page_view` | every route change, including the first |
+| `outbound_click` | a visitor follows a link off the site — the destination **host** only, never the full URL |
+| `section_view` | a section first becomes half-visible, on pages that ask for it (`trackSections`, below) |
+
+⛔ **So don't write your own link-click or scroll-into-view listener for these.**
+A second one double-counts against a collector that already has them.
+
+Everything else is yours to report:
 
 ```jsx
 // In a section type, the block is already in your props.
@@ -2001,12 +2012,79 @@ const { track } = useTracker()
 <button onClick={() => track('brochure_download', { file: 'specs.pdf' })}>…</button>
 ```
 
-The event name is yours — there is no list of permitted names. Three are already
-in use, so reach for these rather than inventing a synonym: **`page_view`** (the
-runtime), **`scroll_depth`** (kit's `useScrollDepth()`, with a `depth` of 25 /
-50 / 75 / 100) and **`video_milestone`** (kit's `<Media>`, with `milestone` and
-`src`). Put the varying part in a **field**, never in the name — four names for
-one event turn a collector's event dimension into a cardinality problem.
+The event name is yours — there is no list of permitted names. Five are already
+in use, so reach for these rather than inventing a synonym: the three automatic
+ones above — **`page_view`**, **`outbound_click`**, **`section_view`** — plus
+**`video_milestone`**, which kit's `<Media>` reports for any video you render
+through it, and **`read_depth`** from `useReadingDepth()` below. Put the
+varying part in a **field**, never in the name — four names for one event turn a
+collector's event dimension into a cardinality problem.
+
+### Choosing what a site sends
+
+By default a site sends `page_view`, `outbound_click` and `section_view`. Narrow
+or widen that with `emit`:
+
+```yaml
+# site.yml — your own collector
+tracking:
+  endpoint: https://collector.example.com/events
+  emit: standard        # minimal | standard | all — or a list of event names
+
+# site.yml — a host that supplies the collector: say what to send, not where
+tracking:
+  emit: minimal
+```
+
+⭐ **`emit` needs no endpoint of its own.** Where a host provides one, the site
+declares only what it wants sent and the address comes from the host. The two
+are read key by key, so naming `emit` alone overrides nothing else the host
+declared. And declaring your own `endpoint:` always wins, so a site pointing at
+its own collector keeps working on any host, including none.
+
+`minimal` is `page_view` alone. `standard` is the default. `all` is a standing
+yes, so an event added in a later framework release is included without you
+changing anything — which is exactly why `standard` exists as well: it is a
+curated set that a release cannot grow behind your back.
+
+⚠️ **`emit` never limits what YOU send.** `block.track()` and `useTracker()` are
+not filtered by it — the registry is open, and your events are yours. It governs
+only the ones the framework emits on its own. A host may narrow the list further
+if it will not store an event, and it can never widen past what you asked for.
+
+### Reading depth in a long section
+
+`section_view` tells you a reader *arrived* at a section. For a long-form one —
+an article, a report, a case study — the question is how far they got:
+
+```jsx
+import { useRef } from 'react'
+import { useReadingDepth } from '@uniweb/kit'
+
+export default function Article({ content, block }) {
+  const ref = useRef(null)
+  useReadingDepth({ ref, block })
+  return <article ref={ref}>{/* … */}</article>
+}
+```
+
+That reports `read_depth` at 25 / 50 / 75 / 100% **of that element**, once each.
+Measuring the element rather than the page is the point: two long sections on
+one page report independently, and adding a section above them changes neither.
+
+⭐ **This one is a hook rather than automatic because only you know a section is
+long-form reading.** The framework cannot tell an essay from a row of logos, so
+it does not guess — and a foundation that never calls this pays nothing for it.
+
+**`trackSections`** is one page's answer on `section_view`, and it overrides the
+site in **both** directions — instrument one page of a site that sends `minimal`,
+or exempt a noisy page of a site that sends `standard`. Say nothing and the
+site's `emit` decides.
+
+```yaml
+# page.yml
+trackSections: true     # or false to exempt this page
+```
 
 ⛔ **Never guard a `track()` call.** A site with **no** tracking destination is
 the default and the majority: the call returns having done nothing, opened no
