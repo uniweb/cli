@@ -2081,6 +2081,12 @@ site in **both** directions — instrument one page of a site that sends `minima
 or exempt a noisy page of a site that sends `standard`. Say nothing and the
 site's `emit` decides.
 
+⭐ **This is the only event with a per-page control, and the asymmetry is the
+point.** A page view is one event whatever the page and an outbound click is
+bounded by what a visitor does, but a section view is **one per section** — so a
+long page costs many times what a short one does. The control sits at the
+granularity the cost actually varies at.
+
 ```yaml
 # page.yml
 trackSections: true     # or false to exempt this page
