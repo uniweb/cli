@@ -241,6 +241,33 @@ export async function push(args = [], deps = {}) {
   // `index` — the per-entity source-file map for back-fill, correlated by submission
   // position. Non-local Models are fetched from the registry on demand. `priorHashes`
   // (the .uniweb push-cache) drives "send only changed" across both lanes; --all bypasses.
+  // ⛔ DROP STALE REMOTE STATE FIRST — this must precede the hash read below, and it
+  // did not until 2026-08-19.
+  //
+  // The guard itself is right and its docblock names this exact outcome: on a clone
+  // whose `$uuid` was cleared to re-publish as a new site — WHICH IS OUR OWN
+  // DOCUMENTED RECOVERY — send-only-changed would "skip every entity whose content
+  // had not changed since the OLD site's last push, so the NEW site would come up
+  // missing exactly the content that did not change." It was defeated twice over:
+  //
+  //   · it ran AFTER `readSyncCache`, so the emit still diffed against the old
+  //     site's hashes even though the file on disk had just been emptied;
+  //   · it sat inside `if (mediaRefs.length)`, so a site with no local images never
+  //     reached it at all.
+  //
+  // Measured 2026-08-19 against a live uniwebd: clearing `$uuid` and pushing created
+  // the new site and pulled back **0 pages, 0 sections**. Successful exit, empty site,
+  // nothing to indicate it — the failure the guard was written to prevent.
+  //
+  // Still skipped for an offline emit: `-o` / `--dry-run` must not mutate project state.
+  if (!output && !dryRun) {
+    const dropped = clearRemoteSyncStateIfUnbound(siteDir)
+    if (dropped.length) {
+      note(
+        `Cleared stale sync state from a previous site (${dropped.join(', ')}).`
+      )
+    }
+  }
   const priorHashes = readSyncCache(siteDir)
   // Per-item identity, without which the backend reads every record as new and
   // recreates every page and section row.
@@ -324,13 +351,23 @@ export async function push(args = [], deps = {}) {
       // The site has to exist before its bytes do — an upload with no owning
       // entity is charged and cannot be freed, because freeing means deleting the
       // owner. A no-op once `$uuid` is set, so only a never-synced site pays.
-      const dropped = clearRemoteSyncStateIfUnbound(siteDir)
-      if (dropped.length) {
-        note(
-          `Cleared stale sync state from a previous site (${dropped.join(', ')}).`
-        )
-      }
-      const site = await ensureSiteExists({ client, siteDir, asOrg, note })
+      // ⛔ The PINNED ref, not site.yml's. The create is a THIRD writer of this
+      // value — the emit below stamps it via `injectInfo`, publish passes it here,
+      // and push did neither until 2026-08-19: it sent the authored alias (`src`),
+      // which names a foundation no deployment can resolve. A site created that way
+      // keeps the bad ref, and the backend's create guard now refuses it outright
+      // (channel backend-framework-787e, their measurement).
+      //
+      // ⭐ Same shape as the send-only-changed defect fixed this morning, and missed
+      // for the same reason: the rule was applied at the writers under discussion and
+      // a third caller of the same value was never enumerated.
+      const site = await ensureSiteExists({
+        client,
+        siteDir,
+        asOrg,
+        note,
+        ...(fnd.ref ? { foundation: fnd.ref } : {})
+      })
       if (!site.uuid) {
         error(`Could not create the site on the backend: ${site.reason}`)
         note('Nothing was uploaded and nothing was charged.')
