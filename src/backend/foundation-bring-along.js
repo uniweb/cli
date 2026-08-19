@@ -344,17 +344,51 @@ async function bringLocalCodeAlong({
   say.dim(
     `A registered version is immutable. Bump the ${kind}'s version to release the change, then re-run \`uniweb ${verb}\`.`
   )
-  if (skipPrompts || isNonInteractive(args)) {
-    say.dim(`Proceeding with the already-registered ${reg.latest_version}.`)
+  // ⭐ THREE OUTCOMES, NOT TWO — `--yes` and "no TTY" are not the same answer.
+  //
+  // They were one condition until 2026-08-19, and conflating them meant the only
+  // party that never got asked was the one that most needed asking. A `--yes` is a
+  // decision someone made in advance; an absent TTY is the ABSENCE of a decision,
+  // and absence is not consent.
+  //
+  // ⚖️ Which flips the safe default by caller, for a reason particular to this
+  // situation: proceeding here ships a site bound to code that is NOT the code in
+  // the working tree. A human is at a terminal, reads the warning, and decides. An
+  // agent re-runs commands for free and reports "pushed" on exit 0 — so for it the
+  // cheap outcome is one more cycle and the expensive one is a silent wrong success
+  // it will not look at again. Refusing costs an agent a retry; proceeding costs it
+  // a false completion report and a live site nobody notices is stale.
+
+  // 1. Explicit consent — proceed, but at WARN. `dim` is what we print for things
+  //    nobody needs to read, and "your changes are not live" is not that.
+  if (skipPrompts) {
+    say.warn(
+      `Shipping against the registered ${label} — your local changes will NOT be live.`
+    )
     return { released: false, proceed: true, ref: pinnedRef() }
   }
+
+  // 2. Nobody to ask. Refuse, and name both real options as runnable commands so
+  //    the caller's next step needs no interpretation. `refused` marks this as a
+  //    hard stop rather than a human's "no", which callers map to different exits.
+  if (isNonInteractive(args)) {
+    say.err(
+      `Local ${kind} ${label} differs from the registered ${reg.latest_version}, and the version wasn't bumped.`
+    )
+    say.dim(`Nothing was sent. Either release the change, or ship without it:`)
+    say.dim(`  • bump the ${kind}'s version in package.json, then re-run \`uniweb ${verb}\``)
+    say.dim(`  • \`uniweb ${verb} --yes\` — sends content bound to the registered ${reg.latest_version}`)
+    return { released: false, proceed: false, refused: true, ref: null }
+  }
+
+  // 3. A human is here. Ask.
   const proceed = await confirm(
     `Continue with the already-registered ${reg.latest_version} anyway?`,
     false
   )
   if (!proceed) {
     say.info(
-      `Aborted — bump the ${kind} version, then re-run \`uniweb ${verb}\`.`
+      `Aborted — nothing was sent. Bump the ${kind} version, then re-run \`uniweb ${verb}\`.`
     )
     return { released: false, proceed: false, ref: null }
   }

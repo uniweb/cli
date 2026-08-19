@@ -428,7 +428,11 @@ export async function publish(args = []) {
     return { exitCode: 1 }
   }
   if (!ext.proceed) return { exitCode: 1 }
-  if (!fnd.proceed) return { exitCode: 0 }
+  // A human who answered "no" chose this, so it is not a failure — exit 0. A
+  // REFUSAL is different: nobody was asked, nothing shipped, and the caller is
+  // usually an agent that reads the exit code and reports done. Exit 0 there would
+  // be the silent-wrong-success this whole branch exists to prevent.
+  if (!fnd.proceed) return { exitCode: fnd.refused ? 1 : 0 }
 
   // 2. Build the site data (link mode): dist/site-content.json (+ per-locale),
   //    dist/data/*, dist/_search/*, dist/assets/*. Spawn the SAME CLI binary so
