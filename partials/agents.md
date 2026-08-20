@@ -305,11 +305,11 @@ type: Hero
 theme: dark
 ---
 
-### V1.0.0 IS OUT         ← pretitle (small label above the title)
+#> New in v1              ← pretitle (the label line above the title)
 
 # Build the system.       ← title (the big headline)
 
-## Not every page.        ← subtitle
+## Not every page.        ← subtitle (one step smaller, directly below)
 
 Description paragraph.
 
@@ -318,7 +318,7 @@ Description paragraph.
 ![Image](./image.jpg)
 ```
 
-Heading levels set *structure* (pretitle, title, subtitle), not font size — the component controls visual sizing.
+Heading levels set *structure* (pretitle, title, subtitle), not font size — the component controls visual sizing. The `#>` label line marks a pretitle explicitly (any number of leading `#`s spells the same label); a smaller ordinary heading directly above the title also becomes the pretitle.
 
 **A section with no `type:` renders through the foundation's default section type — a component named `Section`, unless the foundation's `main.js` sets `defaultSection` to something else.** This is what lets a folder of plain markdown with no frontmatter at all become pages: mounted documentation, an imported wiki, anything written before it met this framework. If such content renders blank, the foundation has no `Section` — that, not the markdown, is what to fix.
 
@@ -333,8 +333,10 @@ The semantic parser produces a flat, guaranteed structure. No null checks needed
 ```js
 content = {
   title: '',        // Main heading (string or string[] for multi-line)
-  pretitle: '',     // Heading before main title (auto-detected)
-  subtitle: '',     // Heading after title (string or string[] for multi-line)
+  pretitle: '',     // `#>` label line(s), or smaller headings stacked above
+                    //   the title (string or string[])
+  subtitle: '',     // Line(s) one step below the title — each further
+                    //   one-step descent is another line (string or string[])
   paragraphs: [],   // Text blocks
   links: [],        // { href, label, role } — standalone links (not inside lists)
   images: [],       // { src, alt, role, href }
@@ -347,7 +349,8 @@ content = {
   data: {},         // Tagged blocks — ```yaml:tag / ```json:tag give the parsed value,
                     //   ```md:tag gives { items, sequence } (see Concept blocks)
   tables: [],       // Only when present — [{ rows: [{ cells: [{ children, header, align }] }] }]
-  headings: [],     // Headings after subtitle, in document order
+  headings: [],     // Only from nested content (quote/list bodies) — a
+                    //   section's headline never spills here
   items: [],        // Each has the same flat structure — from headings after body content
   sequence: [],     // All elements in document order
 }
@@ -358,7 +361,7 @@ content = {
 ### Markdown → content, side by side
 
 ```markdown
-### Eyebrow                    │  content.pretitle = "Eyebrow"
+#> Eyebrow                     │  content.pretitle = "Eyebrow"
 # Our Features                 │  content.title = "Our Features"
 ## Build better products       │  content.subtitle = "Build better products"
                                │
@@ -375,7 +378,7 @@ Lightning quick.               │  content.items[0].paragraphs[0] = "Lightning 
 Enterprise-grade security.     │  content.items[1].paragraphs[0] = "Enterprise-grade…"
 ```
 
-The three rules that produce this: headings *before* the main title become `pretitle`; a heading *after* the title at lower importance becomes `subtitle`; headings appearing *after body content* start the `items` array.
+The staircase rule produces this — each heading relates to the one before it: the same size adds another line to the same part; **one step smaller** joins the headline as the next part down (the subtitle, then further subtitle lines); **two steps smaller** starts an item; and once body content has begun, *any* heading starts an item. `#>` label lines, and smaller headings stacked above the title, become `pretitle`.
 
 ### Items have the full content shape
 
@@ -391,21 +394,20 @@ seats: 1
 ```                       ← items[0].data.details = { trial: "14 days", seats: 1 }
 ````
 
-### Subtitle vs items — the level rule
+### Subtitle vs items — the step rule
 
-A heading immediately after the title becomes `subtitle` **only when it is exactly one level deeper** (H1→H2, H2→H3). Skipping levels (H1→H3) breaks the group and the deeper heading starts items instead. To get items with no subtitle, close the title group with a `---` divider or a paragraph:
+A heading directly after the title becomes `subtitle` **only when it is exactly one step smaller** (H1→H2, H2→H3) — and each *further* one-step line continues the subtitle (a three-line header is `subtitle: [line2, line3]`). **Two steps smaller starts items** — the idiom for entries with no lead paragraph:
 
 ```markdown
 # Our Stats                       │  content.title = "Our Stats"
----                               │  ← divider closes the title group
-## 15,000+                        │  content.items[0].title = "15,000+"
+### 15,000+                       │  content.items[0].title = "15,000+"
 Students from 90 countries        │  content.items[0].paragraphs[0]
                                   │
-## 200+                           │  content.items[1].title = "200+"
+### 200+                          │  content.items[1].title = "200+"
 Programs offered                  │  content.items[1].paragraphs[0]
 ```
 
-Without the `---`, `## 15,000+` would become `content.subtitle`.
+With `## 15,000+` instead, the first stat would join the headline as `content.subtitle`. A `---` divider, or any body content after the headline, also closes it — after body, headings of *any* size start items.
 
 ### Multi-line headings
 
@@ -421,7 +423,7 @@ Consecutive headings at the same level merge into a title array — one heading 
                                 │  ]
 ```
 
-**Rule:** same-level continuation only applies *before* going deeper. Once a subtitle level is reached, same-level headings start new items instead of merging. Use `---` to force separate items where headings would otherwise merge.
+**Rule:** a repeated size always continues the part it repeats — title lines, or subtitle lines once the headline has stepped down. Use `---` to force separate items where adjacent headings would otherwise continue the headline.
 
 ### Sequential content
 
@@ -2419,7 +2421,7 @@ Most Uniweb failures are **silent** — the build succeeds and the page is wrong
 
 **A section doesn't appear at all** — the file is `@`-prefixed (a child section, only rendered via `nest:`), or `_`-prefixed (treated as a draft and skipped), or it's a section type nested below the root of `sections/` without a `meta.js`, which means it was never discovered.
 
-**Content lands in the wrong field** — a heading became a `subtitle` when you wanted an item, or the reverse. That's the level rule (exactly one level deeper = subtitle; skipping a level, or any body content first, starts items). Run `uniweb inspect <path>` rather than re-deriving it.
+**Content lands in the wrong field** — a heading became a `subtitle` when you wanted an item, or the reverse. That's the step rule (one step smaller and adjacent = the next headline line; two steps, a divider, or any body content first = items). Run `uniweb inspect <path>` rather than re-deriving it.
 
 **A var in frontmatter does nothing** — component vars only apply when declared in that section type's `meta.js` `vars:`. Unknown names are ignored silently.
 
