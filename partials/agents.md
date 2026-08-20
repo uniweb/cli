@@ -2047,6 +2047,11 @@ yes, so an event added in a later framework release is included without you
 changing anything — which is exactly why `standard` exists as well: it is a
 curated set that a release cannot grow behind your back.
 
+A site can also set **`flushIntervalMs`** to widen the batching window (default
+5000, milliseconds — `30` is thirty *milliseconds*). A host that supplies your
+collector may set it for you and your own value wins; the trade is fewer
+requests against more tail loss at the end of a visit.
+
 ⚠️ **`emit` never limits what YOU send.** `block.track()` and `useTracker()` are
 not filtered by it — the registry is open, and your events are yours. It governs
 only the ones the framework emits on its own. A host may narrow the list further
