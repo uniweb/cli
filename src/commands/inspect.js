@@ -56,7 +56,10 @@ async function loadDependencies() {
     ])
     return {
       markdownToProseMirror: contentReader.markdownToProseMirror,
-      parseContent: semanticParser.parseContent
+      parseContent: semanticParser.parseContent,
+      // Optional: present from @uniweb/semantic-parser >= the staircase
+      // release; older installs simply show no findings.
+      lintContent: semanticParser.lintContent
     }
   } catch {
     console.error(
@@ -302,6 +305,13 @@ function processFile(fileContent, fileName, deps, options) {
   result.content = content
 
   if (insets.length > 0) result.insets = insets
+
+  // Grouping near-miss findings — shapes that usually mean the author got a
+  // different structure than they wanted (an entry absorbed into the
+  // headline, a hand-written eyebrow demoting the title). Observation only:
+  // the parse above is untouched.
+  const findings = deps.lintContent?.(doc) || []
+  if (findings.length > 0) result.findings = findings
 
   return result
 }
