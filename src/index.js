@@ -843,15 +843,6 @@ async function main() {
     return
   }
 
-  // Handle runtime command — `runtime register` uploads a built @uniweb/runtime to
-  // the backend's runtime registry; @std-gated. Where it is served from is the
-  // backend's to report, not ours to know.
-  if (command === 'runtime') {
-    const { runtime } = await import('./commands/runtime.js')
-    const result = await runtime(args.slice(1))
-    process.exit(result?.exitCode ?? 0)
-  }
-
   // Handle invite command
   if (command === 'invite') {
     await invite(args.slice(1))
@@ -1721,7 +1712,6 @@ ${colors.bright}Commands:${colors.reset}
   export             Export a self-contained site for third-party hosting
   register           Register a foundation + its data schemas with the backend registry
   release            Release a foundation version (synonym of register)
-  runtime register   Escape hatch: push a LOCAL/unreleased runtime build (@std only)
   push               Push a site's content to the backend
   pull               Pull a site's content from the backend
   refresh            Catch up with the git remote AND the backend (never pushes)

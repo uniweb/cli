@@ -40,7 +40,6 @@ import {
 } from '../utils/registry-orgs.js'
 import { uploadFoundationCode } from '../utils/code-upload.js'
 import { uploadSiteAssets } from '../utils/asset-upload.js'
-import { uploadRuntime } from '../utils/runtime-upload.js'
 
 /**
  * Resolve the backend origin via the resolution ladder (highest precedence
@@ -85,8 +84,7 @@ export function resolveBackendOrigin(flag, { siteBackend } = {}) {
 /**
  * The fallback capability doc when `GET /dev/config` is absent or unreachable
  * (an older backend, or no backend at all). Keeps the client non-breaking: the
- * bases mirror a self-serve dev backend, and `runtime.installed` is empty so
- * runtime resolution requires an explicit pin.
+ * bases mirror a self-serve dev backend.
  */
 export const DISCOVERY_DEFAULTS = {
   // ⛔ No serve-root default, and no `assetBase`. Serve locations are read from
@@ -99,10 +97,18 @@ export const DISCOVERY_DEFAULTS = {
   // production host, hardcoded, applied to EVERY deployment the CLI can be
   // pointed at. It was only ever read to compose an asset URL, which the plan
   // already returns as `serve_url`; both the reader and the composer are gone.
+  //
+  // No `runtime` entry, and there must not be one. A backend does not hold
+  // runtimes: a version is acquired from a CDN — the official mirror, the
+  // distribution channel, or a local server — so there is no installed set for
+  // it to report and nothing here to default. `runtime.installed` lived here
+  // until 2026-08-22, alongside a `uniweb runtime register` verb that pushed
+  // builds to a backend; both are gone. The runtime a site gets follows from
+  // its foundation's floor (`info.runtime`, stated at register), not from
+  // anything the CLI asks a backend about.
   auth: { loginPath: '/dev/auth/login', required: true },
   delivery: { deploy: true, publish: true, broker: 'self-serve' },
-  assets: { supported: false },
-  runtime: { installed: [] }
+  assets: { supported: false }
 }
 
 export class BackendClient {
@@ -224,8 +230,7 @@ export class BackendClient {
    * lifetime; a missing route or any transport/parse error falls back to
    * DISCOVERY_DEFAULTS (non-breaking — an older backend still works). Lets the
    * CLI hardcode nothing about a backend but its origin and discover the rest:
-   * `auth`, `delivery` (deploy/publish? broker), `assets` (lane built yet?),
-   * `runtime.installed` (the default-runtime source replacing the old /runtime/latest).
+   * `auth`, `delivery` (deploy/publish? broker), `assets` (lane built yet?).
    * @returns {Promise<object>}
    */
   async discover() {
@@ -548,19 +553,6 @@ export class BackendClient {
     })
   }
 
-  /**
-   * Upload a built `@uniweb/runtime` to the runtime registry (plan → PUT-per-file),
-   * served by the backend at a location it reports. @std-gated on the backend. Thin
-   * pass-through to utils/runtime-upload.js with this client's origin + token.
-   * @param {object} opts - { version, distDir, files?, onProgress? }
-   */
-  async uploadRuntime(opts) {
-    return uploadRuntime({
-      apiBase: this.origin,
-      token: await this.token(),
-      ...opts
-    })
-  }
 }
 
 /** `@scope/name` → /dev/registry/data-schemas/{scope}/{name}; a bare name → …/{name}. */

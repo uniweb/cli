@@ -220,75 +220,40 @@ export async function publish(args = []) {
     return { exitCode: 1 }
   }
 
-  // Runtime: an explicit site.yml::runtime pin wins; else the highest installed;
-  // else fail closed (better than serving a site with no runtime). A dry-run is
-  // a pure preview, so it only WARNS — it stays useful with no backend reachable.
-  const installed = Array.isArray(config?.runtime?.installed)
-    ? config.runtime.installed
-    : []
-  if (
-    siteYml.runtime &&
-    installed.length &&
-    !installed.includes(siteYml.runtime)
-  ) {
-    // ⚠️ Leads with REMOVING the pin, deliberately. A site ships no JS, so it
-    // has no basis for holding a runtime version, and `runtime:` is an
-    // operator-level override that is no longer part of the documented
-    // authoring surface. This message used to say "pin one of these in
-    // site.yml" — which pushed a reader deeper into a mechanism they should
-    // not be using, and named a key the docs no longer describe. Keep the
-    // installed list (it is the actionable part when a pin IS intended), but
-    // do not restore pin-first phrasing.
-    say.err(
-      `Runtime ${siteYml.runtime} (pinned in site.yml) is not installed on the backend.`
-    )
-    say.dim(
-      `Remove the \`runtime:\` pin and the backend chooses — a site ships no code, so it has no reason to hold one.`
-    )
-    say.dim(
-      `Installed: ${installed.join(', ') || '(none)'} — or pin one of those, or have ${siteYml.runtime} installed.`
-    )
-    if (!dryRun) return { exitCode: 1 }
-  }
-  // An explicit pin is sent; NOTHING is synthesized when site.yml is silent.
+  // Runtime: an explicit `site.yml::runtime` pin is passed through, and NOTHING
+  // is synthesized when site.yml is silent.
   //
-  // This used to fall back to the highest version the backend reported
-  // installed. That is the producer guessing at a fact the control plane owns —
-  // and once propagation moves sites, actively wrong: a walk advances a site to
-  // X, and the next publish would restate a *different* version the producer
-  // computed locally, silently undoing it.
+  // ⛔ There is no local validation of the pin, and there cannot be. A backend
+  // does not hold runtimes — a version is acquired from a CDN (the official
+  // mirror, the distribution channel, or a local server) — so it publishes no
+  // installed set for a producer to check a pin against. This block used to
+  // read `config.runtime.installed` from `/dev/config` and fail closed on a
+  // miss; that field and the `uniweb runtime register` verb that populated it
+  // were removed on 2026-08-22, the concept along with them.
   //
-  // The deeper reason, upstream of ownership: a link-mode site is CODELESS. It
-  // ships no JS, so it has nothing that binds to a runtime version and cannot
-  // break when the runtime moves. Asking it to name one is not a hard question,
-  // it is a malformed one. The party that binds is the FOUNDATION, whose build
-  // externalizes react / react-dom / jsx-runtime / @uniweb/core — which is why
-  // the compatibility floor rides on the foundation (`info.runtime`, set by
-  // `register`) and not here. See
-  // the site/foundation/runtime model, § "who gets to say
-  // whether a site accepts a newer runtime".
+  // The chain is SITE → FOUNDATION → RUNTIME [Diego, 2026-08-22]. A link-mode
+  // site is CODELESS: it ships no JS, so it has nothing that binds to a runtime
+  // version and cannot break when the runtime moves. Asking it to name one is
+  // not a hard question, it is a malformed one. The party that binds is the
+  // FOUNDATION, whose build externalizes react / react-dom / jsx-runtime /
+  // @uniweb/core — which is why the compatibility floor rides on the foundation
+  // (`dist/runtime-pin.json` → `info.runtime`, stated on every register) and
+  // never here. Whoever resolves a whole site selects a runtime satisfying
+  // max() of the floors its foundation and extensions declare.
   //
-  // Silence is therefore not a request to change the runtime, and the backend
-  // resolves it: an explicit pin → the site's CURRENT resolved runtime →
-  // UNIWEBD_DEFAULT_RUNTIME → (self-serve) highest installed.
+  // ⚠️ What the backend does with `?runtime=` is THE BACKEND'S, and is not
+  // settled here — [Diego, 2026-08-22]: "I'm not sure what `?runtime=` is doing
+  // in /dev/site/publish. It may even be ignored." It is still sent so an
+  // operator-level pin is not silently dropped, but do not write anything that
+  // depends on it being honoured without asking that lane first. `runtime:` is
+  // not part of the documented authoring surface.
   //
-  // ⚠️ THAT LAST SENTENCE IS A CLAIM ABOUT ANOTHER LANE, and it was FALSE when it
-  // was first written here — `/dev/site/publish` required `?runtime=` with no
-  // fallback at all, so an unpinned publish 400'd and no scaffolded project could
-  // publish. It read as true because the `/api` lane did have the fallback, and
-  // the backend's own doc justified the omission with "the CLI always pins from
-  // site.yml" — which was equally false, since no template ships a `runtime:` key.
-  // Two complementary assumptions, each load-bearing for the other lane, neither
-  // ever checked. Found by driving the CLI against a live backend, which is the
-  // only vantage point from which either assumption is visible.
-  // ✅ Now the shipped contract, agreed with the backend and verified end to end
-  // with the workaround removed (2026-08-16). Re-verify against the backend
-  // rather than trusting this comment if it starts mattering again.
-  //
-  // ⚠️ Do NOT reintroduce a local fallback. Sending our own guess when the site
-  // did not ask is what makes an unpinned republish regress. (The pinned path is
-  // unaffected — an explicit pin is still validated fail-closed above, and the
-  // backend refuses a backward move unless forced.)
+  // ⚠️ Do NOT reintroduce a local fallback. This once fell back to the highest
+  // version the backend reported installed — the producer guessing at a fact
+  // the control plane owns, and actively wrong once propagation moves sites: a
+  // walk advances a site to X, and the next publish would restate a different
+  // version computed locally, silently undoing it. Silence is not a request to
+  // change the runtime.
   const runtimeVersion = siteYml.runtime || null
 
   // deploy.yml target (the Uniweb hosting memory). No --target on publish — it
