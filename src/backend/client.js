@@ -433,8 +433,8 @@ export class BackendClient {
 
   /**
    * POST /dev/deploy — dumb, file-built delivery. Body is the deploy payload (the
-   * runtime-init JSON `build-site-data.js` produces — foundation, runtimeVersion,
-   * theme, languages, locales, optional dataFiles/searchFiles) plus an optional
+   * runtime-init JSON `build-site-data.js` produces — foundation, theme,
+   * languages, locales, optional dataFiles/searchFiles) plus an optional
    * `site_uuid`. First deploy of a never-synced site omits it → the backend mints
    * a uuid and returns it for write-back to deploy.yml; later deploys resend it so
    * the site's published URL stays stable. Returns the raw Response so the caller
@@ -456,27 +456,23 @@ export class BackendClient {
    * POST /dev/site/publish/{uuid} — CMS-publish a synced site (make its CURRENT
    * backend state live; it does NOT push local files). `{uuid}` is the site-content
    * uuid (`site.yml::$uuid`); a never-synced site 404s (sync first, or use deploy).
-   * The CLI knows the runtime from its build; the body carries it snake-cased per
-   * the route contract. Returns the raw Response ({ deploy_uuid, url,
-   * published_folder_uuid, status } on 200).
+   * Languages, when present, go in the body; absent → no body. Returns the raw
+   * Response ({ deploy_uuid, url, published_folder_uuid, status } on 200).
+   *
+   * ⛔ Sends NOTHING about a runtime. A `?runtime=<version>` param rode here until
+   * 2026-08-22, carrying a `site.yml::runtime` pin — a vestigial prop [Diego]: no
+   * template ever set it, no public doc described it, and the backend may already
+   * have been ignoring it. A site is codeless and has no basis for naming a
+   * runtime; the binding party is the FOUNDATION, whose floor travels as
+   * `info.runtime` at register. Do not reintroduce the param.
    * @param {string} uuid - the site-content uuid
-   * @param {object} opts
-   * @param {string} opts.runtimeVersion
+   * @param {object} [opts]
    * @param {string[]} [opts.languages]
    * @returns {Promise<Response>}
    */
-  async publishSite(uuid, { runtimeVersion, languages } = {}) {
-    // Runtime rides as a query param (?runtime=<version>) per the shipped /dev
-    // route (D3, "request-carried"), NOT the body. Languages, when present, go in
-    // the body; absent → no body (the route only requires the runtime).
-    // Omitted when the site pins no runtime — silence is NOT a request to change
-    // it, so the backend keeps the site on its current resolved version (its
-    // order: body → current → UNIWEBD_DEFAULT_RUNTIME → highest installed → 400).
-    // Sending a locally-computed guess instead would undo a propagation walk on
-    // the next publish.
+  async publishSite(uuid, { languages } = {}) {
     return this.request(`/dev/site/publish/${encodeURIComponent(uuid)}`, {
       method: 'POST',
-      ...(runtimeVersion ? { query: { runtime: runtimeVersion } } : {}),
       ...(languages ? { body: JSON.stringify({ languages }) } : {})
     })
   }

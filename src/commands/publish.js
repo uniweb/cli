@@ -220,41 +220,33 @@ export async function publish(args = []) {
     return { exitCode: 1 }
   }
 
-  // Runtime: an explicit `site.yml::runtime` pin is passed through, and NOTHING
-  // is synthesized when site.yml is silent.
+  // ⛔ NOTHING about a runtime is sent from here. `site.yml::runtime` was a
+  // vestigial prop and is no longer read [Diego, 2026-08-22]; `?runtime=` is no
+  // longer a query param on publish. Do not reintroduce either.
   //
-  // ⛔ There is no local validation of the pin, and there cannot be. A backend
-  // does not hold runtimes — a version is acquired from a CDN (the official
-  // mirror, the distribution channel, or a local server) — so it publishes no
-  // installed set for a producer to check a pin against. This block used to
-  // read `config.runtime.installed` from `/dev/config` and fail closed on a
-  // miss; that field and the `uniweb runtime register` verb that populated it
-  // were removed on 2026-08-22, the concept along with them.
+  // The chain is SITE → FOUNDATION → RUNTIME. A link-mode site is CODELESS: it
+  // ships no JS, so it has nothing that binds to a runtime version and cannot
+  // break when the runtime moves. Asking it to name one is not a hard question,
+  // it is a malformed one. The party that binds is the FOUNDATION, whose build
+  // externalizes react / react-dom / jsx-runtime / @uniweb/core — which is why
+  // the compatibility floor rides on the foundation (`dist/runtime-pin.json` →
+  // `info.runtime`, stated on every register) and never here. Whoever resolves a
+  // whole site picks a runtime satisfying max() of the floors its foundation and
+  // extensions declare, and fetches it from a CDN — the official mirror, the
+  // distribution channel, or a local server. A backend never holds one.
   //
-  // The chain is SITE → FOUNDATION → RUNTIME [Diego, 2026-08-22]. A link-mode
-  // site is CODELESS: it ships no JS, so it has nothing that binds to a runtime
-  // version and cannot break when the runtime moves. Asking it to name one is
-  // not a hard question, it is a malformed one. The party that binds is the
-  // FOUNDATION, whose build externalizes react / react-dom / jsx-runtime /
-  // @uniweb/core — which is why the compatibility floor rides on the foundation
-  // (`dist/runtime-pin.json` → `info.runtime`, stated on every register) and
-  // never here. Whoever resolves a whole site selects a runtime satisfying
-  // max() of the floors its foundation and extensions declare.
-  //
-  // ⚠️ What the backend does with `?runtime=` is THE BACKEND'S, and is not
-  // settled here — [Diego, 2026-08-22]: "I'm not sure what `?runtime=` is doing
-  // in /dev/site/publish. It may even be ignored." It is still sent so an
-  // operator-level pin is not silently dropped, but do not write anything that
-  // depends on it being honoured without asking that lane first. `runtime:` is
-  // not part of the documented authoring surface.
-  //
-  // ⚠️ Do NOT reintroduce a local fallback. This once fell back to the highest
-  // version the backend reported installed — the producer guessing at a fact
-  // the control plane owns, and actively wrong once propagation moves sites: a
-  // walk advances a site to X, and the next publish would restate a different
-  // version computed locally, silently undoing it. Silence is not a request to
-  // change the runtime.
-  const runtimeVersion = siteYml.runtime || null
+  // History, because each removal undid a different bad idea:
+  //   • a local fallback to the highest version the backend reported installed —
+  //     the producer guessing at a fact the control plane owns, and actively
+  //     wrong once propagation moves sites (a walk advances a site to X; the
+  //     next publish would restate a locally-computed value, silently undoing
+  //     it). Removed in `6d32d94`.
+  //   • fail-closed validation of a pin against `/dev/config`'s
+  //     `runtime.installed`, and the `uniweb runtime register` verb that
+  //     populated that field. Removed 2026-08-22 with the concept.
+  //   • the pin itself, and the `?runtime=` it rode on. Removed 2026-08-22 —
+  //     nothing scaffolded ever set it, it is in no public doc, and the backend
+  //     may already have been ignoring it.
 
   // deploy.yml target (the Uniweb hosting memory). No --target on publish — it
   // always targets Uniweb hosting; resolveTarget gives us the target name +
@@ -316,9 +308,6 @@ export async function publish(args = []) {
   if (dryRun) {
     say.info('Dry run — would bring the foundation along, sync, and go live:')
     say.dim(`Backend     : ${client.origin}`)
-    say.dim(
-      `Runtime     : ${runtimeVersion || '(not pinned — the backend keeps this site on its current runtime)'}`
-    )
     say.dim(
       `site_uuid   : ${siteYml.$uuid || '(none — the site is created before anything uploads)'}`
     )
@@ -683,7 +672,6 @@ export async function publish(args = []) {
   let pubRes
   try {
     pubRes = await client.publishSite(siteUuid, {
-      runtimeVersion,
       ...(languages ? { languages } : {})
     })
   } catch (err) {
@@ -746,11 +734,11 @@ export async function publish(args = []) {
         ...(recordedRef ? { ref: recordedRef } : {}),
         released: fnd.released
       },
-      // Only when the site pinned one. An unpinned site's runtime is resolved by
-      // the backend and can move under propagation, so recording a value here
-      // would be a snapshot that silently goes stale — and `deploy.yml` is a
-      // record of what this publish did, not a cache of backend state.
-      ...(runtimeVersion ? { runtime: runtimeVersion } : {}),
+      // No `runtime` here. `deploy.yml` records what this publish DID, and a
+      // publish sends nothing about a runtime — the site's runtime follows from
+      // its foundation's floor and is resolved by whoever serves it. Recording a
+      // value would be a snapshot that silently goes stale, of a decision this
+      // command does not make.
       locales: Array.isArray(result.locales) ? result.locales : languages
     }
   })
