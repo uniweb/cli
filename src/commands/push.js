@@ -168,11 +168,24 @@ export async function push(args = [], deps = {}) {
   // by a different backend cannot be pushed here: the uuids, the asset ids and the sync
   // cache are all foreign at once. Runs after the client so it sees the RESOLVED origin
   // (flag > env > deploy.yml > session), not the one we guessed.
-  const scope = assertSiteBackendScope(siteDir, client.origin)
-  if (!scope.ok) {
-    error(scope.message)
-    scope.hint.forEach(note)
-    return { exitCode: 1 }
+  //
+  // ⚠️ NOT for `-o`, which is a LOCAL EMIT and reaches no backend at all. Its output is
+  // built from files on disk; the resolved origin is not an input to it, so a mismatch
+  // cannot make the artifact wrong — and refusing would break an operation this command
+  // deliberately keeps offline (the `!output && !dryRun` guards below are the same rule).
+  // The refusal even says "Sending them elsewhere is refused" over a run that sends
+  // nothing.
+  //
+  // `--dry-run` IS checked, and the asymmetry is the point: a dry run previews a real
+  // push, so when that push would be refused, saying so is the honest preview. Printing
+  // "would update content at <origin>" instead would preview something that cannot happen.
+  if (!output) {
+    const scope = assertSiteBackendScope(siteDir, client.origin)
+    if (!scope.ok) {
+      error(scope.message)
+      scope.hint.forEach(note)
+      return { exitCode: 1 }
+    }
   }
 
   // WHO will own this site, if this push is the one that creates it. Resolved

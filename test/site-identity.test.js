@@ -174,3 +174,44 @@ test('a project WITH a recorded backend does not get the correction hint', () =>
   const hint = assertSiteBackendScope(d, 'https://elsewhere.example').hint.join('\n')
   assert.doesNotMatch(hint, /add\s+\$backend/)
 })
+
+test('a MISSING @uniweb/build records nothing, silently — it is an optional peer', async () => {
+  const d = tmpSite()
+  const seen = []
+  const realErr = console.error
+  console.error = (m) => seen.push(m)
+  try {
+    const r = await recordSiteBackend(d, LOCAL, {
+      loadUwx: () => Promise.reject(new Error('ERR_MODULE_NOT_FOUND'))
+    })
+    assert.equal(r, null)
+  } finally {
+    console.error = realErr
+  }
+  assert.deepEqual(seen, [], 'a supported configuration must not warn')
+  assert.equal(readSiteIdentity(d).backend, null)
+})
+
+test('a build package too old to carry the writer SAYS SO, instead of failing silently', async () => {
+  // `@uniweb/build` gained `writeSiteBackend` in 0.25.3. Against an older copy the import
+  // SUCCEEDS and the export is undefined — a TypeError a blanket catch would swallow,
+  // leaving the scope unrecorded on a project the guard will later stop and tell to add
+  // `$backend` by hand. Reachable on a CLI-only upgrade with a lockfile pinned to an
+  // older patch, which is exactly the skew a release creates.
+  const d = tmpSite()
+  const seen = []
+  const realErr = console.error
+  console.error = (m) => seen.push(m)
+  try {
+    const r = await recordSiteBackend(d, LOCAL, {
+      loadUwx: () => Promise.resolve({ /* an older build: no writeSiteBackend */ })
+    })
+    assert.equal(r, null)
+  } finally {
+    console.error = realErr
+  }
+  assert.equal(seen.length, 1, `expected exactly one warning, got: ${JSON.stringify(seen)}`)
+  assert.match(seen[0], /too old/)
+  assert.match(seen[0], /\$backend: http:\/\/localhost:8080/) // prints the manual fix
+  assert.equal(readSiteIdentity(d).backend, null)
+})

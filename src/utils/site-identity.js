@@ -111,16 +111,45 @@ export function resolveSiteScope(siteDir) {
  *
  * @param {string} siteDir
  * @param {string} origin - the backend the site was just created on
+ * @param {object} [deps]
+ * @param {() => Promise<object>} [deps.loadUwx] - injected module loader. Exists so the
+ *        two failure branches below can be TESTED: both are about which `@uniweb/build`
+ *        happens to be on disk, which a test cannot otherwise vary — and the too-old
+ *        branch is precisely the one that used to fail silently.
  * @returns {Promise<string|null>} the origin recorded, or null when nothing was written
  */
-export async function recordSiteBackend(siteDir, origin) {
+export async function recordSiteBackend(siteDir, origin, deps = {}) {
   const norm = normalizeOrigin(origin)
   if (!norm || norm === DEFAULT_BACKEND_ORIGIN) return null
   if (readSiteIdentity(siteDir).backend === norm) return null
+  const loadUwx = deps.loadUwx || (() => import('@uniweb/build/uwx'))
+  let mod
   try {
     // Lazy by necessity, not by taste — see the header.
-    const { writeSiteBackend } = await import('@uniweb/build/uwx')
-    writeSiteBackend(siteDir, norm)
+    mod = await loadUwx()
+  } catch {
+    // No `@uniweb/build` at all. It is an OPTIONAL peer, so this is a supported
+    // configuration and not worth a word — the scope simply goes unrecorded, which is
+    // the behaviour everyone had before this key existed.
+    return null
+  }
+
+  // ⚠️ PRESENT BUT TOO OLD is a different problem, and it must not look like the one
+  // above. `@uniweb/build` gained `writeSiteBackend` in 0.25.3; against an older copy the
+  // import SUCCEEDS and the export is `undefined`, so calling it throws a TypeError that
+  // a blanket catch would swallow — leaving the scope silently unrecorded on a project
+  // that will later be stopped by the guard and told to add `$backend` by hand. Since the
+  // CLI declares build as a peer at a caret range, a lockfile pinned to an older patch
+  // reaches exactly this state on a CLI-only upgrade. Say so once.
+  if (typeof mod.writeSiteBackend !== 'function') {
+    console.error(
+      `\x1b[33m⚠\x1b[0m This project's @uniweb/build is too old to record which backend it syncs with — upgrade it (\`npx uniweb@latest update\`), or add \`$backend: ${norm}\` to site.yml.`
+    )
+    return null
+  }
+
+  try {
+    mod.writeSiteBackend(siteDir, norm)
     return norm
   } catch {
     // Same rule as `recordSiteOrg`: the uuid is the load-bearing write. Losing the scope
