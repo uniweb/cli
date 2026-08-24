@@ -65,6 +65,7 @@ import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { readFlagValue, readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
+import { assertSiteBackendScope } from '../utils/site-identity.js'
 import { isNonInteractive, confirm } from '../utils/interactive.js'
 import { headProvenance } from '../utils/git.js'
 import {
@@ -190,6 +191,16 @@ export async function publish(args = []) {
     args,
     command: 'Publishing'
   })
+
+  // ⛔ SCOPE CHECK — before the foundation bring-along, the sync, or the go-live. A
+  // publish is the longest of these flows and the most expensive to unwind, so it is
+  // the one that most benefits from failing at the first step rather than at the fifth.
+  const scope = assertSiteBackendScope(siteDir, client.origin)
+  if (!scope.ok) {
+    say.err(scope.message)
+    scope.hint.forEach(say.dim)
+    return { exitCode: 1 }
+  }
 
   // WHO will own this site, if this publish is the one that creates it. Resolved
   // up front: `ensureSiteExists` below is the create, and it must not be reached

@@ -775,10 +775,18 @@ test('headProvenance reports the commit and whether the tree was clean', async (
   assert.equal(headProvenance(dir).dirty, true)
 })
 
-test('a 404 on a uuid-bound lane explains that the site is gone and the fix is local', async () => {
-  // There is no CLI verb that deletes a site — it is deleted in the Uniweb app, and
-  // that is what severs the sync. A bare 404 leaves the user with no idea that the
-  // remedy is one line in site.yml.
+test('a 404 on a uuid-bound lane names BOTH causes, recoverable one first', async () => {
+  // A bare 404 leaves the user with no idea that the remedy is local. But there are two
+  // local causes, and they call for opposite actions:
+  //
+  //   · the site was deleted in the Uniweb app  → clear `$uuid`, re-publish as new
+  //   · you are pointed at the wrong backend    → log in elsewhere; NOTHING is lost
+  //
+  // Naming only the first (which this branch did until 2026-08-24) hands destructive
+  // advice to anyone hitting the second: the site is fine, and clearing its uuid orphans
+  // a live binding. `assertSiteBackendScope` now catches most wrong-backend cases before
+  // the request goes out, but not a project that predates `$backend` and records no
+  // scope — so ORDER matters here, and the cheap, reversible cause must come first.
   const dir = tmpSite()
   const client = {
     origin: 'http://x',
@@ -802,8 +810,17 @@ test('a 404 on a uuid-bound lane explains that the site is gone and the fix is l
   assert.equal(res.exitCode, 1)
   const notes = calls.note.join('\n')
   assert.match(notes, /no site with uuid GONE-1/)
-  assert.match(notes, /deleted in the Uniweb app/)
+  assert.match(notes, /http:\/\/x/) // names WHICH backend answered 404
+  assert.match(notes, /wrong backend/)
+  assert.match(notes, /deleted in the app/)
   assert.match(notes, /clearing `\$uuid` from site\.yml/)
+  // The ordering is the point, not decoration: the destructive remedy must not be the
+  // first thing a reader acts on. Assert it structurally so a later reword cannot
+  // silently put them back the other way round.
+  assert.ok(
+    notes.indexOf('wrong backend') < notes.indexOf('deleted in the app'),
+    `the recoverable cause must be offered first:\n${notes}`
+  )
 })
 
 test('a 404 on the CREATE lane does NOT claim a site was deleted', async () => {

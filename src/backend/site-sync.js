@@ -15,6 +15,7 @@ import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import yaml from 'js-yaml'
 import { hasUncommittedContent } from '../utils/git.js'
+import { recordSiteBackend } from '../utils/site-identity.js'
 import {
   backfillEntityUuids,
   writeSiteEntityUuid,
@@ -796,6 +797,16 @@ async function recordAndDescribeOwner({ client, siteDir, payload, asOrg, note })
     echoed === undefined ? asOrg : typeof echoed === 'string' ? echoed : null
   const org = recordSiteOrg(siteDir, owner)
 
+  // The SYNC SCOPE, recorded here for the same reason `$org` is: this function is the
+  // one place BOTH create paths meet (`ensureSiteExists` for a site with local media,
+  // the content-lane create for one without). Recording it at either call site instead
+  // would make `$backend` present or absent depending on whether the site happens to
+  // have images — the exact drift the comment at the second call site warns about.
+  //
+  // A no-op on the default backend, so the common case writes nothing.
+  const scope = await recordSiteBackend(siteDir, client.origin)
+  if (scope) note?.(`Bound this project to ${scope} (recorded $backend in site.yml).`)
+
   note?.(
     org
       ? `Created the site on the backend under ${org} (recorded $uuid + $org in site.yml).`
@@ -1088,11 +1099,29 @@ export async function pushSyncPackages({
         // verb that could have removed it — a site is deleted in the Uniweb app,
         // and that is what severs the sync — so the raw 404 leaves the user with
         // no idea that the fix is local and one line.
+        //
+        // ⛔ ORDER THESE TWO CAUSES, and put the RECOVERABLE one first. Until 2026-08-24
+        // this branch named only the deletion and went straight to "clear `$uuid`" — and
+        // that advice, followed for the OTHER cause, destroys a live binding: the site is
+        // fine, you are simply pointed at the wrong backend, and clearing the uuid orphans
+        // it. `assertSiteBackendScope` now catches most of that before any request goes
+        // out, so reaching here usually does mean a deletion; "usually" is not "always"
+        // (a project predating `$backend` records no scope to check), which is why the
+        // cheap cause is still named before the destructive fix.
         note(
-          `The backend has no site with uuid ${boundUuid} — the usual cause is that it was deleted in the Uniweb app.`
+          `The backend at ${client.origin} has no site with uuid ${boundUuid}.`
         )
         note(
-          'Deleting this folder removes only your local copy; clearing `$uuid` from site.yml re-publishes it as a new site.'
+          'Two causes. Check the cheap one first: is this the backend the site lives on?'
+        )
+        note(
+          `  wrong backend  →  uniweb login --backend <the right one>   (nothing is lost)`
+        )
+        note(
+          `  deleted in the app  →  clearing \`$uuid\` from site.yml re-publishes it as a NEW site`
+        )
+        note(
+          'Deleting this folder removes only your local copy, either way.'
         )
       } else if (res.status === 409) {
         // The site's @uniweb/folder is genesis-owned: its structure is fixed on first

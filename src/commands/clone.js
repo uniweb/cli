@@ -59,6 +59,7 @@ import { extractFoundationRef } from '../utils/site-content-refs.js'
 import { readUwxDocuments } from '../utils/uwx-read.js'
 import { recordWritten } from '../utils/pull-written.js'
 import { checkFlags } from '../utils/flag-guard.js'
+import { recordSiteBackend } from '../utils/site-identity.js'
 
 const colors = {
   reset: '\x1b[0m',
@@ -335,9 +336,17 @@ export async function clone(args = [], deps = {}) {
   // same uuid (the backend resolves the site's @uniweb/folder from it), so there is no
   // separate folder uuid to seed.
   seedYamlUuid(join(siteDir, 'site.yml'), siteUuid)
+  // …and the SYNC SCOPE that makes it meaningful. `clone` is the sharpest case for it:
+  // the uuid comes from whoever we read, and until now nothing on disk recorded that —
+  // so a teammate who cloned this project and ran `uniweb pull` while logged in
+  // elsewhere sent this backend's uuid to a different one. A no-op on the default
+  // backend. (The two CREATE paths record it via `recordAndDescribeOwner`; clone seeds
+  // an existing site and never reaches them, which is why it is written here too.)
+  const scope = await recordSiteBackend(siteDir, client.origin)
   success(
     `Scaffolded the site harness${foundationRef ? ` (foundation: ${foundationRef})` : ''}.`
   )
+  if (scope) note(`Bound to ${scope} (recorded $backend in site.yml).`)
 
   // 5. Install, then delegate the projection to the project-local `uniweb pull`.
   const pm = detectWorkspacePm(projectDir) || 'pnpm'

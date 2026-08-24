@@ -72,6 +72,7 @@ import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { reportSchemalessCollections } from '../utils/schemaless-report.js'
 import { readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
+import { assertSiteBackendScope } from '../utils/site-identity.js'
 import { confirm } from '../utils/interactive.js'
 import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
 import {
@@ -162,6 +163,17 @@ export async function push(args = [], deps = {}) {
     args,
     command: 'Syncing'
   })
+
+  // ⛔ SCOPE CHECK — before anything is sent. A project whose stored identity was minted
+  // by a different backend cannot be pushed here: the uuids, the asset ids and the sync
+  // cache are all foreign at once. Runs after the client so it sees the RESOLVED origin
+  // (flag > env > deploy.yml > session), not the one we guessed.
+  const scope = assertSiteBackendScope(siteDir, client.origin)
+  if (!scope.ok) {
+    error(scope.message)
+    scope.hint.forEach(note)
+    return { exitCode: 1 }
+  }
 
   // WHO will own this site, if this push is the one that creates it. Resolved
   // before any lane runs, because both create paths below consume it and neither
