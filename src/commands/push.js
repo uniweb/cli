@@ -72,7 +72,10 @@ import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { reportSchemalessCollections } from '../utils/schemaless-report.js'
 import { readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
-import { assertSiteBackendScope } from '../utils/site-identity.js'
+import {
+  assertSiteBackendScope,
+  readSiteIdentity
+} from '../utils/site-identity.js'
 import { confirm } from '../utils/interactive.js'
 import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
 import {
@@ -150,6 +153,11 @@ export async function push(args = [], deps = {}) {
   // Advisory only — warns and pushes. A malformed data block otherwise rides
   // the sync wire unchecked; see utils/conformance.js.
   await warnIfContentDoesNotConform(siteDir, { args })
+  // The project's own statement of where its identity lives. Feeds the origin ladder
+  // ABOVE the session (see resolveBackendOrigin), so a teammate who cloned this project
+  // targets the backend it is bound to instead of whatever they last logged into.
+  // ⛔ The RAW value, never `resolveSiteScope` — null must mean "defer to the next tier".
+  const siteScope = readSiteIdentity(siteDir).backend
   const siteBackend = await resolveSiteBackend(siteDir)
   // One front door. The bearer is resolved lazily on first need (a non-local Model
   // read during the build, or the submit). Offline emit (--dry-run / -o) is fully
@@ -158,6 +166,7 @@ export async function push(args = [], deps = {}) {
   // references a Model the local foundation doesn't define.
   const client = new BackendClient({
     originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'),
+    siteScope,
     siteBackend,
     token: tokenFlag,
     args,

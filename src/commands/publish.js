@@ -65,7 +65,10 @@ import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { readFlagValue, readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
-import { assertSiteBackendScope } from '../utils/site-identity.js'
+import {
+  assertSiteBackendScope,
+  readSiteIdentity
+} from '../utils/site-identity.js'
 import { isNonInteractive, confirm } from '../utils/interactive.js'
 import { headProvenance } from '../utils/git.js'
 import {
@@ -181,11 +184,17 @@ export async function publish(args = []) {
   const siteYml = readSiteYml(join(siteDir, 'site.yml'))
   // The site's deploy.yml-bound backend (where it was published) feeds the
   // resolution ladder below an explicit --backend / UNIWEB_REGISTER_URL.
+  // The project's own statement of where its identity lives. Feeds the origin ladder
+  // ABOVE the session (see resolveBackendOrigin), so a teammate who cloned this project
+  // targets the backend it is bound to instead of whatever they last logged into.
+  // ⛔ The RAW value, never `resolveSiteScope` — null must mean "defer to the next tier".
+  const siteScope = readSiteIdentity(siteDir).backend
   const siteBackend = await resolveSiteBackend(siteDir)
 
   const client = new BackendClient({
     originFlag:
       readFlagValue(args, '--backend') || readFlagValue(args, '--registry'),
+    siteScope,
     siteBackend,
     token: readFlagValue(args, '--token') || undefined,
     args,

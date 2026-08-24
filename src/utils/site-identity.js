@@ -96,6 +96,14 @@ export function readSiteIdentity(siteDir) {
  * Use this rather than `readSiteIdentity().backend` wherever an absent value means the
  * default — which is everywhere except a "was it recorded?" question.
  *
+ * ⛔ **NOT for the origin ladder.** `resolveBackendOrigin`'s `siteScope` tier must receive
+ * the RAW `readSiteIdentity().backend`, which is null when nothing was recorded. Handing
+ * it this defaulted value would make the tier fire for EVERY project, and since it sits
+ * above the session it would shadow `uniweb login --backend <local>` on any project
+ * without `$backend` — i.e. break local development for the 98% that never record one.
+ * "Absent means the default" is the right rule for a comparison and the wrong one for a
+ * precedence chain, where absent has to mean "defer to the next tier".
+ *
  * @param {string} siteDir
  * @returns {string} a bare origin
  */

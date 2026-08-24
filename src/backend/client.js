@@ -48,16 +48,35 @@ import { uploadSiteAssets } from '../utils/asset-upload.js'
  *
  *   1. `flag` — the raw --backend / --registry value (this command)
  *   2. UNIWEB_REGISTER_URL env — session-wide override (CI / local dev)
- *   3. `siteBackend` — the site's bound backend from deploy.yml (site verbs)
- *   4–6. the logged-in session origin > ~/.uniweb/config.json > the default
+ *   3. `siteScope` — the project's `site.yml::$backend` (site verbs)
+ *   4. `siteBackend` — the site's bound backend from deploy.yml (site verbs)
+ *   5–7. the logged-in session origin > ~/.uniweb/config.json > the default
  *        (uniweb.app) — all via getRegistryApiBaseUrl()
+ *
+ * ⭐ **`siteScope` outranks the SESSION, and that is the whole reason it is a tier.** The
+ * session is a machine-wide default; `$backend` is this project's statement about where
+ * its stored identity is meaningful. Without the tier, a teammate who clones a project
+ * bound to a non-default backend resolves to whatever they last logged into, and is then
+ * REFUSED by `assertSiteBackendScope` — nagged instead of routed, on a question the
+ * project already answered.
+ *
+ * ⭐ **And it outranks `siteBackend`, which looks like the same fact and is not.**
+ * `deploy.yml`'s target `backend` records *where this ships*; `$backend` records *whose
+ * namespace the uuid is in*. They agree in the normal case. When they disagree the
+ * identity wins, because resolving to the other one only reaches the guard and stops.
+ *
+ * ⚠️ The explicit overrides stay ON TOP deliberately. `--backend` and the env var are how
+ * you deliberately aim elsewhere — at a staging mirror, say — and a project file must not
+ * be able to veto a flag the user just typed. A wrong aim is then caught by the guard
+ * rather than silently redirected.
  *
  * @param {string} [flag] - the raw value of --backend / --registry, if supplied
  * @param {object} [opts]
+ * @param {string} [opts.siteScope] - the project's `site.yml::$backend`
  * @param {string} [opts.siteBackend] - a site's deploy.yml-bound backend origin
  * @returns {string} a bare origin with no trailing slash
  */
-export function resolveBackendOrigin(flag, { siteBackend } = {}) {
+export function resolveBackendOrigin(flag, { siteScope, siteBackend } = {}) {
   const norm = (v) => {
     try {
       return new URL(v).origin
@@ -72,6 +91,10 @@ export function resolveBackendOrigin(flag, { siteBackend } = {}) {
   const env = process.env.UNIWEB_REGISTER_URL
   if (env) {
     const o = norm(env)
+    if (o) return o
+  }
+  if (siteScope) {
+    const o = norm(siteScope)
     if (o) return o
   }
   if (siteBackend) {
@@ -116,6 +139,7 @@ export class BackendClient {
    * @param {object} [opts]
    * @param {string} [opts.origin] - explicit origin (wins over originFlag/env)
    * @param {string} [opts.originFlag] - raw --backend/--registry value to resolve
+   * @param {string} [opts.siteScope] - the project's `site.yml::$backend` (site verbs)
    * @param {string} [opts.siteBackend] - a site's deploy.yml-bound backend (site verbs)
    * @param {string} [opts.token] - explicit bearer (wins over env + stored session)
    * @param {() => Promise<string>} [opts.getToken] - injected bearer resolver (tests, or
@@ -127,6 +151,7 @@ export class BackendClient {
   constructor({
     origin,
     originFlag,
+    siteScope,
     siteBackend,
     token,
     getToken,
@@ -135,7 +160,7 @@ export class BackendClient {
     fetchImpl
   } = {}) {
     this.origin = (
-      origin || resolveBackendOrigin(originFlag, { siteBackend })
+      origin || resolveBackendOrigin(originFlag, { siteScope, siteBackend })
     ).replace(/\/+$/, '')
     this._token = token || process.env.UNIWEB_TOKEN || null
     this._getToken = getToken || null

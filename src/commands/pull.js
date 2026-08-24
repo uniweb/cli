@@ -102,7 +102,10 @@ import {
   resolveSiteBackend
 } from './deploy.js'
 import { checkFlags } from '../utils/flag-guard.js'
-import { assertSiteBackendScope } from '../utils/site-identity.js'
+import {
+  assertSiteBackendScope,
+  readSiteIdentity
+} from '../utils/site-identity.js'
 
 const FOLDER_MODEL = '@uniweb/folder'
 
@@ -550,9 +553,15 @@ export async function pull(args = [], deps = {}) {
     const blocked = await checkWorkingTree(siteDir, args)
     if (blocked) return blocked
   }
+  // The project's own statement of where its identity lives. Feeds the origin ladder
+  // ABOVE the session (see resolveBackendOrigin), so a teammate who cloned this project
+  // targets the backend it is bound to instead of whatever they last logged into.
+  // ⛔ The RAW value, never `resolveSiteScope` — null must mean "defer to the next tier".
+  const siteScope = readSiteIdentity(siteDir).backend
   const siteBackend = await resolveSiteBackend(siteDir)
   const client = new BackendClient({
     originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'),
+    siteScope,
     siteBackend,
     token: tokenFlag,
     getToken: deps.getToken,

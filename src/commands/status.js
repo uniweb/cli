@@ -31,6 +31,7 @@ import { readFlagValue } from '../utils/args.js'
 import { resolveLocalFoundation } from '../backend/foundation-bring-along.js'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { checkFlags } from '../utils/flag-guard.js'
+import { readSiteIdentity } from '../utils/site-identity.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -109,6 +110,7 @@ export async function status(args = []) {
       const client = new BackendClient({
         originFlag:
           readFlagValue(args, '--backend') || readFlagValue(args, '--registry'),
+        siteScope: readSiteIdentity(siteDir).backend,
         siteBackend: await resolveSiteBackend(siteDir),
         token: readFlagValue(args, '--token') || undefined,
         args,
