@@ -2128,8 +2128,12 @@ happened into a journey.
 > or tabs, and **nothing is written to the visitor's device** — no cookie, no
 > local storage. The `visit` key lives in memory and dies with the document, so
 > it identifies one page load rather than a person. A `page_view` carries the
-> path, and — captured once when the page first loads, then replayed on each view
-> — the external referrer and any `utm_*` the visitor arrived with. Nothing else.
+> path; two booleans about the page load — `first_of_load` on the view that
+> opened the document, and `continues` when the load came from one of your own
+> pages; and — captured once when the page first loads, then replayed on each
+> view — the external referrer and any `utm_*` the visitor arrived with. Nothing
+> else. **Both booleans describe the load, never the visitor**, and neither links
+> two loads to each other.
 
 ### ⛔ Use kit. Never touch the `uniweb` global
 
