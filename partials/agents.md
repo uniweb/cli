@@ -287,7 +287,7 @@ Paths are relative to the site package you identified in step 1 — `site/` in t
 
 **Change a nav item.** First check how nav is produced. If `<site>/layout/header.md` lists the links (a markdown list, or a `yaml:nav` block), edit it there. If it doesn't, the Header is generating nav from the page hierarchy — change page titles and order in `site.yml` / `page.yml` instead.
 
-**Update the project's Uniweb dependencies — and this file.** `uniweb update`. One command aligns every `@uniweb/*` dependency *and* refreshes this AGENTS.md together, to the version matrix of the CLI that runs it. Preview with `--dry-run`. **Don't reach for `npm update` / `pnpm update`** — see *Staying current* in Part 5 for why that breaks things quietly.
+**Update the project's Uniweb dependencies — and this file.** `npx uniweb@latest update`. One command aligns every `@uniweb/*` dependency *and* refreshes this AGENTS.md together. Preview with `--dry-run`. ⛔ **The `@latest` is doing the work** — a bare `uniweb update` runs the CLI this project already pins, which aligns you to the matrix you already have and correctly reports nothing to do. **Don't reach for `npm update` / `pnpm update`** — see *Staying current* in Part 5 for why that breaks things quietly.
 
 **Change one section's columns / spacing / variant.** Check that type's `meta.js` `params:` first. If the knob exists, set it in that section's frontmatter and you're done, in the content lane. If it doesn't, it's a foundation change — see the warning in step 3.
 
@@ -2216,7 +2216,8 @@ uniweb i18n init-freeform / update-hash / move / rename / prune --freeform
 uniweb -v                         # Installed CLI version — and whether a newer one exists
 uniweb doctor                     # Diagnose project configuration (--fix to auto-repair)
 uniweb validate                   # Check file-based data against declared schemas (--strict for CI)
-uniweb update                     # Align @uniweb/* deps + AGENTS.md to the CLI (--dry-run, --yes)
+npx uniweb@latest update          # Align @uniweb/* deps + AGENTS.md (--dry-run, --yes)
+                                  #   bare `uniweb update` aligns to the CLI you ALREADY have
 uniweb inspect <path>             # Show parsed content for a section or page (--raw for the AST)
 
 uniweb <command> --help           # Per-command flags — no side effects. Prefer this over guessing.
@@ -2284,15 +2285,28 @@ Either side can publish. Nothing about this changes how you build: the same foun
 ```bash
 uniweb -v                  # installed CLI version, and whether a newer one is available
 uniweb doctor              # report drift in this project, changing nothing
-uniweb update --dry-run    # preview exactly what update would change
-uniweb update              # apply: align @uniweb/* deps AND refresh AGENTS.md
+npx uniweb@latest update --dry-run   # preview exactly what update would change
+npx uniweb@latest update             # apply: align @uniweb/* deps AND refresh AGENTS.md
 ```
 
-**`uniweb update` is the command for bringing a project up to date.** It aligns the project's `@uniweb/*` dependencies *and* this AGENTS.md to the version matrix of the CLI that runs it. Deps and documentation move together — that's the whole point of the verb.
+**`npx uniweb@latest update` is the command for bringing a project up to date.** It aligns the project's `@uniweb/*` dependencies *and* this AGENTS.md to the version matrix of the CLI that runs it. Deps and documentation move together — that's the whole point of the verb.
+
+> ### ⛔ WRITE `@latest`. A BARE `uniweb update` IS USUALLY A NO-OP, AND IT SAYS SO CONVINCINGLY
+>
+> `update` reconciles this project against **the matrix of the CLI that runs it** — and in a project,
+> `uniweb` resolves to the copy in your own `node_modules`, pinned by your own `package.json`. That
+> copy has no way to know a newer release exists.
+>
+> ⇒ **It reports everything aligned and changes nothing — correctly.** It answered the question it
+> was asked, which is why the output looks like success rather than a mistake. The same applies to
+> `pnpm uniweb update` and to a stale global install.
+>
+> ⭐ **`@latest` is what makes it a question about the newest release** rather than about the one you
+> already have. It also bumps the pin, so the next bare invocation is no longer stale.
 
 > **Don't run `npm update` or `pnpm update` on the `@uniweb/*` packages.** They're a matched set resolved by the CLI's version matrix, not independently versioned libraries you upgrade one at a time. Updating them directly gets you a combination nobody tested, and it won't refresh AGENTS.md — so this guide silently drifts out of sync with the code it describes, which is worse than being out of date, because nothing looks wrong.
 
-Two ordering rules: `update` won't refresh AGENTS.md while declared deps still lag the CLI, or while edited deps haven't been installed — either would put the doc ahead of the code. And updating the CLI itself is your package manager's job (`npm i -g uniweb@latest`, `pnpm add -g uniweb@latest`); `uniweb update` does not do that. To pin a project to the newest published release with no global install: `npx uniweb@latest update --yes`.
+Two ordering rules: `update` won't refresh AGENTS.md while declared deps still lag the CLI, or while edited deps haven't been installed — either would put the doc ahead of the code. And updating the CLI itself is your package manager's job (`npm i -g uniweb@latest`, `pnpm add -g uniweb@latest`); `uniweb update` does not do that.
 
 ### `package.json` `uniweb` block
 
