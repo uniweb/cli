@@ -2024,8 +2024,9 @@ collector's event dimension into a cardinality problem.
 
 ### Choosing what a site sends
 
-By default a site sends `page_view`, `outbound_click` and `section_view`. Narrow
-or widen that with `emit`:
+By default a site sends `page_view`, `outbound_click` and `section_view` — or,
+where a host supplies the collector, whatever that host declares it collects.
+Narrow or widen that with `emit`:
 
 ```yaml
 # site.yml — your own collector
@@ -2044,10 +2045,19 @@ are read key by key, so naming `emit` alone overrides nothing else the host
 declared. And declaring your own `endpoint:` always wins, so a site pointing at
 its own collector keeps working on any host, including none.
 
-`minimal` is `page_view` alone. `standard` is the default. `all` is a standing
-yes, so an event added in a later framework release is included without you
-changing anything — which is exactly why `standard` exists as well: it is a
-curated set that a release cannot grow behind your back.
+`minimal` is `page_view` alone. `standard` is the default when you supply your
+own `endpoint:`. `all` is a standing yes, so an event added in a later framework
+release is included without you changing anything — which is exactly why
+`standard` exists as well: it is a curated set that a release cannot grow behind
+your back.
+
+⭐ **Saying nothing means two different things, and which one depends on who
+supplies the address.** A site with its own `endpoint:` gets `standard`. A site
+on a **host-supplied** collector gets **whatever that host declares it
+collects** — it has no address of its own, so the arrangement is that the host
+does analytics for it, and the set grows when the host starts collecting
+something new. **Naming `emit` always wins**, so pin it if you would rather not
+follow your host.
 
 A site can also set **`flushIntervalMs`** to widen the batching window (default
 5000, milliseconds — `30` is thirty *milliseconds*). A host that supplies your
