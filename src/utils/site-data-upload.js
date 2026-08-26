@@ -38,7 +38,7 @@
  * runtime — so it is returned for parity and for a caller that wants to verify
  * an upload landed.
  *
- * Contract ratified 2026-08-18; see `kb/framework/build/data-ball-retirement.md`.
+ * Contract ratified with the backend lane, 2026-08-18.
  * **Wired into `publish.js` and shipped in `uniweb` 0.25.3.** Both arms of the
  * endpoint exist (presigned landed 2026-08-18, per Diego).
  *

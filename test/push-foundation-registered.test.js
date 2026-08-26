@@ -11,7 +11,7 @@
  * — and the app can only render against foundation code the backend can serve. The
  * backend lane measured their half: resolving a local alias like `src` returns a
  * benign empty result, so the editor gets no component definitions and renders
- * nothing, silently (channel `backend-framework-787e`, 2026-08-19).
+ * nothing, silently (reported by the backend lane, 2026-08-19).
  *
  * ⇒ Two acts, and closing only the first leaves the site unpreviewable:
  *   1. REGISTER the local foundation (bring-along releases it)

@@ -2,7 +2,7 @@
  * The static-data passthrough lane: plan once, PUT per file, return NO map.
  *
  * The properties worth pinning are the ones that were argued rather than
- * assumed — each cost a round in channel `backend-framework-35b8`:
+ * assumed — each cost a round with the backend lane:
  *
  *   - `{site}` is a PATH segment, not a body field (the asset lane was the
  *     wrong precedent: it is global, this is per-site);

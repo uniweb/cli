@@ -627,7 +627,7 @@ export async function publish(args = []) {
   //
   // A file map needs a name nothing else claims (`static_data` / `data_files`
   // were proposed) AND a consumer that reads it — neither settled. See
-  // `kb/framework/build/data-ball-retirement.md`.
+  // one object per file, no bundle.
   const injectInfo = {
     ...(fnd.ref ? { foundation: fnd.ref } : {})
   }
