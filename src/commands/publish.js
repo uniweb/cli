@@ -409,8 +409,13 @@ export async function publish(args = []) {
   if (!fnd.proceed) return { exitCode: fnd.refused ? 1 : 0 }
 
   // 2. Build the site data (link mode): dist/site-content.json (+ per-locale),
-  //    dist/data/*, dist/_search/*, dist/assets/*. Spawn the SAME CLI binary so
-  //    the inner build can't resolve to a different installed version.
+  //    dist/data/*, dist/assets/*. Spawn the SAME CLI binary so the inner
+  //    build can't resolve to a different installed version.
+  //
+  //    ⛔ NO SEARCH INDEX. This listed `dist/_search/*` until 2026-08-26; the
+  //    link lane stopped emitting one on 2026-08-01 (`@uniweb/build`
+  //    `site/build-site-data.js` step 5) because only one of the two
+  //    publishers produced it.
   say.info('Building site…')
   console.log('')
   execSync(`node ${JSON.stringify(process.argv[1])} build --link`, {
