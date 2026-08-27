@@ -373,6 +373,8 @@ export async function push(args = [], deps = {}) {
     let mediaRefs = []
     try {
       const probe = await emitSyncPackages(siteDir, {
+      // Resolves a foundation-relative `@/x` model ref into `@org/x`.
+      ...(asOrg ? { org: asOrg } : {}),
         ...(foundationDir ? { foundationDir } : {}),
         resolveModel: makeModelResolver({ client, offline: false })
       })
@@ -467,6 +469,8 @@ export async function push(args = [], deps = {}) {
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, {
+      // Resolves a foundation-relative `@/x` model ref into `@org/x`.
+      ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),
       resolveModel: makeModelResolver({
         client,

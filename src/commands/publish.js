@@ -440,6 +440,8 @@ export async function publish(args = []) {
   let probe
   try {
     probe = await emitSyncPackages(siteDir, {
+      // Resolves a foundation-relative `@/x` model ref into `@org/x`.
+      ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),
       resolveModel
     })
@@ -639,6 +641,8 @@ export async function publish(args = []) {
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, {
+      // Resolves a foundation-relative `@/x` model ref into `@org/x`.
+      ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),
       resolveModel,
       priorHashes,
