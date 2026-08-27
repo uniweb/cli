@@ -84,6 +84,7 @@ import {
   readBaseVersions,
   readItemBaseVersions,
   readItemUuids,
+  readFolderItemUuids,
   ensureItemUuids,
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
@@ -373,6 +374,8 @@ export async function push(args = [], deps = {}) {
     let mediaRefs = []
     try {
       const probe = await emitSyncPackages(siteDir, {
+      // Placement identity for the folder — see writeFolderItemUuids.
+      folderItemUuids: readFolderItemUuids(siteDir),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
       ...(asOrg ? { org: asOrg } : {}),
         ...(foundationDir ? { foundationDir } : {}),
@@ -469,6 +472,8 @@ export async function push(args = [], deps = {}) {
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, {
+      // Placement identity for the folder — see writeFolderItemUuids.
+      folderItemUuids: readFolderItemUuids(siteDir),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
       ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),

@@ -26,6 +26,7 @@ import {
   describeSiteDiff,
   computeUnitHashes,
   collectUnitUuids,
+  collectFolderItemUuids,
   readAssetMap
 } from '@uniweb/build/uwx'
 
@@ -456,6 +457,20 @@ export function mergeBaseVersions(siteDir, versions) {
  */
 export function readItemUuids(siteDir) {
   return readMap(siteDir, 'itemUuids')
+}
+/**
+ * Placement identity for the site's `@uniweb/folder` — path chain → `$uuid`.
+ *
+ * Kept separate from `itemUuids` (which is site-content units) because they key
+ * different trees: `pages/…/page.yml` there, `members/alice` here. One map with
+ * two key languages is a map nobody can validate.
+ */
+export function readFolderItemUuids(siteDir) {
+  return readMap(siteDir, 'folderItemUuids')
+}
+export function writeFolderItemUuids(siteDir, map) {
+  if (!map || !Object.keys(map).length) return
+  updateSyncCache(siteDir, { folderItemUuids: map })
 }
 export function writeItemUuids(siteDir, map) {
   if (!map || !Object.keys(map).length) return
@@ -1297,6 +1312,21 @@ export async function pushSyncPackages({
     for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
     if (bf.updated.length)
       wrote.push(`wrote ${bf.updated.length} record file(s)`)
+    // ⭐ BANK THE FOLDER'S PLACEMENT IDENTITY. The records back-fill their own
+    // `$uuid` into their source files (above); the folder's ITEMS have nowhere to
+    // be written, so they are banked here from the document the backend just
+    // returned.
+    //
+    // ⛔ Without this a `publish` after a `push` is refused: send-only-changed
+    // skips the unchanged records and re-sends the folder ALONE, its `contents`
+    // items carry no `$uuid`, and a `multi` item without one reads as new — so
+    // the backend refuses rather than replacing every placement. Reproduced on a
+    // live manor 2026-08-27; the identities were on the wire all along.
+    const folderDoc = finalized.find((f) => f?.document?.contents)?.document
+    if (folderDoc) {
+      const placements = collectFolderItemUuids(folderDoc)
+      if (Object.keys(placements).length) writeFolderItemUuids(siteDir, placements)
+    }
     finalizedTotal += finalized.length
   }
 

@@ -77,6 +77,7 @@ import {
   readBaseVersions,
   readItemBaseVersions,
   ensureItemUuids,
+  readFolderItemUuids,
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
   pushSyncPackages,
@@ -440,6 +441,8 @@ export async function publish(args = []) {
   let probe
   try {
     probe = await emitSyncPackages(siteDir, {
+      // Placement identity for the folder — see writeFolderItemUuids.
+      folderItemUuids: readFolderItemUuids(siteDir),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
       ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),
@@ -641,6 +644,8 @@ export async function publish(args = []) {
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, {
+      // Placement identity for the folder — see writeFolderItemUuids.
+      folderItemUuids: readFolderItemUuids(siteDir),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
       ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),
