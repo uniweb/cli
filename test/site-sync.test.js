@@ -31,7 +31,8 @@ import {
   readItemBaseVersions,
   mergeItemBaseVersions,
   resolveSiteOrgForCreate,
-  writeUnitBases
+  writeUnitBases,
+  readItemUuids
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
 
@@ -1368,4 +1369,83 @@ test('an item_uuid_conflict clears the stale cache and says re-run', async () =>
   assert.deepEqual(c.itemUuids, {})
   assert.deepEqual(c.hashes, {})
   assert.equal(c.siteUuid, 'SITE-NEW')
+})
+
+// ─── identity banking, and the silence that used to follow its failure ───────
+//
+// A push banks per-item `$uuid` from `finalized[0].document`, so the NEXT push or
+// publish can address stored rows instead of re-minting them. That step is
+// best-effort — the document may not be there — and its failure was SILENT.
+//
+// ⛔ The cost lands two commands away and names something else: the next publish
+// emits with no per-item `$uuid`, the backend refuses (correctly — silently
+// re-identifying every stored row is far worse), and the refusal reads as a stale
+// token or a producer bug, with nothing pointing back at the push that did not bank.
+//
+// Reported by the backend lane, 2026-08-27, channel `backend-framework-hosting-7bdb`:
+// "push stores the items and we hand their $uuids back in finalized; publish
+// re-pushes the same package still without them, and the guard refuses."
+
+test('a push that banks identity leaves it readable for the next one', async () => {
+  const dir = tmpSite()
+  // The backend's post-write document: `$uuid` filled in at every nesting level.
+  // The real shape `collectUnitUuids` walks: pages keyed by `slug`, their sections
+  // at `page_sections`. Getting this wrong is how the first version of this test
+  // failed — which is the test doing its job.
+  const document = {
+    $uuid: 'S1',
+    pages: [
+      {
+        $uuid: 'P1',
+        slug: 'home',
+        page_sections: [{ $uuid: 'X1', $id: 'hero' }]
+      }
+    ]
+  }
+  const client = {
+    origin: 'http://x',
+    createSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'S1', changed: true, document }]))
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    asOrg: null,
+    report,
+    pkg: siteOnlyPkg({ hashes: { '@uniweb/site-content site': 'h1' } })
+  })
+  assert.equal(res.exitCode, 0)
+  // Identity is banked, so the next emit can address rows rather than re-mint them.
+  assert.ok(Object.keys(readItemUuids(dir)).length > 0, 'no per-item identity banked')
+  // ...and nothing is reported, because nothing went wrong.
+  assert.ok(
+    !calls.note.join('\n').includes('identity not banked'),
+    'warned about banking on a push that banked'
+  )
+})
+
+test('⛔ a push that banks NO identity SAYS SO — it used to be silent', async () => {
+  const dir = tmpSite()
+  const client = {
+    origin: 'http://x',
+    // No `document` — the shape the banking step needs is simply absent.
+    createSiteContent: async () => ok(finalized([{ index: 0, uuid: 'S1', changed: true }]))
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    asOrg: null,
+    report,
+    pkg: siteOnlyPkg({ hashes: { '@uniweb/site-content site': 'h1' } })
+  })
+  // ⭐ The push still SUCCEEDS — the content landed. That is exactly why the
+  // silence was expensive: nothing here is an error, and the next command pays.
+  assert.equal(res.exitCode, 0)
+  assert.deepEqual(readItemUuids(dir), {}, 'banked identity from a document-less response')
+  assert.ok(
+    calls.note.join('\n').includes('identity not banked'),
+    'a push that banked no identity said nothing about it'
+  )
 })

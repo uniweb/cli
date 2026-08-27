@@ -1323,6 +1323,26 @@ export async function pushSyncPackages({
     // Replaced wholesale: an item that no longer exists must not keep a uuid that
     // would re-target something else.
     if (theirs) writeItemUuids(siteDir, collectUnitUuids(theirs))
+    else {
+      // ⛔ BANKING IS BEST-EFFORT AND ITS FAILURE USED TO BE SILENT — say it here,
+      // because the cost lands two commands away and names something else.
+      //
+      // Without `finalized[0].document` (carrying `pages`) this push banks NO item
+      // identity. The push still reports success. The next `push`/`publish` then
+      // emits with no `$uuid` per item, and the backend refuses — correctly, since
+      // silently re-identifying every stored row is far worse. But that refusal
+      // reads as a stale-token or a producer bug, with nothing pointing back at the
+      // push that failed to bank.
+      //
+      // ⚠️ We cannot tell WHY it is absent from here — a response shape that
+      // changed, a lane that shipped nothing, a backend that does not echo the
+      // document. Report the observable fact and let the operator carry it.
+      note(
+        'identity not banked: this push returned no post-write document, so no per-item ' +
+          '$uuid was stored. The next push or publish will be identity-blind and the backend ' +
+          'may refuse it. `uniweb pull` re-arms identity if that happens.'
+      )
+    }
   }
   return { exitCode: 0, boundSiteUuid, finalizedTotal, wrote }
 }
