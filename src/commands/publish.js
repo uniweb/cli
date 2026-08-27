@@ -88,7 +88,10 @@ import {
   bringFoundationAlong,
   bringExtensionsAlong
 } from '../backend/foundation-bring-along.js'
-import { settlePaymentIfNeeded } from '../backend/payment-handoff.js'
+import {
+  readPaymentRefusal,
+  reportPaymentRefusal
+} from '../backend/payment-handoff.js'
 import { reportSchemalessCollections } from '../utils/schemaless-report.js'
 import { uploadSiteData } from '../utils/site-data-upload.js'
 
@@ -353,13 +356,10 @@ export async function publish(args = []) {
       cliBin: process.argv[1],
       dryRun: true
     })
-    await settlePaymentIfNeeded({
-      client,
-      uuid: siteYml.$uuid || null,
-      args,
-      say,
-      dryRun: true
-    })
+    // No payment line on a dry run. The backend is the only gate and it
+    // answers at go-live, so the honest dry-run answer is silence rather than
+    // a guess. (The old "would check whether go-live needs payment" described
+    // a pre-flight probe that has been removed — payment-handoff.js.)
     return { exitCode: 0 }
   }
 
@@ -678,18 +678,6 @@ export async function publish(args = []) {
     return { exitCode: 1 }
   }
 
-  // 6. Payment gate — the backend says whether go-live needs payment. Settles
-  //    via a browser handoff to uniweb.app; degrades to "proceed" when the
-  //    backend exposes no payment route. The draft is already synced, so a
-  //    decline leaves a recoverable state (re-run after paying).
-  const pay = await settlePaymentIfNeeded({ client, uuid: siteUuid, args, say })
-  if (!pay.proceed) {
-    say.info(
-      'Site synced as a draft but not made live. Re-run `uniweb publish` once payment is complete.'
-    )
-    return { exitCode: 0 }
-  }
-
   // 7. Go live — make the just-pushed composite live (its current backend state).
   const siteContent = JSON.parse(await readFile(contentPath, 'utf8'))
   const languages = languagesFromContent(siteContent)
@@ -705,13 +693,29 @@ export async function publish(args = []) {
     return { exitCode: 1 }
   }
   if (!pubRes.ok) {
+    const body = await pubRes.text().catch(() => '')
+
+    // A 402 is the backend's payment gate — the ONLY gate, evaluated here on
+    // every publish against whatever posture that deployment runs. It is a
+    // refusal, not a fault: the content is already synced as a draft, so the
+    // recovery is to settle and re-run. Give it the backend's own sentence
+    // rather than the raw envelope.
+    const refusal = readPaymentRefusal({
+      status: pubRes.status,
+      contentType: pubRes.headers?.get?.('content-type') || '',
+      body
+    })
+    if (refusal.kind !== 'not-payment') {
+      await reportPaymentRefusal({ verdict: refusal, args, say })
+      return { exitCode: 1 }
+    }
+
     say.err(`Publish rejected: HTTP ${pubRes.status} ${pubRes.statusText}`)
     if (pubRes.status === 401 || pubRes.status === 403) {
       say.dim(
         "Credentials weren't accepted — run `uniweb login` (or pass --token <bearer>)."
       )
     }
-    const body = await pubRes.text().catch(() => '')
     if (body) say.dim(body.slice(0, 800))
     return { exitCode: 1 }
   }

@@ -321,7 +321,9 @@ async function loginViaTokenPaste({ apiBase, nonInteractive }) {
 }
 
 // Open a URL in the default browser. Returns whether it launched.
-async function openBrowser(url) {
+// Exported for the publish payment refusal, which opens the backend's
+// settlement URL VERBATIM and needs no loopback (backend/payment-handoff.js).
+export async function openBrowser(url) {
   try {
     const { exec } = await import('node:child_process')
     const cmd =
