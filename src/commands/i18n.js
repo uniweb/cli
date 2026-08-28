@@ -15,8 +15,8 @@
  * prompts for selection.
  */
 
-import { resolve, join, dirname, basename, relative } from 'path'
-import { existsSync } from 'fs'
+import { resolve, join, dirname, basename, relative } from 'node:path'
+import { existsSync } from 'node:fs'
 import {
   readFile,
   writeFile,
