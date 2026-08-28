@@ -225,11 +225,6 @@ export async function ensureRegistryAuth({
   return record.token
 }
 
-// The browser/OAuth flow is wired below (loginViaBrowser: a loopback redirect
-// against the backend's /dev/auth/cli/authorize, token-in-redirect). Kept
-// gated until that endpoint is live on the backend — flip to true then, and the
-// picker offers Browser/social as the default (and `--browser` works).
-const BROWSER_AVAILABLE = false
 
 /**
  * GET /dev/auth/me with a bearer → the account object ({ uuid, username,
@@ -423,45 +418,90 @@ export async function awaitBrowserCallback({
   return result.value
 }
 
-// Browser / social — loopback OAuth against the backend's /dev/auth/authorize.
-// The CLI hosts a one-shot 127.0.0.1 server (awaitBrowserCallback), opens the
-// browser to authorize, and the backend (after the Google dance) 302s back to
-// the loopback with the token (or an error). state is a CSRF nonce echoed back
-// and verified. The token never leaves browser→localhost. Gated by
-// BROWSER_AVAILABLE until the endpoint is live.
+// Browser / social — the backend's CLI delegation flow. The CLI never speaks to
+// an identity provider and holds no client id, secret or provider knowledge: it
+// opens ONE url (the backend's), catches a one-time code on a loopback, and
+// trades that code for a bearer. Whatever methods the backend's own sign-in page
+// offers — password, Google, Microsoft, anything added later — the CLI gains with
+// no change here, because it never learns which one was used.
+//
+// Three legs, all verified against a live backend rather than read:
+//
+//   GET  {base}/dev/auth/authorize?callback=<loopback>&state=<nonce>
+//          no session → 302 {hub}/login?returnTo=…   (the ordinary sign-in page)
+//          session    → 302 <callback>?state=<ours>&code=<one-time>
+//   POST {base}/dev/auth/token  {code}  → { token, expires_at, account }
+//
+// ⛔ `callback` IS THE PARAMETER NAME, not `redirect_uri` — the backend serves
+// this route and rejects the other spelling with a 400. ⛔ AND THE CALLBACK
+// CARRIES A `code`, NEVER A TOKEN: the bearer is born on the POST, server-to-CLI,
+// so it never touches the browser, the URL bar, history or a proxy log. Both were
+// wrong here for three months — this code was written against an anticipated
+// shape five days before the backend shipped, and being gated meant nothing could
+// contradict it.
+//
+// ⛔ The loopback MUST be a v4 literal. `awaitBrowserCallback` binds 127.0.0.1
+// explicitly and composes `http://127.0.0.1:<port>/callback`; the backend's
+// validator accepts `http://` only, host exactly `127.0.0.1` or `localhost`, and
+// refuses `[::1]` and any `user@host` (that last guard stops
+// `http://127.0.0.1:1@evil.com/cb` from walking off with the code). Do not
+// "modernise" the bind to `::`.
 async function loginViaBrowser({ apiBase }) {
-  if (!BROWSER_AVAILABLE) {
-    throw new Error(
-      'browser/social login for the new backend isn’t available yet — use --password or --token-paste.'
-    )
-  }
   const base = apiBase.replace(/\/$/, '')
   const state = randomBytes(16).toString('hex')
 
-  const token = await awaitBrowserCallback({
-    buildUrl: (redirectUri) =>
-      `${base}/dev/auth/authorize?redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`,
+  // Leg 1+2 — open the backend's authorize url, catch the one-time code.
+  const code = await awaitBrowserCallback({
+    buildUrl: (callback) =>
+      `${base}/dev/auth/authorize?callback=${encodeURIComponent(callback)}&state=${state}`,
     validate: (params) => {
       if (params.get('error')) return { error: params.get('error') }
+      // Check `state` BEFORE reading anything else: it is the only thing that
+      // ties this callback to the request we made.
       if (params.get('state') !== state)
         return { error: 'state mismatch — please try again.' }
-      const tok = params.get('token')
-      if (!tok) return { error: 'no token returned by the callback.' }
-      return { value: tok }
+      const code = params.get('code')
+      if (!code) return { error: 'no code returned by the callback.' }
+      return { value: code }
     },
     openingLabel: 'Opening your browser to sign in…',
-    waitingLabel: 'Waiting for sign-in to complete (120s)…',
+    waitingLabel: 'Waiting for sign-in to complete (5 min)…',
+    // A person is signing in at an identity provider, not clicking one button:
+    // a first-time Google or Microsoft login can carry a consent screen, an
+    // account chooser and 2FA. The default 120s expires mid-flow and reports a
+    // TIMEOUT, which reads as "the CLI is broken" rather than "you were slow".
+    // Same reasoning, and the same value, as the publish payment handoff.
+    timeoutMs: 5 * 60 * 1000,
     okTitle: 'Login successful',
     errTitle: 'Login failed'
   })
 
-  let account = null
-  try {
-    account = await fetchMe({ apiBase, token })
-  } catch {
-    /* identity optional; token is valid */
+  // Leg 3 — trade the code for a bearer. Anonymous: the code IS the credential,
+  // and it is single-use, so a replay gets a 400 rather than a second session.
+  const res = await fetch(`${base}/dev/auth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code })
+  })
+  const payload = await res.json().catch(() => null)
+  if (!res.ok || !payload?.token) {
+    const detail = payload?.detail || payload?.title || `HTTP ${res.status}`
+    throw new Error(`could not complete sign-in: ${detail}`)
   }
-  const record = { token, origin: normOrigin(apiBase) }
+
+  // The token response already carries the account, so no second round trip.
+  // `fetchMe` remains the fallback for a backend that answers without one.
+  let account = payload.account || null
+  if (!account) {
+    try {
+      account = await fetchMe({ apiBase, token: payload.token })
+    } catch {
+      /* identity is optional; the bearer is valid either way */
+    }
+  }
+
+  const record = { token: payload.token, origin: normOrigin(apiBase) }
+  if (payload.expires_at) record.expiresAt = payload.expires_at
   if (account?.uuid) record.uuid = account.uuid
   if (account?.username) record.username = account.username
   if (account?.handle) record.handle = account.handle
@@ -549,11 +589,10 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
     } else {
       const prompts = (await import('prompts')).default
       const choices = []
-      if (BROWSER_AVAILABLE)
-        choices.push({
-          title: 'Browser / social (Google, etc.)',
-          value: 'browser'
-        })
+      choices.push({
+        title: 'Browser / social (Google, Microsoft, …)',
+        value: 'browser'
+      })
       choices.push({ title: 'Username and password', value: 'password' })
       choices.push({ title: 'Paste a token', value: 'token-paste' })
       const { picked } = await prompts(
