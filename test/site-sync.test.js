@@ -742,8 +742,24 @@ test('an identity_required 400 is explained, not surfaced as a raw error', async
   })
   assert.equal(res.exitCode, 1)
   const out = [...calls.error, ...calls.note].join('\n')
-  assert.match(out, /no record of the site's item identity/)
+
+  // ⭐ THE BACKEND SENDS WHAT LOCATES THE PROBLEM, AND WE USED TO DISCARD IT.
+  // Note this fixture already carried `section_id` / `records_without_uuid` /
+  // `stored_items` before 2026-08-28 — the fields were always in the response; the
+  // handler rendered them as one sentence that named none of them, so every refusal
+  // anyone collected in the field was missing the only detail that says WHERE.
+  assert.match(out, /section 18/, 'must name the offending section')
+  assert.match(out, /2 record\(s\), none carrying a `\$uuid`/, 'must give the count that was blank')
+  assert.match(out, /2 item\(s\) are already stored/, 'must give what would have been replaced')
   assert.match(out, /Nothing was written/)
+
+  // ⛔ The refusal is PER-SECTION, so the old wording was wrong three ways in the
+  // ordinary case: the copy does have identity, no recovery was attempted, and a
+  // pull re-fetches a map that is already intact. Suggesting one sends the user to
+  // fix something that is not broken.
+  assert.ok(!/no record of the site's item identity/.test(out), 'must not claim the copy has no identity')
+  assert.ok(!/uniweb pull/.test(out), 'must not prescribe a pull for a cache that is intact')
+
   // Must not be mistaken for the staleness refusal — different cause, different fix.
   assert.ok(!/newer content than your last pull/.test(out))
 })

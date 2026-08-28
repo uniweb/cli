@@ -1111,18 +1111,44 @@ export async function pushSyncPackages({
         return null
       }
       if (problem?.reason === 'identity_required') {
+        // ⛔ THE REFUSAL IS PER-SECTION, NOT PER-PUSH, AND WE USED TO SAY OTHERWISE.
+        //
+        // The backend asks, of each section independently: is this section's ENTIRE
+        // incoming record set uuid-less while the stored entity already has items in
+        // it? So a push can carry correct identity for most of the document and still
+        // be refused over one section it stamps none of — and the old wording ("this
+        // copy has no record of the site's item identity", "the recovery … could not
+        // reach the backend", "`uniweb pull` also restores it") was wrong on all
+        // three counts in exactly that case: the copy has identity, no recovery was
+        // attempted, and a pull changes nothing.
+        //
+        // ⭐ THE BACKEND ALREADY SENDS WHAT LOCATES IT — `section_id`,
+        // `records_without_uuid`, `stored_items` — and this branch discarded every
+        // one of them, so every refusal anyone collected was missing the only fields
+        // that say WHERE. (Named by backend in collab `framework-backend-812b`,
+        // 2026-08-28: "the offending section and both counts have been in the body of
+        // every refusal you have collected".)
+        const n = problem.records_without_uuid
+        const stored = problem.stored_items
+        const where = problem.section_name ?? problem.section_id
         error(
-          `${label} push refused — this copy has no record of the site's item identity.`
+          `${label} push refused — one section carries no item identity` +
+            (where === undefined ? '.' : ` (section ${where}).`)
         )
+        if (Number.isInteger(n) && Number.isInteger(stored)) {
+          note(
+            `That section sent ${n} record(s), none carrying a \`$uuid\`, while ${stored} item(s) are already stored there.`
+          )
+        }
         note(
-          'Nothing was written. Pushing without it would have replaced the identity of every stored item.'
+          'Nothing was written. Applying it would have replaced the identity of every stored item in that section.'
         )
-        note(
-          'The recovery normally runs automatically, so it likely could not reach the backend.'
-        )
-        note(
-          'Check your connection and re-run; `uniweb pull` also restores it.'
-        )
+        // ⚠️ Deliberately NOT "run `uniweb pull`". A pull re-harvests identity from
+        // the backend's own document, so it fixes a LOST cache — and does nothing at
+        // all when the cache is intact and one section simply has no entry in it,
+        // which is the case this message now names. Suggesting it there sends the
+        // user to re-fetch a map they already have.
+        if (problem.detail) note(String(problem.detail))
         return null
       }
       if (problem?.reason === 'stale_base') {
