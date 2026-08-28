@@ -1851,7 +1851,7 @@ by the same rule — your declaration, then the host's, then neither:
 ```jsx
 import { resolveService } from '@uniweb/kit'
 
-const { url, reason } = resolveService(website, 'assistant')   // or 'search', or your own
+const { url, source } = resolveService(website, 'assistant')   // or 'search', or your own
 ```
 
 **The name is open**: the framework ships clients for what it implements and
@@ -1870,7 +1870,9 @@ if (!url) return null          // this site has no agent — render nothing, or 
 
 ⛔ **Absent is the answer, not a lookup that failed.** No `url` means the site has no agent — never enabled, or this host runs none. Render for that case; don't retry it. And don't hardcode `/_agent/chat` when nothing was declared: on a static host that turns "no agent here" into a 404 your component can't tell from a broken endpoint. The path is named above so you recognize the shape, not so you can construct it.
 
-⛔ **And don't tell the visitor.** `resolveService` also returns a `reason`, and it is **not visitor copy** — a visitor has no stake in which services the operator provisioned, and "this site has no assistant configured" reports someone's billing state to the public while reading like a breakage. It is neither. **Absence is a rendering decision, not a message**: a generic component is expected to be smart about it. No assistant → no Ask-AI affordance. No submit endpoint → no form, or degrade to a `mailto:` the site already carries in its content. The `reason` string is there for *you*, while you wire a site up.
+⛔ **And don't tell the visitor.** `resolveService` returns `{ url, source }` and **deliberately nothing else** — there is no explanatory string and there was one, removed because it was a mistake. A visitor has no stake in which services the operator provisioned, and "this site has no assistant configured" reports someone's billing state to the public while reading like a breakage. It is neither. Worse, it is unfixably the wrong language: sites here are multilingual, or unilingual and not English, and a canned constant bypasses the site's whole localization pipeline. **Absence is a rendering decision, not a message**, and a generic component is expected to be smart about it. No assistant → no Ask-AI affordance. No submit endpoint → no form, or degrade to a `mailto:` the site already carries in its content. Any text a visitor should read is *site content* — authored and localized.
+
+`source` is `'site'`, `'host'` or `null`, and it is a **diagnostic for you** while you wire a site up: it says which tier answered, which is the thing to check when a host's value appears not to be taking effect. `'host'` with a null `url` means the host answered and offered no address.
 
 *(A live agent that errors mid-conversation is a different problem — that's ordinary request failure, handled where you make the request.)*
 
