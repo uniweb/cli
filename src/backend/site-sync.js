@@ -1165,6 +1165,9 @@ export async function pushSyncPackages({
         // every refusal you have collected".)
         const n = problem.records_without_uuid
         const stored = problem.stored_items
+        // `section_name` landed backend-side 2026-08-28 (`90e7cd7e`), replacing an
+        // i64 row id we could not resolve. The fallback stays for an older backend,
+        // not because the swap is pending — it is done.
         const where = problem.section_name ?? problem.section_id
         error(
           `${label} push refused — one section carries no item identity` +
