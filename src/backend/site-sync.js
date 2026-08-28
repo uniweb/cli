@@ -948,10 +948,34 @@ export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
   // and others never settling, which reads like a content problem rather than a
   // resolution one. Measured on matinee 2026-08-29: `status` reported 4 changed
   // immediately after a successful push; passing the org took it to 1.
+  const pkg = await comparisonEmit(siteDir, { priorHashes, sendAll })
+  const changed =
+    (pkg.siteContent?.entityCount || 0) + (pkg.collections?.entityCount || 0)
+  return { changed, unchanged: pkg.skipped || 0, warnings: pkg.warnings || [] }
+}
+
+/**
+ * The emit whose hashes are comparable with the banked ones — ONE definition.
+ *
+ * ⛔ EVERY DEFECT IN THIS AREA HAS BEEN A WRITER AND A READER DISAGREEING ABOUT
+ * WHICH DOCUMENT A HASH DESCRIBES, so the option set that makes them agree must
+ * have a single home. Assembled from three sources, each for a stated reason:
+ *
+ *   · BANKED     the injections the push applied before hashing — serve URLs and
+ *                the pinned foundation ref, which only a round trip produces.
+ *   · RE-DERIVED asset identity, from the COMMITTED `assets.json`, so a moved map
+ *                reads as changed rather than matching a copy of itself.
+ *   · RECORDED   the site's org, which resolves a foundation-relative `@/x` into
+ *                the `@org/x` the push keyed its hashes by.
+ *
+ * Offline by design — measured at zero HTTP requests, a property the cross-client
+ * flows rely on.
+ */
+async function comparisonEmit(siteDir, { priorHashes = {}, sendAll = false } = {}) {
   const applied = readAppliedInjections(siteDir)
   const assetIds = readAssetMap(siteDir)
   const org = readSiteOrg(siteDir)
-  const pkg = await emitSyncPackages(siteDir, {
+  return emitSyncPackages(siteDir, {
     resolveModel: makeModelResolver({ client: null, offline: true }),
     priorHashes,
     sendAll,
@@ -959,9 +983,33 @@ export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
     ...(Object.keys(assetIds).length ? { assetIds } : {}),
     ...(org ? { org } : {})
   })
-  const changed =
-    (pkg.siteContent?.entityCount || 0) + (pkg.collections?.entityCount || 0)
-  return { changed, unchanged: pkg.skipped || 0, warnings: pkg.warnings || [] }
+}
+
+/**
+ * Re-bank the send-only-changed hashes over the files as they NOW stand.
+ *
+ * ⛔ FOR A WRITER THAT REWRITES THE WORKING TREE — today, `uniweb pull`.
+ *
+ * A pull projects the backend's document into source files, and that projection is
+ * canonical rather than byte-identical to what was there: it moves section ordering
+ * out of filename prefixes (`1-hero.md` → `hero.md` plus an explicit `sections:`
+ * list) and stamps each section's `id`. Lossless, and a different document.
+ *
+ * ⚠️ `pull` already knew this for the OTHER map — it clears the `local` unit base
+ * because "what we would emit from them is not byte-identical to it, so the old
+ * local base no longer describes anything". That reasoning was never carried to the
+ * hashes, which were left STALE rather than unknown: the next `uniweb status`
+ * reported the site as having unpushed content immediately after a pull, forever.
+ * Measured on matinee 2026-08-29 — `push → pull` reported 1 changed of 8.
+ *
+ * ⭐ Re-banking is the correct answer rather than clearing, because after a pull the
+ * on-disk state IS the agreed state: it came from the backend. A push with no edits
+ * in between should send nothing, and clearing would make it send everything.
+ */
+export async function rebankSyncHashes(siteDir) {
+  const pkg = await comparisonEmit(siteDir, { sendAll: true })
+  writeSyncCache(siteDir, pkg.hashes || {}, pkg.applied || {})
+  return Object.keys(pkg.hashes || {}).length
 }
 
 /**

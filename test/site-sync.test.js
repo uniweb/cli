@@ -33,7 +33,8 @@ import {
   resolveSiteOrgForCreate,
   writeUnitBases,
   readItemUuids,
-  probeUnpushed
+  probeUnpushed,
+  rebankSyncHashes
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
 
@@ -1523,5 +1524,58 @@ test('probeUnpushed resolves a foundation-relative collection schema via the sit
   } finally {
     rmSync(withOrg, { recursive: true, force: true })
     rmSync(noOrg, { recursive: true, force: true })
+  }
+})
+
+/**
+ * ⛔ A WRITER THAT REWRITES THE WORKING TREE MUST RE-BANK THE HASHES.
+ *
+ * `uniweb pull` projects the backend's document into source files, and that
+ * projection is CANONICAL rather than byte-identical to what was there: section
+ * ordering moves out of filename prefixes (`1-hero.md` → `hero.md` plus an explicit
+ * `sections:` list) and each section gains an `id`. Lossless, and a different
+ * document.
+ *
+ * ⚠️ The pull already knew this for the OTHER map — it clears the `local` unit base
+ * because "what we would emit from them is not byte-identical to it". That reasoning
+ * was never carried to the send-only-changed hashes, which were left STALE rather
+ * than unknown: `uniweb status` reported unpushed content immediately after a pull,
+ * permanently. Measured on matinee 2026-08-29 — push → pull reported 1 changed of 8
+ * with nothing edited in between, and re-banking took it to 0.
+ *
+ * ⭐ The property under test is a FIXED POINT: bank over the current tree, and a
+ * probe of that same tree must report nothing to send. It is the same invariant the
+ * whole sync cache rests on — a hash banked by the writer must be recomputable by
+ * the reader — stated once, offline, with no backend.
+ */
+test('rebankSyncHashes makes the tree a fixed point for probeUnpushed', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rebank-'))
+  try {
+    writeFileSync(join(dir, 'site.yml'), 'name: Acme\nfoundation: base\n')
+    mkdirSync(join(dir, 'pages', 'home'), { recursive: true })
+    writeFileSync(join(dir, 'pages', 'home', 'page.yml'), 'title: Home\n')
+    writeFileSync(join(dir, 'pages', 'home', 'hero.md'), '---\ntype: Hero\n---\n\n# Hi\n')
+
+    // CONTROL. With nothing banked, the probe must report something to send —
+    // otherwise the assertion below passes on a site that emits nothing at all,
+    // and would keep passing if the emit silently stopped working.
+    const cold = await probeUnpushed(dir)
+    assert.ok(
+      cold.changed > 0,
+      `control: an unbanked site must have something to send — got ${JSON.stringify(cold)}`
+    )
+
+    const banked = await rebankSyncHashes(dir)
+    assert.ok(banked > 0, `re-bank wrote no hashes (${banked})`)
+
+    const warm = await probeUnpushed(dir)
+    assert.equal(
+      warm.changed,
+      0,
+      'after re-banking over the current tree, a probe of that same tree must report ' +
+        `nothing to send — got ${JSON.stringify(warm)}`
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })

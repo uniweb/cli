@@ -84,6 +84,7 @@ import {
 } from '../utils/pull-written.js'
 import {
   makeModelResolver,
+  rebankSyncHashes,
   mergeBaseVersions,
   mergeItemBaseVersions,
   writeUnitBases,
@@ -839,6 +840,33 @@ export async function pull(args = [], deps = {}) {
     ],
     removed
   )
+
+  // ⛔ RE-BANK THE SEND-ONLY-CHANGED HASHES OVER WHAT WE JUST WROTE.
+  //
+  // The projection above is canonical, not byte-identical to what was on disk: it
+  // moves section ordering out of filename prefixes (`1-hero.md` → `hero.md` plus an
+  // explicit `sections:` list) and stamps each section's `id`. Lossless, and a
+  // different document — which is exactly why the `local` unit base is cleared above.
+  //
+  // ⚠️ That same reasoning was never carried to the hashes, so they were left STALE
+  // rather than unknown, and `uniweb status` reported unpushed content immediately
+  // after a pull, permanently. Measured on matinee 2026-08-29: push → pull reported
+  // 1 changed of 8, with nothing edited in between.
+  //
+  // Re-banking rather than clearing, because after a pull the on-disk state IS the
+  // agreed state — it came from the backend, so a push with no edits should send
+  // nothing. Clearing would make it send everything.
+  //
+  // Best-effort: a failure here costs an unnecessary re-send on the next push, never
+  // wrong content, and must not fail a pull whose files are already written.
+  if (!dryRun) {
+    try {
+      await rebankSyncHashes(siteDir)
+    } catch (err) {
+      note(`! could not re-bank the sync cache: ${err.message}`)
+      note('  The next push will re-send content that is already current.')
+    }
+  }
 
   success(
     `Pulled — ${pages} page(s), ${sections} section(s), ${records} record(s)` +
