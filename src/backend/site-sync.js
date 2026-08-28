@@ -932,14 +932,32 @@ export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
   //     wrote. Reading the live file rather than a snapshot is what makes a moved
   //     map (a teammate's push, a pull) read as changed instead of matching a copy
   //     of itself.
+  //   · RECORDED — the site's own org, from `site.yml::$org`, written by the push
+  //     that banked these hashes.
+  //
+  // ⛔ THE ORG IS NOT OPTIONAL HERE, AND OMITTING IT WAS SILENT. It is what resolves
+  // a foundation-relative `@/member` into the `@org/member` the push shipped and
+  // keyed its hashes by. Without it the emit does not fail — `buildCollectionEntities`
+  // WARNS and ships the model unresolved, deliberately, so an org-less export still
+  // works — so every record of a `@/`-scoped collection is emitted under a key that
+  // can never match its banked one, and reads as changed forever.
+  //
+  // ⚠️ It hides in plain sight because `@std/…` collections are unaffected: their
+  // scope is already absolute, so they match. A site mixing both — the marketing
+  // fixture has `@std/person` AND `@proximify/member` — shows some records settling
+  // and others never settling, which reads like a content problem rather than a
+  // resolution one. Measured on matinee 2026-08-29: `status` reported 4 changed
+  // immediately after a successful push; passing the org took it to 1.
   const applied = readAppliedInjections(siteDir)
   const assetIds = readAssetMap(siteDir)
+  const org = readSiteOrg(siteDir)
   const pkg = await emitSyncPackages(siteDir, {
     resolveModel: makeModelResolver({ client: null, offline: true }),
     priorHashes,
     sendAll,
     ...applied,
-    ...(Object.keys(assetIds).length ? { assetIds } : {})
+    ...(Object.keys(assetIds).length ? { assetIds } : {}),
+    ...(org ? { org } : {})
   })
   const changed =
     (pkg.siteContent?.entityCount || 0) + (pkg.collections?.entityCount || 0)

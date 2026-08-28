@@ -32,7 +32,8 @@ import {
   mergeItemBaseVersions,
   resolveSiteOrgForCreate,
   writeUnitBases,
-  readItemUuids
+  readItemUuids,
+  probeUnpushed
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
 
@@ -1448,4 +1449,79 @@ test('⛔ a push that banks NO identity SAYS SO — it used to be silent', async
     calls.note.join('\n').includes('identity not banked'),
     'a push that banked no identity said nothing about it'
   )
+})
+
+/**
+ * ⛔ probeUnpushed must pass the site's RECORDED ORG to the emit.
+ *
+ * The org is what resolves a foundation-relative `@/member` into the `@org/member`
+ * a push shipped and keyed its hashes by. Omitting it does not fail: the emit WARNS
+ * and ships the model unresolved (deliberate — an org-less export still works), so
+ * every record of a `@/`-scoped collection is emitted under a key that can never
+ * match its banked one, and `uniweb status` reports it changed forever.
+ *
+ * ⚠️ It hid because `@std/…` collections are unaffected — their scope is already
+ * absolute. A site mixing both shows some records settling and others never
+ * settling, which reads like a content problem rather than a resolution one.
+ *
+ * Measured on the `matinee` manor, 2026-08-29: immediately after a successful push,
+ * `status` reported 4 changed entities of 8. Passing the org took it to 1 (the
+ * remaining one is the folder — a separate defect: its hash is banked before the
+ * push's uuid back-fill and is unreproducible afterwards).
+ *
+ * The assertion is the WARNING rather than a hash, because a hash test needs a real
+ * banked cache from a real round trip. The warning is emitted on exactly the path
+ * the defect travels, and the control below is what makes its absence mean something.
+ */
+test('probeUnpushed resolves a foundation-relative collection schema via the site org', async () => {
+  const make = (orgLine) => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-org-'))
+    mkdirSync(join(dir, 'foundations', 'base', 'dist', 'meta'), { recursive: true })
+    writeFileSync(
+      join(dir, 'foundations', 'base', 'dist', 'meta', 'schema.json'),
+      JSON.stringify({ dataSchemas: { '@/member': { name: 'member', version: '1.0.0' } } })
+    )
+    writeFileSync(join(dir, 'site.yml'), `name: Acme\nfoundation: base\n${orgLine}`)
+    mkdirSync(join(dir, 'collections', 'members'), { recursive: true })
+    writeFileSync(
+      join(dir, 'collections', 'collections.yml'),
+      'collections:\n  members:\n    schema: "@/member"\n'
+    )
+    writeFileSync(join(dir, 'collections', 'members', 'alice.md'), '---\nname: Alice\n---\n\nHi.\n')
+    return dir
+  }
+
+  // The model name the emit ends up asking for is the observable: it is exactly what
+  // keys the banked hashes, so it is the thing the defect got wrong.
+  const askedFor = async (dir) => {
+    try {
+      await probeUnpushed(dir)
+      return null // resolved outright — no name to read
+    } catch (err) {
+      return /Model "([^"]+)"/.exec(err.message)?.[1] ?? null
+    }
+  }
+
+  const withOrg = make('$org: "@acme"\n')
+  const noOrg = make('')
+  try {
+    // CONTROL. A site recording no org has nothing to resolve WITH, so the emit must
+    // still ask for the bare `@/member`. Without this the assertion below would pass
+    // just as well if the message shape changed or the collection stopped being read.
+    assert.equal(
+      await askedFor(noOrg),
+      '@/member',
+      'control: with no recorded $org the emit should still ask for the unresolved `@/member`'
+    )
+
+    assert.equal(
+      await askedFor(withOrg),
+      '@acme/member',
+      'a site recording `$org` must have it applied offline, so `status` asks for the same ' +
+        'org-qualified model the push banked its hashes under'
+    )
+  } finally {
+    rmSync(withOrg, { recursive: true, force: true })
+    rmSync(noOrg, { recursive: true, force: true })
+  }
 })
