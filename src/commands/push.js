@@ -85,6 +85,7 @@ import {
   readItemBaseVersions,
   readItemUuids,
   readFolderItemUuids,
+  readCollectionUuids,
   ensureItemUuids,
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
@@ -474,6 +475,9 @@ export async function push(args = [], deps = {}) {
     pkg = await emitSyncPackages(siteDir, {
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir),
+      // Identity for the `collections` section — see readCollectionUuids. Keyed by
+      // name, because a declaration has no file for a path-keyed map to hold.
+      collectionUuids: readCollectionUuids(siteDir),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
       ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),

@@ -75,7 +75,8 @@ import {
   resolveCollectionsConfig,
   readZip,
   computeUnitHashes,
-  collectUnitUuids
+  collectUnitUuids,
+  collectCollectionUuids
 } from '@uniweb/build/uwx'
 import {
   readWritten,
@@ -85,6 +86,7 @@ import {
 import {
   makeModelResolver,
   rebankSyncHashes,
+  writeCollectionUuids,
   mergeBaseVersions,
   mergeItemBaseVersions,
   writeUnitBases,
@@ -687,6 +689,10 @@ export async function pull(args = [], deps = {}) {
       // Per-item identity for the next push. Without it the backend reads our
       // records as new and re-mints every page and section row.
       writeItemUuids(siteDir, collectUnitUuids(siteDoc))
+      // The collections section's identity has no file to live in either — same
+      // reason, same remedy, keyed by name. A pull is the other route by which a
+      // copy can recover it (see readCollectionUuids).
+      writeCollectionUuids(siteDir, collectCollectionUuids(siteDoc))
       // Bring the media down BEFORE projecting: a newly-landed asset gains a map
       // entry, and the projection reads that map to put authored paths back. Run
       // after, and this pull's new assets would project as URLs and only restore

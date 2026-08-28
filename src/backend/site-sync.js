@@ -27,6 +27,7 @@ import {
   computeUnitHashes,
   collectUnitUuids,
   collectFolderItemUuids,
+  collectCollectionUuids,
   readAssetMap
 } from '@uniweb/build/uwx'
 
@@ -241,6 +242,7 @@ export function clearRemoteSyncState(siteDir, siteUuid = null) {
   const prior = readSyncCacheFile(siteDir)
   const dropped = [
     'itemUuids',
+    'collectionUuids',
     'hashes',
     'baseVersions',
     'unitBases',
@@ -248,6 +250,9 @@ export function clearRemoteSyncState(siteDir, siteUuid = null) {
   ].filter((k) => prior[k] && Object.keys(prior[k]).length)
   updateSyncCache(siteDir, {
     itemUuids: {},
+    // Remote-derived exactly like itemUuids — it holds the OLD site's collection
+    // ids, and surviving the drop it would offer them for the new site's sections.
+    collectionUuids: {},
     hashes: {},
     baseVersions: {},
     unitBases: {},
@@ -467,6 +472,32 @@ export function readItemUuids(siteDir) {
  */
 export function readFolderItemUuids(siteDir) {
   return readMap(siteDir, 'folderItemUuids')
+}
+
+/**
+ * Collection-declaration identity: `{ <collection name>: <backend $uuid> }`.
+ *
+ * ⛔ THE THIRD MAP, AND EACH ONE EXISTS FOR THE SAME REASON. `itemUuids` is keyed by
+ * the file an item projects to. Two kinds of item have no file of their own — a
+ * folder's placements, and a collection DECLARATION (they all live in one
+ * `collections/collections.yml`) — so a path-keyed map has no shape either could
+ * occupy, and a push re-sends that whole section uuid-less.
+ *
+ * The backend refuses an all-blank section over stored items rather than applying it,
+ * because applying it would insert every record fresh and delete every stored row —
+ * content survives, identity does not. So `push` worked once and every push after was
+ * refused. Measured 2026-08-29; collab framework-backend-812b.
+ *
+ * ⭐ Keyed by NAME, which the backend enforces unique within the section and uses as
+ * its own join key. ⛔ Not `$id`: it holds the same string but is a payload-local
+ * handle the backend skips on parse and never stores.
+ */
+export function readCollectionUuids(siteDir) {
+  return readMap(siteDir, 'collectionUuids')
+}
+export function writeCollectionUuids(siteDir, map) {
+  if (!map || !Object.keys(map).length) return
+  updateSyncCache(siteDir, { collectionUuids: map })
 }
 export function writeFolderItemUuids(siteDir, map) {
   if (!map || !Object.keys(map).length) return
@@ -966,7 +997,9 @@ export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
  *   · RE-DERIVED asset identity, from the COMMITTED `assets.json`, so a moved map
  *                reads as changed rather than matching a copy of itself.
  *   · RECORDED   the site's org, which resolves a foundation-relative `@/x` into
- *                the `@org/x` the push keyed its hashes by.
+ *                the `@org/x` the push keyed its hashes by, and the collection
+ *                identity a push stamps — so `status` hashes the same document a
+ *                push would send rather than one missing a section's `$uuid`s.
  *
  * Offline by design — measured at zero HTTP requests, a property the cross-client
  * flows rely on.
@@ -975,11 +1008,13 @@ async function comparisonEmit(siteDir, { priorHashes = {}, sendAll = false } = {
   const applied = readAppliedInjections(siteDir)
   const assetIds = readAssetMap(siteDir)
   const org = readSiteOrg(siteDir)
+  const collectionUuids = readCollectionUuids(siteDir)
   return emitSyncPackages(siteDir, {
     resolveModel: makeModelResolver({ client: null, offline: true }),
     priorHashes,
     sendAll,
     ...applied,
+    ...(Object.keys(collectionUuids).length ? { collectionUuids } : {}),
     ...(Object.keys(assetIds).length ? { assetIds } : {}),
     ...(org ? { org } : {})
   })
@@ -1338,6 +1373,16 @@ export async function pushSyncPackages({
       }
       harvest(finalized)
       siteFinalizedDoc = finalized[0]?.document || null
+      // ⭐ BANK COLLECTION-DECLARATION IDENTITY, the sibling of the folder's
+      // placements below. These items have no file to back-fill into — they all
+      // come from one `collections/collections.yml` — so the only place their
+      // `$uuid` can live is the cache, keyed by the name the backend enforces
+      // unique. Without it every push after the first re-sends the whole
+      // `collections` section uuid-less and is refused.
+      if (siteFinalizedDoc) {
+        const collectionIds = collectCollectionUuids(siteFinalizedDoc)
+        if (Object.keys(collectionIds).length) writeCollectionUuids(siteDir, collectionIds)
+      }
       finalizedTotal += finalized.length
     } else {
       const payload = await postLane('site-content', () =>
