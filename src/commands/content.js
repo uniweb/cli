@@ -162,8 +162,7 @@ async function contentExport(args) {
     if (entity.layout_sections?.length)
       counts.layout_sections = entity.layout_sections.length
     if (entity.extensions?.length) counts.extensions = entity.extensions.length
-    if (entity.collections?.length)
-      counts.collections = entity.collections.length
+    if (entity.queries?.length) counts.queries = entity.queries.length
   }
 
   console.log('')
