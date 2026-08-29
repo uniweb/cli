@@ -770,23 +770,35 @@ seo:
 
 That emits a `Content-Signal:` line in `robots.txt`. Declare only what you mean — an omitted signal says nothing, which is not the same as saying no.
 
-### Collections and dynamic routes
+### Records, queries and dynamic routes
 
-Most content lives in `pages/` — a fixed composition of sections on a fixed set of pages. **Collections are the other kind: repeating content managed as a set of files**, one item per file, that pages pull from. Blog posts, team members, products, case studies, bibliographies.
+Most content lives in `pages/` — a fixed composition of sections on a fixed set of pages. **The other kind is a set of records: repeating content managed as one file per item**, that pages pull from. Blog posts, team members, products, case studies, bibliographies.
 
-They're delivered through the **same data pipeline as remote APIs**, so from a component's point of view a locally-authored collection and a backend-served one look identical. Whether the records live in files or behind an endpoint is a transport concern (see *Fetching from other sources* in Part 4).
+It is a small database, not a page tree. Three things, deliberately separate:
 
 ```
 site/
 ├── pages/
-├── collections/
-│   ├── articles/
+├── entities/          # your stored things. The folder names their data schema
+│   ├── article/
 │   │   ├── getting-started.md
 │   │   └── design-tips.md
-│   └── team/
+│   └── person/
 │       └── alice.yml
+├── records.yml        # what is PUBLISHED
+├── queries.yml        # how content is REACHED
 └── site.yml
 ```
+
+**`entities/{schema}/` — the pool.** The folder names the data schema and nothing else:
+
+| on disk | schema |
+|---|---|
+| `entities/article/…` | `@/article` — your foundation's own |
+| `entities/std/person/…` | `@std/person` — the shared standard set |
+| `entities/acme/project/…` | `@acme/project` — an org's |
+
+Keep those folders flat: `entities/article/design-tips.md` works; `entities/article/2025/design-tips.md` is read as the `2025` schema of an `article` org, which is not what you meant. Organise in `records.yml` instead.
 
 **Four formats, one shape.** All of these produce the same records at runtime:
 
@@ -799,62 +811,85 @@ site/
 
 **One record per file, or many.** A single mapping at the top of a file makes one record and the filename stem becomes its `slug`. A top-level array (YAML/JSON) or a multi-entry `.bib` makes many, each carrying its own `slug`. You can mix both in one folder — an exported `refs.bib` beside a hand-written `extras.yml`.
 
-**Keep collection folders flat.** `collections/articles/design-tips.md` works; `collections/articles/2025/design-tips.md` does not.
-
 Item frontmatter conventionally uses `title`, `date`, `tags`, `image`, `description`, `published`, `author` — plus any fields your content needs (`price`, `role`, `order`). Images can sit beside the item file and be referenced with `./`. `published: false` hides an item without deleting it; items with no `published` field are included.
 
-**Declare each collection in `site.yml`:**
+**`records.yml` — listing an entity is what publishes it.** A file in `entities/` exists; listing it here makes it a record. Anything you leave out is a draft — no flag to set. **The common case is three lines:**
 
 ```yaml
-collections:
-  articles: collections/articles         # simple form — just point at the folder
-
-  team:                                  # extended form
-    path: collections/team               # or `url:` for a remote source
-    sort: order asc                       # `date desc`, `title asc`, …
-    where: { published: { ne: false } }   # a predicate — see authoring/predicates.md
-    limit: 100
+- article/*.md
+- person/*.yml
 ```
 
-**Show a collection on a page** with `data:` in `page.yml` (the whole collection), or `fetch:` in a section's frontmatter (a subset):
+A bare string is a path under `entities/`, naming one file or matching many.
+
+⚠️ **An empty `records.yml` is not the same as having none.** No file means "leave the published set alone". An empty file means "the folder holds nothing", which REMOVES what is published. The CLI asks before it does that.
+
+**Structure is for querying, not for navigation.** Add a `folder:` only when a query needs to ask for a *slice* of the pool rather than all of it — most sites never do:
+
+```yaml
+- article/2026-*.md
+- folder: archive
+  label: The Archive
+  records:
+    - article/2025-*.md
+```
+
+A query then slices it with `where: { path: { under: 'archive' } }`. An entity belongs to one folder; if you want a computed subset, that is a query, not a second placement.
+
+**`queries.yml` — how content is reached.** A bare map of name → query. A query names a schema and the published records of that schema are its rows:
+
+```yaml
+recent:
+  schema: '@/article'
+  sort: date desc                        # `date desc`, `title asc`, …
+  limit: 10
+
+team:
+  schema: '@std/person'
+  where: { published: { ne: false } }    # a predicate — see authoring/predicates.md
+```
+
+You can keep the same declarations under `queries:` in `site.yml` instead, if you would rather have one file.
+
+**Show a query on a page** with `data:` in `page.yml` (the whole result), or `fetch:` in a section's frontmatter (a subset):
 
 ```yaml
 # pages/blog/page.yml          |   # a section on the homepage
 title: Blog                    |   ---
-data: articles                 |   type: ArticleTeaser
-                               |   fetch: { collection: articles, limit: 3, sort: date desc }
+data: recent                   |   type: ArticleTeaser
+                               |   fetch: { query: recent, limit: 3 }
                                |   ---
 ```
 
-**Give each item its own page with a `[slug]/` folder** under the list page:
+**Give each record its own page with a `[slug]/` folder** under the list page:
 
 ```
 pages/blog/
-├── page.yml          # title: Blog / data: articles
+├── page.yml          # title: Blog / data: recent
 ├── list.md
 └── [slug]/
     ├── page.yml
-    └── article.md    # just `type: Article` — the item arrives automatically
+    └── article.md    # just `type: Article` — the record arrives automatically
 ```
 
-`collections/articles/design-tips.md` becomes `/blog/design-tips`. The section inside `[slug]/` needs no special markdown — the matched record is delivered to it. Generated pages are excluded from navigation menus.
+`entities/article/design-tips.md` becomes `/blog/design-tips`. The section inside `[slug]/` needs no special markdown — the matched record is delivered to it. Generated pages are excluded from navigation menus.
 
-> **The record arrives as a single-element array under the collection key** — `content.data.articles[0]`, not `content.data.article`. The runtime never coerces it to an object and never synthesizes a singular key. See *Data* in Part 4.
+> **The record arrives as a single-element array under the query key** — `content.data.recent[0]`, not `content.data.article`. The runtime never coerces it to an object and never synthesizes a singular key. See *Data* in Part 4.
 
-**Two options for bigger collections:**
+**Two options for bigger sets:**
 
-`deferred: [body]` strips heavy fields from the list payload — cards stay light, while a `[slug]` page still receives the full record automatically and other components fetch on demand via `useEntityDetail`. For a remote collection, add `detailUrl: /api/articles/{slug}` so the framework knows how to fetch one full record; file-based collections emit per-record files at `/data/<name>/<slug>.json` and need no configuration.
+`deferred: [body]` strips heavy fields from the list payload — cards stay light, while a `[slug]` page still receives the full record automatically and other components fetch on demand via `useEntityDetail`. For a remote source, add `detailUrl: /api/articles/{slug}` so the framework knows how to fetch one full record; file-based records emit per-record files at `/data/<name>/<slug>.json` and need no configuration.
 
 `queryable:` declares which fields a reader may filter on, with enough metadata for the foundation to render controls:
 
 ```yaml
-collections:
-  members:
-    path: collections/members
-    queryable:
-      department: { type: enum, label: Department, options: [biology, physics, chemistry] }
-      tenured:    { type: boolean, label: Tenured }
-      start_year: { type: range, label: Start year, min: 1800, max: 2025 }
+# queries.yml
+members:
+  schema: '@std/person'
+  queryable:
+    department: { type: enum, label: Department, options: [biology, physics, chemistry] }
+    tenured:    { type: boolean, label: Tenured }
+    start_year: { type: range, label: Start year, min: 1800, max: 2025 }
 ```
 
 The site declares the *surface*; the foundation reads the metadata, renders matching controls (dropdown, toggle, slider), and composes the predicate when the reader picks values.
@@ -1745,13 +1780,13 @@ A foundation can route a scope to a plain folder of schema files instead of a pa
 ```yaml
 # pages/blog/page.yml
 fetch:
-  collection: articles
+  query: recent
   where: { published: true, tags: featured }
   sort: date desc
   limit: 3
 ```
 
-**Lean lists with `deferred:`.** Collections with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]` in `site.yml`. The cascade payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json` (file-based collections) or fetched from an author-declared `detailUrl:` (API-backed). On dynamic-route pages the focused record's full data is delivered automatically; elsewhere components fetch on demand via `useEntityDetail`. The hook is safe to call on any collection: when there is no separate detail source it returns the record you passed in, because nothing was stripped from it.
+**Lean lists with `deferred:`.** A query over records with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]`. The cascade payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json` (file-based records) or fetched from an author-declared `detailUrl:` (API-backed). On dynamic-route pages the focused record's full data is delivered automatically; elsewhere components fetch on demand via `useEntityDetail`. The hook is safe to call on any query: when there is no separate detail source it returns the record you passed in, because nothing was stripped from it.
 
 **Component-side fetching.** When a component genuinely needs to fetch on its own (a search box, "load more", a lazy popover), use the kit hooks — `useFetched`, `useCacheEntry`, `useEntityDetail`. They share the framework's cache and dispatcher with declarative fetches; same-key requests dedupe automatically.
 
@@ -2383,12 +2418,12 @@ Running `extract` before a build is the usual first mistake — it reads the com
 
 ```
 locales/freeform/es/pages/about/hero.md        # by page route
-locales/freeform/es/collections/articles/x.md  # collections work too
+locales/freeform/es/entities/article/x.md      # records work too
 ```
 
 These are **body only — no frontmatter**; params and config still come from the source section. `uniweb i18n init-freeform es pages/about hero` creates one pre-filled and records a source hash, so `uniweb i18n status --freeform` can tell you when the original moved on (`update-hash` to acknowledge). `move`, `rename`, and `prune --freeform` keep them aligned when pages get reorganized.
 
-**Collections translate in the same `extract` run**, into their own manifest at `locales/collections/manifest.json`.
+**Records translate in the same `extract` run**, into their own manifest at `locales/collections/manifest.json`.
 
 **Component side.** Nothing to do: `content.title` arrives in the active language. The one thing a foundation builds is a switcher.
 
