@@ -113,7 +113,20 @@ const say = {
   dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`)
 }
 
-// Origin-relative serve path → clickable absolute URL (self-serve default).
+// Origin-relative serve path → clickable absolute URL.
+//
+// ⭐ THE TWO SHAPES ARE A CONTRACT, NOT AN INCONSISTENCY — ratified 2026-08-29 and
+// documented in the backend's `wire-layer.md` rather than merely observed. A publish
+// returns an ABSOLUTE url when Cloudflare hosts the site (another origin entirely)
+// and an ORIGIN-RELATIVE path when the backend serves it itself, where its own
+// external origin is not reliably self-reportable from behind an ALB.
+//
+// ⇒ So this branch is implementing the contract, not defending against drift. I
+// reported the two shapes as a violation of "finished values only" in collab
+// framework-backend-812b; the backend checked, found the adjacent ruling that
+// explains the relative arm, and ratified both. Do not "fix" it by demanding one
+// shape — the caller's own origin is the missing half on the relative arm, and we
+// are the caller.
 function absolutizeServeUrl(origin, url) {
   if (!url || typeof url !== 'string') return null
   if (/^https?:\/\//.test(url)) return url
