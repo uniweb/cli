@@ -197,6 +197,6 @@ async function contentExport(args) {
     )
   }
   console.log('')
-  say.warn('v0 scope: media bytes, collection records, and @-nested section')
+  say.warn('v0 scope: media bytes, records, and @-nested section')
   say.dim('hierarchy are not yet carried (documented).')
 }

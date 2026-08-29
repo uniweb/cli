@@ -243,11 +243,11 @@ async function runExtract(siteRoot, config, args) {
   const verbose = args.includes('--verbose') || args.includes('-v')
   const dryRun = args.includes('--dry-run')
   const recordsOnly =
-    args.includes('--collections-only') || args.includes('--collections')
+    args.includes('--records-only') || args.includes('--records')
   const noRecords = args.includes('--no-records')
   // --with-collections is now a no-op (collections are included by default)
 
-  // Extract page content (unless --collections-only)
+  // Extract page content (unless --records-only)
   if (!recordsOnly) {
     log(
       `\n${colors.cyan}Extracting translatable content${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`
@@ -312,17 +312,17 @@ async function runExtract(siteRoot, config, args) {
   // Extract collection content (by default, skip with --no-records)
   if (!noRecords) {
     log(
-      `\n${colors.cyan}Extracting collection content${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`
+      `\n${colors.cyan}Extracting record content${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`
     )
 
     // Check if collections exist
     const dataDir = join(siteRoot, 'public', DATA_DIR)
     if (!existsSync(dataDir)) {
       if (recordsOnly) {
-        error('No collections found. Create collection data in public/data/.')
+        error('No records found. Add entities under entities/ and list them in records.yml.')
         process.exit(1)
       }
-      log(`${colors.dim}No collections found in public/data/.${colors.reset}`)
+      log(`${colors.dim}No records found in public/data/.${colors.reset}`)
       return
     }
 
@@ -333,7 +333,7 @@ async function runExtract(siteRoot, config, args) {
       const recordManifestPath = join(
         siteRoot,
         config.localesDir,
-        'collections',
+        'records',
         'manifest.json'
       )
       const isUpdate = existsSync(recordManifestPath)
@@ -345,7 +345,7 @@ async function runExtract(siteRoot, config, args) {
 
       const unitCount = Object.keys(manifest.units).length
       if (unitCount > 0) {
-        success(`Extracted ${unitCount} translatable strings from collections`)
+        success(`Extracted ${unitCount} translatable strings from records`)
 
         if (report && isUpdate) {
           log('')
@@ -356,7 +356,7 @@ async function runExtract(siteRoot, config, args) {
           log(`\n${colors.dim}Dry run — no files were modified.${colors.reset}`)
         } else {
           log(
-            `\nManifest written to: ${colors.dim}${config.localesDir}/collections/manifest.json${colors.reset}`
+            `\nManifest written to: ${colors.dim}${config.localesDir}/records/manifest.json${colors.reset}`
           )
         }
       } else {
@@ -365,7 +365,7 @@ async function runExtract(siteRoot, config, args) {
         )
       }
     } catch (err) {
-      error(`Collection extraction failed: ${err.message}`)
+      error(`Record extraction failed: ${err.message}`)
       if (verbose) console.error(err)
       if (recordsOnly) process.exit(1)
     }
@@ -988,11 +988,11 @@ async function runAudit(siteRoot, config, args) {
  * Usage:
  *   uniweb i18n init-freeform es pages/about hero
  *   uniweb i18n init-freeform es page-ids/installation intro
- *   uniweb i18n init-freeform es collections/articles getting-started
+ *   uniweb i18n init-freeform es entities/article getting-started
  */
 async function runInitFreeform(siteRoot, config, args) {
   const locale = args[0]
-  const pathType = args[1] // pages/about, page-ids/installation, collections/articles
+  const pathType = args[1] // pages/about, page-ids/installation, entities/article
   const sectionId = args[2] // hero, intro, getting-started
 
   if (!locale || !pathType || !sectionId) {
@@ -1001,7 +1001,7 @@ async function runInitFreeform(siteRoot, config, args) {
     log('  uniweb i18n init-freeform es pages/about hero')
     log('  uniweb i18n init-freeform es page-ids/installation intro')
     log(
-      `  uniweb i18n init-freeform es collections/articles getting-started${colors.reset}`
+      `  uniweb i18n init-freeform es entities/article getting-started${colors.reset}`
     )
     process.exit(1)
   }
@@ -1057,15 +1057,29 @@ async function runInitFreeform(siteRoot, config, args) {
           if (sourceContent) break
         }
       }
-    } else if (pathType.startsWith('collections/')) {
-      // Find item in collection data
-      const queryName = pathType.replace('collections/', '')
-      const dataPath = join(
-        siteRoot,
-        'public',
-        'data',
-        `${queryName}.json`
-      )
+    } else if (pathType.startsWith('entities/')) {
+      // ⛔ ADDRESSED BY THE RECORD, matching where the loader reads. The freeform
+      // tree is `entities/<schema dirs>/<slug>.md`; this used to take
+      // `collections/<query>` and write a path nothing read — the loader moved
+      // and this did not.
+      //
+      // The record's CONTENT still lives in a query's materialization, so the
+      // query that covers this schema is resolved rather than named.
+      const poolDirs = pathType.replace('entities/', '')
+      const { resolveQueriesConfig, poolDirsForSchema } = await import('@uniweb/build/uwx')
+      let queryName = null
+      try {
+        const { declarations } = await resolveQueriesConfig(siteRoot)
+        for (const [name, decl] of Object.entries(declarations || {})) {
+          const dirs = decl.schema ? poolDirsForSchema(decl.schema) : null
+          if (dirs && dirs.join('/') === poolDirs) { queryName = name; break }
+        }
+      } catch {
+        /* no resolvable config — fall through to the not-found message below */
+      }
+      const dataPath = queryName
+        ? join(siteRoot, 'public', 'data', `${queryName}.json`)
+        : join(siteRoot, 'public', 'data', '__none__.json')
 
       if (existsSync(dataPath)) {
         const dataRaw = await readFile(dataPath, 'utf-8')
@@ -1607,8 +1621,8 @@ ${colors.bright}Options:${colors.reset}
   --freeform           (status/prune) Include free-form translation status
   --json               (status) Output as JSON for translation tools
   --by-page            (status --missing) Group missing strings by page
-  --collections-only   (extract/status/audit) Process only collections
-  --no-records     (extract/status/audit) Skip collections (pages only)
+  --records-only   (extract/status/audit) Process only records
+  --no-records     (extract/status/audit) Skip records (pages only)
   --all-stale          (update-hash) Update all stale translations at once
 
 ${colors.bright}Configuration:${colors.reset}
@@ -1638,14 +1652,14 @@ ${colors.bright}File Structure:${colors.reset}
         .manifest.json       Staleness tracking
         pages/about/hero.md  Translated content for /about page, hero section
         page-ids/install/intro.md  Translated content by page ID
-        collections/articles/getting-started.md
+        entities/article/getting-started.md
 
 ${colors.bright}Examples:${colors.reset}
   ${colors.dim}# Hash-based workflow${colors.reset}
   uniweb i18n extract                     # Extract all translatable strings
   uniweb i18n extract --dry-run           # Preview without writing
   uniweb i18n extract --verbose           # Show extracted strings
-  uniweb i18n extract --no-records    # Pages only (skip collections)
+  uniweb i18n extract --no-records    # Pages only (skip records)
   uniweb i18n generate es fr              # Create starter files for Spanish and French
   uniweb i18n generate --empty            # Create files with empty values (for translators)
   uniweb i18n generate --force            # Overwrite existing locale files
@@ -1658,7 +1672,7 @@ ${colors.bright}Examples:${colors.reset}
   ${colors.dim}# Free-form workflow (complete section replacement)${colors.reset}
   uniweb i18n init-freeform es pages/about hero
   uniweb i18n init-freeform es page-ids/installation intro
-  uniweb i18n init-freeform es collections/articles getting-started
+  uniweb i18n init-freeform es entities/article getting-started
   uniweb i18n status --freeform    # Show free-form translation status
   uniweb i18n update-hash es --all-stale  # Update hashes after review
   uniweb i18n move pages/docs/setup pages/getting-started

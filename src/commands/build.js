@@ -659,7 +659,7 @@ async function buildSiteLink(projectDir, options = {}) {
           recordLocalesDir: join(
             projectDir,
             i18nConfig.localesDir,
-            'collections'
+            'records'
           )
         })
         const recordCount = Object.values(recordOutputs).reduce(
@@ -668,12 +668,12 @@ async function buildSiteLink(projectDir, options = {}) {
         )
         if (recordCount > 0) {
           success(
-            `Translated collections for ${Object.keys(recordOutputs).length} locale(s)`
+            `Translated records for ${Object.keys(recordOutputs).length} locale(s)`
           )
         }
       } catch (err) {
         if (process.env.UNIWEB_DEBUG)
-          console.error('Collection translation:', err.message)
+          console.error('Record translation:', err.message)
       }
     } catch (err) {
       error(`i18n build failed: ${err.message}`)
@@ -780,7 +780,7 @@ async function buildSite(projectDir, options = {}) {
           recordLocalesDir: join(
             projectDir,
             i18nConfig.localesDir,
-            'collections'
+            'records'
           )
         })
 
@@ -792,13 +792,13 @@ async function buildSite(projectDir, options = {}) {
 
         if (recordCount > 0) {
           success(
-            `Translated collections for ${Object.keys(recordOutputs).length} locale(s)`
+            `Translated records for ${Object.keys(recordOutputs).length} locale(s)`
           )
         }
       } catch (err) {
         // Collection translation is optional, don't fail build
         if (process.env.UNIWEB_DEBUG) {
-          console.error('Collection translation:', err.message)
+          console.error('Record translation:', err.message)
         }
       }
     } catch (err) {

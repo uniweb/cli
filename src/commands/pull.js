@@ -597,7 +597,7 @@ export async function pull(args = [], deps = {}) {
     info(
       `Dry run — would pull content from ${colors.dim}${client.origin}${colors.reset}`
     )
-    if (!noRecords) info(`Dry run — would also pull collections`)
+    if (!noRecords) info(`Dry run — would also pull records`)
     return { exitCode: 0 }
   }
 
@@ -778,7 +778,7 @@ export async function pull(args = [], deps = {}) {
   // holds a folder uuid). Models are resolved by name (async) up front, so
   // recordsToProject keeps its synchronous contract. A 304 leaves files as-is.
   if (!noRecords) {
-    const folder = await getDocs('collections', () =>
+    const folder = await getDocs('records', () =>
       client.pullFolder(siteContentUuid, { etag: etagFolder })
     )
     if (folder && !folder.notModified && folder.docs?.length) {

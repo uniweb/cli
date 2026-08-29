@@ -601,7 +601,7 @@ export async function publish(args = []) {
   //     `client.discover()` is the mechanism if that changes — `DISCOVERY_DEFAULTS`
   //     makes an absent key non-breaking by construction.
   if (ball) {
-    say.info('Uploading collection data…')
+    say.info('Uploading schema-less record data…')
     try {
       const r = await uploadSiteData({
         apiBase: client.origin,
@@ -617,9 +617,9 @@ export async function publish(args = []) {
         for (const f of r.failed) say.dim(`  ${f.path} (HTTP ${f.status})`)
         return { exitCode: 1 }
       }
-      say.dim(`Collection data : ${r.uploaded.length} file(s) [${r.mode}]`)
+      say.dim(`Record data     : ${r.uploaded.length} file(s) [${r.mode}]`)
     } catch (err) {
-      say.err(`Collection data upload failed: ${err.message}`)
+      say.err(`Record data upload failed: ${err.message}`)
       return { exitCode: 1 }
     }
   }

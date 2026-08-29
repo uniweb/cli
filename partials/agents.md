@@ -1801,7 +1801,7 @@ A site isn't limited to file-based collections. The `fetcher:` block in `site.ym
 fetcher:
   baseUrl: https://api.example.com
   headers: { X-Tenant: acme }
-  envelope: { collection: data.items, item: data.article, error: errors.0.message }
+  envelope: { list: data.items, item: data.article, error: errors.0.message }
 
   supports: [where, limit, sort]     # which operators the source evaluates natively
 

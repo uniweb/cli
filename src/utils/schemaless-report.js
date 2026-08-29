@@ -25,6 +25,6 @@ export function reportSchemalessQueries(schemaless, out) {
   out.dim(
     `Declare a data schema to get entities. Each resolves its schema by subfolder name (${schemaless
       .map((c) => `${c.name} → ${c.model || c.name}`)
-      .join(', ')}), or set \`schema:\` on the collection.`
+      .join(', ')}), or set \`schema:\` on the query.`
   )
 }

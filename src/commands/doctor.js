@@ -589,16 +589,16 @@ function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix,
       .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name))
 
     if (orphans.length > 0) {
-      const id = 'orphaned-collection-output'
+      const id = 'orphaned-query-output'
       issues.push({
         id,
         type: 'warning',
         site: siteName,
-        message: `${orphans.length} entr${orphans.length === 1 ? 'y' : 'ies'} in public/${DATA_DIR}/ with no declared collection`
+        message: `${orphans.length} entr${orphans.length === 1 ? 'y' : 'ies'} in public/${DATA_DIR}/ with no declared query`
       })
       warn(`[${id}] Stale output in public/${DATA_DIR}/: ${orphans.join(', ')}`)
       log(
-        `    No collection in site.yml produces ${orphans.length === 1 ? 'it' : 'these'}. ` +
+        `    No query produces ${orphans.length === 1 ? 'it' : 'these'}. ` +
         `${orphans.length === 1 ? 'It is' : 'They are'} still served and deployed.`
       )
       if (shouldFix(id)) {
