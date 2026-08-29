@@ -24,7 +24,7 @@
  *      seed;
  *   4. install, then delegate the projection to the project-local `uniweb pull` (which
  *      resolves the now-installed project-local `@uniweb/build`; clone forwards
- *      `--no-collections` to it when set).
+ *      `--no-records` to it when set).
  *
  * Sites are private — authenticate with `uniweb login` first; the session carries
  * identity + the backend origin. There is no `--foundation` flag: the site carries
@@ -37,7 +37,7 @@
  *                                        the current workspace when run inside one)
  *   uniweb clone <uuid> --path sites     Place under sites/ (segregated layout)
  *   uniweb clone <uuid> --project docs   Co-located docs/site
- *   uniweb clone <uuid> --no-collections Pull pages only; skip collection records
+ *   uniweb clone <uuid> --no-records Pull pages only; skip records
  *
  * Backend: via BackendClient (the site-content pull lane). Origin from
  *   --registry  >  UNIWEB_REGISTER_URL  >  the local default (internal dev overrides;
@@ -176,7 +176,7 @@ export async function clone(args = [], deps = {}) {
   if (!siteUuid) {
     error('Missing site uuid.')
     log(
-      `\nUsage: ${getCliPrefix()} clone <site-uuid> [name|.] [--path <dir>] [--project <name>] [--no-collections]`
+      `\nUsage: ${getCliPrefix()} clone <site-uuid> [name|.] [--path <dir>] [--project <name>] [--no-records]`
     )
     log(
       `${colors.dim}Sites are private — run \`uniweb login\` first.${colors.reset}`
@@ -184,8 +184,8 @@ export async function clone(args = [], deps = {}) {
     return { exitCode: 2 }
   }
 
-  const noCollections =
-    args.includes('--no-collections') || args.includes('--content-only')
+  const noRecords =
+    args.includes('--no-records') || args.includes('--content-only')
   const pathFlag = flagValue(args, '--path')
   const projectFlag = flagValue(args, '--project')
   const tokenFlag = flagValue(args, '--token')
@@ -394,7 +394,7 @@ export async function clone(args = [], deps = {}) {
   const pullExtra = []
   if (explicitBackend) pullExtra.push('--backend', explicitBackend)
   if (tokenFlag) pullExtra.push('--token', tokenFlag)
-  if (noCollections) pullExtra.push('--no-collections')
+  if (noRecords) pullExtra.push('--no-records')
 
   if (deps.skipPull) {
     note('Skipping pull (test mode).')

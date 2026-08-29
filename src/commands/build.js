@@ -592,7 +592,7 @@ function resolveFoundationDir(projectDir, siteConfig) {
  *
  * The `buildLocalizedContent` step is the same call bundle mode makes
  * post-vite, so multi-locale sites get identical per-locale outputs in
- * either mode. Collection translation (`buildLocalizedCollections`)
+ * either mode. Collection translation (`buildLocalizedRecords`)
  * also runs here so deploy ships translated collection JSONs.
  *
  * Bug surfaced + fixed by routing deploy through this path: the bundle
@@ -652,23 +652,23 @@ async function buildSiteLink(projectDir, options = {}) {
       // Collection translations — optional; don't fail the build if
       // missing. Bundle mode does the same.
       try {
-        const { buildLocalizedCollections } = await import('@uniweb/build/i18n')
-        const collectionOutputs = await buildLocalizedCollections(projectDir, {
+        const { buildLocalizedRecords } = await import('@uniweb/build/i18n')
+        const recordOutputs = await buildLocalizedRecords(projectDir, {
           locales: i18nConfig.locales,
           outputDir: distDir,
-          collectionsLocalesDir: join(
+          recordLocalesDir: join(
             projectDir,
             i18nConfig.localesDir,
             'collections'
           )
         })
-        const collectionCount = Object.values(collectionOutputs).reduce(
+        const recordCount = Object.values(recordOutputs).reduce(
           (sum, localeOutputs) => sum + Object.keys(localeOutputs).length,
           0
         )
-        if (collectionCount > 0) {
+        if (recordCount > 0) {
           success(
-            `Translated collections for ${Object.keys(collectionOutputs).length} locale(s)`
+            `Translated collections for ${Object.keys(recordOutputs).length} locale(s)`
           )
         }
       } catch (err) {
@@ -772,12 +772,12 @@ async function buildSite(projectDir, options = {}) {
 
       // Translate collections if they exist
       try {
-        const { buildLocalizedCollections } = await import('@uniweb/build/i18n')
+        const { buildLocalizedRecords } = await import('@uniweb/build/i18n')
 
-        const collectionOutputs = await buildLocalizedCollections(projectDir, {
+        const recordOutputs = await buildLocalizedRecords(projectDir, {
           locales: i18nConfig.locales,
           outputDir: join(projectDir, 'dist'),
-          collectionsLocalesDir: join(
+          recordLocalesDir: join(
             projectDir,
             i18nConfig.localesDir,
             'collections'
@@ -785,14 +785,14 @@ async function buildSite(projectDir, options = {}) {
         })
 
         // Count collections translated
-        const collectionCount = Object.values(collectionOutputs).reduce(
+        const recordCount = Object.values(recordOutputs).reduce(
           (sum, localeOutputs) => sum + Object.keys(localeOutputs).length,
           0
         )
 
-        if (collectionCount > 0) {
+        if (recordCount > 0) {
           success(
-            `Translated collections for ${Object.keys(collectionOutputs).length} locale(s)`
+            `Translated collections for ${Object.keys(recordOutputs).length} locale(s)`
           )
         }
       } catch (err) {

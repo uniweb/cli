@@ -10,7 +10,7 @@
  *
  *   - content lane → `siteContentDocumentToProject` (site.yml/theme.yml/head.html,
  *     pages/**, layout/**), and
- *   - folder lane  → `collectionsToProject` (the folder + record files).
+ *   - folder lane  → `recordsToProject` (the folder + record files).
  *
  * Pull is a CHECKOUT, not a merge — the "git-pull-like" it used to claim here was
  * misleading. It reconciles the working tree to the backend: section bodies are
@@ -36,7 +36,7 @@
  *
  * Usage:
  *   uniweb pull                          GET both lanes, project to files, prune orphans
- *   uniweb pull --no-collections         Pull pages only; skip the folder (collections) lane
+ *   uniweb pull --no-records         Pull pages only; skip the folder (records) lane
  *   uniweb pull --no-delete              Project, but keep files with no backend item
  *   uniweb pull --merge                  Three-way merge local changes with the backend's
  *   uniweb pull --force                  Pull over uncommitted local changes (discards them)
@@ -52,7 +52,7 @@
  * A project that never pushed has no `$uuid` to pull by — pull is a no-op with a
  * clear message. The backend serves each lane as a `.uwx` (ZIP: `manifest.json` +
  * `entities/<uuid>.json`); `readPullDocuments` reads the entity files out of it, with
- * a tolerant JSON fallback (`extractDocument` / `splitCollectionsPull`). Verified live
+ * a tolerant JSON fallback (`extractDocument` / `splitRecordsPull`). Verified live
  * against the playground backend, 2026-06-17.
  */
 
@@ -71,11 +71,11 @@ import yaml from 'js-yaml'
 import { downloadMissingAssets } from '../backend/asset-download.js'
 import {
   siteContentDocumentToProject,
-  collectionsToProject,
+  recordsToProject,
   readZip,
   computeUnitHashes,
   collectUnitUuids,
-  collectCollectionUuids
+  collectQueryUuids
 } from '@uniweb/build/uwx'
 import {
   readWritten,
@@ -85,7 +85,7 @@ import {
 import {
   makeModelResolver,
   rebankSyncHashes,
-  writeCollectionUuids,
+  writeQueryUuids,
   mergeBaseVersions,
   mergeItemBaseVersions,
   writeUnitBases,
@@ -202,7 +202,7 @@ export function extractDocument(payload) {
 // Split a collections pull (the folder + the entities it references) into the
 // folder document and the record documents. Tolerant of an array, an
 // `{ entities }` / `{ documents }` list, or an explicit `{ folder, records }`.
-export function splitCollectionsPull(payload) {
+export function splitRecordsPull(payload) {
   if (payload?.folder)
     return { folderDoc: payload.folder, recordDocs: payload.records || [] }
   const list = Array.isArray(payload)
@@ -239,7 +239,7 @@ export function readPullDocuments(buf) {
     }
     return docs
   }
-  // JSON fallback — flatten any envelope splitCollectionsPull understands into a
+  // JSON fallback — flatten any envelope splitRecordsPull understands into a
   // flat `$`-document list (a raw doc, a list, `{entities}`/`{documents}`, or
   // `{folder, records}`).
   let payload
@@ -518,8 +518,8 @@ export async function pull(args = [], deps = {}) {
   const dryRun = args.includes('--dry-run')
   const tokenFlag = flagValue(args, '--token')
   const prune = !(args.includes('--no-delete') || args.includes('--no-prune')) // git-like by default
-  const noCollections =
-    args.includes('--no-collections') || args.includes('--content-only')
+  const noRecords =
+    args.includes('--no-records') || args.includes('--content-only')
   const force = args.includes('--force')
   const mergeMode = args.includes('--merge')
 
@@ -597,7 +597,7 @@ export async function pull(args = [], deps = {}) {
     info(
       `Dry run — would pull content from ${colors.dim}${client.origin}${colors.reset}`
     )
-    if (!noCollections) info(`Dry run — would also pull collections`)
+    if (!noRecords) info(`Dry run — would also pull collections`)
     return { exitCode: 0 }
   }
 
@@ -690,8 +690,8 @@ export async function pull(args = [], deps = {}) {
       writeItemUuids(siteDir, collectUnitUuids(siteDoc))
       // The collections section's identity has no file to live in either — same
       // reason, same remedy, keyed by name. A pull is the other route by which a
-      // copy can recover it (see readCollectionUuids).
-      writeCollectionUuids(siteDir, collectCollectionUuids(siteDoc))
+      // copy can recover it (see readQueryUuids).
+      writeQueryUuids(siteDir, collectQueryUuids(siteDoc))
       // Bring the media down BEFORE projecting: a newly-landed asset gains a map
       // entry, and the projection reads that map to put authored paths back. Run
       // after, and this pull's new assets would project as URLs and only restore
@@ -776,13 +776,13 @@ export async function pull(args = [], deps = {}) {
   // Lane 2 — folder → the folder + record files, keyed by the SAME site-content uuid
   // (the backend resolves the site's `@uniweb/folder` from it; the framework never
   // holds a folder uuid). Models are resolved by name (async) up front, so
-  // collectionsToProject keeps its synchronous contract. A 304 leaves files as-is.
-  if (!noCollections) {
+  // recordsToProject keeps its synchronous contract. A 304 leaves files as-is.
+  if (!noRecords) {
     const folder = await getDocs('collections', () =>
       client.pullFolder(siteContentUuid, { etag: etagFolder })
     )
     if (folder && !folder.notModified && folder.docs?.length) {
-      const { folderDoc, recordDocs } = splitCollectionsPull(folder.docs)
+      const { folderDoc, recordDocs } = splitRecordsPull(folder.docs)
       const resolveModel = makeModelResolver({ client })
       const declByModel = new Map()
       for (const model of [
@@ -796,10 +796,10 @@ export async function pull(args = [], deps = {}) {
       }
       // ⛔ NO QUERY CONFIG. A record's home is decided by what it IS — its
       // `$model` names the pool folder — not by any query that happens to select
-      // it. `collectionsToProject` reads `site.yml::$org` itself, so a `@/x`
+      // it. `recordsToProject` reads `site.yml::$org` itself, so a `@/x`
       // model the producer resolved to `@org/x` is placed back where the author
       // wrote it.
-      const report = collectionsToProject({
+      const report = recordsToProject({
         folderDoc,
         recordDocs,
         siteRoot: siteDir,

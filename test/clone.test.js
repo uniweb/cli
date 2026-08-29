@@ -132,11 +132,11 @@ test('clone scaffolds a ref-only harness and seeds the uuids (new workspace)', a
   }
 })
 
-test('clone forwards --no-collections to the delegated pull', async () => {
+test('clone forwards --no-records to the delegated pull', async () => {
   const dir = tmpCwd()
   let pulledArgs = null
   try {
-    const res = await clone(['SITE-1', 'solo', '--no-collections'], {
+    const res = await clone(['SITE-1', 'solo', '--no-records'], {
       getToken: async () => 'tok',
       skipInstall: true,
       runPull: async (_siteDir, _pm, extra) => {
@@ -147,8 +147,8 @@ test('clone forwards --no-collections to the delegated pull', async () => {
     })
     assert.equal(res.exitCode, 0)
     assert.ok(
-      pulledArgs && pulledArgs.includes('--no-collections'),
-      'forwarded --no-collections to pull'
+      pulledArgs && pulledArgs.includes('--no-records'),
+      'forwarded --no-records to pull'
     )
   } finally {
     rmSync(dir, { recursive: true, force: true })

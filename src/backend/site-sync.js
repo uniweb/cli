@@ -27,7 +27,7 @@ import {
   computeUnitHashes,
   collectUnitUuids,
   collectFolderItemUuids,
-  collectCollectionUuids,
+  collectQueryUuids,
   readAssetMap
 } from '@uniweb/build/uwx'
 
@@ -242,7 +242,7 @@ export function clearRemoteSyncState(siteDir, siteUuid = null) {
   const prior = readSyncCacheFile(siteDir)
   const dropped = [
     'itemUuids',
-    'collectionUuids',
+    'queryUuids',
     'hashes',
     'baseVersions',
     'unitBases',
@@ -252,7 +252,7 @@ export function clearRemoteSyncState(siteDir, siteUuid = null) {
     itemUuids: {},
     // Remote-derived exactly like itemUuids — it holds the OLD site's collection
     // ids, and surviving the drop it would offer them for the new site's sections.
-    collectionUuids: {},
+    queryUuids: {},
     hashes: {},
     baseVersions: {},
     unitBases: {},
@@ -492,12 +492,12 @@ export function readFolderItemUuids(siteDir) {
  * its own join key. ⛔ Not `$id`: it holds the same string but is a payload-local
  * handle the backend skips on parse and never stores.
  */
-export function readCollectionUuids(siteDir) {
-  return readMap(siteDir, 'collectionUuids')
+export function readQueryUuids(siteDir) {
+  return readMap(siteDir, 'queryUuids')
 }
-export function writeCollectionUuids(siteDir, map) {
+export function writeQueryUuids(siteDir, map) {
   if (!map || !Object.keys(map).length) return
-  updateSyncCache(siteDir, { collectionUuids: map })
+  updateSyncCache(siteDir, { queryUuids: map })
 }
 export function writeFolderItemUuids(siteDir, map) {
   if (!map || !Object.keys(map).length) return
@@ -968,12 +968,12 @@ export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
   //
   // ⛔ THE ORG IS NOT OPTIONAL HERE, AND OMITTING IT WAS SILENT. It is what resolves
   // a foundation-relative `@/member` into the `@org/member` the push shipped and
-  // keyed its hashes by. Without it the emit does not fail — `buildCollectionEntities`
+  // keyed its hashes by. Without it the emit does not fail — `buildRecordEntities`
   // WARNS and ships the model unresolved, deliberately, so an org-less export still
   // works — so every record of a `@/`-scoped collection is emitted under a key that
   // can never match its banked one, and reads as changed forever.
   //
-  // ⚠️ It hides in plain sight because `@std/…` collections are unaffected: their
+  // ⚠️ It hides in plain sight because `@std/…` queries are unaffected: their
   // scope is already absolute, so they match. A site mixing both — the marketing
   // fixture has `@std/person` AND `@proximify/member` — shows some records settling
   // and others never settling, which reads like a content problem rather than a
@@ -981,7 +981,7 @@ export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
   // immediately after a successful push; passing the org took it to 1.
   const pkg = await comparisonEmit(siteDir, { priorHashes, sendAll })
   const changed =
-    (pkg.siteContent?.entityCount || 0) + (pkg.collections?.entityCount || 0)
+    (pkg.siteContent?.entityCount || 0) + (pkg.records?.entityCount || 0)
   return { changed, unchanged: pkg.skipped || 0, warnings: pkg.warnings || [] }
 }
 
@@ -1008,13 +1008,13 @@ async function comparisonEmit(siteDir, { priorHashes = {}, sendAll = false } = {
   const applied = readAppliedInjections(siteDir)
   const assetIds = readAssetMap(siteDir)
   const org = readSiteOrg(siteDir)
-  const collectionUuids = readCollectionUuids(siteDir)
+  const queryUuids = readQueryUuids(siteDir)
   return emitSyncPackages(siteDir, {
     resolveModel: makeModelResolver({ client: null, offline: true }),
     priorHashes,
     sendAll,
     ...applied,
-    ...(Object.keys(collectionUuids).length ? { collectionUuids } : {}),
+    ...(Object.keys(queryUuids).length ? { queryUuids } : {}),
     ...(Object.keys(assetIds).length ? { assetIds } : {}),
     ...(org ? { org } : {})
   })
@@ -1383,8 +1383,8 @@ export async function pushSyncPackages({
       // unique. Without it every push after the first re-sends the whole
       // `collections` section uuid-less and is refused.
       if (siteFinalizedDoc) {
-        const collectionIds = collectCollectionUuids(siteFinalizedDoc)
-        if (Object.keys(collectionIds).length) writeCollectionUuids(siteDir, collectionIds)
+        const recordIds = collectQueryUuids(siteFinalizedDoc)
+        if (Object.keys(recordIds).length) writeQueryUuids(siteDir, recordIds)
       }
       finalizedTotal += finalized.length
     } else {

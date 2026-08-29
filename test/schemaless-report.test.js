@@ -12,12 +12,12 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { reportSchemalessCollections } from '../src/utils/schemaless-report.js'
+import { reportSchemalessQueries } from '../src/utils/schemaless-report.js'
 
 function capture(schemaless) {
   const warn = []
   const dim = []
-  reportSchemalessCollections(schemaless, {
+  reportSchemalessQueries(schemaless, {
     warn: (m) => warn.push(m),
     dim: (m) => dim.push(m)
   })
@@ -64,8 +64,8 @@ test('it carries the model name the convention looked for', () => {
 test('plural agreement, so the headline never reads as broken english', () => {
   const one = capture([{ name: 'a', model: '@/a' }])
   const two = capture([{ name: 'a', model: '@/a' }, { name: 'b', model: '@/b' }])
-  assert.match(one.warn[0], /1 collection /)
-  assert.match(two.warn[0], /2 collections /)
+  assert.match(one.warn[0], /1 query /)
+  assert.match(two.warn[0], /2 queries /)
   assert.match(two.warn[0], /a, b/)
 })
 

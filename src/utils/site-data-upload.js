@@ -1,7 +1,7 @@
 /**
  * Static collection data — the passthrough lane.
  *
- * A site's **schema-less** collections have no entity model, so their compiled
+ * A site's **schema-less** queries have no entity model, so their compiled
  * `dist/data/**` JSON is delivered as files rather than synced as entities.
  * This plans and uploads that set: one plan call, one object per file, each
  * PUT to the target the backend returns.
@@ -93,7 +93,7 @@ export async function uploadSiteData({
       //
       // ⛔ And the failure is INVISIBLE from here: the plan succeeds, the PUT
       // succeeds, and only a visitor's fetch 404s. Confirmed against the
-      // shipped contract's own example (`collections/articles.json` with a
+      // shipped contract's own example (`data/articles.json` with a
       // `/data/`-bearing `serve_base`), which supersedes an earlier
       // parenthetical that showed the prefix.
       path: relPath,

@@ -242,13 +242,13 @@ async function loadSiteConfig(siteRoot) {
 async function runExtract(siteRoot, config, args) {
   const verbose = args.includes('--verbose') || args.includes('-v')
   const dryRun = args.includes('--dry-run')
-  const collectionsOnly =
+  const recordsOnly =
     args.includes('--collections-only') || args.includes('--collections')
-  const noCollections = args.includes('--no-collections')
+  const noRecords = args.includes('--no-records')
   // --with-collections is now a no-op (collections are included by default)
 
   // Extract page content (unless --collections-only)
-  if (!collectionsOnly) {
+  if (!recordsOnly) {
     log(
       `\n${colors.cyan}Extracting translatable content${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`
     )
@@ -309,8 +309,8 @@ async function runExtract(siteRoot, config, args) {
     }
   }
 
-  // Extract collection content (by default, skip with --no-collections)
-  if (!noCollections) {
+  // Extract collection content (by default, skip with --no-records)
+  if (!noRecords) {
     log(
       `\n${colors.cyan}Extracting collection content${dryRun ? ' (dry run)' : ''}...${colors.reset}\n`
     )
@@ -318,7 +318,7 @@ async function runExtract(siteRoot, config, args) {
     // Check if collections exist
     const dataDir = join(siteRoot, 'public', DATA_DIR)
     if (!existsSync(dataDir)) {
-      if (collectionsOnly) {
+      if (recordsOnly) {
         error('No collections found. Create collection data in public/data/.')
         process.exit(1)
       }
@@ -327,18 +327,18 @@ async function runExtract(siteRoot, config, args) {
     }
 
     try {
-      const { extractCollectionManifest, formatSyncReport } =
+      const { extractRecordManifest, formatSyncReport } =
         await import('@uniweb/build/i18n')
 
-      const collectionsManifestPath = join(
+      const recordManifestPath = join(
         siteRoot,
         config.localesDir,
         'collections',
         'manifest.json'
       )
-      const isUpdate = existsSync(collectionsManifestPath)
+      const isUpdate = existsSync(recordManifestPath)
 
-      const { manifest, report } = await extractCollectionManifest(siteRoot, {
+      const { manifest, report } = await extractRecordManifest(siteRoot, {
         localesDir: config.localesDir,
         dryRun
       })
@@ -367,7 +367,7 @@ async function runExtract(siteRoot, config, args) {
     } catch (err) {
       error(`Collection extraction failed: ${err.message}`)
       if (verbose) console.error(err)
-      if (collectionsOnly) process.exit(1)
+      if (recordsOnly) process.exit(1)
     }
   }
 }
@@ -1059,12 +1059,12 @@ async function runInitFreeform(siteRoot, config, args) {
       }
     } else if (pathType.startsWith('collections/')) {
       // Find item in collection data
-      const collectionName = pathType.replace('collections/', '')
+      const queryName = pathType.replace('collections/', '')
       const dataPath = join(
         siteRoot,
         'public',
         'data',
-        `${collectionName}.json`
+        `${queryName}.json`
       )
 
       if (existsSync(dataPath)) {
@@ -1608,7 +1608,7 @@ ${colors.bright}Options:${colors.reset}
   --json               (status) Output as JSON for translation tools
   --by-page            (status --missing) Group missing strings by page
   --collections-only   (extract/status/audit) Process only collections
-  --no-collections     (extract/status/audit) Skip collections (pages only)
+  --no-records     (extract/status/audit) Skip collections (pages only)
   --all-stale          (update-hash) Update all stale translations at once
 
 ${colors.bright}Configuration:${colors.reset}
@@ -1645,7 +1645,7 @@ ${colors.bright}Examples:${colors.reset}
   uniweb i18n extract                     # Extract all translatable strings
   uniweb i18n extract --dry-run           # Preview without writing
   uniweb i18n extract --verbose           # Show extracted strings
-  uniweb i18n extract --no-collections    # Pages only (skip collections)
+  uniweb i18n extract --no-records    # Pages only (skip collections)
   uniweb i18n generate es fr              # Create starter files for Spanish and French
   uniweb i18n generate --empty            # Create files with empty values (for translators)
   uniweb i18n generate --force            # Overwrite existing locale files

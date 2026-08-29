@@ -29,7 +29,7 @@ import yaml from 'js-yaml'
 import {
   pull,
   extractDocument,
-  splitCollectionsPull,
+  splitRecordsPull,
   readPullDocuments,
   readPullVersions
 } from '../src/commands/pull.js'
@@ -166,10 +166,10 @@ test('readPullDocuments reads entity docs out of a .uwx zip, and tolerates JSON 
   assert.deepEqual(readPullDocuments(Buffer.from('not json')), [])
 })
 
-test('splitCollectionsPull partitions the folder from the records', () => {
+test('splitRecordsPull partitions the folder from the records', () => {
   const folder = { $model: '@uniweb/folder', contents: [] }
   const rec = { $model: '@acme/article', article: {} }
-  const { folderDoc, recordDocs } = splitCollectionsPull({
+  const { folderDoc, recordDocs } = splitRecordsPull({
     entities: [folder, rec]
   })
   assert.equal(folderDoc, folder)
@@ -402,7 +402,7 @@ test('pull projects the collections lane, resolving the model via a mock model-r
   }
 })
 
-test('pull --no-collections skips the folder lane', async () => {
+test('pull --no-records skips the folder lane', async () => {
   const dir = tempSite()
   const pulledUrls = []
   try {
@@ -421,7 +421,7 @@ test('pull --no-collections skips the folder lane', async () => {
       collections: []
     }
 
-    const res = await pull(['--no-collections', '--force', ...TEST_BACKEND], {
+    const res = await pull(['--no-records', '--force', ...TEST_BACKEND], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: async (url) => {
@@ -459,7 +459,7 @@ test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (
       JSON.stringify({ version: 1, content: '"abc123"' })
     )
     let sentINM
-    const res = await pull(['--no-collections', '--force', ...TEST_BACKEND], {
+    const res = await pull(['--no-records', '--force', ...TEST_BACKEND], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: async (url, opts) => {
@@ -499,7 +499,7 @@ test('pull caches the ETag from a 200 for the next conditional pull', async () =
       extensions: [],
       collections: []
     }
-    await pull(['--no-collections', '--force', ...TEST_BACKEND], {
+    await pull(['--no-records', '--force', ...TEST_BACKEND], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: async () => ({

@@ -77,12 +77,12 @@ const VERBS = {
   pull: [
     '--backend', '--content-only', '--dry-run', '--force', '--merge',
     '--no-assets',
-    '--no-collections', '--no-delete', '--no-prune', '--registry', '--token',
+    '--no-records', '--no-delete', '--no-prune', '--registry', '--token',
     // via backend/site-sync.js (the owner resolver) and utils/conformance.js
     '--yes', '--org', '--as-org', '--no-validate', ...VIA_DEPLOY
   ],
   clone: [
-    '--backend', '--content-only', '--no-assets', '--no-collections', '--path',
+    '--backend', '--content-only', '--no-assets', '--no-records', '--path',
     '--project', '--registry', '--token', '--org', '--as-org'
   ],
   register: [

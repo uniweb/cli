@@ -269,7 +269,7 @@ export async function validate(args = []) {
     return { exitCode: 0 }
   }
 
-  // The data pipeline (collectSiteContent / processCollections) prints progress
+  // The data pipeline (collectSiteContent / processQueries) prints progress
   // via console.log. Route that to stderr while the engine runs so stdout stays
   // clean — pure JSON for `--json`, just the report otherwise. `log` captured
   // the original stdout writer at module load, so our own output is unaffected.

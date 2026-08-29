@@ -569,7 +569,7 @@ function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix,
   // file would turn the whole check into a false positive — the loudest possible
   // failure for a check whose job is to find stale output.
   //
-  // Read directly rather than through `resolveCollectionsConfig`: this pass is
+  // Read directly rather than through `resolveQueriesConfig`: this pass is
   // synchronous, and it needs the NAMES rather than resolved declarations.
   const declared = new Set([
     ...Object.keys(siteYml.queries || {}),

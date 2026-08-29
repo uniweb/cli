@@ -1,5 +1,5 @@
 /**
- * Report collections publishing without a data schema.
+ * Report queries publishing without a data schema.
  *
  * ⭐ This is a PRODUCT decision the author is making, usually without knowing:
  * entities or static files. It is reported at warn level for that reason — the
@@ -14,10 +14,10 @@
  * @param {Array<{name: string, model?: string}>} schemaless
  * @param {{ warn: (m: string) => void, dim: (m: string) => void }} out
  */
-export function reportSchemalessCollections(schemaless, out) {
+export function reportSchemalessQueries(schemaless, out) {
   if (!schemaless?.length) return
   const names = schemaless.map((c) => c.name)
-  const label = names.length === 1 ? 'collection' : 'collections'
+  const label = names.length === 1 ? 'query' : 'queries'
   out.warn(
     `${names.length} ${label} shipping as STATIC FILES, not entities: ${names.join(', ')}`
   )

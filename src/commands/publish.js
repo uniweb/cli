@@ -94,7 +94,7 @@ import {
   readPaymentRefusal,
   reportPaymentRefusal
 } from '../backend/payment-handoff.js'
-import { reportSchemalessCollections } from '../utils/schemaless-report.js'
+import { reportSchemalessQueries } from '../utils/schemaless-report.js'
 import { uploadSiteData } from '../utils/site-data-upload.js'
 
 const c = {
@@ -478,7 +478,7 @@ export async function publish(args = []) {
   // A product decision the author is usually making unknowingly — say it at warn
   // level, not dim among everything else. See the helper for what the old
   // message got wrong.
-  reportSchemalessCollections(probe.schemaless, say)
+  reportSchemalessQueries(probe.schemaless, say)
   const localAssets = probe.localAssets || []
 
   // 3a. A clone with no `$uuid` is bound to no backend site, so every cached map

@@ -69,7 +69,7 @@ import { updateAssetMap, ASSET_MAP_FILE } from '@uniweb/build/uwx'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
-import { reportSchemalessCollections } from '../utils/schemaless-report.js'
+import { reportSchemalessQueries } from '../utils/schemaless-report.js'
 import { readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
@@ -86,7 +86,7 @@ import {
   readItemBaseVersions,
   readItemUuids,
   readFolderItemUuids,
-  readCollectionUuids,
+  readQueryUuids,
   ensureItemUuids,
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
@@ -485,9 +485,9 @@ export async function push(args = [], deps = {}) {
     pkg = await emitSyncPackages(siteDir, {
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir),
-      // Identity for the `collections` section — see readCollectionUuids. Keyed by
+      // Identity for the `queries` section — see readQueryUuids. Keyed by
       // name, because a declaration has no file for a path-keyed map to hold.
-      collectionUuids: readCollectionUuids(siteDir),
+      queryUuids: readQueryUuids(siteDir),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
       ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),
@@ -519,14 +519,14 @@ export async function push(args = [], deps = {}) {
     error(`Could not build the sync package: ${err.message}`)
     return { exitCode: 2 }
   }
-  const { siteContent, collections, siteContentUuid, warnings, skipped } = pkg
+  const { siteContent, records, siteContentUuid, warnings, skipped } = pkg
   log('')
   for (const w of warnings) note(`! ${w}`)
   // Warn level, not dim: this is the author choosing entities vs static files.
-  reportSchemalessCollections(pkg.schemaless, { warn, dim: note })
+  reportSchemalessQueries(pkg.schemaless, { warn, dim: note })
 
   const totalEntities =
-    (siteContent?.entityCount || 0) + (collections?.entityCount || 0)
+    (siteContent?.entityCount || 0) + (records?.entityCount || 0)
 
   // Nothing changed since the last push — the backend is already up to date.
   if (totalEntities === 0) {
@@ -539,10 +539,10 @@ export async function push(args = [], deps = {}) {
     info(
       `${colors.bright}site-content${colors.reset} → ${siteContent.models.join(', ')}`
     )
-  if (collections) {
-    const n = collections.entityCount
+  if (records) {
+    const n = records.entityCount
     info(
-      `${colors.bright}collections${colors.reset} (${n} entit${n === 1 ? 'y' : 'ies'}) → ${collections.models.join(', ')}`
+      `${colors.bright}records${colors.reset} (${n} entit${n === 1 ? 'y' : 'ies'}) → ${records.models.join(', ')}`
     )
   }
   if (skipped) note(`${skipped} unchanged, skipped`)
@@ -552,11 +552,11 @@ export async function push(args = [], deps = {}) {
     const base = output.replace(/\.uwx$/, '')
     if (siteContent)
       writeFileSync(resolve(`${base}.site-content.uwx`), siteContent.buffer)
-    if (collections)
-      writeFileSync(resolve(`${base}.collections.uwx`), collections.buffer)
+    if (records)
+      writeFileSync(resolve(`${base}.records.uwx`), records.buffer)
     const lanes = [
       siteContent && 'site-content',
-      collections && 'collections'
+      records && 'records'
     ].filter(Boolean)
     success(`Wrote ${lanes.join(' + ')} .uwx — not submitted`)
     return { exitCode: 0 }
@@ -568,7 +568,7 @@ export async function push(args = [], deps = {}) {
         `Dry run — would ${verb} content at ${colors.dim}${client.origin}${colors.reset}`
       )
     }
-    if (collections) {
+    if (records) {
       info(
         `Dry run — would push the folder at ${colors.dim}${client.origin}${colors.reset}`
       )
