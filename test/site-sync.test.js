@@ -1500,10 +1500,7 @@ test('probeUnpushed resolves a foundation-relative collection schema via the sit
     )
     writeFileSync(join(dir, 'site.yml'), `name: Acme\nfoundation: base\n${orgLine}`)
     mkdirSync(join(dir, 'collections', 'members'), { recursive: true })
-    writeFileSync(
-      join(dir, 'collections', 'collections.yml'),
-      'collections:\n  members:\n    schema: "@/member"\n'
-    )
+    writeFileSync(join(dir, 'queries.yml'), 'members:\n  schema: "@/member"\n')
     writeFileSync(join(dir, 'collections', 'members', 'alice.md'), '---\nname: Alice\n---\n\nHi.\n')
     return dir
   }

@@ -386,7 +386,7 @@ export async function clone(args = [], deps = {}) {
   // bytes on disk, not of what the scaffolder first wrote.
   recordWritten(
     siteDir,
-    ['site.yml', 'theme.yml', 'head.html', 'collections.yml']
+    ['site.yml', 'theme.yml', 'head.html', 'queries.yml']
       .map((f) => join(siteDir, f))
       .filter((p) => existsSync(p))
   )

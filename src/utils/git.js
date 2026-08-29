@@ -32,11 +32,16 @@ import yaml from 'js-yaml'
  * rather than assuming the defaults.
  */
 export function siteContentRoots(siteDir) {
+  // ⚠️ `queries.yml` IS AT THE SITE ROOT, and that is why it must be named here.
+  // Its predecessor lived at `collections/collections.yml`, so the `collections`
+  // root added below already covered it and the bare `'collections.yml'` entry
+  // that used to sit in this list resolved to a path no site ever had. A
+  // root-level file has no directory entry standing in for it.
   const roots = new Set([
     'site.yml',
     'theme.yml',
     'head.html',
-    'collections.yml',
+    'queries.yml',
     'locales'
   ])
   let paths = {}

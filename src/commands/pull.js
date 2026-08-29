@@ -840,7 +840,7 @@ export async function pull(args = [], deps = {}) {
     siteDir,
     [
       ...wrote,
-      ...['site.yml', 'theme.yml', 'head.html', 'collections.yml'].map((f) =>
+      ...['site.yml', 'theme.yml', 'head.html', 'queries.yml'].map((f) =>
         join(siteDir, f)
       )
     ],
