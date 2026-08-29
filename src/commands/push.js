@@ -77,6 +77,7 @@ import {
   readSiteIdentity
 } from '../utils/site-identity.js'
 import { confirm } from '../utils/interactive.js'
+import { guardEmptyRecords } from '../utils/records-guard.js'
 import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
 import {
   makeModelResolver,
@@ -369,6 +370,15 @@ export async function push(args = [], deps = {}) {
   // It also has to be this emit that carries `assetRewrite` below: the push cache
   // stores hashes of the REWRITTEN content, so the emit compared against it must
   // rewrite too, or every entity reads as changed forever.
+  // ⛔ AN EMPTY `records.yml` REMOVES. It is the one path where an ordinary act is
+  // destructive — a placeholder file, created meaning to fill it in — so the count
+  // is reported and confirmed before anything is sent. The format stays honest;
+  // the asking happens here.
+  if (!dryRun) {
+    const guard = await guardEmptyRecords({ siteDir, args, warn, note })
+    if (!guard.ok) return { exitCode: 1 }
+  }
+
   let assetRewrite = null
   let assetIds = null
   if (!output && !dryRun) {

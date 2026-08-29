@@ -70,6 +70,7 @@ import {
   readSiteIdentity
 } from '../utils/site-identity.js'
 import { isNonInteractive, confirm } from '../utils/interactive.js'
+import { guardEmptyRecords } from '../utils/records-guard.js'
 import { headProvenance } from '../utils/git.js'
 import {
   makeModelResolver,
@@ -448,6 +449,14 @@ export async function publish(args = []) {
 
   // Non-local @std/registry Model schemas resolve through the backend (same as push).
   const resolveModel = makeModelResolver({ client, offline: false })
+
+  // ⛔ AN EMPTY `records.yml` REMOVES. It is the one path where an ordinary act is
+  // destructive — a placeholder file, created meaning to fill it in — so the count
+  // is reported and confirmed before anything is sent.
+  {
+    const guard = await guardEmptyRecords({ siteDir, args, warn: say.warn, note: say.dim })
+    if (!guard.ok) return { exitCode: 1 }
+  }
 
   // 3. Partition collections by schema presence (a first emit reads `schemaless`
   //    — collections with no data schema, delivered statically via the ball).
