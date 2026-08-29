@@ -260,7 +260,7 @@ test('pull projects the site-content lane (pages + sections + config) from a moc
   }
 })
 
-test('pull fetches the folder lane by the site-content uuid (no collections.yml needed)', async () => {
+test('pull fetches the folder lane by the site-content uuid (no query config needed)', async () => {
   const dir = tempSite()
   try {
     // The site holds one identity (site.yml::$uuid); the folder is keyed by it.
@@ -327,12 +327,14 @@ test('pull fetches the folder lane by the site-content uuid (no collections.yml 
 
     assert.equal(res.exitCode, 0)
     // the folder lane ran, keyed by the site-content uuid
+    // ⭐ A record's home is its MODEL's pool folder — `@acme/article` →
+    // `entities/acme/article/`. Not a query's directory: a query has none.
     assert.ok(
-      existsSync(join(dir, 'collections/articles/hello.md')),
+      existsSync(join(dir, 'entities/acme/article/hello.md')),
       'record projected via the folder lane'
     )
-    // and no folder uuid is persisted to collections.yml (the framework holds none)
-    assert.equal(existsSync(join(dir, 'collections/collections.yml')), false)
+    // and no folder uuid is persisted (the framework holds none)
+    assert.equal(existsSync(join(dir, 'queries.yml')), false)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -392,7 +394,7 @@ test('pull projects the collections lane, resolving the model via a mock model-r
     })
 
     assert.equal(res.exitCode, 0)
-    const recordFile = join(dir, 'collections/articles/hello.md')
+    const recordFile = join(dir, 'entities/acme/article/hello.md')
     assert.ok(existsSync(recordFile), 'record file projected')
     assert.match(readFileSync(recordFile, 'utf8'), /title: Hello/)
   } finally {
