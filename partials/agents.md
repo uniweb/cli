@@ -2423,7 +2423,7 @@ locales/freeform/es/entities/article/x.md      # records work too
 
 These are **body only — no frontmatter**; params and config still come from the source section. `uniweb i18n init-freeform es pages/about hero` creates one pre-filled and records a source hash, so `uniweb i18n status --freeform` can tell you when the original moved on (`update-hash` to acknowledge). `move`, `rename`, and `prune --freeform` keep them aligned when pages get reorganized.
 
-**Records translate in the same `extract` run**, into their own manifest at `locales/collections/manifest.json`.
+**Records translate in the same `extract` run**, into their own manifest at `locales/records/manifest.json` — keyed by the RECORD, so a record translated once is found by every query that returns it.
 
 **Component side.** Nothing to do: `content.title` arrives in the active language. The one thing a foundation builds is a switcher.
 
