@@ -72,7 +72,6 @@ import { downloadMissingAssets } from '../backend/asset-download.js'
 import {
   siteContentDocumentToProject,
   collectionsToProject,
-  resolveCollectionsConfig,
   readZip,
   computeUnitHashes,
   collectUnitUuids,
@@ -795,18 +794,20 @@ export async function pull(args = [], deps = {}) {
           note(`! could not resolve model ${model}: ${err.message}`)
         }
       }
-      const collectionsConfig = await resolveCollectionsConfig(siteDir).catch(
-        () => null
-      )
+      // ⛔ NO QUERY CONFIG. A record's home is decided by what it IS — its
+      // `$model` names the pool folder — not by any query that happens to select
+      // it. `collectionsToProject` reads `site.yml::$org` itself, so a `@/x`
+      // model the producer resolved to `@org/x` is placed back where the author
+      // wrote it.
       const report = collectionsToProject({
         folderDoc,
         recordDocs,
         siteRoot: siteDir,
         opts: {
-          resolveDeclaration: (name) => declByModel.get(name) || null,
-          collectionsConfig
+          resolveDeclaration: (name) => declByModel.get(name) || null
         }
       })
+      if (report.records === 'updated') info('Wrote records.yml')
       records += report.placed.length + report.updated.length
       for (const s of report.skipped)
         note(`↷ ${s.slug ?? s.uuid ?? '(record)'}: ${s.reason}`)
@@ -840,7 +841,7 @@ export async function pull(args = [], deps = {}) {
     siteDir,
     [
       ...wrote,
-      ...['site.yml', 'theme.yml', 'head.html', 'queries.yml'].map((f) =>
+      ...['site.yml', 'theme.yml', 'head.html', 'queries.yml', 'records.yml'].map((f) =>
         join(siteDir, f)
       )
     ],

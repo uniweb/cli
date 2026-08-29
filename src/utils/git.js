@@ -42,6 +42,7 @@ export function siteContentRoots(siteDir) {
     'theme.yml',
     'head.html',
     'queries.yml',
+    'records.yml',
     'locales'
   ])
   let paths = {}
@@ -53,7 +54,7 @@ export function siteContentRoots(siteDir) {
   }
   roots.add(paths.pages || 'pages')
   roots.add(paths.layout || 'layout')
-  roots.add(paths.collections || 'collections')
+  roots.add(paths.entities || 'entities')
   return [...roots]
 }
 

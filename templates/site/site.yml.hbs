@@ -25,20 +25,38 @@ index: home
 #   pages/docs: ../../../docs       # Mount docs repo at /docs route
 #   pages/blog: ../../blog-content  # Mount blog content at /blog route
 #   layout: ./custom-layout         # Custom layout directory
-#   collections: ./data             # Collections directory
+#   entities: ./data                # Where this site's entities live
 #
 # To give a mounted route a layout or a title, add a local folder for it
 # (pages/docs/) holding a folder.yml — folder.yml, not page.yml, because the
 # mounted directory is a folder of pages. Whatever that stub leaves unset comes
 # from the mounted directory's own folder.yml, so it need only say what differs.
 
-# ─── Data Sources ─────────────────────────────────────────────────────────────
-# Define collections (local markdown folders) or fetch remote/local JSON data.
-# Pages and sections reference sources by name via `data: source-name`.
+# ─── Structured Content ───────────────────────────────────────────────────────
+# Three things, and they are separate on purpose:
 #
-# collections:
+#   entities/{schema}/   your stored records. The folder names their data schema:
+#                          entities/article/       → @/article  (your foundation's)
+#                          entities/std/person/    → @std/person
+#   records.yml          WHAT IS PUBLISHED. Listing an entity here is what makes it
+#                        a record; anything you leave out is a draft. Usually three
+#                        lines:
+#                            - article/*.md
+#                            - person/*.md
+#   queries.yml          HOW CONTENT IS REACHED — named queries over those records:
+#                            recent:
+#                              schema: '@/article'
+#                              sort: date desc
+#                              limit: 10
+#
+# Pages and sections then name a query: `data: recent`, or
+# `fetch: { query: recent }`.
+#
+# You can also keep queries here instead of in queries.yml:
+#
+# queries:
 #   articles:
-#     path: collections/articles         # Folder of .md entity files
+#     schema: '@/article'
 #     sort: date desc                    # Sort by frontmatter field
 #
 # fetch:

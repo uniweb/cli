@@ -153,8 +153,8 @@ function loadSiteYml(dir) {
 /**
  * Diagnose the compiled-collection output directory.
  *
- * `public/<DATA_DIR>/` holds what the build compiles from `collections/`, and
- * nothing else — `collections/` is the only supported way to provide
+ * `public/<DATA_DIR>/` holds what the build compiles from `entities/`, and
+ * nothing else — `entities/` + `records.yml` is the only supported way to provide
  * structured data. Two consequences, both checked here:
  *
  * 1. **The mapping is a bijection.** Every entry should be backed by a
@@ -548,9 +548,33 @@ export async function checkFormSubmitTarget({ sitePath, siteName, siteYml, issue
   )
 }
 
+/** The bare map in `queries.yml`, or `{}` when there is none. */
+function readQueriesYml(sitePath) {
+  try {
+    const doc = yaml.load(readFileSync(join(sitePath, 'queries.yml'), 'utf8'))
+    return doc && typeof doc === 'object' && !Array.isArray(doc) ? doc : {}
+  } catch {
+    return {}
+  }
+}
+
 function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix, fixed }) {
   const dataDir = join(sitePath, 'public', DATA_DIR)
-  const declared = new Set(Object.keys(siteYml.collections || {}))
+  // ⚠️ THE QUERIES, not the pool. `public/<DATA_DIR>/x.json` is a query's
+  // MATERIALIZATION — one file per named query — so the bijection is with the
+  // declared queries, never with the schema folders under `entities/`.
+  //
+  // ⛔ BOTH HOMES, or this reports every compiled file as an orphan. A site that
+  // keeps its queries in `queries.yml` has none in `site.yml`, and reading one
+  // file would turn the whole check into a false positive — the loudest possible
+  // failure for a check whose job is to find stale output.
+  //
+  // Read directly rather than through `resolveCollectionsConfig`: this pass is
+  // synchronous, and it needs the NAMES rather than resolved declarations.
+  const declared = new Set([
+    ...Object.keys(siteYml.queries || {}),
+    ...Object.keys(readQueriesYml(sitePath))
+  ])
 
   if (existsSync(dataDir)) {
     // A collection `x` owns `x.json` (the cascade) and `x/` (per-record files
@@ -614,7 +638,7 @@ function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix,
       const body = existing === null ? '' : existing.replace(/\n*$/, '\n')
       writeFileSync(
         gitignorePath,
-        `${body}\n# Compiled collections — generated from collections/\n${rule}\n`
+        `${body}\n# Compiled query results — generated from entities/ + queries.yml\n${rule}\n`
       )
       fixed(`added ${rule} to ${gitignorePath}`)
       if (existsSync(dataDir)) {
@@ -891,9 +915,9 @@ export async function doctor(args = []) {
     }
 
     // `public/<DATA_DIR>/` is the build's output directory and nothing else —
-    // `collections/` is the only supported way to provide structured data. That
-    // makes the mapping a bijection: every entry there should be backed by a
-    // declared collection, so anything else is stale, and identifiable.
+    // `entities/` + `records.yml` is the only supported way to provide structured
+    // data. That makes the mapping a bijection: every entry there should be backed
+    // by a declared QUERY, so anything else is stale, and identifiable.
     //
     // It matters because the directory is written into the source tree rather
     // than dist/, so what lands there persists and gets deployed. A collection
