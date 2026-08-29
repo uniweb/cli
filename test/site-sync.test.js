@@ -78,7 +78,7 @@ const siteOnlyPkg = (extra) => ({
     models: ['@uniweb/site-content'],
     index: [{ kind: 'site' }]
   },
-  collections: null,
+  records: null,
   hashes: {},
   ...extra
 })
@@ -364,7 +364,7 @@ test('item tokens are banked even when the push is not the last lane to succeed'
     siteDir: dir,
     pkg: {
       ...siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
-      collections: { buffer: Buffer.from('PK'), index: [] }
+      records: { buffer: Buffer.from('PK'), index: [] }
     },
     asOrg: null,
     report
@@ -684,7 +684,7 @@ test('pushSyncPackages: the folder lane is keyed by the bound site uuid', async 
   const { report } = makeReport()
   const pkg = siteOnlyPkg({
     siteContentUuid: 'SITE',
-    collections: {
+    records: {
       buffer: Buffer.from('c'),
       entityCount: 1,
       models: ['@uniweb/folder'],

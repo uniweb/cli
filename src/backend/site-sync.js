@@ -1069,7 +1069,7 @@ export async function pushSyncPackages({
   asOrg,
   report
 }) {
-  const { siteContent, collections, siteContentUuid, hashes, applied } = pkg
+  const { siteContent, records, siteContentUuid, hashes, applied } = pkg
   const { info, note, error } = report
   const dim = report.dim || ((s) => s)
 
@@ -1272,8 +1272,8 @@ export async function pushSyncPackages({
         // The site's @uniweb/folder is genesis-owned: its structure is fixed on first
         // deploy and not reconciled in place (the v1 rule — see gotcha #20's mode switch).
         note(
-          "This site's collection structure is already established on the backend and can't be changed " +
-            'in place — e.g. adding or removing a schema-backed collection, or switching one between ' +
+          "This site's record structure is already established on the backend and can't be changed " +
+            'in place — e.g. adding or removing a schema-backed query, or switching one between ' +
             'static (data-bundle) and schema-backed delivery. To change it: delete the deployed site and ' +
             'redeploy, or clear `$uuid` in site.yml to deploy a fresh one.'
         )
@@ -1429,16 +1429,16 @@ export async function pushSyncPackages({
   // site-content uuid. On a brand-new site the backend creates the folder on this first
   // push. Records round-trip their own $uuid (back-filled into source files); the folder
   // itself has no uuid (the backend owns it).
-  if (collections) {
+  if (records) {
     if (!boundSiteUuid) {
       error(
-        'Cannot push collections — the site has no uuid yet. Push the site-content lane first.'
+        'Cannot push records — the site has no uuid yet. Push the site-content lane first.'
       )
       return { exitCode: 1, finalizedTotal, wrote }
     }
     const finalized = await pushLane(
-      'collections',
-      () => client.pushFolder(boundSiteUuid, collections.buffer, { asOrg }),
+      'records',
+      () => client.pushFolder(boundSiteUuid, records.buffer, { asOrg }),
       undefined,
       { boundUuid: boundSiteUuid }
     )
@@ -1447,7 +1447,7 @@ export async function pushSyncPackages({
       return { exitCode: 1, finalizedTotal, wrote }
     }
     harvest(finalized)
-    const bf = backfillEntityUuids({ index: collections.index, finalized })
+    const bf = backfillEntityUuids({ index: records.index, finalized })
     for (const w of bf.warnings) note(`! ${w}`)
     for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
     if (bf.updated.length)

@@ -361,7 +361,7 @@ async function runExtract(siteRoot, config, args) {
         }
       } else {
         log(
-          `${colors.dim}No translatable content found in collections.${colors.reset}`
+          `${colors.dim}No translatable content found in records.${colors.reset}`
         )
       }
     } catch (err) {
@@ -652,7 +652,7 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
       const allPaths = [
         ...discovered.pages,
         ...discovered.pageIds,
-        ...discovered.collections
+        ...discovered.records
       ]
 
       // Check staleness
