@@ -1114,36 +1114,57 @@ test('an older backend omitting `org` falls back to what we asked for', async ()
   assert.equal(readSiteOrg(dir), '@acme')
 })
 
-test('the billing line needs BOTH facts — neither alone may speak', async () => {
-  const run = async (org, hostsFree, enforces) => {
+test('the billing line speaks ONLY the reassuring fact, and never predicts a charge', async () => {
+  // SUPERSEDES 'the billing line needs BOTH facts'. That test pinned a JOIN of
+  // `hosts_free` (scope) with `siteSubscriptionRequired` (deployment). The second fact
+  // has left the wire: every deployment charges, so it read true everywhere and the join
+  // was testing a constant.
+  //
+  // ⛔ The response was NOT to fall back to the scope alone — that is precisely what the
+  // join existed to prevent, and the old test's second case names why: it would fire on
+  // every local publish against a box that does not enforce. Whether a publish is charged
+  // is derived per-site at publish time on a side the CLI cannot see, so the prediction
+  // was dropped entirely. The backend's typed 402 is the exact, per-site, timely answer.
+  const run = async (org, hostsFree) => {
     const dir = tmpSite()
     const notes = []
+    let discovered = false
     await ensureSiteExists({
       client: {
         createSite: async () =>
           okJson({ site_content_uuid: 'M', org, hosts_free: hostsFree }),
-        discover: async () => ({
-          delivery: { siteSubscriptionRequired: enforces }
-        })
+        discover: async () => {
+          discovered = true
+          return {}
+        }
       },
       siteDir: dir,
       name: 'A',
       foundation: '@a/b@1.0.0',
       note: (m) => notes.push(m)
     })
-    return notes.join('\n')
+    return { out: notes.join('\n'), discovered }
   }
 
-  // Personal on an enforcing deployment — the one case that should warn.
-  assert.match(await run(null, false, true), /require a hosting subscription/)
-  // Same site, non-enforcing deployment: keying on the scope alone would fire
-  // here, on every local publish, until the warning was trained away.
-  assert.doesNotMatch(await run(null, false, false), /require a hosting/)
-  // Exempt owner: keying on the deployment alone would fire here.
-  assert.doesNotMatch(await run('proximify', true, true), /require a hosting/)
-  assert.match(await run('proximify', true, true), /hosted free/)
-  // An older backend supplies neither fact — silence beats an unjustifiable claim.
-  assert.doesNotMatch(await run(undefined, undefined, undefined), /subscription|hosted free/)
+  // Exempt owner: the one thing the create actually told us, said plainly.
+  const exempt = await run('proximify', true)
+  assert.match(exempt.out, /hosted free/)
+
+  // Not exempt: SILENT. This is the assertion that carries the ruling — the CLI does
+  // not tell you a publish will cost money, because it cannot know that it will.
+  const paying = await run(null, false)
+  assert.doesNotMatch(paying.out, /require a hosting|subscription/)
+
+  // An older backend echoes no scope at all — missing is not an answer.
+  const unknown = await run(undefined, undefined)
+  assert.doesNotMatch(unknown.out, /subscription|hosted free/)
+
+  // ⭐ And none of it consults discovery. This was the LAST /dev/config reader in the
+  // CLI; with it gone the endpoint has no reader at all, which is what let the backend
+  // decide whether it belongs on the CLI's route.
+  for (const r of [exempt, paying, unknown]) {
+    assert.equal(r.discovered, false, 'the billing line must not call discover()')
+  }
 })
 
 test('readSiteOrg returns null for every site that predates the record', () => {

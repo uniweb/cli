@@ -859,28 +859,27 @@ async function recordAndDescribeOwner({ client, siteDir, payload, asOrg, note })
       : `Created the site on the backend, owned personally (recorded $uuid in site.yml).`
   )
 
-  // The billing line needs the JOIN of two independent facts, and either alone
-  // gives a wrong answer:
-  //   hosts_free               — a property of the SCOPE (is this owner exempt?)
-  //   siteSubscriptionRequired — a property of the DEPLOYMENT (does it charge at all?)
-  // Keyed on the scope alone, this fires on every local publish — where nothing
-  // enforces — until the warning is trained away. Keyed on the deployment alone it
-  // fires at exempt owners. An older backend supplies neither, so both read falsy
-  // and nothing is said: silence beats a claim we cannot justify.
-  const hostsFree = payload?.hosts_free === true
-  let enforces = false
-  try {
-    const cfg = await client.discover()
-    enforces = cfg?.delivery?.siteSubscriptionRequired === true
-  } catch {
-    /* discovery is advisory here — never fail a create over a message */
-  }
-  if (hostsFree) {
+  // What the create echoed about this site's OWNER, and nothing beyond it.
+  //
+  // `hosts_free` is a property of the SCOPE — is this owner exempt? — and it is the only
+  // billing fact the CLI holds. This used to JOIN it with `siteSubscriptionRequired`
+  // from the discovery document, a property of the DEPLOYMENT. That leaf left the wire:
+  // every deployment charges, so it read true everywhere and the join was testing a
+  // constant.
+  //
+  // ⛔ AND THE WARNING WENT WITH IT — this is NOT a fallback to keying on the scope
+  // alone, which is the exact thing the join existed to prevent. Whether a given publish
+  // is charged is derived per-site at publish time, on a side the CLI cannot see, so any
+  // prediction made here can only be approximately right and would go stale silently.
+  // The backend's typed 402 (`reason: "no_subscription"`) is exact, per-site, and
+  // arrives when it matters; `backend/payment-handoff.js` already turns it into a
+  // checkout. Deciding whether payment is due is not the CLI's job.
+  //
+  // ⇒ What survives is the reassuring direction only, and only when it was stated:
+  // `false` is an answer we deliberately do not speak to, and missing is not an answer
+  // at all. Do not reintroduce a "you will be charged" line here.
+  if (payload?.hosts_free === true) {
     note?.('This owner is hosted free — publishing will not require a subscription.')
-  } else if (enforces) {
-    note?.(
-      'Publishing this site live will require a hosting subscription on this backend.'
-    )
   }
   return org
 }
