@@ -105,34 +105,39 @@ export function resolveBackendOrigin(flag, { siteScope, siteBackend } = {}) {
 }
 
 /**
- * The fallback capability doc when `GET /dev/config` is absent or unreachable
- * (an older backend, or no backend at all). Keeps the client non-breaking: the
- * bases mirror a self-serve dev backend.
+ * The fallback capability doc for when `GET /dev/config` was not asked for (no
+ * credential in hand) or did not answer. Keeps the client non-breaking.
+ *
+ * ⭐ **It is EMPTY, and that is the accurate shape.** The CLI reads exactly one leaf of
+ * that document — `delivery.siteSubscriptionRequired` — and its absence is meaningful:
+ * unknown reads falsy, and the caller stays silent rather than claiming a deployment
+ * does or does not charge. Every other key that used to sit here had no reader.
+ *
+ * ⛔ **Do not restore a key "for completeness".** A default for a field nothing reads is
+ * a reader waiting to happen, and it is how this file came to describe a client that
+ * discovered its backend's gateway base, asset base and login path — none of which was
+ * ever true. The removals, and why each was not merely unused but wrong:
+ *
+ *   `gatewayBase`  sat here UNREAD until 2026-07-29. A serve location is read from the
+ *                  response that carries it (an upload plan's `serve_base`, an asset
+ *                  entry's `serve_url`, a payload's `config.base`) — never from a
+ *                  handshake, which cannot know a per-response answer.
+ *   `assetBase`    until 2026-08-17: one production host, hardcoded, applied to every
+ *                  deployment the CLI can be pointed at. Read only to compose an asset
+ *                  URL the plan already returns verbatim. Reader and composer both gone.
+ *   `runtime`      until 2026-08-22. A backend does not hold runtimes — a version comes
+ *                  from a CDN — so there is no installed set to report. What a site gets
+ *                  follows from its foundation's floor (`info.runtime`, at register).
+ *   `auth`         `loginPath` was never read: the login path is a constant in
+ *                  `utils/registry-auth.js`, and the ORIGIN comes from the resolution
+ *                  ladder, so the CLI is never told where to log in — it is born knowing.
+ *   `delivery`     `deploy` and `broker` had no reader. `publish` had one, but it could
+ *                  never refuse: the backend sent a literal true for every deployment,
+ *                  so the gate read a constant. Removed on both sides 2026-08-30.
+ *   `assets`       `supported` had no reader; the asset lane reports its own capability
+ *                  through the upload plan it returns.
  */
-export const DISCOVERY_DEFAULTS = {
-  // ⛔ No serve-root default, and no `assetBase`. Serve locations are read from
-  // discovery or from a per-response field (an upload plan's `serve_base`, an
-  // asset entry's `serve_url`); nothing here reconstructs one, so a default is a
-  // route name with no consumer. (A `gatewayBase` entry lived here unread until
-  // 2026-07-29.)
-  //
-  // `assetBase: 'https://assets.uniweb.app/'` sat here until 2026-08-17 — one
-  // production host, hardcoded, applied to EVERY deployment the CLI can be
-  // pointed at. It was only ever read to compose an asset URL, which the plan
-  // already returns as `serve_url`; both the reader and the composer are gone.
-  //
-  // No `runtime` entry, and there must not be one. A backend does not hold
-  // runtimes: a version is acquired from a CDN — the official mirror, the
-  // distribution channel, or a local server — so there is no installed set for
-  // it to report and nothing here to default. `runtime.installed` lived here
-  // until 2026-08-22, alongside a `uniweb runtime register` verb that pushed
-  // builds to a backend; both are gone. The runtime a site gets follows from
-  // its foundation's floor (`info.runtime`, stated at register), not from
-  // anything the CLI asks a backend about.
-  auth: { loginPath: '/dev/auth/login', required: true },
-  delivery: { deploy: true, publish: true, broker: 'self-serve' },
-  assets: { supported: false }
-}
+export const DISCOVERY_DEFAULTS = {}
 
 export class BackendClient {
   /**
@@ -297,8 +302,8 @@ export class BackendClient {
    * were dropped because a serve location is read from the response that carries it
    * (`serve_base`, `serve_url`, `config.base`), never from a handshake; `auth.loginPath`
    * is not read either — the login path is a hardcoded constant
-   * (`utils/registry-auth.js`). What is actually consumed is `delivery.publish` and
-   * `delivery.siteSubscriptionRequired`, and nothing else. Do not add a reader for the
+   * (`utils/registry-auth.js`). What is actually consumed is ONE leaf —
+   * `delivery.siteSubscriptionRequired` — and nothing else. Do not add a reader for the
    * rest: each one would be a second place a backend's layout is pinned.
    *
    * @returns {Promise<object>}

@@ -60,7 +60,7 @@ import { emitSyncPackages } from '@uniweb/build/uwx'
 import { isSiteRelativeExtensionUrl } from '@uniweb/build'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 
-import { BackendClient, DISCOVERY_DEFAULTS } from '../backend/client.js'
+import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { readFlagValue, readOrgFlag } from '../utils/args.js'
@@ -248,25 +248,17 @@ export async function publish(args = []) {
   }
   const asOrg = org.asOrg
 
-  // Capability handshake (cached). Publish ends in a go-live, so the publish
-  // lane must be offered.
+  // ⛔ There is no capability gate here any more, deliberately.
   //
-  // ⛔ NOT on `--dry-run`, and this is the whole point. A dry run authenticates for
-  // nothing — `resolveSiteOrgForCreate` returns early on `offline`, and the run exits
-  // at the summary below before any authed call — so this was the CLI's one request
-  // that was BOTH anonymous AND never followed by a credential at all (measured at the
-  // wire: `publish --dry-run` with no stored session made exactly one request, this one).
-  // Every other backend call the CLI makes is authenticated or is itself the login, so
-  // this was the lone exception — and a preview has no business probing a backend it
-  // will not touch. The defaults report the lane as offered, which is the right answer
-  // for a run that ships nothing.
-  const config = dryRun ? DISCOVERY_DEFAULTS : await client.discover()
-  if (config?.delivery && config.delivery.publish === false) {
-    say.err(
-      `Backend at ${client.origin} does not offer the publish lane (delivery.publish=false).`
-    )
-    return { exitCode: 1 }
-  }
+  // This used to read `delivery.publish` from the discovery document and refuse when it
+  // was false. It could never fire: the backend sent a literal true for every deployment,
+  // so the gate compared a constant against false. The key is now gone on both sides
+  // (2026-08-30). Restoring a reader for it would re-create a check that cannot fail
+  // while implying a capability that was never negotiable.
+  //
+  // Discovery is not consulted on this path at all. The one leaf the CLI still reads
+  // (`delivery.siteSubscriptionRequired`) is read after the site create, where a
+  // credential is already in hand.
 
   // ⛔ NOTHING about a runtime is sent from here. `site.yml::runtime` was a
   // vestigial prop and is no longer read [Diego, 2026-08-22]; `?runtime=` is no

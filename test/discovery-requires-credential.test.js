@@ -21,7 +21,7 @@ import { BackendClient, DISCOVERY_DEFAULTS } from '../src/backend/client.js'
 
 const ORIGIN = 'https://backend.example'
 
-function recordingFetch(calls, body = { delivery: { publish: true } }) {
+function recordingFetch(calls, body = { delivery: { siteSubscriptionRequired: true } }) {
   return async (url, init) => {
     calls.push({ url, headers: init?.headers || {} })
     return {
@@ -44,7 +44,7 @@ test('discover(): with a token, /dev/config is sent AND carries the bearer', asy
   assert.equal(calls.length, 1)
   assert.match(calls[0].url, /\/dev\/config$/)
   assert.equal(calls[0].headers.Authorization, 'Bearer TOK')
-  assert.equal(cfg.delivery.publish, true)
+  assert.equal(cfg.delivery.siteSubscriptionRequired, true)
 })
 
 test('discover(): ⛔ with NO credential, NO request is made — defaults instead', async () => {
@@ -93,11 +93,30 @@ test('discover(): a 401 degrades to defaults rather than failing the command', a
   assert.deepEqual(await client.discover(), { ...DISCOVERY_DEFAULTS })
 })
 
-test('DISCOVERY_DEFAULTS carry no serve location and no runtime set', async () => {
-  // Both were deleted (assetBase 2026-08-17, gatewayBase 2026-07-29 unread, runtime
-  // 2026-08-22) because a serve location is read from the response that carries it and
-  // a backend holds no runtimes. A default here would be a reader waiting to happen.
-  assert.equal(DISCOVERY_DEFAULTS.assetBase, undefined)
-  assert.equal(DISCOVERY_DEFAULTS.gatewayBase, undefined)
-  assert.equal(DISCOVERY_DEFAULTS.runtime, undefined)
+test('DISCOVERY_DEFAULTS is EMPTY — a default for an unread field is a reader waiting to happen', () => {
+  // Every key that ever sat here was removed for the same reason: nothing read it, and
+  // its presence made a false story about this client credible ("the CLI discovers its
+  // backend's gateway base, asset base and login path" — none of it true). The CLI reads
+  // ONE leaf of the real document, `delivery.siteSubscriptionRequired`, and its absence
+  // is meaningful: unknown must read falsy so the caller says nothing.
+  assert.deepEqual(DISCOVERY_DEFAULTS, {})
+
+  // Named individually so a reinstated key fails loudly rather than widening deepEqual.
+  for (const dead of [
+    'gatewayBase',
+    'assetBase',
+    'runtime',
+    'auth',
+    'delivery',
+    'assets'
+  ]) {
+    assert.equal(DISCOVERY_DEFAULTS[dead], undefined, `${dead} must stay removed`)
+  }
+})
+
+test('an absent delivery.siteSubscriptionRequired reads falsy, never throws', () => {
+  // The shape the one real reader depends on: `cfg?.delivery?.siteSubscriptionRequired
+  // === true`. With empty defaults that is undefined, not a TypeError.
+  const cfg = { ...DISCOVERY_DEFAULTS }
+  assert.equal(cfg?.delivery?.siteSubscriptionRequired === true, false)
 })
