@@ -250,18 +250,78 @@ export class BackendClient {
   // ── Discovery ─────────────────────────────────────────────────────────────────
 
   /**
-   * GET /dev/config — the anonymous capability/handshake document. The one route
-   * that answers before login (`auth: false`). Lazy + cached for the client's
-   * lifetime; a missing route or any transport/parse error falls back to
-   * DISCOVERY_DEFAULTS (non-breaking — an older backend still works). Lets the
-   * CLI hardcode nothing about a backend but its origin and discover the rest:
-   * `auth`, `delivery` (deploy/publish? broker), `assets` (lane built yet?).
+   * The session bearer IF one can be had without asking — an explicit `--token`, an
+   * env var, or a stored unexpired session. Never prompts, never logs in, returns null
+   * instead. `token()` is the one that may block; this is for calls that want to be
+   * authenticated when possible but must not *cause* an authentication.
+   * @returns {Promise<string|null>}
+   */
+  async _tokenIfAvailable() {
+    if (this._token) return this._token
+    // ⛔ The injected resolver must be honoured here too, not just in `token()`.
+    // `pull` and `clone` pass one (`deps.getToken`), so skipping it would treat a caller
+    // that supplies its own auth as unauthenticated — and, worse, fall through to the
+    // machine's stored session, quietly using a DIFFERENT credential than the caller
+    // asked for. A throwing resolver is "no token", never a failed command.
+    if (this._getToken) {
+      try {
+        return (await this._getToken()) || null
+      } catch {
+        return null
+      }
+    }
+    try {
+      const stored = await readRegistryAuth()
+      if (stored?.token && !isExpired(stored)) return stored.token
+    } catch {
+      /* advisory — a missing or unreadable session is simply "no token" */
+    }
+    return null
+  }
+
+  /**
+   * GET /dev/config — the capability/handshake document. Lazy + cached for the client's
+   * lifetime; a missing route, a 401, or any transport/parse error falls back to
+   * DISCOVERY_DEFAULTS, so this can never be the reason a command fails.
+   *
+   * ⭐ **Authenticated, or not sent at all.** `/dev/*` is the CLI's lane and the CLI is
+   * an authenticated client, so this attaches the bearer when it has one and **makes no
+   * request when it does not** — which keeps that true by construction rather than by
+   * ordering luck, and makes the route moving behind auth a no-op here.
+   *
+   * ⚠️ It uses `_tokenIfAvailable()` and never `token()`, deliberately: **discovery must
+   * never be the thing that triggers a login.** A capability probe that opens a password
+   * prompt would be a worse defect than the anonymous call it replaced.
+   *
+   * ⛔ **Most of this document is deliberately not read.** `gatewayBase` and `assetBase`
+   * were dropped because a serve location is read from the response that carries it
+   * (`serve_base`, `serve_url`, `config.base`), never from a handshake; `auth.loginPath`
+   * is not read either — the login path is a hardcoded constant
+   * (`utils/registry-auth.js`). What is actually consumed is `delivery.publish` and
+   * `delivery.siteSubscriptionRequired`, and nothing else. Do not add a reader for the
+   * rest: each one would be a second place a backend's layout is pinned.
+   *
    * @returns {Promise<object>}
    */
   async discover() {
     if (this._discovery) return this._discovery
+    const bearer = await this._tokenIfAvailable()
+
+    // ⛔ NO CREDENTIAL ⇒ NO REQUEST. This is the rule made structural rather than
+    // incidental: apart from the login routes themselves, the CLI does not touch
+    // `/dev/*` without a bearer. The defaults are the honest answer here — we do not
+    // know this backend's capabilities and are not entitled to ask yet — and every
+    // caller already treats them as non-breaking, so nothing downstream changes.
+    if (!bearer) {
+      this._discovery = { ...DISCOVERY_DEFAULTS }
+      return this._discovery
+    }
+
     try {
-      const res = await this.request('/dev/config', { auth: false })
+      const res = await this.request('/dev/config', {
+        auth: false,
+        headers: { Authorization: `Bearer ${bearer}` }
+      })
       this._discovery = res.ok ? await res.json() : { ...DISCOVERY_DEFAULTS }
     } catch {
       this._discovery = { ...DISCOVERY_DEFAULTS }

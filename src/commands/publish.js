@@ -60,7 +60,7 @@ import { emitSyncPackages } from '@uniweb/build/uwx'
 import { isSiteRelativeExtensionUrl } from '@uniweb/build'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 
-import { BackendClient } from '../backend/client.js'
+import { BackendClient, DISCOVERY_DEFAULTS } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { readFlagValue, readOrgFlag } from '../utils/args.js'
@@ -250,7 +250,17 @@ export async function publish(args = []) {
 
   // Capability handshake (cached). Publish ends in a go-live, so the publish
   // lane must be offered.
-  const config = await client.discover()
+  //
+  // ⛔ NOT on `--dry-run`, and this is the whole point. A dry run authenticates for
+  // nothing — `resolveSiteOrgForCreate` returns early on `offline`, and the run exits
+  // at the summary below before any authed call — so this was the CLI's one request
+  // that was BOTH anonymous AND never followed by a credential at all (measured at the
+  // wire: `publish --dry-run` with no stored session made exactly one request, this one).
+  // Every other backend call the CLI makes is authenticated or is itself the login, so
+  // this was the lone exception — and a preview has no business probing a backend it
+  // will not touch. The defaults report the lane as offered, which is the right answer
+  // for a run that ships nothing.
+  const config = dryRun ? DISCOVERY_DEFAULTS : await client.discover()
   if (config?.delivery && config.delivery.publish === false) {
     say.err(
       `Backend at ${client.origin} does not offer the publish lane (delivery.publish=false).`

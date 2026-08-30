@@ -814,10 +814,45 @@ async function main() {
     const originFlag =
       readFlagValue(loginArgs, '--backend') ||
       readFlagValue(loginArgs, '--registry')
-    await runRegistryLogin({
-      apiBase: resolveBackendOrigin(originFlag),
-      args: loginArgs
-    })
+    const apiBase = resolveBackendOrigin(originFlag)
+
+    // ⭐ The project says where it belongs — say so BEFORE authenticating elsewhere.
+    //
+    // `login` is deliberately NOT given the `site.yml::$backend` tier the site verbs
+    // get (see resolveBackendOrigin): the session it writes is machine-wide, so letting
+    // cwd pick the account you log into would be a silent surprise. But staying silent
+    // does not remove the failure, it MOVES it — you log into the default, and the next
+    // push/pull/publish resolves to `$backend` and warns about the mismatch. That is the
+    // routed-not-nagged case `$backend` was added for, missing at the one command a
+    // teammate runs FIRST after cloning.
+    //
+    // ⛔ Silent when the origin was named explicitly (--backend / --registry /
+    // UNIWEB_REGISTER_URL). A deliberate aim is not a mistake to warn about; a genuinely
+    // wrong one is still caught by the session-mismatch guard in BackendClient.token().
+    if (!originFlag && !process.env.UNIWEB_REGISTER_URL) {
+      try {
+        const { findNearbySiteBackend } = await import(
+          './utils/site-identity.js'
+        )
+        const nearby = findNearbySiteBackend(process.cwd())
+        if (nearby && nearby.backend !== apiBase) {
+          console.error(
+            `\x1b[33m⚠\x1b[0m This project syncs with ${nearby.backend} (site.yml::$backend), but login is targeting ${apiBase}.`
+          )
+          console.error(
+            `  Log in where the project belongs:  uniweb login --backend ${nearby.backend}`
+          )
+          console.error(
+            `  Continuing with ${apiBase} — a session is machine-wide, so this is a heads-up, not a block.\n`
+          )
+        }
+      } catch {
+        // Advisory only. A malformed site.yml, an unreadable directory or anything else
+        // here must never be the reason someone cannot log in.
+      }
+    }
+
+    await runRegistryLogin({ apiBase, args: loginArgs })
     return
   }
 

@@ -10,7 +10,13 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import {
+  mkdtempSync,
+  writeFileSync,
+  readFileSync,
+  rmSync,
+  mkdirSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -18,7 +24,8 @@ import {
   resolveSiteScope,
   recordSiteBackend,
   assertSiteBackendScope,
-  normalizeOrigin
+  normalizeOrigin,
+  findNearbySiteBackend
 } from '../src/utils/site-identity.js'
 import { DEFAULT_BACKEND_ORIGIN } from '../src/utils/config.js'
 
@@ -214,4 +221,68 @@ test('a build package too old to carry the writer SAYS SO, instead of failing si
   assert.match(seen[0], /too old/)
   assert.match(seen[0], /\$backend: http:\/\/localhost:8080/) // prints the manual fix
   assert.equal(readSiteIdentity(d).backend, null)
+})
+
+// ── findNearbySiteBackend — the `login` notice ────────────────────────────────────
+//
+// `login` does NOT take `$backend` as an origin tier (a session is machine-wide), so
+// this only ever produces a HEADS-UP. That makes a wrong answer worse than no answer:
+// a confident "did you mean localhost:8080?" naming the wrong site of three is a hint
+// that actively misleads. Hence the ambiguity guard, which is what most of this pins.
+
+function tmpRoot() {
+  const d = mkdtempSync(join(tmpdir(), 'uw-nearby-'))
+  dirs.push(d)
+  return d
+}
+
+function siteAt(dir, yml) {
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'site.yml'), yml)
+  return dir
+}
+
+test('findNearbySiteBackend: reads $backend from the site you stand in', () => {
+  const root = tmpRoot()
+  const site = siteAt(join(root, 'site'), `$backend: ${LOCAL}\nname: demo\n`)
+  assert.deepEqual(findNearbySiteBackend(site), { siteDir: site, backend: LOCAL })
+})
+
+test('findNearbySiteBackend: finds site/ one level down from a project root', () => {
+  const root = tmpRoot()
+  const site = siteAt(join(root, 'site'), `$backend: ${LOCAL}\nname: demo\n`)
+  assert.deepEqual(findNearbySiteBackend(root), { siteDir: site, backend: LOCAL })
+})
+
+test('findNearbySiteBackend: finds a LONE site under sites/', () => {
+  const root = tmpRoot()
+  const site = siteAt(join(root, 'sites', 'only'), `$backend: ${LOCAL}\nname: a\n`)
+  assert.deepEqual(findNearbySiteBackend(root), { siteDir: site, backend: LOCAL })
+})
+
+test('findNearbySiteBackend: ⛔ a workspace of several sites is AMBIGUOUS → null', () => {
+  // The load-bearing case. Two sites bound to different backends have no single
+  // answer, and picking either would name the wrong one half the time.
+  const root = tmpRoot()
+  siteAt(join(root, 'sites', 'a'), `$backend: ${LOCAL}\nname: a\n`)
+  siteAt(join(root, 'sites', 'b'), '$backend: http://127.0.0.1:9999\nname: b\n')
+  assert.equal(findNearbySiteBackend(root), null)
+})
+
+test('findNearbySiteBackend: a default-bound project records nothing → null', () => {
+  // No `$backend` means "the default", which is not a disagreement worth a warning.
+  const root = tmpRoot()
+  siteAt(join(root, 'site'), 'name: demo\n')
+  assert.equal(findNearbySiteBackend(root), null)
+})
+
+test('findNearbySiteBackend: outside any project → null, never throws', () => {
+  assert.equal(findNearbySiteBackend(tmpRoot()), null)
+})
+
+test('findNearbySiteBackend: a malformed site.yml is silent, not fatal', () => {
+  // It feeds an advisory. Nobody should be unable to log in because of a bad file.
+  const root = tmpRoot()
+  siteAt(join(root, 'site'), '$backend: [unclosed\n  : :\n')
+  assert.equal(findNearbySiteBackend(root), null)
 })

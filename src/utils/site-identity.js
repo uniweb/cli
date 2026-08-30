@@ -28,8 +28,8 @@
  * and it has to move the readers and the writers together or it makes the split worse.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { join, dirname } from 'node:path'
 import yaml from 'js-yaml'
 import { DEFAULT_BACKEND_ORIGIN } from './config.js'
 
@@ -231,4 +231,67 @@ export function assertSiteBackendScope(siteDir, origin) {
     message: `This project's stored identity belongs to ${bound}, but this command targets ${target}.`,
     hint
   }
+}
+
+/**
+ * The `$backend` of the site project `startDir` sits in — for verbs that are NOT site
+ * verbs and so never resolve a site directory of their own.
+ *
+ * ⛔ **This does NOT feed the origin ladder, deliberately.** `login` writes a
+ * MACHINE-WIDE session (`~/.uniweb/registry-auth.json`), not a per-project one, so
+ * letting whichever directory you happen to stand in decide which backend you
+ * authenticate against would be a silent surprise — the same class of surprise
+ * `$backend` exists to remove. What this enables is a **notice**: the project says
+ * where it belongs, so we say so before authenticating somewhere else.
+ *
+ * ⭐ **Conservative by construction — it answers only when there is exactly ONE
+ * candidate.** A workspace of several sites has no single answer, and a confident
+ * *"did you mean localhost?"* aimed at the wrong one of three sites is worse than
+ * saying nothing. Ambiguity returns null and the caller stays quiet.
+ *
+ * ⚠️ Build-free, like everything else in this file — `login` is a STANDALONE command
+ * that must work outside a project, where `@uniweb/build` is not installed. That is why
+ * this cannot reuse `resolveSiteDir` (`commands/deploy.js`), which pulls build in.
+ *
+ * @param {string} startDir
+ * @returns {{ siteDir: string, backend: string }|null}
+ */
+export function findNearbySiteBackend(startDir) {
+  // 1. Walk UP for the site we are standing in or under. Bounded: a `site.yml` more
+  //    than a few levels above is not "the project you are in", it is a coincidence,
+  //    and at the filesystem root it would be someone else's entirely.
+  let dir = startDir
+  for (let i = 0; i < 4; i++) {
+    if (existsSync(join(dir, 'site.yml'))) {
+      const { backend } = readSiteIdentity(dir)
+      return backend ? { siteDir: dir, backend } : null
+    }
+    const up = dirname(dir)
+    if (up === dir) break
+    dir = up
+  }
+
+  // 2. Standing AT a project root, the site is one level down — `site/` in the default
+  //    layout, or a lone entry under `sites/`. Two or more candidates is a workspace,
+  //    which is exactly the ambiguity above.
+  const candidates = []
+  if (existsSync(join(startDir, 'site', 'site.yml')))
+    candidates.push(join(startDir, 'site'))
+  const sitesDir = join(startDir, 'sites')
+  if (existsSync(sitesDir)) {
+    let entries = []
+    try {
+      entries = readdirSync(sitesDir, { withFileTypes: true })
+    } catch {
+      entries = []
+    }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue
+      const d = join(sitesDir, e.name)
+      if (existsSync(join(d, 'site.yml'))) candidates.push(d)
+    }
+  }
+  if (candidates.length !== 1) return null
+  const { backend } = readSiteIdentity(candidates[0])
+  return backend ? { siteDir: candidates[0], backend } : null
 }
