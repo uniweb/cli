@@ -584,7 +584,29 @@ export class BackendClient {
    * shipped backend-side — collab backend-framework-b220):
    *   { published: boolean, last_pushed_at?: string, last_published_at?: string, draft_dirty?: boolean }
    * `draft_dirty` = never-published, or the synced draft changed since the last
-   * publish ("pushed but not published"). The path is VERB-FIRST (`status/{uuid}`)
+   * publish ("pushed but not published").
+   *
+   * ⭐ **The backend also serves a LIVE-SITE record here, and nothing in this CLI reads
+   * it yet** (shipped 2026-08-29; documented here so it is not lost twice):
+   *
+   *   last_published_url · last_published_foundation · last_published_extensions
+   *   last_published_runtime · last_published_runtime_floor · last_published_runtime_resolution
+   *
+   * Three things about it that a reader will otherwise get wrong:
+   *
+   * ⛔ `runtime_resolution` is `resolved` or `pinned:<reason>` (`operator` / `unknown_floor` /
+   *    `no_foundations`). **A pin is a first-class answer, not a failure** — most sites are pinned
+   *    at any moment, and an "old" runtime still satisfies the site's floor. Never surface
+   *    `pinned:*` as an error state.
+   * ⛔ `extensions` is there because a site's code surface is the primary foundation **plus N
+   *    extensions**; reading the primary alone describes a site nobody has.
+   * ⛔ `last_*` is deliberate on every one. `unpublish` LEAVES the URL populated (the static site
+   *    may still be reachable), so beside `published: bool` a bare `published_url` would read as a
+   *    liveness claim and be wrong exactly when it matters. And **nothing back-fills** — a site
+   *    published before this reports them absent, which means "published before we recorded it",
+   *    never "has no foundation".
+   *
+   * The path is VERB-FIRST (`status/{uuid}`)
    * to match the lane (`publish/{uuid}`, `content/push/{uuid}`, `folder/pull/{uuid}`),
    * not the `{uuid}/status` the shipping-verbs §8 sketch assumed. null on
    * 404 (unknown/not-yours) / 401 / any failure — `status --remote` degrades to local.
