@@ -2234,6 +2234,112 @@ For cases the factory doesn't cover, write handlers directly using `Loom`, `inst
 
 ---
 
+## Part 4b — When the site is also an app
+
+Everything above is a site: content the author writes, built into pages. Some sites
+also have **their own backend** — accounts, per-visitor data, records their members
+create and edit. That is `@uniweb/api`.
+
+⛔ **Only reach for this when the site actually has one.** A site with no backend is
+the normal case, and a foundation that assumes one breaks on every other site it is
+used with.
+
+```bash
+npm install @uniweb/api      # in the FOUNDATION, beside @uniweb/kit
+```
+
+### Ask before you draw
+
+```jsx
+import { isEnabled, useSession, SignedIn, SignedOut } from '@uniweb/api'
+
+if (!isEnabled(website)) return <StaticVersion />   // synchronous — nothing to await
+```
+
+⛔ **When there is no backend, draw nothing** — not a disabled control, and not an
+explanation. Same rule as `services` in Part 4: which capabilities a site's operator
+set up is none of a visitor's business, and "sign-in unavailable" reads as breakage
+when it is simply a feature this site does not have. Render the version of your
+component that never needed one.
+
+### Reading
+
+```jsx
+const { status, records } = useRecords({ schema: '@/session' })
+```
+
+⭐ **`absent` and an empty `ready` are different answers, and confusing them is the
+mistake to avoid.** `absent` = there is no live source (no backend, or nobody signed
+in) → render the site's authored content. `ready` with `records: []` = the backend
+answered and there is nothing there → render your empty state. Showing "nothing yet"
+for the first tells a visitor their content is gone when it was never requested.
+
+### Writing
+
+```jsx
+const writer = useEntityWriter({ schema: '@/track', uuid: track.uuid })
+
+await writer.create({ title: 'Keynote' }, { section: 'sessions', position: 'last' })
+await writer.update(itemId, { ...item.data, room: 'Hall A' })   // whole-data replace
+await writer.move(itemId, { after: previousItemId })            // never an index
+await writer.remove(itemId)
+```
+
+- **`section` is required on `create`.** An entity has several, and a rule declared on
+  one — insert-only, say — does not reach an item that landed in another. Getting it
+  wrong stores the item happily and quietly voids the rule.
+- **`update` replaces the item's data whole.** Spread what you are not editing.
+- **Ordering is the server's.** Say `'first'`, `'last'` or `{ after }` — never compute
+  an order number, or two people arranging one list will produce an order neither
+  chose.
+- ⛔ **`writer.conflict` is reported, not retried.** Someone else changed the item
+  first; a retry would succeed by overwriting a change nobody looked at. Tell the
+  person.
+
+### ⛔ Permissions are the SERVER'S, and your UI is only a courtesy
+
+Gate your controls on what the viewer may do — `viewer.actingUnitId`, `viewer.roles` —
+but **never rely on that for safety**. A foundation runs with exactly the viewer's
+own authority, so hiding a button hides a button. The rule belongs in the data
+schema, where the store enforces it:
+
+```yaml
+# foundation/schemas/session.yml
+creatable_by: unit_members     # only members of the owning unit may create these
+
+sections:
+  checkins:
+    many: true
+    append_only: true          # may be added; never edited or removed, by anyone
+```
+
+`append_only` holds against the item's own author. That is the difference between a
+permission model and a CSS one.
+
+### A backend on your machine
+
+You do not need a live backend to build against one. In `site.yml`:
+
+```yaml
+api: /_api                 # where it answers — the same value in production
+$devApi: ./mock/api.js     # what answers it locally; `$` keys are never published
+```
+
+```js
+// site/mock/api.js
+import { createMockBackend } from '@uniweb/api/mock'
+export default createMockBackend({ seed }).fetch
+```
+
+`uniweb dev` mounts it at your `api:` address, same-origin, so cookies and your
+site's configuration behave exactly as they will in production. It **enforces**
+`creatable_by` and `append_only`, so a permission you are relying on fails on your
+machine rather than in front of a user. State is in memory; restart to reset.
+
+`uniweb create my-event --template conference` is a worked example of all of this.
+
+---
+
 ## Part 5 — Commands, shipping, and migration
 
 ```bash
