@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-31T13:37:55.117Z",
+  "generatedAt": "2026-09-01T22:08:19.670Z",
   "packages": {
     "@uniweb/api": {
       "version": "0.1.0",
@@ -10,7 +10,7 @@
       ]
     },
     "@uniweb/build": {
-      "version": "0.30.0",
+      "version": "0.30.2",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -94,7 +94,7 @@
       "deps": []
     },
     "@uniweb/schemas": {
-      "version": "0.2.11",
+      "version": "0.2.12",
       "path": "framework/schemas",
       "deps": []
     },
@@ -297,6 +297,18 @@
         "forms",
         "quote",
         "trades"
+      ]
+    },
+    "conference": {
+      "name": "Conference",
+      "description": "A site that is also an app — sign-in, per-viewer data, and an editable programme. Ships a local backend so it runs with nothing installed.",
+      "tags": [
+        "app",
+        "api",
+        "backend",
+        "auth",
+        "permissions",
+        "conference"
       ]
     }
   }
