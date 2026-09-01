@@ -17,6 +17,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import { resolveAssetPath } from '@uniweb/build/site'
 import { contentTypeFor } from '../utils/code-upload.js'
+import { humanBytes } from '../utils/bytes.js'
 
 /**
  * @param {object} client - BackendClient (uploadSiteAssets). No `discover` — this
@@ -123,20 +124,6 @@ export async function uploadSiteMedia(
 // rewording). Same house style as the push-staleness `reason: "stale_base"` in
 // site-sync.js.
 
-const KIB = 1024
-function humanBytes(n) {
-  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return null
-  if (n < KIB) return `${n} B`
-  const units = ['KiB', 'MiB', 'GiB', 'TiB']
-  let v = n / KIB
-  let i = 0
-  while (v >= KIB && i < units.length - 1) {
-    v /= KIB
-    i++
-  }
-  return `${v >= 10 || Number.isInteger(v) ? Math.round(v) : v.toFixed(1)} ${units[i]}`
-}
-
 // Append `label: <bytes>` when the value is a usable number. A refusal that omits an
 // extra still produces a useful message — never print `undefined` at a user.
 function pushBytes(lines, label, n) {
@@ -146,9 +133,17 @@ function pushBytes(lines, label, n) {
 
 /**
  * Turn an asset-plan refusal into user-facing lines, or null when this is not a
- * refusal we recognise (including every refusal shipped today, which is still
- * prose — the typed `reason` values are agreed but NOT YET EMITTED). Null means
- * "fall through to the generic error", so this degrades rather than swallowing.
+ * refusal we recognise. Null means "fall through to the generic error", so this
+ * degrades rather than swallowing.
+ *
+ * ⛔ This comment used to assert that the typed `reason` values were "agreed but
+ * NOT YET EMITTED" — an unverified claim about ANOTHER LANE's deployed state,
+ * sitting in our source where it read as fact and nobody would think to re-check
+ * it. That is the precise shape that cost the backend lane a metering hole (a
+ * comment claiming what the app sent, wrong the whole time). What we can say is
+ * ours: we branch on `reason` and fall through cleanly when there is none, so
+ * this function is correct whether or not any given backend emits one, and no
+ * sentence here needs to track what a deployment is running.
  *
  * Two wording rules are load-bearing and come from the ratified accounting model,
  * not from taste:

@@ -16,6 +16,7 @@ import { join, dirname } from 'node:path'
 import yaml from 'js-yaml'
 import { hasUncommittedContent } from '../utils/git.js'
 import { recordSiteBackend } from '../utils/site-identity.js'
+import { humanBytes } from '../utils/bytes.js'
 import {
   backfillEntityUuids,
   writeSiteEntityUuid,
@@ -647,9 +648,8 @@ export async function resolveSiteOrgForCreate({
   // serves the foundation lane, where every answer is an org and 0-orgs means
   // "claim your personal org". Here "personal" must stay reachable as *no org*,
   // and reusing deriveScope would quietly turn it into an org creation.
-  const { fetchOrgs, createOrg, validateHandle, bareHandle } = await import(
-    '../utils/registry-orgs.js'
-  )
+  const { fetchOrgs, createOrg, validateHandle, bareHandle } =
+    await import('../utils/registry-orgs.js')
   let envelope
   try {
     envelope = await fetchOrgs({
@@ -717,6 +717,59 @@ export async function resolveSiteOrgForCreate({
   } catch (err) {
     return { asOrg: null, refused: true, reason: err.message }
   }
+}
+
+/**
+ * Turn a typed site-create refusal into a sentence, or null to fall through to the
+ * generic HTTP line.
+ *
+ * ⭐ Why this exists separately from `describeAssetRefusal`. The asset lane grew a
+ * typed describer because a raw status dump is useless to the person who has to act
+ * on it; the create lane had the same hole and nobody had met it, because until the
+ * backend shipped account capacity a create could not be refused for space at all.
+ * So this is the same fix on the second door, written before anyone hits it rather
+ * than after.
+ *
+ * ⛔ Branch on `reason`, never on the status. `507` alone cannot be told from any
+ * other 507 and carries none of the numbers a user needs, and `detail` is prose the
+ * backend may reword.
+ *
+ * ⚖️ The wording deliberately DIVERGES from the asset lane's on one point. There the
+ * allowance belongs to the site's owner, who may not be the person pushing. Here
+ * there is no site yet, so the only workspace in play is the one the site would be
+ * created in — `--as <org>` included. Saying "the site owner's workspace" would be
+ * incoherent for a site that does not exist.
+ *
+ * @param {string} body - the raw response body
+ * @returns {string|null}
+ */
+function describeCreateRefusal(body) {
+  if (!body) return null
+  let p
+  try {
+    p = JSON.parse(body)
+  } catch {
+    return null // prose refusal, or an upstream error page
+  }
+  if (!p || typeof p !== 'object' || typeof p.reason !== 'string') return null
+
+  if (p.reason === 'storage_quota_exceeded') {
+    const parts = []
+    const used = humanBytes(p.used_bytes)
+    const limit = humanBytes(p.limit_bytes)
+    const needed = humanBytes(p.needed_bytes)
+    if (used && limit) parts.push(`${used} of ${limit} used`)
+    if (needed) parts.push(`a new site needs ${needed}`)
+    return (
+      'storage quota reached — the workspace this site would belong to has no room for it' +
+      (parts.length ? ` (${parts.join('; ')})` : '') +
+      '. Quota is returned by deleting a site or entity, not by editing content.'
+    )
+  }
+  // An unrecognised typed reason still beats a status dump: name it, and let the
+  // backend's own prose follow when it sent any.
+  const detail = typeof p.detail === 'string' ? p.detail : ''
+  return `the backend refused the site create (${p.reason})${detail ? ` — ${detail}` : ''}`
 }
 
 /**
@@ -797,7 +850,8 @@ export async function ensureSiteExists({
       reason:
         res?.status === 404
           ? 'this backend has no /dev/site route (it predates the empty-site create)'
-          : `HTTP ${res?.status} ${res?.statusText || ''}${body ? ` — ${body.slice(0, 200)}` : ''}`
+          : (describeCreateRefusal(body) ??
+            `HTTP ${res?.status} ${res?.statusText || ''}${body ? ` — ${body.slice(0, 200)}` : ''}`)
     }
   }
   const payload = await res.json().catch(() => null)
@@ -837,7 +891,13 @@ export async function ensureSiteExists({
  *
  * @returns {Promise<string|null>} the display handle recorded, or null for personal
  */
-async function recordAndDescribeOwner({ client, siteDir, payload, asOrg, note }) {
+async function recordAndDescribeOwner({
+  client,
+  siteDir,
+  payload,
+  asOrg,
+  note
+}) {
   const echoed = payload && 'org' in payload ? payload.org : undefined
   const owner =
     echoed === undefined ? asOrg : typeof echoed === 'string' ? echoed : null
@@ -851,7 +911,8 @@ async function recordAndDescribeOwner({ client, siteDir, payload, asOrg, note })
   //
   // A no-op on the default backend, so the common case writes nothing.
   const scope = await recordSiteBackend(siteDir, client.origin)
-  if (scope) note?.(`Bound this project to ${scope} (recorded $backend in site.yml).`)
+  if (scope)
+    note?.(`Bound this project to ${scope} (recorded $backend in site.yml).`)
 
   note?.(
     org
@@ -879,7 +940,9 @@ async function recordAndDescribeOwner({ client, siteDir, payload, asOrg, note })
   // `false` is an answer we deliberately do not speak to, and missing is not an answer
   // at all. Do not reintroduce a "you will be charged" line here.
   if (payload?.hosts_free === true) {
-    note?.('This owner is hosted free — publishing will not require a subscription.')
+    note?.(
+      'This owner is hosted free — publishing will not require a subscription.'
+    )
   }
   return org
 }
@@ -1003,7 +1066,10 @@ export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
  * Offline by design — measured at zero HTTP requests, a property the cross-client
  * flows rely on.
  */
-async function comparisonEmit(siteDir, { priorHashes = {}, sendAll = false } = {}) {
+async function comparisonEmit(
+  siteDir,
+  { priorHashes = {}, sendAll = false } = {}
+) {
   const applied = readAppliedInjections(siteDir)
   const assetIds = readAssetMap(siteDir)
   const org = readSiteOrg(siteDir)
@@ -1264,9 +1330,7 @@ export async function pushSyncPackages({
         note(
           `  deleted in the app  →  clearing \`$uuid\` from site.yml re-publishes it as a NEW site`
         )
-        note(
-          'Deleting this folder removes only your local copy, either way.'
-        )
+        note('Deleting this folder removes only your local copy, either way.')
       } else if (res.status === 409) {
         // The site's @uniweb/folder is genesis-owned: its structure is fixed on first
         // deploy and not reconciled in place (the v1 rule — see gotcha #20's mode switch).
@@ -1416,7 +1480,8 @@ export async function pushSyncPackages({
         asOrg,
         note
       })
-      if (createdOrg) wrote.push(`recorded site $org (${createdOrg}) in site.yml`)
+      if (createdOrg)
+        wrote.push(`recorded site $org (${createdOrg}) in site.yml`)
       const createdFinalized = extractFinalized(payload)
       harvest(createdFinalized)
       siteFinalizedDoc = createdFinalized?.[0]?.document || null
@@ -1464,7 +1529,8 @@ export async function pushSyncPackages({
     const folderDoc = finalized.find((f) => f?.document?.contents)?.document
     if (folderDoc) {
       const placements = collectFolderItemUuids(folderDoc)
-      if (Object.keys(placements).length) writeFolderItemUuids(siteDir, placements)
+      if (Object.keys(placements).length)
+        writeFolderItemUuids(siteDir, placements)
     }
     finalizedTotal += finalized.length
   }
