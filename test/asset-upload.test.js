@@ -477,3 +477,88 @@ test('the plan call carries the owning entity, and omits it when there is none',
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+// ─── every asset upload names an owner — structural, at the CALLERS ──────────
+// The test above pins the WIRE (`entity` present when an owner is given, absent
+// when not), which is the util honouring its argument. It cannot see the thing
+// that actually decides whether the field ships: whether every command that
+// uploads bytes supplies one. `siteUuid` is optional at the util by design — the
+// omit path exists for a backend predating the field — so a caller that forgets
+// it produces a perfectly normal, perfectly UNMETERED upload, and nothing here
+// went red.
+//
+// ⭐ Same shape as `every ensureSiteExists caller supplies a foundation ref`: the
+// callee is correct throughout, the defect is a caller nobody enumerated. The
+// backend lane measured exactly this failure on the app's half of the same route
+// — every upload unmetered, both lanes' suites green the whole time (channel
+// backend-framework-d05f).
+//
+// It also makes true a sentence `publish.js` was already asserting — "a test
+// asserts the create precedes the upload" — which, until this test, no test did.
+
+import { readFileSync as readSrc, readdirSync } from 'node:fs'
+import { dirname, join as joinPath } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+/**
+ * The first object-literal argument at or after `from`, by brace balance, with
+ * line comments stripped. ⛔ The strip is load-bearing, not tidiness: without it
+ * a commented-out `// siteUuid: site.uuid` still matches, so the guard reports
+ * green over the exact edit that breaks it. Caught by running the negative
+ * control instead of assuming it — the first version of this test passed with
+ * the field commented out.
+ */
+function objArgOf(text, from) {
+  const open = text.indexOf('{', from)
+  if (open === -1) return ''
+  let depth = 0
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '{') depth++
+    else if (text[i] === '}' && --depth === 0)
+      return text.slice(open, i + 1).replace(/\/\/[^\n]*/g, '')
+  }
+  return ''
+}
+
+test('every media upload names the owner it is charged to, after the create', () => {
+  const cmds = joinPath(
+    dirname(fileURLToPath(import.meta.url)),
+    '../src/commands'
+  )
+  const unowned = []
+  const uncreated = []
+  let callsFound = 0
+
+  for (const f of readdirSync(cmds).filter((n) => n.endsWith('.js'))) {
+    const text = readSrc(joinPath(cmds, f), 'utf8')
+    let at = 0
+    while ((at = text.indexOf('uploadSiteMedia(', at)) !== -1) {
+      callsFound++
+      if (!/\bsiteUuid\b/.test(objArgOf(text, at))) unowned.push(`${f} @ ${at}`)
+      // The owner has to EXIST before the bytes do: uploaded bytes are metered
+      // against an entity and freed by deleting it, so an upload that precedes
+      // the create is charged and can never be reclaimed. Both halves must sit
+      // above the call — the create, and the bail that stops us uploading when
+      // it failed.
+      const create = text.lastIndexOf('ensureSiteExists(', at)
+      const bail = text.lastIndexOf('if (!site.uuid)', at)
+      if (create === -1 || bail === -1 || bail < create)
+        uncreated.push(`${f} @ ${at}`)
+      at += 1
+    }
+  }
+
+  // CONTROL: a scan matching no call sites passes vacuously and reports a green
+  // guard over nothing — the exact failure this file is guarding against.
+  assert.ok(callsFound >= 2, `expected the call sites, found ${callsFound}`)
+  assert.deepEqual(
+    unowned,
+    [],
+    'an upload with no owner is metered against nobody and cannot be freed'
+  )
+  assert.deepEqual(
+    uncreated,
+    [],
+    'the site create (and its bail) must precede the upload'
+  )
+})
