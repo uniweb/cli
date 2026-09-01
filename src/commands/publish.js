@@ -95,7 +95,10 @@ import {
   reportPaymentRefusal
 } from '../backend/payment-handoff.js'
 import { reportSchemalessQueries } from '../utils/schemaless-report.js'
-import { uploadSiteData } from '../utils/site-data-upload.js'
+import {
+  uploadSiteData,
+  describeDataRefusal
+} from '../utils/site-data-upload.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -645,7 +648,17 @@ export async function publish(args = []) {
     }
     say.dim(`Record data     : ${r.uploaded.length} file(s) [${r.mode}]`)
   } catch (err) {
-    say.err(`Record data upload failed: ${err.message}`)
+    // A typed plan refusal gets its own account (quota, or whatever else the
+    // backend names); anything else falls through to the raw message. Same
+    // treatment the asset plan and the site create already get — this was the
+    // last door still printing the problem document at the user verbatim.
+    const refusal = describeDataRefusal(err)
+    if (refusal) {
+      say.err(refusal.headline)
+      for (const line of refusal.notes) say.dim(line)
+    } else {
+      say.err(`Record data upload failed: ${err.message}`)
+    }
     return { exitCode: 1 }
   }
 

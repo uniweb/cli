@@ -14,7 +14,10 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { uploadSiteData } from '../src/utils/site-data-upload.js'
+import {
+  uploadSiteData,
+  describeDataRefusal
+} from '../src/utils/site-data-upload.js'
 
 const BALL = {
   data: {
@@ -283,4 +286,108 @@ test('the empty manifest goes to the same per-site route as a full one', async (
   } finally {
     globalThis.fetch = realFetch
   }
+})
+
+// ─── the THIRD door's refusal: typed, not a JSON dump ────────────────────────
+// `/dev/assets` and `POST /dev/site` both describe a typed refusal; this lane
+// threw prose with the problem document inlined until 2026-09-01, so a `507`
+// here printed raw JSON at the user. Backend confirmed a quota refusal is now
+// possible on this route (channel backend-framework-82f2), in the same shape.
+
+const QUOTA_507 = JSON.stringify({
+  status: 507,
+  title: 'Insufficient Storage',
+  detail: "this upload would exceed the workspace's storage allowance",
+  reason: 'storage_quota_exceeded',
+  used_bytes: 1073741824,
+  limit_bytes: 1073741824,
+  needed_bytes: 5242880
+})
+
+/** Stub whose PLAN call fails with the given status/body. */
+function stubPlanFailure(status, body) {
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/data-uploads/'))
+      return {
+        ok: false,
+        status,
+        statusText: 'Insufficient Storage',
+        text: async () => body
+      }
+    return { ok: true, status: 200 }
+  }
+}
+
+test('a plan refusal carries status + the PARSED problem on the thrown error', async () => {
+  const realFetch = globalThis.fetch
+  stubPlanFailure(507, QUOTA_507)
+  try {
+    const err = await uploadSiteData({ ...ARGS, ball: BALL }).then(
+      () => null,
+      (e) => e
+    )
+    assert.ok(err, 'the plan failure must throw')
+    assert.equal(err.status, 507)
+    assert.equal(err.problem.reason, 'storage_quota_exceeded')
+    assert.equal(err.problem.needed_bytes, 5242880)
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+test('a prose (non-JSON) refusal leaves problem null rather than throwing twice', async () => {
+  const realFetch = globalThis.fetch
+  stubPlanFailure(500, '<html>nginx</html>')
+  try {
+    const err = await uploadSiteData({ ...ARGS, ball: BALL }).then(
+      () => null,
+      (e) => e
+    )
+    assert.equal(err.problem, null)
+    assert.match(err.message, /HTTP 500/)
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+test('describeDataRefusal accounts for a quota refusal with the numbers', () => {
+  const r = describeDataRefusal({ problem: JSON.parse(QUOTA_507) })
+  assert.match(r.headline, /Storage quota reached/i)
+  assert.match(r.headline, /record data/i)
+  const body = r.notes.join('\n')
+  assert.match(body, /Used: 1 GiB/)
+  assert.match(body, /Limit: 1 GiB/)
+  assert.match(body, /This publish adds: 5 MiB/)
+  // ⭐ The advice that DIVERGES from the asset lane, and the reason this is its
+  // own describer: here the manifest is complete every publish, so removing a
+  // collection really does stop it counting. On the asset lane it would be false.
+  assert.match(body, /removing/i)
+  assert.match(body, /re-publishing/i)
+})
+
+test("⛔ it does NOT give the asset lane's advice — that would be false here", () => {
+  const r = describeDataRefusal({ problem: JSON.parse(QUOTA_507) })
+  const body = r.notes.join('\n')
+  assert.doesNotMatch(
+    body,
+    /does not free|frees nothing/i,
+    'the asset lane says editing content frees nothing; on this lane it does'
+  )
+})
+
+test('an untyped refusal returns null so the caller falls through', () => {
+  assert.equal(describeDataRefusal({ problem: null }), null)
+  assert.equal(describeDataRefusal({}), null)
+  assert.equal(
+    describeDataRefusal({ problem: { detail: 'no reason key' } }),
+    null
+  )
+})
+
+test('an unrecognised reason is named rather than dumped', () => {
+  const r = describeDataRefusal({
+    problem: { reason: 'data_plan_too_many_files', detail: 'limit is 1024' }
+  })
+  assert.match(r.headline, /data_plan_too_many_files/)
+  assert.match(r.notes.join('\n'), /limit is 1024/)
 })

@@ -51,6 +51,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import { humanBytes } from './bytes.js'
 
 /**
  * Plan + upload a site's static collection data files.
@@ -142,9 +143,25 @@ export async function uploadSiteData({
   )
   if (!planRes.ok) {
     const body = await planRes.text().catch(() => '')
-    throw new Error(
+    // The PARSED problem document has to survive the throw. Flattening it into
+    // the message is what left the other two doors unable to branch on `reason`
+    // and printing raw JSON at users; this lane was the last one still doing it.
+    // Callers read `err.problem`; `describeDataRefusal` turns it into lines.
+    let problem = null
+    if (body) {
+      try {
+        const parsed = JSON.parse(body)
+        if (parsed && typeof parsed === 'object') problem = parsed
+      } catch {
+        /* not a problem document — prose refusal, or an upstream error page */
+      }
+    }
+    const err = new Error(
       `site data-uploads plan rejected: HTTP ${planRes.status}${body ? ` — ${body.slice(0, 300)}` : ''}`
     )
+    err.status = planRes.status
+    err.problem = problem
+    throw err
   }
 
   const plan = await planRes.json()
@@ -197,5 +214,67 @@ export async function uploadSiteData({
     uploaded,
     failed,
     serveBase: plan.serve_base || null
+  }
+}
+
+/**
+ * Turn a typed data-uploads refusal into user-facing lines, or null when there is
+ * no typed `reason` (⇒ fall through to the generic message, degrading rather than
+ * swallowing).
+ *
+ * ⭐ The THIRD door, and the last to get one. `/dev/assets` has
+ * `describeAssetRefusal`, `POST /dev/site` has `describeCreateRefusal`, and this
+ * lane threw prose with the JSON inlined until 2026-09-01 — which is the failure
+ * the other two describers exist to prevent, so leaving it was just an untreated
+ * instance of a solved problem.
+ *
+ * ⛔ Branch on `reason`, never the status: `507` alone cannot be told from any
+ * other `507` and carries none of the numbers, and `detail` is prose the backend
+ * may reword.
+ *
+ * ⚖️ **The advice DIVERGES from the asset lane's, and that divergence is the whole
+ * reason this is a separate function rather than a reused one.** On the asset lane
+ * removing an image frees nothing — freeing is entity-deletion-granular. Here the
+ * publish declares the COMPLETE set of schema-less data files every time, so
+ * dropping a collection and re-publishing is a real way to stop paying for it.
+ * Telling a data user "editing content frees nothing" would be false, and telling
+ * an asset user "just remove it" would be worse.
+ *
+ * @param {Error & { problem?: object|null }} err
+ * @returns {{ headline: string, notes: string[] } | null}
+ */
+export function describeDataRefusal(err) {
+  const p = err?.problem
+  const reason = p?.reason
+  if (typeof reason !== 'string') return null
+
+  if (reason === 'storage_quota_exceeded') {
+    const notes = []
+    const used = humanBytes(p.used_bytes)
+    const limit = humanBytes(p.limit_bytes)
+    const needed = humanBytes(p.needed_bytes)
+    if (used) notes.push(`  Used: ${used}`)
+    if (limit) notes.push(`  Limit: ${limit}`)
+    if (needed) notes.push(`  This publish adds: ${needed}`)
+    notes.push(
+      'Every publish declares the full set of schema-less data files, so removing'
+    )
+    notes.push(
+      'a collection and re-publishing stops it counting. Deleting a site or entity'
+    )
+    notes.push('frees space too.')
+    return {
+      headline:
+        "Storage quota reached — the site owner's workspace cannot take on more record data.",
+      notes
+    }
+  }
+
+  // An unrecognised reason still beats a status dump: name it, and let the
+  // backend's own prose follow when it sent any.
+  const detail = typeof p.detail === 'string' ? p.detail : ''
+  return {
+    headline: `Record data upload refused by the backend (${reason}).`,
+    notes: detail ? [`  ${detail}`] : []
   }
 }
