@@ -456,7 +456,12 @@ export async function publish(args = []) {
   // destructive — a placeholder file, created meaning to fill it in — so the count
   // is reported and confirmed before anything is sent.
   {
-    const guard = await guardEmptyRecords({ siteDir, args, warn: say.warn, note: say.dim })
+    const guard = await guardEmptyRecords({
+      siteDir,
+      args,
+      warn: say.warn,
+      note: say.dim
+    })
     if (!guard.ok) return { exitCode: 1 }
   }
 
@@ -602,28 +607,46 @@ export async function publish(args = []) {
   //     does not exist, which is the failure this work kept catching in others.
   //     `client.discover()` is the mechanism if that changes — `DISCOVERY_DEFAULTS`
   //     makes an absent key non-breaking by construction.
-  if (ball) {
-    say.info('Uploading schema-less record data…')
-    try {
-      const r = await uploadSiteData({
-        apiBase: client.origin,
-        token: await client.token(),
-        siteUuid: site.uuid,
-        ball,
-        onProgress: (m) => say.dim(`  ${m}`)
-      })
-      if (r.failed.length) {
-        // A file whose bytes did not land must not be published: the site would
-        // serve a stale copy or 404, and the only trace would be a warning.
-        say.err(`${r.failed.length} data file(s) failed to upload — not publishing.`)
-        for (const f of r.failed) say.dim(`  ${f.path} (HTTP ${f.status})`)
-        return { exitCode: 1 }
-      }
-      say.dim(`Record data     : ${r.uploaded.length} file(s) [${r.mode}]`)
-    } catch (err) {
-      say.err(`Record data upload failed: ${err.message}`)
+  //
+  // ⛔ UNCONDITIONAL — `if (ball)` was here until 2026-09-01 and it was the bug.
+  //
+  //     `collectSchemalessData` returns null for an empty set, so a publish that
+  //     carried no schema-less data sent NO PLAN AT ALL. The backend reconciles a
+  //     site's data usage against this manifest, and a request that never arrives
+  //     is not a manifest saying "none" — it is silence, indistinguishable from a
+  //     publish that never happened. So deleting your LAST schema-less collection
+  //     — the exact operation the reconcile exists to make free — was the one
+  //     operation that could not be expressed, and the site kept paying for it
+  //     until the whole site was deleted.
+  //
+  // ⭐ The general shape, worth more than the fix: an EMPTY set and NO set are
+  //    different statements, and an `if (x)` guard collapses them into one. The
+  //    cost is always paid by whoever is downstream trying to tell them apart.
+  //
+  // Both halves agreed in channel backend-framework-82f2 (2026-09-01); the
+  // backend's route accepts an empty `files` array as of the same exchange.
+  say.info('Uploading schema-less record data…')
+  try {
+    const r = await uploadSiteData({
+      apiBase: client.origin,
+      token: await client.token(),
+      siteUuid: site.uuid,
+      ball,
+      onProgress: (m) => say.dim(`  ${m}`)
+    })
+    if (r.failed.length) {
+      // A file whose bytes did not land must not be published: the site would
+      // serve a stale copy or 404, and the only trace would be a warning.
+      say.err(
+        `${r.failed.length} data file(s) failed to upload — not publishing.`
+      )
+      for (const f of r.failed) say.dim(`  ${f.path} (HTTP ${f.status})`)
       return { exitCode: 1 }
     }
+    say.dim(`Record data     : ${r.uploaded.length} file(s) [${r.mode}]`)
+  } catch (err) {
+    say.err(`Record data upload failed: ${err.message}`)
+    return { exitCode: 1 }
   }
 
   // 5. Push the site (content + folder) over the send-only-changed cache —
@@ -680,9 +703,7 @@ export async function publish(args = []) {
         ? { baseVersions, itemBaseVersions: readItemBaseVersions(siteDir) }
         : {}),
       ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
-      ...(Object.keys(ext.pins).length
-        ? { injectExtensions: ext.pins }
-        : {}),
+      ...(Object.keys(ext.pins).length ? { injectExtensions: ext.pins } : {}),
       ...(assetRewrite ? { assetRewrite } : {}),
       ...(assetIds ? { assetIds } : {})
     })

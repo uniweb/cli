@@ -72,10 +72,23 @@ export async function uploadSiteData({
   ball,
   onProgress = () => {}
 }) {
+  // ⛔ An EMPTY set still posts a plan, and that is the whole point of this lane
+  // being a manifest rather than a stream of files.
+  //
+  // The backend reconciles a site's data usage against what this plan declares:
+  // whatever is not in the manifest is gone, so deleting a collection stops
+  // costing on the next publish. ⭐ A plan with zero files is a STATEMENT that
+  // there are none; the ABSENCE of a request says nothing at all. Returning
+  // early here — which this did until 2026-09-01 — made "the user deleted their
+  // last schema-less collection" unexpressible on the wire, so that site kept
+  // paying for bytes it no longer served until the whole site was deleted.
+  // Nothing looked wrong at either end: no error, no warning, just a request
+  // that was never sent.
+  //
+  // Agreed both sides in channel backend-framework-82f2; the backend's plan
+  // route accepted an empty `files` array in the same exchange (it was a 400
+  // before, which is what made the omission look like the only option).
   const entries = Object.entries(ball?.data || {})
-  if (!entries.length) {
-    return { mode: 'none', uploaded: [], failed: [], serveBase: null }
-  }
 
   // One plan for the whole set. The per-request file cap counts a plan, so
   // splitting would evade it rather than respect it; if a set ever exceeds it,
@@ -149,7 +162,11 @@ export async function uploadSiteData({
     if (!target) {
       // A file the plan did not answer for is unaddressable. Report it; never
       // invent a location for it.
-      failed.push({ path: f.path, status: 0, detail: 'no upload target in plan' })
+      failed.push({
+        path: f.path,
+        status: 0,
+        detail: 'no upload target in plan'
+      })
       continue
     }
     try {
