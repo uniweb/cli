@@ -132,7 +132,7 @@ test('formats a finding, and says the ship is proceeding', () => {
   assert.equal(out.total, 1)
   assert.equal(
     plain(out.headline),
-    '1 content record does not match the schemas src declares.'
+    'Found 1 content record that does not match the schemas src declares.'
   )
   // The path is relative to the site, and an absent `field` leaves no dangling
   // separator behind it.
@@ -151,7 +151,7 @@ test('names a field when the finding has one, and pluralizes', () => {
     ''
   )
   assert.equal(out.total, 2)
-  assert.match(plain(out.headline), /^2 content records do not match/)
+  assert.match(plain(out.headline), /^Found 2 content records that do not match/)
   assert.equal(out.details[0], '• a.md — item "x" › title: nope')
 })
 
@@ -186,5 +186,55 @@ test('returns null when everything conforms', () => {
   assert.equal(
     formatConformanceWarning({ foundation: 'f', report: { violations: [], setupErrors: [] } }, ''),
     null
+  )
+})
+
+/**
+ * ⛔ A setup error is not a record that failed a schema, and the headline must
+ * not say it is.
+ *
+ * `validateDataInputs` reports two kinds into one block. A **violation** is a
+ * record whose value disagrees with a schema — the reader should go look at
+ * their data. A **setup error** is data that could not be read, or that never
+ * reached the section meant to read it — the reader should go look at their
+ * `page.yml` and `meta.js`, and there is no offending record to find.
+ *
+ * One sentence covering both sent people on the wrong search, and the wrong
+ * search here is the one that ends in "the framework is broken".
+ */
+test('a wiring problem is not reported as a bad record', () => {
+  const out = formatConformanceWarning(
+    {
+      foundation: 'src',
+      report: {
+        violations: [],
+        setupErrors: [{ file: '/team · Team', message: 'section reads content.data.team', users: [] }]
+      }
+    },
+    '/site'
+  )
+  assert.equal(plain(out.headline), 'Found 1 problem with how data reaches your sections.')
+  assert.doesNotMatch(plain(out.headline), /content record/)
+})
+
+test('both kinds at once are counted and named separately', () => {
+  const out = formatConformanceWarning(
+    {
+      foundation: 'src',
+      report: {
+        violations: [{ file: 'a.md', item: 'x', field: 'title', message: 'nope' }],
+        setupErrors: [
+          { file: '/team · Team', message: 'reads content.data.team', users: [] },
+          { file: '/blog · List', message: 'reads content.data.posts', users: [] }
+        ]
+      }
+    },
+    '/site'
+  )
+  assert.equal(out.total, 3)
+  assert.equal(
+    plain(out.headline),
+    'Found 1 content record that does not match the schemas src declares ' +
+      'and 2 problems with how data reaches your sections.'
   )
 })

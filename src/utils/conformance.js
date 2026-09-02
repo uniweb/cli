@@ -162,10 +162,30 @@ export function formatConformanceWarning(result, siteDir = '') {
   const total = violations.length + setupErrors.length
   if (total === 0) return null
 
-  const headline =
-    `${total} content record${total === 1 ? '' : 's'} ` +
-    `${total === 1 ? 'does' : 'do'} not match the schemas ` +
-    `${c.bold}${result.foundation}${c.reset} declares.`
+  // ⛔ **Two different kinds of finding share this block, and one sentence cannot
+  // describe both.** A `violation` is a record whose VALUE disagrees with a
+  // schema. A `setupError` is data that could not be read, or that never reached
+  // the section meant to read it — *no record is involved*. Counting the second
+  // as "content records that do not match" sends the reader hunting through their
+  // data for a fault that is in their configuration, which is the worse of the
+  // two searches and the one that ends in "the framework is wrong".
+  //
+  // The total still leads the block; only the naming is split.
+  const parts = []
+  if (violations.length > 0) {
+    parts.push(
+      `${violations.length} content record${violations.length === 1 ? '' : 's'} ` +
+        `that ${violations.length === 1 ? 'does' : 'do'} not match the schemas ` +
+        `${c.bold}${result.foundation}${c.reset} declares`
+    )
+  }
+  if (setupErrors.length > 0) {
+    parts.push(
+      `${setupErrors.length} problem${setupErrors.length === 1 ? '' : 's'} ` +
+        `with how data reaches your sections`
+    )
+  }
+  const headline = `Found ${parts.join(' and ')}.`
 
   const lines = [
     // A finding on the record itself carries no `field` — "expected a list of
