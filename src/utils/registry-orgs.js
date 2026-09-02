@@ -1,4 +1,24 @@
 /**
+ * ⛔ **HUMAN OUTPUT IN THIS FILE GOES TO STDERR, NEVER STDOUT.**
+ *
+ * `stdout` is the CLI's DATA channel. `uniweb register --json` promises a single
+ * parseable JSON line there, and `register` diverts its own output accordingly —
+ * but it calls into this module, which wrote prose to stdout directly, so the
+ * promise broke for any caller that piped it.
+ *
+ * ⭐ Measured by the `flows` lane at `uniweb@0.37.1`: two stray lines ahead of
+ * the JSON on the cold path — down from ~35 before the delegated builder's
+ * stdout was redirected to fd 2, which is why the two defects share one symptom
+ * and only one of them was fixed. Every line here is prose, a prompt, or a
+ * cancellation notice; none of it is anything a machine reads. On stderr it is
+ * equally visible to a human and invisible to a pipe.
+ *
+ * ⚖️ This is not a `--json` special case. A utility that cannot see the flag
+ * should not be choosing the stream at all — which is exactly how it got the
+ * choice wrong. `cli/test/porcelain-stdout.test.js` walks `register`'s import
+ * graph and fails on a new `console.log`.
+ */
+/**
  * New-backend org operations for the publish-scope bootstrap — used by
  * `uniweb register`'s scope resolution and the `uniweb org` command.
  *
@@ -150,7 +170,7 @@ export async function deriveScope({
     const h = orgs[0].handle
     const label = isPersonal(h) ? `your personal org @${h}` : `your org @${h}`
     if (nonInteractive) {
-      console.log(
+      console.error(
         `Publishing under ${label.replace(`@${h}`, `\x1b[1m@${h}\x1b[0m`)}.`
       )
       return h
@@ -165,13 +185,13 @@ export async function deriveScope({
       },
       {
         onCancel: () => {
-          console.log('\nCancelled.')
+          console.error('\nCancelled.')
           process.exit(0)
         }
       }
     )
     if (!ok) {
-      console.log(
+      console.error(
         'Pass --scope @org, or create another with `uniweb org create <handle>`.'
       )
       return null
@@ -189,7 +209,7 @@ export async function deriveScope({
         ordered.find((u) => isPersonal(u.handle)) ||
         orgs.find((u) => u.is_primary) ||
         orgs[0]
-      console.log(
+      console.error(
         `Multiple orgs; using \x1b[1m@${pick.handle}\x1b[0m (non-interactive).`
       )
       return pick.handle
@@ -208,7 +228,7 @@ export async function deriveScope({
       },
       {
         onCancel: () => {
-          console.log('\nCancelled.')
+          console.error('\nCancelled.')
           process.exit(0)
         }
       }
@@ -281,7 +301,7 @@ export async function offerCreateOrg({
     { title: 'A new organization…', value: ':new' }
   ]
   if (!canClaimPersonal) {
-    console.log(
+    console.error(
       `\x1b[2m@${personal} exists but you're not a member of it — ask its admin, or create another org.\x1b[0m`
     )
   }
@@ -296,7 +316,7 @@ export async function offerCreateOrg({
     },
     {
       onCancel: () => {
-        console.log('\nCancelled.')
+        console.error('\nCancelled.')
         process.exit(0)
       }
     }
@@ -314,7 +334,7 @@ export async function offerCreateOrg({
       },
       {
         onCancel: () => {
-          console.log('\nCancelled.')
+          console.error('\nCancelled.')
           process.exit(0)
         }
       }
@@ -325,7 +345,7 @@ export async function offerCreateOrg({
 
   try {
     const org = await createOrg({ apiBase, token, handle })
-    console.log(
+    console.error(
       `\x1b[32m✓\x1b[0m Created \x1b[1m@${org.handle}\x1b[0m — you're a member${org.is_primary ? ' (primary)' : ''}.`
     )
     return org.handle

@@ -1,4 +1,24 @@
 /**
+ * ⛔ **HUMAN OUTPUT IN THIS FILE GOES TO STDERR, NEVER STDOUT.**
+ *
+ * `stdout` is the CLI's DATA channel. `uniweb register --json` promises a single
+ * parseable JSON line there, and `register` diverts its own output accordingly —
+ * but it calls into this module, which wrote prose to stdout directly, so the
+ * promise broke for any caller that piped it.
+ *
+ * ⭐ Measured by the `flows` lane at `uniweb@0.37.1`: two stray lines ahead of
+ * the JSON on the cold path — down from ~35 before the delegated builder's
+ * stdout was redirected to fd 2, which is why the two defects share one symptom
+ * and only one of them was fixed. Every line here is prose, a prompt, or a
+ * cancellation notice; none of it is anything a machine reads. On stderr it is
+ * equally visible to a human and invisible to a pipe.
+ *
+ * ⚖️ This is not a `--json` special case. A utility that cannot see the flag
+ * should not be choosing the stream at all — which is exactly how it got the
+ * choice wrong. `cli/test/porcelain-stdout.test.js` walks `register`'s import
+ * graph and fails on a new `console.log`.
+ */
+/**
  * Registry (new-backend) credential storage + login.
  *
  * SEPARATE from utils/auth.js on purpose. That module is the LEGACY platform
@@ -212,11 +232,11 @@ export async function ensureRegistryAuth({
   }
 
   if (stored && isExpired(stored)) {
-    console.log(
+    console.error(
       `\x1b[33mSession expired.\x1b[0m ${command} requires a Uniweb account.\n`
     )
   } else {
-    console.log(`${command} requires a Uniweb account.\n`)
+    console.error(`${command} requires a Uniweb account.\n`)
   }
 
   // Interactive: hand off to the multi-method login picker, reuse its session.
@@ -273,7 +293,7 @@ async function loginViaPassword({ apiBase, nonInteractive }) {
       ],
       {
         onCancel: () => {
-          console.log('\nLogin cancelled.')
+          console.error('\nLogin cancelled.')
           process.exit(0)
         }
       }
@@ -300,7 +320,7 @@ async function loginViaTokenPaste({ apiBase, nonInteractive }) {
     },
     {
       onCancel: () => {
-        console.log('\nLogin cancelled.')
+        console.error('\nLogin cancelled.')
         process.exit(0)
       }
     }
@@ -398,14 +418,14 @@ export async function awaitBrowserCallback({
       const { port } = server.address()
       const redirectUri = `http://127.0.0.1:${port}/callback`
       const url = buildUrl(redirectUri)
-      console.log(`\x1b[36m→\x1b[0m ${openingLabel}`)
-      console.log(`  \x1b[2m${url}\x1b[0m`)
+      console.error(`\x1b[36m→\x1b[0m ${openingLabel}`)
+      console.error(`  \x1b[2m${url}\x1b[0m`)
       const opened = await openBrowser(url)
       if (!opened)
-        console.log(
+        console.error(
           '\x1b[33m⚠\x1b[0m Could not open a browser automatically — open the URL above.'
         )
-      console.log(
+      console.error(
         `\x1b[2m${waitingLabel || `Waiting (${Math.round(timeoutMs / 1000)}s)…`}\x1b[0m`
       )
     })
@@ -528,10 +548,10 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
       existing.username ||
       existing.handle ||
       (existing.uuid ? `account ${existing.uuid}` : '')
-    console.log(
+    console.error(
       `Already logged in${who ? ` as \x1b[1m${who}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}.`
     )
-    console.log('\x1b[2mContinuing will replace the existing session.\x1b[0m\n')
+    console.error('\x1b[2mContinuing will replace the existing session.\x1b[0m\n')
   }
 
   const { isNonInteractive } = await import('./interactive.js')
@@ -558,7 +578,7 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
     if (account?.username) record.username = account.username
     if (account?.handle) record.handle = account.handle
     await writeRegistryAuth(record)
-    console.log(
+    console.error(
       `\x1b[32m✓\x1b[0m Logged in${account?.username ? ` as \x1b[1m${account.username}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}`
     )
     return record
@@ -604,7 +624,7 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
         },
         {
           onCancel: () => {
-            console.log('\nLogin cancelled.')
+            console.error('\nLogin cancelled.')
             process.exit(0)
           }
         }
@@ -626,7 +646,7 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
   }
 
   if (record?.token) {
-    console.log(
+    console.error(
       `\x1b[32m✓\x1b[0m Logged in${record.username ? ` as \x1b[1m${record.username}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}`
     )
   }
