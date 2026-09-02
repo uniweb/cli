@@ -851,7 +851,7 @@ team:
 
 You can keep the same declarations under `queries:` in `site.yml` instead, if you would rather have one file.
 
-**Show a query on a page** with `data:` in `page.yml` (the whole result), or `fetch:` in a section's frontmatter (a subset):
+**Show a query on a page** with `data:` in `page.yml` (the whole result), or `fetch:` in a section's frontmatter (a subset). A list — `data: [team, articles]` — declares several, each arriving under its own `content.data` key:
 
 ```yaml
 # pages/blog/page.yml          |   # a section on the homepage
