@@ -34,6 +34,53 @@ export function stripVersionRange(spec) {
 }
 
 /**
+ * How far a bump moves, in the terms our versioning actually uses.
+ *
+ * ⭐ **In 0.x the MINOR slot is the breaking one, and it is the only channel we
+ * have.** `scripts/framework/publish.js` derives a package's bump from its own
+ * commits: a breaking marker means minor, everything else patch. So
+ * `^0.14.1 → ^0.16.0` is two breaking releases and `^0.15.0 → ^0.15.2` is not —
+ * and until 2026-09-02 `update` printed both as `behind`, in the same colour,
+ * and `--yes` applied them without a word.
+ *
+ * That is the one signal the version scheme exists to send, discarded by the
+ * command we tell every project to run — `AGENTS.md` ships that instruction
+ * into every scaffold. The `flows` lane crossed `@uniweb/core` `^0.14.1 →
+ * ^0.15.0` this way and learned it afterwards, from a changelog.
+ *
+ * @param {string} from - the currently declared range or version
+ * @param {string} to   - the version the matrix carries
+ * @returns {'patch'|'minor'|'major'|'none'}
+ */
+export function bumpClass(from, to) {
+  const [aMaj = 0, aMin = 0, aPat = 0] = stripVersionRange(from).split('.').map(Number)
+  const [bMaj = 0, bMin = 0, bPat = 0] = stripVersionRange(to).split('.').map(Number)
+  if (bMaj !== aMaj) return 'major'
+  if (bMin !== aMin) return 'minor'
+  if (bPat !== aPat) return 'patch'
+  return 'none'
+}
+
+/**
+ * Is this crossing one a consumer must act on?
+ *
+ * A major always is. A minor is **when the major is 0**, because that is where
+ * our scheme puts breaking changes — and npm agrees, which is the check that
+ * makes this more than our own convention: `^0.14.1` admits `0.14.x` and
+ * refuses `0.15.0`, so the range itself already treats the slot as a wall.
+ *
+ * @param {string} from
+ * @param {string} to
+ * @returns {boolean}
+ */
+export function isBreakingBump(from, to) {
+  const cls = bumpClass(from, to)
+  if (cls === 'major') return true
+  if (cls !== 'minor') return false
+  return Number(stripVersionRange(to).split('.')[0]) === 0
+}
+
+/**
  * Compare two version specs (range prefix tolerated). Returns 1 / -1 / 0.
  * @param {string} a
  * @param {string} b
@@ -115,7 +162,12 @@ export async function surveyWorkspaceDeps(workspaceDir) {
           name,
           current,
           target,
-          status
+          status,
+          // Classified here rather than at print time so every consumer of a
+          // survey row gets the same answer — the report, the summary, and any
+          // gate a caller applies.
+          bump: status === 'behind' ? bumpClass(current, target) : 'none',
+          breaking: status === 'behind' && isBreakingBump(current, target)
         })
       }
     }

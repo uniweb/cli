@@ -257,7 +257,15 @@ export function printSurvey(
         statusText = `${colors.dim}aligned${colors.reset}`
       } else if (row.status === 'behind') {
         icon = `${colors.yellow}✗${colors.reset}`
-        statusText = `${colors.yellow}behind${colors.reset}`
+        // ⛔ `behind` alone was the whole message, in one colour, for every
+        // distance. In 0.x the minor slot is where our breaking changes live
+        // (`publish.js` derives it from a breaking marker and nothing else), so
+        // `^0.14.1 → ^0.16.0` is two releases a consumer must act on and
+        // `^0.15.0 → ^0.15.2` is not — and the table said the same thing about
+        // both. Naming the class is the difference between a list and a signal.
+        statusText = row.breaking
+          ? `${colors.red}${row.bump} · BREAKING${colors.reset}`
+          : `${colors.yellow}${row.bump}${colors.reset}`
       } else {
         icon = `${colors.cyan}↑${colors.reset}`
         statusText = `${colors.cyan}ahead of CLI${colors.reset}`
@@ -270,6 +278,35 @@ export function printSurvey(
   if (!verbose && alignedCount > 0) {
     log(
       `  ${colors.dim}(${alignedCount} other${alignedCount === 1 ? '' : 's'} already aligned — ${colors.reset}${colors.cyan}--verbose${colors.reset}${colors.dim} to list)${colors.reset}`
+    )
+  }
+
+  // ⭐ **A summary, because the table scrolls and `--yes` does not stop.** The
+  // per-row label above is invisible to the case that matters most: a CI or an
+  // agent running `update --yes`, where nobody reads a table and the only
+  // artifact is a log. This block names the packages, so "what did that
+  // upgrade cross?" is answerable afterwards from the log alone.
+  //
+  // ⚖️ It reports; it does not gate. Crossing a 0.x minor IS the ordinary way
+  // to take a Uniweb update — gating it would gate nearly every real upgrade
+  // and make the verb useless. The decision stays the operator's; what changed
+  // is that they can now make it knowingly.
+  const breakingRows = report.rows.filter((r) => r.breaking)
+  if (breakingRows.length > 0) {
+    const names = [...new Set(breakingRows.map((r) => r.name))]
+    log('')
+    log(
+      `${colors.red}⚠${colors.reset}  ${colors.bright}${names.length} package${names.length === 1 ? '' : 's'} cross${names.length === 1 ? 'es' : ''} a breaking boundary:${colors.reset}`
+    )
+    for (const name of names) {
+      const r = breakingRows.find((x) => x.name === name)
+      log(`     ${colors.red}${name}${colors.reset}  ${r.current} → ${r.target}  ${colors.dim}(${r.bump})${colors.reset}`)
+    }
+    log(
+      `   ${colors.dim}In 0.x the minor slot is where breaking changes go, so these are releases${colors.reset}`
+    )
+    log(
+      `   ${colors.dim}you may need to act on. Read their changelogs before shipping.${colors.reset}`
     )
   }
   log('')
