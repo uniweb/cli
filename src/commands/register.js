@@ -653,7 +653,25 @@ async function runRegister(args = []) {
           `  ${colors.dim}Supply a registry bearer with --token <bearer> (or UNIWEB_TOKEN); an existing one may be wrong or expired.${colors.reset}`
         )
       }
-      if (rawBody) log(`  ${colors.dim}${rawBody.slice(0, 500)}${colors.reset}`)
+      // ⭐ **Surface `detail` as a sentence, not as a JSON dump.** The registry
+      // answers with problem+json (RFC 9457), and its `detail` is written for a
+      // human — it carries the actual next step, which for a rejected
+      // re-register is "bump the version". Printing the whole body dimmed put
+      // that sentence inside a blob, at the end of a 500-char truncation, in the
+      // one moment the reader most needs it.
+      //
+      // ⚖️ Keyed on the SHAPE, not on any particular code: a new refusal the CLI
+      // has never seen explains itself the day the backend ships it, with no
+      // release here. That is the property worth having — this branch exists
+      // because a 422 the CLI did not know about arrived exactly that way.
+      if (parsedBody?.detail) {
+        log(`  ${parsedBody.detail}`)
+        if (parsedBody.code) {
+          log(`  ${colors.dim}(${parsedBody.code})${colors.reset}`)
+        }
+      } else if (rawBody) {
+        log(`  ${colors.dim}${rawBody.slice(0, 500)}${colors.reset}`)
+      }
       return { exitCode: 1 }
     }
   }
