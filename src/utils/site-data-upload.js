@@ -52,6 +52,7 @@
 
 import { createHash } from 'node:crypto'
 import { humanBytes } from './bytes.js'
+import { fetchWithRetry, isTransientStatus } from './fetch-retry.js'
 
 /**
  * Plan + upload a site's static collection data files.
@@ -189,7 +190,16 @@ export async function uploadSiteData({
     try {
       // Relative on the direct arm, absolute on presigned — `new URL` resolves
       // both against the origin.
-      const res = await fetch(new URL(target.url, origin), {
+      // ⭐ **Retried.** A single connection-level failure used to fail the whole
+      // verb after every other file had already gone up. The PUT is idempotent
+      // here — same bytes, same target, verified by `x-uniweb-sha256` on receipt
+      // — so repeating it is safe by construction, which is why this opts in to
+      // `retryOnStatus` rather than inheriting it.
+      //
+      // ⚠️ 120s per attempt, not the helper's 30s default: this bounds the time
+      // to send a whole BODY, and aborting a legitimately slow upload only to
+      // retry it is worse than not timing out at all.
+      const res = await fetchWithRetry(new URL(target.url, origin), {
         method: target.method || 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -197,7 +207,7 @@ export async function uploadSiteData({
           ...authHeaders
         },
         body: f.bytes
-      })
+      }, { timeoutMs: 120_000, retryOnStatus: isTransientStatus })
       if (res.ok) {
         uploaded.push(f.path)
         onProgress(`${f.path}`)

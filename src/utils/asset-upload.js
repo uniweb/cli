@@ -30,6 +30,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { contentTypeFor } from './code-upload.js'
+import { fetchWithRetry, isTransientStatus } from './fetch-retry.js'
 
 /**
  * Walk a built site's `dist/assets/` and produce the upload file list. `path` is
@@ -202,11 +203,20 @@ export async function uploadSiteAssets({
     try {
       // The plan's url may be origin-relative (direct mode → the backend) or
       // absolute (presigned → storage); new URL() resolves both.
-      putRes = await fetch(new URL(up.url, origin), {
+      // ⭐ **Retried.** A single connection-level failure used to fail the whole
+      // verb after every other file had already gone up. The PUT is idempotent
+      // here — same bytes, same target, verified by `x-uniweb-sha256` on receipt
+      // — so repeating it is safe by construction, which is why this opts in to
+      // `retryOnStatus` rather than inheriting it.
+      //
+      // ⚠️ 120s per attempt, not the helper's 30s default: this bounds the time
+      // to send a whole BODY, and aborting a legitimately slow upload only to
+      // retry it is worse than not timing out at all.
+      putRes = await fetchWithRetry(new URL(up.url, origin), {
         method: up.method || 'PUT',
         headers,
         body: src.bytes ?? readFileSync(src.diskPath)
-      })
+      }, { timeoutMs: 120_000, retryOnStatus: isTransientStatus })
     } catch (err) {
       failed.push({ path: src.path, status: 0, detail: err.message })
       continue

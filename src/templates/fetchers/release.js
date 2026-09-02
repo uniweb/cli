@@ -8,6 +8,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as tar from 'tar'
+import { fetchWithRetry as sharedFetchWithRetry } from '../../utils/fetch-retry.js'
 
 // GitHub repository for official templates
 const TEMPLATES_REPO = 'uniweb/templates'
@@ -222,22 +223,9 @@ async function handleGitHubError(response) {
   throw new Error(`GitHub API error: ${response.status}`)
 }
 
-/**
- * Fetch with retry and timeout
- */
-async function fetchWithRetry(url, options = {}, maxRetries = 3) {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await fetch(url, {
-        ...options,
-        redirect: 'follow',
-        signal: AbortSignal.timeout(60000) // 60s timeout
-      })
-      return response
-    } catch (err) {
-      if (attempt === maxRetries) throw err
-      const delay = Math.min(1000 * Math.pow(2, attempt), 10000)
-      await new Promise((r) => setTimeout(r, delay))
-    }
-  }
-}
+// Retry + timeout live in one place now (`../../utils/fetch-retry.js`).
+// This file carried its own copy, as did the other two fetchers — three
+// byte-identical implementations, and none reachable from the upload paths
+// that had no retry at all. The wrapper keeps this caller's own timeout.
+const fetchWithRetry = (url, options = {}, maxRetries = 3) =>
+  sharedFetchWithRetry(url, { redirect: 'follow', ...options }, { retries: maxRetries, timeoutMs: 60000 })

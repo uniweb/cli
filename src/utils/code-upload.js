@@ -41,6 +41,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { fetchWithRetry, isTransientStatus } from './fetch-retry.js'
 
 // Extension → declared content type. Extension-honest by construction (Vite
 // output); anything unknown ships as octet-stream.
@@ -287,7 +288,16 @@ export async function uploadFoundationCode({
     }
     const bytes = readFileSync(join(distDir, file.path))
     try {
-      const res = await fetch(new URL(target.url, origin), {
+      // ⭐ **Retried.** A single connection-level failure used to fail the whole
+      // verb after every other file had already gone up. The PUT is idempotent
+      // here — same bytes, same target, verified by `x-uniweb-sha256` on receipt
+      // — so repeating it is safe by construction, which is why this opts in to
+      // `retryOnStatus` rather than inheriting it.
+      //
+      // ⚠️ 120s per attempt, not the helper's 30s default: this bounds the time
+      // to send a whole BODY, and aborting a legitimately slow upload only to
+      // retry it is worse than not timing out at all.
+      const res = await fetchWithRetry(new URL(target.url, origin), {
         method: target.method || 'PUT',
         // x-uniweb-sha256: optional integrity guard — direct mode verifies
         // the received bytes and 400s on mismatch (corruption-in-flight).
@@ -297,7 +307,7 @@ export async function uploadFoundationCode({
           'x-uniweb-sha256': file.sha256
         },
         body: bytes
-      })
+      }, { timeoutMs: 120_000, retryOnStatus: isTransientStatus })
       if (res.ok) {
         uploaded.push(file.path)
         onProgress(`${file.path} (${file.size} bytes)`)
