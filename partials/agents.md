@@ -1722,6 +1722,7 @@ const page = website.activePage
 | `block.stableId` / `block.key` | Stable ID from filename or `id:` / unique key across pages — use as React key |
 | `block.path` | Page route this block belongs to |
 | `block.dataLoading` | True while declared data is still resolving |
+| `block.dataError` | `{ <key>: message }` when a declared fetch FAILED, else `null`. A failed key is absent from `content.data` — never `[]`, which means "no records" |
 
 ```jsx
 // getPageHierarchy(options) →
@@ -1752,6 +1753,7 @@ A component on a page with a `data:` or `fetch:` declaration automatically recei
 ```jsx
 function Article({ content, block }) {
   if (block.dataLoading) return <DataPlaceholder />
+  if (block.dataError?.articles) return <LoadFailed />   // the request failed — not "no records"
   const article = content.data.articles?.[0]   // focused record on a [slug] page
   if (!article) return <NotFound />
   return <ArticleView article={article} />
