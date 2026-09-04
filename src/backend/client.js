@@ -581,7 +581,7 @@ export class BackendClient {
 
   /**
    * GET /dev/site/status/{uuid} → the site's publish lifecycle (Contract 3,
-   * shipped backend-side — collab backend-framework-b220):
+   * shipped backend-side — collab backend↔framework):
    *   { published: boolean, last_pushed_at?: string, last_published_at?: string, draft_dirty?: boolean }
    * `draft_dirty` = never-published, or the synced draft changed since the last
    * publish ("pushed but not published").

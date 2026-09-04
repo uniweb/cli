@@ -406,7 +406,7 @@ export async function push(args = [], deps = {}) {
       // and push did neither until 2026-08-19: it sent the authored alias (`src`),
       // which names a foundation no deployment can resolve. A site created that way
       // keeps the bad ref, and the backend's create guard now refuses it outright
-      // (channel backend-framework-787e, their measurement).
+      // (channel backend↔framework, their measurement).
       //
       // ⭐ Same shape as the send-only-changed defect fixed this morning, and missed
       // for the same reason: the rule was applied at the writers under discussion and

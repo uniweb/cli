@@ -491,7 +491,7 @@ test('the plan call carries the owning entity, and omits it when there is none',
 // callee is correct throughout, the defect is a caller nobody enumerated. The
 // backend lane measured exactly this failure on the app's half of the same route
 // — every upload unmetered, both lanes' suites green the whole time (channel
-// backend-framework-d05f).
+// backend↔framework).
 //
 // It also makes true a sentence `publish.js` was already asserting — "a test
 // asserts the create precedes the upload" — which, until this test, no test did.

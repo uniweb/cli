@@ -87,7 +87,7 @@ export async function uploadSiteData({
   // Nothing looked wrong at either end: no error, no warning, just a request
   // that was never sent.
   //
-  // Agreed both sides in channel backend-framework-82f2; the backend's plan
+  // Agreed both sides in channel backend↔framework; the backend's plan
   // route accepted an empty `files` array in the same exchange (it was a 400
   // before, which is what made the omission look like the only option).
   const entries = Object.entries(ball?.data || {})

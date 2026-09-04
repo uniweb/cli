@@ -3,7 +3,7 @@
  *
  * `POST /dev/site` gained a typed `507` when the backend shipped account-level
  * capacity — a site costs against the workspace's allowance before a single byte
- * of content moves (channel backend-framework-d05f). Until then a create could not
+ * of content moves (channel backend↔framework). Until then a create could not
  * be refused for space at all, so the failure path fell through to
  * `HTTP 507 Insufficient Storage — {"status":507,…}`: the raw dump that
  * `describeAssetRefusal` already exists to prevent on the asset lane.

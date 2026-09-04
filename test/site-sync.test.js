@@ -181,7 +181,7 @@ test('a successful push banks the returned versions; a refused lane still banks 
 // that records the hashes and not the delivery cannot be re-checked offline: the
 // reader rebuilds the AUTHORED document and matches nothing, forever.
 //
-// That is the defect backend reported in `backend-framework-787e` (2026-08-19):
+// That is the defect backend reported in backend↔framework (2026-08-19):
 // `uniweb push` said "1 entity unchanged since the last push" and `uniweb status
 // --json` said `changed: 1`, from one cache, seconds apart.
 
@@ -1421,7 +1421,7 @@ test('an item_uuid_conflict clears the stale cache and says re-run', async () =>
 // re-identifying every stored row is far worse), and the refusal reads as a stale
 // token or a producer bug, with nothing pointing back at the push that did not bank.
 //
-// Reported by the backend lane, 2026-08-27, channel `backend-framework-hosting-7bdb`:
+// Reported by the backend lane, 2026-08-27, channel backend↔framework↔hosting:
 // "push stores the items and we hand their $uuids back in finalized; publish
 // re-pushes the same package still without them, and the guard refuses."
 

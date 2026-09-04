@@ -256,7 +256,7 @@ test('CONTROL: an UNVERIFIABLE digest still proceeds non-interactively', async (
 // the writers under discussion, with a caller nobody enumerated.
 //
 // Found by the backend lane enforcing their create door and watching A1 fail at the
-// create step (channel backend-framework-787e).
+// create step (channel backend↔framework).
 
 import { readFileSync as readSrc, readdirSync } from 'node:fs'
 import { dirname, join as joinPath } from 'node:path'

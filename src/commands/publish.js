@@ -127,7 +127,7 @@ const say = {
 //
 // ⇒ So this branch is implementing the contract, not defending against drift. I
 // reported the two shapes as a violation of "finished values only" in collab
-// framework-backend-812b; the backend checked, found the adjacent ruling that
+// framework↔backend; the backend checked, found the adjacent ruling that
 // explains the relative arm, and ratified both. Do not "fix" it by demanding one
 // shape — the caller's own origin is the missing half on the relative arm, and we
 // are the caller.
@@ -626,7 +626,7 @@ export async function publish(args = []) {
   //    different statements, and an `if (x)` guard collapses them into one. The
   //    cost is always paid by whoever is downstream trying to tell them apart.
   //
-  // Both halves agreed in channel backend-framework-82f2 (2026-09-01); the
+  // Both halves agreed in channel backend↔framework (2026-09-01); the
   // backend's route accepts an empty `files` array as of the same exchange.
   say.info('Uploading schema-less record data…')
   try {
@@ -684,7 +684,7 @@ export async function publish(args = []) {
   // Stamp deploy-derived info on the site-content entity: the data-bundle URL,
   // and the PINNED foundation ref (`@scope/name@version`) from the bring-along.
   // Delivery is version-pinned end-to-end (the gateway serves a foundation only
-  // by a concrete version — collab framework-backend-5c3e), so pinning the
+  // by a concrete version — collab framework↔backend), so pinning the
   // released version on the wire is required when site.yml uses an unversioned
   // local ref; injectInfo overrides info.foundation. A registry/URL ref → fnd.ref
   // is null → the site.yml ref is forwarded verbatim (already pinned).

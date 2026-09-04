@@ -174,7 +174,7 @@ function forwardedFlags(args) {
  *   any release, so it reflects the released version + the scope register
  *   derived. Delivery is version-pinned end-to-end (the gateway serves a
  *   foundation only by a concrete version, no latest-resolution at serve time —
- *   collab framework-backend-5c3e), so an unversioned local ref MUST be pinned
+ *   collab framework↔backend), so an unversioned local ref MUST be pinned
  *   on the wire or the live site points at code the gateway can't serve. null
  *   when the site already references a registry ref / URL (no override needed)
  *   or no scoped ref can be formed.

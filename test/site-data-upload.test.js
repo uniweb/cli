@@ -82,7 +82,7 @@ const ARGS = {
 // the bug was what it described.
 //
 // ⭐ Kept, inverted, rather than deleted — the old expectation is the useful part
-// of the record. Channel backend-framework-82f2.
+// of the record. Channel backend↔framework.
 test('no files → a plan call carrying an EMPTY manifest', async () => {
   const calls = stubFetch()
   for (const ball of [null, undefined, { data: {} }]) {
@@ -216,7 +216,7 @@ test('a rejected plan throws with the status', async () => {
 // that could not be expressed. The site kept paying until it was deleted, with no
 // error and no warning at either end.
 //
-// Agreed both sides in channel backend-framework-82f2; their route accepts an
+// Agreed both sides in channel backend↔framework; their route accepts an
 // empty `files` array as of that exchange (it was a 400 before).
 
 test('an EMPTY ball still posts a manifest — silence and "none" are different', async () => {
@@ -292,7 +292,7 @@ test('the empty manifest goes to the same per-site route as a full one', async (
 // `/dev/assets` and `POST /dev/site` both describe a typed refusal; this lane
 // threw prose with the problem document inlined until 2026-09-01, so a `507`
 // here printed raw JSON at the user. Backend confirmed a quota refusal is now
-// possible on this route (channel backend-framework-82f2), in the same shape.
+// possible on this route (channel backend↔framework), in the same shape.
 
 const QUOTA_507 = JSON.stringify({
   status: 507,

@@ -345,7 +345,7 @@ export function readSyncCache(siteDir) {
  * that. An offline re-emit produces the AUTHORED document, which is a different
  * document, so it matches nothing and every entity reads as changed forever. That is
  * not hypothetical: it is what `uniweb status` did on any site with one local image
- * (backend-framework-787e, 2026-08-19) — `push` said "1 entity unchanged" and
+ * (backend↔framework, 2026-08-19) — `push` said "1 entity unchanged" and
  * `status --json` said `changed: 1`, from the same cache, seconds apart.
  *
  * ⭐ What is left is what only a backend round-trip produces — an asset **serve URL**
@@ -487,7 +487,7 @@ export function readFolderItemUuids(siteDir) {
  * The backend refuses an all-blank section over stored items rather than applying it,
  * because applying it would insert every record fresh and delete every stored row —
  * content survives, identity does not. So `push` worked once and every push after was
- * refused. Measured 2026-08-29; collab framework-backend-812b.
+ * refused. Measured 2026-08-29; collab framework↔backend.
  *
  * ⭐ Keyed by NAME, which the backend enforces unique within the section and uses as
  * its own join key. ⛔ Not `$id`: it holds the same string but is a payload-local
@@ -1225,7 +1225,7 @@ export async function pushSyncPackages({
         // ⭐ THE BACKEND ALREADY SENDS WHAT LOCATES IT — `section_id`,
         // `records_without_uuid`, `stored_items` — and this branch discarded every
         // one of them, so every refusal anyone collected was missing the only fields
-        // that say WHERE. (Named by backend in collab `framework-backend-812b`,
+        // that say WHERE. (Named by backend in collab framework↔backend,
         // 2026-08-28: "the offending section and both counts have been in the body of
         // every refusal you have collected".)
         const n = problem.records_without_uuid
