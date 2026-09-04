@@ -940,7 +940,7 @@ import LessonHeader from '../../components/LessonHeader' // ❌ breaks if you re
 
 Within the same directory, use normal relative imports (`./AIFeedbackCard`).
 
-**Foundation entry (`main.js`).** A single `export default { … }` whose top-level keys are the capabilities the foundation provides — `name`, `description`, `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers` — plus an optional named `vars` export. Section types and layouts are auto-discovered and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in `dist/entry.js`; you never write that wrapper. The one place it matters: when you import your **own** `main.js` from a component (e.g. a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
+**Foundation entry (`main.js`).** A single `export default { … }` whose top-level keys are the capabilities the foundation provides — `name`, `description`, `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers` — plus an optional named `vars` export. Everything here is read at render; the one thing a foundation declares that *isn't* — which host services it supports — lives in `package.json` instead (see [Declaring what your foundation supports](#declaring-what-your-foundation-supports)). Section types and layouts are auto-discovered and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in `dist/entry.js`; you never write that wrapper. The one place it matters: when you import your **own** `main.js` from a component (e.g. a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
 
 ### Props interface
 
@@ -1910,6 +1910,49 @@ if (!url) return null          // this site has no agent — render nothing, or 
 `source` is `'site'`, `'host'` or `null`, and it is a **diagnostic for you** while you wire a site up: it says which tier answered, which is the thing to check when a host's value appears not to be taking effect. `'host'` with a null `url` means the host answered and offered no address.
 
 *(A live agent that errors mid-conversation is a different problem — that's ordinary request failure, handled where you make the request.)*
+
+### Declaring what your foundation supports
+
+`resolveService` is how you ask at render time. The other direction — telling a
+host, *before* anything renders, which services your foundation is built to use —
+is one line in the foundation's `package.json`:
+
+```json
+{
+  "uniweb": { "supports": ["search", "submit", "tracking"] }
+}
+```
+
+Service names, the same ones you pass to `resolveService`. It reaches a host when
+the foundation is registered, and it answers a question a host cannot otherwise
+answer: **a service only does something if the foundation renders something
+against it.** A host that offers search has no way to know whether your sections
+draw a search box, so without this it either offers a site something its code
+will ignore, or withholds something it would have used.
+
+**Three states, and they are three different answers:**
+
+| | |
+|---|---|
+| the key is **absent** | *unknown* — nobody said. Not a refusal |
+| `"supports": []` | an explicit *none* — this foundation honours no host service |
+| `"supports": ["search"]` | these, and only these |
+
+⛔ **Nothing is assumed on your behalf**, in either direction. An unstated set is
+never read as "all" and never as "none", so the only way a host learns your
+search box exists is that you said so.
+
+**List what you actually integrate.** `uniweb doctor` warns when your source
+reaches for a service you did not list — but it reads your code with a pattern
+matcher, so it sees `resolveService(website, 'search')` and misses a service
+reached through a variable or a helper. It can tell you that you forgot one; it
+cannot promise it found them all. The declaration is yours to keep accurate.
+
+⚖️ **Baseline behaviour is not yours to declare.** Some services do something for
+a site whether or not a foundation cooperates — the runtime reports page views
+wherever tracking is configured, with no help from your components. List
+`tracking` when you go *beyond* that (your own events on your own components);
+leaving it out does not switch the baseline off.
 
 ```yaml
 # site.yml — only when YOU are providing the endpoint. Publishing to Uniweb
