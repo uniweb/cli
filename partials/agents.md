@@ -1779,7 +1779,7 @@ export default {
 
 A foundation can route a scope to a plain folder of schema files instead of a package via an optional `schemas.config.js` at its root — `export default { '@acme': '../shared/acme-schemas' }`. A routed scope wins over the package convention; `@/` and `@uniweb` are never routable; a routed scope has no package fallback for a missing schema (it errors rather than silently loading a different definition). Per-schema keys override single entries (most-specific wins: file › directory › package). Worked examples: `development/schemas-in-practice.md`.
 
-**Authoring queries.** Fetch declarations accept `where:` (a where-object predicate), `sort:` (e.g. `date desc`), and `limit:`. Whether the source evaluates them or the framework applies them as a runtime fallback is a transport detail controlled by the site's `fetcher.supports:` declaration.
+**Authoring queries.** Fetch declarations accept `where:` (a where-object predicate), `sort:` (ONE key, e.g. `date desc`), and `limit:`. The framework evaluates them in the browser over the records it fetched; a host that answers queries evaluates the same language at the source; a foundation transport decides for itself. The declaration is identical in every case.
 
 ```yaml
 # pages/blog/page.yml
@@ -1798,33 +1798,29 @@ fetch:
 
 ### Fetching from other sources (`fetcher:`)
 
-A site isn't limited to file-based collections. The `fetcher:` block in `site.yml` tunes the framework's default fetcher and opts into foundation-provided **named transports** per schema:
+A site isn't limited to file-based records. The default fetcher also reads a plain JSON `url:` — GET, or `method: POST` with a `body:`, an optional `transform:` dot-path, the `detail:` forms for a record — and evaluates `where` / `sort` / `limit` in the browser over what arrived. A site published to a Uniweb host reads the host's records with no configuration at all.
+
+A backend with its own base URL, headers, wire or query language is a **transport**: a named `{ resolve, cacheKey? }` exported by the foundation (or an extension), which the site selects per schema in `fetcher:` — the only thing that block is for:
 
 ```yaml
 # site.yml
 fetcher:
-  baseUrl: https://api.example.com
-  headers: { X-Tenant: acme }
-  envelope: { list: data.items, item: data.article, error: errors.0.message }
-
-  supports: [where, limit, sort]     # which operators the source evaluates natively
-
   transports:
-    articles: uniweb                 # a foundation-registered transport handles `data: articles`
+    articles: acme                   # a foundation-registered transport handles `data: articles`
     events: default                  # explicitly route back to the default fetcher
-  uniweb:                            # binding config that transport reads
-    siteFolder: abc-123-def
+  acme:                              # binding config that transport reads
+    apiKey: pk_public_123
 ```
 
-**`supports:` is a capability declaration, not a switch.** With `supports: []` (the default) the source is treated as static: the whole collection is fetched and the framework applies `where` / `sort` / `limit` in JS afterward, so two pages with different predicates share one cache entry. With `supports: [where]` the predicate ships in the request and the cache splits per predicate. With `[where, limit, sort]` the source returns the final result and the framework passes it through. Pushdown applies only to remote `url:` sources — local `path:` reads are static files and always evaluate operators as a runtime fallback.
+**Selection is explicit and site-owned.** For each request: `fetcher.transports[as]` wins if set; otherwise `fetcher.transports.default` if set; otherwise the framework's default fetcher. No route-walking, no `match()` predicates, no silent foundation-owned routing — the site picks.
 
-**Selection is explicit and site-owned.** For each request: `fetcher.transports[schema]` wins if set; otherwise `fetcher.transports.default` if set; otherwise the framework's default fetcher applies `baseUrl` / `headers` / `envelope`. No route-walking, no `match()` predicates, no silent foundation-owned routing — the site picks.
+⛔ `fetcher.baseUrl`, `headers`, `envelope`, `supports` and `request.*` are **retired**: a third party's conventions belong in a transport, not in the runtime every site loads. The build warns once and ignores them.
 
 > **Never put secrets in `site.yml`** — every value in it is public to the browser. Sites needing private credentials proxy through the same origin at the deployment layer, so the site fetches `/api/…` and the proxy attaches the credential server-side.
 
-**Failures degrade rather than break:** a failed fetch falls back to `[]`, logs a build warning, and the page still renders. Components should handle the empty case — which the guaranteed content shape already encourages.
+**Failures are visible, not empty:** a fetch that failed leaves its key ABSENT from `content.data` and names the message on `block.dataError[key]`; it is never delivered as `[]`, which means "no records". The page still renders — a section reads `dataError` to tell the two apart.
 
-Recipes for staying on the default fetcher, and for writing a custom transport: `development/connecting-a-backend.md`.
+When a plain `url:` is enough and when a transport is the answer: `development/connecting-a-backend.md`.
 
 Full model: `reference/data-fetching.md`. Where-object format with examples: `authoring/predicates.md`.
 
