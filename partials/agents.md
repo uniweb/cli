@@ -876,6 +876,8 @@ pages/blog/
 
 > **The record arrives as a single-element array under the query key** — `content.data.recent[0]`, not `content.data.article`. The runtime never coerces it to an object and never synthesizes a singular key. See *Data* in Part 4.
 
+**Records with URLs of their own shape — `[...path]/`.** A folder named exactly `[...path]` (one fixed spelling) captures the rest of the URL: `/blog/my-post` and `/blog/rust/2025/my-post` both reach it. The capture yields three standard variables — `:path` (the whole capture), `:dir` (everything before the last segment), `:slug` (the last segment, the record's handle) — and the record is still delivered by `slug`, so the section reads `content.data.recent[0]` as before. A record's URL is its folder placement plus its slug (`- folder: rust/2025` in `records.yml` → `/blog/rust/2025/my-post`). A query may bind a part — `scope: :dir` exposes the folder branch, `where: { tag: :dir }` keeps it private — and an unbound variable drops its clause, so one saved query serves the list page and the detail page. Reference: `reference/dynamic-routes.md`.
+
 **Two options for bigger sets:**
 
 `deferred: [body]` strips heavy fields from the list payload — cards stay light, while a `[slug]` page still receives the full record automatically and other components fetch on demand via `useEntityDetail`. For a remote source, add `detailUrl: /api/articles/{slug}` so the framework knows how to fetch one full record; file-based records emit per-record files at `/data/<name>/<slug>.json` and need no configuration.
