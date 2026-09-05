@@ -30,7 +30,7 @@
  * said `--as-unit` and a second reader said `--org`; nobody produced `--as-org`.
  * Since the flag's main job is answering *who owns this site*, `--org` is the name
  * that matches the question, and the alias costs one `||` (the same shape
- * `--backend` / `--registry` already uses).
+ * `--backend` already uses).
  *
  * `||`, not `??`, on purpose: a valueless `--org` falls through to `--as-org`
  * rather than shadowing it.

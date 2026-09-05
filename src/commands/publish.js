@@ -20,7 +20,7 @@
  * Distinct from `uniweb deploy` (third-party hosts) and `uniweb register`
  * (foundation code → catalog). For a self-contained artifact, see `uniweb export`.
  *
- * Backend: BackendClient. Origin from --backend/--registry > UNIWEB_REGISTER_URL
+ * Backend: BackendClient. Origin from --backend > UNIWEB_REGISTER_URL
  * > default. Auth: --token > UNIWEB_TOKEN > `uniweb login` session.
  *
  * Usage:
@@ -214,7 +214,7 @@ export async function publish(args = []) {
 
   const client = new BackendClient({
     originFlag:
-      readFlagValue(args, '--backend') || readFlagValue(args, '--registry'),
+      readFlagValue(args, '--backend'),
     siteScope,
     siteBackend,
     token: readFlagValue(args, '--token') || undefined,

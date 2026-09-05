@@ -148,7 +148,7 @@ function readPkgField(dir, field) {
 // hits the SAME backend with the SAME session as the publish that called it.
 function forwardedFlags(args) {
   const out = []
-  for (const name of ['--backend', '--registry', '--token']) {
+  for (const name of ['--backend', '--token']) {
     const v = readFlagValue(args, name)
     if (v) out.push(name, v)
   }

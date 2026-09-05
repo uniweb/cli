@@ -286,11 +286,11 @@ test('pull fetches the folder lane by the site-content uuid (no query config nee
       contents: [
         {
           kind: 'branch',
-          path_segment: 'articles',
+          name: 'articles',
           $children: [
             {
               kind: 'ref',
-              path_segment: 'hello',
+              name: 'hello',
               entry: { model: '@acme/article', entity: 'R9' }
             }
           ]
@@ -354,11 +354,11 @@ test('pull projects the collections lane, resolving the model via a mock model-r
       contents: [
         {
           kind: 'branch',
-          path_segment: 'articles',
+          name: 'articles',
           $children: [
             {
               kind: 'ref',
-              path_segment: 'hello',
+              name: 'hello',
               entry: { model: '@acme/article', entity: 'R1' }
             }
           ]

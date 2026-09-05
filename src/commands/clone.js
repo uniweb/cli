@@ -40,7 +40,7 @@
  *   uniweb clone <uuid> --no-records Pull pages only; skip records
  *
  * Backend: via BackendClient (the site-content pull lane). Origin from
- *   --registry  >  UNIWEB_REGISTER_URL  >  the local default (internal dev overrides;
+ *   UNIWEB_REGISTER_URL  >  the local default (internal dev overrides;
  *   not the user-facing path — `uniweb login` determines the origin).
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
@@ -190,7 +190,7 @@ export async function clone(args = [], deps = {}) {
   const projectFlag = flagValue(args, '--project')
   const tokenFlag = flagValue(args, '--token')
   const explicitBackend =
-    flagValue(args, '--backend') || flagValue(args, '--registry')
+    flagValue(args, '--backend')
   const client = new BackendClient({
     originFlag: explicitBackend,
     token: tokenFlag,

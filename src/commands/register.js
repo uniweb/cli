@@ -30,10 +30,10 @@
  *   uniweb register --json               Porcelain: ONE compact JSON line on stdout
  *                                        ({ok,scope,origin,entities:[{name,uuid,version,unchanged}]}),
  *                                        all human output to stderr — for scripted callers
- *   uniweb register --backend <url>      Override the backend origin (alias: --registry)
+ *   uniweb register --backend <url>      Override the backend origin
  *   uniweb register --token <bearer>     Submit with this bearer; skips `uniweb login`
  *
- * Endpoint resolution: --backend <url> (alias --registry)  >  UNIWEB_REGISTER_URL  >
+ * Endpoint resolution: --backend <url>  >  UNIWEB_REGISTER_URL  >
  *   the logged-in session origin  >  ~/.uniweb/config.json  >  the default (uniweb.app).
  * Auth (submit only):  --token <bearer>  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
@@ -389,10 +389,10 @@ async function runRegister(args = []) {
   const output = flagValue(args, '-o') || flagValue(args, '--output')
   const scopeFlag = flagValue(args, '--scope')
   const tokenFlag = flagValue(args, '--token')
-  // Origin: --backend and --registry are aliases (matches deploy/publish + the
+  // Origin: --backend (matches deploy/publish + the
   // origin-selection convention); either overrides UNIWEB_REGISTER_URL / default.
   const client = new BackendClient({
-    originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'),
+    originFlag: flagValue(args, '--backend'),
     token: tokenFlag,
     args,
     command: 'Registering'
@@ -615,7 +615,7 @@ async function runRegister(args = []) {
   } catch (err) {
     error(`Could not reach the registry at ${client.origin}: ${err.message}`)
     log(
-      `  ${colors.dim}Set the endpoint with --backend/--registry <url> or UNIWEB_REGISTER_URL.${colors.reset}`
+      `  ${colors.dim}Set the endpoint with --backend <url> or UNIWEB_REGISTER_URL.${colors.reset}`
     )
     return { exitCode: 2 }
   }

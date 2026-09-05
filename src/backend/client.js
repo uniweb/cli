@@ -8,7 +8,7 @@
  * owns the three things that were previously scattered across a dozen files:
  *
  *   1. ORIGIN   — where the backend is. resolveBackendOrigin(): an explicit
- *                 flag (`--backend` / `--registry`) > UNIWEB_REGISTER_URL >
+ *                 flag (`--backend`) > UNIWEB_REGISTER_URL >
  *                 the local default. Any full URL is reduced to its origin.
  *   2. AUTH     — the opaque session bearer (utils/registry-auth.js). Resolved
  *                 LAZILY on the first authed call, so dry-runs and fully-local
@@ -46,7 +46,7 @@ import { uploadSiteAssets } from '../utils/asset-upload.js'
  * first). A full URL is reduced to its origin, so callers may pass a whole
  * endpoint URL; an unparseable value falls through to the next tier.
  *
- *   1. `flag` — the raw --backend / --registry value (this command)
+ *   1. `flag` — the raw --backend value (this command)
  *   2. UNIWEB_REGISTER_URL env — session-wide override (CI / local dev)
  *   3. `siteScope` — the project's `site.yml::$backend` (site verbs)
  *   4. `siteBackend` — the site's bound backend from deploy.yml (site verbs)
@@ -70,7 +70,7 @@ import { uploadSiteAssets } from '../utils/asset-upload.js'
  * be able to veto a flag the user just typed. A wrong aim is then caught by the guard
  * rather than silently redirected.
  *
- * @param {string} [flag] - the raw value of --backend / --registry, if supplied
+ * @param {string} [flag] - the raw value of --backend, if supplied
  * @param {object} [opts]
  * @param {string} [opts.siteScope] - the project's `site.yml::$backend`
  * @param {string} [opts.siteBackend] - a site's deploy.yml-bound backend origin
@@ -143,7 +143,7 @@ export class BackendClient {
   /**
    * @param {object} [opts]
    * @param {string} [opts.origin] - explicit origin (wins over originFlag/env)
-   * @param {string} [opts.originFlag] - raw --backend/--registry value to resolve
+   * @param {string} [opts.originFlag] - raw --backend value to resolve
    * @param {string} [opts.siteScope] - the project's `site.yml::$backend` (site verbs)
    * @param {string} [opts.siteBackend] - a site's deploy.yml-bound backend (site verbs)
    * @param {string} [opts.token] - explicit bearer (wins over env + stored session)

@@ -166,7 +166,6 @@ export async function refresh(args = [], deps = {}) {
     // same section is not a conflict, and should not be presented as one.
     const passthrough = collectPassthrough(args, [
       '--backend',
-      '--registry',
       '--token'
     ])
     const res = await pull(['--merge', ...passthrough])

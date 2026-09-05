@@ -55,7 +55,7 @@ const VIA_DEPLOY = ['--target', '--host', '--no-save']
 const VERBS = {
   push: [
     '--all', '--as-org', '--org', '--backend', '--dry-run', '--force',
-    '--foundation', '--output', '-o', '--personal', '--registry', '--token',
+    '--foundation', '--output', '-o', '--personal', '--token',
     // read in utils/conformance.js and backend/site-sync.js respectively —
     // neither appears in push.js
     '--no-validate', '--yes',
@@ -69,7 +69,7 @@ const VERBS = {
   ],
   publish: [
     '--as-org', '--org', '--backend', '--dry-run', '--force', '--foundation',
-    '--personal', '--registry', '--token',
+    '--personal', '--token',
     // read in utils/conformance.js, backend/site-sync.js, and
     // backend/foundation-bring-along.js — none appear in publish.js
     '--no-validate', '--yes', '--no-verify', '--no-release', ...VIA_DEPLOY
@@ -77,20 +77,20 @@ const VERBS = {
   pull: [
     '--backend', '--content-only', '--dry-run', '--force', '--merge',
     '--no-assets',
-    '--no-records', '--no-delete', '--no-prune', '--registry', '--token',
+    '--no-records', '--no-delete', '--no-prune', '--token',
     // via backend/site-sync.js (the owner resolver) and utils/conformance.js
     '--yes', '--org', '--as-org', '--no-validate', ...VIA_DEPLOY
   ],
   clone: [
     '--backend', '--content-only', '--no-assets', '--no-records', '--path',
-    '--project', '--registry', '--token', '--org', '--as-org'
+    '--project', '--token', '--org', '--as-org'
   ],
   register: [
-    '--backend', '--dry-run', '--json', '--output', '-o', '--registry',
+    '--backend', '--dry-run', '--json', '--output', '-o',
     '--schema-only', '--scope', '--token', '--org', '--as-org'
   ],
   status: [
-    '--backend', '--json', '--registry', '--remote', '--token', '--dry-run',
+    '--backend', '--json', '--remote', '--token', '--dry-run',
     '--force', '--no-verify', '--no-validate', '--yes', '--org', '--as-org',
     // inert here, reachable through the bring-along module status imports for
     // `resolveLocalFoundation` — listed per the over-approximation note above
@@ -99,7 +99,7 @@ const VERBS = {
   /**
    * `refresh` = `git pull`, then a DELEGATED `pull --merge`.
    *
-   * It forwards exactly three flags to that pull — `--backend` / `--registry` /
+   * It forwards exactly two flags to that pull — `--backend` /
    * `--token`, via its own `collectPassthrough` — and constructs the rest of the
    * argv itself. So pull's own flags (`--merge`, `--force`, `--no-delete`,
    * `--no-prune`, `--content-only`, …) are NOT reachable from a `refresh` argv and
@@ -111,7 +111,7 @@ const VERBS = {
    * the VIA_DEPLOY note above, and required by `flag-guard-coverage.test.js`.
    */
   refresh: [
-    '--backend', '--no-backend', '--no-git', '--registry', '--token',
+    '--backend', '--no-backend', '--no-git', '--token',
     '--as-org', '--org', '--dry-run', '--no-validate', '--yes', ...VIA_DEPLOY
   ]
 }

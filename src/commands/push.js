@@ -37,7 +37,6 @@
  *                                        this prompt existed. First push only.
  *   uniweb push --dry-run                Report what would be pushed; submit nothing
  *   uniweb push -o out.uwx               Write the .uwx file(s) per lane; submit nothing
- *   uniweb push --registry <url>         Override the backend origin
  *   uniweb push --token <bearer>         Submit with this bearer; skips `uniweb login`
  *   uniweb push --foundation <dir>       Use this local foundation for the Model schema
  *   uniweb push --all                    Send every record (bypass the changed-only cache)
@@ -51,7 +50,7 @@
  * would be hard-deleted). `--force` omits the token and restores last-push-wins.
  *
  * Backend: via BackendClient (the content + folder sync lanes). Origin from
- *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
+ *   UNIWEB_REGISTER_URL  >  the local default.
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  *
  * The two-lane SUBMISSION (POST both lanes, back-fill uuids, persist the
@@ -168,7 +167,7 @@ export async function push(args = [], deps = {}) {
   // (the `offline` flag below), so it never authenticates — even when a collection
   // references a Model the local foundation doesn't define.
   const client = new BackendClient({
-    originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'),
+    originFlag: flagValue(args, '--backend'),
     siteScope,
     siteBackend,
     token: tokenFlag,

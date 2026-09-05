@@ -41,12 +41,11 @@
  *   uniweb pull --merge                  Three-way merge local changes with the backend's
  *   uniweb pull --force                  Pull over uncommitted local changes (discards them)
  *   uniweb pull --dry-run                Report what it would GET; write nothing
- *   uniweb pull --registry <url>         Override the backend origin
  *   uniweb pull --token <bearer>         Read with this bearer; skips `uniweb login`
  *
  * Backend: via BackendClient (the content + folder pull lanes), both keyed by
  *   `site.yml::$uuid`. Origin from
- *   --registry  >  UNIWEB_REGISTER_URL  >  the local default.
+ *   UNIWEB_REGISTER_URL  >  the local default.
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  *
  * A project that never pushed has no `$uuid` to pull by — pull is a no-op with a
@@ -562,7 +561,7 @@ export async function pull(args = [], deps = {}) {
   const siteScope = readSiteIdentity(siteDir).backend
   const siteBackend = await resolveSiteBackend(siteDir)
   const client = new BackendClient({
-    originFlag: flagValue(args, '--backend') || flagValue(args, '--registry'),
+    originFlag: flagValue(args, '--backend'),
     siteScope,
     siteBackend,
     token: tokenFlag,

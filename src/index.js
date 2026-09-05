@@ -803,7 +803,7 @@ async function main() {
   }
 
   // Handle login command — the backend (username/password · paste a token ·
-  // --token <bearer>). Origin from --backend/--registry > UNIWEB_REGISTER_URL >
+  // --token <bearer>). Origin from --backend > UNIWEB_REGISTER_URL >
   // default, the SAME resolver register/push/pull/deploy use, so a session and
   // the commands that reuse it always target one backend.
   if (command === 'login') {
@@ -812,8 +812,7 @@ async function main() {
     const { readFlagValue } = await import('./utils/args.js')
     const { runRegistryLogin } = await import('./utils/registry-auth.js')
     const originFlag =
-      readFlagValue(loginArgs, '--backend') ||
-      readFlagValue(loginArgs, '--registry')
+      readFlagValue(loginArgs, '--backend')
     const apiBase = resolveBackendOrigin(originFlag)
 
     // ⭐ The project says where it belongs — say so BEFORE authenticating elsewhere.
@@ -826,7 +825,7 @@ async function main() {
     // routed-not-nagged case `$backend` was added for, missing at the one command a
     // teammate runs FIRST after cloning.
     //
-    // ⛔ Silent when the origin was named explicitly (--backend / --registry /
+    // ⛔ Silent when the origin was named explicitly (--backend /
     // UNIWEB_REGISTER_URL). A deliberate aim is not a mistake to warn about; a genuinely
     // wrong one is still caught by the session-mismatch guard in BackendClient.token().
     if (!originFlag && !process.env.UNIWEB_REGISTER_URL) {
@@ -1520,7 +1519,7 @@ ${colors.bright}Options:${colors.reset}
   --scope @org       Publish under @org (resolves @/x -> @org/x); default: package.json uniweb.scope
   --dry-run          Print the .uwx; submit nothing
   -o, --output <f>   Write the .uwx to a file; submit nothing
-  --backend <url>    Backend origin (alias: --registry; default: \$UNIWEB_REGISTER_URL or a local URL)
+  --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or a local URL)
   --token <bearer>   Submit with this bearer; skips \`uniweb login\` (or set UNIWEB_TOKEN)
   --non-interactive  Fail with usage info instead of prompting
 

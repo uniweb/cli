@@ -109,7 +109,7 @@ export async function status(args = []) {
     try {
       const client = new BackendClient({
         originFlag:
-          readFlagValue(args, '--backend') || readFlagValue(args, '--registry'),
+          readFlagValue(args, '--backend'),
         siteScope: readSiteIdentity(siteDir).backend,
         siteBackend: await resolveSiteBackend(siteDir),
         token: readFlagValue(args, '--token') || undefined,
