@@ -1844,10 +1844,10 @@ search:
 ```yaml
 search:
   provider: endpoint
-  endpoint: _search      # optional; base-RELATIVE, so one spelling works everywhere
+  endpoint: _search      # REQUIRED — there is no default
 ```
 
-`endpoint:` resolves against the site's base path — `/` → `/_search`, `base: /docs/` → `/docs/_search`, a subpath-served site follows its subpath. An absolute `https://…` URL points at another origin.
+`endpoint:` is **required** with `provider: endpoint`; omit it and the provider refuses the query rather than guessing a path. It resolves against the site's base path — `/` → `/_search`, `base: /docs/` → `/docs/_search`, a subpath-served site follows its subpath. An absolute `https://…` URL points at another origin. A host that serves the site may offer search itself, supplying the address so the site declares none.
 
 **Results have one shape, whatever the provider.** Always present: `id`, `type`, `route`, `href`, `title`, `pageTitle`, `excerpt`, `snippetHtml`. Provider-optional (`null` when absent): `sectionId`, `anchor`, `description`, `component`, `snippetText`, `matches`, `collection`, `item`. Whether an optional field arrives is a deployment fact, not a content fact — the same site yields `item` from a server provider and `null` from the local index — so guard them: `result.item?.image`.
 
