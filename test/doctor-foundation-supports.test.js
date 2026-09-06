@@ -1,120 +1,127 @@
 /**
- * `uniweb doctor` — `package.json::uniweb.supports` on a foundation.
+ * `uniweb doctor` — is `package.json` behind what the build derived?
  *
- * The failure this catches is invisible at every other moment: a foundation
- * renders a search box, its operator is never offered search because the
- * artifact never said it honours one, and nothing errors anywhere. `doctor` is
- * the only point in the chain where the developer who can fix it is looking.
+ * ## ⛔ WHAT THIS FILE USED TO TEST, AND WHY IT PROVED NOTHING
  *
- * ⭐ The suppressions carry as much weight as the warnings. A foundation that
- * reaches for no service has nothing to declare, and a checker that fires on
- * correct configuration is how everyone learns to ignore the checker.
+ * The old check regexed `sections/`, `layouts/` and `components/` for four
+ * spellings of a service call. This suite fed it a source string containing
+ * `resolveService(block.website, 'search')` — written to match that regex — and
+ * was green while the check was silent on `templates/services`, the template
+ * written to demonstrate the feature, because `useFormSubmit()` was not one of
+ * the four. **A fixture authored to match the matcher can only confirm that the
+ * matcher matches itself.**
+ *
+ * The derivation now happens in `@uniweb/build` off the module graph, and is
+ * tested there against real parsed framework source
+ * (`build/tests/derive-supports.test.js`). What is left for `doctor` is
+ * narrower and is what this file tests: **does it faithfully report the gap
+ * between the built artifact and `package.json`, and does `--fix` close it?**
  */
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-
 import { checkFoundationSupports } from '../src/commands/doctor.js'
 
-/**
- * A foundation source tree with one section whose body is `source`.
- * Returns the ids of every issue raised for it.
- */
-function idsFor(source, uniweb) {
-  const dir = mkdtempSync(join(tmpdir(), 'uw-doctor-supports-'))
+/** A foundation directory with an optional built schema and package.json. */
+function foundation({ supports, derived }) {
+  const dir = mkdtempSync(join(tmpdir(), 'uniweb-supports-'))
+  const pkg = { name: 'acme-foundation', version: '1.0.0' }
+  if (supports !== undefined) pkg.uniweb = { supports }
+  writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg, null, 2) + '\n')
+
+  if (derived !== undefined) {
+    mkdirSync(join(dir, 'dist', 'meta'), { recursive: true })
+    const schema = { _self: { name: 'acme', version: '1.0.0' } }
+    if (derived !== null) schema._self.supports = derived
+    writeFileSync(join(dir, 'dist', 'meta', 'schema.json'), JSON.stringify(schema, null, 2))
+  }
+  return { dir, pkg }
+}
+
+async function run({ supports, derived, fix = false }) {
+  const { dir } = foundation({ supports, derived })
+  const issues = []
+  const fixes = []
   try {
-    mkdirSync(join(dir, 'sections', 'Widget'), { recursive: true })
-    writeFileSync(join(dir, 'sections', 'Widget', 'index.jsx'), source)
-    const issues = []
-    checkFoundationSupports({
+    await checkFoundationSupports({
       foundationName: 'acme',
       folderName: 'foundation',
-      srcDir: dir,
-      pkg: uniweb ? { uniweb } : {},
-      issues
+      foundationDir: dir,
+      pkg: JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')),
+      issues,
+      shouldFix: () => fix,
+      fixed: (m) => fixes.push(m),
     })
-    return issues.map((i) => i.id)
+    const after = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
+    return { ids: issues.map((i) => i.id), issues, fixes, after }
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 }
 
-const SEARCH_BOX = `
-import { resolveService } from '@uniweb/kit'
-export default function Widget({ block }) {
-  const { url } = resolveService(block.website, 'search')
-  return url ? <input /> : null
-}
-`
-
-test('says nothing when the foundation reaches for no service', () => {
-  assert.deepEqual(idsFor(`export default function Widget() { return <div /> }`), [])
-  // …and still nothing when it declares none either. Absence on both sides is
-  // a consistent, correct state and must not be nagged about.
-  assert.deepEqual(
-    idsFor(`export default function Widget() { return <div /> }`, { supports: [] }),
-    []
-  )
+test('says nothing when the foundation has never been built', async () => {
+  // Nothing has been measured, so there is no gap to name and a guess would be
+  // worse than silence.
+  const { ids } = await run({ supports: undefined, derived: undefined })
+  assert.deepEqual(ids, [])
 })
 
-test('says nothing when what it uses is what it declares', () => {
-  assert.deepEqual(idsFor(SEARCH_BOX, { supports: ['search'] }), [])
-  // A superset is fine: a foundation may honour a service through a path this
-  // scan cannot see, and warning about that would be a false positive.
-  assert.deepEqual(idsFor(SEARCH_BOX, { supports: ['search', 'submit'] }), [])
+test('says nothing when the build derived nothing', async () => {
+  assert.deepEqual((await run({ supports: undefined, derived: [] })).ids, [])
 })
 
-test('flags a service used and not declared', () => {
-  assert.deepEqual(idsFor(SEARCH_BOX, { supports: ['submit'] }), [
-    'foundation-supports-incomplete'
-  ])
+test('says nothing when the build reported UNKNOWN (a computed name)', async () => {
+  // `_self.supports` absent means the derivation was blind. Absent is not `[]`,
+  // and neither is a gap in the file.
+  assert.deepEqual((await run({ supports: undefined, derived: null })).ids, [])
 })
 
-test('flags a service used with no declaration at all', () => {
-  assert.deepEqual(idsFor(SEARCH_BOX), ['foundation-supports-incomplete'])
-  assert.deepEqual(idsFor(SEARCH_BOX, { scope: '@acme' }), [
-    'foundation-supports-incomplete'
-  ])
+test('says nothing when the file already lists what the build derived', async () => {
+  assert.deepEqual((await run({ supports: ['submit'], derived: ['submit'] })).ids, [])
 })
 
-test('recognizes the service-specific readers, which name no service string', () => {
-  // Each of these IS the integration for its service, so a foundation using one
-  // and declaring nothing is exactly the case this check exists for.
-  assert.deepEqual(
-    idsFor(`export default (p) => p.website.isSearchEnabled() ? <input/> : null`),
-    ['foundation-supports-incomplete']
-  )
-  assert.deepEqual(
-    idsFor(`import { useTracker } from '@uniweb/kit'\nexport default () => { useTracker(); return null }`),
-    ['foundation-supports-incomplete']
-  )
-  assert.deepEqual(
-    idsFor(`import { useSession } from '@uniweb/api'\nexport default () => useSession() ? null : null`),
-    ['foundation-supports-incomplete']
-  )
+test('says nothing when the file lists MORE than the build could see', async () => {
+  // The computed-name case: `booking` is invisible to the graph and only the
+  // author knows it. Reporting a gap here would invite deleting a true
+  // declaration — the one outcome this whole mechanism exists to prevent.
+  assert.deepEqual((await run({ supports: ['booking', 'submit'], derived: ['submit'] })).ids, [])
 })
 
-test('reports what it saw, so the message can be acted on', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'uw-doctor-supports-'))
-  try {
-    mkdirSync(join(dir, 'sections'), { recursive: true })
-    writeFileSync(join(dir, 'sections', 'Widget.jsx'), SEARCH_BOX)
-    const issues = []
-    checkFoundationSupports({
-      foundationName: 'acme',
-      folderName: 'foundation',
-      srcDir: dir,
-      pkg: {},
-      issues
-    })
-    assert.equal(issues.length, 1)
-    assert.deepEqual(issues[0].details.used, ['search'])
-    assert.equal(issues[0].details.declared, null)
-    assert.match(issues[0].message, /uniweb\.supports/)
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
+test('flags a derived service the file does not declare', async () => {
+  const { ids, issues } = await run({ supports: undefined, derived: ['submit'] })
+  assert.deepEqual(ids, ['foundation-supports-incomplete'])
+  assert.deepEqual(issues[0].details.derived, ['submit'])
+  assert.equal(issues[0].details.declared, null)
+})
+
+test('flags the gap when the file declares only some of it', async () => {
+  const { ids, issues } = await run({ supports: ['search'], derived: ['search', 'submit'] })
+  assert.deepEqual(ids, ['foundation-supports-incomplete'])
+  assert.deepEqual(issues[0].details.declared, ['search'])
+})
+
+test('--fix writes the union into package.json and reports no issue', async () => {
+  const { ids, fixes, after } = await run({
+    supports: ['booking'],
+    derived: ['submit'],
+    fix: true,
+  })
+  assert.deepEqual(ids, [])
+  assert.equal(fixes.length, 1)
+  // The union, so what the author knew and the graph could not see survives.
+  assert.deepEqual(after.uniweb.supports, ['booking', 'submit'])
+})
+
+test('--fix creates the uniweb block when there is none', async () => {
+  const { after } = await run({ supports: undefined, derived: ['search', 'submit'], fix: true })
+  assert.deepEqual(after.uniweb.supports, ['search', 'submit'])
+})
+
+test('--fix keeps the rest of package.json intact', async () => {
+  const { after } = await run({ supports: undefined, derived: ['submit'], fix: true })
+  assert.equal(after.name, 'acme-foundation')
+  assert.equal(after.version, '1.0.0')
 })

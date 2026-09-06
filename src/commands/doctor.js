@@ -221,34 +221,6 @@ function forEachSourceFile(dir, fn) {
   for (const r of roots) walk(join(dir, r))
 }
 
-/**
- * The host services a foundation's own source actually reaches for.
- *
- * ⚠️ A HINT, NEVER THE ANSWER. This is a regex over source, so it sees only the
- * literal spellings below: `resolveService(website, name)` with a variable name
- * is invisible to it, and so is a service reached through a helper. That makes
- * it usable for "you used this and did not declare it" (a false negative just
- * means no warning) and useless as a source of truth (a false negative would
- * mean a capability silently dropped from what we publish).
- *
- * ⛔ Which is why the declaration is authored and this only checks it. Deriving
- * `uniweb.supports` from a scan would make a missed match into a service the
- * operator cannot buy, with nothing anywhere naming the cause.
- */
-function servicesUsedInSource(dir) {
-  const found = new Set()
-  forEachSourceFile(dir, (text) => {
-    for (const m of text.matchAll(/resolveService\s*\(\s*[^,()]+,\s*['"`]([\w-]+)['"`]/g)) {
-      found.add(m[1])
-    }
-    // The service-specific readers, which name no service string of their own.
-    if (/\bisSearchEnabled\s*\(/.test(text)) found.add('search')
-    if (/\buseTracker\s*\(/.test(text)) found.add('tracking')
-    if (/from\s+['"`]@uniweb\/api['"`]/.test(text)) found.add('api')
-  })
-  return found
-}
-
 // A fenced data block tagged `form`, in any of the serialization formats the
 // parser accepts for one. Matched on the info string only — the body is the
 // author's business.
@@ -426,68 +398,104 @@ const CONSENT_NEAR_MISSES = new Set(['require', 'requires', 'required.', 'true',
  * options — there is nothing in it to be wrong.
  */
 /**
- * `uniweb doctor` — a foundation's `uniweb.supports` declaration.
+ * `uniweb doctor` — is `package.json` behind what the build derived?
  *
  * A host offers services (`config.services.<name>`); a foundation has to render
  * something against one, or an operator who provisioned it gets nothing and no
- * error. `package.json::uniweb.supports` is how a foundation states which ones
- * it honours, and it rides to the registry as `info.supports`
- * (`build/src/uwx/registry-package.js`).
+ * error. `uniweb.supports` states which ones a foundation honours, and it rides
+ * to the registry as `info.supports` (`build/src/uwx/registry-package.js`).
  *
- * ## ⭐ WHY THIS WARNS RATHER THAN THE BUILD FILLING IT IN
+ * ## ⭐ THE BUILD ALREADY ANSWERED THIS — so read its answer, do not re-derive
  *
- * `servicesUsedInSource` is a regex and cannot see a service reached through a
- * variable or a helper. Deriving the declaration from it would publish a list
- * SHORTER than the truth, and a capability missing from that list is one the
- * operator cannot buy — with nothing anywhere naming the cause. A false negative
- * in a warning costs a missing warning; a false negative in a derivation costs a
- * silently unsellable feature. So the developer authors it and this checks it,
- * at the one moment the person who can fix it is looking.
+ * `@uniweb/build` derives the set from the post-tree-shake module graph and
+ * writes it to `dist/meta/schema.json`'s `_self.supports`
+ * (`build/src/foundation/derive-supports.js`). That value is what publishes,
+ * with or without this check, so the foundation is already correct on the wire.
  *
- * ## ⚖️ Nothing here defaults a service ON
+ * ⛔ **What was here before was a regex over `sections/`, `layouts/` and
+ * `components/`, and it did not work.** It knew four spellings and
+ * `useFormSubmit()` — the official submit gate — was not one, so it was silent
+ * on `templates/services`, the template written to demonstrate the feature. Its
+ * test could not find that, because the fixture was a source string written to
+ * match the regex. ⇒ **Do not reintroduce a second, weaker derivation here.**
+ * There is one, it runs in the build, and this reads it.
  *
- * Absent means UNKNOWN, not "none" and not "all". Assuming search because most
- * foundations have one would claim a service for the developer who never met
- * this key — who is the same developer who forgot to declare it — turning a loud
- * failure (reported unknown) into a silent one (an operator paying for something
- * their site will never render).
+ * ## So what is left for `doctor` to say
  *
- * Silent when a foundation reaches for no service at all: a check that fires on
- * correct configuration is how everyone learns to ignore the checker.
+ * Only that the FILE disagrees with the artifact. Nothing is broken when it
+ * does — but `uniweb.supports` is the one place a human can add a service the
+ * graph cannot see (a computed name), so a developer who never sees the derived
+ * set never learns the key exists, and never adds the one thing only they know.
+ *
+ * `--fix` writes the derived names in, where they land in a diff the developer
+ * reads. ⛔ The build never does this itself: rewriting source on every build is
+ * a surprise, and the artifact needs no help.
+ *
+ * Silent when the foundation has not been built — nothing has been measured, so
+ * there is nothing to compare and a guess would be worse than quiet.
  */
-export function checkFoundationSupports({ foundationName, folderName, srcDir, pkg, issues }) {
-  const used = servicesUsedInSource(srcDir)
-  if (used.size === 0) return
+export async function checkFoundationSupports({
+  foundationName,
+  folderName,
+  foundationDir,
+  pkg,
+  issues,
+  shouldFix,
+  fixed,
+}) {
+  const schemaPath = join(foundationDir, 'dist', 'meta', 'schema.json')
+  if (!existsSync(schemaPath)) return
+
+  let derived
+  try {
+    derived = JSON.parse(readFileSync(schemaPath, 'utf8'))?._self?.supports
+  } catch {
+    return // unreadable or malformed build output — not this check's to report
+  }
+  // Absent means the build derived nothing and saw a computed name, so it
+  // reported UNKNOWN. There is no gap to name.
+  if (!Array.isArray(derived) || derived.length === 0) return
 
   const declared = pkg?.uniweb?.supports
   const hasDeclaration = Array.isArray(declared)
-  const missing = [...used]
-    .filter((name) => !hasDeclaration || !declared.includes(name))
-    .sort()
+  const missing = derived.filter((name) => !hasDeclaration || !declared.includes(name)).sort()
   if (missing.length === 0) return
 
   const id = 'foundation-supports-incomplete'
   const list = missing.join(', ')
+  const merged = [...new Set([...(hasDeclaration ? declared : []), ...derived])].sort()
+
+  if (shouldFix?.(id)) {
+    const pkgPath = join(foundationDir, 'package.json')
+    try {
+      const src = readFileSync(pkgPath, 'utf8')
+      const parsed = JSON.parse(src)
+      parsed.uniweb = { ...(parsed.uniweb || {}), supports: merged }
+      writeJsonPreservingStyle(pkgPath, parsed, src)
+      fixed?.(`${folderName}/package.json now declares uniweb.supports: ${merged.join(', ')}`)
+      return
+    } catch (e) {
+      // Fall through to the warning — a failed write must not read as fixed.
+      warn(`[${id}] could not write ${folderName}/package.json: ${e.message}`)
+    }
+  }
+
   issues.push({
     id,
     type: 'warning',
     foundation: foundationName,
     message: hasDeclaration
-      ? `${foundationName} uses ${list} but does not declare ${missing.length === 1 ? 'it' : 'them'} in uniweb.supports`
-      : `${foundationName} uses ${list} but declares no uniweb.supports`,
-    details: { used: [...used].sort(), declared: hasDeclaration ? declared : null }
+      ? `${foundationName} builds against ${list} but does not declare ${missing.length === 1 ? 'it' : 'them'} in uniweb.supports`
+      : `${foundationName} builds against ${list} but declares no uniweb.supports`,
+    details: { derived, declared: hasDeclaration ? declared : null },
+    fixable: true,
   })
 
-  if (hasDeclaration) {
-    warn(`[${id}] ${foundationName} uses ${list}, not listed in uniweb.supports`)
-  } else {
-    warn(`[${id}] ${foundationName} uses ${list} and declares no uniweb.supports`)
-    log(`    Without it a host cannot tell "this foundation supports nothing" from`)
-    log(`    "nobody said" — so what it renders may never be offered to the operator.`)
-  }
-  const merged = [...new Set([...(hasDeclaration ? declared : []), ...missing])].sort()
-  log(`    Add to ${folderName}/package.json:`)
-  log(`      ${colors.dim}"uniweb": { "supports": ${JSON.stringify(merged)} }${colors.reset}`)
+  warn(`[${id}] ${foundationName} builds against ${list}, not in ${folderName}/package.json`)
+  log(`    The build already publishes ${colors.dim}${derived.join(', ')}${colors.reset}, so nothing is missing on the wire.`)
+  log(`    Declaring it matters when a service is named by a computed value — the`)
+  log(`    build cannot see those, and yours is the only place they can be added.`)
+  log(`    ${colors.dim}uniweb doctor --fix ${id}${colors.reset}`)
 }
 
 export function checkTrackingBlock({ siteName, siteYml, issues }) {
@@ -941,12 +949,30 @@ export async function doctor(args = []) {
 
   // ── uniweb.supports — the services this foundation says it is built against ──
   for (const f of foundations) {
-    checkFoundationSupports({
+    await checkFoundationSupports({
       foundationName: f.name,
       folderName: f.folderName,
-      srcDir: resolveFoundationSrcPath(f.path),
+      foundationDir: f.path,
       pkg: loadPackageJson(f.path),
-      issues
+      issues,
+      shouldFix,
+      fixed
+    })
+  }
+
+  // Extensions carry `uniweb.supports` too — same key, same field, and a site's
+  // answer is the union across its primary foundation and its extensions. The
+  // regex-era check looked at foundations only, so an extension that drew a
+  // search box was never asked about one.
+  for (const e of extensions) {
+    await checkFoundationSupports({
+      foundationName: e.name,
+      folderName: e.folderName,
+      foundationDir: e.path,
+      pkg: loadPackageJson(e.path),
+      issues,
+      shouldFix,
+      fixed
     })
   }
 
