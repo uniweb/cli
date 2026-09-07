@@ -509,6 +509,10 @@ const SERVICE_GATES = [
   { hook: 'useFormSubmit', gate: 'canSubmit', draws: 'a form' },
   { hook: 'useSearch', gate: 'isEnabled', draws: 'a search control' },
   { hook: 'useSearchIndex', gate: 'isEnabled', draws: 'a search control' },
+  // Returns everything `useSearch` does, `isEnabled` included, so it gates the
+  // same way. It was missing from this list until the hook was renamed out of
+  // `useSearchWithIntent` — the kind of gap a list of names grows quietly.
+  { hook: 'useSearchPrefetch', gate: 'isEnabled', draws: 'a search control' },
 ]
 
 /**
