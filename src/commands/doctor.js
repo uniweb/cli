@@ -195,7 +195,7 @@ function sourceMatches(dir, pattern) {
  * question is always "did the developer write this".
  */
 function forEachSourceFile(dir, fn) {
-  const roots = ['sections', 'layouts', 'components']
+  const roots = ['sections', 'layouts', 'components', 'utils']
   const walk = (d, depth = 0) => {
     if (depth > 6) return
     let entries
@@ -211,7 +211,7 @@ function forEachSourceFile(dir, fn) {
         walk(p, depth + 1)
       } else if (/\.(jsx?|tsx?)$/.test(entry.name)) {
         try {
-          fn(readFileSync(p, 'utf8'))
+          fn(readFileSync(p, 'utf8'), relative(dir, p))
         } catch {
           // unreadable file — not this check's problem to report
         }
@@ -496,6 +496,99 @@ export async function checkFoundationSupports({
   log(`    Declaring it matters when a service is named by a computed value — the`)
   log(`    build cannot see those, and yours is the only place they can be added.`)
   log(`    ${colors.dim}uniweb doctor --fix ${id}${colors.reset}`)
+}
+
+/**
+ * The gates kit exposes for a host service, and the field that IS the gate.
+ *
+ * Each hook returns a boolean saying whether the site actually has the service.
+ * A component that ignores it draws a control the visitor cannot use — a search
+ * box that searches nothing, a form whose answers have nowhere to go.
+ */
+const SERVICE_GATES = [
+  { hook: 'useFormSubmit', gate: 'canSubmit', draws: 'a form' },
+  { hook: 'useSearch', gate: 'isEnabled', draws: 'a search control' },
+  { hook: 'useSearchIndex', gate: 'isEnabled', draws: 'a search control' },
+]
+
+/**
+ * `uniweb doctor` — a control drawn for a service the site may not have.
+ *
+ * `resolveService` answers with an address or nothing, and nothing is a normal
+ * state: the operator did not provision that service. ⭐ **The rule is that a
+ * control for a service the site does not have must not be drawn** — no error,
+ * no apology, no explanatory string (there is deliberately none to show, since
+ * any wording would be ours to invent, in one language, for a visitor with no
+ * stake in it). The hooks hand you a boolean for exactly this, and a component
+ * that never reads it renders something permanently dead.
+ *
+ * ## ⚖️ WHY A REGEX IS ACCEPTABLE HERE, HAVING JUST BEEN REJECTED NEXT DOOR
+ *
+ * `checkFoundationSupports` above no longer scans source, because deriving
+ * *which services a foundation reaches* requires following calls through
+ * `@uniweb/kit` into `@uniweb/core`, and a missed match there silently costs a
+ * capability on the wire. This question is a different shape:
+ *
+ *   - it is **local to one file** — the hook call and its gate are in the same
+ *     component, in the developer's own source, with no indirection to follow;
+ *   - the gate names are **fixed by kit's API**, not inferred;
+ *   - it only ever **warns**, and changes no artifact. A miss costs a missing
+ *     warning, which is the safe direction.
+ *
+ * ⛔ Its limits, stated rather than discovered: a component that gates in its
+ * parent reads as ungated here, and one that destructures the gate without
+ * using it reads as gated. Both are warnings about a real smell either way, and
+ * neither can produce a wrong artifact.
+ */
+/**
+ * Source with its comments removed.
+ *
+ * ⚠️ MEASURED, NOT PRECAUTIONARY. The first cut of this check searched the raw
+ * text, and passed on `templates/services` with the gate deliberately deleted
+ * from the code — because the component's JSDoc still said `canSubmit`. Prose
+ * about a gate is not a gate.
+ *
+ * ⛔ Whole-line and block comments only, deliberately. A line that begins with
+ * `//` or `*` is unambiguously a comment, so stripping it can never remove real
+ * code; hunting trailing comments would mean deciding whether a `//` sits
+ * inside a string, and getting that wrong deletes code and invents a warning.
+ * The residue is that a gate named ONLY in a trailing comment still reads as
+ * used, which is a missed warning — the safe direction.
+ */
+function stripComments(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
+}
+
+export function checkUngatedServiceControls({ foundationName, folderName, srcDir, issues }) {
+  const found = []
+
+  forEachSourceFile(srcDir, (raw, file) => {
+    const text = stripComments(raw)
+    for (const { hook, gate, draws } of SERVICE_GATES) {
+      // A call, not merely an import: re-exporting a hook is not drawing with it.
+      if (!new RegExp(`\\b${hook}\\s*\\(`).test(text)) continue
+      if (new RegExp(`\\b${gate}\\b`).test(text)) continue
+      found.push({ file, hook, gate, draws })
+    }
+  })
+
+  if (found.length === 0) return
+
+  const id = 'ungated-service-control'
+  for (const f of found) {
+    issues.push({
+      id,
+      type: 'warning',
+      foundation: foundationName,
+      message: `${foundationName}/${f.file} calls ${f.hook}() without reading ${f.gate}`,
+      details: f,
+    })
+    warn(`[${id}] ${folderName}/${f.file} calls ${f.hook}() and never reads ${f.gate}`)
+    log(`    It draws ${f.draws} even on a site with no such service, where the`)
+    log(`    control cannot work. Gate on it instead:`)
+    log(`      ${colors.dim}const { ${f.gate} } = ${f.hook}(…)${colors.reset}`)
+    log(`      ${colors.dim}if (!${f.gate}) return null${colors.reset}`)
+  }
 }
 
 export function checkTrackingBlock({ siteName, siteYml, issues }) {
@@ -958,6 +1051,12 @@ export async function doctor(args = []) {
       shouldFix,
       fixed
     })
+    checkUngatedServiceControls({
+      foundationName: f.name,
+      folderName: f.folderName,
+      srcDir: resolveFoundationSrcPath(f.path),
+      issues
+    })
   }
 
   // Extensions carry `uniweb.supports` too — same key, same field, and a site's
@@ -973,6 +1072,12 @@ export async function doctor(args = []) {
       issues,
       shouldFix,
       fixed
+    })
+    checkUngatedServiceControls({
+      foundationName: e.name,
+      folderName: e.folderName,
+      srcDir: resolveFoundationSrcPath(e.path),
+      issues
     })
   }
 
