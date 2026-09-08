@@ -60,6 +60,7 @@ import { emitSyncPackages } from '@uniweb/build/uwx'
 import {
   decideDeclaration,
   fingerprintRequest,
+  reconcile,
   reconcileRequest
 } from '../backend/service-request.js'
 import { isSiteRelativeExtensionUrl } from '@uniweb/build'
@@ -185,6 +186,20 @@ function languagesFromSiteYml(siteYml) {
  * look; reproducing a per-service config blob in a warning would bury that.
  * "nothing" is a real answer and reads better than an empty string.
  */
+/**
+ * A language selection, for a terminal.
+ *
+ * ⛔ An ABSENT selection is not an empty one, and the words have to keep them
+ * apart: no `publishLanguages` key means every declared language is publishable,
+ * while `[]` means explicitly none. "all of them" and "none" are opposite answers
+ * and a bare empty string would read as either.
+ */
+function describeLanguages(value) {
+  if (value === undefined || value === null) return 'all of them'
+  if (!Array.isArray(value) || value.length === 0) return 'none'
+  return value.join(', ')
+}
+
 /**
  * Languages the site was asked to publish that it did not publish.
  *
@@ -846,6 +861,37 @@ export async function publish(args = []) {
       // Declining to send is not yet a decision to take theirs, so this falls
       // through to the offer below and "neither, leave it alone" stays available.
       declaration = { declare: false, reason: 'adopt' }
+    }
+  }
+
+  // ⭐ THE SAME QUESTION FOR THE LANGUAGE SELECTION, and it is the one that costs.
+  //
+  // `publishLanguages` is a request like `$services`: pushed up, projected back on
+  // pull, stored on the other side. ⛔ Nothing over there deliberately rewrites it
+  // today — which is why this was nearly skipped — but a base is not only for
+  // detecting an overwrite. Without one, a selection that has always been in the
+  // file cannot be told from one the owner just typed, and for languages that is a
+  // charge: the line is billed on how many go out, so adding one costs money and
+  // the owner should hear that from us before it is sent, not from a refusal after.
+  if (status && !isNonInteractive(args)) {
+    const langs = reconcile(
+      siteYml.publishLanguages,
+      status.publish_languages,
+      priorRequest?.publishLanguagesRequest
+    )
+    if (langs.action === 'send') {
+      const asked = siteYml.publishLanguages
+      say.info(
+        `You changed which languages this site publishes: ${describeLanguages(asked)}.`
+      )
+      // ⚖️ "may" — the count is what is priced, and only the backend prices it.
+      // Framework says a charge is possible and never how much: this package is
+      // public and holds no prices, and a number we invented would be wrong.
+      say.dim('  Adding a language may cost more. You will be asked to confirm if so.')
+    } else if (langs.action === 'adopt' || langs.action === 'conflict') {
+      say.info('This site publishes different languages than site.yml lists.')
+      say.dim(`  in site.yml:  ${describeLanguages(siteYml.publishLanguages)}`)
+      say.dim(`  on your site: ${describeLanguages(status.publish_languages)}`)
     }
   }
 

@@ -149,7 +149,7 @@ test('⛔ the fingerprint leaks no value — it is a hash, and deploy.yml is com
 
 // ── the four-way reconcile, once the backend's rows are in hand ─────────────
 
-import { reconcileRequest } from '../src/backend/service-request.js'
+import { reconcileRequest, reconcile } from '../src/backend/service-request.js'
 
 const banked = (siteYml) => fingerprintRequest(siteYml)
 
@@ -218,4 +218,52 @@ test('a site with no $services and a backend with rows → adopt, not send', () 
   assert.equal(r.action, 'conflict', 'no base ⇒ conservative')
   const withBase = reconcileRequest({}, API_PRO, banked({}))
   assert.equal(withBase.action, 'conflict', 'still no servicesRequest banked')
+})
+
+// ── the same reconcile over the language selection ──────────────────────────
+
+test('publishLanguages is banked, so a later edit reads as intentional', () => {
+  const banked = fingerprintRequest({ publishLanguages: ['en', 'fr'] })
+  assert.ok(banked.publishLanguagesRequest, 'the selection must be banked at all')
+  // Unchanged file → nothing new asked for.
+  assert.equal(
+    reconcile(['en', 'fr'], ['en', 'fr'], banked.publishLanguagesRequest).action,
+    'none'
+  )
+  // The owner adds one → a real ask, and this one moves the price.
+  assert.equal(
+    reconcile(['en', 'fr', 'es'], ['en', 'fr'], banked.publishLanguagesRequest).action,
+    'send'
+  )
+})
+
+test('⛔ absent and empty are opposite language answers, not near-misses', () => {
+  // No key means "every declared language is publishable"; [] means "none", which
+  // a publish refuses. Collapsing them would turn "all" into "nothing".
+  assert.equal(fingerprintDeclaration(undefined), null)
+  assert.notEqual(fingerprintDeclaration([]), fingerprintDeclaration(['en']))
+  assert.notEqual(fingerprintDeclaration([]), null)
+})
+
+test('language order is not a change', () => {
+  const banked = fingerprintRequest({ publishLanguages: ['en', 'fr'] })
+  assert.equal(
+    reconcile(['fr', 'en'], ['en', 'fr'], banked.publishLanguagesRequest).action,
+    'none'
+  )
+})
+
+test('the site moved and the file did not → adopt, not send', () => {
+  const banked = fingerprintRequest({ publishLanguages: ['en', 'fr'] })
+  const r = reconcile(['en', 'fr'], ['en'], banked.publishLanguagesRequest)
+  assert.equal(r.action, 'adopt')
+})
+
+test('banking services and languages together keeps them independent', () => {
+  const fp = fingerprintRequest({
+    $services: API_PRO,
+    publishLanguages: ['en']
+  })
+  assert.ok(fp.servicesRequest && fp.publishLanguagesRequest)
+  assert.notEqual(fp.servicesRequest, fp.publishLanguagesRequest)
 })

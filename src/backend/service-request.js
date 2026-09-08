@@ -97,6 +97,12 @@ export function fingerprintRequest(siteYml) {
   if (services) out.servicesRequest = services
   const secrets = fingerprintDeclaration(siteYml?.$secrets)
   if (secrets) out.secretsRequest = secrets
+  // ⭐ The language selection is a request too, and it is the one that moves a
+  // PRICE — the line is billed on how many languages go out. Banking it is what
+  // lets a later edit read as "the owner asked for another language" rather than
+  // as a value that was always there.
+  const langs = fingerprintDeclaration(siteYml?.publishLanguages)
+  if (langs) out.publishLanguagesRequest = langs
   return out
 }
 
@@ -173,9 +179,32 @@ export function decideDeclaration(siteYml, lastDeploy) {
  * @returns {{action:'none'|'adopt'|'send'|'conflict', local:string|null, remote:string|null}}
  */
 export function reconcileRequest(siteYml, remoteServices, lastDeploy) {
-  const local = fingerprintDeclaration(siteYml?.$services)
-  const remote = fingerprintDeclaration(remoteServices)
-  const base = lastDeploy?.servicesRequest || null
+  return reconcile(siteYml?.$services, remoteServices, lastDeploy?.servicesRequest)
+}
+
+/**
+ * The same reconcile over any two-way request field.
+ *
+ * ⭐ `$services` was the first, not the only one. `site.yml::publishLanguages` is
+ * the same shape — the owner's ASK, pushed up, projected back on pull, and stored
+ * on the other side where something else may move it.
+ *
+ * ⛔ AND A BASE IS NEEDED EVEN WHERE NOTHING ELSE WRITES THE FIELD. That was the
+ * reasoning that nearly left languages out: "nobody overwrites it, so there is no
+ * hazard." Overwriting is not the only thing a base is for — without one, a value
+ * that has always been in the file is indistinguishable from one the owner just
+ * typed, so the CLI cannot tell an intentional change from the status quo. For
+ * languages that difference is money: the count is priced, so a new language is a
+ * charge, and saying so before sending requires knowing it is new.
+ *
+ * @param {*} localValue - the file's declaration
+ * @param {*} remoteValue - what the site has stored
+ * @param {string|null} baseFingerprint - what we last agreed on
+ */
+export function reconcile(localValue, remoteValue, baseFingerprint) {
+  const local = fingerprintDeclaration(localValue)
+  const remote = fingerprintDeclaration(remoteValue)
+  const base = baseFingerprint || null
 
   if (local === remote) return { action: 'none', local, remote }
   if (!base) return { action: 'conflict', local, remote }
