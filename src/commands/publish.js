@@ -57,6 +57,10 @@ import {
   rewriteSchemalessDataAssets
 } from '@uniweb/build/site'
 import { emitSyncPackages } from '@uniweb/build/uwx'
+import {
+  decideDeclaration,
+  fingerprintRequest
+} from '../backend/service-request.js'
 import { isSiteRelativeExtensionUrl } from '@uniweb/build'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 
@@ -295,12 +299,20 @@ export async function publish(args = []) {
   // always targets Uniweb hosting; resolveTarget gives us the target name +
   // autoSave for the lastDeploy memo.
   let resolved
+  let priorRequest = null
   try {
     const deployYml = await loadDeployYml(siteDir)
     // No --target on publish — it always targets Uniweb hosting; resolveTarget
     // returns the uniweb default (fromFile:false) when there's no deploy.yml, so
     // persistLastDeploy scaffolds the file as the "where it's deployed" record.
     resolved = resolveTarget(deployYml, null)
+    // The last request we are known to have sent, for the declaration gate below.
+    // Read from the SAME deploy.yml load — one read, and the memo is the only
+    // durable record of it (see backend/service-request.js for why not the cache).
+    priorRequest =
+      deployYml?.lastDeploy?.[resolved?.targetName] ||
+      deployYml?.lastDeploy?.uniweb ||
+      null
   } catch {
     // Malformed/ambiguous deploy.yml — don't block the publish on the memo.
     resolved = {
@@ -701,9 +713,30 @@ export async function publish(args = []) {
   const injectInfo = {
     ...(fnd.ref ? { foundation: fnd.ref } : {})
   }
+  // ⛔ IS THE FILE ASKING FOR ANYTHING BY ITS `$services` / `$secrets` BLOCK?
+  //
+  // The blocks ride inside the site-content document, so without this gate every
+  // push re-sends them — and the backend REPLACES what it is sent. A paragraph
+  // edit would therefore overwrite whatever the stored request has become, which
+  // in the consent workflow is a decision the owner made in the app. Under "the
+  // file is a request", an unchanged block is not asking for anything.
+  //
+  // ⚠️ The residual window, stated because it is real and narrow: the base is
+  // banked at publish, so a request changed in the app BETWEEN a `uniweb pull` and
+  // the next publish is not seen — the pulled block reads as unchanged-from-nothing
+  // and is declared. It closes when the status route carries the stored request
+  // (backend is adding it) and we compare against theirs instead of our memory.
+  const declaration = decideDeclaration(siteYml, priorRequest)
+  if (!declaration.declare) {
+    say.dim(
+      'Service request unchanged since your last publish — not re-sending it.'
+    )
+  }
+
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, {
+      ...(declaration.declare ? {} : { declareServices: false }),
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
@@ -818,6 +851,24 @@ export async function publish(args = []) {
     lastDeploy: {
       at: new Date().toISOString(),
       host: 'uniweb',
+      // The request this publish is known to have sent — the base the declaration
+      // gate compares against next time. ⛔ A FINGERPRINT, never the block:
+      // deploy.yml is committed, `$secrets` carries secret material and a
+      // service's `config` is opaque, so recording either verbatim would write
+      // them into git. Absent when the file declares no block.
+      ...(declaration.declare
+        ? fingerprintRequest(siteYml)
+        : {
+            // Nothing was sent, so the base is unchanged — carry it forward
+            // rather than dropping it, or the next publish would read "no record"
+            // and declare.
+            ...(priorRequest?.servicesRequest
+              ? { servicesRequest: priorRequest.servicesRequest }
+              : {}),
+            ...(priorRequest?.secretsRequest
+              ? { secretsRequest: priorRequest.secretsRequest }
+              : {})
+          }),
       // What was actually shipped. A version number can't answer that — two
       // publishes of "0.1.0" are not the same content — and after the fact the
       // working tree has moved on. `dirty` matters as much as the sha: it says the
