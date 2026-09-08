@@ -788,41 +788,59 @@ export async function publish(args = []) {
     }
   }
 
-  if (!declaration.declare) {
-    if (declaration.reason === 'conflict') {
-      say.warn(
-        'Your service request and this site\'s differ, and both changed — not sending yours.'
-      )
-      say.dim(`  site.yml asks for: ${describeServices(siteYml.$services)}`)
-      say.dim(`  the site has:      ${describeServices(adopted)}`)
-      say.dim('  Edit site.yml to what you want, then publish again.')
-    } else if (declaration.reason === 'adopt') {
-      say.info('This site\'s services changed since you last published from here.')
-      say.dim(`  now: ${describeServices(adopted)}`)
-      // ⭐ OFFERED, NEVER DONE. site.yml is the owner's file and this is their
-      // decision arriving from the app — but a publish silently rewriting an
-      // authored file is the kind of surprise this whole seam exists to avoid.
-      // Default is No, and declining costs nothing: the site is already correct,
-      // only the file is behind, and the offer returns on the next publish.
-      //
-      // ⛔ Not offered on a conflict: there, adopting would discard an edit the
-      // owner made, which is the one thing a conflict means we must not choose.
-      const { isNonInteractive, confirm } = await import('../utils/interactive.js')
-      if (!isNonInteractive(args)) {
-        if (await confirm('Update site.yml to match?', false)) {
-          const { writeSiteConfig } = await import('@uniweb/build/uwx')
-          writeSiteConfig(siteDir, { $services: adopted })
-          // Keep the in-memory copy in step, or the deploy.yml bank below would
-          // record the fingerprint of the file as it WAS and re-offer next time.
-          siteYml.$services = adopted
-          say.ok('site.yml updated.')
-        }
-      }
+  const { isNonInteractive, confirm } = await import('../utils/interactive.js')
+
+  // ⭐ THE OWNER IS THE ONLY ONE WHO CAN RANK TWO OF THEIR OWN INTENTS.
+  //
+  // `conflict` means the file and the site both moved since we last agreed, so
+  // neither is "the" request. ⛔ Withholding silently and saying "edit site.yml"
+  // is advice that CANNOT WORK: with no banked base the file has nothing to move
+  // relative to, so editing it produces the same conflict forever. That shipped
+  // for one commit. Asking is the only thing that resolves it.
+  if (declaration.reason === 'conflict') {
+    say.warn("Your service request and this site's differ, and both changed.")
+    say.dim(`  site.yml asks for: ${describeServices(siteYml.$services)}`)
+    say.dim(`  the site has:      ${describeServices(adopted)}`)
+    if (isNonInteractive(args)) {
+      say.dim('  Nothing was sent. Re-run interactively to choose between them.')
+    } else if (await confirm('Send the request in site.yml?', false)) {
+      declaration = { declare: true, reason: 'resolved-send' }
+      adopted = null
     } else {
-      say.dim(
-        'Service request unchanged since your last publish — not re-sending it.'
-      )
+      // Declining to send is not yet a decision to take theirs, so this falls
+      // through to the offer below and "neither, leave it alone" stays available.
+      declaration = { declare: false, reason: 'adopt' }
     }
+  }
+
+  if (declaration.reason === 'adopt' && adopted) {
+    // ⚖️ Deliberately says WHAT differs, not WHO moved. The usual cause is a
+    // decision made in the app — but the same state follows a request of ours the
+    // site refused, where nothing of theirs changed and ours simply did not take.
+    // We cannot tell those apart here, so the wording claims neither.
+    say.info("site.yml and this site's services differ.")
+    say.dim(`  site.yml: ${describeServices(siteYml.$services)}`)
+    say.dim(`  the site: ${describeServices(adopted)}`)
+    // ⭐ OFFERED, NEVER DONE. site.yml is the owner's file, and a publish that
+    // silently rewrites an authored file is the surprise this seam exists to
+    // avoid. Default No, and declining costs nothing: the site is already
+    // correct, only the file is behind, and the offer returns next publish.
+    //
+    // ⚖️ A DECLINED conflict reaches here too, and that is deliberate — having
+    // been asked which they meant and said "not mine", taking the site's is the
+    // other half of the same question, not a silent overwrite of an edit.
+    if (!isNonInteractive(args) && (await confirm('Update site.yml to match?', false))) {
+      const { writeSiteConfig } = await import('@uniweb/build/uwx')
+      writeSiteConfig(siteDir, { $services: adopted })
+      // Keep the in-memory copy in step, or the deploy.yml bank below records the
+      // file as it WAS and the offer repeats forever.
+      siteYml.$services = adopted
+      say.ok('site.yml updated.')
+    }
+  } else if (!declaration.declare && declaration.reason !== 'adopt') {
+    say.dim(
+      'Service request unchanged since your last publish — not re-sending it.'
+    )
   }
 
   let pkg
