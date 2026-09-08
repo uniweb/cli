@@ -339,15 +339,35 @@ async function loginViaTokenPaste({ apiBase, nonInteractive }) {
 // Exported for the publish payment refusal, which opens the backend's
 // settlement URL VERBATIM and needs no loopback (backend/payment-handoff.js).
 export async function openBrowser(url) {
+  // ⛔ THE URL ARRIVES OVER THE NETWORK — a backend hands it to us and we open it.
+  //
+  // This built a SHELL STRING (`open "${url}"`) and interpolated that value into
+  // it. A `"` in the URL closes the quoted argument and everything after it is
+  // shell: one crafted or corrupted response, and the rest runs as the user. It
+  // was on the login path before it was on the publish path.
+  //
+  // ⇒ Two changes, and neither is about payment:
+  //   1. `execFile` with the URL as an ARGUMENT — no shell, so no quoting to get
+  //      wrong and nothing to escape.
+  //   2. Only `http:` / `https:` are opened. `file:`, `javascript:` and the rest
+  //      are not places a person goes, and refusing them costs nothing real.
+  //      (The caller checks too; a safety rule that only holds at one call site
+  //      is one refactor from being gone.)
+  if (!/^https?:\/\//i.test(String(url || ''))) return false
   try {
-    const { exec } = await import('node:child_process')
-    const cmd =
+    const { execFile } = await import('node:child_process')
+    // `start` is a cmd.exe builtin rather than an executable, so Windows keeps a
+    // shell — but through `cmd /c` with the URL as its own argv entry, which is
+    // what removes the interpolation. The empty string is `start`'s title slot.
+    const [cmd, args] =
       process.platform === 'darwin'
-        ? `open "${url}"`
+        ? ['open', [url]]
         : process.platform === 'win32'
-          ? `start "" "${url}"`
-          : `xdg-open "${url}"`
-    return await new Promise((resolve) => exec(cmd, (err) => resolve(!err)))
+          ? ['cmd', ['/c', 'start', '', url]]
+          : ['xdg-open', [url]]
+    return await new Promise((resolve) =>
+      execFile(cmd, args, (err) => resolve(!err))
+    )
   } catch {
     return false
   }
