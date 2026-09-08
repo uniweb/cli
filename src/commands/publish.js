@@ -790,6 +790,14 @@ export async function publish(args = []) {
 
   const { isNonInteractive, confirm } = await import('../utils/interactive.js')
 
+  // ⛔ EVERY STRING BELOW IS FOR A SITE OWNER, NOT FOR US.
+  //
+  // "request", "declaration", "send", "adopt", "reconcile" are how this file
+  // MODELS the problem and they are the wrong words to say out loud: an author
+  // does not think they are sending a request, they think they want their site to
+  // have search. Say services, on and off, site.yml and your site. The internal
+  // vocabulary stays in the code and the comments, where it earns its precision.
+  //
   // ⭐ THE OWNER IS THE ONLY ONE WHO CAN RANK TWO OF THEIR OWN INTENTS.
   //
   // `conflict` means the file and the site both moved since we last agreed, so
@@ -798,12 +806,12 @@ export async function publish(args = []) {
   // relative to, so editing it produces the same conflict forever. That shipped
   // for one commit. Asking is the only thing that resolves it.
   if (declaration.reason === 'conflict') {
-    say.warn("Your service request and this site's differ, and both changed.")
-    say.dim(`  site.yml asks for: ${describeServices(siteYml.$services)}`)
-    say.dim(`  the site has:      ${describeServices(adopted)}`)
+    say.warn('Your site\'s services were changed elsewhere, and site.yml changed too.')
+    say.dim(`  in site.yml:  ${describeServices(siteYml.$services)}`)
+    say.dim(`  on your site: ${describeServices(adopted)}`)
     if (isNonInteractive(args)) {
-      say.dim('  Nothing was sent. Re-run interactively to choose between them.')
-    } else if (await confirm('Send the request in site.yml?', false)) {
+      say.dim('  Left your site as it is — run without --non-interactive to choose.')
+    } else if (await confirm('Use the services listed in site.yml?', false)) {
       declaration = { declare: true, reason: 'resolved-send' }
       adopted = null
     } else {
@@ -818,9 +826,9 @@ export async function publish(args = []) {
     // decision made in the app — but the same state follows a request of ours the
     // site refused, where nothing of theirs changed and ours simply did not take.
     // We cannot tell those apart here, so the wording claims neither.
-    say.info("site.yml and this site's services differ.")
-    say.dim(`  site.yml: ${describeServices(siteYml.$services)}`)
-    say.dim(`  the site: ${describeServices(adopted)}`)
+    say.info('Your site has different services than site.yml lists.')
+    say.dim(`  in site.yml:  ${describeServices(siteYml.$services)}`)
+    say.dim(`  on your site: ${describeServices(adopted)}`)
     // ⭐ OFFERED, NEVER DONE. site.yml is the owner's file, and a publish that
     // silently rewrites an authored file is the surprise this seam exists to
     // avoid. Default No, and declining costs nothing: the site is already
@@ -838,9 +846,7 @@ export async function publish(args = []) {
       say.ok('site.yml updated.')
     }
   } else if (!declaration.declare && declaration.reason !== 'adopt') {
-    say.dim(
-      'Service request unchanged since your last publish — not re-sending it.'
-    )
+    say.dim('Services unchanged.')
   }
 
   let pkg
