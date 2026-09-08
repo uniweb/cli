@@ -799,6 +799,25 @@ export async function publish(args = []) {
     } else if (declaration.reason === 'adopt') {
       say.info('This site\'s services changed since you last published from here.')
       say.dim(`  now: ${describeServices(adopted)}`)
+      // ⭐ OFFERED, NEVER DONE. site.yml is the owner's file and this is their
+      // decision arriving from the app — but a publish silently rewriting an
+      // authored file is the kind of surprise this whole seam exists to avoid.
+      // Default is No, and declining costs nothing: the site is already correct,
+      // only the file is behind, and the offer returns on the next publish.
+      //
+      // ⛔ Not offered on a conflict: there, adopting would discard an edit the
+      // owner made, which is the one thing a conflict means we must not choose.
+      const { isNonInteractive, confirm } = await import('../utils/interactive.js')
+      if (!isNonInteractive(args)) {
+        if (await confirm('Update site.yml to match?', false)) {
+          const { writeSiteConfig } = await import('@uniweb/build/uwx')
+          writeSiteConfig(siteDir, { $services: adopted })
+          // Keep the in-memory copy in step, or the deploy.yml bank below would
+          // record the fingerprint of the file as it WAS and re-offer next time.
+          siteYml.$services = adopted
+          say.ok('site.yml updated.')
+        }
+      }
     } else {
       say.dim(
         'Service request unchanged since your last publish — not re-sending it.'
