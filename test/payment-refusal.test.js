@@ -4,11 +4,15 @@
  * The backend is the only gate, so what is pinned here is how the CLI READS a
  * refusal — never whether one is warranted. Two properties carry the file:
  *
- *   1. A purchase surface opens only on a reason that NAMES one. Absence,
- *      an unrecognised token, a missing settlement block and a non-problem
- *      body all STOP. That direction is the point: an older CLI showing you a
- *      message is recoverable, an older CLI opening a checkout for something
- *      you cannot buy is not.
+ *   1. A door opens only when the backend NAMED one, in a `problem+json` body,
+ *      as an absolute http(s) URL. No URL, a non-problem body, or a target of
+ *      any other scheme all STOP. That direction is still the point: an older
+ *      CLI showing you a message is recoverable, an older CLI opening something
+ *      nobody pointed it at is not.
+ *      ⚠️ It used to require a RECOGNISED REASON too. That was the wrong
+ *      instrument — the reason set is open, so the allowlist withheld the door
+ *      for every reason added after it was written, which is the same silent
+ *      failure pointed backwards. See the reversed test below.
  *   2. The settlement URL is opened VERBATIM. Nothing is appended — no
  *      redirect_uri, no state, no wait_token — so the app is never obliged to
  *      know a CLI exists, and the flow does not require the browser and the
@@ -59,20 +63,63 @@ test('CONTROL — a recognised reason WITH a settlement block settles, and keeps
 
 // ── everything else stops ────────────────────────────────────────────────────
 
-test('an UNRECOGNISED reason stops — it must never fall through to a purchase', () => {
-  // Deliberately invented. It must NOT be replaced with a real backend token:
-  // the regression arrives when the BACKEND adds a reason, with no release
-  // here, so a token we might later learn to recognise would make this pass
-  // for the wrong reason.
+test('an UNRECOGNISED reason WITH a door opens it — the door is the signal', () => {
+  // ⚠️ THIS ASSERTION WAS THE OPPOSITE UNTIL 2026-09-08, and the reversal is
+  // deliberate rather than a relaxation. The rule it enforced — never route to a
+  // purchase surface from the ABSENCE of a recognised token — is intact and tested
+  // below; what changed is that a reason allowlist was the wrong instrument for it.
+  //
+  // The hazard was INFERRING a door from silence. A backend that NAMES a URL has
+  // inferred nothing: `remedy_url` is minted per refusal and points at the screen
+  // that backend chose for THIS refusal, so it cannot be "a checkout for something
+  // you cannot buy" — it is wherever this particular refusal is resolved.
+  //
+  // ⛔ And the allowlist had inverted into the failure it was meant to prevent.
+  // The reason set is open by design, so `pending_request` — the backend's ONE
+  // reason for everything that needs the app — fell through to `stop`, and owners
+  // were shown a sentence with no link for a door they had been handed. A stale
+  // allowlist fails by WITHHOLDING help, silently, and only for the reasons that
+  // did not exist when it was written.
+  //
+  // Still deliberately invented, for the original reason: a real token might later
+  // be recognised and make this pass for the wrong one.
   const v = read({
     body: problemBody({
       reason: 'org_seat_limit_reached',
-      settlement: { handle: 'h_2', url: SETTLE_URL }
+      remedy_url: SETTLE_URL
     })
   })
-  assert.equal(v.kind, 'stop')
+  assert.equal(v.kind, 'settle')
+  assert.equal(v.url, SETTLE_URL)
   assert.equal(v.reason, 'org_seat_limit_reached')
   assert.match(v.message, /subscribe before publishing/)
+})
+
+test('an unrecognised reason with NO door still stops — the rule that survived', () => {
+  // The protection the allowlist was standing in for, stated directly: nothing
+  // opens unless the backend named somewhere to go.
+  const v = read({ body: problemBody({ reason: 'org_seat_limit_reached' }) })
+  assert.equal(v.kind, 'stop')
+  assert.equal(v.reason, 'org_seat_limit_reached')
+})
+
+test('a door that is not an http(s) URL is refused', () => {
+  // The value arrives over the network and is handed to the platform's URL opener.
+  // A `file:`/`javascript:` target is not a place a person goes.
+  for (const bad of ['file:///etc/passwd', 'javascript:alert(1)', '/relative/path', '']) {
+    const v = read({ body: problemBody({ reason: 'pending_request', remedy_url: bad }) })
+    assert.equal(v.kind, 'stop', `must not open ${JSON.stringify(bad)}`)
+  }
+})
+
+test("the backend's current reason reaches its door", () => {
+  // The live case the allowlist was breaking. Not a hypothetical: this is the one
+  // reason the backend serves for everything that needs the app.
+  const v = read({
+    body: problemBody({ reason: 'pending_request', remedy_url: SETTLE_URL })
+  })
+  assert.equal(v.kind, 'settle')
+  assert.equal(v.url, SETTLE_URL)
 })
 
 test('problem+json with NO reason stops — the card-decline shape', () => {

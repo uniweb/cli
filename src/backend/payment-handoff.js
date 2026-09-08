@@ -29,8 +29,24 @@
  * timeout and then reported "payment was not completed", which was false.
  */
 
-/** Reasons the CLI knows how to act on. An ALLOWLIST, never an inventory. */
-const ACTIONABLE_REASONS = new Set(['no_subscription'])
+/**
+ * ⛔ THE DOOR IS THE URL, NOT THE REASON — and this replaced a reason allowlist.
+ *
+ * The rule the allowlist served is right and survives: **never route to a purchase
+ * surface from the ABSENCE of a recognised token.** But the hazard it guarded was
+ * INFERRING a door from silence, and when the backend NAMES a URL there is no
+ * inference left — an explicit remedy is the affirmative signal the allowlist was
+ * standing in for.
+ *
+ * ⚠️ Keeping it had turned into the opposite failure. The reason set is open by
+ * design ("includes"), so every new one — `pending_request` today — fell through to
+ * `stop` and the owner was shown a sentence **with no link**, for a door the
+ * backend had handed us. A stale allowlist now fails by WITHHOLDING help.
+ *
+ * ⇒ What remains is a shape rule, not a vocabulary one: open exactly what you were
+ * handed, when it is an absolute http(s) URL, or say exactly what you were told.
+ */
+const OPENABLE = /^https?:\/\//i
 
 /**
  * Read a `402` from the publish call and decide what the CLI does. Pure — no
@@ -93,21 +109,46 @@ export function readPaymentRefusal({ status, contentType = '', body = '' } = {})
       ? problem.reason
       : null
 
-  if (!reason || !ACTIONABLE_REASONS.has(reason)) {
-    return { kind: 'stop', reason, message }
-  }
+  // ⛔ ONLY A `problem+json` BODY CARRIES A DOOR, and this gate is NOT the reason
+  // allowlist that used to sit here — it is the other, narrower protection that
+  // was tangled up with it.
+  //
+  // The backend's refusals wear `application/problem+json` and say so as a stable
+  // guarantee. A plain `application/json` 402 is some other shape from some other
+  // part of the wire — and one of those carries `status` as a STRING where a
+  // problem body carries the number, so the two are not distinguishable by their
+  // fields. Reading a URL out of a body that never promised this envelope is how
+  // a `settle` gets synthesised from something that is not a refusal at all.
+  if (!isProblem) return { kind: 'stop', reason, message }
 
-  // Actionable — but only if the backend actually handed over somewhere to go.
-  // A recognised reason with no settlement block is a backend that has not
-  // built that half yet: still a stop, and still with its own sentence.
-  const s = problem.settlement
-  const url = s && typeof s.url === 'string' && s.url ? s.url : null
+  // The door, if one was handed over. `remedy_url` is the current spelling — ONE
+  // key for every reason, which is what lets a reason we have never heard of still
+  // reach its remedy.
+  //
+  // ⚖️ `settlement.url` is the older shape and is still read. Not an alias we
+  // maintain: it is what a backend that has not moved yet still serves, and
+  // dropping the read would take away a door those deployments have today. New
+  // code never emits it and nothing here prefers it.
+  const legacy = problem.settlement
+  const candidate =
+    (typeof problem.remedy_url === 'string' && problem.remedy_url) ||
+    (legacy && typeof legacy.url === 'string' && legacy.url) ||
+    null
+
+  // ⛔ ONLY AN ABSOLUTE http(s) URL IS OPENED, and this is a safety rule rather
+  // than a compatibility one. The value arrives over the network and is handed to
+  // the platform's URL opener; a `file:` or a `javascript:` URL is not a place a
+  // person goes. Refusing them costs a legitimate backend nothing.
+  const url = candidate && OPENABLE.test(candidate) ? candidate : null
   if (!url) return { kind: 'stop', reason, message }
 
   return {
     kind: 'settle',
     url,
-    handle: s && typeof s.handle === 'string' && s.handle ? s.handle : null,
+    handle:
+      legacy && typeof legacy.handle === 'string' && legacy.handle
+        ? legacy.handle
+        : null,
     reason,
     message
   }
@@ -132,7 +173,7 @@ export async function reportPaymentRefusal({ verdict, args = [], say, open }) {
   // The backend's own sentence is the HEADLINE when there is one. A generic
   // lead would be wrong as often as right — "payment is required" does not
   // describe a declined card — and `detail` is written for this reader.
-  say.err(verdict.message || 'This site cannot go live until it is paid for.')
+  say.err(verdict.message || 'This site cannot go live yet.')
 
   if (verdict.kind !== 'settle') {
     // The push completed before go-live, so the content is safely stored.
@@ -142,19 +183,22 @@ export async function reportPaymentRefusal({ verdict, args = [], say, open }) {
 
   const { isNonInteractive } = await import('../utils/interactive.js')
   if (isNonInteractive(args)) {
-    say.dim(`Complete it in a browser, then re-run \`uniweb publish\`:`)
+    say.dim(`Finish this in a browser, then re-run \`uniweb publish\`:`)
     say.dim(`  ${verdict.url}`)
     return { opened: false }
   }
 
   const openBrowser = open || (await import('../utils/registry-auth.js')).openBrowser
-  say.info('Opening your browser to complete it…')
+  // ⛔ Reason-agnostic wording. The backend's own `detail` above carries the
+  // specifics; a lead sentence naming payment would be wrong the moment a refusal
+  // is a quota or an unverified domain — and the reason set is open by design.
+  say.info('Opening your browser to finish this…')
   say.dim(`  ${verdict.url}`)
   // VERBATIM. Nothing is appended — see the header.
   const opened = await openBrowser(verdict.url)
   if (!opened) {
     say.warn('Could not open a browser automatically — open the URL above.')
   }
-  say.dim('Once payment is complete, re-run `uniweb publish`.')
+  say.dim('Once that is done, re-run `uniweb publish`.')
   return { opened }
 }
