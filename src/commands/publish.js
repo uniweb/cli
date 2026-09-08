@@ -185,6 +185,34 @@ function languagesFromSiteYml(siteYml) {
  * look; reproducing a per-service config blob in a warning would bury that.
  * "nothing" is a real answer and reads better than an empty string.
  */
+/**
+ * Languages the site was asked to publish that it did not publish.
+ *
+ * ⭐ THIS IS NOT COMPUTABLE FROM `site.yml`. The served set is decided where the
+ * publish happens — a code naming no declared language is ignored rather than
+ * refused, and the site's own declared set is whatever its last push left there,
+ * which is not necessarily this file. So the only honest source is what the publish
+ * reported back, and until now the CLI wrote that into `deploy.yml` and never
+ * looked at it.
+ *
+ * ⛔ The failure it makes visible is the quiet one: an author believes their site
+ * is live in three languages and it is live in two. Nothing errors, the publish
+ * succeeds, and the missing locale is indistinguishable from one nobody asked for.
+ *
+ * Only the missing direction is reported. A site serving MORE than was asked is a
+ * different question that nobody has, and inventing a message for it would be
+ * machinery for a reason that does not exist.
+ *
+ * @param {string[]|null} asked - what this publish sent
+ * @param {*} served - `locales` from the publish response
+ * @returns {string[]} asked-for and not served, in the order asked
+ */
+export function unservedLanguages(asked, served) {
+  if (!Array.isArray(asked) || !Array.isArray(served)) return []
+  const got = new Set(served)
+  return asked.filter((l) => !got.has(l))
+}
+
 function describeServices(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return 'nothing'
   return rows
@@ -1010,6 +1038,23 @@ export async function publish(args = []) {
   say.ok(
     `Published ${c.bold}${siteUuid}${c.reset}${result.status ? ` (${result.status})` : ''}`
   )
+
+  // ⛔ SAY IT WHEN A LANGUAGE ASKED FOR DID NOT GO OUT.
+  //
+  // The publish succeeded, so nothing above this is wrong — and a site live in two
+  // of the three languages its author listed looks exactly like a site live in the
+  // two they wanted. That is the failure with no owner: the file and reality
+  // disagree and the terminal is green.
+  //
+  // ⚖️ A warning, not a failure. The publish DID happen and the content IS live, so
+  // exiting non-zero would tell a script the deploy failed when it did not.
+  const unserved = unservedLanguages(languages, result.locales)
+  if (unserved.length > 0) {
+    say.warn(
+      `Your site went live in ${(result.locales || []).join(', ')} — but not ${unserved.join(', ')}.`
+    )
+    say.dim(`  site.yml lists ${unserved.join(', ')}, and ${unserved.length === 1 ? 'it was' : 'they were'} not published.`)
+  }
   if (serveUrl) console.log(`  ${c.cyan}${serveUrl}${c.reset}`)
   if (result.deploy_uuid) say.dim(`deploy: ${result.deploy_uuid}`)
   return { exitCode: 0 }
