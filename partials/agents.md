@@ -458,6 +458,29 @@ Read the markdown out loud. If an author would understand what every line does, 
 
 **Parameter naming matters.** Would an author understand it without reading code? `columns: 3` yes, `gridCols: 3` no. `variant: centered` yes, `renderMode: flex-center` no. `align: left` yes, `contentAlignment: flex-start` no.
 
+### Repeated values — `placeholders:`
+
+A value that appears on many pages goes in `site.yml` once, not in a dozen markdown files:
+
+```yaml
+placeholders:
+  product: Uniweb
+  vendor:
+    email: billing@acme.example
+```
+
+Any page then references it by name — `Write to {vendor.email}.` Dot paths work, and a record's own field of the same name always wins, so `{title}` on an article page is that article's title regardless of what the site declares.
+
+⛔ **Resolution is a foundation capability, not a framework one.** `{…}` is resolved by the foundation's `handlers.content` hook — normally `createLoomHandlers` from `@uniweb/loom`. Under a foundation without one, `placeholders:` is inert and pages render the literal `{vendor.email}`, which reads as a typo. The build warns when a site declares the key and the foundation has no content handler.
+
+```js
+// main.js — a foundation opts in
+import { createLoomHandlers } from '@uniweb/loom'
+export default { handlers: createLoomHandlers({ vars: (data) => data?.profile?.[0] }) }
+```
+
+Placeholders are the simplest case of a larger language: the same expressions filter, sort, count and format live data (`{COUNT OF publications WHERE refereed}`). Reach for one when a value repeats; reach for the rest when content is genuinely derived from records.
+
 ### Icons
 
 Image syntax with a library prefix — **two interchangeable spellings, the same everywhere** (markdown, and Kit's `<Icon name>`):
