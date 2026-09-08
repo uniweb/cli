@@ -135,3 +135,54 @@ export function decideDeclaration(siteYml, lastDeploy) {
     ? { declare: false, reason: 'unchanged' }
     : { declare: true, reason: 'changed' }
 }
+
+/**
+ * The four-way reconcile, once the backend's own copy of the request is in hand.
+ *
+ * ⭐ THIS SUPERSEDES `decideDeclaration` WHERE THE STATUS READ SUCCEEDS. That one
+ * compares the file to our MEMORY of what we last sent, which leaves a window: a
+ * request changed in the app between a `uniweb pull` and the next publish reads as
+ * unchanged-from-nothing. Comparing to the backend's own rows closes it, because
+ * the base stops being something we have to remember correctly.
+ *
+ * ⛔ It still needs the banked fingerprint. Local and remote differing says the two
+ * disagree; it does not say WHO MOVED. Only the last agreed state does, and that is
+ * the difference between "the app decided, adopt it" and "you edited, send it".
+ *
+ * ## The four outcomes
+ *
+ * | local | remote | |
+ * |---|---|---|
+ * | unchanged | unchanged | `none` — nobody asked anything |
+ * | unchanged | **moved** | `adopt` — the app decided; the file is merely behind |
+ * | **edited** | unchanged | `send` — a real request |
+ * | **edited** | **moved** | `conflict` — ⛔ two intents, and only the owner ranks them |
+ *
+ * ⛔ `conflict` never guesses and never sends. A last-write-wins on a field that
+ * schedules a paid service to end is not a tie-break, it is a coin toss with the
+ * owner's money.
+ *
+ * ⚖️ No base ⇒ we cannot tell `adopt` from `conflict`, so we fall back to the
+ * conservative reading of a difference: if the two differ, `conflict`; if they
+ * agree, `none`. That withholds rather than sends, which is safe HERE — unlike
+ * `decideDeclaration`, nothing is silently dropped, because a conflict is reported.
+ *
+ * @param {object} siteYml
+ * @param {*} remoteServices - the status read's `services` rows, or undefined
+ * @param {object|null} lastDeploy - the banked base
+ * @returns {{action:'none'|'adopt'|'send'|'conflict', local:string|null, remote:string|null}}
+ */
+export function reconcileRequest(siteYml, remoteServices, lastDeploy) {
+  const local = fingerprintDeclaration(siteYml?.$services)
+  const remote = fingerprintDeclaration(remoteServices)
+  const base = lastDeploy?.servicesRequest || null
+
+  if (local === remote) return { action: 'none', local, remote }
+  if (!base) return { action: 'conflict', local, remote }
+
+  const localMoved = local !== base
+  const remoteMoved = remote !== base
+  if (!localMoved && remoteMoved) return { action: 'adopt', local, remote }
+  if (localMoved && !remoteMoved) return { action: 'send', local, remote }
+  return { action: 'conflict', local, remote }
+}

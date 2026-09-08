@@ -59,7 +59,8 @@ import {
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import {
   decideDeclaration,
-  fingerprintRequest
+  fingerprintRequest,
+  reconcileRequest
 } from '../backend/service-request.js'
 import { isSiteRelativeExtensionUrl } from '@uniweb/build'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
@@ -176,6 +177,27 @@ function languagesFromSiteYml(siteYml) {
 }
 
 // Persist deploy.yml lastDeploy memory (skipped on --no-save / autoSave 'off').
+/**
+ * A one-line, human-readable account of a service request, for a terminal.
+ *
+ * ⛔ Deliberately lossy — it names what is on and what is off, not a service's
+ * opaque `config`. The owner is being told WHICH decision differs so they can go
+ * look; reproducing a per-service config blob in a warning would bury that.
+ * "nothing" is a real answer and reads better than an empty string.
+ */
+function describeServices(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return 'nothing'
+  return rows
+    .map((r) => {
+      const name = typeof r?.name === 'string' ? r.name : '?'
+      // A row that omits `enabled` is an ask, not a refusal — the backend's three
+      // states. Only an explicit `false` reads as off.
+      return r?.enabled === false ? `${name} (off)` : name
+    })
+    .sort()
+    .join(', ')
+}
+
 async function persistLastDeploy(siteDir, opts) {
   if (opts.autoSave === 'off') return
   try {
@@ -726,11 +748,62 @@ export async function publish(args = []) {
   // the next publish is not seen — the pulled block reads as unchanged-from-nothing
   // and is declared. It closes when the status route carries the stored request
   // (backend is adding it) and we compare against theirs instead of our memory.
-  const declaration = decideDeclaration(siteYml, priorRequest)
+  //
+  // ⭐ ASK THE BACKEND rather than trusting our memory, when it will tell us. The
+  // banked fingerprint says what WE last sent; the status read says what the site
+  // actually has. Only the second one sees a change made in the app, which is where
+  // the consent workflow's decisions happen — so this is what closes the window
+  // between a `uniweb pull` and the next publish.
+  //
+  // ⚖️ Degrades to the banked comparison on any failure — an older backend, a
+  // network blip, a site never pushed. That is the shipped behaviour and it is safe:
+  // it withholds an unchanged block and sends a changed one; it merely cannot see
+  // the app's side.
+  let declaration = decideDeclaration(siteYml, priorRequest)
+  let adopted = null
+  // Before the push, so a never-synced site has no uuid and simply skips this.
+  const status =
+    typeof siteYml.$uuid === 'string' && siteYml.$uuid
+      ? await client.siteStatus(siteYml.$uuid)
+      : null
+  if (status && Array.isArray(status.services)) {
+    const r = reconcileRequest(siteYml, status.services, priorRequest)
+    if (r.action === 'none') {
+      declaration = { declare: false, reason: 'in-sync' }
+    } else if (r.action === 'send') {
+      declaration = { declare: true, reason: 'changed' }
+    } else if (r.action === 'adopt') {
+      // The owner decided in the app and this file is simply behind. Nothing to
+      // ask for, so nothing is sent — and the file can be brought in line, which
+      // is offered rather than done, because site.yml is theirs.
+      declaration = { declare: false, reason: 'adopt' }
+      adopted = status.services
+    } else {
+      // ⛔ CONFLICT — both moved. Withhold and SAY SO. Not a stop: the content
+      // publish is a separate thing the owner asked for, and blocking it over a
+      // services disagreement couples two unrelated intents. Not a guess either;
+      // the request stays in their file, unsent, and they are told.
+      declaration = { declare: false, reason: 'conflict' }
+      adopted = status.services
+    }
+  }
+
   if (!declaration.declare) {
-    say.dim(
-      'Service request unchanged since your last publish — not re-sending it.'
-    )
+    if (declaration.reason === 'conflict') {
+      say.warn(
+        'Your service request and this site\'s differ, and both changed — not sending yours.'
+      )
+      say.dim(`  site.yml asks for: ${describeServices(siteYml.$services)}`)
+      say.dim(`  the site has:      ${describeServices(adopted)}`)
+      say.dim('  Edit site.yml to what you want, then publish again.')
+    } else if (declaration.reason === 'adopt') {
+      say.info('This site\'s services changed since you last published from here.')
+      say.dim(`  now: ${describeServices(adopted)}`)
+    } else {
+      say.dim(
+        'Service request unchanged since your last publish — not re-sending it.'
+      )
+    }
   }
 
   let pkg

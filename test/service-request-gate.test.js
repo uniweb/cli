@@ -146,3 +146,76 @@ test('⛔ the fingerprint leaks no value — it is a hash, and deploy.yml is com
   assert.ok(!fp.includes('secret'))
   assert.ok(!JSON.stringify(fingerprintRequest({ $secrets: [{ value: 'tok' }] })).includes('tok'))
 })
+
+// ── the four-way reconcile, once the backend's rows are in hand ─────────────
+
+import { reconcileRequest } from '../src/backend/service-request.js'
+
+const banked = (siteYml) => fingerprintRequest(siteYml)
+
+test('in sync → nothing to ask', () => {
+  const site = { $services: API_PRO }
+  const r = reconcileRequest(site, API_PRO, banked(site))
+  assert.equal(r.action, 'none')
+})
+
+test('⭐ the app decided and the file is behind → adopt, never send', () => {
+  // The headline case the banked-only comparison could not see: the owner changed
+  // their mind in the app, so the file is stale through no edit of theirs. Sending
+  // it would re-assert what they abandoned.
+  const site = { $services: API_PRO }
+  const base = banked(site)
+  const remote = [{ name: 'api', enabled: true, config: { grade: 'starter' } }]
+  const r = reconcileRequest(site, remote, base)
+  assert.equal(r.action, 'adopt')
+})
+
+test('the owner edited and nobody else did → send', () => {
+  const base = banked({ $services: API_PRO })
+  const edited = {
+    $services: [{ name: 'api', enabled: true, config: { grade: 'starter' } }]
+  }
+  const r = reconcileRequest(edited, API_PRO, base)
+  assert.equal(r.action, 'send')
+})
+
+test('⛔ both moved → conflict, and conflict never sends', () => {
+  // Two intents. A last-write-wins here would decide, with the owner's money,
+  // which of two people-who-are-the-same-person meant it.
+  const base = banked({ $services: API_PRO })
+  const edited = { $services: [{ name: 'api', enabled: false }] }
+  const remote = [{ name: 'api', enabled: true, config: { grade: 'starter' } }]
+  const r = reconcileRequest(edited, remote, base)
+  assert.equal(r.action, 'conflict')
+})
+
+test('no base → a difference is a conflict, not an adopt', () => {
+  // Without the last agreed state we know the two differ and NOT who moved. The
+  // conservative reading withholds and reports; it cannot silently drop anything,
+  // because a conflict is always said out loud.
+  const r = reconcileRequest({ $services: API_PRO }, [{ name: 'api' }], null)
+  assert.equal(r.action, 'conflict')
+})
+
+test('no base but identical → still nothing to ask', () => {
+  const r = reconcileRequest({ $services: API_PRO }, API_PRO, null)
+  assert.equal(r.action, 'none')
+})
+
+test("the backend's omitted keys compare equal to a file that omits them", () => {
+  // Backend serves `{"name":"search"}` — no `enabled`, no `config` — precisely so a
+  // row is byte-comparable with what we would push. If this ever fails, every
+  // comparison reports a change that is not one, and the CLI adopts forever.
+  const site = { $services: [{ name: 'search' }] }
+  const r = reconcileRequest(site, [{ name: 'search' }], banked(site))
+  assert.equal(r.action, 'none')
+})
+
+test('a site with no $services and a backend with rows → adopt, not send', () => {
+  // A project that never pulled, against a site that has bought services. The file
+  // is silent — "no opinion" — so there is nothing to ask and plenty to learn.
+  const r = reconcileRequest({}, API_PRO, { servicesRequest: null })
+  assert.equal(r.action, 'conflict', 'no base ⇒ conservative')
+  const withBase = reconcileRequest({}, API_PRO, banked({}))
+  assert.equal(withBase.action, 'conflict', 'still no servicesRequest banked')
+})
