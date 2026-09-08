@@ -1030,7 +1030,13 @@ export async function publish(args = []) {
       // its foundation's floor and is resolved by whoever serves it. Recording a
       // value would be a snapshot that silently goes stale, of a decision this
       // command does not make.
-      locales: Array.isArray(result.locales) ? result.locales : languages
+      // ⛔ WHAT WENT OUT, or nothing. This fell back to `languages` — what we
+      // ASKED FOR — when the response carried no `locales`, which put two
+      // different facts under one key with no way to tell them apart: a reader
+      // could not distinguish "these were served" from "we asked for these and
+      // were never told". `deploy.yml` records what a publish DID, and when we do
+      // not know what it did, the honest record is silence.
+      ...(Array.isArray(result.locales) ? { locales: result.locales } : {})
     }
   })
 
