@@ -1707,11 +1707,26 @@ The site-handoff flow was retired with the legacy backend.
 Manage client sites from the Uniweb app for now.
 `,
     template: `
-${colors.cyan}${colors.bright}uniweb template${colors.reset} ${colors.dim}— (reserved; not available on the new backend yet)${colors.reset}
+${colors.cyan}${colors.bright}uniweb template${colors.reset} ${colors.dim}— Official templates${colors.reset}
 
-Submitting a site as a cloud template was retired with the legacy backend.
-When rebuilt, a template is REGISTERED (like a foundation) — \`publish\` is for
-sites only. Scaffolding FROM a template still works: \`uniweb create --template <name>\`.
+${colors.bright}Usage:${colors.reset}
+  uniweb template list           List the official templates
+  uniweb template list --json    Same, machine-readable (for scripts)
+
+${colors.bright}What \`list\` reports:${colors.reset}
+  The roster ${colors.bright}this CLI ships with${colors.reset} — a snapshot baked in at publish time,
+  not a live fetch. That is the right question when the next step is resolving
+  one of those names with the same CLI, which is why \`--json\` stamps
+  \`cliVersion\`. A template newer than your CLI will not be listed.
+
+  It is the ${colors.bright}official${colors.reset} roster, not the set of resolvable names: an unknown
+  name is not fatal, since \`create\` falls through to npm \`@uniweb/template-<name>\`.
+
+${colors.bright}Reserved:${colors.reset}
+  \`uniweb template register\` is not available on the new backend yet. Submitting
+  a site as a cloud template was retired with the legacy backend; when rebuilt, a
+  template is REGISTERED (like a foundation) — \`publish\` is for sites only.
+  Scaffolding FROM a template is unaffected: \`uniweb create --template <name>\`.
 `,
     docs: `
 ${colors.cyan}${colors.bright}uniweb docs${colors.reset} ${colors.dim}— Generate component documentation${colors.reset}
