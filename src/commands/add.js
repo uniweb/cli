@@ -1249,8 +1249,16 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   let getAdapter, listAdapters
   try {
     ;({ getAdapter, listAdapters } = await import('@uniweb/build/hosts'))
-  } catch {
-    error('Failed to load host adapter registry from @uniweb/build/hosts.')
+  } catch (err) {
+    // ⛔ Keep the reason. A bare `catch {}` here printed one line for three
+    // different failures — the package is absent, the `./hosts` subpath is
+    // not exported by the installed version, or the module threw while
+    // evaluating — and they have different remedies.
+    error(`Failed to load the host adapter registry from @uniweb/build/hosts.`)
+    error(`  ${err.message}`)
+    if (err.code === 'ERR_MODULE_NOT_FOUND') {
+      error(`  Install the workspace's dependencies, or upgrade @uniweb/build.`)
+    }
     process.exit(1)
   }
 

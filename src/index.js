@@ -55,6 +55,7 @@ import {
 } from './utils/scaffold.js'
 import {
   detectPackageManager,
+  detectWorkspacePm,
   filterCmd,
   installCmd,
   runCmd,
@@ -224,32 +225,98 @@ function delegateToLocal(localCliPath) {
 }
 
 /**
- * Import a command module that may depend on @uniweb/build.
- * Provides a helpful error when the dependency can't be resolved
- * (e.g., running a project-bound command from a global install
- * outside a project directory).
+ * Import a command module that may depend on an optional @uniweb/* peer
+ * (`@uniweb/build` above all). Sixteen commands load through here, so this
+ * is the error most users meet when something is not installed.
+ *
+ * ⛔ IT MUST NOT NAME A CAUSE IT HAS NOT CHECKED. This said "This command
+ * must be run from inside a Uniweb project" for every `ERR_MODULE_NOT_FOUND`
+ * on a `@uniweb/*` specifier — a guess, and wrong in the two cases that do
+ * not involve your location at all: a workspace whose dependencies are simply
+ * not installed, and a CLI installed on its own (the optional peers are not
+ * installed with it, so `npm install uniweb --prefix X` yields exactly this).
+ * Project resolution is cwd-based (`findWorkspaceRoot`) and always was, so
+ * the check the message needed was one call away and already imported here.
+ *
+ * ⚠️ A wrong cause is worse than a vague one: it does not merely fail to
+ * explain, it DIRECTS the investigation. Reported 2026-09-09 by a consumer
+ * who lost an hour testing the cause this text named, having already done
+ * the `cd` and the install it advised.
  */
 async function importProjectCommand(modulePath) {
   try {
     return await import(modulePath)
   } catch (err) {
     if (
-      err.code === 'ERR_MODULE_NOT_FOUND' &&
-      err.message?.includes('@uniweb/')
+      err.code !== 'ERR_MODULE_NOT_FOUND' ||
+      !err.message?.includes('@uniweb/')
     ) {
-      error('This command must be run from inside a Uniweb project.')
+      throw err
+    }
+
+    // Name the package that actually failed to resolve, rather than making
+    // the reader guess which of the optional peers this command needed.
+    const missing =
+      err.message.match(/'(@uniweb\/[^']+)'/)?.[1] ?? 'a @uniweb/* package'
+    const root = findWorkspaceRoot(process.cwd())
+
+    // ⛔ THREE STATES, and the second and third look identical from here — the
+    // import failed either way. Discriminate on what is ON DISK, because
+    // "declared but not installed" and "installed but not reachable from where
+    // THIS CLI lives" have opposite remedies, and telling a fully-installed
+    // workspace to run its installer is the same wrong-cause defect again.
+    const workspaceModules = root ? join(root, 'node_modules') : null
+    const workspaceInstalled = !!workspaceModules && existsSync(workspaceModules)
+    const localCli = root ? join(workspaceModules, '.bin', 'uniweb') : null
+
+    error(`Cannot load ${missing}, which this command needs.`)
+    log('')
+
+    if (!root) {
+      log(
+        `No Uniweb workspace found above ${colors.dim}${process.cwd()}${colors.reset}.`
+      )
+      log(`  ${colors.cyan}cd${colors.reset} into a project, or create one:`)
+      log(`  ${colors.cyan}uniweb create my-project${colors.reset}`)
       log('')
       log(
-        `Make sure you're in a project directory with dependencies installed:`
+        `${colors.dim}Driving projects from a standalone CLI? ${missing} is an optional${colors.reset}`
       )
-      log(`  ${colors.cyan}cd your-project${colors.reset}`)
-      log(`  ${colors.cyan}npm install${colors.reset}`)
+      log(
+        `${colors.dim}peer, so a bare \`npm i uniweb\` does not bring it:${colors.reset}`
+      )
+      log(`  ${colors.cyan}npm install uniweb ${missing}${colors.reset}`)
+    } else if (!workspaceInstalled) {
+      // Declared, not on disk. Prefer the workspace's own package manager,
+      // read off its lockfile — but a workspace that has NEVER been installed
+      // has no lockfile to read, so fall back the same way `create` does
+      // rather than to whichever PM happens to be running this process.
+      const pm =
+        detectWorkspacePm(root) ||
+        (isPnpmAvailable() ? 'pnpm' : detectPackageManager())
+      log(`Uniweb workspace: ${colors.dim}${root}${colors.reset}`)
+      log(`Its dependencies are not installed:`)
+      log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
+    } else {
+      // Installed, and still unreachable: Node resolves a command's imports
+      // from the CLI's own location, so a CLI installed elsewhere cannot see
+      // this workspace's copy. Both remedies are real; the local bin is the
+      // one that guarantees the project's own pinned toolchain does the work.
+      log(
+        `Uniweb workspace: ${colors.dim}${root}${colors.reset} ${colors.dim}(dependencies are installed)${colors.reset}`
+      )
+      log(
+        `This CLI resolves its imports from its own install location, not from`
+      )
+      log(`the workspace, so it cannot see the workspace's ${missing}.`)
       log('')
-      log(`Or create a new project:`)
-      log(`  ${colors.cyan}uniweb create my-project${colors.reset}`)
-      process.exit(1)
+      log(`Use the project's own CLI:`)
+      log(`  ${colors.cyan}${localCli}${colors.reset}`)
+      log(`or install the peer next to this one:`)
+      log(`  ${colors.cyan}npm install uniweb ${missing}${colors.reset}`)
     }
-    throw err
+
+    process.exit(1)
   }
 }
 
