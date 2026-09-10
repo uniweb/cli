@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { servedFingerprint } from '@uniweb/build/uwx'
 import {
   uploadSiteMedia,
   describeAssetRefusal
@@ -42,7 +43,9 @@ test('uploadSiteMedia resolves site-root refs under public/, uploads, returns re
     }
   }
   try {
-    const { map } = await uploadSiteMedia(client, dir, ['/images/banner.png'])
+    const { map, ids } = await uploadSiteMedia(client, dir, [
+      '/images/banner.png'
+    ])
     // one file uploaded: content-typed, sha256'd, keyed by the original ref
     assert.equal(captured.length, 1)
     assert.equal(captured[0].localUrl, '/images/banner.png')
@@ -51,6 +54,16 @@ test('uploadSiteMedia resolves site-root refs under public/, uploads, returns re
     // the map embeds the backend's canonical serve_url
     assert.deepEqual(map, {
       '/images/banner.png': '/media-root/dist/SHA1/base.png'
+    })
+    // ⭐ identity for assets.json, with a FINGERPRINT of that URL — never the URL —
+    // so a pull can recognize a bare-string reference (`info.preview`, `seo.image`)
+    // that has no room for an id beside it
+    assert.deepEqual(ids, {
+      '/images/banner.png': {
+        id: 'SHA1',
+        ext: 'png',
+        served: servedFingerprint('/media-root/dist/SHA1/base.png')
+      }
     })
   } finally {
     rmSync(dir, { recursive: true, force: true })

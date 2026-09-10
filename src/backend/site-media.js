@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import { resolveAssetPath } from '@uniweb/build/site'
+import { servedFingerprint } from '@uniweb/build/uwx'
 import { contentTypeFor } from '../utils/code-upload.js'
 import { humanBytes } from '../utils/bytes.js'
 
@@ -79,7 +80,17 @@ export async function uploadSiteMedia(
   for (const ref of refs) {
     const entry = result.assetsByLocalUrl[ref]
     if (!entry) continue
-    if (entry.id) ids[ref] = { id: entry.id, ext: entry.ext || '' }
+    // `served` — a fingerprint of the address, never the address. It is how a pull
+    // recognizes this asset where the reference is a bare string with no room for an
+    // id beside it (`info.preview`, `seo.image`, a section param); `assets.json`'s
+    // header says why a hash and not the URL.
+    if (entry.id) {
+      ids[ref] = {
+        id: entry.id,
+        ext: entry.ext || '',
+        ...(entry.serveUrl ? { served: servedFingerprint(entry.serveUrl) } : {})
+      }
+    }
     // The backend's canonical serve URL, READ — never composed. An entry without
     // one is an asset we cannot address, and inventing a location for it is the
     // exact failure this lane exists to avoid: a guessed host is SILENTLY wrong,

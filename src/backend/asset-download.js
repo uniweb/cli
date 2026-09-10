@@ -37,8 +37,7 @@ import { ASSET_SLOTS } from '@uniweb/semantic-parser'
 import {
   readAssetMap,
   updateAssetMap,
-  INFO_ASSET_FIELDS,
-  assetIdentityOf
+  servedFingerprint
 } from '@uniweb/build/uwx'
 
 /**
@@ -48,7 +47,7 @@ import {
  * carrying the reference — so a ProseMirror image node's attrs and a section
  * background's media object are both found by one walk.
  */
-export function collectAssetRefs(document) {
+export function collectAssetRefs(document, map = {}) {
   const found = new Map() // id → { id, ext, url }
   const visit = (node) => {
     if (Array.isArray(node)) return node.forEach(visit)
@@ -64,12 +63,27 @@ export function collectAssetRefs(document) {
     for (const v of Object.values(node)) visit(v)
   }
   visit(document)
-  // A single-string field on `info` (the site card's `preview`) has nowhere beside
-  // it for identity, so it rides in the URL's fragment instead — see
-  // `withAssetIdentity` in @uniweb/build/uwx.
-  for (const field of INFO_ASSET_FIELDS) {
-    const identity = assetIdentityOf(document?.info?.[field])
-    if (identity && !found.has(identity.id)) found.set(identity.id, identity)
+  // A BARE-STRING reference (`info.preview`, `seo.image`, a section param) has no
+  // object to carry identity beside it. The map recognizes it by the fingerprint the
+  // push recorded for its serve URL — see `servedFingerprint` in @uniweb/build/uwx.
+  const byServed = new Map()
+  for (const v of Object.values(map || {})) {
+    if (v?.served && v.id && !byServed.has(v.served)) byServed.set(v.served, v)
+  }
+  if (byServed.size) {
+    const visitStrings = (node) => {
+      if (typeof node === 'string') {
+        if (!node.startsWith('/') && !/^https?:\/\//i.test(node)) return
+        const entry = byServed.get(servedFingerprint(node))
+        if (entry && !found.has(entry.id))
+          found.set(entry.id, { id: entry.id, ext: entry.ext || '', url: node })
+        return
+      }
+      if (Array.isArray(node)) return node.forEach(visitStrings)
+      if (node && typeof node === 'object')
+        for (const v of Object.values(node)) visitStrings(v)
+    }
+    visitStrings(document)
   }
   return [...found.values()]
 }
@@ -101,11 +115,12 @@ export async function downloadMissingAssets({
   warn = () => {}
 }) {
   const doFetch = fetchImpl || ((u) => globalThis.fetch(u))
-  const refs = collectAssetRefs(document)
+  // Read first: a bare-string reference is only recognizable through the map.
+  const map = readAssetMap(siteDir)
+  const refs = collectAssetRefs(document, map)
   const out = { downloaded: [], present: [], failed: [], skipped: [] }
   if (!refs.length) return out
 
-  const map = readAssetMap(siteDir)
   const byId = new Map()
   for (const [ref, v] of Object.entries(map)) if (v?.id) byId.set(v.id, ref)
 

@@ -13,7 +13,11 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { readAssetMap, updateAssetMap } from '@uniweb/build/uwx'
+import {
+  readAssetMap,
+  updateAssetMap,
+  servedFingerprint
+} from '@uniweb/build/uwx'
 import {
   downloadMissingAssets,
   collectAssetRefs,
@@ -229,19 +233,28 @@ test('no refs is a no-op that never touches the network', async () => {
   }
 })
 
-test('⭐ the site card preview carries identity in its URL fragment, and is found too', () => {
-  // `info` is a Section whose fields the host declares, so there is nowhere beside
-  // `preview` for an assetId attr — it rides in the fragment instead.
-  const doc = { info: { preview: `${SERVE}#assetId=9f2c&assetExt=png` } }
-  assert.deepEqual(collectAssetRefs(doc), [{ id: '9f2c', ext: 'png', url: SERVE }])
+// The map entry a push records for a project image referenced as a BARE string.
+const CARD = {
+  '/images/card.png': { id: '9f2c', ext: 'png', served: servedFingerprint(SERVE) }
+}
+
+test('⭐ a bare-string reference is found by the fingerprint the map keeps for its URL', () => {
+  // `info.preview`, `seo.image`, a section param: no object to carry `assetId`
+  // beside, so the push recorded a fingerprint of the serve URL instead.
+  const doc = { info: { preview: SERVE } }
+  assert.deepEqual(collectAssetRefs(doc, CARD), [
+    { id: '9f2c', ext: 'png', url: SERVE }
+  ])
+  // Without the map it is only a URL.
+  assert.deepEqual(collectAssetRefs(doc), [])
 })
 
-test('a KNOWN preview image lands back at the path its author wrote', async () => {
+test('a KNOWN bare-string image lands back at the path its author wrote', async () => {
   const dir = site()
   try {
-    updateAssetMap(dir, { '/images/card.png': { id: '9f2c', ext: 'png' } })
+    updateAssetMap(dir, CARD)
     const out = await downloadMissingAssets({
-      document: { info: { preview: `${SERVE}#assetId=9f2c&assetExt=png` } },
+      document: { settings: { seo: { image: SERVE } } },
       siteDir: dir,
       origin: ORIGIN,
       fetchImpl: okFetch()
@@ -258,7 +271,7 @@ test('a KNOWN preview image lands back at the path its author wrote', async () =
 
 test("the app's generated preview (a timestamp) is not an asset", () => {
   assert.deepEqual(
-    collectAssetRefs({ info: { preview: '2026-09-10T12:34:56Z' } }),
+    collectAssetRefs({ info: { preview: '2026-09-10T12:34:56Z' } }, CARD),
     []
   )
 })
