@@ -2099,7 +2099,7 @@ tracking:
 ```
 
 A host may also supply one under `services.tracking`, and the usual precedence
-applies: yours wins, then the host's, then neither.
+applies: the host's, then yours, then neither.
 
 ⚠️ **The endpoint has to accept the framework's own format** — a batched
 `{ "events": [ … ] }` POST, documented in `reference/site-configuration.md`. It
@@ -2168,17 +2168,18 @@ tracking:
 ⭐ **`emit` needs no endpoint of its own.** Where a host provides one, the site
 declares only what it wants sent and the address comes from the host. The two
 are read key by key, so naming `emit` alone overrides nothing else the host
-declared. And declaring your own `endpoint:` always wins, so a site pointing at
-its own collector keeps working on any host, including none.
+declared. An `endpoint:` of your own is used wherever the host supplies no
+collector — on a host without one, and on none — and where the host supplies
+one, the host's is used.
 
-`minimal` is `page_view` alone. `standard` is the default when you supply your
-own `endpoint:`. `all` is a standing yes, so an event added in a later framework
+`minimal` is `page_view` alone. `standard` is the default when the collector is
+your own. `all` is a standing yes, so an event added in a later framework
 release is included without you changing anything — which is exactly why
 `standard` exists as well: it is a curated set that a release cannot grow behind
 your back.
 
 ⭐ **Saying nothing means two different things, and which one depends on who
-supplies the address.** A site with its own `endpoint:` gets `standard`. A site
+supplies the address.** A site sending to its own `endpoint:` gets `standard`. A site
 on a **host-supplied** collector gets **whatever that host declares it
 collects** — it has no address of its own, so the arrangement is that the host
 does analytics for it, and the set grows when the host starts collecting
