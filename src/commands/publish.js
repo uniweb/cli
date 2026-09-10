@@ -831,8 +831,6 @@ export async function publish(args = []) {
     }
   }
 
-  const { isNonInteractive, confirm } = await import('../utils/interactive.js')
-
   // ⛔ EVERY STRING BELOW IS FOR A SITE OWNER, NOT FOR US.
   //
   // "request", "declaration", "send", "adopt", "reconcile" are how this file
