@@ -2447,6 +2447,7 @@ uniweb add ci --target foundation # Publish a foundation for free at permanent v
                                   # (GitHub Pages → foundations/<name>/<version>/entry.js)
 
 uniweb push / pull / clone / status   # Git-style content sync with the Uniweb backend
+uniweb refresh / sync                 # Catch up (git + backend, never pushes) / catch up, then push
 uniweb push --org @acme               # First push/publish of a site: who owns it (see below)
 uniweb register [--scope @org]        # Register a foundation + its data schemas to the registry
 uniweb login / logout                 # Start or clear the backend session the verbs above reuse
@@ -2516,7 +2517,7 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 - **Git is the reviewed, durable record** — you `pull` content back, read it with `git diff`, and commit.
 - **Authors never push or pull.** For them, content simply updates, whether the change came from another author or from a developer's CLI.
 
-**Conflicts behave like a collaborative document, not like git.** A developer's push arrives the way a live collaborator's edit would. Different sections never conflict, and different params of the same section never conflict — last edit wins. The app warns only when two content edits target the same section at the same time.
+**Nobody's work is overwritten without asking.** `uniweb push` is refused if the site changed on the backend since your last pull — usually an author editing in the app — and reports what changed; nothing is written. Edits to different sections never collide. `uniweb pull` overwrites rather than merges, so it refuses while you have uncommitted changes. The recovery for both is `uniweb pull --merge` (or `uniweb refresh`, which runs `git pull` first): changes to different parts of a file combine silently, and a genuine overlap leaves conflict markers and a non-zero exit — so `uniweb pull --merge && uniweb push` never ships markers. `--force` is the deliberate overwrite (on `push` it replaces the backend's changes, on `pull` it discards yours); don't use it to get past a refusal. `uniweb sync` is `refresh` then `push`; neither publishes.
 
 **The Cloud also provides a real backend for structured data:** a database for every registered data schema, and a CMS that edits both static page content and dynamic data entities typed by those schemas. That's the piece that makes it viable for teams and client work — the client manages records, not markdown files.
 
