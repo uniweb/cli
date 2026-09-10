@@ -506,13 +506,13 @@ export async function checkFoundationSupports({
  * box that searches nothing, a form whose answers have nowhere to go.
  */
 const SERVICE_GATES = [
-  { hook: 'useFormSubmit', gate: 'canSubmit', draws: 'a form' },
-  { hook: 'useSearch', gate: 'isEnabled', draws: 'a search control' },
-  { hook: 'useSearchIndex', gate: 'isEnabled', draws: 'a search control' },
+  { hook: 'useFormSubmit', gate: 'canSubmit', alt: 'isSubmitEnabled', draws: 'a form' },
+  { hook: 'useSearch', gate: 'isEnabled', alt: 'isSearchEnabled', draws: 'a search control' },
+  { hook: 'useSearchIndex', gate: 'isEnabled', alt: 'isSearchEnabled', draws: 'a search control' },
   // Returns everything `useSearch` does, `isEnabled` included, so it gates the
   // same way. It was missing from this list until the hook was renamed out of
   // `useSearchWithIntent` — the kind of gap a list of names grows quietly.
-  { hook: 'useSearchPrefetch', gate: 'isEnabled', draws: 'a search control' },
+  { hook: 'useSearchPrefetch', gate: 'isEnabled', alt: 'isSearchEnabled', draws: 'a search control' },
 ]
 
 /**
@@ -535,7 +535,12 @@ const SERVICE_GATES = [
  *
  *   - it is **local to one file** — the hook call and its gate are in the same
  *     component, in the developer's own source, with no indirection to follow;
- *   - the gate names are **fixed by kit's API**, not inferred;
+ *   - the gate names are **fixed by kit's API**, not inferred — with one caveat
+ *     that used to be a live false negative: `isEnabled` is a hook's returned
+ *     field AND, until 2026-09-10, an `@uniweb/api` export. A component holding
+ *     both read as gated. `@uniweb/kit`'s `is<Service>Enabled()` predicates are
+ *     unique per subject, so `alt` below is matched instead and the collision
+ *     cannot recur;
  *   - it only ever **warns**, and changes no artifact. A miss costs a missing
  *     warning, which is the safe direction.
  *
@@ -568,11 +573,15 @@ export function checkUngatedServiceControls({ foundationName, folderName, srcDir
 
   forEachSourceFile(srcDir, (raw, file) => {
     const text = stripComments(raw)
-    for (const { hook, gate, draws } of SERVICE_GATES) {
+    for (const { hook, gate, alt, draws } of SERVICE_GATES) {
       // A call, not merely an import: re-exporting a hook is not drawing with it.
       if (!new RegExp(`\\b${hook}\\s*\\(`).test(text)) continue
+      // Either the hook's own returned field, or kit's standalone predicate for
+      // the same service — both are the gate, and a component that reads one
+      // does not need the other.
       if (new RegExp(`\\b${gate}\\b`).test(text)) continue
-      found.push({ file, hook, gate, draws })
+      if (alt && new RegExp(`\\b${alt}\\s*\\(`).test(text)) continue
+      found.push({ file, hook, gate, alt, draws })
     }
   })
 
@@ -592,6 +601,7 @@ export function checkUngatedServiceControls({ foundationName, folderName, srcDir
     log(`    control cannot work. Gate on it instead:`)
     log(`      ${colors.dim}const { ${f.gate} } = ${f.hook}(…)${colors.reset}`)
     log(`      ${colors.dim}if (!${f.gate}) return null${colors.reset}`)
+    if (f.alt) log(`    ${colors.dim}…or ${f.alt}() from @uniweb/kit, which needs no hook.${colors.reset}`)
   }
 }
 

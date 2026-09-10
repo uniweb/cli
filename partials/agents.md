@@ -2317,9 +2317,10 @@ npm install @uniweb/api      # in the FOUNDATION, beside @uniweb/kit
 ### Ask before you draw
 
 ```jsx
-import { isEnabled, useSession, SignedIn, SignedOut } from '@uniweb/api'
+import { isApiEnabled } from '@uniweb/kit'
+import { useSession, SignedIn, SignedOut } from '@uniweb/api'
 
-if (!isEnabled(website)) return <StaticVersion />   // synchronous — nothing to await
+if (!isApiEnabled()) return <StaticVersion />   // synchronous — nothing to await
 ```
 
 ⛔ **When there is no backend, draw nothing** — not a disabled control, and not an
