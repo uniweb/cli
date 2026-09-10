@@ -88,7 +88,6 @@ import {
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
-  recordLiveUrl,
   pushSyncPackages,
   resolveSiteOrgForCreate
 } from '../backend/site-sync.js'
@@ -1114,13 +1113,11 @@ export async function publish(args = []) {
     say.dim(`  site.yml lists ${unserved.join(', ')}, and ${unserved.length === 1 ? 'it was' : 'they were'} not published.`)
   }
   if (serveUrl) console.log(`  ${c.cyan}${serveUrl}${c.reset}`)
-  // Where it went live, for the site card (`info.url`) — recorded only when it
-  // changed. See recordLiveUrl for why it rides the NEXT push.
-  if (recordLiveUrl(siteDir, serveUrl).changed) {
-    say.dim(
-      'Recorded the live address in site.yml ($url) — site cards pick it up on your next push.'
-    )
-  }
+  // ⛔ No site.yml write for where it went live. The backend records the reply's
+  // `url` on `info.url` at every publish, and pull brings it into `site.yml::$url`
+  // like any other key. A copy written here was a second writer that had to match
+  // the backend's byte for byte (the address printed above is made absolute, so it
+  // did not), and it left site.yml modified — which a plain `pull` refuses over.
   if (result.deploy_uuid) say.dim(`deploy: ${result.deploy_uuid}`)
   return { exitCode: 0 }
 }

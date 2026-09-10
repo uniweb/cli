@@ -30,8 +30,7 @@ import {
   collectFolderItemUuids,
   collectQueryUuids,
   readAssetMap,
-  removeYamlScalar,
-  writeSiteUrl
+  removeYamlScalar
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -369,33 +368,6 @@ export function dropSiteBoundValues(siteDir) {
 // else is the app's generated-image token.
 const isAuthoredPreview = (v) =>
   typeof v === 'string' && (/^https?:\/\//i.test(v) || /^\.{0,2}\//.test(v))
-
-/**
- * Record where the site went live (`site.yml::$url`, which rides as `info.url` — what
- * a site card reads to link to the site), when that CHANGED. An unchanged address
- * leaves the committed file alone.
- *
- * ⚠️ `publish` pushes BEFORE it goes live, so a changed address reaches `info.url` on
- * the NEXT push, not this one. Accepted [Diego, 2026-09-10]: it is a convenience, and
- * pushing again right after publishing would leave the draft differing from what just
- * went live. The caller says so.
- *
- * @param {string} siteDir
- * @param {string|null|undefined} url - the absolute live address
- * @returns {{ changed: boolean, previous?: string|null }}
- */
-export function recordLiveUrl(siteDir, url) {
-  if (typeof url !== 'string' || !url) return { changed: false }
-  let previous = null
-  try {
-    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
-    if (y && typeof y.$url === 'string') previous = y.$url
-  } catch {
-    /* unreadable site.yml — the writer adds the key regardless */
-  }
-  if (previous === url) return { changed: false, previous }
-  return { changed: writeSiteUrl(siteDir, url), previous }
-}
 
 export function readSyncCache(siteDir) {
   return readMap(siteDir, 'hashes')
