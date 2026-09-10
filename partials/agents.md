@@ -86,7 +86,7 @@ Documentation paths in this guide are given bare — `development/creating-compo
 | Theming and styling | `authoring/theming.md` |
 | Authoring collections | `authoring/collections.md` |
 | Where-object predicate format | `authoring/predicates.md` |
-| Connecting a backend / custom transports | `development/connecting-a-backend.md` |
+| Data sources / custom transports | `development/data-sources.md` |
 | Building components | `development/creating-components.md` |
 | Schemas in practice | `development/schemas-in-practice.md` |
 | Workspace layouts and their wiring | `development/project-structures.md` |
@@ -1843,7 +1843,7 @@ fetcher:
 
 **Failures are visible, not empty:** a fetch that failed leaves its key ABSENT from `content.data` and names the message on `block.dataError[key]`; it is never delivered as `[]`, which means "no records". The page still renders — a section reads `dataError` to tell the two apart.
 
-When a plain `url:` is enough and when a transport is the answer: `development/connecting-a-backend.md`.
+When a plain `url:` is enough and when a transport is the answer: `development/data-sources.md`.
 
 Full model: `reference/data-fetching.md`. Where-object format with examples: `authoring/predicates.md`.
 
@@ -2324,10 +2324,10 @@ For cases the factory doesn't cover, write handlers directly using `Loom`, `inst
 ## Part 4b — When the site is also an app
 
 Everything above is a site: content the author writes, built into pages. Some sites
-also have **their own backend** — accounts, per-visitor data, records their members
-create and edit. That is `@uniweb/api`.
+also have **an `api` service** — accounts, per-visitor data, records their members
+create and edit. `@uniweb/api` is its client.
 
-⛔ **Only reach for this when the site actually has one.** A site with no backend is
+⛔ **Only reach for this when the site actually has one.** A site without one is
 the normal case, and a foundation that assumes one breaks on every other site it is
 used with.
 
@@ -2344,7 +2344,7 @@ import { useSession, SignedIn, SignedOut } from '@uniweb/api'
 if (!isApiEnabled()) return <StaticVersion />   // synchronous — nothing to await
 ```
 
-⛔ **When there is no backend, draw nothing** — not a disabled control, and not an
+⛔ **When the site has no `api` service, draw nothing** — not a disabled control, and not an
 explanation. Same rule as `services` in Part 4: which capabilities a site's operator
 set up is none of a visitor's business, and "sign-in unavailable" reads as breakage
 when it is simply a feature this site does not have. Render the version of your
@@ -2357,8 +2357,8 @@ const { status, records } = useRecords({ schema: '@/session' })
 ```
 
 ⭐ **`absent` and an empty `ready` are different answers, and confusing them is the
-mistake to avoid.** `absent` = there is no live source (no backend, or nobody signed
-in) → render the site's authored content. `ready` with `records: []` = the backend
+mistake to avoid.** `absent` = there is no live source (no `api` service, or nobody signed
+in) → render the site's authored content. `ready` with `records: []` = the service
 answered and there is nothing there → render your empty state. Showing "nothing yet"
 for the first tells a visitor their content is gone when it was never requested.
 
