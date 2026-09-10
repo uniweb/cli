@@ -87,6 +87,8 @@ import {
   readFolderItemUuids,
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
+  dropSiteBoundValues,
+  recordLiveUrl,
   pushSyncPackages,
   resolveSiteOrgForCreate
 } from '../backend/site-sync.js'
@@ -576,6 +578,12 @@ export async function publish(args = []) {
   if (droppedState.length) {
     say.dim(
       `Cleared stale sync state from a previous site (${droppedState.join(', ')}).`
+    )
+  }
+  const droppedValues = dropSiteBoundValues(siteDir)
+  if (droppedValues.length) {
+    say.dim(
+      `Dropped the previous site's ${droppedValues.join(' and ')} from site.yml.`
     )
   }
 
@@ -1106,6 +1114,13 @@ export async function publish(args = []) {
     say.dim(`  site.yml lists ${unserved.join(', ')}, and ${unserved.length === 1 ? 'it was' : 'they were'} not published.`)
   }
   if (serveUrl) console.log(`  ${c.cyan}${serveUrl}${c.reset}`)
+  // Where it went live, for the site card (`info.url`) — recorded only when it
+  // changed. See recordLiveUrl for why it rides the NEXT push.
+  if (recordLiveUrl(siteDir, serveUrl).changed) {
+    say.dim(
+      'Recorded the live address in site.yml ($url) — site cards pick it up on your next push.'
+    )
+  }
   if (result.deploy_uuid) say.dim(`deploy: ${result.deploy_uuid}`)
   return { exitCode: 0 }
 }

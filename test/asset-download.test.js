@@ -228,3 +228,37 @@ test('no refs is a no-op that never touches the network', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('⭐ the site card preview carries identity in its URL fragment, and is found too', () => {
+  // `info` is a Section whose fields the host declares, so there is nowhere beside
+  // `preview` for an assetId attr — it rides in the fragment instead.
+  const doc = { info: { preview: `${SERVE}#assetId=9f2c&assetExt=png` } }
+  assert.deepEqual(collectAssetRefs(doc), [{ id: '9f2c', ext: 'png', url: SERVE }])
+})
+
+test('a KNOWN preview image lands back at the path its author wrote', async () => {
+  const dir = site()
+  try {
+    updateAssetMap(dir, { '/images/card.png': { id: '9f2c', ext: 'png' } })
+    const out = await downloadMissingAssets({
+      document: { info: { preview: `${SERVE}#assetId=9f2c&assetExt=png` } },
+      siteDir: dir,
+      origin: ORIGIN,
+      fetchImpl: okFetch()
+    })
+    assert.deepEqual(out.downloaded, ['/images/card.png'])
+    assert.equal(
+      readFileSync(join(dir, 'public', 'images', 'card.png'), 'utf8'),
+      'BYTES'
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("the app's generated preview (a timestamp) is not an asset", () => {
+  assert.deepEqual(
+    collectAssetRefs({ info: { preview: '2026-09-10T12:34:56Z' } }),
+    []
+  )
+})

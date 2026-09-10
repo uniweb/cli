@@ -34,7 +34,12 @@
 import { mkdirSync, existsSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { ASSET_SLOTS } from '@uniweb/semantic-parser'
-import { readAssetMap, updateAssetMap } from '@uniweb/build/uwx'
+import {
+  readAssetMap,
+  updateAssetMap,
+  INFO_ASSET_FIELDS,
+  assetIdentityOf
+} from '@uniweb/build/uwx'
 
 /**
  * Collect every `{ id, ext, url }` an entity document references.
@@ -59,6 +64,13 @@ export function collectAssetRefs(document) {
     for (const v of Object.values(node)) visit(v)
   }
   visit(document)
+  // A single-string field on `info` (the site card's `preview`) has nowhere beside
+  // it for identity, so it rides in the URL's fragment instead — see
+  // `withAssetIdentity` in @uniweb/build/uwx.
+  for (const field of INFO_ASSET_FIELDS) {
+    const identity = assetIdentityOf(document?.info?.[field])
+    if (identity && !found.has(identity.id)) found.set(identity.id, identity)
+  }
   return [...found.values()]
 }
 

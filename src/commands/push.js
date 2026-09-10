@@ -89,6 +89,7 @@ import {
   ensureItemUuids,
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
+  dropSiteBoundValues,
   pushSyncPackages,
   resolveSiteOrgForCreate
 } from '../backend/site-sync.js'
@@ -302,6 +303,10 @@ export async function push(args = [], deps = {}) {
       note(
         `Cleared stale sync state from a previous site (${dropped.join(', ')}).`
       )
+    }
+    const stale = dropSiteBoundValues(siteDir)
+    if (stale.length) {
+      note(`Dropped the previous site's ${stale.join(' and ')} from site.yml.`)
     }
   }
   const priorHashes = readSyncCache(siteDir)

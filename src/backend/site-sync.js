@@ -29,7 +29,9 @@ import {
   collectUnitUuids,
   collectFolderItemUuids,
   collectQueryUuids,
-  readAssetMap
+  readAssetMap,
+  removeYamlScalar,
+  writeSiteUrl
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -321,6 +323,78 @@ export function clearRemoteSyncStateIfUnbound(siteDir) {
 
   clearRemoteSyncState(siteDir, current)
   return stale
+}
+
+/**
+ * Drop the `site.yml` values that describe ONE PARTICULAR backend site, when this
+ * project is bound to none (no `$uuid`) — a brand-new site, or the state our own
+ * "clear `$uuid` to re-publish as a new site" recovery puts you in:
+ *
+ *   · `$url` — where the PREVIOUS site was live. The new one is not live anywhere
+ *     yet; its first publish records its own.
+ *   · `preview` in the APP's form — a timestamp naming the previous site's generated
+ *     card image, which is keyed by that site's uuid and would dangle on this one.
+ *
+ * ⛔ An AUTHOR's preview is theirs and stays: a URL, or a path to an image in the
+ * project, is as good for the new site as for the old.
+ *
+ * The site.yml sibling of `clearRemoteSyncStateIfUnbound`, called beside it for the
+ * same reason — before the create mints a uuid and makes the project look bound.
+ *
+ * @param {string} siteDir
+ * @returns {string[]} the keys removed
+ */
+export function dropSiteBoundValues(siteDir) {
+  const file = join(siteDir, 'site.yml')
+  let y
+  try {
+    y = yaml.load(readFileSync(file, 'utf8'))
+  } catch {
+    return []
+  }
+  if (!y || typeof y !== 'object' || typeof y.$uuid === 'string') return []
+  const dropped = []
+  if (y.$url !== undefined && removeYamlScalar(file, '$url')) dropped.push('$url')
+  if (
+    y.preview !== undefined &&
+    !isAuthoredPreview(y.preview) &&
+    removeYamlScalar(file, 'preview')
+  ) {
+    dropped.push('preview')
+  }
+  return dropped
+}
+
+// An author's preview is an address — a URL, or a site-root / relative path. Anything
+// else is the app's generated-image token.
+const isAuthoredPreview = (v) =>
+  typeof v === 'string' && (/^https?:\/\//i.test(v) || /^\.{0,2}\//.test(v))
+
+/**
+ * Record where the site went live (`site.yml::$url`, which rides as `info.url` — what
+ * a site card reads to link to the site), when that CHANGED. An unchanged address
+ * leaves the committed file alone.
+ *
+ * ⚠️ `publish` pushes BEFORE it goes live, so a changed address reaches `info.url` on
+ * the NEXT push, not this one. Accepted [Diego, 2026-09-10]: it is a convenience, and
+ * pushing again right after publishing would leave the draft differing from what just
+ * went live. The caller says so.
+ *
+ * @param {string} siteDir
+ * @param {string|null|undefined} url - the absolute live address
+ * @returns {{ changed: boolean, previous?: string|null }}
+ */
+export function recordLiveUrl(siteDir, url) {
+  if (typeof url !== 'string' || !url) return { changed: false }
+  let previous = null
+  try {
+    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
+    if (y && typeof y.$url === 'string') previous = y.$url
+  } catch {
+    /* unreadable site.yml — the writer adds the key regardless */
+  }
+  if (previous === url) return { changed: false, previous }
+  return { changed: writeSiteUrl(siteDir, url), previous }
 }
 
 export function readSyncCache(siteDir) {
