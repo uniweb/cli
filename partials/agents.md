@@ -716,7 +716,7 @@ Measured on exactly that shape: **the agent corpus holds every page; the public 
 - **A static host** (`uniweb export`, `deploy --host`) drops every page — they have no reader there — and you get an empty SPA shell. The build still says *"complete"*, because 0 pages is not an error: it reports `Collected 0 pages` and pre-renders none.
 - **A backend-hosted deployment that does not offer the service.** Whether an agent endpoint exists is the host's to decide, per site — it is not implied by deploying successfully.
 
-⇒ **The way to know is to ask, at render:** `resolveService(website, 'assistant')` returns a `url` only where the host declared one. On a site that is *only* knowledge there is no component to ask — so confirm with your host that the agent is enabled for that site before you build an integration against it. If you meant to build an agent endpoint and got silence, this is where to look.
+⇒ **The way to know is to ask, at render:** `isAssistantEnabled()` from `@uniweb/kit` is true only where an agent endpoint is declared. On a site that is *only* knowledge there is no component to ask — so confirm with your host that the agent is enabled for that site before you build an integration against it. If you meant to build an agent endpoint and got silence, this is where to look.
 
 ### Your site is readable by agents, automatically
 
@@ -1904,7 +1904,26 @@ A form gets its destination from the first of these that applies:
 
 That is the general arrangement, not a forms-only one. A host declares
 everything it offers under `services`, keyed by name, and every service resolves
-by the same rule — your declaration, then the host's, then neither:
+by the same rule — your declaration, then the host's, then neither.
+
+⭐ **Before you render UI for a service, ask whether the site has it** — one predicate per service,
+no arguments: `isSearchEnabled()`, `isSubmitEnabled()`, `isApiEnabled()`, `isAssistantEnabled()`,
+`isTrackingEnabled()`.
+
+```jsx
+import { isSearchEnabled } from '@uniweb/kit'
+
+if (!isSearchEnabled()) return null   // false ⇒ draw nothing
+```
+
+Each answers the same question — *would UI for this service work on this site?* — and `false`
+always means the same thing: **draw nothing.** `isSearchEnabled()` is true whenever *any* provider
+answers, including the prebuilt index a static site ships, so a search box gated on it appears
+wherever search works. The hooks that draw a feature hand you the same answer as a field
+(`useSearch().isEnabled`, `useFormSubmit().canSubmit`), so a component already using one needs
+nothing extra.
+
+When you need the **address** itself, not just whether one exists, ask for it:
 
 ```jsx
 import { resolveService } from '@uniweb/kit'
@@ -1914,7 +1933,8 @@ const { url, source } = resolveService(website, 'assistant')   // or 'search', o
 
 **The name is open**: the framework ships clients for what it implements and
 resolution for anything, so a foundation can define a service the framework has
-never heard of and a host can fill it. Same escalation `fetcher.transports`
+never heard of and a host can fill it — ask for it with
+`website.isServiceEnabled('booking')`. Same escalation `fetcher.transports`
 offers for data.
 
 **Building an "Ask AI" component?** The service name is `assistant`, and a host that runs an agent for a site typically serves it at the conventional path `/_agent`. **You should never need to write that path** — ask the runtime instead:
@@ -1936,7 +1956,7 @@ if (!url) return null          // this site has no agent — render nothing, or 
 
 ### Declaring what your foundation supports
 
-`resolveService` is how you ask at render time. The other direction — telling a
+The predicates above, and `resolveService`, are how you ask at render time. The other direction — telling a
 host, *before* anything renders, which services your foundation is built to use —
 is one line in the foundation's `package.json`:
 
@@ -1953,23 +1973,24 @@ against it.** A host that offers search has no way to know whether your sections
 draw a search box, so without this it either offers a site something its code
 will ignore, or withholds something it would have used.
 
-**Three states, and they are three different answers:**
+**What a host receives is one of three answers:**
 
 | | |
 |---|---|
-| the key is **absent** | *unknown* — nobody said. Not a refusal |
-| `"supports": []` | an explicit *none* — this foundation honours no host service |
-| `"supports": ["search"]` | these, and only these |
+| a list — `["search"]` | the services this foundation renders against, and only these |
+| `[]` | none — proven by the build, not assumed |
+| absent | *unknown* — the build could not tell, and nothing was declared |
 
-⛔ **Nothing is assumed on your behalf**, in either direction. An unstated set is
-never read as "all" and never as "none", so the only way a host learns your
-search box exists is that you said so.
+⭐ **The build reads the set off your code.** When the foundation is built, `supports` is derived
+from what the bundle actually reaches — `resolveService(website, 'search')`, or a predicate like
+`isSearchEnabled()` — so a foundation that never writes the key still publishes an accurate set.
+What you write in `package.json` is a **supplement**: the build publishes the union, so a
+declaration can add a service but never remove one the code reaches.
 
-**List what you actually integrate.** `uniweb doctor` warns when your source
-reaches for a service you did not list — but it reads your code with a pattern
-matcher, so it sees `resolveService(website, 'search')` and misses a service
-reached through a variable or a helper. It can tell you that you forgot one; it
-cannot promise it found them all. The declaration is yours to keep accurate.
+**Declare only what the build cannot see.** A service reached through a *computed* name —
+`resolveService(website, name)` where `name` is a variable — is invisible to it, and the build
+warns when that happens. List those. `uniweb doctor` compares what you declared with what the build
+found.
 
 ⚖️ **Baseline behaviour is not yours to declare.** Some services do something for
 a site whether or not a foundation cooperates — the runtime reports page views
@@ -2253,8 +2274,8 @@ happened into a journey.
 Everything above reaches the runtime through `@uniweb/kit` or through something
 handed to your component as a prop. That is the rule, not a stylistic preference:
 
-- ✅ `useWebsite()`, `useTracker()`, `resolveService(website, …)` — kit hooks and
-  utilities.
+- ✅ `useWebsite()`, `useTracker()`, `isSearchEnabled()` and the other service
+  predicates, `resolveService(website, …)` — kit hooks and utilities.
 - ✅ `block.track(…)`, `block.page`, `block.website` — the block **arrives in your
   props**, so calling methods on it is not reaching for a global.
 - ⛔ `globalThis.uniweb`, `window.uniweb` — never, in a foundation.
