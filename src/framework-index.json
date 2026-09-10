@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-09T22:45:28.403Z",
+  "generatedAt": "2026-09-10T13:34:53.674Z",
   "packages": {
     "@uniweb/api": {
-      "version": "0.2.13",
+      "version": "0.3.0",
       "path": "framework/api",
       "deps": [
         "@uniweb/core"
       ]
     },
     "@uniweb/build": {
-      "version": "0.44.1",
+      "version": "0.44.2",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -34,7 +34,7 @@
       "deps": []
     },
     "@uniweb/core": {
-      "version": "0.24.2",
+      "version": "0.24.3",
       "path": "framework/core",
       "deps": [
         "@uniweb/semantic-parser",
@@ -54,7 +54,7 @@
       ]
     },
     "@uniweb/kit": {
-      "version": "0.18.0",
+      "version": "0.18.1",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core",
@@ -74,7 +74,7 @@
       "deps": []
     },
     "@uniweb/projections": {
-      "version": "0.5.13",
+      "version": "0.6.0",
       "path": "framework/projections",
       "deps": [
         "@uniweb/content-writer",
@@ -82,7 +82,7 @@
       ]
     },
     "@uniweb/runtime": {
-      "version": "0.19.3",
+      "version": "0.19.4",
       "path": "framework/runtime",
       "deps": [
         "@uniweb/core",
