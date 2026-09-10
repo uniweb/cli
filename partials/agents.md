@@ -1895,16 +1895,18 @@ section type, same arrangement as `fetcher:` and `search:`.
 
 A form gets its destination from the first of these that applies:
 
-1. **`submit:` in `site.yml`** — an endpoint you name yourself.
-2. **One the host supplies** — `services.submit` in the served payload. A site
-   published to Uniweb Cloud gets submission handling from the platform, so it
-   normally needs **no `submit:` at all**.
+1. **One the host supplies** — `services.submit` in the served payload. Where the
+   host handles submissions, that is the destination and nothing in `site.yml`
+   overrides it — so a site published to Uniweb Cloud normally needs **no
+   `submit:` at all**.
+2. **`submit:` in `site.yml`** — an endpoint you name yourself, for a host that
+   does not handle submissions, or a static site.
 3. **Neither** — there is no destination, and the form says so instead of
    guessing at one.
 
 That is the general arrangement, not a forms-only one. A host declares
 everything it offers under `services`, keyed by name, and every service resolves
-by the same rule — your declaration, then the host's, then neither.
+by the same rule — the host's offer, then your declaration, then neither.
 
 ⭐ **Before you render UI for a service, ask whether the site has it** — one predicate per service,
 no arguments: `isSearchEnabled()`, `isSubmitEnabled()`, `isApiEnabled()`, `isAssistantEnabled()`,
