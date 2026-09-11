@@ -772,12 +772,12 @@ export async function publish(args = []) {
   // released version on the wire is required when site.yml uses an unversioned
   // local ref; injectInfo overrides info.foundation. A registry/URL ref → fnd.ref
   // is null → the site.yml ref is forwarded verbatim (already pinned).
-  // ⛔ DO NOT STAMP `info.data` HERE. The name is TAKEN: `uwx/site.js` already
-  // emits `info.data` from `site.yml`'s top-level `data:`/`fetch:` block, and
-  // `injectInfo` WINS the merge (`sync-package.js`: `{...siteDoc.info,
-  // ...injectInfo}`), so stamping a file map here silently replaces the author's
-  // fetch config on the wire. Both are `type: json`, so the store validator
-  // accepts either and nothing errors at any layer.
+  // ⛔ DO NOT STAMP A FILE MAP INTO `info` HERE. `injectInfo` WINS the merge
+  // (`sync-package.js`: `{...siteDoc.info, ...injectInfo}`), so any name stamped
+  // here silently replaces what the author's document carries under it, and the
+  // store validator accepts it — nothing errors at any layer. This was written
+  // about `info.data`, which carried the site's `fetch:` block until 2026-09-09;
+  // that moved to `settings.fetch`, and the warning holds for any name.
   //
   // A file map needs a name nothing else claims (`static_data` / `data_files`
   // were proposed) AND a consumer that reads it — neither settled. See
