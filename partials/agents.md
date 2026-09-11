@@ -1608,7 +1608,7 @@ export default function Grid({ block, params }) {
 
 Each child is a regular section with its own type, params, and content — and you're in the middle: wrap each child, filter by type, reorder, add container classes. The author decides *what* goes in the grid; your component decides *how* it renders. Tomorrow the author can swap a child for a different section type with no code change, and your components stay reusable wherever child sections are accepted.
 
-**Data and child blocks:** page-level `data:` is available to all blocks including children, and each child resolves data independently through the page → site hierarchy. If a child needs data, declare it in the child's `meta.js` or its frontmatter (`data: articles`).
+**Data and child blocks:** page-level `data:` is available to all blocks including children, and each child resolves data independently through the page → site hierarchy. If a child needs data no ancestor declares, give it its own in its frontmatter (`data: articles`, or `fetch:`). Its `meta.js` `data:` declares the shape it reads, never where the data comes from — it fetches nothing.
 
 **SSG:** insets, `<ChildBlocks>`, and `<Visual>` all render correctly during prerender. Inset components using React hooks internally trigger prerender warnings — expected and harmless; the page renders correctly client-side.
 
