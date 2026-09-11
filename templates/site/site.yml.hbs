@@ -49,8 +49,8 @@ index: home
 #                              sort: date desc
 #                              limit: 10
 #
-# Pages and sections then name a query: `data: recent`, or
-# `fetch: { query: recent }`.
+# Pages and sections then name a query: `query: recent`, or
+# `fetch: { query: recent, limit: 3 }` for anything more.
 #
 # You can also keep queries here instead of in queries.yml:
 #
@@ -61,7 +61,7 @@ index: home
 #
 # fetch:
 #   - url: https://api.example.com/team  # Remote JSON
-#     schema: team                       # Access as content.data.team
+#     as: team                           # Access as content.data.team
 #   - path: /data/config.json            # Local file from public/
 
 # ─── Extensions ────────────────────────────────────────────────────────────────

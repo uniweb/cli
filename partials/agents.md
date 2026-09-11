@@ -874,12 +874,12 @@ team:
 
 You can keep the same declarations under `queries:` in `site.yml` instead, if you would rather have one file.
 
-**Show a query on a page** with `data:` in `page.yml` (the whole result), or `fetch:` in a section's frontmatter (a subset). A list — `data: [team, articles]` — declares several, each arriving under its own `content.data` key:
+**Show a query on a page** with `query:` in `page.yml` or a section's frontmatter (the whole result), or `fetch:` for anything more — a `limit`, a `where`. A list — `query: [team, articles]` — declares several, each arriving under its own `content.data` key. `query:` takes names only; `data:`, its old name, is now an error.
 
 ```yaml
 # pages/blog/page.yml          |   # a section on the homepage
 title: Blog                    |   ---
-data: recent                   |   type: ArticleTeaser
+query: recent                  |   type: ArticleTeaser
                                |   fetch: { query: recent, limit: 3 }
                                |   ---
 ```
@@ -888,7 +888,7 @@ data: recent                   |   type: ArticleTeaser
 
 ```
 pages/blog/
-├── page.yml          # title: Blog / data: recent
+├── page.yml          # title: Blog / query: recent
 ├── list.md
 └── [slug]/
     ├── page.yml
@@ -897,7 +897,7 @@ pages/blog/
 
 `entities/article/design-tips.md` becomes `/blog/design-tips`. The section inside `[slug]/` needs no special markdown — the matched record is delivered to it. Generated pages are excluded from navigation menus.
 
-**Which query the URL narrows — the page's route query:** the `[slug]` page's own `data:`, else its parent page's (the usual shape, above), else `site.yml`'s; if none declares one, the query its sections all declare. The first query of that level wins. Every section the route query reaches gets the one record; a section declaring a *different* query of its own gets that query as declared. The folder name says what the URL segment matches: `[slug]` the record's handle (`$name`, which compiled records carry — equal to their `slug`), `[uuid]` its `$uuid`, any other `[name]` the record's own field of that name. A folder inside `[slug]/` (`[slug]/cv/` → `/blog/:slug/cv`) is a parametric page too, reading the record when `[slug]/page.yml` declares the query. `[dir]` and `[path]` are refused as folder names, and so is any folder inside `[...path]/`.
+**Which query the URL narrows — the page's route query:** the `[slug]` page's own `query:`, else its parent page's (the usual shape, above), else `site.yml`'s; if none declares one, the query its sections all declare. The first query of that level wins. Every section the route query reaches gets the one record; a section declaring a *different* query of its own gets that query as declared. The folder name says what the URL segment matches: `[slug]` the record's handle (`$name`, which compiled records carry — equal to their `slug`), `[uuid]` its `$uuid`, any other `[name]` the record's own field of that name. A folder inside `[slug]/` (`[slug]/cv/` → `/blog/:slug/cv`) is a parametric page too, reading the record when `[slug]/page.yml` declares the query. `[dir]` and `[path]` are refused as folder names, and so is any folder inside `[...path]/`.
 
 > **The record arrives as a single-element array under the query key** — `content.data.recent[0]`, not `content.data.article`. The runtime never coerces it to an object and never synthesizes a singular key. See *Data* in Part 4.
 
@@ -977,7 +977,7 @@ function MyComponent({ content, params, block }) {
 }
 ```
 
-Frontmatter becomes `params`, minus the keys the framework consumes outright: `type`, `preset`, `input`, `props`, `fetch`, `data`, `id`. `props:` is the one that isn't dropped but merged *into* params.
+Frontmatter becomes `params`, minus the keys the framework consumes outright: `type`, `preset`, `input`, `props`, `query`, `fetch`, `id` (a `data:` key is refused — it was `query:`'s old name). `props:` is the one that isn't dropped but merged *into* params.
 
 **Framework fields you'd expect to be stripped are not.** `background`, `theme`, `source`, `where`, and `vars` are acted on by the runtime *and* passed through — so `params.theme` is readable when a component needs logic beyond CSS tokens (a light vs. dark logo, say). Components ignore the keys they don't use, the same way they ignore unused `content.data` keys.
 
@@ -1608,7 +1608,7 @@ export default function Grid({ block, params }) {
 
 Each child is a regular section with its own type, params, and content — and you're in the middle: wrap each child, filter by type, reorder, add container classes. The author decides *what* goes in the grid; your component decides *how* it renders. Tomorrow the author can swap a child for a different section type with no code change, and your components stay reusable wherever child sections are accepted.
 
-**Data and child blocks:** page-level `data:` is available to all blocks including children, and each child resolves data independently through the page → site hierarchy. If a child needs data no ancestor declares, give it its own in its frontmatter (`data: articles`, or `fetch:`). Its `meta.js` `data:` declares the shape it reads, never where the data comes from — it fetches nothing.
+**Data and child blocks:** page-level `query:` (or `fetch:`) is available to all blocks including children, and each child resolves data independently through the page → site hierarchy. If a child needs data no ancestor declares, give it its own in its frontmatter (`query: articles`, or `fetch:`). Its `meta.js` `data:` declares the shape it reads, never where the data comes from — it fetches nothing.
 
 **SSG:** insets, `<ChildBlocks>`, and `<Visual>` all render correctly during prerender. Inset components using React hooks internally trigger prerender warnings — expected and harmless; the page renders correctly client-side.
 
@@ -1773,7 +1773,7 @@ Content-less containers appear as group nodes (`hasContent: false`) — use `nav
 
 ### Data
 
-A component on a page with a `data:` or `fetch:` declaration automatically receives that data in `content.data.{key}` — no opt-in in `meta.js`.
+A component on a page with a `query:` or `fetch:` declaration automatically receives that data in `content.data.{key}` — no opt-in in `meta.js`.
 
 **Bound collections always arrive as arrays.** On a list page, `content.data.articles` is the full collection. On a parametric page (`[slug]/`), the matched record is delivered under the *same* key as a single-element array — the detail section reads `content.data.articles[0]`. When nothing matches, the key is `[]`. The runtime never coerces to a single object and never synthesizes a singular key.
 
@@ -1831,7 +1831,7 @@ A backend with its own base URL, headers, wire or query language is a **transpor
 # site.yml
 fetcher:
   transports:
-    articles: acme                   # a foundation-registered transport handles `data: articles`
+    articles: acme                   # a foundation-registered transport handles `query: articles`
     events: default                  # explicitly route back to the default fetcher
   acme:                              # binding config that transport reads
     apiKey: pk_public_123
