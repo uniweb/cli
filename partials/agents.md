@@ -857,7 +857,7 @@ A bare string is a path under `entities/`, naming one file or matching many.
     - article/2025-*.md
 ```
 
-A query then slices it with `where: { path: { under: 'archive' } }`. An entity belongs to one folder; if you want a computed subset, that is a query, not a second placement.
+A query reads one branch with `scope: archive` — the folder and everything inside it (the older `where: { path: { under: … } }` is refused by the build). An entity belongs to one folder; if you want a computed subset, that is a query, not a second placement.
 
 **`queries.yml` — how content is reached.** A bare map of name → query. A query names a schema and the published records of that schema are its rows:
 
@@ -897,9 +897,11 @@ pages/blog/
 
 `entities/article/design-tips.md` becomes `/blog/design-tips`. The section inside `[slug]/` needs no special markdown — the matched record is delivered to it. Generated pages are excluded from navigation menus.
 
+**Which query the URL narrows — the page's route query:** the `[slug]` page's own `data:`, else its parent page's (the usual shape, above), else `site.yml`'s; if none declares one, the query its sections all declare. The first query of that level wins. Every section the route query reaches gets the one record; a section declaring a *different* query of its own gets that query as declared. The folder name says what the URL segment matches: `[slug]` the record's handle (`$name`, which compiled records carry — equal to their `slug`), `[uuid]` its `$uuid`, any other `[name]` the record's own field of that name. A folder inside `[slug]/` (`[slug]/cv/` → `/blog/:slug/cv`) is a parametric page too, reading the record when `[slug]/page.yml` declares the query. `[dir]` and `[path]` are refused as folder names, and so is any folder inside `[...path]/`.
+
 > **The record arrives as a single-element array under the query key** — `content.data.recent[0]`, not `content.data.article`. The runtime never coerces it to an object and never synthesizes a singular key. See *Data* in Part 4.
 
-**Records with URLs of their own shape — `[...path]/`.** A folder named exactly `[...path]` (one fixed spelling) captures the rest of the URL: `/blog/my-post` and `/blog/rust/2025/my-post` both reach it. The capture yields three standard variables — `:path` (the whole capture), `:dir` (everything before the last segment), `:slug` (the last segment, the record's handle) — and the record is still delivered by `slug`, so the section reads `content.data.recent[0]` as before. A record's URL is its folder placement plus its slug (`- folder: rust/2025` in `records.yml` → `/blog/rust/2025/my-post`). A query may bind a part — `scope: :dir` exposes the folder branch, `where: { tag: :dir }` keeps it private — and an unbound variable drops its clause, so one saved query serves the list page and the detail page. Reference: `reference/dynamic-routes.md`.
+**Records with URLs of their own shape — `[...path]/`.** A folder named exactly `[...path]` (one fixed spelling) captures the rest of the URL: `/blog/my-post` and `/blog/rust/2025/my-post` both reach it. The capture yields three standard variables — `:path` (the whole capture), `:dir` (everything before the last segment), `:slug` (the last segment, the record's handle) — and the record is still delivered by its handle, so the section reads `content.data.recent[0]` as before. The same three variables exist under every parametric page: under `[slug]`, `:slug` and `:path` are the segment and `:dir` is empty. A record's URL is its folder placement plus its slug (`- folder: rust/2025` in `records.yml` → `/blog/rust/2025/my-post`). A query may bind a part — `scope: :dir` exposes the folder branch, `where: { tag: :dir }` keeps it private — and an unbound or empty variable drops its clause, so one saved query serves the list page and the parametric page, on a static site and a hosted one alike. Without `scope: :dir` the directory is decoration: the record is found by its handle wherever it sits. Reference: `reference/dynamic-routes.md`.
 
 **Two options for bigger sets:**
 
@@ -1773,7 +1775,7 @@ Content-less containers appear as group nodes (`hasContent: false`) — use `nav
 
 A component on a page with a `data:` or `fetch:` declaration automatically receives that data in `content.data.{key}` — no opt-in in `meta.js`.
 
-**Bound collections always arrive as arrays.** On a list page, `content.data.articles` is the full collection. On a template page (`[slug]/`), the matched record is delivered under the *same* key as a single-element array — the detail section reads `content.data.articles[0]`. When nothing matches, the key is `[]`. The runtime never coerces to a single object and never synthesizes a singular key.
+**Bound collections always arrive as arrays.** On a list page, `content.data.articles` is the full collection. On a parametric page (`[slug]/`), the matched record is delivered under the *same* key as a single-element array — the detail section reads `content.data.articles[0]`. When nothing matches, the key is `[]`. The runtime never coerces to a single object and never synthesizes a singular key.
 
 ```jsx
 function Article({ content, block }) {
