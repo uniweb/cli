@@ -697,7 +697,7 @@ What can actually *read* it depends on where you deploy, because reading it need
 
 The artifacts **your build emits** to describe the public site never name them — `llms.txt`, the per-page `.md` projections, and the search index all describe pages a visitor reads, and a knowledge page's prose was written for the assistant instead. Two settings **outrank** `knowledge:`, so a contradiction resolves toward the narrower reach: `agents.exclude` in `site.yml`, and any `_`-prefixed route segment. *(A host that derives these artifacts itself, rather than serving the ones your build produced, applies its own rules — ask your host what it does with `knowledge:` before relying on it there.)*
 
-Don't confuse it with the visibility flags: `hidden: true` is a **draft** (not published at all), `hideIn` only controls **nav placement** (still reachable by URL), and `knowledge: true` is a **different audience** (never rendered for anyone).
+Don't confuse it with the visibility flags: `hidden: true` is a **draft** (not published at all), `hideIn` only controls **nav placement** (still reachable by URL), and `knowledge: true` is a **different audience** (never rendered for anyone). ⛔ `hidden: true` on `pages/404/` means a **draft 404** — it is not published and the site falls back to the generic `404.html`; an authored 404 needs no flag, since it is never listed in navigation anyway.
 
 **A site can be nothing but knowledge — that is a real and useful shape.** A site is a set of routes; it does not have to have HTML pages. Mark the root `knowledge: true` and every page inherits it, so the site renders nothing at all and exists to *be* an agent: a `/_agent/chat` URL that a web app, a mobile app, or someone else's backend sends requests to.
 
