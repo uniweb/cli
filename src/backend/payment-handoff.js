@@ -9,12 +9,27 @@
  * the answer.
  *
  * ⛔ THERE IS NO PRE-FLIGHT, AND ADDING ONE BACK IS A REGRESSION. A
- * `GET …/can-go-live` probe used to run before go-live; it called a route no
- * backend serves, and it folded every failure — 404 included — into
- * "proceed". A check that answers "fine" when it cannot reach the server is not
- * a check, and it made the CLI assume a posture it has no business assuming. A
- * pre-flight also cannot be authoritative: the backend re-evaluates at publish
- * time regardless, so a second asker is a second producer of one decision.
+ * `can-go-live` probe used to run before go-live, and it folded every failure —
+ * 404 included — into "proceed". A check that answers "fine" when it cannot
+ * reach the server is not a check, and it made the CLI assume a posture it has no
+ * business assuming. A pre-flight also cannot be authoritative: the backend
+ * re-evaluates at publish time regardless, so a second asker is a second producer
+ * of one decision — which is the reason that would stand even if the probe had
+ * worked.
+ *
+ * ⚠️ **THIS COMMENT USED TO SAY THE PROBE "called a route no backend serves".
+ * That was FALSE, corrected 2026-09-12.** What it called was
+ * `/dev/site/{uuid}/can-go-live` — and the 404 came from the PATH being wrong,
+ * not from the capability being absent. So the probe never worked at any version
+ * that shipped it, and every failure was swallowed by the fold above, which is
+ * exactly why nobody noticed.
+ *
+ * ⭐ Kept as a warning about the SHAPE of the old justification, not just the
+ * fact: a correct rule was resting on a claim about another system that this
+ * repo cannot see, and the claim was wrong. The rule survives because its real
+ * reasons are local — the fold, and the second-producer argument. **If you find
+ * yourself defending a rule here with an assertion about what a server does,
+ * check it or drop it.**
  *
  * WHAT THE CLI KNOWS ABOUT PAYMENT: nothing. It opens whatever settlement URL
  * the backend hands it, VERBATIM — provider-agnostic, and route-agnostic. The
