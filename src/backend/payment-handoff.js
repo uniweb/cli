@@ -140,10 +140,15 @@ export function readPaymentRefusal({ status, contentType = '', body = '' } = {})
   // key for every reason, which is what lets a reason we have never heard of still
   // reach its remedy.
   //
-  // ⚖️ `settlement.url` is the older shape and is still read. Not an alias we
-  // maintain: it is what a backend that has not moved yet still serves, and
-  // dropping the read would take away a door those deployments have today. New
-  // code never emits it and nothing here prefers it.
+  // ⚖️ `settlement.url` is the older shape and is still read, as a DEFENSIVE
+  // read and nothing more.
+  //
+  // ⛔ **This comment used to justify it as "what a backend that has not moved yet
+  // still serves". That is unverified and probably false** — corrected 2026-09-12,
+  // after the backend searched its whole tree and reported serving neither this
+  // nor `remedy_url` on any route. ⇒ Keep the read (it costs nothing and a door
+  // withheld is worse than a door read twice); do not repeat the claim about who
+  // serves it. The current contract is `remedy_url`, one key for every reason.
   const legacy = problem.settlement
   const candidate =
     (typeof problem.remedy_url === 'string' && problem.remedy_url) ||
