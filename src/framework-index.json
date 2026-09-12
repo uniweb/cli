@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-12T17:35:34.207Z",
+  "generatedAt": "2026-09-12T22:47:22.112Z",
   "packages": {
     "@uniweb/api": {
       "version": "0.3.3",
@@ -10,7 +10,7 @@
       ]
     },
     "@uniweb/build": {
-      "version": "0.47.0",
+      "version": "0.47.1",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -34,7 +34,7 @@
       "deps": []
     },
     "@uniweb/core": {
-      "version": "0.26.1",
+      "version": "0.26.2",
       "path": "framework/core",
       "deps": [
         "@uniweb/semantic-parser",
@@ -82,7 +82,7 @@
       ]
     },
     "@uniweb/runtime": {
-      "version": "0.20.3",
+      "version": "0.21.0",
       "path": "framework/runtime",
       "deps": [
         "@uniweb/core",
