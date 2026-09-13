@@ -876,6 +876,10 @@ You can keep the same declarations under `queries:` in `site.yml` instead, if yo
 
 **Show a query on a page** with `query:` in `page.yml` or a section's frontmatter (the whole result), or `fetch:` for anything more — a `limit`, a `where`. A list — `query: [team, articles]` — declares several, each arriving under its own `content.data` key. `query:` takes names only; `data:`, its old name, is now an error.
 
+**Who receives it:** a section's own declaration reaches that section; a page's, every section on the page; a parent page's, the sections of the pages directly under it. **The site is the root page:** `query:` in `site.yml` reaches the layout areas (header, footer, …) and the sections of top-level pages — the homepage included — and no page further down. A section on `/docs/setup` that needs site-wide data names the query itself.
+
+**A fetch always names a query.** A string in `fetch:` is a query name: `fetch: team` is `fetch: { query: team }`, and `fetch: [team, articles]` is a list of those. A fetch never names a file — `/data/<query>.json` is what the build generates from a query for a site with no backend, and writing that path in a `fetch:` stops the build. That is what keeps a site portable: name the query, debug locally against the generated data, publish, and the same page reads live records from the host with nothing changed.
+
 **A `fetch:` narrows its query, never widens it:** its `where` must hold beside the query's, and its `sort` and `limit` replace the query's (a larger `limit` is fine). That is the whole list — `scope` belongs to the query, and the build stops on a `fetch:` that carries one; for another folder branch, declare another query. A `limit` is how many a list shows, never which records exist: every record the query selects compiles and gets its detail page. Two entries under one key at one level: the first is used, and the build warns.
 
 ```yaml
@@ -899,7 +903,7 @@ pages/blog/
 
 `entities/article/design-tips.md` becomes `/blog/design-tips`. The section inside `[slug]/` needs no special markdown — the matched record is delivered to it. Generated pages are excluded from navigation menus.
 
-**Which query the URL narrows — the page's route query:** the `[slug]` page's own `query:`, else its parent page's (the usual shape, above), else `site.yml`'s; if none declares one, the query its sections all declare. The first query of that level wins. Every section the route query reaches gets the one record; a section declaring a *different* query of its own gets that query as declared. The folder name says what the URL segment matches: `[slug]` the record's handle (`$name`, which compiled records carry — equal to their `slug`), `[uuid]` its `$uuid`, any other `[name]` the record's own field of that name — and when that field holds several values, **any member** matches (the record's own link is its first value). Routing by a field that is not unique picks one record and which one is not guaranteed; the build warns. A folder inside `[slug]/` (`[slug]/cv/` → `/blog/:slug/cv`) is a parametric page too, about the same record: its route query is the `[slug]` page's, wherever that is declared, and a query `cv/` declares itself arrives under its own key. **A section chooses how it uses the page's record with `current:`** on its own `fetch:` under the route query's key — `only` (the default: the record, as a list of one), `exclude` (the others: "related"), `include` (all of them: a pager) — e.g. `fetch: { query: recent, current: exclude, limit: 3 }`, where `limit` counts the others. `refine: true` / `detail: false` are retired and stop the build. `[dir]` and `[path]` are refused as folder names, and so is any folder inside `[...path]/`.
+**Which query the URL narrows — the page's route query:** the `[slug]` page's own `query:`, else its parent page's (the usual shape, above), else `site.yml`'s (for a top-level `pages/[slug]/` only — the site's reaches no deeper page); if none declares one, the query its sections all declare. The first query of that level wins. Every section the route query reaches gets the one record; a section declaring a *different* query of its own gets that query as declared. The folder name says what the URL segment matches: `[slug]` the record's handle (`$name`, which compiled records carry — equal to their `slug`), `[uuid]` its `$uuid`, any other `[name]` the record's own field of that name — and when that field holds several values, **any member** matches (the record's own link is its first value). Routing by a field that is not unique picks one record and which one is not guaranteed; the build warns. A folder inside `[slug]/` (`[slug]/cv/` → `/blog/:slug/cv`) is a parametric page too, about the same record: its route query is the `[slug]` page's, wherever that is declared, and a query `cv/` declares itself arrives under its own key. **A section chooses how it uses the page's record with `current:`** on its own `fetch:` under the route query's key — `only` (the default: the record, as a list of one), `exclude` (the others: "related"), `include` (all of them: a pager) — e.g. `fetch: { query: recent, current: exclude, limit: 3 }`, where `limit` counts the others. `refine: true` / `detail: false` are retired and stop the build. `[dir]` and `[path]` are refused as folder names, and so is any folder inside `[...path]/`.
 
 > **The record arrives as a single-element array under the query key** — `content.data.recent[0]`, not `content.data.article`. The runtime never coerces it to an object and never synthesizes a singular key. See *Data* in Part 4.
 
@@ -907,7 +911,7 @@ pages/blog/
 
 **Two options for bigger sets:**
 
-`deferred: [body]` strips heavy fields from the list payload — cards stay light, while a `[slug]` page still receives the full record automatically and other components fetch on demand via `useEntityDetail`. For a remote source, add `detailUrl: /api/articles/{slug}` so the framework knows how to fetch one full record; file-based records emit per-record files at `/data/<name>/<slug>.json` and need no configuration.
+`deferred: [body]` strips heavy fields from the list payload — cards stay light, while a `[slug]` page still receives the full record automatically and other components fetch on demand via `useEntityDetail`. File-based records emit per-record files at `/data/<name>/<slug>.json` and need no configuration; an external query names its one-record request with `record:` instead (*Fetching from other sources* in Part 4).
 
 `queryable:` declares which fields a reader may filter on, with enough metadata for the foundation to render controls:
 
@@ -1610,7 +1614,7 @@ export default function Grid({ block, params }) {
 
 Each child is a regular section with its own type, params, and content — and you're in the middle: wrap each child, filter by type, reorder, add container classes. The author decides *what* goes in the grid; your component decides *how* it renders. Tomorrow the author can swap a child for a different section type with no code change, and your components stay reusable wherever child sections are accepted.
 
-**Data and child blocks:** page-level `query:` (or `fetch:`) is available to all blocks including children, and each child resolves data independently through the page → site hierarchy. If a child needs data no ancestor declares, give it its own in its frontmatter (`query: articles`, or `fetch:`). Its `meta.js` `data:` declares the shape it reads, never where the data comes from — it fetches nothing.
+**Data and child blocks:** page-level `query:` (or `fetch:`) is available to all blocks including children, and each child resolves data independently through the page → parent page → site hierarchy (the site's only on a top-level page). If a child needs data no ancestor declares, give it its own in its frontmatter (`query: articles`, or `fetch:`). Its `meta.js` `data:` declares the shape it reads, never where the data comes from — it fetches nothing.
 
 **SSG:** insets, `<ChildBlocks>`, and `<Visual>` all render correctly during prerender. Inset components using React hooks internally trigger prerender warnings — expected and harmless; the page renders correctly client-side.
 
@@ -1669,7 +1673,7 @@ Layouts are full components with their own `params` in `meta.js`, not just struc
 
 Two optional keys tune how areas behave across a navigation. `transitions` renames or opts regions out of per-area view transitions (`{ left: null }`, or `false` for the whole layout). `layers` sets which area paints on top — every area is stacked above the body by default, so a fixed header works without declaring anything, but areas are equal to each other, so a layout whose chrome overlaps says which wins: `layers: { header: 2, left: 1 }`. Both take an object to override per region, or `false` to opt out. **A `z-index` inside an area cannot lift it past another area** — each area is its own stacking context — so reach for `layers` rather than a bigger number, and for `<Overlay>` when a modal needs to escape the area entirely.
 
-**Layout content** lives in `site/layout/` — `header.md`, `footer.md` for the default layout, or a named subdirectory (`site/layout/marketing/`) for named layouts. Named subdirectories are self-contained — no inheritance. Cascade: `page.yml` → `folder.yml` → `site.yml` → foundation `defaultLayout` → `"default"`. The structure alone decides what an entry is: every folder directly under `layout/` is a named layout (its name matched regardless of case), and an area with several sections is a folder inside a layout's folder — `site/layout/default/header/1-topbar.md` for the default layout. An area has no `page.yml`; its sections render in filename order.
+**Layout content** lives in `site/layout/` — `header.md`, `footer.md` for the default layout, or a named subdirectory (`site/layout/marketing/`) for named layouts. Named subdirectories are self-contained — no inheritance. Cascade: `page.yml` → `folder.yml` → `site.yml` → foundation `defaultLayout` → `"default"`. The structure alone decides what an entry is: every folder directly under `layout/` is a named layout (its name matched regardless of case and of a trailing `Layout` — `site/layout/docs/` serves the foundation's `DocsLayout`), and an area with several sections is a folder inside a layout's folder — `site/layout/default/header/1-topbar.md` for the default layout. An area has no `page.yml`; its sections render in filename order.
 
 Layout sections are regular section types — they support the full content shape, including tagged data blocks, lists, links, and items. The only difference is they render on every page. Each content category takes a different role:
 
@@ -1817,17 +1821,30 @@ fetch:
   limit: 3
 ```
 
-**Lean lists with `deferred:`.** A query over records with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]`. The cascade payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json` (file-based records) or fetched from an author-declared `detailUrl:` (API-backed). On dynamic-route pages the focused record's full data is delivered automatically; elsewhere components fetch on demand via `useEntityDetail`. The hook is safe to call on any query: when there is no separate detail source it returns the record you passed in, because nothing was stripped from it.
+**Lean lists with `deferred:`.** A query over records with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]`. The cascade payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json`. (An external query declares no `deferred:` — its whole record comes from `record:`, below.) On dynamic-route pages the focused record's full data is delivered automatically; elsewhere components fetch on demand via `useEntityDetail`. The hook is safe to call on any query: when there is no separate detail source it returns the record you passed in, because nothing was stripped from it.
 
 **Component-side fetching.** When a component genuinely needs to fetch on its own (a search box, "load more", a lazy popover), use the kit hooks — `useFetched`, `useCacheEntry`, `useEntityDetail`. They share the framework's cache and dispatcher with declarative fetches; same-key requests dedupe automatically.
 
-**Validate before shipping.** `uniweb validate` checks file-based data against your declared schemas — missing required fields, type/enum/format mismatches, nested fields. Warns by default; `--strict` for a non-zero CI exit. Distinct from `uniweb doctor` (project structure): `validate` checks your *data* against the schemas you *declared*. Remote (`url:`), `ref`/`options`, and rich `sections`-form inputs are reported deferred.
+**Validate before shipping.** `uniweb validate` checks file-based data against your declared schemas — missing required fields, type/enum/format mismatches, nested fields. Warns by default; `--strict` for a non-zero CI exit. Distinct from `uniweb doctor` (project structure): `validate` checks your *data* against the schemas you *declared*. External queries (`url:`), `ref`/`options`, and rich `sections`-form inputs are reported deferred.
 
 ### Fetching from other sources (`fetcher:`)
 
-A site isn't limited to file-based records. The default fetcher also reads a plain JSON `url:` — GET, or `method: POST` with a `body:`, an optional `transform:` dot-path, the `detail:` forms for a record — and evaluates `where` / `sort` / `limit` in the browser over what arrived. A site published to a Uniweb host reads the host's records with no configuration at all.
+A site isn't limited to its own records. A public, keyless JSON API is an **external query** — a query with `url:`, declared beside the others and named by pages the same way (`query: posts`):
 
-A backend with its own base URL, headers, wire or query language is a **transport**: a named `{ resolve, cacheKey? }` exported by the foundation (or an extension), which the site selects per schema in `fetcher:` — the only thing that block is for:
+```yaml
+# queries.yml
+posts:
+  url: https://api.example.com/posts
+  transform: data.items                    # dot-path to the records in the response
+  record:                                  # one whole post, for a [id] page
+    url: https://api.example.com/posts/{id}
+```
+
+It also takes `method: POST` with a `body`, `where` / `sort` / `limit` (evaluated over what arrived, after `transform`) and `queryable`. `record:` takes `url`, `method`, `body` and `transform`: `url` and `method` default to the query's, `body` and `transform` never carry over, and a placeholder named by the page's folder (`{id}` for `[id]`, `{slug}` for `[slug]`) is its URL segment. `schema`, `scope`, `deferred`, `excerpt`, `route` and `path` are refused beside `url:` — they describe the site's own records. The visitor's browser fetches an external query (a `fetch:` with `prerender: true` makes the build fetch it instead); it is never asked of a host's records service and compiles no `/data` file. On a `[id]` page the list still decides which records exist — `record:` fetches the one it found, whole. A site published to a Uniweb host reads the host's records with no configuration at all.
+
+⛔ A `fetch:` never carries a source: `path`, `url`, `method`, `body`, `transform`, `detail` and `scope` on a binding stop the build. The `detail:` forms (`rest`, `query`, a URL pattern) are now an external query's `record:`, and `detailUrl:` is `record.url`.
+
+A backend that needs a key, headers, paging, its own wire or query language is a **transport**: a named `{ resolve, cacheKey? }` exported by the foundation (or an extension), which the site selects per data key in `fetcher:` — the only thing that block is for:
 
 ```yaml
 # site.yml
@@ -1843,11 +1860,11 @@ fetcher:
 
 ⛔ `fetcher.baseUrl`, `headers`, `envelope`, `supports` and `request.*` are **retired**: a third party's conventions belong in a transport, not in the runtime every site loads. The build warns once and ignores them.
 
-> **Never put secrets in `site.yml`** — every value in it is public to the browser. Sites needing private credentials proxy through the same origin at the deployment layer, so the site fetches `/api/…` and the proxy attaches the credential server-side.
+> **Never put secrets in `site.yml` or `queries.yml`** — every value in them is public to the browser. Sites needing private credentials proxy through the same origin at the deployment layer, so the site fetches `/api/…` and the proxy attaches the credential server-side.
 
 **Failures are visible, not empty:** a fetch that failed leaves its key ABSENT from `content.data` and names the message on `block.dataError[key]`; it is never delivered as `[]`, which means "no records". The page still renders — a section reads `dataError` to tell the two apart.
 
-When a plain `url:` is enough and when a transport is the answer: `development/data-sources.md`.
+When an external query is enough and when a transport is the answer: `development/data-sources.md`.
 
 Full model: `reference/data-fetching.md`. Where-object format with examples: `authoring/predicates.md`.
 
