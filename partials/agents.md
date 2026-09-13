@@ -876,6 +876,8 @@ You can keep the same declarations under `queries:` in `site.yml` instead, if yo
 
 **Show a query on a page** with `query:` in `page.yml` or a section's frontmatter (the whole result), or `fetch:` for anything more — a `limit`, a `where`. A list — `query: [team, articles]` — declares several, each arriving under its own `content.data` key. `query:` takes names only; `data:`, its old name, is now an error.
 
+**A `fetch:` narrows its query, never widens it:** its `where` must hold beside the query's, and its `sort` and `limit` replace the query's (a larger `limit` is fine). That is the whole list — `scope` belongs to the query, and the build stops on a `fetch:` that carries one; for another folder branch, declare another query. A `limit` is how many a list shows, never which records exist: every record the query selects compiles and gets its detail page. Two entries under one key at one level: the first is used, and the build warns.
+
 ```yaml
 # pages/blog/page.yml          |   # a section on the homepage
 title: Blog                    |   ---
