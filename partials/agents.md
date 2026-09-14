@@ -913,7 +913,7 @@ pages/blog/
 
 **Two options for bigger sets:**
 
-`deferred: [body]` strips heavy fields from the list payload — cards stay light, while a `[slug]` page still receives the full record automatically and other components fetch on demand via `useEntityDetail`. File-based records emit per-record files at `/data/<name>/<slug>.json` and need no configuration; an external query names its one-record request with `record:` instead (*Fetching from other sources* in Part 4).
+`deferred: [body]` strips heavy fields from the list payload — cards stay light, while a `[slug]` page still receives the full record automatically and other components fetch the whole record on demand with `useWholeRecord`. File-based records emit per-record files at `/data/<name>/<slug>.json` and need no configuration; an external query names its one-record request with `record:` instead (*Fetching from other sources* in Part 4).
 
 `queryable:` declares which fields a reader may filter on, with enough metadata for the foundation to render controls:
 
@@ -1039,7 +1039,7 @@ Nothing to install — the import brings the plugin with it. **Skip the import a
 **Documentation shells:** `useHeadings()` (the page's headings + the one being read, derived from content so it prerenders), `website.getBranchHierarchy({ route, for })` (the page tree for one branch). Kit ships no ready-made layout — a layout is your foundation's design; write it in `src/layouts/` and use these for the behaviour.
 **Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`
 **Theming data:** `useThemeData()`, `useColorContext(block)`
-**Data fetching:** `useFetched`, `useCacheEntry`, `useEntityDetail`
+**Data fetching:** `useFetched`, `useCacheEntry`, `useWholeRecord`
 **Forms:** `useFormValues` (an author-designed form's state), `valueAt(values, path)`, `useFormSubmit`, `submitForm`, `resolveSubmitTarget` — see *Forms* below
 **Utilities:** `cn()`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`, `getLocaleLabel(locale)`
 **Other styled:** `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
@@ -1823,9 +1823,9 @@ fetch:
   limit: 3
 ```
 
-**Lean lists with `deferred:`.** A query over records with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]`. The cascade payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json`. (An external query declares no `deferred:` — its whole record comes from `record:`, below.) On dynamic-route pages the focused record's full data is delivered automatically; elsewhere components fetch on demand via `useEntityDetail`. The hook is safe to call on any query: when there is no separate detail source it returns the record you passed in, because nothing was stripped from it.
+**Lean lists with `deferred:`.** A query over records with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]`. The cascade payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json`. (An external query declares no `deferred:` — its whole record comes from `record:`, below.) On dynamic-route pages the focused record's full data is delivered automatically; elsewhere components fetch the whole record on demand with `useWholeRecord(record, { query })`. The hook is safe to call on any query: when the query has no separate source for the whole record it returns the record you passed in, because nothing was stripped from it.
 
-**Component-side fetching.** When a component genuinely needs to fetch on its own (a search box, "load more", a lazy popover), use the kit hooks — `useFetched`, `useCacheEntry`, `useEntityDetail`. They share the framework's cache and dispatcher with declarative fetches; same-key requests dedupe automatically.
+**Component-side fetching.** When a component genuinely needs to fetch on its own (a search box, "load more", a lazy popover), use the kit hooks — `useFetched`, `useCacheEntry`, `useWholeRecord`. They share the framework's cache and dispatcher with declarative fetches; same-key requests dedupe automatically.
 
 **Validate before shipping.** `uniweb validate` checks file-based data against your declared schemas — missing required fields, type/enum/format mismatches, nested fields. Warns by default; `--strict` for a non-zero CI exit. Distinct from `uniweb doctor` (project structure): `validate` checks your *data* against the schemas you *declared*. External queries (`url:`), `ref`/`options`, and rich `sections`-form inputs are reported deferred.
 
