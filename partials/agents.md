@@ -538,7 +538,7 @@ Sites can adjust these or add named styles in `theme.yml`'s `inline:` section. O
 
 Fenced code serves three purposes depending on its info string: `yaml:`/`json:` for data, `md:` for a named kind of prose (see *Concept blocks*), and a bare language for a code sample.
 
-**Tagged data blocks** — structured data parsed into JS objects. The tag is the key in `content.data`; the format (`yaml`/`yml`/`json`) is a serialization format, not a display language.
+**Tagged data blocks** — structured data parsed into JS objects. The tag is the key in `content.data` — for a section whose component declares that key in `meta.js` `data:`; the format (`yaml`/`yml`/`json`) is a serialization format, not a display language.
 
 ````markdown
 ```yaml:form
@@ -549,7 +549,7 @@ submitLabel: Send
 ```
 ````
 
-→ `content.data?.form` = `{ fields: [...], submitLabel: "Send" }`
+→ `content.data?.form` = `{ fields: [...], submitLabel: "Send" }`, when the component declares `data: { form: … }`. A block under a key the component does not declare stays out of `content.data` (the dev console says so) and is still in `content.sequence`.
 
 **Code snippets** — display content with a language for syntax highlighting, collected in `content.snippets` as `[{ language, code }]`. Filter with `content.snippets.filter(s => s.language === 'css')`.
 
@@ -599,7 +599,7 @@ Markdown lists model nav, menus, and grouped links. Each list item is a full con
 ```
 ````
 
-Access: `content.data?.nav` — an array of `{ label, href, icon, text, children, target }`. Components can support both modes: use `content.data?.nav` when provided, fall back to `website.getPageHierarchy()`. Full pattern: `reference/navigation-patterns.md`.
+Access: `content.data?.nav`, with `data: { nav: {} }` in the component's `meta.js` — an array of `{ label, href, icon, text, children, target }`. Components can support both modes: use `content.data?.nav` when provided, fall back to `website.getPageHierarchy()`. Full pattern: `reference/navigation-patterns.md`.
 
 ### Section backgrounds
 
@@ -874,7 +874,7 @@ team:
 
 You can keep the same declarations under `queries:` in `site.yml` instead, if you would rather have one file.
 
-**Show a query on a page** with `query:` in `page.yml` or a section's frontmatter (the whole result), or `fetch:` for anything more — a `limit`, a `where`. A list — `query: [team, articles]` — declares several, each arriving under its own `content.data` key. `query:` takes names only; `data:`, its old name, is now an error.
+**Show a query on a page** with `query:` in `page.yml` or a section's frontmatter (the whole result), or `fetch:` for anything more — a `limit`, a `where`. A list — `query: [team, articles]` — declares several, each filling its own key in the sections whose components declare it. `query:` takes names only; `data:`, its old name, is now an error.
 
 **Who receives it:** a section's own declaration reaches that section; a page's, every section on the page; a parent page's, the sections of the pages directly under it. **The site is the root page:** `query:` in `site.yml` reaches the layout areas (header, footer, …) and the sections of top-level pages — the homepage included — and no page further down. A section on `/docs/setup` that needs site-wide data names the query itself.
 
@@ -907,7 +907,7 @@ pages/blog/
 
 **Which query the URL narrows — the page's route query:** the `[slug]` page's own `query:`, else its parent page's (the usual shape, above), else `site.yml`'s (for a top-level `pages/[slug]/` only — the site's reaches no deeper page); if none declares one, the query its sections all declare. The first query of that level wins. Every section the route query reaches gets the one record; a section declaring a *different* query of its own gets that query as declared. The folder name says what the URL segment matches: `[slug]` the record's handle (`$name`, which compiled records carry — equal to their `slug`), `[uuid]` its `$uuid`, any other `[name]` the record's own field of that name — and when that field holds several values, **any member** matches (the record's own link is its first value). Routing by a field that is not unique picks one record and which one is not guaranteed; the build warns. A folder inside `[slug]/` (`[slug]/cv/` → `/blog/:slug/cv`) is a parametric page too, about the same record: its route query is the `[slug]` page's, wherever that is declared, and a query `cv/` declares itself arrives under its own key. **A section chooses how it uses the page's record with `current:`** on its own `fetch:` — `only` (the default: the record, as a list of one), `exclude` (the others: "related"), `include` (all of them: a pager) — e.g. `fetch: { query: articles, as: related, current: exclude, limit: 3 }`, where `limit` counts the others, all from the query's set. **`current:` follows the query, not the key:** a fetch of the route query gets the record unless it says otherwise, whatever its `as`; a fetch of another query gets that query's records and reads `current:` only when written (`exclude` drops the page's record, `only` keeps just it). `refine: true` / `detail: false` are retired and stop the build. `[dir]` and `[path]` are refused as folder names, and so is any folder inside `[...path]/`.
 
-> **The record arrives as a single-element array under the query key** — `content.data.recent[0]`, not `content.data.article`. The runtime never coerces it to an object and never synthesizes a singular key. See *Data* in Part 4.
+> **The record arrives as a single-element array under the key the component declares** — `content.data.recent[0]` for a component declaring `recent`, `content.data.article[0]` for one declaring `article: '@std/article'` over an `@std/article` query. The runtime never coerces it to an object. See *Data* in Part 4.
 
 **Records with URLs of their own shape — `[...path]/`.** A folder named exactly `[...path]` (one fixed spelling) captures the rest of the URL: `/blog/my-post` and `/blog/rust/2025/my-post` both reach it. The capture yields three standard variables — `:path` (the whole capture), `:dir` (everything before the last segment), `:slug` (the last segment, the record's handle) — and the record is still delivered by its handle, so the section reads `content.data.recent[0]` as before. The same three variables exist under every parametric page: under `[slug]`, `:slug` and `:path` are the segment and `:dir` is empty. A record's URL is its folder placement plus its slug (`- folder: rust/2025` in `records.yml` → `/blog/rust/2025/my-post`). A query may bind a part — `scope: :dir` exposes the folder branch, `where: { tag: :dir }` keeps it private — and an unbound or empty variable drops its clause, so one saved query serves the list page and the parametric page, on a static site and a hosted one alike. Without `scope: :dir` the directory is decoration: the record is found by its handle wherever it sits. Reference: `reference/dynamic-routes.md`.
 
@@ -1534,11 +1534,11 @@ Back up your database **before** running this. It is not reversible.
 
 **Why this instead of a component reference.** ` ```@Alert ` names *which component renders this*, which is a rendering decision sitting in content. `md:warning` names *what the content is* and leaves rendering to the foundation — so the same content works under a different foundation, and an editor can recognize the concept and offer a surface built for it.
 
-**A data block whose value is itself a schema.** An author can design a form in the visual editor; it lands as a ` ```yaml:form ` block at `content.data.form`. A component that renders one is the inverse of every other component: it doesn't declare the fields, it *receives* them and draws whatever it's given — the field names are the author's and aren't knowable when you write `meta.js`.
+**A data block whose value is itself a schema.** An author can design a form in the visual editor; it lands as a ` ```yaml:form ` block at `content.data.form`. A component that renders one is the inverse of every other component: it declares the key (`data: { form: … }`) but not the fields — it *receives* them and draws whatever it's given, since the field names are the author's and aren't knowable when you write `meta.js`.
 
-That makes one distinction worth holding onto. You **may** declare a schema describing the form *definition's envelope* — `title`, `description`, `fields` as a map — and get build-time validation that an authored form is well-formed. What you can't declare is a schema whose fields are *the form's* fields (`name`, `email`, …); that's describing the visitor's answers, which arrive at runtime and belong to a form you've never seen. A tag is a binding, not a gate, so the value reaches you either way — declare a schema only if you want it checked, and only of the envelope.
+That makes one distinction worth holding onto. You **may** declare a schema describing the form *definition's envelope* — `title`, `description`, `fields` as a map — and get build-time validation that an authored form is well-formed. What you can't declare is a schema whose fields are *the form's* fields (`name`, `email`, …); that's describing the visitor's answers, which arrive at runtime and belong to a form you've never seen. Declare the key either way — it is what delivers the block — and give it a schema only if you want it checked, and only of the envelope (`{}` declares the key with none).
 
-**Reading one in a component.** `content.data[tag]` gives you both views: `items` for anything row-shaped (an accordion, a step list), `sequence` when you don't recognize the tag and want to render it faithfully in document order. Both are derived, so nothing is stored twice.
+**Reading one in a component.** Declare the tag as a key (`data: { faq: {} }`), and `content.data[tag]` gives you both views: `items` for anything row-shaped (an accordion, a step list), `sequence` when you don't recognize the tag and want to render it faithfully in document order. Both are derived, so nothing is stored twice.
 
 ```jsx
 function Faq({ content }) {
@@ -1616,7 +1616,7 @@ export default function Grid({ block, params }) {
 
 Each child is a regular section with its own type, params, and content — and you're in the middle: wrap each child, filter by type, reorder, add container classes. The author decides *what* goes in the grid; your component decides *how* it renders. Tomorrow the author can swap a child for a different section type with no code change, and your components stay reusable wherever child sections are accepted.
 
-**Data and child blocks:** page-level `query:` (or `fetch:`) is available to all blocks including children, and each child resolves data independently through the page → parent page → site hierarchy (the site's only on a top-level page). If a child needs data no ancestor declares, give it its own in its frontmatter (`query: articles`, or `fetch:`). Its `meta.js` `data:` declares the shape it reads, never where the data comes from — it fetches nothing.
+**Data and child blocks:** page-level `query:` (or `fetch:`) is available to all blocks including children, and each child resolves data independently through the page → parent page → site hierarchy (the site's only on a top-level page). If a child needs data no ancestor declares, give it its own in its frontmatter (`query: articles`, or `fetch:`). Its `meta.js` `data:` declares the keys it receives and their shapes, never where the data comes from — it fetches nothing.
 
 **SSG:** insets, `<ChildBlocks>`, and `<Visual>` all render correctly during prerender. Inset components using React hooks internally trigger prerender warnings — expected and harmless; the page renders correctly client-side.
 
@@ -1700,7 +1700,7 @@ function Header({ content }) {
   const logo = content.title
   const navItems = content.lists[0] || []
   const cta = content.links[0]
-  const config = content.data?.config
+  const config = content.data?.config        // with `data: { config: {} }` in Header's meta.js
 }
 
 function Footer({ content }) {
@@ -1757,7 +1757,7 @@ const page = website.activePage
 | `block.stableId` / `block.key` | Stable ID from filename or `id:` / unique key across pages — use as React key |
 | `block.path` | Page route this block belongs to |
 | `block.dataLoading` | True while declared data is still resolving |
-| `block.dataError` | `{ <key>: message }` when a declared fetch FAILED, else `null`. A failed key is absent from `content.data` — never `[]`, which means "no records" |
+| `block.dataError` | `{ <key>: message }` when the fetch filling a declared key FAILED, else `null`. A failed key is `null` in `content.data` — never `[]`, which means "no records" |
 
 ```jsx
 // getPageHierarchy(options) →
@@ -1781,9 +1781,9 @@ Content-less containers appear as group nodes (`hasContent: false`) — use `nav
 
 ### Data
 
-A component on a page with a `query:` or `fetch:` declaration automatically receives that data in `content.data.{key}` — no opt-in in `meta.js`.
+**A section receives the keys its component declares in `meta.js` `data:` — and nothing else** (plus any its foundation declares in `main.js` `data:`). A component that reads `content.data.articles` declares `articles`. Each declared key is filled by, in order: a tagged data block in the section; else the fetch that fills it, level by level from the section's own to the site's — a fetch whose `as` (its query's name by default) is the key, or else, **automatic `as`**, the first fetch under an undeclared key whose query's schema is the key's (`@/x` matches any scope's `x`); else `null`. So `data: { related: '@std/article' }` receives an `articles` query under `related`. `as:` on a fetch picks the key when two keys or two fetches share a schema. A fetch that fills none of a section's keys is not requested for it.
 
-**Bound collections always arrive as arrays.** On a list page, `content.data.articles` is the full collection. On a parametric page (`[slug]/`), the matched record is delivered under the *same* key as a single-element array — the detail section reads `content.data.articles[0]`. When nothing matches, the key is `[]`. The runtime never coerces to a single object and never synthesizes a singular key.
+**Bound collections always arrive as arrays.** On a list page, `content.data.articles` is the full collection. On a parametric page (`[slug]/`), the matched record is delivered as a single-element array under the key the component declares — the detail section reads `content.data.articles[0]` (or `content.data.article[0]` with `data: { article: '@std/article' }`). When nothing matches, the key is `[]`; when nothing fills it, `null`. The runtime never coerces to a single object.
 
 ```jsx
 function Article({ content, block }) {
@@ -1795,9 +1795,9 @@ function Article({ content, block }) {
 }
 ```
 
-Components can ignore keys in `content.data` they don't need, the same way unused `params` are ignored. When a record genuinely needs to be a single object, that's the foundation's job — read `[0]`, or reshape once with a `handlers.data` hook.
+When a record genuinely needs to be a single object, that's the foundation's job — read `[0]`, or reshape once with a `handlers.data` hook.
 
-**Declaring schemas.** `meta.js` declares the schema for each `content.data` key with a single `data:` field — there is no separate `schemas:` key. Each value is a **named ref**, an **inline field map**, or an **inline rich-form** (`{ fields: [...] }`, an editor form). Refs resolve on disk at build time, never fetched: `@/name` (this foundation's `schemas/`), `@std/name` (shared standards, from `@uniweb/schemas`), `@org/name` (an org's own `@org/schemas` package). The schema is a hint — it supplies field defaults and drives the editor, not delivery, which is default-on. For an explicit opt-out (rare), set `data: false`.
+**Declaring keys and schemas.** `meta.js` declares each `content.data` key the component receives, with its schema, in a single `data:` field — there is no separate `schemas:` key. Each value is a **named ref**, an **inline field map**, an **inline rich-form** (`{ fields: [...] }`, an editor form), or `{}` for a key with no schema (an external API's records). Refs resolve on disk at build time, never fetched: `@/name` (this foundation's `schemas/`), `@std/name` (shared standards, from `@uniweb/schemas`), `@org/name` (an org's own `@org/schemas` package). A schema supplies field defaults, drives the editor, and lets a fetch of another name fill the key. ⛔ **Delivery was default-on until this change** — every fetched key reached every component, and `data:` was a hint; a component that reads a key it does not declare now receives nothing under it. `data: false` declares nothing, like no `data:`. Keys a foundation's handlers (or a shared hook) read go in `main.js` `data:`, in the same form, and every section receives them.
 
 ```js
 // meta.js
@@ -1864,7 +1864,7 @@ fetcher:
 
 > **Never put secrets in `site.yml` or `queries.yml`** — every value in them is public to the browser. Sites needing private credentials proxy through the same origin at the deployment layer, so the site fetches `/api/…` and the proxy attaches the credential server-side.
 
-**Failures are visible, not empty:** a fetch that failed leaves its key ABSENT from `content.data` and names the message on `block.dataError[key]`; it is never delivered as `[]`, which means "no records". The page still renders — a section reads `dataError` to tell the two apart.
+**Failures are visible, not empty:** a fetch that failed leaves its key `null` in `content.data` and names the message on `block.dataError[key]`; it is never delivered as `[]`, which means "no records". The page still renders — a section reads `dataError` to tell the two apart.
 
 When an external query is enough and when a transport is the answer: `development/data-sources.md`.
 
@@ -2322,7 +2322,7 @@ Content handlers are a transform layer between data assembly and the component, 
 | `content` | After the data handler | `(data, block)` | ProseMirror document, or null | Transform raw content (Loom instantiation, template expansion) |
 | `props` | After parsing, defaults, and guarantees | `(content, params, block)` | `{ content, params }`, or null | Post-process the final shape before the component sees it |
 
-The `content` handler receives `block.parsedContent.data` and reads raw ProseMirror from `block.rawContent`, returning a new ProseMirror document that the framework re-parses through the semantic parser. Returning `null` — or the same reference as `block.rawContent` — signals no change.
+The `content` handler receives `block.parsedContent.data` — the section's declared keys, its foundation's `main.js` `data:` included, so **declare there every key a handler reads** — and reads raw ProseMirror from `block.rawContent`, returning a new ProseMirror document that the framework re-parses through the semantic parser. Returning `null` — or the same reference as `block.rawContent` — signals no change.
 
 > **`block.rawContent` may or may not be wrapped.** Unwrap it defensively — `const doc = block.rawContent?.doc ?? block.rawContent` — before passing it to `instantiateContent` / `instantiateRepeated`. This is the first thing a hand-written handler gets wrong.
 
