@@ -1810,7 +1810,7 @@ export default {
 
 A foundation can route a scope to a plain folder of schema files instead of a package via an optional `schemas.config.js` at its root — `export default { '@acme': '../shared/acme-schemas' }`. A routed scope wins over the package convention; `@/` and `@uniweb` are never routable; a routed scope has no package fallback for a missing schema (it errors rather than silently loading a different definition). Per-schema keys override single entries (most-specific wins: file › directory › package). Worked examples: `development/schemas-in-practice.md`.
 
-**Authoring queries.** Fetch declarations accept `where:` (a where-object predicate), `sort:` (ONE key, e.g. `date desc`), and `limit:`. The framework evaluates them in the browser over the records it fetched; a host that answers queries evaluates the same language at the source; a foundation transport decides for itself. The declaration is identical in every case.
+**Authoring queries.** Fetch declarations accept `where:` (a where-object predicate), `sort:` (ONE key, e.g. `date desc` — text sorts in the page's language, and a record with no value for the key sorts last either way), and `limit:`. The framework evaluates them in the browser over the records it fetched; a host that answers queries evaluates the same language at the source; a foundation transport decides for itself. The declaration is identical in every case.
 
 ```yaml
 # pages/blog/page.yml
