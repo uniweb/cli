@@ -631,26 +631,15 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
 
     const {
       discoverFreeformTranslations,
-      buildFreeformPath,
-      computeSourceHash,
+      freeformSourceIndex,
       getStaleTranslations,
       getOrphanedTranslations
     } = await import('@uniweb/build/i18n')
 
-    // Build source hashes
-    const sourceHashes = {}
-    const validPaths = new Set()
-    for (const page of siteContent.pages || []) {
-      for (const section of page.sections || []) {
-        if (section.stableId && section.content) {
-          const path = buildFreeformPath(section, page)
-          if (path) {
-            validPaths.add(path)
-            sourceHashes[path] = computeSourceHash(section.content)
-          }
-        }
-      }
-    }
+    // What the built content says about its free-form translations — every path the
+    // renderer reads one from, with its source's hash. The build's own check uses this
+    // index, so the two cannot disagree about which files are orphaned or stale.
+    const { validPaths, sourceHashes, canJudge } = freeformSourceIndex(siteContent)
 
     // Find all locales
     const entries = await readdir(freeformPath, { withFileTypes: true })
@@ -671,9 +660,10 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
         ...discovered.records
       ]
 
-      // Check staleness
+      // Check staleness. Orphaned only when the content can judge it — never a record's
+      // translation, nor one for a page whose sections the built content does not carry.
       const stale = await getStaleTranslations(localeDir, sourceHashes)
-      const orphaned = await getOrphanedTranslations(localeDir, validPaths)
+      const orphaned = (await getOrphanedTranslations(localeDir, validPaths)).filter((o) => canJudge(o.path))
 
       const upToDate = allPaths.filter(
         (p) =>
@@ -1247,18 +1237,13 @@ async function runUpdateHash(siteRoot, config, args) {
     const siteContent = JSON.parse(siteContentRaw)
 
     const {
-      computeSourceHash,
       updateHash,
-      buildFreeformPath,
+      freeformSourceIndex,
       getStaleTranslations
     } = await import('@uniweb/build/i18n')
 
-    // Build source hashes map
-    const sourceHashes = buildSourceHashMap(
-      siteContent,
-      buildFreeformPath,
-      computeSourceHash
-    )
+    // The hash of each section's source, at every path the renderer reads its translation from
+    const { sourceHashes } = freeformSourceIndex(siteContent)
 
     if (allStale) {
       // Update all stale translations
@@ -1300,26 +1285,6 @@ async function runUpdateHash(siteRoot, config, args) {
     error(`Failed to update hash: ${err.message}`)
     process.exit(1)
   }
-}
-
-/**
- * Build a map of relative paths to source hashes
- */
-function buildSourceHashMap(siteContent, buildFreeformPath, computeSourceHash) {
-  const sourceHashes = {}
-
-  for (const page of siteContent.pages || []) {
-    for (const section of page.sections || []) {
-      if (section.stableId && section.content) {
-        const path = buildFreeformPath(section, page)
-        if (path) {
-          sourceHashes[path] = computeSourceHash(section.content)
-        }
-      }
-    }
-  }
-
-  return sourceHashes
 }
 
 /**
@@ -1509,22 +1474,18 @@ async function runPrune(siteRoot, config, args) {
     const siteContent = JSON.parse(siteContentRaw)
 
     const {
-      buildFreeformPath,
+      freeformSourceIndex,
       getOrphanedTranslations,
-      removeManifestEntries,
-      discoverFreeformTranslations
+      removeManifestEntries
     } = await import('@uniweb/build/i18n')
 
-    // Build set of valid paths
-    const validPaths = new Set()
-    for (const page of siteContent.pages || []) {
-      for (const section of page.sections || []) {
-        if (section.stableId) {
-          const path = buildFreeformPath(section, page)
-          if (path) validPaths.add(path)
-        }
-      }
-    }
+    // ⛔ THIS DELETES WHAT IT CALLS ORPHANED, so it judges a file exactly as the renderer
+    // reads one (`freeformSourceIndex`, the build's own index): every path a section's
+    // translation is read from — ⛔ until 2026-09-14 only `page-ids/<id>/…` on a page with
+    // an `id`, so a route-addressed translation the page rendered was deleted — and only
+    // what the built content can see: never a record's translation (`entities/…`), and
+    // never one for a page whose sections the content does not carry.
+    const { validPaths, canJudge } = freeformSourceIndex(siteContent)
 
     // Find all locales
     const entries = await readdir(freeformPath, { withFileTypes: true })
@@ -1535,8 +1496,8 @@ async function runPrune(siteRoot, config, args) {
     for (const locale of locales) {
       const localeDir = join(freeformPath, locale)
 
-      // Get orphaned translations
-      const orphaned = await getOrphanedTranslations(localeDir, validPaths)
+      // Get orphaned translations — those the content can judge
+      const orphaned = (await getOrphanedTranslations(localeDir, validPaths)).filter((o) => canJudge(o.path))
 
       if (orphaned.length === 0) continue
 
