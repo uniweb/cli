@@ -487,6 +487,21 @@ async function runInit(siteRoot, config, args) {
 }
 
 /**
+ * Which translations `status` and `audit` read: the page strings, or — with
+ * `--records-only` (or `--records`) — the record strings, in `<localesDir>/records/`,
+ * where `extract` writes the record manifest. Both directories hold the same shapes
+ * (`manifest.json` and one `<locale>.json` per locale), so every reader takes either.
+ *
+ * ⛔ Both commands ignored the flag until 2026-09-14 and reported the page strings.
+ */
+function translationScope(config, args) {
+  const records = args.includes('--records-only') || args.includes('--records')
+  return records
+    ? { records: true, dir: join(config.localesDir, 'records'), noun: 'record manifest', extract: 'uniweb i18n extract --records-only' }
+    : { records: false, dir: config.localesDir, noun: 'manifest', extract: 'uniweb i18n extract' }
+}
+
+/**
  * Status command - show translation coverage
  */
 async function runStatus(siteRoot, config, args) {
@@ -495,18 +510,19 @@ async function runStatus(siteRoot, config, args) {
   const showFreeform = args.includes('--freeform')
   const outputJson = args.includes('--json')
   const byPage = args.includes('--by-page')
+  const scope = translationScope(config, args)
 
   // Check if manifest exists
-  const localesPath = join(siteRoot, config.localesDir)
+  const localesPath = join(siteRoot, scope.dir)
   const manifestPath = join(localesPath, 'manifest.json')
   if (!existsSync(manifestPath)) {
-    error('No manifest found. Run "uniweb i18n extract" first.')
+    error(`No ${scope.noun} found. Run "${scope.extract}" first.`)
     process.exit(1)
   }
 
   // For --missing mode, use auditLocale which returns detailed missing info
   if (showMissing) {
-    await runStatusMissing(siteRoot, config, locale, { outputJson, byPage })
+    await runStatusMissing(siteRoot, config, locale, { outputJson, byPage, scope })
     return
   }
 
@@ -518,7 +534,7 @@ async function runStatus(siteRoot, config, args) {
 
   // Standard status mode
   if (!outputJson) {
-    log(`\n${colors.cyan}Translation Status${colors.reset}\n`)
+    log(`\n${colors.cyan}${scope.records ? 'Record ' : ''}Translation Status${colors.reset}\n`)
   }
 
   if (config.locales.length === 0) {
@@ -546,7 +562,7 @@ async function runStatus(siteRoot, config, args) {
     const localesToCheck = locale ? [locale] : config.locales
 
     const status = await getTranslationStatus(siteRoot, {
-      localesDir: config.localesDir,
+      localesDir: scope.dir,
       locales: localesToCheck
     })
 
@@ -561,10 +577,10 @@ async function runStatus(siteRoot, config, args) {
     const hasMissing = Object.values(status.locales).some((l) => l.missing > 0)
     if (hasMissing) {
       log(
-        `\n${colors.dim}To translate missing strings, edit the locale files in ${config.localesDir}/`
+        `\n${colors.dim}To translate missing strings, edit the locale files in ${scope.dir}/`
       )
       log(
-        `Or use: uniweb i18n status --missing --json > missing.json${colors.reset}`
+        `Or use: uniweb i18n status${scope.records ? ' --records-only' : ''} --missing --json > missing.json${colors.reset}`
       )
     }
   } catch (err) {
@@ -743,8 +759,8 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
  * Status --missing mode - show detailed missing strings
  */
 async function runStatusMissing(siteRoot, config, locale, options = {}) {
-  const { outputJson = false, byPage = false } = options
-  const localesPath = join(siteRoot, config.localesDir)
+  const { outputJson = false, byPage = false, scope = translationScope(config, []) } = options
+  const localesPath = join(siteRoot, scope.dir)
 
   if (config.locales.length === 0) {
     if (outputJson) {
@@ -834,7 +850,8 @@ async function runStatusMissing(siteRoot, config, locale, options = {}) {
       for (const entry of allMissing.slice(0, 20)) {
         const preview = truncateString(entry.source, 60)
         const context = entry.contexts?.[0]
-        const location = context ? `${context.page}:${context.section}` : ''
+        // A page string's context names its page and section; a record string's, its record
+        const location = context ? context.record ?? `${context.page}:${context.section}` : ''
         log(`  ${colors.dim}${entry.hash}${colors.reset} "${preview}"`)
         if (location) {
           log(`    ${colors.dim}→ ${location}${colors.reset}`)
@@ -863,7 +880,7 @@ async function runStatusMissing(siteRoot, config, locale, options = {}) {
 function groupByPage(entries) {
   const grouped = {}
   for (const entry of entries) {
-    const page = entry.contexts?.[0]?.page || 'unknown'
+    const page = entry.contexts?.[0]?.page || entry.contexts?.[0]?.record || 'unknown'
     if (!grouped[page]) grouped[page] = []
     grouped[page].push(entry)
   }
@@ -885,14 +902,15 @@ async function runAudit(siteRoot, config, args) {
   const locale = args.find((a) => !a.startsWith('-'))
   const clean = args.includes('--clean')
   const verbose = args.includes('--verbose') || args.includes('-v')
+  const scope = translationScope(config, args)
 
-  log(`\n${colors.cyan}Translation Audit${colors.reset}\n`)
+  log(`\n${colors.cyan}${scope.records ? 'Record ' : ''}Translation Audit${colors.reset}\n`)
 
   // Check if manifest exists
-  const localesPath = join(siteRoot, config.localesDir)
+  const localesPath = join(siteRoot, scope.dir)
   const manifestPath = join(localesPath, 'manifest.json')
   if (!existsSync(manifestPath)) {
-    error('No manifest found. Run "uniweb i18n extract" first.')
+    error(`No ${scope.noun} found. Run "${scope.extract}" first.`)
     process.exit(1)
   }
 
