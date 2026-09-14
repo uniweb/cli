@@ -84,7 +84,7 @@ Documentation paths in this guide are given bare — `development/creating-compo
 |------|------|
 | Writing page content | `authoring/writing-content.md` |
 | Theming and styling | `authoring/theming.md` |
-| Authoring collections | `authoring/collections.md` |
+| Working with records and queries | `authoring/collections.md` |
 | Where-object predicate format | `authoring/predicates.md` |
 | Data sources / custom transports | `development/data-sources.md` |
 | Building components | `development/creating-components.md` |
@@ -96,6 +96,7 @@ Documentation paths in this guide are given bare — `development/creating-compo
 | Content shape reference | `reference/content-structure.md` |
 | Component metadata (`meta.js`) | `reference/component-metadata.md` |
 | Site configuration | `reference/site-configuration.md` |
+| Queries — everything a query can say | `reference/queries.md` |
 | Data fetching model | `reference/data-fetching.md` |
 | Navigation patterns | `reference/navigation-patterns.md` |
 
@@ -115,7 +116,7 @@ uniweb dev
 
 **Choosing a template.** `--template <name>` gives you a working site plus a foundation you can study and edit. `--template none` gives you the same two packages with no content — the right choice when you're building a foundation from scratch or porting a design. `--blank` gives you an empty workspace and assumes you'll add packages with `uniweb add`; use it only if you already know the framework.
 
-Official templates: `marketing` (tokens, insets, grids, multi-line headings), `docs` (sidebar nav, code highlighting), `dynamic` (live API data, loading states), `international` (i18n, collections, multi-locale routing), `store` (product grids, e-commerce), `academic` (publications, timeline, math), `extensions` (multi-foundation, runtime loading).
+Official templates include `marketing` (tokens, insets, grids, multi-line headings), `docs` (sidebar nav, code highlighting), `blog` (records of the standard `@std/article` schema, a query, a parametric `[slug]` page), `dynamic` (live API data, loading states), `international` (i18n, records, multi-locale routing), `store` (product grids, e-commerce), `academic` (publications, timeline, math), `extensions` (multi-foundation, runtime loading). `uniweb template list` shows them all.
 
 **npm or pnpm.** Projects include both `pnpm-workspace.yaml` and npm workspaces. Replace `pnpm` with `npm` in any command in this guide.
 
@@ -131,7 +132,7 @@ my-project/
 A site is pure content. A foundation is the site's source code — that's why it lives in `src/`. The foundation's `package.json::name` is `src`, symmetric with `site`.
 
 - **Foundation** (`src/`): React components. Those in `sections/` and `layouts/` are *section types* — selectable by authors via `type:`, or used for layout areas. Everything in `components/` and `utils/` is ordinary React and JS: the developer's workbench, not visible to authors.
-- **Site** (`site/`): markdown content and configuration, plus optional collections of structured content and references to external data sources.
+- **Site** (`site/`): markdown content and configuration, plus optional records of structured content and the queries that reach them or an external data source.
 
 **The composition boundary.** Authors compose pages from finished section types — choosing types, writing content, setting params. Developers compose section types from building blocks — importing helpers, using libraries, writing JSX. Two different levels of composition, and the section type is the boundary between them. Don't expose building-block composition to authors; build complete, self-contained section types that handle their own internal structure.
 
@@ -777,7 +778,7 @@ Server-to-server callers are authenticated by other means, arranged with your ho
 
 **Set `seo.baseUrl` if you want absolute links** in the index — without it the links are root-relative, which still works for an agent that arrived via the index. `uniweb doctor` warns when it's unset.
 
-**What's excluded, and it's deliberate:** `seo.noindex` pages, `hidden` pages, `_`-prefixed drafts, and dynamic route templates. An index *describes* pages rather than merely listing them, so an unlinked page would become both discoverable and summarized — which is why these exclusions are load-bearing rather than tidy-up. `noindex` or `hidden` on a **folder** takes the whole branch with it.
+**What's excluded, and it's deliberate:** `seo.noindex` pages, `hidden` pages, `_`-prefixed drafts, and a parametric page's URL pattern (`/blog/:slug`). An index *describes* pages rather than merely listing them, so an unlinked page would become both discoverable and summarized — which is why these exclusions are load-bearing rather than tidy-up. `noindex` or `hidden` on a **folder** takes the whole branch with it.
 
 **Declaring how your content may be used** is a separate axis from whether it may be fetched, and it goes in `seo.robots`:
 
@@ -793,7 +794,7 @@ seo:
 
 That emits a `Content-Signal:` line in `robots.txt`. Declare only what you mean — an omitted signal says nothing, which is not the same as saying no.
 
-### Records, queries and dynamic routes
+### Records, queries and parametric pages
 
 Most content lives in `pages/` — a fixed composition of sections on a fixed set of pages. **The other kind is a set of records: repeating content managed as one file per item**, that pages pull from. Blog posts, team members, products, case studies, bibliographies.
 
@@ -845,7 +846,7 @@ Item frontmatter conventionally uses `title`, `date`, `tags`, `image`, `descript
 
 A bare string is a path under `entities/`, naming one file or matching many.
 
-⚠️ **An empty `records.yml` is not the same as having none.** No file means "leave the published set alone". An empty file means "the folder holds nothing", which REMOVES what is published. The CLI asks before it does that.
+⚠️ **An empty `records.yml` is not the same as having none.** With no file, a build publishes every entity in `entities/`, and `uniweb push` leaves the published set alone. An empty file means "nothing is published": a build publishes none, and a push REMOVES what is published. The CLI asks before it does that.
 
 **Structure is for querying, not for navigation.** Add a `folder:` only when a query needs to ask for a *slice* of the pool rather than all of it — most sites never do:
 
@@ -880,7 +881,7 @@ You can keep the same declarations under `queries:` in `site.yml` instead, if yo
 
 **A fetch always names a query.** A string in `fetch:` is a query name: `fetch: team` is `fetch: { query: team }`, and `fetch: [team, articles]` is a list of those. A fetch never names a file — `/data/<query>.json` is what the build generates from a query for a site with no backend, and writing that path in a `fetch:` stops the build. That is what keeps a site portable: name the query, debug locally against the generated data, publish, and the same page reads live records from the host with nothing changed.
 
-**A query selects a set of records; a `fetch:` takes from that set, never adding to it.** The query's `scope`, `where`, `sort` and `limit` decide which records it selects — its `limit` included: `recent` above is the 10 newest articles. A fetch's `where` keeps the ones that also match, its `sort` re-orders them, and its `limit` takes the first N — never more than the query selects. That is the whole list — `scope` belongs to the query, and the build stops on a `fetch:` that carries one; for another folder branch, declare another query. **Which records get a detail page is the query's to decide, never a fetch's:** each record `recent` selects gets its page, an 11th-newest article gets none, and a list's `limit: 3` still leaves all 10 their pages — so a condition or count that should decide which pages exist belongs on the query. Two entries under one key at one level: the first is used, and the build warns.
+**A query selects a set of records; a `fetch:` takes from that set, never adding to it.** The query's `scope`, `where`, `sort` and `limit` decide which records it selects — its `limit` included: `recent` above is the 10 newest articles. A fetch's `where` keeps the ones that also match, its `sort` re-orders them, and its `limit` takes the first N — never more than the query selects. That is the whole list — `scope` belongs to the query, and the build stops on a `fetch:` that carries one; for another folder branch, declare another query. **Which records get a page is the query's to decide, never a fetch's:** each record `recent` selects gets its page, an 11th-newest article gets none, and a list's `limit: 3` still leaves all 10 their pages — so a condition or count that should decide which pages exist belongs on the query. Two fetches under one key at one level: the first is used, and the build warns.
 
 ```yaml
 # pages/blog/page.yml          |   # a section on the homepage
@@ -890,7 +891,7 @@ query: recent                  |   type: ArticleTeaser
                                |   ---
 ```
 
-**Give each record its own page with a `[slug]/` folder** under the list page:
+**Give each record its own page with a `[slug]/` folder** — a *parametric page*, what other frameworks call a dynamic route — inside the page that names the query:
 
 ```
 pages/blog/
@@ -903,13 +904,13 @@ pages/blog/
 
 `entities/article/design-tips.md` becomes `/blog/design-tips`. The section inside `[slug]/` needs no special markdown — the matched record is delivered to it. Generated pages are excluded from navigation menus.
 
-**Link a card with `item.$route` — never compose the URL.** Every record a query delivers carries `$route`, the URL of the parametric page whose route query is that query (`/blog/design-tips`), wherever the list appears — the list page, the homepage, a sidebar. No page for the query, or no value for the field its URL is built from, means no `$route`, never a broken one. `detailPage: page:<id>` on a fetch links the records to another page instead. `$` marks a field the framework fills, so a record's own `route` field is left alone. ⛔ `route:` on a query is retired and stops the build.
+**Link a card with `item.$route` — never compose the URL.** Every record a query delivers carries `$route`, the URL of the parametric page whose route query is that query (`/blog/design-tips`), wherever the list appears — the query's own page, the homepage, a sidebar. No page for the query, or no value for the field its URL is built from, means no `$route`, never a broken one. `detailPage: page:<id>` on a fetch links the records to another page instead. `$` marks a field the framework fills, so a record's own `route` field is left alone. ⛔ `route:` on a query is retired and stops the build.
 
 **Which query the URL narrows — the page's route query:** the `[slug]` page's own `query:`, else its parent page's (the usual shape, above), else `site.yml`'s (for a top-level `pages/[slug]/` only — the site's reaches no deeper page); if none declares one, the query its sections all declare. The first query of that level wins. Every section the route query reaches gets the one record; a section declaring a *different* query of its own gets that query as declared. The folder name says what the URL segment matches: `[slug]` the record's handle (`$name`, which compiled records carry — equal to their `slug`), `[uuid]` its `$uuid`, any other `[name]` the record's own field of that name — and when that field holds several values, **any member** matches (the record's own link is its first value). Routing by a field that is not unique picks one record and which one is not guaranteed; the build warns. A folder inside `[slug]/` (`[slug]/cv/` → `/blog/:slug/cv`) is a parametric page too, about the same record: its route query is the `[slug]` page's, wherever that is declared, and a query `cv/` declares itself arrives under its own key. **A section chooses how it uses the page's record with `current:`** on its own `fetch:` — `only` (the default: the record, as a list of one), `exclude` (the others: "related"), `include` (all of them: a pager) — e.g. `fetch: { query: articles, as: related, current: exclude, limit: 3 }`, where `limit` counts the others, all from the query's set. **`current:` follows the query, not the key:** a fetch of the route query gets the record unless it says otherwise, whatever its `as`; a fetch of another query gets that query's records and reads `current:` only when written (`exclude` drops the page's record, `only` keeps just it). `refine: true` / `detail: false` are retired and stop the build. `[dir]` and `[path]` are refused as folder names, and so is any folder inside `[...path]/`.
 
 > **The record arrives as a single-element array under the key the component declares** — `content.data.recent[0]` for a component declaring `recent`, `content.data.article[0]` for one declaring `article: '@std/article'` over an `@std/article` query. The runtime never coerces it to an object. See *Data* in Part 4.
 
-**Records with URLs of their own shape — `[...path]/`.** A folder named exactly `[...path]` (one fixed spelling) captures the rest of the URL: `/blog/my-post` and `/blog/rust/2025/my-post` both reach it. The capture yields three standard variables — `:path` (the whole capture), `:dir` (everything before the last segment), `:slug` (the last segment, the record's handle) — and the record is still delivered by its handle, so the section reads `content.data.recent[0]` as before. The same three variables exist under every parametric page: under `[slug]`, `:slug` and `:path` are the segment and `:dir` is empty. A record's URL is its folder placement plus its slug (`- folder: rust/2025` in `records.yml` → `/blog/rust/2025/my-post`). A query may bind a part — `scope: :dir` exposes the folder branch, `where: { tag: :dir }` keeps it private — and an unbound or empty variable drops its clause, so one saved query serves the list page and the parametric page, on a static site and a hosted one alike. Without `scope: :dir` the directory is decoration: the record is found by its handle wherever it sits. Reference: `reference/dynamic-routes.md`.
+**Records with URLs of their own shape — `[...path]/`.** A folder named exactly `[...path]` (one fixed spelling) captures the rest of the URL: `/blog/my-post` and `/blog/rust/2025/my-post` both reach it. The capture yields three standard variables — `:path` (the whole capture), `:dir` (everything before the last segment), `:slug` (the last segment, the record's handle) — and the record is still delivered by its handle, so the section reads `content.data.recent[0]` as before. The same three variables exist under every parametric page: under `[slug]`, `:slug` and `:path` are the segment and `:dir` is empty. A record's URL is its folder placement plus its slug (`- folder: rust/2025` in `records.yml` → `/blog/rust/2025/my-post`). A query may bind a part — `scope: :dir` exposes the folder branch, `where: { tag: :dir }` keeps it private — and an unbound or empty variable drops its clause, so one saved query serves the query's page and its parametric page, on a static site and a hosted one alike. Without `scope: :dir` the directory is decoration: the record is found by its handle wherever it sits. Reference: `reference/dynamic-routes.md`.
 
 **Two options for bigger sets:**
 
@@ -929,7 +930,7 @@ members:
 
 The site declares the *surface*; the foundation reads the metadata, renders matching controls (dropdown, toggle, slider), and composes the predicate when the reader picks values.
 
-Full author guide: `authoring/collections.md`. Predicate operators: `authoring/predicates.md`.
+Full author guide: `authoring/collections.md`. Every key a query takes: `reference/queries.md`. Predicate operators: `authoring/predicates.md`.
 
 ---
 
@@ -1783,7 +1784,7 @@ Content-less containers appear as group nodes (`hasContent: false`) — use `nav
 
 **A section receives the keys its component declares in `meta.js` `data:` — and nothing else** (plus any its foundation declares in `main.js` `data:`). A component that reads `content.data.articles` declares `articles`. Each declared key is filled by, in order: a tagged data block in the section; else the fetch that fills it, level by level from the section's own to the site's — a fetch whose `as` (its query's name by default) is the key, or else, **automatic `as`**, the first fetch under an undeclared key whose query's schema is the key's (`@/x` matches any scope's `x`); else `null`. So `data: { related: '@std/article' }` receives an `articles` query under `related`. `as:` on a fetch picks the key when two keys or two fetches share a schema. A fetch that fills none of a section's keys is not requested for it.
 
-**Bound collections always arrive as arrays.** On a list page, `content.data.articles` is the full collection. On a parametric page (`[slug]/`), the matched record is delivered as a single-element array under the key the component declares — the detail section reads `content.data.articles[0]` (or `content.data.article[0]` with `data: { article: '@std/article' }`). When nothing matches, the key is `[]`; when nothing fills it, `null`. The runtime never coerces to a single object.
+**A query's records always arrive as an array.** On the query's own page, `content.data.articles` holds every record the fetch takes. On a parametric page (`[slug]/`), the record the URL names is delivered as a single-element array under the key the component declares — the section showing it reads `content.data.articles[0]` (or `content.data.article[0]` with `data: { article: '@std/article' }`). When nothing matches, the key is `[]`; when nothing fills it, `null`. The runtime never coerces to a single object.
 
 ```jsx
 function Article({ content, block }) {
@@ -1823,7 +1824,7 @@ fetch:
   limit: 3
 ```
 
-**Lean lists with `deferred:`.** A query over records with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]`. The cascade payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json`. (An external query declares no `deferred:` — its whole record comes from `record:`, below.) On dynamic-route pages the focused record's full data is delivered automatically; elsewhere components fetch the whole record on demand with `useWholeRecord(record, { query })`. The hook is safe to call on any query: when the query has no separate source for the whole record it returns the record you passed in, because nothing was stripped from it.
+**Lean lists with `deferred:`.** A query over records with heavy fields (article bodies, large nested arrays) can declare `deferred: [body]`. The list payload omits those fields; per-record full files are emitted at `/data/<name>/<slug>.json`. (An external query declares no `deferred:` — its whole record comes from `record:`, below.) On a parametric page the record's full data is delivered automatically; elsewhere components fetch the whole record on demand with `useWholeRecord(record, { query })`. The hook is safe to call on any query: when the query has no separate source for the whole record it returns the record you passed in, because nothing was stripped from it.
 
 **Component-side fetching.** When a component genuinely needs to fetch on its own (a search box, "load more", a lazy popover), use the kit hooks — `useFetched`, `useCacheEntry`, `useWholeRecord`. They share the framework's cache and dispatcher with declarative fetches; same-key requests dedupe automatically.
 
@@ -1844,7 +1845,7 @@ posts:
 
 It also takes `method: POST` with a `body`, `where` / `sort` / `limit` (evaluated over what arrived, after `transform`) and `queryable`. `record:` takes `url`, `method`, `body` and `transform`: `url` and `method` default to the query's, `body` and `transform` never carry over, and a placeholder named by the page's folder (`{id}` for `[id]`, `{slug}` for `[slug]`) is its URL segment. `schema`, `scope`, `deferred`, `excerpt` and `path` are refused beside `url:` — they describe the site's own records. The visitor's browser fetches an external query (a `fetch:` with `prerender: true` makes the build fetch it instead); it is never asked of a host's records service and compiles no `/data` file. On a `[id]` page the list still decides which records exist — `record:` fetches the one it found, whole. A site published to a Uniweb host reads the host's records with no configuration at all.
 
-⛔ A `fetch:` never carries a source: `path`, `url`, `method`, `body`, `transform`, `detail` and `scope` on a binding stop the build. The `detail:` forms (`rest`, `query`, a URL pattern) are now an external query's `record:`, and `detailUrl:` is `record.url`.
+⛔ A `fetch:` never carries a source: `path`, `url`, `method`, `body`, `transform`, `detail` and `scope` on a fetch stop the build. The `detail:` forms (`rest`, `query`, a URL pattern) are now an external query's `record:`, and `detailUrl:` is `record.url`.
 
 A backend that needs a key, headers, paging, its own wire or query language is a **transport**: a named `{ resolve, cacheKey? }` exported by the foundation (or an extension), which the site selects per data key in `fetcher:` — the only thing that block is for:
 
@@ -1883,7 +1884,7 @@ search:
 
 | Provider | Answers with | Trade-off |
 |---|---|---|
-| `index` (default) | `search-index.json` + Fuse.js in the browser | Free, works on **any** host including a plain static one, tolerates typos. Contains only what existed at build time. |
+| `index` (default) | `search-index.json`, ranked in the browser | Free, works on **any** host including a plain static one, tolerates typos. Contains only what existed at build time. |
 | `endpoint` | A server-side search API | Can cover records fetched from an API, and can be re-indexed without rebuilding the site. Requires a host that serves one. |
 | *any other name* | A foundation-supplied search transport | Fully open — Typesense, Meilisearch, Pagefind, a vendor API |
 
@@ -1895,7 +1896,7 @@ search:
 
 `endpoint:` is **required** with `provider: endpoint`; omit it and the provider refuses the query rather than guessing a path. It resolves against the site's base path — `/` → `/_search`, `base: /docs/` → `/docs/_search`, a subpath-served site follows its subpath. An absolute `https://…` URL points at another origin. A host that serves the site may offer search itself, supplying the address so the site declares none.
 
-**Results have one shape, whatever the provider.** Always present: `id`, `type`, `route`, `href`, `title`, `pageTitle`, `excerpt`, `snippetHtml`. Provider-optional (`null` when absent): `sectionId`, `anchor`, `description`, `component`, `snippetText`, `matches`, `collection`, `item`. Whether an optional field arrives is a deployment fact, not a content fact — the same site yields `item` from a server provider and `null` from the local index — so guard them: `result.item?.image`.
+**Results have one shape, whatever the provider.** Always present: `id`, `type`, `route`, `href`, `title`, `pageTitle`, `excerpt`, `snippetHtml`. Provider-optional (`null` when absent): `sectionId`, `anchor`, `description`, `component`, `snippetText`, `matches`, `group`, `item`. `type` is `page`, `section` or `record`; on a record hit, `item` holds the record's fields and `group` names the set it came from. Whether an optional field arrives is a deployment fact, not a content fact — the same site yields `item` from a server provider and `null` from the local index — so guard them: `result.item?.image`.
 
 `snippetHtml` is HTML with `<mark>`. Render it through `SafeHtml`, never as text.
 
@@ -2739,8 +2740,8 @@ Source repo (public, cloneable): **https://github.com/uniweb/docs** · any page 
 |---------|--------|
 | `architecture/` | Component Content Architecture — the why behind the patterns in this file |
 | `getting-started/` | What is Uniweb, quickstart, templates |
-| `authoring/` | Writing content, site setup, collections, theming, translations, predicates |
+| `authoring/` | Writing content, site setup, records, theming, translations, predicates |
 | `development/` | Foundations, component patterns, project structures, data, layouts, i18n, migration, schemas |
-| `reference/` | site.yml, page.yml, content structure, meta.js, kit API, navigation, data fetching, CLI, deployment |
+| `reference/` | site.yml, page.yml, content structure, meta.js, kit API, navigation, records, queries, data fetching, parametric pages, CLI, deployment |
 
 The by-task table is in Part 0. For CLI flags, prefer `uniweb <command> --help` over this file — it's always current.
