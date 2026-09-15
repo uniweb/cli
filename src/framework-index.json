@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-15T01:37:31.740Z",
+  "generatedAt": "2026-09-15T03:16:10.815Z",
   "packages": {
     "@uniweb/api": {
       "version": "0.3.6",
@@ -82,7 +82,7 @@
       ]
     },
     "@uniweb/runtime": {
-      "version": "0.26.2",
+      "version": "0.26.3",
       "path": "framework/runtime",
       "deps": [
         "@uniweb/core",
