@@ -150,7 +150,10 @@ export function reportStarter(result, { write } = {}) {
     console.log('')
     console.log(`  ${c.yellow}!${c.reset} Not filled: ${result.unfilled.join(', ')}`)
     console.log(
-      `    ${c.dim}Code blocks and tagged data blocks have no builder yet; a video needs an address we cannot invent.${c.reset}`,
+      `    ${c.dim}\`background\` is frontmatter, not content. A video needs an address we cannot invent.${c.reset}`,
+    )
+    console.log(
+      `    ${c.dim}A \`data\` block needs a schema: a @/ ref resolves at build, and an empty {} declares no shape.${c.reset}`,
     )
   }
 

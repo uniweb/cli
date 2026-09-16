@@ -1808,7 +1808,20 @@ function parseNodeMajor(engines) {
 }
 
 /**
- * Show help for the add command
+ * Show help for the add command.
+ *
+ * ⚠️ CURRENTLY UNREACHABLE, and the second copy of this text is the cost.
+ * `src/index.js` short-circuits ANY `--help` in the args before dispatching
+ * (its comment says why — `deploy --help` used to open a browser), and `add`
+ * has a dedicated block in that file's HELP map, so `printCommandHelp('add')`
+ * always wins and the `args[0] === '--help'` guard above never fires.
+ *
+ * ⛔ Which means a flag documented here and not there is documented nowhere.
+ * Measured 2026-09-16, when `--starter` was added to both: this copy's
+ * unescaped backticks around \`content:\` closed the template literal and broke
+ * the WHOLE module — every `uniweb add` subcommand failed with "missing ) after
+ * argument list" — and `uniweb add --help` printed correctly throughout,
+ * because it never reaches this function.
  */
 function showAddHelp() {
   log(`
@@ -1840,7 +1853,7 @@ ${colors.bright}Extension Options:${colors.reset}
 
 ${colors.bright}Section Options:${colors.reset}
   --foundation <n>   Foundation to add section to (prompted if multiple exist)
-  --starter          Generate starter content from the section's `content:`
+  --starter          Generate starter content from the section's \`content:\`
                      declaration — what an author would begin editing. Works on
                      a section that already exists (nothing is written), and on
                      a new one (the scaffold gets a matching declaration)
