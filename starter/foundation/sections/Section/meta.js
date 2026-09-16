@@ -1,8 +1,6 @@
 export default {
   title: 'Section',
   description: 'A versatile content section for headings, text, and links',
-  category: 'content',
-  purpose: 'Inform',
 
   content: {
     pretitle: 'Eyebrow text',
