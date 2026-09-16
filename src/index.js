@@ -1498,31 +1498,82 @@ ${colors.bright}Options:${colors.reset}
   --platform <name>  (Deprecated alias for --host)
 `,
     add: `
-${colors.cyan}${colors.bright}uniweb add${colors.reset} ${colors.dim}— Add a foundation, site, or extension${colors.reset}
+${colors.cyan}${colors.bright}Uniweb Add${colors.reset}
 
-${colors.bright}Subcommands:${colors.reset}
-  add project [name]      Add a co-located foundation + site pair
-  add foundation [name]   Add a foundation (--from, --path, --project)
-  add site [name]         Add a site (--from, --foundation, --path, --project)
-  add extension <name>    Add an extension (--from, --site, --path)
-  add section <name>      Add a section type to a foundation (--foundation, --starter)
-  add ci                  Add a CI workflow so every push deploys (--host, --target)
+Add projects, foundations, sites, extensions, section types, or CI workflows to your workspace.
 
-${colors.bright}Common options:${colors.reset}
-  --from <template>       Source content from a template
-  --path <dir>            Override default folder location
-  --foundation <name>     Wire site/extension to this foundation (CI-friendly)
-  --site <name>           Wire extension to this site (CI-friendly)
-  --non-interactive       Fail with usage info instead of prompting
+${colors.bright}Usage:${colors.reset}
+  uniweb add project [name] [options]
+  uniweb add foundation [name] [options]
+  uniweb add site [name] [options]
+  uniweb add extension <name> [options]
+  uniweb add section <name> [options]
+  uniweb add ci [options]
 
-${colors.bright}Starter content (add section):${colors.reset}
-  --starter               Generate starter content from the section's
-                          \`content:\` declaration — what an author would begin
-                          editing. Works on an existing section (writes nothing)
-                          and on a new one (the scaffold gets a declaration)
-  --preset <name>         Frontmatter it with this preset's params
-  --write <file>          Write the markdown to a file instead of printing
-  --json                  Emit the structure + ProseMirror doc instead
+${colors.bright}Common Options:${colors.reset}
+  --from <template>  Apply content from a template after scaffolding
+  --path <dir>       Custom directory for the package
+  --non-interactive  Fail with usage info instead of prompting
+
+${colors.bright}Foundation Options:${colors.reset}
+  --project <name>   Group under a project directory (co-located layout)
+
+${colors.bright}Site Options:${colors.reset}
+  --foundation <n>   Foundation to wire to (prompted if multiple exist)
+  --project <name>   Group under a project directory (co-located layout)
+
+${colors.bright}Extension Options:${colors.reset}
+  --site <name>      Site to wire extension URL into
+
+${colors.bright}Section Options:${colors.reset}
+  --foundation <n>   Foundation to add section to (prompted if multiple exist)
+  --starter          Generate starter content from the section's \`content:\`
+                     declaration — what an author would begin editing. Works on
+                     a section that already exists (nothing is written), and on
+                     a new one (the scaffold gets a matching declaration)
+  --preset <name>    Frontmatter the starter content with this preset's params
+  --write <file>     Write the starter markdown to a file instead of printing it
+  --json             Emit the content structure and ProseMirror doc instead
+
+${colors.bright}CI Options:${colors.reset}
+  --host <name>          github-pages | cloudflare-pages | netlify | vercel
+                         (prompted when omitted)
+  --target <what>        site (default) | foundation
+                         'foundation' publishes built foundations at permanent
+                         versioned URLs — the free alternative to the catalog
+  --site <name>          Site the workflow builds (prompted if multiple exist)
+  --foundation <name>    With --target foundation: publish just this one
+  --domain <host>        Custom domain (GitHub Pages: writes CNAME, serves at root)
+  --project-name <name>  Name to register under on the host (default: the
+                         workspace name; Cloudflare Pages project, etc.)
+  --no-previews          Skip the per-PR preview workflow
+  --force                Overwrite an existing workflow file
+
+${colors.dim}Hosts that support PR previews: cloudflare-pages, netlify, vercel.
+GitHub Pages has no preview environment, so it scaffolds a deploy workflow only.${colors.reset}
+
+${colors.bright}Examples:${colors.reset}
+  uniweb add project docs                              # Create docs/foundation/ + docs/site/
+  uniweb add project docs --from academic              # Co-located pair + academic content
+  uniweb add foundation                                # Create ./foundation/ at root
+  uniweb add foundation ui                             # Create ./foundations/ui/
+  uniweb add site                                      # Create ./site/ at root
+  uniweb add site blog --foundation marketing          # Create ./sites/blog/ wired to marketing
+  uniweb add extension effects --site site             # Create ./extensions/effects/
+  uniweb add section Hero                              # Create Hero section type
+  uniweb add section Hero --foundation ui              # Target specific foundation
+  uniweb add section Hero --starter                    # Starter content for an existing Hero
+  uniweb add section Pricing --starter                 # Scaffold Pricing + content that fills it
+  uniweb add section Hero --starter --preset split     # Frontmatter it with the 'split' preset
+  uniweb add section Hero --starter --json             # The structure + ProseMirror, for a script
+  uniweb add foundation --project docs                 # Create ./docs/foundation/ (co-located)
+  uniweb add site --project docs                       # Create ./docs/site/ (co-located)
+  uniweb add ci                                        # Pick a host, add a deploy workflow
+  uniweb add ci --host github-pages --site marketing   # Pick host + site explicitly
+  uniweb add ci --host netlify                         # Deploy + PR-preview workflows
+  uniweb add ci --host vercel --no-previews            # Deploy workflow only
+  uniweb add ci --domain mysite.com                    # Custom domain → writes CNAME + UNIWEB_BASE=/
+  uniweb add ci --target foundation                    # Publish foundations at versioned URLs
 `,
     export: `
 ${colors.cyan}${colors.bright}uniweb export${colors.reset} ${colors.dim}— Export a self-contained site for third-party hosting${colors.reset}
