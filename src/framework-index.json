@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-16T20:57:12.370Z",
+  "generatedAt": "2026-09-16T23:53:23.238Z",
   "packages": {
     "@uniweb/api": {
       "version": "0.3.6",
@@ -110,8 +110,13 @@
       "path": "framework/semantic-parser",
       "deps": []
     },
+    "@uniweb/snapshot": {
+      "version": "0.1.0",
+      "path": "framework/snapshot",
+      "deps": []
+    },
     "@uniweb/templates": {
-      "version": "0.14.5",
+      "version": "0.14.6",
       "path": "framework/templates",
       "deps": []
     },
