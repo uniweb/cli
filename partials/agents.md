@@ -341,7 +341,7 @@ Description paragraph.
 ![Image](./image.jpg)
 ```
 
-Heading levels set *structure* (pretitle, title, subtitle), not font size — the component controls visual sizing. The `#>` label line marks a pretitle explicitly (any number of leading `#`s spells the same label); a smaller ordinary heading directly above the title also becomes the pretitle.
+Heading levels set *structure* (pretitle, title, subtitle), not font size — the component controls visual sizing. Write a pretitle as a `#>` label line — any number of leading `#`s spells the same label, so match the heading you are labelling. A smaller ordinary heading directly above the title is *also* read as a pretitle, which is how files written before label lines keep working; prefer `#>`, because it says what it is wherever it lands rather than depending on what follows it.
 
 **A section with no `type:` renders through the foundation's default section type — a component named `Section`, unless the foundation's `main.js` sets `defaultSection` to something else.** This is what lets a folder of plain markdown with no frontmatter at all become pages: mounted documentation, an imported wiki, anything written before it met this framework. If such content renders blank, the foundation has no `Section` — that, not the markdown, is what to fix.
 
@@ -356,8 +356,9 @@ The semantic parser produces a flat, guaranteed structure. No null checks needed
 ```js
 content = {
   title: '',        // Main heading (string or string[] for multi-line)
-  pretitle: '',     // `#>` label line(s), or smaller headings stacked above
-                    //   the title (string or string[])
+  pretitle: '',     // `#>` label line(s) — also filled by smaller headings
+                    //   stacked above the title, for older content
+                    //   (string or string[])
   subtitle: '',     // Line(s) one step below the title — each further
                     //   one-step descent is another line (string or string[])
   paragraphs: [],   // Text blocks
@@ -401,7 +402,7 @@ Lightning quick.               │  content.items[0].paragraphs[0] = "Lightning 
 Enterprise-grade security.     │  content.items[1].paragraphs[0] = "Enterprise-grade…"
 ```
 
-The staircase rule produces this — each heading relates to the one before it: the same size adds another line to the same part; **one step smaller** joins the headline as the next part down (the subtitle, then further subtitle lines); **two steps smaller** starts an item; and once body content has begun, *any* heading starts an item. `#>` label lines, and smaller headings stacked above the title, become `pretitle`.
+The staircase rule produces this — each heading relates to the one before it: the same size adds another line to the same part; **one step smaller** joins the headline as the next part down (the subtitle, then further subtitle lines); **two steps smaller** starts an item; and once body content has begun, *any* heading starts an item. `#>` label lines become `pretitle`; so do smaller headings stacked above the title, which is the older spelling.
 
 ### Items have the full content shape
 
