@@ -122,7 +122,16 @@ export async function scaffoldSite(targetDir, context, options = {}) {
   registerVersions(getVersionsForTemplates())
 
   const templatePath = join(TEMPLATES_DIR, 'site')
-  await copyTemplateDirectory(templatePath, targetDir, context, {
+  // A ref is written as a YAML scalar, not pasted as text: a scoped ref
+  // (`@acme/base@1.0.0`, `@acme/marketing`) starts with `@`, which plain YAML
+  // reserves, so the file would not parse — and every reader that swallows
+  // the parse error then reports the site as having no `$uuid`. js-yaml quotes
+  // only when needed, so `src` stays `src`. Rendered with `{{{ }}}`, because
+  // Handlebars' HTML escaping would also rewrite a URL's `&` and `=`.
+  const siteContext = context.foundationRef
+    ? { ...context, foundationRefYaml: yaml.dump(context.foundationRef, { lineWidth: -1 }).trim() }
+    : context
+  await copyTemplateDirectory(templatePath, targetDir, siteContext, {
     onProgress: options.onProgress,
     onWarning: options.onWarning
   })

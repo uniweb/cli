@@ -10,6 +10,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import yaml from 'js-yaml'
 import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -116,7 +117,11 @@ test('clone scaffolds a ref-only harness and seeds the uuids (new workspace)', a
     // site.yml carries the seeded entity uuid + the carried foundation ref.
     const siteYml = readFileSync(join(siteDir, 'site.yml'), 'utf8')
     assert.match(siteYml, /^\$uuid: SITE-1$/m)
-    assert.match(siteYml, /foundation: @acme\/base@1\.0\.0/)
+    // Assert what a READER gets, not the text: an unquoted `@…` scalar matched a
+    // regex here while the file did not parse, and `pull` then found no `$uuid`.
+    const parsed = yaml.load(siteYml)
+    assert.equal(parsed.$uuid, 'SITE-1')
+    assert.equal(parsed.foundation, '@acme/base@1.0.0')
 
     // Ref-only: package.json has @uniweb/runtime and NO local foundation dep.
     const pkg = JSON.parse(readFileSync(join(siteDir, 'package.json'), 'utf8'))
