@@ -169,7 +169,7 @@ export function reportStarter(result, { write } = {}) {
  * family the name resolves to. Written into the new `meta.js` so the scaffold is
  * coherent: a declaration, a component, and content that fills it.
  */
-export function declarationFor(result) {
+export async function declarationFor(result) {
   const LABELS = {
     title: 'Headline',
     pretitle: 'Small label above the headline',
@@ -180,9 +180,16 @@ export function declarationFor(result) {
     items: 'One per entry [3-6]',
     images: 'Image [1]',
     icons: 'Icon [1]',
+    videos: 'Video [1]',
+    snippets: 'Code sample [1]',
+    data: 'The data block the author writes',
   }
+  // ⛔ The slot → declaration spelling comes from @uniweb/schemas, not from a
+  // copy here. `image` declares and `images` delivers; that mapping is the
+  // generator's, and a second copy rots the moment a row is added there.
+  const { declarationKey } = await import('@uniweb/schemas/starter')
   const lines = Object.keys(result.content).map(
-    (slot) => `    ${slot === 'images' ? 'image' : slot === 'icons' ? 'icon' : slot}: '${LABELS[slot] || slot}',`,
+    (slot) => `    ${declarationKey(slot)}: '${LABELS[slot] || slot}',`,
   )
   return lines.length ? `\n  content: {\n${lines.join('\n')}\n  },\n` : ''
 }

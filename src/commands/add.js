@@ -74,17 +74,30 @@ const colors = {
   red: '\x1b[31m'
 }
 
+// Porcelain (`--json`) mode: stdout carries ONLY the JSON, so every human line
+// diverts to stderr — the convention `register.js` already follows and
+// `families.js` states ("stdout carries JSON and nothing else, so it pipes").
+//
+// ⛔ It is set per run rather than only when true, because a module-level flag
+// that is only ever turned ON leaks into the next call in the same process —
+// which is every call in the test suite.
+let jsonMode = false
+export function setAddJsonMode(on) {
+  jsonMode = Boolean(on)
+}
+
 function log(message) {
-  console.log(message)
+  if (jsonMode) console.error(message)
+  else console.log(message)
 }
 function success(message) {
-  console.log(`${colors.green}✓${colors.reset} ${message}`)
+  log(`${colors.green}✓${colors.reset} ${message}`)
 }
 function error(message) {
   console.error(`${colors.red}✗${colors.reset} ${message}`)
 }
 function info(message) {
-  console.log(`${colors.dim}${message}${colors.reset}`)
+  log(`${colors.dim}${message}${colors.reset}`)
 }
 
 /**
@@ -1088,6 +1101,7 @@ async function wireExtensionToSite(
  * Add a section type to a foundation
  */
 async function addSection(rootDir, opts) {
+  setAddJsonMode(opts.json)
   let name = opts.name
 
   // Interactive name prompt when not provided
@@ -1251,7 +1265,7 @@ export default function ${name}({ content, params }) {
   if (opts.starter) {
     const preview = await generateStarter({ name, sectionDir: sectionDir })
     starterResult = preview.result
-    starterDeclaration = declarationFor(preview.result)
+    starterDeclaration = await declarationFor(preview.result)
   }
 
   const metaContent = `export default {
