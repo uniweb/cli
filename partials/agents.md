@@ -264,9 +264,6 @@ forced into the nearest family. Run `uniweb families` for the list, and
 ⚠️ **One value, the dominant shape** — a `HeroWithEstimate` is `family: 'hero'`;
 a picker draws one picture.
 
-`category:` and `purpose:` are retired. Nothing ever read them; delete them when
-you see them.
-
 ### 3. Find your lane
 
 The architecture exists to keep content and code separate. Your task sits in one of them. Decide before you edit, then stay there.
