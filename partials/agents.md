@@ -236,7 +236,7 @@ cat <foundation>/sections/Hero/meta.js       # what one expects and accepts
 
 > **A site-relative URL (`/effects/entry.js`) only works where the site serves its own files** — `uniweb export` and `uniweb deploy --host=<adapter>`. A site published to Uniweb hosting ships no JS, so nothing serves that path, and `uniweb publish` rejects it with a pointer to the catalog-ref form. Register the extension (`uniweb register` in its directory) and reference it like any other foundation. When you reference a workspace-local extension, `uniweb publish` brings it along exactly as it does the primary — releasing it if its code changed, and pinning the released version on the published site.
 
-Each `meta.js` is a catalog entry: `description` (what the type is for), `content:` (what markdown it expects), `params:` (what frontmatter it accepts, with defaults), `presets:` (named param bundles), and optionally `family:` (the standard section family it belongs to). Read them as a menu — that is what they are. There is no CLI command that lists them; reading the folder *is* the discovery step.
+Each `meta.js` is a catalog entry: `description` (what the type is for), `content:` (what markdown it expects), `params:` (what frontmatter it accepts, with defaults), `presets:` (named param bundles), and optionally `family:` (the standard section family it belongs to) and `starter:` (the sample content an editor inserts with a new section). Read them as a menu — that is what they are. There is no CLI command that lists them; reading the folder *is* the discovery step.
 
 > **Never write a `type:` or a param you haven't confirmed exists.** Both failures are silent (Part 0) — invisible from the terminal, visible only on the page.
 
@@ -1144,6 +1144,17 @@ export default {
   presets: {
     default: { label: 'Standard', params: { columns: 3 } },
     compact: { label: 'Compact', params: { columns: 4 } },
+  },
+
+  // Sample content an editor inserts when an author adds this section "with starter
+  // content". Same flat shape as `content` (plain text only; links are { text, href }).
+  starter: {
+    title: 'Features',
+    items: [
+      { title: 'First feature', paragraphs: ['What it does, in one sentence.'] },
+      { title: 'Second feature', paragraphs: ['What it does, in one sentence.'] },
+      { title: 'Third feature', paragraphs: ['What it does, in one sentence.'] },
+    ],
   },
 
   // context / initialState: keys are developer-defined, not framework fields.
