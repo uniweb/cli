@@ -52,13 +52,15 @@ async function loadMeta(metaPath) {
  */
 async function loadPipeline() {
   try {
-    const [schemas, parser, writer] = await Promise.all([
+    const [schemas, content, parser, writer] = await Promise.all([
       import('@uniweb/schemas/starter'),
+      import('@uniweb/schemas/content'),
       import('@uniweb/semantic-parser'),
       import('@uniweb/content-writer'),
     ])
     return {
       starterContent: schemas.starterContent,
+      describeContent: content.describeContent,
       buildDoc: parser.buildDoc,
       serializeSection: writer.serializeSection,
     }
@@ -83,7 +85,7 @@ async function loadPipeline() {
  * @returns {Promise<{markdown: string, result: object}>}
  */
 export async function generateStarter({ name, sectionDir, preset, json, write }) {
-  const { starterContent, buildDoc, serializeSection } = await loadPipeline()
+  const { starterContent, describeContent, buildDoc, serializeSection } = await loadPipeline()
 
   const metaPath = join(sectionDir, 'meta.js')
   const meta = existsSync(metaPath) ? await loadMeta(metaPath) : {}
@@ -100,6 +102,11 @@ export async function generateStarter({ name, sectionDir, preset, json, write })
           family: result.family,
           elementsInferred: result.elementsInferred,
           unfilled: result.unfilled,
+          // What the component SAYS it expects, parsed — the same structure an
+          // editor renders a "what does this section want?" panel from. Carried
+          // here so the declaration and what was generated from it can be read
+          // side by side, without the app.
+          expects: describeContent({ name, ...meta }),
           params: result.params,
           content: result.content,
           doc,
