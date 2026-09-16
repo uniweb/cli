@@ -731,6 +731,15 @@ async function main() {
     return
   }
 
+  // Handle snapshot command (dynamic import — depends on @uniweb/build; loads
+  // @uniweb/snapshot itself, from the workspace, and says how to add it if absent)
+  if (command === 'snapshot') {
+    const { snapshot } = await importProjectCommand('./commands/snapshot.js')
+    await snapshot(args.slice(1))
+    await showUpdateNotification()
+    return
+  }
+
   // Handle docs command (dynamic import — depends on @uniweb/build)
   if (command === 'docs') {
     const { docs } = await importProjectCommand('./commands/docs.js')
@@ -1480,6 +1489,41 @@ the single site automatically; for multi-site workspaces the first
 site runs by default with a notice pointing at \`--site\` for explicit
 selection.
 `,
+    snapshot: `
+${colors.cyan}${colors.bright}uniweb snapshot${colors.reset} ${colors.dim}— Compose a preview image of a site${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb snapshot [<site>] [options]
+
+Opens the site in a headless Chrome, captures it, and composes the captures into
+one image: by default ${colors.bright}site/public/preview.webp${colors.reset}, recorded as ${colors.cyan}preview:${colors.reset} in site.yml
+(only when site.yml has none — an address you wrote is never replaced).
+
+A page that scrolls gets the ${colors.bright}split${colors.reset} layout: the first view in a browser window,
+overlapped by a long strip of the page. A page that does not scroll as a page (a
+docs shell, an app) gets ${colors.bright}device${colors.reset}: a desktop window and a phone.
+
+Needs ${colors.cyan}@uniweb/snapshot${colors.reset} in the workspace (\`pnpm add -D -w @uniweb/snapshot\`) and
+Google Chrome, Microsoft Edge, or a Chromium named by $UNIWEB_SNAPSHOT_BROWSER.
+
+${colors.bright}Where the site comes from:${colors.reset}
+  (default)           Build the site, then capture dist/
+  --no-build          Capture the existing dist/ as is
+  --dev               Capture the site's Vite dev server (no build)
+  --url <address>     Capture a site that is already running
+
+${colors.bright}Options:${colors.reset}
+  --site <name>       The site (default: the one you are in, or the only one)
+  --route <path>      The page to capture (default: the home page)
+  --layout <name>     auto (default), split, device
+  --tone <name>       Background: auto (default), light, deep
+  --size <WxH>        Image size in CSS pixels (default: 1600x1000)
+  --scale <n>         1 (default) or 2 for a double-density image
+  --quality <n>       Encoder quality, 1–100 (default: 82)
+  --out <file>        Where to write it; .webp, .png, .jpg or .avif
+  --hide <selector>   Hide matching elements before capturing (repeatable)
+  --no-set-preview    Write the image without touching site.yml
+`,
     build: `
 ${colors.cyan}${colors.bright}uniweb build${colors.reset} ${colors.dim}— Build the current project${colors.reset}
 
@@ -1917,6 +1961,7 @@ ${colors.bright}Commands:${colors.reset}
   rename <type>      Rename a foundation, site, or extension across the workspace
   dev                Start a dev server for a site
   build              Build the current project
+  snapshot           Compose a preview image of a site (its site.yml preview:)
   publish            Publish a site to Uniweb hosting (smart: foundation + sync + go live)
   deploy             Ship a site to a host (asks where, if not yet configured)
   export             Export a self-contained site for third-party hosting

@@ -2511,6 +2511,8 @@ uniweb validate                   # Check file-based data against declared schem
 npx uniweb@latest update          # Align @uniweb/* deps + AGENTS.md (--dry-run, --yes)
                                   #   bare `uniweb update` aligns to the CLI you ALREADY have
 uniweb inspect <path>             # Show parsed content for a section or page (--raw for the AST)
+uniweb snapshot                   # Compose site/public/preview.webp from the site; sets preview: if unset
+                                  #   needs `pnpm add -D -w @uniweb/snapshot` and Chrome or Edge
 
 uniweb <command> --help           # Per-command flags — no side effects. Prefer this over guessing.
 ```
