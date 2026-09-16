@@ -66,7 +66,7 @@ export async function families(args = []) {
     const rows = shown.filter((f) => f.group === group.id)
     if (rows.length === 0) continue
     console.log('')
-    console.log(`  ${colors.bright}${group.label}${colors.reset} ${colors.dim}— ${group.move}${colors.reset}`)
+    console.log(`  ${colors.bright}${group.label}${colors.reset} ${colors.dim}— ${group.description}${colors.reset}`)
     for (const f of rows) {
       console.log(`    ${colors.cyan}${f.id.padEnd(width)}${colors.reset}  ${colors.dim}${f.label}${colors.reset}`)
     }
