@@ -35,6 +35,7 @@ import {
   updateRootScripts
 } from '../utils/config.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
+import { generateStarter, reportStarter, declarationFor } from './starter.js'
 import {
   validatePackageName,
   getExistingPackageNames,
@@ -106,12 +107,19 @@ function parseArgs(args) {
     // scaffold PR-preview workflows.
     target: null,
     projectName: null,
-    previews: true
+    previews: true,
+    // `add section` only: generate starter content for the section type from
+    // its `content:` declaration, and which preset's params to frontmatter it
+    // with. `--write` sends the markdown to a file instead of stdout.
+    starter: false,
+    preset: null,
+    write: null,
+    json: false
   }
 
   // Booleans (no value) consumed up-front so the value-flag loop below
   // doesn't accidentally swallow the next positional.
-  const BOOLEAN_FLAGS = new Set(['--force', '--no-previews'])
+  const BOOLEAN_FLAGS = new Set(['--force', '--no-previews', '--starter', '--json'])
 
   // Value flags, mapped to their result key. Both spellings are accepted:
   // `--host github-pages` and `--host=github-pages`.
@@ -131,7 +139,9 @@ function parseArgs(args) {
     '--host': 'host',
     '--domain': 'domain',
     '--target': 'target',
-    '--project-name': 'projectName'
+    '--project-name': 'projectName',
+    '--preset': 'preset',
+    '--write': 'write'
   }
 
   /** Split `--flag=value` into [flag, value]; `--flag` into [flag, null]. */
@@ -169,6 +179,10 @@ function parseArgs(args) {
       result.force = true
     } else if (flag === '--no-previews') {
       result.previews = false
+    } else if (flag === '--starter') {
+      result.starter = true
+    } else if (flag === '--json') {
+      result.json = true
     }
   }
 
@@ -1169,10 +1183,31 @@ async function addSection(rootDir, opts) {
   const sectionDir = join(sectionsDir, name)
   const relSectionPath = relative(foundationDir, sectionDir)
 
+  // ⭐ `--starter` ON AN EXISTING SECTION IS NOT AN ERROR. The flag asks one
+  // question — *what content would an author start this section with?* — and a
+  // section type that already exists is the case where it has a real `content:`
+  // declaration to answer from. Refusing here would make the flag testable only
+  // against stubs, which is the one case where the answer is least interesting.
+  // Nothing is scaffolded and nothing is overwritten on this path.
   if (existsSync(sectionDir)) {
+    if (opts.starter) {
+      const { markdown, result } = await generateStarter({
+        name,
+        sectionDir,
+        preset: opts.preset,
+        json: opts.json,
+        write: opts.write,
+      })
+      if (!opts.json) {
+        if (!opts.write) log('\n' + markdown.trimEnd())
+        reportStarter(result, { write: opts.write })
+      }
+      return
+    }
     error(
       `Section '${name}' already exists at ${foundation.path}/${relSectionPath}/`
     )
+    log(`  ${colors.dim}--starter generates starter content for it without touching the files.${colors.reset}`)
     process.exit(1)
   }
 
@@ -1207,9 +1242,21 @@ export default function ${name}({ content, params }) {
 }
 `
 
+  // With `--starter`, the scaffold gets a `content:` declaration derived from
+  // the family the name resolves to — so the three pieces agree: a declaration,
+  // a component that reads it, and content that fills it. Without the flag the
+  // stub declares nothing, exactly as before.
+  let starterDeclaration = ''
+  let starterResult = null
+  if (opts.starter) {
+    const preview = await generateStarter({ name, sectionDir: sectionDir })
+    starterResult = preview.result
+    starterDeclaration = declarationFor(preview.result)
+  }
+
   const metaContent = `export default {
   title: '${name}',
-  description: '',
+  description: '',${starterDeclaration}
   params: {},
 }
 `
@@ -1229,6 +1276,37 @@ export default function ${name}({ content, params }) {
     log(
       `${colors.dim}The dev server will pick it up automatically.${colors.reset}`
     )
+  }
+
+  if (starterResult) {
+    // Regenerate against the declaration just written, so what is printed is
+    // what this section's own `meta.js` now asks for rather than the family's
+    // guess — the two agree here, and saying it from the file keeps them so.
+    const { markdown, result } = await generateStarter({
+      name,
+      sectionDir,
+      preset: opts.preset,
+      json: opts.json,
+      write: opts.write,
+    })
+    if (!opts.json) {
+      log('')
+      log(`${colors.dim}Starter content for a page section:${colors.reset}`)
+      if (!opts.write) log('\n' + markdown.trimEnd())
+      reportStarter(result, { write: opts.write })
+      // The stub component reads three elements. The declaration above may name
+      // more, because it comes from the family rather than from the stub — say
+      // so, rather than leave a developer wondering why half the content they
+      // were just handed renders as nothing.
+      const stubReads = new Set(['title', 'paragraphs', 'links'])
+      const unread = Object.keys(result.content).filter((slot) => !stubReads.has(slot))
+      if (unread.length) {
+        log(
+          `  ${colors.dim}index.jsx reads title, paragraphs and links — extend it for: ${unread.join(', ')}${colors.reset}`
+        )
+        log('')
+      }
+    }
   }
 }
 
@@ -1762,6 +1840,13 @@ ${colors.bright}Extension Options:${colors.reset}
 
 ${colors.bright}Section Options:${colors.reset}
   --foundation <n>   Foundation to add section to (prompted if multiple exist)
+  --starter          Generate starter content from the section's `content:`
+                     declaration — what an author would begin editing. Works on
+                     a section that already exists (nothing is written), and on
+                     a new one (the scaffold gets a matching declaration)
+  --preset <name>    Frontmatter the starter content with this preset's params
+  --write <file>     Write the starter markdown to a file instead of printing it
+  --json             Emit the content structure and ProseMirror doc instead
 
 ${colors.bright}CI Options:${colors.reset}
   --host <name>          github-pages | cloudflare-pages | netlify | vercel
@@ -1790,6 +1875,10 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add extension effects --site site             # Create ./extensions/effects/
   uniweb add section Hero                              # Create Hero section type
   uniweb add section Hero --foundation ui              # Target specific foundation
+  uniweb add section Hero --starter                    # Starter content for an existing Hero
+  uniweb add section Pricing --starter                 # Scaffold Pricing + content that fills it
+  uniweb add section Hero --starter --preset split     # Frontmatter it with the 'split' preset
+  uniweb add section Hero --starter --json             # The structure + ProseMirror, for a script
   uniweb add foundation --project docs                 # Create ./docs/foundation/ (co-located)
   uniweb add site --project docs                       # Create ./docs/site/ (co-located)
   uniweb add ci                                        # Pick a host, add a deploy workflow

@@ -1505,7 +1505,7 @@ ${colors.bright}Subcommands:${colors.reset}
   add foundation [name]   Add a foundation (--from, --path, --project)
   add site [name]         Add a site (--from, --foundation, --path, --project)
   add extension <name>    Add an extension (--from, --site, --path)
-  add section <name>      Add a section type to a foundation (--foundation)
+  add section <name>      Add a section type to a foundation (--foundation, --starter)
   add ci                  Add a CI workflow so every push deploys (--host, --target)
 
 ${colors.bright}Common options:${colors.reset}
@@ -1514,6 +1514,15 @@ ${colors.bright}Common options:${colors.reset}
   --foundation <name>     Wire site/extension to this foundation (CI-friendly)
   --site <name>           Wire extension to this site (CI-friendly)
   --non-interactive       Fail with usage info instead of prompting
+
+${colors.bright}Starter content (add section):${colors.reset}
+  --starter               Generate starter content from the section's
+                          \`content:\` declaration — what an author would begin
+                          editing. Works on an existing section (writes nothing)
+                          and on a new one (the scaffold gets a declaration)
+  --preset <name>         Frontmatter it with this preset's params
+  --write <file>          Write the markdown to a file instead of printing
+  --json                  Emit the structure + ProseMirror doc instead
 `,
     export: `
 ${colors.cyan}${colors.bright}uniweb export${colors.reset} ${colors.dim}— Export a self-contained site for third-party hosting${colors.reset}
@@ -1888,7 +1897,7 @@ ${colors.bright}Add Subcommands:${colors.reset}
   add foundation [name]   Add a foundation (--from, --path, --project)
   add site [name]         Add a site (--from, --foundation, --path, --project)
   add extension <name>    Add an extension (--from, --site, --path)
-  add section <name>      Add a section type to a foundation (--foundation)
+  add section <name>      Add a section type to a foundation (--foundation, --starter)
   add ci                  Add a CI workflow so every push deploys (--host, --target)
 
 ${colors.bright}Global Options:${colors.reset}
