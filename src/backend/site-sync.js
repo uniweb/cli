@@ -17,6 +17,7 @@ import yaml from 'js-yaml'
 import { hasUncommittedContent } from '../utils/git.js'
 import { recordSiteBackend } from '../utils/site-identity.js'
 import { humanBytes } from '../utils/bytes.js'
+import { isAuthoredPreview } from '../utils/preview.js'
 import {
   backfillEntityUuids,
   writeSiteEntityUuid,
@@ -363,11 +364,6 @@ export function dropSiteBoundValues(siteDir) {
   }
   return dropped
 }
-
-// An author's preview is an address — a URL, or a site-root / relative path. Anything
-// else is the app's generated-image token.
-const isAuthoredPreview = (v) =>
-  typeof v === 'string' && (/^https?:\/\//i.test(v) || /^\.{0,2}\//.test(v))
 
 export function readSyncCache(siteDir) {
   return readMap(siteDir, 'hashes')
