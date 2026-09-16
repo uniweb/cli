@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-16T20:35:26.755Z",
+  "generatedAt": "2026-09-16T20:57:12.370Z",
   "packages": {
     "@uniweb/api": {
       "version": "0.3.6",
@@ -10,13 +10,14 @@
       ]
     },
     "@uniweb/build": {
-      "version": "0.52.5",
+      "version": "0.52.6",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
         "@uniweb/content-writer",
         "@uniweb/core",
         "@uniweb/projections",
+        "@uniweb/runtime",
         "@uniweb/runtime",
         "@uniweb/schemas",
         "@uniweb/semantic-parser",
