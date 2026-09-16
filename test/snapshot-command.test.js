@@ -75,17 +75,27 @@ test("preview: is written when absent, replaces the app's token, and never an au
   assert.equal(previewDecision(undefined, '/preview.webp'), 'set')
   assert.equal(previewDecision('', '/preview.webp'), 'set')
   assert.equal(previewDecision('/preview.webp', '/preview.webp'), 'unchanged')
-  assert.equal(previewDecision('1757970000', '/preview.webp'), 'replace')
+  assert.equal(previewDecision('2026-09-10T12:34:56Z', '/preview.webp'), 'replace')
   assert.equal(previewDecision('/images/card.png', '/preview.webp'), 'keep')
   assert.equal(previewDecision('https://example.com/card.png', '/preview.webp'), 'keep')
+  // A relative path with no leading `./` is still the author's.
+  assert.equal(previewDecision('images/card.png', '/preview.webp'), 'keep')
 })
 
-test('isAuthoredPreview tells an address from the app token', () => {
-  assert.equal(isAuthoredPreview('/images/card.png'), true)
-  assert.equal(isAuthoredPreview('./card.png'), true)
-  assert.equal(isAuthoredPreview('https://cdn.example.com/card.png'), true)
-  assert.equal(isAuthoredPreview('1757970000'), false)
-  assert.equal(isAuthoredPreview(undefined), false)
+test('isAuthoredPreview recognizes the author, whatever shape the app token takes', () => {
+  for (const address of [
+    '/images/card.png',
+    './card.png',
+    '../shared/card.png',
+    'images/card.png',
+    'card.webp',
+    'https://cdn.example.com/card.png'
+  ]) {
+    assert.equal(isAuthoredPreview(address), true, address)
+  }
+  for (const token of ['2026-09-10T12:34:56Z', '2026-09-10T12:34:56.123Z', '1757970000', undefined]) {
+    assert.equal(isAuthoredPreview(token), false, String(token))
+  }
 })
 
 test('the site: named, else the one you are in, else the only one', () => {

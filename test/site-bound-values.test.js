@@ -35,7 +35,7 @@ test("⛔ an unbound project drops the previous site's $url and the app's genera
 })
 
 test("an author's preview is theirs and survives — a URL, or a path in the project", () => {
-  for (const preview of ['/images/card.png', 'https://cdn.example/card.png']) {
+  for (const preview of ['/images/card.png', 'images/card.png', 'https://cdn.example/card.png']) {
     const dir = siteWith(`name: S\npreview: ${preview}\n`)
     try {
       assert.deepEqual(dropSiteBoundValues(dir), [])
