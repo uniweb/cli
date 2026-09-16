@@ -240,29 +240,27 @@ Each `meta.js` is a catalog entry: `description` (what the type is for), `conten
 
 > **Never write a `type:` or a param you haven't confirmed exists.** Both failures are silent (Part 0) — invisible from the terminal, visible only on the page.
 
-#### `family:` — what a new section type should declare
+#### `family:` — so an editor can draw your section
 
-When you **create** a section type, give the editor something to draw for it.
-`family:` names the standard section family the component belongs to, which picks
-its illustration in a picker and a label the editor can translate.
+An editor showing an author a section picker has to know what each section type
+**is**, to pick its illustration and a label it can translate. Two ways to tell
+it, in this order:
 
-**Usually there is nothing to declare.** The section type IS the component name,
-so `Hero`, `Footer`, `Pricing`, `Team` and `FAQ` already say what they are.
-Declare `family:` only when the name does not give it away:
+1. **Name the component for its family.** Run `uniweb families`, and use one of
+   those names when it fits — `Hero`, `Footer`, `Pricing`, `FAQ`, `CardGrid`.
+   Then there is nothing to declare: the name resolves on its own.
+2. **Declare `family:`** when the name is yours — a variant, or your own
+   vocabulary:
+   ```js
+   // sections/ProfileHero/meta.js
+   export default { title: 'Researcher Profile', family: 'profile' }
+   ```
+   One value, the dominant shape: a `HeroWithEstimate` is `family: 'hero'`.
 
-```js
-// sections/ProfileHero/meta.js
-export default { title: 'Researcher Profile', family: 'profile' }
-```
-
-**A name of your own is fine.** An unrecognized family — or none at all — falls
-back to a generic illustration. Nothing breaks and nothing is gated, so a section
-that is genuinely specific to this site should stay undeclared rather than be
-forced into the nearest family. Run `uniweb families` for the list, and
-`uniweb doctor` to see what each of your sections resolved to.
-
-⚠️ **One value, the dominant shape** — a `HeroWithEstimate` is `family: 'hero'`;
-a picker draws one picture.
+**Leave it off when nothing fits.** A section that is genuinely specific to this
+site gets a generic illustration, and that is the right outcome — do not force it
+into the nearest family. `uniweb doctor` shows what each of your sections
+resolved to, and suggests a family for any it recognises by another name.
 
 ### 3. Find your lane
 
