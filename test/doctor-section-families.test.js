@@ -24,7 +24,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkSectionFamilies, checkRetiredMetaKeys } from '../src/commands/doctor.js'
-import { suggestFamily } from '../src/families/aliases.js'
+import { suggestFamily } from '@uniweb/schemas/family-aliases'
 import { FAMILIES } from '@uniweb/schemas/families'
 
 const IDS = FAMILIES.map((f) => f.id)
@@ -169,29 +169,15 @@ test('retired keys are reported as info, once', () => {
   }
 })
 
-test('suggestFamily composes the alias table with the suffix rule', () => {
-  // ⭐ The reason the table stays small: `sponsors → logo-cloud` reaches every
-  // shape of the word without a row for each.
-  for (const name of ['SponsorStrip', 'SponsorBand', 'SponsorGrid']) {
-    assert.equal(suggestFamily(name, IDS).id, 'logo-cloud', name)
+test('doctor still bars an ambiguous name from --fix', () => {
+  // The mechanics of suggestFamily are pinned in @uniweb/schemas, where the
+  // table lives. What matters here is that doctor honours `fixable`.
+  const dir = foundation({ Banner: {} })
+  try {
+    const { fixes } = run(dir, { fixId: 'section-family-unrecognized' })
+    assert.deepEqual(fixes, [])
+    assert.ok(!metaOf(dir, 'Banner').includes('family'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
-  assert.equal(suggestFamily('CtaBand', IDS).via, 'suffix')
-  assert.equal(suggestFamily('FeatureGrid', IDS).id, 'features')
-})
-
-test('an ambiguous name is never fixable, however it is reached', () => {
-  // ⛔ The discipline: a wrong auto-fix is worse than a fallback, because the
-  // developer approves it once and it is wrong in their source forever.
-  for (const name of ['Banner', 'Timeline', 'Showcase', 'Overview']) {
-    const s = suggestFamily(name, IDS)
-    assert.equal(s.fixable, false, name)
-    assert.ok(s.ambiguous, `${name} should say why`)
-  }
-})
-
-test('a near miss suggests but never fixes', () => {
-  const s = suggestFamily('heros', IDS)
-  assert.equal(s.id, 'hero')
-  assert.equal(s.via, 'near')
-  assert.equal(s.fixable, false)
 })

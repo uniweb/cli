@@ -28,7 +28,7 @@ import { checkSiteInstall } from '../utils/install-integrity.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { DATA_DIR } from '@uniweb/core/data-paths'
 import { FAMILIES, resolveFamily } from '@uniweb/schemas/families'
-import { suggestFamily } from '../families/aliases.js'
+import { suggestFamily } from '@uniweb/schemas/family-aliases'
 
 /**
  * Parse the `--fix [<issue-id>]` flag.
