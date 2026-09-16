@@ -236,9 +236,36 @@ cat <foundation>/sections/Hero/meta.js       # what one expects and accepts
 
 > **A site-relative URL (`/effects/entry.js`) only works where the site serves its own files** — `uniweb export` and `uniweb deploy --host=<adapter>`. A site published to Uniweb hosting ships no JS, so nothing serves that path, and `uniweb publish` rejects it with a pointer to the catalog-ref form. Register the extension (`uniweb register` in its directory) and reference it like any other foundation. When you reference a workspace-local extension, `uniweb publish` brings it along exactly as it does the primary — releasing it if its code changed, and pinning the released version on the published site.
 
-Each `meta.js` is a catalog entry: `description` (what the type is for), `content:` (what markdown it expects), `params:` (what frontmatter it accepts, with defaults), `presets:` (named param bundles). Read them as a menu — that is what they are. There is no CLI command that lists them; reading the folder *is* the discovery step.
+Each `meta.js` is a catalog entry: `description` (what the type is for), `content:` (what markdown it expects), `params:` (what frontmatter it accepts, with defaults), `presets:` (named param bundles), and optionally `family:` (the standard section family it belongs to). Read them as a menu — that is what they are. There is no CLI command that lists them; reading the folder *is* the discovery step.
 
 > **Never write a `type:` or a param you haven't confirmed exists.** Both failures are silent (Part 0) — invisible from the terminal, visible only on the page.
+
+#### `family:` — what a new section type should declare
+
+When you **create** a section type, give the editor something to draw for it.
+`family:` names the standard section family the component belongs to, which picks
+its illustration in a picker and a label the editor can translate.
+
+**Usually there is nothing to declare.** The section type IS the component name,
+so `Hero`, `Footer`, `Pricing`, `Team` and `FAQ` already say what they are.
+Declare `family:` only when the name does not give it away:
+
+```js
+// sections/ProfileHero/meta.js
+export default { title: 'Researcher Profile', family: 'profile' }
+```
+
+**A name of your own is fine.** An unrecognized family — or none at all — falls
+back to a generic illustration. Nothing breaks and nothing is gated, so a section
+that is genuinely specific to this site should stay undeclared rather than be
+forced into the nearest family. Run `uniweb families` for the list, and
+`uniweb doctor` to see what each of your sections resolved to.
+
+⚠️ **One value, the dominant shape** — a `HeroWithEstimate` is `family: 'hero'`;
+a picker draws one picture.
+
+`category:` and `purpose:` are retired. Nothing ever read them; delete them when
+you see them.
 
 ### 3. Find your lane
 
