@@ -1241,6 +1241,26 @@ export async function doctor(args = []) {
     log(`      ${colors.dim}@import "@uniweb/kit/prose-tokens.css";${colors.reset}`)
   }
 
+  // ⛔ SAY WHEN A CHECK DID NOT RUN. Every foundation check below reads the
+  // BUILT `dist/meta/schema.json` — what a consumer actually receives — and
+  // returns silently when there is none. In a workspace with a site, "Foundation
+  // not built yet" turns up later under that site; in a FOUNDATION-ONLY
+  // workspace, which is the normal shape when a foundation is the product, it
+  // never does. The report then looks clean because nothing ran.
+  //
+  // That is the same class as the `dist/schema.json` path bug (a check that
+  // never fires is indistinguishable from a codebase with nothing to report),
+  // so it is named here rather than left to be rediscovered.
+  for (const f of foundations) {
+    if (!loadSchemaJson(f.path)) {
+      info(
+        `${f.folderName}: not built, so nothing was checked here ` +
+          `${colors.dim}(services, section families, retired keys)${colors.reset}`
+      )
+      log(`    ${colors.dim}Run \`uniweb build\` in ${f.folderName}, then doctor again.${colors.reset}`)
+    }
+  }
+
   // ── uniweb.supports — the services this foundation says it is built against ──
   for (const f of foundations) {
     await checkFoundationSupports({
