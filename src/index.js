@@ -956,6 +956,13 @@ async function main() {
     return
   }
 
+  // Handle families command — the standard section families this CLI ships with
+  if (command === 'families') {
+    const { families } = await import('./commands/families.js')
+    await families(args.slice(1))
+    return
+  }
+
   // Handle template command
   if (command === 'template') {
     await template(args.slice(1))
@@ -1706,6 +1713,33 @@ ${colors.cyan}${colors.bright}uniweb handoff${colors.reset} ${colors.dim}— (re
 The site-handoff flow was retired with the legacy backend.
 Manage client sites from the Uniweb app for now.
 `,
+    families: `
+${colors.cyan}${colors.bright}uniweb families${colors.reset} ${colors.dim}— The standard section families${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb families                List them, grouped
+  uniweb families <filter>       Match an id, a label or a group name
+  uniweb families --json         Machine-readable (for scripts)
+
+${colors.bright}What a family is for:${colors.reset}
+  It tells an editor which illustration to show for a section type, and gives
+  it a label it can translate. Declare it in a section's meta.js:
+
+    ${colors.dim}export default { title: 'Researcher Profile', family: 'profile' }${colors.reset}
+
+  ${colors.bright}Most components need no declaration.${colors.reset} The section type IS the component
+  name, so \`Hero\`, \`Footer\` and \`Pricing\` already resolve. \`family:\` is for the
+  ones whose name does not give it away — \`ProfileHero\`, \`CvEntry\`.
+
+  An unrecognized value is legal: it falls back to a generic illustration and
+  nothing breaks, so a foundation with its own vocabulary is never blocked.
+
+  \`uniweb doctor\` reports what each of your sections resolved to, and suggests
+  a family for the ones it recognizes by another name.
+
+${colors.bright}Note:${colors.reset} this is the roster ${colors.bright}this CLI ships with${colors.reset}, not a live fetch — and it is
+  the same list \`doctor\` matches against.
+`,
     template: `
 ${colors.cyan}${colors.bright}uniweb template${colors.reset} ${colors.dim}— Official templates${colors.reset}
 
@@ -1835,6 +1869,7 @@ ${colors.bright}Commands:${colors.reset}
   status             Show a site's sync state (unpushed content, foundation)
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
+  families           List the standard section families (for meta.js family:)
   doctor             Diagnose project configuration issues
   validate           Check your content against your foundation's data schemas
   update             Align workspace deps + AGENTS.md to the running CLI

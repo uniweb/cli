@@ -175,8 +175,12 @@ Component metadata in <foundation>/components/[Name]/meta.js (or sections/[Name]
 ${colors.bright}Identity:${colors.reset}
   ${colors.cyan}title${colors.reset}             Display name in editor
   ${colors.cyan}description${colors.reset}       What the component does
-  ${colors.cyan}category${colors.reset}          Grouping: "impact", "showcase", "structure"
-  ${colors.cyan}purpose${colors.reset}           Single verb: Introduce, Express, Explain
+  ${colors.cyan}family${colors.reset}            The standard section family this is — "hero", "pricing",
+                    "faq". Picks the editor's illustration and a translated
+                    label. Only needed when the component NAME is not already
+                    one: \`Hero\` resolves on its own, \`ProfileHero\` does not.
+                    An unrecognized value is legal and falls back.
+                    ${colors.dim}uniweb families${colors.reset}
   ${colors.cyan}hidden${colors.reset}            If true, not selectable in frontmatter
 
 ${colors.bright}Content Expectations:${colors.reset}
@@ -202,7 +206,7 @@ ${colors.bright}Example:${colors.reset}
   ${colors.dim}export default {
     title: 'Hero Banner',
     description: 'Bold hero section with headline and CTA',
-    category: 'impact',
+    family: 'hero',
     background: true,
 
     content: {

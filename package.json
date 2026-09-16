@@ -43,6 +43,7 @@
     "@uniweb/core": "workspace:^",
     "@uniweb/kit": "workspace:^",
     "@uniweb/runtime": "workspace:^",
+    "@uniweb/schemas": "workspace:^",
     "@uniweb/semantic-parser": "workspace:^",
     "handlebars": "^4.7.8",
     "js-yaml": "^4.1.0",

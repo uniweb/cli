@@ -27,6 +27,8 @@ import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { checkSiteInstall } from '../utils/install-integrity.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { DATA_DIR } from '@uniweb/core/data-paths'
+import { FAMILIES, resolveFamily } from '@uniweb/schemas/families'
+import { suggestFamily } from '../families/aliases.js'
 
 /**
  * Parse the `--fix [<issue-id>]` flag.
@@ -99,10 +101,21 @@ function loadFoundationJs(dir) {
 }
 
 /**
- * Load built schema.json from a directory
+ * Load a foundation's built schema.json.
+ *
+ * ⛔ THE PATH IS `dist/meta/schema.json`, and it read `dist/schema.json` from
+ * 2026-02-06 until 2026-09-15 — a file the build has never written. So this
+ * returned `null` every time, and its one caller (the extension `vars`/layouts
+ * warning, which `framework/CLAUDE.md` gotcha #18 says doctor performs) could
+ * not fire at all.
+ *
+ * ⭐ THE CLASS IS WORTH MORE THAN THE BUG: a wrong PATH returns empty, it does
+ * not throw. `existsSync` said no, the function returned `null`, every caller
+ * used `?.` and skipped — and a check that never fires looks exactly like a
+ * codebase with nothing to report.
  */
 function loadSchemaJson(dir) {
-  const schemaPath = join(dir, 'dist', 'schema.json')
+  const schemaPath = join(dir, 'dist', 'meta', 'schema.json')
   if (!existsSync(schemaPath)) return null
   try {
     return JSON.parse(readFileSync(schemaPath, 'utf8'))
@@ -499,6 +512,175 @@ export async function checkFoundationSupports({
 }
 
 /**
+ * Every section type's standard family — what it resolved to, and HOW.
+ *
+ * ⭐ THIS IS WHERE THE TAXONOMY IS ACTUALLY LEARNED. Nobody reads a word list in
+ * advance; they read the warning that names their own component and proposes the
+ * edit. A foundation developer sees their own picker here before an author does.
+ *
+ * ⛔ AN UNRECOGNIZED NAME IS NOT AN ERROR, and this check must never imply it is.
+ * A foundation with its own vocabulary is a supported choice: the section falls
+ * back to a generic illustration and nothing breaks. What is reported is the
+ * OPPORTUNITY — and only where there is a concrete suggestion to act on.
+ *
+ * ⚠️ READS THE BUILT `schema.json`, so it says nothing before a build. That is
+ * deliberate: schema.json is what a picker actually receives, and inferring from
+ * unbuilt source would report on a state no consumer sees.
+ */
+export function checkSectionFamilies({
+  foundationName,
+  folderName,
+  foundationDir,
+  issues,
+  shouldFixExplicitly,
+  fixed,
+}) {
+  const schema = loadSchemaJson(foundationDir)
+  if (!schema) return
+
+  const familyIds = FAMILIES.map((f) => f.id)
+  const sections = Object.entries(schema)
+    .filter(([key, value]) => !key.startsWith('_') && key !== 'dataSchemas' && value && typeof value === 'object')
+    .map(([name, entry]) => ({ name, entry, ...resolveFamily({ name, family: entry.family }) }))
+
+  if (sections.length === 0) return
+
+  const declared = sections.filter((s) => s.source === 'declared')
+  const byName = sections.filter((s) => s.source === 'name')
+  const misses = sections.filter((s) => !s.id)
+
+  info(
+    `${folderName}: ${sections.length - misses.length}/${sections.length} sections have a standard family ` +
+      `${colors.dim}(${declared.length} declared, ${byName.length} from the name)${colors.reset}`
+  )
+
+  // ── a `family:` that names nothing we know ────────────────────────────────
+  const bogus = misses.filter((s) => s.unknown)
+  for (const s of bogus) {
+    const id = 'section-family-unknown'
+    const near = suggestFamily(s.unknown, familyIds)
+    issues.push({
+      id,
+      type: 'warning',
+      foundation: foundationName,
+      message: `${s.name} declares family '${s.unknown}', which is not a standard family`,
+    })
+    warn(`[${id}] ${folderName}/${s.name}: family '${s.unknown}' is not a standard family`)
+    if (near.id) log(`    Did you mean ${colors.blue}${near.id}${colors.reset}?`)
+    log(`    ${colors.dim}An unrecognized value is legal — it falls back to a generic illustration.${colors.reset}`)
+    log(`    ${colors.dim}uniweb families${colors.reset}`)
+  }
+
+  // ── a name we do not know, WITH something to suggest ──────────────────────
+  const undeclared = misses.filter((s) => !s.unknown)
+  const proposals = undeclared
+    .map((s) => ({ ...s, suggestion: suggestFamily(s.name, familyIds) }))
+    .filter((s) => s.suggestion.id || s.suggestion.ambiguous)
+  if (proposals.length === 0) return
+
+  const id = 'section-family-unrecognized'
+  const writable = proposals.filter((p) => p.suggestion.fixable && p.suggestion.id)
+
+  // ⛔ EXPLICIT ID ONLY — never a bare `--fix`. Every id below is a GUESS from a
+  // table that exists here, rather than in the resolver, precisely so a person
+  // approves it. A bare `--fix` writing them would put the silent-wrong-guess
+  // failure back, one directory deeper.
+  if (shouldFixExplicitly?.(id) && writable.length > 0) {
+    const srcDir = resolveFoundationSrcPath(foundationDir)
+    for (const p of writable) {
+      const metaPath = join(srcDir, p.entry.path || '', 'meta.js')
+      const written = writeFamilyIntoMeta(metaPath, p.suggestion.id)
+      if (written) fixed?.(`${folderName}/${p.entry.path}/meta.js now declares family: '${p.suggestion.id}'`)
+      else warn(`[${id}] could not write ${p.name}'s meta.js — add \`family: '${p.suggestion.id}'\` by hand`)
+    }
+    return
+  }
+
+  issues.push({
+    id,
+    type: 'info',
+    foundation: foundationName,
+    message: `${proposals.length} section(s) in ${foundationName} could declare a standard family`,
+    details: proposals.map((p) => ({ name: p.name, suggested: p.suggestion.id, via: p.suggestion.via })),
+    fixable: writable.length > 0,
+  })
+
+  warn(`[${id}] ${folderName}: ${proposals.length} section(s) have no standard family`)
+  const width = Math.max(...proposals.map((p) => p.name.length))
+  for (const p of proposals) {
+    const { id: hit, via, ambiguous } = p.suggestion
+    if (ambiguous) {
+      log(`    ${p.name.padEnd(width)}  ${colors.dim}ambiguous — ${ambiguous}${colors.reset}`)
+    } else {
+      const how = via === 'near' ? 'possible typo' : via === 'suffix' ? 'name + shape suffix' : 'known alias'
+      log(`    ${p.name.padEnd(width)}  → ${colors.blue}${hit}${colors.reset} ${colors.dim}(${how})${colors.reset}`)
+    }
+  }
+  log(`    ${colors.dim}Nothing is broken — an unrecognized name falls back to a generic illustration.${colors.reset}`)
+  if (writable.length > 0) {
+    log(`    ${colors.dim}uniweb doctor --fix ${id}${colors.reset} ${colors.dim}— writes ${writable.length} \`family:\` line(s). Read the diff: these are guesses.${colors.reset}`)
+  }
+}
+
+/**
+ * Insert `family: '<id>'` as the first key of a meta.js default export.
+ *
+ * ⛔ REFUSES ANYTHING IT DOES NOT RECOGNIZE. A meta.js is hand-written source,
+ * and a half-understood rewrite of someone's file is far worse than telling them
+ * to add one line. A `false` return is reported as "could not write", never as
+ * fixed.
+ */
+function writeFamilyIntoMeta(metaPath, familyId) {
+  if (!existsSync(metaPath)) return false
+  try {
+    const src = readFileSync(metaPath, 'utf8')
+    if (/^\s*family\s*:/m.test(src)) return false // already has one — never overwrite
+    const m = src.match(/export\s+default\s*\{[ \t]*\r?\n/)
+    if (!m) return false
+    const at = m.index + m[0].length
+    const indent = src.slice(at).match(/^([ \t]+)/)?.[1] ?? '  '
+    writeFileSync(metaPath, `${src.slice(0, at)}${indent}family: '${familyId}',\n${src.slice(at)}`)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * `category:` and `purpose:` were retired when `family:` landed.
+ *
+ * ⚖️ INFO, NOT A WARNING. Both are inert — nothing in the build, the runtime or
+ * the wire has ever read either — so a foundation carrying one is not broken and
+ * does not need to hurry. It is worth saying once, because a developer who sees
+ * `category:` in a neighbour's meta.js will reasonably copy it.
+ */
+export function checkRetiredMetaKeys({ foundationName, folderName, foundationDir, issues }) {
+  const schema = loadSchemaJson(foundationDir)
+  if (!schema) return
+  const stale = Object.entries(schema)
+    .filter(([key, v]) => !key.startsWith('_') && key !== 'dataSchemas' && v && typeof v === 'object')
+    .filter(([, v]) => v.category !== undefined || v.purpose !== undefined)
+  if (stale.length === 0) return
+
+  const id = 'section-retired-meta-key'
+  const keys = [...new Set(stale.flatMap(([, v]) => [
+    v.category !== undefined ? 'category' : null,
+    v.purpose !== undefined ? 'purpose' : null,
+  ].filter(Boolean)))]
+  issues.push({
+    id,
+    type: 'info',
+    foundation: foundationName,
+    message: `${stale.length} section(s) still declare ${keys.join(' / ')}`,
+  })
+  info(
+    `[${id}] ${folderName}: ${stale.length} section(s) still declare ` +
+      `${colors.dim}${keys.join(' / ')}${colors.reset} — retired, and read by nothing`
+  )
+  log(`    ${colors.dim}\`family:\` replaced them. Removing them changes no behaviour.${colors.reset}`)
+}
+
+/**
  * The gates kit exposes for a host service, and the field that IS the gate.
  *
  * Each hook returns a boolean saying whether the site actually has the service.
@@ -888,6 +1070,11 @@ export async function doctor(args = []) {
   // each diagnostic below so the rewrite happens with full context.
   const fixFlag = parseFixFlag(args)
   const shouldFix = (id) => fixFlag === 'all' || fixFlag === id
+  // ⛔ SOME FIXES MUST NOT RIDE A BARE `--fix`. A fix derived from a GUESS — the
+  // family aliases, which exist in the CLI precisely so a human approves each
+  // one — becomes a silent write the moment `--fix` alone applies it, which is
+  // the failure the guess was moved here to avoid. Those checks ask for the id.
+  const shouldFixExplicitly = (id) => fixFlag === id
   const fixed = (msg) =>
     console.log(`  ${colors.green}↳ Fixed:${colors.reset} ${msg}`)
 
@@ -1071,6 +1258,20 @@ export async function doctor(args = []) {
       srcDir: resolveFoundationSrcPath(f.path),
       issues
     })
+    checkSectionFamilies({
+      foundationName: f.name,
+      folderName: f.folderName,
+      foundationDir: f.path,
+      issues,
+      shouldFixExplicitly,
+      fixed
+    })
+    checkRetiredMetaKeys({
+      foundationName: f.name,
+      folderName: f.folderName,
+      foundationDir: f.path,
+      issues
+    })
   }
 
   // Extensions carry `uniweb.supports` too — same key, same field, and a site's
@@ -1091,6 +1292,22 @@ export async function doctor(args = []) {
       foundationName: e.name,
       folderName: e.folderName,
       srcDir: resolveFoundationSrcPath(e.path),
+      issues
+    })
+    // An extension contributes section types by URL and lands in the same
+    // picker, so its sections need a family for exactly the same reason.
+    checkSectionFamilies({
+      foundationName: e.name,
+      folderName: e.folderName,
+      foundationDir: e.path,
+      issues,
+      shouldFixExplicitly,
+      fixed
+    })
+    checkRetiredMetaKeys({
+      foundationName: e.name,
+      folderName: e.folderName,
+      foundationDir: e.path,
       issues
     })
   }
