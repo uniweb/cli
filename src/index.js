@@ -1494,6 +1494,7 @@ ${colors.cyan}${colors.bright}uniweb snapshot${colors.reset} ${colors.dim}— Co
 
 ${colors.bright}Usage:${colors.reset}
   uniweb snapshot [<site>] [options]
+  uniweb snapshot --compare [options]
 
 Opens the site in a headless Chrome, captures it, and composes the captures into
 one image: by default ${colors.bright}site/public/preview.webp${colors.reset}, recorded as ${colors.cyan}preview:${colors.reset} in site.yml
@@ -1501,8 +1502,8 @@ when site.yml has none, or only the app's generated one. A URL or image path you
 wrote is never replaced.
 
 A page that scrolls gets the ${colors.bright}split${colors.reset} layout: the first view in a browser window,
-overlapped by a long strip of the page. A page that does not scroll as a page (a
-docs shell, an app) gets ${colors.bright}device${colors.reset}: a desktop window and a phone.
+beside a long strip of the page. A page that does not scroll as a page (a docs
+shell, an app) gets ${colors.bright}device${colors.reset}: a desktop window and a phone.
 
 Needs ${colors.cyan}@uniweb/snapshot${colors.reset} in the workspace (\`pnpm add -D -w @uniweb/snapshot\`) and
 Google Chrome, Microsoft Edge, or a Chromium named by $UNIWEB_SNAPSHOT_BROWSER.
@@ -1513,11 +1514,23 @@ ${colors.bright}Where the site comes from:${colors.reset}
   --dev               Capture the site's Vite dev server (no build)
   --url <address>     Capture a site that is already running
 
+${colors.bright}The look:${colors.reset}
+  --layout <name>     auto (default), split, device
+  --gap <px>          Space between the two frames (split default: 48)
+  --overlap <px>      Overlap them instead (device default: 31)
+  --strip <width>     split: fit (default), or 1:N — narrower shows more of a long page
+  --side <side>       Where the strip or phone goes: right (default), left
+  --frame <style>     browser (default, with a title bar), plain
+  --tone <name>       Background: auto (default), light, deep
+
+${colors.bright}Choosing and keeping a look:${colors.reset}
+  --compare           One capture, several looks on one sheet, each captioned with
+                      its flags (site/.uniweb/snapshot/compare.webp)
+  --save              Keep this run's flags in site/snapshot.yml, the site's defaults
+
 ${colors.bright}Options:${colors.reset}
   --site <name>       The site (default: the one you are in, or the only one)
   --route <path>      The page to capture (default: the home page)
-  --layout <name>     auto (default), split, device
-  --tone <name>       Background: auto (default), light, deep
   --size <WxH>        Image size in CSS pixels (default: 1600x1000)
   --scale <n>         1 (default) or 2 for a double-density image
   --quality <n>       Encoder quality, 1–100 (default: 82)

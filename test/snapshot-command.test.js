@@ -10,6 +10,8 @@ import { join } from 'node:path'
 
 import {
   DEFAULT_OUTPUT,
+  flagsFor,
+  libraryOptions,
   parseSnapshotArgs,
   pickSite,
   previewDecision,
@@ -18,49 +20,71 @@ import {
 import { isAuthoredPreview } from '../src/utils/preview.js'
 
 test('flag values are not mistaken for the site name', () => {
-  const options = parseSnapshotArgs(['--layout', 'split', 'marketing', '--tone=deep'])
-  assert.deepEqual(options.positionals, ['marketing'])
-  assert.equal(options.layout, 'split')
-  assert.equal(options.tone, 'deep')
+  const { positionals, settings } = parseSnapshotArgs(['--layout', 'split', 'marketing', '--tone=deep'])
+  assert.deepEqual(positionals, ['marketing'])
+  assert.equal(settings.layout, 'split')
+  assert.equal(settings.tone, 'deep')
 })
 
-test('--hide repeats; --size, --scale and --quality become numbers', () => {
-  const options = parseSnapshotArgs([
-    '--hide', '.cookie-banner',
-    '--hide=#chat',
-    '--size', '1200x630',
-    '--scale', '2',
-    '--quality', '90'
-  ])
-  assert.deepEqual(options.hide, ['.cookie-banner', '#chat'])
-  assert.deepEqual(options.canvas, { width: 1200, height: 630 })
-  assert.equal(options.scale, 2)
-  assert.equal(options.quality, 90)
+test('look flags become settings; numbers are numbers, --hide repeats, --out is absolute', () => {
+  const { settings } = parseSnapshotArgs(
+    ['--gap', '24', '--strip', '1:2.5', '--side=left', '--frame', 'plain', '--hide', '.cookie-banner', '--hide=#chat',
+      '--size', '1200x630', '--scale', '2', '--quality', '90', '--out', 'card.png'],
+    '/work/site'
+  )
+  assert.deepEqual(settings, {
+    gap: 24,
+    strip: '1:2.5',
+    side: 'left',
+    frame: 'plain',
+    hide: ['.cookie-banner', '#chat'],
+    size: '1200x630',
+    scale: 2,
+    quality: 90,
+    out: join('/work/site', 'card.png')
+  })
 })
 
-test('boolean flags', () => {
-  const options = parseSnapshotArgs(['--dev', '--no-set-preview', '--no-build'])
-  assert.equal(options.dev, true)
-  assert.equal(options.noSetPreview, true)
-  assert.equal(options.noBuild, true)
+test('run flags are kept apart from the settings', () => {
+  const { settings, control } = parseSnapshotArgs(['--dev', '--no-set-preview', '--no-build', '--compare', '--site', 'docs'])
+  assert.deepEqual(settings, {})
+  assert.deepEqual(control, { dev: true, noSetPreview: true, noBuild: true, compare: true, site: 'docs' })
+  assert.equal(parseSnapshotArgs(['--save']).control.save, true)
 })
 
 test('a mistyped flag fails, with a suggestion, instead of silently defaulting', () => {
   assert.throws(() => parseSnapshotArgs(['--layot', 'split']), /Unknown flag `--layot`.*`--layout`/)
+  assert.throws(() => parseSnapshotArgs(['--overlpa', '10']), /`--overlap`/)
 })
 
-test('bad values fail before anything runs', () => {
+test('malformed values fail before anything runs', () => {
   assert.throws(() => parseSnapshotArgs(['--layout']), /needs a value/)
   assert.throws(() => parseSnapshotArgs(['--layout', '--dev']), /needs a value/)
-  assert.throws(() => parseSnapshotArgs(['--layout', 'tilt']), /auto, split or device/)
-  assert.throws(() => parseSnapshotArgs(['--size', '1600']), /WIDTHxHEIGHT/)
-  assert.throws(() => parseSnapshotArgs(['--scale', '3']), /1 or 2/)
-  assert.throws(() => parseSnapshotArgs(['--quality', '0']), /1 to 100/)
+  assert.throws(() => parseSnapshotArgs(['--gap', 'wide']), /needs a number/)
+  assert.throws(() => parseSnapshotArgs(['--gap', '10', '--overlap', '5']), /not both/)
   assert.throws(() => parseSnapshotArgs(['--dev', '--url', 'http://localhost:5173']), /not both/)
+  assert.throws(() => parseSnapshotArgs(['--compare', '--save']), /--save/)
 })
 
 test('the global flags are accepted', () => {
   assert.doesNotThrow(() => parseSnapshotArgs(['--non-interactive']))
+})
+
+test('settings become package options: size is a canvas, out is the output', () => {
+  assert.deepEqual(libraryOptions({ size: '1200x630', out: '/x/card.png', scale: '2', gap: 48 }), {
+    gap: 48,
+    canvas: { width: 1200, height: 630 },
+    scale: 2,
+    output: '/x/card.png'
+  })
+  assert.throws(() => libraryOptions({ size: '1600' }), /WIDTHxHEIGHT/)
+})
+
+test('a variant is captioned with the flags that give it', () => {
+  assert.equal(flagsFor({}), 'current')
+  assert.equal(flagsFor({ gap: undefined, overlap: 70 }), '--overlap 70')
+  assert.equal(flagsFor({ strip: '1:2.5' }), '--strip 1:2.5')
+  assert.equal(flagsFor({ layout: 'device' }), '--layout device')
 })
 
 test('the default image lives in public/, so it has a site path', () => {

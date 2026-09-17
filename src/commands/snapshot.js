@@ -12,10 +12,16 @@
  *   uniweb snapshot                 build the site, serve dist/, capture it
  *   uniweb snapshot --dev           capture the site's Vite dev server (no build)
  *   uniweb snapshot --url <url>     capture a site that is already running
+ *   uniweb snapshot --compare       one capture, several looks, on one sheet
  *
  * The layout is chosen from the page: one that scrolls gets `split` (the first
- * view in a browser window, overlapped by a long strip of the page); one that
- * does not — a documentation shell, an app — gets `device` (desktop and phone).
+ * view in a browser window, beside a long strip of the page); one that does not
+ * — a documentation shell, an app — gets `device` (desktop and phone). How the
+ * two frames sit together is the look: `--gap`/`--overlap`, `--strip`, `--side`,
+ * `--frame`, `--tone`.
+ *
+ * A site keeps its chosen look in `site/snapshot.yml` (utils/snapshot-settings.js):
+ * the command's defaults for that site, which flags override and `--save` writes.
  *
  * `preview:` is written only when site.yml has none, or holds the app's generated
  * token. An address the author wrote is never replaced.
@@ -34,6 +40,13 @@ import { humanBytes } from '../utils/bytes.js'
 import { discoverSites } from '../utils/discover.js'
 import { detectWorkspacePm } from '../utils/pm.js'
 import { isAuthoredPreview } from '../utils/preview.js'
+import {
+  SETTINGS_FILE,
+  SettingsError,
+  mergeSettings,
+  readSnapshotSettings,
+  saveSnapshotSettings
+} from '../utils/snapshot-settings.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 
 const RED = '\x1b[31m'
@@ -43,45 +56,78 @@ const CYAN = '\x1b[36m'
 const DIM = '\x1b[2m'
 const RESET = '\x1b[0m'
 
-const VALUE_FLAGS = ['--site', '--url', '--route', '--layout', '--tone', '--size', '--scale', '--quality', '--out', '--hide']
-const BOOLEAN_FLAGS = ['--dev', '--no-build', '--no-set-preview']
+/** Flags that choose the image, by the `snapshot.yml` setting each one sets. */
+const SETTING_FLAGS = {
+  '--route': 'route',
+  '--layout': 'layout',
+  '--tone': 'tone',
+  '--gap': 'gap',
+  '--overlap': 'overlap',
+  '--strip': 'strip',
+  '--side': 'side',
+  '--frame': 'frame',
+  '--size': 'size',
+  '--scale': 'scale',
+  '--quality': 'quality',
+  '--hide': 'hide',
+  '--out': 'out'
+}
+const NUMBER_SETTINGS = ['gap', 'overlap', 'scale', 'quality']
+/** Flags that choose where the site comes from and what the run does. */
+const CONTROL_VALUE_FLAGS = ['--site', '--url']
+const CONTROL_BOOLEAN_FLAGS = ['--dev', '--no-build', '--no-set-preview', '--compare', '--save']
 const GLOBAL_FLAGS = ['--non-interactive', '--help', '-h']
-const ALL_FLAGS = [...VALUE_FLAGS, ...BOOLEAN_FLAGS, ...GLOBAL_FLAGS]
+const ALL_FLAGS = [...Object.keys(SETTING_FLAGS), ...CONTROL_VALUE_FLAGS, ...CONTROL_BOOLEAN_FLAGS, ...GLOBAL_FLAGS]
+const LOOK_SETTINGS = ['gap', 'overlap', 'strip', 'side', 'frame']
 
 export const DEFAULT_OUTPUT = join('public', 'preview.webp')
+export const COMPARE_OUTPUT = join('.uniweb', 'snapshot', 'compare.webp')
 
 class UsageError extends Error {}
 
 const camel = (flag) => flag.replace(/^--/, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase())
 
 /**
- * Parse `uniweb snapshot` arguments. Throws a UsageError naming the first problem.
+ * Parse `uniweb snapshot` arguments into the image settings they choose and the
+ * run controls. Checks the shape of each value; what a value may be (a layout
+ * name, a range) is checked by the package, before anything is built.
  *
  * @param {string[]} args
+ * @param {string} [cwd] - `--out` is relative to it
  */
-export function parseSnapshotArgs(args = []) {
-  const options = { hide: [], positionals: [] }
+export function parseSnapshotArgs(args = [], cwd = process.cwd()) {
+  const settings = {}
+  const control = {}
+  const positionals = []
   for (let i = 0; i < args.length; i++) {
     const raw = args[i]
     if (raw === '--') {
-      options.positionals.push(...args.slice(i + 1))
+      positionals.push(...args.slice(i + 1))
       break
     }
     if (!raw.startsWith('-') || raw === '-') {
-      options.positionals.push(raw)
+      positionals.push(raw)
       continue
     }
     const eq = raw.indexOf('=')
     const name = eq === -1 ? raw : raw.slice(0, eq)
-    if (VALUE_FLAGS.includes(name)) {
+    const takesValue = name in SETTING_FLAGS || CONTROL_VALUE_FLAGS.includes(name)
+    if (takesValue) {
       const value = eq === -1 ? args[++i] : raw.slice(eq + 1)
       if (value === undefined || value === '' || (eq === -1 && value.startsWith('--'))) {
         throw new UsageError(`\`${name}\` needs a value.`)
       }
-      if (name === '--hide') options.hide.push(value)
-      else options[camel(name)] = value
-    } else if (BOOLEAN_FLAGS.includes(name)) {
-      options[camel(name)] = true
+      const key = SETTING_FLAGS[name]
+      if (!key) control[camel(name)] = value
+      else if (key === 'hide') settings.hide = [...(settings.hide ?? []), value]
+      else if (key === 'out') settings.out = resolve(cwd, value)
+      else if (NUMBER_SETTINGS.includes(key)) {
+        const number = Number(value)
+        if (!Number.isFinite(number)) throw new UsageError(`\`${name}\` needs a number.`)
+        settings[key] = number
+      } else settings[key] = value
+    } else if (CONTROL_BOOLEAN_FLAGS.includes(name)) {
+      control[camel(name)] = true
     } else if (!GLOBAL_FLAGS.includes(name)) {
       const suggestion = didYouMean(name, ALL_FLAGS)
       throw new UsageError(
@@ -90,33 +136,39 @@ export function parseSnapshotArgs(args = []) {
     }
   }
 
-  if (options.dev && options.url) throw new UsageError('Pass `--dev` or `--url`, not both.')
-  if (options.layout && !['auto', 'split', 'device'].includes(options.layout)) {
-    throw new UsageError('`--layout` is auto, split or device.')
+  if (control.dev && control.url) throw new UsageError('Pass `--dev` or `--url`, not both.')
+  if (settings.gap !== undefined && settings.overlap !== undefined) {
+    throw new UsageError('Pass `--gap` or `--overlap`, not both.')
   }
-  if (options.tone && !['auto', 'light', 'deep'].includes(options.tone)) {
-    throw new UsageError('`--tone` is auto, light or deep.')
+  if (control.compare && control.save) {
+    throw new UsageError('`--save` keeps the look of a snapshot; choose a look from the sheet, then save that.')
   }
-  if (options.size !== undefined) {
-    const match = /^(\d+)x(\d+)$/.exec(options.size)
-    const [width, height] = match ? [Number(match[1]), Number(match[2])] : []
-    if (!match || width < 320 || height < 200 || width > 4096 || height > 4096) {
-      throw new UsageError('`--size` is WIDTHxHEIGHT, e.g. 1600x1000 (320–4096 wide, 200–4096 tall).')
-    }
-    options.canvas = { width, height }
+  return { settings, control, positionals }
+}
+
+/**
+ * The package's options for a set of settings. `size` is the one setting whose
+ * shape the package does not take as written.
+ */
+export function libraryOptions({ size, out, scale, quality, ...rest }) {
+  const options = { ...rest }
+  if (size !== undefined) {
+    const match = /^(\d+)x(\d+)$/.exec(String(size))
+    if (!match) throw new UsageError('`size` is WIDTHxHEIGHT, e.g. 1600x1000.')
+    options.canvas = { width: Number(match[1]), height: Number(match[2]) }
   }
-  if (options.scale !== undefined) {
-    if (!['1', '2'].includes(options.scale)) throw new UsageError('`--scale` is 1 or 2.')
-    options.scale = Number(options.scale)
-  }
-  if (options.quality !== undefined) {
-    const quality = Number(options.quality)
-    if (!Number.isInteger(quality) || quality < 1 || quality > 100) {
-      throw new UsageError('`--quality` is a whole number from 1 to 100.')
-    }
-    options.quality = quality
-  }
+  if (scale !== undefined) options.scale = Number(scale)
+  if (quality !== undefined) options.quality = Number(quality)
+  if (out !== undefined) options.output = out
   return options
+}
+
+/** A variant's changes as the flags that apply them; `current` for none. */
+export function flagsFor(changes) {
+  const parts = Object.entries(changes)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `--${key} ${value}`)
+  return parts.length ? parts.join(' ') : 'current'
 }
 
 /**
@@ -172,14 +224,14 @@ async function loadSnapshotPackage(dirs) {
   }
 }
 
-function installHint(rootDir) {
+function installHint(rootDir, command = 'add') {
   switch (detectWorkspacePm(rootDir)) {
     case 'npm':
-      return 'npm install --save-dev @uniweb/snapshot'
+      return 'npm install --save-dev @uniweb/snapshot@latest'
     case 'yarn':
-      return 'yarn add --dev -W @uniweb/snapshot'
+      return `yarn ${command} --dev -W @uniweb/snapshot@latest`
     default:
-      return 'pnpm add -D -w @uniweb/snapshot'
+      return `pnpm ${command} -D -w @uniweb/snapshot@latest`
   }
 }
 
@@ -224,35 +276,59 @@ function fail(message, ...details) {
 }
 
 export async function snapshot(args = []) {
-  let options
+  const cwd = process.cwd()
+  let parsed
   try {
-    options = parseSnapshotArgs(args)
+    parsed = parseSnapshotArgs(args, cwd)
   } catch (err) {
     if (!(err instanceof UsageError)) throw err
     fail(err.message, 'Run `uniweb snapshot --help` for the accepted flags.')
   }
+  const { settings: flagSettings, control, positionals } = parsed
 
-  const cwd = process.cwd()
   const rootDir = findWorkspaceRoot(cwd)
   const sites = rootDir ? await discoverSites(rootDir).catch(() => []) : []
-  const requested = options.site ?? options.positionals[0] ?? null
+  const requested = control.site ?? positionals[0] ?? null
   const { site, ambiguous } = pickSite(sites, rootDir ?? cwd, { requested, cwd })
 
   if (requested && !site) {
     fail(`Site "${requested}" not found.`, `Available: ${sites.map((s) => s.name).join(', ') || '(none)'}`)
   }
-  if (!site && !options.url) {
+  if (!site && !control.url) {
     fail('No site found here.', 'Run this inside a Uniweb workspace, or pass `--url <address> --out <file>`.')
   }
-  if (!site && !options.out) {
-    fail('`--out <file>` is needed outside a site: there is no public/ folder to write to.')
+  if (!site && !flagSettings.out) {
+    fail('`--out <file>` is needed outside a site: there is no site folder to write to.')
   }
+  if (!site && control.save) fail(`\`--save\` writes ${SETTINGS_FILE} into a site, and there is none here.`)
   if (ambiguous) {
     console.error(`${YELLOW}⚠${RESET} Multiple sites found; using ${CYAN}${site.name}${RESET}. Pick one with \`--site <name>\`.`)
   }
 
   const siteDir = site ? join(rootDir, site.path) : null
-  const output = options.out ? resolve(cwd, options.out) : join(siteDir, DEFAULT_OUTPUT)
+
+  // The site's saved look, under this run's flags. For a comparison, the file's
+  // `out` names the preview image, not the sheet.
+  let fileSettings = {}
+  if (siteDir) {
+    try {
+      fileSettings = readSnapshotSettings(siteDir).settings
+    } catch (err) {
+      if (!(err instanceof SettingsError)) throw err
+      fail(err.message)
+    }
+  }
+  const base = { ...fileSettings }
+  if (control.compare) delete base.out
+  const merged = mergeSettings(base, flagSettings)
+  let options
+  try {
+    options = libraryOptions(merged)
+  } catch (err) {
+    if (!(err instanceof UsageError)) throw err
+    fail(err.message)
+  }
+  options.output ??= join(siteDir, control.compare ? COMPARE_OUTPUT : DEFAULT_OUTPUT)
 
   const lib = await loadSnapshotPackage([siteDir, rootDir])
   if (!lib) {
@@ -262,18 +338,33 @@ export async function snapshot(args = []) {
       `  ${CYAN}${installHint(rootDir)}${RESET}`
     )
   }
+  const chosesLook = LOOK_SETTINGS.some((key) => options[key] !== undefined)
+  if ((control.compare || chosesLook) && typeof lib.compare !== 'function') {
+    fail(
+      'The installed `@uniweb/snapshot` predates looks and comparisons.',
+      'Update it:',
+      `  ${CYAN}${installHint(rootDir)}${RESET}`
+    )
+  }
+  if (typeof lib.normalizeOptions === 'function') {
+    try {
+      lib.normalizeOptions(options)
+    } catch (err) {
+      fail(err.message, `Check the flags${Object.keys(fileSettings).length ? ` and ${SETTINGS_FILE}` : ''}.`)
+    }
+  }
 
   // Put the site behind a URL.
   let source
   try {
-    if (options.url) {
-      source = { url: options.url, label: options.url, close: async () => {} }
-    } else if (options.dev) {
+    if (control.url) {
+      source = { url: control.url, label: control.url, close: async () => {} }
+    } else if (control.dev) {
       console.error(`${DIM}→ starting the dev server for ${site.name}${RESET}`)
       const dev = await lib.startDevServer(siteDir)
       source = { url: dev.url, label: `dev server (${dev.url})`, close: dev.close }
     } else {
-      if (!options.noBuild) {
+      if (!control.noBuild) {
         console.error(`${DIM}→ building ${site.name}${RESET}`)
         await runBuild(siteDir)
       }
@@ -288,40 +379,52 @@ export async function snapshot(args = []) {
     fail(err.message)
   }
 
+  const onStep = (step) => {
+    if (step === 'capture') {
+      const page = options.route && options.route !== '/' ? ` · ${options.route}` : ''
+      console.error(`${DIM}→ capturing ${source.label}${page}${RESET}`)
+    }
+    if (step === 'compose') console.error(`${DIM}→ composing${RESET}`)
+  }
+
   let result
   try {
-    result = await lib.snapshot({
-      url: source.url,
-      route: options.route,
-      layout: options.layout,
-      tone: options.tone,
-      canvas: options.canvas,
-      scale: options.scale,
-      quality: options.quality,
-      hide: options.hide,
-      output,
-      onStep: (step) => {
-        if (step === 'capture') {
-          const page = options.route && options.route !== '/' ? ` · ${options.route}` : ''
-          console.error(`${DIM}→ capturing ${source.label}${page}${RESET}`)
-        }
-        if (step === 'compose') console.error(`${DIM}→ composing${RESET}`)
-      },
-    })
+    result = control.compare
+      ? await lib.compare({ ...options, url: source.url, label: flagsFor, onStep })
+      : await lib.snapshot({ ...options, url: source.url, onStep })
   } catch (err) {
     await source.close().catch(() => {})
     fail(err.message)
   }
   await source.close()
 
-  const shown = relative(cwd, output) || output
+  const shown = relative(cwd, options.output) || options.output
+
+  if (control.compare) {
+    console.log(
+      `${GREEN}✓${RESET} ${shown} ${DIM}(${result.width}×${result.height}, ${result.variants.length} looks from one capture)${RESET}`
+    )
+    result.variants.forEach((variant, i) => {
+      console.log(`  ${String(i + 1).padStart(2)}  ${i === 0 ? `${DIM}current${RESET}` : `${CYAN}${variant.label}${RESET}`}`)
+    })
+    console.log(`  ${DIM}Take one with its flags, and add --save to keep it: uniweb snapshot ${result.variants[1]?.label ?? ''} --save${RESET}`)
+    return
+  }
+
   console.log(
     `${GREEN}✓${RESET} ${shown} ${DIM}(${result.width}×${result.height}, ${humanBytes(result.bytes)} — ${result.layout} layout, ${result.tone} background)${RESET}`
   )
 
-  if (!siteDir || options.noSetPreview) return
+  if (control.save) {
+    const { saved } = saveSnapshotSettings(siteDir, flagSettings, fileSettings)
+    const where = relative(cwd, join(siteDir, SETTINGS_FILE))
+    if (saved.length) console.log(`  ${where}: ${CYAN}saved ${saved.join(', ')}${RESET}`)
+    else console.log(`  ${DIM}${where}: nothing to save — pass the flags you want to keep.${RESET}`)
+  }
 
-  const value = previewValueFor(siteDir, output)
+  if (!siteDir || control.noSetPreview) return
+
+  const value = previewValueFor(siteDir, options.output)
   const siteYml = readSiteYml(siteDir)
   if (!value) {
     console.log(`  ${DIM}site.yml not changed: the image is outside ${join(site.path, 'public')}/, so it has no site path.${RESET}`)
