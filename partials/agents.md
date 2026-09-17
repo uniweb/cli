@@ -661,17 +661,36 @@ Decimals insert between: `2.5-testimonials.md` goes between `2-` and `3-`. **Ign
 title: About Us
 id: about                   # Stable identity (for page: links, survives moves)
 order: 2                    # Navigation sort position
-pages: [team, history, ...] # Child page order (... = rest). Without ... = strict (hides unlisted)
+sections: [hero, team, ...] # Section order within this page (same ... rule)
+pages: [team, history, ...] # Child page order, when this page has child folders
 redirect: academic          # Redirect to a child page (relative/absolute path, or URL)
 slug: { fr: a-propos }      # Localized URL segment per language
 
+# folder.yml  — a folder OF PAGES, where page.yml means a page built from sections
+title: Getting Started
+pages: [quickstart, app-tour, ...]  # Child page order (... = rest)
+
 # site.yml
 index: home                 # Just set the homepage
-pages: [home, about, ...]   # Order pages (... = rest, first = homepage); without ... = strict
+pages: [home, about, ...]   # Order pages (... = rest, first = homepage)
 foundation: '@acme/ui@1.2.0'  # The component system (see Part 2, step 1)
 extensions: ['@acme/fx@0.3.1'] # Secondary foundations — same shapes as foundation:
-runtime: 0.9.6              # Optional runtime pin; omit and the host chooses
 ```
+
+**The trailing `...` is not decoration — dropping it changes behaviour.** `pages:`
+in `folder.yml` and `site.yml`, and `sections:` in `page.yml`, all read it the same way:
+
+| written | means |
+|---|---|
+| `[a, b, ...]` | **inclusive** — `a` and `b` pinned in that order, **everything else follows** |
+| `['...']` | identical to omitting the key |
+| `[a, b]` — no `...` | **strict** — and every unlisted sibling is dropped from **every** menu |
+
+⚠️ **Strict is a navigation filter, not a delete, which is what makes it easy to
+miss.** Unlisted pages stay routed, stay in `dist/`, stay in `llms.txt` and still
+resolve by URL — only the links to them disappear. Your route count does not
+change and nothing warns. **If you list pages in order and mean "these first",
+end the list with `...`.**
 
 **Configuration cascades: `page.yml` → `folder.yml` → `site.yml` → foundation defaults.** Each level inherits from the one above and overrides specific values, the way CSS specificity works. This is what makes bulk assignment natural — put `layout: marketing` in a `folder.yml` and every page in that folder inherits it, while one page can still override with its own `page.yml`. Reach for `folder.yml` before editing the same key into a dozen `page.yml` files.
 
