@@ -40,6 +40,7 @@ import { detectFoundationType, isExtensionUrl } from '@uniweb/build'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { readFlagValue } from '../utils/args.js'
 import { isNonInteractive } from '../utils/interactive.js'
+import { compareSemverPrecedence } from '../utils/semver-precedence.js'
 
 /**
  * Resolve the site's LOCAL foundation — the one publish should bring along — or
@@ -117,13 +118,19 @@ export function resolveLocalExtensions(siteDir, siteYml) {
 }
 
 // The foundation's scoped catalog name (`@org/name`) from its package.json — an
-// already-scoped `name`, else `uniweb.scope` + a bare `name`. Null when neither
+// already-scoped name, else `uniweb.scope` + a bare one. Null when neither
 // yields a scoped name (then we can't look up the registered version, so the
 // caller treats the foundation as "release it and let register pick the scope").
+//
+// ⛔ The name is `uniweb.id` when set, exactly as the build reads it for the
+// schema that `register` submits (`build/src/schema.js`). Reading `name` alone —
+// as this did until 2026-09-17 — looked a `uniweb.id` foundation up under a name
+// the catalog does not have, so every push re-released it, and pinned the site
+// to that same wrong name.
 function foundationScopedName(dir) {
   try {
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
-    const name = pkg?.name
+    const name = pkg?.uniweb?.id || pkg?.name
     if (typeof name === 'string' && name.startsWith('@')) return name
     const scope = pkg?.uniweb?.scope
     if (scope && name) return `${String(scope).replace(/\/+$/, '')}/${name}`
@@ -344,8 +351,18 @@ async function bringLocalCodeAlong({
       )
       return { released: false, proceed: true, ref: registeredRef(reg) }
     }
+    // ⚖️ The registry takes a NEW version only when it is greater than every one
+    // it holds — but an older local version may be one it already has, and
+    // re-registering that resumes. The CLI cannot tell which from here, so it
+    // does not refuse: it submits, says what will decide, and `register` prints
+    // the registry's answer if it is a no.
+    const order = compareSemverPrecedence(local.version, reg.latest_version)
     say.info(
-      `Releasing the ${kind} ${label} (new version; registered latest is ${reg.latest_version})…`
+      order === 1
+        ? `Releasing the ${kind} ${label} (new version; registered latest is ${reg.latest_version})…`
+        : order === null
+          ? `Releasing the ${kind} ${label} (registered latest is ${reg.latest_version})…`
+          : `Releasing the ${kind} ${label} — not newer than the registered latest ${reg.latest_version}, so the registry takes it only if ${local.version} is already registered with this code…`
     )
     return {
       released: releaseFoundation(local, args, cliBin, say),

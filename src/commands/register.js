@@ -633,8 +633,8 @@ async function runRegister(args = []) {
     // Resume path: a registered version is immutable, so re-running after a
     // partial code delivery hits the duplicate rejection here — a STRUCTURED
     // 409 (problem+json, title "Conflict") — and proceeds to phase 2 (the
-    // code-uploads plan authorizes against the REGISTERED version; completed
-    // files are idempotent no-ops).
+    // code-uploads plan authorizes against the REGISTERED version; files it
+    // already stores come back `present` and are skipped).
     const isDuplicate = !standalone && res.status === 409
     if (isDuplicate) {
       alreadyRegistered = true
@@ -712,14 +712,18 @@ async function runRegister(args = []) {
           )
         }
         log(
-          `  ${colors.dim}Re-run \`uniweb register\` to resume — completed files are safe no-ops.${colors.reset}`
+          `  ${colors.dim}Re-run \`uniweb register\` to resume — files already stored are skipped.${colors.reset}`
         )
         return { exitCode: 1 }
       }
+      // "4 files" on a first upload; "1 uploaded, 3 already stored" on a resume.
+      const delivered = result.stored?.length
+        ? `${result.uploaded.length} uploaded, ${result.stored.length} already stored`
+        : `${result.uploaded.length} files`
       if (result.verified === true) {
         // serveBase is guaranteed here — it is what gated the check.
         success(
-          `Code delivered (${result.uploaded.length} files) — entry verified live at ${colors.dim}${result.serveBase}${colors.reset}`
+          `Code delivered (${delivered}) — entry verified live at ${colors.dim}${result.serveBase}${colors.reset}`
         )
       } else if (result.verified === false) {
         error(
@@ -727,9 +731,7 @@ async function runRegister(args = []) {
         )
         return { exitCode: 1 }
       } else {
-        success(
-          `Code delivered (${result.uploaded.length} files, ${result.mode} mode)`
-        )
+        success(`Code delivered (${delivered}, ${result.mode} mode)`)
         // Say WHY nothing was checked, rather than skipping in silence. The CLI
         // never reconstructs a serve URL (see utils/code-upload.js), so a plan
         // without `serve_base` means the location is not ours to know — name it
@@ -741,6 +743,16 @@ async function runRegister(args = []) {
         }
       }
     } catch (err) {
+      // ⚖️ A 4xx is the registry REFUSING the plan — e.g. a stored file
+      // declared at a different size (`version_content_changed`). Running the
+      // same command again gets the same answer, so do not suggest it: print
+      // the refusal's own sentence, which says what does help.
+      if (err.status >= 400 && err.status < 500 && err.detail) {
+        error(`Code delivery refused: HTTP ${err.status}`)
+        log(`  ${err.detail}`)
+        if (err.code) log(`  ${colors.dim}(${err.code})${colors.reset}`)
+        return { exitCode: 1 }
+      }
       error(`Code delivery failed: ${err.message}`)
       log(
         `  ${colors.dim}The schema registration above succeeded; re-run \`uniweb register\` to deliver the code.${colors.reset}`

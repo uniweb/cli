@@ -7,10 +7,12 @@
  *
  *   1. PLAN   — POST {apiBase}/dev/registry/code-uploads with the file list
  *               ({ path, content_type, size, sha256? }). The response carries
- *               one upload target per file ({ path, method, url, headers })
- *               plus mode: 'direct' (dev — URLs point back at the backend) or
- *               'presigned' (prod — storage PUTs; bytes never transit the
- *               backend). The CLI never branches on the mode.
+ *               one entry per file: `present: true` for a file the backend
+ *               already stores for this version (no URL — it is skipped), or an
+ *               upload target ({ path, method, url, headers }). Plus mode:
+ *               'direct' (dev — URLs point back at the backend) or 'presigned'
+ *               (prod — storage PUTs; bytes never transit the backend). The CLI
+ *               never branches on the mode.
  *   2. UPLOAD — PUT each file's raw bytes to its URL with the given headers.
  *               The ENTRY uploads LAST: a partial upload never yields a
  *               loadable version (practical atomicity — there is no server
@@ -35,7 +37,8 @@
  *     plan step's per-version file cap — the cap is an abuse guard, the maps
  *     simply don't belong on the CDN.)
  *   - a registered version is immutable, code included — changed bytes mean
- *     a new version (re-PUTting identical bytes is a safe no-op)
+ *     a new version. A stored file is never re-sent (the plan marks it
+ *     `present`), and one declared at a different size is refused (422)
  */
 
 import { createHash } from 'node:crypto'
@@ -215,7 +218,10 @@ export function computeFoundationDigest(distDir) {
  * @param {string} opts.distDir  - the built dist/ directory
  * @param {Array}  [opts.files]  - pre-collected file list (default: collect)
  * @param {(msg: string) => void} [opts.onProgress]
- * @returns {Promise<{ mode: string, uploaded: string[], failed: Array<{path, status, detail}>, verified: boolean|null, serveBase: string|null }>}
+ * @returns {Promise<{ mode: string, uploaded: string[], stored: string[], failed: Array<{path, status, detail}>, verified: boolean|null, serveBase: string|null }>}
+ *   `stored` — files the plan reported as already stored (`present: true`), not re-sent.
+ * @throws {Error} when the plan is refused — with `status`, and the problem+json
+ *   `detail` and `code` when the body carries them
  */
 export async function uploadFoundationCode({
   apiBase,
@@ -259,10 +265,22 @@ export async function uploadFoundationCode({
   })
   if (!planRes.ok) {
     const body = await planRes.text().catch(() => '')
+    // A refusal is problem+json, and its `detail` is a sentence written for the
+    // person reading — for a changed file it says what to do. Carry it (and the
+    // `code`) instead of a raw body the reader has to dig the sentence out of.
+    let problem = null
+    try {
+      problem = JSON.parse(body)
+    } catch {
+      problem = null
+    }
+    const detail = typeof problem?.detail === 'string' ? problem.detail : null
     const err = new Error(
-      `code-uploads plan rejected: HTTP ${planRes.status}${body ? ` — ${body.slice(0, 300)}` : ''}`
+      `code-uploads plan rejected: HTTP ${planRes.status}${detail ? ` — ${detail}` : body ? ` — ${body.slice(0, 300)}` : ''}`
     )
     err.status = planRes.status
+    err.detail = detail
+    err.code = typeof problem?.code === 'string' ? problem.code : null
     throw err
   }
   const plan = await planRes.json()
@@ -275,6 +293,7 @@ export async function uploadFoundationCode({
     plan.mode === 'direct' ? { Authorization: `Bearer ${token}` } : {}
 
   const uploaded = []
+  const stored = []
   const failed = []
   for (const file of uploadOrder(list)) {
     const target = targets.get(file.path)
@@ -283,6 +302,27 @@ export async function uploadFoundationCode({
         path: file.path,
         status: 0,
         detail: 'no upload target in plan'
+      })
+      continue
+    }
+    // ⭐ A file the backend already stores for this version comes back
+    // `present: true`, with no URL — a stored file of a registered version is
+    // never overwritten. Skip it. This is what lets an interrupted upload
+    // resume, and a re-run on a fully uploaded version pass.
+    //
+    // ⛔ Before this branch existed, a present entry was PUT to
+    // `new URL(undefined, origin)`, which does not throw — it resolves to
+    // `<origin>/undefined` — and came back as a failed upload.
+    if (target.present === true) {
+      stored.push(file.path)
+      onProgress(`${file.path} (already stored)`)
+      continue
+    }
+    if (!target.url) {
+      failed.push({
+        path: file.path,
+        status: 0,
+        detail: 'the plan gave no upload URL'
       })
       continue
     }
@@ -350,5 +390,5 @@ export async function uploadFoundationCode({
     }
   }
 
-  return { mode: plan.mode || 'direct', uploaded, failed, verified, serveBase }
+  return { mode: plan.mode || 'direct', uploaded, stored, failed, verified, serveBase }
 }

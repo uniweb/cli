@@ -340,6 +340,147 @@ test('uploadFoundationCode surfaces per-file failures and skips verification', a
   }
 })
 
+/**
+ * A plan stub in the registry's present-aware shape: every declared file gets an
+ * entry; the ones in `stored` are `present: true` with NO url, the rest carry a
+ * target. Records every request so a test can assert what was — and was not — sent.
+ */
+function presentAwareFetch({ stored = [], planStatus = 200, planBody = null }) {
+  const calls = []
+  const fetch = async (url, opts = {}) => {
+    calls.push({ url: String(url), method: opts.method || 'GET' })
+    if (String(url).endsWith('/dev/registry/code-uploads')) {
+      if (planStatus !== 200) {
+        return { ok: false, status: planStatus, text: async () => JSON.stringify(planBody) }
+      }
+      const body = JSON.parse(opts.body)
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          mode: 'direct',
+          expires_in: null,
+          serve_base: '/served/',
+          uploads: body.files.map((f) =>
+            stored.includes(f.path)
+              ? { path: f.path, present: true }
+              : { path: f.path, present: false, method: 'PUT', url: `http://localhost:8080/up/${f.path}`, headers: {} }
+          )
+        })
+      }
+    }
+    if (opts.method === 'PUT') return { ok: true, status: 200, text: async () => '' }
+    return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode('export default 42\n').buffer }
+  }
+  return { fetch, calls }
+}
+
+async function withFetch(stub, run) {
+  const realFetch = globalThis.fetch
+  globalThis.fetch = stub
+  try {
+    return await run()
+  } finally {
+    globalThis.fetch = realFetch
+  }
+}
+
+const deliver = (dir) =>
+  uploadFoundationCode({ apiBase: 'http://localhost:8080', token: 't', name: '@std/starter', version: '1.0.2', distDir: dir })
+
+test('uploadFoundationCode skips files the plan reports present, and still verifies', async () => {
+  const dir = makeDist()
+  const { fetch, calls } = presentAwareFetch({ stored: ['entry.js', 'runtime-pin.json'] })
+  try {
+    const result = await withFetch(fetch, () => deliver(dir))
+    assert.deepEqual(result.failed, [])
+    assert.deepEqual(result.uploaded, ['assets/style.css'])
+    assert.deepEqual([...result.stored].sort(), ['entry.js', 'runtime-pin.json'])
+    const puts = calls.filter((c) => c.method === 'PUT').map((c) => c.url)
+    assert.deepEqual(puts, ['http://localhost:8080/up/assets/style.css'], 'nothing present is re-sent')
+    assert.ok(!calls.some((c) => c.url.endsWith('/undefined')), 'a url-less entry must never become a request')
+    assert.equal(result.verified, true, 'the entry is verified even though it was already stored')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a fully stored version uploads nothing and passes', async () => {
+  const dir = makeDist()
+  const { fetch, calls } = presentAwareFetch({ stored: ['entry.js', 'runtime-pin.json', 'assets/style.css'] })
+  try {
+    const result = await withFetch(fetch, () => deliver(dir))
+    assert.deepEqual(result.failed, [])
+    assert.deepEqual(result.uploaded, [])
+    assert.equal(result.stored.length, 3)
+    assert.equal(calls.filter((c) => c.method === 'PUT').length, 0)
+    assert.equal(result.verified, true)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('CONTROL: without present, the same plan uploads every file', async () => {
+  const dir = makeDist()
+  const { fetch } = presentAwareFetch({ stored: [] })
+  try {
+    const result = await withFetch(fetch, () => deliver(dir))
+    assert.equal(result.uploaded.length, 3)
+    assert.equal((result.stored || []).length, 0)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('an entry that is not present but carries no url fails without a request', async () => {
+  const dir = makeDist()
+  const calls = []
+  const stub = async (url, opts = {}) => {
+    calls.push({ url: String(url), method: opts.method || 'GET' })
+    const body = JSON.parse(opts.body)
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ mode: 'direct', uploads: body.files.map((f) => ({ path: f.path, present: false })) })
+    }
+  }
+  try {
+    const result = await withFetch(stub, () => deliver(dir))
+    assert.equal(result.failed.length, 3)
+    assert.ok(result.failed.every((f) => f.detail === 'the plan gave no upload URL'))
+    assert.equal(calls.length, 1, 'only the plan request was made')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a refused plan throws with the problem+json detail and code', async () => {
+  const dir = makeDist()
+  const refusal = {
+    type: 'about:blank',
+    title: 'Unprocessable Entity',
+    status: 422,
+    code: 'version_content_changed',
+    detail: '@std/starter@1.0.2 already stores entry.js at a different size — bump the version.',
+    paths: ['entry.js (stored 68973 bytes, declared 69001)']
+  }
+  const { fetch } = presentAwareFetch({ planStatus: 422, planBody: refusal })
+  try {
+    await assert.rejects(
+      withFetch(fetch, () => deliver(dir)),
+      (err) => {
+        assert.equal(err.status, 422)
+        assert.equal(err.code, 'version_content_changed')
+        assert.equal(err.detail, refusal.detail)
+        assert.match(err.message, /bump the version/)
+        return true
+      }
+    )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('origin-relative serve_base resolves against the registry origin', async () => {
   const dir = makeDist()
   const gets = []
