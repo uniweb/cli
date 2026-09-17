@@ -60,6 +60,7 @@ import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import { getExistingPackageNames, validatePackageName } from '../utils/names.js'
 import { detectPackageManager, installCmd } from '../utils/pm.js'
 import { getCliPrefix } from '../utils/interactive.js'
+import { replaceInTopLevelList, setTopLevelScalar } from '../utils/yaml-edit.js'
 
 const colors = {
   reset: '\x1b[0m',
@@ -208,6 +209,24 @@ async function rewritePackageJsonName(pkgPath, newName) {
   await writeJsonPreservingStyleAsync(pkgPath, pkg, src)
 }
 
+/**
+ * Stop, before any file moves, when a site's `site.yml` names the package in a
+ * form the in-place edit cannot reach. The alternative is rewriting the whole
+ * file, which loses the author's comments and formatting — so we refuse and say
+ * how to write it instead.
+ */
+function refuseUneditableSiteYml(sitePaths, key, hint) {
+  if (sitePaths.length === 0) return
+  for (const path of sitePaths) {
+    error(
+      `Cannot rename: ${colors.bright}${path}/site.yml${colors.reset} writes \`${key}:\` in a form this command cannot edit without rewriting the file.`
+    )
+  }
+  log(`Nothing was changed. ${hint}`)
+  log('Then run the rename again.')
+  process.exit(1)
+}
+
 // ─── Foundation rename ───────────────────────────────────────────
 
 async function renameFoundation(rootDir, oldName, newName, prefix) {
@@ -262,7 +281,7 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
   for (const site of sites) {
     const sitePkgPath = join(rootDir, site.path, 'package.json')
     const siteYmlPath = join(rootDir, site.path, 'site.yml')
-    let pkg, pkgSrc, ymlData
+    let pkg, pkgSrc, ymlText, ymlData
     try {
       pkgSrc = await readFile(sitePkgPath, 'utf-8')
       pkg = JSON.parse(pkgSrc)
@@ -271,7 +290,8 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
       pkgSrc = null
     }
     try {
-      ymlData = yaml.load(await readFile(siteYmlPath, 'utf-8')) || {}
+      ymlText = await readFile(siteYmlPath, 'utf-8')
+      ymlData = yaml.load(ymlText) || {}
     } catch {
       ymlData = null
     }
@@ -285,12 +305,19 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
         pkgSrc,
         sitePkgPath,
         siteYmlPath,
-        ymlData,
+        // Edited in place — see utils/yaml-edit.js — and computed HERE, before
+        // anything moves, so a file it cannot edit stops the rename cleanly.
+        newYmlText: ymlMatches ? setTopLevelScalar(ymlText, 'foundation', newName) : null,
         hasDep,
         ymlMatches
       })
     }
   }
+  refuseUneditableSiteYml(
+    affectedSites.filter((s) => s.ymlMatches && s.newYmlText === null).map((s) => s.path),
+    'foundation',
+    `Write it on one line: \`foundation: ${oldName}\`.`
+  )
 
   // ─── Print plan, then execute ────────────────────────────────
 
@@ -333,11 +360,7 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
       await writeJsonPreservingStyleAsync(s.sitePkgPath, s.pkg, s.pkgSrc)
     }
     if (s.ymlMatches) {
-      const newYmlData = { ...s.ymlData, foundation: newName }
-      await writeFile(
-        s.siteYmlPath,
-        yaml.dump(newYmlData, { flowLevel: -1, quotingType: "'" })
-      )
+      await writeFile(s.siteYmlPath, s.newYmlText)
     }
   }
 
@@ -485,9 +508,10 @@ async function renameExtension(rootDir, oldName, newName, prefix) {
   const affectedSites = []
   for (const site of sites) {
     const siteYmlPath = join(rootDir, site.path, 'site.yml')
-    let ymlData
+    let ymlText, ymlData
     try {
-      ymlData = yaml.load(await readFile(siteYmlPath, 'utf-8')) || {}
+      ymlText = await readFile(siteYmlPath, 'utf-8')
+      ymlData = yaml.load(ymlText) || {}
     } catch {
       continue
     }
@@ -496,9 +520,23 @@ async function renameExtension(rootDir, oldName, newName, prefix) {
       (e) => typeof e === 'string' && e.startsWith(oldUrlPrefix)
     )
     if (hits.length > 0) {
-      affectedSites.push({ site, ymlData, siteYmlPath, hits })
+      const replacements = new Map(
+        hits.map((e) => [e, newUrlPrefix + e.slice(oldUrlPrefix.length)])
+      )
+      affectedSites.push({
+        site,
+        siteYmlPath,
+        hits,
+        // Edited in place, and computed before anything moves — as for foundations.
+        newYmlText: replaceInTopLevelList(ymlText, 'extensions', replacements)
+      })
     }
   }
+  refuseUneditableSiteYml(
+    affectedSites.filter((a) => a.newYmlText === null).map((a) => a.site.path),
+    'extensions',
+    `Write each entry on a line of its own, e.g. \`- ${oldUrlPrefix}dist/entry.js\`.`
+  )
 
   log('')
   log(
@@ -531,16 +569,7 @@ async function renameExtension(rootDir, oldName, newName, prefix) {
   await rewritePackageJsonName(join(newExtDir, 'package.json'), newName)
 
   for (const a of affectedSites) {
-    const newExts = (a.ymlData.extensions || []).map((e) =>
-      typeof e === 'string' && e.startsWith(oldUrlPrefix)
-        ? newUrlPrefix + e.slice(oldUrlPrefix.length)
-        : e
-    )
-    const newYmlData = { ...a.ymlData, extensions: newExts }
-    await writeFile(
-      a.siteYmlPath,
-      yaml.dump(newYmlData, { flowLevel: -1, quotingType: "'" })
-    )
+    await writeFile(a.siteYmlPath, a.newYmlText)
   }
 
   if (folderWillRename) {
