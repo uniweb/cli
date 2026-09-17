@@ -178,10 +178,22 @@ export async function applyContent(
     '.gitignore'
   ])
 
-  // Config files that should be merged, not overwritten.
-  // Keys listed here are preserved from the scaffolded version.
+  // Config files that should be merged, not overwritten: for each listed
+  // key, when the scaffolded version's value is used.
+  //
+  //   foundation  ALWAYS — the CLI resolved it for this project, and a
+  //               content template cannot know it.
+  //   name        ONLY WHEN THE TEMPLATE SETS NONE. A template's own name is
+  //               the default name of a site made from it — the same thing
+  //               cloning a template in an app gives — so a literal
+  //               `name: Product Launch` survives, and the project name fills
+  //               in for a template with no name, or only the
+  //               `{{projectName}}` placeholder.
   const MERGE_FILES = {
-    'site.yml': ['name', 'foundation']
+    'site.yml': [
+      ['name', 'when-template-has-none'],
+      ['foundation', 'always']
+    ]
   }
 
   await copyContentRecursive(
@@ -267,8 +279,9 @@ async function copyContentRecursive(
       // educational structure of the content template survive) and
       // override only the specific top-level keys listed in
       // preserveKeys with the values from the already-scaffolded base
-      // file (so the user's chosen project name and foundation ref
-      // don't get replaced by whatever the content template hardcoded).
+      // file (so the resolved foundation ref is never replaced by whatever
+      // the content template hardcoded, and a project name fills in for a
+      // template that names nothing).
       //
       // Earlier versions of this code parsed both files through
       // js-yaml, merged the objects, and re-emitted the result via
@@ -283,17 +296,21 @@ async function copyContentRecursive(
         const existing = yaml.load(existingContent) || {}
         let merged = newContent ?? (await fs.readFile(sourcePath, 'utf-8'))
 
-        for (const key of preserveKeys) {
+        for (const [key, when] of preserveKeys) {
           if (existing[key] === undefined) continue
           const baseLine = matchTopLevelLine(existingContent, key)
           if (!baseLine) continue
           // If the new content carries the key, replace its line with
-          // the scaffolded value (preserving the user's project/foundation
-          // choice). Otherwise insert the line — older content templates
-          // (notably `docs/site/site.yml.hbs`) omit `foundation:` entirely,
-          // and dropping it leaves the site without a foundation ref so
-          // the entry's `import '#foundation/styles'` fails at build time.
+          // the scaffolded value — unless the key only fills in, and the
+          // template set a value of its own. Otherwise insert the line —
+          // older content templates (notably `docs/site/site.yml.hbs`) omit
+          // `foundation:` entirely, and dropping it leaves the site without a
+          // foundation ref so the entry's `import '#foundation/styles'` fails
+          // at build time.
           if (matchTopLevelLine(merged, key)) {
+            if (when === 'when-template-has-none' && hasOwnValue(merged, key)) {
+              continue
+            }
             merged = replaceTopLevelLine(merged, key, baseLine)
           } else {
             merged = insertTopLevelLine(merged, baseLine)
@@ -356,6 +373,22 @@ export async function applyStarter(projectDir, context, options = {}) {
  */
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Whether a content template sets `key` to a value of its own: a non-empty
+ * string that is not an unrendered `{{placeholder}}` (a plain `site.yml`, not
+ * `.hbs`, is copied without rendering). Content that does not parse counts as
+ * setting nothing, so the scaffolded value fills in, as it always did.
+ */
+function hasOwnValue(content, key) {
+  let value
+  try {
+    value = (yaml.load(content) || {})[key]
+  } catch {
+    return false
+  }
+  return typeof value === 'string' && value.trim() !== '' && !value.includes('{{')
 }
 
 /**
