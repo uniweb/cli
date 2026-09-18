@@ -373,6 +373,26 @@ async function runExtract(siteRoot, config, args) {
 }
 
 /**
+ * The starter value a translator is handed for one unit.
+ *
+ * ⭐ `unit.markup` when the element carries inline markdown, `unit.source` otherwise.
+ * `source` is the flattened plain text — it is the KEY, and it is what this function
+ * used to seed. That meant a paragraph's links, bold and emphasis were already gone
+ * from the file a translator opened, and a translator cannot restore what they were
+ * never shown: a 100%-covered locale rendered with zero inline links and no check
+ * reported it (coverage counts keys, not fidelity). `merge` has always parsed a
+ * translation value as inline markdown, so the value channel was lossless the whole
+ * time — only the prompt was lossy. Measured 2026-09-18, @uniweb/build 0.44.4.
+ *
+ * ⚠️ This fills MISSING keys only. A locale file already seeded from the flat source
+ * is not repaired by re-running; use `uniweb i18n generate <locale> --force` against
+ * a freshly extracted manifest to get the markup-bearing source back.
+ */
+function starterValue(unit) {
+  return unit.markup || unit.source
+}
+
+/**
  * Generate command - generate starter translation files from manifest
  *
  * Usage:
@@ -451,7 +471,7 @@ async function runInit(siteRoot, config, args) {
 
       for (const [hash, unit] of Object.entries(units)) {
         if (!existingKeys.has(hash)) {
-          existing[hash] = useEmpty ? '' : unit.source
+          existing[hash] = useEmpty ? '' : starterValue(unit)
           added++
         }
       }
@@ -470,7 +490,7 @@ async function runInit(siteRoot, config, args) {
       const localeData = {}
 
       for (const [hash, unit] of Object.entries(units)) {
-        localeData[hash] = useEmpty ? '' : unit.source
+        localeData[hash] = useEmpty ? '' : starterValue(unit)
       }
 
       await writeFile(localePath, JSON.stringify(localeData, null, 2) + '\n')
@@ -962,17 +982,23 @@ async function runAudit(siteRoot, config, args) {
       }
     }
 
-    // Report entries that need inline tag updates
-    const needsTagsTotal = results.reduce(
-      (sum, r) => sum + (r.needsTags?.length || 0),
+    // ⭐ Report translations that will render as flat prose.
+    // Coverage cannot see this class — it counts keys, not fidelity — so a site
+    // whose every link has been flattened reports 100%. That is exactly how a
+    // fully translated documentation site shipped with zero internal links.
+    const losesMarkupTotal = results.reduce(
+      (sum, r) => sum + (r.losesMarkup?.length || 0),
       0
     )
-    if (needsTagsTotal > 0) {
+    if (losesMarkupTotal > 0) {
       log(
-        `\n${colors.yellow}${needsTagsTotal} translation(s) have inline marks in the source but not in the translation.`
+        `\n${colors.yellow}${losesMarkupTotal} translation(s) drop the inline markup their source carries.`
       )
       log(
-        `These translations won't preserve accent/span styling.${colors.reset}`
+        `Links, bold and emphasis will be missing from these — a translation value is`
+      )
+      log(
+        `inline markdown, so copy the [text](href) and ** ** across from the source.${colors.reset}`
       )
       if (!verbose) {
         log(
