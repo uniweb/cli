@@ -156,14 +156,39 @@ function shouldFetchAssets(args, siteDir) {
   return true
 }
 
-// Read a top-level `$uuid:` scalar from a YAML file, or null.
+// Read a top-level `$uuid:` scalar from a YAML file.
+//
+// ⛔ THREE STATES, AND COLLAPSING THEM TO `null` IS A LIE TO THE USER.
+// This returned `null` on any throw, so a site.yml that EXISTS and carries a
+// `$uuid:` line but does not PARSE was reported as "this project has no $uuid
+// yet. Run `uniweb push` first." — advice that is wrong, and actively harmful
+// on a cloned site, since `push` would send an empty tree at the uuid the file
+// already holds.
+//
+// It is also invisible: the user greps the file, sees `$uuid:`, and disbelieves
+// the CLI. The clone suite's own comment records an earlier round of exactly
+// this ("an unquoted `@…` scalar matched a regex here while the file did not
+// parse, and `pull` then found no `$uuid`") — that CAUSE was fixed by quoting
+// the ref; the SYMPTOM stayed reachable by any other parse error.
+// Re-surfaced 2026-09-18 by the backend lane, whose clone wrote a `$uuid:` and
+// whose pull then said there was none.
+//
+// ⇒ Name the state. A missing file and a `$uuid`-less file are "no uuid"; a
+// file that will not parse is an error with the parser's own message.
 function readYamlUuid(filePath) {
+  let text
   try {
-    const obj = yaml.load(readFileSync(filePath, 'utf8'))
-    return typeof obj?.$uuid === 'string' ? obj.$uuid : null
+    text = readFileSync(filePath, 'utf8')
   } catch {
-    return null
+    return { uuid: null } // no site.yml — genuinely nothing to pull
   }
+  let obj
+  try {
+    obj = yaml.load(text)
+  } catch (err) {
+    return { uuid: null, unparsed: err.message.split('\n')[0] }
+  }
+  return { uuid: typeof obj?.$uuid === 'string' ? obj.$uuid : null }
 }
 
 // Conditional-pull ETag cache (gitignored `.uniweb/pull-cache.json`): the last ETag
@@ -583,7 +608,20 @@ export async function pull(args = [], deps = {}) {
 
   // One identity per site: `site.yml::$uuid`. Both lanes (content + folder) are keyed
   // by it — the backend resolves the site's `@uniweb/folder` from this uuid.
-  const siteContentUuid = readYamlUuid(join(siteDir, 'site.yml'))
+  const siteYmlPath = join(siteDir, 'site.yml')
+  const identity = readYamlUuid(siteYmlPath)
+
+  // A file that will not parse is an error, not an absence — see readYamlUuid.
+  if (identity.unparsed) {
+    error(`site.yml did not parse: ${identity.unparsed}`)
+    note(siteYmlPath)
+    note(
+      'Nothing was read, so the $uuid in it (if any) was not seen. Fix the YAML and re-run.'
+    )
+    return { exitCode: 1 }
+  }
+
+  const siteContentUuid = identity.uuid
 
   if (!siteContentUuid) {
     info(
