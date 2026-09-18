@@ -414,10 +414,18 @@ async function loadI18nConfig(projectDir, siteConfig = null) {
     }
   }
 
+  // ⛔ The default locale is the root tree, not `dist/<default>/`. An explicit
+  // `languages: [en, fr]` resolves verbatim — default included — so the DECLARED
+  // form (the one the contract tells authors to use) minted a duplicate copy of
+  // every page, while the wildcard form did not. Dropping it here keeps content,
+  // per-locale HTML and translated records agreeing on one set.
+  const defaultLocale = resolveDefaultLocale(config)
+  locales = locales.filter((l) => l !== defaultLocale)
+
   if (locales.length === 0) return null
 
   return {
-    defaultLocale: resolveDefaultLocale(config),
+    defaultLocale,
     locales,
     localesDir
   }
