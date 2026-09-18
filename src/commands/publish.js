@@ -124,26 +124,6 @@ const say = {
   dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`)
 }
 
-// Origin-relative serve path → clickable absolute URL.
-//
-// ⭐ THE TWO SHAPES ARE A CONTRACT, NOT AN INCONSISTENCY — ratified 2026-08-29 and
-// documented in the backend's `wire-layer.md` rather than merely observed. A publish
-// returns an ABSOLUTE url when Cloudflare hosts the site (another origin entirely)
-// and an ORIGIN-RELATIVE path when the backend serves it itself, where its own
-// external origin is not reliably self-reportable from behind an ALB.
-//
-// ⇒ So this branch is implementing the contract, not defending against drift. I
-// reported the two shapes as a violation of "finished values only" in collab
-// framework↔backend; the backend checked, found the adjacent ruling that
-// explains the relative arm, and ratified both. Do not "fix" it by demanding one
-// shape — the caller's own origin is the missing half on the relative arm, and we
-// are the caller.
-function absolutizeServeUrl(origin, url) {
-  if (!url || typeof url !== 'string') return null
-  if (/^https?:\/\//.test(url)) return url
-  return `${origin.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`
-}
-
 function readSiteYml(path) {
   if (!existsSync(path)) return {}
   try {
@@ -1020,7 +1000,12 @@ export async function publish(args = []) {
   } catch {
     result = {}
   }
-  const serveUrl = absolutizeServeUrl(client.origin, result.url)
+  // Where the site went live — a finished, absolute address, taken verbatim: shown,
+  // and recorded in deploy.yml, never composed onto. Until 2026-09-17 a backend
+  // serving the site itself answered with an origin-relative path, which this
+  // prefixed with our own origin; the reply is absolute now, so a path from an
+  // older backend is simply shown as one.
+  const serveUrl = typeof result.url === 'string' && result.url ? result.url : null
 
   // 8. Persist deploy.yml memory — a record of what went live (and so a re-run
   //    reuses the resolved target without re-asking). One identity:
