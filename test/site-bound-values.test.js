@@ -1,10 +1,10 @@
 /**
- * The two site.yml values that belong to ONE backend site — `$url` (where it is
- * live, carried as `info.url` for site cards) and the app's generated `preview` —
- * and when the CLI drops them.
+ * The site.yml value that belongs to ONE backend site — the app's generated
+ * `preview` — and when the CLI drops it.
  *
- * ⛔ Nothing in the CLI WRITES `$url`. The backend records it at every publish and
- * pull brings it back like any other key.
+ * ⛔ `$url` is not one of them any more. It was retired on 2026-09-17: where a site
+ * went live is a deploy fact, recorded in deploy.yml, and nothing reads a leftover
+ * `$url` line — so there is nothing to drop.
  */
 
 import { test } from 'node:test'
@@ -22,12 +22,10 @@ function siteWith(body) {
 }
 const read = (dir) => readFileSync(join(dir, 'site.yml'), 'utf8')
 
-test("⛔ an unbound project drops the previous site's $url and the app's generated preview", () => {
-  const dir = siteWith(
-    "name: S\n$url: https://old.example/\npreview: '2026-09-10T12:34:56Z'\n"
-  )
+test("⛔ an unbound project drops the app's generated preview", () => {
+  const dir = siteWith("name: S\npreview: '2026-09-10T12:34:56Z'\n")
   try {
-    assert.deepEqual(dropSiteBoundValues(dir), ['$url', 'preview'])
+    assert.deepEqual(dropSiteBoundValues(dir), ['preview'])
     assert.equal(read(dir), 'name: S\n')
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -46,9 +44,8 @@ test("an author's preview is theirs and survives — a URL, or a path in the pro
   }
 })
 
-test('a bound project (it has a $uuid) keeps both', () => {
-  const body =
-    "$uuid: abc\nname: S\n$url: https://acme.example/\npreview: '2026-09-10T12:34:56Z'\n"
+test('a bound project (it has a $uuid) keeps it', () => {
+  const body = "$uuid: abc\nname: S\npreview: '2026-09-10T12:34:56Z'\n"
   const dir = siteWith(body)
   try {
     assert.deepEqual(dropSiteBoundValues(dir), [])

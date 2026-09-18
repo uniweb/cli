@@ -328,15 +328,16 @@ export function clearRemoteSyncStateIfUnbound(siteDir) {
 /**
  * Drop the `site.yml` values that describe ONE PARTICULAR backend site, when this
  * project is bound to none (no `$uuid`) — a brand-new site, or the state our own
- * "clear `$uuid` to re-publish as a new site" recovery puts you in:
- *
- *   · `$url` — where the PREVIOUS site was live. The new one is not live anywhere
- *     yet; its first publish records its own.
- *   · `preview` in the APP's form — a timestamp naming the previous site's generated
- *     card image, which is keyed by that site's uuid and would dangle on this one.
+ * "clear `$uuid` to re-publish as a new site" recovery puts you in. Today that is
+ * one value: `preview` in the APP's form — a timestamp naming the previous site's
+ * generated card image, which is keyed by that site's uuid and would dangle on this
+ * one.
  *
  * ⛔ An AUTHOR's preview is theirs and stays: a URL, or a path to an image in the
  * project, is as good for the new site as for the old.
+ *
+ * (`$url`, where the previous site was live, was dropped here too until it was
+ * retired on 2026-09-17. A leftover line is inert — nothing reads or sends it.)
  *
  * The site.yml sibling of `clearRemoteSyncStateIfUnbound`, called beside it for the
  * same reason — before the create mints a uuid and makes the project look bound.
@@ -354,7 +355,6 @@ export function dropSiteBoundValues(siteDir) {
   }
   if (!y || typeof y !== 'object' || typeof y.$uuid === 'string') return []
   const dropped = []
-  if (y.$url !== undefined && removeYamlScalar(file, '$url')) dropped.push('$url')
   if (
     y.preview !== undefined &&
     !isAuthoredPreview(y.preview) &&

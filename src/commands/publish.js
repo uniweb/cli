@@ -1113,11 +1113,10 @@ export async function publish(args = []) {
     say.dim(`  site.yml lists ${unserved.join(', ')}, and ${unserved.length === 1 ? 'it was' : 'they were'} not published.`)
   }
   if (serveUrl) console.log(`  ${c.cyan}${serveUrl}${c.reset}`)
-  // ⛔ No site.yml write for where it went live. The backend records the reply's
-  // `url` on `info.url` at every publish, and pull brings it into `site.yml::$url`
-  // like any other key. A copy written here was a second writer that had to match
-  // the backend's byte for byte (the address printed above is made absolute, so it
-  // did not), and it left site.yml modified — which a plain `pull` refuses over.
+  // ⛔ No site.yml write for where it went live. That is a fact about this deploy,
+  // not about the site, and it is recorded where deploy facts live: `lastDeploy.url`
+  // in deploy.yml (step 8 above). site.yml carried it as `$url` ⇄ `info.url` from
+  // 2026-09-10 until the field was retired on 2026-09-17.
   if (result.deploy_uuid) say.dim(`deploy: ${result.deploy_uuid}`)
   return { exitCode: 0 }
 }
