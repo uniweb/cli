@@ -355,6 +355,13 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   // both. Format validation runs on the derived package name below, not
   // on the raw input — slashes in the input are intentional path syntax.
   const placement = resolvePlacement(rootDir, name, opts, FOUNDATION_KIND)
+  if (placement.outsideRoot) {
+    error(`--path must name a folder inside the workspace: ${placement.outsideRoot}`)
+    log('')
+    log(`The workspace root is ${colors.bright}${rootDir}${colors.reset}.`)
+    log(`A package outside it cannot be a workspace member.`)
+    process.exit(1)
+  }
   const { relativePath } = placement
   let { packageName } = placement
   const fullPath = join(rootDir, relativePath)
@@ -470,6 +477,13 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Resolve placement first (path + package name); see notes in addFoundation.
   const placement = resolvePlacement(rootDir, name, opts, SITE_KIND)
+  if (placement.outsideRoot) {
+    error(`--path must name a folder inside the workspace: ${placement.outsideRoot}`)
+    log('')
+    log(`The workspace root is ${colors.bright}${rootDir}${colors.reset}.`)
+    log(`A package outside it cannot be a workspace member.`)
+    process.exit(1)
+  }
   const { relativePath } = placement
   let siteName = placement.packageName
   const fullPath = join(rootDir, relativePath)

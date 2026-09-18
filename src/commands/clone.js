@@ -271,6 +271,14 @@ export async function clone(args = [], deps = {}) {
       { path: pathFlag, project: projectFlag },
       SITE_KIND
     )
+    if (placement.outsideRoot) {
+      error(`--path must name a folder inside the workspace: ${placement.outsideRoot}`)
+      note(
+        `The workspace root is ${existingRoot}. A package outside it cannot be a ` +
+          `workspace member — the directory and the manifests would disagree.`
+      )
+      return { exitCode: 1 }
+    }
     siteDir = join(existingRoot, placement.relativePath)
     sitePkgName = placement.packageName
     workspaceName = sitePkgName

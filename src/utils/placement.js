@@ -1,3 +1,5 @@
+import { isAbsolute, relative, sep } from 'node:path'
+
 /**
  * Package placement resolution — shared by `add` and `clone`.
  *
@@ -6,6 +8,31 @@
  * statically pulls in `@uniweb/build` would crash `npx uniweb@latest clone`
  * (the same reason `utils/workspace.js` loads the classifier lazily).
  */
+
+// `--path` is documented as a folder INSIDE the workspace, and every consumer of
+// the result treats it that way: the caller does `join(rootDir, relativePath)`
+// while the workspace manifests get `relativePath` verbatim. An ABSOLUTE path
+// silently satisfies neither — `join('/ws', '/tmp/x')` is `/ws/tmp/x`, so the
+// directory is created in one place while `package.json::workspaces` and
+// `pnpm-workspace.yaml` record `/tmp/x`. The two disagree, and the manifests are
+// committed files carrying a path that exists on exactly one machine.
+//
+// Reported by the backend lane 2026-09-18 from a `clone --path <abs>`: the site
+// landed under `company-websites/tmp/claude-502/clonetest/` and both manifests
+// gained the absolute string.
+//
+// So: accept an absolute path when it names a folder inside the root (people type
+// one, and it is unambiguous), by rewriting it to the root-relative form every
+// consumer already expects. Refuse it when it escapes — a workspace package cannot
+// live outside its workspace, and guessing which half the user meant is how you get
+// the split above.
+function normalizeParent(given, rootDir) {
+  const trimmed = String(given).replace(/\/+$/, '')
+  if (!isAbsolute(trimmed)) return { relative: trimmed }
+  const rel = relative(rootDir || '', trimmed)
+  if (!rel || rel === '..' || rel.startsWith('../')) return { outsideRoot: true, given: trimmed }
+  return { relative: rel.split(sep).join('/') }
+}
 
 /** Foundation placement defaults (folder `src/`, package `src`). */
 export const FOUNDATION_KIND = {
@@ -59,17 +86,19 @@ export function resolvePlacement(rootDir, name, opts, kind) {
   //    name was given, or `<path>` itself if not (the path's last segment
   //    is then taken as the package name).
   if (opts.path) {
-    const parent = opts.path.replace(/\/+$/, '')
+    const parent = normalizeParent(opts.path, rootDir)
+    if (parent.outsideRoot) return { outsideRoot: parent.given, relativePath: null, packageName: null }
+    const dir = parent.relative
     if (name) {
       const last = name.split('/').filter(Boolean).pop()
       return {
-        relativePath: `${parent}/${name}`.replace(/\/+/g, '/'),
+        relativePath: `${dir}/${name}`.replace(/\/+/g, '/'),
         packageName: last
       }
     }
-    const lastSegment = parent.split('/').filter(Boolean).pop() || parent
+    const lastSegment = dir.split('/').filter(Boolean).pop() || dir
     return {
-      relativePath: parent,
+      relativePath: dir,
       packageName: lastSegment
     }
   }

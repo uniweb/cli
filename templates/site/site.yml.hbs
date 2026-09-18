@@ -31,6 +31,12 @@ index: home
 # (pages/docs/) holding a folder.yml — folder.yml, not page.yml, because the
 # mounted directory is a folder of pages. Whatever that stub leaves unset comes
 # from the mounted directory's own folder.yml, so it need only say what differs.
+#
+# ! A `pages/<segment>:` sub-mount is BUILD-ONLY today. `uniweb export` and
+#   `uniweb deploy --host <adapter>` mount it normally, but `uniweb push` /
+#   `uniweb publish` do not read the key, so the mounted pages do not reach a
+#   backend (the CLI warns when it skips them). The whole-directory form
+#   `paths: { pages: <dir> }` IS carried by both. Static hosting: use either.
 
 # ─── Structured Content ───────────────────────────────────────────────────────
 # Three things, and they are separate on purpose:
