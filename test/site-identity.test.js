@@ -182,7 +182,22 @@ test('a project WITH a recorded backend does not get the correction hint', () =>
   assert.doesNotMatch(hint, /add\s+\$backend/)
 })
 
-test('a MISSING @uniweb/build records nothing, silently — it is an optional peer', async () => {
+// ⛔ SUPERSEDES 'a MISSING @uniweb/build records nothing, silently' (2026-09-18).
+//
+// That test asserted `r === null` and `backend === null` on the grounds that build is an
+// optional peer and a missing one is a supported configuration. The first half is right
+// and the conclusion was wrong: the branch is not rare, it is what a FRESH CLONE always
+// hits — `clone` records the backend before `pnpm install`, so there is no `node_modules`
+// yet, and under `npx uniweb@latest` the CLI's own tree may not carry build either.
+//
+// The consequence is the one the NEXT test in this file already names for the too-old
+// case: "leaving the scope unrecorded on a project the guard will later stop and tell to
+// add `$backend` by hand". Measured by the backend lane 2026-09-18 — `0.48.5` recorded
+// `$backend`, `0.57.0` did not, and the clone was unusable until they added the line.
+//
+// ⇒ Silence is still right (it is a supported configuration and must not warn). Writing
+// NOTHING was not. The fallback needs no installed package.
+test('a MISSING @uniweb/build still records the scope, silently, via the fallback', async () => {
   const d = tmpSite()
   const seen = []
   const realErr = console.error
@@ -191,12 +206,12 @@ test('a MISSING @uniweb/build records nothing, silently — it is an optional pe
     const r = await recordSiteBackend(d, LOCAL, {
       loadUwx: () => Promise.reject(new Error('ERR_MODULE_NOT_FOUND'))
     })
-    assert.equal(r, null)
+    assert.equal(r, LOCAL)
   } finally {
     console.error = realErr
   }
   assert.deepEqual(seen, [], 'a supported configuration must not warn')
-  assert.equal(readSiteIdentity(d).backend, null)
+  assert.equal(readSiteIdentity(d).backend, LOCAL)
 })
 
 test('a build package too old to carry the writer SAYS SO, instead of failing silently', async () => {

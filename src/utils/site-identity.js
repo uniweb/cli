@@ -28,7 +28,7 @@
  * and it has to move the readers and the writers together or it makes the split worse.
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import yaml from 'js-yaml'
 import { DEFAULT_BACKEND_ORIGIN } from './config.js'
@@ -136,10 +136,25 @@ export async function recordSiteBackend(siteDir, origin, deps = {}) {
     // Lazy by necessity, not by taste — see the header.
     mod = await loadUwx()
   } catch {
-    // No `@uniweb/build` at all. It is an OPTIONAL peer, so this is a supported
-    // configuration and not worth a word — the scope simply goes unrecorded, which is
-    // the behaviour everyone had before this key existed.
-    return null
+    // ⛔ NO `@uniweb/build` — and this is the COMMON case on the path that needs it
+    // most, not the rare one this branch used to assume.
+    //
+    // `clone` calls us straight after scaffolding and BEFORE `pnpm install`, so the
+    // site has no `node_modules` yet; under `npx uniweb@latest` the CLI's own tree
+    // may not carry build either (it is an optional peer). The import therefore
+    // fails on a FRESH CLONE essentially always, and returning null wrote nothing.
+    //
+    // The cost is not cosmetic: the clone then holds a `$uuid` minted by the
+    // `--backend` origin it was given, with nothing recording that origin, so the
+    // scope guard infers the DEFAULT backend and stops the very next command with
+    // "this project's stored identity belongs to https://uniweb.app". The origin was
+    // on the command line the whole time.
+    // Measured by the backend lane 2026-09-18: `0.48.5` recorded `$backend`,
+    // `0.57.0` did not, and their clone was unusable until they added the line by hand.
+    //
+    // ⇒ Fall back to a dependency-free write. `js-yaml` is the CLI's own direct
+    // dependency, so this path needs nothing installed in the project.
+    return writeSiteBackendFallback(siteDir, norm)
   }
 
   // ⚠️ PRESENT BUT TOO OLD is a different problem, and it must not look like the one
@@ -163,6 +178,41 @@ export async function recordSiteBackend(siteDir, origin, deps = {}) {
     // Same rule as `recordSiteOrg`: the uuid is the load-bearing write. Losing the scope
     // note must never fail a create that already succeeded on the backend — the guard
     // degrades to the pre-`$backend` behaviour, which is what everyone had until now.
+    return null
+  }
+}
+
+/**
+ * Write `$backend` into `site.yml` without `@uniweb/build` — the fallback for a
+ * project whose dependencies are not installed yet (see `recordSiteBackend`).
+ *
+ * ⭐ Verifies the RESULT rather than trusting the edit: the file must still parse and
+ * must read back the origin we meant to write. A write that corrupts `site.yml` would
+ * be far worse than an unrecorded scope — an unparseable `site.yml` is the failure this
+ * same channel spent an evening on.
+ *
+ * @returns {string|null} the recorded origin, or null when nothing was written
+ */
+function writeSiteBackendFallback(siteDir, norm) {
+  const file = join(siteDir, 'site.yml')
+  let text
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    return null // no site.yml — nothing to annotate, and we do not create one
+  }
+  try {
+    // Quote through js-yaml rather than by hand: an origin is plain today, but the
+    // value is not ours to assume. Replace an existing key, else prepend.
+    const scalar = yaml.dump(norm, { lineWidth: -1 }).trim()
+    const next = /^\$backend:/m.test(text)
+      ? text.replace(/^\$backend:.*$/m, `$backend: ${scalar}`)
+      : `$backend: ${scalar}\n` + text
+    const parsed = yaml.load(next)
+    if (!parsed || typeof parsed !== 'object' || parsed.$backend !== norm) return null
+    writeFileSync(file, next)
+    return norm
+  } catch {
     return null
   }
 }
