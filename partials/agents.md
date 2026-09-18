@@ -1344,6 +1344,16 @@ Components use **semantic CSS tokens** instead of hardcoded colors. The runtime 
 
 **Palette shades** are also available — `text-primary-600`, `bg-neutral-100`, `border-accent-300` — 11 shades (50–950) per palette color (primary, secondary, accent, neutral). See `theme-tokens.css` for the complete mapping.
 
+> **Debugging a token that "does nothing": don't probe it in the browser.** Tailwind v4 is JIT — it emits only the classes it finds in *scanned source*. So a class you assign from JavaScript, to a `<div>` you created in the console, **has never been scanned and can never resolve**, whatever the token. A comparison against a deliberately bogus class agrees with you either way, because both are ungenerated, and classes that happen to appear in source elsewhere look like they "pass" — so the probe confirms whichever answer you started with.
+>
+> **Ask the build instead.** The one command that splits the question:
+>
+> ```bash
+> grep -o '\.text-link{[^}]*}' dist/assets/*.css
+> ```
+>
+> A rule prints → the utility exists, and something at runtime is overriding it. Nothing prints → Tailwind never generated it, and there are only two reasons: your `styles.css` doesn't `@import "@uniweb/kit/theme-tokens.css"` (or declares its own `@theme inline` that omits the token), or your `@source` globs don't cover the file the class is written in. Either way, write the class into a real source file first — a token that's only ever composed at runtime is invisible to the scanner by design.
+
 **Authors control context** via `theme: dark` in frontmatter, alternating `light` (default), `medium`, and `dark` across sections for visual rhythm. **The three presets aren't the limit** — the object form overrides any token per section:
 
 ```yaml
