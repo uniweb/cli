@@ -1114,9 +1114,9 @@ export async function publish(args = []) {
   }
   if (serveUrl) console.log(`  ${c.cyan}${serveUrl}${c.reset}`)
   // ⛔ No site.yml write for where it went live. That is a fact about this deploy,
-  // not about the site, and it is recorded where deploy facts live: `lastDeploy.url`
-  // in deploy.yml (step 8 above). site.yml carried it as `$url` ⇄ `info.url` from
-  // 2026-09-10 until the field was retired on 2026-09-17.
+  // not about the site, and it is recorded where deploy facts live: deploy.yml's
+  // `lastDeploy.<target>.url` (step 8 above). site.yml carried it as `$url` ⇄
+  // `info.url` from 2026-09-10 until the field was retired on 2026-09-17.
   if (result.deploy_uuid) say.dim(`deploy: ${result.deploy_uuid}`)
   return { exitCode: 0 }
 }
