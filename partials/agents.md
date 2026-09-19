@@ -694,7 +694,7 @@ end the list with `...`.**
 
 **Configuration cascades: `page.yml` → `folder.yml` → `site.yml` → foundation defaults.** Each level inherits from the one above and overrides specific values, the way CSS specificity works. This is what makes bulk assignment natural — put `layout: marketing` in a `folder.yml` and every page in that folder inherits it, while one page can still override with its own `page.yml`. Reach for `folder.yml` before editing the same key into a dozen `page.yml` files.
 
-**Route mapping:** folder structure maps 1:1 to routes. Every folder keeps its natural route — `pages:` controls **order only**, not which child "becomes" the parent. The only exception is the site root, where `index:` (or first in `pages:`) sets `/`.
+**Route mapping:** folder structure maps 1:1 to routes. Every folder keeps its natural route — `pages:` controls **order only**, not which child "becomes" the parent. The only exception is the site root, where `index:` (or first in `pages:`) sets `/` — declared in `site.yml`, or in the pages directory's own `folder.yml` / `page.yml` (how a content repo carries its order), with `site.yml` winning.
 
 **Content-less containers:** folders with `page.yml` but no markdown are structural groups (`hasContent: false`). Visiting one auto-redirects to the first descendant with content — this is what supports courses → modules → lessons at any depth.
 
