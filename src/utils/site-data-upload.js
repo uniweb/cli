@@ -19,9 +19,10 @@
  *
  * ## Why this is not the asset lane
  *
- * Assets are **global and content-addressed** — identical bytes dedup across
- * sites — so the relation from a site's path to an object is many-to-one and a
- * serve path cannot be a property of the object. This lane is **per-site and
+ * Assets are **content-addressed, and dedup across the sites of one backend**
+ * — so the relation from a site's path to an object is many-to-one and a serve
+ * path cannot be a property of the object. *("Global" names that dedup scope; it
+ * never meant across backends — see utils/asset-upload.js.)* This lane is **per-site and
  * path-addressed**. Sending static data through the asset store is what forced
  * the old "data ball": one bundled asset the backend had to fetch, parse and
  * fan out, which is the only place these bytes ever transited it.

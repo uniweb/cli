@@ -19,11 +19,24 @@
  *               its id+ext for the rewrite. Absent `present` ⇒ false — an older
  *               backend without the flag uploads everything (today's behavior).
  *
- * Assets are GLOBAL + content-addressed: identical bytes → same id → dedup
- * across sites and idempotent re-deploys (a re-PUT is a cheap no-op). This
- * mirrors the foundation code lane (utils/code-upload.js); the one structural
- * difference is that the backend MINTS the per-asset id, so the plan response is
- * what the deploy step rewrites content references to.
+ * Assets are content-addressed and global WITHIN ONE BACKEND: identical bytes →
+ * same id → dedup across that backend's sites and idempotent re-deploys (a
+ * re-PUT is a cheap no-op). This mirrors the foundation code lane
+ * (utils/code-upload.js); the one structural difference is that the backend
+ * MINTS the per-asset id, so the plan response is what the deploy step rewrites
+ * content references to.
+ *
+ * ⛔ **"Global" is the DEDUP SCOPE, not a claim about other backends.** An id,
+ * and the presence of the bytes behind it, are facts about the backend that
+ * answered the PLAN and about nothing else — where a backend keeps them is its
+ * own business and not a shape this lane models. ⚠️ This said only "GLOBAL" until
+ * 2026-09-20 and was read as "the same id works on any backend", which made
+ * `assets.json` look portable in a multi-backend design. It is not: it is one of
+ * the surfaces scoped by `site.yml::$backend` (see utils/site-identity.js), and
+ * the backend ORIGIN is the segregation value the CLI has.
+ *
+ * ⚠️ Do not infer portability from `id` looking like the sha256 either — we read
+ * it from the response precisely so the derivation is never load-bearing here.
  */
 
 import { createHash } from 'node:crypto'
