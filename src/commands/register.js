@@ -489,7 +489,7 @@ async function runRegister(args = []) {
   // 0 create / N pick), persist to package.json, and reuse the session token.
   if (!scope && !isPreview) {
     const token = await client.token()
-    const sess = await readRegistryAuth()
+    const sess = await readRegistryAuth(client.origin)
     const derived = await deriveScope({
       apiBase: client.origin,
       token,

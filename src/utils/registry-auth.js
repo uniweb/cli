@@ -48,6 +48,8 @@ import { homedir } from 'node:os'
 import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
 
+import { DEFAULT_BACKEND_ORIGIN } from './config.js'
+
 const LOGIN_PATH = '/dev/auth/login'
 
 /** The shared ~/.uniweb credential directory. */
@@ -81,35 +83,121 @@ export function getRegistryAuthPath() {
 }
 
 /**
- * Read the stored registry session, or null. No JWT backfill — the token is
- * opaque, so there are no claims to decode (unlike legacy readAuth()).
- * @returns {Promise<{ token: string, expiresAt?: string, accountId?: number, sessionId?: number, username?: string, handle?: string, uuid?: string } | null>}
+ * ONE SESSION PER BACKEND ORIGIN — the on-disk shape.
+ *
+ * ⛔ **It was a single flat record until 2026-09-20, and that was a correctness bug,
+ * not only a limit.** `ensureRegistryAuth` returned the stored token whenever it was
+ * unexpired, WITHOUT checking which origin issued it — so a session for backend A was
+ * handed to a request against backend B, where it is rejected. `BackendClient.token()`
+ * could only warn after the fact, because with one slot there was nothing better to do.
+ *
+ * ⭐ Keyed by origin, that whole class goes away: logging into a second backend no
+ * longer evicts the first, and "which token?" has an answer instead of a heuristic.
+ *
+ *   { version: 2, sessions: { "https://uniweb.app": { token, expiresAt, … }, … } }
+ *
+ * ⚠️ A v1 flat record is read as one session, keyed by its own `origin` stamp — or by
+ * the default backend when it carries none, the same "absent means default" rule
+ * `site.yml::$backend` uses. Nobody is logged out by the upgrade.
  */
-export async function readRegistryAuth() {
+const AUTH_FILE_VERSION = 2
+
+/** The whole file, normalized to v2 shape. Never throws. */
+async function readAuthFile() {
   const path = getRegistryAuthPath()
-  if (!existsSync(path)) return null
+  if (!existsSync(path)) return { version: AUTH_FILE_VERSION, sessions: {} }
+  let raw
   try {
-    return JSON.parse(await readFile(path, 'utf8'))
+    raw = JSON.parse(await readFile(path, 'utf8'))
   } catch {
-    return null
+    return { version: AUTH_FILE_VERSION, sessions: {} }
   }
+  if (raw && typeof raw === 'object' && raw.sessions && typeof raw.sessions === 'object') {
+    return { version: AUTH_FILE_VERSION, sessions: raw.sessions }
+  }
+  // v1: a single flat record. Key it by its own stamp, else the default backend.
+  if (raw && typeof raw === 'object' && typeof raw.token === 'string') {
+    const { origin, ...rest } = raw
+    const key = normOrigin(origin || DEFAULT_BACKEND_ORIGIN)
+    return { version: AUTH_FILE_VERSION, sessions: { [key]: rest } }
+  }
+  return { version: AUTH_FILE_VERSION, sessions: {} }
+}
+
+async function writeAuthFile(file) {
+  await mkdir(getAuthDir(), { recursive: true })
+  await writeFile(getRegistryAuthPath(), JSON.stringify(file, null, 2))
 }
 
 /**
- * Persist the registry session record.
- * @param {Object} record
+ * The stored session FOR ONE BACKEND, or null. No JWT backfill — the token is
+ * opaque, so there are no claims to decode (unlike legacy readAuth()).
+ *
+ * ⛔ `origin` is required in spirit: calling this without one used to mean "the
+ * session", which is the assumption this file exists to remove. It falls back to the
+ * default backend rather than throwing, because every caller now passes one and a
+ * throw here would turn a stale call site into a crash instead of a wrong answer.
+ *
+ * @param {string} [origin] - the backend whose session is wanted
+ * @returns {Promise<{ token: string, expiresAt?: string, accountId?: number, sessionId?: number, username?: string, handle?: string, uuid?: string, origin: string } | null>}
+ */
+export async function readRegistryAuth(origin) {
+  const key = normOrigin(origin || DEFAULT_BACKEND_ORIGIN)
+  const { sessions } = await readAuthFile()
+  const found = sessions[key]
+  return found && typeof found.token === 'string' ? { ...found, origin: key } : null
+}
+
+/**
+ * Persist one backend's session. The record's own `origin` is the key, so every
+ * login path keeps stamping it exactly as before.
+ * @param {Object} record - must carry `origin` and `token`
  */
 export async function writeRegistryAuth(record) {
-  await mkdir(getAuthDir(), { recursive: true })
-  await writeFile(getRegistryAuthPath(), JSON.stringify(record, null, 2))
+  const key = normOrigin(record?.origin || DEFAULT_BACKEND_ORIGIN)
+  const { origin: _drop, ...rest } = record || {}
+  const file = await readAuthFile()
+  file.sessions[key] = rest
+  await writeAuthFile(file)
 }
 
 /**
- * Remove the stored registry session.
+ * Every stored session, newest-agnostic, as `[{ origin, … }]`. Feeds the login
+ * default and the logout report — both of which have to say WHICH backends the
+ * machine knows about, a question the flat file could not answer.
+ * @returns {Promise<Array<{ origin: string, token: string, expiresAt?: string }>>}
  */
-export async function clearRegistryAuth() {
+export async function listRegistrySessions() {
+  const { sessions } = await readAuthFile()
+  return Object.entries(sessions)
+    .filter(([, v]) => v && typeof v.token === 'string')
+    .map(([origin, v]) => ({ ...v, origin }))
+}
+
+/**
+ * Remove ONE backend's session, or every one when `origin` is omitted.
+ *
+ * ⚠️ The no-argument form still clears everything, which is what `uniweb logout`
+ * has always done — but it is now a deliberate "all", not the only thing expressible.
+ *
+ * @param {string} [origin]
+ * @returns {Promise<string[]>} the origins actually cleared
+ */
+export async function clearRegistryAuth(origin) {
   const path = getRegistryAuthPath()
-  if (existsSync(path)) await unlink(path)
+  if (!existsSync(path)) return []
+  if (!origin) {
+    const had = Object.keys((await readAuthFile()).sessions)
+    await unlink(path)
+    return had
+  }
+  const key = normOrigin(origin)
+  const file = await readAuthFile()
+  if (!file.sessions[key]) return []
+  delete file.sessions[key]
+  if (Object.keys(file.sessions).length === 0) await unlink(path)
+  else await writeAuthFile(file)
+  return [key]
 }
 
 /**
@@ -197,7 +285,11 @@ export async function ensureRegistryAuth({
 } = {}) {
   if (process.env.UNIWEB_TOKEN) return process.env.UNIWEB_TOKEN
 
-  const stored = await readRegistryAuth()
+  // ⛔ THE SESSION MUST BE THE ONE ISSUED FOR `apiBase`. Until 2026-09-20 this read
+  // "the" session and returned its token whenever it was unexpired — so a bearer minted
+  // by backend A was sent to backend B, which rejects it. The store is keyed by origin
+  // now, so asking for the right one is the same single read.
+  const stored = await readRegistryAuth(apiBase)
   if (stored?.token && !isExpired(stored)) return stored.token
 
   // Non-interactive login from env (CI / agents) before any prompt.
@@ -562,7 +654,10 @@ async function loginViaBrowser({ apiBase }) {
  * @returns {Promise<Object|undefined>} the stored session record
  */
 export async function runRegistryLogin({ apiBase, args = [] } = {}) {
-  const existing = await readRegistryAuth()
+  // For THIS backend. It read "the" session and printed `apiBase` beside it, so on a
+  // machine logged into another backend it announced "Already logged in … (this origin)"
+  // about a session belonging to a different one — and then offered to replace it.
+  const existing = await readRegistryAuth(apiBase)
   if (existing?.token && !isExpired(existing)) {
     const who =
       existing.username ||

@@ -891,35 +891,65 @@ async function main() {
       readFlagValue(loginArgs, '--backend')
     const apiBase = resolveBackendOrigin(originFlag)
 
-    // ⭐ The project says where it belongs — say so BEFORE authenticating elsewhere.
+    // ⭐ **THE PROJECT ROUTES THE LOGIN NOW — it used to only warn about it.**
     //
-    // `login` is deliberately NOT given the `site.yml::$backend` tier the site verbs
-    // get (see resolveBackendOrigin): the session it writes is machine-wide, so letting
-    // cwd pick the account you log into would be a silent surprise. But staying silent
-    // does not remove the failure, it MOVES it — you log into the default, and the next
-    // push/pull/publish resolves to `$backend` and warns about the mismatch. That is the
-    // routed-not-nagged case `$backend` was added for, missing at the one command a
-    // teammate runs FIRST after cloning.
+    // The warning existed because a session was a SINGLE machine-wide slot: letting cwd
+    // pick the backend you authenticate against would silently repoint the one session
+    // everything else used. So `login` went to the default and printed "this project
+    // syncs with X" — correct advice, and one more thing to retype.
     //
-    // ⛔ Silent when the origin was named explicitly (--backend /
-    // UNIWEB_REGISTER_URL). A deliberate aim is not a mistake to warn about; a genuinely
-    // wrong one is still caught by the session-mismatch guard in BackendClient.token().
+    // Sessions are keyed by origin now (utils/registry-auth.js), so logging in where the
+    // project belongs costs nothing anyone else was using. The heads-up becomes the
+    // default, which is what it was pointing at all along. `findNearbySiteBackend` is
+    // already conservative in exactly the way this needs — it answers only when there is
+    // ONE candidate site, and returns null for a workspace of several.
+    //
+    // ⛔ Explicit still wins: --backend / UNIWEB_REGISTER_URL are a deliberate aim and a
+    // project file must not veto a flag the user just typed.
+    let target = apiBase
     if (!originFlag && !process.env.UNIWEB_REGISTER_URL) {
       try {
         const { findNearbySiteBackend } = await import(
           './utils/site-identity.js'
         )
         const nearby = findNearbySiteBackend(process.cwd())
-        if (nearby && nearby.backend !== apiBase) {
+        if (nearby && nearby.backend !== target) {
+          target = nearby.backend
           console.error(
-            `\x1b[33m⚠\x1b[0m This project syncs with ${nearby.backend} (site.yml::$backend), but login is targeting ${apiBase}.`
+            `\x1b[2mThis project syncs with ${target} (site.yml::$backend) — logging in there.\x1b[0m`
           )
           console.error(
-            `  Log in where the project belongs:  uniweb login --backend ${nearby.backend}`
+            `\x1b[2mPass --backend to choose another; other sessions are kept.\x1b[0m\n`
           )
-          console.error(
-            `  Continuing with ${apiBase} — a session is machine-wide, so this is a heads-up, not a block.\n`
+        } else if (!nearby) {
+          // Outside a project (or in a workspace of several), ask only when the machine
+          // genuinely knows more than one backend — Diego, 2026-09-20: the normal user
+          // never chooses, the power user is asked once.
+          const { listRegistrySessions } = await import(
+            './utils/registry-auth.js'
           )
+          const { DEFAULT_BACKEND_ORIGIN } = await import('./utils/config.js')
+          const known = [
+            ...new Set([
+              ...(await listRegistrySessions()).map((x) => x.origin),
+              DEFAULT_BACKEND_ORIGIN
+            ])
+          ]
+          if (known.length > 1) {
+            const { isNonInteractive } = await import('./utils/interactive.js')
+            if (isNonInteractive(loginArgs)) {
+              console.error(
+                `\x1b[2mKnown backends: ${known.join(', ')} — using ${target} (pass --backend to choose).\x1b[0m\n`
+              )
+            } else {
+              const { pickOne } = await import('./utils/interactive.js')
+              target = await pickOne(
+                'This machine knows more than one backend.',
+                known,
+                target
+              )
+            }
+          }
         }
       } catch {
         // Advisory only. A malformed site.yml, an unreadable directory or anything else
@@ -927,22 +957,66 @@ async function main() {
       }
     }
 
-    await runRegistryLogin({ apiBase, args: loginArgs })
+    await runRegistryLogin({ apiBase: target, args: loginArgs })
     return
   }
 
-  // Handle logout command — clear the stored backend session.
+  // Handle logout command — clear one backend's session, or every one with --all.
+  //
+  // ⭐ With sessions keyed by origin, "logged out" finally has to say WHICH. A bare
+  // `logout` clears the backend this directory resolves to, so the common case (one
+  // session) is unchanged; --all is how you clear the set.
   if (command === 'logout') {
-    const { clearRegistryAuth, getRegistryAuthPath } =
-      await import('./utils/registry-auth.js')
-    const { existsSync } = await import('node:fs')
-    const had = existsSync(getRegistryAuthPath())
-    await clearRegistryAuth()
-    console.log(
-      had
-        ? '\x1b[32m✓\x1b[0m Logged out (cleared the stored session).'
-        : 'Not logged in — nothing to clear.'
+    const logoutArgs = args.slice(1)
+    const { clearRegistryAuth, listRegistrySessions } = await import(
+      './utils/registry-auth.js'
     )
+    const sessions = await listRegistrySessions()
+    if (sessions.length === 0) {
+      console.log('Not logged in — nothing to clear.')
+      return
+    }
+
+    if (logoutArgs.includes('--all')) {
+      const cleared = await clearRegistryAuth()
+      console.log(
+        `\x1b[32m✓\x1b[0m Logged out of ${cleared.length} backend${cleared.length === 1 ? '' : 's'} (${cleared.join(', ')}).`
+      )
+      return
+    }
+
+    const { readFlagValue } = await import('./utils/args.js')
+    const { resolveBackendOrigin } = await import('./backend/client.js')
+    const { findNearbySiteBackend } = await import('./utils/site-identity.js')
+    const flag = readFlagValue(logoutArgs, '--backend')
+    let origin = resolveBackendOrigin(flag)
+    if (!flag && !process.env.UNIWEB_REGISTER_URL) {
+      // Same routing as `login`, so the pair is symmetric: log in where the project
+      // belongs, log out of the same place.
+      let nearby = null
+      try {
+        nearby = findNearbySiteBackend(process.cwd())
+      } catch {
+        /* advisory */
+      }
+      if (nearby) origin = nearby.backend
+      else if (sessions.length === 1) origin = sessions[0].origin
+    }
+
+    const cleared = await clearRegistryAuth(origin)
+    if (cleared.length === 0) {
+      console.log(`Not logged in to ${origin} — nothing to clear.`)
+      const others = sessions.map((x) => x.origin)
+      if (others.length)
+        console.log(
+          `\x1b[2mStill logged in to: ${others.join(', ')}  (\`uniweb logout --all\` clears every session)\x1b[0m`
+        )
+      return
+    }
+    const left = sessions.filter((x) => x.origin !== cleared[0]).map((x) => x.origin)
+    console.log(`\x1b[32m✓\x1b[0m Logged out of ${cleared[0]}.`)
+    if (left.length)
+      console.log(`\x1b[2mStill logged in to: ${left.join(', ')}\x1b[0m`)
     return
   }
 

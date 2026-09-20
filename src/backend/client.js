@@ -187,27 +187,13 @@ export class BackendClient {
       this._token = await this._getToken()
       return this._token
     }
-    // Origin-mismatch guard: a usable session authed against a DIFFERENT origin
-    // than this command targets means the bearer will be rejected — warn once
-    // and point at the fix (the stored token IS for `stored.origin`, not here).
-    if (!this._warnedOriginMismatch) {
-      this._warnedOriginMismatch = true
-      try {
-        const stored = await readRegistryAuth()
-        if (
-          stored?.token &&
-          !isExpired(stored) &&
-          stored.origin &&
-          stored.origin.replace(/\/+$/, '') !== this.origin
-        ) {
-          console.error(
-            `\x1b[33m⚠\x1b[0m Logged in to ${stored.origin}, but this command targets ${this.origin} — the session may be rejected. Run \`uniweb login --backend ${this.origin}\`, or pass --token.`
-          )
-        }
-      } catch {
-        /* advisory only */
-      }
-    }
+    // ⛔ NO ORIGIN-MISMATCH GUARD HERE, AND DO NOT RE-ADD ONE (removed 2026-09-20).
+    // It existed because the session store held ONE record: a session for another
+    // backend was the only session, so it was about to be sent here and rejected, and a
+    // warning was the best available move. Sessions are keyed by origin now
+    // (utils/registry-auth.js), so being logged into another backend is just a fact
+    // about another backend — `ensureRegistryAuth` below finds this origin's session or
+    // asks for one. Warning about the other would be noise about nothing.
     this._token = await ensureRegistryAuth({
       apiBase: this.origin,
       command: this._command,
@@ -276,7 +262,7 @@ export class BackendClient {
       }
     }
     try {
-      const stored = await readRegistryAuth()
+      const stored = await readRegistryAuth(this.origin)
       if (stored?.token && !isExpired(stored)) return stored.token
     } catch {
       /* advisory — a missing or unreadable session is simply "no token" */
