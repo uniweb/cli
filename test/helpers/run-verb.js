@@ -17,7 +17,8 @@
  *     throws, so it fails the test instead of killing the file.
  *   - **They reach for your real session and the network.** HOME is a fresh temp
  *     dir, and `fetch` is counted and refused — so `requests` says whether the verb
- *     got as far as the wire.
+ *     got as far as the wire. A test that needs the verb to get further answers the
+ *     requests it expects with `respond`; anything it does not answer is refused.
  *
  * ⛔ **Output is captured at `console`, through wrappers installed when THIS module
  * loads** — not by patching `process.stdout.write`. Patching the stream also swallowed
@@ -70,13 +71,15 @@ function stubEntry() {
  * @param {string} dir - the directory to run from
  * @param {(args: string[]) => Promise<{exitCode?: number}>} verb
  * @param {string[]} args
- * @param {{ session?: object, env?: object }} [opts] - `session`: the contents of
- *   `~/.uniweb/registry-auth.json` in the run's HOME — who the user is logged in as;
- *   `env`: variables set for the run only (UNIWEB_REGISTER_URL, say)
+ * @param {{ session?: object, env?: object, respond?: Function }} [opts] - `session`:
+ *   the contents of `~/.uniweb/registry-auth.json` in the run's HOME — who the user is
+ *   logged in as; `env`: variables set for the run only (UNIWEB_REGISTER_URL, say);
+ *   `respond(url, init)`: answers a request with a `Response`, or returns nothing to
+ *   let it be refused
  * @returns {Promise<{exitCode: number|'threw', output: string, requests: number,
  *   urls: string[]}>} `urls`: every request the verb tried, in order
  */
-export async function runVerb(dir, verb, args, { session, env } = {}) {
+export async function runVerb(dir, verb, args, { session, env, respond } = {}) {
   const cwd = process.cwd()
   const saved = {
     fetch: globalThis.fetch,
@@ -90,9 +93,11 @@ export async function runVerb(dir, verb, args, { session, env } = {}) {
   const urls = []
   let requests = 0
   sink = out
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, init) => {
     requests++
     urls.push(String(url))
+    const answer = respond ? await respond(String(url), init) : undefined
+    if (answer) return answer
     throw new Error('no network in this test')
   }
   process.exit = (code) => {

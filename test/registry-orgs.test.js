@@ -11,8 +11,10 @@ import {
   deriveScope,
   offerCreateOrg,
   validateHandle,
-  bareHandle
+  bareHandle,
+  publishScope
 } from '../src/utils/registry-orgs.js'
+import { buildRegistryPackage } from '@uniweb/build/uwx'
 
 const BASE = { apiBase: 'http://localhost:8080', token: 't' }
 
@@ -52,6 +54,31 @@ test("validateHandle: grammar only — reserved names are the server's call", ()
   assert.ok(validateHandle('-bad-')) // leading/trailing hyphen
   assert.equal(validateHandle('std'), null) // grammar-valid; server 409s reserved
   assert.equal(bareHandle('@jane/extra'), 'jane')
+})
+
+test('publishScope: every spelling of a scope becomes @org — the registry has one', () => {
+  assert.equal(publishScope('@std'), '@std')
+  assert.equal(publishScope('std'), '@std')
+  assert.equal(publishScope('@std/'), '@std')
+  assert.equal(publishScope('@std/src'), '@std')
+  assert.equal(publishScope('@'), null)
+  assert.equal(publishScope(''), null)
+  assert.equal(publishScope(undefined), null)
+})
+
+test('publishScope agrees with the .uwx assembly on the name it registers', () => {
+  // The `.uwx` names the foundation; register's code delivery and bring-along's
+  // catalog lookup name it again from the same scope. Three namings, one answer.
+  for (const scope of ['@std', 'std', '@std/']) {
+    const doc = buildRegistryPackage({
+      schema: { _self: { name: 'src', version: '0.1.0' } },
+      scope
+    })
+    const registered = doc.entities.find(
+      (e) => e.model === '@uniweb/foundation-schema'
+    ).info.name
+    assert.equal(registered, `${publishScope(scope)}/src`, `scope ${scope}`)
+  }
 })
 
 test('0 orgs + handle: the personal org is the one-keystroke default', async () => {

@@ -77,7 +77,7 @@ import {
   computeFoundationDigest,
   readRuntimePin
 } from '../utils/code-upload.js'
-import { deriveScope } from '../utils/registry-orgs.js'
+import { deriveScope, publishScope } from '../utils/registry-orgs.js'
 import { BackendClient } from '../backend/client.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import {
@@ -404,14 +404,24 @@ async function runRegister(args = []) {
     : await resolveFoundationDir(args)
 
   // Scope: --scope flag, else package.json `uniweb.scope`, else (real submit
-  // only) derived from login membership in the bootstrap below.
+  // only) derived from login membership in the bootstrap below. Either spelling,
+  // `@acme` or `acme`, and from here on the one form: `@acme` (publishScope).
   const pkgScope = readPkgScope(targetDir)
-  let scope = scopeFlag || pkgScope
+  const givenScope = scopeFlag || pkgScope
+  let scope = publishScope(givenScope)
   let scopeSource = scopeFlag
     ? '--scope'
     : pkgScope
       ? 'package.json uniweb.scope'
       : null
+  // A scope that was GIVEN but names no org (`--scope @`) is refused, never read as
+  // absent: absent derives one from the login, which would register under an org the
+  // caller did not name.
+  if (givenScope && !scope) {
+    error(`Not an org scope: ${givenScope} (from ${scopeSource})`)
+    log(`  ${colors.dim}Pass --scope @org.${colors.reset}`)
+    return { exitCode: 2 }
+  }
   const isPreview = !!output || dryRun
 
   // Each path supplies a different schema source: the standalone path discovers
@@ -671,11 +681,17 @@ async function runRegister(args = []) {
       return { exitCode: 1 }
     }
   }
+  // The foundation's name as the registry holds it (`@org/name`) — read from the
+  // document just submitted, never composed again. See phase 2.
+  const registeredName = standalone
+    ? null
+    : doc.entities.find((e) => e.model === '@uniweb/foundation-schema')?.info
+        ?.name
   if (!alreadyRegistered) {
     success(
       standalone
         ? `Registered ${defined.length} data schema(s)${scope ? ` under ${scope}` : ''}`
-        : `Registered ${schema._self.name}@${schema._self.version}${defined.length ? ` + ${defined.length} data schema(s)` : ''}`
+        : `Registered ${registeredName}@${schema._self.version}${defined.length ? ` + ${defined.length} data schema(s)` : ''}`
     )
   }
 
@@ -684,11 +700,13 @@ async function runRegister(args = []) {
   // only packages have no dist; --schema-only skips deliberately.
   if (!standalone && !args.includes('--schema-only')) {
     const distDir = join(targetDir, 'dist')
-    // The registry's vocabulary is the SCOPED name (`@org/name`). A scoped
-    // package name passes through; a bare one gets the chosen scope — the
-    // same resolution the .uwx submission applied.
-    const bareName = schema._self.name
-    const name = bareName.startsWith('@') ? bareName : `${scope}/${bareName}`
+    // ⭐ The plan authorizes against the REGISTERED (name, version), so the name here
+    // is the one phase 1 registered — the `.uwx`'s own `info.name`, where a scoped
+    // package name passes through and a bare one gets the scope. ⛔ Not composed a
+    // second time: this line composed it from the raw scope until 2026-09-21, so
+    // `--scope std` registered `@std/src` and then asked to deliver `std/src`, which
+    // the registry refuses. One name, read from the one place it was decided.
+    const name = registeredName
     const version = schema._self.version
     info(
       `Delivering code for ${colors.bright}${name}@${version}${colors.reset} …`

@@ -85,6 +85,22 @@ test('a foundation with uniweb.id is looked up and pinned under that id', async 
   assert.ok(said.dim.some((m) => /unchanged since release/.test(m)), JSON.stringify(said))
 })
 
+test('uniweb.scope without its @ is looked up and pinned under @org, as register names it', async () => {
+  // `register` reads `acme` and `@acme` alike and registers `@acme/base`; a lookup that
+  // joined the raw value asked the catalog for `acme/base` and pinned the site to it.
+  const fixture = workspace({ name: 'base', version: '1.0.0', uniweb: { scope: 'acme' } })
+  const looked = []
+  const client = {
+    readFoundationLatest: async (name) => {
+      looked.push(name)
+      return null
+    }
+  }
+  const { res } = await run(fixture, client)
+  assert.deepEqual(looked, ['@acme/base'])
+  assert.equal(res.ref, '@acme/base@1.0.0')
+})
+
 test('CONTROL: without uniweb.id the package name is the catalog name', async () => {
   const fixture = workspace({ name: 'base', version: '1.0.0', uniweb: { scope: '@acme' } })
   const looked = []

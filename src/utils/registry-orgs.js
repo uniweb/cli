@@ -60,6 +60,25 @@ export function bareHandle(scope) {
 }
 
 /**
+ * A publish scope in the one form the registry names things by — `@acme` — from any
+ * spelling `--scope` or `package.json::uniweb.scope` may carry it in (`@acme`, `acme`,
+ * `@acme/…`). Null when there is no handle in it.
+ *
+ * ⛔ Every name built from a scope goes through this. The `.uwx` assembly
+ * (`@uniweb/build`'s `buildRegistryPackage`) has always accepted `acme` as well as
+ * `@acme`, so a name composed from the RAW value disagreed with the one it registered:
+ * until 2026-09-21 `register --scope std` registered `@std/src` and then asked to
+ * deliver code for `std/src`, which the registry refuses (a scoped name is `@org/name`).
+ *
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function publishScope(value) {
+  const handle = bareHandle(value)
+  return handle ? `@${handle}` : null
+}
+
+/**
  * Validate a handle's GRAMMAR client-side (reserved names are the server's
  * call — a 409 carries the verdict). Returns an error string, or null.
  */

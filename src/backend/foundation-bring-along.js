@@ -39,6 +39,7 @@ import { execFileSync } from 'node:child_process'
 import { detectFoundationType, isExtensionUrl } from '@uniweb/build'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { isNonInteractive } from '../utils/interactive.js'
+import { publishScope } from '../utils/registry-orgs.js'
 import { compareSemverPrecedence } from '../utils/semver-precedence.js'
 
 /**
@@ -126,13 +127,17 @@ export function resolveLocalExtensions(siteDir, siteYml) {
 // as this did until 2026-09-17 — looked a `uniweb.id` foundation up under a name
 // the catalog does not have, so every push re-released it, and pinned the site
 // to that same wrong name.
+//
+// ⛔ And the scope goes through `publishScope`, as `register`'s does: `uniweb.scope`
+// may read `acme` as well as `@acme`, and until 2026-09-21 this joined it raw — so a
+// bare one looked the foundation up as `acme/src` and pinned the site to that.
 function foundationScopedName(dir) {
   try {
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
     const name = pkg?.uniweb?.id || pkg?.name
     if (typeof name === 'string' && name.startsWith('@')) return name
-    const scope = pkg?.uniweb?.scope
-    if (scope && name) return `${String(scope).replace(/\/+$/, '')}/${name}`
+    const scope = publishScope(pkg?.uniweb?.scope)
+    if (scope && name) return `${scope}/${name}`
     return null
   } catch {
     return null
