@@ -77,6 +77,7 @@ import {
 } from '../utils/site-identity.js'
 import { isNonInteractive, confirm } from '../utils/interactive.js'
 import { guardEmptyRecords } from '../utils/records-guard.js'
+import { findSiteCopies, describeSiteCopies } from '../utils/site-copies.js'
 import { headProvenance } from '../utils/git.js'
 import {
   makeModelResolver,
@@ -278,9 +279,21 @@ export async function publish(args = []) {
     command: 'Publishing'
   })
 
-  // ⛔ SCOPE CHECK — before the foundation bring-along, the sync, or the go-live. A
-  // publish is the longest of these flows and the most expensive to unwind, so it is
-  // the one that most benefits from failing at the first step rather than at the fifth.
+  // ⛔ A COPY OF ANOTHER PROJECT — before the foundation bring-along, the sync, or the
+  // go-live. A plain directory copy carries sync.json, so it holds the ORIGINAL's site
+  // on this backend and would publish over it (utils/site-copies.js). A publish is the
+  // longest of these flows and the most expensive to unwind, so it is the one that
+  // most benefits from failing at the first step rather than at the fifth.
+  // *(The backend scope check that stood here went on 2026-09-20 — see push.js.)*
+  {
+    const copies = findSiteCopies(siteDir, client.origin)
+    if (copies.length) {
+      const said = describeSiteCopies(copies, client.origin, 'publish')
+      say.err(said.headline)
+      for (const line of said.lines) say.dim(line)
+      return { exitCode: 1 }
+    }
+  }
 
   // WHO will own this site, if this publish is the one that creates it. Resolved
   // up front: `ensureSiteExists` below is the create, and it must not be reached

@@ -63,6 +63,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import yaml from 'js-yaml'
 import { emitSyncPackages } from '@uniweb/build/uwx'
+import { findSiteCopies, describeSiteCopies } from '../utils/site-copies.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import { updateBackendMap, carryServed, SYNC_STORE_FILE } from '@uniweb/build/uwx'
 import { BackendClient } from '../backend/client.js'
@@ -177,22 +178,30 @@ export async function push(args = [], deps = {}) {
     command: 'Syncing'
   })
 
-  // ⛔ SCOPE CHECK — before anything is sent. A project whose stored identity was minted
-  // by a different backend cannot be pushed here: the uuids, the asset ids and the sync
-  // cache are all foreign at once. Runs after the client so it sees the RESOLVED origin
-  // (flag > env > deploy.yml > session), not the one we guessed.
+  // ⛔ A COPY OF ANOTHER PROJECT — before anything is sent. A plain directory copy
+  // carries sync.json, so it holds the ORIGINAL's site on this backend and its push
+  // would update that site (see utils/site-copies.js for why the signal is exact).
+  // Refused, not warned: a warning printed while the push goes ahead is printed over
+  // the damage. Runs after the client so it checks the RESOLVED origin.
   //
-  // ⚠️ NOT for `-o`, which is a LOCAL EMIT and reaches no backend at all. Its output is
-  // built from files on disk; the resolved origin is not an input to it, so a mismatch
-  // cannot make the artifact wrong — and refusing would break an operation this command
-  // deliberately keeps offline (the `!output && !dryRun` guards below are the same rule).
-  // The refusal even says "Sending them elsewhere is refused" over a run that sends
-  // nothing.
+  // ⚠️ NOT for `-o`, which is a LOCAL EMIT and reaches no backend at all — there is no
+  // site for it to update, and refusing would break an operation this command keeps
+  // offline (the `!output && !dryRun` guards below are the same rule).
   //
   // `--dry-run` IS checked, and the asymmetry is the point: a dry run previews a real
-  // push, so when that push would be refused, saying so is the honest preview. Printing
-  // "would update content at <origin>" instead would preview something that cannot happen.
+  // push, so when that push would be refused, saying so is the honest preview.
+  //
+  // *(This spot held the backend SCOPE CHECK, `assertSiteBackendScope`, until
+  // 2026-09-20 — deleted when identity became per-backend and a foreign backend's
+  // uuids stopped being reachable at all.)*
   if (!output) {
+    const copies = findSiteCopies(siteDir, client.origin)
+    if (copies.length) {
+      const said = describeSiteCopies(copies, client.origin, 'push')
+      error(said.headline)
+      for (const line of said.lines) note(line)
+      return { exitCode: 1 }
+    }
   }
 
   // WHO will own this site, if this push is the one that creates it. Resolved
