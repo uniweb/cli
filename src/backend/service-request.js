@@ -38,7 +38,8 @@
  *
  * ## ⛔ A HASH, never the block
  *
- * `$secrets` carries secret material, and `$services[].config` is opaque and
+ * `$secrets` names every secret the site has (values are the `#ref` marker, never
+ * secret material — the old wording here said otherwise), and `$services[].config` is opaque and
  * per-service — anything may be in it. `deploy.yml` is committed, so recording
  * either verbatim would write them into git. Equality is all this gate needs;
  * *what* differs is a question for the backend's own copy of the request, not for
@@ -91,11 +92,14 @@ function stableString(value) {
  * @param {object} siteYml
  * @returns {{servicesRequest?: string, secretsRequest?: string}}
  */
-export function fingerprintRequest(siteYml) {
+export function fingerprintRequest(siteYml, provisioned = {}) {
   const out = {}
-  const services = fingerprintDeclaration(siteYml?.$services)
+  // ⭐ Two sources, on purpose. The PROVISIONED rows come from `sync.json` for the
+  // backend being published to (they were `site.yml::$services` / `$secrets` until
+  // 2026-09-20). The language selection below is still authored, so still site.yml.
+  const services = fingerprintDeclaration(provisioned?.services)
   if (services) out.servicesRequest = services
-  const secrets = fingerprintDeclaration(siteYml?.$secrets)
+  const secrets = fingerprintDeclaration(provisioned?.secrets)
   if (secrets) out.secretsRequest = secrets
   // ⭐ The language selection is a request too, and it is the one that moves a
   // PRICE — the line is billed on how many languages go out. Banking it is what
@@ -124,8 +128,8 @@ export function fingerprintRequest(siteYml) {
  * @param {object|null} lastDeploy - `deploy.yml::lastDeploy.<target>`, or null
  * @returns {{declare: boolean, reason: 'no-record'|'changed'|'unchanged'|'undeclared'}}
  */
-export function decideDeclaration(siteYml, lastDeploy) {
-  const now = fingerprintRequest(siteYml)
+export function decideDeclaration(siteYml, lastDeploy, provisioned = {}) {
+  const now = fingerprintRequest(siteYml, provisioned)
   if (!now.servicesRequest && !now.secretsRequest) {
     // Nothing in the file to send. The gate is moot; say so rather than
     // reporting "unchanged", which would imply a comparison happened.
@@ -178,8 +182,8 @@ export function decideDeclaration(siteYml, lastDeploy) {
  * @param {object|null} lastDeploy - the banked base
  * @returns {{action:'none'|'adopt'|'send'|'conflict', local:string|null, remote:string|null}}
  */
-export function reconcileRequest(siteYml, remoteServices, lastDeploy) {
-  return reconcile(siteYml?.$services, remoteServices, lastDeploy?.servicesRequest)
+export function reconcileRequest(siteYml, remoteServices, lastDeploy, provisioned = {}) {
+  return reconcile(provisioned?.services, remoteServices, lastDeploy?.servicesRequest)
 }
 
 /**

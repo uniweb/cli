@@ -23,6 +23,30 @@ import {
   decideDeclaration
 } from '../src/backend/service-request.js'
 
+// ⭐ The provisioned rows moved from `site.yml::$services` / `$secrets` to
+// `sync.json` (2026-09-20), so the functions take them as a separate argument. The
+// fixtures below keep the old single-object shape because it reads as the request a
+// person would picture; `split` is the one place that maps it onto the new call.
+const split = (y = {}) => {
+  const { $services, $secrets, ...authored } = y || {}
+  return [
+    authored,
+    {
+      ...($services !== undefined ? { services: $services } : {}),
+      ...($secrets !== undefined ? { secrets: $secrets } : {})
+    }
+  ]
+}
+const fingerprintOf = (y) => fingerprintRequest(...split(y))
+const decide = (y, last) => {
+  const [a, b] = split(y)
+  return decideDeclaration(a, last, b)
+}
+const recon = (y, remote, last) => {
+  const [a, b] = split(y)
+  return reconcileRequest(a, remote, last, b)
+}
+
 const API_PRO = [{ name: 'api', enabled: true, config: { grade: 'pro' } }]
 
 test('absent and empty are different fingerprints — the distinction is destructive', () => {
@@ -68,8 +92,8 @@ test('nested key order does not change the fingerprint either', () => {
 })
 
 test('fingerprintRequest omits keys for undeclared blocks', () => {
-  assert.deepEqual(fingerprintRequest({}), {})
-  const only = fingerprintRequest({ $services: API_PRO })
+  assert.deepEqual(fingerprintOf({}), {})
+  const only = fingerprintOf({ $services: API_PRO })
   assert.ok(only.servicesRequest)
   assert.ok(!('secretsRequest' in only), 'an undeclared block leaves no trace')
 })
@@ -80,15 +104,15 @@ test('unchanged since the last publish → do NOT declare', () => {
   // The headline case: owner publishes, hits a 402, changes their mind in the app,
   // then publishes again without touching the file. The CLI must not re-assert.
   const siteYml = { $services: API_PRO }
-  const prior = fingerprintRequest(siteYml)
-  const d = decideDeclaration(siteYml, prior)
+  const prior = fingerprintOf(siteYml)
+  const d = decide(siteYml, prior)
   assert.equal(d.declare, false)
   assert.equal(d.reason, 'unchanged')
 })
 
 test('edited since the last publish → declare', () => {
-  const prior = fingerprintRequest({ $services: API_PRO })
-  const d = decideDeclaration(
+  const prior = fingerprintOf({ $services: API_PRO })
+  const d = decide(
     { $services: [{ name: 'api', enabled: true, config: { grade: 'starter' } }] },
     prior
   )
@@ -100,7 +124,7 @@ test('⛔ no record → DECLARE, because the other failure is silent', () => {
   // A fresh clone, a never-published project, or autoSave: off. Withholding here
   // would drop a real request with nothing said; declaring writes back what is
   // usually already there. Between two silent failures, take the recoverable one.
-  const d = decideDeclaration({ $services: API_PRO }, null)
+  const d = decide({ $services: API_PRO }, null)
   assert.equal(d.declare, true)
   assert.equal(d.reason, 'no-record')
 })
@@ -108,30 +132,30 @@ test('⛔ no record → DECLARE, because the other failure is silent', () => {
 test('a record that predates this gate → declare', () => {
   // deploy.yml written by an older CLI has no fingerprints. That is "no record"
   // for our purposes, not "unchanged" — it must not read as a match.
-  const d = decideDeclaration({ $services: API_PRO }, { at: '2026-01-01', host: 'uniweb' })
+  const d = decide({ $services: API_PRO }, { at: '2026-01-01', host: 'uniweb' })
   assert.equal(d.declare, true)
   assert.equal(d.reason, 'changed')
 })
 
 test('file declares nothing → the gate is moot and says so', () => {
-  const d = decideDeclaration({ name: 'site' }, { servicesRequest: 'abc' })
+  const d = decide({ name: 'site' }, { servicesRequest: 'abc' })
   assert.equal(d.declare, true)
   assert.equal(d.reason, 'undeclared', 'not "unchanged" — no comparison happened')
 })
 
 test('an explicit clear is a request, and stays one until it is sent', () => {
   // `$services: []` means "drop every stored row". It must declare the first time…
-  const first = decideDeclaration({ $services: [] }, null)
+  const first = decide({ $services: [] }, null)
   assert.equal(first.declare, true)
   // …and must NOT be re-sent on every later publish.
-  const banked = fingerprintRequest({ $services: [] })
-  const second = decideDeclaration({ $services: [] }, banked)
+  const banked = fingerprintOf({ $services: [] })
+  const second = decide({ $services: [] }, banked)
   assert.equal(second.declare, false)
 })
 
 test('secrets move the gate independently of services', () => {
-  const prior = fingerprintRequest({ $services: API_PRO, $secrets: [{ name: 'k' }] })
-  const d = decideDeclaration(
+  const prior = fingerprintOf({ $services: API_PRO, $secrets: [{ name: 'k' }] })
+  const d = decide(
     { $services: API_PRO, $secrets: [{ name: 'k', service: 'api' }] },
     prior
   )
@@ -144,18 +168,18 @@ test('⛔ the fingerprint leaks no value — it is a hash, and deploy.yml is com
   ])
   assert.match(fp, /^[0-9a-f]{16}$/)
   assert.ok(!fp.includes('secret'))
-  assert.ok(!JSON.stringify(fingerprintRequest({ $secrets: [{ value: 'tok' }] })).includes('tok'))
+  assert.ok(!JSON.stringify(fingerprintOf({ $secrets: [{ value: 'tok' }] })).includes('tok'))
 })
 
 // ── the four-way reconcile, once the backend's rows are in hand ─────────────
 
 import { reconcileRequest, reconcile } from '../src/backend/service-request.js'
 
-const banked = (siteYml) => fingerprintRequest(siteYml)
+const banked = (siteYml) => fingerprintOf(siteYml)
 
 test('in sync → nothing to ask', () => {
   const site = { $services: API_PRO }
-  const r = reconcileRequest(site, API_PRO, banked(site))
+  const r = recon(site, API_PRO, banked(site))
   assert.equal(r.action, 'none')
 })
 
@@ -166,7 +190,7 @@ test('⭐ the app decided and the file is behind → adopt, never send', () => {
   const site = { $services: API_PRO }
   const base = banked(site)
   const remote = [{ name: 'api', enabled: true, config: { grade: 'starter' } }]
-  const r = reconcileRequest(site, remote, base)
+  const r = recon(site, remote, base)
   assert.equal(r.action, 'adopt')
 })
 
@@ -175,7 +199,7 @@ test('the owner edited and nobody else did → send', () => {
   const edited = {
     $services: [{ name: 'api', enabled: true, config: { grade: 'starter' } }]
   }
-  const r = reconcileRequest(edited, API_PRO, base)
+  const r = recon(edited, API_PRO, base)
   assert.equal(r.action, 'send')
 })
 
@@ -185,7 +209,7 @@ test('⛔ both moved → conflict, and conflict never sends', () => {
   const base = banked({ $services: API_PRO })
   const edited = { $services: [{ name: 'api', enabled: false }] }
   const remote = [{ name: 'api', enabled: true, config: { grade: 'starter' } }]
-  const r = reconcileRequest(edited, remote, base)
+  const r = recon(edited, remote, base)
   assert.equal(r.action, 'conflict')
 })
 
@@ -193,12 +217,12 @@ test('no base → a difference is a conflict, not an adopt', () => {
   // Without the last agreed state we know the two differ and NOT who moved. The
   // conservative reading withholds and reports; it cannot silently drop anything,
   // because a conflict is always said out loud.
-  const r = reconcileRequest({ $services: API_PRO }, [{ name: 'api' }], null)
+  const r = recon({ $services: API_PRO }, [{ name: 'api' }], null)
   assert.equal(r.action, 'conflict')
 })
 
 test('no base but identical → still nothing to ask', () => {
-  const r = reconcileRequest({ $services: API_PRO }, API_PRO, null)
+  const r = recon({ $services: API_PRO }, API_PRO, null)
   assert.equal(r.action, 'none')
 })
 
@@ -207,23 +231,23 @@ test("the backend's omitted keys compare equal to a file that omits them", () =>
   // row is byte-comparable with what we would push. If this ever fails, every
   // comparison reports a change that is not one, and the CLI adopts forever.
   const site = { $services: [{ name: 'search' }] }
-  const r = reconcileRequest(site, [{ name: 'search' }], banked(site))
+  const r = recon(site, [{ name: 'search' }], banked(site))
   assert.equal(r.action, 'none')
 })
 
 test('a site with no $services and a backend with rows → adopt, not send', () => {
   // A project that never pulled, against a site that has bought services. The file
   // is silent — "no opinion" — so there is nothing to ask and plenty to learn.
-  const r = reconcileRequest({}, API_PRO, { servicesRequest: null })
+  const r = recon({}, API_PRO, { servicesRequest: null })
   assert.equal(r.action, 'conflict', 'no base ⇒ conservative')
-  const withBase = reconcileRequest({}, API_PRO, banked({}))
+  const withBase = recon({}, API_PRO, banked({}))
   assert.equal(withBase.action, 'conflict', 'still no servicesRequest banked')
 })
 
 // ── the same reconcile over the language selection ──────────────────────────
 
 test('publishLanguages is banked, so a later edit reads as intentional', () => {
-  const banked = fingerprintRequest({ publishLanguages: ['en', 'fr'] })
+  const banked = fingerprintOf({ publishLanguages: ['en', 'fr'] })
   assert.ok(banked.publishLanguagesRequest, 'the selection must be banked at all')
   // Unchanged file → nothing new asked for.
   assert.equal(
@@ -246,7 +270,7 @@ test('⛔ absent and empty are opposite language answers, not near-misses', () =
 })
 
 test('language order is not a change', () => {
-  const banked = fingerprintRequest({ publishLanguages: ['en', 'fr'] })
+  const banked = fingerprintOf({ publishLanguages: ['en', 'fr'] })
   assert.equal(
     reconcile(['fr', 'en'], ['en', 'fr'], banked.publishLanguagesRequest).action,
     'none'
@@ -254,13 +278,13 @@ test('language order is not a change', () => {
 })
 
 test('the site moved and the file did not → adopt, not send', () => {
-  const banked = fingerprintRequest({ publishLanguages: ['en', 'fr'] })
+  const banked = fingerprintOf({ publishLanguages: ['en', 'fr'] })
   const r = reconcile(['en', 'fr'], ['en'], banked.publishLanguagesRequest)
   assert.equal(r.action, 'adopt')
 })
 
 test('banking services and languages together keeps them independent', () => {
-  const fp = fingerprintRequest({
+  const fp = fingerprintOf({
     $services: API_PRO,
     publishLanguages: ['en']
   })

@@ -92,7 +92,12 @@ import {
   resolveSiteOrgForCreate
 } from '../backend/site-sync.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
-import { updateBackendMap, carryServed, SYNC_STORE_FILE } from '@uniweb/build/uwx'
+import {
+  updateBackendMap,
+  readBackendState,
+  carryServed,
+  SYNC_STORE_FILE
+} from '@uniweb/build/uwx'
 import {
   bringFoundationAlong,
   bringExtensionsAlong
@@ -784,7 +789,9 @@ export async function publish(args = []) {
   // network blip, a site never pushed. That is the shipped behaviour and it is safe:
   // it withholds an unchanged block and sends a changed one; it merely cannot see
   // the app's side.
-  let declaration = decideDeclaration(siteYml, priorRequest)
+  // What this site is PROVISIONED with on the backend being published to.
+  const provisioned = readBackendState(siteDir, client.origin)
+  let declaration = decideDeclaration(siteYml, priorRequest, provisioned)
   let adopted = null
   // Before the push, so a never-synced site has no uuid and simply skips this.
   const status =
@@ -792,7 +799,7 @@ export async function publish(args = []) {
       ? await client.siteStatus(siteYml.$uuid)
       : null
   if (status && Array.isArray(status.services)) {
-    const r = reconcileRequest(siteYml, status.services, priorRequest)
+    const r = reconcileRequest(siteYml, status.services, priorRequest, provisioned)
     if (r.action === 'none') {
       declaration = { declare: false, reason: 'in-sync' }
     } else if (r.action === 'send') {
@@ -830,7 +837,7 @@ export async function publish(args = []) {
   // for one commit. Asking is the only thing that resolves it.
   if (declaration.reason === 'conflict') {
     say.warn('Your site\'s services were changed elsewhere, and site.yml changed too.')
-    say.dim(`  in site.yml:  ${describeServices(siteYml.$services)}`)
+    say.dim(`  in sync.json: ${describeServices(provisioned.services)}`)
     say.dim(`  on your site: ${describeServices(adopted)}`)
     if (isNonInteractive(args)) {
       say.dim('  Left your site as it is — run without --non-interactive to choose.')
@@ -881,7 +888,7 @@ export async function publish(args = []) {
     // site refused, where nothing of theirs changed and ours simply did not take.
     // We cannot tell those apart here, so the wording claims neither.
     say.info('Your site has different services than site.yml lists.')
-    say.dim(`  in site.yml:  ${describeServices(siteYml.$services)}`)
+    say.dim(`  in sync.json: ${describeServices(provisioned.services)}`)
     say.dim(`  on your site: ${describeServices(adopted)}`)
     // ⭐ OFFERED, NEVER DONE. site.yml is the owner's file, and a publish that
     // silently rewrites an authored file is the surprise this seam exists to
@@ -1033,7 +1040,7 @@ export async function publish(args = []) {
       // service's `config` is opaque, so recording either verbatim would write
       // them into git. Absent when the file declares no block.
       ...(declaration.declare
-        ? fingerprintRequest(siteYml)
+        ? fingerprintRequest(siteYml, provisioned)
         : {
             // Nothing was sent, so the base is unchanged — carry it forward
             // rather than dropping it, or the next publish would read "no record"

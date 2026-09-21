@@ -128,7 +128,14 @@ test(
     await pushTo(dir, mockBackend(A, 'SITE-A'))
 
     const y = yaml.load(readFileSync(join(dir, 'site.yml'), 'utf8'))
-    for (const key of ['$uuid', '$org', '$backend']) {
+    // Step 4 moved the identity keys; step 5 moved the PROVISIONED rows.
+    //
+    // ⚠️ HONEST SCOPE: for `$services` / `$secrets` this line is VACUOUS here — this
+    // push involves no services, so it passes whether or not they moved. It is listed
+    // only so a future PUSH-path regression that writes them back is caught. The real
+    // step-5 guard is `build/tests/uwx-site-project.test.js`, "projects both sections
+    // into sync.json", which runs a projection that actually carries them.
+    for (const key of ['$uuid', '$org', '$backend', '$services', '$secrets']) {
       assert.equal(y[key], undefined, `site.yml still carries ${key}`)
     }
     // The author's own keys are untouched — this is the whole point.
