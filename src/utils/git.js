@@ -37,12 +37,15 @@ export function siteContentRoots(siteDir) {
   // root added below already covered it and the bare `'collections.yml'` entry
   // that used to sit in this list resolved to a path no site ever had. A
   // root-level file has no directory entry standing in for it.
+  //
+  // The records folder's `folder.yml` is the reverse case: it lives in the records
+  // directory, which is a root below, so it needs no entry. (It was `records.yml` at
+  // the site root until 2026-09-21, and was listed here then.)
   const roots = new Set([
     'site.yml',
     'theme.yml',
     'head.html',
     'queries.yml',
-    'records.yml',
     'locales'
   ])
   let paths = {}

@@ -845,13 +845,13 @@ It is a small database, not a page tree. Three things, deliberately separate:
 ```
 site/
 ├── pages/
-├── records/           # your site's records — every file here is one
+├── records/           # your site's records — every file in a schema folder is one
 │   ├── article/       # the folder names their data schema
 │   │   ├── getting-started.md
 │   │   └── design-tips.md
-│   └── person/
-│       └── alice.yml
-├── records.yml        # optional: sorts records into folders
+│   ├── person/
+│   │   └── alice.yml
+│   └── folder.yml     # optional: sorts records into folders
 ├── queries.yml        # how content is REACHED
 └── site.yml
 ```
@@ -864,7 +864,7 @@ site/
 | `records/std/person/…` | `@std/person` — the shared standard set |
 | `records/acme/project/…` | `@acme/project` — an org's |
 
-Keep those folders flat: `records/article/design-tips.md` works; `records/article/2025/design-tips.md` is read as the `2025` schema of an `article` org, which is not what you meant. Organise in `records.yml` instead. A file whose name starts with `_` is not a record — somewhere to keep work in progress.
+Keep those folders flat: `records/article/design-tips.md` works; `records/article/2025/design-tips.md` is read as the `2025` schema of an `article` org, which is not what you meant. Organise in `records/folder.yml` instead. A file whose name starts with `_` is not a record — somewhere to keep work in progress.
 
 **Four formats, one shape.** All of these produce the same records at runtime:
 
@@ -879,7 +879,7 @@ Keep those folders flat: `records/article/design-tips.md` works; `records/articl
 
 Item frontmatter conventionally uses `title`, `date`, `tags`, `image`, `description`, `author` — plus any fields your content needs (`price`, `role`, `order`). Images can sit beside the item file and be referenced with `./`. **`draft: true` keeps a record off the live site without deleting it**: it is still a record, in `records/`, and `pnpm dev` shows it so you can preview it, but a build for hosting leaves it out — and `uniweb push` stops at it, naming it. (`published: false`, an older spelling, is refused.)
 
-**`records.yml` — optional, and only for folders.** Every record sits at the top of the site's records folder unless `records.yml` places it in a sub-folder. Add one only when a query needs to ask for a *slice* of the records rather than all of them — most sites never do:
+**`records/folder.yml` — optional, and only for folders.** It is the one file in `records/` that is not a record, it moves with the directory (`paths.records`), and like a pages folder's `folder.yml` it describes the folder it sits in. Every record sits at the top of the site's records folder unless `folder.yml` places it in a sub-folder. Add one only when a query needs to ask for a *slice* of the records rather than all of them — most sites never do:
 
 ```yaml
 - folder: archive
@@ -888,7 +888,7 @@ Item frontmatter conventionally uses `title`, `date`, `tags`, `image`, `descript
     - article/2025-*.md
 ```
 
-A path under a folder is relative to `records/`, naming one file or matching many. A query reads one folder with `scope: archive` — the folder and everything inside it. A record sits in one folder; if you want a computed subset, that is a query, not a second placement. Structure is for querying, not for navigation — and `records.yml` never lists a record at the top level (the build refuses it: every file in `records/` is a record already).
+A path under a folder is relative to `records/`, naming one file or matching many. A query reads one folder with `scope: archive` — the folder and everything inside it. A record sits in one folder; if you want a computed subset, that is a query, not a second placement. Structure is for querying, not for navigation — and `folder.yml` never lists a record at the top level (the build refuses it: every file in `records/` is a record already).
 
 ⚠️ **With a backend, `records/` is what `uniweb push` sends** — every record in it. A site with no `records/` at all leaves the backend's records alone; an *empty* `records/` removes them, and the CLI asks before it does. Records pushed to a backend are served once the site is published.
 
@@ -942,7 +942,7 @@ pages/blog/
 
 > **The record arrives as a single-element array under the key the component declares** — `content.data.recent[0]` for a component declaring `recent`, `content.data.article[0]` for one declaring `article: '@std/article'` over an `@std/article` query. The runtime never coerces it to an object. See *Data* in Part 4.
 
-**Records with URLs of their own shape — `[...path]/`.** A folder named exactly `[...path]` (one fixed spelling) captures the rest of the URL: `/blog/my-post` and `/blog/rust/2025/my-post` both reach it. The capture yields three standard variables — `:path` (the whole capture), `:dir` (everything before the last segment), `:slug` (the last segment, the record's handle) — and the record is still delivered by its handle, so the section reads `content.data.recent[0]` as before. The same three variables exist under every parametric page: under `[slug]`, `:slug` and `:path` are the segment and `:dir` is empty. A record's URL is its folder placement plus its slug (`- folder: rust/2025` in `records.yml` → `/blog/rust/2025/my-post`). A query may bind a part — `scope: :dir` exposes the folder branch, `where: { tag: :dir }` keeps it private — and an unbound or empty variable drops its clause, so one saved query serves the query's page and its parametric page, on a static site and a hosted one alike. Without `scope: :dir` the directory is decoration: the record is found by its handle wherever it sits. Reference: `reference/dynamic-routes.md`.
+**Records with URLs of their own shape — `[...path]/`.** A folder named exactly `[...path]` (one fixed spelling) captures the rest of the URL: `/blog/my-post` and `/blog/rust/2025/my-post` both reach it. The capture yields three standard variables — `:path` (the whole capture), `:dir` (everything before the last segment), `:slug` (the last segment, the record's handle) — and the record is still delivered by its handle, so the section reads `content.data.recent[0]` as before. The same three variables exist under every parametric page: under `[slug]`, `:slug` and `:path` are the segment and `:dir` is empty. A record's URL is its folder placement plus its slug (`- folder: rust/2025` in `records/folder.yml` → `/blog/rust/2025/my-post`). A query may bind a part — `scope: :dir` exposes the folder branch, `where: { tag: :dir }` keeps it private — and an unbound or empty variable drops its clause, so one saved query serves the query's page and its parametric page, on a static site and a hosted one alike. Without `scope: :dir` the directory is decoration: the record is found by its handle wherever it sits. Reference: `reference/dynamic-routes.md`.
 
 **Two options for bigger sets:**
 

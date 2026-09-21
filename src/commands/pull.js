@@ -65,7 +65,7 @@ import {
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { createInterface } from 'node:readline/promises'
-import { join, dirname, relative } from 'node:path'
+import { join, dirname, relative, resolve } from 'node:path'
 import yaml from 'js-yaml'
 import { downloadMissingAssets } from '../backend/asset-download.js'
 import {
@@ -856,9 +856,16 @@ export async function pull(args = [], deps = {}) {
           resolveDeclaration: (name) => declByModel.get(name) || null
         }
       })
-      if (report.records === 'updated') info('Wrote records.yml')
-      // The backend's folder has no sub-folders, and records.yml holds nothing else.
-      else if (report.records === 'removed') info('Removed records.yml — the folder has no sub-folders')
+      // The folder's organization, `folder.yml` in the records directory — named as
+      // the author would write it (`records/folder.yml`, or under `paths.records`).
+      if (report.records === 'updated') {
+        info(`Wrote ${report.recordsFile}`)
+        wrote.push(resolve(siteDir, report.recordsFile))
+      } else if (report.records === 'removed') {
+        // The backend's folder has no sub-folders, and the file holds nothing else.
+        info(`Removed ${report.recordsFile} — the folder has no sub-folders`)
+        removed.push(resolve(siteDir, report.recordsFile))
+      }
       records += report.placed.length + report.updated.length
       for (const s of report.skipped)
         note(`↷ ${s.slug ?? s.uuid ?? '(record)'}: ${s.reason}`)
@@ -892,7 +899,8 @@ export async function pull(args = [], deps = {}) {
     siteDir,
     [
       ...wrote,
-      ...['site.yml', 'theme.yml', 'head.html', 'queries.yml', 'records.yml'].map((f) =>
+      // The records folder's `folder.yml` is in `wrote` when this pull wrote it.
+      ...['site.yml', 'theme.yml', 'head.html', 'queries.yml'].map((f) =>
         join(siteDir, f)
       )
     ],
