@@ -48,6 +48,7 @@ test('a realistic invocation of every guarded verb passes', () => {
     clone: ['abc-uuid', '--path', './site', '--project', 'p'],
     register: ['--scope', '@acme', '-o', 'out.uwx', '--json'],
     status: ['--remote', '--json'],
+    forget: ['--backend', 'http://localhost:9999'],
     refresh: ['--no-git', '--backend', 'http://localhost:8080'],
     sync: ['--no-git', '--force', '--backend', 'http://localhost:8080']
   }

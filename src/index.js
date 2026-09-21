@@ -805,6 +805,14 @@ async function main() {
     process.exit(result?.exitCode ?? 0)
   }
 
+  // Handle forget — remove one backend's local records (sync.json + cache). Local
+  // only: the site still exists on the backend. Needs @uniweb/build (the store).
+  if (command === 'forget') {
+    const { forget } = await importProjectCommand('./commands/forget.js')
+    const result = await forget(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
+  }
+
   // Handle status command (dynamic import — offline emit via @uniweb/build)
   if (command === 'status') {
     const { status } = await importProjectCommand('./commands/status.js')
@@ -2060,6 +2068,7 @@ ${colors.bright}Commands:${colors.reset}
   refresh            Catch up with the git remote AND the backend (never pushes)
   sync               Catch up, then push (refresh + push)
   status             Show a site's sync state (unpushed content, foundation)
+  forget             Forget one backend: remove what this project recorded about it
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   families           List the standard section families (for meta.js family:)

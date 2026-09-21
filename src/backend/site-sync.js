@@ -230,6 +230,25 @@ function updateSyncCache(siteDir, backend, patch) {
   for (const k of Object.keys(file.backends).sort()) sorted[k] = file.backends[k]
   writeFileSync(p, JSON.stringify({ version: 1, backends: sorted }, null, 2) + '\n')
 }
+/**
+ * Remove ONE backend's section from `.uniweb/backend-cache.json`. Every other
+ * backend's section is untouched — which is the point of keying by origin.
+ *
+ * @returns {boolean} whether a section was removed
+ */
+export function forgetBackendCache(siteDir, backend) {
+  const key = cacheKeyFor(backend)
+  if (!key) return false
+  const file = readCacheFile(siteDir)
+  if (!file.backends[key]) return false
+  delete file.backends[key]
+  const p = backendCachePath(siteDir)
+  const sorted = {}
+  for (const k of Object.keys(file.backends).sort()) sorted[k] = file.backends[k]
+  writeFileSync(p, JSON.stringify({ version: 1, backends: sorted }, null, 2) + '\n')
+  return true
+}
+
 const readMap = (siteDir, backend, key) => {
   const v = readSyncCacheFile(siteDir, backend)[key]
   return v && typeof v === 'object' ? v : {}

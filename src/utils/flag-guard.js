@@ -89,6 +89,12 @@ const VERBS = {
     '--backend', '--dry-run', '--json', '--output', '-o',
     '--schema-only', '--scope', '--token', '--org', '--as-org'
   ],
+  /**
+   * `forget` = remove one backend's section from sync.json and the backend cache.
+   * `--backend` is required (the verb refuses without it); `--non-interactive`
+   * reaches it through resolveSiteDir in a workspace of several sites.
+   */
+  forget: ['--backend'],
   status: [
     '--backend', '--json', '--remote', '--token', '--dry-run',
     '--force', '--no-verify', '--no-validate', '--yes', '--org', '--as-org',
