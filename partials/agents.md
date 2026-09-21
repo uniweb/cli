@@ -2560,7 +2560,7 @@ uniweb <command> --help           # Per-command flags — no side effects. Prefe
 | Any static host at all | `uniweb export` | full control; no Uniweb account needed |
 | Uniweb Cloud | `uniweb publish` | teams with non-technical content authors, or client work |
 
-`uniweb deploy` never assumes a host: with nothing configured it opens a picker listing only destinations it can act on, and records the choice in `deploy.yml` so later runs go straight there. On Cloudflare Pages / Netlify / Vercel, `add ci` also adds per-PR previews that comment the URL. Adapters: `github-pages`, `cloudflare-pages`, `netlify`, `vercel`, plus `s3-cloudfront` for `deploy`. That record is `deploy.yml`, beside `site.yml` — **the CLI writes it, you don't create it**: the first successful deploy scaffolds the whole file, and later deploys rewrite only its `lastDeploy:` block. Edit `targets:` when you want to change where a site ships. Host credentials come from the environment, never from that committed file.
+`uniweb deploy` never assumes a host: with nothing configured it opens a picker listing only destinations it can act on, and records the choice in `deploy.yml` so later runs go straight there. On Cloudflare Pages / Netlify / Vercel, `add ci` also adds per-PR previews that comment the URL. Adapters: `github-pages`, `cloudflare-pages`, `netlify`, `vercel`, plus `s3-cloudfront` for `deploy`. That record is `deploy.yml`, beside `site.yml` — **the CLI writes it, you don't create it**: the first successful deploy scaffolds the whole file, and later deploys rewrite only its `deploys:` block. Edit `targets:` when you want to change where a site ships. Host credentials come from the environment, never from that committed file.
 
 Foundations have their own free path too: `uniweb add ci --target foundation` publishes to permanent versioned URLs on GitHub Pages.
 
@@ -2582,7 +2582,7 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 > uniweb publish --personal      # your personal account, deliberately
 > ```
 >
-> The answer is recorded in `site.yml::$org` and committed, so it is a one-time choice per site,
+> The answer is recorded in `sync.json` and committed, so it is a one-time choice per site,
 > not per machine. **Ask the human which one to use** rather than picking for them — a site in
 > the wrong org cannot be moved from here. Sites that already exist are unaffected: their
 > ownership is settled, so nothing is asked.
