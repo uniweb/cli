@@ -729,6 +729,80 @@ test('pushSyncPackages: the folder lane is keyed by the bound site uuid', async 
   rmSync(dir, { recursive: true, force: true })
 })
 
+// ⛔ A backend must echo `$disabled: true` on a record it stored disabled. One that
+// predates the key stores the draft ENABLED, and it would be delivered once the site is
+// published. The push fails, after banking its state, so a publish (which stops on
+// anything but 0) never goes live on top of it, and the file keeps its `draft: true`.
+const draftPush = (echo) => {
+  const dir = tmpSite()
+  mkdirSync(join(dir, 'records', 'article'), { recursive: true })
+  const file = join(dir, 'records', 'article', 'soon.yml')
+  writeFileSync(file, 'title: Soon\ndraft: true\n')
+  const declaration = {
+    name: '@a/article',
+    sections: { article: { brief: true, fields: { title: { type: 'string' } } } }
+  }
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'SITE', changed: true }])),
+    pushFolder: async () =>
+      ok(
+        finalized([
+          { index: 0, uuid: 'FOLDER', changed: true },
+          {
+            index: 1,
+            uuid: 'R1',
+            changed: true,
+            document: {
+              $uuid: 'R1',
+              $model: '@a/article',
+              ...(echo ? { $disabled: true } : {}),
+              article: { title: 'Soon' }
+            }
+          }
+        ])
+      )
+  }
+  const pkg = siteOnlyPkg({
+    siteContentUuid: 'SITE',
+    records: {
+      buffer: Buffer.from('c'),
+      entityCount: 2,
+      models: ['@uniweb/folder', '@a/article'],
+      index: [
+        { kind: 'folder' },
+        { id: 'article/soon', slug: 'soon', model: '@a/article', sourceFile: file, format: 'yaml', declaration, draft: true }
+      ]
+    }
+  })
+  return { dir, file, client, pkg }
+}
+
+test('a draft the backend stored enabled fails the push, naming it, and the file stays a draft', async () => {
+  const { dir, file, client, pkg } = draftPush(false)
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, asOrg: null, report })
+  assert.equal(res.exitCode, 1)
+  const said = calls.error.join('\n')
+  assert.match(said, /did not keep a record as a draft/)
+  assert.match(said, /records\/article\/soon\.yml/)
+  const out = yaml.load(readFileSync(file, 'utf8'))
+  assert.equal(out.draft, true, 'the draft flag survives')
+  assert.equal(out.$uuid, 'R1', 'identity is still written back')
+  rmSync(dir, { recursive: true, force: true })
+})
+
+// CONTROL — a backend that kept it: exit 0, nothing reported, the file rendered as a draft.
+test('CONTROL — a draft the backend kept pushes cleanly and stays a draft', async () => {
+  const { dir, file, client, pkg } = draftPush(true)
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, asOrg: null, report })
+  assert.equal(res.exitCode, 0)
+  assert.deepEqual(calls.error, [])
+  assert.deepEqual(yaml.load(readFileSync(file, 'utf8')), { $uuid: 'R1', title: 'Soon', draft: true })
+  rmSync(dir, { recursive: true, force: true })
+})
+
 test('an identity_required 400 is explained, not surfaced as a raw error', async () => {
   const dir = tmpSite()
   const problem = {

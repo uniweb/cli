@@ -12,7 +12,7 @@
  */
 
 import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { join, dirname, relative, isAbsolute } from 'node:path'
 import yaml from 'js-yaml'
 import { hasUncommittedContent } from '../utils/git.js'
 import { humanBytes } from '../utils/bytes.js'
@@ -1270,6 +1270,8 @@ export async function pushSyncPackages({
 
   const wrote = []
   let finalizedTotal = 0
+  // Records sent as drafts that the backend stored enabled — reported at the end.
+  let draftsNotKept = []
 
   // POST one lane via the client and parse the JSON response. `doRequest` is a thunk
   // returning the client's Response promise (so the "Pushing …" line prints before the
@@ -1658,6 +1660,7 @@ export async function pushSyncPackages({
     }
     for (const w of bf.warnings) note(`! ${w}`)
     for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
+    draftsNotKept = bf.notKeptAsDrafts || []
     if (bf.updated.length)
       wrote.push(`wrote ${bf.updated.length} record file(s)`)
     // ⭐ BANK THE FOLDER'S PLACEMENT IDENTITY. The records carry their own `$uuid`
@@ -1722,6 +1725,22 @@ export async function pushSyncPackages({
           'may refuse it. `uniweb pull` re-arms identity if that happens.'
       )
     }
+  }
+  // ⛔ A DRAFT THE BACKEND STORED ENABLED FAILS THE PUSH, and only here, after every
+  // piece of sync state above is banked: the push itself happened, and the next one must
+  // see it. What must not happen is a publish that goes live on top of it, which is why
+  // the exit code carries it (publish stops on anything but 0). The files keep their
+  // `draft: true` (see backfillEntityUuids).
+  if (draftsNotKept.length) {
+    const one = draftsNotKept.length === 1
+    const shown = draftsNotKept.map((p) => (isAbsolute(p) ? relative(siteDir, p) : p))
+    error(
+      `This backend did not keep ${one ? 'a record' : `${shown.length} records`} as a draft, ` +
+        `so ${one ? 'it' : 'they'} would be delivered once the site is published:\n  ` +
+        shown.join('\n  ') +
+        '\n  The backend does not support `draft: true` yet. Once it does, push again with --all.'
+    )
+    return { exitCode: 1, boundSiteUuid, finalizedTotal, wrote }
   }
   return { exitCode: 0, boundSiteUuid, finalizedTotal, wrote }
 }
