@@ -90,11 +90,12 @@ const VERBS = {
     '--schema-only', '--scope', '--token', '--org', '--as-org'
   ],
   /**
-   * `forget` = remove one backend's section from sync.json and the backend cache.
-   * `--backend` is required (the verb refuses without it); `--non-interactive`
-   * reaches it through resolveSiteDir in a workspace of several sites.
+   * `forget` = remove one backend's records (`--backend <url>`), or everything a
+   * copied project inherited (`--all`). One of the two is required — the verb refuses
+   * without it — and they exclude each other. `--non-interactive` reaches it through
+   * resolveSiteDir in a workspace of several sites.
    */
-  forget: ['--backend'],
+  forget: ['--backend', '--all'],
   status: [
     '--backend', '--json', '--remote', '--token', '--dry-run',
     '--force', '--no-verify', '--no-validate', '--yes', '--org', '--as-org',

@@ -11,7 +11,7 @@
  * own way.
  */
 
-import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
+import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import yaml from 'js-yaml'
 import { hasUncommittedContent } from '../utils/git.js'
@@ -243,9 +243,27 @@ export function forgetBackendCache(siteDir, backend) {
   if (!file.backends[key]) return false
   delete file.backends[key]
   const p = backendCachePath(siteDir)
+  // The last section gone ⇒ the file goes, as `sync.json` does in the same case.
+  if (!Object.keys(file.backends).length) {
+    unlinkSync(p)
+    return true
+  }
   const sorted = {}
   for (const k of Object.keys(file.backends).sort()) sorted[k] = file.backends[k]
   writeFileSync(p, JSON.stringify({ version: 1, backends: sorted }, null, 2) + '\n')
+  return true
+}
+
+/**
+ * Delete `.uniweb/backend-cache.json` outright — `uniweb forget --all`. Every section
+ * describes a site the COPY does not own; the file is regenerable by definition.
+ *
+ * @returns {boolean} whether there was a file to remove
+ */
+export function forgetAllBackendCaches(siteDir) {
+  const p = backendCachePath(siteDir)
+  if (!existsSync(p)) return false
+  unlinkSync(p)
   return true
 }
 

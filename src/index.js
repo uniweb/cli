@@ -805,8 +805,9 @@ async function main() {
     process.exit(result?.exitCode ?? 0)
   }
 
-  // Handle forget — remove one backend's local records (sync.json + cache). Local
-  // only: the site still exists on the backend. Needs @uniweb/build (the store).
+  // Handle forget — remove one backend's local records (sync.json, cache, deploy
+  // records), or with --all everything a copied project inherited. Local only: every
+  // site still exists on its backend. Needs @uniweb/build (the store).
   if (command === 'forget') {
     const { forget } = await importProjectCommand('./commands/forget.js')
     const result = await forget(args.slice(1))
@@ -1901,6 +1902,29 @@ ${colors.bright}Options:${colors.reset}
 \`--force\` means "overwrite upstream" to push but "discard my local work" to pull,
 so it is deliberately kept away from the refresh half.
 `,
+    forget: `
+${colors.cyan}${colors.bright}uniweb forget${colors.reset} ${colors.dim}— Remove what this project recorded about where it synced${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb forget --backend <url>
+  uniweb forget --all
+
+Local files only. Every site stays where it is on its backend.
+
+${colors.bright}Options:${colors.reset}
+  --backend <url>    Forget one backend: its entries in sync.json and in the local
+                     cache, and its deploy records in deploy.yml. Its targets stay,
+                     so the next publish there creates a new site.
+  --all              For a COPY of a project that should become a new one. Deletes
+                     sync.json, deploy.yml and the local cache — everything naming
+                     the original's sites and destinations. Without it, the copy's
+                     first push updates the original's site.
+
+Record files keep their \`$uuid\`: it is the record's own id, not a backend's.
+
+To duplicate a project:
+  cp -r my-site my-site-2 && cd my-site-2 && uniweb forget --all
+`,
     invite: `
 ${colors.cyan}${colors.bright}uniweb invite${colors.reset} ${colors.dim}— (reserved; not available on the new backend yet)${colors.reset}
 
@@ -2068,7 +2092,7 @@ ${colors.bright}Commands:${colors.reset}
   refresh            Catch up with the git remote AND the backend (never pushes)
   sync               Catch up, then push (refresh + push)
   status             Show a site's sync state (unpushed content, foundation)
-  forget             Forget one backend: remove what this project recorded about it
+  forget             Forget a backend, or --all to make a copied project a new one
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   families           List the standard section families (for meta.js family:)

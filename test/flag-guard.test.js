@@ -55,6 +55,8 @@ test('a realistic invocation of every guarded verb passes', () => {
   for (const [verb, args] of Object.entries(real)) {
     assert.equal(checkFlags(verb, args), null, `${verb} rejected a valid call`)
   }
+  // `forget` has two forms and the table holds one call per verb.
+  assert.equal(checkFlags('forget', ['--all']), null, 'forget rejected --all')
   // The name claims EVERY guarded verb; make it a claim the test can keep. A verb
   // added to VERB_FLAGS without a case here would otherwise pass by absence.
   assert.deepEqual(
