@@ -208,6 +208,15 @@ export async function applyContent(
 }
 
 /**
+ * What a project records about where IT synced and deployed — a site's identity on
+ * each backend, its deploy targets and history, and the local caches of both. A new
+ * project made from a template owns none of it: carried over, its first push would
+ * update the template's own site. The same line `uniweb forget --all` draws for a
+ * copied project. Matched at the top of a content directory, where a site keeps them.
+ */
+const INHERITED_STATE = new Set(['sync.json', 'deploy.yml', '.uniweb'])
+
+/**
  * Recursively copy content files, skipping structural files.
  *
  * `depth` is tracked so the `renames` map (passed via options) only
@@ -234,6 +243,7 @@ async function copyContentRecursive(
     const sourcePath = join(sourceDir, entry.name)
 
     if (entry.isDirectory()) {
+      if (depth === 0 && INHERITED_STATE.has(entry.name)) continue
       const targetSubDir = join(targetDir, entry.name)
       await copyContentRecursive(
         sourcePath,
@@ -260,6 +270,7 @@ async function copyContentRecursive(
 
       // Skip structural files
       if (structuralFiles.has(outputName)) continue
+      if (depth === 0 && INHERITED_STATE.has(outputName)) continue
 
       const targetPath = join(targetDir, outputName)
 
