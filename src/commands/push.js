@@ -298,7 +298,7 @@ export async function push(args = [], deps = {}) {
   //
   // Still skipped for an offline emit: `-o` / `--dry-run` must not mutate project state.
   if (!output && !dryRun) {
-    const dropped = clearRemoteSyncStateIfUnbound(siteDir)
+    const dropped = clearRemoteSyncStateIfUnbound(siteDir, client.origin)
     if (dropped.length) {
       note(
         `Cleared stale sync state from a previous site (${dropped.join(', ')}).`
@@ -309,7 +309,7 @@ export async function push(args = [], deps = {}) {
       note(`Dropped the previous site's ${stale.join(' and ')} from site.yml.`)
     }
   }
-  const priorHashes = readSyncCache(siteDir)
+  const priorHashes = readSyncCache(siteDir, client.origin)
   // Per-item identity, without which the backend reads every record as new and
   // recreates every page and section row.
   //
@@ -379,7 +379,7 @@ export async function push(args = [], deps = {}) {
   // is reported and confirmed before anything is sent. The format stays honest;
   // the asking happens here.
   if (!dryRun) {
-    const guard = await guardEmptyRecords({ siteDir, args, warn, note })
+    const guard = await guardEmptyRecords({ siteDir, backend: client.origin, args, warn, note })
     if (!guard.ok) return { exitCode: 1 }
   }
 
@@ -390,7 +390,7 @@ export async function push(args = [], deps = {}) {
     try {
       const probe = await emitSyncPackages(siteDir, {
       // Placement identity for the folder — see writeFolderItemUuids.
-      folderItemUuids: readFolderItemUuids(siteDir),
+      folderItemUuids: readFolderItemUuids(siteDir, client.origin),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
       ...(asOrg ? { org: asOrg } : {}),
         ...(foundationDir ? { foundationDir } : {}),
@@ -482,16 +482,16 @@ export async function push(args = [], deps = {}) {
 
   const itemUuids =
     output || dryRun
-      ? readItemUuids(siteDir)
+      ? readItemUuids(siteDir, client.origin)
       : await ensureItemUuids({ client, siteDir, note })
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, {
       // Placement identity for the folder — see writeFolderItemUuids.
-      folderItemUuids: readFolderItemUuids(siteDir),
+      folderItemUuids: readFolderItemUuids(siteDir, client.origin),
       // Identity for the `queries` section — see readQueryUuids. Keyed by
       // name, because a declaration has no file for a path-keyed map to hold.
-      queryUuids: readQueryUuids(siteDir),
+      queryUuids: readQueryUuids(siteDir, client.origin),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
       ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),
@@ -513,8 +513,8 @@ export async function push(args = [], deps = {}) {
       ...(force
         ? {}
         : {
-            baseVersions: readBaseVersions(siteDir),
-            itemBaseVersions: readItemBaseVersions(siteDir)
+            baseVersions: readBaseVersions(siteDir, client.origin),
+            itemBaseVersions: readItemBaseVersions(siteDir, client.origin)
           }),
       ...(assetRewrite ? { assetRewrite } : {}),
       ...(assetIds ? { assetIds } : {})

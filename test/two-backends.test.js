@@ -163,7 +163,6 @@ test(
 
 test(
   '⭐ the send-only-changed cache is per backend, so B is not told A\'s content is unchanged',
-  NEEDS(3, 'the cache is renamed and keyed by origin'),
   async () => {
     const dir = tmpSite()
     await pushTo(dir, mockBackend(A, 'SITE-A'))
@@ -174,8 +173,10 @@ test(
 
     assert.ok(parsed.backends?.[A], "A's cache section is missing")
     assert.equal(parsed.backends?.[B], undefined, "B must not inherit A's cache")
-    assert.equal(parsed.siteUuid, undefined, 'the siteUuid stamp should be gone')
     assert.ok(!existsSync(join(dir, '.uniweb', 'sync-cache.json')), 'old cache name survived')
+    // ⚠️ The `siteUuid` stamp is still here and is asserted by the step-4 case
+    // below — its job (noticing a cache describing a different SITE on the same
+    // origin) moves to `sync.json::site.uuid`, which is step 4's to deliver.
   }
 )
 
@@ -197,6 +198,14 @@ test(
       undefined,
       'assertSiteBackendScope still exists — contamination is representable'
     )
+
+    // The cache's own identity stamp goes with it: per origin it answers a question
+    // `sync.json::site.uuid` answers better, and two answers is how they diverge.
+    const cache = join(dir, '.uniweb', 'backend-cache.json')
+    if (existsSync(cache)) {
+      const parsed = JSON.parse(readFileSync(cache, 'utf8'))
+      assert.equal(parsed.backends?.[A]?.siteUuid, undefined, 'the siteUuid stamp survived')
+    }
   }
 )
 

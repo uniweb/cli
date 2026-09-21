@@ -15,13 +15,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { guardEmptyRecords, countPlacedRecords } from '../src/utils/records-guard.js'
 
+const ORIGIN = 'http://x'
+
 const site = (recordsYml, folderItemUuids) => {
   const dir = mkdtempSync(join(tmpdir(), 'empty-records-'))
   writeFileSync(join(dir, 'site.yml'), 'name: T\n')
   if (recordsYml !== null) writeFileSync(join(dir, 'records.yml'), recordsYml)
   if (folderItemUuids) {
     mkdirSync(join(dir, '.uniweb'), { recursive: true })
-    writeFileSync(join(dir, '.uniweb', 'sync-cache.json'), JSON.stringify({ folderItemUuids }))
+    writeFileSync(
+      join(dir, 'sync.json'),
+      JSON.stringify({ version: 1, backends: { [ORIGIN]: { folders: folderItemUuids } } })
+    )
   }
   return dir
 }
@@ -46,6 +51,7 @@ test('an empty records.yml over a live folder is refused without confirmation', 
     const messages = []
     const res = await guardEmptyRecords({
       siteDir: dir,
+      backend: ORIGIN,
       args: NON_INTERACTIVE,
       warn: (m) => messages.push(m),
       note: (m) => messages.push(m),
@@ -63,7 +69,7 @@ test('an empty records.yml over a live folder is refused without confirmation', 
 test('--yes carries it through, for a deliberate non-interactive run', async () => {
   const dir = site('', { alice: 'I1' })
   try {
-    const res = await guardEmptyRecords({ siteDir: dir, args: ['--yes'], warn: silent, note: silent })
+    const res = await guardEmptyRecords({ siteDir: dir, backend: ORIGIN, args: ['--yes'], warn: silent, note: silent })
     assert.equal(res.ok, true)
     assert.equal(res.count, 1)
   } finally {
@@ -75,7 +81,7 @@ test('a MISSING records.yml is never asked about — it removes nothing', async 
   // ⭐ The whole reason the two states differ. Deleting the file is the safe act.
   const dir = site(null, { alice: 'I1', bob: 'I2' })
   try {
-    const res = await guardEmptyRecords({ siteDir: dir, args: NON_INTERACTIVE, warn: silent, note: silent })
+    const res = await guardEmptyRecords({ siteDir: dir, backend: ORIGIN, args: NON_INTERACTIVE, warn: silent, note: silent })
     assert.equal(res.ok, true)
     assert.equal(res.count, 0)
   } finally {
@@ -88,7 +94,7 @@ test('an empty records.yml on a never-pushed site is never asked about', async (
   // which is exactly how the real prompt stops working.
   const dir = site('', null)
   try {
-    const res = await guardEmptyRecords({ siteDir: dir, args: NON_INTERACTIVE, warn: silent, note: silent })
+    const res = await guardEmptyRecords({ siteDir: dir, backend: ORIGIN, args: NON_INTERACTIVE, warn: silent, note: silent })
     assert.equal(res.ok, true)
     assert.equal(res.count, 0)
   } finally {
@@ -102,7 +108,7 @@ test('an empty records.yml on a never-pushed site is never asked about', async (
 test('CONTROL — a populated records.yml is never asked about', async () => {
   const dir = site('- article/*.md\n', { alice: 'I1', bob: 'I2' })
   try {
-    const res = await guardEmptyRecords({ siteDir: dir, args: NON_INTERACTIVE, warn: silent, note: silent })
+    const res = await guardEmptyRecords({ siteDir: dir, backend: ORIGIN, args: NON_INTERACTIVE, warn: silent, note: silent })
     assert.equal(res.ok, true)
     assert.equal(res.count, 0)
   } finally {

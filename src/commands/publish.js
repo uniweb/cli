@@ -532,7 +532,7 @@ export async function publish(args = []) {
   try {
     probe = await emitSyncPackages(siteDir, {
       // Placement identity for the folder — see writeFolderItemUuids.
-      folderItemUuids: readFolderItemUuids(siteDir),
+      folderItemUuids: readFolderItemUuids(siteDir, client.origin),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
       ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),
@@ -553,7 +553,7 @@ export async function publish(args = []) {
   //     that describes one is stale — including after the documented "clear
   //     `$uuid` to re-publish as a new site" recovery. Must run BEFORE the create,
   //     which mints a uuid and would make the clone look bound.
-  const droppedState = clearRemoteSyncStateIfUnbound(siteDir)
+  const droppedState = clearRemoteSyncStateIfUnbound(siteDir, client.origin)
   if (droppedState.length) {
     say.dim(
       `Cleared stale sync state from a previous site (${droppedState.join(', ')}).`
@@ -731,13 +731,13 @@ export async function publish(args = []) {
   //    the pinned foundation ref and rewriting local media refs to serve URLs.
   //    (It stamped `info.data_bundle` until 2026-08-18; the ball is gone and
   //    collection data now lands at its serving tail, so nothing records it.)
-  const priorHashes = readSyncCache(siteDir)
+  const priorHashes = readSyncCache(siteDir, client.origin)
   // publish rides the same gated push as `uniweb push`: if an app author has
   // edited since this clone last synced, the push is refused rather than
   // overwriting them, and nothing goes live. `--force` drops the precondition.
   const baseVersions = args.includes('--force')
     ? null
-    : readBaseVersions(siteDir)
+    : readBaseVersions(siteDir, client.origin)
   // Per-item identity, recovered from the backend when this clone has never seen it.
   // Without it the backend re-mints every page and section row (see readItemUuids).
   const itemUuids = await ensureItemUuids({
@@ -913,7 +913,7 @@ export async function publish(args = []) {
     pkg = await emitSyncPackages(siteDir, {
       ...(declaration.declare ? {} : { declareServices: false }),
       // Placement identity for the folder — see writeFolderItemUuids.
-      folderItemUuids: readFolderItemUuids(siteDir),
+      folderItemUuids: readFolderItemUuids(siteDir, client.origin),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
       ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),
@@ -921,7 +921,7 @@ export async function publish(args = []) {
       priorHashes,
       itemUuids,
       ...(baseVersions
-        ? { baseVersions, itemBaseVersions: readItemBaseVersions(siteDir) }
+        ? { baseVersions, itemBaseVersions: readItemBaseVersions(siteDir, client.origin) }
         : {}),
       ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
       ...(Object.keys(ext.pins).length ? { injectExtensions: ext.pins } : {}),

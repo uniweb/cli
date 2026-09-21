@@ -40,17 +40,18 @@ export function countPlacedRecords(pathToUuid) {
  *
  * @param {object} params
  * @param {string} params.siteDir
+ * @param {string} params.backend - whose placements to count; they are minted per backend
  * @param {string[]} params.args - the verb's argv, for --yes / non-interactive
  * @param {(m: string) => void} params.warn - the CALLER's reporter. Each verb owns
  *        its own output style; a second copy here would drift from all of them.
  * @param {(m: string) => void} params.note
  * @returns {Promise<{ ok: boolean, count: number }>} `ok: false` means abort
  */
-export async function guardEmptyRecords({ siteDir, args = [], warn, note }) {
+export async function guardEmptyRecords({ siteDir, backend, args = [], warn, note }) {
   const cfg = await readRecordsConfig(siteDir)
   if (cfg.state !== FOLDER_EMPTY) return { ok: true, count: 0 }
 
-  const count = countPlacedRecords(readFolderItemUuids(siteDir))
+  const count = countPlacedRecords(readFolderItemUuids(siteDir, backend))
   // Nothing banked ⇒ nothing this push can remove. A first push of an empty
   // folder is a legitimate (if odd) thing to do, and asking about it would train
   // people to type y.

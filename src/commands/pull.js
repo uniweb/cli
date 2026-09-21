@@ -678,8 +678,8 @@ export async function pull(args = [], deps = {}) {
       // Bank the per-entity staleness tokens this lane carried, so the next push
       // is gated against the state we just took. A 304 skips this — correctly:
       // unchanged upstream means the token we already hold is still current.
-      mergeBaseVersions(siteDir, readPullVersions(buf))
-      mergeItemBaseVersions(siteDir, readPullItemVersions(buf))
+      mergeBaseVersions(siteDir, client.origin, readPullVersions(buf))
+      mergeItemBaseVersions(siteDir, client.origin, readPullItemVersions(buf))
       return { docs, etag }
     } catch (err) {
       error(`Could not read the ${label} response: ${err.message}`)
@@ -721,14 +721,14 @@ export async function pull(args = [], deps = {}) {
       // byte-identical to it, so the old local base no longer describes anything.
       // The next push re-establishes it; until then our side reports as unknown,
       // which is honest rather than wrong.
-      writeUnitBases(siteDir, { remote: computeUnitHashes(siteDoc), local: {} })
+      writeUnitBases(siteDir, client.origin, { remote: computeUnitHashes(siteDoc), local: {} })
       // Per-item identity for the next push. Without it the backend reads our
       // records as new and re-mints every page and section row.
-      writeItemUuids(siteDir, collectUnitUuids(siteDoc))
+      writeItemUuids(siteDir, client.origin, collectUnitUuids(siteDoc))
       // The collections section's identity has no file to live in either — same
       // reason, same remedy, keyed by name. A pull is the other route by which a
       // copy can recover it (see readQueryUuids).
-      writeQueryUuids(siteDir, collectQueryUuids(siteDoc))
+      writeQueryUuids(siteDir, client.origin, collectQueryUuids(siteDoc))
       // Bring the media down BEFORE projecting: a newly-landed asset gains a map
       // entry, and the projection reads that map to put authored paths back. Run
       // after, and this pull's new assets would project as URLs and only restore

@@ -31,6 +31,9 @@ import {
   collectFolderItemUuids,
   collectQueryUuids,
   readBackendState,
+  updateBackendMap,
+  clearBackendSections,
+  normalizeBackendOrigin,
   removeYamlScalar
 } from '@uniweb/build/uwx'
 
@@ -75,7 +78,7 @@ async function explainStaleSiteContent({ client, siteDir, localBuffer, uuid }) {
     const localDoc = entityDocFromUwx(localBuffer)
     if (!remoteDoc || !localDoc) return []
     return describeSiteDiff(
-      diffSiteUnits(localDoc, remoteDoc, readUnitBases(siteDir))
+      diffSiteUnits(localDoc, remoteDoc, readUnitBases(siteDir, client.origin))
     )
   } catch {
     return []
@@ -173,36 +176,63 @@ export function makeModelResolver({ client, offline = false }) {
   }
 }
 
-// "Send only changed" cache: content hashes from the last successful sync, keyed
-// `<model> <id>`. Gitignored, per-clone, deletable (a deleted cache just means one full
-// re-sync, which the backend then no-ops). NOT identity — the minted `$uuid` lives in
-// the source files; this is a pure wire-efficiency cache.
-function syncCachePath(siteDir) {
-  return join(siteDir, '.uniweb', 'sync-cache.json')
+// `.uniweb/backend-cache.json` — what a backend had and what we last sent it, so the
+// next transfer can skip work. Gitignored, per clone, safe to delete.
+//
+// ⭐ **Everything here is regenerable and losing it never produces a WRONG result** —
+// only a slower transfer or a round trip. That is the membership test; anything
+// failing it belongs in `sync.json` (which is where the uuid maps went on
+// 2026-09-20 — see `readItemUuids` below).
+//
+// ⚠️ It was `sync-cache.json` and its header called it "a pure wire-efficiency
+// cache — NOT identity, the minted `$uuid` lives in the source files". That was
+// true of `hashes`, which it was written for, and the uuid maps were added later
+// under the same sentence without anyone revisiting it. They were backend-minted
+// identity in a cache, and the `queryUuids` docblock one screen below said so.
+//
+// ⛔ **Keyed by backend ORIGIN.** Every map describes ONE backend: hashes are what we
+// last sent *to it*, base versions are the versions *it* had. Shared across backends
+// they report every entity as changed against the second one.
+//
+// Spec: kb/framework/reference/backend-cache-json.md
+function backendCachePath(siteDir) {
+  return join(siteDir, '.uniweb', 'backend-cache.json')
 }
-function readSyncCacheFile(siteDir) {
+function readCacheFile(siteDir) {
   try {
-    const obj = JSON.parse(readFileSync(syncCachePath(siteDir), 'utf8'))
-    return obj && typeof obj === 'object' ? obj : {}
+    const obj = JSON.parse(readFileSync(backendCachePath(siteDir), 'utf8'))
+    return obj && typeof obj === 'object' && obj.backends ? obj : { backends: {} }
   } catch {
-    return {} // missing / unreadable → treat everything as changed
+    return { backends: {} } // missing / unreadable → treat everything as changed
   }
+}
+const cacheKeyFor = (backend) => normalizeBackendOrigin(backend) || ''
+function readSyncCacheFile(siteDir, backend) {
+  const key = cacheKeyFor(backend)
+  if (!key) return {}
+  const section = readCacheFile(siteDir).backends[key]
+  return section && typeof section === 'object' ? section : {}
 }
 // The cache holds several maps written on DIFFERENT events — content hashes and the
 // injections that produced them on a successful push, base versions on push AND
 // pull, unit hashes on push and pull — so every writer must preserve the ones it
 // isn't touching. One merge point rather than a hand-rolled preserve per writer,
 // because getting that wrong silently disarms whichever map got clobbered.
-function updateSyncCache(siteDir, patch) {
-  const p = syncCachePath(siteDir)
+function updateSyncCache(siteDir, backend, patch) {
+  const key = cacheKeyFor(backend)
+  // ⛔ No backend, no cache. Writing under a blank key would pool every backend's
+  // state into one section, which is the bug this keying exists to remove.
+  if (!key) return
+  const p = backendCachePath(siteDir)
   mkdirSync(dirname(p), { recursive: true })
-  const prior = readSyncCacheFile(siteDir)
-  const out = { version: 1, ...prior, ...patch }
-  delete out.version
-  writeFileSync(p, JSON.stringify({ version: 1, ...out }, null, 2) + '\n')
+  const file = readCacheFile(siteDir)
+  file.backends[key] = { ...(file.backends[key] || {}), ...patch }
+  const sorted = {}
+  for (const k of Object.keys(file.backends).sort()) sorted[k] = file.backends[k]
+  writeFileSync(p, JSON.stringify({ version: 1, backends: sorted }, null, 2) + '\n')
 }
-const readMap = (siteDir, key) => {
-  const v = readSyncCacheFile(siteDir)[key]
+const readMap = (siteDir, backend, key) => {
+  const v = readSyncCacheFile(siteDir, backend)[key]
   return v && typeof v === 'object' ? v : {}
 }
 
@@ -241,21 +271,12 @@ const readMap = (siteDir, key) => {
  * guard and the `item_uuid_conflict` recovery — the guard decides WHETHER, this
  * decides WHAT, and they must not drift.
  */
-export function clearRemoteSyncState(siteDir, siteUuid = null) {
-  const prior = readSyncCacheFile(siteDir)
-  const dropped = [
-    'itemUuids',
-    'queryUuids',
-    'hashes',
-    'baseVersions',
-    'unitBases',
-    'applied'
-  ].filter((k) => prior[k] && Object.keys(prior[k]).length)
-  updateSyncCache(siteDir, {
-    itemUuids: {},
-    // Remote-derived exactly like itemUuids — it holds the OLD site's collection
-    // ids, and surviving the drop it would offer them for the new site's sections.
-    queryUuids: {},
+export function clearRemoteSyncState(siteDir, backend, siteUuid = null) {
+  const prior = readSyncCacheFile(siteDir, backend)
+  const dropped = ['hashes', 'baseVersions', 'unitBases', 'applied'].filter(
+    (k) => prior[k] && Object.keys(prior[k]).length
+  )
+  updateSyncCache(siteDir, backend, {
     hashes: {},
     baseVersions: {},
     unitBases: {},
@@ -265,10 +286,23 @@ export function clearRemoteSyncState(siteDir, siteUuid = null) {
     applied: {},
     siteUuid: siteUuid || null
   })
-  return dropped
+  // ⛔ THE IDENTITY MAPS ARE CLEARED WITH THE REST, and must be. They live in
+  // `sync.json` now rather than the cache, but they describe the same dead site:
+  // leaving them behind is what makes the backend refuse — "item uuid … is already
+  // stored on entity N; cross-entity move is not supported" — on the very next push.
+  // Two files, one invalidation.
+  const identity = clearBackendSections(siteDir, backend, [
+    'items',
+    'queries',
+    'folders'
+  ])
+  // Reported under the names the cache used, so the message a user sees is the same
+  // one it always was.
+  const NAMED = { items: 'itemUuids', queries: 'queryUuids', folders: 'folderItemUuids' }
+  return [...dropped, ...identity.map((k) => NAMED[k])]
 }
 
-export function clearRemoteSyncStateIfUnbound(siteDir) {
+export function clearRemoteSyncStateIfUnbound(siteDir, backend) {
   let current = null
   try {
     const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
@@ -277,7 +311,16 @@ export function clearRemoteSyncStateIfUnbound(siteDir) {
     /* unreadable site.yml — treat as unbound and clear, which is the safe side */
   }
 
-  const prior = readSyncCacheFile(siteDir)
+  const prior = readSyncCacheFile(siteDir, backend)
+  // ⛔ TWO FILES, ONE QUESTION. The cache holds the speed-ups and `sync.json` holds
+  // the identity maps, but "is any of this describing a site this clone is not
+  // working with?" is asked of BOTH — a clone whose only stale state is identity is
+  // exactly the one the backend refuses on the next push.
+  const identityPrior = {
+    itemUuids: readItemUuids(siteDir, backend),
+    queryUuids: readQueryUuids(siteDir, backend),
+    folderItemUuids: readFolderItemUuids(siteDir, backend)
+  }
   const REMOTE_MAPS = [
     'itemUuids',
     'hashes',
@@ -285,15 +328,16 @@ export function clearRemoteSyncStateIfUnbound(siteDir) {
     'unitBases',
     'applied'
   ]
+  const lookup = { ...prior, ...identityPrior }
   const populated = REMOTE_MAPS.filter(
-    (k) => prior[k] && Object.keys(prior[k]).length
+    (k) => lookup[k] && Object.keys(lookup[k]).length
   )
   if (!populated.length) {
     // Nothing to invalidate, but still stamp identity so a LATER divergence is
     // detectable. A cache that never records its site can only be checked by the
     // unbound rule, which misses the bound-but-wrong case below.
     if (current && prior.siteUuid !== current) {
-      updateSyncCache(siteDir, { siteUuid: current })
+      updateSyncCache(siteDir, backend, { siteUuid: current })
     }
     return []
   }
@@ -316,12 +360,12 @@ export function clearRemoteSyncStateIfUnbound(siteDir) {
     !current || (prior.siteUuid && prior.siteUuid !== current) ? populated : []
   if (!stale.length) {
     if (current && prior.siteUuid !== current) {
-      updateSyncCache(siteDir, { siteUuid: current })
+      updateSyncCache(siteDir, backend, { siteUuid: current })
     }
     return []
   }
 
-  clearRemoteSyncState(siteDir, current)
+  clearRemoteSyncState(siteDir, backend, current)
   return stale
 }
 
@@ -365,8 +409,8 @@ export function dropSiteBoundValues(siteDir) {
   return dropped
 }
 
-export function readSyncCache(siteDir) {
-  return readMap(siteDir, 'hashes')
+export function readSyncCache(siteDir, backend) {
+  return readMap(siteDir, backend, 'hashes')
 }
 
 /**
@@ -398,8 +442,8 @@ export function readSyncCache(siteDir) {
  * keeps `assets.json` id-only. An asset genuinely new to the site has no recorded
  * mapping and still reads as changed, which is correct.
  */
-export function readAppliedInjections(siteDir) {
-  return readMap(siteDir, 'applied')
+export function readAppliedInjections(siteDir, backend) {
+  return readMap(siteDir, backend, 'applied')
 }
 
 /**
@@ -412,9 +456,9 @@ export function readAppliedInjections(siteDir) {
  * `assetIds` is dropped rather than stored — see readAppliedInjections: it has a
  * committed source of truth in `assets.json`, and the reader re-derives it there.
  */
-export function writeSyncCache(siteDir, hashes, applied) {
+export function writeSyncCache(siteDir, backend, hashes, applied) {
   const { assetIds: _inAssetsJson, ...bankable } = applied || {}
-  updateSyncCache(siteDir, { hashes, applied: bankable })
+  updateSyncCache(siteDir, backend, { hashes, applied: bankable })
 }
 
 /**
@@ -431,8 +475,8 @@ export function writeSyncCache(siteDir, hashes, applied) {
  * post-write `finalized[].version` the backend returns. Without the push half a
  * second consecutive push would be stale by construction and refused.
  */
-export function readBaseVersions(siteDir) {
-  return readMap(siteDir, 'baseVersions')
+export function readBaseVersions(siteDir, backend) {
+  return readMap(siteDir, backend, 'baseVersions')
 }
 
 /**
@@ -447,19 +491,19 @@ export function readBaseVersions(siteDir) {
  * reports tokens for a subset of the site. Replacing would drop the tokens of every
  * record that wasn't in this package and silently degrade those to ungated.
  */
-export function readItemBaseVersions(siteDir) {
-  return readMap(siteDir, 'itemBaseVersions')
+export function readItemBaseVersions(siteDir, backend) {
+  return readMap(siteDir, backend, 'itemBaseVersions')
 }
-export function mergeItemBaseVersions(siteDir, versions) {
+export function mergeItemBaseVersions(siteDir, backend, versions) {
   if (!versions || !Object.keys(versions).length) return
-  updateSyncCache(siteDir, {
+  updateSyncCache(siteDir, backend, {
     itemBaseVersions: { ...readItemBaseVersions(siteDir), ...versions }
   })
 }
-export function mergeBaseVersions(siteDir, versions) {
+export function mergeBaseVersions(siteDir, backend, versions) {
   if (!versions || !Object.keys(versions).length) return
-  updateSyncCache(siteDir, {
-    baseVersions: { ...readBaseVersions(siteDir), ...versions }
+  updateSyncCache(siteDir, backend, {
+    baseVersions: { ...readBaseVersions(siteDir, backend), ...versions }
   })
 }
 
@@ -503,8 +547,8 @@ export function mergeBaseVersions(siteDir, versions) {
  * refuses an all-blank `multi` section, so a producer that skips that step fails
  * loudly instead of quietly rebuilding the site's identity.
  */
-export function readItemUuids(siteDir) {
-  return readMap(siteDir, 'itemUuids')
+export function readItemUuids(siteDir, backend) {
+  return readBackendState(siteDir, backend).items || {}
 }
 /**
  * Placement identity for the site's `@uniweb/folder` — path chain → `$uuid`.
@@ -513,8 +557,8 @@ export function readItemUuids(siteDir) {
  * different trees: `pages/…/page.yml` there, `members/alice` here. One map with
  * two key languages is a map nobody can validate.
  */
-export function readFolderItemUuids(siteDir) {
-  return readMap(siteDir, 'folderItemUuids')
+export function readFolderItemUuids(siteDir, backend) {
+  return readBackendState(siteDir, backend).folders || {}
 }
 
 /**
@@ -535,20 +579,25 @@ export function readFolderItemUuids(siteDir) {
  * its own join key. ⛔ Not `$id`: it holds the same string but is a payload-local
  * handle the backend skips on parse and never stores.
  */
-export function readQueryUuids(siteDir) {
-  return readMap(siteDir, 'queryUuids')
+export function readQueryUuids(siteDir, backend) {
+  return readBackendState(siteDir, backend).queries || {}
 }
-export function writeQueryUuids(siteDir, map) {
+// ⭐ THE THREE UUID MAPS LIVE IN `sync.json`, NOT THE CACHE (2026-09-20). They are
+// backend-minted identity: without them a push re-sends a section uuid-less and the
+// backend refuses an all-blank section over stored rows rather than replacing every
+// one. A refusal is the good case; the bad one is duplication. Losing them costs a
+// round trip, not a slow push — which is the line between the two files.
+export function writeQueryUuids(siteDir, backend, map) {
   if (!map || !Object.keys(map).length) return
-  updateSyncCache(siteDir, { queryUuids: map })
+  updateBackendMap(siteDir, backend, 'queries', map)
 }
-export function writeFolderItemUuids(siteDir, map) {
+export function writeFolderItemUuids(siteDir, backend, map) {
   if (!map || !Object.keys(map).length) return
-  updateSyncCache(siteDir, { folderItemUuids: map })
+  updateBackendMap(siteDir, backend, 'folders', map)
 }
-export function writeItemUuids(siteDir, map) {
+export function writeItemUuids(siteDir, backend, map) {
   if (!map || !Object.keys(map).length) return
-  updateSyncCache(siteDir, { itemUuids: map })
+  updateBackendMap(siteDir, backend, 'items', map)
 }
 
 /**
@@ -909,7 +958,7 @@ export async function ensureSiteExists({
   // Stamp the cache with the site it now describes, so a push that fails after
   // this point cannot leave a cache pointing at a different site with no way to
   // detect it.
-  updateSyncCache(siteDir, { siteUuid: minted })
+  updateSyncCache(siteDir, client.origin, { siteUuid: minted })
   const org = await recordAndDescribeOwner({
     client,
     siteDir,
@@ -1000,7 +1049,7 @@ async function recordAndDescribeOwner({
  * @returns {Promise<Object<string,string>>} the map (possibly empty)
  */
 export async function ensureItemUuids({ client, siteDir, note }) {
-  const cached = readItemUuids(siteDir)
+  const cached = readItemUuids(siteDir, client.origin)
   if (Object.keys(cached).length) return cached
   // A site that has never been pushed has no identity to recover — and nothing to
   // lose, since every item is genuinely new.
@@ -1019,7 +1068,7 @@ export async function ensureItemUuids({ client, siteDir, note }) {
     if (!doc) return cached
     const harvested = collectUnitUuids(doc)
     if (Object.keys(harvested).length) {
-      writeItemUuids(siteDir, harvested)
+      writeItemUuids(siteDir, client.origin, harvested)
       note?.(
         `Recovered identity for ${Object.keys(harvested).length} item(s) from the backend.`
       )
@@ -1032,14 +1081,14 @@ export async function ensureItemUuids({ client, siteDir, note }) {
   }
 }
 
-export function readUnitBases(siteDir) {
-  const v = readMap(siteDir, 'unitBases')
+export function readUnitBases(siteDir, backend) {
+  const v = readMap(siteDir, backend, 'unitBases')
   return { local: v.local || {}, remote: v.remote || {} }
 }
-export function writeUnitBases(siteDir, patch) {
+export function writeUnitBases(siteDir, backend, patch) {
   if (!patch) return
-  updateSyncCache(siteDir, {
-    unitBases: { ...readUnitBases(siteDir), ...patch }
+  updateSyncCache(siteDir, backend, {
+    unitBases: { ...readUnitBases(siteDir, backend), ...patch }
   })
 }
 
@@ -1056,7 +1105,7 @@ export function writeUnitBases(siteDir, patch) {
  * @returns {Promise<{ changed: number, unchanged: number, warnings: string[] }>}
  */
 export async function probeUnpushed(siteDir, { backend = null, sendAll = false } = {}) {
-  const priorHashes = readSyncCache(siteDir)
+  const priorHashes = readSyncCache(siteDir, backend)
   // Re-emit the document the last push HASHED, not the one the author wrote — see
   // readAppliedInjections. Two sources, on purpose:
   //   · BANKED — the serve URLs and pinned refs only a round-trip produces. Empty
@@ -1112,7 +1161,7 @@ async function comparisonEmit(
   siteDir,
   { backend = null, priorHashes = {}, sendAll = false } = {}
 ) {
-  const applied = readAppliedInjections(siteDir)
+  const applied = readAppliedInjections(siteDir, backend)
   // ⛔ Per backend: an asset id is minted by one and means nothing to another, so a
   // comparison against the wrong one reports every media ref as changed. Absent is
   // honest rather than a default — no backend, no known ids.
@@ -1153,7 +1202,7 @@ async function comparisonEmit(
  */
 export async function rebankSyncHashes(siteDir, backend = null) {
   const pkg = await comparisonEmit(siteDir, { backend, sendAll: true })
-  writeSyncCache(siteDir, pkg.hashes || {}, pkg.applied || {})
+  writeSyncCache(siteDir, backend, pkg.hashes || {}, pkg.applied || {})
   return Object.keys(pkg.hashes || {}).length
 }
 
@@ -1234,7 +1283,7 @@ export async function pushSyncPackages({
       // an unstamped legacy cache on a bound site, which the guard deliberately
       // leaves alone rather than wiping every existing clone. This is the exit.
       if (problem?.reason === 'item_uuid_conflict') {
-        const dropped = clearRemoteSyncState(siteDir, boundUuid)
+        const dropped = clearRemoteSyncState(siteDir, client.origin, boundUuid)
         error(
           `${label} push refused — this copy's sync cache is describing a different site.`
         )
@@ -1455,8 +1504,8 @@ export async function pushSyncPackages({
   }
   // Both grains land together, at every point the old code banked the entity one.
   const mergeHarvested = () => {
-    mergeBaseVersions(siteDir, newVersions)
-    mergeItemBaseVersions(siteDir, newItemVersions)
+    mergeBaseVersions(siteDir, client.origin, newVersions)
+    mergeItemBaseVersions(siteDir, client.origin, newItemVersions)
   }
   // The backend's post-write copy of the site-content document, kept for the
   // remote-side unit base (see writeUnitBases).
@@ -1492,7 +1541,8 @@ export async function pushSyncPackages({
       // `collections` section uuid-less and is refused.
       if (siteFinalizedDoc) {
         const recordIds = collectQueryUuids(siteFinalizedDoc)
-        if (Object.keys(recordIds).length) writeQueryUuids(siteDir, recordIds)
+        if (Object.keys(recordIds).length)
+          writeQueryUuids(siteDir, client.origin, recordIds)
       }
       finalizedTotal += finalized.length
     } else {
@@ -1509,7 +1559,7 @@ export async function pushSyncPackages({
         return { exitCode: 1, finalizedTotal, wrote }
       }
       writeSiteEntityUuid(siteDir, minted)
-      updateSyncCache(siteDir, { siteUuid: minted })
+      updateSyncCache(siteDir, client.origin, { siteUuid: minted })
       boundSiteUuid = minted
       wrote.push('recorded site $uuid in site.yml')
       // The OTHER create path (a media-less push never reaches `ensureSiteExists`,
@@ -1575,7 +1625,7 @@ export async function pushSyncPackages({
     if (folderDoc) {
       const placements = collectFolderItemUuids(folderDoc)
       if (Object.keys(placements).length)
-        writeFolderItemUuids(siteDir, placements)
+        writeFolderItemUuids(siteDir, client.origin, placements)
     }
     finalizedTotal += finalized.length
   }
@@ -1584,7 +1634,7 @@ export async function pushSyncPackages({
   // then bank the post-write tokens so the NEXT push carries a current base.
   // Entities absent from finalized[] (skipped, or not editable) keep their cached
   // value — absence is not invalidation.
-  writeSyncCache(siteDir, hashes, applied)
+  writeSyncCache(siteDir, client.origin, hashes, applied)
   mergeHarvested()
   // Re-base the page attribution: our emitted document and the backend's post-write
   // copy of it are the two sides' new agreed state. Only when the site-content lane
@@ -1597,12 +1647,12 @@ export async function pushSyncPackages({
     // the stored row — the only remote-side base a push can produce.
     const theirs = siteFinalizedDoc?.pages ? siteFinalizedDoc : null
     if (theirs) patch.remote = computeUnitHashes(theirs)
-    if (Object.keys(patch).length) writeUnitBases(siteDir, patch)
+    if (Object.keys(patch).length) writeUnitBases(siteDir, client.origin, patch)
     // The backend's post-write document carries `$uuid` per item at every nesting
     // level, so the push that just landed also re-arms identity for the next one.
     // Replaced wholesale: an item that no longer exists must not keep a uuid that
     // would re-target something else.
-    if (theirs) writeItemUuids(siteDir, collectUnitUuids(theirs))
+    if (theirs) writeItemUuids(siteDir, client.origin, collectUnitUuids(theirs))
     else {
       // ⛔ BANKING IS BEST-EFFORT AND ITS FAILURE USED TO BE SILENT — say it here,
       // because the cost lands two commands away and names something else.

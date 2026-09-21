@@ -38,6 +38,8 @@ import {
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
 
+const ORIGIN = 'http://x'
+
 const ok = (body) => ({
   ok: true,
   status: 200,
@@ -168,10 +170,10 @@ test('a successful push banks the returned versions; a refused lane still banks 
     report
   })
   assert.equal(res.exitCode, 0)
-  assert.deepEqual(readBaseVersions(dir), { S1: 'V1' })
+  assert.deepEqual(readBaseVersions(dir, ORIGIN), { S1: 'V1' })
 
   // The hash cache and the version map share one file and must not clobber each other.
-  assert.deepEqual(readSyncCache(dir), { '@uniweb/site-content site': 'h1' })
+  assert.deepEqual(readSyncCache(dir, ORIGIN), { '@uniweb/site-content site': 'h1' })
 })
 
 // ─── the banked hash and the document it describes ───────────────────────────
@@ -210,14 +212,14 @@ test('a push banks the injections its emit applied, beside the hashes — except
     pkg: siteOnlyPkg({ hashes: { '@uniweb/site-content site': 'h1' }, applied })
   })
   assert.equal(res.exitCode, 0)
-  const banked = readAppliedInjections(dir)
+  const banked = readAppliedInjections(dir, ORIGIN)
   assert.deepEqual(banked, {
     assetRewrite: applied.assetRewrite,
     injectInfo: applied.injectInfo
   })
   assert.equal(banked.assetIds, undefined)
   // Still one file, still not clobbering the map beside it.
-  assert.deepEqual(readSyncCache(dir), { '@uniweb/site-content site': 'h1' })
+  assert.deepEqual(readSyncCache(dir, ORIGIN), { '@uniweb/site-content site': 'h1' })
 })
 
 test('a push that applied NOTHING clears the injections an earlier one banked', async () => {
@@ -243,7 +245,7 @@ test('a push that applied NOTHING clears the injections an earlier one banked', 
       applied: { assetRewrite: { '/images/a.svg': 'https://cdn.example/a' } }
     })
   })
-  assert.notDeepEqual(readAppliedInjections(dir), {}) // control: it was banked
+  assert.notDeepEqual(readAppliedInjections(dir, ORIGIN), {}) // control: it was banked
 
   await pushSyncPackages({
     client,
@@ -252,7 +254,7 @@ test('a push that applied NOTHING clears the injections an earlier one banked', 
     report,
     pkg: siteOnlyPkg({ hashes: { k: 'h2' }, applied: {} })
   })
-  assert.deepEqual(readAppliedInjections(dir), {})
+  assert.deepEqual(readAppliedInjections(dir, ORIGIN), {})
 })
 
 // ─── per-item tokens must be re-armed from the PUSH response ──────────────────
@@ -288,7 +290,7 @@ test('TWO CONSECUTIVE PUSHES: item tokens come from the push response, not a pul
   const push = async () => {
     // What THIS push would send is what the cache holds when it starts — the same
     // read `push.js` does via readItemBaseVersions.
-    seen.push(readItemBaseVersions(dir).REC ?? null)
+    seen.push(readItemBaseVersions(dir, ORIGIN).REC ?? null)
     return pushSyncPackages({
       client,
       siteDir: dir,
@@ -305,14 +307,14 @@ test('TWO CONSECUTIVE PUSHES: item tokens come from the push response, not a pul
   // with no pull in between. Reading on pull alone is what made this `[null, null]`,
   // and the backend would then refuse push 2 naming records nobody touched.
   assert.deepEqual(seen, [null, 't1'])
-  assert.deepEqual(readItemBaseVersions(dir), { REC: 't2' })
+  assert.deepEqual(readItemBaseVersions(dir, ORIGIN), { REC: 't2' })
   // The entity grain keeps working alongside it, in the same file.
-  assert.deepEqual(readBaseVersions(dir), { S1: 'V2' })
+  assert.deepEqual(readBaseVersions(dir, ORIGIN), { S1: 'V2' })
 })
 
 test('an older backend omitting item_versions leaves the cached tokens alone', async () => {
   const dir = tmpSite()
-  mergeItemBaseVersions(dir, { REC: 'from-a-pull' })
+  mergeItemBaseVersions(dir, ORIGIN, { REC: 'from-a-pull' })
   const client = {
     origin: 'http://x',
     // No `item_versions` — the pre-d7e46335 shape.
@@ -330,7 +332,7 @@ test('an older backend omitting item_versions leaves the cached tokens alone', a
   assert.equal(res.exitCode, 0)
   // Absent ≠ empty. Clearing here would silently drop to the entity grain AND throw
   // away a token a pull had legitimately banked.
-  assert.deepEqual(readItemBaseVersions(dir), { REC: 'from-a-pull' })
+  assert.deepEqual(readItemBaseVersions(dir, ORIGIN), { REC: 'from-a-pull' })
 })
 
 test('item tokens are banked even when the push is not the last lane to succeed', async () => {
@@ -370,7 +372,7 @@ test('item tokens are banked even when the push is not the last lane to succeed'
     report
   })
   assert.equal(res.exitCode, 1)
-  assert.deepEqual(readItemBaseVersions(dir), { REC: 't1' })
+  assert.deepEqual(readItemBaseVersions(dir, ORIGIN), { REC: 't1' })
 })
 
 test('a stale refusal explains WHICH pages diverged, and attributes them', async () => {
@@ -411,7 +413,7 @@ test('a stale refusal explains WHICH pages diverged, and attributes them', async
     $model: '@uniweb/site-content',
     pages: [page('h', 'home', 'H0'), page('a', 'about', 'A0')]
   }
-  writeUnitBases(dir, {
+  writeUnitBases(dir, ORIGIN, {
     local: computeUnitHashes(base),
     remote: computeUnitHashes(base)
   })
@@ -578,8 +580,8 @@ test('pushSyncPackages CREATE: mints + records the site $uuid, persists the cach
   assert.ok(res.wrote.includes('recorded site $uuid in site.yml'))
   // the send-only-changed cache is persisted on success
   const cache = JSON.parse(
-    readFileSync(join(dir, '.uniweb/sync-cache.json'), 'utf8')
-  )
+    readFileSync(join(dir, '.uniweb/backend-cache.json'), 'utf8')
+  ).backends[ORIGIN]
   assert.equal(cache.hashes['@uniweb/site-content site'], 'h1')
   rmSync(dir, { recursive: true, force: true })
 })
@@ -633,7 +635,7 @@ test('pushSyncPackages: a rejected lane returns exit 1, reports the error, and d
   assert.equal(res.exitCode, 1)
   assert.ok(calls.error.some((m) => /rejected: HTTP 500/.test(m)))
   assert.equal(
-    existsSync(join(dir, '.uniweb/sync-cache.json')),
+    existsSync(join(dir, '.uniweb/backend-cache.json')),
     false,
     'a failed push must not persist the cache'
   )
@@ -1270,18 +1272,44 @@ test('ensureSiteExists names the missing site.yml key instead of letting the cre
 })
 
 // ─── clearRemoteSyncStateIfUnbound ───────────────────────────────────────────
-// `.uniweb/sync-cache.json` keys every map by UNIT PATH (`site.yml`,
+// `.uniweb/backend-cache.json` keys every map by UNIT PATH (`site.yml`,
 // `pages/about/about.md`) — the same string for every site — so it does not
 // self-invalidate when the clone stops being bound to the site it describes.
 // That is a state we actively tell people to enter: the 404 guidance says to
 // clear `$uuid` to re-publish as a new site.
 
-const cachePath = (dir) => join(dir, '.uniweb', 'sync-cache.json')
+const cachePath = (dir) => join(dir, '.uniweb', 'backend-cache.json')
 const writeCache = (dir, obj) => {
   mkdirSync(join(dir, '.uniweb'), { recursive: true })
-  writeFileSync(cachePath(dir), JSON.stringify({ version: 1, ...obj }))
+  // ⭐ The identity maps go to `sync.json`, the rest to the cache — the split under
+  // test. `clearRemoteSyncState` must invalidate BOTH, because they describe one
+  // dead site between them.
+  const { itemUuids, queryUuids, folderItemUuids, ...cache } = obj
+  writeFileSync(
+    cachePath(dir),
+    JSON.stringify({ version: 1, backends: { [ORIGIN]: cache } })
+  )
+  if (itemUuids || queryUuids || folderItemUuids) {
+    writeFileSync(
+      join(dir, 'sync.json'),
+      JSON.stringify({
+        version: 1,
+        backends: {
+          [ORIGIN]: {
+            ...(itemUuids ? { items: itemUuids } : {}),
+            ...(queryUuids ? { queries: queryUuids } : {}),
+            ...(folderItemUuids ? { folders: folderItemUuids } : {})
+          }
+        }
+      })
+    )
+  }
 }
-const readCache = (dir) => JSON.parse(readFileSync(cachePath(dir), 'utf8'))
+// ⚠️ The uuid maps are NOT here any more — they are identity and live in
+// `sync.json` (items / queries / folders). A test that seeds `itemUuids` into the
+// cache is seeding a key nothing reads.
+const readCache = (dir) =>
+  JSON.parse(readFileSync(cachePath(dir), 'utf8')).backends[ORIGIN]
 
 test('an UNBOUND clone drops every map that describes a backend site', () => {
   const dir = tmpSite() // no $uuid
@@ -1294,7 +1322,7 @@ test('an UNBOUND clone drops every map that describes a backend site', () => {
       assetRewrite: { '/images/a.svg': 'https://cdn.example/OLD/base.svg' }
     }
   })
-  const dropped = clearRemoteSyncStateIfUnbound(dir)
+  const dropped = clearRemoteSyncStateIfUnbound(dir, ORIGIN)
   assert.deepEqual(dropped.sort(), [
     'applied',
     'baseVersions',
@@ -1307,8 +1335,9 @@ test('an UNBOUND clone drops every map that describes a backend site', () => {
   // rewrite the NEW site's media to bytes owned by the site this folder used to be.
   assert.deepEqual(c.applied, {})
   // itemUuids: the backend refuses outright — "item uuid … is already stored on
-  // entity N; cross-entity move is not supported".
-  assert.deepEqual(c.itemUuids, {})
+  // entity N; cross-entity move is not supported". It lives in `sync.json` now and
+  // is cleared by the same call, which is the point.
+  assert.deepEqual(readItemUuids(dir, ORIGIN), {})
   // hashes is the SILENT one: send-only-changed would skip every entity that had
   // not changed since the old site's last push, so the new site would come up
   // missing exactly the content that did not change — and publish successfully.
@@ -1321,8 +1350,8 @@ test('a clone bound to the SAME site keeps its cache and gets stamped', () => {
   const dir = tmpSite()
   writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-A\n')
   writeCache(dir, { siteUuid: 'SITE-A', itemUuids: { 'site.yml': 'I1' } })
-  assert.deepEqual(clearRemoteSyncStateIfUnbound(dir), [])
-  assert.deepEqual(readCache(dir).itemUuids, { 'site.yml': 'I1' })
+  assert.deepEqual(clearRemoteSyncStateIfUnbound(dir, ORIGIN), [])
+  assert.deepEqual(readItemUuids(dir, ORIGIN), { 'site.yml': 'I1' })
 })
 
 test('a clone bound to a DIFFERENT site than the cache describes is cleared', () => {
@@ -1331,9 +1360,9 @@ test('a clone bound to a DIFFERENT site than the cache describes is cleared', ()
   const dir = tmpSite()
   writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-NEW\n')
   writeCache(dir, { siteUuid: 'SITE-OLD', itemUuids: { 'site.yml': 'I1' } })
-  assert.deepEqual(clearRemoteSyncStateIfUnbound(dir), ['itemUuids'])
+  assert.deepEqual(clearRemoteSyncStateIfUnbound(dir, ORIGIN), ['itemUuids'])
   const c = readCache(dir)
-  assert.deepEqual(c.itemUuids, {})
+  assert.deepEqual(readItemUuids(dir, ORIGIN), {})
   assert.equal(c.siteUuid, 'SITE-NEW')
 })
 
@@ -1345,8 +1374,8 @@ test('a legacy cache with no siteUuid on a bound clone is LEFT ALONE', () => {
   const dir = tmpSite()
   writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-A\n')
   writeCache(dir, { itemUuids: { 'site.yml': 'I1' } })
-  assert.deepEqual(clearRemoteSyncStateIfUnbound(dir), [])
-  assert.deepEqual(readCache(dir).itemUuids, { 'site.yml': 'I1' })
+  assert.deepEqual(clearRemoteSyncStateIfUnbound(dir, ORIGIN), [])
+  assert.deepEqual(readItemUuids(dir, ORIGIN), { 'site.yml': 'I1' })
   // ...but it IS stamped now, so a later divergence becomes detectable.
   assert.equal(readCache(dir).siteUuid, 'SITE-A')
 })
@@ -1355,7 +1384,7 @@ test('an empty cache is a no-op, and still records identity', () => {
   const dir = tmpSite()
   writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-A\n')
   writeCache(dir, {})
-  assert.deepEqual(clearRemoteSyncStateIfUnbound(dir), [])
+  assert.deepEqual(clearRemoteSyncStateIfUnbound(dir, ORIGIN), [])
   assert.equal(readCache(dir).siteUuid, 'SITE-A')
 })
 
@@ -1405,7 +1434,7 @@ test('an item_uuid_conflict clears the stale cache and says re-run', async () =>
 
   // And the recovery actually happened, so the re-run it promises will work.
   const c = readCache(dir)
-  assert.deepEqual(c.itemUuids, {})
+  assert.deepEqual(readItemUuids(dir, ORIGIN), {})
   assert.deepEqual(c.hashes, {})
   assert.equal(c.siteUuid, 'SITE-NEW')
 })
@@ -1456,7 +1485,7 @@ test('a push that banks identity leaves it readable for the next one', async () 
   })
   assert.equal(res.exitCode, 0)
   // Identity is banked, so the next emit can address rows rather than re-mint them.
-  assert.ok(Object.keys(readItemUuids(dir)).length > 0, 'no per-item identity banked')
+  assert.ok(Object.keys(readItemUuids(dir, ORIGIN)).length > 0, 'no per-item identity banked')
   // ...and nothing is reported, because nothing went wrong.
   assert.ok(
     !calls.note.join('\n').includes('identity not banked'),
@@ -1482,7 +1511,7 @@ test('⛔ a push that banks NO identity SAYS SO — it used to be silent', async
   // ⭐ The push still SUCCEEDS — the content landed. That is exactly why the
   // silence was expensive: nothing here is an error, and the next command pays.
   assert.equal(res.exitCode, 0)
-  assert.deepEqual(readItemUuids(dir), {}, 'banked identity from a document-less response')
+  assert.deepEqual(readItemUuids(dir, ORIGIN), {}, 'banked identity from a document-less response')
   assert.ok(
     calls.note.join('\n').includes('identity not banked'),
     'a push that banked no identity said nothing about it'
@@ -1530,7 +1559,7 @@ test('probeUnpushed resolves a foundation-relative collection schema via the sit
   // keys the banked hashes, so it is the thing the defect got wrong.
   const askedFor = async (dir) => {
     try {
-      await probeUnpushed(dir)
+      await probeUnpushed(dir, { backend: ORIGIN })
       return null // resolved outright — no name to read
     } catch (err) {
       return /Model "([^"]+)"/.exec(err.message)?.[1] ?? null
@@ -1593,16 +1622,16 @@ test('rebankSyncHashes makes the tree a fixed point for probeUnpushed', async ()
     // CONTROL. With nothing banked, the probe must report something to send —
     // otherwise the assertion below passes on a site that emits nothing at all,
     // and would keep passing if the emit silently stopped working.
-    const cold = await probeUnpushed(dir)
+    const cold = await probeUnpushed(dir, { backend: ORIGIN })
     assert.ok(
       cold.changed > 0,
       `control: an unbanked site must have something to send — got ${JSON.stringify(cold)}`
     )
 
-    const banked = await rebankSyncHashes(dir)
+    const banked = await rebankSyncHashes(dir, ORIGIN)
     assert.ok(banked > 0, `re-bank wrote no hashes (${banked})`)
 
-    const warm = await probeUnpushed(dir)
+    const warm = await probeUnpushed(dir, { backend: ORIGIN })
     assert.equal(
       warm.changed,
       0,
