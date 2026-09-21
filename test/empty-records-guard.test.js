@@ -55,6 +55,16 @@ test('countPlacedRecords counts leaves, not branches', () => {
   assert.equal(countPlacedRecords(null), 0)
 })
 
+test('countPlacedRecords counts each record once when placements are keyed by record', () => {
+  // A harvest banks `@<record uuid>` for every placement, and the `name` chain beside it
+  // where no sibling shares the name — two keys, one record. Two same-named records of
+  // different schemas share no chain key at all.
+  assert.equal(
+    countPlacedRecords({ '@R-A': 'I1', '@R-N': 'I2', '@R-W': 'I3', world: 'I3', archive: 'B1' }),
+    3
+  )
+})
+
 test('an empty records directory over a pushed folder is refused without confirmation', async () => {
   const dir = site([], { alice: 'I1', bob: 'I2' })
   try {

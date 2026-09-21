@@ -24,15 +24,20 @@ import { readFolderItemUuids } from '../backend/site-sync.js'
 import { confirm, isNonInteractive, getCliPrefix } from './interactive.js'
 
 /**
- * Leaf placements in a banked path→uuid map.
+ * Record placements in a banked placement map.
  *
- * A branch's path is a prefix of every path beneath it, so anything that is a
- * prefix of another key is a folder rather than a record. Counting raw keys would
- * report a two-record site inside one folder as three things to lose.
+ * ⭐ A placement banked since 2026-09-21 is keyed by the record it references —
+ * `@<record uuid>`, one per record — so where those exist they ARE the count. A map
+ * banked before holds `name` chains only: a branch's path is a prefix of every path
+ * beneath it, so anything that is a prefix of another key is a folder rather than a
+ * record. Counting raw keys would report a two-record site inside one folder as
+ * three things to lose — or, with both kinds of key, each record twice.
  */
 export function countPlacedRecords(pathToUuid) {
-  const paths = Object.keys(pathToUuid || {})
-  return paths.filter((p) => !paths.some((q) => q !== p && q.startsWith(`${p}/`))).length
+  const keys = Object.keys(pathToUuid || {})
+  const byRecord = keys.filter((k) => k.startsWith('@'))
+  if (byRecord.length) return byRecord.length
+  return keys.filter((p) => !keys.some((q) => q !== p && q.startsWith(`${p}/`))).length
 }
 
 /**
