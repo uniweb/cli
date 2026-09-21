@@ -26,7 +26,7 @@ import yaml from 'js-yaml'
 
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { probeUnpushed } from '../backend/site-sync.js'
-import { BackendClient } from '../backend/client.js'
+import { BackendClient, resolveBackendOrigin } from '../backend/client.js'
 import { readFlagValue } from '../utils/args.js'
 import { resolveLocalFoundation } from '../backend/foundation-bring-along.js'
 import { computeFoundationDigest } from '../utils/code-upload.js'
@@ -92,10 +92,19 @@ export async function status(args = []) {
   const { scope: fndScope, version: fndVersion } = splitFoundationRef(fnd)
 
   // Local content diff — builds the sync packages, never authenticates.
+  //
+  // ⭐ The ORIGIN is resolved here rather than taken from the client below, because
+  // this probe is deliberately offline and the client may never be built. It decides
+  // whose asset ids the comparison reads: against the wrong backend every media ref
+  // reads as changed.
+  const probeBackend = resolveBackendOrigin(readFlagValue(args, '--backend'), {
+    siteScope: readSiteIdentity(siteDir).backend,
+    siteBackend: await resolveSiteBackend(siteDir)
+  })
   let probe = null
   let probeErr = null
   try {
-    probe = await probeUnpushed(siteDir)
+    probe = await probeUnpushed(siteDir, { backend: probeBackend })
   } catch (err) {
     probeErr = err.message
   }

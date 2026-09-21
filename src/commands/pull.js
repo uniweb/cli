@@ -795,6 +795,9 @@ export async function pull(args = [], deps = {}) {
       const report = siteContentDocumentToProject({
         document: siteDoc,
         siteRoot: siteDir,
+        // Which backend's asset ids to read back as the author's own paths. Without
+        // it a pull leaves every image pointing at a backend route.
+        backend: client.origin,
         prune,
         keepAuthoredFoundation
       })
@@ -905,7 +908,7 @@ export async function pull(args = [], deps = {}) {
   // wrong content, and must not fail a pull whose files are already written.
   if (!dryRun) {
     try {
-      await rebankSyncHashes(siteDir)
+      await rebankSyncHashes(siteDir, client.origin)
     } catch (err) {
       note(`! could not re-bank the sync cache: ${err.message}`)
       note('  The next push will re-send content that is already current.')

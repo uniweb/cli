@@ -64,7 +64,7 @@ import { join, resolve } from 'node:path'
 import yaml from 'js-yaml'
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
-import { updateAssetMap, ASSET_MAP_FILE } from '@uniweb/build/uwx'
+import { updateBackendMap, carryServed, SYNC_STORE_FILE } from '@uniweb/build/uwx'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
@@ -458,10 +458,10 @@ export async function push(args = [], deps = {}) {
         )
         // Record identity in the COMMITTED map. Merge, never replace: this push
         // carries only the refs its content touched.
-        const rec = updateAssetMap(siteDir, ids)
+        const rec = updateBackendMap(siteDir, client.origin, 'assets', ids, carryServed)
         if (rec.written) {
           note(
-            `${ASSET_MAP_FILE}: ${rec.added.length} added, ${rec.changed.length} changed — commit it`
+            `${SYNC_STORE_FILE}: ${rec.added.length} asset(s) added, ${rec.changed.length} changed — commit it`
           )
         }
       } catch (err) {

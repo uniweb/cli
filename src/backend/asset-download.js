@@ -35,8 +35,9 @@ import { mkdirSync, existsSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { ASSET_SLOTS } from '@uniweb/semantic-parser'
 import {
-  readAssetMap,
-  updateAssetMap,
+  readBackendState,
+  updateBackendMap,
+  carryServed,
   servedFingerprint
 } from '@uniweb/build/uwx'
 
@@ -116,7 +117,7 @@ export async function downloadMissingAssets({
 }) {
   const doFetch = fetchImpl || ((u) => globalThis.fetch(u))
   // Read first: a bare-string reference is only recognizable through the map.
-  const map = readAssetMap(siteDir)
+  const map = readBackendState(siteDir, origin).assets || {}
   const refs = collectAssetRefs(document, map)
   const out = { downloaded: [], present: [], failed: [], skipped: [] }
   if (!refs.length) return out
@@ -166,6 +167,7 @@ export async function downloadMissingAssets({
 
   // Newly-landed assets become known ones, so the next pull restores them to
   // this path rather than fetching them again to a second location.
-  if (Object.keys(learned).length) updateAssetMap(siteDir, learned)
+  if (Object.keys(learned).length)
+    updateBackendMap(siteDir, origin, 'assets', learned, carryServed)
   return out
 }

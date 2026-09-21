@@ -141,7 +141,6 @@ test(
 
 test(
   '⭐ asset ids get a per-backend home, and the single-backend file is retired',
-  NEEDS(2, 'assets move into sync.json'),
   async () => {
     const dir = tmpSite()
     const store = await import('@uniweb/build/uwx')

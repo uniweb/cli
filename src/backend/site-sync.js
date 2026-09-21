@@ -30,7 +30,7 @@ import {
   collectUnitUuids,
   collectFolderItemUuids,
   collectQueryUuids,
-  readAssetMap,
+  readBackendState,
   removeYamlScalar
 } from '@uniweb/build/uwx'
 
@@ -1055,7 +1055,7 @@ export function writeUnitBases(siteDir, patch) {
  * @param {string} siteDir
  * @returns {Promise<{ changed: number, unchanged: number, warnings: string[] }>}
  */
-export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
+export async function probeUnpushed(siteDir, { backend = null, sendAll = false } = {}) {
   const priorHashes = readSyncCache(siteDir)
   // Re-emit the document the last push HASHED, not the one the author wrote — see
   // readAppliedInjections. Two sources, on purpose:
@@ -1083,7 +1083,7 @@ export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
   // and others never settling, which reads like a content problem rather than a
   // resolution one. Measured on matinee 2026-08-29: `status` reported 4 changed
   // immediately after a successful push; passing the org took it to 1.
-  const pkg = await comparisonEmit(siteDir, { priorHashes, sendAll })
+  const pkg = await comparisonEmit(siteDir, { backend, priorHashes, sendAll })
   const changed =
     (pkg.siteContent?.entityCount || 0) + (pkg.records?.entityCount || 0)
   return { changed, unchanged: pkg.skipped || 0, warnings: pkg.warnings || [] }
@@ -1110,10 +1110,13 @@ export async function probeUnpushed(siteDir, { sendAll = false } = {}) {
  */
 async function comparisonEmit(
   siteDir,
-  { priorHashes = {}, sendAll = false } = {}
+  { backend = null, priorHashes = {}, sendAll = false } = {}
 ) {
   const applied = readAppliedInjections(siteDir)
-  const assetIds = readAssetMap(siteDir)
+  // ⛔ Per backend: an asset id is minted by one and means nothing to another, so a
+  // comparison against the wrong one reports every media ref as changed. Absent is
+  // honest rather than a default — no backend, no known ids.
+  const assetIds = backend ? readBackendState(siteDir, backend).assets || {} : {}
   const org = readSiteOrg(siteDir)
   const queryUuids = readQueryUuids(siteDir)
   return emitSyncPackages(siteDir, {
@@ -1148,8 +1151,8 @@ async function comparisonEmit(
  * on-disk state IS the agreed state: it came from the backend. A push with no edits
  * in between should send nothing, and clearing would make it send everything.
  */
-export async function rebankSyncHashes(siteDir) {
-  const pkg = await comparisonEmit(siteDir, { sendAll: true })
+export async function rebankSyncHashes(siteDir, backend = null) {
+  const pkg = await comparisonEmit(siteDir, { backend, sendAll: true })
   writeSyncCache(siteDir, pkg.hashes || {}, pkg.applied || {})
   return Object.keys(pkg.hashes || {}).length
 }

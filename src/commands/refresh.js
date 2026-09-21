@@ -38,7 +38,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 
-import { resolveSiteDir } from './deploy.js'
+import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import {
   isGitRepo,
   hasRemote,
@@ -46,6 +46,8 @@ import {
   headProvenance
 } from '../utils/git.js'
 import { probeUnpushed } from '../backend/site-sync.js'
+import { resolveBackendOrigin } from '../backend/client.js'
+import { readSiteIdentity } from '../utils/site-identity.js'
 import { checkFlags } from '../utils/flag-guard.js'
 
 const c = {
@@ -194,7 +196,14 @@ export async function refresh(args = [], deps = {}) {
   // directions, not just that you took what was waiting.
   if (!skipBackend && siteContentUuid(siteDir)) {
     try {
-      const probe = await probeUnpushed(siteDir)
+      // Whose asset ids the comparison reads — see status.js. Offline, so the
+      // origin is resolved rather than taken from a client.
+      const probe = await probeUnpushed(siteDir, {
+        backend: resolveBackendOrigin(null, {
+          siteScope: readSiteIdentity(siteDir).backend,
+          siteBackend: await resolveSiteBackend(siteDir)
+        })
+      })
       if (probe.changed)
         say.dim(
           `Unpushed: ${probe.changed} entit${probe.changed === 1 ? 'y' : 'ies'} changed locally`

@@ -14,8 +14,8 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  readAssetMap,
-  updateAssetMap,
+  readBackendState,
+  updateBackendMap,
   servedFingerprint
 } from '@uniweb/build/uwx'
 import {
@@ -53,7 +53,7 @@ test('collectAssetRefs finds identity on a node AND on a background media object
 test('⭐ a KNOWN asset lands back at the path its author wrote', async () => {
   const dir = site()
   try {
-    updateAssetMap(dir, { '/images/hero.png': { id: '9f2c', ext: 'png' } })
+    updateBackendMap(dir, ORIGIN, 'assets', { '/images/hero.png': { id: '9f2c', ext: 'png' } })
     const out = await downloadMissingAssets({
       document: docWith({ src: SERVE, assetId: '9f2c', assetExt: 'png' }),
       siteDir: dir,
@@ -83,7 +83,7 @@ test('an UNKNOWN asset lands at a generic path and BECOMES known', async () => {
     assert.deepEqual(out.downloaded, [ref])
     assert.ok(existsSync(join(dir, 'public', 'assets', '9f2c.png')))
     // …and the next pull restores it here rather than fetching it again elsewhere
-    assert.deepEqual(readAssetMap(dir)[ref], { id: '9f2c', ext: 'png' })
+    assert.deepEqual((readBackendState(dir, ORIGIN).assets || {})[ref], { id: '9f2c', ext: 'png' })
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -92,7 +92,7 @@ test('an UNKNOWN asset lands at a generic path and BECOMES known', async () => {
 test('an asset already on disk is not re-fetched', async () => {
   const dir = site()
   try {
-    updateAssetMap(dir, { '/images/hero.png': { id: '9f2c', ext: 'png' } })
+    updateBackendMap(dir, ORIGIN, 'assets', { '/images/hero.png': { id: '9f2c', ext: 'png' } })
     mkdirSync(join(dir, 'public', 'images'), { recursive: true })
     writeFileSync(join(dir, 'public', 'images', 'hero.png'), 'ALREADY')
     const out = await downloadMissingAssets({
@@ -129,7 +129,7 @@ test('⛔ a failed download WARNS and never throws — the content keeps its URL
     assert.ok(warnings.some((w) => w.includes('503')))
     // nothing written, and nothing learned — a failure must not claim the path
     assert.equal(existsSync(join(dir, 'public', 'assets', '9f2c.png')), false)
-    assert.deepEqual(readAssetMap(dir), {})
+    assert.deepEqual(readBackendState(dir, ORIGIN).assets || {}, {})
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -252,7 +252,7 @@ test('⭐ a bare-string reference is found by the fingerprint the map keeps for 
 test('a KNOWN bare-string image lands back at the path its author wrote', async () => {
   const dir = site()
   try {
-    updateAssetMap(dir, CARD)
+    updateBackendMap(dir, ORIGIN, 'assets', CARD)
     const out = await downloadMissingAssets({
       document: { settings: { seo: { image: SERVE } } },
       siteDir: dir,

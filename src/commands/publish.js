@@ -92,7 +92,7 @@ import {
   resolveSiteOrgForCreate
 } from '../backend/site-sync.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
-import { updateAssetMap, ASSET_MAP_FILE } from '@uniweb/build/uwx'
+import { updateBackendMap, carryServed, SYNC_STORE_FILE } from '@uniweb/build/uwx'
 import {
   bringFoundationAlong,
   bringExtensionsAlong
@@ -628,10 +628,10 @@ export async function publish(args = []) {
       if (Object.keys(ids).length) assetIds = ids
       // Identity into the COMMITTED map — see backend/asset-map.js. Merge, not
       // replace: this publish carries only the refs its content touched.
-      const rec = updateAssetMap(siteDir, ids)
+      const rec = updateBackendMap(siteDir, client.origin, 'assets', ids, carryServed)
       if (rec.written) {
         say.dim(
-          `${ASSET_MAP_FILE}   : ${rec.added.length} added, ${rec.changed.length} changed — commit it`
+          `${SYNC_STORE_FILE}   : ${rec.added.length} asset(s) added, ${rec.changed.length} changed — commit it`
         )
       }
       if (ballAssets.length) ball = rewriteSchemalessDataAssets(ball, map)
