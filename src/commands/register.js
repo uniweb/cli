@@ -3,15 +3,14 @@
  * standalone schemas package (the data schemas alone, no foundation), to the
  * registry as one names-only `.uwx` document (uwx-format.md §5).
  *
- * `uniweb login && uniweb register`. Distinct from `uniweb publish` (which
- * targets the legacy platform) — `register` talks to the registry over HTTP at a
- * configurable endpoint.
+ * `uniweb login && uniweb register`. Distinct from `uniweb publish`, which ships a
+ * SITE — and releases the site's local foundation by running this command
+ * (`backend/foundation-bring-along.js`).
  *
- * If the foundation's `dist/` is missing or version-stale (the baked schema
- * version differs from package.json), `register` builds it first — the same
- * build-if-stale `uniweb publish` does, so `register` is a full drop-in.
- * Preview paths (`--dry-run`, `-o`) never write to `dist/`; they require a
- * pre-built foundation.
+ * If the foundation's `dist/` is missing or stale — no build, a version bump
+ * since it, a source file newer than it, no SSR bundle (`foundationNeedsBuild`)
+ * — `register` builds it first. Preview paths (`--dry-run`, `-o`) never write to
+ * `dist/`; they require a pre-built foundation.
  *
  * Run from a foundation, or from a schemas-only package — a package that exports
  * schemas (e.g. `@uniweb/schemas`, any `@org/schemas`) or a bare `schemas/*.yml`
@@ -531,8 +530,8 @@ async function runRegister(args = []) {
     if (!(await settleFoundationName(targetDir, { args, isPreview }))) {
       return { exitCode: 2 }
     }
-    // Build-if-stale (mirrors `uniweb publish`): a missing or version-stale
-    // dist/ gets (re)built before we read its schema. Preview paths
+    // Build-if-stale (`foundationNeedsBuild`): a missing or stale dist/ gets
+    // (re)built before we read its schema. Preview paths
     // (--dry-run / -o) must not write to dist/, so they require a pre-built
     // foundation and say so instead of building.
     const { needs, reason } = foundationNeedsBuild(targetDir)
