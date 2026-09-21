@@ -1178,8 +1178,12 @@ export async function probeUnpushed(siteDir, { backend = null, sendAll = false }
  *                a copy of itself.
  *   · RECORDED   the site's org, which resolves a foundation-relative `@/x` into
  *                the `@org/x` the push keyed its hashes by, and the collection
- *                identity a push stamps — so `status` hashes the same document a
- *                push would send rather than one missing a section's `$uuid`s.
+ *                identity a push stamps, so the document is the one a push builds.
+ *                ⚠️ Identity is parity, not correctness: `entityContentHash` strips
+ *                `$`-sigils, so a query's `$uuid` never moves a hash (measured
+ *                2026-09-21). This read no backend from 2026-09-20 to 2026-09-21 —
+ *                an empty map — which is why no `status` ever showed it, and why this
+ *                bullet was then misread as naming a live defect.
  *
  * Offline by design — measured at zero HTTP requests, a property the cross-client
  * flows rely on.
@@ -1194,7 +1198,7 @@ async function comparisonEmit(
   // honest rather than a default — no backend, no known ids.
   const assetIds = backend ? readBackendState(siteDir, backend).assets || {} : {}
   const org = readSiteOrg(siteDir, backend)
-  const queryUuids = readQueryUuids(siteDir)
+  const queryUuids = readQueryUuids(siteDir, backend)
   return emitSyncPackages(siteDir, {
     backend,
     resolveModel: makeModelResolver({ client: null, offline: true }),
