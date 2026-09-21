@@ -43,7 +43,8 @@
  * Backend: via BackendClient (the site-content pull lane). Origin from
  *   UNIWEB_REGISTER_URL  >  the local default (internal dev overrides;
  *   not the user-facing path — `uniweb login` determines the origin).
- * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
+ * Auth:  UNIWEB_TOKEN  >  the stored session  >  `uniweb login`. No `--token` (retired
+ *   from the backend commands 2026-09-21).
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
@@ -199,9 +200,7 @@ export async function clone(args = [], deps = {}) {
     args.includes('--no-records') || args.includes('--content-only')
   const pathFlag = flagValue(args, '--path')
   const projectFlag = flagValue(args, '--project')
-  const tokenFlag = flagValue(args, '--token')
   const client = new BackendClient({
-    token: tokenFlag,
     getToken: deps.getToken,
     fetchImpl: deps.fetch,
     args,
@@ -230,7 +229,7 @@ export async function clone(args = [], deps = {}) {
     if (!res.ok) {
       error(`Could not read the site: HTTP ${res.status} ${res.statusText}`)
       if (res.status === 401 || res.status === 403)
-        note('Run `uniweb login` first (or pass --token <bearer>).')
+        note('Run `uniweb login` first.')
       return { exitCode: 1 }
     }
     documents = readUwxDocuments(Buffer.from(await res.arrayBuffer()))
@@ -406,7 +405,6 @@ export async function clone(args = [], deps = {}) {
   )
 
   const pullExtra = []
-  if (tokenFlag) pullExtra.push('--token', tokenFlag)
   if (noRecords) pullExtra.push('--no-records')
 
   if (deps.skipPull) {

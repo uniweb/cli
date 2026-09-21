@@ -28,7 +28,6 @@ import { resolveSiteDir } from './deploy.js'
 import { probeUnpushed } from '../backend/site-sync.js'
 import { BackendClient, resolveBackendOrigin } from '../backend/client.js'
 import { readBackendState } from '@uniweb/build/uwx'
-import { readFlagValue } from '../utils/args.js'
 import { resolveLocalFoundation } from '../backend/foundation-bring-along.js'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { checkFlags } from '../utils/flag-guard.js'
@@ -116,7 +115,6 @@ export async function status(args = []) {
   if (remote) {
     try {
       const client = new BackendClient({
-        token: readFlagValue(args, '--token') || undefined,
         args,
         command: 'Status'
       })

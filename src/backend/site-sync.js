@@ -1414,7 +1414,7 @@ export async function pushSyncPackages({
       error(`${label} push rejected: HTTP ${res.status} ${res.statusText}`)
       if (res.status === 401 || res.status === 403) {
         note(
-          "Credentials weren't accepted — supply a bearer with --token <bearer> (or UNIWEB_TOKEN)."
+          "Credentials weren't accepted — log in again (`uniweb login --backend <url>`), or check UNIWEB_TOKEN."
         )
       } else if (res.status === 404 && boundUuid) {
         // The clone is bound to a site the backend does not have. There is no CLI

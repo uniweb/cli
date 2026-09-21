@@ -32,9 +32,9 @@
  *   - stored in a register-scoped slot (~/.uniweb/registry-auth.json) so it can
  *     never clobber the legacy token publish/deploy rely on.
  *
- * Token resolution for `register` (the `--token` flag is handled by the caller,
- * ahead of this): UNIWEB_TOKEN env > stored session (unexpired) >
- * UNIWEB_USERNAME/UNIWEB_PASSWORD env (non-interactive) > interactive prompt.
+ * Token resolution for the backend commands, which take no `--token` flag:
+ * UNIWEB_TOKEN env > stored session (unexpired) > UNIWEB_USERNAME/UNIWEB_PASSWORD
+ * env (non-interactive) > interactive prompt.
  *
  * Login response shape (agreed with backend, 2026-05-26):
  *   { token, expires_at, account: { uuid, username, handle } }
@@ -306,6 +306,21 @@ export async function loginToRegistry({ apiBase, username, password } = {}) {
  * @param {string[]} [options.args] - argv slice; checked for --non-interactive
  * @returns {Promise<string>} bearer token
  */
+/** `args` without `--token` and its value — see ensureRegistryAuth. */
+export function withoutLoginToken(args = []) {
+  const out = []
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]
+    if (a === '--token') {
+      i++ // and its value
+      continue
+    }
+    if (a.startsWith('--token=')) continue
+    out.push(a)
+  }
+  return out
+}
+
 export async function ensureRegistryAuth({
   apiBase,
   command = 'This command',
@@ -360,7 +375,11 @@ export async function ensureRegistryAuth({
   }
 
   // Interactive: hand off to the multi-method login picker, reuse its session.
-  const record = await runRegistryLogin({ apiBase, args })
+  // ⛔ WITHOUT `--token`: in `runRegistryLogin` it means "seed and STORE this bearer as a
+  // session" — `uniweb login --token`'s job alone. A command's own argv reaching it
+  // would log the machine in as a side effect of that command. (The backend commands
+  // refuse `--token` since 2026-09-21; this holds for any other caller too.)
+  const record = await runRegistryLogin({ apiBase, args: withoutLoginToken(args) })
   if (!record?.token) process.exit(1)
   return record.token
 }
@@ -723,8 +742,8 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
 
   // `--token <bearer>` seeds + verifies a session non-interactively (verified
   // against /dev/auth/me before it's stored, so an invalid token fails loudly
-  // instead of poisoning the session file). Distinct from the per-command
-  // `--token` (ephemeral, never stored) and from UNIWEB_TOKEN env.
+  // instead of poisoning the session file). ⭐ Login's alone: the backend commands
+  // take no `--token` (2026-09-21) — UNIWEB_TOKEN is the one-process bearer.
   const { readFlagValue } = await import('./args.js')
   const tokenFlag = readFlagValue(args, '--token')
   if (tokenFlag) {

@@ -1465,7 +1465,6 @@ ${colors.bright}Options:${colors.reset}
   --personal         Create the site under your personal account, deliberately.
                      Only needed on a first publish, and only to answer the owner
                      question without a prompt (CI, agents, scripts).
-  --token <bearer>   Auth bearer (skips \`uniweb login\`)
 `,
     create: `
 ${colors.cyan}${colors.bright}uniweb create${colors.reset} ${colors.dim}— Create a new project${colors.reset}
@@ -1716,7 +1715,7 @@ ${colors.bright}Usage:${colors.reset}
   uniweb release  [options]      ${colors.dim}(synonym — reads naturally for updates)${colors.reset}
 
 Builds one \`.uwx\` document and submits it to the registry over HTTP. Run
-\`uniweb login\` first (or pass \`--token\`). \`register\`/\`release\` are for
+\`uniweb login\` first. \`register\`/\`release\` are for
 FOUNDATIONS (and schemas) — code only; \`uniweb publish\` makes a synced SITE
 live (and brings its foundation along); \`uniweb deploy\` hosts on a third-party
 host. \`register\` and \`release\` are the same act: \`register\` reads naturally
@@ -1736,7 +1735,6 @@ ${colors.bright}Options:${colors.reset}
   --scope @org       Publish under @org (resolves @/x -> @org/x); default: package.json uniweb.scope
   --dry-run          Print the .uwx; submit nothing
   -o, --output <f>   Write the .uwx to a file; submit nothing
-  --token <bearer>   Submit with this bearer; skips \`uniweb login\` (or set UNIWEB_TOKEN)
   --non-interactive  Fail with usage info instead of prompting
 
 Run from a foundation, a schemas-only package, or a workspace with a single foundation.
@@ -1815,7 +1813,6 @@ reflexively. Exits non-zero if a merge leaves conflicts.
 ${colors.bright}Options:${colors.reset}
   --no-git           Skip the git remote; backend only
   --no-backend       Skip the backend; git only
-  --token <bearer>   Read with this bearer; skips \`uniweb login\`
 
 \`--force\` and \`--merge\` are NOT accepted here: this verb builds the delegated
 pull's arguments itself, and to pull \`--force\` means "discard my local work".
@@ -1843,7 +1840,6 @@ ${colors.bright}Options:${colors.reset}
 
   --no-git           Skip the git remote half of the refresh
   --force            Overwrite upstream changes (reaches the PUSH half only)
-  --token <bearer>   Auth bearer; skips \`uniweb login\`
 
 \`--force\` means "overwrite upstream" to push but "discard my local work" to pull,
 so it is deliberately kept away from the refresh half.
@@ -2069,8 +2065,10 @@ ${colors.bright}Global Options:${colors.reset}
                        Auto-detected when CI=true or no TTY (pipes, agents)
 
   Backend commands (push, pull, publish, status, register, clone) go to the
-  backend you are logged in to. Switch with \`uniweb login --backend <url>\`;
-  scripts can aim one process with UNIWEB_REGISTER_URL instead.
+  backend you are logged in to, with its session. Switch with
+  \`uniweb login --backend <url>\` (add \`--token <bearer>\` to sign in with a token);
+  a script can aim and authenticate one process with UNIWEB_REGISTER_URL and
+  UNIWEB_TOKEN instead.
 
 ${colors.bright}Publish Options:${colors.reset}
   --dry-run          Resolve everything; release/sync/POST nothing
@@ -2080,7 +2078,6 @@ ${colors.bright}Publish Options:${colors.reset}
   --personal         Own the new site personally, deliberately (first publish only)
   --no-save          Do not record this deploy in deploy.yml
   --no-validate      Skip the content-conformance check (it only warns)
-  --token <bearer>   Auth bearer (skips \`uniweb login\`)
 
   uniweb publish is the smart Uniweb-hosting path: it brings the site's
   foundation along, syncs, and goes live. To register a foundation on its own

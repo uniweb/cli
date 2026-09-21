@@ -38,7 +38,6 @@
  *                                        this prompt existed. First push only.
  *   uniweb push --dry-run                Report what would be pushed; submit nothing
  *   uniweb push -o out.uwx               Write the .uwx file(s) per lane; submit nothing
- *   uniweb push --token <bearer>         Submit with this bearer; skips `uniweb login`
  *   uniweb push --foundation <dir>       Use this local foundation for the Model schema
  *   uniweb push --all                    Send every record (bypass the changed-only cache)
  *   uniweb push --force                  Overwrite upstream changes (drop the staleness gate)
@@ -50,9 +49,9 @@
  * backend's reconcile deletes items absent from the package, so an author's NEW page
  * would be hard-deleted). `--force` omits the token and restores last-push-wins.
  *
- * Backend: via BackendClient (the content + folder sync lanes). Origin from
- *   UNIWEB_REGISTER_URL  >  the local default.
- * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
+ * Backend: the one you are logged in to — UNIWEB_REGISTER_URL overrides it for a script
+ *   (resolveBackendOrigin). Auth: UNIWEB_TOKEN  >  the stored session  >  `uniweb login`.
+ *   No `--backend` or `--token`: switching and signing in are `uniweb login`.
  *
  * The two-lane SUBMISSION (POST both lanes, back-fill uuids, persist the
  * send-only-changed cache) lives in `../backend/site-sync.js` so `uniweb publish`
@@ -143,7 +142,6 @@ export async function push(args = [], deps = {}) {
   }
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
-  const tokenFlag = flagValue(args, '--token')
   const foundationDir = flagValue(args, '--foundation')
   const sendAll = args.includes('--all') // bypass the send-only-changed cache
   // --force drops the optimistic-concurrency precondition, making the push
@@ -173,7 +171,6 @@ export async function push(args = [], deps = {}) {
   // (the `offline` flag below), so it never authenticates — even when a collection
   // references a Model the local foundation doesn't define.
   const client = new BackendClient({
-    token: tokenFlag,
     args,
     command: 'Syncing'
   })

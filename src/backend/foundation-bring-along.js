@@ -38,7 +38,6 @@ import { execFileSync } from 'node:child_process'
 
 import { detectFoundationType, isExtensionUrl } from '@uniweb/build'
 import { computeFoundationDigest } from '../utils/code-upload.js'
-import { readFlagValue } from '../utils/args.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import { compareSemverPrecedence } from '../utils/semver-precedence.js'
 
@@ -151,15 +150,12 @@ function readPkgField(dir, field) {
   }
 }
 
-// Forward the auth flags so the spawned `uniweb register` / `build` uses the SAME
-// session as the publish that called it. The BACKEND travels in the child's
-// environment (releaseFoundation) — `--backend` is not a flag of these verbs.
+// What travels to the spawned `uniweb register` / `build` on the command line: only
+// --non-interactive. The BACKEND travels in the child's environment
+// (releaseFoundation), and the SESSION is the shared session file — or UNIWEB_TOKEN,
+// which the child inherits. The backend commands take no `--backend` or `--token`.
 function forwardedFlags(args) {
   const out = []
-  for (const name of ['--token']) {
-    const v = readFlagValue(args, name)
-    if (v) out.push(name, v)
-  }
   if (isNonInteractive(args)) out.push('--non-interactive')
   return out
 }

@@ -25,7 +25,8 @@ import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
 import { dirname, resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { VERB_FLAGS } from '../src/utils/flag-guard.js'
+import { VERB_FLAGS, LOGIN_ONLY } from '../src/utils/flag-guard.js'
+import { withoutLoginToken } from '../src/utils/registry-auth.js'
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../src')
 
@@ -84,7 +85,11 @@ function reachableFlags(entry) {
 for (const [verb, entry] of Object.entries(ENTRY)) {
   test(`${verb} accepts every flag its import graph can read`, () => {
     const accepted = new Set([...VERB_FLAGS[verb], ...GLOBAL])
-    const missing = [...reachableFlags(entry)].filter((f) => !accepted.has(f))
+    // LOGIN_ONLY: read in the graph (by `uniweb login`'s own code), reached by no verb's
+    // argv — pinned by the test below, so the exception cannot quietly become a hole.
+    const missing = [...reachableFlags(entry)].filter(
+      (f) => !accepted.has(f) && !LOGIN_ONLY.includes(f)
+    )
     assert.deepEqual(
       missing,
       [],
@@ -93,6 +98,21 @@ for (const [verb, entry] of Object.entries(ENTRY)) {
     )
   })
 }
+
+test('LOGIN_ONLY is honest — a verb reaches the login flow with `--token` stripped', () => {
+  // `--token` is read by runRegistryLogin, where it SEEDS AND STORES a session. The
+  // verbs refuse the flag; the second fence is that ensureRegistryAuth — their way into
+  // that function — hands it their argv without it. Both halves, pinned.
+  const src = readFileSync(resolve(SRC, 'utils/registry-auth.js'), 'utf8')
+  assert.match(
+    src,
+    /runRegistryLogin\(\{ apiBase, args: withoutLoginToken\(args\) \}\)/,
+    'ensureRegistryAuth must strip --token before handing a verb\'s argv to the login flow'
+  )
+  assert.deepEqual(withoutLoginToken(['--dry-run', '--token', 'T', '--yes']), ['--dry-run', '--yes'])
+  assert.deepEqual(withoutLoginToken(['--token=T', '--password']), ['--password'])
+  assert.deepEqual(withoutLoginToken([]), [])
+})
 
 test('the walk actually reaches helper modules — the control', () => {
   // An empty or shallow walk would make every test above pass vacuously, which is

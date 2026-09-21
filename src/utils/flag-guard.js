@@ -6,20 +6,17 @@
  * does not recognize does not fail: it *disappears*, and the thing it was meant to
  * change silently keeps its default.
  *
- * That is tolerable for a cosmetic flag and dangerous for one:
+ * Tolerable for a cosmetic flag; dangerous for any flag that aims the command or picks
+ * its identity. This turns that class into one sentence.
  *
- *   --token     mistyped ⇒ falls back to the stored session, so the request is
- *               made as whoever is logged in rather than whoever was intended.
- *
- * It produced no error; it produced a plausible success as the wrong account. This
- * turns that class into one sentence.
- *
- * ⛔ **`--backend` is NOT a flag of these verbs** *(2026-09-21)*. Every backend verb
- * goes to the backend you are logged in to — switching is `uniweb login --backend`,
- * and a script aims with UNIWEB_REGISTER_URL. So `uniweb push --backend X` is now an
- * unknown flag, and this guard is what makes that a loud error instead of a push to
- * wherever you happen to be logged in. It stays on `forget`, where it SELECTS which
- * backend's records to remove.
+ * ⛔ **`--backend` and `--token` are NOT flags of these verbs** *(2026-09-21)*. Every
+ * backend verb goes to the backend you are logged in to, with that login's session:
+ * switching and signing in are `uniweb login` (`--backend`, `--token`), and a script
+ * aims one process with UNIWEB_REGISTER_URL + UNIWEB_TOKEN. Both flags predate
+ * per-backend sessions. Passed now, each is an unknown flag — and this guard is what
+ * makes that a loud error, with a pointer to the login, instead of a command that
+ * quietly runs against wherever and as whoever you happen to be. `--backend` stays on
+ * `forget`, where it SELECTS which backend's records to remove.
  *
  * ⚠️ A wrong rejection is worse than a missed one — it breaks an invocation that
  * works — so the per-command lists must be complete, INCLUDING flags read by
@@ -59,7 +56,7 @@ const VIA_DEPLOY = ['--target', '--host', '--no-save']
 const VERBS = {
   push: [
     '--all', '--as-org', '--org', '--dry-run', '--force',
-    '--foundation', '--output', '-o', '--personal', '--token',
+    '--foundation', '--output', '-o', '--personal',
     // read in utils/conformance.js and backend/site-sync.js respectively —
     // neither appears in push.js
     '--no-validate', '--yes',
@@ -73,7 +70,7 @@ const VERBS = {
   ],
   publish: [
     '--as-org', '--org', '--dry-run', '--force', '--foundation',
-    '--personal', '--token',
+    '--personal',
     // read in utils/conformance.js, backend/site-sync.js, and
     // backend/foundation-bring-along.js — none appear in publish.js
     '--no-validate', '--yes', '--no-verify', '--no-release', ...VIA_DEPLOY
@@ -81,17 +78,17 @@ const VERBS = {
   pull: [
     '--content-only', '--dry-run', '--force', '--merge',
     '--no-assets',
-    '--no-records', '--no-delete', '--no-prune', '--token',
+    '--no-records', '--no-delete', '--no-prune',
     // via backend/site-sync.js (the owner resolver) and utils/conformance.js
     '--yes', '--org', '--as-org', '--no-validate', ...VIA_DEPLOY
   ],
   clone: [
     '--content-only', '--no-assets', '--no-records', '--path',
-    '--project', '--token', '--org', '--as-org'
+    '--project', '--org', '--as-org'
   ],
   register: [
     '--dry-run', '--json', '--output', '-o',
-    '--schema-only', '--scope', '--token', '--org', '--as-org'
+    '--schema-only', '--scope', '--org', '--as-org'
   ],
   /**
    * `forget` = remove one backend's records (`--backend <url>`), or everything a
@@ -101,7 +98,7 @@ const VERBS = {
    */
   forget: ['--backend', '--all'],
   status: [
-    '--json', '--remote', '--token', '--dry-run',
+    '--json', '--remote', '--dry-run',
     '--force', '--no-verify', '--no-validate', '--yes', '--org', '--as-org',
     // inert here, reachable through the bring-along module status imports for
     // `resolveLocalFoundation` — listed per the over-approximation note above
@@ -110,9 +107,8 @@ const VERBS = {
   /**
    * `refresh` = `git pull`, then a DELEGATED `pull --merge`.
    *
-   * It forwards exactly one flag to that pull — `--token`, via its own
-   * `collectPassthrough` — and constructs the rest of the argv itself. So pull's
-   * own flags (`--merge`, `--force`, `--no-delete`, `--no-prune`,
+   * It forwards nothing of its own argv to that pull — it builds `['--merge']`
+   * itself. So pull's own flags (`--merge`, `--force`, `--no-delete`, `--no-prune`,
    * `--content-only`, …) are NOT reachable from a `refresh` argv and
    * are deliberately absent here. ⚠️ `--force` especially: `refresh` is read-only by
    * design, and forwarding it would ask pull to DISCARD local work.
@@ -122,7 +118,7 @@ const VERBS = {
    * the VIA_DEPLOY note above, and required by `flag-guard-coverage.test.js`.
    */
   refresh: [
-    '--no-backend', '--no-git', '--token',
+    '--no-backend', '--no-git',
     '--as-org', '--org', '--dry-run', '--no-validate', '--yes', ...VIA_DEPLOY
   ]
 }
@@ -154,6 +150,18 @@ VERBS.sync = [...new Set([...VERBS.refresh, ...VERBS.push])]
  * flag accepted here but inert costs nothing (it was ignored before the guard
  * existed), while one rejected here breaks a working command.
  */
+/**
+ * Read in the verbs' import graphs, and deliberately NOT accepted by them.
+ *
+ * `--token` is read by `runRegistryLogin` (utils/registry-auth.js) for
+ * `uniweb login --token <bearer>`, which seeds and STORES a session. The verbs reach
+ * that function through `ensureRegistryAuth`, which strips `--token` from their argv
+ * first — so a static walk sees the read, and no verb can honour it.
+ * `flag-guard-coverage.test.js` subtracts this list; add to it only with the same
+ * proof: a read no verb's argv can reach.
+ */
+export const LOGIN_ONLY = ['--token']
+
 export const VERB_FLAGS = Object.fromEntries(
   Object.entries(VERBS).map(([verb, flags]) => [
     verb,
@@ -181,8 +189,8 @@ export function checkFlags(verb, args = []) {
   if (!unknown.length) return null
 
   const flag = unknown[0]
-  // ⭐ `--backend` is not a typo on these verbs — it is RETIRED (2026-09-21), and the
-  // useful answer is where the backend comes from now, not "run --help".
+  // ⭐ `--backend` and `--token` are not typos on these verbs — they are RETIRED
+  // (2026-09-21), and the useful answer is what replaced them, not "run --help".
   if (flag === '--backend') {
     return {
       flag,
@@ -191,6 +199,17 @@ export function checkFlags(verb, args = []) {
         `\`uniweb ${verb}\` has no \`--backend\`: it goes to the backend you are logged in to.`,
         '  Switch with: uniweb login --backend <url>',
         '  (A script can aim one process with UNIWEB_REGISTER_URL instead.)'
+      ].join('\n')
+    }
+  }
+  if (flag === '--token') {
+    return {
+      flag,
+      suggestion: null,
+      message: [
+        `\`uniweb ${verb}\` has no \`--token\`: it uses the session of the backend you are logged in to.`,
+        '  Sign in with a token: uniweb login --backend <url> --token <bearer>',
+        '  (A script can authenticate one process with UNIWEB_TOKEN instead.)'
       ].join('\n')
     }
   }

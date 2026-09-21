@@ -182,15 +182,15 @@ test('refresh never pushes — no push verb is reachable from it', async () => {
   )
 })
 
-test('refresh forwards --token and its value to the delegated pull', async () => {
-  // `--token abc` is two argv entries. A naive filter forwards the flag and drops the
-  // value, so the pull silently authenticates as the stored session while the user
-  // believes they passed a bearer — wrong account, no error.
+test('refresh hands its delegated pull `--merge` and nothing of its own argv', async () => {
+  // The pull goes to the backend you are logged in to, with that session, exactly as
+  // refresh does — so there is nothing to forward. (It forwarded `--backend` and
+  // `--token` until both left the backend commands, 2026-09-21.)
   const dir = site({ uuid: 'SITE' })
   try {
     let seen = null
     await capture(() =>
-      refresh(['--no-git', '--token', 'abc'], {
+      refresh(['--no-git', '--no-validate'], {
         resolveSiteDir: async () => dir,
         pull: async (a) => {
           seen = a
@@ -198,18 +198,7 @@ test('refresh forwards --token and its value to the delegated pull', async () =>
         }
       })
     )
-    assert.deepEqual(seen, ['--merge', '--token', 'abc'])
-
-    await capture(() =>
-      refresh(['--no-git', '--token=abc'], {
-        resolveSiteDir: async () => dir,
-        pull: async (a) => {
-          seen = a
-          return { exitCode: 0 }
-        }
-      })
-    )
-    assert.deepEqual(seen, ['--merge', '--token=abc'])
+    assert.deepEqual(seen, ['--merge'])
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -238,10 +227,21 @@ test('⭐ refresh follows the login — a project whose site is on another backe
   }
 })
 
-test('`refresh --backend` is refused — before git or the backend is touched', async () => {
+test('`refresh --backend` and `--token` are refused — before git or the backend is touched', async () => {
   const dir = site({ uuid: 'SITE' })
   try {
     let pulled = false
+    const { r: rt, out: outT } = await capture(() =>
+      refresh(['--no-git', '--token', 'abc'], {
+        resolveSiteDir: async () => dir,
+        pull: async () => {
+          pulled = true
+          return { exitCode: 0 }
+        }
+      })
+    )
+    assert.equal(rt.exitCode, 2)
+    assert.match(outT, /uniweb login --backend <url> --token <bearer>/)
     const { r, out } = await capture(() =>
       refresh(['--no-git', '--backend', 'http://elsewhere.test'], {
         resolveSiteDir: async () => dir,

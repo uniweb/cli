@@ -47,10 +47,9 @@ export function readOrgFlag(args) {
  *
  * The CLI reads flags by scanning argv for a literal, so an unrecognized flag is
  * not an error — it is *invisible*, and whatever it was meant to change silently
- * keeps its default. The sharp case is `--backend`: mistype it and the origin
- * ladder falls through to the session, the saved config, or `https://uniweb.app`,
- * so a command aimed at localhost can reach production. `--token` degrades the
- * same way, to a stored session belonging to someone else.
+ * keeps its default. The sharp cases were `--backend` and `--token`, which aimed a
+ * command and chose its identity; both left the backend commands on 2026-09-21
+ * (the login does both now), and the guard names the login when either is passed.
  *
  * Scanning rules, chosen to avoid false positives (a wrong rejection is worse than
  * a missed one — it breaks a working command):

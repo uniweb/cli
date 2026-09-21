@@ -20,8 +20,9 @@
  * Distinct from `uniweb deploy` (third-party hosts) and `uniweb register`
  * (foundation code → catalog). For a self-contained artifact, see `uniweb export`.
  *
- * Backend: BackendClient. Origin from --backend > UNIWEB_REGISTER_URL
- * > default. Auth: --token > UNIWEB_TOKEN > `uniweb login` session.
+ * Backend: the one you are logged in to — UNIWEB_REGISTER_URL overrides it for a script
+ *   (resolveBackendOrigin). Auth: UNIWEB_TOKEN  >  the stored session  >  `uniweb login`.
+ *   No `--backend` or `--token`: switching and signing in are `uniweb login`.
  *
  * Usage:
  *   uniweb publish                 Bring the foundation along, sync, and go live
@@ -38,8 +39,6 @@
  *                                  NO `as_org` — byte-identical to the wire before
  *                                  the owner prompt existed. First publish only.
  *   uniweb publish --no-save       Do not record this publish in deploy.yml
- *   uniweb publish --backend <url> Override the backend origin
- *   uniweb publish --token <bearer> Auth bearer (skips `uniweb login`)
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -271,7 +270,6 @@ export async function publish(args = []) {
   // logged into a backend."*
 
   const client = new BackendClient({
-    token: readFlagValue(args, '--token') || undefined,
     args,
     command: 'Publishing'
   })
@@ -1019,7 +1017,7 @@ export async function publish(args = []) {
     say.err(`Publish rejected: HTTP ${pubRes.status} ${pubRes.statusText}`)
     if (pubRes.status === 401 || pubRes.status === 403) {
       say.dim(
-        "Credentials weren't accepted — run `uniweb login` (or pass --token <bearer>)."
+        "Credentials weren't accepted — run `uniweb login` again."
       )
     }
     if (body) say.dim(body.slice(0, 800))

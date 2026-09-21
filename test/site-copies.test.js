@@ -152,7 +152,7 @@ test('after `uniweb forget --all` in the copy, neither side is refused (control)
   // counted request is the proof the check let it through. `--personal` answers the
   // owner question the copy's create asks; the original's site exists and asks none.
   for (const [dir, extra] of [[b, ['--personal']], [a, []]]) {
-    const res = await runVerb(dir, push, ['--token', 'test', ...extra], LOGGED_IN_A)
+    const res = await runVerb(dir, push, extra, LOGGED_IN_A)
     assert.doesNotMatch(res.output, HEADLINE, res.output)
     assert.ok(res.requests > 0, `${dir} should reach the wire:\n${res.output}`)
   }

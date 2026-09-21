@@ -41,12 +41,12 @@
  *   uniweb pull --merge                  Three-way merge local changes with the backend's
  *   uniweb pull --force                  Pull over uncommitted local changes (discards them)
  *   uniweb pull --dry-run                Report what it would GET; write nothing
- *   uniweb pull --token <bearer>         Read with this bearer; skips `uniweb login`
  *
- * Backend: via BackendClient (the content + folder pull lanes), both keyed by the
- *   site's uuid on that backend (sync.json). Origin: --backend > UNIWEB_REGISTER_URL >
- *   the project's backend > the logged-in backend > the default (resolveBackendOrigin).
- * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
+ * The content + folder pull lanes are both keyed by the site's uuid on that backend
+ *   (sync.json).
+ * Backend: the one you are logged in to — UNIWEB_REGISTER_URL overrides it for a script
+ *   (resolveBackendOrigin). Auth: UNIWEB_TOKEN  >  the stored session  >  `uniweb login`.
+ *   No `--backend` or `--token`: switching and signing in are `uniweb login`.
  *
  * A project that never pushed has no `$uuid` to pull by — pull is a no-op with a
  * clear message. The backend serves each lane as a `.uwx` (ZIP: `manifest.json` +
@@ -538,7 +538,6 @@ export async function pull(args = [], deps = {}) {
   const resolveSiteDir = deps.resolveSiteDir || defaultResolveSiteDir
 
   const dryRun = args.includes('--dry-run')
-  const tokenFlag = flagValue(args, '--token')
   const prune = !(args.includes('--no-delete') || args.includes('--no-prune')) // git-like by default
   const noRecords =
     args.includes('--no-records') || args.includes('--content-only')
@@ -587,7 +586,6 @@ export async function pull(args = [], deps = {}) {
   // be reached: *"We do not allow any communication with backend if the user is not
   // logged into a backend."*
   const client = new BackendClient({
-    token: tokenFlag,
     getToken: deps.getToken,
     fetchImpl: deps.fetch,
     args,
@@ -676,7 +674,7 @@ export async function pull(args = [], deps = {}) {
       error(`${label} pull failed: HTTP ${res.status} ${res.statusText}`)
       if (res.status === 401 || res.status === 403)
         note(
-          "Credentials weren't accepted — supply a bearer with --token <bearer>."
+          "Credentials weren't accepted — log in again (`uniweb login --backend <url>`), or check UNIWEB_TOKEN."
         )
       return null
     }

@@ -32,9 +32,22 @@ test('⛔ `--backend` is refused on the backend verbs — saying where the backe
   assert.equal(checkFlags('forget', ['--backend', 'http://localhost:8080']), null, 'forget SELECTS with it')
 })
 
-test('a mistyped --token is caught', () => {
-  const bad = checkFlags('push', ['--tokne', 'abc'])
-  assert.equal(bad.suggestion, '--token')
+test('⛔ `--token` is refused on the backend verbs — saying how to sign in instead', () => {
+  // Retired 2026-09-21 with `--backend`: a per-command bearer carried no backend, so it
+  // went wherever the login pointed. `uniweb login --token` ties a token to its backend.
+  for (const verb of ['push', 'publish', 'pull', 'clone', 'register', 'status', 'refresh', 'sync']) {
+    const bad = checkFlags(verb, ['--token', 'abc'])
+    assert.equal(bad?.flag, '--token', verb)
+    assert.match(bad.message, /uniweb login --backend <url> --token <bearer>/, verb)
+    assert.match(bad.message, /UNIWEB_TOKEN/, verb)
+  }
+  assert.equal(checkFlags('push', ['--token=abc'])?.flag, '--token', 'the = form too')
+})
+
+test('a mistyped flag is caught, with a suggestion', () => {
+  const bad = checkFlags('push', ['--forcee'])
+  assert.equal(bad.flag, '--forcee')
+  assert.equal(bad.suggestion, '--force')
 })
 
 test('the message names the verb and points at its help', () => {
@@ -46,15 +59,15 @@ test('the message names the verb and points at its help', () => {
 
 test('a realistic invocation of every guarded verb passes', () => {
   const real = {
-    push: ['--as-org', '@acme', '--token', 'x', '--force'],
-    publish: ['--yes', '--no-validate', '--dry-run', '--token', 'x'],
+    push: ['--as-org', '@acme', '--yes', '--force'],
+    publish: ['--yes', '--no-validate', '--dry-run', '--personal'],
     pull: ['--merge', '--no-prune', '--content-only'],
     clone: ['abc-uuid', '--path', './site', '--project', 'p'],
     register: ['--scope', '@acme', '-o', 'out.uwx', '--json'],
     status: ['--remote', '--json'],
     forget: ['--backend', 'http://localhost:9999'],
-    refresh: ['--no-git', '--token', 'x'],
-    sync: ['--no-git', '--force', '--token', 'x']
+    refresh: ['--no-git', '--no-validate'],
+    sync: ['--no-git', '--force', '--yes']
   }
   for (const [verb, args] of Object.entries(real)) {
     assert.equal(checkFlags(verb, args), null, `${verb} rejected a valid call`)
@@ -73,17 +86,17 @@ test('a realistic invocation of every guarded verb passes', () => {
 // ─── the delegating verbs ─────────────────────────────────────────────────────
 
 test('a mistyped flag is caught on refresh, before the delegated pull runs', () => {
-  // The hazard: a flag `collectPassthrough` does not match is not forwarded, so the
-  // delegated `pull --merge` runs without it while the user believes it applied.
-  const bad = checkFlags('refresh', ['--tokne', 'abc'])
-  assert.equal(bad.flag, '--tokne')
-  assert.equal(bad.suggestion, '--token')
+  // The hazard: refresh builds its delegated `pull --merge` itself, so a flag it does
+  // not know would be dropped on the floor while the user believes it applied.
+  const bad = checkFlags('refresh', ['--no-gti'])
+  assert.equal(bad.flag, '--no-gti')
+  assert.equal(bad.suggestion, '--no-git')
 })
 
 test('a mistyped flag is caught on sync, before EITHER half runs', () => {
-  const bad = checkFlags('sync', ['--tokne', 'abc'])
-  assert.equal(bad.flag, '--tokne')
-  assert.equal(bad.suggestion, '--token')
+  const bad = checkFlags('sync', ['--no-gti'])
+  assert.equal(bad.flag, '--no-gti')
+  assert.equal(bad.suggestion, '--no-git')
 })
 
 test('sync accepts what only ONE of its halves accepts', () => {

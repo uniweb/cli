@@ -30,12 +30,11 @@
  *   uniweb register --json               Porcelain: ONE compact JSON line on stdout
  *                                        ({ok,scope,origin,entities:[{name,uuid,version,unchanged}]}),
  *                                        all human output to stderr — for scripted callers
- *   uniweb register --token <bearer>     Submit with this bearer; skips `uniweb login`
  *
  * Endpoint: UNIWEB_REGISTER_URL  >  the backend you are logged in to  >  the default
  *   (~/.uniweb/config.json, else uniweb.app) — resolveBackendOrigin. No `--backend`:
  *   switching is `uniweb login --backend <url>`.
- * Auth (submit only):  --token <bearer>  >  UNIWEB_TOKEN  >  `uniweb login` session.
+ * Auth (submit only):  UNIWEB_TOKEN  >  the stored session  >  `uniweb login`.
  */
 
 // DEFERRED foundation-registration capabilities (the legacy `uniweb publish` had
@@ -388,11 +387,9 @@ async function runRegister(args = []) {
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
   const scopeFlag = flagValue(args, '--scope')
-  const tokenFlag = flagValue(args, '--token')
-  // Origin: --backend (matches deploy/publish + the
-  // origin-selection convention); either overrides UNIWEB_REGISTER_URL / default.
+  // The backend you are logged in to (UNIWEB_REGISTER_URL overrides it for a script) —
+  // resolveBackendOrigin, like every backend command.
   const client = new BackendClient({
-    token: tokenFlag,
     args,
     command: 'Registering'
   })
@@ -605,7 +602,7 @@ async function runRegister(args = []) {
     )
     return { exitCode: 2 }
   }
-  // Submit — the client carries the bearer (--token › UNIWEB_TOKEN › stored
+  // Submit — the client carries the bearer (UNIWEB_TOKEN › stored
   // session › login), resolved lazily on this first authed call.
   info(`Submitting to ${colors.dim}${client.origin}${colors.reset} …`)
   let res
@@ -649,7 +646,7 @@ async function runRegister(args = []) {
           `  ${colors.dim}The registry didn't accept your credentials — it may use different ones than \`uniweb login\`.${colors.reset}`
         )
         log(
-          `  ${colors.dim}Supply a registry bearer with --token <bearer> (or UNIWEB_TOKEN); an existing one may be wrong or expired.${colors.reset}`
+          `  ${colors.dim}Log in again (uniweb login --backend <url>), or check UNIWEB_TOKEN — an existing one may be wrong or expired.${colors.reset}`
         )
       }
       // ⭐ **Surface `detail` as a sentence, not as a JSON dump.** The registry

@@ -136,9 +136,9 @@ export class BackendClient {
   }
 
   /**
-   * The session bearer, resolved lazily and memoized. Order (matching the
-   * standalone verbs): explicit --token / UNIWEB_TOKEN (constructor) > stored
-   * session > interactive login (ensureRegistryAuth).
+   * The session bearer, resolved lazily and memoized. Order: an explicit `token`
+   * (constructor — tests and internal callers; no command takes one from the user) /
+   * UNIWEB_TOKEN > the stored session > interactive login (ensureRegistryAuth).
    * @returns {Promise<string>}
    */
   async token() {
@@ -201,8 +201,8 @@ export class BackendClient {
   // ── Discovery ─────────────────────────────────────────────────────────────────
 
   /**
-   * The session bearer IF one can be had without asking — an explicit `--token`, an
-   * env var, or a stored unexpired session. Never prompts, never logs in, returns null
+   * The session bearer IF one can be had without asking — an explicit `token`, the
+   * UNIWEB_TOKEN env var, or a stored unexpired session. Never prompts, never logs in, returns null
    * instead. `token()` is the one that may block; this is for calls that want to be
    * authenticated when possible but must not *cause* an authentication.
    * @returns {Promise<string|null>}

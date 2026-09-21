@@ -221,8 +221,8 @@ export async function deploy(args = []) {
     }
     say.info('Uniweb Cloud → running `uniweb publish`.')
     console.log('')
-    // publish ignores deploy's --host/--target; --dry-run/--no-save/--token pass
-    // straight through.
+    // publish ignores deploy's --host/--target; --dry-run/--no-save pass straight
+    // through.
     const { publish } = await import('./publish.js')
     // Conformance was already reported above, and publish runs the same check
     // — without this the user reads one warning twice and learns to skim it.

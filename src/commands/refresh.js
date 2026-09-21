@@ -67,23 +67,6 @@ const say = {
   dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`)
 }
 
-// Forward a flag AND its value to the delegated verb. `--backend http://x` is two
-// argv entries, so a naive filter passes the flag and drops the URL — leaving the
-// delegated pull pointed at the default backend while the user believes they
-// overrode it. `--backend=http://x` is one entry and passes through as-is.
-function collectPassthrough(args, names) {
-  const out = []
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i]
-    const name = names.find((n) => a === n || a.startsWith(`${n}=`))
-    if (!name) continue
-    out.push(a)
-    if (a === name && args[i + 1] && !args[i + 1].startsWith('-'))
-      out.push(args[++i])
-  }
-  return out
-}
-
 // A site is backend-synced once it has an identity to pull by — on THIS backend,
 // from sync.json. It read `site.yml::$uuid`, so after step 4 refresh treated every
 // project as unsynced and skipped the backend half of its check.
@@ -174,8 +157,9 @@ export async function refresh(args = [], deps = {}) {
     const pull = deps.pull || (await import('./pull.js')).pull
     // `--merge` rather than a plain pull: an author editing a different part of the
     // same section is not a conflict, and should not be presented as one.
-    const passthrough = collectPassthrough(args, ['--token'])
-    const res = await pull(['--merge', ...passthrough])
+    // Nothing of refresh's own argv is forwarded: the pull goes to the backend you are
+    // logged in to, as refresh does, and authenticates the same way.
+    const res = await pull(['--merge'])
     conflicts = res?.merge?.conflicted?.length ?? 0
     if (res?.exitCode && !conflicts) {
       // Failed for a reason other than conflicts — say so plainly rather than
