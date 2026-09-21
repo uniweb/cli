@@ -50,7 +50,7 @@ import yaml from 'js-yaml'
 
 import {
   loadDeployYml,
-  resolveTarget,
+  resolvePublishTarget,
   recordLastDeploy,
   collectSchemalessData,
   collectSchemalessDataAssets,
@@ -67,6 +67,7 @@ import { isSiteRelativeExtensionUrl } from '@uniweb/build'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 
 import { BackendClient } from '../backend/client.js'
+import { loggedInOrigin, DEFAULT_BACKEND_ORIGIN } from '../utils/config.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { readFlagValue, readOrgFlag } from '../utils/args.js'
@@ -270,7 +271,18 @@ export async function publish(args = []) {
   const siteBackend = await resolveSiteBackend(siteDir)
   // ⛔ Several backends on record and nothing names one: refuse and list them rather
   // than fall through to the logged-in session (plan §3.2; see unresolvedBackend).
-  const ambiguous = unresolvedBackend(siteDir, { flag: readFlagValue(args, '--backend'), siteBackend })
+  // ⭐ PUBLISH GOES TO THE BACKEND YOU ARE LOGGED IN TO *[Diego, 2026-09-21]*. Going live
+  // is aimed by logging in, so the logged-in backend outranks this project's own record
+  // of where it synced — `push` and `pull` keep the project first. Only `--backend` and
+  // UNIWEB_REGISTER_URL outrank it; with no one logged in, the project decides, and the
+  // login that follows goes there.
+  const loggedIn = loggedInOrigin()
+  const ambiguous = unresolvedBackend(siteDir, {
+    flag: readFlagValue(args, '--backend'),
+    siteBackend,
+    loggedIn,
+    loginAnswers: true
+  })
   if (ambiguous) {
     say.err(ambiguous)
     return { exitCode: 2 }
@@ -281,6 +293,7 @@ export async function publish(args = []) {
       readFlagValue(args, '--backend'),
     siteScope,
     siteBackend,
+    loggedInFirst: true,
     token: readFlagValue(args, '--token') || undefined,
     args,
     command: 'Publishing'
@@ -361,24 +374,25 @@ export async function publish(args = []) {
   //     nothing scaffolded ever set it, it is in no public doc, and the backend
   //     may already have been ignoring it.
 
-  // deploy.yml target (the Uniweb hosting memory). No --target on publish — it
-  // always targets Uniweb hosting; resolveTarget gives us the target name +
-  // saveDeploys for the deploys memo.
+  // deploy.yml target (the Uniweb hosting memory) — the one for the backend this
+  // publish goes to. ⭐ The target follows the backend, never the reverse: the default
+  // target only breaks a tie (resolvePublishTarget). With no deploy.yml, or no target
+  // naming this backend, persistLastDeploy adds one.
+  //
+  // ⛔ This took deploy.yml's DEFAULT target until 2026-09-21, whatever backend it was
+  // publishing to — a publish to a second backend wrote over the default target's
+  // record and compared its request against that target's fingerprint.
   let resolved
   let priorRequest = null
   try {
     const deployYml = await loadDeployYml(siteDir)
-    // No --target on publish — it always targets Uniweb hosting; resolveTarget
-    // returns the uniweb default (fromFile:false) when there's no deploy.yml, so
-    // persistLastDeploy scaffolds the file as the "where it's deployed" record.
-    resolved = resolveTarget(deployYml, null)
-    // The last request we are known to have sent, for the declaration gate below.
-    // Read from the SAME deploy.yml load — one read, and the memo is the only
-    // durable record of it (see backend/service-request.js for why not the cache).
-    priorRequest =
-      deployYml?.deploys?.[resolved?.targetName] ||
-      deployYml?.deploys?.uniweb ||
-      null
+    resolved = resolvePublishTarget(deployYml, client.origin, {
+      defaultBackend: DEFAULT_BACKEND_ORIGIN
+    })
+    // The last request we are known to have sent TO THIS BACKEND, for the declaration
+    // gate below. Read from the SAME deploy.yml load — one read, and the memo is the
+    // only durable record of it (see backend/service-request.js for why not the cache).
+    priorRequest = deployYml?.deploys?.[resolved.targetName] || null
   } catch {
     // Malformed/ambiguous deploy.yml — don't block the publish on the memo.
     resolved = {
@@ -1048,9 +1062,9 @@ export async function publish(args = []) {
   const recordedRef = fnd.ref || siteYmlRef
   await persistLastDeploy(siteDir, {
     targetName: resolved.targetName,
-    // First publish scaffolds deploy.yml with the backend recorded on the
-    // target, binding the site to where it went live (uniweb.app, or a B2B
-    // backend). resolveSiteBackend reads it back on later publishes.
+    // A target this file does not have yet — the first publish anywhere (the whole
+    // file is scaffolded), or the first to a backend no target names (the target is
+    // added beside the others) — records the backend it went live on.
     targetConfig: resolved.fromFile
       ? null
       : { host: 'uniweb', backend: client.origin },

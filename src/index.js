@@ -888,9 +888,10 @@ async function main() {
   }
 
   // Handle login command — the backend (username/password · paste a token ·
-  // --token <bearer>). Origin from --backend > UNIWEB_REGISTER_URL >
-  // default, the SAME resolver register/push/pull/deploy use, so a session and
-  // the commands that reuse it always target one backend.
+  // --token <bearer>). Origin from --backend > UNIWEB_REGISTER_URL > the project's
+  // backend (below) > the backend already logged in to > default — the SAME resolver
+  // the other verbs use. The backend logged in to becomes CURRENT: it is where a bare
+  // `uniweb publish` goes, and where every verb goes when its project says nothing.
   if (command === 'login') {
     const loginArgs = args.slice(1)
     const { resolveBackendOrigin } = await import('./backend/client.js')
@@ -925,7 +926,7 @@ async function main() {
         if (nearby && nearby.backend !== target) {
           target = nearby.backend
           console.error(
-            `\x1b[2mThis project syncs with ${target} (site.yml::$backend) — logging in there.\x1b[0m`
+            `\x1b[2mThis project syncs with ${target} (sync.json) — logging in there.\x1b[0m`
           )
           console.error(
             `\x1b[2mPass --backend to choose another; other sessions are kept.\x1b[0m\n`

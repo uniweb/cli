@@ -56,6 +56,7 @@ import {
 } from '@uniweb/build/site'
 import { promptForDestination } from '../utils/destination-prompt.js'
 import { readFlagValue } from '../utils/args.js'
+import { DEFAULT_BACKEND_ORIGIN } from '../utils/config.js'
 import { parseBoolEnv } from '../utils/env.js'
 import { headProvenance } from '../utils/git.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
@@ -189,10 +190,24 @@ export async function deploy(args = []) {
     console.log('')
     // publish ignores deploy's --host/--target; --dry-run/--no-save/--backend
     // /--token pass straight through.
+    //
+    // ⭐ A deploy.yml TARGET is an explicit destination, so its backend goes along as
+    // --backend. A bare `uniweb publish` goes to the backend you are logged in to
+    // (publish.js); `uniweb deploy` with a uniweb target goes where that target says.
+    // A target with no `backend:` means the default backend — its documented meaning.
+    const passBackend =
+      resolved.fromFile &&
+      resolved.host === 'uniweb' &&
+      // not after the wizard (`--host` with no value): a pick there names no target
+      (hostFromFlag === undefined || hostFromFlag === 'uniweb') &&
+      !readFlagValue(args, '--backend')
+    const targetBackend = passBackend
+      ? ['--backend', resolved.config?.backend || DEFAULT_BACKEND_ORIGIN]
+      : []
     const { publish } = await import('./publish.js')
     // Conformance was already reported above, and publish runs the same check
     // — without this the user reads one warning twice and learns to skim it.
-    const result = await publish([...args, '--no-validate'])
+    const result = await publish([...args, ...targetBackend, '--no-validate'])
     process.exit(result?.exitCode ?? 0)
   }
 

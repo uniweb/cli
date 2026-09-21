@@ -27,7 +27,7 @@
  * before the verbs** — the suites import verbs dynamically, inside their tests.
  */
 
-import { mkdtempSync, rmSync, writeFileSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -70,9 +70,12 @@ function stubEntry() {
  * @param {string} dir - the directory to run from
  * @param {(args: string[]) => Promise<{exitCode?: number}>} verb
  * @param {string[]} args
- * @returns {Promise<{exitCode: number|'threw', output: string, requests: number}>}
+ * @param {{ session?: object }} [opts] - `session`: the contents of
+ *   `~/.uniweb/registry-auth.json` in the run's HOME — who the user is logged in as
+ * @returns {Promise<{exitCode: number|'threw', output: string, requests: number,
+ *   urls: string[]}>} `urls`: every request the verb tried, in order
  */
-export async function runVerb(dir, verb, args) {
+export async function runVerb(dir, verb, args, { session } = {}) {
   const cwd = process.cwd()
   const saved = {
     fetch: globalThis.fetch,
@@ -82,24 +85,30 @@ export async function runVerb(dir, verb, args) {
     entry: process.argv[1]
   }
   const out = []
+  const urls = []
   let requests = 0
   sink = out
-  globalThis.fetch = async () => {
+  globalThis.fetch = async (url) => {
     requests++
+    urls.push(String(url))
     throw new Error('no network in this test')
   }
   process.exit = (code) => {
     throw new Error(`process.exit(${code})`)
   }
   process.env.HOME = tmp('uw-home-')
+  if (session) {
+    mkdirSync(join(process.env.HOME, '.uniweb'), { recursive: true })
+    writeFileSync(join(process.env.HOME, '.uniweb', 'registry-auth.json'), JSON.stringify(session))
+  }
   process.env.CI = '1'
   process.argv[1] = stubEntry()
   try {
     process.chdir(dir)
     const res = await verb(args)
-    return { exitCode: res?.exitCode, output: out.join(''), requests }
+    return { exitCode: res?.exitCode, output: out.join(''), requests, urls }
   } catch (err) {
-    return { exitCode: 'threw', output: `${out.join('')}\n${err.message}`, requests }
+    return { exitCode: 'threw', output: `${out.join('')}\n${err.message}`, requests, urls }
   } finally {
     process.chdir(cwd)
     sink = null

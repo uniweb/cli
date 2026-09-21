@@ -121,12 +121,14 @@ export function resolveSyncedBackend(siteDir) {
  *
  * @returns {string|null} a message, or null when there is no ambiguity
  */
-export function describeBackendAmbiguity(siteDir) {
+export function describeBackendAmbiguity(siteDir, { loginAnswers = false } = {}) {
   const all = syncedBackends(siteDir)
   if (all.length < 2) return null
   return (
     `This project has synced with ${all.length} backends: ${all.join(', ')}.\n` +
-    '  Name one with --backend <url>, or set a default target in deploy.yml.'
+    (loginAnswers
+      ? '  Log in to the one to publish to (uniweb login --backend <url>), or pass --backend <url>.'
+      : '  Name one with --backend <url>, or set a default target in deploy.yml.')
   )
 }
 
@@ -143,15 +145,21 @@ export function describeBackendAmbiguity(siteDir) {
  * ⚠️ Written with the ladder it guards and not wired until 2026-09-21: `push`,
  * `publish` and `pull` imported it and never called it.
  *
+ * ⭐ **For `publish`, being logged in is an answer** *[Diego, 2026-09-21: "publish should
+ * publish to the backend the user logged in to"]* — it passes `loggedIn`, and
+ * `loginAnswers` so the message offers the login. For `push` and `pull` it is not: their
+ * ladder puts the project first, so a session cannot say which of its backends to use.
+ *
  * @param {string} siteDir
- * @param {{ flag?: string|null, siteBackend?: string|null }} [named] - what the
- *   caller already holds that names a backend: the `--backend` value, and
- *   deploy.yml's default target's backend
+ * @param {{ flag?: string|null, siteBackend?: string|null, loggedIn?: string|null,
+ *   loginAnswers?: boolean }} [named] - what the caller already holds that names a
+ *   backend: the `--backend` value, deploy.yml's default target's backend, and (publish
+ *   only) the backend the user is logged in to
  * @returns {string|null}
  */
-export function unresolvedBackend(siteDir, { flag, siteBackend } = {}) {
-  if (flag || process.env.UNIWEB_REGISTER_URL || siteBackend) return null
-  return describeBackendAmbiguity(siteDir)
+export function unresolvedBackend(siteDir, { flag, siteBackend, loggedIn, loginAnswers } = {}) {
+  if (flag || process.env.UNIWEB_REGISTER_URL || siteBackend || loggedIn) return null
+  return describeBackendAmbiguity(siteDir, { loginAnswers })
 }
 
 /**
