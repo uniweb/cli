@@ -166,9 +166,9 @@ function loadSiteYml(dir) {
 /**
  * Diagnose the compiled-collection output directory.
  *
- * `public/<DATA_DIR>/` holds what the build compiles from `entities/`, and
- * nothing else — `entities/` + `records.yml` is the only supported way to provide
- * structured data. Two consequences, both checked here:
+ * `public/<DATA_DIR>/` holds what the build compiles from `records/`, and
+ * nothing else — `records/` is the only supported way to provide structured
+ * data. Two consequences, both checked here:
  *
  * 1. **The mapping is a bijection.** Every entry should be backed by a
  *    declared collection. An entry that isn't is stale — most often a
@@ -969,7 +969,7 @@ function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix,
   const dataDir = join(sitePath, 'public', DATA_DIR)
   // ⚠️ THE QUERIES, not the pool. `public/<DATA_DIR>/x.json` is a query's
   // MATERIALIZATION — one file per named query — so the bijection is with the
-  // declared queries, never with the schema folders under `entities/`.
+  // declared queries, never with the schema folders under `records/`.
   //
   // ⛔ BOTH HOMES, or this reports every compiled file as an orphan. A site that
   // keeps its queries in `queries.yml` has none in `site.yml`, and reading one
@@ -1045,7 +1045,7 @@ function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix,
       const body = existing === null ? '' : existing.replace(/\n*$/, '\n')
       writeFileSync(
         gitignorePath,
-        `${body}\n# Compiled query results — generated from entities/ + queries.yml\n${rule}\n`
+        `${body}\n# Compiled query results — generated from records/ + queries.yml\n${rule}\n`
       )
       fixed(`added ${rule} to ${gitignorePath}`)
       if (existsSync(dataDir)) {
@@ -1418,8 +1418,7 @@ export async function doctor(args = []) {
     }
 
     // `public/<DATA_DIR>/` is the build's output directory and nothing else —
-    // `entities/` + `records.yml` is the only supported way to provide structured
-    // data. That makes the mapping a bijection: every entry there should be backed
+    // `records/` is the only supported way to provide structured data. That makes the mapping a bijection: every entry there should be backed
     // by a declared QUERY, so anything else is stale, and identifiable.
     //
     // It matters because the directory is written into the source tree rather

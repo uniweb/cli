@@ -335,9 +335,9 @@ test('pull fetches the folder lane by the site-content uuid (no query config nee
     assert.equal(res.exitCode, 0)
     // the folder lane ran, keyed by the site-content uuid
     // ⭐ A record's home is its MODEL's pool folder — `@acme/article` →
-    // `entities/acme/article/`. Not a query's directory: a query has none.
+    // `records/acme/article/`. Not a query's directory: a query has none.
     assert.ok(
-      existsSync(join(dir, 'entities/acme/article/hello.md')),
+      existsSync(join(dir, 'records/acme/article/hello.md')),
       'record projected via the folder lane'
     )
     // and no folder uuid is persisted (the framework holds none)
@@ -399,7 +399,7 @@ test('pull projects the collections lane, resolving the model via a mock model-r
     })
 
     assert.equal(res.exitCode, 0)
-    const recordFile = join(dir, 'entities/acme/article/hello.md')
+    const recordFile = join(dir, 'records/acme/article/hello.md')
     assert.ok(existsSync(recordFile), 'record file projected')
     assert.match(readFileSync(recordFile, 'utf8'), /title: Hello/)
   } finally {

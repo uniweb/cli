@@ -388,10 +388,10 @@ export async function push(args = [], deps = {}) {
   // It also has to be this emit that carries `assetRewrite` below: the push cache
   // stores hashes of the REWRITTEN content, so the emit compared against it must
   // rewrite too, or every entity reads as changed forever.
-  // ⛔ AN EMPTY `records.yml` REMOVES. It is the one path where an ordinary act is
-  // destructive — a placeholder file, created meaning to fill it in — so the count
-  // is reported and confirmed before anything is sent. The format stays honest;
-  // the asking happens here.
+  // ⛔ AN EMPTY RECORDS DIRECTORY REMOVES. It is the one path where an ordinary act
+  // is destructive — a directory emptied by accident, or kept with only a
+  // placeholder — so the count is reported and confirmed before anything is sent.
+  // The format stays honest; the asking happens here.
   if (!dryRun) {
     const guard = await guardEmptyRecords({ siteDir, backend: client.origin, args, warn, note })
     if (!guard.ok) return { exitCode: 1 }

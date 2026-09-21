@@ -54,7 +54,7 @@ export function siteContentRoots(siteDir) {
   }
   roots.add(paths.pages || 'pages')
   roots.add(paths.layout || 'layout')
-  roots.add(paths.entities || 'entities')
+  roots.add(paths.records || 'records')
   return [...roots]
 }
 

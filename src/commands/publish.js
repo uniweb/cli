@@ -535,12 +535,18 @@ export async function publish(args = []) {
   // Non-local @std/registry Model schemas resolve through the backend (same as push).
   const resolveModel = makeModelResolver({ client, offline: false })
 
-  // ⛔ AN EMPTY `records.yml` REMOVES. It is the one path where an ordinary act is
-  // destructive — a placeholder file, created meaning to fill it in — so the count
-  // is reported and confirmed before anything is sent.
+  // ⛔ AN EMPTY RECORDS DIRECTORY REMOVES. It is the one path where an ordinary act
+  // is destructive — a directory emptied by accident, or kept with only a
+  // placeholder — so the count is reported and confirmed before anything is sent.
+  //
+  // ⛔ `backend` WAS MISSING HERE until 2026-09-21, and it is what the count is read
+  // under: placements are banked per backend, so with none the guard counted zero
+  // and never asked — `publish` sent an empty folder without a word while `push`
+  // stopped for the same one.
   {
     const guard = await guardEmptyRecords({
       siteDir,
+      backend: client.origin,
       args,
       warn: say.warn,
       note: say.dim

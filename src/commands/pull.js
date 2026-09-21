@@ -857,6 +857,8 @@ export async function pull(args = [], deps = {}) {
         }
       })
       if (report.records === 'updated') info('Wrote records.yml')
+      // The backend's folder has no sub-folders, and records.yml holds nothing else.
+      else if (report.records === 'removed') info('Removed records.yml — the folder has no sub-folders')
       records += report.placed.length + report.updated.length
       for (const s of report.skipped)
         note(`↷ ${s.slug ?? s.uuid ?? '(record)'}: ${s.reason}`)

@@ -845,26 +845,26 @@ It is a small database, not a page tree. Three things, deliberately separate:
 ```
 site/
 ├── pages/
-├── entities/          # your stored things. The folder names their data schema
-│   ├── article/
+├── records/           # your site's records — every file here is one
+│   ├── article/       # the folder names their data schema
 │   │   ├── getting-started.md
 │   │   └── design-tips.md
 │   └── person/
 │       └── alice.yml
-├── records.yml        # what is PUBLISHED
+├── records.yml        # optional: sorts records into folders
 ├── queries.yml        # how content is REACHED
 └── site.yml
 ```
 
-**`entities/{schema}/` — the pool.** The folder names the data schema and nothing else:
+**`records/{schema}/` — the site's records.** Putting a file here is what makes it a record; nothing else lists it. The folder names the data schema and nothing else:
 
 | on disk | schema |
 |---|---|
-| `entities/article/…` | `@/article` — your foundation's own |
-| `entities/std/person/…` | `@std/person` — the shared standard set |
-| `entities/acme/project/…` | `@acme/project` — an org's |
+| `records/article/…` | `@/article` — your foundation's own |
+| `records/std/person/…` | `@std/person` — the shared standard set |
+| `records/acme/project/…` | `@acme/project` — an org's |
 
-Keep those folders flat: `entities/article/design-tips.md` works; `entities/article/2025/design-tips.md` is read as the `2025` schema of an `article` org, which is not what you meant. Organise in `records.yml` instead.
+Keep those folders flat: `records/article/design-tips.md` works; `records/article/2025/design-tips.md` is read as the `2025` schema of an `article` org, which is not what you meant. Organise in `records.yml` instead. A file whose name starts with `_` is not a record — somewhere to keep work in progress.
 
 **Four formats, one shape.** All of these produce the same records at runtime:
 
@@ -879,30 +879,20 @@ Keep those folders flat: `entities/article/design-tips.md` works; `entities/arti
 
 Item frontmatter conventionally uses `title`, `date`, `tags`, `image`, `description`, `published`, `author` — plus any fields your content needs (`price`, `role`, `order`). Images can sit beside the item file and be referenced with `./`. `published: false` hides an item without deleting it; items with no `published` field are included.
 
-**`records.yml` — listing an entity is what publishes it.** A file in `entities/` exists; listing it here makes it a record. Anything you leave out is a draft — no flag to set. **The common case is three lines:**
+**`records.yml` — optional, and only for folders.** Every record sits at the top of the site's records folder unless `records.yml` places it in a sub-folder. Add one only when a query needs to ask for a *slice* of the records rather than all of them — most sites never do:
 
 ```yaml
-- article/*.md
-- person/*.yml
-```
-
-A bare string is a path under `entities/`, naming one file or matching many.
-
-⚠️ **An empty `records.yml` is not the same as having none.** With no file, a build publishes every entity in `entities/`, and `uniweb push` leaves the published set alone. An empty file means "nothing is published": a build publishes none, and a push REMOVES what is published. The CLI asks before it does that.
-
-**Structure is for querying, not for navigation.** Add a `folder:` only when a query needs to ask for a *slice* of the pool rather than all of it — most sites never do:
-
-```yaml
-- article/2026-*.md
 - folder: archive
   label: The Archive
   records:
     - article/2025-*.md
 ```
 
-A query reads one branch with `scope: archive` — the folder and everything inside it (the older `where: { path: { under: … } }` is refused by the build). An entity belongs to one folder; if you want a computed subset, that is a query, not a second placement.
+A path under a folder is relative to `records/`, naming one file or matching many. A query reads one folder with `scope: archive` — the folder and everything inside it. A record sits in one folder; if you want a computed subset, that is a query, not a second placement. Structure is for querying, not for navigation — and `records.yml` never lists a record at the top level (the build refuses it: every file in `records/` is a record already).
 
-**`queries.yml` — how content is reached.** A bare map of name → query. A query names a schema and the published records of that schema are its rows:
+⚠️ **With a backend, `records/` is what `uniweb push` sends** — every record in it. A site with no `records/` at all leaves the backend's records alone; an *empty* `records/` removes them, and the CLI asks before it does. Records pushed to a backend are served once the site is published.
+
+**`queries.yml` — how content is reached.** A bare map of name → query. A query names a schema and the site's records of that schema are its rows:
 
 ```yaml
 recent:
@@ -944,7 +934,7 @@ pages/blog/
     └── article.md    # just `type: Article` — the record arrives automatically
 ```
 
-`entities/article/design-tips.md` becomes `/blog/design-tips`. The section inside `[slug]/` needs no special markdown — the matched record is delivered to it. Generated pages are excluded from navigation menus.
+`records/article/design-tips.md` becomes `/blog/design-tips`. The section inside `[slug]/` needs no special markdown — the matched record is delivered to it. Generated pages are excluded from navigation menus.
 
 **Link a card with `item.$route` — never compose the URL.** Every record a query delivers carries `$route`, the URL of the parametric page whose route query is that query (`/blog/design-tips`), wherever the list appears — the query's own page, the homepage, a sidebar. No page for the query, or no value for the field its URL is built from, means no `$route`, never a broken one. `detailPage: page:<id>` on a fetch links the records to another page instead. `$` marks a field the framework fills, so a record's own `route` field is left alone. ⛔ `route:` on a query is retired and stops the build.
 
@@ -2697,7 +2687,7 @@ Running `extract` before a build is the usual first mistake — it reads the com
 
 ```
 locales/freeform/es/pages/about/hero.md        # by page route
-locales/freeform/es/entities/article/x.md      # records work too
+locales/freeform/es/records/article/x.md       # records work too
 ```
 
 These are **body only — no frontmatter**; params and config still come from the source section. `uniweb i18n init-freeform es pages/about hero` creates one pre-filled and records a source hash, so `uniweb i18n status --freeform` can tell you when the original moved on (`update-hash` to acknowledge). `move`, `rename`, and `prune --freeform` keep them aligned when pages get reorganized.

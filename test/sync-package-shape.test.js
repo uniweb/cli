@@ -37,8 +37,7 @@ function site() {
   w('site/site.yml', 'name: T\nfoundation: "@acme/base"\nqueries:\n  articles:\n    schema: "@/article"\n')
   w('site/package.json', { name: 'site', dependencies: { '@acme/base': 'file:../fdn' } })
   w('site/pages/home/index.md', '---\ntype: Hero\n---\n\n# Home\n')
-  w('site/entities/article/hello.md', '---\ntitle: Hello\n---\nBody.\n')
-  w('site/records.yml', '- article/*.md\n')
+  w('site/records/article/hello.md', '---\ntitle: Hello\n---\nBody.\n')
   w('fdn/dist/meta/schema.json', { dataSchemas: { '@/article': SCHEMA } })
   return { root, siteDir: join(root, 'site') }
 }

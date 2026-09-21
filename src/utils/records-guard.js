@@ -1,25 +1,25 @@
 // ⛔ THE ONE PLACE AN ORDINARY ACT IS DESTRUCTIVE.
 //
-// `records.yml` is the sync control, and `missing` and `empty` deliberately mean
-// different things: missing leaves the server's folder untouched, empty says the
-// folder holds nothing and the backend removes what is there. The asymmetry is
-// well-shaped — the safe state is the ABSENCE of a file, so a live folder cannot
-// be wiped by deleting one, and the destructive act requires affirmatively
-// creating one.
+// A push sends the site's records folder whole, and it REPLACES the backend's. A site
+// with no records directory sends none and leaves the backend's alone; a records
+// directory that holds no records sends an EMPTY folder, and the backend removes what
+// is there. The asymmetry is well-shaped — the safe state is the ABSENCE of the
+// directory, so a site whose records live only on the backend is never emptied by a
+// push of its pages — and it leaves exactly one sharp edge: a directory emptied by
+// accident, or kept with only a placeholder (`records/.gitkeep`), and pushed.
 //
-// ⚠️ WHICH LEAVES EXACTLY ONE SHARP EDGE: a PLACEHOLDER. Someone creates an empty
-// `records.yml` intending to fill it in, pushes, and the live folder empties.
-// That is plausible and it is the only path where a normal act destroys content.
+// ⭐ THE CLI DOES THE ASKING. Never make "empty" mean "missing" to dodge this: that
+// would delete a capability to avoid writing a prompt.
 //
-// ⭐ THE FORMAT STAYS HONEST AND THE CLI DOES THE ASKING. Never make "empty" mean
-// "missing" to dodge this: that would delete a capability to avoid writing a
-// prompt.
+// ⛔ Until 2026-09-21 both states were `records.yml`'s — missing and empty — because
+// that file listed the records. The directory holds them now (`@uniweb/build`'s
+// `sendsFolder` decides what a push sends, and this asks about exactly its empty case).
 //
 // The count comes from the placement identity a previous push banked — what WE
 // last saw the folder hold. It needs no network call, and it is the right source:
 // a site that has never pushed has nothing to lose and is never asked.
 
-import { readRecordsConfig, FOLDER_EMPTY } from '@uniweb/build/uwx'
+import { readEntityPool } from '@uniweb/build/uwx'
 import { readFolderItemUuids } from '../backend/site-sync.js'
 import { confirm, isNonInteractive, getCliPrefix } from './interactive.js'
 
@@ -36,7 +36,7 @@ export function countPlacedRecords(pathToUuid) {
 }
 
 /**
- * Stop an empty `records.yml` from silently emptying a live folder.
+ * Stop an empty records directory from silently emptying the backend's folder.
  *
  * @param {object} params
  * @param {string} params.siteDir
@@ -48,8 +48,10 @@ export function countPlacedRecords(pathToUuid) {
  * @returns {Promise<{ ok: boolean, count: number }>} `ok: false` means abort
  */
 export async function guardEmptyRecords({ siteDir, backend, args = [], warn, note }) {
-  const cfg = await readRecordsConfig(siteDir)
-  if (cfg.state !== FOLDER_EMPTY) return { ok: true, count: 0 }
+  const pool = await readEntityPool(siteDir)
+  // Only a directory that is there and holds nothing at all — no records, and no
+  // files that fail to be records — sends the empty folder.
+  if (!pool.exists || pool.entities.length > 0 || pool.errors.length > 0) return { ok: true, count: 0 }
 
   const count = countPlacedRecords(readFolderItemUuids(siteDir, backend))
   // Nothing banked ⇒ nothing this push can remove. A first push of an empty
@@ -58,13 +60,13 @@ export async function guardEmptyRecords({ siteDir, backend, args = [], warn, not
   if (count === 0) return { ok: true, count: 0 }
 
   warn(
-    `records.yml is empty, and this push would REMOVE ${count} record${count === 1 ? '' : 's'} ` +
-      `from the live folder.`
+    `${pool.dir}/ holds no records, and this push would REMOVE ${count} record${count === 1 ? '' : 's'} ` +
+      `from the site's folder on the backend.`
   )
   note(
-    'An empty records.yml means "the folder holds nothing" — it is not the same as ' +
-      'having no records.yml, which leaves the live folder alone. If you meant to ' +
-      'start listing records, delete the file until you have.'
+    `An empty ${pool.dir}/ means "the folder holds nothing" — it is not the same as having no ` +
+      `${pool.dir}/ at all, which leaves the backend's folder alone. If you did not mean to remove ` +
+      `them, put the files back (or pull) before pushing.`
   )
 
   // ⚠️ `--yes` ONLY. `-y` is not a flag this CLI has anywhere, and adding one here
@@ -76,6 +78,6 @@ export async function guardEmptyRecords({ siteDir, backend, args = [], warn, not
     return { ok: false, count }
   }
 
-  const yes = await confirm(`Remove ${count} record${count === 1 ? '' : 's'} from the live folder?`, false)
+  const yes = await confirm(`Remove ${count} record${count === 1 ? '' : 's'} from the site's folder?`, false)
   return { ok: yes, count }
 }

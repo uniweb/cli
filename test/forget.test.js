@@ -36,8 +36,8 @@ function project() {
   dirs.push(dir)
   writeFileSync(join(dir, 'site.yml'), "name: T\nfoundation: '@a/base'\n")
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 't', dependencies: { uniweb: '*' } }))
-  mkdirSync(join(dir, 'entities', 'post'), { recursive: true })
-  writeFileSync(join(dir, 'entities', 'post', 'hello.md'), '---\n$uuid: OWN-1\ntitle: Hi\n---\nBody\n')
+  mkdirSync(join(dir, 'records', 'post'), { recursive: true })
+  writeFileSync(join(dir, 'records', 'post', 'hello.md'), '---\n$uuid: OWN-1\ntitle: Hi\n---\nBody\n')
   writeFileSync(
     join(dir, 'sync.json'),
     JSON.stringify({
@@ -92,7 +92,7 @@ test('⭐ forgets ONE backend and leaves the other whole', async () => {
 
 test('⛔ never touches a record file — its $uuid is the record\'s own id', async () => {
   const dir = project()
-  const record = join(dir, 'entities', 'post', 'hello.md')
+  const record = join(dir, 'records', 'post', 'hello.md')
   const before = readFileSync(record, 'utf8')
 
   await run(dir, ['--backend', A])
@@ -195,7 +195,7 @@ test('--backend drops that backend\'s deploy record and keeps every target', asy
 
 test('⭐ --all removes everything that names the original\'s sites and destinations', async () => {
   const dir = withDeployYml(project())
-  const record = join(dir, 'entities', 'post', 'hello.md')
+  const record = join(dir, 'records', 'post', 'hello.md')
   const recordBefore = readFileSync(record, 'utf8')
   const siteYmlBefore = readFileSync(join(dir, 'site.yml'), 'utf8')
 

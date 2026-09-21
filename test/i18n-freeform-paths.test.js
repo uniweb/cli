@@ -7,7 +7,7 @@
  * `id` — where the renderer also reads `pages/<route>/<section>.md`. So on a page with an
  * `id`, a route-addressed translation the page renders was "orphaned" to `status`,
  * unknown to `update-hash`, and DELETED by `prune --freeform`, along with every record
- * translation (`entities/…`), which no check over site content can see.
+ * translation (`records/…`), which no check over site content can see.
  */
 
 import { test } from 'node:test'
@@ -51,11 +51,11 @@ function site({ storyHash = computeSourceHash(STORY), pages = null } = {}) {
     pages: pages ?? [{ route: '/about', id: 'ae274cc8', title: 'About', sections: [{ id: 'story', stableId: 'story', content: STORY }] }],
   })
   w('locales/freeform/es/pages/about/story.md', 'Nuestra historia\n')
-  w('locales/freeform/es/entities/article/hello.md', 'Hola\n')
+  w('locales/freeform/es/records/article/hello.md', 'Hola\n')
   w('locales/freeform/es/pages/about/gone.md', 'Ya no\n')
   w('locales/freeform/es/.manifest.json', {
     'pages/about/story.md': { hash: storyHash, recorded: '2025-01-28' },
-    'entities/article/hello.md': { hash: 'aaaaaaaa', recorded: '2025-01-28' },
+    'records/article/hello.md': { hash: 'aaaaaaaa', recorded: '2025-01-28' },
     'pages/about/gone.md': { hash: 'bbbbbbbb', recorded: '2025-01-28' },
   })
   return root
@@ -84,9 +84,9 @@ test('prune --freeform --dry-run lists only the true orphan, and deletes nothing
     assert.equal(code, 0, err)
     assert.match(out, /pages\/about\/gone\.md/)
     assert.doesNotMatch(out, /pages\/about\/story\.md/)
-    assert.doesNotMatch(out, /entities\/article\/hello\.md/)
+    assert.doesNotMatch(out, /records\/article\/hello\.md/)
     assert.match(out, /Would remove 1 orphaned translation/)
-    for (const rel of ['pages/about/story.md', 'entities/article/hello.md', 'pages/about/gone.md']) {
+    for (const rel of ['pages/about/story.md', 'records/article/hello.md', 'pages/about/gone.md']) {
       assert.ok(existsSync(join(root, 'locales/freeform/es', rel)), `${rel} must still exist`)
     }
   } finally {
@@ -100,9 +100,9 @@ test('prune --freeform keeps the route-addressed and the record translation, and
     const { code, err } = run(['i18n', 'prune', '--freeform', '--target', root])
     assert.equal(code, 0, err)
     assert.ok(existsSync(join(root, 'locales/freeform/es/pages/about/story.md')))
-    assert.ok(existsSync(join(root, 'locales/freeform/es/entities/article/hello.md')))
+    assert.ok(existsSync(join(root, 'locales/freeform/es/records/article/hello.md')))
     assert.ok(!existsSync(join(root, 'locales/freeform/es/pages/about/gone.md')))
-    assert.deepEqual(Object.keys(manifestOf(root)).sort(), ['entities/article/hello.md', 'pages/about/story.md'])
+    assert.deepEqual(Object.keys(manifestOf(root)).sort(), ['pages/about/story.md', 'records/article/hello.md'])
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -141,7 +141,7 @@ test('update-hash --all-stale updates a stale route-addressed translation on a p
     assert.match(out, /Updated hash: pages\/about\/story\.md/)
     assert.equal(manifestOf(root)['pages/about/story.md'].hash, computeSourceHash(STORY))
     // CONTROL — what it cannot judge keeps its recorded hash
-    assert.equal(manifestOf(root)['entities/article/hello.md'].hash, 'aaaaaaaa')
+    assert.equal(manifestOf(root)['records/article/hello.md'].hash, 'aaaaaaaa')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

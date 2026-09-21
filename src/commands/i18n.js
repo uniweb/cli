@@ -319,7 +319,7 @@ async function runExtract(siteRoot, config, args) {
     const dataDir = join(siteRoot, 'public', DATA_DIR)
     if (!existsSync(dataDir)) {
       if (recordsOnly) {
-        error('No records found. Add entities under entities/ and list them in records.yml.')
+        error('No records found. Every file in records/<schema>/ is a record — add some there.')
         process.exit(1)
       }
       log(`${colors.dim}No records found in public/data/.${colors.reset}`)
@@ -1022,11 +1022,11 @@ async function runAudit(siteRoot, config, args) {
  * Usage:
  *   uniweb i18n init-freeform es pages/about hero
  *   uniweb i18n init-freeform es page-ids/installation intro
- *   uniweb i18n init-freeform es entities/article getting-started
+ *   uniweb i18n init-freeform es records/article getting-started
  */
 async function runInitFreeform(siteRoot, config, args) {
   const locale = args[0]
-  const pathType = args[1] // pages/about, page-ids/installation, entities/article
+  const pathType = args[1] // pages/about, page-ids/installation, records/article
   const sectionId = args[2] // hero, intro, getting-started
 
   if (!locale || !pathType || !sectionId) {
@@ -1035,8 +1035,17 @@ async function runInitFreeform(siteRoot, config, args) {
     log('  uniweb i18n init-freeform es pages/about hero')
     log('  uniweb i18n init-freeform es page-ids/installation intro')
     log(
-      `  uniweb i18n init-freeform es entities/article getting-started${colors.reset}`
+      `  uniweb i18n init-freeform es records/article getting-started${colors.reset}`
     )
+    process.exit(1)
+  }
+
+  // A path names a page by route, a page by id, or a record by its schema folder —
+  // and nothing else. Said up front: past this point an unknown kind would only
+  // surface as "source content not found", which names the wrong cause.
+  if (!/^(pages|page-ids|records)\//.test(pathType)) {
+    error(`Unknown kind of path: ${pathType}`)
+    log(`${colors.dim}A path starts with pages/, page-ids/ or records/ (a record's schema folder).${colors.reset}`)
     process.exit(1)
   }
 
@@ -1091,15 +1100,15 @@ async function runInitFreeform(siteRoot, config, args) {
           if (sourceContent) break
         }
       }
-    } else if (pathType.startsWith('entities/')) {
+    } else if (pathType.startsWith('records/')) {
       // ⛔ ADDRESSED BY THE RECORD, matching where the loader reads. The freeform
-      // tree is `entities/<schema dirs>/<slug>.md`; this used to take
+      // tree is `records/<schema dirs>/<slug>.md`; this used to take
       // `collections/<query>` and write a path nothing read — the loader moved
       // and this did not.
       //
       // The record's CONTENT still lives in a query's materialization, so the
       // query that covers this schema is resolved rather than named.
-      const poolDirs = pathType.replace('entities/', '')
+      const poolDirs = pathType.slice('records/'.length)
       const { resolveQueriesConfig, poolDirsForSchema } = await import('@uniweb/build/uwx')
       let queryName = null
       try {
@@ -1509,7 +1518,7 @@ async function runPrune(siteRoot, config, args) {
     // reads one (`freeformSourceIndex`, the build's own index): every path a section's
     // translation is read from — ⛔ until 2026-09-14 only `page-ids/<id>/…` on a page with
     // an `id`, so a route-addressed translation the page rendered was deleted — and only
-    // what the built content can see: never a record's translation (`entities/…`), and
+    // what the built content can see: never a record's translation (`records/…`), and
     // never one for a page whose sections the content does not carry.
     const { validPaths, canJudge } = freeformSourceIndex(siteContent)
 
@@ -1657,7 +1666,7 @@ ${colors.bright}File Structure:${colors.reset}
         .manifest.json       Staleness tracking
         pages/about/hero.md  Translated content for /about page, hero section
         page-ids/install/intro.md  Translated content by page ID
-        entities/article/getting-started.md
+        records/article/getting-started.md
 
 ${colors.bright}Examples:${colors.reset}
   ${colors.dim}# Hash-based workflow${colors.reset}
@@ -1677,7 +1686,7 @@ ${colors.bright}Examples:${colors.reset}
   ${colors.dim}# Free-form workflow (complete section replacement)${colors.reset}
   uniweb i18n init-freeform es pages/about hero
   uniweb i18n init-freeform es page-ids/installation intro
-  uniweb i18n init-freeform es entities/article getting-started
+  uniweb i18n init-freeform es records/article getting-started
   uniweb i18n status --freeform    # Show free-form translation status
   uniweb i18n update-hash es --all-stale  # Update hashes after review
   uniweb i18n move pages/docs/setup pages/getting-started
