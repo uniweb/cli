@@ -446,8 +446,8 @@ export class BackendClient {
    * the field itself is required and cannot be blank.
    *
    * NOT idempotent: two calls mint two sites (a name is not a unique key, by
-   * design). Callers must guard on `site.yml::$uuid` and write the result back
-   * immediately — see `ensureSiteExists`.
+   * design). Callers must guard on the site's uuid for this backend (sync.json) and
+   * write the result back immediately — see `ensureSiteExists`.
    *
    * @param {{ name: string, foundation: string, asOrg?: string|null }} opts
    * @returns {Promise<Response>} `{ site_content_uuid }`
@@ -536,7 +536,7 @@ export class BackendClient {
   /**
    * POST /dev/site/publish/{uuid} — CMS-publish a synced site (make its CURRENT
    * backend state live; it does NOT push local files). `{uuid}` is the site-content
-   * uuid (`site.yml::$uuid`); a never-synced site 404s (sync first, or use deploy).
+   * uuid on this backend (sync.json); a never-synced site 404s (sync first, or use deploy).
    * Languages, when present, go in the body; absent → no body. Returns the raw
    * Response ({ deploy_uuid, url, published_folder_uuid, status } on 200).
    *

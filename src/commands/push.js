@@ -5,10 +5,11 @@
  *   - folder lane → one `@uniweb/folder` + the collection-record entities it
  *     references (the dynamic half; the `$ref` closure rides together).
  *
- * Each entity is an entity-content document (`$id` + `$model` + sections). The site
- * holds exactly one identity: `site.yml::$uuid` (the site-content entity). A first
- * push has none — it CREATEs the site (uuid-less), the backend mints + adopts it
- * and returns the new uuid, which `push` records into `site.yml`. Later pushes
+ * Each entity is an entity-content document (`$id` + `$model` + sections). The site's
+ * identity on a backend is its site-content uuid, in that backend's section of
+ * `sync.json`. A first push to a backend has none — it CREATEs the site (uuid-less),
+ * the backend mints + adopts it and returns the new uuid, which `push` records in
+ * `sync.json`. Later pushes
  * UPDATE by that uuid. The folder lane is keyed by the SAME site-content uuid —
  * the backend owns the site's `@uniweb/folder`, so the framework never holds a
  * folder uuid. Records still round-trip their own `$uuid`
@@ -340,8 +341,8 @@ export async function push(args = [], deps = {}) {
   // The upload runs before `ensureItemUuids`, and the reason once recorded here —
   // "BEFORE `ensureItemUuids`, which mints uuids on the backend, so a refusal
   // leaves nothing minted" — is FALSE. `ensureItemUuids` mints nothing: it reads a
-  // local cache, and if that is empty it reads `site.yml::$uuid` and returns
-  // immediately when there is none (the first-push case). Its only backend call is
+  // local map, and if that is empty it reads this backend's site uuid from sync.json
+  // and returns immediately when there is none (the first-push case). Its only backend call is
   // a GET (`pullSiteContent`); its only write is a local file. So this ordering is
   // not protecting what that comment claimed, and is under review — an upload is a
   // durable, metered write, which makes uploading first the thing that leaves bytes

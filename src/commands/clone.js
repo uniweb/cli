@@ -19,7 +19,8 @@
  *      foundationRef and no foundationPath) + AGENTS.md + deps pinned to this CLI's
  *      version matrix; placement reuses create (new workspace / in-place) and add's
  *      resolver (into an existing workspace, any shape);
- *   3. seed the site's one identity — site.yml::$uuid (a plain YAML scalar write).
+ *   3. seed the site's identity on that backend — its section of `sync.json` (plain
+ *      JSON, written with no dependencies).
  *      The folder is pulled by this same uuid, so there is no separate folder uuid to
  *      seed;
  *   4. install, then delegate the projection to the project-local `uniweb pull` (which

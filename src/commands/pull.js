@@ -1,8 +1,8 @@
 /**
  * uniweb pull — bring the backend's copy of a site back to canonical files.
  *
- * The read-side mirror of `uniweb push`. The project holds exactly one identity —
- * `site.yml::$uuid` (the site-content entity) — and BOTH pull lanes are keyed by it
+ * The read-side mirror of `uniweb push`. The project's identity on a backend — its
+ * site-content uuid, in that backend's section of `sync.json` — keys BOTH pull lanes
  * (the backend owns the site's `@uniweb/folder` and resolves it from the site-content
  * uuid, so the framework never holds a folder uuid). It GETs the two lanes and projects
  * the returned documents back to files via the framework's projection layer
@@ -43,9 +43,9 @@
  *   uniweb pull --dry-run                Report what it would GET; write nothing
  *   uniweb pull --token <bearer>         Read with this bearer; skips `uniweb login`
  *
- * Backend: via BackendClient (the content + folder pull lanes), both keyed by
- *   `site.yml::$uuid`. Origin from
- *   UNIWEB_REGISTER_URL  >  the local default.
+ * Backend: via BackendClient (the content + folder pull lanes), both keyed by the
+ *   site's uuid on that backend (sync.json). Origin: --backend > UNIWEB_REGISTER_URL >
+ *   the project's backend > the logged-in backend > the default (resolveBackendOrigin).
  * Auth:  --token  >  UNIWEB_TOKEN  >  `uniweb login` session.
  *
  * A project that never pushed has no `$uuid` to pull by — pull is a no-op with a

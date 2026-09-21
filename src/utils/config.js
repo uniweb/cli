@@ -116,10 +116,11 @@ export function getRegistryApiBaseUrl() {
 /**
  * The built-in backend origin — the last tier of the ladder, and the 98% case.
  *
- * Exported because `site.yml::$backend` is written ONLY when the backend is NOT this
- * (`recordSiteBackend`, utils/site-identity.js). That test needs the *built-in* default,
- * which `getRegistryApiBaseUrl()` cannot give it — that function returns whatever tier
- * won, so on a machine with a session or a saved config it returns something else
+ * Exported because several readers need the *built-in* default, not the resolved one:
+ * a v1 session file with no origin stamp, `login`'s list of known backends, and a
+ * deploy.yml `host: uniweb` target with no `backend:` (its documented meaning).
+ * `getRegistryApiBaseUrl()` cannot give it — that function returns whatever tier won,
+ * so on a machine with a session or a saved config it returns something else
  * entirely. Two copies of the literal would silently disagree exactly there.
  */
 export const DEFAULT_BACKEND_ORIGIN = 'https://uniweb.app'

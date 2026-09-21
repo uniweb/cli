@@ -280,8 +280,8 @@ const readMap = (siteDir, backend, key) => {
  * content hashes, the injections those hashes were taken over, entity base versions,
  * unit bases — and a unit path (`site.yml`, `pages/about/about.md`) is the same
  * string for every site. So the cache does not
- * self-invalidate when `site.yml::$uuid` goes away: it keeps describing the site
- * this folder used to be.
+ * self-invalidate when the site's uuid goes away (a delete in the app, or
+ * `uniweb forget`): it keeps describing the site this folder used to be.
  *
  * Which is a state we ACTIVELY TELL PEOPLE TO ENTER. The 404 guidance on a
  * uuid-bound lane says to clear `$uuid` to re-publish as a new site — the documented
@@ -901,8 +901,8 @@ function describeCreateRefusal(body) {
  * keep and can be cleared. (The reverse ordering was justified by a claim that
  * `ensureItemUuids` mints on the backend, which it does not — see push.js.)
  *
- * A no-op when `site.yml::$uuid` is already set, so only the first publish of a
- * site pays for it. The uuid is written back immediately, keeping the window in
+ * A no-op when the site already has a uuid on this backend (sync.json), so only the
+ * first publish of a site pays for it. The uuid is written back immediately, keeping the window in
  * which a crash could strand a site as small as one file write.
  *
  * @returns {Promise<{ uuid: string|null, created: boolean, reason?: string }>}

@@ -1049,8 +1049,8 @@ export async function publish(args = []) {
   const serveUrl = typeof result.url === 'string' && result.url ? result.url : null
 
   // 8. Persist deploy.yml memory — a record of what went live (and so a re-run
-  //    reuses the resolved target without re-asking). One identity:
-  //    site.yml::$uuid. `released` records whether this publish shipped a new
+  //    reuses the resolved target without re-asking). Identity is sync.json's,
+  //    per backend. `released` records whether this publish shipped a new
   //    foundation version (the bring-along, §4).
   // Record the ref that actually went live: the pinned `@scope/name@version`
   // from the bring-along when present, else the site.yml ref verbatim.

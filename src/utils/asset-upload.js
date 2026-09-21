@@ -31,9 +31,9 @@
  * answered the PLAN and about nothing else — where a backend keeps them is its
  * own business and not a shape this lane models. ⚠️ This said only "GLOBAL" until
  * 2026-09-20 and was read as "the same id works on any backend", which made
- * `assets.json` look portable in a multi-backend design. It is not: it is one of
- * the surfaces scoped by `site.yml::$backend` (see utils/site-identity.js), and
- * the backend ORIGIN is the segregation value the CLI has.
+ * `assets.json` look portable in a multi-backend design. It is not: `sync.json`
+ * keeps asset ids per backend (`backends.<origin>.assets`), and the backend ORIGIN
+ * is the segregation value the CLI has.
  *
  * ⚠️ Do not infer portability from `id` looking like the sha256 either — we read
  * it from the response precisely so the derivation is never load-bearing here.
