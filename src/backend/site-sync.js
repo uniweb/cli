@@ -1587,12 +1587,18 @@ export async function pushSyncPackages({
     }
     harvest(finalized)
     const bf = backfillEntityUuids({ index: records.index, finalized })
+    // ⭐ Record which uuid THIS backend minted for each record, keyed by the record's
+    // own id. The file keeps that own id; the next push to this backend sends the
+    // mapped uuid, and a push to another backend sends none so that one mints its own.
+    if (bf.mapped && Object.keys(bf.mapped).length) {
+      updateBackendMap(siteDir, client.origin, 'records', bf.mapped)
+    }
     for (const w of bf.warnings) note(`! ${w}`)
     for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
     if (bf.updated.length)
       wrote.push(`wrote ${bf.updated.length} record file(s)`)
-    // ⭐ BANK THE FOLDER'S PLACEMENT IDENTITY. The records back-fill their own
-    // `$uuid` into their source files (above); the folder's ITEMS have nowhere to
+    // ⭐ BANK THE FOLDER'S PLACEMENT IDENTITY. The records carry their own `$uuid`
+    // in their source files and map it per backend (above); the folder's ITEMS have nowhere to
     // be written, so they are banked here from the document the backend just
     // returned.
     //

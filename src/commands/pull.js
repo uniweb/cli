@@ -838,6 +838,8 @@ export async function pull(args = [], deps = {}) {
         recordDocs,
         siteRoot: siteDir,
         opts: {
+          // Whose record map to read and extend, and whose org to place models under.
+          backend: client.origin,
           resolveDeclaration: (name) => declByModel.get(name) || null
         }
       })
