@@ -45,7 +45,7 @@ import { uploadSiteAssets } from '../utils/asset-upload.js'
  * Resolve the backend a command talks to:
  *
  *   1. UNIWEB_REGISTER_URL env — the override for automation (CI, scripts), one process
- *   2. ⭐ the backend the user is LOGGED IN TO — their most recent login
+ *   2. ⭐ the backend the user is LOGGED IN TO — the one session there is
  *   3. the default backend — ~/.uniweb/config.json `registryApiUrl`, else uniweb.app —
  *      where the command's first request then asks the user to log in
  *
@@ -61,7 +61,8 @@ import { uploadSiteAssets } from '../utils/asset-upload.js'
  * a script aims with UNIWEB_REGISTER_URL without touching the machine's login. A
  * project's sync.json and deploy.yml routed commands too, until the same day.
  * `--backend` survives only where it SELECTS rather than routes: `login` (where to log
- * in), `logout` and `forget` (which backend's session or records to remove).
+ * in) and `forget` (which backend's records to remove). `logout` needs none: there is
+ * one session.
  *
  * @returns {string} a bare origin with no trailing slash
  */

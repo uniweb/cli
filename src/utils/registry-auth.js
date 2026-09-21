@@ -87,29 +87,27 @@ export function getRegistryAuthPath() {
 }
 
 /**
- * ONE SESSION PER BACKEND ORIGIN — the on-disk shape.
- *
- * ⛔ **It was a single flat record until 2026-09-20, and that was a correctness bug,
- * not only a limit.** `ensureRegistryAuth` returned the stored token whenever it was
- * unexpired, WITHOUT checking which origin issued it — so a session for backend A was
- * handed to a request against backend B, where it is rejected. `BackendClient.token()`
- * could only warn after the fact, because with one slot there was nothing better to do.
- *
- * ⭐ Keyed by origin, that whole class goes away: logging into a second backend no
- * longer evicts the first, and "which token?" has an answer instead of a heuristic.
+ * ONE SESSION, FOR ONE BACKEND — the on-disk shape.
  *
  *   { version: 2, current: "https://uniweb.app",
- *     sessions: { "https://uniweb.app": { token, expiresAt, … }, … } }
+ *     sessions: { "https://uniweb.app": { token, expiresAt, … } } }
  *
- * ⭐ **`current` is the backend the user logged in to most recently** — every login sets
- * it. It is what "the backend you are logged in to" means once there can be several, and
- * the origin ladder reads it (`loggedInOriginOf`, utils/session-file.js). ⛔ It was
- * missing from `fb4907e` until 2026-09-21, and the ladder's copy of this file's shape
- * still read the v1 `origin` field, so for every login made in between, "logged in to X"
- * routed nothing.
+ * ⭐ **At most one session exists** *[Diego, 2026-09-21: "`uniweb login` log the user out
+ * of the existing session, if any, before logging in to the new backend … `uniweb logout`
+ * always logs you out of the one backend you may be logged in"]*. A login REPLACES the
+ * file — once it succeeds, so a cancelled or failed login leaves you where you were —
+ * and a logout deletes it. So "the backend you are logged in to" is exactly one thing
+ * or nothing, and logout needs no selector.
  *
- * ⚠️ A v1 flat record is read as one session, keyed by its own `origin` stamp — or by
- * the default backend when it carries none. Nobody is logged out by the upgrade.
+ * ⚖️ The v2 map is kept, holding one entry: the file then has one reader
+ * (utils/session-file.js), and it still understands what came before — a v1 flat
+ * record, and a v2 file holding SEVERAL sessions (the per-backend store of 2026-09-20,
+ * which kept every backend's session and marked the last login `current`). The next
+ * login or logout rewrites either into the single-session shape.
+ *
+ * ⛔ Every session is still checked against the backend it is for (`readRegistryAuth`
+ * takes the origin): a token issued by A is never handed to a request against B. That
+ * was the correctness bug of the original flat record, and it stays fixed.
  *
  * The shape is read in ONE place, `utils/session-file.js`.
  */
@@ -153,79 +151,34 @@ export async function readRegistryAuth(origin) {
 }
 
 /**
- * Persist one backend's session, and make it CURRENT — the backend the user is now
- * logged in to. The record's own `origin` is the key, so every login path keeps
+ * Persist THE session — the backend the user is now logged in to, replacing whatever
+ * the file held. The record's own `origin` is the key, so every login path keeps
  * stamping it exactly as before.
  * @param {Object} record - must carry `origin` and `token`
  */
 export async function writeRegistryAuth(record) {
   const key = normOrigin(record?.origin || DEFAULT_BACKEND_ORIGIN)
   const { origin: _drop, ...rest } = record || {}
-  const file = await readAuthFile()
-  file.sessions[key] = rest
-  // Every caller is a login, so this is the backend the user just logged in to.
-  file.current = key
-  await writeAuthFile(file)
+  // ⭐ REPLACE, never merge: every caller is a successful login, and there is one session.
+  // Whatever the file held — another backend's session, or several from before —
+  // is gone: the user is logged in to this backend, and only this one.
+  await writeAuthFile({ version: 2, current: key, sessions: { [key]: rest } })
 }
 
 /**
- * Make a stored session CURRENT without logging in again — for `uniweb login --backend X`
- * when a session for X already exists. Naming a backend is choosing it.
+ * Log out: delete the session file. There is one session, so there is nothing to choose.
  *
- * @param {string} origin
- * @returns {Promise<boolean>} whether that backend has a stored session
- */
-export async function markCurrentSession(origin) {
-  const key = normOrigin(origin || DEFAULT_BACKEND_ORIGIN)
-  const file = await readAuthFile()
-  if (!file.sessions[key]) return false
-  if (file.current !== key) {
-    file.current = key
-    await writeAuthFile(file)
-  }
-  return true
-}
-
-/**
- * Every stored session, newest-agnostic, as `[{ origin, … }]`. Feeds the login
- * default and the logout report — both of which have to say WHICH backends the
- * machine knows about, a question the flat file could not answer.
- * @returns {Promise<Array<{ origin: string, token: string, expiresAt?: string }>>}
- */
-export async function listRegistrySessions() {
-  const { sessions } = await readAuthFile()
-  return Object.entries(sessions)
-    .filter(([, v]) => v && typeof v.token === 'string')
-    .map(([origin, v]) => ({ ...v, origin }))
-}
-
-/**
- * Remove ONE backend's session, or every one when `origin` is omitted.
+ * ⚠️ Local only — the token is forgotten on this machine, not revoked on the backend.
  *
- * ⚠️ The no-argument form still clears everything, which is what `uniweb logout`
- * has always done — but it is now a deliberate "all", not the only thing expressible.
- *
- * @param {string} [origin]
- * @returns {Promise<string[]>} the origins actually cleared
+ * @returns {Promise<string[]>} the origins whose sessions were removed — one, or
+ *   several for a file written before sessions were single (2026-09-21)
  */
-export async function clearRegistryAuth(origin) {
+export async function clearRegistryAuth() {
   const path = getRegistryAuthPath()
   if (!existsSync(path)) return []
-  if (!origin) {
-    const had = Object.keys((await readAuthFile()).sessions)
-    await unlink(path)
-    return had
-  }
-  const key = normOrigin(origin)
-  const file = await readAuthFile()
-  if (!file.sessions[key]) return []
-  delete file.sessions[key]
-  // Logged out of the current backend ⇒ nothing is current; a single remaining session
-  // still answers on its own (loggedInOriginOf).
-  if (file.current === key) file.current = null
-  if (Object.keys(file.sessions).length === 0) await unlink(path)
-  else await writeAuthFile(file)
-  return [key]
+  const had = Object.keys((await readAuthFile()).sessions)
+  await unlink(path)
+  return had
 }
 
 /**
@@ -707,37 +660,43 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
   const { isNonInteractive } = await import('./interactive.js')
   const nonInteractive = isNonInteractive(args)
 
+  const key = normOrigin(apiBase)
+  const file = await readAuthFile()
+  const current = loggedInOriginOf(file)
   const existing = await readRegistryAuth(apiBase)
+  const forced =
+    args.includes('--token') ||
+    args.includes('--browser') ||
+    args.includes('--password') ||
+    args.includes('--token-paste')
   if (existing?.token && !isExpired(existing)) {
     const who =
       existing.username ||
       existing.handle ||
       (existing.uuid ? `account ${existing.uuid}` : '')
-    const forced =
-      args.includes('--token') ||
-      args.includes('--browser') ||
-      args.includes('--password') ||
-      args.includes('--token-paste')
     if (!forced) {
-      // ⭐ SWITCHING IS A LOGIN, AND A LOGIN IS HOW YOU SWITCH *[Diego, 2026-09-21:
-      // switching "via login to another backend is good, and the only way to switch"]*.
-      // A valid session for this backend exists, so naming it IS the switch: make it
-      // current and stop. Logging in again is behind a method flag. ⛔ Until 2026-09-21
-      // this went on to the method picker, so a switch meant cancelling a prompt.
-      const key = normOrigin(apiBase)
-      const wasCurrent = loggedInOriginOf(await readAuthFile()) === key
-      await markCurrentSession(apiBase)
+      // Already logged in to this backend: nothing to do — logging in again is behind a
+      // method flag. (Also where a file from before sessions were single, holding this
+      // backend among others, becomes single: the rewrite keeps only this session.)
+      if (current !== key || Object.keys(file.sessions).length > 1) {
+        await writeRegistryAuth({ ...existing, origin: key })
+      }
       console.error(
-        `\x1b[32m✓\x1b[0m ${wasCurrent ? 'Already on' : 'Switched to'} ${key}${who ? ` — logged in as \x1b[1m${who}\x1b[0m` : ''}.`
+        `\x1b[32m✓\x1b[0m Already logged in to ${key}${who ? ` as \x1b[1m${who}\x1b[0m` : ''}.`
       )
       console.error(
-        '\x1b[2mTo log in again there, name a method: --password, --browser, --token-paste or --token <bearer>.\x1b[0m'
+        '\x1b[2mTo log in again, name a method: --password, --browser, --token-paste or --token <bearer>.\x1b[0m'
       )
       return { ...existing, origin: key }
     }
     console.error(
-      `Already logged in${who ? ` as \x1b[1m${who}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''} — logging in again replaces that session.\n`
+      `Already logged in${who ? ` as \x1b[1m${who}\x1b[0m` : ''} (${key}) — logging in again replaces that session.\n`
     )
+  } else if (current && current !== key) {
+    // ⭐ ONE SESSION AT A TIME *[Diego, 2026-09-21]*: logging in here logs you out of there
+    // — when this login succeeds (writeRegistryAuth replaces the file), so cancelling or
+    // failing leaves you logged in where you were.
+    console.error(`\x1b[2mYou are logged in to ${current}; logging in to ${key} logs you out of it.\x1b[0m\n`)
   }
 
   // `--token <bearer>` seeds + verifies a session non-interactively (verified

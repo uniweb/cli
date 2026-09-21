@@ -59,7 +59,7 @@ function readCliConfig() {
  * @returns {string|null}
  */
 /**
- * **The backend the user is logged in to** — their most recent `uniweb login` — or null.
+ * **The backend the user is logged in to** — the one session's backend — or null.
  *
  * ⛔ This read `~/.uniweb/registry-auth.json`'s top-level `origin` itself until
  * 2026-09-21: the v1 shape. The file had become one session per backend, which has no

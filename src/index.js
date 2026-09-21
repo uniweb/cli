@@ -916,59 +916,31 @@ async function main() {
     return
   }
 
-  // Handle logout command — clear one backend's session, or every one with --all.
-  //
-  // ⭐ With sessions keyed by origin, "logged out" finally has to say WHICH. A bare
-  // `logout` clears the backend you are logged in to — the one every command talks to —
-  // so the common case (one session) is unchanged; --all is how you clear the set.
+  // Handle logout — THE session. ⭐ There is at most one *[Diego, 2026-09-21: "`uniweb
+  // logout` always logs you out of the one backend you may be logged in"]*, so logout
+  // takes no options: `--backend` and `--all` existed only while sessions were kept per
+  // backend. ⚠️ Local only — the token is forgotten here, not revoked on the backend.
   if (command === 'logout') {
-    const logoutArgs = args.slice(1)
-    const { clearRegistryAuth, listRegistrySessions } = await import(
-      './utils/registry-auth.js'
-    )
-    const sessions = await listRegistrySessions()
-    if (sessions.length === 0) {
+    const stray = args.slice(1).find((a) => a.startsWith('-') && a !== '--non-interactive')
+    if (stray) {
+      console.error(
+        `\x1b[31m✗\x1b[0m \`uniweb logout\` takes no options (got ${stray}) — it logs you out of the backend you are logged in to.`
+      )
+      process.exit(2)
+    }
+    const { clearRegistryAuth } = await import('./utils/registry-auth.js')
+    const { loggedInOrigin } = await import('./utils/config.js')
+    const origin = loggedInOrigin()
+    const cleared = await clearRegistryAuth()
+    if (!cleared.length) {
       console.log('Not logged in — nothing to clear.')
       return
     }
-
-    if (logoutArgs.includes('--all')) {
-      const cleared = await clearRegistryAuth()
-      console.log(
-        `\x1b[32m✓\x1b[0m Logged out of ${cleared.length} backend${cleared.length === 1 ? '' : 's'} (${cleared.join(', ')}).`
-      )
-      return
-    }
-
-    const { readFlagValue } = await import('./utils/args.js')
-    const { resolveBackendOrigin } = await import('./backend/client.js')
-    const { resolveLoginOrigin } = await import('./utils/config.js')
-    const flag = readFlagValue(logoutArgs, '--backend')
-    // `--backend` SELECTS the session to clear; without it, the one every command uses —
-    // the env override, else the backend you are logged in to. ⛔ It routed by the
-    // project in the cwd until 2026-09-21, mirroring a `login` that no longer does.
-    let origin
-    try {
-      origin = flag !== undefined ? resolveLoginOrigin(flag) : resolveBackendOrigin()
-    } catch (err) {
-      console.error(`\x1b[31m✗\x1b[0m ${err.message}`)
-      process.exit(2)
-    }
-
-    const cleared = await clearRegistryAuth(origin)
-    if (cleared.length === 0) {
-      console.log(`Not logged in to ${origin} — nothing to clear.`)
-      const others = sessions.map((x) => x.origin)
-      if (others.length)
-        console.log(
-          `\x1b[2mStill logged in to: ${others.join(', ')}  (\`uniweb logout --all\` clears every session)\x1b[0m`
-        )
-      return
-    }
-    const left = sessions.filter((x) => x.origin !== cleared[0]).map((x) => x.origin)
-    console.log(`\x1b[32m✓\x1b[0m Logged out of ${cleared[0]}.`)
-    if (left.length)
-      console.log(`\x1b[2mStill logged in to: ${left.join(', ')}\x1b[0m`)
+    console.log(`\x1b[32m✓\x1b[0m Logged out${origin ? ` of ${origin}` : ''}.`)
+    // A file from before sessions were single can hold several; all of them go.
+    const others = cleared.filter((o) => o !== origin)
+    if (others.length)
+      console.log(`\x1b[2mAlso removed stored sessions for: ${others.join(', ')}\x1b[0m`)
     return
   }
 
@@ -1776,11 +1748,11 @@ ${colors.bright}Usage:${colors.reset}
   uniweb login [options]
 
 Authenticates with a backend and stores its session in
-~/.uniweb/registry-auth.json — one per backend, so logging in to a second keeps
-the first. ${colors.bright}The backend you log in to last is where the backend commands go${colors.reset}
-(push, pull, publish, status, register, clone) — this is how you switch. Naming
-a backend you are already logged in to switches to it without logging in again;
-add --password, --browser, --token-paste or --token to log in again anyway.
+~/.uniweb/registry-auth.json. ${colors.bright}One backend at a time:${colors.reset} logging in to another one
+logs you out of the first (once the new login succeeds). The backend you are
+logged in to is where the backend commands go (push, pull, publish, status,
+register, clone) — so this is how you switch. Already logged in to it, login
+does nothing; add --password, --browser, --token-paste or --token to log in again.
 
 Without --backend: https://uniweb.app (or \$UNIWEB_REGISTER_URL). No command talks
 to a backend you are not logged in to — run one before logging in and it asks first.
@@ -1794,7 +1766,7 @@ ${colors.bright}Options:${colors.reset}
 
 In non-interactive mode (CI / no TTY), pass \`--token <bearer>\`, or set
 \`UNIWEB_USERNAME\` + \`UNIWEB_PASSWORD\`, or set \`UNIWEB_TOKEN\` (used per-command,
-not stored). Run \`uniweb logout\` to clear the stored session.
+not stored). \`uniweb logout\` logs you out.
 `,
     refresh: `
 ${colors.cyan}${colors.bright}uniweb refresh${colors.reset} ${colors.dim}— Catch up with teammates AND app authors${colors.reset}
@@ -2043,7 +2015,7 @@ ${colors.bright}Commands:${colors.reset}
   update             Align workspace deps + AGENTS.md to the running CLI
   i18n <cmd>         Internationalization (extract, sync, status)
   login              Log in to your Uniweb account
-  logout             Clear the stored session
+  logout             Log out of the backend you are logged in to
 
 ${colors.bright}Create Options:${colors.reset}
   --template <type>  Project template (default: starter)

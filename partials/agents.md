@@ -2526,7 +2526,7 @@ uniweb push / pull / clone / status   # Git-style content sync with the Uniweb b
 uniweb refresh / sync                 # Catch up (git + backend, never pushes) / catch up, then push
 uniweb push --org @acme               # First push/publish of a site: who owns it (see below)
 uniweb register [--scope @org]        # Register a foundation + its data schemas to the registry
-uniweb login / logout                 # Log in to a backend (--backend <url>) — the verbs above go to the last one
+uniweb login / logout                 # One backend at a time: log in (--backend <url>) or out
 uniweb org list / create <handle>     # Publish orgs you belong to — the @org in a scoped ref
 uniweb content export [dir]           # Package a site (or a built foundation's schema) as .uwx
 

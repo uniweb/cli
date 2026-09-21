@@ -1,5 +1,11 @@
 /**
- * ONE SESSION PER BACKEND ORIGIN.
+ * ONE SESSION, FOR ONE BACKEND — and never handed to another.
+ *
+ * ⭐ At most one session exists *[Diego, 2026-09-21: "`uniweb login` log the user out of
+ * the existing session, if any, before logging in to the new backend … `uniweb logout`
+ * always logs you out of the one backend you may be logged in"]*. A login replaces the
+ * file; a logout deletes it. (For 2026-09-20→21 the store kept one session PER backend;
+ * a file written then must still read, and the next login or logout makes it single.)
  *
  * ⛔ The store was a single flat record until 2026-09-20, and the headline test here is
  * the CORRECTNESS bug that shape caused, not the new capability: `ensureRegistryAuth`
@@ -25,7 +31,6 @@ import {
   readRegistryAuth,
   writeRegistryAuth,
   clearRegistryAuth,
-  listRegistrySessions,
   getRegistryAuthPath
 } from '../src/utils/registry-auth.js'
 import { DEFAULT_BACKEND_ORIGIN } from '../src/utils/config.js'
@@ -87,16 +92,17 @@ test("a session for one backend is NOT handed to another", async () => {
   }
 })
 
-test('logging into a second backend does not evict the first', async () => {
+test('⭐ logging in to a second backend REPLACES the first — one session at a time', async () => {
   const restore = fakeHome()
   try {
     await writeRegistryAuth({ origin: A, token: 'a' })
     await writeRegistryAuth({ origin: B, token: 'b' })
-    await writeRegistryAuth({ origin: C, token: 'c' })
 
-    assert.equal((await readRegistryAuth(A))?.token, 'a')
+    assert.equal(await readRegistryAuth(A), null, 'logged out of A')
     assert.equal((await readRegistryAuth(B))?.token, 'b')
-    assert.equal((await readRegistryAuth(C))?.token, 'c')
+    const onDisk = JSON.parse(readFileSync(getRegistryAuthPath(), 'utf8'))
+    assert.deepEqual(Object.keys(onDisk.sessions), [B], 'one session on disk')
+    assert.equal(onDisk.current, B)
   } finally {
     restore()
   }
@@ -159,93 +165,60 @@ test('an unreadable store reads as "no sessions" rather than throwing', async ()
     mkdirSync(join(process.env.HOME, '.uniweb'), { recursive: true })
     writeFileSync(getRegistryAuthPath(), '{ not json')
     assert.equal(await readRegistryAuth(A), null)
-    assert.deepEqual(await listRegistrySessions(), [])
   } finally {
     restore()
   }
 })
 
-test('writing after a v1 record upgrades the file without losing the old session', async () => {
+test('a login after a v1 record replaces it — the file becomes single-session v2', async () => {
   const restore = fakeHome()
   try {
     seedLegacy({ token: 'legacy', origin: A })
     await writeRegistryAuth({ origin: B, token: 'new' })
 
-    assert.equal((await readRegistryAuth(A))?.token, 'legacy')
+    assert.equal(await readRegistryAuth(A), null)
     assert.equal((await readRegistryAuth(B))?.token, 'new')
     const onDisk = JSON.parse(readFileSync(getRegistryAuthPath(), 'utf8'))
     assert.equal(onDisk.version, 2)
-    assert.deepEqual(Object.keys(onDisk.sessions).sort(), [A, B].sort())
+    assert.deepEqual(Object.keys(onDisk.sessions), [B])
   } finally {
     restore()
   }
 })
 
-// ──────────────────────────────── listing and clearing ────────────────────────────
+// ──────────────────────────────────── logout ────────────────────────────────────
 
-test('listRegistrySessions reports every backend the machine knows', async () => {
+test('logout removes the session and the file, and says what it held', async () => {
   const restore = fakeHome()
   try {
-    assert.deepEqual(await listRegistrySessions(), [], 'nothing stored ⇒ empty')
     await writeRegistryAuth({ origin: A, token: 'a' })
-    await writeRegistryAuth({ origin: B, token: 'b' })
-    const origins = (await listRegistrySessions()).map((s) => s.origin).sort()
-    assert.deepEqual(origins, [A, B].sort())
+    assert.deepEqual(await clearRegistryAuth(), [A])
+    assert.equal(existsSync(getRegistryAuthPath()), false, 'no empty file left behind')
+    assert.equal(await readRegistryAuth(A), null)
   } finally {
     restore()
   }
 })
 
-test('clearing one backend leaves the others signed in', async () => {
+test('logout with nothing stored is a no-op that says so', async () => {
   const restore = fakeHome()
   try {
-    await writeRegistryAuth({ origin: A, token: 'a' })
-    await writeRegistryAuth({ origin: B, token: 'b' })
-
-    assert.deepEqual(await clearRegistryAuth(B), [B], 'reports what it cleared')
-    assert.equal(await readRegistryAuth(B), null)
-    assert.equal((await readRegistryAuth(A))?.token, 'a', 'A survives')
+    assert.deepEqual(await clearRegistryAuth(), [])
   } finally {
     restore()
   }
 })
 
-test('clearing a backend with no session is a no-op that says so', async () => {
+test('logout clears a file from the per-backend days whole — every session in it', async () => {
   const restore = fakeHome()
   try {
-    await writeRegistryAuth({ origin: A, token: 'a' })
-    assert.deepEqual(await clearRegistryAuth(C), [])
-    assert.equal((await readRegistryAuth(A))?.token, 'a')
-  } finally {
-    restore()
-  }
-})
-
-test('clearing with no argument clears every session and removes the file', async () => {
-  const restore = fakeHome()
-  try {
-    await writeRegistryAuth({ origin: A, token: 'a' })
-    await writeRegistryAuth({ origin: B, token: 'b' })
-
-    const cleared = await clearRegistryAuth()
-    assert.deepEqual(cleared.sort(), [A, B].sort())
-    assert.equal(existsSync(getRegistryAuthPath()), false)
-    assert.deepEqual(await listRegistrySessions(), [])
-  } finally {
-    restore()
-  }
-})
-
-test('clearing the last session removes the file rather than leaving an empty map', async () => {
-  const restore = fakeHome()
-  try {
-    await writeRegistryAuth({ origin: A, token: 'a' })
-    await clearRegistryAuth(A)
-    assert.equal(
-      existsSync(getRegistryAuthPath()),
-      false,
-      'an empty store and no store must not be two different states'
+    mkdirSync(join(process.env.HOME, '.uniweb'), { recursive: true })
+    writeFileSync(
+      getRegistryAuthPath(),
+      JSON.stringify({ version: 2, current: B, sessions: { [A]: { token: 'a' }, [B]: { token: 'b' } } })
     )
+    assert.deepEqual((await clearRegistryAuth()).sort(), [A, B].sort())
+    assert.equal(existsSync(getRegistryAuthPath()), false)
   } finally {
     restore()
   }

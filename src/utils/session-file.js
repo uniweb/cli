@@ -1,7 +1,11 @@
 /**
  * `~/.uniweb/registry-auth.json` — the ONE reader of its shape.
  *
- *   { version: 2, current: "<origin>", sessions: { "<origin>": { token, … }, … } }
+ *   { version: 2, current: "<origin>", sessions: { "<origin>": { token, … } } }
+ *
+ * ⭐ ONE session since 2026-09-21 — a login replaces the file, a logout deletes it
+ * (registry-auth.js). The map shape stays so this reader also understands a file from
+ * 2026-09-20→21, when the store kept one session PER backend.
  *
  * ⛔ **There were two readers until 2026-09-21, and the copy is how "the backend you are
  * logged in to" stopped meaning anything.** `registry-auth.js` writes the file and read
@@ -71,12 +75,13 @@ export function readSessionFileSync(defaultOrigin) {
 }
 
 /**
- * **The backend the user is logged in to: the one they logged in to most recently.**
+ * **The backend the user is logged in to** — the one session's backend.
  *
- * Every login marks its backend `current`. With one stored session that session answers
- * even unmarked; with several and none marked there is no answer, and saying so beats
- * guessing between them. An expired session still answers — the user logged in there,
- * and the next request asks them to log in there again.
+ * A file written since sessions became single holds one session, marked `current`. The
+ * other branches read what came before: a per-backend file names its last login
+ * `current`; one with a single unmarked session answers with it; several and none
+ * marked is no answer, and saying so beats guessing. An expired session still answers —
+ * the user logged in there, and the next request asks them to log in there again.
  *
  * @param {{ current?: string|null, sessions?: object }} file - normalized
  * @returns {string|null}
