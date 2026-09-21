@@ -114,14 +114,18 @@ test('clone scaffolds a ref-only harness and seeds the uuids (new workspace)', a
     assert.ok(existsSync(join(root, 'AGENTS.md')), 'AGENTS.md scaffolded')
     assert.ok(existsSync(join(siteDir, 'entry.js')), 'site entry.js scaffolded')
 
-    // site.yml carries the seeded entity uuid + the carried foundation ref.
-    const siteYml = readFileSync(join(siteDir, 'site.yml'), 'utf8')
-    assert.match(siteYml, /^\$uuid: SITE-1$/m)
-    // Assert what a READER gets, not the text: an unquoted `@…` scalar matched a
-    // regex here while the file did not parse, and `pull` then found no `$uuid`.
-    const parsed = yaml.load(siteYml)
-    assert.equal(parsed.$uuid, 'SITE-1')
+    // ⭐ The seeded uuid is in `sync.json`, under the backend that minted it — NOT
+    // in site.yml, which now carries only what an author wrote.
+    const sync = JSON.parse(readFileSync(join(siteDir, 'sync.json'), 'utf8'))
+    const origins = Object.keys(sync.backends)
+    assert.equal(origins.length, 1, 'one backend, the one we cloned from')
+    assert.equal(sync.backends[origins[0]].site.uuid, 'SITE-1')
+
+    // site.yml carries the carried foundation ref and nothing minted.
+    const parsed = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
     assert.equal(parsed.foundation, '@acme/base@1.0.0')
+    assert.equal(parsed.$uuid, undefined, 'site.yml must hold no minted identity')
+    assert.equal(parsed.$backend, undefined)
 
     // Ref-only: package.json has @uniweb/runtime and NO local foundation dep.
     const pkg = JSON.parse(readFileSync(join(siteDir, 'package.json'), 'utf8'))

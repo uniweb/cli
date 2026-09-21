@@ -104,8 +104,8 @@ import {
 } from './deploy.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
-  assertSiteBackendScope,
-  readSiteIdentity
+  resolveSyncedBackend,
+  describeBackendAmbiguity
 } from '../utils/site-identity.js'
 
 const FOLDER_MODEL = '@uniweb/folder'
@@ -583,7 +583,7 @@ export async function pull(args = [], deps = {}) {
   // ABOVE the session (see resolveBackendOrigin), so a teammate who cloned this project
   // targets the backend it is bound to instead of whatever they last logged into.
   // ⛔ The RAW value, never `resolveSiteScope` — null must mean "defer to the next tier".
-  const siteScope = readSiteIdentity(siteDir).backend
+  const siteScope = resolveSyncedBackend(siteDir)
   const siteBackend = await resolveSiteBackend(siteDir)
   const client = new BackendClient({
     originFlag: flagValue(args, '--backend'),
@@ -599,12 +599,6 @@ export async function pull(args = [], deps = {}) {
   // ⛔ SCOPE CHECK — before the lanes read. `pull` WRITES the working tree from what it
   // fetches, so a wrong-backend pull is not merely a failed read: it is the case that
   // most needs stopping early.
-  const scope = assertSiteBackendScope(siteDir, client.origin)
-  if (!scope.ok) {
-    error(scope.message)
-    scope.hint.forEach(note)
-    return { exitCode: 1 }
-  }
 
   // One identity per site: `site.yml::$uuid`. Both lanes (content + folder) are keyed
   // by it — the backend resolves the site's `@uniweb/folder` from this uuid.

@@ -1,50 +1,43 @@
 /**
- * The project's SYNC SCOPE — reading and asserting `site.yml::$backend`.
+ * The project's backend-minted identity — read from `sync.json`, never from `site.yml`.
  *
- * A project that has synced holds backend-minted identity on **four** surfaces:
+ * ⭐ **`site.yml` holds nothing a backend minted, as of 2026-09-20.** It carried
+ * `$uuid`, `$org` and `$backend`; all three moved to
+ * `sync.json::backends.<origin>.site`, keyed by the backend that minted them.
+ * Spec: `kb/framework/reference/sync-json.md`. Why:
+ * `kb/framework/plans/backend-scoped-project-state.md`.
  *
- *   · `site.yml::$uuid`               the site-content entity
- *   · every collection record `$uuid` in its own source file (the pull-side match key)
- *   · `assets.json`                   local asset path → content-addressed id
- *   · `.uniweb/sync-cache.json`       item uuids, hashes, base versions
+ * ## ⛔ What is GONE, and why nothing replaces it
  *
- * All four are meaningless against a different backend, and none of them says which
- * backend it came from. `$backend` is the one fact that scopes all of them — which is
- * why a mismatch is a **stop**, not a fallback: it does not mean "we guessed the wrong
- * default", it means the entire stored surface is foreign.
+ * `assertSiteBackendScope` refused a command whose resolved origin disagreed with
+ * the project's recorded `$backend`. It existed because ONE `$uuid` sat in
+ * `site.yml` with no way to say which backend it was for, so it could be read
+ * against the wrong one and sent there.
  *
- * ⛔ **`$backend` is absent for the default backend, deliberately.** The 98% case keeps a
- * clean `site.yml`, and an absent value reads as the default — correct both for a project
- * written before this key existed and for one synced against the default. That inference
- * is monotone: it is never worse than the pre-`$backend` behaviour, which recorded nothing
- * at all.
+ * ⭐ **Keyed by origin that is unrepresentable.** A command for backend B reads B's
+ * section and finds B's ids or nothing at all. There is no configuration in which
+ * A's identity reaches B, so there is no mismatch to detect, no stop to print, and
+ * no accepted false positive to live with. The guard is not replaced; the shape it
+ * guarded against stopped existing.
  *
- * ⚠️ **Reads `site.yml` only, not the legacy `site.yaml`.** That matches every existing
- * identity reader AND all three writers (`writeSiteEntityUuid`, `writeSiteOrg`,
- * `clone.js`'s `seedYamlUuid`), so this module is consistent with what is on disk. It is
- * also a KNOWN GAP, not an oversight: five other readers do accept `site.yaml`, and
- * `upsertYamlScalar` creates a file when missing — so on a `site.yaml` project the writers
- * produce a phantom `site.yml` holding nothing but identity. Closing that is its own change,
- * and it has to move the readers and the writers together or it makes the split worse.
+ * `recordSiteBackend` and `$backend` went with it: the store's KEY is the scope.
+ *
+ * ## ⛔ NO STATIC `@uniweb/build` IMPORT
+ *
+ * This module is reachable from the CLI's startup graph, and `@uniweb/build` is an
+ * OPTIONAL PEER — a static import makes `uniweb --version` die with
+ * ERR_MODULE_NOT_FOUND on a global install (`test/smoke-startup.test.js` catches it).
+ *
+ * ⭐ **`sync.json` is plain JSON, so reading it needs no parser and no dependency.**
+ * That is the whole reason the format is JSON rather than YAML: `site.yml`'s
+ * equivalent needed a hand-rolled dependency-free fallback WRITER to survive the
+ * same constraint. Writes go through `@uniweb/build/uwx`'s store, which is the one
+ * implementation; this file only reads.
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import yaml from 'js-yaml'
 import { DEFAULT_BACKEND_ORIGIN } from './config.js'
-
-// ⛔ NO STATIC `@uniweb/build` IMPORT IN THIS FILE — it is an OPTIONAL PEER, and this
-// module is reachable from the CLI's startup graph (`index.js` imports `clone` eagerly,
-// and `clone` imports this). A static import here makes `uniweb --version` die with
-// ERR_MODULE_NOT_FOUND on a global install that has no build package:
-//
-//   $ npm i -g uniweb && uniweb --version
-//   Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@uniweb/build'
-//
-// `test/smoke-startup.test.js` catches this structurally — and did, on the commit that
-// introduced this file. The writer below therefore imports lazily, which also keeps the
-// cost off every startup that never writes. Command modules may import build statically;
-// anything a `utils/` leaf pulls in cannot.
 
 /** A bare origin with no trailing slash, or null when unparseable. */
 export function normalizeOrigin(value) {
@@ -57,276 +50,119 @@ export function normalizeOrigin(value) {
 }
 
 /**
- * The project's identity trio, read from `site.yml`. Every field is independently
- * optional — a project may be unsynced (no `uuid`), on the default backend (no
- * `backend`), or personally owned (no `org`).
+ * `sync.json`'s backends map, or `{}`. Read-only, dependency-free — see the header.
  *
- * ⚠️ This is NOT yet the single accessor for `$uuid`. Nine other places still read it
- * directly; they are correct as they stand and were deliberately left alone when the
- * scope check was centralized here (a per-read accessor was solving a coupling problem
- * that one guard solves better). Consolidating them is separable cleanup.
+ * ⚠️ A second READER of a format whose writer lives in `@uniweb/build`. Deliberate,
+ * and bounded: it parses one object and normalizes its keys. The shape it assumes is
+ * exactly what `sync-store.js` writes, and `test/two-backends.test.js` drives both.
+ */
+function readBackends(siteDir) {
+  const p = join(siteDir, 'sync.json')
+  if (!existsSync(p)) return {}
+  try {
+    const parsed = JSON.parse(readFileSync(p, 'utf8'))
+    const backends = parsed?.backends
+    if (!backends || typeof backends !== 'object' || Array.isArray(backends)) return {}
+    const out = {}
+    for (const [origin, state] of Object.entries(backends)) {
+      const key = normalizeOrigin(origin)
+      if (key && state && typeof state === 'object') out[key] = state
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * The identity this project holds for ONE backend.
  *
  * @param {string} siteDir
- * @returns {{ uuid: string|null, backend: string|null, org: string|null }}
+ * @param {string} origin
+ * @returns {{ uuid: string|null, org: string|null }}
  */
-export function readSiteIdentity(siteDir) {
-  const path = join(siteDir, 'site.yml')
-  if (!existsSync(path)) return { uuid: null, backend: null, org: null }
-  let y
-  try {
-    y = yaml.load(readFileSync(path, 'utf8'))
-  } catch {
-    // Unreadable or malformed — report "nothing recorded" rather than throwing. Every
-    // caller here is a guard or a default; none of them should be the reason a command
-    // dies, and a malformed site.yml has its own, better error elsewhere.
-    return { uuid: null, backend: null, org: null }
-  }
-  if (!y || typeof y !== 'object') return { uuid: null, backend: null, org: null }
+export function readSiteIdentity(siteDir, origin) {
+  const key = normalizeOrigin(origin)
+  const site = key ? readBackends(siteDir)[key]?.site : null
   const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null)
-  return {
-    uuid: str(y.$uuid),
-    backend: normalizeOrigin(y.$backend),
-    org: str(y.$org)
-  }
+  return { uuid: str(site?.uuid), org: str(site?.org) }
+}
+
+/** Every backend this project has synced with, sorted. */
+export function syncedBackends(siteDir) {
+  return Object.keys(readBackends(siteDir)).sort()
 }
 
 /**
- * The backend this project is bound to, with the default filled in.
+ * The backend a bare site verb should target, from what this project has synced
+ * with — the tier that replaced `site.yml::$backend` in the origin ladder.
  *
- * Use this rather than `readSiteIdentity().backend` wherever an absent value means the
- * default — which is everywhere except a "was it recorded?" question.
+ * ⭐ **Exactly one synced backend answers; several do not.** This is the same rule
+ * `login` uses for "the known single host": the 98% never choose, and ambiguity is
+ * refused rather than guessed. With several, the caller falls through to
+ * `deploy.yml`'s default target and then to the session.
  *
- * ⛔ **NOT for the origin ladder.** `resolveBackendOrigin`'s `siteScope` tier must receive
- * the RAW `readSiteIdentity().backend`, which is null when nothing was recorded. Handing
- * it this defaulted value would make the tier fire for EVERY project, and since it sits
- * above the session it would shadow `uniweb login --backend <local>` on any project
- * without `$backend` — i.e. break local development for the 98% that never record one.
- * "Absent means the default" is the right rule for a comparison and the wrong one for a
- * precedence chain, where absent has to mean "defer to the next tier".
+ * ⛔ **Returns null rather than a default when nothing is synced.** "Absent means
+ * the default" is right for a comparison and wrong in a precedence chain, where
+ * absent has to mean "defer to the next tier" — feeding a defaulted value here
+ * would shadow `uniweb login --backend <local>` on every unsynced project.
  *
  * @param {string} siteDir
- * @returns {string} a bare origin
+ * @returns {string|null}
  */
-export function resolveSiteScope(siteDir) {
-  return readSiteIdentity(siteDir).backend || DEFAULT_BACKEND_ORIGIN
+export function resolveSyncedBackend(siteDir) {
+  const all = syncedBackends(siteDir)
+  return all.length === 1 ? all[0] : null
 }
 
 /**
- * Record the sync scope on a site that has just been created or seeded.
+ * What to tell someone whose project has synced with several backends and who named
+ * none — the ambiguity `resolveSyncedBackend` declines to guess at.
  *
- * A no-op for the default backend (see the ⛔ above) and a no-op when the value is
- * already what we would write, so a re-push never dirties `git status`.
- *
- * @param {string} siteDir
- * @param {string} origin - the backend the site was just created on
- * @param {object} [deps]
- * @param {() => Promise<object>} [deps.loadUwx] - injected module loader. Exists so the
- *        two failure branches below can be TESTED: both are about which `@uniweb/build`
- *        happens to be on disk, which a test cannot otherwise vary — and the too-old
- *        branch is precisely the one that used to fail silently.
- * @returns {Promise<string|null>} the origin recorded, or null when nothing was written
+ * @returns {string|null} a message, or null when there is no ambiguity
  */
-export async function recordSiteBackend(siteDir, origin, deps = {}) {
-  const norm = normalizeOrigin(origin)
-  if (!norm || norm === DEFAULT_BACKEND_ORIGIN) return null
-  if (readSiteIdentity(siteDir).backend === norm) return null
-  const loadUwx = deps.loadUwx || (() => import('@uniweb/build/uwx'))
-  let mod
-  try {
-    // Lazy by necessity, not by taste — see the header.
-    mod = await loadUwx()
-  } catch {
-    // ⛔ NO `@uniweb/build` — and this is the COMMON case on the path that needs it
-    // most, not the rare one this branch used to assume.
-    //
-    // `clone` calls us straight after scaffolding and BEFORE `pnpm install`, so the
-    // site has no `node_modules` yet; under `npx uniweb@latest` the CLI's own tree
-    // may not carry build either (it is an optional peer). The import therefore
-    // fails on a FRESH CLONE essentially always, and returning null wrote nothing.
-    //
-    // The cost is not cosmetic: the clone then holds a `$uuid` minted by the
-    // `--backend` origin it was given, with nothing recording that origin, so the
-    // scope guard infers the DEFAULT backend and stops the very next command with
-    // "this project's stored identity belongs to https://uniweb.app". The origin was
-    // on the command line the whole time.
-    // Measured by the backend lane 2026-09-18: `0.48.5` recorded `$backend`,
-    // `0.57.0` did not, and their clone was unusable until they added the line by hand.
-    //
-    // ⇒ Fall back to a dependency-free write. `js-yaml` is the CLI's own direct
-    // dependency, so this path needs nothing installed in the project.
-    return writeSiteBackendFallback(siteDir, norm)
-  }
-
-  // ⚠️ PRESENT BUT TOO OLD is a different problem, and it must not look like the one
-  // above. `@uniweb/build` gained `writeSiteBackend` in 0.25.3; against an older copy the
-  // import SUCCEEDS and the export is `undefined`, so calling it throws a TypeError that
-  // a blanket catch would swallow — leaving the scope silently unrecorded on a project
-  // that will later be stopped by the guard and told to add `$backend` by hand. Since the
-  // CLI declares build as a peer at a caret range, a lockfile pinned to an older patch
-  // reaches exactly this state on a CLI-only upgrade. Say so once.
-  if (typeof mod.writeSiteBackend !== 'function') {
-    console.error(
-      `\x1b[33m⚠\x1b[0m This project's @uniweb/build is too old to record which backend it syncs with — upgrade it (\`npx uniweb@latest update\`), or add \`$backend: ${norm}\` to site.yml.`
-    )
-    return null
-  }
-
-  try {
-    mod.writeSiteBackend(siteDir, norm)
-    return norm
-  } catch {
-    // Same rule as `recordSiteOrg`: the uuid is the load-bearing write. Losing the scope
-    // note must never fail a create that already succeeded on the backend — the guard
-    // degrades to the pre-`$backend` behaviour, which is what everyone had until now.
-    return null
-  }
+export function describeBackendAmbiguity(siteDir) {
+  const all = syncedBackends(siteDir)
+  if (all.length < 2) return null
+  return (
+    `This project has synced with ${all.length} backends: ${all.join(', ')}.\n` +
+    '  Name one with --backend <url>, or set a default target in deploy.yml.'
+  )
 }
 
 /**
- * Write `$backend` into `site.yml` without `@uniweb/build` — the fallback for a
- * project whose dependencies are not installed yet (see `recordSiteBackend`).
+ * The single backend of the site project `startDir` sits in — for `login`, which is
+ * not a site verb and resolves no site directory of its own.
  *
- * ⭐ Verifies the RESULT rather than trusting the edit: the file must still parse and
- * must read back the origin we meant to write. A write that corrupts `site.yml` would
- * be far worse than an unrecorded scope — an unparseable `site.yml` is the failure this
- * same channel spent an evening on.
- *
- * @returns {string|null} the recorded origin, or null when nothing was written
- */
-function writeSiteBackendFallback(siteDir, norm) {
-  const file = join(siteDir, 'site.yml')
-  let text
-  try {
-    text = readFileSync(file, 'utf8')
-  } catch {
-    return null // no site.yml — nothing to annotate, and we do not create one
-  }
-  try {
-    // Quote through js-yaml rather than by hand: an origin is plain today, but the
-    // value is not ours to assume. Replace an existing key, else prepend.
-    const scalar = yaml.dump(norm, { lineWidth: -1 }).trim()
-    const next = /^\$backend:/m.test(text)
-      ? text.replace(/^\$backend:.*$/m, `$backend: ${scalar}`)
-      : `$backend: ${scalar}\n` + text
-    const parsed = yaml.load(next)
-    if (!parsed || typeof parsed !== 'object' || parsed.$backend !== norm) return null
-    writeFileSync(file, next)
-    return norm
-  } catch {
-    return null
-  }
-}
-
-/**
- * Refuse to act on a site whose stored identity belongs to a different backend.
- *
- * ⭐ **A stop, not a warning.** `BackendClient.token()` already carries an advisory
- * origin-mismatch guard for the SESSION (wrong bearer → a rejected request, recoverable).
- * This is the third leg and it is categorically worse: the stored surface is foreign, so
- * proceeding sends one backend's identity to another. The observed outcomes are a 404
- * whose stock advice destroys the binding, and — on the record lane — a hard refusal
- * (*"item uuids are globally unique; cross-entity move is not supported"*).
- *
- * Silent for an unsynced project (nothing stored yet ⇒ nothing to be foreign) and for a
- * project on the default backend with no explicit override.
- *
- * @param {string} siteDir
- * @param {string} origin - the backend this command resolved to
- * @returns {{ ok: true } | { ok: false, message: string, hint: string[] }}
- */
-export function assertSiteBackendScope(siteDir, origin) {
-  const { uuid, backend } = readSiteIdentity(siteDir)
-  // Nothing minted here yet — a create is exactly what is supposed to happen next, and
-  // it will record the scope itself. Checking a project with no stored identity would
-  // reject the first push of every new site.
-  if (!uuid) return { ok: true }
-
-  const target = normalizeOrigin(origin)
-  const bound = backend || DEFAULT_BACKEND_ORIGIN
-  if (!target || target === bound) return { ok: true }
-
-  const hint = [
-    `site.yml::$uuid (${uuid}) was minted by ${bound}, and the record uuids, assets.json`,
-    'and .uniweb/sync-cache.json are scoped to it too. Sending them elsewhere is refused.',
-    '',
-    `To work with ${bound}:  uniweb login --backend ${bound}   (or pass --backend ${bound})`,
-    `To move this project to ${target}, it becomes a NEW site there — clear $uuid, $org and`,
-    '$backend from site.yml and delete .uniweb/ and assets.json first.'
-  ]
-
-  // ⚠️ THE ONE FALSE POSITIVE, and it prints its own fix.
-  //
-  // `$backend` is omitted for the default backend, so an ABSENT value is ambiguous: it
-  // means "the default" for anything written under this scheme, and "unknown" for a
-  // project that synced to a non-default backend BEFORE the key existed. This branch
-  // reads absent as the default, so that second project is stopped and told it belongs
-  // to a backend it never used.
-  //
-  // Accepted deliberately rather than softened to a warning, because the alternative is
-  // worse in the case that matters: warning-on-absent would leave every DEFAULT-backend
-  // project — the 98% — unprotected forever, since those never record the key. Stopping
-  // on a guess is only tolerable when the guess prints the one-line correction, so it
-  // does. (The population at risk is also near-empty by construction: pre-`$backend`
-  // projects on a non-default backend, at a moment when no such backend is running.)
-  if (!backend) {
-    hint.push(
-      '',
-      `If this project actually syncs with ${target}, nothing recorded that — say so once:`,
-      `  add   $backend: ${target}   to site.yml, and this stops asking.`
-    )
-  }
-
-  return {
-    ok: false,
-    message: `This project's stored identity belongs to ${bound}, but this command targets ${target}.`,
-    hint
-  }
-}
-
-/**
- * The `$backend` of the site project `startDir` sits in — for verbs that are NOT site
- * verbs and so never resolve a site directory of their own.
- *
- * ⛔ **This does NOT feed the origin ladder, deliberately.** `login` writes a
- * MACHINE-WIDE session (`~/.uniweb/registry-auth.json`), not a per-project one, so
- * letting whichever directory you happen to stand in decide which backend you
- * authenticate against would be a silent surprise — the same class of surprise
- * `$backend` exists to remove. What this enables is a **notice**: the project says
- * where it belongs, so we say so before authenticating somewhere else.
- *
- * ⭐ **Conservative by construction — it answers only when there is exactly ONE
- * candidate.** A workspace of several sites has no single answer, and a confident
- * *"did you mean localhost?"* aimed at the wrong one of three sites is worse than
- * saying nothing. Ambiguity returns null and the caller stays quiet.
- *
- * ⚠️ Build-free, like everything else in this file — `login` is a STANDALONE command
- * that must work outside a project, where `@uniweb/build` is not installed. That is why
- * this cannot reuse `resolveSiteDir` (`commands/deploy.js`), which pulls build in.
+ * ⭐ **Conservative by construction: it answers only when there is exactly ONE
+ * candidate site AND that site has synced with exactly one backend.** A workspace of
+ * several sites has no single answer, and a confident guess aimed at the wrong one
+ * is worse than saying nothing.
  *
  * @param {string} startDir
  * @returns {{ siteDir: string, backend: string }|null}
  */
 export function findNearbySiteBackend(startDir) {
+  const answer = (dir) => {
+    const backend = resolveSyncedBackend(dir)
+    return backend ? { siteDir: dir, backend } : null
+  }
+
   // 1. Walk UP for the site we are standing in or under. Bounded: a `site.yml` more
-  //    than a few levels above is not "the project you are in", it is a coincidence,
-  //    and at the filesystem root it would be someone else's entirely.
+  //    than a few levels above is not "the project you are in", it is a coincidence.
   let dir = startDir
   for (let i = 0; i < 4; i++) {
-    if (existsSync(join(dir, 'site.yml'))) {
-      const { backend } = readSiteIdentity(dir)
-      return backend ? { siteDir: dir, backend } : null
-    }
+    if (existsSync(join(dir, 'site.yml'))) return answer(dir)
     const up = dirname(dir)
     if (up === dir) break
     dir = up
   }
 
-  // 2. Standing AT a project root, the site is one level down — `site/` in the default
-  //    layout, or a lone entry under `sites/`. Two or more candidates is a workspace,
+  // 2. Standing AT a project root, the site is one level down — `site/` in the
+  //    default layout, or a lone entry under `sites/`. Two or more is a workspace,
   //    which is exactly the ambiguity above.
   const candidates = []
-  if (existsSync(join(startDir, 'site', 'site.yml')))
-    candidates.push(join(startDir, 'site'))
+  if (existsSync(join(startDir, 'site', 'site.yml'))) candidates.push(join(startDir, 'site'))
   const sitesDir = join(startDir, 'sites')
   if (existsSync(sitesDir)) {
     let entries = []
@@ -342,6 +178,7 @@ export function findNearbySiteBackend(startDir) {
     }
   }
   if (candidates.length !== 1) return null
-  const { backend } = readSiteIdentity(candidates[0])
-  return backend ? { siteDir: candidates[0], backend } : null
+  return answer(candidates[0])
 }
+
+export { DEFAULT_BACKEND_ORIGIN }

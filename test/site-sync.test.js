@@ -37,6 +37,7 @@ import {
   rebankSyncHashes
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
+import { readSiteIdentity } from '../src/utils/site-identity.js'
 
 const ORIGIN = 'http://x'
 
@@ -60,6 +61,21 @@ function tmpSite() {
   const dir = mkdtempSync(join(tmpdir(), 'site-sync-'))
   writeFileSync(join(dir, 'site.yml'), "name: Acme\nfoundation: '@a/base'\n")
   return dir
+}
+
+
+/** Bind this site dir to ORIGIN in `sync.json` — where identity lives since 2026-09-20. */
+function bind(dir, uuid, org) {
+  const file = join(dir, 'sync.json')
+  let doc = { version: 1, backends: {} }
+  if (existsSync(file)) {
+    try { doc = JSON.parse(readFileSync(file, 'utf8')) } catch { /* fresh */ }
+  }
+  doc.backends[ORIGIN] = {
+    ...(doc.backends[ORIGIN] || {}),
+    site: { ...(uuid ? { uuid } : {}), ...(org ? { org } : {}) }
+  }
+  writeFileSync(file, JSON.stringify(doc, null, 2) + '\n')
 }
 
 function makeReport() {
@@ -573,10 +589,7 @@ test('pushSyncPackages CREATE: mints + records the site $uuid, persists the cach
   assert.equal(created, 1)
   assert.equal(res.exitCode, 0)
   assert.equal(res.boundSiteUuid, 'NEW-UUID')
-  assert.match(
-    readFileSync(join(dir, 'site.yml'), 'utf8'),
-    /^\$uuid: NEW-UUID$/m
-  )
+  assert.equal(readSiteIdentity(dir, ORIGIN).uuid, 'NEW-UUID')
   assert.ok(res.wrote.includes('recorded site $uuid in site.yml'))
   // the send-only-changed cache is persisted on success
   const cache = JSON.parse(
@@ -884,9 +897,10 @@ const okJson = (body) => ({ ok: true, status: 200, json: async () => body })
 
 test('ensureSiteExists is a no-op when the site is already bound', async () => {
   const dir = tmpSite()
-  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: EXISTING-1\n')
+  bind(dir, 'EXISTING-1')
   let called = false
   const client = {
+    origin: ORIGIN,
     createSite: async () => {
       called = true
       return okJson({ site_content_uuid: 'NEW' })
@@ -901,6 +915,7 @@ test('ensureSiteExists creates, reads the snake_case uuid, and writes it back at
   const dir = tmpSite()
   let sent = null
   const client = {
+    origin: ORIGIN,
     createSite: async (opts) => {
       sent = opts
       return okJson({ site_content_uuid: 'MINTED-9' })
@@ -922,7 +937,7 @@ test('ensureSiteExists creates, reads the snake_case uuid, and writes it back at
     asOrg: '@acme'
   })
   // Written back immediately — the window where a crash strands a site is one write.
-  assert.match(readFileSync(join(dir, 'site.yml'), 'utf8'), /MINTED-9/)
+  assert.equal(readSiteIdentity(dir, ORIGIN).uuid, 'MINTED-9')
   assert.ok(notes.some((m) => /Created the site/.test(m)))
 })
 
@@ -935,6 +950,7 @@ test('ensureSiteExists creates, reads the snake_case uuid, and writes it back at
 test('the created site records its org BARE, and reads back with the @', async () => {
   const dir = tmpSite()
   const client = {
+    origin: ORIGIN,
     createSite: async () => okJson({ site_content_uuid: 'MINTED-ORG' })
   }
   const notes = []
@@ -947,15 +963,13 @@ test('the created site records its org BARE, and reads back with the @', async (
     note: (m) => notes.push(m)
   })
 
-  const text = readFileSync(join(dir, 'site.yml'), 'utf8')
-  // BARE on disk. `@` is a reserved YAML indicator, so a plain scalar may not
-  // start with one — `$org: @acme` would not parse. This assertion is the guard.
-  assert.match(text, /^\$org: acme$/m)
-  assert.doesNotMatch(text, /\$org: @/, '`@` would make site.yml unparseable')
-  assert.doesNotThrow(() => yaml.load(text), 'site.yml must still parse')
-
-  // …and the reader re-dresses it, so callers get the wire/display form.
-  assert.equal(readSiteOrg(dir), '@acme')
+  // BARE at rest, re-dressed with the `@` on the way out. The old reason was YAML —
+  // `@` is a reserved indicator, so `$org: @acme` would not parse — and that hazard
+  // is gone with JSON. The convention stays because the WIRE and the CLI both use
+  // the bare handle, and one representation at rest beats two.
+  const stored = JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8'))
+  assert.equal(stored.backends[ORIGIN].site.org, 'acme')
+  assert.equal(readSiteOrg(dir, ORIGIN), '@acme')
   assert.equal(res.org, '@acme')
   // "Show what was resolved" — the org is named, not silently recorded.
   assert.ok(notes.some((m) => m.includes('@acme')))
@@ -964,14 +978,14 @@ test('the created site records its org BARE, and reads back with the @', async (
 test('a bare --as-org value is accepted and normalized on the way in', async () => {
   const dir = tmpSite()
   await ensureSiteExists({
-    client: { createSite: async () => okJson({ site_content_uuid: 'M' }) },
+    client: { origin: ORIGIN, createSite: async () => okJson({ site_content_uuid: 'M' }) },
     siteDir: dir,
     name: 'Acme',
     foundation: '@a/base@1.0.0',
     asOrg: 'acme' // no leading @
   })
-  assert.match(readFileSync(join(dir, 'site.yml'), 'utf8'), /^\$org: acme$/m)
-  assert.equal(readSiteOrg(dir), '@acme')
+  assert.equal(readSiteIdentity(dir, ORIGIN).org, 'acme')
+  assert.equal(readSiteOrg(dir, ORIGIN), '@acme')
 })
 
 test('no --as-org records NO org — the backend chose, and we do not guess one', async () => {
@@ -984,7 +998,7 @@ test('no --as-org records NO org — the backend chose, and we do not guess one'
   })
   // The create response carries no org, so there is nothing true to record.
   // Inventing one would be worse than the gap it fills.
-  assert.doesNotMatch(readFileSync(join(dir, 'site.yml'), 'utf8'), /\$org/)
+  assert.equal(readSiteIdentity(dir, ORIGIN).org, null)
   assert.equal(readSiteOrg(dir), null)
   assert.equal(res.org, null)
 })
@@ -996,7 +1010,7 @@ test('no --as-org records NO org — the backend chose, and we do not guess one'
 // choice left to make.
 
 const NEVER_CALLED = {
-  origin: 'http://b',
+  origin: ORIGIN,
   token: async () => {
     throw new Error('must not authenticate')
   }
@@ -1031,7 +1045,7 @@ test('--personal sends NO as_org — the pre-prompt wire, byte for byte', async 
 test('AN ALREADY-CREATED SITE IS NEVER ASKED — this is the compat property', async () => {
   const dir = tmpSite()
   // Every site that predates this feature is exactly this shape: $uuid, no $org.
-  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: EXISTING-1\n')
+  bind(dir, 'EXISTING-1')
   const r = await resolveSiteOrgForCreate({
     client: NEVER_CALLED,
     siteDir: dir,
@@ -1042,7 +1056,7 @@ test('AN ALREADY-CREATED SITE IS NEVER ASKED — this is the compat property', a
 
 test('a recorded $org is replayed without asking', async () => {
   const dir = tmpSite()
-  writeFileSync(join(dir, 'site.yml'), '$org: acme\nname: Acme\n')
+  bind(dir, null, 'acme')
   const r = await resolveSiteOrgForCreate({
     client: NEVER_CALLED,
     siteDir: dir,
@@ -1097,7 +1111,7 @@ test('the backend echo wins over what we asked for, and null means personal', as
   })
   // …the backend says the site is personal. `org: null` is an ANSWER, not an
   // absent key, so it must not fall back to the request.
-  assert.doesNotMatch(readFileSync(join(dir, 'site.yml'), 'utf8'), /\$org/)
+  assert.equal(readSiteIdentity(dir, ORIGIN).org, null)
   assert.equal(readSiteOrg(dir), null)
 })
 
@@ -1105,6 +1119,7 @@ test('an older backend omitting `org` falls back to what we asked for', async ()
   const dir = tmpSite()
   await ensureSiteExists({
     client: {
+      origin: ORIGIN,
       createSite: async () => okJson({ site_content_uuid: 'M' }), // no `org` key
       discover: async () => ({})
     },
@@ -1113,7 +1128,7 @@ test('an older backend omitting `org` falls back to what we asked for', async ()
     foundation: '@a/base@1.0.0',
     asOrg: '@acme'
   })
-  assert.equal(readSiteOrg(dir), '@acme')
+  assert.equal(readSiteOrg(dir, ORIGIN), '@acme')
 })
 
 test('the billing line speaks ONLY the reassuring fact, and never predicts a charge', async () => {
@@ -1173,10 +1188,10 @@ test('readSiteOrg returns null for every site that predates the record', () => {
   const dir = tmpSite()
   // This is the backward-compatibility property: no existing site.yml carries
   // `$org`, so every existing site keeps sending no `as_org`, exactly as before.
-  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: OLD-1\n')
+  bind(dir, 'OLD-1')
   assert.equal(readSiteOrg(dir), null)
 
-  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$org: "   "\n')
+  bind(dir, null, '   ')
   assert.equal(readSiteOrg(dir), null, 'a blank handle is not an org')
 })
 
@@ -1210,7 +1225,7 @@ test('ensureSiteExists distinguishes a backend without the route from a refusal'
   assert.equal(refused.uuid, null)
   assert.match(refused.reason, /HTTP 403/)
   // A failed create must not leave a half-bound site.yml behind.
-  assert.ok(!/\$uuid/.test(readFileSync(join(dir, 'site.yml'), 'utf8')))
+  assert.equal(readSiteIdentity(dir, ORIGIN).uuid, null)
 })
 
 test('ensureSiteExists reports a create that returns no uuid rather than binding null', async () => {
@@ -1230,6 +1245,7 @@ test('ensureSiteExists falls back to site.yml for name and foundation', async ()
   const dir = tmpSite() // name: Acme, foundation: '@a/base'
   let sent = null
   const client = {
+    origin: ORIGIN,
     createSite: async (o) => {
       sent = o
       return okJson({ site_content_uuid: 'M1' })
@@ -1255,6 +1271,7 @@ test('ensureSiteExists names the missing site.yml key instead of letting the cre
   writeFileSync(join(dir, 'site.yml'), 'foundation: "@a/base@1.0.0"\n')
   let called = false
   const client = {
+    origin: ORIGIN,
     createSite: async () => {
       called = true
       return okJson({ site_content_uuid: 'X' })
@@ -1290,19 +1307,20 @@ const writeCache = (dir, obj) => {
     JSON.stringify({ version: 1, backends: { [ORIGIN]: cache } })
   )
   if (itemUuids || queryUuids || folderItemUuids) {
-    writeFileSync(
-      join(dir, 'sync.json'),
-      JSON.stringify({
-        version: 1,
-        backends: {
-          [ORIGIN]: {
-            ...(itemUuids ? { items: itemUuids } : {}),
-            ...(queryUuids ? { queries: queryUuids } : {}),
-            ...(folderItemUuids ? { folders: folderItemUuids } : {})
-          }
-        }
-      })
-    )
+    // ⛔ MERGE — `bind()` may already have written the `site` section here, and
+    // replacing the file would silently unbind the very site under test.
+    const file = join(dir, 'sync.json')
+    let doc = { version: 1, backends: {} }
+    if (existsSync(file)) {
+      try { doc = JSON.parse(readFileSync(file, 'utf8')) } catch { /* fresh */ }
+    }
+    doc.backends[ORIGIN] = {
+      ...(doc.backends[ORIGIN] || {}),
+      ...(itemUuids ? { items: itemUuids } : {}),
+      ...(queryUuids ? { queries: queryUuids } : {}),
+      ...(folderItemUuids ? { folders: folderItemUuids } : {})
+    }
+    writeFileSync(file, JSON.stringify(doc, null, 2) + '\n')
   }
 }
 // ⚠️ The uuid maps are NOT here any more — they are identity and live in
@@ -1348,7 +1366,7 @@ test('an UNBOUND clone drops every map that describes a backend site', () => {
 
 test('a clone bound to the SAME site keeps its cache and gets stamped', () => {
   const dir = tmpSite()
-  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-A\n')
+  bind(dir, 'SITE-A')
   writeCache(dir, { siteUuid: 'SITE-A', itemUuids: { 'site.yml': 'I1' } })
   assert.deepEqual(clearRemoteSyncStateIfUnbound(dir, ORIGIN), [])
   assert.deepEqual(readItemUuids(dir, ORIGIN), { 'site.yml': 'I1' })
@@ -1358,7 +1376,7 @@ test('a clone bound to a DIFFERENT site than the cache describes is cleared', ()
   // Reachable in one step before the stamp existed: the create mints a uuid and
   // writes it BEFORE the push, so a push that then fails leaves exactly this.
   const dir = tmpSite()
-  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-NEW\n')
+  bind(dir, 'SITE-NEW')
   writeCache(dir, { siteUuid: 'SITE-OLD', itemUuids: { 'site.yml': 'I1' } })
   assert.deepEqual(clearRemoteSyncStateIfUnbound(dir, ORIGIN), ['itemUuids'])
   const c = readCache(dir)
@@ -1372,7 +1390,7 @@ test('a legacy cache with no siteUuid on a bound clone is LEFT ALONE', () => {
   // already broken before the stamp existed stays broken until `.uniweb/` is
   // removed — an accepted trade, recorded so it is not read as an oversight.
   const dir = tmpSite()
-  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-A\n')
+  bind(dir, 'SITE-A')
   writeCache(dir, { itemUuids: { 'site.yml': 'I1' } })
   assert.deepEqual(clearRemoteSyncStateIfUnbound(dir, ORIGIN), [])
   assert.deepEqual(readItemUuids(dir, ORIGIN), { 'site.yml': 'I1' })
@@ -1382,7 +1400,7 @@ test('a legacy cache with no siteUuid on a bound clone is LEFT ALONE', () => {
 
 test('an empty cache is a no-op, and still records identity', () => {
   const dir = tmpSite()
-  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-A\n')
+  bind(dir, 'SITE-A')
   writeCache(dir, {})
   assert.deepEqual(clearRemoteSyncStateIfUnbound(dir, ORIGIN), [])
   assert.equal(readCache(dir).siteUuid, 'SITE-A')
@@ -1394,7 +1412,7 @@ test('an item_uuid_conflict clears the stale cache and says re-run', async () =>
   // than wiping every existing clone. Branches on `reason` — the backend types this
   // as 409 alongside `stale_base`; `detail` is prose and must not be matched.
   const dir = tmpSite()
-  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n$uuid: SITE-NEW\n')
+  bind(dir, 'SITE-NEW')
   writeCache(dir, { itemUuids: { 'site.yml': 'OLD-ITEM' }, hashes: { a: 'h' } })
 
   const client = {
@@ -1541,14 +1559,20 @@ test('⛔ a push that banks NO identity SAYS SO — it used to be silent', async
  * the defect travels, and the control below is what makes its absence mean something.
  */
 test('probeUnpushed resolves a foundation-relative collection schema via the site org', async () => {
-  const make = (orgLine) => {
+  const make = (org) => {
     const dir = mkdtempSync(join(tmpdir(), 'probe-org-'))
     mkdirSync(join(dir, 'foundations', 'base', 'dist', 'meta'), { recursive: true })
     writeFileSync(
       join(dir, 'foundations', 'base', 'dist', 'meta', 'schema.json'),
       JSON.stringify({ dataSchemas: { '@/member': { name: 'member', version: '1.0.0' } } })
     )
-    writeFileSync(join(dir, 'site.yml'), `name: Acme\nfoundation: base\n${orgLine}`)
+    writeFileSync(join(dir, 'site.yml'), 'name: Acme\nfoundation: base\n')
+    if (org) {
+      writeFileSync(
+        join(dir, 'sync.json'),
+        JSON.stringify({ version: 1, backends: { [ORIGIN]: { site: { org } } } })
+      )
+    }
     mkdirSync(join(dir, 'collections', 'members'), { recursive: true })
     writeFileSync(join(dir, 'queries.yml'), 'members:\n  schema: "@/member"\n')
     writeFileSync(join(dir, 'collections', 'members', 'alice.md'), '---\nname: Alice\n---\n\nHi.\n')
@@ -1566,8 +1590,8 @@ test('probeUnpushed resolves a foundation-relative collection schema via the sit
     }
   }
 
-  const withOrg = make('$org: "@acme"\n')
-  const noOrg = make('')
+  const withOrg = make('acme')
+  const noOrg = make(null)
   try {
     // CONTROL. A site recording no org has nothing to resolve WITH, so the emit must
     // still ask for the bare `@/member`. Without this the assertion below would pass

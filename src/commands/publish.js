@@ -72,8 +72,8 @@ import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { readFlagValue, readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
-  assertSiteBackendScope,
-  readSiteIdentity
+  resolveSyncedBackend,
+  describeBackendAmbiguity
 } from '../utils/site-identity.js'
 import { isNonInteractive, confirm } from '../utils/interactive.js'
 import { guardEmptyRecords } from '../utils/records-guard.js'
@@ -259,7 +259,7 @@ export async function publish(args = []) {
   // ABOVE the session (see resolveBackendOrigin), so a teammate who cloned this project
   // targets the backend it is bound to instead of whatever they last logged into.
   // ⛔ The RAW value, never `resolveSiteScope` — null must mean "defer to the next tier".
-  const siteScope = readSiteIdentity(siteDir).backend
+  const siteScope = resolveSyncedBackend(siteDir)
   const siteBackend = await resolveSiteBackend(siteDir)
 
   const client = new BackendClient({
@@ -275,12 +275,6 @@ export async function publish(args = []) {
   // ⛔ SCOPE CHECK — before the foundation bring-along, the sync, or the go-live. A
   // publish is the longest of these flows and the most expensive to unwind, so it is
   // the one that most benefits from failing at the first step rather than at the fifth.
-  const scope = assertSiteBackendScope(siteDir, client.origin)
-  if (!scope.ok) {
-    say.err(scope.message)
-    scope.hint.forEach(say.dim)
-    return { exitCode: 1 }
-  }
 
   // WHO will own this site, if this publish is the one that creates it. Resolved
   // up front: `ensureSiteExists` below is the create, and it must not be reached
@@ -531,6 +525,7 @@ export async function publish(args = []) {
   let probe
   try {
     probe = await emitSyncPackages(siteDir, {
+      backend: client.origin,
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir, client.origin),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
@@ -911,6 +906,7 @@ export async function publish(args = []) {
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, {
+      backend: client.origin,
       ...(declaration.declare ? {} : { declareServices: false }),
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir, client.origin),

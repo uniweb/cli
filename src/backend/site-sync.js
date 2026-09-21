@@ -15,7 +15,6 @@ import { writeFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import yaml from 'js-yaml'
 import { hasUncommittedContent } from '../utils/git.js'
-import { recordSiteBackend } from '../utils/site-identity.js'
 import { humanBytes } from '../utils/bytes.js'
 import { isAuthoredPreview } from '../utils/preview.js'
 import {
@@ -303,13 +302,12 @@ export function clearRemoteSyncState(siteDir, backend, siteUuid = null) {
 }
 
 export function clearRemoteSyncStateIfUnbound(siteDir, backend) {
-  let current = null
-  try {
-    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
-    if (typeof y?.$uuid === 'string') current = y.$uuid
-  } catch {
-    /* unreadable site.yml — treat as unbound and clear, which is the safe side */
-  }
+  // ⭐ "Bound" is a question about THIS backend: the identity is `sync.json`'s, keyed
+  // by origin. A project bound on one backend and not another is an ordinary state
+  // now, not a contradiction — which is why the stamp below still earns its keep even
+  // though cross-backend confusion became unrepresentable. What it still catches is a
+  // site DELETED on this backend and re-created: same origin, new uuid.
+  const current = readBackendState(siteDir, backend).site?.uuid || null
 
   const prior = readSyncCacheFile(siteDir, backend)
   // ⛔ TWO FILES, ONE QUESTION. The cache holds the speed-ups and `sync.json` holds
@@ -613,16 +611,9 @@ export function writeItemUuids(siteDir, backend, map) {
  * @param {string} siteDir
  * @returns {string|null}
  */
-export function readSiteOrg(siteDir) {
-  try {
-    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
-    const h = y && typeof y === 'object' ? y.$org : null
-    return typeof h === 'string' && h.trim()
-      ? `@${h.trim().replace(/^@/, '')}`
-      : null
-  } catch {
-    return null
-  }
+export function readSiteOrg(siteDir, backend) {
+  const org = readBackendState(siteDir, backend).site?.org
+  return typeof org === 'string' && org ? `@${org.replace(/^@/, '')}` : null
 }
 
 /**
@@ -637,14 +628,14 @@ export function readSiteOrg(siteDir) {
  * @param {string|null|undefined} asOrg - the `--as-org` value, `@handle` or bare
  * @returns {string|null}
  */
-function recordSiteOrg(siteDir, asOrg) {
+function recordSiteOrg(siteDir, backend, asOrg) {
   const handle = String(asOrg || '')
     .replace(/^@/, '')
     .replace(/\/.*$/, '')
     .trim()
   if (!handle) return null
   try {
-    writeSiteOrg(siteDir, handle)
+    writeSiteOrg(siteDir, backend, handle)
     return `@${handle}`
   } catch {
     // The uuid is the load-bearing back-fill; losing the org note must never
@@ -697,19 +688,13 @@ export async function resolveSiteOrgForCreate({
   if (flag) return { asOrg: flag }
   if (personal) return { asOrg: null }
 
-  const recorded = readSiteOrg(siteDir)
+  const recorded = readSiteOrg(siteDir, client?.origin)
   if (recorded) return { asOrg: recorded }
 
-  // Already created ⇒ nothing to decide. This is what keeps every existing site
-  // silent: ownership was settled at its create, and re-asking would be theatre.
-  let siteYml = {}
-  try {
-    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
-    if (y && typeof y === 'object') siteYml = y
-  } catch {
-    /* unreadable — treat as un-created and let the resolution below decide */
-  }
-  if (typeof siteYml.$uuid === 'string') return { asOrg: null }
+  // Already created ⇒ nothing to decide: ownership was settled at its create and
+  // re-asking would be theatre. ⭐ "Created" is a question about THIS backend now —
+  // the same project may be brand new on one and long-established on another.
+  if (readBackendState(siteDir, client?.origin).site?.uuid) return { asOrg: null }
 
   // An offline preview (`--dry-run` / `-o`) must never authenticate, and it is
   // creating nothing, so there is no decision to force. Say what is unresolved
@@ -901,8 +886,9 @@ export async function ensureSiteExists({
   } catch {
     /* unreadable site.yml — treat as un-synced and let the create decide */
   }
-  if (typeof siteYml.$uuid === 'string') {
-    return { uuid: siteYml.$uuid, created: false, org: readSiteOrg(siteDir) }
+  const known = readBackendState(siteDir, client.origin).site?.uuid
+  if (known) {
+    return { uuid: known, created: false, org: readSiteOrg(siteDir, client.origin) }
   }
 
   // Both are required by the create. Catching it here turns a 400 into a sentence
@@ -954,7 +940,7 @@ export async function ensureSiteExists({
       reason: 'the create returned no site uuid'
     }
   }
-  writeSiteEntityUuid(siteDir, minted)
+  writeSiteEntityUuid(siteDir, client.origin, minted)
   // Stamp the cache with the site it now describes, so a push that fails after
   // this point cannot leave a cache pointing at a different site with no way to
   // detect it.
@@ -992,23 +978,16 @@ async function recordAndDescribeOwner({
   const echoed = payload && 'org' in payload ? payload.org : undefined
   const owner =
     echoed === undefined ? asOrg : typeof echoed === 'string' ? echoed : null
-  const org = recordSiteOrg(siteDir, owner)
+  const org = recordSiteOrg(siteDir, client.origin, owner)
 
-  // The SYNC SCOPE, recorded here for the same reason `$org` is: this function is the
-  // one place BOTH create paths meet (`ensureSiteExists` for a site with local media,
-  // the content-lane create for one without). Recording it at either call site instead
-  // would make `$backend` present or absent depending on whether the site happens to
-  // have images — the exact drift the comment at the second call site warns about.
-  //
-  // A no-op on the default backend, so the common case writes nothing.
-  const scope = await recordSiteBackend(siteDir, client.origin)
-  if (scope)
-    note?.(`Bound this project to ${scope} (recorded $backend in site.yml).`)
-
+  // ⛔ No sync scope to record. It WAS `site.yml::$backend`, written here because this
+  // function is the one place both create paths meet. The scope is now the KEY the
+  // identity is stored under (`sync.json::backends.<origin>`), so recording it
+  // separately would be recording the name of the drawer inside the drawer.
   note?.(
     org
-      ? `Created the site on the backend under ${org} (recorded $uuid + $org in site.yml).`
-      : `Created the site on the backend, owned personally (recorded $uuid in site.yml).`
+      ? `Created the site on ${client.origin} under ${org} — recorded in sync.json.`
+      : `Created the site on ${client.origin}, owned personally — recorded in sync.json.`
   )
 
   // What the create echoed about this site's OWNER, and nothing beyond it.
@@ -1166,9 +1145,10 @@ async function comparisonEmit(
   // comparison against the wrong one reports every media ref as changed. Absent is
   // honest rather than a default — no backend, no known ids.
   const assetIds = backend ? readBackendState(siteDir, backend).assets || {} : {}
-  const org = readSiteOrg(siteDir)
+  const org = readSiteOrg(siteDir, backend)
   const queryUuids = readQueryUuids(siteDir)
   return emitSyncPackages(siteDir, {
+    backend,
     resolveModel: makeModelResolver({ client: null, offline: true }),
     priorHashes,
     sendAll,
@@ -1558,7 +1538,7 @@ export async function pushSyncPackages({
         note(JSON.stringify(payload).slice(0, 800))
         return { exitCode: 1, finalizedTotal, wrote }
       }
-      writeSiteEntityUuid(siteDir, minted)
+      writeSiteEntityUuid(siteDir, client.origin, minted)
       updateSyncCache(siteDir, client.origin, { siteUuid: minted })
       boundSiteUuid = minted
       wrote.push('recorded site $uuid in site.yml')

@@ -1,303 +1,165 @@
 /**
- * site-identity — the project's SYNC SCOPE (`site.yml::$backend`) and the guard that
- * refuses to act on a site whose stored identity was minted by a different backend.
+ * Site identity, read from `sync.json` — and the guard that no longer exists.
  *
- * The guard is the whole reason `$backend` exists, so these tests are mostly about its
- * edges rather than about reading a scalar: an unsynced project must NOT be blocked (a
- * first push is exactly what should happen next), an absent value must read as the
- * default, and the one known false positive must print its own correction.
+ * ⭐ **The headline is a DELETION.** `assertSiteBackendScope` refused a command whose
+ * resolved origin disagreed with the project's recorded `$backend`, and it carried an
+ * accepted false positive: an absent `$backend` read as the default backend, so a
+ * project synced elsewhere before the key existed was stopped and told it belonged to
+ * a backend it had never used.
+ *
+ * Keyed by origin, the confusion it guarded against is unrepresentable — a command for
+ * B reads B's section and finds B's ids or nothing. These tests assert that shape
+ * directly rather than asserting the guard is gone, because "the function was deleted"
+ * is a fact about the module and "identity cannot cross" is a fact about the design.
  */
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  mkdtempSync,
-  writeFileSync,
-  readFileSync,
-  rmSync,
-  mkdirSync
-} from 'node:fs'
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   readSiteIdentity,
-  resolveSiteScope,
-  recordSiteBackend,
-  assertSiteBackendScope,
-  normalizeOrigin,
-  findNearbySiteBackend
+  syncedBackends,
+  resolveSyncedBackend,
+  describeBackendAmbiguity,
+  findNearbySiteBackend,
+  normalizeOrigin
 } from '../src/utils/site-identity.js'
-import { DEFAULT_BACKEND_ORIGIN } from '../src/utils/config.js'
 
-const LOCAL = 'http://localhost:8080'
+const A = 'https://uniweb.app'
+const B = 'http://localhost:8080'
 const dirs = []
 
-function tmpSite(siteYml = 'name: demo\nfoundation: "@acme/f"\n') {
-  const d = mkdtempSync(join(tmpdir(), 'uw-identity-'))
-  dirs.push(d)
-  writeFileSync(join(d, 'site.yml'), siteYml)
-  return d
-}
-
-test.after(() => {
-  for (const d of dirs) rmSync(d, { recursive: true, force: true })
-})
-
-// ── reading ──────────────────────────────────────────────────────────────────────
-
-test('reads the identity trio, and reports each field independently absent', () => {
-  const full = tmpSite('$uuid: U-1\n$org: acme\n$backend: http://localhost:8080\nname: demo\n')
-  assert.deepEqual(readSiteIdentity(full), {
-    uuid: 'U-1',
-    org: 'acme',
-    backend: LOCAL
-  })
-
-  // Every field is independently optional: unsynced, personally owned, on the default.
-  assert.deepEqual(readSiteIdentity(tmpSite()), {
-    uuid: null,
-    org: null,
-    backend: null
-  })
-})
-
-test('a missing or malformed site.yml reads as nothing recorded, never a throw', () => {
-  const gone = mkdtempSync(join(tmpdir(), 'uw-identity-'))
-  dirs.push(gone)
-  assert.deepEqual(readSiteIdentity(gone), {
-    uuid: null,
-    org: null,
-    backend: null
-  })
-
-  // Every caller here is a guard or a default. A malformed site.yml has its own, better
-  // error elsewhere; dying inside the guard would replace it with a worse one.
-  const junk = tmpSite('name: [unclosed\n')
-  assert.deepEqual(readSiteIdentity(junk).uuid, null)
-})
-
-test('an absent $backend resolves to the default backend', () => {
-  assert.equal(resolveSiteScope(tmpSite()), DEFAULT_BACKEND_ORIGIN)
-  assert.equal(resolveSiteScope(tmpSite('$backend: http://localhost:8080\n')), LOCAL)
-})
-
-test('a bare URL survives the YAML round trip unquoted, including host:port', () => {
-  // `$org` is stored bare precisely because a leading `@` is a reserved YAML indicator.
-  // A URL lands on the safe side of the same hazard — its `:` is always followed by `/`
-  // or a digit, never a space — but only a test keeps that true.
-  for (const origin of [LOCAL, 'https://uniweb.app', 'https://a.b.c:9443']) {
-    assert.equal(readSiteIdentity(tmpSite(`$backend: ${origin}\n`)).backend, origin)
+process.on('exit', () => {
+  for (const d of dirs) {
+    try {
+      rmSync(d, { recursive: true, force: true })
+    } catch {
+      /* best effort */
+    }
   }
 })
 
-// ── writing ──────────────────────────────────────────────────────────────────────
-
-test('records a non-default backend and leaves the rest of site.yml alone', async () => {
-  const d = tmpSite('# keep me\nname: demo\nfoundation: "@acme/f"\n')
-  assert.equal(await recordSiteBackend(d, LOCAL), LOCAL)
-
-  const text = readFileSync(join(d, 'site.yml'), 'utf8')
-  assert.match(text, /^\$backend: http:\/\/localhost:8080$/m)
-  assert.match(text, /# keep me/) // comments survive — upsert, not a yaml.dump rewrite
-  assert.match(text, /foundation: "@acme\/f"/)
-  assert.equal(readSiteIdentity(d).backend, LOCAL)
-})
-
-test('writes NOTHING for the default backend — the 98% case keeps a clean site.yml', async () => {
-  const d = tmpSite()
-  const before = readFileSync(join(d, 'site.yml'), 'utf8')
-  assert.equal(await recordSiteBackend(d, DEFAULT_BACKEND_ORIGIN), null)
-  assert.equal(readFileSync(join(d, 'site.yml'), 'utf8'), before)
-})
-
-test('re-recording the same backend does not touch the file', async () => {
-  // A push that rewrites site.yml with an identical value dirties `git status` for no
-  // reason, and trains people to stop reading that diff.
-  const d = tmpSite()
-  await recordSiteBackend(d, LOCAL)
-  const after = readFileSync(join(d, 'site.yml'), 'utf8')
-  assert.equal(await recordSiteBackend(d, LOCAL), null)
-  assert.equal(readFileSync(join(d, 'site.yml'), 'utf8'), after)
-})
-
-test('an unparseable origin records nothing rather than a broken scalar', async () => {
-  const d = tmpSite()
-  assert.equal(await recordSiteBackend(d, 'not-a-url'), null)
-  assert.equal(readSiteIdentity(d).backend, null)
-  assert.equal(normalizeOrigin('not-a-url'), null)
-})
-
-// ── the guard ────────────────────────────────────────────────────────────────────
-
-test('does NOT block an unsynced project — a first push is what should happen next', () => {
-  // No `$uuid` means nothing is stored, so nothing can be foreign. Checking here would
-  // reject the first push of every new site.
-  const d = tmpSite('$backend: http://localhost:8080\nname: demo\n')
-  assert.equal(assertSiteBackendScope(d, 'https://elsewhere.example').ok, true)
-})
-
-test('passes when the recorded backend matches, and when both are the default', () => {
-  const bound = tmpSite('$uuid: U-1\n$backend: http://localhost:8080\n')
-  assert.equal(assertSiteBackendScope(bound, LOCAL).ok, true)
-  // Trailing slashes and full endpoint URLs reduce to the same origin.
-  assert.equal(assertSiteBackendScope(bound, 'http://localhost:8080/dev/site').ok, true)
-
-  const onDefault = tmpSite('$uuid: U-1\n')
-  assert.equal(assertSiteBackendScope(onDefault, DEFAULT_BACKEND_ORIGIN).ok, true)
-})
-
-test('STOPS a synced project pointed at a different backend, naming both ends', () => {
-  const d = tmpSite('$uuid: U-1\n$backend: http://localhost:8080\n')
-  const r = assertSiteBackendScope(d, 'https://elsewhere.example')
-  assert.equal(r.ok, false)
-  assert.match(r.message, /http:\/\/localhost:8080/)
-  assert.match(r.message, /https:\/\/elsewhere\.example/)
-
-  const hint = r.hint.join('\n')
-  // The remedy must lead with the reversible one. Moving the project is destructive and
-  // is offered second, exactly as in the 404 branch.
-  assert.match(hint, /uniweb login --backend http:\/\/localhost:8080/)
-  assert.ok(
-    hint.indexOf('uniweb login') < hint.indexOf('clear $uuid'),
-    `the reversible remedy must come first:\n${hint}`
-  )
-})
-
-test('an absent $backend is treated as the default — and says how to correct that', () => {
-  // The one known false positive: a project synced to a non-default backend BEFORE
-  // `$backend` existed records no scope, so it reads as "default" and gets stopped.
-  // Tolerated only because the message carries the one-line fix; assert that it does.
-  const legacy = tmpSite('$uuid: U-1\nname: demo\n')
-  const r = assertSiteBackendScope(legacy, LOCAL)
-  assert.equal(r.ok, false)
-  assert.match(r.message, new RegExp(DEFAULT_BACKEND_ORIGIN.replace(/[.]/g, '\\.')))
-  assert.match(r.hint.join('\n'), /add\s+\$backend: http:\/\/localhost:8080/)
-})
-
-test('a project WITH a recorded backend does not get the correction hint', () => {
-  // That hint only makes sense when nothing was recorded. Offering it to a project that
-  // already declared its scope would read as "overwrite what you declared".
-  const d = tmpSite('$uuid: U-1\n$backend: http://localhost:8080\n')
-  const hint = assertSiteBackendScope(d, 'https://elsewhere.example').hint.join('\n')
-  assert.doesNotMatch(hint, /add\s+\$backend/)
-})
-
-// ⛔ SUPERSEDES 'a MISSING @uniweb/build records nothing, silently' (2026-09-18).
-//
-// That test asserted `r === null` and `backend === null` on the grounds that build is an
-// optional peer and a missing one is a supported configuration. The first half is right
-// and the conclusion was wrong: the branch is not rare, it is what a FRESH CLONE always
-// hits — `clone` records the backend before `pnpm install`, so there is no `node_modules`
-// yet, and under `npx uniweb@latest` the CLI's own tree may not carry build either.
-//
-// The consequence is the one the NEXT test in this file already names for the too-old
-// case: "leaving the scope unrecorded on a project the guard will later stop and tell to
-// add `$backend` by hand". Measured by the backend lane 2026-09-18 — `0.48.5` recorded
-// `$backend`, `0.57.0` did not, and the clone was unusable until they added the line.
-//
-// ⇒ Silence is still right (it is a supported configuration and must not warn). Writing
-// NOTHING was not. The fallback needs no installed package.
-test('a MISSING @uniweb/build still records the scope, silently, via the fallback', async () => {
-  const d = tmpSite()
-  const seen = []
-  const realErr = console.error
-  console.error = (m) => seen.push(m)
-  try {
-    const r = await recordSiteBackend(d, LOCAL, {
-      loadUwx: () => Promise.reject(new Error('ERR_MODULE_NOT_FOUND'))
-    })
-    assert.equal(r, LOCAL)
-  } finally {
-    console.error = realErr
+/** A site dir, optionally bound to one or more backends. */
+function site(bound = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'uw-identity-'))
+  dirs.push(dir)
+  writeFileSync(join(dir, 'site.yml'), 'name: demo\nfoundation: "@acme/f"\n')
+  const backends = {}
+  for (const [origin, siteState] of Object.entries(bound)) {
+    backends[origin] = { site: siteState }
   }
-  assert.deepEqual(seen, [], 'a supported configuration must not warn')
-  assert.equal(readSiteIdentity(d).backend, LOCAL)
-})
-
-test('a build package too old to carry the writer SAYS SO, instead of failing silently', async () => {
-  // `@uniweb/build` gained `writeSiteBackend` in 0.25.3. Against an older copy the import
-  // SUCCEEDS and the export is undefined — a TypeError a blanket catch would swallow,
-  // leaving the scope unrecorded on a project the guard will later stop and tell to add
-  // `$backend` by hand. Reachable on a CLI-only upgrade with a lockfile pinned to an
-  // older patch, which is exactly the skew a release creates.
-  const d = tmpSite()
-  const seen = []
-  const realErr = console.error
-  console.error = (m) => seen.push(m)
-  try {
-    const r = await recordSiteBackend(d, LOCAL, {
-      loadUwx: () => Promise.resolve({ /* an older build: no writeSiteBackend */ })
-    })
-    assert.equal(r, null)
-  } finally {
-    console.error = realErr
+  if (Object.keys(backends).length) {
+    writeFileSync(join(dir, 'sync.json'), JSON.stringify({ version: 1, backends }))
   }
-  assert.equal(seen.length, 1, `expected exactly one warning, got: ${JSON.stringify(seen)}`)
-  assert.match(seen[0], /too old/)
-  assert.match(seen[0], /\$backend: http:\/\/localhost:8080/) // prints the manual fix
-  assert.equal(readSiteIdentity(d).backend, null)
-})
-
-// ── findNearbySiteBackend — the `login` notice ────────────────────────────────────
-//
-// `login` does NOT take `$backend` as an origin tier (a session is machine-wide), so
-// this only ever produces a HEADS-UP. That makes a wrong answer worse than no answer:
-// a confident "did you mean localhost:8080?" naming the wrong site of three is a hint
-// that actively misleads. Hence the ambiguity guard, which is what most of this pins.
-
-function tmpRoot() {
-  const d = mkdtempSync(join(tmpdir(), 'uw-nearby-'))
-  dirs.push(d)
-  return d
-}
-
-function siteAt(dir, yml) {
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'site.yml'), yml)
   return dir
 }
 
-test('findNearbySiteBackend: reads $backend from the site you stand in', () => {
-  const root = tmpRoot()
-  const site = siteAt(join(root, 'site'), `$backend: ${LOCAL}\nname: demo\n`)
-  assert.deepEqual(findNearbySiteBackend(site), { siteDir: site, backend: LOCAL })
+// ───────────────────────────── identity is per backend ─────────────────────────
+
+test('identity is read for ONE backend, and another backend sees nothing', () => {
+  const dir = site({ [A]: { uuid: 'SITE-A', org: 'acme' } })
+
+  assert.deepEqual(readSiteIdentity(dir, A), { uuid: 'SITE-A', org: 'acme' })
+  assert.deepEqual(
+    readSiteIdentity(dir, B),
+    { uuid: null, org: null },
+    "B must not inherit A's identity — this is the guard's whole job, done structurally"
+  )
 })
 
-test('findNearbySiteBackend: finds site/ one level down from a project root', () => {
-  const root = tmpRoot()
-  const site = siteAt(join(root, 'site'), `$backend: ${LOCAL}\nname: demo\n`)
-  assert.deepEqual(findNearbySiteBackend(root), { siteDir: site, backend: LOCAL })
+test('two backends coexist without either shadowing the other', () => {
+  const dir = site({ [A]: { uuid: 'SITE-A' }, [B]: { uuid: 'SITE-B' } })
+
+  assert.equal(readSiteIdentity(dir, A).uuid, 'SITE-A')
+  assert.equal(readSiteIdentity(dir, B).uuid, 'SITE-B')
+  assert.deepEqual(syncedBackends(dir), [A, B].sort())
 })
 
-test('findNearbySiteBackend: finds a LONE site under sites/', () => {
-  const root = tmpRoot()
-  const site = siteAt(join(root, 'sites', 'only'), `$backend: ${LOCAL}\nname: a\n`)
-  assert.deepEqual(findNearbySiteBackend(root), { siteDir: site, backend: LOCAL })
+test('an unsynced project reads as nothing, not as the default backend', () => {
+  const dir = site()
+  assert.deepEqual(readSiteIdentity(dir, A), { uuid: null, org: null })
+  assert.deepEqual(syncedBackends(dir), [])
+  assert.equal(resolveSyncedBackend(dir), null)
 })
 
-test('findNearbySiteBackend: ⛔ a workspace of several sites is AMBIGUOUS → null', () => {
-  // The load-bearing case. Two sites bound to different backends have no single
-  // answer, and picking either would name the wrong one half the time.
-  const root = tmpRoot()
-  siteAt(join(root, 'sites', 'a'), `$backend: ${LOCAL}\nname: a\n`)
-  siteAt(join(root, 'sites', 'b'), '$backend: http://127.0.0.1:9999\nname: b\n')
+test('a full endpoint URL addresses the same backend as its bare origin', () => {
+  const dir = site({ [B]: { uuid: 'SITE-B' } })
+  assert.equal(readSiteIdentity(dir, `${B}/dev/site/abc`).uuid, 'SITE-B')
+  assert.equal(normalizeOrigin(`${B}/anything`), B)
+})
+
+test('a malformed or missing sync.json reads as unsynced rather than throwing', () => {
+  const dir = site()
+  writeFileSync(join(dir, 'sync.json'), '{ not json')
+  assert.deepEqual(readSiteIdentity(dir, A), { uuid: null, org: null })
+  assert.deepEqual(syncedBackends(dir), [])
+})
+
+// ─────────────────────── the tier that replaced `$backend` ──────────────────────
+
+test('⭐ exactly one synced backend answers the ladder; several do not', () => {
+  assert.equal(resolveSyncedBackend(site({ [A]: { uuid: 'S' } })), A)
+  assert.equal(
+    resolveSyncedBackend(site({ [A]: { uuid: 'S' }, [B]: { uuid: 'T' } })),
+    null,
+    'ambiguity must defer to the next tier, never guess'
+  )
+})
+
+test('ambiguity is explained rather than silently dropped', () => {
+  assert.equal(describeBackendAmbiguity(site({ [A]: { uuid: 'S' } })), null)
+  const msg = describeBackendAmbiguity(site({ [A]: { uuid: 'S' }, [B]: { uuid: 'T' } }))
+  assert.match(msg, /2 backends/)
+  assert.match(msg, /--backend/)
+  assert.match(msg, /deploy\.yml/)
+})
+
+// ───────────────────────────── findNearbySiteBackend ───────────────────────────
+
+test('answers for the site you are standing in', () => {
+  const dir = site({ [B]: { uuid: 'S' } })
+  assert.deepEqual(findNearbySiteBackend(dir), { siteDir: dir, backend: B })
+})
+
+test('answers from a project root, where the site is one level down', () => {
+  const root = mkdtempSync(join(tmpdir(), 'uw-proj-'))
+  dirs.push(root)
+  const s = join(root, 'site')
+  mkdirSync(s, { recursive: true })
+  writeFileSync(join(s, 'site.yml'), 'name: demo\n')
+  writeFileSync(
+    join(s, 'sync.json'),
+    JSON.stringify({ version: 1, backends: { [B]: { site: { uuid: 'S' } } } })
+  )
+  assert.deepEqual(findNearbySiteBackend(root), { siteDir: s, backend: B })
+})
+
+test('⛔ stays silent for a workspace of several sites — a confident wrong answer is worse', () => {
+  const root = mkdtempSync(join(tmpdir(), 'uw-ws-'))
+  dirs.push(root)
+  for (const name of ['one', 'two']) {
+    const s = join(root, 'sites', name)
+    mkdirSync(s, { recursive: true })
+    writeFileSync(join(s, 'site.yml'), 'name: demo\n')
+    writeFileSync(
+      join(s, 'sync.json'),
+      JSON.stringify({ version: 1, backends: { [B]: { site: { uuid: name } } } })
+    )
+  }
   assert.equal(findNearbySiteBackend(root), null)
 })
 
-test('findNearbySiteBackend: a default-bound project records nothing → null', () => {
-  // No `$backend` means "the default", which is not a disagreement worth a warning.
-  const root = tmpRoot()
-  siteAt(join(root, 'site'), 'name: demo\n')
-  assert.equal(findNearbySiteBackend(root), null)
+test('⛔ stays silent when the one site has synced with several backends', () => {
+  const dir = site({ [A]: { uuid: 'S' }, [B]: { uuid: 'T' } })
+  assert.equal(
+    findNearbySiteBackend(dir),
+    null,
+    'login must not pick one of two for you'
+  )
 })
 
-test('findNearbySiteBackend: outside any project → null, never throws', () => {
-  assert.equal(findNearbySiteBackend(tmpRoot()), null)
-})
-
-test('findNearbySiteBackend: a malformed site.yml is silent, not fatal', () => {
-  // It feeds an advisory. Nobody should be unable to log in because of a bad file.
-  const root = tmpRoot()
-  siteAt(join(root, 'site'), '$backend: [unclosed\n  : :\n')
-  assert.equal(findNearbySiteBackend(root), null)
+test('stays silent for an unsynced project', () => {
+  assert.equal(findNearbySiteBackend(site()), null)
 })

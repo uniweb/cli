@@ -72,8 +72,8 @@ import { reportSchemalessQueries } from '../utils/schemaless-report.js'
 import { readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
-  assertSiteBackendScope,
-  readSiteIdentity
+  resolveSyncedBackend,
+  describeBackendAmbiguity
 } from '../utils/site-identity.js'
 import { confirm } from '../utils/interactive.js'
 import { guardEmptyRecords } from '../utils/records-guard.js'
@@ -160,7 +160,7 @@ export async function push(args = [], deps = {}) {
   // ABOVE the session (see resolveBackendOrigin), so a teammate who cloned this project
   // targets the backend it is bound to instead of whatever they last logged into.
   // ⛔ The RAW value, never `resolveSiteScope` — null must mean "defer to the next tier".
-  const siteScope = readSiteIdentity(siteDir).backend
+  const siteScope = resolveSyncedBackend(siteDir)
   const siteBackend = await resolveSiteBackend(siteDir)
   // One front door. The bearer is resolved lazily on first need (a non-local Model
   // read during the build, or the submit). Offline emit (--dry-run / -o) is fully
@@ -192,12 +192,6 @@ export async function push(args = [], deps = {}) {
   // push, so when that push would be refused, saying so is the honest preview. Printing
   // "would update content at <origin>" instead would preview something that cannot happen.
   if (!output) {
-    const scope = assertSiteBackendScope(siteDir, client.origin)
-    if (!scope.ok) {
-      error(scope.message)
-      scope.hint.forEach(note)
-      return { exitCode: 1 }
-    }
   }
 
   // WHO will own this site, if this push is the one that creates it. Resolved
@@ -389,6 +383,7 @@ export async function push(args = [], deps = {}) {
     let mediaRefs = []
     try {
       const probe = await emitSyncPackages(siteDir, {
+      backend: client.origin,
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir, client.origin),
       // Resolves a foundation-relative `@/x` model ref into `@org/x`.
@@ -487,6 +482,7 @@ export async function push(args = [], deps = {}) {
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, {
+      backend: client.origin,
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir, client.origin),
       // Identity for the `queries` section — see readQueryUuids. Keyed by

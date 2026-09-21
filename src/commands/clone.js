@@ -59,7 +59,6 @@ import { extractFoundationRef } from '../utils/site-content-refs.js'
 import { readUwxDocuments } from '../utils/uwx-read.js'
 import { recordWritten } from '../utils/pull-written.js'
 import { checkFlags } from '../utils/flag-guard.js'
-import { recordSiteBackend } from '../utils/site-identity.js'
 
 const colors = {
   reset: '\x1b[0m',
@@ -128,24 +127,35 @@ export function extractCloneSeeds(document) {
   }
 }
 
-// Insert/replace a top-level `$uuid:` scalar in a YAML file's text without
-// disturbing the rest (the scaffolded site.yml is comment-heavy — don't round-trip
-// through a YAML dumper). Inserts after the first `name:` line, else prepends.
-function seedYamlUuid(filePath, uuid) {
-  let text = existsSync(filePath) ? readFileSync(filePath, 'utf8') : ''
-  if (/^\$uuid:/m.test(text)) {
-    text = text.replace(/^\$uuid:.*$/m, `$uuid: ${uuid}`)
-  } else {
-    const nameMatch = text.match(/^name:.*$/m)
-    if (nameMatch) {
-      const idx = nameMatch.index + nameMatch[0].length
-      text = text.slice(0, idx) + `\n$uuid: ${uuid}` + text.slice(idx)
-    } else {
-      text = `$uuid: ${uuid}\n` + text
+// Seed `sync.json` with the identity this clone was pulled by.
+//
+// ⛔ **Dependency-free on purpose, and this has bitten before.** `clone` runs BEFORE
+// `pnpm install`, so `@uniweb/build`'s store is not on disk yet. The previous version
+// of this recorded the scope through a lazy `import('@uniweb/build/uwx')` whose
+// failure branch returned null and wrote NOTHING — so a fresh clone recorded nothing
+// essentially always, and the next command stopped dead complaining about a backend
+// the user had named on the command line. Measured by the backend lane 2026-09-18:
+// 0.48.5 recorded it, 0.57.0 did not.
+//
+// ⭐ JSON needs no parser, which is most of why the store is JSON rather than YAML —
+// `site.yml`'s equivalent needed a hand-rolled dependency-free WRITER for exactly
+// this. The store stays the one writer everywhere else; this seeds a fresh file.
+// `test/clone.test.js` covers it end to end with `skipInstall: true`.
+function seedSyncJson(siteDir, origin, uuid) {
+  const file = join(siteDir, 'sync.json')
+  let doc = { version: 1, backends: {} }
+  if (existsSync(file)) {
+    try {
+      const parsed = JSON.parse(readFileSync(file, 'utf8'))
+      if (parsed?.backends && typeof parsed.backends === 'object') doc = parsed
+    } catch {
+      /* unreadable — a fresh clone's file is ours to write */
     }
   }
-  mkdirSync(dirname(filePath), { recursive: true })
-  writeFileSync(filePath, text)
+  const key = new URL(origin).origin
+  doc.backends[key] = { ...(doc.backends[key] || {}), site: { ...(doc.backends[key]?.site || {}), uuid } }
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, JSON.stringify(doc, null, 2) + '\n')
 }
 
 // Build the package-manager argv to run the project-local `uniweb pull`.
@@ -340,21 +350,19 @@ export async function clone(args = [], deps = {}) {
     await addWorkspaceGlob(existingRoot, placement.relativePath)
   }
 
-  // 4. Seed the site's one identity — site.yml::$uuid. The folder is pulled by this
-  // same uuid (the backend resolves the site's @uniweb/folder from it), so there is no
-  // separate folder uuid to seed.
-  seedYamlUuid(join(siteDir, 'site.yml'), siteUuid)
-  // …and the SYNC SCOPE that makes it meaningful. `clone` is the sharpest case for it:
-  // the uuid comes from whoever we read, and until now nothing on disk recorded that —
-  // so a teammate who cloned this project and ran `uniweb pull` while logged in
-  // elsewhere sent this backend's uuid to a different one. A no-op on the default
-  // backend. (The two CREATE paths record it via `recordAndDescribeOwner`; clone seeds
-  // an existing site and never reaches them, which is why it is written here too.)
-  const scope = await recordSiteBackend(siteDir, client.origin)
+  // 4. Seed the identity this clone was pulled by, under the backend that minted it.
+  // The folder is pulled by the same uuid (the backend resolves the site's
+  // @uniweb/folder from it), so there is no separate folder uuid to seed.
+  //
+  // ⭐ The backend is the KEY, not a separate note. `clone` was the sharpest case for
+  // the old `$backend`: the uuid came from whoever we read and nothing on disk said
+  // so, and a teammate who pulled while logged in elsewhere sent it to the wrong
+  // backend. Stored under the origin, that cannot be expressed.
+  seedSyncJson(siteDir, client.origin, siteUuid)
   success(
     `Scaffolded the site harness${foundationRef ? ` (foundation: ${foundationRef})` : ''}.`
   )
-  if (scope) note(`Bound to ${scope} (recorded $backend in site.yml).`)
+  note(`Bound to ${client.origin} (recorded in sync.json).`)
 
   // 5. Install, then delegate the projection to the project-local `uniweb pull`.
   const pm = detectWorkspacePm(projectDir) || 'pnpm'

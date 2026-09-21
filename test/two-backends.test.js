@@ -110,7 +110,6 @@ function stateFor(dir, origin) {
 
 test(
   '⭐ two backends each keep their own site uuid, and neither overwrites the other',
-  NEEDS(4, 'site identity moves to sync.json'),
   async () => {
     const dir = tmpSite()
 
@@ -124,7 +123,6 @@ test(
 
 test(
   "⭐ site.yml holds no backend-minted identity at all",
-  NEEDS(4, '$uuid / $org / $backend leave site.yml'),
   async () => {
     const dir = tmpSite()
     await pushTo(dir, mockBackend(A, 'SITE-A'))
@@ -182,7 +180,6 @@ test(
 
 test(
   '⭐ nothing can send one backend\'s identity to another — the scope guard is unnecessary',
-  NEEDS(4, 'assertSiteBackendScope is deleted'),
   async () => {
     const dir = tmpSite()
     await pushTo(dir, mockBackend(A, 'SITE-A'))
@@ -199,12 +196,20 @@ test(
       'assertSiteBackendScope still exists — contamination is representable'
     )
 
-    // The cache's own identity stamp goes with it: per origin it answers a question
-    // `sync.json::site.uuid` answers better, and two answers is how they diverge.
+    // ⚠️ THE `siteUuid` STAMP SURVIVES, and an earlier draft of this test asserted it
+    // would not. That was wrong, and the distinction is worth keeping: the stamp says
+    // what the CACHE was written for, `sync.json::site.uuid` says what the PROJECT is.
+    // Detecting a site deleted and re-created on the SAME backend needs both, and
+    // nothing else records the first. What the origin keying removed is CROSS-backend
+    // confusion — a different question the stamp was never answering.
+    //
+    // What must be true is that the stamp is per backend, not global:
     const cache = join(dir, '.uniweb', 'backend-cache.json')
     if (existsSync(cache)) {
       const parsed = JSON.parse(readFileSync(cache, 'utf8'))
-      assert.equal(parsed.backends?.[A]?.siteUuid, undefined, 'the siteUuid stamp survived')
+      assert.equal(parsed.backends?.[A]?.siteUuid, 'SITE-A')
+      assert.equal(parsed.siteUuid, undefined, 'the stamp must not be global')
+      assert.equal(parsed.backends?.[B], undefined, "and B has no cache of A's")
     }
   }
 )
