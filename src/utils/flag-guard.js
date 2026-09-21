@@ -6,16 +6,20 @@
  * does not recognize does not fail: it *disappears*, and the thing it was meant to
  * change silently keeps its default.
  *
- * That is tolerable for a cosmetic flag and dangerous for these two:
+ * That is tolerable for a cosmetic flag and dangerous for one:
  *
- *   --backend   mistyped ⇒ the origin ladder falls through to the session origin,
- *               ~/.uniweb/config.json, and finally https://uniweb.app. A command
- *               aimed at a local backend can reach production.
  *   --token     mistyped ⇒ falls back to the stored session, so the request is
  *               made as whoever is logged in rather than whoever was intended.
  *
- * Neither produces an error today; both produce a plausible success against the
- * wrong host. This turns that class into one sentence.
+ * It produced no error; it produced a plausible success as the wrong account. This
+ * turns that class into one sentence.
+ *
+ * ⛔ **`--backend` is NOT a flag of these verbs** *(2026-09-21)*. Every backend verb
+ * goes to the backend you are logged in to — switching is `uniweb login --backend`,
+ * and a script aims with UNIWEB_REGISTER_URL. So `uniweb push --backend X` is now an
+ * unknown flag, and this guard is what makes that a loud error instead of a push to
+ * wherever you happen to be logged in. It stays on `forget`, where it SELECTS which
+ * backend's records to remove.
  *
  * ⚠️ A wrong rejection is worse than a missed one — it breaks an invocation that
  * works — so the per-command lists must be complete, INCLUDING flags read by
@@ -54,7 +58,7 @@ const VIA_DEPLOY = ['--target', '--host', '--no-save']
  */
 const VERBS = {
   push: [
-    '--all', '--as-org', '--org', '--backend', '--dry-run', '--force',
+    '--all', '--as-org', '--org', '--dry-run', '--force',
     '--foundation', '--output', '-o', '--personal', '--token',
     // read in utils/conformance.js and backend/site-sync.js respectively —
     // neither appears in push.js
@@ -68,25 +72,25 @@ const VERBS = {
     '--no-release', ...VIA_DEPLOY
   ],
   publish: [
-    '--as-org', '--org', '--backend', '--dry-run', '--force', '--foundation',
+    '--as-org', '--org', '--dry-run', '--force', '--foundation',
     '--personal', '--token',
     // read in utils/conformance.js, backend/site-sync.js, and
     // backend/foundation-bring-along.js — none appear in publish.js
     '--no-validate', '--yes', '--no-verify', '--no-release', ...VIA_DEPLOY
   ],
   pull: [
-    '--backend', '--content-only', '--dry-run', '--force', '--merge',
+    '--content-only', '--dry-run', '--force', '--merge',
     '--no-assets',
     '--no-records', '--no-delete', '--no-prune', '--token',
     // via backend/site-sync.js (the owner resolver) and utils/conformance.js
     '--yes', '--org', '--as-org', '--no-validate', ...VIA_DEPLOY
   ],
   clone: [
-    '--backend', '--content-only', '--no-assets', '--no-records', '--path',
+    '--content-only', '--no-assets', '--no-records', '--path',
     '--project', '--token', '--org', '--as-org'
   ],
   register: [
-    '--backend', '--dry-run', '--json', '--output', '-o',
+    '--dry-run', '--json', '--output', '-o',
     '--schema-only', '--scope', '--token', '--org', '--as-org'
   ],
   /**
@@ -97,7 +101,7 @@ const VERBS = {
    */
   forget: ['--backend', '--all'],
   status: [
-    '--backend', '--json', '--remote', '--token', '--dry-run',
+    '--json', '--remote', '--token', '--dry-run',
     '--force', '--no-verify', '--no-validate', '--yes', '--org', '--as-org',
     // inert here, reachable through the bring-along module status imports for
     // `resolveLocalFoundation` — listed per the over-approximation note above
@@ -106,10 +110,10 @@ const VERBS = {
   /**
    * `refresh` = `git pull`, then a DELEGATED `pull --merge`.
    *
-   * It forwards exactly two flags to that pull — `--backend` /
-   * `--token`, via its own `collectPassthrough` — and constructs the rest of the
-   * argv itself. So pull's own flags (`--merge`, `--force`, `--no-delete`,
-   * `--no-prune`, `--content-only`, …) are NOT reachable from a `refresh` argv and
+   * It forwards exactly one flag to that pull — `--token`, via its own
+   * `collectPassthrough` — and constructs the rest of the argv itself. So pull's
+   * own flags (`--merge`, `--force`, `--no-delete`, `--no-prune`,
+   * `--content-only`, …) are NOT reachable from a `refresh` argv and
    * are deliberately absent here. ⚠️ `--force` especially: `refresh` is read-only by
    * design, and forwarding it would ask pull to DISCARD local work.
    *
@@ -118,7 +122,7 @@ const VERBS = {
    * the VIA_DEPLOY note above, and required by `flag-guard-coverage.test.js`.
    */
   refresh: [
-    '--backend', '--no-backend', '--no-git', '--token',
+    '--no-backend', '--no-git', '--token',
     '--as-org', '--org', '--dry-run', '--no-validate', '--yes', ...VIA_DEPLOY
   ]
 }
@@ -177,6 +181,19 @@ export function checkFlags(verb, args = []) {
   if (!unknown.length) return null
 
   const flag = unknown[0]
+  // ⭐ `--backend` is not a typo on these verbs — it is RETIRED (2026-09-21), and the
+  // useful answer is where the backend comes from now, not "run --help".
+  if (flag === '--backend') {
+    return {
+      flag,
+      suggestion: null,
+      message: [
+        `\`uniweb ${verb}\` has no \`--backend\`: it goes to the backend you are logged in to.`,
+        '  Switch with: uniweb login --backend <url>',
+        '  (A script can aim one process with UNIWEB_REGISTER_URL instead.)'
+      ].join('\n')
+    }
+  }
   const suggestion = didYouMean(flag, all)
   const lines = [`Unknown flag \`${flag}\` for \`uniweb ${verb}\`.`]
   if (suggestion) lines.push(`  Did you mean \`${suggestion}\`?`)

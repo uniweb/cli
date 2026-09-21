@@ -105,6 +105,8 @@ test('outside any workspace there is nothing to compare against', () => {
 // ─── the verbs ────────────────────────────────────────────────────────────────
 
 const HEADLINE = /Another project in this workspace holds the same site/
+// Every verb goes to the backend you are logged in to: the test user is logged in to A.
+const LOGGED_IN_A = { session: { version: 2, current: A, sessions: { [A]: { token: 't' } } } }
 
 test('⭐ push refuses from the copy AND from the original, before any request', { timeout: 30_000 }, async () => {
   const { push } = await import('../src/commands/push.js')
@@ -114,7 +116,7 @@ test('⭐ push refuses from the copy AND from the original, before any request',
   cpSync(a, b, { recursive: true })
 
   for (const dir of [b, a]) {
-    const res = await runVerb(dir, push, ['--backend', A])
+    const res = await runVerb(dir, push, [], LOGGED_IN_A)
     assert.equal(res.exitCode, 1, res.output)
     assert.match(res.output, HEADLINE)
     assert.match(res.output, /uniweb forget --all/)
@@ -129,7 +131,7 @@ test('publish refuses the same way', { timeout: 30_000 }, async () => {
   const b = join(root, 'sites', 'b')
   cpSync(a, b, { recursive: true })
 
-  const res = await runVerb(b, publish, ['--backend', A])
+  const res = await runVerb(b, publish, [], LOGGED_IN_A)
   assert.equal(res.exitCode, 1, res.output)
   assert.match(res.output, HEADLINE)
   assert.equal(res.requests, 0)
@@ -143,14 +145,14 @@ test('after `uniweb forget --all` in the copy, neither side is refused (control)
   const b = join(root, 'sites', 'b')
   cpSync(a, b, { recursive: true })
 
-  assert.match((await runVerb(b, push, ['--backend', A])).output, HEADLINE, 'refused first')
+  assert.match((await runVerb(b, push, [], LOGGED_IN_A)).output, HEADLINE, 'refused first')
   assert.equal((await runVerb(b, forget, ['--all'])).exitCode, 0)
 
   // Past the check, each push reaches the wire. The network is stubbed to fail, so a
   // counted request is the proof the check let it through. `--personal` answers the
   // owner question the copy's create asks; the original's site exists and asks none.
   for (const [dir, extra] of [[b, ['--personal']], [a, []]]) {
-    const res = await runVerb(dir, push, ['--backend', A, '--token', 'test', ...extra])
+    const res = await runVerb(dir, push, ['--token', 'test', ...extra], LOGGED_IN_A)
     assert.doesNotMatch(res.output, HEADLINE, res.output)
     assert.ok(res.requests > 0, `${dir} should reach the wire:\n${res.output}`)
   }
@@ -161,6 +163,6 @@ test('`-o` is a local emit and reaches no backend — never refused', { timeout:
   const root = workspace()
   const a = site(join(root, 'sites', 'a'))
   cpSync(a, join(root, 'sites', 'b'), { recursive: true })
-  const res = await runVerb(a, push, ['--backend', A, '-o', join(root, 'out.uwx')])
+  const res = await runVerb(a, push, ['-o', join(root, 'out.uwx')], LOGGED_IN_A)
   assert.doesNotMatch(res.output, HEADLINE)
 })

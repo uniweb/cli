@@ -96,7 +96,7 @@ export async function status(args = []) {
   // this probe is deliberately offline and the client may never be built. It decides
   // whose asset ids the comparison reads: against the wrong backend every media ref
   // reads as changed.
-  const probeBackend = resolveBackendOrigin(readFlagValue(args, '--backend'))
+  const probeBackend = resolveBackendOrigin()
   // ⭐ Identity is this backend's, from sync.json. It read `site.yml::$uuid`, so after
   // step 4 moved the key every project reported itself as never synced.
   const uuid = readBackendState(siteDir, probeBackend).site?.uuid || null
@@ -116,8 +116,6 @@ export async function status(args = []) {
   if (remote) {
     try {
       const client = new BackendClient({
-        originFlag:
-          readFlagValue(args, '--backend'),
         token: readFlagValue(args, '--token') || undefined,
         args,
         command: 'Status'

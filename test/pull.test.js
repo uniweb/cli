@@ -110,27 +110,29 @@ const jsonRes = (body, status = 200) => ({
 
 // ⛔ PIN THE TARGET ORIGIN. Every test here injects `resolveSiteDir`, `getToken`
 // and `fetch` to stay hermetic — and origin resolution was the one ambient
-// input nobody injected. Without this, `resolveBackendOrigin()` falls through
-// to tier 4, the DEVELOPER'S logged-in session (`~/.uniweb/registry-auth.json`),
-// and a fixture bound on one backend reads as unsynced on another — `pull` then
-// finds no uuid for that origin and stops.
+// input nobody injected. Without this, `resolveBackendOrigin()` answers with the
+// DEVELOPER'S logged-in backend (`~/.uniweb/registry-auth.json`), and a fixture
+// bound on one backend reads as unsynced on another — `pull` then finds no uuid
+// for that origin and stops.
 //
 // ⚠️ The failure is machine-local and reads as a product bug. Anyone who runs
 // `uniweb login --backend http://localhost:8080` — the documented local-dev
-// flow — breaks 14 tests here with "This project's stored identity belongs to
-// https://uniweb.app, but this command targets http://localhost:8080", while CI,
-// which has no session, stays green. Measured 2026-08-26.
+// flow — breaks the tests here, while CI, which has no session, stays green.
+// Measured 2026-08-26 (then against the since-deleted scope guard).
 //
-// The value must match what the guard reads as the fixture's stored origin, and
-// with no `$backend` in `site.yml` that is the built-in default. `fetch` is
-// mocked in every test, so nothing leaves the machine.
-const TEST_BACKEND = ['--backend', 'https://uniweb.app']
+// The value is the backend the fixtures are bound on in sync.json (`bindSite`).
+// `fetch` is mocked in every test, so nothing leaves the machine.
+const TEST_ORIGIN = 'https://uniweb.app'
+// Aimed the way automation aims: UNIWEB_REGISTER_URL, which outranks the login. This
+// file runs in its own process, so setting it once is contained. (It passed
+// `--backend` on every call until that flag left the backend verbs, 2026-09-21.)
+process.env.UNIWEB_REGISTER_URL = TEST_ORIGIN
 
 /** Bind a test site on the pinned backend — identity lives in sync.json since 2026-09-20. */
 function bindSite(dir, uuid) {
   writeFileSync(
     join(dir, 'sync.json'),
-    JSON.stringify({ version: 1, backends: { [TEST_BACKEND[1]]: { site: { uuid } } } })
+    JSON.stringify({ version: 1, backends: { [TEST_ORIGIN]: { site: { uuid } } } })
   )
 }
 
@@ -189,7 +191,7 @@ test('pull is a no-op with no $uuid in files', async () => {
   const dir = tempSite()
   try {
     writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
-    const res = await pull(['--force', ...TEST_BACKEND], {
+    const res = await pull(['--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: async () => jsonRes(null, 404)
@@ -236,7 +238,7 @@ test('pull projects the site-content lane (pages + sections + config) from a moc
       collections: []
     }
 
-    const res = await pull(['--force', ...TEST_BACKEND], {
+    const res = await pull(['--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: makeFetch([['/dev/site/content/pull/SITE', document]])
@@ -320,7 +322,7 @@ test('pull fetches the folder lane by the site-content uuid (no query config nee
       }
     }
 
-    const res = await pull(['--force', ...TEST_BACKEND], {
+    const res = await pull(['--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: makeFetch([
@@ -386,7 +388,7 @@ test('pull projects the collections lane, resolving the model via a mock model-r
       }
     }
 
-    const res = await pull(['--force', ...TEST_BACKEND], {
+    const res = await pull(['--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: makeFetch([
@@ -422,7 +424,7 @@ test('pull --no-records skips the folder lane', async () => {
       collections: []
     }
 
-    const res = await pull(['--no-records', '--force', ...TEST_BACKEND], {
+    const res = await pull(['--no-records', '--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: async (url) => {
@@ -458,7 +460,7 @@ test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (
       JSON.stringify({ version: 1, content: '"abc123"' })
     )
     let sentINM
-    const res = await pull(['--no-records', '--force', ...TEST_BACKEND], {
+    const res = await pull(['--no-records', '--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: async (url, opts) => {
@@ -496,7 +498,7 @@ test('pull caches the ETag from a 200 for the next conditional pull', async () =
       extensions: [],
       collections: []
     }
-    await pull(['--no-records', '--force', ...TEST_BACKEND], {
+    await pull(['--no-records', '--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: async () => ({
@@ -528,7 +530,7 @@ test('pull refuses in a non-git dir when it cannot ask', async () => {
   writeFileSync(join(dir, 'site.yml'), 'name: S\n')
   bindSite(dir, 'SITE')
   let fetched = false
-  const res = await pull(['--non-interactive', ...TEST_BACKEND], {
+  const res = await pull(['--non-interactive'], {
     resolveSiteDir: async () => dir,
     getToken: async () => 'tok',
     fetch: async () => {
@@ -546,7 +548,7 @@ test('pull --force proceeds in a non-git dir', async () => {
   const dir = tempSite()
   writeFileSync(join(dir, 'site.yml'), 'name: S\n')
   bindSite(dir, 'SITE')
-  const res = await pull(['--force', '--non-interactive', ...TEST_BACKEND], {
+  const res = await pull(['--force', '--non-interactive'], {
     resolveSiteDir: async () => dir,
     getToken: async () => 'tok',
     fetch: async () => jsonRes(null, 404)
@@ -559,7 +561,7 @@ test('pull --dry-run is never blocked by the guard — it writes nothing', async
   const dir = tempSite()
   writeFileSync(join(dir, 'site.yml'), 'name: S\n')
   bindSite(dir, 'SITE')
-  const res = await pull(['--dry-run', '--non-interactive', ...TEST_BACKEND], {
+  const res = await pull(['--dry-run', '--non-interactive'], {
     resolveSiteDir: async () => dir,
     getToken: async () => 'tok',
     fetch: async () => jsonRes(null, 404)
@@ -601,7 +603,7 @@ function gitSite() {
 test('pull proceeds when the tree is clean', { skip: !hasGit }, async () => {
   const dir = gitSite()
   try {
-    const res = await pull(['--non-interactive', ...TEST_BACKEND], {
+    const res = await pull(['--non-interactive'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: async () => jsonRes(null, 404)
@@ -623,7 +625,7 @@ test(
         '---\ntype: Hero\n---\n# UNSAVED\n'
       )
       let fetched = false
-      const res = await pull(['--non-interactive', ...TEST_BACKEND], {
+      const res = await pull(['--non-interactive'], {
         resolveSiteDir: async () => dir,
         getToken: async () => 'tok',
         fetch: async () => {
@@ -649,7 +651,7 @@ test(
         join(dir, 'pages/home/brand-new.md'),
         '---\ntype: Section\n---\n# new\n'
       )
-      const res = await pull(['--non-interactive', ...TEST_BACKEND], {
+      const res = await pull(['--non-interactive'], {
         resolveSiteDir: async () => dir,
         getToken: async () => 'tok',
         fetch: async () => jsonRes(null, 404)
@@ -685,7 +687,7 @@ test(
           deleted: []
         })
       )
-      const res = await pull(['--non-interactive', ...TEST_BACKEND], {
+      const res = await pull(['--non-interactive'], {
         resolveSiteDir: async () => dir,
         getToken: async () => 'tok',
         fetch: async () => jsonRes(null, 404)
@@ -694,7 +696,7 @@ test(
 
       // …but an edit ON TOP of pull's output is the user's work again.
       writeFileSync(join(dir, 'pages/home/hero.md'), body + '\nmine\n')
-      const res2 = await pull(['--non-interactive', ...TEST_BACKEND], {
+      const res2 = await pull(['--non-interactive'], {
         resolveSiteDir: async () => dir,
         getToken: async () => 'tok',
         fetch: async () => jsonRes(null, 404)
@@ -722,7 +724,7 @@ test(
           deleted: ['pages/home/hero.md']
         })
       )
-      const res = await pull(['--non-interactive', ...TEST_BACKEND], {
+      const res = await pull(['--non-interactive'], {
         resolveSiteDir: async () => dir,
         getToken: async () => 'tok',
         fetch: async () => jsonRes(null, 404)
@@ -782,7 +784,7 @@ async function pulledGitSite(baseContent) {
   g(['init', '-q'])
   writeFileSync(join(dir, '.gitignore'), '.uniweb\n')
   // Establish the file the way it really gets established: by pulling it.
-  await pull(['--force', ...TEST_BACKEND], {
+  await pull(['--force'], {
     resolveSiteDir: async () => dir,
     getToken: async () => 'tok',
     fetch: makeFetch([
@@ -820,7 +822,7 @@ test(
         )
       )
 
-      const res = await pull(['--merge', ...TEST_BACKEND], {
+      const res = await pull(['--merge'], {
         resolveSiteDir: async () => dir,
         getToken: async () => 'tok',
         fetch: makeFetch([
@@ -862,7 +864,7 @@ test(
         )
       )
 
-      await pull(['--merge', ...TEST_BACKEND], {
+      await pull(['--merge'], {
         resolveSiteDir: async () => dir,
         getToken: async () => 'tok',
         fetch: makeFetch([
@@ -894,7 +896,7 @@ test(
     try {
       const mine = join(dir, 'pages/home/only-mine.md')
       writeFileSync(mine, '---\ntype: Section\n---\n# only mine\n')
-      await pull(['--merge', ...TEST_BACKEND], {
+      await pull(['--merge'], {
         resolveSiteDir: async () => dir,
         getToken: async () => 'tok',
         fetch: makeFetch([
@@ -916,7 +918,7 @@ test(
     writeFileSync(join(dir, 'site.yml'), 'name: S\n')
   bindSite(dir, 'SITE')
     try {
-      const res = await pull(['--merge', '--non-interactive', ...TEST_BACKEND], {
+      const res = await pull(['--merge', '--non-interactive'], {
         resolveSiteDir: async () => dir,
         getToken: async () => 'tok',
         fetch: async () => jsonRes(null, 404)
@@ -954,7 +956,7 @@ test('pull is hermetic — a hostile ambient origin cannot reach it', async () =
       pages: []
     }
 
-    const res = await pull(['--force', ...TEST_BACKEND], {
+    const res = await pull(['--force'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: makeFetch([['/dev/site/content/pull/SITE', document]])

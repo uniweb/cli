@@ -42,45 +42,30 @@ import { uploadFoundationCode } from '../utils/code-upload.js'
 import { uploadSiteAssets } from '../utils/asset-upload.js'
 
 /**
- * Resolve the backend a command talks to (highest precedence first). A full URL is
- * reduced to its origin, so callers may pass a whole endpoint URL; an unparseable value
- * falls through to the next tier.
+ * Resolve the backend a command talks to:
  *
- *   1. `flag` — the raw --backend value (this command)
- *   2. UNIWEB_REGISTER_URL env — session-wide override (CI / local dev)
- *   3. ⭐ the backend the user is LOGGED IN TO — their most recent login
- *   4. the default backend — ~/.uniweb/config.json `registryApiUrl`, else uniweb.app —
+ *   1. UNIWEB_REGISTER_URL env — the override for automation (CI, scripts), one process
+ *   2. ⭐ the backend the user is LOGGED IN TO — their most recent login
+ *   3. the default backend — ~/.uniweb/config.json `registryApiUrl`, else uniweb.app —
  *      where the command's first request then asks the user to log in
  *
- * ⭐ **That is the whole ladder, for every command** *[Diego, 2026-09-21: "publish should
- * publish to the backend the user logged in to" · "push and pull are also meant to go to
- * the backend you are logged into" · "We do not allow any communication with backend if
- * the user is not logged into a backend. The default backend for login, if not
- * specified, is uniweb.app"]*. Logging in is how a backend is chosen.
+ * ⭐ **That is the whole ladder, for every command** *[Diego, 2026-09-21: "push and pull
+ * are also meant to go to the backend you are logged into" · "We do not allow any
+ * communication with backend if the user is not logged into a backend. The default
+ * backend for login, if not specified, is uniweb.app" · switching "via login to another
+ * backend is good, and the only way to switch"]*. Logging in is how a backend is chosen.
  *
- * ⛔ **A project's own record routes nothing.** Its synced backend (sync.json) and
- * deploy.yml's default target were tiers here: above the session until 2026-09-21, then
- * briefly below it as a "logged in nowhere" tier — which cannot be reached, since a
- * command reaching tier 4 logs in before it sends. The one exception is explicit:
- * `uniweb deploy` with a uniweb target passes that target's backend as `--backend`.
+ * ⛔ **No `--backend` tier, and no project tier.** The backend verbs had a per-command
+ * `--backend` until 2026-09-21 — it predates per-backend sessions, when one session
+ * slot made "aim this one command elsewhere" a flag's job; switching is a login now, and
+ * a script aims with UNIWEB_REGISTER_URL without touching the machine's login. A
+ * project's sync.json and deploy.yml routed commands too, until the same day.
+ * `--backend` survives only where it SELECTS rather than routes: `login` (where to log
+ * in), `logout` and `forget` (which backend's session or records to remove).
  *
- * ⚠️ The explicit overrides stay ON TOP deliberately. `--backend` and the env var are how
- * you deliberately aim elsewhere — at a staging mirror, say — for one run, without
- * changing who you are logged in as; the command asks you to log in there if you are not.
- *
- * @param {string} [flag] - the raw value of --backend, if supplied
  * @returns {string} a bare origin with no trailing slash
  */
-export function resolveBackendOrigin(flag) {
-  if (flag) {
-    try {
-      // http(s) only — `localhost:8080` parses as a scheme with the origin "null".
-      const u = new URL(flag)
-      if (u.protocol === 'http:' || u.protocol === 'https:') return u.origin
-    } catch {
-      /* unparseable: fall through */
-    }
-  }
+export function resolveBackendOrigin() {
   return getRegistryApiBaseUrl()
 }
 
@@ -122,8 +107,8 @@ export const DISCOVERY_DEFAULTS = {}
 export class BackendClient {
   /**
    * @param {object} [opts]
-   * @param {string} [opts.origin] - explicit origin (wins over originFlag/env)
-   * @param {string} [opts.originFlag] - raw --backend value to resolve
+   * @param {string} [opts.origin] - explicit origin (wins over the ladder; tests and
+   *        internal callers — no command takes one from the user)
    * @param {string} [opts.token] - explicit bearer (wins over env + stored session)
    * @param {() => Promise<string>} [opts.getToken] - injected bearer resolver (tests, or
    *        callers with their own auth); used when no explicit token/env is present
@@ -133,7 +118,6 @@ export class BackendClient {
    */
   constructor({
     origin,
-    originFlag,
     token,
     getToken,
     args = [],
@@ -141,7 +125,7 @@ export class BackendClient {
     fetchImpl
   } = {}) {
     this.origin = (
-      origin || resolveBackendOrigin(originFlag)
+      origin || resolveBackendOrigin()
     ).replace(/\/+$/, '')
     this._token = token || process.env.UNIWEB_TOKEN || null
     this._getToken = getToken || null

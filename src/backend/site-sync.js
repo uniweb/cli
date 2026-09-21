@@ -1274,7 +1274,7 @@ export async function pushSyncPackages({
       res = await doRequest()
     } catch (err) {
       error(`Could not reach the backend at ${client.origin}: ${err.message}`)
-      note('Set the origin with --backend <url> or UNIWEB_REGISTER_URL.')
+      note('Is that the backend you meant? Switch with: uniweb login --backend <url>')
       return null
     }
     if (!res.ok) {

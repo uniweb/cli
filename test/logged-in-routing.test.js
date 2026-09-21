@@ -84,16 +84,20 @@ test('⭐ following the login to a backend with no site for this project is said
   assert.match(plain(pll.output), /Nothing to pull — this project has no site on http:\/\/b\.test\./, pll.output)
   assert.match(plain(pll.output), /Its site is on http:\/\/a\.test/)
 
-  // A backend the user NAMED is a decision already: no heads-up (control)
-  const named = await runVerb(dir, push, ['--dry-run', '--personal', '--backend', B], { session: loggedInB })
-  assert.doesNotMatch(plain(named.output), ELSEWHERE, named.output)
+  // A backend a script AIMED is a decision already: no heads-up (control)
+  const aimed = await runVerb(dir, push, ['--dry-run', '--personal'], {
+    session: loggedInB,
+    env: { UNIWEB_REGISTER_URL: B }
+  })
+  assert.doesNotMatch(plain(aimed.output), ELSEWHERE, aimed.output)
 })
 
-test('--backend still outranks the login', { timeout: 30_000 }, async () => {
+test('UNIWEB_REGISTER_URL outranks the login — the one override, for automation', { timeout: 30_000 }, async () => {
   const { publish } = await verbs()
   const dir = project({ [A]: site('SITE-A') })
-  const res = await runVerb(dir, publish, ['--dry-run', '--backend', A], {
-    session: { version: 2, current: B, sessions: sessions(B) }
+  const res = await runVerb(dir, publish, ['--dry-run'], {
+    session: { version: 2, current: B, sessions: sessions(B) },
+    env: { UNIWEB_REGISTER_URL: A }
   })
   assert.equal(backendLine(res.output), A, res.output)
 })
@@ -132,14 +136,32 @@ test('⛔ logged in nowhere, nothing is sent — the command asks for the login 
   assert.match(plain(res.output), /Not logged in/, res.output)
 })
 
-test('`uniweb deploy` with a uniweb target goes where the TARGET says, whoever is logged in', { timeout: 30_000 }, async () => {
+test('⭐ `uniweb deploy` follows the login too — a uniweb target\'s backend: routes nothing', { timeout: 30_000 }, async () => {
+  // [Diego, 2026-09-21] — "`deploy` follows the login like everything else ...
+  // `--host=uniweb` requires a login, and that determines the target uniweb backend."
   const { deploy } = await verbs()
   const dir = project(
-    { [A]: site('SITE-A') },
+    { [A]: site('SITE-A'), [B]: site('SITE-B') },
     { deployYml: `default: staging\ntargets:\n  staging:\n    host: uniweb\n    backend: ${A}\n` }
   )
-  const res = await runVerb(dir, deploy, ['--dry-run', '--no-validate'], {
-    session: { version: 2, current: B, sessions: sessions(B) }
+  const loggedInB = { session: { version: 2, current: B, sessions: sessions(B) } }
+
+  // Bare: the default target names A, the login says B → B, and it says so.
+  const bare = await runVerb(dir, deploy, ['--dry-run', '--no-validate'], loggedInB)
+  assert.equal(backendLine(bare.output), B, bare.output)
+  assert.match(plain(bare.output), /default target 'staging' is on http:\/\/a\.test; publishing to http:\/\/b\.test/)
+
+  // Named: `--target staging` is a destination the user TYPED — contradicting it is refused.
+  const named = await runVerb(dir, deploy, ['--dry-run', '--no-validate', '--target', 'staging'], loggedInB)
+  assert.match(plain(named.output), /Target 'staging' is on http:\/\/a\.test, but this would publish to http:\/\/b\.test/, named.output)
+  assert.match(plain(named.output), /uniweb login --backend http:\/\/a\.test/)
+  assert.equal(backendLine(named.output), undefined, 'publish never started')
+  assert.equal(named.requests, 0)
+
+  // Logged in where the target is: it goes, with nothing to say.
+  const there = await runVerb(dir, deploy, ['--dry-run', '--no-validate', '--target', 'staging'], {
+    session: { version: 2, current: A, sessions: sessions(A) }
   })
-  assert.equal(backendLine(res.output), A, res.output)
+  assert.equal(backendLine(there.output), A, there.output)
+  assert.doesNotMatch(plain(there.output), /is on http/)
 })

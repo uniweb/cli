@@ -53,7 +53,7 @@ test('sync keeps --force away from the refresh half', async () => {
   // effects on the two halves.
   let refreshArgs = null
   let pushArgs = null
-  await sync(['--force', '--backend', 'http://x'], {
+  await sync(['--force', '--token', 'x'], {
     refresh: async (a) => {
       refreshArgs = a
       return { exitCode: 0 }
@@ -64,7 +64,7 @@ test('sync keeps --force away from the refresh half', async () => {
     }
   })
   assert.ok(!refreshArgs.includes('--force'))
-  assert.ok(refreshArgs.includes('--backend'))
+  assert.ok(refreshArgs.includes('--token'), 'what both halves take still reaches both')
   assert.ok(pushArgs.includes('--force'))
 })
 

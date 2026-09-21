@@ -892,8 +892,8 @@ async function main() {
   // backend — UNIWEB_REGISTER_URL, else ~/.uniweb/config.json, else https://uniweb.app —
   // and never the project's backend or the current session *[Diego, 2026-09-21: "the
   // default backend for login, if not specified, is uniweb.app"]*. The backend logged in
-  // to becomes CURRENT, and every backend command goes there unless --backend says
-  // otherwise — which is why this is the one place a backend is chosen.
+  // to becomes CURRENT, and every backend command goes there (only UNIWEB_REGISTER_URL
+  // outranks it) — which is why this is the one place a backend is chosen.
   //
   // ⛔ Until 2026-09-21 a bare login went to the backend of the project in the cwd, and
   // asked when the machine knew several backends. Both are gone: the default is the
@@ -942,11 +942,18 @@ async function main() {
 
     const { readFlagValue } = await import('./utils/args.js')
     const { resolveBackendOrigin } = await import('./backend/client.js')
+    const { resolveLoginOrigin } = await import('./utils/config.js')
     const flag = readFlagValue(logoutArgs, '--backend')
-    // The same resolution every command uses: --backend, else the env override, else
-    // the backend you are logged in to. ⛔ It routed by the project in the cwd until
-    // 2026-09-21, mirroring a `login` that no longer does.
-    const origin = resolveBackendOrigin(flag)
+    // `--backend` SELECTS the session to clear; without it, the one every command uses —
+    // the env override, else the backend you are logged in to. ⛔ It routed by the
+    // project in the cwd until 2026-09-21, mirroring a `login` that no longer does.
+    let origin
+    try {
+      origin = flag !== undefined ? resolveLoginOrigin(flag) : resolveBackendOrigin()
+    } catch (err) {
+      console.error(`\x1b[31m✗\x1b[0m ${err.message}`)
+      process.exit(2)
+    }
 
     const cleared = await clearRegistryAuth(origin)
     if (cleared.length === 0) {
@@ -1458,7 +1465,6 @@ ${colors.bright}Options:${colors.reset}
   --personal         Create the site under your personal account, deliberately.
                      Only needed on a first publish, and only to answer the owner
                      question without a prompt (CI, agents, scripts).
-  --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
   --token <bearer>   Auth bearer (skips \`uniweb login\`)
 `,
     create: `
@@ -1730,7 +1736,6 @@ ${colors.bright}Options:${colors.reset}
   --scope @org       Publish under @org (resolves @/x -> @org/x); default: package.json uniweb.scope
   --dry-run          Print the .uwx; submit nothing
   -o, --output <f>   Write the .uwx to a file; submit nothing
-  --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or a local URL)
   --token <bearer>   Submit with this bearer; skips \`uniweb login\` (or set UNIWEB_TOKEN)
   --non-interactive  Fail with usage info instead of prompting
 
@@ -1775,8 +1780,9 @@ ${colors.bright}Usage:${colors.reset}
 Authenticates with a backend and stores its session in
 ~/.uniweb/registry-auth.json — one per backend, so logging in to a second keeps
 the first. ${colors.bright}The backend you log in to last is where the backend commands go${colors.reset}
-(push, pull, publish, status, register, clone) unless --backend says otherwise.
-Naming a backend you are already logged in to switches to it.
+(push, pull, publish, status, register, clone) — this is how you switch. Naming
+a backend you are already logged in to switches to it without logging in again;
+add --password, --browser, --token-paste or --token to log in again anyway.
 
 Without --backend: https://uniweb.app (or \$UNIWEB_REGISTER_URL). No command talks
 to a backend you are not logged in to — run one before logging in and it asks first.
@@ -1809,7 +1815,6 @@ reflexively. Exits non-zero if a merge leaves conflicts.
 ${colors.bright}Options:${colors.reset}
   --no-git           Skip the git remote; backend only
   --no-backend       Skip the backend; git only
-  --backend <url>    Override the backend origin
   --token <bearer>   Read with this bearer; skips \`uniweb login\`
 
 \`--force\` and \`--merge\` are NOT accepted here: this verb builds the delegated
@@ -1838,7 +1843,6 @@ ${colors.bright}Options:${colors.reset}
 
   --no-git           Skip the git remote half of the refresh
   --force            Overwrite upstream changes (reaches the PUSH half only)
-  --backend <url>    Override the backend origin
   --token <bearer>   Auth bearer; skips \`uniweb login\`
 
 \`--force\` means "overwrite upstream" to push but "discard my local work" to pull,
@@ -2064,6 +2068,10 @@ ${colors.bright}Global Options:${colors.reset}
   --non-interactive    Fail with usage info instead of prompting
                        Auto-detected when CI=true or no TTY (pipes, agents)
 
+  Backend commands (push, pull, publish, status, register, clone) go to the
+  backend you are logged in to. Switch with \`uniweb login --backend <url>\`;
+  scripts can aim one process with UNIWEB_REGISTER_URL instead.
+
 ${colors.bright}Publish Options:${colors.reset}
   --dry-run          Resolve everything; release/sync/POST nothing
   --yes              Skip confirmations (CI); never block on a prompt
@@ -2072,7 +2080,6 @@ ${colors.bright}Publish Options:${colors.reset}
   --personal         Own the new site personally, deliberately (first publish only)
   --no-save          Do not record this deploy in deploy.yml
   --no-validate      Skip the content-conformance check (it only warns)
-  --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
   --token <bearer>   Auth bearer (skips \`uniweb login\`)
 
   uniweb publish is the smart Uniweb-hosting path: it brings the site's

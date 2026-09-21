@@ -70,19 +70,21 @@ function stubEntry() {
  * @param {string} dir - the directory to run from
  * @param {(args: string[]) => Promise<{exitCode?: number}>} verb
  * @param {string[]} args
- * @param {{ session?: object }} [opts] - `session`: the contents of
- *   `~/.uniweb/registry-auth.json` in the run's HOME — who the user is logged in as
+ * @param {{ session?: object, env?: object }} [opts] - `session`: the contents of
+ *   `~/.uniweb/registry-auth.json` in the run's HOME — who the user is logged in as;
+ *   `env`: variables set for the run only (UNIWEB_REGISTER_URL, say)
  * @returns {Promise<{exitCode: number|'threw', output: string, requests: number,
  *   urls: string[]}>} `urls`: every request the verb tried, in order
  */
-export async function runVerb(dir, verb, args, { session } = {}) {
+export async function runVerb(dir, verb, args, { session, env } = {}) {
   const cwd = process.cwd()
   const saved = {
     fetch: globalThis.fetch,
     home: process.env.HOME,
     ci: process.env.CI,
     exit: process.exit,
-    entry: process.argv[1]
+    entry: process.argv[1],
+    env: Object.fromEntries(Object.keys(env || {}).map((k) => [k, process.env[k]]))
   }
   const out = []
   const urls = []
@@ -103,6 +105,7 @@ export async function runVerb(dir, verb, args, { session } = {}) {
   }
   process.env.CI = '1'
   process.argv[1] = stubEntry()
+  for (const [k, v] of Object.entries(env || {})) process.env[k] = v
   try {
     process.chdir(dir)
     const res = await verb(args)
@@ -118,5 +121,9 @@ export async function runVerb(dir, verb, args, { session } = {}) {
     else process.env.CI = saved.ci
     process.exit = saved.exit
     process.argv[1] = saved.entry
+    for (const [k, v] of Object.entries(saved.env)) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
   }
 }

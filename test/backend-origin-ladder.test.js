@@ -1,9 +1,9 @@
 /**
  * resolveBackendOrigin — which backend a command talks to.
  *
- * The whole ladder, for every command: `--backend` → UNIWEB_REGISTER_URL → the backend
- * the user is LOGGED IN TO → the default backend, where the command's first request asks
- * for that login. *[Diego, 2026-09-21: "push and pull are also meant to go to the backend
+ * The whole ladder, for every command: UNIWEB_REGISTER_URL → the backend the user is
+ * LOGGED IN TO → the default backend, where the command's first request asks for that
+ * login. No `--backend`: switching is `uniweb login --backend` (2026-09-21). *[Diego, 2026-09-21: "push and pull are also meant to go to the backend
  * you are logged into" · "We do not allow any communication with backend if the user is
  * not logged into a backend. The default backend for login, if not specified, is
  * uniweb.app".]* A project's own record — its synced backend, deploy.yml's target —
@@ -21,7 +21,6 @@ import { join } from 'node:path'
 import { resolveBackendOrigin } from '../src/backend/client.js'
 import { tmp } from './helpers/run-verb.js'
 
-const FLAG = 'https://flag.example'
 const ENV = 'https://env.example'
 const LOGIN = 'https://login.example'
 const DEFAULT = 'https://uniweb.app'
@@ -50,45 +49,46 @@ function isolated(login, fn) {
   }
 }
 
-test('an explicit flag outranks everything, the login included', () => {
-  isolated(LOGIN, () => {
-    assert.equal(resolveBackendOrigin(FLAG), FLAG)
-  })
-  // `--backend` is how you deliberately aim elsewhere for one run — at a staging mirror,
-  // say — without changing who you are logged in as.
-})
-
-test('the env override outranks the login, and the flag outranks the env', () => {
+test('the env override outranks the login — the one override, for automation', () => {
   isolated(LOGIN, () => {
     process.env.UNIWEB_REGISTER_URL = ENV
-    assert.equal(resolveBackendOrigin(null), ENV)
-    assert.equal(resolveBackendOrigin(FLAG), FLAG)
+    assert.equal(resolveBackendOrigin(), ENV)
   })
 })
 
 test('⭐ otherwise, the backend you are logged in to', () => {
   isolated(LOGIN, () => {
-    assert.equal(resolveBackendOrigin(null), LOGIN)
-    assert.equal(resolveBackendOrigin(undefined), LOGIN)
+    assert.equal(resolveBackendOrigin(), LOGIN)
   })
 })
 
 test('logged in nowhere: the default backend — where the login is asked for', () => {
   isolated(null, () => {
-    assert.equal(resolveBackendOrigin(null), DEFAULT)
+    assert.equal(resolveBackendOrigin(), DEFAULT)
   })
 })
 
-test('an unparseable flag falls through instead of winning with a broken value', () => {
+test('⛔ there is no flag tier — an argument is ignored, not obeyed', () => {
+  // `--backend` left the backend verbs on 2026-09-21; switching is a login. A stale
+  // caller passing one must not steer anything.
   isolated(LOGIN, () => {
-    assert.equal(resolveBackendOrigin('not-a-url'), LOGIN)
+    assert.equal(resolveBackendOrigin('https://flag.example'), LOGIN)
+  })
+})
+
+test('an unparseable override falls through instead of winning with a broken value', () => {
+  isolated(LOGIN, () => {
+    process.env.UNIWEB_REGISTER_URL = 'not-a-url'
+    assert.equal(resolveBackendOrigin(), LOGIN)
     // no scheme: parses as `localhost:` with the origin "null" — must fall through too
-    assert.equal(resolveBackendOrigin('localhost:8080'), LOGIN)
+    process.env.UNIWEB_REGISTER_URL = 'localhost:8080'
+    assert.equal(resolveBackendOrigin(), LOGIN)
   })
 })
 
 test('a full endpoint URL is reduced to its origin', () => {
   isolated(null, () => {
-    assert.equal(resolveBackendOrigin('https://flag.example/a/b?c=1'), FLAG)
+    process.env.UNIWEB_REGISTER_URL = 'https://env.example/a/b?c=1'
+    assert.equal(resolveBackendOrigin(), ENV)
   })
 })

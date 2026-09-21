@@ -159,9 +159,10 @@ export async function push(args = [], deps = {}) {
   // the sync wire unchecked; see utils/conformance.js.
   await warnIfContentDoesNotConform(siteDir, { args })
   // ⭐ THE BACKEND YOU ARE LOGGED IN TO is where this goes *[Diego, 2026-09-21]*, for every
-  // backend verb (resolveBackendOrigin). Only `--backend` and UNIWEB_REGISTER_URL outrank
-  // it, and nothing talks to a backend the user is not logged in to: logged in nowhere,
-  // the origin is the default backend and the first request asks for that login.
+  // backend verb (resolveBackendOrigin). Only UNIWEB_REGISTER_URL — the automation
+  // override — outranks it, and nothing talks to a backend the user is not logged in to:
+  // logged in nowhere, the origin is the default backend and the first request asks for
+  // that login. ⛔ There is no `--backend` here: switching is `uniweb login --backend`.
   // ⛔ The project's own record — its synced backend, deploy.yml's default target — routes
   // NOTHING. For part of 2026-09-21 it answered a "logged in nowhere" tier, which cannot
   // be reached: *"We do not allow any communication with backend if the user is not
@@ -172,7 +173,6 @@ export async function push(args = [], deps = {}) {
   // (the `offline` flag below), so it never authenticates — even when a collection
   // references a Model the local foundation doesn't define.
   const client = new BackendClient({
-    originFlag: flagValue(args, '--backend'),
     token: tokenFlag,
     args,
     command: 'Syncing'
@@ -207,8 +207,8 @@ export async function push(args = [], deps = {}) {
   // ⚠️ Logged in to a backend where this project has no site, while it has one
   // elsewhere: following the login CREATES a second site. Say so before the owner
   // question, which otherwise arrives with no reason attached. Not for `-o` (nothing is
-  // created) and not when --backend or the env var chose the backend.
-  if (!output && !flagValue(args, '--backend') && !process.env.UNIWEB_REGISTER_URL) {
+  // created) and not when UNIWEB_REGISTER_URL chose the backend — that is a decision.
+  if (!output && !process.env.UNIWEB_REGISTER_URL) {
     const known = syncedElsewhere(siteDir, client.origin)
     if (known) {
       const [headline, ...rest] = describeSyncedElsewhere(known, client.origin, 'push')

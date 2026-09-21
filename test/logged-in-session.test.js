@@ -87,19 +87,47 @@ test('every login becomes current; logging out of it leaves the one remaining', 
   })
 })
 
-test('`uniweb login --backend X` with a session for X already switches to it', async () => {
+test('⭐ `uniweb login --backend X` with a session for X switches to it — and does nothing else', async () => {
+  // [Diego, 2026-09-21] — switching "via login to another backend is good, and the only
+  // way to switch". No method picker, terminal or not: naming the backend IS the switch.
   const { runRegistryLogin } = await import('../src/utils/registry-auth.js')
   const { loggedInOrigin } = await import('../src/utils/config.js')
   await withHome({ version: 2, current: B, sessions: sessions(A, B) }, async () => {
     const err = console.error
     console.error = () => {}
     try {
-      const got = await runRegistryLogin({ apiBase: A, args: ['--non-interactive'] })
-      assert.equal(got?.origin, A, 'no login method needed: the session is reused')
+      const got = await runRegistryLogin({ apiBase: A, args: [] })
+      assert.equal(got?.origin, A, 'the stored session is reused')
     } finally {
       console.error = err
     }
     assert.equal(loggedInOrigin(), A, 'naming it chose it')
+  })
+})
+
+test('a method flag means LOG IN AGAIN, not switch', async () => {
+  const { runRegistryLogin } = await import('../src/utils/registry-auth.js')
+  const { loggedInOrigin } = await import('../src/utils/config.js')
+  await withHome({ version: 2, current: B, sessions: sessions(A, B) }, async () => {
+    const saved = { err: console.error, exit: process.exit, user: process.env.UNIWEB_USERNAME }
+    console.error = () => {}
+    delete process.env.UNIWEB_USERNAME
+    process.exit = (code) => {
+      throw new Error(`exit ${code}`)
+    }
+    try {
+      // --password without a terminal or credentials cannot complete — which is the
+      // point: it went for a login instead of returning the stored session.
+      await assert.rejects(
+        runRegistryLogin({ apiBase: A, args: ['--password', '--non-interactive'] }),
+        /exit/
+      )
+    } finally {
+      console.error = saved.err
+      process.exit = saved.exit
+      if (saved.user !== undefined) process.env.UNIWEB_USERNAME = saved.user
+    }
+    assert.equal(loggedInOrigin(), B, 'no switch happened')
   })
 })
 

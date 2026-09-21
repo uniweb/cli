@@ -49,7 +49,6 @@ import { probeUnpushed } from '../backend/site-sync.js'
 import { resolveBackendOrigin } from '../backend/client.js'
 import { readBackendState } from '@uniweb/build/uwx'
 import { checkFlags } from '../utils/flag-guard.js'
-import { readFlagValue } from '../utils/args.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -89,9 +88,9 @@ function collectPassthrough(args, names) {
 // from sync.json. It read `site.yml::$uuid`, so after step 4 refresh treated every
 // project as unsynced and skipped the backend half of its check.
 //
-// ⛔ `backend` is the one the delegated pull will use — `--backend` when given, else the
-// backend the user is logged in to. It was resolved WITHOUT the flag until 2026-09-21,
-// so `refresh --backend X` checked one backend's sync state and pulled from another.
+// ⛔ `backend` is the one the delegated pull will use: the backend the user is logged in
+// to. (For part of 2026-09-21, `refresh --backend X` checked one backend's sync state and
+// pulled from another; the flag is gone from the backend verbs since.)
 function siteContentUuid(siteDir, backend) {
   try {
     return readBackendState(siteDir, backend).site?.uuid || null
@@ -163,9 +162,9 @@ export async function refresh(args = [], deps = {}) {
   }
 
   // ── 2. the backend ────────────────────────────────────────────────────────
-  // The backend the delegated pull talks to: --backend, else the one you are logged in
-  // to (resolveBackendOrigin). Everything below asks about THAT one.
-  const backend = resolveBackendOrigin(readFlagValue(args, '--backend'))
+  // The backend the delegated pull talks to — the one you are logged in to
+  // (resolveBackendOrigin). Everything below asks about THAT one.
+  const backend = resolveBackendOrigin()
   if (skipBackend) {
     skipped.push('backend (--no-backend)')
   } else if (!siteContentUuid(siteDir, backend)) {
@@ -175,10 +174,7 @@ export async function refresh(args = [], deps = {}) {
     const pull = deps.pull || (await import('./pull.js')).pull
     // `--merge` rather than a plain pull: an author editing a different part of the
     // same section is not a conflict, and should not be presented as one.
-    const passthrough = collectPassthrough(args, [
-      '--backend',
-      '--token'
-    ])
+    const passthrough = collectPassthrough(args, ['--token'])
     const res = await pull(['--merge', ...passthrough])
     conflicts = res?.merge?.conflicted?.length ?? 0
     if (res?.exitCode && !conflicts) {

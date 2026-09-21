@@ -182,15 +182,15 @@ test('refresh never pushes — no push verb is reachable from it', async () => {
   )
 })
 
-test('refresh forwards --backend and its value to the delegated pull', async () => {
-  // `--backend http://x` is two argv entries. A naive filter forwards the flag and
-  // drops the URL, so the pull silently targets the default backend while the user
-  // believes they overrode it — wrong content, no error.
-  const dir = site({ uuid: 'SITE', on: ['http://127.0.0.1:9999', 'http://x'] })
+test('refresh forwards --token and its value to the delegated pull', async () => {
+  // `--token abc` is two argv entries. A naive filter forwards the flag and drops the
+  // value, so the pull silently authenticates as the stored session while the user
+  // believes they passed a bearer — wrong account, no error.
+  const dir = site({ uuid: 'SITE' })
   try {
     let seen = null
     await capture(() =>
-      refresh(['--no-git', '--backend', 'http://127.0.0.1:9999'], {
+      refresh(['--no-git', '--token', 'abc'], {
         resolveSiteDir: async () => dir,
         pull: async (a) => {
           seen = a
@@ -198,10 +198,10 @@ test('refresh forwards --backend and its value to the delegated pull', async () 
         }
       })
     )
-    assert.deepEqual(seen, ['--merge', '--backend', 'http://127.0.0.1:9999'])
+    assert.deepEqual(seen, ['--merge', '--token', 'abc'])
 
     await capture(() =>
-      refresh(['--no-git', '--backend=http://x'], {
+      refresh(['--no-git', '--token=abc'], {
         resolveSiteDir: async () => dir,
         pull: async (a) => {
           seen = a
@@ -209,20 +209,40 @@ test('refresh forwards --backend and its value to the delegated pull', async () 
         }
       })
     )
-    assert.deepEqual(seen, ['--merge', '--backend=http://x'])
+    assert.deepEqual(seen, ['--merge', '--token=abc'])
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })
 
-test('refresh --backend X asks about X — a project never synced there has nothing to pull', async () => {
-  // The sync-state check and the pull must name the same backend. The check ignored
-  // --backend until 2026-09-21: it looked at the logged-in backend while the pull went
-  // to X.
-  const dir = site({ uuid: 'SITE' }) // synced on backend.test only
+test('⭐ refresh follows the login — a project whose site is on another backend has nothing to pull', async () => {
+  // The test user is logged in to backend.test (top of file). A project synced only
+  // elsewhere has no site there, so there is nothing to merge from — and no --backend
+  // to reach the other one with: switching is `uniweb login --backend`.
+  const dir = site({ uuid: 'SITE', on: ['http://elsewhere.test'] })
   try {
     let pulled = false
     const { out } = await capture(() =>
+      refresh(['--no-git'], {
+        resolveSiteDir: async () => dir,
+        pull: async () => {
+          pulled = true
+          return { exitCode: 0 }
+        }
+      })
+    )
+    assert.equal(pulled, false, 'nothing to pull where the user is logged in')
+    assert.match(out, /never been synced/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('`refresh --backend` is refused — before git or the backend is touched', async () => {
+  const dir = site({ uuid: 'SITE' })
+  try {
+    let pulled = false
+    const { r, out } = await capture(() =>
       refresh(['--no-git', '--backend', 'http://elsewhere.test'], {
         resolveSiteDir: async () => dir,
         pull: async () => {
@@ -231,8 +251,9 @@ test('refresh --backend X asks about X — a project never synced there has noth
         }
       })
     )
-    assert.equal(pulled, false, 'nothing to pull from a backend with no site for this project')
-    assert.match(out, /never been synced/)
+    assert.equal(r.exitCode, 2)
+    assert.equal(pulled, false)
+    assert.match(out, /uniweb login --backend <url>/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

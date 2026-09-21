@@ -151,11 +151,12 @@ function readPkgField(dir, field) {
   }
 }
 
-// Forward the origin + auth flags so the spawned `uniweb register` / `build`
-// hits the SAME backend with the SAME session as the publish that called it.
+// Forward the auth flags so the spawned `uniweb register` / `build` uses the SAME
+// session as the publish that called it. The BACKEND travels in the child's
+// environment (releaseFoundation) — `--backend` is not a flag of these verbs.
 function forwardedFlags(args) {
   const out = []
-  for (const name of ['--backend', '--token']) {
+  for (const name of ['--token']) {
     const v = readFlagValue(args, name)
     if (v) out.push(name, v)
   }
@@ -322,7 +323,7 @@ async function bringLocalCodeAlong({
     }
     say.info(`Releasing the ${kind} ${label} (not yet registered)…`)
     return {
-      released: releaseFoundation(local, args, cliBin, say),
+      released: releaseFoundation(local, args, cliBin, say, client?.origin),
       proceed: true,
       ref: pinnedRef()
     }
@@ -365,7 +366,7 @@ async function bringLocalCodeAlong({
           : `Releasing the ${kind} ${label} — not newer than the registered latest ${reg.latest_version}, so the registry takes it only if ${local.version} is already registered with this code…`
     )
     return {
-      released: releaseFoundation(local, args, cliBin, say),
+      released: releaseFoundation(local, args, cliBin, say, client?.origin),
       proceed: true,
       ref: pinnedRef()
     }
@@ -396,7 +397,7 @@ async function bringLocalCodeAlong({
     )
     if (reRelease)
       return {
-        released: releaseFoundation(local, args, cliBin, say),
+        released: releaseFoundation(local, args, cliBin, say, client?.origin),
         proceed: true,
         ref: pinnedRef()
       }
@@ -490,12 +491,15 @@ function buildFoundation(local, cliBin) {
 // Release = `uniweb register` in the foundation directory (the one foundation
 // release path). Returns true on success; throws to the caller on failure so
 // publish stops before going live with missing code.
-function releaseFoundation(local, args, cliBin, say) {
+function releaseFoundation(local, args, cliBin, say, origin) {
   console.log('')
+  // ⭐ Pinned to the parent's backend through the environment, so the release lands
+  // where the publish goes by construction — not because two processes happen to read
+  // the same session file the same way.
   execFileSync('node', [cliBin, 'register', ...forwardedFlags(args)], {
     cwd: local.dir,
     stdio: 'inherit',
-    env: process.env
+    env: origin ? { ...process.env, UNIWEB_REGISTER_URL: origin } : process.env
   })
   console.log('')
   return true

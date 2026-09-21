@@ -35,7 +35,6 @@
  *   uniweb sync                    refresh, then push
  *   uniweb sync --no-git           skip the git remote half of the refresh
  *   uniweb sync --force            forwarded to push (overwrite upstream changes)
- *   uniweb sync --backend <url>    override the backend origin
  */
 
 import { checkFlags } from '../utils/flag-guard.js'

@@ -200,10 +200,7 @@ export async function clone(args = [], deps = {}) {
   const pathFlag = flagValue(args, '--path')
   const projectFlag = flagValue(args, '--project')
   const tokenFlag = flagValue(args, '--token')
-  const explicitBackend =
-    flagValue(args, '--backend')
   const client = new BackendClient({
-    originFlag: explicitBackend,
     token: tokenFlag,
     getToken: deps.getToken,
     fetchImpl: deps.fetch,
@@ -409,7 +406,6 @@ export async function clone(args = [], deps = {}) {
   )
 
   const pullExtra = []
-  if (explicitBackend) pullExtra.push('--backend', explicitBackend)
   if (tokenFlag) pullExtra.push('--token', tokenFlag)
   if (noRecords) pullExtra.push('--no-records')
 

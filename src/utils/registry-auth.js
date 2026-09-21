@@ -49,7 +49,7 @@ import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
 
 import { DEFAULT_BACKEND_ORIGIN } from './config.js'
-import { normalizeSessionFile, sessionFilePath } from './session-file.js'
+import { normalizeSessionFile, sessionFilePath, loggedInOriginOf } from './session-file.js'
 
 const LOGIN_PATH = '/dev/auth/login'
 
@@ -694,23 +694,31 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
       existing.username ||
       existing.handle ||
       (existing.uuid ? `account ${existing.uuid}` : '')
-    // ⭐ Naming a backend you are already logged in to still CHOOSES it: it becomes
-    // current — where the backend verbs go — whether or not you go on to replace the
-    // session. Until 2026-09-21 this only printed a note, so cancelling the prompt
-    // below left the choice unmade.
-    await markCurrentSession(apiBase)
-    console.error(
-      `Already logged in${who ? ` as \x1b[1m${who}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''} — using this session.`
-    )
     const forced =
       args.includes('--token') ||
       args.includes('--browser') ||
       args.includes('--password') ||
       args.includes('--token-paste')
-    // Nothing left to do without a terminal — and failing "no login method" here would
-    // report an error over a switch that already happened.
-    if (nonInteractive && !forced) return { ...existing, origin: normOrigin(apiBase) }
-    console.error('\x1b[2mContinue to log in again and replace it, or cancel to keep it.\x1b[0m\n')
+    if (!forced) {
+      // ⭐ SWITCHING IS A LOGIN, AND A LOGIN IS HOW YOU SWITCH *[Diego, 2026-09-21:
+      // switching "via login to another backend is good, and the only way to switch"]*.
+      // A valid session for this backend exists, so naming it IS the switch: make it
+      // current and stop. Logging in again is behind a method flag. ⛔ Until 2026-09-21
+      // this went on to the method picker, so a switch meant cancelling a prompt.
+      const key = normOrigin(apiBase)
+      const wasCurrent = loggedInOriginOf(await readAuthFile()) === key
+      await markCurrentSession(apiBase)
+      console.error(
+        `\x1b[32m✓\x1b[0m ${wasCurrent ? 'Already on' : 'Switched to'} ${key}${who ? ` — logged in as \x1b[1m${who}\x1b[0m` : ''}.`
+      )
+      console.error(
+        '\x1b[2mTo log in again there, name a method: --password, --browser, --token-paste or --token <bearer>.\x1b[0m'
+      )
+      return { ...existing, origin: key }
+    }
+    console.error(
+      `Already logged in${who ? ` as \x1b[1m${who}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''} — logging in again replaces that session.\n`
+    )
   }
 
   // `--token <bearer>` seeds + verifies a session non-interactively (verified

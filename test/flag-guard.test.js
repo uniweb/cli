@@ -18,14 +18,18 @@ import {
 
 // ─── the hazard this exists for ───────────────────────────────────────────────
 
-test('a mistyped --backend is caught, not silently ignored', () => {
-  // Untouched, this resolves to the session origin / saved config / uniweb.app —
-  // so a command aimed at localhost can publish to production.
-  const bad = checkFlags('publish', ['--backed', 'http://localhost:8080'])
-  assert.ok(bad, 'must not pass through')
-  assert.equal(bad.flag, '--backed')
-  assert.equal(bad.suggestion, '--backend')
-  assert.match(bad.message, /Did you mean `--backend`\?/)
+test('⛔ `--backend` is refused on the backend verbs — saying where the backend comes from', () => {
+  // Retired 2026-09-21: every backend verb goes to the backend you are logged in to.
+  // Refused rather than ignored — ignored, the command would run against wherever you
+  // happen to be logged in while you believed you had named another backend.
+  for (const verb of ['push', 'publish', 'pull', 'clone', 'register', 'status', 'refresh', 'sync']) {
+    const bad = checkFlags(verb, ['--backend', 'http://localhost:8080'])
+    assert.equal(bad?.flag, '--backend', verb)
+    assert.match(bad.message, /backend you are logged in to/, verb)
+    assert.match(bad.message, /uniweb login --backend <url>/, verb)
+  }
+  assert.equal(checkFlags('push', ['--backend=http://x'])?.flag, '--backend', 'the = form too')
+  assert.equal(checkFlags('forget', ['--backend', 'http://localhost:8080']), null, 'forget SELECTS with it')
 })
 
 test('a mistyped --token is caught', () => {
@@ -42,15 +46,15 @@ test('the message names the verb and points at its help', () => {
 
 test('a realistic invocation of every guarded verb passes', () => {
   const real = {
-    push: ['--as-org', '@acme', '--backend', 'http://localhost:8080', '--force'],
+    push: ['--as-org', '@acme', '--token', 'x', '--force'],
     publish: ['--yes', '--no-validate', '--dry-run', '--token', 'x'],
     pull: ['--merge', '--no-prune', '--content-only'],
     clone: ['abc-uuid', '--path', './site', '--project', 'p'],
     register: ['--scope', '@acme', '-o', 'out.uwx', '--json'],
     status: ['--remote', '--json'],
     forget: ['--backend', 'http://localhost:9999'],
-    refresh: ['--no-git', '--backend', 'http://localhost:8080'],
-    sync: ['--no-git', '--force', '--backend', 'http://localhost:8080']
+    refresh: ['--no-git', '--token', 'x'],
+    sync: ['--no-git', '--force', '--token', 'x']
   }
   for (const [verb, args] of Object.entries(real)) {
     assert.equal(checkFlags(verb, args), null, `${verb} rejected a valid call`)
@@ -68,20 +72,18 @@ test('a realistic invocation of every guarded verb passes', () => {
 
 // ─── the delegating verbs ─────────────────────────────────────────────────────
 
-test('a mistyped --backend is caught on refresh, before the delegated pull runs', () => {
-  // The hazard this closes: `--backed` never matches `collectPassthrough`, so it is
-  // not forwarded — and the delegated `pull --merge` then ran against whatever the
-  // origin ladder resolved (the session origin, or https://uniweb.app) while the
-  // user believed they had named a backend. Silent, and read-only only by luck.
-  const bad = checkFlags('refresh', ['--backed', 'http://localhost:8080'])
-  assert.equal(bad.flag, '--backed')
-  assert.equal(bad.suggestion, '--backend')
+test('a mistyped flag is caught on refresh, before the delegated pull runs', () => {
+  // The hazard: a flag `collectPassthrough` does not match is not forwarded, so the
+  // delegated `pull --merge` runs without it while the user believes it applied.
+  const bad = checkFlags('refresh', ['--tokne', 'abc'])
+  assert.equal(bad.flag, '--tokne')
+  assert.equal(bad.suggestion, '--token')
 })
 
-test('a mistyped --backend is caught on sync, before EITHER half runs', () => {
-  const bad = checkFlags('sync', ['--backed', 'http://localhost:8080'])
-  assert.equal(bad.flag, '--backed')
-  assert.equal(bad.suggestion, '--backend')
+test('a mistyped flag is caught on sync, before EITHER half runs', () => {
+  const bad = checkFlags('sync', ['--tokne', 'abc'])
+  assert.equal(bad.flag, '--tokne')
+  assert.equal(bad.suggestion, '--token')
 })
 
 test('sync accepts what only ONE of its halves accepts', () => {

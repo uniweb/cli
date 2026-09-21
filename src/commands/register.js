@@ -30,11 +30,11 @@
  *   uniweb register --json               Porcelain: ONE compact JSON line on stdout
  *                                        ({ok,scope,origin,entities:[{name,uuid,version,unchanged}]}),
  *                                        all human output to stderr — for scripted callers
- *   uniweb register --backend <url>      Override the backend origin
  *   uniweb register --token <bearer>     Submit with this bearer; skips `uniweb login`
  *
- * Endpoint resolution: --backend <url>  >  UNIWEB_REGISTER_URL  >
- *   the logged-in session origin  >  ~/.uniweb/config.json  >  the default (uniweb.app).
+ * Endpoint: UNIWEB_REGISTER_URL  >  the backend you are logged in to  >  the default
+ *   (~/.uniweb/config.json, else uniweb.app) — resolveBackendOrigin. No `--backend`:
+ *   switching is `uniweb login --backend <url>`.
  * Auth (submit only):  --token <bearer>  >  UNIWEB_TOKEN  >  `uniweb login` session.
  */
 
@@ -392,7 +392,6 @@ async function runRegister(args = []) {
   // Origin: --backend (matches deploy/publish + the
   // origin-selection convention); either overrides UNIWEB_REGISTER_URL / default.
   const client = new BackendClient({
-    originFlag: flagValue(args, '--backend'),
     token: tokenFlag,
     args,
     command: 'Registering'
@@ -615,7 +614,7 @@ async function runRegister(args = []) {
   } catch (err) {
     error(`Could not reach the registry at ${client.origin}: ${err.message}`)
     log(
-      `  ${colors.dim}Set the endpoint with --backend <url> or UNIWEB_REGISTER_URL.${colors.reset}`
+      `  ${colors.dim}Is that the backend you meant? Switch with: uniweb login --backend <url>${colors.reset}`
     )
     return { exitCode: 2 }
   }

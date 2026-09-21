@@ -578,15 +578,15 @@ export async function pull(args = [], deps = {}) {
     if (blocked) return blocked
   }
   // ⭐ THE BACKEND YOU ARE LOGGED IN TO is where this goes *[Diego, 2026-09-21]*, for every
-  // backend verb (resolveBackendOrigin). Only `--backend` and UNIWEB_REGISTER_URL outrank
-  // it, and nothing talks to a backend the user is not logged in to: logged in nowhere,
-  // the origin is the default backend and the first request asks for that login.
+  // backend verb (resolveBackendOrigin). Only UNIWEB_REGISTER_URL — the automation
+  // override — outranks it, and nothing talks to a backend the user is not logged in to:
+  // logged in nowhere, the origin is the default backend and the first request asks for
+  // that login. ⛔ There is no `--backend` here: switching is `uniweb login --backend`.
   // ⛔ The project's own record — its synced backend, deploy.yml's default target — routes
   // NOTHING. For part of 2026-09-21 it answered a "logged in nowhere" tier, which cannot
   // be reached: *"We do not allow any communication with backend if the user is not
   // logged into a backend."*
   const client = new BackendClient({
-    originFlag: flagValue(args, '--backend'),
     token: tokenFlag,
     getToken: deps.getToken,
     fetchImpl: deps.fetch,
@@ -622,11 +622,10 @@ export async function pull(args = [], deps = {}) {
   if (!siteContentUuid) {
     // Following the login can land on a backend with no site for this project while it
     // has one elsewhere — say where, rather than only "push first", which would create a
-    // second site. Not when --backend chose: a backend the user typed is a decision.
-    const known =
-      !flagValue(args, '--backend') && !process.env.UNIWEB_REGISTER_URL
-        ? syncedElsewhere(siteDir, client.origin)
-        : null
+    // second site. Not when UNIWEB_REGISTER_URL chose the backend: that is a decision.
+    const known = !process.env.UNIWEB_REGISTER_URL
+      ? syncedElsewhere(siteDir, client.origin)
+      : null
     if (known) {
       info(`Nothing to pull — this project has no site on ${client.origin}.`)
       note(
@@ -662,7 +661,7 @@ export async function pull(args = [], deps = {}) {
       res = await doRequest()
     } catch (err) {
       error(`Could not reach the backend at ${client.origin}: ${err.message}`)
-      note('Set the origin with --backend <url> or UNIWEB_REGISTER_URL.')
+      note('Is that the backend you meant? Switch with: uniweb login --backend <url>')
       return null
     }
     if (res.status === 404) {

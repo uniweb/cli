@@ -261,17 +261,16 @@ export async function publish(args = []) {
   await warnIfContentDoesNotConform(siteDir, { args })
   const siteYml = readSiteYml(join(siteDir, 'site.yml'))
   // ⭐ THE BACKEND YOU ARE LOGGED IN TO is where this goes *[Diego, 2026-09-21]*, for every
-  // backend verb (resolveBackendOrigin). Only `--backend` and UNIWEB_REGISTER_URL outrank
-  // it, and nothing talks to a backend the user is not logged in to: logged in nowhere,
-  // the origin is the default backend and the first request asks for that login.
+  // backend verb (resolveBackendOrigin). Only UNIWEB_REGISTER_URL — the automation
+  // override — outranks it, and nothing talks to a backend the user is not logged in to:
+  // logged in nowhere, the origin is the default backend and the first request asks for
+  // that login. ⛔ There is no `--backend` here: switching is `uniweb login --backend`.
   // ⛔ The project's own record — its synced backend, deploy.yml's default target — routes
   // NOTHING. For part of 2026-09-21 it answered a "logged in nowhere" tier, which cannot
   // be reached: *"We do not allow any communication with backend if the user is not
   // logged into a backend."*
 
   const client = new BackendClient({
-    originFlag:
-      readFlagValue(args, '--backend'),
     token: readFlagValue(args, '--token') || undefined,
     args,
     command: 'Publishing'
@@ -295,9 +294,9 @@ export async function publish(args = []) {
 
   // ⚠️ Logged in to a backend where this project has no site, while it has one
   // elsewhere: following the login CREATES a second site. Say so before the owner
-  // question, which otherwise arrives with no reason attached. Not when --backend or the
-  // env var chose the backend — that is already a decision.
-  if (!readFlagValue(args, '--backend') && !process.env.UNIWEB_REGISTER_URL) {
+  // question, which otherwise arrives with no reason attached. Not when
+  // UNIWEB_REGISTER_URL chose the backend — that is already a decision.
+  if (!process.env.UNIWEB_REGISTER_URL) {
     const known = syncedElsewhere(siteDir, client.origin)
     if (known) {
       const [headline, ...rest] = describeSyncedElsewhere(known, client.origin, 'publish')

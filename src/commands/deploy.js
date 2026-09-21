@@ -56,7 +56,8 @@ import {
 } from '@uniweb/build/site'
 import { promptForDestination } from '../utils/destination-prompt.js'
 import { readFlagValue } from '../utils/args.js'
-import { DEFAULT_BACKEND_ORIGIN } from '../utils/config.js'
+import { DEFAULT_BACKEND_ORIGIN, getRegistryApiBaseUrl, loggedInOrigin } from '../utils/config.js'
+import { normalizeOrigin } from '../utils/site-identity.js'
 import { parseBoolEnv } from '../utils/env.js'
 import { headProvenance } from '../utils/git.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
@@ -186,28 +187,46 @@ export async function deploy(args = []) {
   // Uniweb Cloud is `publish`'s flow — delegate so deploy.yml stays one
   // actionable record and there's a single implementation of go-live.
   if (plan.kind === 'uniweb') {
-    say.info('Uniweb Cloud → running `uniweb publish`.')
-    console.log('')
-    // publish ignores deploy's --host/--target; --dry-run/--no-save/--backend
-    // /--token pass straight through.
-    //
-    // ⭐ A deploy.yml TARGET is an explicit destination, so its backend goes along as
-    // --backend. A bare `uniweb publish` goes to the backend you are logged in to
-    // (publish.js); `uniweb deploy` with a uniweb target goes where that target says.
-    // A target with no `backend:` means the default backend — its documented meaning.
-    const passBackend =
+    // ⭐ `--host=uniweb` IS `publish` *[Diego, 2026-09-21]*: it goes to the backend you are
+    // logged in to — deploy follows the login like every other command. A deploy.yml
+    // uniweb target's `backend:` records where that target's publishes went; it routes
+    // nothing (publish files its record under the target naming its backend).
+    const goingTo = getRegistryApiBaseUrl()
+    const aimedBy = process.env.UNIWEB_REGISTER_URL
+      ? 'UNIWEB_REGISTER_URL'
+      : loggedInOrigin()
+        ? 'the backend you are logged in to'
+        : 'the default backend — you are not logged in'
+    const fromTarget =
       resolved.fromFile &&
       resolved.host === 'uniweb' &&
       // not after the wizard (`--host` with no value): a pick there names no target
-      (hostFromFlag === undefined || hostFromFlag === 'uniweb') &&
-      !readFlagValue(args, '--backend')
-    const targetBackend = passBackend
-      ? ['--backend', resolved.config?.backend || DEFAULT_BACKEND_ORIGIN]
-      : []
+      (hostFromFlag === undefined || hostFromFlag === 'uniweb')
+    const targetBackend = fromTarget
+      ? normalizeOrigin(resolved.config?.backend || DEFAULT_BACKEND_ORIGIN)
+      : null
+    if (targetBackend && targetBackend !== goingTo) {
+      if (targetFromFlag) {
+        // ⛔ A refusal, not a route: the user TYPED this destination, and going live
+        // somewhere else would contradict it with nothing said. Switching is a login.
+        say.err(
+          `Target '${resolved.targetName}' is on ${targetBackend}, but this would publish to ${goingTo} (${aimedBy}).`
+        )
+        say.dim(`To publish there, log in to it first: uniweb login --backend ${targetBackend}`)
+        process.exit(1)
+      }
+      say.dim(
+        `deploy.yml's default target '${resolved.targetName}' is on ${targetBackend}; publishing to ${goingTo} (${aimedBy}).`
+      )
+    }
+    say.info('Uniweb Cloud → running `uniweb publish`.')
+    console.log('')
+    // publish ignores deploy's --host/--target; --dry-run/--no-save/--token pass
+    // straight through.
     const { publish } = await import('./publish.js')
     // Conformance was already reported above, and publish runs the same check
     // — without this the user reads one warning twice and learns to skim it.
-    const result = await publish([...args, ...targetBackend, '--no-validate'])
+    const result = await publish([...args, '--no-validate'])
     process.exit(result?.exitCode ?? 0)
   }
 
