@@ -704,9 +704,13 @@ function recordSiteOrg(siteDir, backend, asOrg) {
  * to several orgs could put a company site, and the storage it bills, somewhere
  * they never named.
  *
- * `register` has refused to guess a scope for the foundation lane since it shipped
- * (`deriveScope` → `package.json::uniweb.scope`). This is the same refusal, one
- * lane over.
+ * `register` resolves a foundation's scope in the same order — explicit, then
+ * recorded (`package.json::uniweb.scope`), then asked (`deriveScope`) — with one
+ * difference: non-interactive, it PICKS the one org you belong to, else your
+ * personal org, else the primary, and says which. This refuses instead, because a
+ * site's owner is the one-shot decision above. ⚠️ Until 2026-09-21 this said
+ * `register` "has refused to guess a scope", which is wrong for a non-interactive
+ * run by anyone with an org.
  *
  * Order, and only the last step is new:
  *   1. `--as-org @org`      — explicit, rides verbatim
