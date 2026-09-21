@@ -106,7 +106,8 @@ import {
 import { checkFlags } from '../utils/flag-guard.js'
 import {
   resolveSyncedBackend,
-  unresolvedBackend
+  unresolvedBackend,
+  syncedElsewhere
 } from '../utils/site-identity.js'
 
 const FOLDER_MODEL = '@uniweb/folder'
@@ -581,15 +582,15 @@ export async function pull(args = [], deps = {}) {
     const blocked = await checkWorkingTree(siteDir, args)
     if (blocked) return blocked
   }
-  // The project's own statement of where its identity lives. Feeds the origin ladder
-  // ABOVE the session (see resolveBackendOrigin), so a teammate who cloned this project
-  // targets the backend it is bound to instead of whatever they last logged into.
-  // ⛔ Null when zero or several backends are synced — it must DEFER to the next
-  // tier, never default. A defaulted value here would shadow `login --backend <local>`.
+  // ⭐ THE BACKEND YOU ARE LOGGED IN TO decides where this goes *[Diego, 2026-09-21]* —
+  // for push, pull and publish alike (resolveBackendOrigin). Only `--backend` and
+  // UNIWEB_REGISTER_URL outrank it. With nobody logged in, the project decides: the ONE
+  // backend it has synced with (null for none or several — it must DEFER, never
+  // default), then deploy.yml's default target.
   const siteScope = resolveSyncedBackend(siteDir)
   const siteBackend = await resolveSiteBackend(siteDir)
-  // ⛔ Several backends on record and nothing names one: refuse and list them rather
-  // than fall through to the logged-in session (plan §3.2; see unresolvedBackend).
+  // ⛔ Nobody logged in, nothing named, several backends on record: refuse and list
+  // them rather than guess (plan §3.2; see unresolvedBackend).
   const ambiguous = unresolvedBackend(siteDir, { flag: flagValue(args, '--backend'), siteBackend })
   if (ambiguous) {
     error(ambiguous)
@@ -632,6 +633,22 @@ export async function pull(args = [], deps = {}) {
   const siteContentUuid = readBackendState(siteDir, client.origin).site?.uuid || null
 
   if (!siteContentUuid) {
+    // Following the login can land on a backend with no site for this project while it
+    // has one elsewhere — say where, rather than only "push first", which would create a
+    // second site. Only when the login chose: a --backend the user typed is a decision.
+    const known =
+      !flagValue(args, '--backend') && !process.env.UNIWEB_REGISTER_URL
+        ? syncedElsewhere(siteDir, client.origin)
+        : null
+    if (known) {
+      info(
+        `Nothing to pull — this project has no site on ${client.origin}, the backend you are logged in to.`
+      )
+      note(
+        `Its ${known.length === 1 ? `site is on ${known[0]}` : `sites are on ${known.join(', ')}`}. To pull from there: uniweb login --backend <url>`
+      )
+      return { exitCode: 0 }
+    }
     info(
       `Nothing to pull — this project has not synced with ${client.origin} yet. Run \`uniweb push\` first.`
     )

@@ -692,8 +692,8 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
       existing.handle ||
       (existing.uuid ? `account ${existing.uuid}` : '')
     // ⭐ Naming a backend you are already logged in to still CHOOSES it: it becomes
-    // current — where a bare `uniweb publish` goes — whether or not you go on to replace
-    // the session. Until 2026-09-21 this only printed a note, so cancelling the prompt
+    // current — where the backend verbs go — whether or not you go on to replace the
+    // session. Until 2026-09-21 this only printed a note, so cancelling the prompt
     // below left the choice unmade.
     await markCurrentSession(apiBase)
     console.error(

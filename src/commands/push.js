@@ -75,7 +75,9 @@ import { readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
   resolveSyncedBackend,
-  unresolvedBackend
+  unresolvedBackend,
+  syncedElsewhere,
+  describeSyncedElsewhere
 } from '../utils/site-identity.js'
 import { confirm } from '../utils/interactive.js'
 import { guardEmptyRecords } from '../utils/records-guard.js'
@@ -158,15 +160,15 @@ export async function push(args = [], deps = {}) {
   // Advisory only — warns and pushes. A malformed data block otherwise rides
   // the sync wire unchecked; see utils/conformance.js.
   await warnIfContentDoesNotConform(siteDir, { args })
-  // The project's own statement of where its identity lives. Feeds the origin ladder
-  // ABOVE the session (see resolveBackendOrigin), so a teammate who cloned this project
-  // targets the backend it is bound to instead of whatever they last logged into.
-  // ⛔ Null when zero or several backends are synced — it must DEFER to the next
-  // tier, never default. A defaulted value here would shadow `login --backend <local>`.
+  // ⭐ THE BACKEND YOU ARE LOGGED IN TO decides where this goes *[Diego, 2026-09-21]* —
+  // for push, pull and publish alike (resolveBackendOrigin). Only `--backend` and
+  // UNIWEB_REGISTER_URL outrank it. With nobody logged in, the project decides: the ONE
+  // backend it has synced with (null for none or several — it must DEFER, never
+  // default), then deploy.yml's default target.
   const siteScope = resolveSyncedBackend(siteDir)
   const siteBackend = await resolveSiteBackend(siteDir)
-  // ⛔ Several backends on record and nothing names one: refuse and list them rather
-  // than fall through to the logged-in session (plan §3.2; see unresolvedBackend).
+  // ⛔ Nobody logged in, nothing named, several backends on record: refuse and list
+  // them rather than guess (plan §3.2; see unresolvedBackend).
   const ambiguous = unresolvedBackend(siteDir, { flag: flagValue(args, '--backend'), siteBackend })
   if (ambiguous) {
     error(ambiguous)
@@ -209,6 +211,19 @@ export async function push(args = [], deps = {}) {
       error(said.headline)
       for (const line of said.lines) note(line)
       return { exitCode: 1 }
+    }
+  }
+
+  // ⚠️ Logged in to a backend where this project has no site, while it has one
+  // elsewhere: following the login CREATES a second site. Say so before the owner
+  // question, which otherwise arrives with no reason attached. Not for `-o` (nothing is
+  // created) and not when --backend or the env var chose the backend.
+  if (!output && !flagValue(args, '--backend') && !process.env.UNIWEB_REGISTER_URL) {
+    const known = syncedElsewhere(siteDir, client.origin)
+    if (known) {
+      const [headline, ...rest] = describeSyncedElsewhere(known, client.origin, 'push')
+      info(headline)
+      for (const line of rest) note(line)
     }
   }
 

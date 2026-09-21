@@ -67,14 +67,16 @@ import { isSiteRelativeExtensionUrl } from '@uniweb/build'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 
 import { BackendClient } from '../backend/client.js'
-import { loggedInOrigin, DEFAULT_BACKEND_ORIGIN } from '../utils/config.js'
+import { DEFAULT_BACKEND_ORIGIN } from '../utils/config.js'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { readFlagValue, readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
   resolveSyncedBackend,
-  unresolvedBackend
+  unresolvedBackend,
+  syncedElsewhere,
+  describeSyncedElsewhere
 } from '../utils/site-identity.js'
 import { isNonInteractive, confirm } from '../utils/interactive.js'
 import { guardEmptyRecords } from '../utils/records-guard.js'
@@ -260,28 +262,18 @@ export async function publish(args = []) {
   // is not a gate.
   await warnIfContentDoesNotConform(siteDir, { args })
   const siteYml = readSiteYml(join(siteDir, 'site.yml'))
-  // The site's deploy.yml-bound backend (where it was published) feeds the
-  // resolution ladder below an explicit --backend / UNIWEB_REGISTER_URL.
-  // The project's own statement of where its identity lives. Feeds the origin ladder
-  // ABOVE the session (see resolveBackendOrigin), so a teammate who cloned this project
-  // targets the backend it is bound to instead of whatever they last logged into.
-  // ⛔ Null when zero or several backends are synced — it must DEFER to the next
-  // tier, never default. A defaulted value here would shadow `login --backend <local>`.
+  // ⭐ THE BACKEND YOU ARE LOGGED IN TO decides where this goes *[Diego, 2026-09-21]* —
+  // for push, pull and publish alike (resolveBackendOrigin). Only `--backend` and
+  // UNIWEB_REGISTER_URL outrank it. With nobody logged in, the project decides: the ONE
+  // backend it has synced with (null for none or several — it must DEFER, never
+  // default), then deploy.yml's default target.
   const siteScope = resolveSyncedBackend(siteDir)
   const siteBackend = await resolveSiteBackend(siteDir)
-  // ⛔ Several backends on record and nothing names one: refuse and list them rather
-  // than fall through to the logged-in session (plan §3.2; see unresolvedBackend).
-  // ⭐ PUBLISH GOES TO THE BACKEND YOU ARE LOGGED IN TO *[Diego, 2026-09-21]*. Going live
-  // is aimed by logging in, so the logged-in backend outranks this project's own record
-  // of where it synced — `push` and `pull` keep the project first. Only `--backend` and
-  // UNIWEB_REGISTER_URL outrank it; with no one logged in, the project decides, and the
-  // login that follows goes there.
-  const loggedIn = loggedInOrigin()
+  // ⛔ Nobody logged in, nothing named, several backends on record: refuse and list
+  // them rather than guess (plan §3.2; see unresolvedBackend).
   const ambiguous = unresolvedBackend(siteDir, {
     flag: readFlagValue(args, '--backend'),
-    siteBackend,
-    loggedIn,
-    loginAnswers: true
+    siteBackend
   })
   if (ambiguous) {
     say.err(ambiguous)
@@ -293,7 +285,6 @@ export async function publish(args = []) {
       readFlagValue(args, '--backend'),
     siteScope,
     siteBackend,
-    loggedInFirst: true,
     token: readFlagValue(args, '--token') || undefined,
     args,
     command: 'Publishing'
@@ -312,6 +303,19 @@ export async function publish(args = []) {
       say.err(said.headline)
       for (const line of said.lines) say.dim(line)
       return { exitCode: 1 }
+    }
+  }
+
+  // ⚠️ Logged in to a backend where this project has no site, while it has one
+  // elsewhere: following the login CREATES a second site. Say so before the owner
+  // question, which otherwise arrives with no reason attached. Not when --backend or the
+  // env var chose the backend — that is already a decision.
+  if (!readFlagValue(args, '--backend') && !process.env.UNIWEB_REGISTER_URL) {
+    const known = syncedElsewhere(siteDir, client.origin)
+    if (known) {
+      const [headline, ...rest] = describeSyncedElsewhere(known, client.origin, 'publish')
+      say.info(headline)
+      for (const line of rest) say.dim(line)
     }
   }
 

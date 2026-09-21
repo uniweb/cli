@@ -37,7 +37,7 @@
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import { DEFAULT_BACKEND_ORIGIN } from './config.js'
+import { DEFAULT_BACKEND_ORIGIN, loggedInOrigin } from './config.js'
 
 /** A bare origin with no trailing slash, or null when unparseable. */
 export function normalizeOrigin(value) {
@@ -121,14 +121,12 @@ export function resolveSyncedBackend(siteDir) {
  *
  * @returns {string|null} a message, or null when there is no ambiguity
  */
-export function describeBackendAmbiguity(siteDir, { loginAnswers = false } = {}) {
+export function describeBackendAmbiguity(siteDir) {
   const all = syncedBackends(siteDir)
   if (all.length < 2) return null
   return (
     `This project has synced with ${all.length} backends: ${all.join(', ')}.\n` +
-    (loginAnswers
-      ? '  Log in to the one to publish to (uniweb login --backend <url>), or pass --backend <url>.'
-      : '  Name one with --backend <url>, or set a default target in deploy.yml.')
+    '  Log in to the one to use (uniweb login --backend <url>), or pass --backend <url>.'
   )
 }
 
@@ -136,30 +134,58 @@ export function describeBackendAmbiguity(siteDir, { loginAnswers = false } = {})
  * The refusal a backend verb owes when nothing names a backend and several are on
  * record — or null when the ladder has an answer.
  *
- * ⭐ Plan §3.2: *"several, none marked → refuse, and list them. Ambiguity is not a
- * guess."* Without this the ladder falls through to the logged-in session, which may
- * be one of the synced backends or a third one entirely — a push that lands wherever
- * someone last logged in. `resolveSyncedBackend` already declines to guess; this is
- * the half that says so.
+ * ⭐ **Being logged in is an answer** *[Diego, 2026-09-21: "push and pull are also meant
+ * to go to the backend you are logged into"]* — every backend verb goes there first, so
+ * this fires only when nobody is logged in, nothing is named, and the project has synced
+ * with several. Plan §3.2: *"Ambiguity is not a guess."*
  *
  * ⚠️ Written with the ladder it guards and not wired until 2026-09-21: `push`,
  * `publish` and `pull` imported it and never called it.
  *
- * ⭐ **For `publish`, being logged in is an answer** *[Diego, 2026-09-21: "publish should
- * publish to the backend the user logged in to"]* — it passes `loggedIn`, and
- * `loginAnswers` so the message offers the login. For `push` and `pull` it is not: their
- * ladder puts the project first, so a session cannot say which of its backends to use.
- *
  * @param {string} siteDir
- * @param {{ flag?: string|null, siteBackend?: string|null, loggedIn?: string|null,
- *   loginAnswers?: boolean }} [named] - what the caller already holds that names a
- *   backend: the `--backend` value, deploy.yml's default target's backend, and (publish
- *   only) the backend the user is logged in to
+ * @param {{ flag?: string|null, siteBackend?: string|null }} [named] - what the caller
+ *   already holds that names a backend: the `--backend` value, and deploy.yml's default
+ *   target's backend
  * @returns {string|null}
  */
-export function unresolvedBackend(siteDir, { flag, siteBackend, loggedIn, loginAnswers } = {}) {
-  if (flag || process.env.UNIWEB_REGISTER_URL || siteBackend || loggedIn) return null
-  return describeBackendAmbiguity(siteDir, { loginAnswers })
+export function unresolvedBackend(siteDir, { flag, siteBackend } = {}) {
+  if (flag || process.env.UNIWEB_REGISTER_URL || siteBackend || loggedInOrigin()) return null
+  return describeBackendAmbiguity(siteDir)
+}
+
+/**
+ * The backends this project HAS synced with, when `origin` is not one of them — or null.
+ *
+ * The case to flag now that every verb follows the login: logged in to B, a project
+ * whose only site is on A. A push then CREATES a second site on B rather than updating
+ * the one the project knows, and the owner question it asks does not say why.
+ *
+ * @param {string} siteDir
+ * @param {string} origin - where the verb resolved to
+ * @returns {string[]|null}
+ */
+export function syncedElsewhere(siteDir, origin) {
+  const key = normalizeOrigin(origin)
+  const known = syncedBackends(siteDir)
+  if (!key || !known.length || known.includes(key)) return null
+  return known
+}
+
+/**
+ * The heads-up for `syncedElsewhere`, as lines — each verb prints them with its own
+ * reporter. Only worth saying when the LOGIN chose the backend: a `--backend` the user
+ * typed is already a decision.
+ *
+ * @param {string[]} known
+ * @param {string} origin
+ * @param {'push'|'publish'} verb
+ */
+export function describeSyncedElsewhere(known, origin, verb) {
+  const where = known.length === 1 ? `site is on ${known[0]}` : `sites are on ${known.join(', ')}`
+  return [
+    `This project's ${where} — not on ${origin}, the backend you are logged in to.`,
+    `This ${verb} creates a new site there. To ${verb} to ${known.length === 1 ? 'that one' : 'one of those'} instead: uniweb login --backend <url>`
+  ]
 }
 
 /**

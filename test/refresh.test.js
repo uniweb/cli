@@ -16,6 +16,14 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { refresh } from '../src/commands/refresh.js'
 
+// ⛔ WHO THE DEVELOPER IS LOGGED IN AS MUST NOT DECIDE WHERE REFRESH LOOKS. Since
+// 2026-09-21 the backend you are logged in to outranks the project, for every verb — so
+// a real ~/.uniweb session sent these fixtures, bound on backend.test, to the developer's
+// own backend, where they read as never synced. Green in CI (no session), red on any
+// machine that had logged in. This file runs in its own process, so HOME is set once.
+process.env.HOME = mkdtempSync(join(tmpdir(), 'uw-refresh-home-'))
+delete process.env.UNIWEB_REGISTER_URL
+
 const hasGit = (() => {
   try {
     execFileSync('git', ['--version'], { stdio: 'ignore' })

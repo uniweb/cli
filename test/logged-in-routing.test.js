@@ -1,12 +1,15 @@
 /**
- * `publish` goes to the backend the user is logged in to.
+ * The backend verbs go to the backend the user is logged in to.
  *
- * [Diego, 2026-09-21] — "publish should publish to the backend the user logged in to."
+ * [Diego, 2026-09-21] — "publish should publish to the backend the user logged in to" ·
+ * "push and pull are also meant to go to the backend you are logged into".
  *
- * Going live is aimed by logging in, so the logged-in backend outranks the project's own
- * record of where it synced — while push and pull keep the project first, so a clone of
- * a project bound elsewhere is still routed there. A deploy.yml target stays an explicit
- * destination: `uniweb deploy` with a uniweb target goes where the target says.
+ * Logging in is how a backend is chosen, so the login outranks the project's own record
+ * of where it synced, for push, pull and publish alike. The project decides only when
+ * nobody is logged in. A deploy.yml target stays an explicit destination: `uniweb deploy`
+ * with a uniweb target goes where the target says. And when following the login lands
+ * on a backend where the project has no site while it has one elsewhere, the verb says
+ * so — a push there creates a second site.
  */
 
 import { test } from 'node:test'
@@ -40,20 +43,47 @@ const backendLine = (out) => (plain(out).match(/Backend\s*:\s*(\S+)/) || [])[1]
 const verbs = async () => ({
   publish: (await import('../src/commands/publish.js')).publish,
   push: (await import('../src/commands/push.js')).push,
+  pull: (await import('../src/commands/pull.js')).pull,
   deploy: (await import('../src/commands/deploy.js')).deploy
 })
+const ELSEWHERE = /This project's site is on http:\/\/a\.test — not on http:\/\/b\.test, the backend you are logged in to/
 
-test('⭐ publish goes to the backend you are logged in to, not the one the project synced with', { timeout: 30_000 }, async () => {
-  const { publish, push } = await verbs()
+test('⭐ publish, push and pull go to the backend you are logged in to', { timeout: 30_000 }, async () => {
+  const { publish, push, pull } = await verbs()
+  const dir = project({ [A]: site('SITE-A'), [B]: site('SITE-B') })
+  const loggedInB = { version: 2, current: B, sessions: sessions(B) }
+
+  const pub = await runVerb(dir, publish, ['--dry-run'], { session: loggedInB })
+  assert.equal(backendLine(pub.output), B, pub.output)
+
+  const psh = await runVerb(dir, push, ['--dry-run'], { session: loggedInB })
+  assert.match(plain(psh.output), /would \S+ content at http:\/\/b\.test/, psh.output)
+  assert.doesNotMatch(plain(psh.output), /not on http:\/\/b\.test/, 'the site IS on B: no heads-up')
+
+  const pll = await runVerb(dir, pull, ['--dry-run', '--force'], { session: loggedInB })
+  assert.match(plain(pll.output), /would pull content from http:\/\/b\.test/, pll.output)
+})
+
+test('⭐ following the login to a backend with no site for this project is said out loud', { timeout: 30_000 }, async () => {
+  const { publish, push, pull } = await verbs()
   const dir = project({ [A]: site('SITE-A') })
   const loggedInB = { version: 2, current: B, sessions: sessions(B) }
 
-  const pub = await runVerb(dir, publish, ['--dry-run', '--personal'], { session: loggedInB })
-  assert.equal(backendLine(pub.output), B, pub.output)
+  const psh = await runVerb(dir, push, ['--dry-run', '--personal'], { session: loggedInB })
+  assert.match(plain(psh.output), ELSEWHERE, psh.output)
+  assert.match(plain(psh.output), /This push creates a new site there/)
 
-  // push keeps the project first — a clone of a project bound elsewhere goes there
-  const psh = await runVerb(dir, push, ['--dry-run'], { session: loggedInB })
-  assert.match(plain(psh.output), /would \S+ content at http:\/\/a\.test/, psh.output)
+  const pub = await runVerb(dir, publish, ['--dry-run', '--personal'], { session: loggedInB })
+  assert.match(plain(pub.output), ELSEWHERE, pub.output)
+  assert.equal(backendLine(pub.output), B)
+
+  const pll = await runVerb(dir, pull, ['--force'], { session: loggedInB })
+  assert.match(plain(pll.output), /Nothing to pull — this project has no site on http:\/\/b\.test, the backend you are logged in to/, pll.output)
+  assert.match(plain(pll.output), /Its site is on http:\/\/a\.test/)
+
+  // A backend the user NAMED is a decision already: no heads-up (control)
+  const named = await runVerb(dir, push, ['--dry-run', '--personal', '--backend', B], { session: loggedInB })
+  assert.doesNotMatch(plain(named.output), ELSEWHERE, named.output)
 })
 
 test('--backend still outranks the login', { timeout: 30_000 }, async () => {
@@ -65,15 +95,18 @@ test('--backend still outranks the login', { timeout: 30_000 }, async () => {
   assert.equal(backendLine(res.output), A, res.output)
 })
 
-test('with several backends on record, being logged in answers for publish', { timeout: 30_000 }, async () => {
-  const { publish } = await verbs()
+test('with several backends on record, being logged in is the answer — for every verb', { timeout: 30_000 }, async () => {
+  const { publish, push } = await verbs()
   const dir = project({ [A]: site('SITE-A'), [C]: site('SITE-C') })
+  const loggedInC = { version: 2, current: C, sessions: sessions(C) }
 
-  const loggedIn = await runVerb(dir, publish, ['--dry-run'], {
-    session: { version: 2, current: C, sessions: sessions(C) }
-  })
+  const loggedIn = await runVerb(dir, publish, ['--dry-run'], { session: loggedInC })
   assert.doesNotMatch(loggedIn.output, /synced with 2 backends/, loggedIn.output)
   assert.equal(backendLine(loggedIn.output), C, loggedIn.output)
+
+  const psh = await runVerb(dir, push, ['--dry-run'], { session: loggedInC })
+  assert.doesNotMatch(psh.output, /synced with 2 backends/, psh.output)
+  assert.match(plain(psh.output), /would \S+ content at http:\/\/c\.test/, psh.output)
 
   const nobody = await runVerb(dir, publish, ['--dry-run'])
   assert.equal(nobody.exitCode, 2, nobody.output)

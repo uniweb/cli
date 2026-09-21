@@ -2,11 +2,10 @@
  * Several backends on record, none named: the backend verbs refuse and list them.
  *
  * A project can sync with any number of backends. With exactly one, a bare `uniweb
- * push` goes there; with several, something has to say which — `--backend`,
- * `UNIWEB_REGISTER_URL`, or deploy.yml's default target. When nothing does, the
- * ladder used to fall through to the logged-in session, which may be either synced
- * backend or a third one: a push landing wherever someone last logged in. Plan
- * §3.2: refuse, and list them.
+ * push` goes there; with several, something has to say which — the backend you are
+ * logged in to, `--backend`, `UNIWEB_REGISTER_URL`, or deploy.yml's default target. With
+ * none of those (every case here runs logged in nowhere), plan §3.2: refuse, and list
+ * them. That being logged in answers is `logged-in-routing.test.js`.
  */
 
 import { test } from 'node:test'

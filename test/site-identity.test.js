@@ -113,7 +113,7 @@ test('ambiguity is explained rather than silently dropped', () => {
   const msg = describeBackendAmbiguity(site({ [A]: { uuid: 'S' }, [B]: { uuid: 'T' } }))
   assert.match(msg, /2 backends/)
   assert.match(msg, /--backend/)
-  assert.match(msg, /deploy\.yml/)
+  assert.match(msg, /uniweb login --backend <url>/, 'logging in is how a backend is chosen')
 })
 
 // ───────────────────────────── findNearbySiteBackend ───────────────────────────

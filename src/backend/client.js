@@ -48,34 +48,36 @@ import { uploadSiteAssets } from '../utils/asset-upload.js'
  *
  *   1. `flag` — the raw --backend value (this command)
  *   2. UNIWEB_REGISTER_URL env — session-wide override (CI / local dev)
- *   3. `siteScope` — the ONE backend this project has synced with, from sync.json
+ *   3. ⭐ the backend the user is LOGGED IN TO — their most recent login
+ *   4. `siteScope` — the ONE backend this project has synced with, from sync.json
  *      (`resolveSyncedBackend`; null when it has synced with none or several)
- *   4. `siteBackend` — the backend of deploy.yml's default target (site verbs)
- *   5–7. the backend the user is logged in to > ~/.uniweb/config.json > the default
- *        (uniweb.app) — all via getRegistryApiBaseUrl()
+ *   5. `siteBackend` — the backend of deploy.yml's default target (site verbs)
+ *   6–7. ~/.uniweb/config.json > the default (uniweb.app), via getRegistryApiBaseUrl()
  *
- * ⭐ **`loggedInFirst` moves 5 above 3 and 4 — for `publish`** *[Diego, 2026-09-21:
- * "publish should publish to the backend the user logged in to"]*. Going live is aimed
- * by logging in. `push` and `pull` keep the project first: a teammate who clones a
- * project bound to another backend is routed there, not to whatever they last logged
- * into.
+ * ⭐ **The login outranks the project, for every verb** *[Diego, 2026-09-21: "publish
+ * should publish to the backend the user logged in to" · "push and pull are also meant
+ * to go to the backend you are logged into"]*. Logging in is how a backend is chosen;
+ * the project's own record only answers when nobody is logged in — and then the login
+ * that follows goes there. ⛔ *Until 2026-09-21 the project ranked above the login, on
+ * the argument that a teammate who clones a project bound elsewhere should be routed to
+ * it. The answer to that case is `uniweb login` in the project, which picks the
+ * project's backend by itself.*
  *
- * ⚠️ *Tier 3 was `site.yml::$backend`, guarded by `assertSiteBackendScope`, until the
+ * ⚠️ *Tier 4 was `site.yml::$backend`, guarded by `assertSiteBackendScope`, until the
  * move to sync.json (2026-09-20) made a foreign backend's ids unreachable and the guard
- * with them. This comment described that for another day.*
+ * with them.*
  *
  * ⚠️ The explicit overrides stay ON TOP deliberately. `--backend` and the env var are how
- * you deliberately aim elsewhere — at a staging mirror, say — and a project file must not
- * be able to veto a flag the user just typed.
+ * you deliberately aim elsewhere — at a staging mirror, say — for one run, without
+ * changing who you are logged in as.
  *
  * @param {string} [flag] - the raw value of --backend, if supplied
  * @param {object} [opts]
  * @param {string} [opts.siteScope] - the project's single synced backend
  * @param {string} [opts.siteBackend] - deploy.yml's default target's backend
- * @param {boolean} [opts.loggedInFirst] - rank the logged-in backend above the project
  * @returns {string} a bare origin with no trailing slash
  */
-export function resolveBackendOrigin(flag, { siteScope, siteBackend, loggedInFirst } = {}) {
+export function resolveBackendOrigin(flag, { siteScope, siteBackend } = {}) {
   const norm = (v) => {
     try {
       return new URL(v).origin
@@ -92,7 +94,7 @@ export function resolveBackendOrigin(flag, { siteScope, siteBackend, loggedInFir
     const o = norm(env)
     if (o) return o
   }
-  if (loggedInFirst) {
+  {
     const o = norm(loggedInOrigin())
     if (o) return o
   }
@@ -149,7 +151,6 @@ export class BackendClient {
    * @param {string} [opts.originFlag] - raw --backend value to resolve
    * @param {string} [opts.siteScope] - the project's single synced backend (site verbs)
    * @param {string} [opts.siteBackend] - deploy.yml's default target's backend (site verbs)
-   * @param {boolean} [opts.loggedInFirst] - the logged-in backend outranks the project (publish)
    * @param {string} [opts.token] - explicit bearer (wins over env + stored session)
    * @param {() => Promise<string>} [opts.getToken] - injected bearer resolver (tests, or
    *        callers with their own auth); used when no explicit token/env is present
@@ -162,7 +163,6 @@ export class BackendClient {
     originFlag,
     siteScope,
     siteBackend,
-    loggedInFirst,
     token,
     getToken,
     args = [],
@@ -170,7 +170,7 @@ export class BackendClient {
     fetchImpl
   } = {}) {
     this.origin = (
-      origin || resolveBackendOrigin(originFlag, { siteScope, siteBackend, loggedInFirst })
+      origin || resolveBackendOrigin(originFlag, { siteScope, siteBackend })
     ).replace(/\/+$/, '')
     this._token = token || process.env.UNIWEB_TOKEN || null
     this._getToken = getToken || null

@@ -889,9 +889,9 @@ async function main() {
 
   // Handle login command — the backend (username/password · paste a token ·
   // --token <bearer>). Origin from --backend > UNIWEB_REGISTER_URL > the project's
-  // backend (below) > the backend already logged in to > default — the SAME resolver
-  // the other verbs use. The backend logged in to becomes CURRENT: it is where a bare
-  // `uniweb publish` goes, and where every verb goes when its project says nothing.
+  // backend (below) > the backend already logged in to > default. The backend logged in
+  // to becomes CURRENT, and every backend verb — push, pull, publish, status — goes there
+  // unless --backend or UNIWEB_REGISTER_URL says otherwise.
   if (command === 'login') {
     const loginArgs = args.slice(1)
     const { resolveBackendOrigin } = await import('./backend/client.js')
@@ -1837,13 +1837,19 @@ ${colors.cyan}${colors.bright}uniweb login${colors.reset} ${colors.dim}— Log i
 ${colors.bright}Usage:${colors.reset}
   uniweb login [options]
 
-Authenticates with the backend and stores a session at
-~/.uniweb/registry-auth.json. Every backend command (register, push, pull,
-clone, deploy) reuses it. Interactively, pick username/password or paste a token.
+Authenticates with a backend and stores its session in
+~/.uniweb/registry-auth.json — one per backend, so logging in to a second keeps
+the first. ${colors.bright}The backend you log in to last is where the backend commands go${colors.reset}
+(push, pull, publish, status, register, clone) unless --backend says otherwise.
+Naming a backend you are already logged in to switches to it.
+
+Without --backend: the backend of the project you are in; outside a project, the
+one you are logged in to — or, when this machine knows several, it asks.
 
 ${colors.bright}Options:${colors.reset}
-  --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
+  --backend <url>    The backend to log in to
   --token <bearer>   Seed + verify a session from a bearer token (non-interactive)
+  --browser          Force the browser method
   --password         Force the username/password method
   --token-paste      Force the paste-a-token prompt
 
