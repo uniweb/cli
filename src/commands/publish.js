@@ -37,7 +37,7 @@
  *   uniweb publish --personal      Own the new site personally, deliberately. Sends
  *                                  NO `as_org` — byte-identical to the wire before
  *                                  the owner prompt existed. First publish only.
- *   uniweb publish --no-save       Skip the deploy.yml lastDeploy auto-save
+ *   uniweb publish --no-save       Do not record this publish in deploy.yml
  *   uniweb publish --backend <url> Override the backend origin
  *   uniweb publish --token <bearer> Auth bearer (skips `uniweb login`)
  */
@@ -163,7 +163,7 @@ function languagesFromSiteYml(siteYml) {
   return [def, ...norm.filter((l) => l !== def)]
 }
 
-// Persist deploy.yml lastDeploy memory (skipped on --no-save / autoSave 'off').
+// Persist the deploys memo in deploy.yml (skipped on --no-save / saveDeploys: false).
 /**
  * A one-line, human-readable account of a service request, for a terminal.
  *
@@ -228,7 +228,7 @@ function describeServices(rows) {
 }
 
 async function persistLastDeploy(siteDir, opts) {
-  if (opts.autoSave === 'off') return
+  if (opts.saveDeploys === false) return
   try {
     const result = await recordLastDeploy(siteDir, opts)
     if (result?.created)
@@ -342,7 +342,7 @@ export async function publish(args = []) {
 
   // deploy.yml target (the Uniweb hosting memory). No --target on publish — it
   // always targets Uniweb hosting; resolveTarget gives us the target name +
-  // autoSave for the lastDeploy memo.
+  // saveDeploys for the deploys memo.
   let resolved
   let priorRequest = null
   try {
@@ -355,8 +355,8 @@ export async function publish(args = []) {
     // Read from the SAME deploy.yml load — one read, and the memo is the only
     // durable record of it (see backend/service-request.js for why not the cache).
     priorRequest =
-      deployYml?.lastDeploy?.[resolved?.targetName] ||
-      deployYml?.lastDeploy?.uniweb ||
+      deployYml?.deploys?.[resolved?.targetName] ||
+      deployYml?.deploys?.uniweb ||
       null
   } catch {
     // Malformed/ambiguous deploy.yml — don't block the publish on the memo.
@@ -364,11 +364,11 @@ export async function publish(args = []) {
       targetName: 'production',
       host: 'uniweb',
       config: {},
-      autoSave: 'lastDeploy',
+      saveDeploys: true,
       fromFile: false
     }
   }
-  const autoSave = noSave ? 'off' : resolved.autoSave || 'lastDeploy'
+  const saveDeploys = !noSave && resolved.saveDeploys !== false
 
   // A SITE-RELATIVE extension URL cannot work on Uniweb hosting: the published
   // site ships no JS, so nothing serves that path. The request falls through to
@@ -1030,7 +1030,7 @@ export async function publish(args = []) {
     targetConfig: resolved.fromFile
       ? null
       : { host: 'uniweb', backend: client.origin },
-    autoSave,
+    saveDeploys,
     lastDeploy: {
       at: new Date().toISOString(),
       host: 'uniweb',

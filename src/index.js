@@ -1466,7 +1466,7 @@ ${colors.bright}Options:${colors.reset}
   --host <name>       The host to ship to (no value → the wizard, TTY only)
   --target <name>     Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
   --dry-run           Resolve the target + adapter; print summary; upload nothing
-  --no-save           Skip the auto-save of lastDeploy in deploy.yml
+  --no-save           Do not record this deploy in deploy.yml
   --no-validate       Skip the content-conformance check (it only warns)
   --non-interactive   Fail with usage info instead of prompting
 
@@ -1503,7 +1503,7 @@ ${colors.bright}Options:${colors.reset}
                      when only the content should go live. Refused if the
                      foundation has never been released — there is nothing to
                      bind to, and the app cannot open such a site.
-  --no-save          Skip the deploy.yml lastDeploy auto-save
+  --no-save          Do not record this deploy in deploy.yml
   --no-validate      Skip the content-conformance check (it only warns)
   --org @org         Publish under @org (membership-gated; alias: --as-org). Read
                      only on a site's FIRST publish — that create decides which org
@@ -2095,7 +2095,7 @@ ${colors.bright}Publish Options:${colors.reset}
   --no-release       Ship content against the already-released code; release nothing
   --org @org         Publish under @org (first publish only; then remembered)
   --personal         Own the new site personally, deliberately (first publish only)
-  --no-save          Skip the deploy.yml lastDeploy auto-save
+  --no-save          Do not record this deploy in deploy.yml
   --no-validate      Skip the content-conformance check (it only warns)
   --backend <url>    Backend origin (default: \$UNIWEB_REGISTER_URL or built-in)
   --token <bearer>   Auth bearer (skips \`uniweb login\`)
@@ -2111,7 +2111,7 @@ ${colors.bright}Deploy Options:${colors.reset}
                      s3-cloudfront, or \`uniweb\` (delegates to \`uniweb publish\`).
   --target <name>    Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
   --dry-run          Resolve the target + adapter; print summary; upload nothing
-  --no-save          Skip the auto-save of lastDeploy in deploy.yml
+  --no-save          Do not record this deploy in deploy.yml
   --no-validate      Skip the content-conformance check (it only warns)
   To deploy on every push instead, see \`uniweb add ci --help\`.
 

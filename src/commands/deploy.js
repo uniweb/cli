@@ -40,7 +40,7 @@
  *   uniweb deploy --host=uniweb    Delegate to `uniweb publish` (Uniweb hosting)
  *   uniweb deploy --target <name>  Pick a target from deploy.yml
  *   uniweb deploy --dry-run        Resolve everything; upload nothing
- *   uniweb deploy --no-save        Skip the deploy.yml lastDeploy auto-save
+ *   uniweb deploy --no-save        Do not record this deploy in deploy.yml
  *
  * Escape hatch: UNIWEB_SKIP_BUILD=1 reuses an existing dist/.
  */
@@ -225,11 +225,13 @@ export async function deploy(args = []) {
   // want a one-off experiment to rewrite the file). A host picked interactively
   // for a bare `deploy` is NOT an override — we DO want to remember it.
   const hostOverridden = !!hostFromFlag && hostFromFlag !== resolved.host
-  const autoSave = noSave || hostOverridden ? 'off' : resolved.autoSave
+  // An ad-hoc --host override describes no target, so there is nothing to file a
+  // deploy under — the switch goes off without anyone typing it.
+  const saveDeploys = !(noSave || hostOverridden) && resolved.saveDeploys !== false
 
   await deployStaticHost(siteDir, plan.host, resolved, {
     dryRun,
-    autoSave,
+    saveDeploys,
     hostOverridden
   })
 }
@@ -280,7 +282,7 @@ async function deployStaticHost(
   siteDir,
   hostName,
   resolved,
-  { dryRun, autoSave, hostOverridden }
+  { dryRun, saveDeploys, hostOverridden }
 ) {
   let getAdapter
   try {
@@ -399,7 +401,7 @@ async function deployStaticHost(
   }
 
   // Record a fresh lastDeploy.<target> entry. Skipped on --no-save and
-  // on ad-hoc --host overrides — see autoSave gating in deploy().
+  // on ad-hoc --host overrides — see saveDeploys gating in deploy().
   const gitStamp = {
     at: new Date().toISOString(),
     git: headProvenance(siteDir)
@@ -409,7 +411,7 @@ async function deployStaticHost(
     targetConfig: resolved.fromFile
       ? null
       : { host: hostName, ...deployConfig },
-    autoSave,
+    saveDeploys,
     lastDeploy: {
       at: gitStamp.at,
       host: hostName,
@@ -434,7 +436,7 @@ async function deployStaticHost(
 // ─── deploy.yml lastDeploy persistence ──────────────────────────
 
 async function persistLastDeploy(siteDir, opts) {
-  if (opts.autoSave === 'off') return
+  if (opts.saveDeploys === false) return
   try {
     const result = await recordLastDeploy(siteDir, opts)
     if (result?.created) {
