@@ -877,7 +877,7 @@ Keep those folders flat: `records/article/design-tips.md` works; `records/articl
 
 **One record per file, or many.** A single mapping at the top of a file makes one record and the filename stem becomes its `slug`. A top-level array (YAML/JSON) or a multi-entry `.bib` makes many, each carrying its own `slug`. You can mix both in one folder — an exported `refs.bib` beside a hand-written `extras.yml`.
 
-Item frontmatter conventionally uses `title`, `date`, `tags`, `image`, `description`, `published`, `author` — plus any fields your content needs (`price`, `role`, `order`). Images can sit beside the item file and be referenced with `./`. `published: false` hides an item without deleting it; items with no `published` field are included.
+Item frontmatter conventionally uses `title`, `date`, `tags`, `image`, `description`, `author` — plus any fields your content needs (`price`, `role`, `order`). Images can sit beside the item file and be referenced with `./`. **`draft: true` keeps a record off the live site without deleting it**: it is still a record, in `records/`, and `pnpm dev` shows it so you can preview it, but a build for hosting leaves it out — and `uniweb push` stops at it, naming it. (`published: false`, an older spelling, is refused.)
 
 **`records.yml` — optional, and only for folders.** Every record sits at the top of the site's records folder unless `records.yml` places it in a sub-folder. Add one only when a query needs to ask for a *slice* of the records rather than all of them — most sites never do:
 
@@ -902,7 +902,7 @@ recent:
 
 team:
   schema: '@std/person'
-  where: { published: { ne: false } }    # a predicate — see authoring/predicates.md
+  where: { active: true }                # a predicate — see authoring/predicates.md
 ```
 
 You can keep the same declarations under `queries:` in `site.yml` instead, if you would rather have one file.
@@ -1861,7 +1861,7 @@ A foundation can route a scope to a plain folder of schema files instead of a pa
 # pages/blog/page.yml
 fetch:
   query: recent
-  where: { published: true, tags: featured }
+  where: { tags: featured }
   sort: date desc
   limit: 3
 ```
