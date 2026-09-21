@@ -21,9 +21,7 @@ import { join } from 'node:path'
 import {
   readSiteIdentity,
   syncedBackends,
-  resolveSyncedBackend,
-  describeBackendAmbiguity,
-  findNearbySiteBackend,
+  syncedElsewhere,
   normalizeOrigin
 } from '../src/utils/site-identity.js'
 
@@ -81,7 +79,6 @@ test('an unsynced project reads as nothing, not as the default backend', () => {
   const dir = site()
   assert.deepEqual(readSiteIdentity(dir, A), { uuid: null, org: null })
   assert.deepEqual(syncedBackends(dir), [])
-  assert.equal(resolveSyncedBackend(dir), null)
 })
 
 test('a full endpoint URL addresses the same backend as its bare origin', () => {
@@ -97,69 +94,21 @@ test('a malformed or missing sync.json reads as unsynced rather than throwing', 
   assert.deepEqual(syncedBackends(dir), [])
 })
 
-// ─────────────────────── the tier that replaced `$backend` ──────────────────────
+// ─────────────────────────────── where the site is ─────────────────────────────
+//
+// A project's record routes nothing — every command goes to the backend the user is
+// logged in to [Diego, 2026-09-21]. What the record still does is SAY where the site is,
+// when a command lands on a backend where it has none.
 
-test('⭐ exactly one synced backend answers the ladder; several do not', () => {
-  assert.equal(resolveSyncedBackend(site({ [A]: { uuid: 'S' } })), A)
-  assert.equal(
-    resolveSyncedBackend(site({ [A]: { uuid: 'S' }, [B]: { uuid: 'T' } })),
-    null,
-    'ambiguity must defer to the next tier, never guess'
-  )
+test('⭐ names where the site is when the command goes somewhere it is not', () => {
+  const dir = site({ [A]: { uuid: 'S' } })
+  assert.deepEqual(syncedElsewhere(dir, B), [A])
+  assert.deepEqual(syncedElsewhere(dir, `${B}/dev/x`), [A], 'by origin')
 })
 
-test('ambiguity is explained rather than silently dropped', () => {
-  assert.equal(describeBackendAmbiguity(site({ [A]: { uuid: 'S' } })), null)
-  const msg = describeBackendAmbiguity(site({ [A]: { uuid: 'S' }, [B]: { uuid: 'T' } }))
-  assert.match(msg, /2 backends/)
-  assert.match(msg, /--backend/)
-  assert.match(msg, /uniweb login --backend <url>/, 'logging in is how a backend is chosen')
-})
-
-// ───────────────────────────── findNearbySiteBackend ───────────────────────────
-
-test('answers for the site you are standing in', () => {
-  const dir = site({ [B]: { uuid: 'S' } })
-  assert.deepEqual(findNearbySiteBackend(dir), { siteDir: dir, backend: B })
-})
-
-test('answers from a project root, where the site is one level down', () => {
-  const root = mkdtempSync(join(tmpdir(), 'uw-proj-'))
-  dirs.push(root)
-  const s = join(root, 'site')
-  mkdirSync(s, { recursive: true })
-  writeFileSync(join(s, 'site.yml'), 'name: demo\n')
-  writeFileSync(
-    join(s, 'sync.json'),
-    JSON.stringify({ version: 1, backends: { [B]: { site: { uuid: 'S' } } } })
-  )
-  assert.deepEqual(findNearbySiteBackend(root), { siteDir: s, backend: B })
-})
-
-test('⛔ stays silent for a workspace of several sites — a confident wrong answer is worse', () => {
-  const root = mkdtempSync(join(tmpdir(), 'uw-ws-'))
-  dirs.push(root)
-  for (const name of ['one', 'two']) {
-    const s = join(root, 'sites', name)
-    mkdirSync(s, { recursive: true })
-    writeFileSync(join(s, 'site.yml'), 'name: demo\n')
-    writeFileSync(
-      join(s, 'sync.json'),
-      JSON.stringify({ version: 1, backends: { [B]: { site: { uuid: name } } } })
-    )
-  }
-  assert.equal(findNearbySiteBackend(root), null)
-})
-
-test('⛔ stays silent when the one site has synced with several backends', () => {
-  const dir = site({ [A]: { uuid: 'S' }, [B]: { uuid: 'T' } })
-  assert.equal(
-    findNearbySiteBackend(dir),
-    null,
-    'login must not pick one of two for you'
-  )
-})
-
-test('stays silent for an unsynced project', () => {
-  assert.equal(findNearbySiteBackend(site()), null)
+test('silent when the site IS there, or the project has synced nowhere', () => {
+  assert.equal(syncedElsewhere(site({ [A]: { uuid: 'S' }, [B]: { uuid: 'T' } }), B), null)
+  assert.equal(syncedElsewhere(site(), B), null)
+  assert.equal(syncedElsewhere(site({ [A]: { uuid: 'S' } }), 'not a url'), null)
+  assert.equal(syncedElsewhere(site({ [A]: { uuid: 'S' } }), 'localhost:8080'), null, 'no scheme is no origin')
 })

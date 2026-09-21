@@ -1,12 +1,13 @@
 /**
- * resolveBackendOrigin — the backend resolution ladder.
+ * resolveBackendOrigin — which backend a command talks to.
  *
- * The order decides where every backend verb SENDS, and a wrong tier is silent. Since
- * 2026-09-21 the login ranks right under the two explicit overrides, for every verb:
- * *[Diego: "publish should publish to the backend the user logged in to" · "push and
- * pull are also meant to go to the backend you are logged into"]*. The project's own
- * record — its one synced backend, then deploy.yml's default target — answers only when
- * nobody is logged in.
+ * The whole ladder, for every command: `--backend` → UNIWEB_REGISTER_URL → the backend
+ * the user is LOGGED IN TO → the default backend, where the command's first request asks
+ * for that login. *[Diego, 2026-09-21: "push and pull are also meant to go to the backend
+ * you are logged into" · "We do not allow any communication with backend if the user is
+ * not logged into a backend. The default backend for login, if not specified, is
+ * uniweb.app".]* A project's own record — its synced backend, deploy.yml's target —
+ * routes nothing.
  *
  * ⛔ Every case runs in its OWN HOME. The ladder reads `~/.uniweb/registry-auth.json`,
  * and a test that saw the developer's real session would pass in CI and fail on every
@@ -23,8 +24,6 @@ import { tmp } from './helpers/run-verb.js'
 const FLAG = 'https://flag.example'
 const ENV = 'https://env.example'
 const LOGIN = 'https://login.example'
-const SCOPE = 'http://localhost:8080'
-const DEPLOY = 'https://deploy.example'
 const DEFAULT = 'https://uniweb.app'
 
 /**
@@ -53,7 +52,7 @@ function isolated(login, fn) {
 
 test('an explicit flag outranks everything, the login included', () => {
   isolated(LOGIN, () => {
-    assert.equal(resolveBackendOrigin(FLAG, { siteScope: SCOPE, siteBackend: DEPLOY }), FLAG)
+    assert.equal(resolveBackendOrigin(FLAG), FLAG)
   })
   // `--backend` is how you deliberately aim elsewhere for one run — at a staging mirror,
   // say — without changing who you are logged in as.
@@ -62,46 +61,34 @@ test('an explicit flag outranks everything, the login included', () => {
 test('the env override outranks the login, and the flag outranks the env', () => {
   isolated(LOGIN, () => {
     process.env.UNIWEB_REGISTER_URL = ENV
-    assert.equal(resolveBackendOrigin(null, { siteScope: SCOPE }), ENV)
-    assert.equal(resolveBackendOrigin(FLAG, { siteScope: SCOPE }), FLAG)
+    assert.equal(resolveBackendOrigin(null), ENV)
+    assert.equal(resolveBackendOrigin(FLAG), FLAG)
   })
 })
 
-test('⭐ the backend you are logged in to outranks the project', () => {
+test('⭐ otherwise, the backend you are logged in to', () => {
   isolated(LOGIN, () => {
-    assert.equal(resolveBackendOrigin(null, { siteScope: SCOPE, siteBackend: DEPLOY }), LOGIN)
     assert.equal(resolveBackendOrigin(null), LOGIN)
+    assert.equal(resolveBackendOrigin(undefined), LOGIN)
   })
 })
 
-test('logged in nowhere: the project decides — its synced backend, then deploy.yml', () => {
+test('logged in nowhere: the default backend — where the login is asked for', () => {
   isolated(null, () => {
-    assert.equal(resolveBackendOrigin(null, { siteScope: SCOPE, siteBackend: DEPLOY }), SCOPE)
-    assert.equal(resolveBackendOrigin(null, { siteBackend: DEPLOY }), DEPLOY)
-    assert.equal(resolveBackendOrigin(null), DEFAULT, 'and nothing at all: the default')
+    assert.equal(resolveBackendOrigin(null), DEFAULT)
   })
 })
 
-test('⛔ an ABSENT synced backend defers to the next tier — it must not default', () => {
-  // `resolveSyncedBackend` returns null for none or several. "Absent means the default"
-  // is right for a comparison and wrong in a precedence chain: a defaulted value here
-  // would shadow deploy.yml's target for every project that records nothing.
-  isolated(null, () => {
-    assert.equal(resolveBackendOrigin(null, { siteScope: null, siteBackend: DEPLOY }), DEPLOY)
-    assert.equal(resolveBackendOrigin(null, { siteScope: undefined, siteBackend: DEPLOY }), DEPLOY)
+test('an unparseable flag falls through instead of winning with a broken value', () => {
+  isolated(LOGIN, () => {
+    assert.equal(resolveBackendOrigin('not-a-url'), LOGIN)
+    // no scheme: parses as `localhost:` with the origin "null" — must fall through too
+    assert.equal(resolveBackendOrigin('localhost:8080'), LOGIN)
   })
 })
 
-test('an unparseable tier falls through instead of winning with a broken value', () => {
+test('a full endpoint URL is reduced to its origin', () => {
   isolated(null, () => {
-    assert.equal(resolveBackendOrigin('not-a-url', { siteScope: SCOPE }), SCOPE)
-    assert.equal(resolveBackendOrigin(null, { siteScope: 'not-a-url', siteBackend: DEPLOY }), DEPLOY)
-  })
-})
-
-test('a full endpoint URL is reduced to its origin at every tier', () => {
-  isolated(null, () => {
-    assert.equal(resolveBackendOrigin(null, { siteScope: 'http://localhost:8080/dev/site/push' }), SCOPE)
     assert.equal(resolveBackendOrigin('https://flag.example/a/b?c=1'), FLAG)
   })
 })

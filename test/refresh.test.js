@@ -16,13 +16,23 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { refresh } from '../src/commands/refresh.js'
 
-// ⛔ WHO THE DEVELOPER IS LOGGED IN AS MUST NOT DECIDE WHERE REFRESH LOOKS. Since
-// 2026-09-21 the backend you are logged in to outranks the project, for every verb — so
-// a real ~/.uniweb session sent these fixtures, bound on backend.test, to the developer's
-// own backend, where they read as never synced. Green in CI (no session), red on any
-// machine that had logged in. This file runs in its own process, so HOME is set once.
+// ⭐ THE TEST USER IS LOGGED IN TO backend.test — where these fixtures' site lives.
+// Refresh talks to the backend you are logged in to, and to no backend you are not
+// (Diego, 2026-09-21), so the login is part of the fixture. ⛔ And never the developer's
+// own: a real ~/.uniweb session would send these fixtures to their backend, where they
+// read as never synced — green in CI, red on any machine that had logged in. This file
+// runs in its own process, so HOME is set once.
 process.env.HOME = mkdtempSync(join(tmpdir(), 'uw-refresh-home-'))
 delete process.env.UNIWEB_REGISTER_URL
+mkdirSync(join(process.env.HOME, '.uniweb'), { recursive: true })
+writeFileSync(
+  join(process.env.HOME, '.uniweb', 'registry-auth.json'),
+  JSON.stringify({
+    version: 2,
+    current: 'http://backend.test',
+    sessions: { 'http://backend.test': { token: 'test' } }
+  })
+)
 
 const hasGit = (() => {
   try {
@@ -33,16 +43,14 @@ const hasGit = (() => {
   }
 })()
 
-function site({ uuid = null, git = false, remote = false } = {}) {
+function site({ uuid = null, git = false, remote = false, on = ['http://backend.test'] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'uniweb-refresh-'))
   writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
-  // Bound means bound on a backend, in sync.json (2026-09-20). One backend, so the
-  // ladder's "the one this project synced with" tier resolves to it.
+  // Bound means bound on a backend, in sync.json (2026-09-20) — by default the one the
+  // test user is logged in to (the HOME set up above).
   if (uuid) {
-    writeFileSync(
-      join(dir, 'sync.json'),
-      JSON.stringify({ version: 1, backends: { 'http://backend.test': { site: { uuid } } } })
-    )
+    const backends = Object.fromEntries(on.map((origin) => [origin, { site: { uuid } }]))
+    writeFileSync(join(dir, 'sync.json'), JSON.stringify({ version: 1, backends }))
   }
   mkdirSync(join(dir, 'pages'), { recursive: true })
   if (git) {
@@ -178,7 +186,7 @@ test('refresh forwards --backend and its value to the delegated pull', async () 
   // `--backend http://x` is two argv entries. A naive filter forwards the flag and
   // drops the URL, so the pull silently targets the default backend while the user
   // believes they overrode it — wrong content, no error.
-  const dir = site({ uuid: 'SITE' })
+  const dir = site({ uuid: 'SITE', on: ['http://127.0.0.1:9999', 'http://x'] })
   try {
     let seen = null
     await capture(() =>
@@ -202,6 +210,29 @@ test('refresh forwards --backend and its value to the delegated pull', async () 
       })
     )
     assert.deepEqual(seen, ['--merge', '--backend=http://x'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('refresh --backend X asks about X — a project never synced there has nothing to pull', async () => {
+  // The sync-state check and the pull must name the same backend. The check ignored
+  // --backend until 2026-09-21: it looked at the logged-in backend while the pull went
+  // to X.
+  const dir = site({ uuid: 'SITE' }) // synced on backend.test only
+  try {
+    let pulled = false
+    const { out } = await capture(() =>
+      refresh(['--no-git', '--backend', 'http://elsewhere.test'], {
+        resolveSiteDir: async () => dir,
+        pull: async () => {
+          pulled = true
+          return { exitCode: 0 }
+        }
+      })
+    )
+    assert.equal(pulled, false, 'nothing to pull from a backend with no site for this project')
+    assert.match(out, /never been synced/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

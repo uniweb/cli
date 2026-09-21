@@ -102,3 +102,22 @@ test('`uniweb login --backend X` with a session for X already switches to it', a
     assert.equal(loggedInOrigin(), A, 'naming it chose it')
   })
 })
+
+test('⭐ a bare `uniweb login` goes to the default backend — never the current one', async () => {
+  // [Diego, 2026-09-21] — "the default backend for login, if not specified, is uniweb.app".
+  const { resolveLoginOrigin, getRegistryApiBaseUrl } = await import('../src/utils/config.js')
+  await withHome({ version: 2, current: A, sessions: sessions(A) }, () => {
+    assert.equal(getRegistryApiBaseUrl(), A, 'commands go to the backend you are on (control)')
+    assert.equal(resolveLoginOrigin(undefined), DEFAULT, 'a bare login does not')
+    assert.equal(resolveLoginOrigin(`${B}/dev/x`), B, '--backend names it, by origin')
+  })
+})
+
+test('a mistyped --backend on login is refused, never quietly replaced', async () => {
+  const { resolveLoginOrigin } = await import('../src/utils/config.js')
+  // The realistic slip: no scheme. `new URL()` PARSES it — as the scheme `localhost:` — with
+  // the origin "null"; accepted, it would have logged in to a backend called "null".
+  assert.throws(() => resolveLoginOrigin('localhost:8080'), /Not a URL/)
+  assert.throws(() => resolveLoginOrigin('localhost:8080x'), /Not a URL/)
+  assert.throws(() => resolveLoginOrigin(null), /needs a URL/)
+})

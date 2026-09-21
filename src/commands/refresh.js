@@ -38,7 +38,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 
-import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
+import { resolveSiteDir } from './deploy.js'
 import {
   isGitRepo,
   hasRemote,
@@ -48,8 +48,8 @@ import {
 import { probeUnpushed } from '../backend/site-sync.js'
 import { resolveBackendOrigin } from '../backend/client.js'
 import { readBackendState } from '@uniweb/build/uwx'
-import { resolveSyncedBackend } from '../utils/site-identity.js'
 import { checkFlags } from '../utils/flag-guard.js'
+import { readFlagValue } from '../utils/args.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -88,12 +88,12 @@ function collectPassthrough(args, names) {
 // A site is backend-synced once it has an identity to pull by — on THIS backend,
 // from sync.json. It read `site.yml::$uuid`, so after step 4 refresh treated every
 // project as unsynced and skipped the backend half of its check.
-async function siteContentUuid(siteDir) {
+//
+// ⛔ `backend` is the one the delegated pull will use — `--backend` when given, else the
+// backend the user is logged in to. It was resolved WITHOUT the flag until 2026-09-21,
+// so `refresh --backend X` checked one backend's sync state and pulled from another.
+function siteContentUuid(siteDir, backend) {
   try {
-    const backend = resolveBackendOrigin(null, {
-      siteScope: resolveSyncedBackend(siteDir),
-      siteBackend: await resolveSiteBackend(siteDir)
-    })
     return readBackendState(siteDir, backend).site?.uuid || null
   } catch {
     return null
@@ -163,9 +163,12 @@ export async function refresh(args = [], deps = {}) {
   }
 
   // ── 2. the backend ────────────────────────────────────────────────────────
+  // The backend the delegated pull talks to: --backend, else the one you are logged in
+  // to (resolveBackendOrigin). Everything below asks about THAT one.
+  const backend = resolveBackendOrigin(readFlagValue(args, '--backend'))
   if (skipBackend) {
     skipped.push('backend (--no-backend)')
-  } else if (!(await siteContentUuid(siteDir))) {
+  } else if (!siteContentUuid(siteDir, backend)) {
     skipped.push('backend (this site has never been synced)')
   } else {
     say.info("Merging the backend's content…")
@@ -200,16 +203,11 @@ export async function refresh(args = [], deps = {}) {
 
   // What is still yours to send. The point of a milestone check is knowing both
   // directions, not just that you took what was waiting.
-  if (!skipBackend && (await siteContentUuid(siteDir))) {
+  if (!skipBackend && siteContentUuid(siteDir, backend)) {
     try {
       // Whose asset ids the comparison reads — see status.js. Offline, so the
       // origin is resolved rather than taken from a client.
-      const probe = await probeUnpushed(siteDir, {
-        backend: resolveBackendOrigin(null, {
-          siteScope: resolveSyncedBackend(siteDir),
-          siteBackend: await resolveSiteBackend(siteDir)
-        })
-      })
+      const probe = await probeUnpushed(siteDir, { backend })
       if (probe.changed)
         say.dim(
           `Unpushed: ${probe.changed} entit${probe.changed === 1 ? 'y' : 'ies'} changed locally`

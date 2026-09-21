@@ -35,15 +35,17 @@
  * implementation; this file only reads.
  */
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { DEFAULT_BACKEND_ORIGIN, loggedInOrigin } from './config.js'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { DEFAULT_BACKEND_ORIGIN } from './config.js'
 
 /** A bare origin with no trailing slash, or null when unparseable. */
 export function normalizeOrigin(value) {
   if (typeof value !== 'string' || !value.trim()) return null
   try {
-    return new URL(value).origin
+    // http(s) only — `localhost:8080` parses as a scheme with the origin "null".
+    const u = new URL(value)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.origin : null
   } catch {
     return null
   }
@@ -94,71 +96,12 @@ export function syncedBackends(siteDir) {
 }
 
 /**
- * The backend a bare site verb should target, from what this project has synced
- * with — the tier that replaced `site.yml::$backend` in the origin ladder.
- *
- * ⭐ **Exactly one synced backend answers; several do not.** This is the same rule
- * `login` uses for "the known single host": the 98% never choose, and ambiguity is
- * refused rather than guessed. With several, the caller falls through to
- * `deploy.yml`'s default target and then to the session.
- *
- * ⛔ **Returns null rather than a default when nothing is synced.** "Absent means
- * the default" is right for a comparison and wrong in a precedence chain, where
- * absent has to mean "defer to the next tier" — feeding a defaulted value here
- * would shadow `uniweb login --backend <local>` on every unsynced project.
- *
- * @param {string} siteDir
- * @returns {string|null}
- */
-export function resolveSyncedBackend(siteDir) {
-  const all = syncedBackends(siteDir)
-  return all.length === 1 ? all[0] : null
-}
-
-/**
- * What to tell someone whose project has synced with several backends and who named
- * none — the ambiguity `resolveSyncedBackend` declines to guess at.
- *
- * @returns {string|null} a message, or null when there is no ambiguity
- */
-export function describeBackendAmbiguity(siteDir) {
-  const all = syncedBackends(siteDir)
-  if (all.length < 2) return null
-  return (
-    `This project has synced with ${all.length} backends: ${all.join(', ')}.\n` +
-    '  Log in to the one to use (uniweb login --backend <url>), or pass --backend <url>.'
-  )
-}
-
-/**
- * The refusal a backend verb owes when nothing names a backend and several are on
- * record — or null when the ladder has an answer.
- *
- * ⭐ **Being logged in is an answer** *[Diego, 2026-09-21: "push and pull are also meant
- * to go to the backend you are logged into"]* — every backend verb goes there first, so
- * this fires only when nobody is logged in, nothing is named, and the project has synced
- * with several. Plan §3.2: *"Ambiguity is not a guess."*
- *
- * ⚠️ Written with the ladder it guards and not wired until 2026-09-21: `push`,
- * `publish` and `pull` imported it and never called it.
- *
- * @param {string} siteDir
- * @param {{ flag?: string|null, siteBackend?: string|null }} [named] - what the caller
- *   already holds that names a backend: the `--backend` value, and deploy.yml's default
- *   target's backend
- * @returns {string|null}
- */
-export function unresolvedBackend(siteDir, { flag, siteBackend } = {}) {
-  if (flag || process.env.UNIWEB_REGISTER_URL || siteBackend || loggedInOrigin()) return null
-  return describeBackendAmbiguity(siteDir)
-}
-
-/**
  * The backends this project HAS synced with, when `origin` is not one of them — or null.
  *
- * The case to flag now that every verb follows the login: logged in to B, a project
- * whose only site is on A. A push then CREATES a second site on B rather than updating
- * the one the project knows, and the owner question it asks does not say why.
+ * Every backend verb goes to the backend the user is logged in to *[Diego, 2026-09-21]*,
+ * so it can land where this project has no site while it has one elsewhere. A push
+ * there CREATES a second site rather than updating the one the project knows, and the
+ * owner question it asks does not say why — this is what lets the verb say it first.
  *
  * @param {string} siteDir
  * @param {string} origin - where the verb resolved to
@@ -173,8 +116,11 @@ export function syncedElsewhere(siteDir, origin) {
 
 /**
  * The heads-up for `syncedElsewhere`, as lines — each verb prints them with its own
- * reporter. Only worth saying when the LOGIN chose the backend: a `--backend` the user
- * typed is already a decision.
+ * reporter. Only worth saying when the verb was not TOLD where to go: a `--backend` the
+ * user typed is already a decision.
+ *
+ * ⚖️ Worded for where the verb GOES, not for why: it is the logged-in backend, or — logged
+ * in nowhere — the default one, where the login it is about to ask for will be.
  *
  * @param {string[]} known
  * @param {string} origin
@@ -183,60 +129,9 @@ export function syncedElsewhere(siteDir, origin) {
 export function describeSyncedElsewhere(known, origin, verb) {
   const where = known.length === 1 ? `site is on ${known[0]}` : `sites are on ${known.join(', ')}`
   return [
-    `This project's ${where} — not on ${origin}, the backend you are logged in to.`,
-    `This ${verb} creates a new site there. To ${verb} to ${known.length === 1 ? 'that one' : 'one of those'} instead: uniweb login --backend <url>`
+    `This project's ${where} — not on ${origin}, where this ${verb} goes.`,
+    `It creates a new site there. To ${verb} to ${known.length === 1 ? 'that one' : 'one of those'} instead: uniweb login --backend <url>`
   ]
-}
-
-/**
- * The single backend of the site project `startDir` sits in — for `login`, which is
- * not a site verb and resolves no site directory of its own.
- *
- * ⭐ **Conservative by construction: it answers only when there is exactly ONE
- * candidate site AND that site has synced with exactly one backend.** A workspace of
- * several sites has no single answer, and a confident guess aimed at the wrong one
- * is worse than saying nothing.
- *
- * @param {string} startDir
- * @returns {{ siteDir: string, backend: string }|null}
- */
-export function findNearbySiteBackend(startDir) {
-  const answer = (dir) => {
-    const backend = resolveSyncedBackend(dir)
-    return backend ? { siteDir: dir, backend } : null
-  }
-
-  // 1. Walk UP for the site we are standing in or under. Bounded: a `site.yml` more
-  //    than a few levels above is not "the project you are in", it is a coincidence.
-  let dir = startDir
-  for (let i = 0; i < 4; i++) {
-    if (existsSync(join(dir, 'site.yml'))) return answer(dir)
-    const up = dirname(dir)
-    if (up === dir) break
-    dir = up
-  }
-
-  // 2. Standing AT a project root, the site is one level down — `site/` in the
-  //    default layout, or a lone entry under `sites/`. Two or more is a workspace,
-  //    which is exactly the ambiguity above.
-  const candidates = []
-  if (existsSync(join(startDir, 'site', 'site.yml'))) candidates.push(join(startDir, 'site'))
-  const sitesDir = join(startDir, 'sites')
-  if (existsSync(sitesDir)) {
-    let entries = []
-    try {
-      entries = readdirSync(sitesDir, { withFileTypes: true })
-    } catch {
-      entries = []
-    }
-    for (const e of entries) {
-      if (!e.isDirectory()) continue
-      const d = join(sitesDir, e.name)
-      if (existsSync(join(d, 'site.yml'))) candidates.push(d)
-    }
-  }
-  if (candidates.length !== 1) return null
-  return answer(candidates[0])
 }
 
 export { DEFAULT_BACKEND_ORIGIN }

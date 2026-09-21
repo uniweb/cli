@@ -68,13 +68,11 @@ import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 
 import { BackendClient } from '../backend/client.js'
 import { DEFAULT_BACKEND_ORIGIN } from '../utils/config.js'
-import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
+import { resolveSiteDir } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { readFlagValue, readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
-  resolveSyncedBackend,
-  unresolvedBackend,
   syncedElsewhere,
   describeSyncedElsewhere
 } from '../utils/site-identity.js'
@@ -262,29 +260,18 @@ export async function publish(args = []) {
   // is not a gate.
   await warnIfContentDoesNotConform(siteDir, { args })
   const siteYml = readSiteYml(join(siteDir, 'site.yml'))
-  // ⭐ THE BACKEND YOU ARE LOGGED IN TO decides where this goes *[Diego, 2026-09-21]* —
-  // for push, pull and publish alike (resolveBackendOrigin). Only `--backend` and
-  // UNIWEB_REGISTER_URL outrank it. With nobody logged in, the project decides: the ONE
-  // backend it has synced with (null for none or several — it must DEFER, never
-  // default), then deploy.yml's default target.
-  const siteScope = resolveSyncedBackend(siteDir)
-  const siteBackend = await resolveSiteBackend(siteDir)
-  // ⛔ Nobody logged in, nothing named, several backends on record: refuse and list
-  // them rather than guess (plan §3.2; see unresolvedBackend).
-  const ambiguous = unresolvedBackend(siteDir, {
-    flag: readFlagValue(args, '--backend'),
-    siteBackend
-  })
-  if (ambiguous) {
-    say.err(ambiguous)
-    return { exitCode: 2 }
-  }
+  // ⭐ THE BACKEND YOU ARE LOGGED IN TO is where this goes *[Diego, 2026-09-21]*, for every
+  // backend verb (resolveBackendOrigin). Only `--backend` and UNIWEB_REGISTER_URL outrank
+  // it, and nothing talks to a backend the user is not logged in to: logged in nowhere,
+  // the origin is the default backend and the first request asks for that login.
+  // ⛔ The project's own record — its synced backend, deploy.yml's default target — routes
+  // NOTHING. For part of 2026-09-21 it answered a "logged in nowhere" tier, which cannot
+  // be reached: *"We do not allow any communication with backend if the user is not
+  // logged into a backend."*
 
   const client = new BackendClient({
     originFlag:
       readFlagValue(args, '--backend'),
-    siteScope,
-    siteBackend,
     token: readFlagValue(args, '--token') || undefined,
     args,
     command: 'Publishing'

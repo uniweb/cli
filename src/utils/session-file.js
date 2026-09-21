@@ -27,7 +27,9 @@ export function sessionFilePath() {
 
 const originOf = (value) => {
   try {
-    return new URL(value).origin
+    // http(s) only — `localhost:8080` parses as a scheme with the origin "null".
+    const u = new URL(value)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.origin : null
   } catch {
     return null
   }

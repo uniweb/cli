@@ -27,7 +27,7 @@
  * single home.
  */
 
-import { getRegistryApiBaseUrl, loggedInOrigin } from '../utils/config.js'
+import { getRegistryApiBaseUrl } from '../utils/config.js'
 import {
   ensureRegistryAuth,
   fetchMe,
@@ -42,69 +42,44 @@ import { uploadFoundationCode } from '../utils/code-upload.js'
 import { uploadSiteAssets } from '../utils/asset-upload.js'
 
 /**
- * Resolve the backend origin via the resolution ladder (highest precedence
- * first). A full URL is reduced to its origin, so callers may pass a whole
- * endpoint URL; an unparseable value falls through to the next tier.
+ * Resolve the backend a command talks to (highest precedence first). A full URL is
+ * reduced to its origin, so callers may pass a whole endpoint URL; an unparseable value
+ * falls through to the next tier.
  *
  *   1. `flag` — the raw --backend value (this command)
  *   2. UNIWEB_REGISTER_URL env — session-wide override (CI / local dev)
  *   3. ⭐ the backend the user is LOGGED IN TO — their most recent login
- *   4. `siteScope` — the ONE backend this project has synced with, from sync.json
- *      (`resolveSyncedBackend`; null when it has synced with none or several)
- *   5. `siteBackend` — the backend of deploy.yml's default target (site verbs)
- *   6–7. ~/.uniweb/config.json > the default (uniweb.app), via getRegistryApiBaseUrl()
+ *   4. the default backend — ~/.uniweb/config.json `registryApiUrl`, else uniweb.app —
+ *      where the command's first request then asks the user to log in
  *
- * ⭐ **The login outranks the project, for every verb** *[Diego, 2026-09-21: "publish
- * should publish to the backend the user logged in to" · "push and pull are also meant
- * to go to the backend you are logged into"]*. Logging in is how a backend is chosen;
- * the project's own record only answers when nobody is logged in — and then the login
- * that follows goes there. ⛔ *Until 2026-09-21 the project ranked above the login, on
- * the argument that a teammate who clones a project bound elsewhere should be routed to
- * it. The answer to that case is `uniweb login` in the project, which picks the
- * project's backend by itself.*
+ * ⭐ **That is the whole ladder, for every command** *[Diego, 2026-09-21: "publish should
+ * publish to the backend the user logged in to" · "push and pull are also meant to go to
+ * the backend you are logged into" · "We do not allow any communication with backend if
+ * the user is not logged into a backend. The default backend for login, if not
+ * specified, is uniweb.app"]*. Logging in is how a backend is chosen.
  *
- * ⚠️ *Tier 4 was `site.yml::$backend`, guarded by `assertSiteBackendScope`, until the
- * move to sync.json (2026-09-20) made a foreign backend's ids unreachable and the guard
- * with them.*
+ * ⛔ **A project's own record routes nothing.** Its synced backend (sync.json) and
+ * deploy.yml's default target were tiers here: above the session until 2026-09-21, then
+ * briefly below it as a "logged in nowhere" tier — which cannot be reached, since a
+ * command reaching tier 4 logs in before it sends. The one exception is explicit:
+ * `uniweb deploy` with a uniweb target passes that target's backend as `--backend`.
  *
  * ⚠️ The explicit overrides stay ON TOP deliberately. `--backend` and the env var are how
  * you deliberately aim elsewhere — at a staging mirror, say — for one run, without
- * changing who you are logged in as.
+ * changing who you are logged in as; the command asks you to log in there if you are not.
  *
  * @param {string} [flag] - the raw value of --backend, if supplied
- * @param {object} [opts]
- * @param {string} [opts.siteScope] - the project's single synced backend
- * @param {string} [opts.siteBackend] - deploy.yml's default target's backend
  * @returns {string} a bare origin with no trailing slash
  */
-export function resolveBackendOrigin(flag, { siteScope, siteBackend } = {}) {
-  const norm = (v) => {
-    try {
-      return new URL(v).origin
-    } catch {
-      return null
-    }
-  }
+export function resolveBackendOrigin(flag) {
   if (flag) {
-    const o = norm(flag)
-    if (o) return o
-  }
-  const env = process.env.UNIWEB_REGISTER_URL
-  if (env) {
-    const o = norm(env)
-    if (o) return o
-  }
-  {
-    const o = norm(loggedInOrigin())
-    if (o) return o
-  }
-  if (siteScope) {
-    const o = norm(siteScope)
-    if (o) return o
-  }
-  if (siteBackend) {
-    const o = norm(siteBackend)
-    if (o) return o
+    try {
+      // http(s) only — `localhost:8080` parses as a scheme with the origin "null".
+      const u = new URL(flag)
+      if (u.protocol === 'http:' || u.protocol === 'https:') return u.origin
+    } catch {
+      /* unparseable: fall through */
+    }
   }
   return getRegistryApiBaseUrl()
 }
@@ -149,8 +124,6 @@ export class BackendClient {
    * @param {object} [opts]
    * @param {string} [opts.origin] - explicit origin (wins over originFlag/env)
    * @param {string} [opts.originFlag] - raw --backend value to resolve
-   * @param {string} [opts.siteScope] - the project's single synced backend (site verbs)
-   * @param {string} [opts.siteBackend] - deploy.yml's default target's backend (site verbs)
    * @param {string} [opts.token] - explicit bearer (wins over env + stored session)
    * @param {() => Promise<string>} [opts.getToken] - injected bearer resolver (tests, or
    *        callers with their own auth); used when no explicit token/env is present
@@ -161,8 +134,6 @@ export class BackendClient {
   constructor({
     origin,
     originFlag,
-    siteScope,
-    siteBackend,
     token,
     getToken,
     args = [],
@@ -170,7 +141,7 @@ export class BackendClient {
     fetchImpl
   } = {}) {
     this.origin = (
-      origin || resolveBackendOrigin(originFlag, { siteScope, siteBackend })
+      origin || resolveBackendOrigin(originFlag)
     ).replace(/\/+$/, '')
     this._token = token || process.env.UNIWEB_TOKEN || null
     this._getToken = getToken || null

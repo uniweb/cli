@@ -2,14 +2,16 @@
  * The backend verbs go to the backend the user is logged in to.
  *
  * [Diego, 2026-09-21] — "publish should publish to the backend the user logged in to" ·
- * "push and pull are also meant to go to the backend you are logged into".
+ * "push and pull are also meant to go to the backend you are logged into" · "We do not
+ * allow any communication with backend if the user is not logged into a backend. The
+ * default backend for login, if not specified, is uniweb.app".
  *
- * Logging in is how a backend is chosen, so the login outranks the project's own record
- * of where it synced, for push, pull and publish alike. The project decides only when
- * nobody is logged in. A deploy.yml target stays an explicit destination: `uniweb deploy`
- * with a uniweb target goes where the target says. And when following the login lands
- * on a backend where the project has no site while it has one elsewhere, the verb says
- * so — a push there creates a second site.
+ * Logging in is how a backend is chosen. A project's own record of where it synced
+ * routes nothing: logged in nowhere, a command resolves to the default backend and asks
+ * for that login before it sends anything. A deploy.yml target stays an explicit
+ * destination: `uniweb deploy` with a uniweb target goes where the target says. And when
+ * a command lands on a backend where the project has no site while it has one
+ * elsewhere, it says so — a push there creates a second site.
  */
 
 import { test } from 'node:test'
@@ -21,6 +23,7 @@ import { tmp, runVerb } from './helpers/run-verb.js'
 const A = 'http://a.test'
 const B = 'http://b.test'
 const C = 'http://c.test'
+const DEFAULT = 'https://uniweb.app'
 
 const sessions = (...origins) =>
   Object.fromEntries(origins.map((o) => [o, { token: `t-${o}` }]))
@@ -46,7 +49,7 @@ const verbs = async () => ({
   pull: (await import('../src/commands/pull.js')).pull,
   deploy: (await import('../src/commands/deploy.js')).deploy
 })
-const ELSEWHERE = /This project's site is on http:\/\/a\.test — not on http:\/\/b\.test, the backend you are logged in to/
+const ELSEWHERE = /This project's site is on http:\/\/a\.test — not on http:\/\/b\.test, where this \w+ goes/
 
 test('⭐ publish, push and pull go to the backend you are logged in to', { timeout: 30_000 }, async () => {
   const { publish, push, pull } = await verbs()
@@ -71,14 +74,14 @@ test('⭐ following the login to a backend with no site for this project is said
 
   const psh = await runVerb(dir, push, ['--dry-run', '--personal'], { session: loggedInB })
   assert.match(plain(psh.output), ELSEWHERE, psh.output)
-  assert.match(plain(psh.output), /This push creates a new site there/)
+  assert.match(plain(psh.output), /It creates a new site there/)
 
   const pub = await runVerb(dir, publish, ['--dry-run', '--personal'], { session: loggedInB })
   assert.match(plain(pub.output), ELSEWHERE, pub.output)
   assert.equal(backendLine(pub.output), B)
 
   const pll = await runVerb(dir, pull, ['--force'], { session: loggedInB })
-  assert.match(plain(pll.output), /Nothing to pull — this project has no site on http:\/\/b\.test, the backend you are logged in to/, pll.output)
+  assert.match(plain(pll.output), /Nothing to pull — this project has no site on http:\/\/b\.test\./, pll.output)
   assert.match(plain(pll.output), /Its site is on http:\/\/a\.test/)
 
   // A backend the user NAMED is a decision already: no heads-up (control)
@@ -95,30 +98,38 @@ test('--backend still outranks the login', { timeout: 30_000 }, async () => {
   assert.equal(backendLine(res.output), A, res.output)
 })
 
-test('with several backends on record, being logged in is the answer — for every verb', { timeout: 30_000 }, async () => {
+test('several backends on record: the login decides, for every verb', { timeout: 30_000 }, async () => {
   const { publish, push } = await verbs()
   const dir = project({ [A]: site('SITE-A'), [C]: site('SITE-C') })
   const loggedInC = { version: 2, current: C, sessions: sessions(C) }
 
-  const loggedIn = await runVerb(dir, publish, ['--dry-run'], { session: loggedInC })
-  assert.doesNotMatch(loggedIn.output, /synced with 2 backends/, loggedIn.output)
-  assert.equal(backendLine(loggedIn.output), C, loggedIn.output)
+  const pub = await runVerb(dir, publish, ['--dry-run'], { session: loggedInC })
+  assert.equal(backendLine(pub.output), C, pub.output)
 
   const psh = await runVerb(dir, push, ['--dry-run'], { session: loggedInC })
-  assert.doesNotMatch(psh.output, /synced with 2 backends/, psh.output)
   assert.match(plain(psh.output), /would \S+ content at http:\/\/c\.test/, psh.output)
-
-  const nobody = await runVerb(dir, publish, ['--dry-run'])
-  assert.equal(nobody.exitCode, 2, nobody.output)
-  assert.match(nobody.output, /synced with 2 backends/)
-  assert.match(nobody.output, /uniweb login --backend <url>/, 'the refusal offers the login')
-  assert.equal(nobody.requests, 0)
 })
 
-test('logged in nowhere: the project decides, and the login that follows goes there', { timeout: 30_000 }, async () => {
-  const { publish } = await verbs()
-  const res = await runVerb(project({ [A]: site('SITE-A') }), publish, ['--dry-run'])
-  assert.equal(backendLine(res.output), A, res.output)
+test('⭐ logged in nowhere: the DEFAULT backend — never the project\'s record', { timeout: 30_000 }, async () => {
+  // [Diego, 2026-09-21] — "the default backend for login, if not specified, is uniweb.app".
+  // A project synced only with A still resolves to the default: its record routes nothing.
+  const { publish, push } = await verbs()
+  const dir = project({ [A]: site('SITE-A') })
+
+  const pub = await runVerb(dir, publish, ['--dry-run'])
+  assert.equal(backendLine(pub.output), DEFAULT, pub.output)
+
+  const psh = await runVerb(dir, push, ['--dry-run', '--personal'])
+  assert.match(plain(psh.output), /would \S+ content at https:\/\/uniweb\.app/, psh.output)
+})
+
+test('⛔ logged in nowhere, nothing is sent — the command asks for the login instead', { timeout: 30_000 }, async () => {
+  // [Diego, 2026-09-21] — "We do not allow any communication with backend if the user is
+  // not logged into a backend." Without a terminal the ask is a refusal.
+  const { push } = await verbs()
+  const res = await runVerb(project({}), push, ['--personal'])
+  assert.equal(res.requests, 0, 'no request reached any backend')
+  assert.match(plain(res.output), /Not logged in/, res.output)
 })
 
 test('`uniweb deploy` with a uniweb target goes where the TARGET says, whoever is logged in', { timeout: 30_000 }, async () => {

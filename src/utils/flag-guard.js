@@ -38,8 +38,8 @@ const GLOBAL = ['--non-interactive', '--help', '-h']
 const AUTH = ['--browser', '--password', '--token-paste']
 
 /**
- * Flags a verb inherits by importing `commands/deploy.js` for `resolveSiteDir` /
- * `resolveSiteBackend`. Inert on these verbs, and listed rather than filtered:
+ * Flags a verb inherits by importing `commands/deploy.js` for `resolveSiteDir`.
+ * Inert on these verbs, and listed rather than filtered:
  * accepting a flag that does nothing is exactly the pre-guard behaviour, while
  * rejecting one that works is a broken command. The guard's job is catching
  * `--backed`, not policing inert-but-valid spellings.

@@ -61,7 +61,10 @@ export function getAuthDir() {
 /** Normalize a backend URL to a bare origin (for stamping on the session). */
 function normOrigin(u) {
   try {
-    return new URL(u).origin
+    // http(s) only — `localhost:8080` parses as a scheme with the origin "null", and a
+    // session keyed "null" would answer for nothing.
+    const parsed = new URL(u)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.origin : u
   } catch {
     return u
   }

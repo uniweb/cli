@@ -99,14 +99,9 @@ import {
 } from '../utils/git.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import { BackendClient } from '../backend/client.js'
-import {
-  resolveSiteDir as defaultResolveSiteDir,
-  resolveSiteBackend
-} from './deploy.js'
+import { resolveSiteDir as defaultResolveSiteDir } from './deploy.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
-  resolveSyncedBackend,
-  unresolvedBackend,
   syncedElsewhere
 } from '../utils/site-identity.js'
 
@@ -582,24 +577,16 @@ export async function pull(args = [], deps = {}) {
     const blocked = await checkWorkingTree(siteDir, args)
     if (blocked) return blocked
   }
-  // ⭐ THE BACKEND YOU ARE LOGGED IN TO decides where this goes *[Diego, 2026-09-21]* —
-  // for push, pull and publish alike (resolveBackendOrigin). Only `--backend` and
-  // UNIWEB_REGISTER_URL outrank it. With nobody logged in, the project decides: the ONE
-  // backend it has synced with (null for none or several — it must DEFER, never
-  // default), then deploy.yml's default target.
-  const siteScope = resolveSyncedBackend(siteDir)
-  const siteBackend = await resolveSiteBackend(siteDir)
-  // ⛔ Nobody logged in, nothing named, several backends on record: refuse and list
-  // them rather than guess (plan §3.2; see unresolvedBackend).
-  const ambiguous = unresolvedBackend(siteDir, { flag: flagValue(args, '--backend'), siteBackend })
-  if (ambiguous) {
-    error(ambiguous)
-    return { exitCode: 2 }
-  }
+  // ⭐ THE BACKEND YOU ARE LOGGED IN TO is where this goes *[Diego, 2026-09-21]*, for every
+  // backend verb (resolveBackendOrigin). Only `--backend` and UNIWEB_REGISTER_URL outrank
+  // it, and nothing talks to a backend the user is not logged in to: logged in nowhere,
+  // the origin is the default backend and the first request asks for that login.
+  // ⛔ The project's own record — its synced backend, deploy.yml's default target — routes
+  // NOTHING. For part of 2026-09-21 it answered a "logged in nowhere" tier, which cannot
+  // be reached: *"We do not allow any communication with backend if the user is not
+  // logged into a backend."*
   const client = new BackendClient({
     originFlag: flagValue(args, '--backend'),
-    siteScope,
-    siteBackend,
     token: tokenFlag,
     getToken: deps.getToken,
     fetchImpl: deps.fetch,
@@ -635,15 +622,13 @@ export async function pull(args = [], deps = {}) {
   if (!siteContentUuid) {
     // Following the login can land on a backend with no site for this project while it
     // has one elsewhere — say where, rather than only "push first", which would create a
-    // second site. Only when the login chose: a --backend the user typed is a decision.
+    // second site. Not when --backend chose: a backend the user typed is a decision.
     const known =
       !flagValue(args, '--backend') && !process.env.UNIWEB_REGISTER_URL
         ? syncedElsewhere(siteDir, client.origin)
         : null
     if (known) {
-      info(
-        `Nothing to pull — this project has no site on ${client.origin}, the backend you are logged in to.`
-      )
+      info(`Nothing to pull — this project has no site on ${client.origin}.`)
       note(
         `Its ${known.length === 1 ? `site is on ${known[0]}` : `sites are on ${known.join(', ')}`}. To pull from there: uniweb login --backend <url>`
       )

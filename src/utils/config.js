@@ -73,44 +73,75 @@ export function loggedInOrigin() {
   return loggedInOriginOf(readSessionFileSync(DEFAULT_BACKEND_ORIGIN))
 }
 
+/** A value's bare origin, or null when it is not a URL. */
+function originOrNull(value) {
+  if (!value) return null
+  try {
+    // ⛔ http(s) only: `new URL('localhost:8080')` PARSES — as the scheme `localhost:` —
+    // and its origin is the string "null", which is truthy. A bare host:port is the
+    // easy slip, and it must not become a backend.
+    const u = new URL(value)
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.origin : null
+  } catch {
+    return null
+  }
+}
+
 /**
- * Get the backend's API base origin. `register` POSTs to
- * {origin}/dev/registry/register, `login` to {origin}/dev/auth/login, etc.
- * (BackendClient.resolveBackendOrigin layers the --backend flag and a site's
- * deploy.yml backend on top of this.)
+ * **The default backend** — where a bare `uniweb login` goes, and where a backend command
+ * goes when nobody is logged in (the login it asks for is then this one).
  *
- * Priority: UNIWEB_REGISTER_URL's origin > the logged-in session origin >
- * ~/.uniweb/config.json registryApiUrl > the default (uniweb.app). Local dev
- * points at a local backend EXPLICITLY (--backend / UNIWEB_REGISTER_URL /
- * `uniweb login --backend …`), rather than the default being localhost.
+ * `UNIWEB_REGISTER_URL`, else `~/.uniweb/config.json` `registryApiUrl`, else
+ * https://uniweb.app. ⛔ **Never the current session** *[Diego, 2026-09-21: "the default
+ * backend for login, if not specified, is uniweb.app"]* — a bare `uniweb login` means the
+ * default backend, not "the one I am already on".
+ *
+ * @returns {string}
+ */
+export function getDefaultBackendOrigin() {
+  return (
+    originOrNull(process.env.UNIWEB_REGISTER_URL) ||
+    originOrNull(readCliConfig().registryApiUrl) ||
+    DEFAULT_BACKEND_ORIGIN
+  )
+}
+
+/**
+ * The backend `uniweb login` logs in to: `--backend`, else the default backend.
+ *
+ * ⛔ A mistyped `--backend` is an error, never a fallback — it would log you in, and so
+ * point every command, somewhere you did not name.
+ *
+ * @param {string|null|undefined} flag - `readFlagValue`'s answer: undefined when the
+ *   flag is absent, null when it was given with no value
+ * @returns {string}
+ * @throws {Error} when --backend was given and is not a URL
+ */
+export function resolveLoginOrigin(flag) {
+  if (flag === undefined) return getDefaultBackendOrigin()
+  const origin = originOrNull(flag)
+  if (!origin) throw new Error(flag ? `Not a URL: ${flag}` : '--backend needs a URL')
+  return origin
+}
+
+/**
+ * **The backend a command talks to** when no `--backend` is given — the base of every
+ * `/dev/*` route (`register` POSTs to {origin}/dev/registry/register, and so on).
+ *
+ * `UNIWEB_REGISTER_URL` > **the backend the user is logged in to** > the default
+ * (`getDefaultBackendOrigin`). ⭐ Nothing talks to a backend the user is not logged in
+ * to *[Diego, 2026-09-21]*: when this falls through to the default, the command's first
+ * request asks for that login — so the default is where the login goes, never a
+ * backend reached without one. `resolveBackendOrigin` puts `--backend` on top.
+ *
  * @returns {string}
  */
 export function getRegistryApiBaseUrl() {
-  const fromEnv = process.env.UNIWEB_REGISTER_URL
-  if (fromEnv) {
-    try {
-      return new URL(fromEnv).origin
-    } catch {
-      /* fall through */
-    }
-  }
-  const fromSession = loggedInOrigin()
-  if (fromSession) {
-    try {
-      return new URL(fromSession).origin
-    } catch {
-      return fromSession
-    }
-  }
-  const fromCfg = readCliConfig().registryApiUrl
-  if (fromCfg) {
-    try {
-      return new URL(fromCfg).origin
-    } catch {
-      return fromCfg
-    }
-  }
-  return DEFAULT_BACKEND_ORIGIN
+  return (
+    originOrNull(process.env.UNIWEB_REGISTER_URL) ||
+    originOrNull(loggedInOrigin()) ||
+    getDefaultBackendOrigin()
+  )
 }
 
 /**
