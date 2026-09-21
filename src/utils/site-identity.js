@@ -131,6 +131,30 @@ export function describeBackendAmbiguity(siteDir) {
 }
 
 /**
+ * The refusal a backend verb owes when nothing names a backend and several are on
+ * record — or null when the ladder has an answer.
+ *
+ * ⭐ Plan §3.2: *"several, none marked → refuse, and list them. Ambiguity is not a
+ * guess."* Without this the ladder falls through to the logged-in session, which may
+ * be one of the synced backends or a third one entirely — a push that lands wherever
+ * someone last logged in. `resolveSyncedBackend` already declines to guess; this is
+ * the half that says so.
+ *
+ * ⚠️ Written with the ladder it guards and not wired until 2026-09-21: `push`,
+ * `publish` and `pull` imported it and never called it.
+ *
+ * @param {string} siteDir
+ * @param {{ flag?: string|null, siteBackend?: string|null }} [named] - what the
+ *   caller already holds that names a backend: the `--backend` value, and
+ *   deploy.yml's default target's backend
+ * @returns {string|null}
+ */
+export function unresolvedBackend(siteDir, { flag, siteBackend } = {}) {
+  if (flag || process.env.UNIWEB_REGISTER_URL || siteBackend) return null
+  return describeBackendAmbiguity(siteDir)
+}
+
+/**
  * The single backend of the site project `startDir` sits in — for `login`, which is
  * not a site verb and resolves no site directory of its own.
  *

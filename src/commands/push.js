@@ -74,7 +74,7 @@ import { readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
   resolveSyncedBackend,
-  describeBackendAmbiguity
+  unresolvedBackend
 } from '../utils/site-identity.js'
 import { confirm } from '../utils/interactive.js'
 import { guardEmptyRecords } from '../utils/records-guard.js'
@@ -164,6 +164,13 @@ export async function push(args = [], deps = {}) {
   // tier, never default. A defaulted value here would shadow `login --backend <local>`.
   const siteScope = resolveSyncedBackend(siteDir)
   const siteBackend = await resolveSiteBackend(siteDir)
+  // ⛔ Several backends on record and nothing names one: refuse and list them rather
+  // than fall through to the logged-in session (plan §3.2; see unresolvedBackend).
+  const ambiguous = unresolvedBackend(siteDir, { flag: flagValue(args, '--backend'), siteBackend })
+  if (ambiguous) {
+    error(ambiguous)
+    return { exitCode: 2 }
+  }
   // One front door. The bearer is resolved lazily on first need (a non-local Model
   // read during the build, or the submit). Offline emit (--dry-run / -o) is fully
   // offline: it never submits, and its Model resolver never reads from the backend
