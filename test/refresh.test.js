@@ -27,10 +27,15 @@ const hasGit = (() => {
 
 function site({ uuid = null, git = false, remote = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'uniweb-refresh-'))
-  writeFileSync(
-    join(dir, 'site.yml'),
-    `${uuid ? `$uuid: ${uuid}\n` : ''}name: S\nfoundation: '@a/base'\n`
-  )
+  writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
+  // Bound means bound on a backend, in sync.json (2026-09-20). One backend, so the
+  // ladder's "the one this project synced with" tier resolves to it.
+  if (uuid) {
+    writeFileSync(
+      join(dir, 'sync.json'),
+      JSON.stringify({ version: 1, backends: { 'http://backend.test': { site: { uuid } } } })
+    )
+  }
   mkdirSync(join(dir, 'pages'), { recursive: true })
   if (git) {
     const g = (a) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' })

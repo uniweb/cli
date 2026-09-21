@@ -112,8 +112,8 @@ const jsonRes = (body, status = 200) => ({
 // and `fetch` to stay hermetic — and origin resolution was the one ambient
 // input nobody injected. Without this, `resolveBackendOrigin()` falls through
 // to tier 4, the DEVELOPER'S logged-in session (`~/.uniweb/registry-auth.json`),
-// so a fixture carrying `$uuid` and no `$backend` trips the sync-scope guard and
-// `pull` refuses.
+// and a fixture bound on one backend reads as unsynced on another — `pull` then
+// finds no uuid for that origin and stops.
 //
 // ⚠️ The failure is machine-local and reads as a product bug. Anyone who runs
 // `uniweb login --backend http://localhost:8080` — the documented local-dev
@@ -125,6 +125,15 @@ const jsonRes = (body, status = 200) => ({
 // with no `$backend` in `site.yml` that is the built-in default. `fetch` is
 // mocked in every test, so nothing leaves the machine.
 const TEST_BACKEND = ['--backend', 'https://uniweb.app']
+
+/** Bind a test site on the pinned backend — identity lives in sync.json since 2026-09-20. */
+function bindSite(dir, uuid) {
+  writeFileSync(
+    join(dir, 'sync.json'),
+    JSON.stringify({ version: 1, backends: { [TEST_BACKEND[1]]: { site: { uuid } } } })
+  )
+}
+
 
 function makeFetch(routes) {
   return async (url) => {
@@ -195,10 +204,8 @@ test('pull is a no-op with no $uuid in files', async () => {
 test('pull projects the site-content lane (pages + sections + config) from a mock GET', async () => {
   const dir = tempSite()
   try {
-    writeFileSync(
-      join(dir, 'site.yml'),
-      "$uuid: SITE\nname: Old\nfoundation: '@a/base'\n"
-    )
+    writeFileSync(join(dir, 'site.yml'), "name: Old\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE')
 
     const document = {
       $uuid: 'SITE',
@@ -264,10 +271,8 @@ test('pull fetches the folder lane by the site-content uuid (no query config nee
   const dir = tempSite()
   try {
     // The site holds one identity (site.yml::$uuid); the folder is keyed by it.
-    writeFileSync(
-      join(dir, 'site.yml'),
-      "$uuid: SITE9\nname: Old\nfoundation: '@a/base'\n"
-    )
+    writeFileSync(join(dir, 'site.yml'), "name: Old\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE9')
 
     const siteContent = {
       $uuid: 'SITE9',
@@ -343,10 +348,8 @@ test('pull fetches the folder lane by the site-content uuid (no query config nee
 test('pull projects the collections lane, resolving the model via a mock model-read', async () => {
   const dir = tempSite()
   try {
-    writeFileSync(
-      join(dir, 'site.yml'),
-      "$uuid: SITE1\nname: S\nfoundation: '@a/base'\n"
-    )
+    writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE1')
 
     const folderDoc = {
       $id: '@folder',
@@ -406,10 +409,8 @@ test('pull --no-records skips the folder lane', async () => {
   const dir = tempSite()
   const pulledUrls = []
   try {
-    writeFileSync(
-      join(dir, 'site.yml'),
-      "$uuid: SITE2\nname: S\nfoundation: '@a/base'\n"
-    )
+    writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE2')
     const siteContent = {
       $uuid: 'SITE2',
       $id: 'site-content',
@@ -449,10 +450,8 @@ test('pull --no-records skips the folder lane', async () => {
 test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (no overwrite)', async () => {
   const dir = tempSite()
   try {
-    writeFileSync(
-      join(dir, 'site.yml'),
-      "$uuid: SITE304\nname: Keep\nfoundation: '@a/base'\n"
-    )
+    writeFileSync(join(dir, 'site.yml'), "name: Keep\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE304')
     mkdirSync(join(dir, '.uniweb'), { recursive: true })
     writeFileSync(
       join(dir, '.uniweb/pull-cache.json'),
@@ -487,10 +486,8 @@ test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (
 test('pull caches the ETag from a 200 for the next conditional pull', async () => {
   const dir = tempSite()
   try {
-    writeFileSync(
-      join(dir, 'site.yml'),
-      "$uuid: SITEET\nname: S\nfoundation: '@a/base'\n"
-    )
+    writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITEET')
     const document = {
       $model: '@uniweb/site-content',
       info: { name: { en: 'S' }, foundation: '@a/base' },
@@ -528,7 +525,8 @@ test('pull caches the ETag from a 200 for the next conditional pull', async () =
 
 test('pull refuses in a non-git dir when it cannot ask', async () => {
   const dir = tempSite() // a temp dir — not a git work tree
-  writeFileSync(join(dir, 'site.yml'), '$uuid: SITE\nname: S\n')
+  writeFileSync(join(dir, 'site.yml'), 'name: S\n')
+  bindSite(dir, 'SITE')
   let fetched = false
   const res = await pull(['--non-interactive', ...TEST_BACKEND], {
     resolveSiteDir: async () => dir,
@@ -546,7 +544,8 @@ test('pull refuses in a non-git dir when it cannot ask', async () => {
 
 test('pull --force proceeds in a non-git dir', async () => {
   const dir = tempSite()
-  writeFileSync(join(dir, 'site.yml'), '$uuid: SITE\nname: S\n')
+  writeFileSync(join(dir, 'site.yml'), 'name: S\n')
+  bindSite(dir, 'SITE')
   const res = await pull(['--force', '--non-interactive', ...TEST_BACKEND], {
     resolveSiteDir: async () => dir,
     getToken: async () => 'tok',
@@ -558,7 +557,8 @@ test('pull --force proceeds in a non-git dir', async () => {
 
 test('pull --dry-run is never blocked by the guard — it writes nothing', async () => {
   const dir = tempSite()
-  writeFileSync(join(dir, 'site.yml'), '$uuid: SITE\nname: S\n')
+  writeFileSync(join(dir, 'site.yml'), 'name: S\n')
+  bindSite(dir, 'SITE')
   const res = await pull(['--dry-run', '--non-interactive', ...TEST_BACKEND], {
     resolveSiteDir: async () => dir,
     getToken: async () => 'tok',
@@ -580,7 +580,8 @@ const hasGit = (() => {
 
 function gitSite() {
   const dir = tempSite()
-  writeFileSync(join(dir, 'site.yml'), '$uuid: SITE\nname: S\n')
+  writeFileSync(join(dir, 'site.yml'), 'name: S\n')
+  bindSite(dir, 'SITE')
   mkdirSync(join(dir, 'pages/home'), { recursive: true })
   writeFileSync(
     join(dir, 'pages/home/hero.md'),
@@ -775,10 +776,8 @@ const siteDocWith = (content) => ({
 
 async function pulledGitSite(baseContent) {
   const dir = tempSite()
-  writeFileSync(
-    join(dir, 'site.yml'),
-    "$uuid: SITE\nname: S\nfoundation: '@a/base'\n"
-  )
+  writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE')
   const g = (a) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' })
   g(['init', '-q'])
   writeFileSync(join(dir, '.gitignore'), '.uniweb\n')
@@ -914,7 +913,8 @@ test(
   { skip: !hasGit },
   async () => {
     const dir = tempSite()
-    writeFileSync(join(dir, 'site.yml'), '$uuid: SITE\nname: S\n')
+    writeFileSync(join(dir, 'site.yml'), 'name: S\n')
+  bindSite(dir, 'SITE')
     try {
       const res = await pull(['--merge', '--non-interactive', ...TEST_BACKEND], {
         resolveSiteDir: async () => dir,
@@ -944,10 +944,8 @@ test('pull is hermetic — a hostile ambient origin cannot reach it', async () =
   process.env.UNIWEB_REGISTER_URL = 'http://hostile.invalid'
   try {
     const dir = tempSite()
-    writeFileSync(
-      join(dir, 'site.yml'),
-      "$uuid: SITE\nname: Old\nfoundation: '@a/base'\n"
-    )
+    writeFileSync(join(dir, 'site.yml'), "name: Old\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE')
     const document = {
       $uuid: 'SITE',
       $id: 'site-content',

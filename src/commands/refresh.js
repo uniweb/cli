@@ -47,7 +47,8 @@ import {
 } from '../utils/git.js'
 import { probeUnpushed } from '../backend/site-sync.js'
 import { resolveBackendOrigin } from '../backend/client.js'
-import { readSiteIdentity } from '../utils/site-identity.js'
+import { readBackendState } from '@uniweb/build/uwx'
+import { resolveSyncedBackend } from '../utils/site-identity.js'
 import { checkFlags } from '../utils/flag-guard.js'
 
 const c = {
@@ -84,11 +85,16 @@ function collectPassthrough(args, names) {
   return out
 }
 
-// A site is backend-synced once it has an identity to pull by.
-function siteContentUuid(siteDir) {
+// A site is backend-synced once it has an identity to pull by — on THIS backend,
+// from sync.json. It read `site.yml::$uuid`, so after step 4 refresh treated every
+// project as unsynced and skipped the backend half of its check.
+async function siteContentUuid(siteDir) {
   try {
-    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
-    return typeof y?.$uuid === 'string' ? y.$uuid : null
+    const backend = resolveBackendOrigin(null, {
+      siteScope: resolveSyncedBackend(siteDir),
+      siteBackend: await resolveSiteBackend(siteDir)
+    })
+    return readBackendState(siteDir, backend).site?.uuid || null
   } catch {
     return null
   }
@@ -159,7 +165,7 @@ export async function refresh(args = [], deps = {}) {
   // ── 2. the backend ────────────────────────────────────────────────────────
   if (skipBackend) {
     skipped.push('backend (--no-backend)')
-  } else if (!siteContentUuid(siteDir)) {
+  } else if (!(await siteContentUuid(siteDir))) {
     skipped.push('backend (this site has never been synced)')
   } else {
     say.info("Merging the backend's content…")
@@ -194,13 +200,13 @@ export async function refresh(args = [], deps = {}) {
 
   // What is still yours to send. The point of a milestone check is knowing both
   // directions, not just that you took what was waiting.
-  if (!skipBackend && siteContentUuid(siteDir)) {
+  if (!skipBackend && (await siteContentUuid(siteDir))) {
     try {
       // Whose asset ids the comparison reads — see status.js. Offline, so the
       // origin is resolved rather than taken from a client.
       const probe = await probeUnpushed(siteDir, {
         backend: resolveBackendOrigin(null, {
-          siteScope: readSiteIdentity(siteDir).backend,
+          siteScope: resolveSyncedBackend(siteDir),
           siteBackend: await resolveSiteBackend(siteDir)
         })
       })

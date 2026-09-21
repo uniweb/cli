@@ -221,6 +221,33 @@ test(
   }
 )
 
+// ─────────────── what a push WRITES, the readers FIND — no hand-seeding ─────────
+//
+// ⛔ WRITTEN AFTER SEVEN READERS SHIPPED BROKEN. Step 4 moved the site uuid from
+// site.yml to sync.json. Seven readers kept looking in site.yml — pull, status,
+// refresh, publish's remote gate, the item-uuid recovery, the preview drop, and the
+// pull projection's org — and every one silently read null. `pull` of any synced
+// project answered "nothing to pull". No suite noticed, because every test SEEDED
+// state by hand: a test that writes site.yml::$uuid itself agrees with a reader that
+// reads site.yml, and both are wrong together.
+//
+// ⇒ This case never seeds. The real push writes; the real readers read.
+
+test('⭐ what a real push writes, the real readers find — the writer/reader seam', async () => {
+  const dir = tmpSite()
+  writeFileSync(join(dir, 'site.yml'), "name: Acme\nfoundation: '@a/base'\npreview: '2026-09-10T12:34:56Z'\n")
+  assert.equal((await pushTo(dir, mockBackend(A, 'SITE-A'))).exitCode, 0)
+
+  const sync = await import('../src/backend/site-sync.js')
+  // The preview drop: a BOUND site keeps its generated preview. The stale reader
+  // thought every site unbound and stripped it on every push.
+  assert.deepEqual(sync.dropSiteBoundValues(dir, A), [], 'a bound site must keep its preview')
+  assert.match(readFileSync(join(dir, 'site.yml'), 'utf8'), /preview:/)
+
+  // And on a backend it never synced with, the same site IS unbound — per backend.
+  assert.deepEqual(sync.dropSiteBoundValues(dir, B), ['preview'])
+})
+
 // ─────────────────────────────────── the control ───────────────────────────────
 
 test('CONTROL — the harness really pushes, so a skipped suite is not mistaken for a passing one', async () => {

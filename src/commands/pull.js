@@ -69,6 +69,7 @@ import { join, dirname, relative } from 'node:path'
 import yaml from 'js-yaml'
 import { downloadMissingAssets } from '../backend/asset-download.js'
 import {
+  readBackendState,
   siteContentDocumentToProject,
   recordsToProject,
   readZip,
@@ -188,7 +189,8 @@ function readYamlUuid(filePath) {
   } catch (err) {
     return { uuid: null, unparsed: err.message.split('\n')[0] }
   }
-  return { uuid: typeof obj?.$uuid === 'string' ? obj.$uuid : null }
+  // Only whether site.yml parses. The uuid itself lives in sync.json now.
+  return { uuid: null }
 }
 
 // Conditional-pull ETag cache (gitignored `.uniweb/pull-cache.json`): the last ETag
@@ -582,7 +584,8 @@ export async function pull(args = [], deps = {}) {
   // The project's own statement of where its identity lives. Feeds the origin ladder
   // ABOVE the session (see resolveBackendOrigin), so a teammate who cloned this project
   // targets the backend it is bound to instead of whatever they last logged into.
-  // ⛔ The RAW value, never `resolveSiteScope` — null must mean "defer to the next tier".
+  // ⛔ Null when zero or several backends are synced — it must DEFER to the next
+  // tier, never default. A defaulted value here would shadow `login --backend <local>`.
   const siteScope = resolveSyncedBackend(siteDir)
   const siteBackend = await resolveSiteBackend(siteDir)
   const client = new BackendClient({
@@ -596,12 +599,12 @@ export async function pull(args = [], deps = {}) {
     command: 'Pulling'
   })
 
-  // ⛔ SCOPE CHECK — before the lanes read. `pull` WRITES the working tree from what it
-  // fetches, so a wrong-backend pull is not merely a failed read: it is the case that
-  // most needs stopping early.
+  // ⭐ No scope check any more — and none is needed. This project's identity on
+  // `client.origin` is read from that origin's own section of sync.json, so a
+  // wrong-backend pull cannot happen: it would find no uuid and stop below.
 
-  // One identity per site: `site.yml::$uuid`. Both lanes (content + folder) are keyed
-  // by it — the backend resolves the site's `@uniweb/folder` from this uuid.
+  // One identity per site per backend. Both lanes (content + folder) are keyed by it —
+  // the backend resolves the site's `@uniweb/folder` from this uuid.
   const siteYmlPath = join(siteDir, 'site.yml')
   const identity = readYamlUuid(siteYmlPath)
 
@@ -615,11 +618,15 @@ export async function pull(args = [], deps = {}) {
     return { exitCode: 1 }
   }
 
-  const siteContentUuid = identity.uuid
+  // ⛔ FROM sync.json, FOR THIS BACKEND. This read `identity.uuid` — site.yml's `$uuid`
+  // — and kept doing so after step 4 moved the key, so EVERY pull of a synced project
+  // answered "Nothing to pull — this project has no $uuid yet". site.yml is still
+  // parsed above, because a file that will not parse is its own error.
+  const siteContentUuid = readBackendState(siteDir, client.origin).site?.uuid || null
 
   if (!siteContentUuid) {
     info(
-      'Nothing to pull — this project has no $uuid yet. Run `uniweb push` first.'
+      `Nothing to pull — this project has not synced with ${client.origin} yet. Run \`uniweb push\` first.`
     )
     return { exitCode: 0 }
   }

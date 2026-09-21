@@ -263,7 +263,8 @@ export async function publish(args = []) {
   // The project's own statement of where its identity lives. Feeds the origin ladder
   // ABOVE the session (see resolveBackendOrigin), so a teammate who cloned this project
   // targets the backend it is bound to instead of whatever they last logged into.
-  // ⛔ The RAW value, never `resolveSiteScope` — null must mean "defer to the next tier".
+  // ⛔ Null when zero or several backends are synced — it must DEFER to the next
+  // tier, never default. A defaulted value here would shadow `login --backend <local>`.
   const siteScope = resolveSyncedBackend(siteDir)
   const siteBackend = await resolveSiteBackend(siteDir)
 
@@ -409,7 +410,7 @@ export async function publish(args = []) {
     say.info('Dry run — would bring the foundation along, sync, and go live:')
     say.dim(`Backend     : ${client.origin}`)
     say.dim(
-      `site_uuid   : ${siteYml.$uuid || '(none — the site is created before anything uploads)'}`
+      `site_uuid   : ${readBackendState(siteDir, client.origin).site?.uuid || '(none — the site is created before anything uploads)'}`
     )
     const langs = languagesFromSiteYml(siteYml)
     if (langs) say.dim(`Languages   : ${langs.join(', ')}`)
@@ -559,7 +560,7 @@ export async function publish(args = []) {
       `Cleared stale sync state from a previous site (${droppedState.join(', ')}).`
     )
   }
-  const droppedValues = dropSiteBoundValues(siteDir)
+  const droppedValues = dropSiteBoundValues(siteDir, client.origin)
   if (droppedValues.length) {
     say.dim(
       `Dropped the previous site's ${droppedValues.join(' and ')} from site.yml.`
@@ -791,12 +792,15 @@ export async function publish(args = []) {
   // the app's side.
   // What this site is PROVISIONED with on the backend being published to.
   const provisioned = readBackendState(siteDir, client.origin)
+  const boundUuid = provisioned.site?.uuid || null
   let declaration = decideDeclaration(siteYml, priorRequest, provisioned)
   let adopted = null
   // Before the push, so a never-synced site has no uuid and simply skips this.
   const status =
-    typeof siteYml.$uuid === 'string' && siteYml.$uuid
-      ? await client.siteStatus(siteYml.$uuid)
+    // This backend's site, from sync.json. It read `site.yml::$uuid`, so after step 4
+    // the remote reconcile below never ran and every publish declared blind.
+    boundUuid
+      ? await client.siteStatus(boundUuid)
       : null
   if (status && Array.isArray(status.services)) {
     const r = reconcileRequest(siteYml, status.services, priorRequest, provisioned)

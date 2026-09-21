@@ -159,7 +159,8 @@ export async function push(args = [], deps = {}) {
   // The project's own statement of where its identity lives. Feeds the origin ladder
   // ABOVE the session (see resolveBackendOrigin), so a teammate who cloned this project
   // targets the backend it is bound to instead of whatever they last logged into.
-  // ⛔ The RAW value, never `resolveSiteScope` — null must mean "defer to the next tier".
+  // ⛔ Null when zero or several backends are synced — it must DEFER to the next
+  // tier, never default. A defaulted value here would shadow `login --backend <local>`.
   const siteScope = resolveSyncedBackend(siteDir)
   const siteBackend = await resolveSiteBackend(siteDir)
   // One front door. The bearer is resolved lazily on first need (a non-local Model
@@ -298,7 +299,7 @@ export async function push(args = [], deps = {}) {
         `Cleared stale sync state from a previous site (${dropped.join(', ')}).`
       )
     }
-    const stale = dropSiteBoundValues(siteDir)
+    const stale = dropSiteBoundValues(siteDir, client.origin)
     if (stale.length) {
       note(`Dropped the previous site's ${stale.join(' and ')} from site.yml.`)
     }

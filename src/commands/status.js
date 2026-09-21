@@ -27,11 +27,12 @@ import yaml from 'js-yaml'
 import { resolveSiteDir, resolveSiteBackend } from './deploy.js'
 import { probeUnpushed } from '../backend/site-sync.js'
 import { BackendClient, resolveBackendOrigin } from '../backend/client.js'
+import { readBackendState } from '@uniweb/build/uwx'
 import { readFlagValue } from '../utils/args.js'
 import { resolveLocalFoundation } from '../backend/foundation-bring-along.js'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { checkFlags } from '../utils/flag-guard.js'
-import { readSiteIdentity } from '../utils/site-identity.js'
+import { resolveSyncedBackend } from '../utils/site-identity.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -87,7 +88,6 @@ export async function status(args = []) {
   const remote = args.includes('--remote')
   const siteDir = await resolveSiteDir(args, 'status')
   const siteYml = readSiteYml(siteDir)
-  const uuid = siteYml.$uuid || null
   const fnd = foundationRef(siteYml)
   const { scope: fndScope, version: fndVersion } = splitFoundationRef(fnd)
 
@@ -98,9 +98,12 @@ export async function status(args = []) {
   // whose asset ids the comparison reads: against the wrong backend every media ref
   // reads as changed.
   const probeBackend = resolveBackendOrigin(readFlagValue(args, '--backend'), {
-    siteScope: readSiteIdentity(siteDir).backend,
+    siteScope: resolveSyncedBackend(siteDir),
     siteBackend: await resolveSiteBackend(siteDir)
   })
+  // ⭐ Identity is this backend's, from sync.json. It read `site.yml::$uuid`, so after
+  // step 4 moved the key every project reported itself as never synced.
+  const uuid = readBackendState(siteDir, probeBackend).site?.uuid || null
   let probe = null
   let probeErr = null
   try {
@@ -119,7 +122,7 @@ export async function status(args = []) {
       const client = new BackendClient({
         originFlag:
           readFlagValue(args, '--backend'),
-        siteScope: readSiteIdentity(siteDir).backend,
+        siteScope: resolveSyncedBackend(siteDir),
         siteBackend: await resolveSiteBackend(siteDir),
         token: readFlagValue(args, '--token') || undefined,
         args,

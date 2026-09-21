@@ -387,7 +387,7 @@ export function clearRemoteSyncStateIfUnbound(siteDir, backend) {
  * @param {string} siteDir
  * @returns {string[]} the keys removed
  */
-export function dropSiteBoundValues(siteDir) {
+export function dropSiteBoundValues(siteDir, backend) {
   const file = join(siteDir, 'site.yml')
   let y
   try {
@@ -395,7 +395,12 @@ export function dropSiteBoundValues(siteDir) {
   } catch {
     return []
   }
-  if (!y || typeof y !== 'object' || typeof y.$uuid === 'string') return []
+  // ⛔ "Bound" is a question about THIS backend, answered by sync.json. This read
+  // `site.yml::$uuid` until 2026-09-20 and kept doing so after step 4 moved the key —
+  // so every project read as unbound and every push stripped a bound site's
+  // generated preview. A write, from a stale read, with nothing to notice it.
+  if (!y || typeof y !== 'object') return []
+  if (readBackendState(siteDir, backend).site?.uuid) return []
   const dropped = []
   if (
     y.preview !== undefined &&
@@ -1032,13 +1037,9 @@ export async function ensureItemUuids({ client, siteDir, note }) {
   if (Object.keys(cached).length) return cached
   // A site that has never been pushed has no identity to recover — and nothing to
   // lose, since every item is genuinely new.
-  let siteContentUuid = null
-  try {
-    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
-    siteContentUuid = typeof y?.$uuid === 'string' ? y.$uuid : null
-  } catch {
-    /* unreadable site.yml — nothing to recover against */
-  }
+  // The site to recover identity against — this backend's, from sync.json. It read
+  // `site.yml::$uuid`, so after step 4 it found nothing and never recovered.
+  const siteContentUuid = readBackendState(siteDir, client.origin).site?.uuid || null
   if (!siteContentUuid) return cached
   try {
     const res = await client.pullSiteContent(siteContentUuid)
@@ -1388,7 +1389,9 @@ export async function pushSyncPackages({
         // this branch named only the deletion and went straight to "clear `$uuid`" — and
         // that advice, followed for the OTHER cause, destroys a live binding: the site is
         // fine, you are simply pointed at the wrong backend, and clearing the uuid orphans
-        // it. `assertSiteBackendScope` now catches most of that before any request goes
+        // it. (A wrong-BACKEND binding can no longer occur — identity is read per
+        // origin from sync.json — so what reaches here is a site deleted on this backend.)
+        // Before any request goes
         // out, so reaching here usually does mean a deletion; "usually" is not "always"
         // (a project predating `$backend` records no scope to check), which is why the
         // cheap cause is still named before the destructive fix.
