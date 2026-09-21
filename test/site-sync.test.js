@@ -590,7 +590,9 @@ test('pushSyncPackages CREATE: mints + records the site $uuid, persists the cach
   assert.equal(res.exitCode, 0)
   assert.equal(res.boundSiteUuid, 'NEW-UUID')
   assert.equal(readSiteIdentity(dir, ORIGIN).uuid, 'NEW-UUID')
-  assert.ok(res.wrote.includes('recorded site $uuid in site.yml'))
+  // Where it was recorded, named truthfully: this said "in site.yml" for a day after
+  // identity moved to sync.json, while the create notice beside it said sync.json.
+  assert.ok(res.wrote.includes('recorded the site in sync.json'), JSON.stringify(res.wrote))
   // the send-only-changed cache is persisted on success
   const cache = JSON.parse(
     readFileSync(join(dir, '.uniweb/backend-cache.json'), 'utf8')
@@ -655,7 +657,7 @@ test('pushSyncPackages: a rejected lane returns exit 1, reports the error, and d
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('pushSyncPackages: a 409 explains the facet-genesis fix (delete + redeploy) instead of a bare error', async () => {
+test('pushSyncPackages: a 409 explains the facet-genesis fix (push as a new site) instead of a bare error', async () => {
   const dir = tmpSite()
   const client = {
     origin: 'http://x',
@@ -672,14 +674,17 @@ test('pushSyncPackages: a 409 explains the facet-genesis fix (delete + redeploy)
 
   assert.equal(res.exitCode, 1)
   assert.ok(calls.error.some((m) => /rejected: HTTP 409/.test(m)))
-  // the friendlier guidance — the v1 folder is genesis-owned; delete + redeploy (or clear $uuid)
+  // the friendlier guidance — the v1 folder is genesis-owned, so the change lands as a
+  // new site. It said "clear `$uuid` in site.yml" until 2026-09-21, a key that had left
+  // site.yml the day before; forgetting this backend is what drops the binding now.
   assert.ok(
     calls.note.some(
       (m) =>
-        /delete the deployed site and redeploy/.test(m) &&
-        /clear `\$uuid`/.test(m)
+        /push it as a new site/.test(m) &&
+        /uniweb forget --backend http:\/\/x, then push again/.test(m) &&
+        !/\$uuid/.test(m)
     ),
-    'explains the delete+redeploy / clear-$uuid fix'
+    `explains the forget-and-push fix:\n${calls.note.join('\n')}`
   )
   rmSync(dir, { recursive: true, force: true })
 })
@@ -813,8 +818,11 @@ test('a 404 on a uuid-bound lane names BOTH causes, recoverable one first', asyn
   // A bare 404 leaves the user with no idea that the remedy is local. But there are two
   // local causes, and they call for opposite actions:
   //
-  //   · the site was deleted in the Uniweb app  → clear `$uuid`, re-publish as new
+  //   · the site was deleted there              → forget that backend, push as new
   //   · you are pointed at the wrong backend    → log in elsewhere; NOTHING is lost
+  //
+  // (The first read "clear `$uuid` from site.yml" until 2026-09-21: a key that left
+  // site.yml the day before, so the advice named nothing that existed.)
   //
   // Naming only the first (which this branch did until 2026-08-24) hands destructive
   // advice to anyone hitting the second: the site is fine, and clearing its uuid orphans
@@ -846,21 +854,22 @@ test('a 404 on a uuid-bound lane names BOTH causes, recoverable one first', asyn
   assert.match(notes, /no site with uuid GONE-1/)
   assert.match(notes, /http:\/\/x/) // names WHICH backend answered 404
   assert.match(notes, /wrong backend/)
-  assert.match(notes, /deleted in the app/)
-  assert.match(notes, /clearing `\$uuid` from site\.yml/)
+  assert.match(notes, /deleted there/)
+  assert.match(notes, /uniweb forget --backend http:\/\/x, then push again/)
+  assert.doesNotMatch(notes, /\$uuid/, 'site.yml holds no identity to clear')
   // The ordering is the point, not decoration: the destructive remedy must not be the
   // first thing a reader acts on. Assert it structurally so a later reword cannot
   // silently put them back the other way round.
   assert.ok(
-    notes.indexOf('wrong backend') < notes.indexOf('deleted in the app'),
+    notes.indexOf('wrong backend') < notes.indexOf('deleted there'),
     `the recoverable cause must be offered first:\n${notes}`
   )
 })
 
 test('a 404 on the CREATE lane does NOT claim a site was deleted', async () => {
   // The create carries no uuid, so a 404 there means the route is missing, not that
-  // a site is gone — advising the user to clear a `$uuid` they do not have would be
-  // a confident wrong answer.
+  // a site is gone — advising the user to forget a site they do not have would be a
+  // confident wrong answer.
   const dir = tmpSite()
   const client = {
     origin: 'http://x',
@@ -883,8 +892,10 @@ test('a 404 on the CREATE lane does NOT claim a site was deleted', async () => {
   })
   assert.equal(res.exitCode, 1)
   const notes = calls.note.join('\n')
-  assert.ok(!/deleted in the Uniweb app/.test(notes))
-  assert.ok(!/clearing `\$uuid`/.test(notes))
+  // The bound-site remedy, in its current words — a check on the old wording would pass
+  // here whatever the branch said, once that wording no longer existed anywhere.
+  assert.ok(!/deleted there/.test(notes), notes)
+  assert.ok(!/uniweb forget/.test(notes), notes)
 })
 
 // ─── ensureSiteExists ─────────────────────────────────────────────────────────

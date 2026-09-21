@@ -1432,6 +1432,10 @@ export async function pushSyncPackages({
         // out, so reaching here usually does mean a deletion; "usually" is not "always"
         // (a project predating `$backend` records no scope to check), which is why the
         // cheap cause is still named before the destructive fix.
+        //
+        // ⛔ The fix for a deletion was "clear `$uuid` from site.yml" until 2026-09-21 — a
+        // key that left site.yml the day before, so the advice named nothing to clear.
+        // The binding is this backend's section of sync.json, and `forget` drops it.
         note(
           `The backend at ${client.origin} has no site with uuid ${boundUuid}.`
         )
@@ -1442,7 +1446,7 @@ export async function pushSyncPackages({
           `  wrong backend  →  uniweb login --backend <the right one>   (nothing is lost)`
         )
         note(
-          `  deleted in the app  →  clearing \`$uuid\` from site.yml re-publishes it as a NEW site`
+          `  deleted there  →  uniweb forget --backend ${client.origin}, then push again: it creates a NEW site`
         )
         note('Deleting this folder removes only your local copy, either way.')
       } else if (res.status === 409) {
@@ -1451,8 +1455,8 @@ export async function pushSyncPackages({
         note(
           "This site's record structure is already established on the backend and can't be changed " +
             'in place — e.g. adding or removing a schema-backed query, or switching one between ' +
-            'static (data-bundle) and schema-backed delivery. To change it: delete the deployed site and ' +
-            'redeploy, or clear `$uuid` in site.yml to deploy a fresh one.'
+            'static (data-bundle) and schema-backed delivery. To change it, push it as a new site: ' +
+            `uniweb forget --backend ${client.origin}, then push again (the old site stays until it is deleted).`
         )
       }
       if (body) note(body.slice(0, 800))
@@ -1581,7 +1585,7 @@ export async function pushSyncPackages({
       writeSiteEntityUuid(siteDir, client.origin, minted)
       updateSyncCache(siteDir, client.origin, { siteUuid: minted })
       boundSiteUuid = minted
-      wrote.push('recorded site $uuid in site.yml')
+      wrote.push('recorded the site in sync.json')
       // The OTHER create path (a media-less push never reaches `ensureSiteExists`,
       // which is gated on the site having local media). Both mint a site, so both
       // owe the same record — recording it in only one place would make `$org`
@@ -1596,7 +1600,7 @@ export async function pushSyncPackages({
         note
       })
       if (createdOrg)
-        wrote.push(`recorded site $org (${createdOrg}) in site.yml`)
+        wrote.push(`recorded its owner (${createdOrg}) in sync.json`)
       const createdFinalized = extractFinalized(payload)
       harvest(createdFinalized)
       siteFinalizedDoc = createdFinalized?.[0]?.document || null
