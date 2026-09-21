@@ -61,7 +61,8 @@ import { createHash } from 'node:crypto'
  * Rows are ordered by their serialized form and object keys sorted, so reordering
  * rows or keys in the file is not a change. It is not a request to move a line.
  *
- * @param {*} declared - the raw `site.yml::$services` / `$secrets` value
+ * @param {*} declared - the raw value: provisioned `services` / `secrets` rows (from
+ *   `sync.json`), what the site has stored for them, or `site.yml::publishLanguages`
  * @returns {string|null} 16 hex chars, or null when undeclared
  */
 export function fingerprintDeclaration(declared) {

@@ -843,9 +843,9 @@ export async function pull(args = [], deps = {}) {
       }
       // ⛔ NO QUERY CONFIG. A record's home is decided by what it IS — its
       // `$model` names the pool folder — not by any query that happens to select
-      // it. `recordsToProject` reads `site.yml::$org` itself, so a `@/x`
-      // model the producer resolved to `@org/x` is placed back where the author
-      // wrote it.
+      // it. `recordsToProject` reads the site's org itself (this backend's, from
+      // `sync.json`), so a `@/x` model the producer resolved to `@org/x` is placed
+      // back where the author wrote it.
       const report = recordsToProject({
         folderDoc,
         recordDocs,

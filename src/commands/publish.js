@@ -33,7 +33,7 @@
  *                                  FIRST publish of a site reads it — that create is
  *                                  what decides which org owns the site and whose
  *                                  storage its assets are charged to. It is then
- *                                  recorded as `site.yml::$org` and replayed, so it
+ *                                  recorded in `sync.json` and replayed, so it
  *                                  never has to be re-typed.
  *   uniweb publish --personal      Own the new site personally, deliberately. Sends
  *                                  NO `as_org` — byte-identical to the wire before

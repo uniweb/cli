@@ -1432,7 +1432,7 @@ ${colors.bright}Options:${colors.reset}
   --org @org         Publish under @org (membership-gated; alias: --as-org). Read
                      only on a site's FIRST publish — that create decides which org
                      owns the site, and whose storage its assets are charged to.
-                     Recorded as site.yml \$org and replayed, so it is never
+                     Recorded in sync.json and replayed, so it is never
                      re-typed. Without it, you are asked once.
   --personal         Create the site under your personal account, deliberately.
                      Only needed on a first publish, and only to answer the owner

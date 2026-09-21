@@ -14,7 +14,7 @@
  * the backend owns the site's `@uniweb/folder`, so the framework never holds a
  * folder uuid. Records still round-trip their own `$uuid`
  * (back-filled into their source files). site-content items carry a per-item `$uuid`
- * too, stamped at emit from the identity cache rather than from author files — without
+ * too, stamped at emit from `sync.json` rather than from author files — without
  * it the backend reads every record as new and recreates every page and section row.
  * Push-only, and gated on the backend's per-entity `version`
  * (see "Pushes are GATED by default" below); `--force` restores last-push-wins.
@@ -30,8 +30,8 @@
  *   uniweb push --org @org               Own the new site under @org (alias: --as-org).
  *                                        Read only on the FIRST push of a site — it
  *                                        decides which org owns it, and whose storage
- *                                        its assets are charged to. Recorded as
- *                                        `site.yml::$org` and replayed after that.
+ *                                        its assets are charged to. Recorded in
+ *                                        `sync.json` and replayed after that.
  *                                        Without it, you are asked once.
  *   uniweb push --personal               Own the new site personally, deliberately.
  *                                        Sends NO `as_org` — the same wire as before

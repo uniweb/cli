@@ -276,17 +276,17 @@ const readMap = (siteDir, backend, key) => {
  * Drop every cache map that describes a BACKEND site, when this clone is bound to
  * none. Returns the names dropped (empty when there was nothing to do).
  *
- * `.uniweb/sync-cache.json` holds five maps keyed by *unit path* — item uuids,
- * content hashes, the injections those hashes were taken over, entity base versions,
- * unit bases — and a unit path (`site.yml`, `pages/about/about.md`) is the same
- * string for every site. So the cache does not
- * self-invalidate when the site's uuid goes away (a delete in the app, or
- * `uniweb forget`): it keeps describing the site this folder used to be.
+ * Five maps are keyed by *unit path* — item uuids (`sync.json`'s `items`) and, in
+ * `.uniweb/backend-cache.json`, content hashes, the injections those hashes were
+ * taken over, entity base versions and unit bases — and a unit path (`site.yml`,
+ * `pages/about/about.md`) is the same string for every site. So nothing in them
+ * self-invalidates when the site's uuid goes away: they keep describing the site
+ * this folder used to be.
  *
- * Which is a state we ACTIVELY TELL PEOPLE TO ENTER. The 404 guidance on a
- * uuid-bound lane says to clear `$uuid` to re-publish as a new site — the documented
- * recovery after a site is deleted in the app. Following it left the stale maps in
- * place, and the next publish failed two ways:
+ * Which was a state we ACTIVELY TOLD PEOPLE TO ENTER. Until 2026-09-21 the 404
+ * guidance on a uuid-bound lane said to clear `$uuid` to re-publish as a new site —
+ * the documented recovery after a site is deleted in the app. Following it left the
+ * stale maps in place, and the next publish failed two ways:
  *
  *   - **item uuids** — the new site's document carried the OLD site's item
  *     identities, and the backend correctly refused: *"item uuid … is already
@@ -297,6 +297,9 @@ const readMap = (siteDir, backend, key) => {
  *     push, so the NEW site would come up **missing exactly the content that did
  *     not change** — a partial site, published successfully, with nothing to
  *     indicate it.
+ *
+ * The guidance is `uniweb forget --backend <url>` now, which removes the uuid and the
+ * maps together, so following it no longer leads here.
  *
  * Call this BEFORE `ensureSiteExists`, which mints a uuid and would otherwise make
  * the clone look bound before the check runs.
@@ -377,13 +380,13 @@ export function clearRemoteSyncStateIfUnbound(siteDir, backend) {
     return []
   }
 
-  // Two ways the cache can describe a site this clone is not working with:
+  // Two ways the maps can describe a site this clone is not working with:
   //
-  //   1. UNBOUND — no `$uuid` at all, so there is no backend site for any of it to
-  //      be about. This is the state the documented "clear `$uuid` to re-publish as
-  //      a new site" recovery puts you in.
-  //   2. BOUND TO A DIFFERENT SITE — `$uuid` names one site and the cache was
-  //      written for another. Reachable in one step: the create mints a uuid and
+  //   1. UNBOUND — no site uuid for this backend, so there is no backend site for any
+  //      of it to be about. This was the state the old "clear `$uuid` to re-publish
+  //      as a new site" recovery put you in; `uniweb forget` clears the maps with it.
+  //   2. BOUND TO A DIFFERENT SITE — this backend's site uuid names one site and the
+  //      cache was written for another. Reachable in one step: the create mints a uuid and
   //      writes it BEFORE the push, so a push that then fails leaves exactly this.
   //      Without the identity stamp it is invisible, and every later publish fails
   //      the same way with no path out but deleting `.uniweb/` by hand.
@@ -458,10 +461,11 @@ export function readSyncCache(siteDir, backend) {
  * exact shape `emitSyncPackages` takes back as opts.
  *
  * ⛔ **Only the ones nothing else records.** `assetIds` is deliberately NOT banked
- * here even though the emit applies it: `assets.json` is COMMITTED project state
- * holding exactly that map (local ref → `{id, ext}`), written by the same push, and
- * a gitignored second copy would be a second thing to disagree — the reason that
- * file itself refuses to hold a serve URL. It also has the worse lifetime of the
+ * here even though the emit applies it: this backend's `assets` in `sync.json` is
+ * COMMITTED project state holding exactly that map (local ref → `{id, ext}`), written
+ * by the same push, and a gitignored second copy would be a second thing to
+ * disagree — the reason that map itself holds a fingerprint of a serve URL and never
+ * the URL. It also has the worse lifetime of the
  * two: `clearRemoteSyncState` wipes this cache, and the committed map correctly
  * survives. ⇒ Bank what a reader cannot re-derive; re-derive the rest.
  *
@@ -479,7 +483,7 @@ export function readSyncCache(siteDir, backend) {
  * zero HTTP requests, a property the cross-client flows rely on). ⚠️ Note the serve
  * URL is REPLAYED, never composed: we re-use the string the host handed us, which is
  * a different act from reconstructing one, and the distinction is the same one that
- * keeps `assets.json` id-only. An asset genuinely new to the site has no recorded
+ * keeps the asset map in `sync.json` to ids and a fingerprint. An asset genuinely new to the site has no recorded
  * mapping and still reads as changed, which is correct.
  */
 export function readAppliedInjections(siteDir, backend) {
@@ -494,10 +498,11 @@ export function readAppliedInjections(siteDir, backend) {
  * leftover from an earlier push describing hashes it no longer matches.
  *
  * `assetIds` is dropped rather than stored — see readAppliedInjections: it has a
- * committed source of truth in `assets.json`, and the reader re-derives it there.
+ * committed source of truth in `sync.json` (this backend's `assets`), and the reader
+ * re-derives it there.
  */
 export function writeSyncCache(siteDir, backend, hashes, applied) {
-  const { assetIds: _inAssetsJson, ...bankable } = applied || {}
+  const { assetIds: _inSyncJson, ...bankable } = applied || {}
   updateSyncCache(siteDir, backend, { hashes, applied: bankable })
 }
 
@@ -643,14 +648,16 @@ export function writeItemUuids(siteDir, backend, map) {
 /**
  * The org this site was created under, as `@handle`, or null.
  *
- * Read back from `site.yml::$org` (stored bare — see `writeSiteOrg`) and re-dressed
- * with the `@` the CLI and the wire both use. Callers pass it as `--as-org`'s default
- * so an org named once, at create, does not have to be re-typed on every later push.
+ * Read back from `backend`'s `site.org` in `sync.json` (stored bare — see
+ * `writeSiteOrg`) and re-dressed with the `@` the CLI and the wire both use. Callers
+ * pass it as `--as-org`'s default so an org named once, at create, does not have to
+ * be re-typed on every later push.
  *
  * Deliberately NOT a fallback for the flag: an explicit `--as-org` always wins and
  * rides verbatim, so this can only add a value where the CLI previously sent none.
  *
  * @param {string} siteDir
+ * @param {string} backend - the origin whose record to read
  * @returns {string|null}
  */
 export function readSiteOrg(siteDir, backend) {
@@ -704,8 +711,9 @@ function recordSiteOrg(siteDir, backend, asOrg) {
  * Order, and only the last step is new:
  *   1. `--as-org @org`      — explicit, rides verbatim
  *   2. `--personal`         — explicit "no org, I mean it" → sends NO `as_org`
- *   3. `site.yml::$org`     — recorded at this site's own create
- *   4. the site already exists (`$uuid`) → null; ownership is settled, ask nothing
+ *   3. the recorded org     — `sync.json`, written at this site's own create
+ *   4. the site already exists on this backend (a recorded uuid) → null; ownership
+ *      is settled, ask nothing
  *   5. otherwise ASK (TTY) or REFUSE (non-interactive)
  *
  * ⛔ **`--personal` sends no `as_org`, and is NOT the same as `--as-org @<handle>`.**
@@ -1062,10 +1070,12 @@ async function recordAndDescribeOwner({
 /**
  * Guarantee we have per-item identity before an identity-bearing push.
  *
- * Fires only when the site HAS been pushed before (`$uuid` in site.yml) but the
- * cache is empty — a fresh `git clone`, or a deleted `.uniweb/`. One read of the
- * backend's current document, no file writes, no `uniweb pull`. A first-ever push
- * legitimately has nothing to fetch and is left alone.
+ * Fires only when the site HAS been pushed to this backend before (its uuid is in
+ * `sync.json`) but that backend's item map there is empty. One read of the
+ * backend's current document, recorded into that map — no content file is written,
+ * and no `uniweb pull`. A first-ever push legitimately has nothing to fetch and is
+ * left alone. (The map sat in the gitignored cache until 2026-09-20, so a fresh
+ * `git clone` or a deleted `.uniweb/` was what emptied it; it is committed now.)
  *
  * @returns {Promise<Object<string,string>>} the map (possibly empty)
  */
@@ -1129,12 +1139,11 @@ export async function probeUnpushed(siteDir, { backend = null, sendAll = false }
   //     for a cache written before this was banked (and for a never-pushed site),
   //     which is the pre-fix behaviour and self-heals on the next push. It can never
   //     point at the wrong document: it is written with the hashes it belongs to.
-  //   · RE-DERIVED — asset identity, from the COMMITTED `assets.json` the same push
-  //     wrote. Reading the live file rather than a snapshot is what makes a moved
-  //     map (a teammate's push, a pull) read as changed instead of matching a copy
-  //     of itself.
-  //   · RECORDED — the site's own org, from `site.yml::$org`, written by the push
-  //     that banked these hashes.
+  //   · RE-DERIVED — asset identity, from this backend's COMMITTED asset map in
+  //     `sync.json`, which the same push wrote. Reading the live file rather than a
+  //     snapshot is what makes a moved map (a teammate's push, a pull) read as
+  //     changed instead of matching a copy of itself.
+  //   · RECORDED — the site's own org, from `sync.json` (this backend's `site.org`).
   //
   // ⛔ THE ORG IS NOT OPTIONAL HERE, AND OMITTING IT WAS SILENT. It is what resolves
   // a foundation-relative `@/member` into the `@org/member` the push shipped and
@@ -1164,8 +1173,9 @@ export async function probeUnpushed(siteDir, { backend = null, sendAll = false }
  *
  *   · BANKED     the injections the push applied before hashing — serve URLs and
  *                the pinned foundation ref, which only a round trip produces.
- *   · RE-DERIVED asset identity, from the COMMITTED `assets.json`, so a moved map
- *                reads as changed rather than matching a copy of itself.
+ *   · RE-DERIVED asset identity, from this backend's COMMITTED asset map in
+ *                `sync.json`, so a moved map reads as changed rather than matching
+ *                a copy of itself.
  *   · RECORDED   the site's org, which resolves a foundation-relative `@/x` into
  *                the `@org/x` the push keyed its hashes by, and the collection
  *                identity a push stamps — so `status` hashes the same document a
@@ -1426,12 +1436,13 @@ export async function pushSyncPackages({
         // this branch named only the deletion and went straight to "clear `$uuid`" — and
         // that advice, followed for the OTHER cause, destroys a live binding: the site is
         // fine, you are simply pointed at the wrong backend, and clearing the uuid orphans
-        // it. (A wrong-BACKEND binding can no longer occur — identity is read per
-        // origin from sync.json — so what reaches here is a site deleted on this backend.)
-        // Before any request goes
-        // out, so reaching here usually does mean a deletion; "usually" is not "always"
-        // (a project predating `$backend` records no scope to check), which is why the
-        // cheap cause is still named before the destructive fix.
+        // it. The uuid sent here is the one this project recorded for THIS origin
+        // (sync.json), so another backend's uuid cannot reach it; what does is a site
+        // this origin no longer has — deleted there, or a backend rebuilt at the same
+        // address. Being logged in to a backend you did not mean is still the cheaper
+        // thing to rule out, so it still comes first. (Until 2026-09-21 this paragraph
+        // leaned on a scope check against `site.yml::$backend`; both were deleted on
+        // 2026-09-20.)
         //
         // ⛔ The fix for a deletion was "clear `$uuid` from site.yml" until 2026-09-21 — a
         // key that left site.yml the day before, so the advice named nothing to clear.
@@ -1491,8 +1502,8 @@ export async function pushSyncPackages({
 
   // Lane 1 — site-content (the site is born here; it must exist before its folder). A
   // known site uuid → UPDATE by uuid; none → CREATE (the backend mints + adopts the site
-  // and returns its uuid, which we record into site.yml). `boundSiteUuid` carries the
-  // minted/known uuid forward to key the folder push.
+  // and returns its uuid, which we record in sync.json, under this backend).
+  // `boundSiteUuid` carries the minted/known uuid forward to key the folder push.
   let boundSiteUuid = siteContentUuid
   // Post-write tokens harvested from every lane, persisted once at the end so a
   // partial push (lane 1 ok, lane 2 refused) still banks what actually landed —
@@ -1560,8 +1571,8 @@ export async function pushSyncPackages({
       // ⭐ BANK COLLECTION-DECLARATION IDENTITY, the sibling of the folder's
       // placements below. These items have no file to back-fill into — they all
       // come from one `collections/collections.yml` — so the only place their
-      // `$uuid` can live is the cache, keyed by the name the backend enforces
-      // unique. Without it every push after the first re-sends the whole
+      // `$uuid` can live is `sync.json` (this backend's `queries` map), keyed by the
+      // name the backend enforces unique. Without it every push after the first re-sends the whole
       // `collections` section uuid-less and is refused.
       if (siteFinalizedDoc) {
         const recordIds = collectQueryUuids(siteFinalizedDoc)
@@ -1588,8 +1599,8 @@ export async function pushSyncPackages({
       wrote.push('recorded the site in sync.json')
       // The OTHER create path (a media-less push never reaches `ensureSiteExists`,
       // which is gated on the site having local media). Both mint a site, so both
-      // owe the same record — recording it in only one place would make `$org`
-      // present or absent depending on whether the site happens to have images.
+      // owe the same record — recording it in only one place would make the recorded
+      // owner present or absent depending on whether the site happens to have images.
       // The backend echoes `org`/`hosts_free` top-level here too, beside `report`
       // and `site` (NOT beside `finalized`, which lives at report.finalized).
       const createdOrg = await recordAndDescribeOwner({

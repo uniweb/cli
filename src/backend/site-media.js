@@ -72,18 +72,18 @@ export async function uploadSiteMedia(
     warn?.(`local-media: upload failed for ${f.path} (HTTP ${f.status})`)
 
   const map = {}
-  // The identity half, for `assets.json`. The plan returns an authoritative
-  // `id`+`ext` for every entry INCLUDING a `present: true` dedup skip, so a
-  // re-push of unchanged media still records identity without moving bytes —
-  // which is what makes the committed map cheap to keep accurate.
+  // The identity half, for this backend's asset map in `sync.json`. The plan
+  // returns an authoritative `id`+`ext` for every entry INCLUDING a `present: true`
+  // dedup skip, so a re-push of unchanged media still records identity without
+  // moving bytes — which is what makes the committed map cheap to keep accurate.
   const ids = {}
   for (const ref of refs) {
     const entry = result.assetsByLocalUrl[ref]
     if (!entry) continue
     // `served` — a fingerprint of the address, never the address. It is how a pull
     // recognizes this asset where the reference is a bare string with no room for an
-    // id beside it (`info.preview`, `seo.image`, a section param); `assets.json`'s
-    // header says why a hash and not the URL.
+    // id beside it (`info.preview`, `seo.image`, a section param); the header of
+    // `@uniweb/build`'s asset-map.js says why a hash and not the URL.
     if (entry.id) {
       ids[ref] = {
         id: entry.id,

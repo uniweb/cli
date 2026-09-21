@@ -7,9 +7,9 @@
  *
  * ## Where an asset lands, and why there are two answers
  *
- * - **The map knows it** (`assets.json`) — the file goes back to the path its
- *   author wrote. That is the whole reason the map is committed: a fresh clone
- *   restores `public/images/hero.png`, not a hash.
+ * - **The map knows it** (this backend's `assets` in `sync.json`) — the file goes
+ *   back to the path its author wrote. That is the whole reason the map is
+ *   committed: a fresh clone restores `public/images/hero.png`, not a hash.
  * - **The map does not know it** — this project has never held these bytes:
  *   authored in the app, or pushed from a machine whose map entry has not
  *   arrived. There is no local path to guess, so it lands at a **generic,
@@ -21,8 +21,8 @@
  * Identity rides beside the reference (`sync-package.js` stamps `assetId` next
  * to the serve URL), so the address is already on the node. Composing one would
  * mean holding the host's route layout — the coupling deleting `buildAssetUrl`
- * removed from this CLI, and the reason `assets.json` stores no URL either. An
- * id with no URL beside it is skipped, not guessed at.
+ * removed from this CLI, and the reason the asset map stores no URL either (only a
+ * fingerprint of one). An id with no URL beside it is skipped, not guessed at.
  *
  * ## ⛔ A failed download is a WARNING, never a failed pull
  *
