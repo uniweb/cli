@@ -14,30 +14,13 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, cpSync, symlinkSync, realpathSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { mkdirSync, writeFileSync, cpSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { findSiteCopies } from '../src/utils/site-copies.js'
+import { tmp, runVerb } from './helpers/run-verb.js'
 
 const A = 'http://dev.test'
 const B = 'https://uniweb.app'
-const roots = []
-process.on('exit', () => {
-  for (const d of roots) {
-    try {
-      rmSync(d, { recursive: true, force: true })
-    } catch {
-      /* best effort */
-    }
-  }
-})
-
-/** A fresh temp dir, realpath'd (macOS tmp is a symlink) so paths compare cleanly. */
-function tmp(prefix) {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)))
-  roots.push(dir)
-  return dir
-}
 
 /** A site holding SITE-1 on A, in `dir`. */
 function site(dir, backends = { [A]: { site: { uuid: 'SITE-1' } } }) {
@@ -121,76 +104,6 @@ test('outside any workspace there is nothing to compare against', () => {
 
 // ─── the verbs ────────────────────────────────────────────────────────────────
 
-/**
- * ⛔ A stand-in for the CLI entry, which exits at once.
- *
- * publish builds by re-running THIS PROCESS'S ENTRY — `node <argv[1]> build --link`,
- * deliberately, so the inner build is the same CLI. Under a test runner argv[1] is
- * this test FILE, so a publish that got past the check would re-run the file, which
- * would publish again, and so on: an unbounded chain of processes, each blocked on
- * the next, that outlives the run (measured 2026-09-21 — two hundred of them within
- * seconds, from one mutated check). Pointed here, a regression fails fast instead.
- */
-const ENTRY_STUB = (() => {
-  const file = join(tmp('uw-entry-'), 'no-cli.mjs')
-  writeFileSync(file, 'process.exit(3)\n')
-  return file
-})()
-
-/**
- * Run a verb from `dir` with fetch counted (and refused), output captured.
- *
- * ⚠️ Captured at the STREAM, not at console.log: push binds `const log = console.log`
- * when its module loads, so replacing console.log afterwards misses those lines.
- */
-async function run(dir, verb, args) {
-  const cwd = process.cwd()
-  const saved = {
-    out: process.stdout.write,
-    err: process.stderr.write,
-    fetch: globalThis.fetch,
-    home: process.env.HOME,
-    ci: process.env.CI,
-    exit: process.exit,
-    entry: process.argv[1]
-  }
-  const out = []
-  let requests = 0
-  // A path that exits (the non-interactive login, say) must fail THIS test, not kill
-  // the file — which reports nothing about why.
-  process.exit = (code) => {
-    throw new Error(`process.exit(${code})`)
-  }
-  process.stdout.write = (chunk) => (out.push(String(chunk)), true)
-  process.stderr.write = (chunk) => (out.push(String(chunk)), true)
-  globalThis.fetch = async () => {
-    requests++
-    throw new Error('no network in this test')
-  }
-  process.env.HOME = tmp('uw-home-') // never the real session file
-  // Never a prompt: a verb that gets PAST the check must fail the test, not sit
-  // waiting on stdin — which is what a removed check looked like before this.
-  process.env.CI = '1'
-  process.argv[1] = ENTRY_STUB
-  try {
-    process.chdir(dir)
-    const res = await verb(args)
-    return { exitCode: res?.exitCode, output: out.join(''), requests }
-  } catch (err) {
-    return { exitCode: 'threw', output: `${out.join('')}\n${err.message}`, requests }
-  } finally {
-    process.chdir(cwd)
-    process.stdout.write = saved.out
-    process.stderr.write = saved.err
-    globalThis.fetch = saved.fetch
-    process.env.HOME = saved.home
-    if (saved.ci === undefined) delete process.env.CI
-    else process.env.CI = saved.ci
-    process.exit = saved.exit
-    process.argv[1] = saved.entry
-  }
-}
-
 const HEADLINE = /Another project in this workspace holds the same site/
 
 test('⭐ push refuses from the copy AND from the original, before any request', { timeout: 30_000 }, async () => {
@@ -201,7 +114,7 @@ test('⭐ push refuses from the copy AND from the original, before any request',
   cpSync(a, b, { recursive: true })
 
   for (const dir of [b, a]) {
-    const res = await run(dir, push, ['--backend', A])
+    const res = await runVerb(dir, push, ['--backend', A])
     assert.equal(res.exitCode, 1, res.output)
     assert.match(res.output, HEADLINE)
     assert.match(res.output, /uniweb forget --all/)
@@ -216,7 +129,7 @@ test('publish refuses the same way', { timeout: 30_000 }, async () => {
   const b = join(root, 'sites', 'b')
   cpSync(a, b, { recursive: true })
 
-  const res = await run(b, publish, ['--backend', A])
+  const res = await runVerb(b, publish, ['--backend', A])
   assert.equal(res.exitCode, 1, res.output)
   assert.match(res.output, HEADLINE)
   assert.equal(res.requests, 0)
@@ -230,14 +143,14 @@ test('after `uniweb forget --all` in the copy, neither side is refused (control)
   const b = join(root, 'sites', 'b')
   cpSync(a, b, { recursive: true })
 
-  assert.match((await run(b, push, ['--backend', A])).output, HEADLINE, 'refused first')
-  assert.equal((await run(b, forget, ['--all'])).exitCode, 0)
+  assert.match((await runVerb(b, push, ['--backend', A])).output, HEADLINE, 'refused first')
+  assert.equal((await runVerb(b, forget, ['--all'])).exitCode, 0)
 
   // Past the check, each push reaches the wire. The network is stubbed to fail, so a
   // counted request is the proof the check let it through. `--personal` answers the
   // owner question the copy's create asks; the original's site exists and asks none.
   for (const [dir, extra] of [[b, ['--personal']], [a, []]]) {
-    const res = await run(dir, push, ['--backend', A, '--token', 'test', ...extra])
+    const res = await runVerb(dir, push, ['--backend', A, '--token', 'test', ...extra])
     assert.doesNotMatch(res.output, HEADLINE, res.output)
     assert.ok(res.requests > 0, `${dir} should reach the wire:\n${res.output}`)
   }
@@ -248,6 +161,6 @@ test('`-o` is a local emit and reaches no backend — never refused', { timeout:
   const root = workspace()
   const a = site(join(root, 'sites', 'a'))
   cpSync(a, join(root, 'sites', 'b'), { recursive: true })
-  const res = await run(a, push, ['--backend', A, '-o', join(root, 'out.uwx')])
+  const res = await runVerb(a, push, ['--backend', A, '-o', join(root, 'out.uwx')])
   assert.doesNotMatch(res.output, HEADLINE)
 })
