@@ -21,6 +21,7 @@ import { homedir } from 'node:os'
 import yaml from 'js-yaml'
 import { filterCmd } from './pm.js'
 import { writeJsonPreservingStyleAsync } from './json-file.js'
+import { loggedInOriginOf, readSessionFileSync } from './session-file.js'
 
 // ── Backend origin ─────────────────────────────────────────────
 
@@ -57,15 +58,19 @@ function readCliConfig() {
  * to keep this module off the optional-peer / import-cycle path.
  * @returns {string|null}
  */
-function readSessionOrigin() {
-  try {
-    const p = join(homedir(), '.uniweb', 'registry-auth.json')
-    if (!existsSync(p)) return null
-    const o = JSON.parse(readFileSync(p, 'utf8'))?.origin
-    return o || null
-  } catch {
-    return null
-  }
+/**
+ * **The backend the user is logged in to** — their most recent `uniweb login` — or null.
+ *
+ * ⛔ This read `~/.uniweb/registry-auth.json`'s top-level `origin` itself until
+ * 2026-09-21: the v1 shape. The file had become one session per backend, which has no
+ * such field, so this answered null for every new login and the session tier below
+ * silently fell through to the default backend. It reads through the file's one reader
+ * now (utils/session-file.js).
+ *
+ * @returns {string|null}
+ */
+export function loggedInOrigin() {
+  return loggedInOriginOf(readSessionFileSync(DEFAULT_BACKEND_ORIGIN))
 }
 
 /**
@@ -89,7 +94,7 @@ export function getRegistryApiBaseUrl() {
       /* fall through */
     }
   }
-  const fromSession = readSessionOrigin()
+  const fromSession = loggedInOrigin()
   if (fromSession) {
     try {
       return new URL(fromSession).origin

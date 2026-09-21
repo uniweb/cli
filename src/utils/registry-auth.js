@@ -49,6 +49,7 @@ import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
 
 import { DEFAULT_BACKEND_ORIGIN } from './config.js'
+import { normalizeSessionFile, sessionFilePath } from './session-file.js'
 
 const LOGIN_PATH = '/dev/auth/login'
 
@@ -79,7 +80,7 @@ export function isExpired(auth) {
  * @returns {string}
  */
 export function getRegistryAuthPath() {
-  return join(getAuthDir(), 'registry-auth.json')
+  return sessionFilePath()
 }
 
 /**
@@ -94,39 +95,39 @@ export function getRegistryAuthPath() {
  * ⭐ Keyed by origin, that whole class goes away: logging into a second backend no
  * longer evicts the first, and "which token?" has an answer instead of a heuristic.
  *
- *   { version: 2, sessions: { "https://uniweb.app": { token, expiresAt, … }, … } }
+ *   { version: 2, current: "https://uniweb.app",
+ *     sessions: { "https://uniweb.app": { token, expiresAt, … }, … } }
+ *
+ * ⭐ **`current` is the backend the user logged in to most recently** — every login sets
+ * it. It is what "the backend you are logged in to" means once there can be several, and
+ * the origin ladder reads it (`loggedInOriginOf`, utils/session-file.js). ⛔ It was
+ * missing from `fb4907e` until 2026-09-21, and the ladder's copy of this file's shape
+ * still read the v1 `origin` field, so for every login made in between, "logged in to X"
+ * routed nothing.
  *
  * ⚠️ A v1 flat record is read as one session, keyed by its own `origin` stamp — or by
- * the default backend when it carries none, the same "absent means default" rule
- * `site.yml::$backend` uses. Nobody is logged out by the upgrade.
+ * the default backend when it carries none. Nobody is logged out by the upgrade.
+ *
+ * The shape is read in ONE place, `utils/session-file.js`.
  */
-const AUTH_FILE_VERSION = 2
 
 /** The whole file, normalized to v2 shape. Never throws. */
 async function readAuthFile() {
   const path = getRegistryAuthPath()
-  if (!existsSync(path)) return { version: AUTH_FILE_VERSION, sessions: {} }
-  let raw
+  if (!existsSync(path)) return normalizeSessionFile(null, DEFAULT_BACKEND_ORIGIN)
   try {
-    raw = JSON.parse(await readFile(path, 'utf8'))
+    return normalizeSessionFile(JSON.parse(await readFile(path, 'utf8')), DEFAULT_BACKEND_ORIGIN)
   } catch {
-    return { version: AUTH_FILE_VERSION, sessions: {} }
+    return normalizeSessionFile(null, DEFAULT_BACKEND_ORIGIN)
   }
-  if (raw && typeof raw === 'object' && raw.sessions && typeof raw.sessions === 'object') {
-    return { version: AUTH_FILE_VERSION, sessions: raw.sessions }
-  }
-  // v1: a single flat record. Key it by its own stamp, else the default backend.
-  if (raw && typeof raw === 'object' && typeof raw.token === 'string') {
-    const { origin, ...rest } = raw
-    const key = normOrigin(origin || DEFAULT_BACKEND_ORIGIN)
-    return { version: AUTH_FILE_VERSION, sessions: { [key]: rest } }
-  }
-  return { version: AUTH_FILE_VERSION, sessions: {} }
 }
 
-async function writeAuthFile(file) {
+async function writeAuthFile({ version, current, sessions }) {
   await mkdir(getAuthDir(), { recursive: true })
-  await writeFile(getRegistryAuthPath(), JSON.stringify(file, null, 2))
+  await writeFile(
+    getRegistryAuthPath(),
+    JSON.stringify({ version, ...(current ? { current } : {}), sessions }, null, 2)
+  )
 }
 
 /**
@@ -149,8 +150,9 @@ export async function readRegistryAuth(origin) {
 }
 
 /**
- * Persist one backend's session. The record's own `origin` is the key, so every
- * login path keeps stamping it exactly as before.
+ * Persist one backend's session, and make it CURRENT — the backend the user is now
+ * logged in to. The record's own `origin` is the key, so every login path keeps
+ * stamping it exactly as before.
  * @param {Object} record - must carry `origin` and `token`
  */
 export async function writeRegistryAuth(record) {
@@ -158,7 +160,27 @@ export async function writeRegistryAuth(record) {
   const { origin: _drop, ...rest } = record || {}
   const file = await readAuthFile()
   file.sessions[key] = rest
+  // Every caller is a login, so this is the backend the user just logged in to.
+  file.current = key
   await writeAuthFile(file)
+}
+
+/**
+ * Make a stored session CURRENT without logging in again — for `uniweb login --backend X`
+ * when a session for X already exists. Naming a backend is choosing it.
+ *
+ * @param {string} origin
+ * @returns {Promise<boolean>} whether that backend has a stored session
+ */
+export async function markCurrentSession(origin) {
+  const key = normOrigin(origin || DEFAULT_BACKEND_ORIGIN)
+  const file = await readAuthFile()
+  if (!file.sessions[key]) return false
+  if (file.current !== key) {
+    file.current = key
+    await writeAuthFile(file)
+  }
+  return true
 }
 
 /**
@@ -195,6 +217,9 @@ export async function clearRegistryAuth(origin) {
   const file = await readAuthFile()
   if (!file.sessions[key]) return []
   delete file.sessions[key]
+  // Logged out of the current backend ⇒ nothing is current; a single remaining session
+  // still answers on its own (loggedInOriginOf).
+  if (file.current === key) file.current = null
   if (Object.keys(file.sessions).length === 0) await unlink(path)
   else await writeAuthFile(file)
   return [key]
@@ -657,20 +682,33 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
   // For THIS backend. It read "the" session and printed `apiBase` beside it, so on a
   // machine logged into another backend it announced "Already logged in … (this origin)"
   // about a session belonging to a different one — and then offered to replace it.
+  const { isNonInteractive } = await import('./interactive.js')
+  const nonInteractive = isNonInteractive(args)
+
   const existing = await readRegistryAuth(apiBase)
   if (existing?.token && !isExpired(existing)) {
     const who =
       existing.username ||
       existing.handle ||
       (existing.uuid ? `account ${existing.uuid}` : '')
+    // ⭐ Naming a backend you are already logged in to still CHOOSES it: it becomes
+    // current — where a bare `uniweb publish` goes — whether or not you go on to replace
+    // the session. Until 2026-09-21 this only printed a note, so cancelling the prompt
+    // below left the choice unmade.
+    await markCurrentSession(apiBase)
     console.error(
-      `Already logged in${who ? ` as \x1b[1m${who}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}.`
+      `Already logged in${who ? ` as \x1b[1m${who}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''} — using this session.`
     )
-    console.error('\x1b[2mContinuing will replace the existing session.\x1b[0m\n')
+    const forced =
+      args.includes('--token') ||
+      args.includes('--browser') ||
+      args.includes('--password') ||
+      args.includes('--token-paste')
+    // Nothing left to do without a terminal — and failing "no login method" here would
+    // report an error over a switch that already happened.
+    if (nonInteractive && !forced) return { ...existing, origin: normOrigin(apiBase) }
+    console.error('\x1b[2mContinue to log in again and replace it, or cancel to keep it.\x1b[0m\n')
   }
-
-  const { isNonInteractive } = await import('./interactive.js')
-  const nonInteractive = isNonInteractive(args)
 
   // `--token <bearer>` seeds + verifies a session non-interactively (verified
   // against /dev/auth/me before it's stored, so an invalid token fails loudly
