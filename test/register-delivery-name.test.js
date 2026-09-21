@@ -25,24 +25,31 @@ const ENV = { UNIWEB_REGISTER_URL: ORIGIN, UNIWEB_TOKEN: 'test-token' }
 
 /**
  * A built foundation register can submit as it stands. Its source is older than its
- * dist/, so register does not rebuild — which would spawn a real build.
+ * dist/, so register does not rebuild — which would spawn a real build. `name` is
+ * main.js's `name`, when given; the built schema carries the name the build would
+ * read — main.js's, else the package's.
  */
-function foundation(pkg) {
+function foundation(pkg, { name } = {}) {
   const dir = tmp('uw-reg-name-')
   const version = '0.1.0'
   writeFileSync(
     join(dir, 'package.json'),
     JSON.stringify({ version, main: '_entry.generated.js', ...pkg })
   )
+  const sources = [join(dir, 'package.json')]
+  if (name) {
+    writeFileSync(join(dir, 'main.js'), `export default { name: '${name}' }\n`)
+    sources.push(join(dir, 'main.js'))
+  }
   mkdirSync(join(dir, 'dist', 'meta'), { recursive: true })
   writeFileSync(join(dir, 'dist', 'entry.js'), 'export default {}\n')
   writeFileSync(join(dir, 'dist', 'entry-ssr.js'), 'export default {}\n')
   writeFileSync(
     join(dir, 'dist', 'meta', 'schema.json'),
-    JSON.stringify({ _self: { name: pkg.uniweb?.id || pkg.name, version } })
+    JSON.stringify({ _self: { name: name || pkg.name, version } })
   )
   const past = Date.now() / 1000 - 3600
-  utimesSync(join(dir, 'package.json'), past, past)
+  for (const f of sources) utimesSync(f, past, past)
   return dir
 }
 
@@ -84,24 +91,72 @@ async function register(dir, args) {
 }
 
 test('--scope WITHOUT its @: the code is delivered under the registered @org name', async () => {
-  const run = await register(foundation({ name: 'src' }), ['--scope', 'std'])
-  assert.deepEqual(run.registered, ['@std/src'], run.output)
-  assert.deepEqual(run.planned, ['@std/src'], run.output)
-  assert.match(run.output, /Registered @std\/src@0\.1\.0/)
-  assert.match(run.output, /Delivering code for .*@std\/src@0\.1\.0/)
+  const run = await register(foundation({ name: 'src' }, { name: 'marketing' }), ['--scope', 'std'])
+  assert.deepEqual(run.registered, ['@std/marketing'], run.output)
+  assert.deepEqual(run.planned, ['@std/marketing'], run.output)
+  assert.match(run.output, /Registered @std\/marketing@0\.1\.0/)
+  assert.match(run.output, /Delivering code for .*@std\/marketing@0\.1\.0/)
 })
 
 test('CONTROL: --scope with its @ — the spelling that always worked, still one name', async () => {
-  const run = await register(foundation({ name: 'src' }), ['--scope', '@std'])
-  assert.deepEqual(run.registered, ['@std/src'], run.output)
-  assert.deepEqual(run.planned, ['@std/src'], run.output)
+  const run = await register(foundation({ name: 'src' }, { name: 'marketing' }), ['--scope', '@std'])
+  assert.deepEqual(run.registered, ['@std/marketing'], run.output)
+  assert.deepEqual(run.planned, ['@std/marketing'], run.output)
 })
 
 test('package.json uniweb.scope without its @ is read the same way', async () => {
-  const run = await register(foundation({ name: 'src', uniweb: { scope: 'std' } }), [])
-  assert.deepEqual(run.registered, ['@std/src'], run.output)
-  assert.deepEqual(run.planned, ['@std/src'], run.output)
+  const run = await register(
+    foundation({ name: 'src', uniweb: { scope: 'std' } }, { name: 'marketing' }),
+    []
+  )
+  assert.deepEqual(run.registered, ['@std/marketing'], run.output)
+  assert.deepEqual(run.planned, ['@std/marketing'], run.output)
   assert.match(run.output, /scope: @std \(package\.json uniweb\.scope\)/)
+})
+
+test('with no main.js name, the package name is the name', async () => {
+  const run = await register(foundation({ name: 'marketing' }), ['--scope', 'std'])
+  assert.deepEqual(run.registered, ['@std/marketing'], run.output)
+  assert.deepEqual(run.planned, ['@std/marketing'], run.output)
+})
+
+// ── a name that cannot register ──────────────────────────────────────────────
+//
+// `src` and `foundation` are the folder the code sits in. Every project scaffolded
+// before the name moved to main.js has package name `src`, so each would register
+// the same `@org/src`. With nobody to ask (these runs are CI=1), register refuses —
+// before a build, a login or a request — and prints the line to add.
+
+test('⛔ a foundation named src is refused before anything is sent, naming the fix', async () => {
+  const run = await register(foundation({ name: 'src' }), ['--scope', 'std'])
+  assert.equal(run.exitCode, 2, run.output)
+  assert.equal(run.requests, 0, run.output)
+  assert.match(run.output, /"src" names the folder, not the foundation/)
+  // the suggestion is the foundation's folder, normalized
+  assert.match(run.output, /name: 'uw-reg-name-[a-z0-9-]+',/)
+})
+
+test('⛔ …and so is `foundation`, and main.js naming it src does not help', async () => {
+  const bare = await register(foundation({ name: 'foundation' }), ['--scope', 'std'])
+  assert.equal(bare.exitCode, 2, bare.output)
+  assert.equal(bare.requests, 0, bare.output)
+  const viaMain = await register(foundation({ name: 'x' }, { name: 'src' }), ['--scope', 'std'])
+  assert.equal(viaMain.exitCode, 2, viaMain.output)
+  assert.equal(viaMain.requests, 0, viaMain.output)
+})
+
+test('⛔ a --dry-run refuses too — a preview writes nothing, so it cannot ask', async () => {
+  const run = await register(foundation({ name: 'src' }), ['--scope', 'std', '--dry-run'])
+  assert.equal(run.exitCode, 2, run.output)
+  assert.match(run.output, /no name it can register under/)
+})
+
+test('⛔ a leftover uniweb.id is refused, naming where the name lives now', async () => {
+  const run = await register(foundation({ name: 'src', uniweb: { id: 'docs' } }), ['--scope', 'std'])
+  assert.equal(run.exitCode, 2, run.output)
+  assert.equal(run.requests, 0, run.output)
+  assert.match(run.output, /uniweb\.id` is no longer read/)
+  assert.match(run.output, /name: 'docs'/)
 })
 
 test('an already-scoped package name passes through, whatever the scope says', async () => {
@@ -113,7 +168,7 @@ test('an already-scoped package name passes through, whatever the scope says', a
 test('a scope naming no org is refused before anything is sent — never read as absent', async () => {
   // Absent derives a scope from the login, which would register under an org the
   // caller did not name.
-  const run = await register(foundation({ name: 'src' }), ['--scope', '@'])
+  const run = await register(foundation({ name: 'marketing' }), ['--scope', '@'])
   assert.equal(run.exitCode, 2, run.output)
   assert.equal(run.requests, 0, run.output)
   assert.match(run.output, /Not an org scope: @/)

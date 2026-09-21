@@ -71,13 +71,13 @@ test('publishScope agrees with the .uwx assembly on the name it registers', () =
   // catalog lookup name it again from the same scope. Three namings, one answer.
   for (const scope of ['@std', 'std', '@std/']) {
     const doc = buildRegistryPackage({
-      schema: { _self: { name: 'src', version: '0.1.0' } },
+      schema: { _self: { name: 'marketing', version: '0.1.0' } },
       scope
     })
     const registered = doc.entities.find(
       (e) => e.model === '@uniweb/foundation-schema'
     ).info.name
-    assert.equal(registered, `${publishScope(scope)}/src`, `scope ${scope}`)
+    assert.equal(registered, `${publishScope(scope)}/marketing`, `scope ${scope}`)
   }
 })
 

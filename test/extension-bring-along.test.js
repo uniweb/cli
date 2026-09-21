@@ -18,7 +18,10 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { resolveLocalExtensions } from '../src/backend/foundation-bring-along.js'
+import {
+  resolveLocalExtensions,
+  foundationScopedName
+} from '../src/backend/foundation-bring-along.js'
 
 function tmpSite() {
   return mkdtempSync(join(tmpdir(), 'uniweb-ext-'))
@@ -77,7 +80,7 @@ test('an unresolvable name is skipped, not thrown — the build surfaces the can
   }
 })
 
-test('a workspace-local extension IS local, and carries its authored decl as the pin key', () => {
+test('a workspace-local extension IS local, and carries its authored decl as the pin key', async () => {
   const root = tmpSite()
   try {
     // A site with a `file:` dependency on a sibling extension — the same shape
@@ -108,8 +111,9 @@ test('a workspace-local extension IS local, and carries its authored decl as the
     // `injectExtensions` stamps the pinned ref onto. It must NOT be rewritten
     // to the resolved path or the scoped name, or the stamp misses its entry.
     assert.equal(found[0].decl, 'effects')
-    assert.equal(found[0].scopedName, '@acme/effects')
     assert.equal(found[0].version, '0.3.1')
+    // Its catalog name is read separately — the name can live in main.js.
+    assert.equal(await foundationScopedName(found[0].dir), '@acme/effects')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

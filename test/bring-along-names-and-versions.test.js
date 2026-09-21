@@ -3,10 +3,12 @@
  * a version that is not newer than the registered one.
  *
  * `push` and `publish` look the local foundation up in the catalog before
- * shipping. `register` submits it under `uniweb.id` when the package sets one
- * (the build reads `uniweb.id || name`), so the lookup and the pinned ref must
- * use the same name — otherwise the foundation reads as never released, is
- * re-released on every push, and the site is pinned to a name the catalog lacks.
+ * shipping. `register` submits it under its name — `main.js`'s `name`, else the
+ * package's (`readFoundationName`, the rule the build reads) — so the lookup and
+ * the pinned ref must use the same name — otherwise the foundation reads as never
+ * released, is re-released on every push, and the site is pinned to a name the
+ * catalog lacks. A name that cannot register (`src`, `foundation`) is not looked
+ * up at all: the `@org/src` in the catalog is some other project's.
  *
  * A registry takes a new version only when it is greater than every version it
  * holds. An older local version may still be one it already has, so bring-along
@@ -24,15 +26,19 @@ import { join } from 'node:path'
 import { bringFoundationAlong } from '../src/backend/foundation-bring-along.js'
 import { computeFoundationDigest } from '../src/utils/code-upload.js'
 
-/** site/ beside a local foundation in src/, with a fake CLI so nothing real is spawned. */
-function workspace(pkg) {
+/**
+ * site/ beside a local foundation in src/ (flat layout; `main` is main.js's content
+ * when given), with a fake CLI so nothing real is spawned.
+ */
+function workspace(pkg, { main } = {}) {
   const ws = mkdtempSync(join(tmpdir(), 'bring-along-'))
   const site = join(ws, 'site')
   const fnd = join(ws, 'src')
   mkdirSync(site, { recursive: true })
   mkdirSync(join(fnd, 'dist'), { recursive: true })
   writeFileSync(join(site, 'site.yml'), 'name: Acme\nfoundation: src\n')
-  writeFileSync(join(fnd, 'package.json'), JSON.stringify(pkg))
+  writeFileSync(join(fnd, 'package.json'), JSON.stringify({ main: './_entry.generated.js', ...pkg }))
+  if (main) writeFileSync(join(fnd, 'main.js'), main)
   writeFileSync(join(fnd, 'dist', 'entry.js'), 'export default {}\n')
   const cliBin = join(ws, 'fake-cli.js')
   writeFileSync(cliBin, 'process.exit(0)\n')
@@ -67,8 +73,11 @@ async function run({ ws, site, cliBin }, client) {
   }
 }
 
-test('a foundation with uniweb.id is looked up and pinned under that id', async () => {
-  const fixture = workspace({ name: 'src', version: '1.0.0', uniweb: { scope: '@acme', id: 'docs' } })
+test('a foundation named in main.js is looked up and pinned under that name', async () => {
+  const fixture = workspace(
+    { name: 'src', version: '1.0.0', uniweb: { scope: '@acme' } },
+    { main: "export default { name: 'docs' }\n" }
+  )
   const digest = computeFoundationDigest(join(fixture.fnd, 'dist'))
   const looked = []
   const client = {
@@ -101,7 +110,39 @@ test('uniweb.scope without its @ is looked up and pinned under @org, as register
   assert.equal(res.ref, '@acme/base@1.0.0')
 })
 
-test('CONTROL: without uniweb.id the package name is the catalog name', async () => {
+test('⛔ a foundation named src is not looked up — the @org/src there is not its', async () => {
+  // No main.js name, package name `src`: releasing is how it gets one (`register`
+  // asks, or refuses naming the fix), so bring-along releases rather than binding
+  // to whatever another project registered as `@acme/src`.
+  const fixture = workspace({ name: 'src', version: '1.0.0', uniweb: { scope: '@acme' } })
+  const looked = []
+  const client = {
+    readFoundationLatest: async (name) => {
+      looked.push(name)
+      return { latest_version: '1.0.0', digest: 'sha256:another-project' }
+    }
+  }
+  const { res } = await run(fixture, client)
+  assert.deepEqual(looked, [])
+  assert.equal(res.released, true)
+  assert.equal(res.ref, null, 'still unnamed after the (fake) register — nothing to pin')
+})
+
+test('⛔ a leftover uniweb.id is not looked up either — register says where the name went', async () => {
+  const fixture = workspace({ name: 'src', version: '1.0.0', uniweb: { scope: '@acme', id: 'docs' } })
+  const looked = []
+  const client = {
+    readFoundationLatest: async (name) => {
+      looked.push(name)
+      return null
+    }
+  }
+  const { res } = await run(fixture, client)
+  assert.deepEqual(looked, [])
+  assert.equal(res.ref, null)
+})
+
+test('CONTROL: without a main.js name the package name is the catalog name', async () => {
   const fixture = workspace({ name: 'base', version: '1.0.0', uniweb: { scope: '@acme' } })
   const looked = []
   const client = {

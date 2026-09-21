@@ -54,6 +54,10 @@ import {
   getWorkspaceTemplateOutputs
 } from './utils/scaffold.js'
 import {
+  normalizeFoundationName,
+  ensureFoundationName
+} from './utils/foundation-name.js'
+import {
   detectPackageManager,
   detectWorkspacePm,
   filterCmd,
@@ -354,12 +358,16 @@ async function createFromPackageTemplates(
   // 2. Scaffold foundation (folder: src/, package name: src)
   // The folder name 'src' carries the meaning — a foundation is the site's
   // source code. The package name 'src' keeps it unique within the
-  // workspace, since 'site' is taken by the site package.
+  // workspace, since 'site' is taken by the site package. Neither is the
+  // foundation's NAME — what it registers as — which is main.js's `name`:
+  // the project's, since a project's code is its foundation.
   onProgress?.('Creating foundation...')
+  const registryName = normalizeFoundationName(projectName)
   await scaffoldFoundation(
     join(projectDir, 'src'),
     {
       name: 'src',
+      registryName,
       projectName,
       isExtension: false
     },
@@ -380,10 +388,12 @@ async function createFromPackageTemplates(
     { onProgress, onWarning }
   )
 
-  // 4. Apply starter content (unless creating a "none" project)
+  // 4. Apply starter content (unless creating a "none" project). Its main.js
+  // replaces the scaffolded one, so the name is given again.
   if (includeStarter) {
     onProgress?.('Adding starter content...')
     await applyStarter(projectDir, { projectName }, { onProgress, onWarning })
+    ensureFoundationName(join(projectDir, 'src'), registryName)
   }
 
   success(`Created project: ${projectName}`)
@@ -475,8 +485,23 @@ async function createFromContentTemplate(
   )
 
   // 2. Scaffold and apply content for each package
+  const claimed = new Set() // names this project's foundations register as
   for (const pkg of placed) {
     const fullPath = join(projectDir, pkg.relativePath)
+
+    // A foundation's name — what it registers as — is the template's name for
+    // the package when that is one, else the project's (`src` and `foundation`
+    // name a folder); `<project>-<package>` if another package here took it. A
+    // template's own main.js `name` outranks all of them.
+    let registryName = null
+    if (pkg.type === 'foundation' || pkg.type === 'extension') {
+      registryName =
+        [
+          normalizeFoundationName(pkg.name) || normalizeFoundationName(projectName),
+          normalizeFoundationName(`${projectName}-${pkg.name}`)
+        ].find((n) => n && !claimed.has(n)) || null
+      if (registryName) claimed.add(registryName)
+    }
 
     if (pkg.type === 'foundation' || pkg.type === 'extension') {
       onProgress?.(`Creating ${pkg.type}: ${pkg.name}...`)
@@ -484,6 +509,7 @@ async function createFromContentTemplate(
         fullPath,
         {
           name: pkg.name,
+          registryName,
           projectName,
           isExtension: pkg.type === 'extension'
         },
@@ -534,6 +560,7 @@ async function createFromContentTemplate(
           renames: contentDir.renames
         }
       )
+      ensureFoundationName(fullPath, registryName)
     }
 
     // Merge template dependencies into package.json

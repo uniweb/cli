@@ -14,10 +14,19 @@
 
 {{#if isExtension}}
 export default {
+{{#if registryName}}
+  name: '{{registryName}}',
+{{/if}}
   extension: true,
 }
 {{else}}
 export default {
+{{#if registryName}}
+  // ─── Name ───────────────────────────────────────────────────────────────────
+  // What this foundation registers as — @<org>/<name> — and what sites pin.
+  name: '{{registryName}}',
+
+{{/if}}
   // ─── Layout ─────────────────────────────────────────────────────────────────
   // Create layouts in layouts/MyLayout/index.jsx (auto-discovered).
   // defaultLayout: 'MyLayout',

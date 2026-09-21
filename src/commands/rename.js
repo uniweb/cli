@@ -20,7 +20,7 @@
  *
  * Extensions are technically a flavor of foundation (same build, same
  * package.json shape, distinguished only by `extension: true` in
- * src/foundation.js or `role: 'extension'` in the built schema). The
+ * main.js or `role: 'extension'` in the built schema). The
  * rename verb still keeps them on a separate subcommand because the
  * touch-point sets differ — `rename foundation` against an extension
  * would update the wrong things. Each subcommand guards its target
@@ -30,11 +30,13 @@
  * (target name already taken, target not found, folder collision,
  * type mismatch) we bail with a clear message and no partial state.
  *
- * Out of scope: registry side. The registered id (the scoped
- * `package.json::name` / `uniweb.id`) is independent of the workspace name and
- * stays untouched. There is no registry-rename flag — a registered version is
- * immutable; to change a foundation's registered identity, register it under
- * the new name (consuming sites repoint their `foundation:` ref).
+ * Out of scope: registry side. What a foundation registers as is `name` in its
+ * main.js, which is independent of the workspace name and stays untouched —
+ * except for a foundation with no main.js `name`, whose package name IS its name
+ * (`readFoundationName`), so renaming the package renames what it would register
+ * as. There is no registry-rename flag — a registered version is immutable; to
+ * change a foundation's registered name, change main.js's `name` and register
+ * again (consuming sites repoint their `foundation:` ref).
  *
  * Usage:
  *   uniweb rename foundation <old> <new>
@@ -632,9 +634,10 @@ ${colors.bright}What rename extension does:${colors.reset}
   • Updates pnpm-workspace.yaml + package.json::workspaces.
 
 ${colors.bright}What rename does NOT do (any subcommand):${colors.reset}
-  • Push to the registry. The registered id (package.json::uniweb.id) is
-    independent. To register under a new name, set it and run \`${prefix} register\`
-    (alias \`${prefix} release\`) — there is no rename flag.
+  • Push to the registry, or change what a foundation registers as — that is
+    \`name\` in its main.js, independent of the package name. To register under
+    a new name, change it there and run \`${prefix} register\` (alias
+    \`${prefix} release\`) — there is no rename flag.
 
 ${colors.bright}Examples:${colors.reset}
   ${prefix} rename foundation src marketing-src

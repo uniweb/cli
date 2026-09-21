@@ -6,7 +6,8 @@
  * - defaultLayout: Name of the default layout from src/layouts/ (optional)
  * - props: Foundation-wide props accessible via website.foundationProps
  *
- * Identity (name, version, description) comes from package.json.
+ * Name: `name` in the default export is what this foundation registers as
+ * (@org/<name>) — `uniweb create` adds it. The version comes from package.json.
  */
 
 // Create a layout at src/layouts/MyLayout/index.jsx

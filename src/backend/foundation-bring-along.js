@@ -36,7 +36,12 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
-import { detectFoundationType, isExtensionUrl } from '@uniweb/build'
+import {
+  detectFoundationType,
+  isExtensionUrl,
+  readFoundationName,
+  checkFoundationName
+} from '@uniweb/build'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import { publishScope } from '../utils/registry-orgs.js'
@@ -48,9 +53,12 @@ import { compareSemverPrecedence } from '../utils/semver-precedence.js'
  * already has it; nothing to do). Uses the SAME resolver the build uses
  * (`detectFoundationType`), so "which foundation" never drifts between them.
  *
+ * Its catalog name is `foundationScopedName(dir)` — a separate, async read, because
+ * the name lives in `main.js`, which is loaded rather than parsed.
+ *
  * @param {string} siteDir
  * @param {object} siteYml - parsed site.yml
- * @returns {{ dir: string, scopedName: string|null, version: string|null }|null}
+ * @returns {{ dir: string, version: string|null }|null}
  */
 export function resolveLocalFoundation(siteDir, siteYml) {
   const decl = siteYml?.foundation
@@ -64,11 +72,7 @@ export function resolveLocalFoundation(siteDir, siteYml) {
     return null
   }
   if (!info || info.type !== 'local' || !info.path) return null
-  return {
-    dir: info.path,
-    scopedName: foundationScopedName(info.path),
-    version: readPkgField(info.path, 'version')
-  }
+  return { dir: info.path, version: readPkgField(info.path, 'version') }
 }
 
 /**
@@ -82,7 +86,7 @@ export function resolveLocalFoundation(siteDir, siteYml) {
  *
  * @param {string} siteDir
  * @param {object} siteYml - parsed site.yml
- * @returns {Array<{ decl: string, dir: string, scopedName: string|null, version: string|null }>}
+ * @returns {Array<{ decl: string, dir: string, version: string|null }>}
  *   `decl` is the authored declaration, which is the wire entry's `$id` — the key
  *   publish stamps the pinned ref back onto.
  */
@@ -107,41 +111,43 @@ export function resolveLocalExtensions(siteDir, siteYml) {
       continue
     }
     if (!info || info.type !== 'local' || !info.path) continue
-    out.push({
-      decl,
-      dir: info.path,
-      scopedName: foundationScopedName(info.path),
-      version: readPkgField(info.path, 'version')
-    })
+    out.push({ decl, dir: info.path, version: readPkgField(info.path, 'version') })
   }
   return out
 }
 
-// The foundation's scoped catalog name (`@org/name`) from its package.json — an
-// already-scoped name, else `uniweb.scope` + a bare one. Null when neither
-// yields a scoped name (then we can't look up the registered version, so the
-// caller treats the foundation as "release it and let register pick the scope").
-//
-// ⛔ The name is `uniweb.id` when set, exactly as the build reads it for the
-// schema that `register` submits (`build/src/schema.js`). Reading `name` alone —
-// as this did until 2026-09-17 — looked a `uniweb.id` foundation up under a name
-// the catalog does not have, so every push re-released it, and pinned the site
-// to that same wrong name.
-//
-// ⛔ And the scope goes through `publishScope`, as `register`'s does: `uniweb.scope`
-// may read `acme` as well as `@acme`, and until 2026-09-21 this joined it raw — so a
-// bare one looked the foundation up as `acme/src` and pinned the site to that.
-function foundationScopedName(dir) {
+/**
+ * The foundation's scoped catalog name (`@org/name`): its name — `main.js`'s
+ * `name`, else package.json's, the one rule the build reads for the schema
+ * `register` submits (`readFoundationName`) — scoped by `uniweb.scope` unless
+ * already scoped. Null when no registrable scoped name can be formed; the caller
+ * then treats the foundation as unreleased, and `register` — which it runs to
+ * release — is where a missing scope is derived and a missing name is asked for.
+ *
+ * ⛔ A NAME THAT CANNOT REGISTER IS NULL, not looked up. `src` and `foundation`
+ * name a folder (`checkFoundationName`); looking one up would find some other
+ * project's `@org/src` — the very collision refusing them prevents.
+ *
+ * ⛔ And the scope goes through `publishScope`, as `register`'s does: `uniweb.scope`
+ * may read `acme` as well as `@acme`, and until 2026-09-21 this joined it raw — so a
+ * bare one looked the foundation up as `acme/src` and pinned the site to that.
+ * *(This read package.json alone until 2026-09-21 — `uniweb.id`, else `name` — and
+ * so named a foundation differently from the build whenever `main.js` named it.)*
+ *
+ * @param {string} dir - the foundation package
+ * @returns {Promise<string|null>}
+ */
+export async function foundationScopedName(dir) {
+  let name
   try {
-    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
-    const name = pkg?.uniweb?.id || pkg?.name
-    if (typeof name === 'string' && name.startsWith('@')) return name
-    const scope = publishScope(pkg?.uniweb?.scope)
-    if (scope && name) return `${scope}/${name}`
-    return null
+    ;({ name } = await readFoundationName(dir))
   } catch {
     return null
   }
+  if (checkFoundationName(name)) return null
+  if (name.startsWith('@')) return name
+  const scope = publishScope(readPkgField(dir, 'uniweb')?.scope)
+  return scope ? `${scope}/${name}` : null
 }
 
 function readPkgField(dir, field) {
@@ -225,7 +231,7 @@ export async function bringFoundationAlong({
  * it in the messages.
  *
  * @param {object} o
- * @param {{dir: string, scopedName: string|null, version: string|null}} o.local
+ * @param {{dir: string, version: string|null}} o.local
  * @param {'foundation'|'extension'} o.kind
  * @returns {Promise<{ released: boolean, proceed: boolean, ref: string|null }>}
  */
@@ -241,9 +247,10 @@ async function bringLocalCodeAlong({
   verb = 'publish'
 }) {
   const Kind = kind === 'extension' ? 'Extension ' : 'Foundation'
+  const scopedName = await foundationScopedName(local.dir)
   const label =
-    local.scopedName || local.version
-      ? `${local.scopedName || kind}${local.version ? `@${local.version}` : ''}`
+    scopedName || local.version
+      ? `${scopedName || kind}${local.version ? `@${local.version}` : ''}`
       : `the local ${kind}`
   const skipPrompts =
     args.includes('--yes') ||
@@ -266,10 +273,11 @@ async function bringLocalCodeAlong({
   const noRelease = args.includes('--no-release')
 
   // The pinned ref to stamp on the pushed site — read at RETURN time (after any
-  // release), so it reflects the released version + the scope register derived.
-  // null when no scoped ref can be formed (then the site.yml ref is forwarded).
-  const pinnedRef = () => {
-    const s = foundationScopedName(local.dir)
+  // release), so it reflects the released version, the scope register derived and
+  // the name it asked for. null when no scoped ref can be formed (then the site.yml
+  // ref is forwarded).
+  const pinnedRef = async () => {
+    const s = await foundationScopedName(local.dir)
     const v = readPkgField(local.dir, 'version')
     return s && v ? `${s}@${v}` : null
   }
@@ -279,8 +287,8 @@ async function bringLocalCodeAlong({
   // so on a bumped-but-unreleased foundation it names a version nobody can serve. Any
   // branch that skips a release must bind to this instead.
   const registeredRef = (reg) =>
-    local.scopedName && reg?.latest_version
-      ? `${local.scopedName}@${reg.latest_version}`
+    scopedName && reg?.latest_version
+      ? `${scopedName}@${reg.latest_version}`
       : null
 
   // Dry-run reports the intent WITHOUT touching the network — it must not force
@@ -290,24 +298,23 @@ async function bringLocalCodeAlong({
       `${Kind}  : ${label} — local; would release if changed or not yet registered`
     )
     // The ref still comes back where one can be formed: it is read from the
-    // foundation's own package.json, so it costs no network, and an offline preview
-    // that omitted it would emit a document the real run would not — the one thing
-    // `-o` exists to avoid.
+    // foundation's own files, so it costs no network, and an offline preview that
+    // omitted it would emit a document the real run would not — the one thing `-o`
+    // exists to avoid.
     //
     // ⚠️ It is null for a foundation that has NEVER been registered and carries no
-    // scope (a freshly scaffolded `name: "src"`), because the scope is what
-    // `register` writes back (`writePkgScope`). So the preview shows the authored
-    // value there, and the first real push — which releases, and so acquires the
-    // scope — sends the pinned ref instead. That gap is unavoidable offline: before
-    // the first release there is no registered name to name.
-    return { released: false, proceed: true, ref: pinnedRef() }
+    // scope (a fresh scaffold), because the scope is what `register` writes back
+    // (`writePkgScope`) — and for one with no name of its own (`src`), which
+    // `register` asks for. So the preview shows the authored value there, and the
+    // first real push — which releases, and so acquires both — sends the pinned ref
+    // instead. That gap is unavoidable offline: before the first release there is
+    // no registered name to name.
+    return { released: false, proceed: true, ref: await pinnedRef() }
   }
 
   // Ask the catalog what it has. Null → not registered (or the backend can't
   // answer / no scoped name to look up) → release.
-  const reg = local.scopedName
-    ? await client.readFoundationLatest(local.scopedName)
-    : null
+  const reg = scopedName ? await client.readFoundationLatest(scopedName) : null
 
   if (!reg) {
     // ⛔ Nothing to bind to. Releasing anyway would be the opposite of what was asked,
@@ -326,7 +333,7 @@ async function bringLocalCodeAlong({
     return {
       released: releaseFoundation(local, args, cliBin, say, client?.origin),
       proceed: true,
-      ref: pinnedRef()
+      ref: await pinnedRef()
     }
   }
 
@@ -339,7 +346,7 @@ async function bringLocalCodeAlong({
     say.dim(
       `${Kind}  : ${label} — unchanged since release (digest matches); nothing to release.`
     )
-    return { released: false, proceed: true, ref: pinnedRef() }
+    return { released: false, proceed: true, ref: await pinnedRef() }
   }
 
   // A different version locally → a new version to release.
@@ -369,7 +376,7 @@ async function bringLocalCodeAlong({
     return {
       released: releaseFoundation(local, args, cliBin, say, client?.origin),
       proceed: true,
-      ref: pinnedRef()
+      ref: await pinnedRef()
     }
   }
 
@@ -390,7 +397,7 @@ async function bringLocalCodeAlong({
       say.dim(
         'Proceeding without re-releasing — pass nothing to re-deliver, or bump the version to release a change.'
       )
-      return { released: false, proceed: true, ref: pinnedRef() }
+      return { released: false, proceed: true, ref: await pinnedRef() }
     }
     const reRelease = await confirm(
       `Re-release ${label} to be sure its code is current?`,
@@ -400,9 +407,9 @@ async function bringLocalCodeAlong({
       return {
         released: releaseFoundation(local, args, cliBin, say, client?.origin),
         proceed: true,
-        ref: pinnedRef()
+        ref: await pinnedRef()
       }
-    return { released: false, proceed: true, ref: pinnedRef() }
+    return { released: false, proceed: true, ref: await pinnedRef() }
   }
 
   // Case 3 (§4): the code was edited but the version wasn't bumped. The
@@ -438,7 +445,7 @@ async function bringLocalCodeAlong({
       `Local ${label} differs from the registered ${reg.latest_version} and the version wasn't bumped — ` +
         `shipping against the registered code. Your local changes will NOT be live.`
     )
-    return { released: false, proceed: true, ref: pinnedRef() }
+    return { released: false, proceed: true, ref: await pinnedRef() }
   }
 
   // 2. Nobody to ask. Refuse, and name both real options as runnable commands so
@@ -476,7 +483,7 @@ async function bringLocalCodeAlong({
     )
     return { released: false, proceed: false, ref: null }
   }
-  return { released: false, proceed: true, ref: pinnedRef() }
+  return { released: false, proceed: true, ref: await pinnedRef() }
 }
 
 // Build the foundation so its dist/ can be fingerprinted. Idempotent — the

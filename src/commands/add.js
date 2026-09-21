@@ -16,7 +16,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join, relative, basename } from 'node:path'
 import prompts from 'prompts'
 import yaml from 'js-yaml'
-import { resolveFoundationSrcPath } from '@uniweb/build'
+import { resolveFoundationSrcPath, readFoundationName } from '@uniweb/build'
 import {
   scaffoldFoundation,
   scaffoldSite,
@@ -42,6 +42,10 @@ import {
   resolveUniqueName
 } from '../utils/names.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
+import {
+  normalizeFoundationName,
+  ensureFoundationName
+} from '../utils/foundation-name.js'
 import {
   detectPackageManager,
   detectWorkspacePm,
@@ -366,6 +370,12 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   let { packageName } = placement
   const fullPath = join(rootDir, relativePath)
 
+  // The foundation's own name — what it registers as, written to main.js — is
+  // the name asked for, before any workspace suffix below; with none (`src`),
+  // the project's.
+  const askedName =
+    normalizeFoundationName(packageName) || normalizeFoundationName(projectName)
+
   // Validate the derived package name (format + reserved-name check). The
   // auto-derived `src` default is grandfathered in (`src` IS reserved
   // but `src` is the convention for "the package that lives in src/").
@@ -435,10 +445,15 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   }
 
   // Scaffold
+  const registryName = await unclaimedFoundationName(rootDir, [
+    askedName,
+    normalizeFoundationName(packageName)
+  ])
   await scaffoldFoundation(
     fullPath,
     {
       name: packageName,
+      registryName,
       projectName,
       isExtension: false
     },
@@ -447,9 +462,11 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
     }
   )
 
-  // Apply template content if --from specified
+  // Apply template content if --from specified. Its main.js replaces the
+  // scaffolded one, so the name is given again unless the template names it.
   if (opts.from) {
     await applyFromTemplate(opts.from, 'foundation', fullPath, projectName)
+    ensureFoundationName(fullPath, registryName)
   }
 
   // Register the package in pnpm-workspace.yaml — by exact path, not by glob.
@@ -685,11 +702,18 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
     process.exit(1)
   }
 
-  // Scaffold foundation with extension flag
+  // Scaffold foundation with extension flag. Its name — what it registers as —
+  // is the one asked for, not the package's suffixed one, unless a foundation in
+  // the workspace already registers as that.
+  const registryName = await unclaimedFoundationName(rootDir, [
+    normalizeFoundationName(name),
+    normalizeFoundationName(extensionPackageName)
+  ])
   await scaffoldFoundation(
     fullPath,
     {
       name: extensionPackageName,
+      registryName,
       projectName,
       isExtension: true
     },
@@ -701,6 +725,7 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   // Apply template content if --from specified
   if (opts.from) {
     await applyFromTemplate(opts.from, 'extension', fullPath, projectName)
+    ensureFoundationName(fullPath, registryName)
   }
 
   // Update workspace globs
@@ -848,12 +873,18 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
 
   const progressCb = (msg) => info(`  ${msg}`)
 
-  // Scaffold foundation (folder: src/, package name: <project>-src)
+  // Scaffold foundation (folder: src/, package name: <project>-src, name — what
+  // it registers as — <project>)
   info(`Creating foundation: ${foundationPkgName}...`)
+  const registryName = await unclaimedFoundationName(rootDir, [
+    normalizeFoundationName(name),
+    normalizeFoundationName(foundationPkgName)
+  ])
   await scaffoldFoundation(
     join(projectDir, 'src'),
     {
       name: foundationPkgName,
+      registryName,
       projectName,
       isExtension: false
     },
@@ -882,6 +913,7 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
       join(projectDir, 'src'),
       projectName
     )
+    ensureFoundationName(join(projectDir, 'src'), registryName)
     await applyFromTemplate(
       opts.from,
       'site',
@@ -985,6 +1017,32 @@ function computeFoundationPath(sitePath, foundationPath) {
   // Compute relative path from site dir to foundation dir
   const rel = relative(sitePath, foundationPath)
   return `file:${rel}`
+}
+
+/**
+ * The first of `candidates` that no foundation or extension in the workspace
+ * registers as — null when each is taken or missing, and `uniweb register` asks.
+ *
+ * A package name is kept unique by suffixing (`ui-ext`), but what a package
+ * REGISTERS as is its main.js name: two foundations named `ui` in one workspace
+ * would both register `@org/ui`, and the second would land on the first's
+ * version. Compared without scope, so `@acme/ui` counts as `ui`.
+ *
+ * @param {string} rootDir
+ * @param {Array<string|null>} candidates
+ * @returns {Promise<string|null>}
+ */
+async function unclaimedFoundationName(rootDir, candidates) {
+  const taken = new Set()
+  for (const f of await discoverFoundations(rootDir)) {
+    try {
+      const { name } = await readFoundationName(join(rootDir, f.path))
+      if (name) taken.add(name.replace(/^@[^/]+\//, ''))
+    } catch {
+      // An unreadable main.js — the build reports it; it claims no name here.
+    }
+  }
+  return candidates.find((c) => c && !taken.has(c)) || null
 }
 
 /**

@@ -64,13 +64,20 @@ import {
   statSync
 } from 'node:fs'
 import { execSync } from 'node:child_process'
-import { resolve, join } from 'node:path'
+import { resolve, join, relative } from 'node:path'
+import prompts from 'prompts'
 import { buildRegistryPackage, buildSchemaOnlyPackage } from '@uniweb/build/uwx'
 import {
   classifyPackage,
   isSchemasPackage,
-  collectStandaloneSchemas
+  collectStandaloneSchemas,
+  readFoundationName,
+  checkFoundationName
 } from '@uniweb/build'
+import {
+  suggestFoundationName,
+  writeFoundationName
+} from '../utils/foundation-name.js'
 import { readRegistryAuth } from '../utils/registry-auth.js'
 import {
   collectDistFiles,
@@ -207,6 +214,84 @@ async function resolveFoundationDir(args) {
     'No foundation found. Run register from a foundation directory or a workspace that has one.'
   )
   process.exit(1)
+}
+
+/**
+ * The foundation's name, settled before anything is built or sent.
+ *
+ * A foundation registers as `@org/<name>`, and sites pin it by that name. The name
+ * is `main.js`'s `name`, else package.json's — `readFoundationName`, the rule the
+ * build reads for the schema this command submits. ⛔ `src` and `foundation` are
+ * the folder the code sits in, not the code: a project scaffolded before the name
+ * moved to main.js has package name `src`, and every such project in an org would
+ * register the same `@org/src`. So a name that cannot register is ASKED FOR here,
+ * once, and kept in main.js — or, with nobody to ask, refused with the line to add.
+ * Before the build, so a written name is built into the schema like any edit.
+ *
+ * @param {string} targetDir
+ * @param {{ args: string[], isPreview: boolean }} o
+ * @returns {Promise<boolean>} false → stop; the reason is printed
+ */
+export async function settleFoundationName(targetDir, { args, isPreview }) {
+  let read
+  try {
+    read = await readFoundationName(targetDir)
+  } catch (err) {
+    error(err.message)
+    return false
+  }
+  const problem = checkFoundationName(read.name)
+  if (!problem) return true
+
+  const where = relative(process.cwd(), read.mainFile) || read.mainFile
+  const suggestion = suggestFoundationName(targetDir)
+  const reason = `${problem[0].toUpperCase()}${problem.slice(1)}.`
+
+  // Nobody to ask — a script, a preview (which writes nothing), or --json (whose
+  // stdout is a data channel a prompt would corrupt). Name the fix exactly.
+  if (isPreview || jsonMode || isNonInteractive(args)) {
+    error(`This foundation has no name it can register under. ${reason}`)
+    log(`  Name it in ${colors.bright}${where}${colors.reset}, in the default export:`)
+    log(`    ${colors.bright}name: '${suggestion || '<name>'}',${colors.reset}`)
+    log(`  ${colors.dim}It registers as @<org>/<name>, and sites pin that name.${colors.reset}`)
+    return false
+  }
+
+  info(`This foundation needs a name to register under. ${reason}`)
+  const { name } = await prompts(
+    {
+      type: 'text',
+      name: 'name',
+      message: 'Foundation name (it registers as @<org>/<name>):',
+      initial: suggestion || '',
+      validate: (v) => checkFoundationName(String(v).trim()) || true
+    },
+    {
+      onCancel: () => {
+        log('\nRegister cancelled.')
+        process.exit(0)
+      }
+    }
+  )
+  const chosen = String(name || '').trim()
+  if (!chosen) return false
+
+  const written = writeFoundationName(read.mainFile, chosen, {
+    replace: read.source === 'main.js' ? read.name : null
+  })
+  if (!written.ok) {
+    error(`Could not write the name: ${written.reason}.`)
+    log(`  Add it to the default export in ${colors.bright}${where}${colors.reset}:  name: '${chosen}',`)
+    return false
+  }
+  // Read it back through the build's own rule — the text edit is only a means.
+  const again = await readFoundationName(targetDir).catch(() => null)
+  if (again?.name !== chosen) {
+    error(`${where} now names the foundation '${chosen}', but it still reads as "${again?.name}".`)
+    return false
+  }
+  success(`Named the foundation ${colors.bright}${chosen}${colors.reset} — kept in ${where}.`)
+  return true
 }
 
 // Directories that are never foundation source. `dist` is the output we compare
@@ -443,6 +528,9 @@ async function runRegister(args = []) {
       return { exitCode: 2 }
     }
   } else {
+    if (!(await settleFoundationName(targetDir, { args, isPreview }))) {
+      return { exitCode: 2 }
+    }
     // Build-if-stale (mirrors `uniweb publish`): a missing or version-stale
     // dist/ gets (re)built before we read its schema. Preview paths
     // (--dry-run / -o) must not write to dist/, so they require a pre-built

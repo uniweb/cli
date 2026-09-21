@@ -76,14 +76,16 @@ export async function getWorkspaceTemplateOutputs({ blank = false } = {}) {
 }
 
 /**
- * Scaffold a foundation from the foundation package template
+ * Scaffold a foundation from the foundation package template.
  *
- * @param {string} targetDir - Target directory for the foundation
+ * @param {string} targetDir
  * @param {Object} context - Template context
- * @param {string} context.name - Package name
+ * @param {string} context.name - Package name — workspace plumbing (`src`, `docs-src`)
+ * @param {string} [context.registryName] - The foundation's own name, written to
+ *   main.js's `name`: what it registers as (`@org/<name>`). Omitted when none can be
+ *   made, and `uniweb register` asks for one
  * @param {string} context.projectName - Workspace name
- * @param {boolean} [context.isExtension] - Whether this is an extension
- * @param {Object} [options] - Processing options
+ * @param {boolean} [context.isExtension]
  */
 export async function scaffoldFoundation(targetDir, context, options = {}) {
   registerVersions(getVersionsForTemplates())

@@ -28,7 +28,10 @@ import { resolveSiteDir } from './deploy.js'
 import { probeUnpushed } from '../backend/site-sync.js'
 import { BackendClient, resolveBackendOrigin } from '../backend/client.js'
 import { readBackendState } from '@uniweb/build/uwx'
-import { resolveLocalFoundation } from '../backend/foundation-bring-along.js'
+import {
+  resolveLocalFoundation,
+  foundationScopedName
+} from '../backend/foundation-bring-along.js'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { checkFlags } from '../utils/flag-guard.js'
 
@@ -124,7 +127,8 @@ export async function status(args = []) {
       // site.yml ref. The digest compare is read-only — it never builds, so it
       // only fires when the local foundation is already built (dist present).
       const local = resolveLocalFoundation(siteDir, siteYml)
-      const lookupName = local?.scopedName || fndScope
+      const lookupName =
+        (local && (await foundationScopedName(local.dir))) || fndScope
       if (lookupName) fdnLatest = await client.readFoundationLatest(lookupName)
       if (local?.dir && fdnLatest?.digest) {
         const localDigest = computeFoundationDigest(join(local.dir, 'dist'))

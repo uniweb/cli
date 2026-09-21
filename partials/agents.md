@@ -129,7 +129,7 @@ my-project/
 └── pnpm-workspace.yaml
 ```
 
-A site is pure content. A foundation is the site's source code — that's why it lives in `src/`. The foundation's `package.json::name` is `src`, symmetric with `site`.
+A site is pure content. A foundation is the site's source code — that's why it lives in `src/`. The foundation's `package.json::name` is `src`, symmetric with `site` — a **workspace** name, how the site depends on it. What the foundation **registers as** (`@org/<name>`, the name sites pin) is `name` in its `main.js`, which `uniweb create` sets to the project's name. **`src` and `foundation` are never a foundation's name** — `uniweb register` refuses them, because every project in an org would register the same one.
 
 - **Foundation** (`src/`): React components. Those in `sections/` and `layouts/` are *section types* — selectable by authors via `type:`, or used for layout areas. Everything in `components/` and `utils/` is ordinary React and JS: the developer's workbench, not visible to authors.
 - **Site** (`site/`): markdown content and configuration, plus optional records of structured content and the queries that reach them or an external data source.
@@ -1006,7 +1006,7 @@ import LessonHeader from '../../components/LessonHeader' // ❌ breaks if you re
 
 Within the same directory, use normal relative imports (`./AIFeedbackCard`).
 
-**Foundation entry (`main.js`).** A single `export default { … }` whose top-level keys are the capabilities the foundation provides — `name`, `description`, `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers` — plus an optional named `vars` export. Everything here is read at render; the one thing a foundation declares that *isn't* — which host services it supports — lives in `package.json` instead (see [Declaring what your foundation supports](#declaring-what-your-foundation-supports)). Section types and layouts are auto-discovered and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in `dist/entry.js`; you never write that wrapper. The one place it matters: when you import your **own** `main.js` from a component (e.g. a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
+**Foundation entry (`main.js`).** A single `export default { … }` whose top-level keys are the foundation's identity — `name` (what it registers as, `@org/<name>`) and `description` — and the capabilities it provides — `defaultLayout`, `defaultSection`, `viewTransitions`, `props`, `defaultInsets`, `xref`, `outputs`, `handlers` — plus an optional named `vars` export. The capabilities are read at render; the one thing a foundation declares that *isn't* — which host services it supports — lives in `package.json` instead (see [Declaring what your foundation supports](#declaring-what-your-foundation-supports)). Section types and layouts are auto-discovered and merged in by `@uniweb/build`. The build wraps your default export under `default.capabilities` in `dist/entry.js`; you never write that wrapper. The one place it matters: when you import your **own** `main.js` from a component (e.g. a download button calling `compileDocument(website, { foundation })`), you get the bare default object — pass it through directly, Press handles both shapes.
 
 ### Props interface
 
@@ -2594,7 +2594,7 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 
 Either side can publish. Nothing about this changes how you build: the same foundation and the same site run under `uniweb dev`, `uniweb export`, or a CI deploy with no account at all.
 
-**Publishing vs registering.** Foundations on Uniweb Cloud live in the catalog as `@org/name@version`. When a foundation powers a single site, **don't run `uniweb register` yourself** — `uniweb publish` from the site directory releases the local foundation to the catalog (when its code changed) and goes live in one step. Register deliberately only when the foundation is a product meant for multiple sites; consuming sites then pin `foundation: '@org/name@1.2.3'`. **The catalog is private and access-segregated, not a public package registry** — people see only the foundations licensed to sites they own or edit. The *site* carries the license, and it rides along with site ownership when a developer hands a site to a client. Don't describe publishing as making a foundation publicly discoverable. Schemas can also be registered on their own from a schemas-only package (`@uniweb/schemas`, any `@org/schemas`, or a bare folder of `schemas/*.{yml,json,js}`) — that's how `@std` schemas are published. Auth via `uniweb login` (`uniweb login --backend <url> --token <bearer>` without a terminal) or `UNIWEB_TOKEN`; preview with `--dry-run`.
+**Publishing vs registering.** Foundations on Uniweb Cloud live in the catalog as `@org/name@version` — `name` from the foundation's `main.js`. When a foundation powers a single site, **don't run `uniweb register` yourself** — `uniweb publish` from the site directory releases the local foundation to the catalog (when its code changed) and goes live in one step. Register deliberately only when the foundation is a product meant for multiple sites; consuming sites then pin `foundation: '@org/name@1.2.3'`. **The catalog is private and access-segregated, not a public package registry** — people see only the foundations licensed to sites they own or edit. The *site* carries the license, and it rides along with site ownership when a developer hands a site to a client. Don't describe publishing as making a foundation publicly discoverable. Schemas can also be registered on their own from a schemas-only package (`@uniweb/schemas`, any `@org/schemas`, or a bare folder of `schemas/*.{yml,json,js}`) — that's how `@std` schemas are published. Auth via `uniweb login` (`uniweb login --backend <url> --token <bearer>` without a terminal) or `UNIWEB_TOKEN`; preview with `--dry-run`.
 
 ### Staying current
 
@@ -2630,9 +2630,10 @@ Platform-specific configuration that doesn't belong in npm-standard fields. All 
 
 | Field | Where used | Default | Purpose |
 |---|---|---|---|
-| `id` | `uniweb register` | bare segment of a scoped `name` | The foundation's registered id — the bare name in `@org/<id>`. Decoupled from `package.json::name` (a workspace concern), so renaming on the registry doesn't ripple through site dependencies. |
-| `namespace` | `uniweb register` | none | Legacy explicit org-namespace override; equivalent to a scoped `package.json::name`. Rarely needed. |
+| `scope` | `uniweb register` | derived from your login, then saved here | The org the foundation registers under (`@acme`, or `acme`): a bare `main.js` name `marketing` registers as `@acme/marketing`. `--scope @org` overrides it for one run. |
 | `runtimePolicy` | `dist/runtime-pin.json` | unset | Declares how far past the recorded runtime version a host may move a site. |
+
+**The foundation's name is not here — it is `name` in `main.js`** (else `package.json`'s `name`). ⛔ `uniweb.id` is no longer read: `uniweb register` refuses it and prints the `main.js` line to write instead.
 
 **Runtime updates — handled for you.** Your foundation's code links against the runtime: it externalizes `react`, `react-dom`, `react-dom/server`, both JSX runtimes and `@uniweb/core`, and the runtime supplies all of them at load time. So a build is bound to *that* React and *that* core API.
 
