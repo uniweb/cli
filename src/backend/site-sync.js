@@ -1183,21 +1183,14 @@ export async function probeUnpushed(siteDir, { backend = null, sendAll = false }
   //     `sync.json`, which the same push wrote. Reading the live file rather than a
   //     snapshot is what makes a moved map (a teammate's push, a pull) read as
   //     changed instead of matching a copy of itself.
-  //   · RECORDED — the site's own org, from `sync.json` (this backend's `site.org`).
   //
-  // ⛔ THE ORG IS NOT OPTIONAL HERE, AND OMITTING IT WAS SILENT. It is what resolves
-  // a foundation-relative `@/member` into the `@org/member` the push shipped and
-  // keyed its hashes by. Without it the emit does not fail — `buildRecordEntities`
-  // WARNS and ships the model unresolved, deliberately, so an org-less export still
-  // works — so every record of a `@/`-scoped collection is emitted under a key that
-  // can never match its banked one, and reads as changed forever.
-  //
-  // ⚠️ It hides in plain sight because `@std/…` queries are unaffected: their
-  // scope is already absolute, so they match. A site mixing both — the marketing
-  // fixture has `@std/person` AND `@proximify/member` — shows some records settling
-  // and others never settling, which reads like a content problem rather than a
-  // resolution one. Measured on matinee 2026-08-29: `status` reported 4 changed
-  // immediately after a successful push; passing the org took it to 1.
+  // ⛔ A site's `@/member` must resolve to the same `@scope/member` the push keyed its
+  // hashes by, or every record of a `@/`-scoped query reads as changed forever — and
+  // silently, since `@std/…` queries are absolute and settle while the others never
+  // do (measured on matinee 2026-08-29: 4 changed right after a push). The scope is
+  // the FOUNDATION's, which the emit reads itself, so both sides resolve alike.
+  // ⚠️ Until 2026-09-23 this said the site's recorded ORG resolves it and must be
+  // passed in — true before 2026-09-22, and read as a reason to pass it.
   const pkg = await comparisonEmit(siteDir, { backend, priorHashes, sendAll })
   const changed =
     (pkg.siteContent?.entityCount || 0) + (pkg.records?.entityCount || 0)
@@ -1216,9 +1209,10 @@ export async function probeUnpushed(siteDir, { backend = null, sendAll = false }
  *   · RE-DERIVED asset identity, from this backend's COMMITTED asset map in
  *                `sync.json`, so a moved map reads as changed rather than matching
  *                a copy of itself.
- *   · RECORDED   the site's org, which resolves a foundation-relative `@/x` into
- *                the `@org/x` the push keyed its hashes by, and the collection
- *                identity a push stamps, so the document is the one a push builds.
+ *   · RECORDED   the collection identity a push stamps, so the document is the
+ *                one a push builds. (A site's `@/x` resolves into its foundation's
+ *                scope, which the emit reads itself — not the site's org, which this
+ *                bullet named until 2026-09-23.)
  *                ⚠️ Identity is parity, not correctness: `entityContentHash` strips
  *                `$`-sigils, so a query's `$uuid` never moves a hash (measured
  *                2026-09-21). This read no backend from 2026-09-20 to 2026-09-21 —
