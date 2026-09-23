@@ -35,6 +35,11 @@ import {
 } from '../src/commands/pull.js'
 import { createZip } from '@uniweb/build/uwx'
 
+// ⭐ These exercise the pull lanes, not the workspace: a command works in the one chosen
+// with the login (backend/workspace.js), and a test has no login to choose one. Named
+// here for the whole file, as a token-logged process would name it.
+process.env.UNIWEB_WORKSPACE = 'personal'
+
 // The push staleness gate's read half: pull banks each entity's opaque `version`
 // from the manifest so the next push can echo it as `base_version`. This is the
 // manifest readPullDocuments deliberately skips — we used to drop these on the floor.

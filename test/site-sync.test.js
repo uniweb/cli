@@ -31,12 +31,10 @@ import {
   readSiteWorkspace,
   readItemBaseVersions,
   mergeItemBaseVersions,
-  resolveSiteOrgForCreate,
   writeUnitBases,
   readItemUuids,
   probeUnpushed,
-  rebankSyncHashes,
-  EXPLICIT_OWNER
+  rebankSyncHashes
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
 import { readSiteIdentity } from '../src/utils/site-identity.js'
@@ -1071,103 +1069,6 @@ test('a create naming no workspace records NO org when the echo carries none', a
   assert.equal(readSiteIdentity(dir, ORIGIN).org, null)
   assert.equal(readSiteWorkspace(dir), null)
   assert.equal(res.org, null)
-})
-
-// ─── resolveSiteOrgForCreate — the one-shot ownership decision ────────────────
-// The create that mints the uuid takes its owner from the workspace it names, and there
-// is no CLI path to change ownership afterwards. These pin that the CLI never makes that
-// choice silently, and — just as important — that it never ASKS when there is no
-// choice left to make.
-
-const NEVER_CALLED = {
-  origin: ORIGIN,
-  token: async () => {
-    throw new Error('must not authenticate')
-  }
-}
-
-test('an explicit --org rides verbatim, asks nothing, and is EXPLICIT', async () => {
-  const dir = tmpSite()
-  const r = await resolveSiteOrgForCreate({
-    client: NEVER_CALLED,
-    siteDir: dir,
-    args: ['--non-interactive'],
-    flag: '@acme'
-  })
-  assert.deepEqual(r, { workspace: '@acme', source: 'flag' })
-  assert.ok(EXPLICIT_OWNER.has(r.source), 'a mismatch for it stops the command')
-})
-
-test('--personal names NO workspace, and is explicit too', async () => {
-  const dir = tmpSite()
-  const r = await resolveSiteOrgForCreate({
-    client: NEVER_CALLED,
-    siteDir: dir,
-    args: ['--non-interactive'],
-    personal: true
-  })
-  // Deliberately null, NOT '@<handle>': the personal ORG is an org like any other,
-  // and whether the backend resolves it to the same owning unit as the session's
-  // personal workspace is unverified here.
-  assert.deepEqual(r, { workspace: null, source: 'personal' })
-  assert.ok(EXPLICIT_OWNER.has(r.source))
-  assert.equal(r.refused, undefined)
-})
-
-test('AN ALREADY-CREATED SITE IS NEVER ASKED — this is the compat property', async () => {
-  const dir = tmpSite()
-  // Every site that predates this feature is exactly this shape: $uuid, no $org.
-  bind(dir, 'EXISTING-1')
-  const r = await resolveSiteOrgForCreate({
-    client: NEVER_CALLED,
-    siteDir: dir,
-    args: ['--non-interactive'] // would REFUSE if it thought a create were coming
-  })
-  assert.deepEqual(r, { workspace: null, source: 'existing' }, 'settled ownership must not be re-litigated')
-  assert.ok(!EXPLICIT_OWNER.has(r.source), 'the backend names its workspace; the client adopts it')
-})
-
-test('a recorded org is replayed without asking — and is NOT explicit', async () => {
-  const dir = tmpSite()
-  bind(dir, null, 'acme')
-  const r = await resolveSiteOrgForCreate({
-    client: NEVER_CALLED,
-    siteDir: dir,
-    args: ['--non-interactive']
-  })
-  assert.deepEqual(r, { workspace: '@acme', source: 'recorded' })
-  // A record can go stale (a parent workspace, a moved site); the backend's answer wins.
-  assert.ok(!EXPLICIT_OWNER.has(r.source))
-})
-
-test('non-interactive + a REAL create + no owner named ⇒ refuse, naming both exits', async () => {
-  const dir = tmpSite()
-  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n') // no $uuid → a create is coming
-  const r = await resolveSiteOrgForCreate({
-    client: NEVER_CALLED,
-    siteDir: dir,
-    args: ['--non-interactive']
-  })
-  assert.equal(r.refused, true)
-  assert.equal(r.workspace, null)
-  // The refusal has to be actionable, and BOTH exits must appear — naming only
-  // --org would read as "you must have an org", which is not true.
-  assert.match(r.reason, /--org @org/)
-  assert.match(r.reason, /--personal/)
-})
-
-test('an offline preview never authenticates and never prompts', async () => {
-  const dir = tmpSite()
-  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n')
-  // `-o` / --dry-run create nothing, so there is no decision to force — and the
-  // client here throws if anything reaches for a token.
-  const r = await resolveSiteOrgForCreate({
-    client: NEVER_CALLED,
-    siteDir: dir,
-    args: [],
-    offline: true
-  })
-  assert.deepEqual(r, { workspace: null, source: 'offline' })
 })
 
 // ─── the create echo — recording what the site IS, not what we asked for ──────

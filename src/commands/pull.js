@@ -90,11 +90,9 @@ import {
   mergeBaseVersions,
   mergeItemBaseVersions,
   writeUnitBases,
-  writeItemUuids,
-  nameSiteWorkspace,
-  readSiteWorkspace
+  writeItemUuids
 } from '../backend/site-sync.js'
-import { readOrgFlag } from '../utils/args.js'
+import { resolveWorkspace } from '../backend/workspace.js'
 import {
   uncommittedUnder,
   siteContentRoots,
@@ -106,7 +104,6 @@ import {
   BackendClient,
   describeRequestError,
   refusalDetail,
-  workspaceHandle,
   WorkspaceMismatchError
 } from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir } from './deploy.js'
@@ -601,15 +598,6 @@ export async function pull(args = [], deps = {}) {
     args,
     command: 'Pulling'
   })
-  // The workspace these requests name: `--org` explicitly, else the one this project
-  // recorded for this backend — adopted afresh from the backend's answer when stale.
-  const orgFlag = readOrgFlag(args)
-  nameSiteWorkspace(client, {
-    siteDir,
-    workspace: orgFlag ? workspaceHandle(orgFlag) : readSiteWorkspace(siteDir, client.origin),
-    explicit: Boolean(orgFlag),
-    note
-  })
 
   // ⭐ No scope check any more — and none is needed. This project's identity on
   // `client.origin` is read from that origin's own section of sync.json, so a
@@ -663,6 +651,17 @@ export async function pull(args = [], deps = {}) {
     if (!noRecords) info(`Dry run — would also pull records`)
     return { exitCode: 0 }
   }
+
+  // The workspace this pull works in — the one chosen with the login, unless this
+  // command names another (`workspace.js`). Resolved at the first request, not before:
+  // a pull with nothing to pull never needs one. A site kept elsewhere stops it.
+  const ws = await resolveWorkspace({ client, args })
+  if (ws.refused) {
+    error('This pull works in one workspace, and none is chosen.')
+    note(ws.reason)
+    return { exitCode: 2 }
+  }
+  client.setWorkspace(ws.workspace, { source: ws.source })
 
   // GET a pull lane via the client and return `{ docs, etag }` from its `.uwx` (ZIP)
   // body — `readPullDocuments` reads the entity files out of it (JSON fallback). A

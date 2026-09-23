@@ -149,13 +149,22 @@ export function workspaceHandle(value) {
 const UNIT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
+ * A workspace as a sentence names it: `@acme`, `the unit <uuid>`, or `your personal
+ * workspace` — for null, and for a login's stored `personal`.
+ */
+export function describeWorkspace(workspace) {
+  if (!workspace || workspace === 'personal') return 'your personal workspace'
+  return workspace.startsWith('@') ? workspace : `the unit ${workspace}`
+}
+
+/**
  * A workspace as the header names it — `@handle`, or a unit's bare uuid when the unit
  * has no handle — or null for none.
  *
  * ⚠️ A bare value is taken for a uuid only when it is shaped like one, and our own
  * handle grammar admits uuid-shaped handles (3–39 lowercase letters, digits, hyphens).
  * So a HANDLE reaches this already dressed — `--org` through `workspaceHandle`, a
- * record through `readSiteWorkspace` — and a bare uuid here is a unit.
+ * login's choice as stored — and a bare uuid here is a unit.
  *
  * @param {unknown} value
  * @returns {string|null}
@@ -167,34 +176,45 @@ export function workspaceHeader(value) {
 }
 
 /**
- * The request named its workspace EXPLICITLY — `--org`, `--personal`, a choice made at
- * create — and the backend works on the site from another.
+ * The site is in another workspace than the one this command works in.
  *
- * ⛔ Stopping is the point. It is the mismatch check [Diego, 2026-09-22: "there is no org
- * mismatch when the site is set for an org and the user tries a different one"], and it
- * is the backend's `409` that decides it, never a handle comparison here: a site in
- * `@acme/labs` is legitimately worked on from `@acme`. Adopting the answer would override
- * a choice the user made.
+ * ⛔ **Stopping is the point, and nothing is adopted.** A command works in ONE workspace —
+ * the one chosen with the login (`workspace.js`) — and a site outside it is refused, not
+ * worked on anyway *[Diego, 2026-09-23: "that's the intent of the workspace concept"]*.
+ * It is the backend's `409` that decides it, never a handle comparison here: a site in
+ * `@acme/labs` is legitimately worked on from `@acme`. ⚠️ *Until 2026-09-23 a workspace
+ * nobody had named was adopted from the `409` and the request retried.*
  */
 export class WorkspaceMismatchError extends Error {
   /**
-   * @param {{ named: string|null, answer: string|null }} p - the workspace the request
-   *   named, and the one the backend named (`@handle`, null for personal)
+   * @param {{ named: string|null, answer: string|null, source?: string }} p - the
+   *   workspace the request named and the one the backend named (`@handle`, a unit's
+   *   uuid, null for personal), and where the named one came from (`workspace.js`)
    */
-  constructor({ named, answer }) {
+  constructor({ named, answer, source = 'login' }) {
     const where = (w) =>
       !w ? 'your personal workspace' : w.startsWith('@') ? w : `the unit ${w}`
-    const flag = named ? '--org' : '--personal'
-    super(
-      `The backend works on this site from ${where(answer)}, not ${where(named)} ` +
-        `(${named ? `--org ${named}` : flag}). ` +
-        // `--org` takes a handle; a unit without one is reached by naming nothing.
-        (answer?.startsWith('@') ? `Pass --org ${answer}, or drop ${flag}.` : `Drop ${flag}.`)
-    )
+    // How to work in the site's workspace, said for the way this one was chosen.
+    const switchTo = !answer
+      ? { flag: 'pass --personal', env: 'set UNIWEB_WORKSPACE=personal' }
+      : answer.startsWith('@')
+        ? { flag: `pass --org ${answer}`, env: `set UNIWEB_WORKSPACE=${answer}` }
+        : null
+    const login = !answer ? 'uniweb login --personal' : answer.startsWith('@') ? `uniweb login --org ${answer}` : null
+    const fix = !switchTo
+      ? 'It has no handle, so the CLI cannot work in it.'
+      : source === 'flag'
+        ? `To work on it, ${switchTo.flag}.`
+        : source === 'env'
+          ? `To work on it, ${switchTo.env}.`
+          : `To work on it: ${login}`
+    const why = source === 'flag' ? ' (named on this command)' : source === 'env' ? ' (UNIWEB_WORKSPACE)' : ''
+    super(`This site is in ${where(answer)}, and you are working in ${where(named)}${why}. ${fix}`)
     this.name = 'WorkspaceMismatchError'
     this.status = 409
     this.named = named
     this.answer = answer
+    this.source = source
   }
 }
 
@@ -270,8 +290,7 @@ export class BackendClient {
     this._fetch = fetchImpl || ((url, init) => globalThis.fetch(url, init))
     this._discovery = null
     this._workspace = null
-    this._workspaceExplicit = false
-    this._onWorkspaceAdopted = null
+    this._workspaceSource = 'login'
   }
 
   /** The workspace this client's requests name — `@handle`, or null (none named). */
@@ -280,23 +299,19 @@ export class BackendClient {
   }
 
   /**
-   * Name the workspace every request from here on works in (`x-uniweb-workspace`).
+   * Name the workspace every site request from here on works in (`x-uniweb-workspace`)
+   * — the one `resolveWorkspace` answered for this command.
    *
-   * @param {string|null} value - `@acme` / `acme`, a handle-less unit's uuid, or null to
-   *   name none (`workspaceHeader`)
+   * @param {string|null} value - `@acme` / `acme`, a handle-less unit's uuid, or null for
+   *   the personal workspace (`workspaceHeader`)
    * @param {object} [opts]
-   * @param {boolean} [opts.explicit=false] - the user named it (`--org`, `--personal`,
-   *   the create picker). A `409 wrong_workspace` then STOPS the command
-   *   (`WorkspaceMismatchError`) instead of adopting the backend's answer.
-   * @param {(handle: string|null) => void|Promise<void>} [opts.onAdopted] - called when a
-   *   request that named nothing, or a stale workspace, adopts the one the backend named;
-   *   the caller records it (sync.json) and says so
+   * @param {string} [opts.source='login'] - where it came from (`workspace.js`), so a
+   *   refusal says how to switch
    * @returns {this}
    */
-  setWorkspace(value, { explicit = false, onAdopted = null } = {}) {
+  setWorkspace(value, { source = 'login' } = {}) {
     this._workspace = workspaceHeader(value)
-    this._workspaceExplicit = Boolean(explicit)
-    this._onWorkspaceAdopted = onAdopted || null
+    this._workspaceSource = source
     return this
   }
 
@@ -332,9 +347,8 @@ export class BackendClient {
    * applies query params, and infers a content-type from the body when unset
    * (string → application/json, Buffer/Uint8Array → application/zip). Returns
    * the raw Response so callers branch on status themselves (409 resume,
-   * 404 → null, 401/403 messaging, …) — except a `409 wrong_workspace`, which is
-   * answered here: adopted and retried once when the workspace was not named, and
-   * thrown as `WorkspaceMismatchError` when it was (see the body).
+   * 404 → null, 401/403 messaging, …) — except a `409 wrong_workspace`, thrown as
+   * `WorkspaceMismatchError`: the site is in another workspace than this command's.
    *
    * @param {string} path - leading-slash path, e.g. '/dev/site/content'
    * @param {object} [opts]
@@ -349,13 +363,10 @@ export class BackendClient {
     const res = await this._send(path, opts)
     if (res?.status !== 409) return res
 
-    // ⭐ THE WORKSPACE A REQUEST NAMES IS CHECKED BY THE BACKEND, NOT HERE. A request that
-    // names the wrong one for an existing site is refused with `409 wrong_workspace`,
-    // naming a workspace the caller CAN open that contains the site — its own unit, or a
-    // parent the caller belongs to. Two answers, and which one depends on the user:
-    //   - they named it (`--org`, `--personal`) → stop and say so: the mismatch check;
-    //   - they named nothing, or a stale one → adopt the backend's answer, let the caller
-    //     record it, and retry ONCE.
+    // ⭐ THE WORKSPACE A REQUEST NAMES IS CHECKED BY THE BACKEND, NOT HERE. A request whose
+    // workspace does not contain the site is refused with `409 wrong_workspace`, naming a
+    // workspace the caller CAN open that does — the site's own unit, or a parent. The
+    // command works in one workspace, so this stops it (`WorkspaceMismatchError`).
     // ⛔ No handle comparison anywhere: a site in `@acme/labs` is worked on from `@acme`.
     const problem =
       typeof res.clone === 'function' ? await res.clone().json().catch(() => null) : null
@@ -367,15 +378,14 @@ export class BackendClient {
       : typeof where.unit_uuid === 'string' && where.unit_uuid
         ? where.unit_uuid
         : null
-    // Naming what the backend names and still refused: nothing to adopt, or to report
-    // as a mismatch. The caller reads the 409 like any other.
+    // Refused while naming what the backend names: nothing to switch to; the caller reads
+    // the 409 like any other.
     if (answer === this._workspace) return res
-    if (this._workspaceExplicit) {
-      throw new WorkspaceMismatchError({ named: this._workspace, answer })
-    }
-    this._workspace = answer
-    if (this._onWorkspaceAdopted) await this._onWorkspaceAdopted(answer)
-    return this._send(path, opts)
+    throw new WorkspaceMismatchError({
+      named: this._workspace,
+      answer,
+      source: this._workspaceSource
+    })
   }
 
   /** One request, as `request` documents it — naming the client's workspace on a site route. */
@@ -571,7 +581,7 @@ export class BackendClient {
 
   /** GET /dev/orgs → { account_handle, orgs[] }. */
   async fetchOrgs() {
-    return fetchOrgsImpl({ apiBase: this.origin, token: await this.token() })
+    return fetchOrgsImpl({ apiBase: this.origin, token: await this.token(), fetchImpl: this._fetch })
   }
 
   /** POST /dev/orgs { handle } → { handle, uuid, is_primary }. Throws with the server's detail on 409/422. */

@@ -19,6 +19,7 @@ import { humanBytes } from '../utils/bytes.js'
 import { isAuthoredPreview } from '../utils/preview.js'
 import {
   describeRequestError,
+  describeWorkspace,
   WorkspaceMismatchError,
   workspaceHandle,
   workspaceHeader
@@ -652,21 +653,19 @@ export function writeItemUuids(siteDir, backend, map) {
 }
 
 /**
- * The workspace this project's requests name on `backend`, as the header names it —
- * `@handle`, or a unit's bare uuid when that unit has no handle — or null for none.
+ * The workspace this site was created in on `backend` — its owner, as the create
+ * answered it — in the header's form: `@handle`, a unit's bare uuid when that unit has
+ * no handle, or null for the personal workspace (or no record).
  *
- * Read back from `backend`'s section of `sync.json`: `site.org` holds a handle, stored
- * bare and re-dressed with its `@`; `site.unit` holds a unit's uuid, for a workspace
- * that has no handle. At most one is set (`writeSiteWorkspace`). ⛔ They are two keys
- * because the `@` is the only thing telling the two apart — our own handle grammar
- * admits a uuid-shaped handle — and a bare value at rest has lost it.
+ * ⭐ A RECORD, NOT A ROUTE (2026-09-23). A command works in the workspace chosen with the
+ * login (`workspace.js`); this says where the site was made, and routes nothing. (Until
+ * then it was the workspace every request named, adopted from a `409` when stale.)
  *
- * Recorded at create — the site's owner — or adopted later from a backend's `409
- * wrong_workspace`, which may name a PARENT workspace that contains the site rather
- * than the site's own unit. ⇒ It is "the workspace these requests name", never
- * printed as "the site's org".
- *
- * Deliberately NOT a fallback for the flag: an explicit `--org` always wins.
+ * Read from `backend`'s section of `sync.json`: `site.org` holds a handle, stored bare
+ * and re-dressed with its `@`; `site.unit` holds a unit's uuid. At most one is set
+ * (`writeSiteWorkspace`). ⛔ Two keys, because the `@` is the only thing telling the two
+ * apart — our own handle grammar admits a uuid-shaped handle — and a bare value at rest
+ * has lost it.
  *
  * @param {string} siteDir
  * @param {string} backend - the origin whose record to read
@@ -681,10 +680,10 @@ export function readSiteWorkspace(siteDir, backend) {
 }
 
 /**
- * Record the workspace this project's requests name on `backend` — a handle in
- * `site.org` (bare), a handle-less unit in `site.unit`, clearing the other; null
- * clears both (the personal workspace, named by naming none). Returns what was
- * recorded, in the header's form.
+ * Record the workspace this site was created in on `backend` — a handle in `site.org`
+ * (bare), a handle-less unit in `site.unit`, clearing the other; null clears both (the
+ * personal workspace, named by naming none). Returns what was recorded, in the header's
+ * form.
  *
  * @param {string} siteDir
  * @param {string} backend
@@ -700,50 +699,6 @@ function writeSiteWorkspace(siteDir, backend, workspace) {
     }
   })
   return w
-}
-
-/** A workspace as a sentence names it: `@acme`, `the unit <uuid>`, or `your personal workspace`. */
-export function describeWorkspace(workspace) {
-  if (!workspace) return 'your personal workspace'
-  return workspace.startsWith('@') ? workspace : `the unit ${workspace}`
-}
-
-/**
- * Point `client` at the workspace this project's requests name — `x-uniweb-workspace`.
- *
- * ⭐ THE WORKSPACE IS PER PROJECT, per backend — the one `sync.json` recorded — never
- * per login: a login is one session for the whole machine (`utils/session-file.js`).
- * An explicit choice (`--org`, `--personal`, the create picker) is sent as named, and
- * a `409 wrong_workspace` then STOPS the command. Otherwise the client adopts the
- * workspace the backend names, and this records it — as-is, since it may be a parent
- * workspace, or a unit with no handle — and says so. (`client.js::request`; agreed
- * with backend 2026-09-23.)
- *
- * @param {import('./client.js').BackendClient} client
- * @param {object} p
- * @param {string} p.siteDir
- * @param {string|null} p.workspace - in the header's form (`readSiteWorkspace`, or
- *   `workspaceHandle(--org)`), or null to name none
- * @param {boolean} [p.explicit=false]
- * @param {(m: string) => void} [p.note]
- * @returns {import('./client.js').BackendClient}
- */
-export function nameSiteWorkspace(client, { siteDir, workspace, explicit = false, note }) {
-  return client.setWorkspace(workspace, {
-    explicit,
-    onAdopted: (adopted) => {
-      try {
-        writeSiteWorkspace(siteDir, client.origin, adopted)
-      } catch {
-        // Recording is a convenience for the next command; this one still retries.
-      }
-      note?.(
-        adopted
-          ? `Requests for this site now name ${describeWorkspace(adopted)}, the workspace the backend works on it from (recorded in sync.json).`
-          : 'Requests for this site now name no workspace — the backend works on it from your personal one (recorded in sync.json).'
-      )
-    }
-  })
 }
 
 /**
@@ -765,173 +720,6 @@ function recordSiteWorkspace(siteDir, backend, owner) {
     // The uuid is the load-bearing back-fill; losing the org note must never
     // fail a push that already succeeded on the backend.
     return null
-  }
-}
-
-/**
- * The `source`s of `resolveSiteOrgForCreate` that are the user's OWN choice — named on
- * the command line or picked — and so explicit: a `409 wrong_workspace` for one stops
- * the command rather than adopting the backend's answer (`nameSiteWorkspace`).
- */
-export const EXPLICIT_OWNER = new Set(['flag', 'personal', 'picked'])
-
-/**
- * Resolve WHICH ORG will own a site that is about to be created.
- *
- * The create that mints the site's uuid takes its owner from the workspace the request
- * names (`x-uniweb-workspace`), and the backend never moves ownership afterwards. There is also no CLI verb to transfer
- * or delete a site. So this is a **one-shot, unrepealable** decision — and until
- * this function existed the CLI made it silently, by sending nothing and letting
- * the backend fall back to the session's personal context. A developer who belongs
- * to several orgs could put a company site, and the storage it bills, somewhere
- * they never named.
- *
- * `register` resolves a foundation's scope in the same order — recorded (the scope
- * in its name, `@acme/marketing` in main.js), else explicit (`--scope`), else derived
- * (`deriveScope`) — with one difference: non-interactive, it takes your personal
- * scope and says so. This refuses instead, because a site's owner is the one-shot
- * decision above, and a scope is only a namespace (2026-09-23). ⭐ And the two are
- * separate decisions: a foundation may be registered under any org its author
- * belongs to, whoever owns the site (2026-09-22) — a site's `@/x` refs take the
- * FOUNDATION's scope, never this one. ⚠️ Until 2026-09-21 this said
- * `register` "has refused to guess a scope", which is wrong for a non-interactive
- * run by anyone with an org.
- *
- * Order:
- *   1. `--org @org`         — explicit; the create names it as its workspace
- *   2. `--personal`         — explicit "no org, I mean it" → names NO workspace
- *   3. the recorded org     — `sync.json`, written at this site's own create
- *   4. the site already exists on this backend (a recorded uuid) → null; ownership
- *      is settled, ask nothing
- *   5. otherwise ASK (TTY) or REFUSE (non-interactive)
- *
- * ⛔ **`--personal` names no workspace, and is NOT the same as `--org @<handle>`.**
- * The personal *org* `@jane` is an org like any other, lazily created on first use;
- * the session's personal workspace is not an org at all. Whether the backend gives
- * them the same owning unit is **its** business and unverified here, so the
- * deliberate-personal spelling names nothing rather than asserting an equivalence
- * this lane cannot check.
- *
- * @returns {Promise<{ workspace: string|null, source?: string, refused?: true, reason?: string }>}
- *   `workspace: null` with no `refused` means "name no workspace" — either a settled site
- *   or a deliberate personal choice. `source` says which answer it is: `flag`,
- *   `personal` and `picked` are the user's own choice (explicit — a mismatch then
- *   stops the command); `recorded`, `existing` and `offline` are not.
- */
-export async function resolveSiteOrgForCreate({
-  client,
-  siteDir,
-  args = [],
-  flag,
-  personal = false,
-  offline = false
-}) {
-  if (flag) return { workspace: workspaceHandle(flag), source: 'flag' }
-  if (personal) return { workspace: null, source: 'personal' }
-
-  const recorded = readSiteWorkspace(siteDir, client?.origin)
-  if (recorded) return { workspace: recorded, source: 'recorded' }
-
-  // Already created ⇒ nothing to decide: ownership was settled at its create and
-  // re-asking would be theatre. ⭐ "Created" is a question about THIS backend now —
-  // the same project may be brand new on one and long-established on another.
-  if (readBackendState(siteDir, client?.origin).site?.uuid) return { workspace: null, source: 'existing' }
-
-  // An offline preview (`--dry-run` / `-o`) must never authenticate, and it is
-  // creating nothing, so there is no decision to force. Say what is unresolved
-  // instead of prompting for an answer the run will not use.
-  if (offline) return { workspace: null, source: 'offline' }
-
-  // `--yes` promises "never block on a prompt", so it has to answer this one too —
-  // and the only honest non-blocking answer to an unanswerable ownership question
-  // is a refusal. Treating it as consent-to-anything would reinstate the silent
-  // default this whole path exists to remove, behind a flag that reads like
-  // approval.
-  const { isNonInteractive } = await import('../utils/interactive.js')
-  if (isNonInteractive(args) || args.includes('--yes')) {
-    return {
-      workspace: null,
-      refused: true,
-      reason:
-        'This site does not exist on the backend yet, and no org was named.\n' +
-        '  The create decides who OWNS it — and which workspace its storage is billed to —\n' +
-        '  one time, with no CLI way to change it afterwards. Name it explicitly:\n' +
-        '    --org @org        create it under an organization\n' +
-        '    --personal        create it under your personal account, deliberately'
-    }
-  }
-
-  // Interactive: offer the real choice. Deliberately NOT `deriveScope` — that one picks
-  // a NAMESPACE for a foundation, where `@<your handle>` is your personal scope. Here
-  // the answer is an OWNER: your personal workspace (named by naming none) or an org.
-  const { fetchOrgs, createOrg, validateHandle, bareHandle } =
-    await import('../utils/registry-orgs.js')
-  let envelope
-  try {
-    envelope = await fetchOrgs({
-      apiBase: client.origin,
-      token: await client.token()
-    })
-  } catch (err) {
-    return { workspace: null, refused: true, reason: err.message }
-  }
-  const personalHandle = envelope.account_handle || null
-  const prompts = (await import('prompts')).default
-  const choices = [
-    ...envelope.orgs.map((o) => ({
-      title: `@${o.handle}${o.handle === personalHandle ? ' — your personal org' : o.is_primary ? ' (primary)' : ''}`,
-      value: o.handle
-    })),
-    {
-      title: `Personal — no organization${personalHandle ? ` (${personalHandle})` : ''}`,
-      value: ':personal'
-    },
-    { title: 'A new organization…', value: ':new' }
-  ]
-  const { choice } = await prompts(
-    {
-      type: 'select',
-      name: 'choice',
-      message: 'Create this site under which owner?',
-      choices,
-      initial: 0
-    },
-    {
-      onCancel: () => {
-        console.log('\nCancelled.')
-        process.exit(0)
-      }
-    }
-  )
-  if (!choice) return { workspace: null, refused: true, reason: 'No owner chosen.' }
-  if (choice === ':personal') return { workspace: null, source: 'picked' }
-  if (choice !== ':new') return { workspace: `@${choice}`, source: 'picked' }
-
-  const answer = await prompts(
-    {
-      type: 'text',
-      name: 'handle',
-      message: 'Org handle (e.g. acme):',
-      validate: (v) => validateHandle(v) || true
-    },
-    {
-      onCancel: () => {
-        console.log('\nCancelled.')
-        process.exit(0)
-      }
-    }
-  )
-  if (!answer.handle)
-    return { workspace: null, refused: true, reason: 'No org handle given.' }
-  try {
-    const org = await createOrg({
-      apiBase: client.origin,
-      token: await client.token(),
-      handle: bareHandle(answer.handle)
-    })
-    return { workspace: `@${org.handle}`, source: 'picked' }
-  } catch (err) {
-    return { workspace: null, refused: true, reason: err.message }
   }
 }
 
@@ -1048,7 +836,7 @@ export async function ensureSiteExists({
 
   let res
   try {
-    // The owner is the workspace the client names — `nameSiteWorkspace` set it.
+    // The owner is the workspace the client names — the command's (`workspace.js`).
     res = await client.createSite({
       name: siteName,
       foundation: siteFoundation

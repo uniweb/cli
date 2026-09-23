@@ -21,6 +21,11 @@ import {
 } from '../src/commands/clone.js'
 import { makeUwx } from './helpers/uwx-fixture.js'
 
+// ⭐ These exercise the pull lanes, not the workspace: a command works in the one chosen
+// with the login (backend/workspace.js), and a test has no login to choose one. Named
+// here for the whole file, as a token-logged process would name it.
+process.env.UNIWEB_WORKSPACE = 'personal'
+
 // ⛔ The pull lane answers with `application/vnd.uniweb.exchange.entity+zip`, NOT
 // JSON. This stub used to expose only `json()`, and clone read it with
 // `res.json()` — so the suite was green while the real command died on the ZIP

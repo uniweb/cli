@@ -79,15 +79,17 @@ const VERBS = {
     '--no-assets',
     '--no-records', '--no-delete', '--no-prune',
     // via backend/site-sync.js (the owner resolver) and utils/conformance.js
-    '--yes', '--org', '--no-validate', ...VIA_DEPLOY
+    '--yes', '--org', '--personal', '--no-validate', ...VIA_DEPLOY
   ],
   clone: [
     '--content-only', '--no-assets', '--no-records', '--path',
-    '--project', '--org'
+    '--project', '--org', '--personal'
   ],
   register: [
     '--dry-run', '--json', '--output', '-o',
-    '--schema-only', '--scope', '--org'
+    '--schema-only', '--scope', '--org',
+    // reach the login a register may trigger, which chooses the workspace it works in
+    '--personal'
   ],
   /**
    * `forget` = remove one backend's records (`--backend <url>`), or everything a
@@ -98,7 +100,7 @@ const VERBS = {
   forget: ['--backend', '--all'],
   status: [
     '--json', '--remote', '--dry-run',
-    '--force', '--no-verify', '--no-validate', '--yes', '--org',
+    '--force', '--no-verify', '--no-validate', '--yes', '--org', '--personal',
     // inert here, reachable through the bring-along module status imports for
     // `resolveLocalFoundation` — listed per the over-approximation note above
     '--no-release', ...VIA_DEPLOY
@@ -118,7 +120,7 @@ const VERBS = {
    */
   refresh: [
     '--no-backend', '--no-git',
-    '--org', '--dry-run', '--no-validate', '--yes', ...VIA_DEPLOY
+    '--org', '--personal', '--dry-run', '--no-validate', '--yes', ...VIA_DEPLOY
   ]
 }
 

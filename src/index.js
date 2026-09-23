@@ -1456,15 +1456,10 @@ ${colors.bright}Options:${colors.reset}
                      bind to, and the app cannot open such a site.
   --no-save          Do not record this deploy in deploy.yml
   --no-validate      Skip the content-conformance check (it only warns)
-  --org @org         Publish under @org (membership-gated). On a site's FIRST
-                     publish it decides which org owns the site, and whose storage
-                     its assets are charged to. Recorded in sync.json and named on
-                     every request after, so it is never re-typed. Without it, you
-                     are asked once. Later, it must match the workspace the backend
-                     works on the site from, or publish stops.
-  --personal         Create the site under your personal account, deliberately.
-                     Only needed on a first publish, and only to answer the owner
-                     question without a prompt (CI, agents, scripts).
+  --org @org         Work in @org for this publish, instead of the workspace
+  --personal         chosen at \`uniweb login\` (or your personal workspace). A
+                     site this publish creates is created — owned — there, and a
+                     site the backend keeps in another workspace stops it.
 `,
     create: `
 ${colors.cyan}${colors.bright}uniweb create${colors.reset} ${colors.dim}— Create a new project${colors.reset}
@@ -1793,16 +1788,26 @@ does nothing; add --password, --browser, --token-paste or --token to log in agai
 Without --backend: https://uniweb.app (or \$UNIWEB_REGISTER_URL). No command talks
 to a backend you are not logged in to — run one before logging in and it asks first.
 
+${colors.bright}The workspace you work in.${colors.reset} A login works in ONE workspace — your
+personal one, or an organization's — and every push, pull and publish works in it:
+a site it creates is created there, and a site kept in another workspace is refused.
+With no organization it is your personal workspace; with organizations you are asked,
+or name it. Already logged in, \`uniweb login --org @other\` switches without logging
+in again.
+
 ${colors.bright}Options:${colors.reset}
   --backend <url>    The backend to log in to
+  --org @org         Work in @org (an organization you belong to)
+  --personal         Work in your personal workspace
   --token <bearer>   Seed + verify a session from a bearer token (non-interactive)
   --browser          Force the browser method
   --password         Force the username/password method
   --token-paste      Force the paste-a-token prompt
 
-In non-interactive mode (CI / no TTY), pass \`--token <bearer>\`, or set
-\`UNIWEB_USERNAME\` + \`UNIWEB_PASSWORD\`, or set \`UNIWEB_TOKEN\` (used per-command,
-not stored). \`uniweb logout\` logs you out.
+In non-interactive mode (no TTY — an agent, a script), pass \`--token <bearer>\` with
+\`--org @org\` or \`--personal\`, or set \`UNIWEB_USERNAME\` + \`UNIWEB_PASSWORD\`, or set
+\`UNIWEB_TOKEN\` (per process, not stored) with \`UNIWEB_WORKSPACE=@org\` or \`personal\`.
+\`uniweb logout\` logs you out.
 `,
     refresh: `
 ${colors.cyan}${colors.bright}uniweb refresh${colors.reset} ${colors.dim}— Catch up with teammates AND app authors${colors.reset}
@@ -2082,8 +2087,8 @@ ${colors.bright}Publish Options:${colors.reset}
   --dry-run          Resolve everything; release/sync/POST nothing
   --yes              Skip confirmations (CI); never block on a prompt
   --no-release       Ship content against the already-released code; release nothing
-  --org @org         Publish under @org (first publish only; then remembered)
-  --personal         Own the new site personally, deliberately (first publish only)
+  --org @org         Work in @org for this publish, not your login's workspace
+  --personal         Work in your personal workspace for this publish
   --no-save          Do not record this deploy in deploy.yml
   --no-validate      Skip the content-conformance check (it only warns)
 

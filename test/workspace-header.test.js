@@ -1,6 +1,6 @@
 /**
  * The workspace a request names — `x-uniweb-workspace: @<handle>` — and the backend's
- * `409 wrong_workspace` when it is the wrong one for an existing site.
+ * `409 wrong_workspace` when the site is not in it.
  *
  * The properties pinned here were agreed with the backend rather than assumed:
  *
@@ -9,16 +9,13 @@
  *     the name, and a refused workspace must never fail a registration;
  *   - the `409` DECIDES, and the CLI compares no handles — a site in a sub-org is
  *     legitimately worked on from its parent;
- *   - the user NAMED it (`--org`, `--personal`) → stop; nothing named, or a stale
- *     record → adopt the backend's answer, record it, retry ONCE.
+ *   - ⭐ a command works in ONE workspace, chosen with the login (backend/workspace.js):
+ *     a site outside it STOPS the command, whatever named the workspace — nothing is
+ *     adopted, nothing is retried *[Diego, 2026-09-23]*.
  */
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { readFileSync } from 'node:fs'
 import {
   BackendClient,
   WORKSPACE_HEADER,
@@ -27,9 +24,9 @@ import {
   workspaceHeader,
   namesWorkspace,
   describeRequestError,
+  describeWorkspace,
   refusalDetail
 } from '../src/backend/client.js'
-import { nameSiteWorkspace, readSiteWorkspace } from '../src/backend/site-sync.js'
 
 const ORIGIN = 'http://backend.test'
 const SITE = '/dev/site/content/pull/SITE-1'
@@ -62,12 +59,6 @@ const wrongWorkspace = (handle, unitUuid = handle ? 'UNIT-1' : null) => () =>
     { status: 409, headers: { 'content-type': 'application/problem+json' } }
   )
 
-function tmpSite() {
-  const dir = mkdtempSync(join(tmpdir(), 'uniweb-workspace-'))
-  writeFileSync(join(dir, 'site.yml'), 'name: Acme\n')
-  return dir
-}
-
 // ─── the header ───────────────────────────────────────────────────────────────
 
 test('a workspace is written `@handle` whatever spelling it arrives in', () => {
@@ -82,8 +73,7 @@ test('the header takes a handle-less unit by its uuid, bare — and a handle kee
   assert.equal(workspaceHeader(UNIT), UNIT)
   assert.equal(workspaceHeader('@acme'), '@acme')
   assert.equal(workspaceHeader('acme'), '@acme')
-  // ⚠️ Our handle grammar admits a uuid-shaped handle, so a HANDLE must arrive dressed:
-  // `--org` goes through workspaceHandle first, and a dressed one is never a unit.
+  // ⚠️ Our handle grammar admits a uuid-shaped handle, so a HANDLE must arrive dressed.
   assert.equal(workspaceHeader(workspaceHandle(UNIT)), `@${UNIT}`)
   assert.equal(workspaceHeader(null), null)
 })
@@ -103,90 +93,64 @@ test('site routes name the workspace; registry, assets, auth, orgs and config do
   assert.equal(calls[1].headers[WORKSPACE_HEADER], undefined)
 })
 
-test('naming none sends no header — the personal workspace is named by omission', async () => {
+test('the personal workspace is named by omission — no header', async () => {
   const { client, calls } = recorded()
-  await client.request(SITE)
   client.setWorkspace(null)
   await client.request(SITE)
-  for (const c of calls) assert.equal(WORKSPACE_HEADER in c.headers, false)
+  assert.equal(WORKSPACE_HEADER in calls[0].headers, false)
 })
 
-// ─── the 409 ──────────────────────────────────────────────────────────────────
+// ─── the 409: the site is not in the workspace this command works in ──────────
 
-test('nothing named ⇒ adopt the workspace the backend names, record it, retry ONCE', async () => {
+test('⛔ a site in another workspace STOPS the command — nothing adopted, no retry', async () => {
+  const { client, calls } = recorded(wrongWorkspace('client'))
+  client.setWorkspace('@acme', { source: 'login' })
+  await assert.rejects(client.request(SITE), (err) => {
+    assert.ok(err instanceof WorkspaceMismatchError)
+    assert.equal(err.named, '@acme')
+    assert.equal(err.answer, '@client')
+    assert.match(err.message, /This site is in @client, and you are working in @acme\./)
+    assert.match(err.message, /To work on it: uniweb login --org @client$/)
+    return true
+  })
+  assert.equal(calls.length, 1)
+  assert.equal(client.workspace, '@acme', 'the workspace is not changed behind the user')
+})
+
+test('the way out is said the way the workspace was chosen — flag, env, login', async () => {
+  const cases = [
+    ['flag', /\(named on this command\)\. To work on it, pass --org @client\./],
+    ['env', /\(UNIWEB_WORKSPACE\)\. To work on it, set UNIWEB_WORKSPACE=@client\./],
+    ['login', /To work on it: uniweb login --org @client$/],
+    ['personal', /To work on it: uniweb login --org @client$/]
+  ]
+  for (const [source, expected] of cases) {
+    const { client } = recorded(wrongWorkspace('client'))
+    client.setWorkspace(null, { source })
+    await assert.rejects(client.request(SITE), (err) => {
+      assert.match(err.message, /you are working in your personal workspace/, source)
+      assert.match(err.message, expected, source)
+      return true
+    })
+  }
+})
+
+test('a site in the personal workspace, or in a unit with no handle, is said as such', async () => {
+  const personal = recorded(wrongWorkspace(null))
+  personal.client.setWorkspace('@acme')
+  await assert.rejects(personal.client.request(SITE), /in your personal workspace, .* uniweb login --personal/)
+
+  const unit = recorded(wrongWorkspace(null, UNIT))
+  unit.client.setWorkspace('@acme')
+  await assert.rejects(unit.client.request(SITE), new RegExp(`in the unit ${UNIT}.*It has no handle`))
+})
+
+test('refused while naming what the backend names: the 409 is returned, not thrown', async () => {
   const { client, calls } = recorded(wrongWorkspace('acme'))
-  const adopted = []
-  client.setWorkspace(null, { onAdopted: (h) => adopted.push(h) })
-  const res = await client.request(SITE)
-  assert.equal(res.status, 200)
-  assert.equal(calls.length, 2)
-  assert.equal(calls[1].headers[WORKSPACE_HEADER], '@acme')
-  assert.deepEqual(adopted, ['@acme'])
-  // …and every later request names it, without asking again.
-  await client.request(SITE)
-  assert.equal(calls[2].headers[WORKSPACE_HEADER], '@acme')
-})
-
-test('a stale record is replaced — and a parent workspace is adopted as-is', async () => {
-  // The backend may name a PARENT the caller belongs to rather than the site's own unit.
-  // No handle comparison here: the answer is what later requests name.
-  const { client, calls } = recorded(wrongWorkspace('acme'))
-  client.setWorkspace('@acme-labs')
-  await client.request(SITE)
-  assert.equal(calls[0].headers[WORKSPACE_HEADER], '@acme-labs')
-  assert.equal(calls[1].headers[WORKSPACE_HEADER], '@acme')
-  assert.equal(client.workspace, '@acme')
-})
-
-test('both null ⇒ the personal workspace: the retry names none', async () => {
-  const { client, calls } = recorded(wrongWorkspace(null))
   client.setWorkspace('@acme')
   const res = await client.request(SITE)
-  assert.equal(res.status, 200)
-  assert.equal(calls[1].headers[WORKSPACE_HEADER], undefined)
-  assert.equal(client.workspace, null)
-})
-
-test('⛔ the user NAMED it ⇒ stop, and say which workspace the backend works from', async () => {
-  const { client, calls } = recorded(wrongWorkspace('acme'))
-  client.setWorkspace('@client', { explicit: true })
-  await assert.rejects(client.request(SITE), (err) => {
-    assert.ok(err instanceof WorkspaceMismatchError)
-    assert.equal(err.named, '@client')
-    assert.equal(err.answer, '@acme')
-    assert.match(err.message, /works on this site from @acme, not @client \(--org @client\)/)
-    assert.match(err.message, /Pass --org @acme, or drop --org\./)
-    return true
-  })
-  assert.equal(calls.length, 1, 'no retry — adopting would override the user')
-  assert.equal(client.workspace, '@client')
-})
-
-test('⛔ `--personal` is explicit too', async () => {
-  const { client } = recorded(wrongWorkspace('acme'))
-  client.setWorkspace(null, { explicit: true })
-  await assert.rejects(client.request(SITE), (err) => {
-    assert.ok(err instanceof WorkspaceMismatchError)
-    assert.equal(err.named, null)
-    assert.match(err.message, /from @acme, not your personal workspace \(--personal\)/)
-    assert.match(err.message, /or drop --personal\./)
-    return true
-  })
-})
-
-test('never a loop: refused while naming what the backend names ⇒ the 409 as-is', async () => {
-  for (const explicit of [false, true]) {
-    const { client, calls } = recorded(wrongWorkspace('acme'), wrongWorkspace('acme'))
-    client.setWorkspace('@acme', { explicit })
-    const res = await client.request(SITE)
-    assert.equal(res.status, 409)
-    assert.equal(calls.length, 1)
-  }
-  // And a retry that is refused again is returned, not retried.
-  const { client, calls } = recorded(wrongWorkspace('acme'), wrongWorkspace('other'))
-  const res = await client.request(SITE)
   assert.equal(res.status, 409)
-  assert.equal(calls.length, 2)
+  assert.equal(calls.length, 1)
 })
 
 test('any other 409 is the caller’s — untouched', async () => {
@@ -199,60 +163,19 @@ test('any other 409 is the caller’s — untouched', async () => {
   assert.equal(calls.length, 1)
 })
 
-test('a unit with no handle is adopted by its uuid, bare — as the header takes it', async () => {
-  const { client, calls } = recorded(wrongWorkspace(null, UNIT))
-  const res = await client.request(SITE)
-  assert.equal(res.status, 200)
-  assert.equal(calls[1].headers[WORKSPACE_HEADER], UNIT, 'no @: a bare value is a unit')
-  assert.equal(client.workspace, UNIT)
-})
-
-test('⛔ a unit answer to an explicit --org stops, and names the unit', async () => {
-  const { client } = recorded(wrongWorkspace(null, UNIT))
-  client.setWorkspace('@client', { explicit: true })
-  await assert.rejects(client.request(SITE), (err) => {
-    assert.ok(err instanceof WorkspaceMismatchError)
-    assert.match(err.message, new RegExp(`from the unit ${UNIT}, not @client`))
-    // `--org` takes a handle; a unit without one is reached by naming nothing.
-    assert.match(err.message, /Drop --org\.$/)
-    return true
-  })
-})
-
-test('a one-workspace deployment’s plain 409 is surfaced as it is, not adopted', async () => {
+test('a one-workspace deployment’s plain 409 is surfaced as it is', async () => {
   // No `reason`, no `workspace`: that backend has nothing to switch to.
-  const conflict = {
-    status: 409,
-    title: 'Conflict',
-    detail: 'This deployment has one workspace, @home.'
-  }
-  const { client, calls } = recorded(
-    () => new Response(JSON.stringify(conflict), { status: 409 })
-  )
+  const conflict = { status: 409, title: 'Conflict', detail: 'This deployment has one workspace, @home.' }
+  const { client } = recorded(() => new Response(JSON.stringify(conflict), { status: 409 }))
   client.setWorkspace('@acme')
   const res = await client.request(SITE)
   assert.equal(res.status, 409)
-  assert.equal(calls.length, 1)
   assert.equal(await refusalDetail(res), conflict.detail)
-  // …and a prose refusal, or none, still reads as something or nothing.
   assert.equal(await refusalDetail(new Response('upstream said no', { status: 502 })), 'upstream said no')
   assert.equal(await refusalDetail(new Response('', { status: 409 })), null)
 })
 
-// ─── recording and reporting ──────────────────────────────────────────────────
-
-test('nameSiteWorkspace records an adopted workspace in sync.json, bare, and says so', async () => {
-  const dir = tmpSite()
-  const { client } = recorded(wrongWorkspace('acme'))
-  const notes = []
-  nameSiteWorkspace(client, { siteDir: dir, workspace: null, note: (m) => notes.push(m) })
-  await client.request(SITE)
-  assert.equal(readSiteWorkspace(dir, ORIGIN), '@acme')
-  // "the workspace these requests name" — never "the site's org": it may be a parent.
-  assert.equal(notes.length, 1)
-  assert.match(notes[0], /Requests for this site now name @acme, the workspace/)
-  assert.doesNotMatch(notes[0], /site's org/)
-})
+// ─── reporting ────────────────────────────────────────────────────────────────
 
 test('a mismatch prints as itself, never as "could not reach the backend"', () => {
   const mismatch = new WorkspaceMismatchError({ named: '@client', answer: '@acme' })
@@ -263,25 +186,9 @@ test('a mismatch prints as itself, never as "could not reach the backend"', () =
   )
 })
 
-test('a handle-less unit is recorded as `site.unit`, a handle as `site.org` — never both', async () => {
-  const dir = tmpSite()
-  const stored = () => JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends[ORIGIN].site
-
-  const first = recorded(wrongWorkspace(null, UNIT))
-  nameSiteWorkspace(first.client, { siteDir: dir, workspace: null })
-  await first.client.request(SITE)
-  assert.deepEqual(stored(), { unit: UNIT })
-  assert.equal(readSiteWorkspace(dir, ORIGIN), UNIT, 'read back in the header form')
-
-  const second = recorded(wrongWorkspace('acme'))
-  nameSiteWorkspace(second.client, { siteDir: dir, workspace: readSiteWorkspace(dir, ORIGIN) })
-  await second.client.request(SITE)
-  assert.equal(second.calls[0].headers[WORKSPACE_HEADER], UNIT, 'the record is named first')
-  assert.deepEqual(stored(), { org: 'acme' }, 'the handle replaces the unit')
-
-  const third = recorded(wrongWorkspace(null))
-  nameSiteWorkspace(third.client, { siteDir: dir, workspace: readSiteWorkspace(dir, ORIGIN) })
-  await third.client.request(SITE)
-  assert.deepEqual(stored(), {}, 'personal: nothing named, nothing recorded')
-  assert.equal(readSiteWorkspace(dir, ORIGIN), null)
+test('a workspace in a sentence', () => {
+  assert.equal(describeWorkspace('@acme'), '@acme')
+  assert.equal(describeWorkspace(null), 'your personal workspace')
+  assert.equal(describeWorkspace('personal'), 'your personal workspace')
+  assert.equal(describeWorkspace(UNIT), `the unit ${UNIT}`)
 })

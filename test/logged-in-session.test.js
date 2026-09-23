@@ -38,8 +38,9 @@ async function withHome(session, fn) {
   }
 }
 
+// Each has chosen its workspace, as a login since 2026-09-23 has (backend/workspace.js).
 const sessions = (...origins) =>
-  Object.fromEntries(origins.map((o) => [o, { token: `t-${o}` }]))
+  Object.fromEntries(origins.map((o) => [o, { token: `t-${o}`, workspace: 'personal' }]))
 
 // ─── which backend is "logged in to" ──────────────────────────────────────────
 

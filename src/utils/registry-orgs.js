@@ -99,8 +99,8 @@ export function validateHandle(handle) {
  * personal org already exists.
  * @returns {Promise<{account_handle: string|null, orgs: Array<{handle: string, is_primary: boolean}>}>}
  */
-export async function fetchOrgs({ apiBase, token }) {
-  const res = await fetch(`${apiBase.replace(/\/$/, '')}${ORGS_PATH}`, {
+export async function fetchOrgs({ apiBase, token, fetchImpl = globalThis.fetch }) {
+  const res = await fetchImpl(`${apiBase.replace(/\/$/, '')}${ORGS_PATH}`, {
     headers: { Authorization: `Bearer ${token}` }
   })
   if (!res.ok)

@@ -49,6 +49,7 @@ import { createServer } from 'node:http'
 import { randomBytes } from 'node:crypto'
 
 import { DEFAULT_BACKEND_ORIGIN } from './config.js'
+import { readOrgFlag } from './args.js'
 import { normalizeSessionFile, sessionFilePath, loggedInOriginOf } from './session-file.js'
 
 const LOGIN_PATH = '/dev/auth/login'
@@ -642,6 +643,36 @@ async function loginViaBrowser({ apiBase }) {
 }
 
 /**
+ * Choose the WORKSPACE this login works in, and store it with the session.
+ *
+ * ⭐ A login works in one workspace *[Diego, 2026-09-23: "at login, it can be mandatory to
+ * specify which workspace"]* — `--org @acme` / `--personal`, else your personal workspace
+ * when you belong to no organization, else a pick at a terminal. Without one (no
+ * terminal, organizations, no flag) the login stays and this says how to choose; every
+ * command refuses until one is chosen (`backend/workspace.js`).
+ *
+ * @param {object} record - the session just stored (`token`, `origin`, …)
+ * @param {string[]} args
+ * @returns {Promise<{ record: object, refused?: string }>}
+ */
+async function settleWorkspace(record, args) {
+  const { chooseWorkspace } = await import('../backend/workspace.js')
+  const pick = await chooseWorkspace({ apiBase: record.origin, token: record.token, args })
+  if (pick.refused) return { record, refused: pick.reason }
+  if (pick.note) console.error(`\x1b[2m${pick.note}\x1b[0m`)
+  const next = { ...record, workspace: pick.choice }
+  await writeRegistryAuth(next)
+  return { record: next }
+}
+
+/** ` · working in @acme` — the tail of a login line. */
+async function workspaceTail(record) {
+  if (!record?.workspace) return ''
+  const { describeWorkspace } = await import('../backend/workspace.js')
+  return `, working in \x1b[1m${describeWorkspace(record.workspace)}\x1b[0m`
+}
+
+/**
  * `uniweb login` against the new backend — a multi-method picker:
  *   browser/social (default, once available) · username+password · paste a token.
  * Force a method with --browser / --password / --token-paste (skips the menu).
@@ -675,19 +706,37 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
       existing.handle ||
       (existing.uuid ? `account ${existing.uuid}` : '')
     if (!forced) {
-      // Already logged in to this backend: nothing to do — logging in again is behind a
-      // method flag. (Also where a file from before sessions were single, holding this
-      // backend among others, becomes single: the rewrite keeps only this session.)
+      // Already logged in to this backend: nothing to re-authenticate — logging in again is
+      // behind a method flag. (Also where a file from before sessions were single, holding
+      // this backend among others, becomes single: the rewrite keeps only this session.)
+      let session = { ...existing, origin: key }
       if (current !== key || Object.keys(file.sessions).length > 1) {
-        await writeRegistryAuth({ ...existing, origin: key })
+        await writeRegistryAuth(session)
+      }
+      // ⭐ SWITCHING WORKSPACE NEEDS NO NEW LOGIN: `--org @x` / `--personal` on a valid
+      // session just changes the workspace it works in. One with none chosen yet (a
+      // session from before workspaces) is asked now.
+      const wants = readOrgFlag(args) || args.includes('--personal')
+      if (wants || !session.workspace) {
+        const settled = await settleWorkspace(session, args)
+        if (settled.refused) {
+          console.error(`\x1b[32m✓\x1b[0m Logged in to ${key}${who ? ` as \x1b[1m${who}\x1b[0m` : ''}.`)
+          console.error(`\x1b[31m✗\x1b[0m ${settled.refused}`)
+          process.exit(2)
+        }
+        session = settled.record
+        if (wants) {
+          console.error(`\x1b[32m✓\x1b[0m Now working in ${(await workspaceTail(session)).replace(/^, working in /, '')} (${key}).`)
+          return session
+        }
       }
       console.error(
-        `\x1b[32m✓\x1b[0m Already logged in to ${key}${who ? ` as \x1b[1m${who}\x1b[0m` : ''}.`
+        `\x1b[32m✓\x1b[0m Already logged in to ${key}${who ? ` as \x1b[1m${who}\x1b[0m` : ''}${await workspaceTail(session)}.`
       )
       console.error(
-        '\x1b[2mTo log in again, name a method: --password, --browser, --token-paste or --token <bearer>.\x1b[0m'
+        '\x1b[2mSwitch workspace: --org @acme or --personal. To log in again, name a method: --password, --browser, --token-paste or --token <bearer>.\x1b[0m'
       )
-      return { ...existing, origin: key }
+      return session
     }
     console.error(
       `Already logged in${who ? ` as \x1b[1m${who}\x1b[0m` : ''} (${key}) — logging in again replaces that session.\n`
@@ -720,10 +769,7 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
     if (account?.username) record.username = account.username
     if (account?.handle) record.handle = account.handle
     await writeRegistryAuth(record)
-    console.error(
-      `\x1b[32m✓\x1b[0m Logged in${account?.username ? ` as \x1b[1m${account.username}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}`
-    )
-    return record
+    return finishLogin(record, apiBase, args)
   }
 
   let method = args.includes('--browser')
@@ -787,10 +833,23 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
     process.exit(1)
   }
 
-  if (record?.token) {
-    console.error(
-      `\x1b[32m✓\x1b[0m Logged in${record.username ? ` as \x1b[1m${record.username}\x1b[0m` : ''}${apiBase ? ` (${apiBase})` : ''}`
-    )
+  if (!record?.token) return record
+  return finishLogin({ ...record, origin: record.origin || normOrigin(apiBase) }, apiBase, args)
+}
+
+/**
+ * A login succeeded and its session is stored: choose its workspace, and say where the
+ * login works. Without a workspace (no terminal, organizations, no flag) the session
+ * stays, the reason is printed, and the login exits 2 — every command would refuse.
+ */
+async function finishLogin(record, apiBase, args) {
+  const settled = await settleWorkspace(record, args)
+  const who = settled.record.username ? ` as \x1b[1m${settled.record.username}\x1b[0m` : ''
+  if (settled.refused) {
+    console.error(`\x1b[32m✓\x1b[0m Logged in${who} (${apiBase}).`)
+    console.error(`\x1b[31m✗\x1b[0m ${settled.refused}`)
+    process.exit(2)
   }
-  return record
+  console.error(`\x1b[32m✓\x1b[0m Logged in${who} (${apiBase})${await workspaceTail(settled.record)}.`)
+  return settled.record
 }

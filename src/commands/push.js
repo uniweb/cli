@@ -27,15 +27,11 @@
  *
  * Usage:
  *   uniweb push                          Build, push both lanes, back-fill $uuid
- *   uniweb push --org @org               Own the new site under @org. On the FIRST
- *                                        push it decides which org owns the site, and
- *                                        whose storage its assets are charged to;
- *                                        recorded in `sync.json`, and every request
- *                                        after names it. Without it, you are asked
- *                                        once. Later, it must match the workspace the
- *                                        backend works on the site from, or push stops.
- *   uniweb push --personal               Own the new site personally, deliberately:
- *                                        its requests name no workspace.
+ *   uniweb push --org @org               Work in @org for this push, instead of the
+ *   uniweb push --personal               workspace chosen at `uniweb login` (or your
+ *                                        personal workspace). A site this push creates
+ *                                        is created — owned — there; a site the backend
+ *                                        keeps in another workspace stops the push.
  *   uniweb push --dry-run                Report what would be pushed; submit nothing
  *   uniweb push -o out.uwx               Write the .uwx file(s) per lane; submit nothing
  *   uniweb push --foundation <dir>       Use this local foundation for the Model schema
@@ -62,7 +58,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import yaml from 'js-yaml'
-import { emitSyncPackages } from '@uniweb/build/uwx'
+import { emitSyncPackages, readBackendState } from '@uniweb/build/uwx'
 import { findSiteCopies, describeSiteCopies } from '../utils/site-copies.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import { updateBackendMap, carryServed, SYNC_STORE_FILE } from '@uniweb/build/uwx'
@@ -70,7 +66,6 @@ import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
 import { reportSchemalessQueries } from '../utils/schemaless-report.js'
-import { readOrgFlag } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
   syncedElsewhere,
@@ -91,11 +86,9 @@ import {
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
-  pushSyncPackages,
-  resolveSiteOrgForCreate,
-  nameSiteWorkspace,
-  EXPLICIT_OWNER
+  pushSyncPackages
 } from '../backend/site-sync.js'
+import { resolveWorkspace, describeWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 
 // Re-exported for downstream importers (pull.js, push.test.js) that read these
 // helpers from this module — their canonical home is now ../backend/site-sync.js.
@@ -216,21 +209,13 @@ export async function push(args = [], deps = {}) {
     }
   }
 
-  // WHO will own this site, if this push is the one that creates it. Resolved
-  // before any lane runs, because both create paths below consume it and neither
-  // should be reached with the question still open. A site that already exists
-  // resolves to null without asking — ownership was settled at its create.
-  const org = await resolveSiteOrgForCreate({
-    client,
-    siteDir,
-    args,
-    flag: readOrgFlag(args),
-    personal: args.includes('--personal'),
-    offline: !!output || dryRun
-  })
-  if (org.refused) {
-    error('Refusing to create this site without naming an owner.')
-    note(org.reason)
+  // ⭐ THE WORKSPACE THIS PUSH WORKS IN — the one chosen with the login, unless this
+  // command names another (`workspace.js`). Resolved before any lane runs: a site this
+  // push creates is created in it, and a site the backend keeps elsewhere is refused.
+  const ws = await resolveWorkspace({ client, args, offline: !!output || dryRun })
+  if (ws.refused) {
+    error('This push works in one workspace, and none is chosen.')
+    note(ws.reason)
     return { exitCode: 2 }
   }
 
@@ -289,16 +274,12 @@ export async function push(args = [], deps = {}) {
   }
   if (!fnd.proceed) return { exitCode: 1 }
 
-  // ⭐ Name the workspace every site request works in. The user's own choice (`--org`,
-  // `--personal`, the picker) is explicit, so a `409 wrong_workspace` stops the push; a
-  // recorded one is adopted afresh from the backend's answer when stale
-  // (`nameSiteWorkspace`).
-  nameSiteWorkspace(client, {
-    siteDir,
-    workspace: org.workspace,
-    explicit: EXPLICIT_OWNER.has(org.source),
-    note
-  })
+  // ⭐ Every site request names the workspace; a site outside it stops the push
+  // (`WorkspaceMismatchError`). A site this push creates is created in it — said first.
+  client.setWorkspace(ws.workspace, { source: ws.source })
+  if (ws.source !== 'offline' && !readBackendState(siteDir, client.origin).site?.uuid) {
+    note(`This push creates the site in ${describeWorkspace(ws.workspace)} (${SOURCE_LABEL[ws.source]}).`)
+  }
 
   // Build BOTH directional packages (the producer side). Each carries its own
   // `index` — the per-entity source-file map for back-fill, correlated by submission

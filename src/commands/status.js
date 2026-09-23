@@ -25,12 +25,11 @@ import { join } from 'node:path'
 import yaml from 'js-yaml'
 
 import { resolveSiteDir } from './deploy.js'
-import { probeUnpushed, nameSiteWorkspace, readSiteWorkspace } from '../backend/site-sync.js'
-import { readOrgFlag } from '../utils/args.js'
+import { probeUnpushed } from '../backend/site-sync.js'
+import { resolveWorkspace } from '../backend/workspace.js'
 import {
   BackendClient,
   resolveBackendOrigin,
-  workspaceHandle,
   WorkspaceMismatchError
 } from '../backend/client.js'
 import { readBackendState } from '@uniweb/build/uwx'
@@ -128,15 +127,11 @@ export async function status(args = []) {
         args,
         command: 'Status'
       })
-      // The workspace the site's requests name — as pull names it. A stale record is
-      // re-adopted from the backend's answer; `--json` keeps stdout to the document.
-      const orgFlag = readOrgFlag(args)
-      nameSiteWorkspace(client, {
-        siteDir,
-        workspace: orgFlag ? workspaceHandle(orgFlag) : readSiteWorkspace(siteDir, client.origin),
-        explicit: Boolean(orgFlag),
-        note: jsonMode ? undefined : say.dim
-      })
+      // The workspace this status works in — the login's, unless this command names
+      // another (`workspace.js`). None chosen is reported, like a site outside it.
+      const ws = await resolveWorkspace({ client, args })
+      if (ws.refused) throw Object.assign(new Error(ws.reason), { status: 409 })
+      client.setWorkspace(ws.workspace, { source: ws.source })
       if (uuid) site = await client.siteStatus(uuid)
       // Foundation freshness: prefer the LOCAL foundation's scoped name (so a
       // local-foundation site can be checked too); fall back to a scoped

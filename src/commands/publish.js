@@ -29,15 +29,11 @@
  *   uniweb publish --dry-run       Resolve everything; POST nothing
  *   uniweb publish --yes           Skip confirmations (CI); never block on a prompt
  *   uniweb publish --force         Overwrite upstream app-side edits (drop the push gate)
- *   uniweb publish --org @org      Publish under @org. On the FIRST publish of a
- *                                  site it decides which org owns the site and whose
- *                                  storage its assets are charged to; recorded in
- *                                  `sync.json`, and every request after names it, so
- *                                  it never has to be re-typed. Later, it must match
- *                                  the workspace the backend works on the site from,
- *                                  or publish stops.
- *   uniweb publish --personal      Own the new site personally, deliberately: its
- *                                  requests name no workspace.
+ *   uniweb publish --org @org      Work in @org for this publish, instead of the
+ *   uniweb publish --personal      workspace chosen at `uniweb login` (or your
+ *                                  personal workspace). A site it creates is created
+ *                                  — owned — there; a site in another workspace stops
+ *                                  it.
  *   uniweb publish --no-save       Do not record this publish in deploy.yml
  */
 
@@ -73,7 +69,7 @@ import {
 import { DEFAULT_BACKEND_ORIGIN } from '../utils/config.js'
 import { resolveSiteDir } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
-import { readFlagValue, readOrgFlag } from '../utils/args.js'
+import { readFlagValue } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
   syncedElsewhere,
@@ -93,11 +89,9 @@ import {
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
-  pushSyncPackages,
-  resolveSiteOrgForCreate,
-  nameSiteWorkspace,
-  EXPLICIT_OWNER
+  pushSyncPackages
 } from '../backend/site-sync.js'
+import { resolveWorkspace, describeWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import {
   updateBackendMap,
@@ -309,21 +303,13 @@ export async function publish(args = []) {
     }
   }
 
-  // WHO will own this site, if this publish is the one that creates it. Resolved
-  // up front: `ensureSiteExists` below is the create, and it must not be reached
-  // with the question still open. An already-created site resolves to null without
-  // asking — its ownership was settled once and cannot be changed from here.
-  const org = await resolveSiteOrgForCreate({
-    client,
-    siteDir,
-    args,
-    flag: readOrgFlag(args),
-    personal: args.includes('--personal'),
-    offline: dryRun
-  })
-  if (org.refused) {
-    say.err('Refusing to create this site without naming an owner.')
-    say.dim(org.reason)
+  // ⭐ THE WORKSPACE THIS PUBLISH WORKS IN — the one chosen with the login, unless this
+  // command names another (`workspace.js`). Resolved up front: `ensureSiteExists` below
+  // creates the site in it, and a site the backend keeps elsewhere is refused.
+  const ws = await resolveWorkspace({ client, args, offline: dryRun })
+  if (ws.refused) {
+    say.err('This publish works in one workspace, and none is chosen.')
+    say.dim(ws.reason)
     return { exitCode: 2 }
   }
 
@@ -513,16 +499,13 @@ export async function publish(args = []) {
   // be the silent-wrong-success this whole branch exists to prevent.
   if (!fnd.proceed) return { exitCode: fnd.refused ? 1 : 0 }
 
-  // ⭐ Name the workspace every site request works in — the create, the push, the
-  // publish and the data lane. The user's own choice is explicit, so a `409
-  // wrong_workspace` stops the publish; a recorded one is adopted afresh when stale
-  // (`nameSiteWorkspace`).
-  nameSiteWorkspace(client, {
-    siteDir,
-    workspace: org.workspace,
-    explicit: EXPLICIT_OWNER.has(org.source),
-    note: (m) => say.dim(m)
-  })
+  // ⭐ Every site request names the workspace — the create, the push, the publish and
+  // the data lane — and a site outside it stops the publish (`WorkspaceMismatchError`).
+  // A site this publish creates is created in it — said first.
+  client.setWorkspace(ws.workspace, { source: ws.source })
+  if (ws.source !== 'offline' && !readBackendState(siteDir, client.origin).site?.uuid) {
+    say.dim(`This publish creates the site in ${describeWorkspace(ws.workspace)} (${SOURCE_LABEL[ws.source]}).`)
+  }
 
   // 2. Build the site data (link mode): dist/site-content.json (+ per-locale),
   //    dist/data/*, dist/assets/*. Spawn the SAME CLI binary so the inner
