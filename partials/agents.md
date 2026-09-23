@@ -2455,15 +2455,19 @@ await writer.remove(itemId)
 
 ### ⛔ Permissions are the SERVER'S, and your UI is only a courtesy
 
-Gate your controls on what the viewer may do — `viewer.actingUnitId`, `viewer.roles` —
-but **never rely on that for safety**. A foundation runs with exactly the viewer's
-own authority, so hiding a button hides a button. The rule belongs in the data
-schema, where the store enforces it:
+Gate your controls on what the viewer may do — `viewer.roles` (the site's operator
+holds `system_admin`), or a record's own `can_edit` from a single-entity read — but
+**never rely on that for safety**. A foundation runs with exactly the viewer's own
+authority, so hiding a button hides a button.
+
+What protects content is the **entry**: a member writes their own entries and not
+another's, and the store enforces it. **Models are open** — anyone signed in may
+create entries of any Model, so a data schema does not restrict who creates
+(`creatable_by` is retired and refused). What a schema can protect is how an item
+changes:
 
 ```yaml
-# foundation/schemas/session.yml
-creatable_by: unit_members     # only members of the owning unit may create these
-
+# foundation/schemas/attendance.yml
 sections:
   checkins:
     many: true
@@ -2489,8 +2493,8 @@ export default createMockBackend({ seed }).fetch
 ```
 
 `uniweb dev` mounts it at your `api:` address, same-origin, so cookies and your
-site's configuration behave exactly as they will in production. It **enforces**
-`creatable_by` and `append_only`, so a permission you are relying on fails on your
+site's configuration behave exactly as they will in production. It **enforces** who
+may edit an entry and `append_only`, so a permission you are relying on fails on your
 machine rather than in front of a user. State is in memory; restart to reset.
 
 `uniweb create my-event --template conference` is a worked example of all of this.
