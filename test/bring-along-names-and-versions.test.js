@@ -73,10 +73,12 @@ async function run({ ws, site, cliBin }, client) {
   }
 }
 
-test('a foundation named in main.js is looked up and pinned under that name', async () => {
+test('a foundation named in main.js is looked up and pinned under that name — scope and all', async () => {
+  // ⭐ The scope is part of the name (2026-09-22): `@acme/docs` is what `register`
+  // registers, so it is what the catalog is asked for.
   const fixture = workspace(
-    { name: 'src', version: '1.0.0', uniweb: { scope: '@acme' } },
-    { main: "export default { name: 'docs' }\n" }
+    { name: 'src', version: '1.0.0' },
+    { main: "export default { name: '@acme/docs' }\n" }
   )
   const digest = computeFoundationDigest(join(fixture.fnd, 'dist'))
   const looked = []
@@ -94,9 +96,25 @@ test('a foundation named in main.js is looked up and pinned under that name', as
   assert.ok(said.dim.some((m) => /unchanged since release/.test(m)), JSON.stringify(said))
 })
 
-test('uniweb.scope without its @ is looked up and pinned under @org, as register names it', async () => {
-  // `register` reads `acme` and `@acme` alike and registers `@acme/base`; a lookup that
-  // joined the raw value asked the catalog for `acme/base` and pinned the site to it.
+test('a BARE name has not registered — it is released, not looked up', async () => {
+  // `register` writes the scope it registers under into the name, so a bare name
+  // names nothing in any catalog yet.
+  const fixture = workspace({ name: 'base', version: '1.0.0' }, { main: "export default { name: 'base' }\n" })
+  const looked = []
+  const client = {
+    readFoundationLatest: async (name) => {
+      looked.push(name)
+      return { latest_version: '1.0.0', digest: 'sha256:another-project' }
+    }
+  }
+  const { res } = await run(fixture, client)
+  assert.deepEqual(looked, [])
+  assert.equal(res.released, true)
+})
+
+test('⛔ a leftover uniweb.scope is not looked up — register says to move it into the name', async () => {
+  // Retired 2026-09-22. It read as unreleased here, and `register` refuses it with the
+  // `main.js` line that replaces it, so nothing is pinned under a name made from it.
   const fixture = workspace({ name: 'base', version: '1.0.0', uniweb: { scope: 'acme' } })
   const looked = []
   const client = {
@@ -106,15 +124,15 @@ test('uniweb.scope without its @ is looked up and pinned under @org, as register
     }
   }
   const { res } = await run(fixture, client)
-  assert.deepEqual(looked, ['@acme/base'])
-  assert.equal(res.ref, '@acme/base@1.0.0')
+  assert.deepEqual(looked, [])
+  assert.equal(res.ref, null)
 })
 
 test('⛔ a foundation named src is not looked up — the @org/src there is not its', async () => {
   // No main.js name, package name `src`: releasing is how it gets one (`register`
   // asks, or refuses naming the fix), so bring-along releases rather than binding
   // to whatever another project registered as `@acme/src`.
-  const fixture = workspace({ name: 'src', version: '1.0.0', uniweb: { scope: '@acme' } })
+  const fixture = workspace({ name: 'src', version: '1.0.0' })
   const looked = []
   const client = {
     readFoundationLatest: async (name) => {
@@ -129,7 +147,7 @@ test('⛔ a foundation named src is not looked up — the @org/src there is not 
 })
 
 test('⛔ a leftover uniweb.id is not looked up either — register says where the name went', async () => {
-  const fixture = workspace({ name: 'src', version: '1.0.0', uniweb: { scope: '@acme', id: 'docs' } })
+  const fixture = workspace({ name: 'src', version: '1.0.0', uniweb: { id: 'docs' } })
   const looked = []
   const client = {
     readFoundationLatest: async (name) => {
@@ -143,7 +161,7 @@ test('⛔ a leftover uniweb.id is not looked up either — register says where t
 })
 
 test('CONTROL: without a main.js name the package name is the catalog name', async () => {
-  const fixture = workspace({ name: 'base', version: '1.0.0', uniweb: { scope: '@acme' } })
+  const fixture = workspace({ name: '@acme/base', version: '1.0.0' })
   const looked = []
   const client = {
     readFoundationLatest: async (name) => {

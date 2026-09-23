@@ -21,8 +21,13 @@
  *   uniweb register                      Build the .uwx, submit it, then deliver
  *                                        the foundation's dist/ code (plan +
  *                                        upload — see utils/code-upload.js)
- *   uniweb register --scope @org         Publish under @org (resolves @/x -> @org/x).
- *                                        Default: the package's package.json "uniweb.scope".
+ *   uniweb register --scope @org         A foundation whose name is bare: register it under
+ *                                        @org (resolves @/x -> @org/x) and write the scope
+ *                                        into its name in main.js. Refused when the name
+ *                                        already carries another scope — a foundation's
+ *                                        scope is the one in its name.
+ *                                        A schemas-only package: publish under @org.
+ *                                        Default: its package.json "uniweb.scope".
  *   uniweb register --schema-only        Skip the code delivery (schemas land, no dist upload)
  *   uniweb register --dry-run            Print the .uwx + the code file plan; submit nothing
  *   uniweb register -o foundation.uwx    Write the .uwx to a file; submit nothing
@@ -71,7 +76,8 @@ import {
   isSchemasPackage,
   collectStandaloneSchemas,
   readFoundationName,
-  checkFoundationName
+  checkFoundationName,
+  splitFoundationName
 } from '@uniweb/build'
 import {
   suggestFoundationName,
@@ -143,8 +149,10 @@ function cliVersion() {
   }
 }
 
-// The foundation's recorded publish org, from its package.json `uniweb.scope`
-// (`{ "uniweb": { "scope": "@acme" } }`) — the default when `--scope` is absent.
+// A SCHEMAS-ONLY package's recorded publish org, from its package.json `uniweb.scope`
+// (`{ "uniweb": { "scope": "@acme" } }`) — the default when `--scope` is absent. It
+// has no main.js whose name could carry it. ⛔ A foundation's scope is part of its name
+// (2026-09-22); its `uniweb.scope` is refused by `readFoundationName`.
 function readPkgScope(foundationDir) {
   try {
     const pkg = JSON.parse(
@@ -156,9 +164,10 @@ function readPkgScope(foundationDir) {
   }
 }
 
-// Record the chosen publish scope in the foundation's package.json so it travels
-// with the foundation (read back by readPkgScope on the next register). Preserves
-// the file's existing JSON style.
+// Record the chosen publish scope in a schemas-only package's package.json so it
+// travels with the package (read back by readPkgScope on the next register). Preserves
+// the file's existing JSON style. A foundation's goes into its name instead
+// (`settleFoundationScope`).
 async function writePkgScope(foundationDir, scope) {
   const path = join(foundationDir, 'package.json')
   const pkg = JSON.parse(readFileSync(path, 'utf8'))
@@ -291,6 +300,95 @@ export async function settleFoundationName(targetDir, { args, isPreview }) {
   }
   success(`Named the foundation ${colors.bright}${chosen}${colors.reset} — kept in ${where}.`)
   return true
+}
+
+/**
+ * Settle the scope a foundation registers under — the one in its name.
+ *
+ * ⭐ THE SCOPE IS PART OF THE NAME (2026-09-22): `name: '@acme/marketing'` in main.js.
+ * A scoped name decides it, and a `--scope` naming another org is refused — which org
+ * was meant is not ours to guess, and today's alternative was a split identity (the
+ * foundation under one org, its data schemas under the other). A bare name has not
+ * registered yet: it takes `--scope`, else one derived from your orgs, and the chosen
+ * scope is WRITTEN INTO THE NAME, so it is chosen once and travels with the code.
+ * ⛔ Until then it was written to `package.json::uniweb.scope`, which is refused now
+ * (`readFoundationName`, naming the line to write).
+ *
+ * A preview (`--dry-run`, `-o`) writes nothing: a bare name previews under `--scope`,
+ * or unscoped.
+ *
+ * @returns {Promise<{ scope: string|null, source: string|null } | { cancelled: true } | null>}
+ *   null when refused (the reason is printed); `cancelled` when no org was chosen
+ */
+export async function settleFoundationScope(targetDir, { args, isPreview, flagScope, client }) {
+  let read
+  try {
+    read = await readFoundationName(targetDir)
+  } catch (err) {
+    error(err.message)
+    return null
+  }
+  const where = relative(process.cwd(), read.mainFile) || read.mainFile
+  const { scope: nameScope, bare } = splitFoundationName(read.name)
+
+  if (nameScope) {
+    if (flagScope && flagScope !== nameScope) {
+      error(
+        `${where} names this foundation ${read.name}, so it registers under ${nameScope} — ` +
+          `--scope ${flagScope} names another org.`
+      )
+      log(
+        `  ${colors.dim}To register it under ${flagScope}, change its name in ${where}: ` +
+          `name: '${flagScope}/${bare}'${colors.reset}`
+      )
+      return null
+    }
+    return { scope: nameScope, source: 'main.js' }
+  }
+
+  if (isPreview) return { scope: flagScope, source: flagScope ? '--scope' : null }
+
+  let scope = flagScope
+  let source = flagScope ? '--scope' : null
+  if (!scope) {
+    scope = await deriveScopeFromLogin(client, args)
+    if (!scope) return { cancelled: true }
+    source = 'login'
+  }
+
+  const scoped = `${scope}/${bare}`
+  const written = writeFoundationName(read.mainFile, scoped, {
+    replace: read.source === 'main.js' ? read.name : null
+  })
+  if (!written.ok) {
+    error(`Could not write the scope into the foundation's name: ${written.reason}.`)
+    log(`  Name it in the default export in ${colors.bright}${where}${colors.reset}:  name: '${scoped}',`)
+    return null
+  }
+  // Read it back through the build's own rule — the text edit is only a means.
+  const again = await readFoundationName(targetDir).catch(() => null)
+  if (again?.name !== scoped) {
+    error(`${where} now names the foundation '${scoped}', but it still reads as "${again?.name}".`)
+    return null
+  }
+  success(`This foundation registers as ${colors.bright}${scoped}${colors.reset} — kept in ${where}.`)
+  return { scope, source }
+}
+
+/**
+ * A publish scope derived from the login's org memberships (list → 1 use / 0 create /
+ * N pick), as `@handle` — or null when none was chosen.
+ */
+async function deriveScopeFromLogin(client, args) {
+  const token = await client.token()
+  const sess = await readRegistryAuth(client.origin)
+  const derived = await deriveScope({
+    apiBase: client.origin,
+    token,
+    accountHandle: sess?.handle || null,
+    args
+  })
+  return derived ? `@${derived}` : null
 }
 
 // Directories that are never foundation source. `dist` is the output we compare
@@ -487,10 +585,13 @@ async function runRegister(args = []) {
     ? process.cwd()
     : await resolveFoundationDir(args)
 
-  // Scope: --scope flag, else package.json `uniweb.scope`, else (real submit
-  // only) derived from login membership in the bootstrap below. Either spelling,
-  // `@acme` or `acme`, and from here on the one form: `@acme` (publishScope).
-  const pkgScope = readPkgScope(targetDir)
+  // Scope. ⭐ A FOUNDATION's is the one in its name (`name: '@acme/marketing'` in
+  // main.js), settled below before the build; a bare name takes --scope, else one
+  // derived from your orgs, and register writes it into the name (2026-09-22).
+  // A SCHEMAS-ONLY package has no name to carry one: --scope, else package.json
+  // `uniweb.scope`, else (real submit only) derived from login membership. Either
+  // spelling, `@acme` or `acme`, and from here on the one form: `@acme` (publishScope).
+  const pkgScope = standalone ? readPkgScope(targetDir) : null
   const givenScope = scopeFlag || pkgScope
   let scope = publishScope(givenScope)
   let scopeSource = scopeFlag
@@ -530,6 +631,19 @@ async function runRegister(args = []) {
     if (!(await settleFoundationName(targetDir, { args, isPreview }))) {
       return { exitCode: 2 }
     }
+    // ⭐ BEFORE THE BUILD, so the build embeds the name the foundation registers as.
+    // Settled after it, a scope written into main.js would leave dist/ describing the
+    // bare name — stale the moment it was built.
+    const settled = await settleFoundationScope(targetDir, {
+      args,
+      isPreview,
+      flagScope: scope,
+      client
+    })
+    if (!settled) return { exitCode: 2 }
+    if (settled.cancelled) return { exitCode: 0 }
+    scope = settled.scope
+    scopeSource = settled.source
     // Build-if-stale (`foundationNeedsBuild`): a missing or stale dist/ gets
     // (re)built before we read its schema. Preview paths
     // (--dry-run / -o) must not write to dist/, so they require a pre-built
@@ -578,24 +692,18 @@ async function runRegister(args = []) {
     }
   }
 
-  // No scope for a real submit → derive it from login membership (list → 1 use /
-  // 0 create / N pick), persist to package.json, and reuse the session token.
-  if (!scope && !isPreview) {
-    const token = await client.token()
-    const sess = await readRegistryAuth(client.origin)
-    const derived = await deriveScope({
-      apiBase: client.origin,
-      token,
-      accountHandle: sess?.handle || null,
-      args
-    })
+  // A schemas-only package with no scope, on a real submit → derive it from login
+  // membership (list → 1 use / 0 create / N pick) and persist it to package.json.
+  // (A foundation's was settled before its build — `settleFoundationScope`.)
+  if (standalone && !scope && !isPreview) {
+    const derived = await deriveScopeFromLogin(client, args)
     if (!derived) return { exitCode: 0 }
-    scope = `@${derived}`
+    scope = derived
     scopeSource = 'login'
     try {
       await writePkgScope(targetDir, scope)
       info(
-        `Saved ${colors.bright}${scope}${colors.reset} as this ${standalone ? 'package' : 'foundation'}'s publish scope (package.json).`
+        `Saved ${colors.bright}${scope}${colors.reset} as this package's publish scope (package.json).`
       )
     } catch {
       log(
@@ -692,7 +800,9 @@ async function runRegister(args = []) {
   // Submit requires a concrete scope — the registry rejects @/… fail-closed.
   if (!scope) {
     error(
-      'No publish scope — set "uniweb.scope" in package.json, or pass --scope @org.'
+      standalone
+        ? 'No publish scope — set "uniweb.scope" in package.json, or pass --scope @org.'
+        : "No publish scope — name the foundation '@org/<name>' in main.js, or pass --scope @org."
     )
     log(
       `  ${colors.dim}Without a scope, names stay @/… and the registry rejects them.${colors.reset}`

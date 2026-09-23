@@ -2630,10 +2630,9 @@ Platform-specific configuration that doesn't belong in npm-standard fields. All 
 
 | Field | Where used | Default | Purpose |
 |---|---|---|---|
-| `scope` | `uniweb register` | derived from your login, then saved here | The org the foundation registers under (`@acme`, or `acme`): a bare `main.js` name `marketing` registers as `@acme/marketing`. `--scope @org` overrides it for one run. |
 | `runtimePolicy` | `dist/runtime-pin.json` | unset | Declares how far past the recorded runtime version a host may move a site. |
 
-**The foundation's name is not here — it is `name` in `main.js`** (else `package.json`'s `name`). ⛔ `uniweb.id` is no longer read: `uniweb register` refuses it and prints the `main.js` line to write instead.
+**The foundation's name is not here — it is `name` in `main.js`** (else `package.json`'s `name`), **and so is the org it registers under: the scope is part of the name**, `name: '@acme/marketing'`. A name with no scope has not been registered yet: the first `uniweb register` takes `--scope @org` (else one of your orgs) and writes it into the name, and a `--scope` naming another org than the name's is refused. The foundation's own data schemas register under the same scope (`@/article` → `@acme/article`). ⛔ `uniweb.id` and `uniweb.scope` are no longer read for a foundation: `uniweb register` refuses them and prints the `main.js` line to write instead. (A schemas-only package has no `main.js`, and still records its scope in `uniweb.scope`.)
 
 **Runtime updates — handled for you.** Your foundation's code links against the runtime: it externalizes `react`, `react-dom`, `react-dom/server`, both JSX runtimes and `@uniweb/core`, and the runtime supplies all of them at load time. So a build is bound to *that* React and *that* core API.
 

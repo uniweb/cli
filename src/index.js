@@ -1725,13 +1725,18 @@ Auto-detects what you run it in:
   • a schemas-only pkg   just its data schemas, no foundation — e.g. @uniweb/schemas,
                          any @org/schemas package, or a bare schemas/*.yml folder
 
-Schema scopes (set the org with --scope, or package.json uniweb.scope):
-  @/name     your own schema, scoped to the publish org   (@/x -> @org/x)
+A foundation's scope is part of its name — name: '@org/<name>' in main.js. A bare
+name takes --scope (or one of your orgs), and register writes it into the name.
+
+Schema scopes:
+  @/name     your own schema, in the foundation's scope   (@/x -> @org/x)
   @std/name  a shared standard schema (from @uniweb/schemas)
   @org/name  another org's published schema, referenced by name
 
 ${colors.bright}Options:${colors.reset}
-  --scope @org       Publish under @org (resolves @/x -> @org/x); default: package.json uniweb.scope
+  --scope @org       A foundation with a bare name: register under @org, and write it into
+                     the name (refused when the name has another scope). A schemas-only
+                     package: publish under @org; default: package.json uniweb.scope
   --dry-run          Print the .uwx; submit nothing
   -o, --output <f>   Write the .uwx to a file; submit nothing
   --non-interactive  Fail with usage info instead of prompting

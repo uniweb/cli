@@ -61,8 +61,9 @@ export function bareHandle(scope) {
 
 /**
  * A publish scope in the one form the registry names things by — `@acme` — from any
- * spelling `--scope` or `package.json::uniweb.scope` may carry it in (`@acme`, `acme`,
- * `@acme/…`). Null when there is no handle in it.
+ * spelling `--scope` or a schemas-only package's `package.json::uniweb.scope` may carry
+ * it in (`@acme`, `acme`, `@acme/…`). Null when there is no handle in it. (A
+ * foundation's scope is part of its name, `@acme/marketing`, and needs no reading.)
  *
  * ⛔ Every name built from a scope goes through this. The `.uwx` assembly
  * (`@uniweb/build`'s `buildRegistryPackage`) has always accepted `acme` as well as

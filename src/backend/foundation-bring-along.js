@@ -44,7 +44,6 @@ import {
 } from '@uniweb/build'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { isNonInteractive } from '../utils/interactive.js'
-import { publishScope } from '../utils/registry-orgs.js'
 import { compareSemverPrecedence } from '../utils/semver-precedence.js'
 
 /**
@@ -119,18 +118,20 @@ export function resolveLocalExtensions(siteDir, siteYml) {
 /**
  * The foundation's scoped catalog name (`@org/name`): its name — `main.js`'s
  * `name`, else package.json's, the one rule the build reads for the schema
- * `register` submits (`readFoundationName`) — scoped by `uniweb.scope` unless
- * already scoped. Null when no registrable scoped name can be formed; the caller
+ * `register` submits (`readFoundationName`). ⭐ The scope is part of that name
+ * (2026-09-22), so a scoped name IS the catalog name. Null otherwise; the caller
  * then treats the foundation as unreleased, and `register` — which it runs to
- * release — is where a missing scope is derived and a missing name is asked for.
+ * release — is where a missing scope is chosen and written into the name, and a
+ * missing name is asked for.
  *
  * ⛔ A NAME THAT CANNOT REGISTER IS NULL, not looked up. `src` and `foundation`
  * name a folder (`checkFoundationName`); looking one up would find some other
  * project's `@org/src` — the very collision refusing them prevents.
  *
- * ⛔ And the scope goes through `publishScope`, as `register`'s does: `uniweb.scope`
- * may read `acme` as well as `@acme`, and until 2026-09-21 this joined it raw — so a
- * bare one looked the foundation up as `acme/src` and pinned the site to that.
+ * ⛔ A BARE NAME IS NULL too: it has not registered, since `register` writes the scope
+ * it registers under into the name. Until 2026-09-22 this joined a bare name with
+ * `package.json::uniweb.scope`; that key is refused now (`readFoundationName` throws,
+ * so a leftover reads as unreleased here and `register` says what to write instead).
  * *(This read package.json alone until 2026-09-21 — `uniweb.id`, else `name` — and
  * so named a foundation differently from the build whenever `main.js` named it.)*
  *
@@ -145,9 +146,7 @@ export async function foundationScopedName(dir) {
     return null
   }
   if (checkFoundationName(name)) return null
-  if (name.startsWith('@')) return name
-  const scope = publishScope(readPkgField(dir, 'uniweb')?.scope)
-  return scope ? `${scope}/${name}` : null
+  return name.startsWith('@') ? name : null
 }
 
 function readPkgField(dir, field) {
@@ -303,9 +302,9 @@ async function bringLocalCodeAlong({
     // exists to avoid.
     //
     // ⚠️ It is null for a foundation that has NEVER been registered and carries no
-    // scope (a fresh scaffold), because the scope is what `register` writes back
-    // (`writePkgScope`) — and for one with no name of its own (`src`), which
-    // `register` asks for. So the preview shows the authored value there, and the
+    // scope (a fresh scaffold), because the scope is what `register` writes into its
+    // name (`settleFoundationScope`) — and for one with no name of its own (`src`),
+    // which `register` asks for. So the preview shows the authored value there, and the
     // first real push — which releases, and so acquires both — sends the pinned ref
     // instead. That gap is unavoidable offline: before the first release there is
     // no registered name to name.

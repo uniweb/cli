@@ -101,9 +101,12 @@ test('a workspace-local extension IS local, and carries its authored decl as the
       JSON.stringify({
         name: 'effects',
         version: '0.3.1',
-        uniweb: { scope: '@acme' }
+        main: './_entry.generated.js'
       })
     )
+    // ⭐ The scope is part of the name (2026-09-22) — an extension registers as a
+    // foundation does, so its `main.js` names it `@acme/effects`.
+    writeFileSync(join(extDir, 'main.js'), "export default { name: '@acme/effects', extension: true }\n")
 
     const found = resolveLocalExtensions(siteDir, { extensions: ['effects'] })
     assert.equal(found.length, 1)
