@@ -2422,8 +2422,17 @@ component that never needed one.
 ### Reading
 
 ```jsx
-const { status, records } = useRecords({ schema: '@/session' })
+const { status, records } = useRecords({ schema: '@/track' })   // summaries: record.brief, no items
+const { entity } = useEntity({ schema: '@/track', uuid: record.uuid })
+const sessions = entity?.hydrated?.items.filter((item) => item.section === 'sessions')
 ```
+
+⛔ **A listed record is a summary, not the entity.** `record.brief` holds the brief
+section's fields (`record.brief.name`, not `record.name`), and a record carries **no
+items**. Read one entity for its items. Each item carries `section`, its section's name
+(the word a write takes), and `id`, which is what the writer takes to update, move or
+remove it. `scope: 'mine'` lists only the viewer's own records. Without it, the operator
+also gets everyone else's.
 
 ⭐ **`absent` and an empty `ready` are different answers, and confusing them is the
 mistake to avoid.** `absent` = there is no live source (no `api` service, or nobody signed
