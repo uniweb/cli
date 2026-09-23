@@ -18,18 +18,22 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import {
   BackendClient,
   WORKSPACE_HEADER,
   WorkspaceMismatchError,
   workspaceHandle,
+  workspaceHeader,
   namesWorkspace,
-  describeRequestError
+  describeRequestError,
+  refusalDetail
 } from '../src/backend/client.js'
-import { nameSiteWorkspace, readSiteOrg } from '../src/backend/site-sync.js'
+import { nameSiteWorkspace, readSiteWorkspace } from '../src/backend/site-sync.js'
 
 const ORIGIN = 'http://backend.test'
 const SITE = '/dev/site/content/pull/SITE-1'
+const UNIT = '01926d5e-0000-7000-8000-0000000000c1'
 
 /** A client whose requests are recorded and answered in order (then 200). */
 function recorded(...answers) {
@@ -72,6 +76,16 @@ test('a workspace is written `@handle` whatever spelling it arrives in', () => {
   assert.equal(workspaceHandle('@acme/marketing'), '@acme')
   assert.equal(workspaceHandle('  @acme '), '@acme')
   for (const none of [null, undefined, '', '@', 42]) assert.equal(workspaceHandle(none), null)
+})
+
+test('the header takes a handle-less unit by its uuid, bare — and a handle keeps its @', () => {
+  assert.equal(workspaceHeader(UNIT), UNIT)
+  assert.equal(workspaceHeader('@acme'), '@acme')
+  assert.equal(workspaceHeader('acme'), '@acme')
+  // ⚠️ Our handle grammar admits a uuid-shaped handle, so a HANDLE must arrive dressed:
+  // `--org` goes through workspaceHandle first, and a dressed one is never a unit.
+  assert.equal(workspaceHeader(workspaceHandle(UNIT)), `@${UNIT}`)
+  assert.equal(workspaceHeader(null), null)
 })
 
 test('site routes name the workspace; registry, assets, auth, orgs and config do not', async () => {
@@ -185,11 +199,44 @@ test('any other 409 is the caller’s — untouched', async () => {
   assert.equal(calls.length, 1)
 })
 
-test('a workspace named only by uuid is not adopted — there is no handle to send', async () => {
-  const { client, calls } = recorded(wrongWorkspace(null, 'UNIT-9'))
+test('a unit with no handle is adopted by its uuid, bare — as the header takes it', async () => {
+  const { client, calls } = recorded(wrongWorkspace(null, UNIT))
+  const res = await client.request(SITE)
+  assert.equal(res.status, 200)
+  assert.equal(calls[1].headers[WORKSPACE_HEADER], UNIT, 'no @: a bare value is a unit')
+  assert.equal(client.workspace, UNIT)
+})
+
+test('⛔ a unit answer to an explicit --org stops, and names the unit', async () => {
+  const { client } = recorded(wrongWorkspace(null, UNIT))
+  client.setWorkspace('@client', { explicit: true })
+  await assert.rejects(client.request(SITE), (err) => {
+    assert.ok(err instanceof WorkspaceMismatchError)
+    assert.match(err.message, new RegExp(`from the unit ${UNIT}, not @client`))
+    // `--org` takes a handle; a unit without one is reached by naming nothing.
+    assert.match(err.message, /Drop --org\.$/)
+    return true
+  })
+})
+
+test('a one-workspace deployment’s plain 409 is surfaced as it is, not adopted', async () => {
+  // No `reason`, no `workspace`: that backend has nothing to switch to.
+  const conflict = {
+    status: 409,
+    title: 'Conflict',
+    detail: 'This deployment has one workspace, @home.'
+  }
+  const { client, calls } = recorded(
+    () => new Response(JSON.stringify(conflict), { status: 409 })
+  )
+  client.setWorkspace('@acme')
   const res = await client.request(SITE)
   assert.equal(res.status, 409)
   assert.equal(calls.length, 1)
+  assert.equal(await refusalDetail(res), conflict.detail)
+  // …and a prose refusal, or none, still reads as something or nothing.
+  assert.equal(await refusalDetail(new Response('upstream said no', { status: 502 })), 'upstream said no')
+  assert.equal(await refusalDetail(new Response('', { status: 409 })), null)
 })
 
 // ─── recording and reporting ──────────────────────────────────────────────────
@@ -200,7 +247,7 @@ test('nameSiteWorkspace records an adopted workspace in sync.json, bare, and say
   const notes = []
   nameSiteWorkspace(client, { siteDir: dir, workspace: null, note: (m) => notes.push(m) })
   await client.request(SITE)
-  assert.equal(readSiteOrg(dir, ORIGIN), '@acme')
+  assert.equal(readSiteWorkspace(dir, ORIGIN), '@acme')
   // "the workspace these requests name" — never "the site's org": it may be a parent.
   assert.equal(notes.length, 1)
   assert.match(notes[0], /Requests for this site now name @acme, the workspace/)
@@ -214,4 +261,27 @@ test('a mismatch prints as itself, never as "could not reach the backend"', () =
     describeRequestError(new Error('ECONNREFUSED'), ORIGIN),
     /^Could not reach the backend at http:\/\/backend\.test: ECONNREFUSED$/
   )
+})
+
+test('a handle-less unit is recorded as `site.unit`, a handle as `site.org` — never both', async () => {
+  const dir = tmpSite()
+  const stored = () => JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends[ORIGIN].site
+
+  const first = recorded(wrongWorkspace(null, UNIT))
+  nameSiteWorkspace(first.client, { siteDir: dir, workspace: null })
+  await first.client.request(SITE)
+  assert.deepEqual(stored(), { unit: UNIT })
+  assert.equal(readSiteWorkspace(dir, ORIGIN), UNIT, 'read back in the header form')
+
+  const second = recorded(wrongWorkspace('acme'))
+  nameSiteWorkspace(second.client, { siteDir: dir, workspace: readSiteWorkspace(dir, ORIGIN) })
+  await second.client.request(SITE)
+  assert.equal(second.calls[0].headers[WORKSPACE_HEADER], UNIT, 'the record is named first')
+  assert.deepEqual(stored(), { org: 'acme' }, 'the handle replaces the unit')
+
+  const third = recorded(wrongWorkspace(null))
+  nameSiteWorkspace(third.client, { siteDir: dir, workspace: readSiteWorkspace(dir, ORIGIN) })
+  await third.client.request(SITE)
+  assert.deepEqual(stored(), {}, 'personal: nothing named, nothing recorded')
+  assert.equal(readSiteWorkspace(dir, ORIGIN), null)
 })

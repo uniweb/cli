@@ -59,7 +59,12 @@ import { resolvePlacement, SITE_KIND } from '../utils/placement.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { addWorkspaceGlob } from '../utils/config.js'
 import { detectWorkspacePm, installCmd } from '../utils/pm.js'
-import { BackendClient, describeRequestError } from '../backend/client.js'
+import {
+  BackendClient,
+  describeRequestError,
+  refusalDetail,
+  workspaceHandle
+} from '../backend/client.js'
 import { readOrgFlag } from '../utils/args.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 import { extractFoundationRef } from '../utils/site-content-refs.js'
@@ -162,11 +167,17 @@ function seedSyncJson(siteDir, origin, uuid, workspace = null) {
   const key = new URL(origin).origin
   // The workspace the read named — `--org`, or the one the backend answered with — so
   // the delegated pull, and every command after it, names it from the first request.
-  // Stored bare, as the create records it.
-  const org = workspace ? String(workspace).replace(/^@/, '') : null
+  // As the create records it: a handle bare in `org`, a handle-less unit's uuid in
+  // `unit` (site-sync.js::readSiteWorkspace).
+  const w = typeof workspace === 'string' && workspace ? workspace : null
+  const named = w
+    ? w.startsWith('@')
+      ? { org: w.slice(1) }
+      : { unit: w }
+    : {}
   doc.backends[key] = {
     ...(doc.backends[key] || {}),
-    site: { ...(doc.backends[key]?.site || {}), uuid, ...(org ? { org } : {}) }
+    site: { ...(doc.backends[key]?.site || {}), uuid, ...named }
   }
   mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, JSON.stringify(doc, null, 2) + '\n')
@@ -222,7 +233,7 @@ export async function clone(args = [], deps = {}) {
   // else none, and the client adopts the one the backend works on the site from. There
   // is no project yet to record it in; `seedSyncJson` does, below.
   const orgFlag = readOrgFlag(args)
-  client.setWorkspace(orgFlag || null, { explicit: Boolean(orgFlag) })
+  client.setWorkspace(orgFlag ? workspaceHandle(orgFlag) : null, { explicit: Boolean(orgFlag) })
 
   // 1. GET the site-content document.
   //
@@ -245,6 +256,8 @@ export async function clone(args = [], deps = {}) {
     }
     if (!res.ok) {
       error(`Could not read the site: HTTP ${res.status} ${res.statusText}`)
+      const detail = await refusalDetail(res)
+      if (detail) note(detail)
       if (res.status === 401 || res.status === 403)
         note('Run `uniweb login` first.')
       return { exitCode: 1 }

@@ -28,7 +28,7 @@ import {
   readBaseVersions,
   readSyncCache,
   readAppliedInjections,
-  readSiteOrg,
+  readSiteWorkspace,
   readItemBaseVersions,
   mergeItemBaseVersions,
   resolveSiteOrgForCreate,
@@ -1036,7 +1036,7 @@ test('the created site records its org BARE, and reads back with the @', async (
   // the bare handle, and one representation at rest beats two.
   const stored = JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8'))
   assert.equal(stored.backends[ORIGIN].site.org, 'acme')
-  assert.equal(readSiteOrg(dir, ORIGIN), '@acme')
+  assert.equal(readSiteWorkspace(dir, ORIGIN), '@acme')
   assert.equal(res.org, '@acme')
   // "Show what was resolved" — the org is named, not silently recorded.
   assert.ok(notes.some((m) => m.includes('@acme')))
@@ -1055,7 +1055,7 @@ test('a bare workspace value is accepted and normalized on the way in', async ()
     foundation: '@a/base@1.0.0'
   })
   assert.equal(readSiteIdentity(dir, ORIGIN).org, 'acme')
-  assert.equal(readSiteOrg(dir, ORIGIN), '@acme')
+  assert.equal(readSiteWorkspace(dir, ORIGIN), '@acme')
 })
 
 test('a create naming no workspace records NO org when the echo carries none', async () => {
@@ -1069,7 +1069,7 @@ test('a create naming no workspace records NO org when the echo carries none', a
   // The create response carries no org, so there is nothing true to record.
   // Inventing one would be worse than the gap it fills.
   assert.equal(readSiteIdentity(dir, ORIGIN).org, null)
-  assert.equal(readSiteOrg(dir), null)
+  assert.equal(readSiteWorkspace(dir), null)
   assert.equal(res.org, null)
 })
 
@@ -1187,7 +1187,7 @@ test('the backend echo wins over what we asked for, and null means personal', as
   // …the backend says the site is personal. `org: null` is an ANSWER, not an
   // absent key, so it must not fall back to the request.
   assert.equal(readSiteIdentity(dir, ORIGIN).org, null)
-  assert.equal(readSiteOrg(dir), null)
+  assert.equal(readSiteWorkspace(dir), null)
 })
 
 test('an older backend omitting `org` falls back to what we asked for', async () => {
@@ -1203,7 +1203,7 @@ test('an older backend omitting `org` falls back to what we asked for', async ()
     name: 'Acme',
     foundation: '@a/base@1.0.0'
   })
-  assert.equal(readSiteOrg(dir, ORIGIN), '@acme')
+  assert.equal(readSiteWorkspace(dir, ORIGIN), '@acme')
 })
 
 test('the billing line speaks ONLY the reassuring fact, and never predicts a charge', async () => {
@@ -1259,15 +1259,15 @@ test('the billing line speaks ONLY the reassuring fact, and never predicts a cha
   }
 })
 
-test('readSiteOrg returns null for every site that predates the record', () => {
+test('readSiteWorkspace returns null for every site that predates the record', () => {
   const dir = tmpSite()
   // No record ⇒ the project names no workspace, and the client adopts the one the
   // backend works on the site from (its `409 wrong_workspace`).
   bind(dir, 'OLD-1')
-  assert.equal(readSiteOrg(dir), null)
+  assert.equal(readSiteWorkspace(dir), null)
 
   bind(dir, null, '   ')
-  assert.equal(readSiteOrg(dir), null, 'a blank handle is not an org')
+  assert.equal(readSiteWorkspace(dir), null, 'a blank handle is not an org')
 })
 
 test('ensureSiteExists distinguishes a backend without the route from a refusal', async () => {

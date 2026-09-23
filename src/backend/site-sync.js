@@ -17,11 +17,16 @@ import yaml from 'js-yaml'
 import { hasUncommittedContent } from '../utils/git.js'
 import { humanBytes } from '../utils/bytes.js'
 import { isAuthoredPreview } from '../utils/preview.js'
-import { describeRequestError, WorkspaceMismatchError } from './client.js'
+import {
+  describeRequestError,
+  WorkspaceMismatchError,
+  workspaceHandle,
+  workspaceHeader
+} from './client.js'
 import {
   backfillEntityUuids,
   writeSiteEntityUuid,
-  writeSiteOrg,
+  updateBackendState,
   emitSyncPackages,
   readZip,
   diffSiteUnits,
@@ -647,11 +652,16 @@ export function writeItemUuids(siteDir, backend, map) {
 }
 
 /**
- * The workspace this project's requests name on `backend`, as `@handle`, or null.
+ * The workspace this project's requests name on `backend`, as the header names it —
+ * `@handle`, or a unit's bare uuid when that unit has no handle — or null for none.
  *
- * Read back from `backend`'s `site.org` in `sync.json` (stored bare — see
- * `writeSiteOrg`) and re-dressed with the `@` the CLI and the wire both use. Recorded
- * at create — the site's owner — or adopted later from a backend's `409
+ * Read back from `backend`'s section of `sync.json`: `site.org` holds a handle, stored
+ * bare and re-dressed with its `@`; `site.unit` holds a unit's uuid, for a workspace
+ * that has no handle. At most one is set (`writeSiteWorkspace`). ⛔ They are two keys
+ * because the `@` is the only thing telling the two apart — our own handle grammar
+ * admits a uuid-shaped handle — and a bare value at rest has lost it.
+ *
+ * Recorded at create — the site's owner — or adopted later from a backend's `409
  * wrong_workspace`, which may name a PARENT workspace that contains the site rather
  * than the site's own unit. ⇒ It is "the workspace these requests name", never
  * printed as "the site's org".
@@ -662,9 +672,40 @@ export function writeItemUuids(siteDir, backend, map) {
  * @param {string} backend - the origin whose record to read
  * @returns {string|null}
  */
-export function readSiteOrg(siteDir, backend) {
-  const org = readBackendState(siteDir, backend).site?.org
-  return typeof org === 'string' && org ? `@${org.replace(/^@/, '')}` : null
+export function readSiteWorkspace(siteDir, backend) {
+  const site = readBackendState(siteDir, backend).site || {}
+  const org = typeof site.org === 'string' ? site.org.trim().replace(/^@/, '') : ''
+  if (org) return `@${org}`
+  const unit = typeof site.unit === 'string' ? site.unit.trim() : ''
+  return unit || null
+}
+
+/**
+ * Record the workspace this project's requests name on `backend` — a handle in
+ * `site.org` (bare), a handle-less unit in `site.unit`, clearing the other; null
+ * clears both (the personal workspace, named by naming none). Returns what was
+ * recorded, in the header's form.
+ *
+ * @param {string} siteDir
+ * @param {string} backend
+ * @param {string|null|undefined} workspace - `@handle`, a unit's uuid, or null
+ * @returns {string|null}
+ */
+function writeSiteWorkspace(siteDir, backend, workspace) {
+  const w = workspaceHeader(workspace)
+  updateBackendState(siteDir, backend, {
+    site: {
+      org: w?.startsWith('@') ? w.slice(1) : undefined,
+      unit: w && !w.startsWith('@') ? w : undefined
+    }
+  })
+  return w
+}
+
+/** A workspace as a sentence names it: `@acme`, `the unit <uuid>`, or `your personal workspace`. */
+export function describeWorkspace(workspace) {
+  if (!workspace) return 'your personal workspace'
+  return workspace.startsWith('@') ? workspace : `the unit ${workspace}`
 }
 
 /**
@@ -675,12 +716,14 @@ export function readSiteOrg(siteDir, backend) {
  * An explicit choice (`--org`, `--personal`, the create picker) is sent as named, and
  * a `409 wrong_workspace` then STOPS the command. Otherwise the client adopts the
  * workspace the backend names, and this records it — as-is, since it may be a parent
- * workspace — and says so. (`client.js::request`; agreed with backend 2026-09-23.)
+ * workspace, or a unit with no handle — and says so. (`client.js::request`; agreed
+ * with backend 2026-09-23.)
  *
  * @param {import('./client.js').BackendClient} client
  * @param {object} p
  * @param {string} p.siteDir
- * @param {string|null} p.workspace - `@handle` / bare, or null to name none
+ * @param {string|null} p.workspace - in the header's form (`readSiteWorkspace`, or
+ *   `workspaceHandle(--org)`), or null to name none
  * @param {boolean} [p.explicit=false]
  * @param {(m: string) => void} [p.note]
  * @returns {import('./client.js').BackendClient}
@@ -688,15 +731,15 @@ export function readSiteOrg(siteDir, backend) {
 export function nameSiteWorkspace(client, { siteDir, workspace, explicit = false, note }) {
   return client.setWorkspace(workspace, {
     explicit,
-    onAdopted: (handle) => {
+    onAdopted: (adopted) => {
       try {
-        writeSiteOrg(siteDir, client.origin, handle ? handle.replace(/^@/, '') : null)
+        writeSiteWorkspace(siteDir, client.origin, adopted)
       } catch {
         // Recording is a convenience for the next command; this one still retries.
       }
       note?.(
-        handle
-          ? `Requests for this site now name ${handle}, the workspace the backend works on it from (recorded in sync.json).`
+        adopted
+          ? `Requests for this site now name ${describeWorkspace(adopted)}, the workspace the backend works on it from (recorded in sync.json).`
           : 'Requests for this site now name no workspace — the backend works on it from your personal one (recorded in sync.json).'
       )
     }
@@ -704,26 +747,20 @@ export function nameSiteWorkspace(client, { siteDir, workspace, explicit = false
 }
 
 /**
- * Record the org a just-minted site was created under, if there is one.
+ * Record the workspace a just-minted site was created under.
  *
  * Only what we were TOLD is recorded — the create's echo, else the workspace the
  * create named; a personal site has none, and guessing one would be worse than the
- * gap. Returns the display form for the caller's "here's what resolved" line, or null
- * when nothing was recorded.
+ * gap. Returns the recorded workspace for the caller's "here's what resolved" line,
+ * or null when there is none.
  *
  * @param {string} siteDir
- * @param {string|null|undefined} owner - `@handle` or bare
+ * @param {string|null|undefined} owner - in the header's form, or null
  * @returns {string|null}
  */
-function recordSiteOrg(siteDir, backend, owner) {
-  const handle = String(owner || '')
-    .replace(/^@/, '')
-    .replace(/\/.*$/, '')
-    .trim()
-  if (!handle) return null
+function recordSiteWorkspace(siteDir, backend, owner) {
   try {
-    writeSiteOrg(siteDir, backend, handle)
-    return `@${handle}`
+    return writeSiteWorkspace(siteDir, backend, owner)
   } catch {
     // The uuid is the load-bearing back-fill; losing the org note must never
     // fail a push that already succeeded on the backend.
@@ -789,10 +826,10 @@ export async function resolveSiteOrgForCreate({
   personal = false,
   offline = false
 }) {
-  if (flag) return { workspace: flag, source: 'flag' }
+  if (flag) return { workspace: workspaceHandle(flag), source: 'flag' }
   if (personal) return { workspace: null, source: 'personal' }
 
-  const recorded = readSiteOrg(siteDir, client?.origin)
+  const recorded = readSiteWorkspace(siteDir, client?.origin)
   if (recorded) return { workspace: recorded, source: 'recorded' }
 
   // Already created ⇒ nothing to decide: ownership was settled at its create and
@@ -991,7 +1028,7 @@ export async function ensureSiteExists({
   }
   const known = readBackendState(siteDir, client.origin).site?.uuid
   if (known) {
-    return { uuid: known, created: false, org: readSiteOrg(siteDir, client.origin) }
+    return { uuid: known, created: false, org: readSiteWorkspace(siteDir, client.origin) }
   }
 
   // Both are required by the create. Catching it here turns a 400 into a sentence
@@ -1067,8 +1104,12 @@ export async function ensureSiteExists({
 async function recordAndDescribeOwner({ client, siteDir, payload, note }) {
   const echoed = payload && 'org' in payload ? payload.org : undefined
   const owner =
-    echoed === undefined ? client.workspace : typeof echoed === 'string' ? echoed : null
-  const org = recordSiteOrg(siteDir, client.origin, owner)
+    echoed === undefined
+      ? client.workspace
+      : typeof echoed === 'string'
+        ? workspaceHandle(echoed)
+        : null
+  const org = recordSiteWorkspace(siteDir, client.origin, owner)
 
   // ⛔ No sync scope to record. It WAS `site.yml::$backend`, written here because this
   // function is the one place both create paths meet. The scope is now the KEY the
@@ -1076,7 +1117,7 @@ async function recordAndDescribeOwner({ client, siteDir, payload, note }) {
   // separately would be recording the name of the drawer inside the drawer.
   note?.(
     org
-      ? `Created the site on ${client.origin} under ${org} — recorded in sync.json.`
+      ? `Created the site on ${client.origin} under ${describeWorkspace(org)} — recorded in sync.json.`
       : `Created the site on ${client.origin}, owned personally — recorded in sync.json.`
   )
 

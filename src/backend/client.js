@@ -108,11 +108,11 @@ export const DISCOVERY_DEFAULTS = {}
 /**
  * The header a request names its WORKSPACE with — the unit it works in.
  *
- * ⭐ `@<handle>`, the `@` required: a bare value is read as a unit uuid on the other end,
- * so the two spellings can never be mistaken for each other. Every `/dev` route accepts
- * it; the client names it on the site routes, the ones that work in a workspace
- * (`namesWorkspace`). ⛔ It replaced `?as_org=` (2026-09-23), which only routes that
- * declared it accepted — the rest answered `400`.
+ * ⭐ `@<handle>`, the `@` required: a bare value is read as a unit's uuid — the spelling
+ * for a workspace with no handle — so the two can never be mistaken for each other.
+ * Every `/dev` route accepts it; the client names it on the site routes, the ones that
+ * work in a workspace (`namesWorkspace`). ⛔ It replaced `?as_org=` (2026-09-23), which
+ * only routes that declared it accepted — the rest answered `400`.
  */
 export const WORKSPACE_HEADER = 'x-uniweb-workspace'
 
@@ -146,6 +146,26 @@ export function workspaceHandle(value) {
   return h ? `@${h}` : null
 }
 
+const UNIT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * A workspace as the header names it — `@handle`, or a unit's bare uuid when the unit
+ * has no handle — or null for none.
+ *
+ * ⚠️ A bare value is taken for a uuid only when it is shaped like one, and our own
+ * handle grammar admits uuid-shaped handles (3–39 lowercase letters, digits, hyphens).
+ * So a HANDLE reaches this already dressed — `--org` through `workspaceHandle`, a
+ * record through `readSiteWorkspace` — and a bare uuid here is a unit.
+ *
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function workspaceHeader(value) {
+  if (typeof value !== 'string' || !value.trim()) return null
+  const v = value.trim()
+  return !v.startsWith('@') && UNIT_UUID.test(v) ? v : workspaceHandle(v)
+}
+
 /**
  * The request named its workspace EXPLICITLY — `--org`, `--personal`, a choice made at
  * create — and the backend works on the site from another.
@@ -162,12 +182,14 @@ export class WorkspaceMismatchError extends Error {
    *   named, and the one the backend named (`@handle`, null for personal)
    */
   constructor({ named, answer }) {
-    const where = (w) => w || 'your personal workspace'
+    const where = (w) =>
+      !w ? 'your personal workspace' : w.startsWith('@') ? w : `the unit ${w}`
     const flag = named ? '--org' : '--personal'
     super(
       `The backend works on this site from ${where(answer)}, not ${where(named)} ` +
         `(${named ? `--org ${named}` : flag}). ` +
-        (answer ? `Pass --org ${answer}, or drop ${flag}.` : `Drop ${flag}.`)
+        // `--org` takes a handle; a unit without one is reached by naming nothing.
+        (answer?.startsWith('@') ? `Pass --org ${answer}, or drop ${flag}.` : `Drop ${flag}.`)
     )
     this.name = 'WorkspaceMismatchError'
     this.status = 409
@@ -190,6 +212,32 @@ export class WorkspaceMismatchError extends Error {
 export function describeRequestError(err, origin) {
   if (err instanceof WorkspaceMismatchError) return err.message
   return `Could not reach the backend at ${origin}: ${err?.message ?? err}`
+}
+
+/**
+ * The sentence a refusal carries — a problem document's `detail`, else its `title`, else
+ * the start of a prose body — or null. Consumes the body. For the surfaces that would
+ * otherwise print a status line alone, so a refusal the backend explains is shown as it
+ * is: a deployment with one workspace answers a request naming another with a plain
+ * `409 Conflict` whose `detail` names the one there is.
+ *
+ * @param {Response} res
+ * @returns {Promise<string|null>}
+ */
+export async function refusalDetail(res) {
+  let body = ''
+  try {
+    body = await res.text()
+  } catch {
+    return null
+  }
+  try {
+    const problem = JSON.parse(body)
+    const line = problem?.detail || problem?.title
+    return typeof line === 'string' && line ? line : null
+  } catch {
+    return body ? body.slice(0, 300) : null
+  }
 }
 
 export class BackendClient {
@@ -234,7 +282,8 @@ export class BackendClient {
   /**
    * Name the workspace every request from here on works in (`x-uniweb-workspace`).
    *
-   * @param {string|null} value - `@acme` / `acme`, or null to name none
+   * @param {string|null} value - `@acme` / `acme`, a handle-less unit's uuid, or null to
+   *   name none (`workspaceHeader`)
    * @param {object} [opts]
    * @param {boolean} [opts.explicit=false] - the user named it (`--org`, `--personal`,
    *   the create picker). A `409 wrong_workspace` then STOPS the command
@@ -245,7 +294,7 @@ export class BackendClient {
    * @returns {this}
    */
   setWorkspace(value, { explicit = false, onAdopted = null } = {}) {
-    this._workspace = workspaceHandle(value)
+    this._workspace = workspaceHeader(value)
     this._workspaceExplicit = Boolean(explicit)
     this._onWorkspaceAdopted = onAdopted || null
     return this
@@ -312,9 +361,12 @@ export class BackendClient {
       typeof res.clone === 'function' ? await res.clone().json().catch(() => null) : null
     if (problem?.reason !== 'wrong_workspace') return res
     const where = problem.workspace || {}
-    // A workspace the backend can only name by uuid has no handle for us to send.
-    if (!where.handle && where.unit_uuid) return res
-    const answer = workspaceHandle(where.handle)
+    // A unit with no handle is named by its uuid, bare — the header takes either.
+    const answer = where.handle
+      ? workspaceHandle(where.handle)
+      : typeof where.unit_uuid === 'string' && where.unit_uuid
+        ? where.unit_uuid
+        : null
     // Naming what the backend names and still refused: nothing to adopt, or to report
     // as a mismatch. The caller reads the 409 like any other.
     if (answer === this._workspace) return res
@@ -713,10 +765,17 @@ export class BackendClient {
       const res = await this.request(
         `/dev/site/status/${encodeURIComponent(uuid)}`
       )
+      if (res.status === 409) {
+        // A refusal about the workspace — e.g. a deployment with one workspace, naming
+        // it — is an answer to report, not an absent status.
+        const refused = new Error((await refusalDetail(res)) || 'HTTP 409 Conflict')
+        refused.status = 409
+        throw refused
+      }
       return res.ok ? await res.json().catch(() => null) : null
     } catch (err) {
-      // A mismatch is an answer about the user's own choice, not an absent status.
-      if (err instanceof WorkspaceMismatchError) throw err
+      // A mismatch or a refusal is an answer, not an absent status.
+      if (err instanceof WorkspaceMismatchError || err?.status === 409) throw err
       return null
     }
   }

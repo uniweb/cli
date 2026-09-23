@@ -25,11 +25,12 @@ import { join } from 'node:path'
 import yaml from 'js-yaml'
 
 import { resolveSiteDir } from './deploy.js'
-import { probeUnpushed, nameSiteWorkspace, readSiteOrg } from '../backend/site-sync.js'
+import { probeUnpushed, nameSiteWorkspace, readSiteWorkspace } from '../backend/site-sync.js'
 import { readOrgFlag } from '../utils/args.js'
 import {
   BackendClient,
   resolveBackendOrigin,
+  workspaceHandle,
   WorkspaceMismatchError
 } from '../backend/client.js'
 import { readBackendState } from '@uniweb/build/uwx'
@@ -120,7 +121,7 @@ export async function status(args = []) {
   let site = null
   let fdnLatest = null
   let foundationFresh = null // true/false when both digests are known; else null
-  let remoteError = null // a workspace mismatch — the one remote failure worth saying
+  let remoteError = null // a refusal about the workspace — the one remote failure worth saying
   if (remote) {
     try {
       const client = new BackendClient({
@@ -132,7 +133,7 @@ export async function status(args = []) {
       const orgFlag = readOrgFlag(args)
       nameSiteWorkspace(client, {
         siteDir,
-        workspace: orgFlag || readSiteOrg(siteDir, client.origin),
+        workspace: orgFlag ? workspaceHandle(orgFlag) : readSiteWorkspace(siteDir, client.origin),
         explicit: Boolean(orgFlag),
         note: jsonMode ? undefined : say.dim
       })
@@ -150,9 +151,10 @@ export async function status(args = []) {
         if (localDigest) foundationFresh = localDigest === fdnLatest.digest
       }
     } catch (err) {
-      // Degrade silently — except the mismatch: `--org` named a workspace the backend
-      // does not work on this site from, and saying nothing would read as "fine".
-      if (err instanceof WorkspaceMismatchError) remoteError = err.message
+      // Degrade silently — except a refusal about the workspace: `--org` named one the
+      // backend does not work on this site from, or the deployment has another. Saying
+      // nothing would read as "fine".
+      if (err instanceof WorkspaceMismatchError || err?.status === 409) remoteError = err.message
     }
   }
 

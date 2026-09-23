@@ -92,7 +92,7 @@ import {
   writeUnitBases,
   writeItemUuids,
   nameSiteWorkspace,
-  readSiteOrg
+  readSiteWorkspace
 } from '../backend/site-sync.js'
 import { readOrgFlag } from '../utils/args.js'
 import {
@@ -105,6 +105,8 @@ import { isNonInteractive } from '../utils/interactive.js'
 import {
   BackendClient,
   describeRequestError,
+  refusalDetail,
+  workspaceHandle,
   WorkspaceMismatchError
 } from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir } from './deploy.js'
@@ -604,7 +606,7 @@ export async function pull(args = [], deps = {}) {
   const orgFlag = readOrgFlag(args)
   nameSiteWorkspace(client, {
     siteDir,
-    workspace: orgFlag || readSiteOrg(siteDir, client.origin),
+    workspace: orgFlag ? workspaceHandle(orgFlag) : readSiteWorkspace(siteDir, client.origin),
     explicit: Boolean(orgFlag),
     note
   })
@@ -691,6 +693,8 @@ export async function pull(args = [], deps = {}) {
     }
     if (!res.ok) {
       error(`${label} pull failed: HTTP ${res.status} ${res.statusText}`)
+      const detail = await refusalDetail(res)
+      if (detail) note(detail)
       if (res.status === 401 || res.status === 403)
         note(
           "Credentials weren't accepted — log in again (`uniweb login --backend <url>`), or check UNIWEB_TOKEN."
