@@ -2515,9 +2515,9 @@ uniweb add ci --target foundation # Publish a foundation for free at permanent v
 uniweb push / pull / clone / status   # Git-style content sync with the Uniweb backend
 uniweb refresh / sync                 # Catch up (git + backend, never pushes) / catch up, then push
 uniweb push --org @acme               # First push/publish of a site: who owns it (see below)
-uniweb register [--scope @org]        # Register a foundation + its data schemas to the registry
+uniweb register [--scope @scope]      # Register a foundation + its data schemas to the registry
 uniweb login / logout                 # One backend at a time: log in (--backend <url>) or out
-uniweb org list / create <handle>     # Publish orgs you belong to — the @org in a scoped ref
+uniweb org list / create <handle>     # Your personal scope, and the orgs you belong to
 uniweb content export [dir]           # Package a site (or a built foundation's schema) as .uwx
 
 uniweb rename <foundation|site|extension> <old> <new>   # Rename across the whole workspace
@@ -2634,7 +2634,7 @@ Platform-specific configuration that doesn't belong in npm-standard fields. All 
 |---|---|---|---|
 | `runtimePolicy` | `dist/runtime-pin.json` | unset | Declares how far past the recorded runtime version a host may move a site. |
 
-**The foundation's name is not here — it is `name` in `main.js`** (else `package.json`'s `name`), **and so is the org it registers under: the scope is part of the name**, `name: '@acme/marketing'`. A name with no scope has not been registered yet: the first `uniweb register` takes `--scope @org` (else one of your orgs) and writes it into the name, and a `--scope` naming another org than the name's is refused. The foundation's own data schemas register under the same scope (`@/article` → `@acme/article`). ⛔ `uniweb.id` and `uniweb.scope` are no longer read for a foundation: `uniweb register` refuses them and prints the `main.js` line to write instead. (A schemas-only package has no `main.js`, and still records its scope in `uniweb.scope`.)
+**The foundation's name is not here — it is `name` in `main.js`** (else `package.json`'s `name`), **and so is the scope it registers under: the scope is part of the name**, `name: '@acme/marketing'`. A scope is a namespace — your personal one, `@<your handle>`, which needs no org, or an org's. A name with no scope has not been registered yet: the first `uniweb register` takes `--scope`, else your personal scope (asking only if you belong to orgs), and writes it into the name; a `--scope` naming another scope than the name's is refused. The foundation's own data schemas register under the same scope (`@/article` → `@acme/article`). ⛔ `uniweb.id` and `uniweb.scope` are no longer read for a foundation: `uniweb register` refuses them and prints the `main.js` line to write instead. (A schemas-only package has no `main.js`, and still records its scope in `uniweb.scope`.)
 
 **Runtime updates — handled for you.** Your foundation's code links against the runtime: it externalizes `react`, `react-dom`, `react-dom/server`, both JSX runtimes and `@uniweb/core`, and the runtime supplies all of them at load time. So a build is bound to *that* React and *that* core API.
 

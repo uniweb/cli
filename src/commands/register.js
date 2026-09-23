@@ -376,8 +376,8 @@ export async function settleFoundationScope(targetDir, { args, isPreview, flagSc
 }
 
 /**
- * A publish scope derived from the login's org memberships (list → 1 use / 0 create /
- * N pick), as `@handle` — or null when none was chosen.
+ * A scope derived from the login (`deriveScope`): your personal scope when you belong
+ * to no org, else a pick — as `@handle`, or null when none was chosen.
  */
 async function deriveScopeFromLogin(client, args) {
   const token = await client.token()
@@ -692,8 +692,8 @@ async function runRegister(args = []) {
     }
   }
 
-  // A schemas-only package with no scope, on a real submit → derive it from login
-  // membership (list → 1 use / 0 create / N pick) and persist it to package.json.
+  // A schemas-only package with no scope, on a real submit → derive it from the login
+  // (your personal scope, or a pick among it and your orgs) and persist it to package.json.
   // (A foundation's was settled before its build — `settleFoundationScope`.)
   if (standalone && !scope && !isPreview) {
     const derived = await deriveScopeFromLogin(client, args)

@@ -569,7 +569,7 @@ export class BackendClient {
 
   // ── Orgs ──────────────────────────────────────────────────────────────────────
 
-  /** GET /dev/orgs → { account_handle, personal_org_exists, orgs[] }. */
+  /** GET /dev/orgs → { account_handle, orgs[] }. */
   async fetchOrgs() {
     return fetchOrgsImpl({ apiBase: this.origin, token: await this.token() })
   }

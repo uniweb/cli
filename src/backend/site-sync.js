@@ -787,10 +787,10 @@ export const EXPLICIT_OWNER = new Set(['flag', 'personal', 'picked'])
  * they never named.
  *
  * `register` resolves a foundation's scope in the same order — recorded (the scope
- * in its name, `@acme/marketing` in main.js), else explicit (`--scope`), else asked
- * (`deriveScope`) — with one difference: non-interactive, it PICKS the one org you
- * belong to, else your personal org, else the primary, and says which. This refuses
- * instead, because a site's owner is the one-shot decision above. ⭐ And the two are
+ * in its name, `@acme/marketing` in main.js), else explicit (`--scope`), else derived
+ * (`deriveScope`) — with one difference: non-interactive, it takes your personal
+ * scope and says so. This refuses instead, because a site's owner is the one-shot
+ * decision above, and a scope is only a namespace (2026-09-23). ⭐ And the two are
  * separate decisions: a foundation may be registered under any org its author
  * belongs to, whoever owns the site (2026-09-22) — a site's `@/x` refs take the
  * FOUNDATION's scope, never this one. ⚠️ Until 2026-09-21 this said
@@ -861,10 +861,9 @@ export async function resolveSiteOrgForCreate({
     }
   }
 
-  // Interactive: offer the real choice. Deliberately NOT `deriveScope` — that one
-  // serves the foundation lane, where every answer is an org and 0-orgs means
-  // "claim your personal org". Here "personal" must stay reachable as *no org*,
-  // and reusing deriveScope would quietly turn it into an org creation.
+  // Interactive: offer the real choice. Deliberately NOT `deriveScope` — that one picks
+  // a NAMESPACE for a foundation, where `@<your handle>` is your personal scope. Here
+  // the answer is an OWNER: your personal workspace (named by naming none) or an org.
   const { fetchOrgs, createOrg, validateHandle, bareHandle } =
     await import('../utils/registry-orgs.js')
   let envelope

@@ -1,7 +1,9 @@
 /**
- * First-publish org choice (deriveScope) — the one-prompt-once flow with the
- * personal-handle org as the lazy default. prompts.inject drives the picker;
- * an injected global fetch fakes the orgs endpoints.
+ * The scope `register` derives from the login (deriveScope). ⭐ A scope is a namespace:
+ * `@<account handle>` is the account's own and needs no org (2026-09-23), so a login
+ * with no org registers there without a prompt — in CI too — and nothing creates an
+ * org. prompts.inject drives the picker; an injected global fetch fakes the orgs
+ * endpoints.
  */
 
 import { test } from 'node:test'
@@ -9,7 +11,6 @@ import assert from 'node:assert/strict'
 import prompts from 'prompts'
 import {
   deriveScope,
-  offerCreateOrg,
   validateHandle,
   bareHandle,
   publishScope
@@ -21,7 +22,6 @@ const BASE = { apiBase: 'http://localhost:8080', token: 't' }
 function fakeOrgs({
   list = [],
   accountHandle = 'jane',
-  personalOrgExists = false,
   createdHandles = []
 } = {}) {
   return async (url, opts = {}) => {
@@ -29,11 +29,7 @@ function fakeOrgs({
       return {
         ok: true,
         status: 200,
-        json: async () => ({
-          account_handle: accountHandle,
-          personal_org_exists: personalOrgExists,
-          orgs: list
-        })
+        json: async () => ({ account_handle: accountHandle, orgs: list })
       }
     }
     const body = JSON.parse(opts.body)
@@ -81,105 +77,89 @@ test('publishScope agrees with the .uwx assembly on the name it registers', () =
   }
 })
 
-test('0 orgs + handle: the personal org is the one-keystroke default', async () => {
-  // offerCreateOrg is the interactive 0-orgs flow (deriveScope routes here
-  // when a TTY exists; under the test runner we drive it directly).
-  const created = []
+/** Run `fn` with fetch faked and stderr captured; returns `{ result, errs }`. */
+async function withOrgs(orgsOpts, fn) {
   const realFetch = globalThis.fetch
-  globalThis.fetch = fakeOrgs({ list: [], createdHandles: created })
-  try {
-    prompts.inject(['jane']) // the pre-selected personal choice
-    const scope = await offerCreateOrg({ ...BASE, accountHandle: 'jane' })
-    assert.equal(scope, 'jane')
-    assert.deepEqual(created, ['jane']) // lazily claimed at first publish
-  } finally {
-    globalThis.fetch = realFetch
-  }
-})
-
-test('0 orgs + handle: "A new organization…" prompts for a handle', async () => {
-  const created = []
-  const realFetch = globalThis.fetch
-  globalThis.fetch = fakeOrgs({ list: [], createdHandles: created })
-  try {
-    prompts.inject([':new', 'acme'])
-    const scope = await offerCreateOrg({ ...BASE, accountHandle: 'jane' })
-    assert.equal(scope, 'acme')
-    assert.deepEqual(created, ['acme'])
-  } finally {
-    globalThis.fetch = realFetch
-  }
-})
-
-test('0 orgs + NO handle: crisp pointer, no prompt, no create', async () => {
-  const created = []
-  const realFetch = globalThis.fetch
-  globalThis.fetch = fakeOrgs({ list: [], createdHandles: created })
-  const errs = []
   const realErr = console.error
+  const errs = []
+  globalThis.fetch = fakeOrgs(orgsOpts)
   console.error = (m) => errs.push(String(m))
   try {
-    const scope = await offerCreateOrg({ ...BASE, accountHandle: null })
-    assert.equal(scope, null)
-    assert.deepEqual(created, [])
-    assert.ok(
-      errs.join('\n').includes('no handle'),
-      'guides the user to claim a handle'
-    )
+    return { result: await fn(), errs: errs.join('\n') }
   } finally {
     globalThis.fetch = realFetch
     console.error = realErr
   }
-})
+}
 
-test('1 org: non-interactive uses it directly', async () => {
-  const realFetch = globalThis.fetch
-  globalThis.fetch = fakeOrgs({ list: [{ handle: 'jane', is_primary: true }] })
+/** As an interactive terminal: a TTY, and no CI. */
+async function atTerminal(fn) {
+  const tty = process.stdin.isTTY
+  const ci = process.env.CI
+  process.stdin.isTTY = true
+  delete process.env.CI
   try {
-    const scope = await deriveScope({ ...BASE, accountHandle: 'jane' })
-    assert.equal(scope, 'jane')
+    return await fn()
   } finally {
-    globalThis.fetch = realFetch
+    process.stdin.isTTY = tty
+    if (ci === undefined) delete process.env.CI
+    else process.env.CI = ci
   }
-})
+}
 
-test('N orgs non-interactive: the personal org wins over primary', async () => {
-  const realFetch = globalThis.fetch
-  globalThis.fetch = fakeOrgs({
-    list: [
-      { handle: 'acme', is_primary: true },
-      { handle: 'jane', is_primary: false }
-    ]
-  })
-  try {
-    const scope = await deriveScope({ ...BASE, accountHandle: 'jane' })
-    assert.equal(scope, 'jane')
-  } finally {
-    globalThis.fetch = realFetch
-  }
-})
-
-test('created-then-left: the lazy claim is not offered (would 409)', async () => {
+test('no org: your personal scope — no prompt, no org created, and in CI too', async () => {
   const created = []
-  const realFetch = globalThis.fetch
-  globalThis.fetch = fakeOrgs({
-    list: [],
-    personalOrgExists: true,
-    createdHandles: created
-  })
-  try {
-    prompts.inject([':new', 'acme-two'])
-    const scope = await offerCreateOrg({
-      apiBase: 'http://localhost:8080',
-      token: 't',
-      accountHandle: 'jane',
-      personalOrgExists: true
-    })
-    assert.equal(scope, 'acme-two')
-    assert.deepEqual(created, ['acme-two']) // never tried to claim @jane
-  } finally {
-    globalThis.fetch = realFetch
-  }
+  const { result, errs } = await withOrgs({ list: [], createdHandles: created }, () =>
+    deriveScope({ ...BASE, args: ['--non-interactive'] })
+  )
+  assert.equal(result, 'jane')
+  assert.deepEqual(created, [], 'a scope is a namespace: nothing creates an org')
+  assert.match(errs, /personal scope/, 'said, not asked')
+})
+
+test('an org named after you — made before 2026-09-23 — is your personal scope, once', async () => {
+  const { result } = await withOrgs({ list: [{ handle: 'jane', is_primary: true }] }, () =>
+    deriveScope({ ...BASE, args: ['--non-interactive'] })
+  )
+  assert.equal(result, 'jane')
+})
+
+test('orgs, non-interactive: your personal scope, said — pass --scope for an org', async () => {
+  const { result, errs } = await withOrgs(
+    { list: [{ handle: 'acme', is_primary: true }] },
+    () => deriveScope({ ...BASE, args: ['--non-interactive'] })
+  )
+  assert.equal(result, 'jane')
+  assert.match(errs, /--scope @org/)
+})
+
+test('orgs, at a terminal: a pick — your personal scope first, then each org', async () => {
+  const { result } = await withOrgs(
+    { list: [{ handle: 'acme', is_primary: true }, { handle: 'beta', is_primary: false }] },
+    () =>
+      atTerminal(() => {
+        prompts.inject(['acme'])
+        return deriveScope({ ...BASE })
+      })
+  )
+  assert.equal(result, 'acme')
+})
+
+test('no account handle (a service account): its one org; none is a pointer', async () => {
+  const one = await withOrgs({ accountHandle: null, list: [{ handle: 'acme', is_primary: true }] }, () =>
+    deriveScope({ ...BASE, args: ['--non-interactive'] })
+  )
+  assert.equal(one.result, 'acme')
+  const none = await withOrgs({ accountHandle: null, list: [] }, () =>
+    deriveScope({ ...BASE, args: ['--non-interactive'] })
+  )
+  assert.equal(none.result, null)
+  assert.match(none.errs, /--scope @org/)
+  const several = await withOrgs(
+    { accountHandle: null, list: [{ handle: 'a-one', is_primary: true }, { handle: 'b-two', is_primary: false }] },
+    () => deriveScope({ ...BASE, args: ['--non-interactive'] })
+  )
+  assert.equal(several.result, null, 'no personal scope to fall back to — refused in CI')
 })
 
 test('createOrg surfaces the server detail on 409 (three flavors, one status)', async () => {

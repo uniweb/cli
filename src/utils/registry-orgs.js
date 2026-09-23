@@ -26,17 +26,19 @@
  *
  *   GET  /dev/orgs → {
  *     account_handle: string|null,     // the caller's account handle
- *     personal_org_exists: bool,       // does @<account_handle> exist as an org
  *     orgs: [{ handle, is_primary }]   // memberships, primary first;
  *   }                                  // handle-less units filtered server-side
  *
  *   POST /dev/orgs { handle } → { handle, uuid, is_primary }
  *
- * The PERSONAL org needs no flag: handles live in ONE global namespace across
- * accounts + orgs and only the owner can create the org matching their account
- * handle — so `org.handle === account_handle` is a sound derivation, and the
- * lazy personal claim is just a create. Org creation requires NO second factor
- * on any lane (the 2FA gate lives at escalation points, not here).
+ * ⭐ A SCOPE IS A NAMESPACE, NOT AN ORG (2026-09-23). `@<account handle>` is the
+ * account's own scope and needs no org; an org's scope is published into by its
+ * members. Handles live in ONE global namespace across accounts and orgs, so an org
+ * needs a handle of its own — a backend refuses an org named after an account, its
+ * owner's included. ⛔ Until 2026-09-23 the CLI created a "personal org" `@jane` for
+ * account `jane` to have a scope at all; `personal_org_exists` served that and is no
+ * longer read. Org creation requires NO second factor on any lane (the 2FA gate lives
+ * at escalation points, not here).
  *
  * Failure shapes (branch on STATUS; details are human display, not contract):
  * 422 = handle grammar; 409 = taken / reserved / belongs to another account
@@ -95,7 +97,7 @@ export function validateHandle(handle) {
 /**
  * The picker read: memberships + the caller's account handle + whether the
  * personal org already exists.
- * @returns {Promise<{account_handle: string|null, personal_org_exists: boolean, orgs: Array<{handle: string, is_primary: boolean}>}>}
+ * @returns {Promise<{account_handle: string|null, orgs: Array<{handle: string, is_primary: boolean}>}>}
  */
 export async function fetchOrgs({ apiBase, token }) {
   const res = await fetch(`${apiBase.replace(/\/$/, '')}${ORGS_PATH}`, {
@@ -108,7 +110,6 @@ export async function fetchOrgs({ apiBase, token }) {
   const data = await res.json().catch(() => null)
   return {
     account_handle: data?.account_handle ?? null,
-    personal_org_exists: data?.personal_org_exists === true,
     orgs: Array.isArray(data?.orgs) ? data.orgs : []
   }
 }
@@ -119,8 +120,8 @@ export async function listOrgs(opts) {
 }
 
 /**
- * Create an org (the lazy personal claim is exactly this create — the
- * owner-exception admits `handle === account_handle` for the owner).
+ * Create an org. Its handle must be its own: a backend refuses an account's handle,
+ * your own included — your personal scope needs no org.
  * @returns {Promise<{handle: string, uuid?: string, is_primary?: boolean}>}
  */
 export async function createOrg({ apiBase, token, handle }) {
@@ -156,11 +157,23 @@ export async function createOrg({ apiBase, token, handle }) {
 }
 
 /**
- * Derive the publish scope from login membership when none was supplied:
- *   ≥1 org → confirm (1) or pick (N), personal org labeled + first
- *   0 orgs → the first-publish picker (personal default, lazily claimed)
- * Returns the chosen bare handle (no `@`), or null if cancelled. Persists
- * nothing — the caller records it. Bails in non-interactive mode.
+ * The scope to register under, from the login, when none was named — a bare handle,
+ * or null when none was chosen. Persists nothing; the caller records it (in the
+ * foundation's name, or a schemas-only package's `package.json`).
+ *
+ * ⭐ A SCOPE IS A NAMESPACE (2026-09-23): your account's own, `@<handle>`, needs no org.
+ *
+ *   no org              → your personal scope — said, never asked, in CI too
+ *   orgs                → pick: your personal scope first, then each org;
+ *                         non-interactive, your personal scope, said
+ *   no account handle   → (a service account) its one org, said; several are asked,
+ *                         or refused in CI; none is a pointer to `--scope`
+ *
+ * ⛔ Until 2026-09-23 a login with no org was offered a "personal org" `@jane`, created
+ * on the spot — a scope was taken to need an org — and refused in CI.
+ *
+ * An org named after the account — a personal org made before then — is the same
+ * `@jane`, and is listed once, as your personal scope.
  *
  * @param {Object} p
  * @param {string} p.apiBase
@@ -177,161 +190,56 @@ export async function deriveScope({
   args = []
 }) {
   const envelope = await fetchOrgs({ apiBase, token })
-  const { orgs } = envelope
-  const personal =
-    envelope.account_handle ||
-    (accountHandle ? bareHandle(accountHandle) : null)
-  const personalOrgExists = envelope.personal_org_exists
+  const handle = bareHandle(envelope.account_handle || accountHandle || '')
+  const personal = handle && !validateHandle(handle) ? handle : null
+  const orgs = envelope.orgs.filter((o) => o.handle !== personal)
   const { isNonInteractive } = await import('./interactive.js')
   const nonInteractive = isNonInteractive(args)
-  const isPersonal = (h) => personal && h === personal
+  const bold = (h) => `\x1b[1m@${h}\x1b[0m`
 
-  if (orgs.length === 1) {
-    const h = orgs[0].handle
-    const label = isPersonal(h) ? `your personal org @${h}` : `your org @${h}`
-    if (nonInteractive) {
-      console.error(
-        `Publishing under ${label.replace(`@${h}`, `\x1b[1m@${h}\x1b[0m`)}.`
-      )
-      return h
-    }
-    const prompts = (await import('prompts')).default
-    const { ok } = await prompts(
-      {
-        type: 'confirm',
-        name: 'ok',
-        message: `Publish under ${label}?`,
-        initial: true
-      },
-      {
-        onCancel: () => {
-          console.error('\nCancelled.')
-          process.exit(0)
-        }
-      }
-    )
-    if (!ok) {
-      console.error(
-        'Pass --scope @org, or create another with `uniweb org create <handle>`.'
-      )
-      return null
-    }
-    return h
+  if (personal && !orgs.length) {
+    console.error(`Registering under your personal scope ${bold(personal)}.`)
+    return personal
   }
-
-  if (orgs.length > 1) {
-    // Personal org first; the rest in server order (primary-first).
-    const ordered = [...orgs].sort(
-      (a, b) => (isPersonal(b.handle) ? 1 : 0) - (isPersonal(a.handle) ? 1 : 0)
-    )
-    if (nonInteractive) {
-      const pick =
-        ordered.find((u) => isPersonal(u.handle)) ||
-        orgs.find((u) => u.is_primary) ||
-        orgs[0]
-      console.error(
-        `Multiple orgs; using \x1b[1m@${pick.handle}\x1b[0m (non-interactive).`
-      )
-      return pick.handle
+  if (!personal && orgs.length <= 1) {
+    if (orgs.length === 1) {
+      console.error(`Registering under your org ${bold(orgs[0].handle)}.`)
+      return orgs[0].handle
     }
-    const prompts = (await import('prompts')).default
-    const { choice } = await prompts(
-      {
-        type: 'select',
-        name: 'choice',
-        message: 'Publish under which org?',
-        choices: ordered.map((u) => ({
-          title: `@${u.handle}${isPersonal(u.handle) ? ' — your personal org' : u.is_primary ? ' (primary)' : ''}`,
-          value: u.handle
-        })),
-        initial: 0
-      },
-      {
-        onCancel: () => {
-          console.error('\nCancelled.')
-          process.exit(0)
-        }
-      }
-    )
-    return choice || null
-  }
-
-  // 0 orgs → the first-publish picker.
-  if (nonInteractive) {
     console.error(
-      '\x1b[31m✗\x1b[0m You have no org to publish under. Create one with `uniweb org create <handle>`, or pass --scope @org.'
-    )
-    process.exit(1)
-  }
-  return offerCreateOrg({
-    apiBase,
-    token,
-    accountHandle: personal,
-    personalOrgExists
-  })
-}
-
-/**
- * Cold-start (0 orgs) — the first-publish org choice. Every account handle
- * is a reserved, ready-to-go org handle (globally unique across accounts +
- * orgs; only the owner can claim it), so the default is one keystroke:
- *
- *   ? Publish under which org?
- *   ❯ @jane — your personal org (created on first publish)
- *     A new organization…
- *
- * The personal org is materialized LAZILY here — at first publish, never at
- * signup. Two guards:
- *  - no account handle (Service/System accounts — real signups always mint
- *    one) → a crisp pointer instead of a prompt;
- *  - the personal org exists but the caller is no longer a member
- *    (created-then-left) → the lazy claim would 409; don't offer it.
- * Returns the chosen bare handle, or null if cancelled/failed.
- */
-export async function offerCreateOrg({
-  apiBase,
-  token,
-  accountHandle = null,
-  personalOrgExists = false
-}) {
-  const prompts = (await import('prompts')).default
-  const personal =
-    accountHandle && !validateHandle(accountHandle)
-      ? bareHandle(accountHandle)
-      : null
-
-  if (!personal) {
-    console.error(
-      "\x1b[31m✗\x1b[0m This account has no handle (service accounts don't get one), so there is no ready-to-go org.\n" +
-        '  Log in with a personal account or set a handle in the app — or pass --scope @org / `uniweb org create <handle>`.'
+      "\x1b[31m✗\x1b[0m This account has no handle (service accounts don't get one), so it has no personal scope, and it belongs to no org.\n" +
+        '  Pass --scope @org, or create one with `uniweb org create <handle>`.'
     )
     return null
   }
 
-  const canClaimPersonal = !personalOrgExists
-  const choices = [
-    ...(canClaimPersonal
-      ? [
-          {
-            title: `@${personal} — your personal org (created on first publish)`,
-            value: personal
-          }
-        ]
-      : []),
-    { title: 'A new organization…', value: ':new' }
-  ]
-  if (!canClaimPersonal) {
+  if (nonInteractive) {
+    if (!personal) {
+      console.error(
+        '\x1b[31m✗\x1b[0m This account belongs to several orgs and has no personal scope. Pass --scope @org.'
+      )
+      return null
+    }
     console.error(
-      `\x1b[2m@${personal} exists but you're not a member of it — ask its admin, or create another org.\x1b[0m`
+      `Registering under your personal scope ${bold(personal)} (non-interactive). Pass --scope @org for an org.`
     )
+    return personal
   }
-
+  const prompts = (await import('prompts')).default
   const { choice } = await prompts(
     {
       type: 'select',
       name: 'choice',
-      message: 'Publish under which org?',
-      choices,
+      message: 'Register under which scope?',
+      choices: [
+        ...(personal
+          ? [{ title: `@${personal} — your personal scope`, value: personal }]
+          : []),
+        ...orgs.map((o) => ({
+          title: `@${o.handle}${o.is_primary ? ' (primary org)' : ' (org)'}`,
+          value: o.handle
+        }))
+      ],
       initial: 0
     },
     {
@@ -341,36 +249,5 @@ export async function offerCreateOrg({
       }
     }
   )
-  if (!choice) return null
-
-  let handle = choice
-  if (choice === ':new') {
-    const answer = await prompts(
-      {
-        type: 'text',
-        name: 'handle',
-        message: 'Org handle (e.g. acme):',
-        validate: (v) => validateHandle(v) || true
-      },
-      {
-        onCancel: () => {
-          console.error('\nCancelled.')
-          process.exit(0)
-        }
-      }
-    )
-    if (!answer.handle) return null
-    handle = answer.handle
-  }
-
-  try {
-    const org = await createOrg({ apiBase, token, handle })
-    console.error(
-      `\x1b[32m✓\x1b[0m Created \x1b[1m@${org.handle}\x1b[0m — you're a member${org.is_primary ? ' (primary)' : ''}.`
-    )
-    return org.handle
-  } catch (err) {
-    console.error(`\x1b[31m✗\x1b[0m ${err.message}`)
-    return null
-  }
+  return choice || null
 }
