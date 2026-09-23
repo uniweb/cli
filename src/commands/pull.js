@@ -90,8 +90,11 @@ import {
   mergeBaseVersions,
   mergeItemBaseVersions,
   writeUnitBases,
-  writeItemUuids
+  writeItemUuids,
+  nameSiteWorkspace,
+  readSiteOrg
 } from '../backend/site-sync.js'
+import { readOrgFlag } from '../utils/args.js'
 import {
   uncommittedUnder,
   siteContentRoots,
@@ -99,7 +102,11 @@ import {
   mergeFile
 } from '../utils/git.js'
 import { isNonInteractive } from '../utils/interactive.js'
-import { BackendClient } from '../backend/client.js'
+import {
+  BackendClient,
+  describeRequestError,
+  WorkspaceMismatchError
+} from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir } from './deploy.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
@@ -592,6 +599,15 @@ export async function pull(args = [], deps = {}) {
     args,
     command: 'Pulling'
   })
+  // The workspace these requests name: `--org` explicitly, else the one this project
+  // recorded for this backend — adopted afresh from the backend's answer when stale.
+  const orgFlag = readOrgFlag(args)
+  nameSiteWorkspace(client, {
+    siteDir,
+    workspace: orgFlag || readSiteOrg(siteDir, client.origin),
+    explicit: Boolean(orgFlag),
+    note
+  })
 
   // ⭐ No scope check any more — and none is needed. This project's identity on
   // `client.origin` is read from that origin's own section of sync.json, so a
@@ -650,7 +666,8 @@ export async function pull(args = [], deps = {}) {
   // body — `readPullDocuments` reads the entity files out of it (JSON fallback). A
   // conditional request whose ETag matches returns `{ notModified: true }` (304, empty
   // body). `doRequest` is a thunk returning the client's Response promise. 404 / any
-  // failure → null (the lane is skipped, not fatal).
+  // failure → null (the lane is skipped, not fatal) — except a workspace mismatch,
+  // `{ refused: true }`, which stops the pull: the other lane would only say it again.
   const getDocs = async (label, doRequest) => {
     info(
       `Pulling ${colors.bright}${label}${colors.reset} from ${colors.dim}${client.origin}${colors.reset} …`
@@ -659,7 +676,8 @@ export async function pull(args = [], deps = {}) {
     try {
       res = await doRequest()
     } catch (err) {
-      error(`Could not reach the backend at ${client.origin}: ${err.message}`)
+      error(describeRequestError(err, client.origin))
+      if (err instanceof WorkspaceMismatchError) return { refused: true }
       note('Is that the backend you meant? Switch with: uniweb login --backend <url>')
       return null
     }
@@ -731,6 +749,7 @@ export async function pull(args = [], deps = {}) {
   const content = await getDocs('content', () =>
     client.pullSiteContent(siteContentUuid, { etag: etagContent })
   )
+  if (content?.refused) return { exitCode: 1 }
   if (content && !content.notModified) {
     const siteDoc =
       content.docs &&
@@ -847,6 +866,7 @@ export async function pull(args = [], deps = {}) {
     const folder = await getDocs('records', () =>
       client.pullFolder(siteContentUuid, { etag: etagFolder })
     )
+    if (folder?.refused) return { exitCode: 1 }
     if (folder && !folder.notModified && folder.docs?.length) {
       const { folderDoc, recordDocs } = splitRecordsPull(folder.docs)
       const resolveModel = makeModelResolver({ client })

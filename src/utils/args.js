@@ -21,25 +21,17 @@
  * @returns {string | null | undefined}
  */
 /**
- * The org a site is created under. `--org` is the documented spelling; `--as-org`
- * is a working alias.
+ * The workspace a site command names — `--org @acme` — and, on a site's first push or
+ * publish, the org it is created under.
  *
- * `--as-org` mirrors the wire (`?as_org=`) and names an *acting capacity* — the
- * request is made as a member of that org, membership-gated. That is accurate, and
- * it is also not the name anyone reaches for: asked in one day, the backend's docs
- * said `--as-unit` and a second reader said `--org`; nobody produced `--as-org`.
- * Since the flag's main job is answering *who owns this site*, `--org` is the name
- * that matches the question, and the alias costs one `||` (the same shape
- * `--backend` already uses).
- *
- * `||`, not `??`, on purpose: a valueless `--org` falls through to `--as-org`
- * rather than shadowing it.
+ * ⛔ `--as-org` is RETIRED (2026-09-23). It mirrored the wire's `?as_org=`, which the
+ * `x-uniweb-workspace` header replaced; `flag-guard.js` refuses it and names `--org`.
  *
  * @param {string[]} args
  * @returns {string|null|undefined}
  */
 export function readOrgFlag(args) {
-  return readFlagValue(args, '--org') || readFlagValue(args, '--as-org')
+  return readFlagValue(args, '--org')
 }
 
 /**
@@ -97,7 +89,7 @@ function editDistance(a, b) {
 
 /**
  * The closest known flag to `flag`, or null when nothing is close enough.
- * The threshold scales with length so `--org` → `--as-org` is offered while two
+ * The threshold scales with length so `--forcee` → `--force` is offered while two
  * unrelated short flags are not.
  * @param {string} flag
  * @param {string[]} known

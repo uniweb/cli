@@ -90,7 +90,6 @@ async function pushTo(dir, backend) {
     client: backend,
     siteDir: dir,
     pkg: sitePkg(),
-    asOrg: null,
     report: silent()
   })
 }

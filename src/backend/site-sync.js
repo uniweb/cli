@@ -17,6 +17,7 @@ import yaml from 'js-yaml'
 import { hasUncommittedContent } from '../utils/git.js'
 import { humanBytes } from '../utils/bytes.js'
 import { isAuthoredPreview } from '../utils/preview.js'
+import { describeRequestError, WorkspaceMismatchError } from './client.js'
 import {
   backfillEntityUuids,
   writeSiteEntityUuid,
@@ -646,15 +647,16 @@ export function writeItemUuids(siteDir, backend, map) {
 }
 
 /**
- * The org this site was created under, as `@handle`, or null.
+ * The workspace this project's requests name on `backend`, as `@handle`, or null.
  *
  * Read back from `backend`'s `site.org` in `sync.json` (stored bare — see
- * `writeSiteOrg`) and re-dressed with the `@` the CLI and the wire both use. Callers
- * pass it as `--as-org`'s default so an org named once, at create, does not have to
- * be re-typed on every later push.
+ * `writeSiteOrg`) and re-dressed with the `@` the CLI and the wire both use. Recorded
+ * at create — the site's owner — or adopted later from a backend's `409
+ * wrong_workspace`, which may name a PARENT workspace that contains the site rather
+ * than the site's own unit. ⇒ It is "the workspace these requests name", never
+ * printed as "the site's org".
  *
- * Deliberately NOT a fallback for the flag: an explicit `--as-org` always wins and
- * rides verbatim, so this can only add a value where the CLI previously sent none.
+ * Deliberately NOT a fallback for the flag: an explicit `--org` always wins.
  *
  * @param {string} siteDir
  * @param {string} backend - the origin whose record to read
@@ -666,19 +668,55 @@ export function readSiteOrg(siteDir, backend) {
 }
 
 /**
- * Record the org a just-minted site was created under, if one was named.
+ * Point `client` at the workspace this project's requests name — `x-uniweb-workspace`.
  *
- * Only what we were TOLD is recorded — when no `--as-org` was passed the backend
- * chose the owner and its create response carries no org, so there is nothing to
- * write and guessing one would be worse than the gap. Returns the display form for
- * the caller's "here's what resolved" line, or null when nothing was recorded.
+ * ⭐ THE WORKSPACE IS PER PROJECT, per backend — the one `sync.json` recorded — never
+ * per login: a login is one session for the whole machine (`utils/session-file.js`).
+ * An explicit choice (`--org`, `--personal`, the create picker) is sent as named, and
+ * a `409 wrong_workspace` then STOPS the command. Otherwise the client adopts the
+ * workspace the backend names, and this records it — as-is, since it may be a parent
+ * workspace — and says so. (`client.js::request`; agreed with backend 2026-09-23.)
+ *
+ * @param {import('./client.js').BackendClient} client
+ * @param {object} p
+ * @param {string} p.siteDir
+ * @param {string|null} p.workspace - `@handle` / bare, or null to name none
+ * @param {boolean} [p.explicit=false]
+ * @param {(m: string) => void} [p.note]
+ * @returns {import('./client.js').BackendClient}
+ */
+export function nameSiteWorkspace(client, { siteDir, workspace, explicit = false, note }) {
+  return client.setWorkspace(workspace, {
+    explicit,
+    onAdopted: (handle) => {
+      try {
+        writeSiteOrg(siteDir, client.origin, handle ? handle.replace(/^@/, '') : null)
+      } catch {
+        // Recording is a convenience for the next command; this one still retries.
+      }
+      note?.(
+        handle
+          ? `Requests for this site now name ${handle}, the workspace the backend works on it from (recorded in sync.json).`
+          : 'Requests for this site now name no workspace — the backend works on it from your personal one (recorded in sync.json).'
+      )
+    }
+  })
+}
+
+/**
+ * Record the org a just-minted site was created under, if there is one.
+ *
+ * Only what we were TOLD is recorded — the create's echo, else the workspace the
+ * create named; a personal site has none, and guessing one would be worse than the
+ * gap. Returns the display form for the caller's "here's what resolved" line, or null
+ * when nothing was recorded.
  *
  * @param {string} siteDir
- * @param {string|null|undefined} asOrg - the `--as-org` value, `@handle` or bare
+ * @param {string|null|undefined} owner - `@handle` or bare
  * @returns {string|null}
  */
-function recordSiteOrg(siteDir, backend, asOrg) {
-  const handle = String(asOrg || '')
+function recordSiteOrg(siteDir, backend, owner) {
+  const handle = String(owner || '')
     .replace(/^@/, '')
     .replace(/\/.*$/, '')
     .trim()
@@ -694,10 +732,17 @@ function recordSiteOrg(siteDir, backend, asOrg) {
 }
 
 /**
+ * The `source`s of `resolveSiteOrgForCreate` that are the user's OWN choice — named on
+ * the command line or picked — and so explicit: a `409 wrong_workspace` for one stops
+ * the command rather than adopting the backend's answer (`nameSiteWorkspace`).
+ */
+export const EXPLICIT_OWNER = new Set(['flag', 'personal', 'picked'])
+
+/**
  * Resolve WHICH ORG will own a site that is about to be created.
  *
- * The create that mints `$uuid` is the only call that reads `as_org`, and the
- * backend never moves ownership afterwards. There is also no CLI verb to transfer
+ * The create that mints the site's uuid takes its owner from the workspace the request
+ * names (`x-uniweb-workspace`), and the backend never moves ownership afterwards. There is also no CLI verb to transfer
  * or delete a site. So this is a **one-shot, unrepealable** decision — and until
  * this function existed the CLI made it silently, by sending nothing and letting
  * the backend fall back to the session's personal context. A developer who belongs
@@ -715,24 +760,26 @@ function recordSiteOrg(siteDir, backend, asOrg) {
  * `register` "has refused to guess a scope", which is wrong for a non-interactive
  * run by anyone with an org.
  *
- * Order, and only the last step is new:
- *   1. `--as-org @org`      — explicit, rides verbatim
- *   2. `--personal`         — explicit "no org, I mean it" → sends NO `as_org`
+ * Order:
+ *   1. `--org @org`         — explicit; the create names it as its workspace
+ *   2. `--personal`         — explicit "no org, I mean it" → names NO workspace
  *   3. the recorded org     — `sync.json`, written at this site's own create
  *   4. the site already exists on this backend (a recorded uuid) → null; ownership
  *      is settled, ask nothing
  *   5. otherwise ASK (TTY) or REFUSE (non-interactive)
  *
- * ⛔ **`--personal` sends no `as_org`, and is NOT the same as `--as-org @<handle>`.**
+ * ⛔ **`--personal` names no workspace, and is NOT the same as `--org @<handle>`.**
  * The personal *org* `@jane` is an org like any other, lazily created on first use;
- * the session's personal context is not an org at all. Whether the backend gives
+ * the session's personal workspace is not an org at all. Whether the backend gives
  * them the same owning unit is **its** business and unverified here, so the
- * deliberate-personal spelling reproduces today's wire byte-for-byte rather than
- * asserting an equivalence this lane cannot check.
+ * deliberate-personal spelling names nothing rather than asserting an equivalence
+ * this lane cannot check.
  *
- * @returns {Promise<{ asOrg: string|null, refused?: true, reason?: string }>}
- *   `asOrg: null` with no `refused` means "send no as_org" — either a settled site
- *   or a deliberate personal choice.
+ * @returns {Promise<{ workspace: string|null, source?: string, refused?: true, reason?: string }>}
+ *   `workspace: null` with no `refused` means "name no workspace" — either a settled site
+ *   or a deliberate personal choice. `source` says which answer it is: `flag`,
+ *   `personal` and `picked` are the user's own choice (explicit — a mismatch then
+ *   stops the command); `recorded`, `existing` and `offline` are not.
  */
 export async function resolveSiteOrgForCreate({
   client,
@@ -742,21 +789,21 @@ export async function resolveSiteOrgForCreate({
   personal = false,
   offline = false
 }) {
-  if (flag) return { asOrg: flag }
-  if (personal) return { asOrg: null }
+  if (flag) return { workspace: flag, source: 'flag' }
+  if (personal) return { workspace: null, source: 'personal' }
 
   const recorded = readSiteOrg(siteDir, client?.origin)
-  if (recorded) return { asOrg: recorded }
+  if (recorded) return { workspace: recorded, source: 'recorded' }
 
   // Already created ⇒ nothing to decide: ownership was settled at its create and
   // re-asking would be theatre. ⭐ "Created" is a question about THIS backend now —
   // the same project may be brand new on one and long-established on another.
-  if (readBackendState(siteDir, client?.origin).site?.uuid) return { asOrg: null }
+  if (readBackendState(siteDir, client?.origin).site?.uuid) return { workspace: null, source: 'existing' }
 
   // An offline preview (`--dry-run` / `-o`) must never authenticate, and it is
   // creating nothing, so there is no decision to force. Say what is unresolved
   // instead of prompting for an answer the run will not use.
-  if (offline) return { asOrg: null }
+  if (offline) return { workspace: null, source: 'offline' }
 
   // `--yes` promises "never block on a prompt", so it has to answer this one too —
   // and the only honest non-blocking answer to an unanswerable ownership question
@@ -766,13 +813,13 @@ export async function resolveSiteOrgForCreate({
   const { isNonInteractive } = await import('../utils/interactive.js')
   if (isNonInteractive(args) || args.includes('--yes')) {
     return {
-      asOrg: null,
+      workspace: null,
       refused: true,
       reason:
         'This site does not exist on the backend yet, and no org was named.\n' +
         '  The create decides who OWNS it — and which workspace its storage is billed to —\n' +
         '  one time, with no CLI way to change it afterwards. Name it explicitly:\n' +
-        '    --as-org @org     create it under an organization\n' +
+        '    --org @org        create it under an organization\n' +
         '    --personal        create it under your personal account, deliberately'
     }
   }
@@ -790,7 +837,7 @@ export async function resolveSiteOrgForCreate({
       token: await client.token()
     })
   } catch (err) {
-    return { asOrg: null, refused: true, reason: err.message }
+    return { workspace: null, refused: true, reason: err.message }
   }
   const personalHandle = envelope.account_handle || null
   const prompts = (await import('prompts')).default
@@ -820,9 +867,9 @@ export async function resolveSiteOrgForCreate({
       }
     }
   )
-  if (!choice) return { asOrg: null, refused: true, reason: 'No owner chosen.' }
-  if (choice === ':personal') return { asOrg: null }
-  if (choice !== ':new') return { asOrg: `@${choice}` }
+  if (!choice) return { workspace: null, refused: true, reason: 'No owner chosen.' }
+  if (choice === ':personal') return { workspace: null, source: 'picked' }
+  if (choice !== ':new') return { workspace: `@${choice}`, source: 'picked' }
 
   const answer = await prompts(
     {
@@ -839,16 +886,16 @@ export async function resolveSiteOrgForCreate({
     }
   )
   if (!answer.handle)
-    return { asOrg: null, refused: true, reason: 'No org handle given.' }
+    return { workspace: null, refused: true, reason: 'No org handle given.' }
   try {
     const org = await createOrg({
       apiBase: client.origin,
       token: await client.token(),
       handle: bareHandle(answer.handle)
     })
-    return { asOrg: `@${org.handle}` }
+    return { workspace: `@${org.handle}`, source: 'picked' }
   } catch (err) {
-    return { asOrg: null, refused: true, reason: err.message }
+    return { workspace: null, refused: true, reason: err.message }
   }
 }
 
@@ -929,7 +976,6 @@ export async function ensureSiteExists({
   siteDir,
   name,
   foundation,
-  asOrg,
   note
 }) {
   // One read serves both the binding check and the create's defaults, so callers
@@ -966,10 +1012,10 @@ export async function ensureSiteExists({
 
   let res
   try {
+    // The owner is the workspace the client names — `nameSiteWorkspace` set it.
     res = await client.createSite({
       name: siteName,
-      foundation: siteFoundation,
-      asOrg
+      foundation: siteFoundation
     })
   } catch (err) {
     return { uuid: null, created: false, reason: err.message }
@@ -1002,39 +1048,26 @@ export async function ensureSiteExists({
   // this point cannot leave a cache pointing at a different site with no way to
   // detect it.
   updateSyncCache(siteDir, client.origin, { siteUuid: minted })
-  const org = await recordAndDescribeOwner({
-    client,
-    siteDir,
-    payload,
-    asOrg,
-    note
-  })
+  const org = await recordAndDescribeOwner({ client, siteDir, payload, note })
   return { uuid: minted, created: true, org }
 }
 
 /**
  * Record and announce who owns a just-created site, from the backend's own echo.
  *
- * The echo reports what the site **is**; `asOrg` is only what we asked for. They
- * agree in the normal case and the echo is the one to trust — it is read back off
- * the created entity, so it also covers the case we could never record before: no
- * `--as-org` at all, where the backend picked and we had nothing true to write.
+ * The echo reports what the site **is**; the workspace the create named
+ * (`client.workspace`) is only what we asked for. They agree in the normal case and the
+ * echo is the one to trust — it is read back off the created entity.
  *
  * ⚠️ `org: null` is MEANINGFUL (personal), not missing. An older backend omits the
  * key entirely, which is the only case that falls back to what we asked for.
  *
  * @returns {Promise<string|null>} the display handle recorded, or null for personal
  */
-async function recordAndDescribeOwner({
-  client,
-  siteDir,
-  payload,
-  asOrg,
-  note
-}) {
+async function recordAndDescribeOwner({ client, siteDir, payload, note }) {
   const echoed = payload && 'org' in payload ? payload.org : undefined
   const owner =
-    echoed === undefined ? asOrg : typeof echoed === 'string' ? echoed : null
+    echoed === undefined ? client.workspace : typeof echoed === 'string' ? echoed : null
   const org = recordSiteOrg(siteDir, client.origin, owner)
 
   // ⛔ No sync scope to record. It WAS `site.yml::$backend`, written here because this
@@ -1286,7 +1319,6 @@ const TEMPLATE_SAID = {
  * @param {string} params.siteDir - the site root (for $uuid write-back + the cache)
  * @param {object} params.pkg - the `emitSyncPackages` result
  *        ({ siteContent, collections, siteContentUuid, hashes })
- * @param {string|null} [params.asOrg] - act-as org (membership-gated), forwarded to each lane
  * @param {{info,note,error,dim?:Function}} params.report - injected logging
  * @returns {Promise<{ exitCode: number, boundSiteUuid?: string, finalizedTotal: number, wrote: string[] }>}
  *   exitCode 1 on any lane failure (already reported, cache NOT persisted); 0 on success.
@@ -1295,7 +1327,6 @@ export async function pushSyncPackages({
   client,
   siteDir,
   pkg,
-  asOrg,
   report
 }) {
   const { siteContent, records, siteContentUuid, hashes, applied } = pkg
@@ -1309,9 +1340,9 @@ export async function pushSyncPackages({
 
   // POST one lane via the client and parse the JSON response. `doRequest` is a thunk
   // returning the client's Response promise (so the "Pushing …" line prints before the
-  // request fires). The client carries `collision=force` (last-push-wins) + the optional
-  // `--as-org`. Returns the parsed payload, or null on any transport/HTTP/parse failure
-  // (already reported).
+  // request fires). The client carries `collision=force` (last-push-wins) and names the
+  // site's workspace. Returns the parsed payload, or null on any transport/HTTP/parse
+  // failure (already reported).
   // `boundUuid` is set only for the lanes that address an EXISTING site by uuid
   // (content UPDATE, folder push) — never for the CREATE, which has no uuid to be
   // wrong about. It is what lets a 404 be read as "the site this clone is bound to
@@ -1327,8 +1358,9 @@ export async function pushSyncPackages({
     try {
       res = await doRequest()
     } catch (err) {
-      error(`Could not reach the backend at ${client.origin}: ${err.message}`)
-      note('Is that the backend you meant? Switch with: uniweb login --backend <url>')
+      error(describeRequestError(err, client.origin))
+      if (!(err instanceof WorkspaceMismatchError))
+        note('Is that the backend you meant? Switch with: uniweb login --backend <url>')
       return null
     }
     if (!res.ok) {
@@ -1607,9 +1639,7 @@ export async function pushSyncPackages({
       const finalized = await pushLane(
         'site-content',
         () =>
-          client.updateSiteContent(siteContentUuid, siteContent.buffer, {
-            asOrg
-          }),
+          client.updateSiteContent(siteContentUuid, siteContent.buffer),
         () =>
           explainStaleSiteContent({
             client,
@@ -1640,7 +1670,7 @@ export async function pushSyncPackages({
     } else {
       const payload = await postLane(
         'site-content',
-        () => client.createSiteContent(siteContent.buffer, { asOrg }),
+        () => client.createSiteContent(siteContent.buffer),
         undefined,
         { reportTemplate: true }
       )
@@ -1663,13 +1693,7 @@ export async function pushSyncPackages({
       // owner present or absent depending on whether the site happens to have images.
       // The backend echoes `org`/`hosts_free` top-level here too, beside `report`
       // and `site` (NOT beside `finalized`, which lives at report.finalized).
-      const createdOrg = await recordAndDescribeOwner({
-        client,
-        siteDir,
-        payload,
-        asOrg,
-        note
-      })
+      const createdOrg = await recordAndDescribeOwner({ client, siteDir, payload, note })
       if (createdOrg)
         wrote.push(`recorded its owner (${createdOrg}) in sync.json`)
       const createdFinalized = extractFinalized(payload)
@@ -1692,7 +1716,7 @@ export async function pushSyncPackages({
     }
     const finalized = await pushLane(
       'records',
-      () => client.pushFolder(boundSiteUuid, records.buffer, { asOrg }),
+      () => client.pushFolder(boundSiteUuid, records.buffer),
       undefined,
       { boundUuid: boundSiteUuid }
     )

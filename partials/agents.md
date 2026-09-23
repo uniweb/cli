@@ -2575,7 +2575,9 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 > The answer is recorded in `sync.json` and committed, so it is a one-time choice per site,
 > not per machine. **Ask the human which one to use** rather than picking for them — a site in
 > the wrong org cannot be moved from here. Sites that already exist are unaffected: their
-> ownership is settled, so nothing is asked.
+> ownership is settled, so nothing is asked. After the create, every command names the
+> recorded org for you; an `--org` that disagrees with where the backend keeps the site
+> **stops the command** rather than acting in another org.
 >
 > Relatedly: these commands now **reject flags they do not recognize** instead of ignoring them.
 > If you get `Unknown flag`, read the suggestion — it is usually a near miss.

@@ -51,6 +51,7 @@
  * demonstrated.**
  */
 
+import { WORKSPACE_HEADER } from '../backend/client.js'
 import { createHash } from 'node:crypto'
 import { humanBytes } from './bytes.js'
 import { fetchWithRetry, isTransientStatus } from './fetch-retry.js'
@@ -62,6 +63,9 @@ import { fetchWithRetry, isTransientStatus } from './fetch-retry.js'
  * @param {string} opts.apiBase - backend origin
  * @param {string} opts.token - bearer, used on the direct arm only
  * @param {string} opts.siteUuid - the site these files belong to (path segment)
+ * @param {string|null} [opts.workspace] - the workspace the requests name, `@handle`
+ *   (`x-uniweb-workspace`) — on the plan and on every DIRECT PUT, never on a presigned
+ *   one, which is self-authorizing and must carry nothing it was not signed with
  * @param {{ data: Record<string, unknown> }|null} opts.ball - source of the set:
  *   `{ "<relpath under dist/data>": <json> }`, media refs already rewritten
  * @param {(m: string) => void} [opts.onProgress]
@@ -72,9 +76,13 @@ export async function uploadSiteData({
   apiBase,
   token,
   siteUuid,
+  workspace = null,
   ball,
   onProgress = () => {}
 }) {
+  // A plan made with the header mints BARE PUT urls: the PUT names its workspace with
+  // the header like every other request (backend, 2026-09-23).
+  const workspaceHeader = workspace ? { [WORKSPACE_HEADER]: workspace } : {}
   // ⛔ An EMPTY set still posts a plan, and that is the whole point of this lane
   // being a manifest rather than a stream of files.
   //
@@ -131,7 +139,8 @@ export async function uploadSiteData({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
+        Authorization: `Bearer ${token}`,
+        ...workspaceHeader
       },
       body: JSON.stringify({
         files: files.map(({ path, content_type, size, sha256 }) => ({
@@ -172,7 +181,9 @@ export async function uploadSiteData({
   // PUT is a bearer-authed backend route; a presigned URL is self-authorizing
   // and must NOT carry a foreign bearer, which can break signature validation.
   const authHeaders =
-    plan.mode === 'presigned' ? {} : { Authorization: `Bearer ${token}` }
+    plan.mode === 'presigned'
+      ? {}
+      : { Authorization: `Bearer ${token}`, ...workspaceHeader }
 
   const uploaded = []
   const failed = []

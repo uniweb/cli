@@ -1456,11 +1456,12 @@ ${colors.bright}Options:${colors.reset}
                      bind to, and the app cannot open such a site.
   --no-save          Do not record this deploy in deploy.yml
   --no-validate      Skip the content-conformance check (it only warns)
-  --org @org         Publish under @org (membership-gated; alias: --as-org). Read
-                     only on a site's FIRST publish — that create decides which org
-                     owns the site, and whose storage its assets are charged to.
-                     Recorded in sync.json and replayed, so it is never
-                     re-typed. Without it, you are asked once.
+  --org @org         Publish under @org (membership-gated). On a site's FIRST
+                     publish it decides which org owns the site, and whose storage
+                     its assets are charged to. Recorded in sync.json and named on
+                     every request after, so it is never re-typed. Without it, you
+                     are asked once. Later, it must match the workspace the backend
+                     works on the site from, or publish stops.
   --personal         Create the site under your personal account, deliberately.
                      Only needed on a first publish, and only to answer the owner
                      question without a prompt (CI, agents, scripts).

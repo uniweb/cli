@@ -39,6 +39,10 @@
  *   uniweb clone <uuid> --path sites     Place under sites/ (segregated layout)
  *   uniweb clone <uuid> --project docs   Co-located docs/site
  *   uniweb clone <uuid> --no-records Pull pages only; skip records
+ *   uniweb clone <uuid> --org @org       Read it as @org — stops if the backend works on
+ *                                        the site from another workspace. Without it,
+ *                                        the one the backend names is recorded in
+ *                                        sync.json for every command after.
  *
  * Backend: via BackendClient (the site-content pull lane). Origin from
  *   UNIWEB_REGISTER_URL  >  the local default (internal dev overrides;
@@ -55,7 +59,8 @@ import { resolvePlacement, SITE_KIND } from '../utils/placement.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { addWorkspaceGlob } from '../utils/config.js'
 import { detectWorkspacePm, installCmd } from '../utils/pm.js'
-import { BackendClient } from '../backend/client.js'
+import { BackendClient, describeRequestError } from '../backend/client.js'
+import { readOrgFlag } from '../utils/args.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 import { extractFoundationRef } from '../utils/site-content-refs.js'
 import { readUwxDocuments } from '../utils/uwx-read.js'
@@ -143,7 +148,7 @@ export function extractCloneSeeds(document) {
 // `site.yml`'s equivalent needed a hand-rolled dependency-free WRITER for exactly
 // this. The store stays the one writer everywhere else; this seeds a fresh file.
 // `test/clone.test.js` covers it end to end with `skipInstall: true`.
-function seedSyncJson(siteDir, origin, uuid) {
+function seedSyncJson(siteDir, origin, uuid, workspace = null) {
   const file = join(siteDir, 'sync.json')
   let doc = { version: 1, backends: {} }
   if (existsSync(file)) {
@@ -155,7 +160,14 @@ function seedSyncJson(siteDir, origin, uuid) {
     }
   }
   const key = new URL(origin).origin
-  doc.backends[key] = { ...(doc.backends[key] || {}), site: { ...(doc.backends[key]?.site || {}), uuid } }
+  // The workspace the read named — `--org`, or the one the backend answered with — so
+  // the delegated pull, and every command after it, names it from the first request.
+  // Stored bare, as the create records it.
+  const org = workspace ? String(workspace).replace(/^@/, '') : null
+  doc.backends[key] = {
+    ...(doc.backends[key] || {}),
+    site: { ...(doc.backends[key]?.site || {}), uuid, ...(org ? { org } : {}) }
+  }
   mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, JSON.stringify(doc, null, 2) + '\n')
 }
@@ -206,6 +218,11 @@ export async function clone(args = [], deps = {}) {
     args,
     command: 'Cloning'
   })
+  // The workspace the reads name: `--org` explicitly — a mismatch then stops the clone —
+  // else none, and the client adopts the one the backend works on the site from. There
+  // is no project yet to record it in; `seedSyncJson` does, below.
+  const orgFlag = readOrgFlag(args)
+  client.setWorkspace(orgFlag || null, { explicit: Boolean(orgFlag) })
 
   // 1. GET the site-content document.
   //
@@ -234,7 +251,7 @@ export async function clone(args = [], deps = {}) {
     }
     documents = readUwxDocuments(Buffer.from(await res.arrayBuffer()))
   } catch (err) {
-    error(`Could not reach the backend at ${client.origin}: ${err.message}`)
+    error(describeRequestError(err, client.origin))
     return { exitCode: 1 }
   }
 
@@ -355,7 +372,7 @@ export async function clone(args = [], deps = {}) {
   // the old `$backend`: the uuid came from whoever we read and nothing on disk said
   // so, and a teammate who pulled while logged in elsewhere sent it to the wrong
   // backend. Stored under the origin, that cannot be expressed.
-  seedSyncJson(siteDir, client.origin, siteUuid)
+  seedSyncJson(siteDir, client.origin, siteUuid, client.workspace)
   success(
     `Scaffolded the site harness${foundationRef ? ` (foundation: ${foundationRef})` : ''}.`
   )

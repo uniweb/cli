@@ -25,8 +25,13 @@ import { join } from 'node:path'
 import yaml from 'js-yaml'
 
 import { resolveSiteDir } from './deploy.js'
-import { probeUnpushed } from '../backend/site-sync.js'
-import { BackendClient, resolveBackendOrigin } from '../backend/client.js'
+import { probeUnpushed, nameSiteWorkspace, readSiteOrg } from '../backend/site-sync.js'
+import { readOrgFlag } from '../utils/args.js'
+import {
+  BackendClient,
+  resolveBackendOrigin,
+  WorkspaceMismatchError
+} from '../backend/client.js'
 import { readBackendState } from '@uniweb/build/uwx'
 import {
   resolveLocalFoundation,
@@ -115,11 +120,21 @@ export async function status(args = []) {
   let site = null
   let fdnLatest = null
   let foundationFresh = null // true/false when both digests are known; else null
+  let remoteError = null // a workspace mismatch — the one remote failure worth saying
   if (remote) {
     try {
       const client = new BackendClient({
         args,
         command: 'Status'
+      })
+      // The workspace the site's requests name — as pull names it. A stale record is
+      // re-adopted from the backend's answer; `--json` keeps stdout to the document.
+      const orgFlag = readOrgFlag(args)
+      nameSiteWorkspace(client, {
+        siteDir,
+        workspace: orgFlag || readSiteOrg(siteDir, client.origin),
+        explicit: Boolean(orgFlag),
+        note: jsonMode ? undefined : say.dim
       })
       if (uuid) site = await client.siteStatus(uuid)
       // Foundation freshness: prefer the LOCAL foundation's scoped name (so a
@@ -134,8 +149,10 @@ export async function status(args = []) {
         const localDigest = computeFoundationDigest(join(local.dir, 'dist'))
         if (localDigest) foundationFresh = localDigest === fdnLatest.digest
       }
-    } catch {
-      // degrade silently
+    } catch (err) {
+      // Degrade silently — except the mismatch: `--org` named a workspace the backend
+      // does not work on this site from, and saying nothing would read as "fine".
+      if (err instanceof WorkspaceMismatchError) remoteError = err.message
     }
   }
 
@@ -153,7 +170,8 @@ export async function status(args = []) {
               remote: {
                 site,
                 foundation_latest: fdnLatest?.latest_version ?? null,
-                foundation_fresh: foundationFresh
+                foundation_fresh: foundationFresh,
+                ...(remoteError ? { error: remoteError } : {})
               }
             }
           : {})
@@ -202,6 +220,7 @@ export async function status(args = []) {
 
   // Remote signals
   if (remote) {
+    if (remoteError) say.warn(remoteError)
     if (site) {
       if (site.draft_dirty) {
         say.info(

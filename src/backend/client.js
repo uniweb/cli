@@ -105,6 +105,93 @@ export function resolveBackendOrigin() {
  */
 export const DISCOVERY_DEFAULTS = {}
 
+/**
+ * The header a request names its WORKSPACE with — the unit it works in.
+ *
+ * ⭐ `@<handle>`, the `@` required: a bare value is read as a unit uuid on the other end,
+ * so the two spellings can never be mistaken for each other. Every `/dev` route accepts
+ * it; the client names it on the site routes, the ones that work in a workspace
+ * (`namesWorkspace`). ⛔ It replaced `?as_org=` (2026-09-23), which only routes that
+ * declared it accepted — the rest answered `400`.
+ */
+export const WORKSPACE_HEADER = 'x-uniweb-workspace'
+
+/**
+ * Whether a request works IN a workspace — a site route, `/dev/site…`.
+ *
+ * Only those name one. Every `/dev` route accepts the header, but registration reads
+ * none (the `@scope` in the name decides, membership-gated), `/dev/assets` reads none
+ * (a charge lands on the entity's own workspace), and auth, orgs and config are about
+ * the account. Naming the site's workspace there would be harmless and meaningless —
+ * and a workspace that is refused (`400`/`403`) would then fail a registration that
+ * never involved it.
+ *
+ * @param {string} path - leading-slash path
+ * @returns {boolean}
+ */
+export function namesWorkspace(path) {
+  return /^\/dev\/site(\/|$)/.test(String(path))
+}
+
+/**
+ * A workspace as it may be written — `@acme`, `acme`, `@acme/…` — as the header's
+ * `@acme`; null for none (the personal workspace, which a request names by omission).
+ *
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function workspaceHandle(value) {
+  const h =
+    typeof value === 'string' ? value.trim().replace(/^@/, '').replace(/\/.*$/, '') : ''
+  return h ? `@${h}` : null
+}
+
+/**
+ * The request named its workspace EXPLICITLY — `--org`, `--personal`, a choice made at
+ * create — and the backend works on the site from another.
+ *
+ * ⛔ Stopping is the point. It is the mismatch check [Diego, 2026-09-22: "there is no org
+ * mismatch when the site is set for an org and the user tries a different one"], and it
+ * is the backend's `409` that decides it, never a handle comparison here: a site in
+ * `@acme/labs` is legitimately worked on from `@acme`. Adopting the answer would override
+ * a choice the user made.
+ */
+export class WorkspaceMismatchError extends Error {
+  /**
+   * @param {{ named: string|null, answer: string|null }} p - the workspace the request
+   *   named, and the one the backend named (`@handle`, null for personal)
+   */
+  constructor({ named, answer }) {
+    const where = (w) => w || 'your personal workspace'
+    const flag = named ? '--org' : '--personal'
+    super(
+      `The backend works on this site from ${where(answer)}, not ${where(named)} ` +
+        `(${named ? `--org ${named}` : flag}). ` +
+        (answer ? `Pass --org ${answer}, or drop ${flag}.` : `Drop ${flag}.`)
+    )
+    this.name = 'WorkspaceMismatchError'
+    this.status = 409
+    this.named = named
+    this.answer = answer
+  }
+}
+
+/**
+ * The line to print when a request THREW rather than answered.
+ *
+ * A `WorkspaceMismatchError` is the backend's answer, not a transport failure, so it is
+ * printed as itself: "Could not reach the backend" in front of it would send the user
+ * to check their network over a choice they made on the command line.
+ *
+ * @param {unknown} err
+ * @param {string} origin
+ * @returns {string}
+ */
+export function describeRequestError(err, origin) {
+  if (err instanceof WorkspaceMismatchError) return err.message
+  return `Could not reach the backend at ${origin}: ${err?.message ?? err}`
+}
+
 export class BackendClient {
   /**
    * @param {object} [opts]
@@ -134,6 +221,34 @@ export class BackendClient {
     this._command = command
     this._fetch = fetchImpl || ((url, init) => globalThis.fetch(url, init))
     this._discovery = null
+    this._workspace = null
+    this._workspaceExplicit = false
+    this._onWorkspaceAdopted = null
+  }
+
+  /** The workspace this client's requests name — `@handle`, or null (none named). */
+  get workspace() {
+    return this._workspace
+  }
+
+  /**
+   * Name the workspace every request from here on works in (`x-uniweb-workspace`).
+   *
+   * @param {string|null} value - `@acme` / `acme`, or null to name none
+   * @param {object} [opts]
+   * @param {boolean} [opts.explicit=false] - the user named it (`--org`, `--personal`,
+   *   the create picker). A `409 wrong_workspace` then STOPS the command
+   *   (`WorkspaceMismatchError`) instead of adopting the backend's answer.
+   * @param {(handle: string|null) => void|Promise<void>} [opts.onAdopted] - called when a
+   *   request that named nothing, or a stale workspace, adopts the one the backend named;
+   *   the caller records it (sync.json) and says so
+   * @returns {this}
+   */
+  setWorkspace(value, { explicit = false, onAdopted = null } = {}) {
+    this._workspace = workspaceHandle(value)
+    this._workspaceExplicit = Boolean(explicit)
+    this._onWorkspaceAdopted = onAdopted || null
+    return this
   }
 
   /**
@@ -168,7 +283,9 @@ export class BackendClient {
    * applies query params, and infers a content-type from the body when unset
    * (string → application/json, Buffer/Uint8Array → application/zip). Returns
    * the raw Response so callers branch on status themselves (409 resume,
-   * 404 → null, 401/403 messaging, …).
+   * 404 → null, 401/403 messaging, …) — except a `409 wrong_workspace`, which is
+   * answered here: adopted and retried once when the workspace was not named, and
+   * thrown as `WorkspaceMismatchError` when it was (see the body).
    *
    * @param {string} path - leading-slash path, e.g. '/dev/site/content'
    * @param {object} [opts]
@@ -179,10 +296,38 @@ export class BackendClient {
    * @param {boolean} [opts.auth=true]
    * @returns {Promise<Response>}
    */
-  async request(
-    path,
-    { method = 'GET', body, headers = {}, query, auth = true } = {}
-  ) {
+  async request(path, opts = {}) {
+    const res = await this._send(path, opts)
+    if (res?.status !== 409) return res
+
+    // ⭐ THE WORKSPACE A REQUEST NAMES IS CHECKED BY THE BACKEND, NOT HERE. A request that
+    // names the wrong one for an existing site is refused with `409 wrong_workspace`,
+    // naming a workspace the caller CAN open that contains the site — its own unit, or a
+    // parent the caller belongs to. Two answers, and which one depends on the user:
+    //   - they named it (`--org`, `--personal`) → stop and say so: the mismatch check;
+    //   - they named nothing, or a stale one → adopt the backend's answer, let the caller
+    //     record it, and retry ONCE.
+    // ⛔ No handle comparison anywhere: a site in `@acme/labs` is worked on from `@acme`.
+    const problem =
+      typeof res.clone === 'function' ? await res.clone().json().catch(() => null) : null
+    if (problem?.reason !== 'wrong_workspace') return res
+    const where = problem.workspace || {}
+    // A workspace the backend can only name by uuid has no handle for us to send.
+    if (!where.handle && where.unit_uuid) return res
+    const answer = workspaceHandle(where.handle)
+    // Naming what the backend names and still refused: nothing to adopt, or to report
+    // as a mismatch. The caller reads the 409 like any other.
+    if (answer === this._workspace) return res
+    if (this._workspaceExplicit) {
+      throw new WorkspaceMismatchError({ named: this._workspace, answer })
+    }
+    this._workspace = answer
+    if (this._onWorkspaceAdopted) await this._onWorkspaceAdopted(answer)
+    return this._send(path, opts)
+  }
+
+  /** One request, as `request` documents it — naming the client's workspace on a site route. */
+  async _send(path, { method = 'GET', body, headers = {}, query, auth = true } = {}) {
     const url = new URL(path, this.origin)
     if (query) {
       for (const [k, v] of Object.entries(query)) {
@@ -191,6 +336,7 @@ export class BackendClient {
     }
     const h = { ...headers }
     if (auth) h.Authorization = `Bearer ${await this.token()}`
+    if (this._workspace && namesWorkspace(path)) h[WORKSPACE_HEADER] = this._workspace
     if (body != null && h['Content-Type'] == null) {
       if (typeof body === 'string') h['Content-Type'] = 'application/json'
       else if (body instanceof Uint8Array || Buffer.isBuffer(body))
@@ -405,10 +551,13 @@ export class BackendClient {
    * design). Callers must guard on the site's uuid for this backend (sync.json) and
    * write the result back immediately — see `ensureSiteExists`.
    *
-   * @param {{ name: string, foundation: string, asOrg?: string|null }} opts
+   * The owner is the workspace the client names (`setWorkspace`) — the create is where
+   * that choice is made, once.
+   *
+   * @param {{ name: string, foundation: string }} opts
    * @returns {Promise<Response>} `{ site_content_uuid }`
    */
-  async createSite({ name, foundation, asOrg } = {}) {
+  async createSite({ name, foundation } = {}) {
     return this.request('/dev/site', {
       method: 'POST',
       // Both fields are REQUIRED: `info.name` is `required: true` on the model
@@ -417,35 +566,34 @@ export class BackendClient {
       // render), and a site must resolve to a foundation. Adoption of the ref is
       // best-effort on the backend, but the field itself cannot be blank — so send
       // whatever the site declares and let the backend judge it.
-      body: JSON.stringify({ name, foundation }),
-      query: { as_org: asOrg }
+      body: JSON.stringify({ name, foundation })
     })
   }
 
   /** POST /dev/site/content — CREATE a site from its content lane (.uwx zip). */
-  async createSiteContent(buffer, { asOrg } = {}) {
+  async createSiteContent(buffer) {
     return this.request('/dev/site/content', {
       method: 'POST',
       body: buffer,
-      query: pushQuery(asOrg)
+      query: PUSH_QUERY
     })
   }
 
   /** POST /dev/site/content/push/{uuid} — UPDATE the content lane by site uuid (.uwx zip). */
-  async updateSiteContent(uuid, buffer, { asOrg } = {}) {
+  async updateSiteContent(uuid, buffer) {
     return this.request(`/dev/site/content/push/${encodeURIComponent(uuid)}`, {
       method: 'POST',
       body: buffer,
-      query: pushQuery(asOrg)
+      query: PUSH_QUERY
     })
   }
 
   /** POST /dev/site/folder/push/{uuid} — push the folder lane, keyed by the site uuid (.uwx zip). */
-  async pushFolder(uuid, buffer, { asOrg } = {}) {
+  async pushFolder(uuid, buffer) {
     return this.request(`/dev/site/folder/push/${encodeURIComponent(uuid)}`, {
       method: 'POST',
       body: buffer,
-      query: pushQuery(asOrg)
+      query: PUSH_QUERY
     })
   }
 
@@ -566,7 +714,9 @@ export class BackendClient {
         `/dev/site/status/${encodeURIComponent(uuid)}`
       )
       return res.ok ? await res.json().catch(() => null) : null
-    } catch {
+    } catch (err) {
+      // A mismatch is an answer about the user's own choice, not an absent status.
+      if (err instanceof WorkspaceMismatchError) throw err
       return null
     }
   }
@@ -596,7 +746,9 @@ export function dataSchemaPath(modelName) {
   return `/dev/registry/data-schemas/${encodeURIComponent(modelName)}`
 }
 
-/** The shared push query: last-push-wins, plus an optional acting-org. */
-function pushQuery(asOrg) {
-  return { collision: 'force', ...(asOrg ? { as_org: asOrg } : {}) }
-}
+/**
+ * The shared push query: last-push-wins. ⛔ No `as_org` — the workspace rides the
+ * `x-uniweb-workspace` header on every site request (`BackendClient.setWorkspace`),
+ * since 2026-09-23.
+ */
+const PUSH_QUERY = { collision: 'force' }

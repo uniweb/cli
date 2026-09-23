@@ -29,15 +29,15 @@
  *   uniweb publish --dry-run       Resolve everything; POST nothing
  *   uniweb publish --yes           Skip confirmations (CI); never block on a prompt
  *   uniweb publish --force         Overwrite upstream app-side edits (drop the push gate)
- *   uniweb publish --org @org      Publish under @org (alias: --as-org). Only the
- *                                  FIRST publish of a site reads it — that create is
- *                                  what decides which org owns the site and whose
- *                                  storage its assets are charged to. It is then
- *                                  recorded in `sync.json` and replayed, so it
- *                                  never has to be re-typed.
- *   uniweb publish --personal      Own the new site personally, deliberately. Sends
- *                                  NO `as_org` — byte-identical to the wire before
- *                                  the owner prompt existed. First publish only.
+ *   uniweb publish --org @org      Publish under @org. On the FIRST publish of a
+ *                                  site it decides which org owns the site and whose
+ *                                  storage its assets are charged to; recorded in
+ *                                  `sync.json`, and every request after names it, so
+ *                                  it never has to be re-typed. Later, it must match
+ *                                  the workspace the backend works on the site from,
+ *                                  or publish stops.
+ *   uniweb publish --personal      Own the new site personally, deliberately: its
+ *                                  requests name no workspace.
  *   uniweb publish --no-save       Do not record this publish in deploy.yml
  */
 
@@ -65,7 +65,11 @@ import {
 import { isSiteRelativeExtensionUrl } from '@uniweb/build'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 
-import { BackendClient } from '../backend/client.js'
+import {
+  BackendClient,
+  describeRequestError,
+  WorkspaceMismatchError
+} from '../backend/client.js'
 import { DEFAULT_BACKEND_ORIGIN } from '../utils/config.js'
 import { resolveSiteDir } from './deploy.js'
 import { warnIfContentDoesNotConform } from '../utils/conformance.js'
@@ -90,7 +94,9 @@ import {
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
   pushSyncPackages,
-  resolveSiteOrgForCreate
+  resolveSiteOrgForCreate,
+  nameSiteWorkspace,
+  EXPLICIT_OWNER
 } from '../backend/site-sync.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import {
@@ -320,7 +326,6 @@ export async function publish(args = []) {
     say.dim(org.reason)
     return { exitCode: 2 }
   }
-  const asOrg = org.asOrg
 
   // ⛔ There is no capability gate here any more, deliberately.
   //
@@ -508,6 +513,17 @@ export async function publish(args = []) {
   // be the silent-wrong-success this whole branch exists to prevent.
   if (!fnd.proceed) return { exitCode: fnd.refused ? 1 : 0 }
 
+  // ⭐ Name the workspace every site request works in — the create, the push, the
+  // publish and the data lane. The user's own choice is explicit, so a `409
+  // wrong_workspace` stops the publish; a recorded one is adopted afresh when stale
+  // (`nameSiteWorkspace`).
+  nameSiteWorkspace(client, {
+    siteDir,
+    workspace: org.workspace,
+    explicit: EXPLICIT_OWNER.has(org.source),
+    note: (m) => say.dim(m)
+  })
+
   // 2. Build the site data (link mode): dist/site-content.json (+ per-locale),
   //    dist/data/*, dist/assets/*. Spawn the SAME CLI binary so the inner
   //    build can't resolve to a different installed version.
@@ -610,7 +626,6 @@ export async function publish(args = []) {
     siteDir,
     name: siteYml.name,
     foundation: fnd.ref || siteYml.foundation,
-    asOrg,
     note: (m) => say.dim(m)
   })
   if (!site.uuid) {
@@ -725,6 +740,8 @@ export async function publish(args = []) {
       apiBase: client.origin,
       token: await client.token(),
       siteUuid: site.uuid,
+      // The plan and every direct PUT name the workspace the rest of the publish did.
+      workspace: client.workspace,
       ball,
       onProgress: (m) => say.dim(`  ${m}`)
     })
@@ -974,7 +991,6 @@ export async function publish(args = []) {
     client,
     siteDir,
     pkg,
-    asOrg,
     report
   })
   if (pushResult.exitCode !== 0) return { exitCode: pushResult.exitCode }
@@ -994,8 +1010,9 @@ export async function publish(args = []) {
       ...(languages ? { languages } : {})
     })
   } catch (err) {
-    say.err(`Could not reach the backend at ${client.origin}: ${err.message}`)
-    say.dim('Set the origin with --backend <url> or UNIWEB_REGISTER_URL.')
+    say.err(describeRequestError(err, client.origin))
+    if (!(err instanceof WorkspaceMismatchError))
+      say.dim('Is that the backend you meant? Switch with: uniweb login --backend <url>')
     return { exitCode: 1 }
   }
   if (!pubRes.ok) {

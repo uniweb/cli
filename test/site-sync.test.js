@@ -35,7 +35,8 @@ import {
   writeUnitBases,
   readItemUuids,
   probeUnpushed,
-  rebankSyncHashes
+  rebankSyncHashes,
+  EXPLICIT_OWNER
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
 import { readSiteIdentity } from '../src/utils/site-identity.js'
@@ -183,7 +184,6 @@ test('a successful push banks the returned versions; a refused lane still banks 
     client,
     siteDir: dir,
     pkg,
-    asOrg: null,
     report
   })
   assert.equal(res.exitCode, 0)
@@ -224,7 +224,6 @@ test('a push banks the injections its emit applied, beside the hashes — except
   const res = await pushSyncPackages({
     client,
     siteDir: dir,
-    asOrg: null,
     report,
     pkg: siteOnlyPkg({ hashes: { '@uniweb/site-content site': 'h1' }, applied })
   })
@@ -255,7 +254,6 @@ test('a push that applied NOTHING clears the injections an earlier one banked', 
   await pushSyncPackages({
     client,
     siteDir: dir,
-    asOrg: null,
     report,
     pkg: siteOnlyPkg({
       hashes: { k: 'h1' },
@@ -267,7 +265,6 @@ test('a push that applied NOTHING clears the injections an earlier one banked', 
   await pushSyncPackages({
     client,
     siteDir: dir,
-    asOrg: null,
     report,
     pkg: siteOnlyPkg({ hashes: { k: 'h2' }, applied: {} })
   })
@@ -312,7 +309,6 @@ test('TWO CONSECUTIVE PUSHES: item tokens come from the push response, not a pul
       client,
       siteDir: dir,
       pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
-      asOrg: null,
       report
     })
   }
@@ -343,7 +339,6 @@ test('an older backend omitting item_versions leaves the cached tokens alone', a
     client,
     siteDir: dir,
     pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
-    asOrg: null,
     report
   })
   assert.equal(res.exitCode, 0)
@@ -385,7 +380,6 @@ test('item tokens are banked even when the push is not the last lane to succeed'
       ...siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
       records: { buffer: Buffer.from('PK'), index: [] }
     },
-    asOrg: null,
     report
   })
   assert.equal(res.exitCode, 1)
@@ -476,7 +470,6 @@ test('a stale refusal explains WHICH pages diverged, and attributes them', async
     client,
     siteDir: dir,
     pkg,
-    asOrg: null,
     report
   })
   assert.equal(res.exitCode, 1)
@@ -515,7 +508,6 @@ test('the stale explainer degrades to the plain refusal when the remote read fai
     client,
     siteDir: dir,
     pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
-    asOrg: null,
     report
   })
   assert.equal(res.exitCode, 1)
@@ -551,7 +543,6 @@ test('a stale_base 409 is reported as a staleness refusal, not the structure con
     client,
     siteDir: dir,
     pkg,
-    asOrg: null,
     report
   })
   assert.equal(res.exitCode, 1)
@@ -583,7 +574,6 @@ test('pushSyncPackages CREATE: mints + records the site $uuid, persists the cach
     client,
     siteDir: dir,
     pkg,
-    asOrg: null,
     report
   })
 
@@ -622,7 +612,6 @@ test('pushSyncPackages UPDATE: a known $uuid updates by uuid (never CREATE)', as
     client,
     siteDir: dir,
     pkg: siteOnlyPkg({ siteContentUuid: 'EXIST' }),
-    asOrg: null,
     report
   })
 
@@ -644,7 +633,6 @@ test('pushSyncPackages: a rejected lane returns exit 1, reports the error, and d
     client,
     siteDir: dir,
     pkg: siteOnlyPkg({ siteContentUuid: undefined, hashes: { x: 'y' } }),
-    asOrg: null,
     report
   })
 
@@ -669,7 +657,6 @@ test('pushSyncPackages: a 409 explains the facet-genesis fix (push as a new site
     client,
     siteDir: dir,
     pkg: siteOnlyPkg({ siteContentUuid: undefined, hashes: { x: 'y' } }),
-    asOrg: null,
     report
   })
 
@@ -717,7 +704,6 @@ test('pushSyncPackages: the folder lane is keyed by the bound site uuid', async 
     client,
     siteDir: dir,
     pkg,
-    asOrg: null,
     report
   })
 
@@ -782,7 +768,7 @@ const draftPush = (echo) => {
 test('a draft the backend stored enabled fails the push, naming it, and the file stays a draft', async () => {
   const { dir, file, client, pkg } = draftPush(false)
   const { report, calls } = makeReport()
-  const res = await pushSyncPackages({ client, siteDir: dir, pkg, asOrg: null, report })
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, report })
   assert.equal(res.exitCode, 1)
   const said = calls.error.join('\n')
   assert.match(said, /did not keep a record as a draft/)
@@ -797,7 +783,7 @@ test('a draft the backend stored enabled fails the push, naming it, and the file
 test('CONTROL — a draft the backend kept pushes cleanly and stays a draft', async () => {
   const { dir, file, client, pkg } = draftPush(true)
   const { report, calls } = makeReport()
-  const res = await pushSyncPackages({ client, siteDir: dir, pkg, asOrg: null, report })
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, report })
   assert.equal(res.exitCode, 0)
   assert.deepEqual(calls.error, [])
   assert.deepEqual(yaml.load(readFileSync(file, 'utf8')), { $uuid: 'R1', title: 'Soon', draft: true })
@@ -832,7 +818,6 @@ test('an identity_required 400 is explained, not surfaced as a raw error', async
     client,
     siteDir: dir,
     pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
-    asOrg: null,
     report
   })
   assert.equal(res.exitCode, 1)
@@ -921,7 +906,6 @@ test('a 404 on a uuid-bound lane names BOTH causes, recoverable one first', asyn
     client,
     siteDir: dir,
     pkg,
-    asOrg: null,
     report
   })
   assert.equal(res.exitCode, 1)
@@ -962,7 +946,6 @@ test('a 404 on the CREATE lane does NOT claim a site was deleted', async () => {
     client,
     siteDir: dir,
     pkg,
-    asOrg: null,
     report
   })
   assert.equal(res.exitCode, 1)
@@ -1002,6 +985,7 @@ test('ensureSiteExists creates, reads the snake_case uuid, and writes it back at
   let sent = null
   const client = {
     origin: ORIGIN,
+    workspace: '@acme', // the create names it; the owner rides the client, not the call
     createSite: async (opts) => {
       sent = opts
       return okJson({ site_content_uuid: 'MINTED-9' })
@@ -1013,30 +997,28 @@ test('ensureSiteExists creates, reads the snake_case uuid, and writes it back at
     siteDir: dir,
     name: 'Acme',
     foundation: '@a/base@1.2.3',
-    asOrg: '@acme',
     note: (m) => notes.push(m)
   })
   assert.deepEqual(res, { uuid: 'MINTED-9', created: true, org: '@acme' })
   assert.deepEqual(sent, {
     name: 'Acme',
-    foundation: '@a/base@1.2.3',
-    asOrg: '@acme'
+    foundation: '@a/base@1.2.3'
   })
   // Written back immediately — the window where a crash strands a site is one write.
   assert.equal(readSiteIdentity(dir, ORIGIN).uuid, 'MINTED-9')
   assert.ok(notes.some((m) => /Created the site/.test(m)))
 })
 
-// ─── the site's org record (site.yml::$org) ───────────────────────────────────
-// Ownership is decided by the `as_org` on the create that mints `$uuid`, and by
-// nothing afterwards. `$org` records that decision so it is readable from the repo
-// and replayable, closing the asymmetry with the foundation lane's committed
-// `package.json::uniweb.scope`.
+// ─── the site's org record (sync.json → backends.<origin>.site.org) ──────────
+// Ownership is decided by the workspace the create that mints the uuid names, and by
+// nothing afterwards. The record makes that decision readable from the repo, and it
+// is the workspace every later request from the project names.
 
 test('the created site records its org BARE, and reads back with the @', async () => {
   const dir = tmpSite()
   const client = {
     origin: ORIGIN,
+    workspace: '@acme',
     createSite: async () => okJson({ site_content_uuid: 'MINTED-ORG' })
   }
   const notes = []
@@ -1045,7 +1027,6 @@ test('the created site records its org BARE, and reads back with the @', async (
     siteDir: dir,
     name: 'Acme',
     foundation: '@a/base@1.2.3',
-    asOrg: '@acme',
     note: (m) => notes.push(m)
   })
 
@@ -1061,20 +1042,23 @@ test('the created site records its org BARE, and reads back with the @', async (
   assert.ok(notes.some((m) => m.includes('@acme')))
 })
 
-test('a bare --as-org value is accepted and normalized on the way in', async () => {
+test('a bare workspace value is accepted and normalized on the way in', async () => {
   const dir = tmpSite()
   await ensureSiteExists({
-    client: { origin: ORIGIN, createSite: async () => okJson({ site_content_uuid: 'M' }) },
+    client: {
+      origin: ORIGIN,
+      workspace: 'acme', // no leading @
+      createSite: async () => okJson({ site_content_uuid: 'M' })
+    },
     siteDir: dir,
     name: 'Acme',
-    foundation: '@a/base@1.0.0',
-    asOrg: 'acme' // no leading @
+    foundation: '@a/base@1.0.0'
   })
   assert.equal(readSiteIdentity(dir, ORIGIN).org, 'acme')
   assert.equal(readSiteOrg(dir, ORIGIN), '@acme')
 })
 
-test('no --as-org records NO org — the backend chose, and we do not guess one', async () => {
+test('a create naming no workspace records NO org when the echo carries none', async () => {
   const dir = tmpSite()
   const res = await ensureSiteExists({
     client: { createSite: async () => okJson({ site_content_uuid: 'M2' }) },
@@ -1090,8 +1074,8 @@ test('no --as-org records NO org — the backend chose, and we do not guess one'
 })
 
 // ─── resolveSiteOrgForCreate — the one-shot ownership decision ────────────────
-// The create that mints $uuid is the only call that reads as_org, and there is no
-// CLI path to change ownership afterwards. These pin that the CLI never makes that
+// The create that mints the uuid takes its owner from the workspace it names, and there
+// is no CLI path to change ownership afterwards. These pin that the CLI never makes that
 // choice silently, and — just as important — that it never ASKS when there is no
 // choice left to make.
 
@@ -1102,7 +1086,7 @@ const NEVER_CALLED = {
   }
 }
 
-test('an explicit --as-org rides verbatim and asks nothing', async () => {
+test('an explicit --org rides verbatim, asks nothing, and is EXPLICIT', async () => {
   const dir = tmpSite()
   const r = await resolveSiteOrgForCreate({
     client: NEVER_CALLED,
@@ -1110,10 +1094,11 @@ test('an explicit --as-org rides verbatim and asks nothing', async () => {
     args: ['--non-interactive'],
     flag: '@acme'
   })
-  assert.deepEqual(r, { asOrg: '@acme' })
+  assert.deepEqual(r, { workspace: '@acme', source: 'flag' })
+  assert.ok(EXPLICIT_OWNER.has(r.source), 'a mismatch for it stops the command')
 })
 
-test('--personal sends NO as_org — the pre-prompt wire, byte for byte', async () => {
+test('--personal names NO workspace, and is explicit too', async () => {
   const dir = tmpSite()
   const r = await resolveSiteOrgForCreate({
     client: NEVER_CALLED,
@@ -1123,8 +1108,9 @@ test('--personal sends NO as_org — the pre-prompt wire, byte for byte', async 
   })
   // Deliberately null, NOT '@<handle>': the personal ORG is an org like any other,
   // and whether the backend resolves it to the same owning unit as the session's
-  // personal context is unverified here.
-  assert.deepEqual(r, { asOrg: null })
+  // personal workspace is unverified here.
+  assert.deepEqual(r, { workspace: null, source: 'personal' })
+  assert.ok(EXPLICIT_OWNER.has(r.source))
   assert.equal(r.refused, undefined)
 })
 
@@ -1137,10 +1123,11 @@ test('AN ALREADY-CREATED SITE IS NEVER ASKED — this is the compat property', a
     siteDir: dir,
     args: ['--non-interactive'] // would REFUSE if it thought a create were coming
   })
-  assert.deepEqual(r, { asOrg: null }, 'settled ownership must not be re-litigated')
+  assert.deepEqual(r, { workspace: null, source: 'existing' }, 'settled ownership must not be re-litigated')
+  assert.ok(!EXPLICIT_OWNER.has(r.source), 'the backend names its workspace; the client adopts it')
 })
 
-test('a recorded $org is replayed without asking', async () => {
+test('a recorded org is replayed without asking — and is NOT explicit', async () => {
   const dir = tmpSite()
   bind(dir, null, 'acme')
   const r = await resolveSiteOrgForCreate({
@@ -1148,7 +1135,9 @@ test('a recorded $org is replayed without asking', async () => {
     siteDir: dir,
     args: ['--non-interactive']
   })
-  assert.deepEqual(r, { asOrg: '@acme' })
+  assert.deepEqual(r, { workspace: '@acme', source: 'recorded' })
+  // A record can go stale (a parent workspace, a moved site); the backend's answer wins.
+  assert.ok(!EXPLICIT_OWNER.has(r.source))
 })
 
 test('non-interactive + a REAL create + no owner named ⇒ refuse, naming both exits', async () => {
@@ -1160,10 +1149,10 @@ test('non-interactive + a REAL create + no owner named ⇒ refuse, naming both e
     args: ['--non-interactive']
   })
   assert.equal(r.refused, true)
-  assert.equal(r.asOrg, null)
+  assert.equal(r.workspace, null)
   // The refusal has to be actionable, and BOTH exits must appear — naming only
-  // --as-org would read as "you must have an org", which is not true.
-  assert.match(r.reason, /--as-org @org/)
+  // --org would read as "you must have an org", which is not true.
+  assert.match(r.reason, /--org @org/)
   assert.match(r.reason, /--personal/)
 })
 
@@ -1178,7 +1167,7 @@ test('an offline preview never authenticates and never prompts', async () => {
     args: [],
     offline: true
   })
-  assert.deepEqual(r, { asOrg: null })
+  assert.deepEqual(r, { workspace: null, source: 'offline' })
 })
 
 // ─── the create echo — recording what the site IS, not what we asked for ──────
@@ -1187,13 +1176,13 @@ test('the backend echo wins over what we asked for, and null means personal', as
   const dir = tmpSite()
   await ensureSiteExists({
     client: {
+      workspace: '@acme', // we asked for an org…
       createSite: async () => okJson({ site_content_uuid: 'M', org: null }),
       discover: async () => ({})
     },
     siteDir: dir,
     name: 'Acme',
-    foundation: '@a/base@1.0.0',
-    asOrg: '@acme' // we asked for an org…
+    foundation: '@a/base@1.0.0'
   })
   // …the backend says the site is personal. `org: null` is an ANSWER, not an
   // absent key, so it must not fall back to the request.
@@ -1206,13 +1195,13 @@ test('an older backend omitting `org` falls back to what we asked for', async ()
   await ensureSiteExists({
     client: {
       origin: ORIGIN,
+      workspace: '@acme',
       createSite: async () => okJson({ site_content_uuid: 'M' }), // no `org` key
       discover: async () => ({})
     },
     siteDir: dir,
     name: 'Acme',
-    foundation: '@a/base@1.0.0',
-    asOrg: '@acme'
+    foundation: '@a/base@1.0.0'
   })
   assert.equal(readSiteOrg(dir, ORIGIN), '@acme')
 })
@@ -1272,8 +1261,8 @@ test('the billing line speaks ONLY the reassuring fact, and never predicts a cha
 
 test('readSiteOrg returns null for every site that predates the record', () => {
   const dir = tmpSite()
-  // This is the backward-compatibility property: no existing site.yml carries
-  // `$org`, so every existing site keeps sending no `as_org`, exactly as before.
+  // No record ⇒ the project names no workspace, and the client adopts the one the
+  // backend works on the site from (its `409 wrong_workspace`).
   bind(dir, 'OLD-1')
   assert.equal(readSiteOrg(dir), null)
 
@@ -1523,7 +1512,6 @@ test('an item_uuid_conflict clears the stale cache and says re-run', async () =>
     client,
     siteDir: dir,
     pkg: siteOnlyPkg({ siteContentUuid: 'SITE-NEW' }),
-    asOrg: null,
     report
   })
 
@@ -1583,7 +1571,6 @@ test('a push that banks identity leaves it readable for the next one', async () 
   const res = await pushSyncPackages({
     client,
     siteDir: dir,
-    asOrg: null,
     report,
     pkg: siteOnlyPkg({ hashes: { '@uniweb/site-content site': 'h1' } })
   })
@@ -1608,7 +1595,6 @@ test('⛔ a push that banks NO identity SAYS SO — it used to be silent', async
   const res = await pushSyncPackages({
     client,
     siteDir: dir,
-    asOrg: null,
     report,
     pkg: siteOnlyPkg({ hashes: { '@uniweb/site-content site': 'h1' } })
   })
@@ -1790,7 +1776,6 @@ test('an UPDATE push says what the backend did with the designation — and says
     const res = await pushSyncPackages({
       client,
       siteDir: dir,
-      asOrg: null,
       report,
       pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} })
     })
@@ -1826,7 +1811,6 @@ test('a CREATE push reports it too — the site is born designated or not', asyn
   const res = await pushSyncPackages({
     client,
     siteDir: dir,
-    asOrg: null,
     report,
     pkg: siteOnlyPkg({ hashes: {} })
   })
@@ -1850,7 +1834,6 @@ test('⛔ a state we do not know about is printed, not swallowed', async () => {
   await pushSyncPackages({
     client,
     siteDir: dir,
-    asOrg: null,
     report,
     pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} })
   })

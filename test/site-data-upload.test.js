@@ -187,6 +187,29 @@ test('a direct PUT DOES carry the bearer, and resolves against the origin', asyn
   assert.equal(r.serveBase, '/gateway/site/site-1/data/')
 })
 
+test('the workspace rides the plan and every DIRECT PUT — never a presigned one', async () => {
+  // A plan made with the header mints BARE PUT urls, so the PUT has to name its
+  // workspace too. A presigned URL is self-authorizing: it carries nothing it was not
+  // signed with.
+  for (const mode of ['direct', 'presigned']) {
+    const calls = stubFetch({ mode })
+    await uploadSiteData({ ...ARGS, workspace: '@acme', ball: BALL })
+    const plan = calls.find((c) => c.url.includes('/dev/site/data-uploads/'))
+    assert.equal(plan.init.headers['x-uniweb-workspace'], '@acme', mode)
+    for (const put of calls.filter((c) => c.init.method === 'PUT')) {
+      assert.equal(
+        put.init.headers['x-uniweb-workspace'],
+        mode === 'direct' ? '@acme' : undefined,
+        mode
+      )
+    }
+  }
+  // Naming none sends none.
+  const calls = stubFetch({ mode: 'direct' })
+  await uploadSiteData({ ...ARGS, ball: BALL })
+  for (const c of calls) assert.equal(c.init.headers?.['x-uniweb-workspace'], undefined)
+})
+
 test('a file the plan did not answer for FAILS rather than being guessed at', async () => {
   stubFetch({ omit: ['articles.json'] })
   const r = await uploadSiteData({ ...ARGS, ball: BALL })

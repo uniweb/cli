@@ -50,12 +50,11 @@ const VIA_DEPLOY = ['--target', '--host', '--no-save']
 /**
  * Per-verb flag sets. Derived by scanning each command for dash-literals AND the
  * helpers it calls — not from the help text, which has drifted from the parser in
- * both directions (`--as-org` was implemented and undocumented; `--yes` is
- * documented on `publish` and consumed two files away).
+ * both directions (`--yes` is documented on `publish` and consumed two files away).
  */
 const VERBS = {
   push: [
-    '--all', '--as-org', '--org', '--dry-run', '--force',
+    '--all', '--org', '--dry-run', '--force',
     '--foundation', '--output', '-o', '--personal',
     // read in utils/conformance.js and backend/site-sync.js respectively —
     // neither appears in push.js
@@ -69,7 +68,7 @@ const VERBS = {
     '--no-release', ...VIA_DEPLOY
   ],
   publish: [
-    '--as-org', '--org', '--dry-run', '--force', '--foundation',
+    '--org', '--dry-run', '--force', '--foundation',
     '--personal',
     // read in utils/conformance.js, backend/site-sync.js, and
     // backend/foundation-bring-along.js — none appear in publish.js
@@ -80,15 +79,15 @@ const VERBS = {
     '--no-assets',
     '--no-records', '--no-delete', '--no-prune',
     // via backend/site-sync.js (the owner resolver) and utils/conformance.js
-    '--yes', '--org', '--as-org', '--no-validate', ...VIA_DEPLOY
+    '--yes', '--org', '--no-validate', ...VIA_DEPLOY
   ],
   clone: [
     '--content-only', '--no-assets', '--no-records', '--path',
-    '--project', '--org', '--as-org'
+    '--project', '--org'
   ],
   register: [
     '--dry-run', '--json', '--output', '-o',
-    '--schema-only', '--scope', '--org', '--as-org'
+    '--schema-only', '--scope', '--org'
   ],
   /**
    * `forget` = remove one backend's records (`--backend <url>`), or everything a
@@ -99,7 +98,7 @@ const VERBS = {
   forget: ['--backend', '--all'],
   status: [
     '--json', '--remote', '--dry-run',
-    '--force', '--no-verify', '--no-validate', '--yes', '--org', '--as-org',
+    '--force', '--no-verify', '--no-validate', '--yes', '--org',
     // inert here, reachable through the bring-along module status imports for
     // `resolveLocalFoundation` — listed per the over-approximation note above
     '--no-release', ...VIA_DEPLOY
@@ -119,7 +118,7 @@ const VERBS = {
    */
   refresh: [
     '--no-backend', '--no-git',
-    '--as-org', '--org', '--dry-run', '--no-validate', '--yes', ...VIA_DEPLOY
+    '--org', '--dry-run', '--no-validate', '--yes', ...VIA_DEPLOY
   ]
 }
 
@@ -211,6 +210,15 @@ export function checkFlags(verb, args = []) {
         '  Sign in with a token: uniweb login --backend <url> --token <bearer>',
         '  (A script can authenticate one process with UNIWEB_TOKEN instead.)'
       ].join('\n')
+    }
+  }
+  // ⭐ `--as-org` is RETIRED (2026-09-23) with the `?as_org=` it mirrored — the request
+  // names its workspace in a header now, and `--org` is the one spelling.
+  if (flag === '--as-org' && all.includes('--org')) {
+    return {
+      flag,
+      suggestion: '--org',
+      message: `\`--as-org\` is retired — use \`--org @org\` (e.g. \`uniweb ${verb} --org @acme\`).`
     }
   }
   const suggestion = didYouMean(flag, all)

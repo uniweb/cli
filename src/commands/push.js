@@ -27,15 +27,15 @@
  *
  * Usage:
  *   uniweb push                          Build, push both lanes, back-fill $uuid
- *   uniweb push --org @org               Own the new site under @org (alias: --as-org).
- *                                        Read only on the FIRST push of a site — it
- *                                        decides which org owns it, and whose storage
- *                                        its assets are charged to. Recorded in
- *                                        `sync.json` and replayed after that.
- *                                        Without it, you are asked once.
- *   uniweb push --personal               Own the new site personally, deliberately.
- *                                        Sends NO `as_org` — the same wire as before
- *                                        this prompt existed. First push only.
+ *   uniweb push --org @org               Own the new site under @org. On the FIRST
+ *                                        push it decides which org owns the site, and
+ *                                        whose storage its assets are charged to;
+ *                                        recorded in `sync.json`, and every request
+ *                                        after names it. Without it, you are asked
+ *                                        once. Later, it must match the workspace the
+ *                                        backend works on the site from, or push stops.
+ *   uniweb push --personal               Own the new site personally, deliberately:
+ *                                        its requests name no workspace.
  *   uniweb push --dry-run                Report what would be pushed; submit nothing
  *   uniweb push -o out.uwx               Write the .uwx file(s) per lane; submit nothing
  *   uniweb push --foundation <dir>       Use this local foundation for the Model schema
@@ -92,7 +92,9 @@ import {
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
   pushSyncPackages,
-  resolveSiteOrgForCreate
+  resolveSiteOrgForCreate,
+  nameSiteWorkspace,
+  EXPLICIT_OWNER
 } from '../backend/site-sync.js'
 
 // Re-exported for downstream importers (pull.js, push.test.js) that read these
@@ -231,7 +233,6 @@ export async function push(args = [], deps = {}) {
     note(org.reason)
     return { exitCode: 2 }
   }
-  const asOrg = org.asOrg
 
   // Bring the foundation along — BEFORE any asset upload, because an upload is
   // chargeable and a push that aborts after one has spent the user's money for
@@ -287,6 +288,17 @@ export async function push(args = [], deps = {}) {
     return { exitCode: 1 }
   }
   if (!fnd.proceed) return { exitCode: 1 }
+
+  // ⭐ Name the workspace every site request works in. The user's own choice (`--org`,
+  // `--personal`, the picker) is explicit, so a `409 wrong_workspace` stops the push; a
+  // recorded one is adopted afresh from the backend's answer when stale
+  // (`nameSiteWorkspace`).
+  nameSiteWorkspace(client, {
+    siteDir,
+    workspace: org.workspace,
+    explicit: EXPLICIT_OWNER.has(org.source),
+    note
+  })
 
   // Build BOTH directional packages (the producer side). Each carries its own
   // `index` — the per-entity source-file map for back-fill, correlated by submission
@@ -431,7 +443,6 @@ export async function push(args = [], deps = {}) {
       const site = await ensureSiteExists({
         client,
         siteDir,
-        asOrg,
         note,
         ...(fnd.ref ? { foundation: fnd.ref } : {})
       })
@@ -598,7 +609,6 @@ export async function push(args = [], deps = {}) {
     client,
     siteDir,
     pkg,
-    asOrg,
     report: {
       info,
       note,

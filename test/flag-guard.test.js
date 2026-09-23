@@ -59,7 +59,7 @@ test('the message names the verb and points at its help', () => {
 
 test('a realistic invocation of every guarded verb passes', () => {
   const real = {
-    push: ['--as-org', '@acme', '--yes', '--force'],
+    push: ['--org', '@acme', '--yes', '--force'],
     publish: ['--yes', '--no-validate', '--dry-run', '--personal'],
     pull: ['--merge', '--no-prune', '--content-only'],
     clone: ['abc-uuid', '--path', './site', '--project', 'p'],
@@ -138,7 +138,7 @@ test('globals are accepted everywhere', () => {
 test('positionals, values, and `--` are not mistaken for flags', () => {
   assert.equal(checkFlags('clone', ['0198f2-uuid']), null)
   // A value that merely contains dashes is a value.
-  assert.equal(checkFlags('push', ['--as-org', '@a-b-c']), null)
+  assert.equal(checkFlags('push', ['--org', '@a-b-c']), null)
   // POSIX end-of-flags: nothing after it is scanned.
   assert.equal(checkFlags('push', ['--', '--whatever']), null)
   // A lone `-` is a value (stdin), not a flag.
@@ -146,25 +146,32 @@ test('positionals, values, and `--` are not mistaken for flags', () => {
 })
 
 test('--flag=value is checked on the name half', () => {
-  assert.equal(checkFlags('push', ['--as-org=@acme']), null)
-  assert.equal(checkFlags('push', ['--as-orgs=@acme']).flag, '--as-orgs')
+  assert.equal(checkFlags('push', ['--org=@acme']), null)
+  assert.equal(checkFlags('push', ['--orgs=@acme']).flag, '--orgs')
 })
 
 test('an unguarded verb is left alone', () => {
   assert.equal(checkFlags('dev', ['--anything']), null)
 })
 
-// ─── the alias ────────────────────────────────────────────────────────────────
+// ─── --org, and the retired --as-org ──────────────────────────────────────────
 
-test('--org is accepted and means --as-org', () => {
+test('--org is the one spelling', () => {
   assert.equal(checkFlags('publish', ['--org', '@acme']), null)
   assert.equal(readOrgFlag(['--org', '@acme']), '@acme')
-  assert.equal(readOrgFlag(['--as-org', '@acme']), '@acme')
   assert.equal(readOrgFlag([]), undefined)
 })
 
-test('a valueless --org falls through rather than shadowing --as-org', () => {
-  assert.equal(readOrgFlag(['--org', '--as-org', '@acme']), '@acme')
+test('⛔ `--as-org` is refused wherever `--org` is taken — and names `--org`', () => {
+  // Retired 2026-09-23 with the `?as_org=` it mirrored. Refused rather than ignored:
+  // ignored, a push would name no workspace while the user believed they had named one.
+  for (const verb of ['push', 'publish', 'pull', 'clone', 'status', 'refresh', 'sync']) {
+    const bad = checkFlags(verb, ['--as-org', '@acme'])
+    assert.equal(bad?.flag, '--as-org', verb)
+    assert.equal(bad.suggestion, '--org', verb)
+    assert.match(bad.message, /--as-org` is retired — use `--org @org`/, verb)
+  }
+  assert.equal(readOrgFlag(['--as-org', '@acme']), undefined, 'and nothing reads it')
 })
 
 // ─── the primitives ───────────────────────────────────────────────────────────
@@ -174,7 +181,7 @@ test('findUnknownFlags dedupes and preserves order', () => {
 })
 
 test('didYouMean suggests a near miss and declines a far one', () => {
-  assert.equal(didYouMean('--as-orgs', ['--as-org', '--backend']), '--as-org')
+  assert.equal(didYouMean('--forcee', ['--force', '--backend']), '--force')
   assert.equal(didYouMean('--zzzzzzzz', ['--backend', '--token']), null)
 })
 
