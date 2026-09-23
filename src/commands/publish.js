@@ -562,8 +562,6 @@ export async function publish(args = []) {
       backend: client.origin,
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir, client.origin),
-      // Resolves a foundation-relative `@/x` model ref into `@org/x`.
-      ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),
       resolveModel
     })
@@ -949,8 +947,6 @@ export async function publish(args = []) {
       ...(declaration.declare ? {} : { declareServices: false }),
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir, client.origin),
-      // Resolves a foundation-relative `@/x` model ref into `@org/x`.
-      ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),
       resolveModel,
       priorHashes,

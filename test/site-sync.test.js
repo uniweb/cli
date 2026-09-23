@@ -1623,13 +1623,18 @@ test('⛔ a push that banks NO identity SAYS SO — it used to be silent', async
 })
 
 /**
- * ⛔ probeUnpushed must pass the site's RECORDED ORG to the emit.
+ * ⛔ probeUnpushed must resolve `@/x` the way the push did — into the FOUNDATION's scope.
  *
- * The org is what resolves a foundation-relative `@/member` into the `@org/member`
- * a push shipped and keyed its hashes by. Omitting it does not fail: the emit WARNS
- * and ships the model unresolved (deliberate — an org-less export still works), so
+ * The scope is what resolves a foundation-relative `@/member` into the `@acme/member`
+ * a push shipped and keyed its hashes by. Missing it does not fail: the emit WARNS
+ * and ships the model unresolved (deliberate — an unscoped export still works), so
  * every record of a `@/`-scoped collection is emitted under a key that can never
  * match its banked one, and `uniweb status` reports it changed forever.
+ *
+ * ⭐ Since 2026-09-22 the scope is the one in the foundation's NAME (`@acme/base` in its
+ * main.js) — the scope `register` stored its Models under — and never the org that owns
+ * the SITE, which this read from sync.json until then. The emit reads it itself, the
+ * same read a push makes, so the two agree by construction.
  *
  * ⚠️ It hid because `@std/…` collections are unaffected — their scope is already
  * absolute. A site mixing both shows some records settling and others never
@@ -1644,25 +1649,27 @@ test('⛔ a push that banks NO identity SAYS SO — it used to be silent', async
  * banked cache from a real round trip. The warning is emitted on exactly the path
  * the defect travels, and the control below is what makes its absence mean something.
  */
-test('probeUnpushed resolves a foundation-relative collection schema via the site org', async () => {
-  const make = (org) => {
-    const dir = mkdtempSync(join(tmpdir(), 'probe-org-'))
-    mkdirSync(join(dir, 'foundations', 'base', 'dist', 'meta'), { recursive: true })
+test('probeUnpushed resolves a foundation-relative schema into the foundation’s scope', async () => {
+  // A site beside its foundation `base`, whose main.js names it `foundationName`. The
+  // site is owned by ANOTHER org — `client` — which must not be the scope. The
+  // foundation declares no `member`, so the emit's lookup fails and its error names the
+  // qualified model it asked for.
+  const make = (foundationName) => {
+    const dir = mkdtempSync(join(tmpdir(), 'probe-scope-'))
+    const site = join(dir, 'site')
+    const fnd = join(dir, 'base')
+    mkdirSync(join(fnd, 'dist', 'meta'), { recursive: true })
+    writeFileSync(join(fnd, 'package.json'), JSON.stringify({ name: 'base', main: './_entry.generated.js' }))
+    writeFileSync(join(fnd, 'main.js'), `export default { name: '${foundationName}' }\n`)
+    writeFileSync(join(fnd, 'dist', 'meta', 'schema.json'), JSON.stringify({ dataSchemas: {} }))
+    mkdirSync(site)
+    writeFileSync(join(site, 'site.yml'), 'name: Acme\nfoundation: base\n')
     writeFileSync(
-      join(dir, 'foundations', 'base', 'dist', 'meta', 'schema.json'),
-      JSON.stringify({ dataSchemas: { '@/member': { name: 'member', version: '1.0.0' } } })
+      join(site, 'sync.json'),
+      JSON.stringify({ version: 1, backends: { [ORIGIN]: { site: { org: 'client' } } } })
     )
-    writeFileSync(join(dir, 'site.yml'), 'name: Acme\nfoundation: base\n')
-    if (org) {
-      writeFileSync(
-        join(dir, 'sync.json'),
-        JSON.stringify({ version: 1, backends: { [ORIGIN]: { site: { org } } } })
-      )
-    }
-    mkdirSync(join(dir, 'collections', 'members'), { recursive: true })
-    writeFileSync(join(dir, 'queries.yml'), 'members:\n  schema: "@/member"\n')
-    writeFileSync(join(dir, 'collections', 'members', 'alice.md'), '---\nname: Alice\n---\n\nHi.\n')
-    return dir
+    writeFileSync(join(site, 'queries.yml'), 'members:\n  schema: "@/member"\n')
+    return { dir, site }
   }
 
   // The model name the emit ends up asking for is the observable: it is exactly what
@@ -1676,27 +1683,28 @@ test('probeUnpushed resolves a foundation-relative collection schema via the sit
     }
   }
 
-  const withOrg = make('acme')
-  const noOrg = make(null)
+  const scoped = make('@acme/base')
+  const bare = make('base')
   try {
-    // CONTROL. A site recording no org has nothing to resolve WITH, so the emit must
-    // still ask for the bare `@/member`. Without this the assertion below would pass
-    // just as well if the message shape changed or the collection stopped being read.
+    // CONTROL. A foundation whose name carries no scope yet has nothing to resolve
+    // WITH, so the emit must still ask for the bare `@/member` — whoever owns the site.
+    // Without this the assertion below would pass just as well if the message shape
+    // changed or the query stopped being read.
     assert.equal(
-      await askedFor(noOrg),
+      await askedFor(bare.site),
       '@/member',
-      'control: with no recorded $org the emit should still ask for the unresolved `@/member`'
+      'control: a foundation with no scope in its name leaves `@/member` unresolved'
     )
 
     assert.equal(
-      await askedFor(withOrg),
+      await askedFor(scoped.site),
       '@acme/member',
-      'a site recording `$org` must have it applied offline, so `status` asks for the same ' +
-        'org-qualified model the push banked its hashes under'
+      'the foundation’s scope must be applied offline, so `status` asks for the same ' +
+        'qualified model the push banked its hashes under — not the site owner’s `@client/member`'
     )
   } finally {
-    rmSync(withOrg, { recursive: true, force: true })
-    rmSync(noOrg, { recursive: true, force: true })
+    rmSync(scoped.dir, { recursive: true, force: true })
+    rmSync(bare.dir, { recursive: true, force: true })
   }
 })
 

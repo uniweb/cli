@@ -406,8 +406,6 @@ export async function push(args = [], deps = {}) {
       backend: client.origin,
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir, client.origin),
-      // Resolves a foundation-relative `@/x` model ref into `@org/x`.
-      ...(asOrg ? { org: asOrg } : {}),
         ...(foundationDir ? { foundationDir } : {}),
         resolveModel: makeModelResolver({ client, offline: false })
       })
@@ -508,8 +506,6 @@ export async function push(args = [], deps = {}) {
       // Identity for the `queries` section — see readQueryUuids. Keyed by
       // name, because a declaration has no file for a path-keyed map to hold.
       queryUuids: readQueryUuids(siteDir, client.origin),
-      // Resolves a foundation-relative `@/x` model ref into `@org/x`.
-      ...(asOrg ? { org: asOrg } : {}),
       ...(foundationDir ? { foundationDir } : {}),
       resolveModel: makeModelResolver({
         client,

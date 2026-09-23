@@ -72,6 +72,7 @@ import {
   readBackendState,
   siteContentDocumentToProject,
   recordsToProject,
+  siteSelfScope,
   readZip,
   computeUnitHashes,
   collectUnitUuids,
@@ -709,6 +710,22 @@ export async function pull(args = [], deps = {}) {
   let etagContent = cache.content
   let etagFolder = cache.folder
 
+  // ⭐ THE SCOPE THE PULLED RECORDS AND QUERIES WERE QUALIFIED WITH — the pushed site's
+  // FOUNDATION's: the scope of the pinned ref it carries (`info.foundation`), else the
+  // local foundation's name. A push qualifies `@/x` with it, so this is what undoes it,
+  // and a record lands back in `records/article/` rather than `records/acme/article/`.
+  // Resolved once, up front — it may load main.js — and handed to the synchronous
+  // projections, as Models are. ⛔ It was the site owner's org, from sync.json, until
+  // 2026-09-22; a foundation may be registered under any org its author belongs to.
+  let pullScope
+  const scopeFor = async (doc) => {
+    if (pullScope === undefined) {
+      const pinned = doc?.info?.foundation
+      pullScope = await siteSelfScope(siteDir, pinned !== undefined ? { foundation: pinned } : {})
+    }
+    return pullScope
+  }
+
   // Lane 1 — content → config + pages/** + layout/**. The .uwx carries a single
   // entity (the site-content document). A 304 (unchanged) leaves local files as-is.
   const content = await getDocs('content', () =>
@@ -806,7 +823,9 @@ export async function pull(args = [], deps = {}) {
         // it a pull leaves every image pointing at a backend route.
         backend: client.origin,
         prune,
-        keepAuthoredFoundation
+        keepAuthoredFoundation,
+        // So a query's `@acme/member` comes back as the author's `@/member`.
+        scope: await scopeFor(siteDoc)
       })
       wrote.push(...report.pages, ...report.sections, ...report.layout)
       removed.push(
@@ -843,17 +862,19 @@ export async function pull(args = [], deps = {}) {
       }
       // ⛔ NO QUERY CONFIG. A record's home is decided by what it IS — its
       // `$model` names the pool folder — not by any query that happens to select
-      // it. `recordsToProject` reads the site's org itself (this backend's, from
-      // `sync.json`), so a `@/x` model the producer resolved to `@org/x` is placed
-      // back where the author wrote it.
+      // it. Handed the foundation's scope (`scopeFor`), `recordsToProject` places a
+      // `@/x` model the producer resolved to `@acme/x` back where the author wrote it.
       const report = recordsToProject({
         folderDoc,
         recordDocs,
         siteRoot: siteDir,
         opts: {
-          // Whose record map to read and extend, and whose org to place models under.
+          // Whose record map to read and extend.
           backend: client.origin,
-          resolveDeclaration: (name) => declByModel.get(name) || null
+          resolveDeclaration: (name) => declByModel.get(name) || null,
+          // The scope a model's `@/x` was qualified with, so `@acme/article` is placed
+          // back in `records/article/` — see `scopeFor`.
+          scope: await scopeFor(null)
         }
       })
       // The folder's organization, `folder.yml` in the records directory — named as

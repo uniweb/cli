@@ -704,11 +704,14 @@ function recordSiteOrg(siteDir, backend, asOrg) {
  * to several orgs could put a company site, and the storage it bills, somewhere
  * they never named.
  *
- * `register` resolves a foundation's scope in the same order — explicit, then
- * recorded (`package.json::uniweb.scope`), then asked (`deriveScope`) — with one
- * difference: non-interactive, it PICKS the one org you belong to, else your
- * personal org, else the primary, and says which. This refuses instead, because a
- * site's owner is the one-shot decision above. ⚠️ Until 2026-09-21 this said
+ * `register` resolves a foundation's scope in the same order — recorded (the scope
+ * in its name, `@acme/marketing` in main.js), else explicit (`--scope`), else asked
+ * (`deriveScope`) — with one difference: non-interactive, it PICKS the one org you
+ * belong to, else your personal org, else the primary, and says which. This refuses
+ * instead, because a site's owner is the one-shot decision above. ⭐ And the two are
+ * separate decisions: a foundation may be registered under any org its author
+ * belongs to, whoever owns the site (2026-09-22) — a site's `@/x` refs take the
+ * FOUNDATION's scope, never this one. ⚠️ Until 2026-09-21 this said
  * `register` "has refused to guess a scope", which is wrong for a non-interactive
  * run by anyone with an org.
  *
@@ -1201,7 +1204,6 @@ async function comparisonEmit(
   // comparison against the wrong one reports every media ref as changed. Absent is
   // honest rather than a default — no backend, no known ids.
   const assetIds = backend ? readBackendState(siteDir, backend).assets || {} : {}
-  const org = readSiteOrg(siteDir, backend)
   const queryUuids = readQueryUuids(siteDir, backend)
   return emitSyncPackages(siteDir, {
     backend,
@@ -1210,8 +1212,9 @@ async function comparisonEmit(
     sendAll,
     ...applied,
     ...(Object.keys(queryUuids).length ? { queryUuids } : {}),
-    ...(Object.keys(assetIds).length ? { assetIds } : {}),
-    ...(org ? { org } : {})
+    ...(Object.keys(assetIds).length ? { assetIds } : {})
+    // ⛔ No `org`: a site's `@/x` refs resolve into its FOUNDATION's scope, which the
+    // emit reads itself — the same read a push makes, so the hashes compare alike.
   })
 }
 
