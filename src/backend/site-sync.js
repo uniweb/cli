@@ -1243,6 +1243,37 @@ export async function rebankSyncHashes(siteDir, backend = null) {
 }
 
 /**
+ * What a push did with the site's `template:` intent — read from the backend's own
+ * reply, never inferred from what we sent.
+ *
+ * The field is `template`, carrying `designated` or `undesignated`, and it is ABSENT
+ * when the designation did not move (backend, collab framework↔backend #6, 2026-09-23;
+ * kb/framework/reference/template-designation-on-push.md E6).
+ *
+ * ⛔ TWO STATES, NOT THREE — and silence means "unchanged", never "failed". A push that
+ * asks to designate where the backend will not is REFUSED WHOLE, and that refusal
+ * carries its own message (§6), so there is no asked-but-skipped state to print here.
+ *
+ * ⚠️ Backend named the field, not its nesting, so the top level and `report` are both
+ * read; and an unrecognized value is printed verbatim rather than dropped, because a
+ * state we do not know about rendering as SILENCE is the exact failure this line exists
+ * to prevent.
+ *
+ * @param {object|null} payload - the parsed push/create response
+ * @returns {string|null} the state as the backend spelled it
+ */
+export function templateOutcome(payload) {
+  const v = payload?.template ?? payload?.report?.template
+  return typeof v === 'string' && v.trim() ? v.trim() : null
+}
+
+/** The sentence for each state the backend can report. */
+const TEMPLATE_SAID = {
+  designated: 'The backend designated this site as a template.',
+  undesignated: 'The backend undesignated this site — it is no longer a template.'
+}
+
+/**
  * Submit a site's emitted sync packages over both directional lanes, back-fill the
  * minted uuids, and persist the send-only-changed cache. The HTTP + file-write-back
  * half that `emitSyncPackages` (producer-pure) deliberately omits.
@@ -1286,7 +1317,7 @@ export async function pushSyncPackages({
     label,
     doRequest,
     explainStale = async () => [],
-    { boundUuid = null } = {}
+    { boundUuid = null, reportTemplate = false } = {}
   ) => {
     info(`Pushing ${label} to ${dim(client.origin)} …`)
     let res
@@ -1483,12 +1514,25 @@ export async function pushSyncPackages({
       if (body) note(body.slice(0, 800))
       return null
     }
+    let payload
     try {
-      return await res.json()
+      payload = await res.json()
     } catch (err) {
       error(`Could not parse the ${label} response as JSON: ${err.message}`)
       return null
     }
+    // The designation outcome rides on the site-content lanes only — the one place
+    // the author's `template:` intent was sent.
+    if (reportTemplate) {
+      const state = templateOutcome(payload)
+      if (state) {
+        note(
+          TEMPLATE_SAID[state] ||
+            `The backend reported the template state as "${state}".`
+        )
+      }
+    }
+    return payload
   }
 
   // POST a lane that round-trips entity uuids (content UPDATE + the folder): parse the
@@ -1570,7 +1614,7 @@ export async function pushSyncPackages({
             localBuffer: siteContent.buffer,
             uuid: siteContentUuid
           }),
-        { boundUuid: siteContentUuid }
+        { boundUuid: siteContentUuid, reportTemplate: true }
       )
       if (!finalized) {
         mergeHarvested()
@@ -1591,8 +1635,11 @@ export async function pushSyncPackages({
       }
       finalizedTotal += finalized.length
     } else {
-      const payload = await postLane('site-content', () =>
-        client.createSiteContent(siteContent.buffer, { asOrg })
+      const payload = await postLane(
+        'site-content',
+        () => client.createSiteContent(siteContent.buffer, { asOrg }),
+        undefined,
+        { reportTemplate: true }
       )
       if (payload === null) return { exitCode: 1, finalizedTotal, wrote }
       const minted = extractMintedSiteUuid(payload)

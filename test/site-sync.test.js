@@ -21,6 +21,7 @@ import { join } from 'node:path'
 import yaml from 'js-yaml'
 import {
   extractFinalized,
+  templateOutcome,
   pushSyncPackages,
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
@@ -1750,4 +1751,101 @@ test('rebankSyncHashes makes the tree a fixed point for probeUnpushed', async ()
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+// ─── the designation outcome (E6) ────────────────────────────────────────────
+// A push carries the author's `template:` intent in `info`; what the backend DID
+// with it comes back as `template` — `designated` · `undesignated`, absent when it
+// did not move (backend, 2026-09-23). ⛔ Absent is "unchanged", never "failed": a
+// designation the backend will not make refuses the whole push, with its own message
+// (kb/framework/reference/template-designation-on-push.md §6).
+
+test('templateOutcome reads the state the backend reported, wherever it rides', () => {
+  assert.equal(templateOutcome({ template: 'designated' }), 'designated')
+  assert.equal(templateOutcome({ report: { template: 'undesignated' } }), 'undesignated')
+  // CONTROL — nothing to say, and nothing that could be mistaken for a state
+  assert.equal(templateOutcome({ report: { finalized: [] } }), null)
+  assert.equal(templateOutcome({ template: '' }), null)
+  assert.equal(templateOutcome({ template: true }), null)
+  assert.equal(templateOutcome(null), null)
+})
+
+test('an UPDATE push says what the backend did with the designation — and says nothing when it did not move', async () => {
+  const push = async (body) => {
+    const dir = tmpSite()
+    bind(dir, 'S1')
+    const client = {
+      origin: ORIGIN,
+      updateSiteContent: async () => ok(body)
+    }
+    const { report, calls } = makeReport()
+    const res = await pushSyncPackages({
+      client,
+      siteDir: dir,
+      asOrg: null,
+      report,
+      pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} })
+    })
+    rmSync(dir, { recursive: true, force: true })
+    return { res, said: calls.note.join('\n') }
+  }
+  const one = finalized([{ index: 0, uuid: 'S1', changed: true }])
+
+  const designated = await push({ ...one, template: 'designated' })
+  assert.equal(designated.res.exitCode, 0)
+  assert.match(designated.said, /designated this site as a template/)
+
+  const undesignated = await push({ ...one, template: 'undesignated' })
+  assert.match(undesignated.said, /no longer a template/)
+
+  // CONTROL — the same push with no state reported prints neither line
+  const quiet = await push(one)
+  assert.equal(quiet.res.exitCode, 0)
+  assert.doesNotMatch(quiet.said, /template/i)
+})
+
+test('a CREATE push reports it too — the site is born designated or not', async () => {
+  const dir = tmpSite()
+  const client = {
+    origin: ORIGIN,
+    createSiteContent: async () =>
+      ok({
+        ...finalized([{ index: 0, uuid: 'S1', changed: true }]),
+        template: 'designated'
+      })
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    asOrg: null,
+    report,
+    pkg: siteOnlyPkg({ hashes: {} })
+  })
+  rmSync(dir, { recursive: true, force: true })
+  assert.equal(res.exitCode, 0)
+  assert.match(calls.note.join('\n'), /designated this site as a template/)
+})
+
+test('⛔ a state we do not know about is printed, not swallowed', async () => {
+  const dir = tmpSite()
+  bind(dir, 'S1')
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () =>
+      ok({
+        ...finalized([{ index: 0, uuid: 'S1', changed: true }]),
+        template: 'queued-for-review'
+      })
+  }
+  const { report, calls } = makeReport()
+  await pushSyncPackages({
+    client,
+    siteDir: dir,
+    asOrg: null,
+    report,
+    pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} })
+  })
+  rmSync(dir, { recursive: true, force: true })
+  assert.match(calls.note.join('\n'), /template state as "queued-for-review"/)
 })
