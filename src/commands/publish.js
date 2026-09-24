@@ -90,7 +90,8 @@ import {
   refuseUnsendableRecords,
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
-  pushSyncPackages
+  readItemUuids,
+  pushInPasses
 } from '../backend/site-sync.js'
 import { resolveWorkspace, describeWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
@@ -767,12 +768,6 @@ export async function publish(args = []) {
   //    (It stamped `info.data_bundle` until 2026-08-18; the ball is gone and
   //    collection data now lands at its serving tail, so nothing records it.)
   const priorHashes = readSyncCache(siteDir, client.origin)
-  // publish rides the same gated push as `uniweb push`: if an app author has
-  // edited since this clone last synced, the push is refused rather than
-  // overwriting them, and nothing goes live. `--force` drops the precondition.
-  const baseVersions = args.includes('--force')
-    ? null
-    : readBaseVersions(siteDir, client.origin)
   // Per-item identity, recovered from the backend when this clone has never seen it.
   // Without it the backend re-mints every page and section row (see readItemUuids).
   const itemUuids = await ensureItemUuids({
@@ -948,9 +943,14 @@ export async function publish(args = []) {
     say.dim('Services unchanged.')
   }
 
-  let pkg
-  try {
-    pkg = await emitSyncPackages(siteDir, {
+  // The emit's options, read afresh for each pass (`pushInPasses`): a pass banks
+  // hashes, identity and base versions that the next one must build on.
+  //
+  // publish rides the same gated push as `uniweb push`: if an app author has
+  // edited since this clone last synced, the push is refused rather than
+  // overwriting them, and nothing goes live. `--force` drops the precondition.
+  const forced = args.includes('--force')
+  const emitOptions = ({ priorHashes, itemUuids }) => ({
       backend: client.origin,
       ...(declaration.declare ? {} : { declareServices: false }),
       // Placement identity for the folder — see writeFolderItemUuids.
@@ -959,14 +959,20 @@ export async function publish(args = []) {
       resolveModel,
       priorHashes,
       itemUuids,
-      ...(baseVersions
-        ? { baseVersions, itemBaseVersions: readItemBaseVersions(siteDir, client.origin) }
-        : {}),
+      ...(forced
+        ? {}
+        : {
+            baseVersions: readBaseVersions(siteDir, client.origin),
+            itemBaseVersions: readItemBaseVersions(siteDir, client.origin)
+          }),
       ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
       ...(Object.keys(ext.pins).length ? { injectExtensions: ext.pins } : {}),
       ...(assetRewrite ? { assetRewrite } : {}),
       ...(assetIds ? { assetIds } : {})
-    })
+  })
+  let pkg
+  try {
+    pkg = await emitSyncPackages(siteDir, emitOptions({ priorHashes, itemUuids }))
   } catch (err) {
     say.err(`Could not build the sync package: ${err.message}`)
     return { exitCode: 1 }
@@ -981,11 +987,19 @@ export async function publish(args = []) {
     error: (m) => say.err(m),
     dim: (s) => `${c.dim}${s}${c.reset}`
   }
-  const pushResult = await pushSyncPackages({
+  const pushResult = await pushInPasses({
     client,
     siteDir,
     pkg,
-    report
+    report,
+    reemit: () =>
+      emitSyncPackages(
+        siteDir,
+        emitOptions({
+          priorHashes: readSyncCache(siteDir, client.origin),
+          itemUuids: readItemUuids(siteDir, client.origin)
+        })
+      )
   })
   if (pushResult.exitCode !== 0) return { exitCode: pushResult.exitCode }
   const siteUuid = pushResult.boundSiteUuid

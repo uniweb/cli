@@ -1186,8 +1186,12 @@ export async function probeUnpushed(siteDir, { backend = null, sendAll = false }
   // ⚠️ Until 2026-09-23 this said the site's recorded ORG resolves it and must be
   // passed in — true before 2026-09-22, and read as a reason to pass it.
   const pkg = await comparisonEmit(siteDir, { backend, priorHashes, sendAll })
+  // A record held back for a reference (`pushInPasses`) is not in either lane, and is
+  // still unpushed.
   const changed =
-    (pkg.siteContent?.entityCount || 0) + (pkg.records?.entityCount || 0)
+    (pkg.siteContent?.entityCount || 0) +
+    (pkg.records?.entityCount || 0) +
+    (pkg.waiting || []).filter((w) => w.held).length
   return { changed, unchanged: pkg.skipped || 0, warnings: pkg.warnings || [] }
 }
 
@@ -1845,4 +1849,79 @@ export async function pushSyncPackages({
     return { exitCode: 1, boundSiteUuid, finalizedTotal, wrote }
   }
   return { exitCode: 0, boundSiteUuid, finalizedTotal, wrote }
+}
+
+/**
+ * Push, then push again while records WAIT for a reference's record — the verbs' way to
+ * send a package (`push`, `publish`).
+ *
+ * ⭐ A reference is sent as the uuid the backend minted for the record it names, so a
+ * record that points at one created by the same push cannot be completed in that push
+ * (`@uniweb/build`'s `emitSyncPackages` → `waiting`). The first pass creates what it can —
+ * records whose waiting references are not required go without them — and each further
+ * pass, emitted afresh from the state the last one banked, sends what has become
+ * nameable. A chain of required references takes one pass per link; two records that
+ * each require the other can never be completed, and the push stops, naming them.
+ *
+ * @param {object} params
+ * @param {object} params.pkg - the first pass's package (`emitSyncPackages`)
+ * @param {() => Promise<object>} params.reemit - the next pass's package, emitted afresh
+ * @param {Function} [params.push] - sends one package; `pushSyncPackages` (a test's seam)
+ * @returns {Promise<{ exitCode: number, boundSiteUuid?: string, finalizedTotal: number, wrote: string[], passes: number }>}
+ */
+export async function pushInPasses({ client, siteDir, pkg, report, reemit, maxPasses = 12, push = pushSyncPackages }) {
+  const { note, error } = report
+  let current = pkg
+  let passes = 1
+  let result = await push({ client, siteDir, pkg: current, report })
+  let finalizedTotal = result.finalizedTotal || 0
+  const wrote = [...(result.wrote || [])]
+  while (result.exitCode === 0 && current.waiting?.length) {
+    const n = current.waiting.length
+    note(
+      `${n} record${n === 1 ? '' : 's'} name${n === 1 ? 's' : ''} a record this push created — ` +
+        `pushing again to complete ${n === 1 ? 'its references' : 'their references'}.`
+    )
+    let next
+    try {
+      next = await reemit()
+    } catch (err) {
+      error(`Could not build the next pass: ${err.message}`)
+      return { ...result, exitCode: 1, finalizedTotal, wrote, passes }
+    }
+    if (refuseUnsendableRecords(next.refusals, report)) {
+      return { ...result, exitCode: 1, finalizedTotal, wrote, passes }
+    }
+    // Nothing became nameable: every record still waiting waits on one that waits too.
+    if (waitingKey(next.waiting) === waitingKey(current.waiting) || passes >= maxPasses) {
+      error(
+        'These records could not be completed — each requires a reference to a record that ' +
+          'is itself waiting to be created:'
+      )
+      for (const w of next.waiting || []) {
+        const refs = w.pending.map((p) => `${p.path} → "${p.name}"`).join(', ')
+        note(`  ${w.id} (${w.model}): ${refs}`)
+      }
+      note(
+        'Push one of them without that reference first — or make it optional in the schema — ' +
+          'then add it back and push again.'
+      )
+      return { ...result, exitCode: 1, finalizedTotal, wrote, passes }
+    }
+    current = next
+    passes++
+    result = await push({ client, siteDir, pkg: current, report })
+    finalizedTotal += result.finalizedTotal || 0
+    for (const w of result.wrote || []) if (!wrote.includes(w)) wrote.push(w)
+  }
+  return { ...result, finalizedTotal, wrote, passes }
+}
+
+// Which records wait, and on what — two passes that leave it the same made no progress.
+function waitingKey(waiting) {
+  return JSON.stringify(
+    (waiting || [])
+      .map((w) => [w.model, w.id, w.pending.map((p) => `${p.path}:${p.name}`).sort()])
+      .sort()
+  )
 }
