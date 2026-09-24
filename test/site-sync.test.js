@@ -34,7 +34,9 @@ import {
   writeUnitBases,
   readItemUuids,
   probeUnpushed,
-  rebankSyncHashes
+  rebankSyncHashes,
+  heldTokens,
+  mergeBaseVersions
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
 import { readSiteIdentity } from '../src/utils/site-identity.js'
@@ -382,6 +384,234 @@ test('item tokens are banked even when the push is not the last lane to succeed'
   })
   assert.equal(res.exitCode, 1)
   assert.deepEqual(readItemBaseVersions(dir, ORIGIN), { REC: 't1' })
+})
+
+// ─── a push banks only the tokens for content this copy HOLDS ─────────────────
+// Measured 2026-09-23 on a live uniwebd, two copies of one site. B edits a section
+// and pushes; A, which has not pulled, pushes an edit elsewhere. The per-item gate
+// keeps B's section — correctly — but its response carries that section's token for
+// B's content, and A banked it. A's next push of the section then read as "only you
+// changed it" and overwrote B's edit, with no refusal. The entity token did the same
+// to a section B ADDED: kept on A's first push, deleted on A's second.
+//
+// Every test below asserts what the cache holds AFTER a push — what the NEXT push
+// reads — because a fixture that builds its own starting state cannot see what the
+// previous operation left behind (delivery-lane.md, "Both feed directions").
+
+// A section in OUR representation — what the emit sends.
+const held = (id, text) => ({
+  type: 'Section',
+  stable_id: id,
+  content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }
+})
+const siteDoc = (sections) => ({
+  $model: '@uniweb/site-content',
+  pages: [{ stable_id: 'home', slug: { en: 'home' }, title: { en: 'Home' }, page_sections: sections }]
+})
+// The backend's representation of a stored document: `$uuid` on every item, fields we
+// never emit, and its own key order — the reason the two are never compared by hash.
+const asStored = (doc) => {
+  const reorder = (o) => Object.fromEntries(Object.entries(o).reverse())
+  return {
+    $uuid: 'S1',
+    ...doc,
+    pages: doc.pages.map((p) =>
+      reorder({
+        ...p,
+        $uuid: `U-${p.stable_id}`,
+        page_sections: p.page_sections.map((s) =>
+          reorder({ ...s, $uuid: `U-${s.stable_id}`, params: {}, theme_override: null })
+        )
+      })
+    )
+  }
+}
+const uwxOf = (doc) =>
+  createZip([
+    {
+      name: 'manifest.json',
+      data: Buffer.from(
+        JSON.stringify({ format: 'uwx/1', entries: [{ kind: 'entity', uuid: 'S1', file: 'entities/S1.json' }] })
+      )
+    },
+    { name: 'entities/S1.json', data: Buffer.from(JSON.stringify(doc)) }
+  ])
+
+test('heldTokens: a unit the backend kept for someone else keeps the token we hold', () => {
+  const sent = siteDoc([held('cta', 'ours, untouched'), held('pricing', 'ours, edited')])
+  const written = asStored(siteDoc([held('cta', 'B edited this'), held('pricing', 'ours, edited')]))
+  const t = heldTokens({
+    sent,
+    written,
+    version: 'V1',
+    itemVersions: { 'U-home': 'h1', 'U-cta': 'c1', 'U-pricing': 'p1' }
+  })
+  // No token for cta: the one we hold is for OUR content, which is what makes the
+  // next push that changes it a conflict instead of an overwrite.
+  assert.deepEqual(t.itemVersions, { 'U-home': 'h1', 'U-pricing': 'p1' })
+  assert.deepEqual(t.kept, ['pages/home/cta.md'])
+  assert.deepEqual(t.foreign, [])
+  // A kept EDIT does not hold the entity token back — it only dates absent items.
+  assert.equal(t.version, 'V1')
+})
+
+test('heldTokens: a unit the backend holds that we did not send keeps the entity token back', () => {
+  const sent = siteDoc([held('cta', 'x')])
+  const written = asStored(siteDoc([held('cta', 'x'), held('added', 'B added this')]))
+  const t = heldTokens({
+    sent,
+    written,
+    version: 'V1',
+    itemVersions: { 'U-home': 'h1', 'U-cta': 'c1', 'U-added': 'a1' }
+  })
+  // Banking V1 would date B's section before our base, and the next push would
+  // delete it as a section we dropped.
+  assert.equal(t.version, null)
+  assert.deepEqual(t.foreign, ['pages/home/added.md'])
+  assert.deepEqual(t.itemVersions, { 'U-home': 'h1', 'U-cta': 'c1' })
+})
+
+test("heldTokens: the backend's own fields and key order are not a difference", () => {
+  // Control for the two above — without it, "kept" could just mean "compared badly".
+  const sent = siteDoc([held('cta', 'x'), held('pricing', 'y')])
+  const t = heldTokens({
+    sent,
+    written: asStored(sent),
+    version: 'V1',
+    itemVersions: { 'U-home': 'h1', 'U-cta': 'c1', 'U-pricing': 'p1', Q1: 'q1' }
+  })
+  // Q1 is not a unit (a queries declaration): never sent back, so banked as before.
+  assert.deepEqual(t.itemVersions, { 'U-home': 'h1', 'U-cta': 'c1', 'U-pricing': 'p1', Q1: 'q1' })
+  assert.deepEqual([t.kept, t.foreign, t.version], [[], [], 'V1'])
+})
+
+test('heldTokens: with no document to compare against, the tokens are banked as sent', () => {
+  const t = heldTokens({ sent: null, written: null, version: 'V1', itemVersions: { R: 't1' } })
+  assert.deepEqual(t, { version: 'V1', itemVersions: { R: 't1' }, kept: [], foreign: [] })
+})
+
+test("⛔ A PUSH THAT MERGED SOMEONE ELSE'S EDIT does not bank its token — the next push is refused, not an overwrite", async () => {
+  const dir = tmpSite()
+  // What A last agreed with the backend on.
+  mergeBaseVersions(dir, ORIGIN, { S1: 'V0' })
+  mergeItemBaseVersions(dir, ORIGIN, { 'U-home': 'h0', 'U-cta': 'c0', 'U-pricing': 'p0' })
+  // A sends cta untouched and pricing edited; the backend kept B's cta.
+  const sent = siteDoc([held('cta', 'the text A pulled'), held('pricing', 'A edited this')])
+  const written = asStored(siteDoc([held('cta', 'B edited this'), held('pricing', 'A edited this')]))
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () =>
+      ok(
+        finalized([
+          {
+            index: 0,
+            uuid: 'S1',
+            changed: true,
+            version: 'V1',
+            item_versions: { 'U-home': 'h0', 'U-cta': 'c1', 'U-pricing': 'p1' },
+            document: written
+          }
+        ])
+      )
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    report,
+    pkg: {
+      ...siteOnlyPkg({ siteContentUuid: 'S1' }),
+      siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) }
+    }
+  })
+  assert.equal(res.exitCode, 0)
+  // What A's NEXT push sends. cta must still carry c0 — the token for A's content —
+  // so that editing it now is `pkg != base, host != base`: refused. Banking c1 is
+  // what made it `host == base`, and the overwrite.
+  assert.deepEqual(readItemBaseVersions(dir, ORIGIN), { 'U-home': 'h0', 'U-cta': 'c0', 'U-pricing': 'p1' })
+  assert.deepEqual(readBaseVersions(dir, ORIGIN), { S1: 'V1' })
+  // And A is told its files are behind, rather than finding out from a refusal.
+  assert.match(calls.note.join('\n'), /not in your files yet: pages\/home\/cta\.md/)
+})
+
+test("⛔ A PUSH THAT KEPT SOMEONE ELSE'S NEW SECTION does not bank the entity token — the next push keeps it", async () => {
+  const dir = tmpSite()
+  mergeBaseVersions(dir, ORIGIN, { S1: 'V0' })
+  mergeItemBaseVersions(dir, ORIGIN, { 'U-home': 'h0', 'U-cta': 'c0' })
+  const sent = siteDoc([held('cta', 'A edited this')])
+  const written = asStored(siteDoc([held('cta', 'A edited this'), held('added', 'B added this')]))
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () =>
+      ok(
+        finalized([
+          {
+            index: 0,
+            uuid: 'S1',
+            changed: true,
+            version: 'V1',
+            item_versions: { 'U-home': 'h0', 'U-cta': 'c1', 'U-added': 'a1' },
+            document: written
+          }
+        ])
+      )
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    report,
+    pkg: {
+      ...siteOnlyPkg({ siteContentUuid: 'S1' }),
+      siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) }
+    }
+  })
+  assert.equal(res.exitCode, 0)
+  // Still V0: B's section was created after it, so the next push — which does not
+  // carry that section — KEEPS it. At V1 it would read as one A dropped, and delete it.
+  assert.deepEqual(readBaseVersions(dir, ORIGIN), { S1: 'V0' })
+  // A's own write is banked as usual.
+  assert.deepEqual(readItemBaseVersions(dir, ORIGIN), { 'U-home': 'h0', 'U-cta': 'c1' })
+  assert.match(calls.note.join('\n'), /not in your files yet: pages\/home\/added\.md/)
+})
+
+test('a push that holds everything it was sent banks every token, and says nothing', async () => {
+  // Control for the two above: the ordinary push must still re-arm both grains —
+  // not banking would make the NEXT push a false conflict (the older failure).
+  const dir = tmpSite()
+  mergeBaseVersions(dir, ORIGIN, { S1: 'V0' })
+  mergeItemBaseVersions(dir, ORIGIN, { 'U-home': 'h0', 'U-cta': 'c0', 'U-pricing': 'p0' })
+  const sent = siteDoc([held('cta', 'x'), held('pricing', 'A edited this')])
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () =>
+      ok(
+        finalized([
+          {
+            index: 0,
+            uuid: 'S1',
+            changed: true,
+            version: 'V1',
+            item_versions: { 'U-home': 'h0', 'U-cta': 'c0', 'U-pricing': 'p1' },
+            document: asStored(sent)
+          }
+        ])
+      )
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    report,
+    pkg: {
+      ...siteOnlyPkg({ siteContentUuid: 'S1' }),
+      siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) }
+    }
+  })
+  assert.equal(res.exitCode, 0)
+  assert.deepEqual(readItemBaseVersions(dir, ORIGIN), { 'U-home': 'h0', 'U-cta': 'c0', 'U-pricing': 'p1' })
+  assert.deepEqual(readBaseVersions(dir, ORIGIN), { S1: 'V1' })
+  assert.doesNotMatch(calls.note.join('\n'), /not in your files yet/)
 })
 
 test('a stale refusal explains WHICH pages diverged, and attributes them', async () => {

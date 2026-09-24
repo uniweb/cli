@@ -33,6 +33,7 @@ import {
   diffSiteUnits,
   describeSiteDiff,
   computeUnitHashes,
+  collectSiteUnits,
   collectUnitUuids,
   collectFolderItemUuids,
   collectQueryUuids,
@@ -91,6 +92,102 @@ async function explainStaleSiteContent({ client, siteDir, localBuffer, uuid }) {
   }
 }
 
+// A unit in the form it is compared in across the two representations: keys sorted,
+// `$`-keys dropped (`$uuid`, `$id` — identity and payload handles, not content).
+const canonicalUnit = (v) =>
+  Array.isArray(v)
+    ? v.map(canonicalUnit)
+    : v && typeof v === 'object'
+      ? Object.fromEntries(
+          Object.keys(v)
+            .filter((k) => !k.startsWith('$'))
+            .sort()
+            .map((k) => [k, canonicalUnit(v[k])])
+        )
+      : v
+
+/**
+ * Whether the backend's post-write copy of a unit is the content we sent.
+ *
+ * Compared on OUR keys only. The two are not byte-comparable — the backend's copy
+ * carries fields we don't emit (`params`, `theme_override`, its own `$uuid`) and
+ * orders keys its own way, which is why `site-diff.js` never hashes one side against
+ * the other — but what we emit, it stores verbatim: measured 2026-09-23 against a
+ * live `uniwebd`, 15 of 15 units equal on our keys after a push.
+ */
+function writtenAsSent(sent, written) {
+  if (!sent || !written) return false
+  const onOurKeys = {}
+  for (const k of Object.keys(sent)) if (!k.startsWith('$')) onOurKeys[k] = written[k]
+  return JSON.stringify(canonicalUnit(sent)) === JSON.stringify(canonicalUnit(onOurKeys))
+}
+
+/**
+ * The post-write tokens a site-content push may bank: only those that describe
+ * content this copy HOLDS.
+ *
+ * ⛔ BANKING EVERY RETURNED TOKEN LOST OTHER WRITERS' WORK — measured 2026-09-23 on a
+ * live `uniwebd`, two copies of one site:
+ *
+ *   1. B edits section X and pushes.
+ *   2. A, which has not pulled, pushes an edit to section Y. The per-item gate reads
+ *      A's X as untouched (`pkg == base`) and keeps B's X — correct. But the response
+ *      carries X's token for B's content, and A banked it.
+ *   3. A's next push of X then reads as "only you changed it" (`host == base`) and
+ *      overwrites B's edit, with no refusal.
+ *
+ * The entity token did the same to ADDITIONS: a section B added survived A's first
+ * push (created after A's base ⇒ KEEP), A banked a base newer than it, and A's next
+ * push deleted it (created at-or-before the base ⇒ "you dropped it").
+ *
+ * So a unit's token is banked only when its post-write copy is what we sent — our own
+ * write, or a unit nobody touched. A unit the backend kept for someone else keeps the
+ * token we already hold, which is the one for OUR content, so the next push that
+ * changes it is `pkg != base, host != base` and refused. And while the backend holds
+ * units we don't, the entity token stays where it was, so the next push keeps them.
+ *
+ * With either document missing there is nothing to compare, and the tokens are banked
+ * as the backend sent them — the contract is that `finalized[].document` is always
+ * there.
+ *
+ * @returns {{ version: string|null, itemVersions: Object<string,string>|null,
+ *   kept: string[], foreign: string[] }} `kept`: units the backend kept someone
+ *   else's content for; `foreign`: units it holds that we did not send. Both paths.
+ */
+export function heldTokens({ sent, written, version = null, itemVersions = null }) {
+  if (!sent || !written) return { version, itemVersions, kept: [], foreign: [] }
+  const ours = collectSiteUnits(sent)
+  const theirs = collectSiteUnits(written)
+  const uuidAt = collectUnitUuids(written)
+  const units = new Set(Object.values(uuidAt))
+  const kept = []
+  const foreign = []
+  const items = {}
+  for (const [path, uuid] of Object.entries(uuidAt)) {
+    if (!ours.has(path)) {
+      foreign.push(path)
+      continue
+    }
+    if (!writtenAsSent(ours.get(path), theirs.get(path))) {
+      kept.push(path)
+      continue
+    }
+    if (itemVersions?.[uuid]) items[uuid] = itemVersions[uuid]
+  }
+  // A token for an item that is not a unit (a `queries` declaration) is never sent
+  // back — the emit narrows preconditions to units (`withBaseVersion`) — so it is
+  // banked as before: it can neither arm nor disarm anything.
+  for (const [uuid, token] of Object.entries(itemVersions || {})) {
+    if (!units.has(uuid)) items[uuid] = token
+  }
+  return {
+    version: foreign.length ? null : version,
+    itemVersions: itemVersions ? items : null,
+    kept: kept.sort(),
+    foreign: foreign.sort()
+  }
+}
+
 // Pull the finalized entities out of the restore response. The backend returns
 // `{ report: { finalized: [ { index, uuid, changed, document }, … ] } }` — each entry
 // carries its position in the SUBMITTED sequence (`index`, the correlation key — `$id`
@@ -112,10 +209,10 @@ export function extractFinalized(payload) {
       uuid: d?.uuid ?? d?.document?.$uuid ?? null,
       changed: d?.changed,
       // Post-write optimistic-concurrency token, read back from the stored row.
-      // Cache it UNCONDITIONALLY — do not branch on `changed` and do not infer:
-      // the backend pins "zero-write ⇒ version unmoved" with a test, so a no-op
-      // resubmit returns the value we already hold, and anything else is theirs
-      // to report, not ours to derive.
+      // Do not branch on `changed`: the backend pins "zero-write ⇒ version unmoved"
+      // with a test, so a no-op resubmit returns the value we already hold. ⛔ But a
+      // site-content push banks it only while the stored document holds nothing we
+      // don't — see `heldTokens`, and what banking it unconditionally deleted.
       version: typeof d?.version === 'string' ? d.version : null,
       // Per-item post-write tokens, `{ recordUuid: <opaque> }` (backend `d7e46335`).
       // Same map shape and same key name the PULL manifest entry stamps, deliberately
@@ -548,8 +645,12 @@ export function readItemBaseVersions(siteDir, backend) {
 }
 export function mergeItemBaseVersions(siteDir, backend, versions) {
   if (!versions || !Object.keys(versions).length) return
+  // ⛔ The read names the backend. Without it the read keyed nothing, came back `{}`,
+  // and this "merge" replaced the map with the last response — dropping the token
+  // `heldTokens` withholds for a unit the backend kept for someone else, and with it
+  // the precondition that refuses the next push of that unit (2026-09-23).
   updateSyncCache(siteDir, backend, {
-    itemBaseVersions: { ...readItemBaseVersions(siteDir), ...versions }
+    itemBaseVersions: { ...readItemBaseVersions(siteDir, backend), ...versions }
   })
 }
 export function mergeBaseVersions(siteDir, backend, versions) {
@@ -1440,11 +1541,11 @@ export async function pushSyncPackages({
   const harvest = (finalized) => {
     for (const f of finalized || []) {
       if (f.uuid && f.version) newVersions[f.uuid] = f.version
-      // Unconditionally, and NOT gated on `changed` — same rule as the entity
-      // token: the backend pins "zero-write ⇒ version unmoved", so a no-op
-      // resubmit hands back the value we already hold. An older backend omits the
-      // field entirely, which leaves the cached tokens alone and degrades to the
-      // entity grain, exactly as before.
+      // NOT gated on `changed` — same rule as the entity token: the backend pins
+      // "zero-write ⇒ version unmoved", so a no-op resubmit hands back the value we
+      // already hold. (The site-content lane filters first, `harvestSiteContent`.)
+      // An older backend omits the field entirely, which leaves the cached tokens
+      // alone and degrades to the entity grain, exactly as before.
       if (f.itemVersions) Object.assign(newItemVersions, f.itemVersions)
     }
   }
@@ -1452,6 +1553,25 @@ export async function pushSyncPackages({
   const mergeHarvested = () => {
     mergeBaseVersions(siteDir, client.origin, newVersions)
     mergeItemBaseVersions(siteDir, client.origin, newItemVersions)
+  }
+  // ⛔ The site-content lane banks only the tokens for content this copy holds — the
+  // document we sent against the one the backend stored (`heldTokens`, and the two
+  // losses banking everything caused). What the backend kept for someone else is
+  // collected here, to re-base attribution and to say so.
+  const sentSiteDoc = siteContent ? entityDocFromUwx(siteContent.buffer) : null
+  const notHeld = { kept: [], foreign: [] }
+  const harvestSiteContent = (finalized) => {
+    for (const f of finalized || []) {
+      const held = heldTokens({
+        sent: sentSiteDoc,
+        written: f.document,
+        version: f.version,
+        itemVersions: f.itemVersions
+      })
+      harvest([{ ...f, version: held.version, itemVersions: held.itemVersions }])
+      notHeld.kept.push(...held.kept)
+      notHeld.foreign.push(...held.foreign)
+    }
   }
   // The backend's post-write copy of the site-content document, kept for the
   // remote-side unit base (see writeUnitBases).
@@ -1475,7 +1595,7 @@ export async function pushSyncPackages({
         mergeHarvested()
         return { exitCode: 1, finalizedTotal, wrote }
       }
-      harvest(finalized)
+      harvestSiteContent(finalized)
       siteFinalizedDoc = finalized[0]?.document || null
       // ⭐ BANK COLLECTION-DECLARATION IDENTITY, the sibling of the folder's
       // placements below. These items have no file to back-fill into — they all
@@ -1519,7 +1639,7 @@ export async function pushSyncPackages({
       if (createdOrg)
         wrote.push(`recorded its owner (${createdOrg}) in sync.json`)
       const createdFinalized = extractFinalized(payload)
-      harvest(createdFinalized)
+      harvestSiteContent(createdFinalized)
       siteFinalizedDoc = createdFinalized?.[0]?.document || null
       finalizedTotal += createdFinalized?.length ?? 1
     }
@@ -1589,12 +1709,21 @@ export async function pushSyncPackages({
   // actually shipped — a push that skipped it left that state where it was.
   if (siteContent) {
     const patch = {}
-    const ours = entityDocFromUwx(siteContent.buffer)
+    const ours = sentSiteDoc
     if (ours) patch.local = computeUnitHashes(ours)
     // `finalized[].document` is the backend's own representation, read back from
     // the stored row — the only remote-side base a push can produce.
     const theirs = siteFinalizedDoc?.pages ? siteFinalizedDoc : null
-    if (theirs) patch.remote = computeUnitHashes(theirs)
+    if (theirs) {
+      patch.remote = computeUnitHashes(theirs)
+      // A unit the backend kept for someone else is not agreed state: its remote base
+      // stays where it was, so a refusal names it as changed upstream.
+      const before = readUnitBases(siteDir, client.origin).remote
+      for (const path of notHeld.kept) {
+        if (before[path]) patch.remote[path] = before[path]
+        else delete patch.remote[path]
+      }
+    }
     if (Object.keys(patch).length) writeUnitBases(siteDir, client.origin, patch)
     // The backend's post-write document carries `$uuid` per item at every nesting
     // level, so the push that just landed also re-arms identity for the next one.
@@ -1621,6 +1750,13 @@ export async function pushSyncPackages({
           'may refuse it. `uniweb pull` re-arms identity if that happens.'
       )
     }
+  }
+  // What the backend holds that this copy doesn't. None of it was overwritten, and no
+  // later push will overwrite it — but the files are behind until a pull.
+  if (notHeld.kept.length || notHeld.foreign.length) {
+    const paths = [...new Set([...notHeld.kept, ...notHeld.foreign])].sort()
+    note(`Changed on the backend by someone else, not in your files yet: ${paths.join(', ')}`)
+    note('Take them with `uniweb refresh` (or `uniweb pull --merge`). Until then, pushing leaves them as they are.')
   }
   // ⛔ A DRAFT THE BACKEND STORED ENABLED FAILS THE PUSH, and only here, after every
   // piece of sync state above is banked: the push itself happened, and the next one must
