@@ -25,6 +25,29 @@ export function parseSemver(version) {
 }
 
 /**
+ * The next version above `version` on its own line — what `--bump` releases under
+ * when the registry already holds the local version with other code.
+ *
+ * A release gets its next patch (`1.4.2` → `1.4.3`); a pre-release its next
+ * pre-release (`2.0.0-beta.3` → `2.0.0-beta.4`, `1.0.0-rc` → `1.0.0-rc.0`), so a bump
+ * nobody chose never promotes a beta line to a release. Build metadata is dropped: it
+ * carries no order, so it could not make a version newer.
+ *
+ * @param {string} version
+ * @returns {string|null} null when `version` is not SemVer
+ */
+export function nextVersionAbove(version) {
+  const v = parseSemver(version)
+  if (!v) return null
+  if (!v.pre.length) return `${v.major}.${v.minor}.${v.patch + 1}`
+  const pre = [...v.pre]
+  const last = pre.length - 1
+  if (/^\d+$/.test(pre[last])) pre[last] = String(BigInt(pre[last]) + 1n)
+  else pre.push('0')
+  return `${v.major}.${v.minor}.${v.patch}-${pre.join('.')}`
+}
+
+/**
  * @param {string} a
  * @param {string} b
  * @returns {-1|0|1|null} how `a` sorts against `b`; null when either is not SemVer

@@ -1455,6 +1455,9 @@ ${colors.bright}Options:${colors.reset}
                      when only the content should go live. Refused if the
                      foundation has never been released — there is nothing to
                      bind to, and the app cannot open such a site.
+  --bump             Release a changed local foundation under the next version
+                     above the registered one, written into its package.json.
+                     Does nothing when the code is unchanged.
   --no-save          Do not record this deploy in deploy.yml
   --no-validate      Skip the content-conformance check, which stops a publish
                      whose content does not conform to its data schemas
@@ -2090,6 +2093,7 @@ ${colors.bright}Publish Options:${colors.reset}
   --dry-run          Resolve everything; release/sync/POST nothing
   --yes              Skip confirmations (CI); never block on a prompt
   --no-release       Ship content against the already-released code; release nothing
+  --bump             Release changed foundation code under the next version
   --org @org         Work in @org for this publish, not your login's workspace
   --personal         Work in your personal workspace for this publish
   --no-save          Do not record this deploy in deploy.yml
