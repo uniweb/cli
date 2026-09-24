@@ -68,7 +68,7 @@ import {
 } from '../backend/client.js'
 import { DEFAULT_BACKEND_ORIGIN } from '../utils/config.js'
 import { resolveSiteDir } from './deploy.js'
-import { warnIfContentDoesNotConform } from '../utils/conformance.js'
+import { refuseIfContentDoesNotConform } from '../utils/conformance.js'
 import { readFlagValue } from '../utils/args.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
@@ -256,9 +256,11 @@ export async function publish(args = []) {
 
   const siteDir = await resolveSiteDir(args, 'publish')
 
-  // Advisory only — warns and ships. See utils/conformance.js for why this
-  // is not a gate.
-  await warnIfContentDoesNotConform(siteDir, { args })
+  // ⭐ A GATE, before anything is sent — the backend checks these records against the
+  // schemas this publish registers. See utils/conformance.js.
+  if (await refuseIfContentDoesNotConform(siteDir, { args, error: say.err, warn: say.warn, dim: say.dim })) {
+    return { exitCode: 1 }
+  }
   const siteYml = readSiteYml(join(siteDir, 'site.yml'))
   // ⭐ THE BACKEND YOU ARE LOGGED IN TO is where this goes *[Diego, 2026-09-21]*, for every
   // backend verb (resolveBackendOrigin). Only UNIWEB_REGISTER_URL — the automation

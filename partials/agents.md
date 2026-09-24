@@ -1870,7 +1870,7 @@ fetch:
 
 **Component-side fetching.** When a component genuinely needs to fetch on its own (a search box, "load more", a lazy popover), use the kit hooks — `useFetched`, `useCacheEntry`, `useWholeRecord`. They share the framework's cache and dispatcher with declarative fetches; same-key requests dedupe automatically.
 
-**Validate before shipping.** `uniweb validate` checks file-based data against your declared schemas — missing required fields, type/enum/format mismatches, nested fields. Warns by default; `--strict` for a non-zero CI exit. Distinct from `uniweb doctor` (project structure): `validate` checks your *data* against the schemas you *declared*. External queries (`url:`), `ref`/`options`, and rich `sections`-form inputs are reported deferred.
+**Validate before shipping.** `uniweb validate` checks file-based data against your declared schemas — missing required fields, type/enum/format mismatches, nested fields. A violation fails it (`--lax` only reports); it checks every record file in `records/`, and `push` / `publish` refuse the same findings before sending anything. Distinct from `uniweb doctor` (project structure): `validate` checks your *data* against the schemas you *declared*. External queries (`url:`), `ref`/`options`, and rich `sections`-form inputs are reported deferred.
 
 ### Fetching from other sources (`fetcher:`)
 
@@ -2539,7 +2539,7 @@ uniweb i18n init-freeform / update-hash / move / rename / prune --freeform
 
 uniweb -v                         # Installed CLI version — and whether a newer one exists
 uniweb doctor                     # Diagnose project configuration (--fix to auto-repair)
-uniweb validate                   # Check file-based data against declared schemas (--strict for CI)
+uniweb validate                   # Check file-based data against declared schemas (fails on a violation; --lax)
 npx uniweb@latest update          # Align @uniweb/* deps + AGENTS.md (--dry-run, --yes)
                                   #   bare `uniweb update` aligns to the CLI you ALREADY have
 uniweb inspect <path>             # Show parsed content for a section or page (--raw for the AST)

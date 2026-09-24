@@ -64,7 +64,7 @@ import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import { updateBackendMap, carryServed, SYNC_STORE_FILE } from '@uniweb/build/uwx'
 import { BackendClient } from '../backend/client.js'
 import { resolveSiteDir } from './deploy.js'
-import { warnIfContentDoesNotConform } from '../utils/conformance.js'
+import { refuseIfContentDoesNotConform } from '../utils/conformance.js'
 import { reportSchemalessQueries } from '../utils/schemaless-report.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
@@ -149,9 +149,10 @@ export async function push(args = [], deps = {}) {
 
   const siteDir = await resolveSiteDir(args, 'push')
 
-  // Advisory only — warns and pushes. A malformed data block otherwise rides
-  // the sync wire unchecked; see utils/conformance.js.
-  await warnIfContentDoesNotConform(siteDir, { args })
+  // ⭐ A GATE, before anything is sent: the backend checks these records against the
+  // schemas this push registers, so one that does not conform would be refused on
+  // arrival or lose a value on the way. See utils/conformance.js.
+  if (await refuseIfContentDoesNotConform(siteDir, { args })) return { exitCode: 1 }
   // ⭐ THE BACKEND YOU ARE LOGGED IN TO is where this goes *[Diego, 2026-09-21]*, for every
   // backend verb (resolveBackendOrigin). Only UNIWEB_REGISTER_URL — the automation
   // override — outranks it, and nothing talks to a backend the user is not logged in to:

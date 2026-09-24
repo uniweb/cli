@@ -93,10 +93,6 @@ export async function deploy(args = []) {
   const dryRun = args.includes('--dry-run')
   const siteDir = await resolveSiteDir(args)
 
-  // Advisory only — warns and ships. See utils/conformance.js for why this
-  // is not a gate.
-  await warnIfContentDoesNotConform(siteDir, { args, warn: say.warn, dim: say.dim })
-
   // Host dispatch. Resolution order:
   //   1. --target <name> picks a target from deploy.yml
   //   2. deploy.yml's `default:` target when no flag is given
@@ -184,6 +180,13 @@ export async function deploy(args = []) {
     }
   }
 
+  // A static host: advisory — warns and ships (utils/conformance.js). Uniweb Cloud is
+  // `publish`, below, which refuses content that does not conform: there the backend
+  // enforces the schemas, so the check is a gate, not advice (2026-09-24).
+  if (plan.kind !== 'uniweb') {
+    await warnIfContentDoesNotConform(siteDir, { args, warn: say.warn, dim: say.dim })
+  }
+
   // Uniweb Cloud is `publish`'s flow — delegate so deploy.yml stays one
   // actionable record and there's a single implementation of go-live.
   if (plan.kind === 'uniweb') {
@@ -224,9 +227,8 @@ export async function deploy(args = []) {
     // publish ignores deploy's --host/--target; --dry-run/--no-save pass straight
     // through.
     const { publish } = await import('./publish.js')
-    // Conformance was already reported above, and publish runs the same check
-    // — without this the user reads one warning twice and learns to skim it.
-    const result = await publish([...args, '--no-validate'])
+    // publish runs the conformance gate itself; deploy checked nothing for this host.
+    const result = await publish(args)
     process.exit(result?.exitCode ?? 0)
   }
 

@@ -1418,7 +1418,8 @@ ${colors.bright}Options:${colors.reset}
   --target <name>     Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
   --dry-run           Resolve the target + adapter; print summary; upload nothing
   --no-save           Do not record this deploy in deploy.yml
-  --no-validate       Skip the content-conformance check (it only warns)
+  --no-validate       Skip the content-conformance check (a static host warns;
+                      Uniweb Cloud stops on content that does not conform)
   --non-interactive   Fail with usage info instead of prompting
 
 ${colors.bright}Examples:${colors.reset}
@@ -1455,7 +1456,8 @@ ${colors.bright}Options:${colors.reset}
                      foundation has never been released — there is nothing to
                      bind to, and the app cannot open such a site.
   --no-save          Do not record this deploy in deploy.yml
-  --no-validate      Skip the content-conformance check (it only warns)
+  --no-validate      Skip the content-conformance check, which stops a publish
+                     whose content does not conform to its data schemas
   --org @org         Work in @org for this publish, instead of the workspace
   --personal         chosen at \`uniweb login\` (or your personal workspace). A
                      site this publish creates is created — owned — there, and a
@@ -1690,17 +1692,18 @@ foundation declared for that input (meta.js \`data:\`). Answers "does my
 data match what I promised?" — distinct from \`doctor\`, which checks your
 project against framework conventions.
 
-Warns by default; the live render path stays tolerant, so this is a
-pre-live / CI gate. Dynamic (\`url:\`) inputs and entity references can't be
-resolved without a running backend, so they're reported as deferred,
-never silently skipped.
+Every record file is checked against the schema its folder names, whether or
+not a section reads it. A violation fails the run; \`push\` and \`publish\` refuse
+the same findings. The live render path stays tolerant. Dynamic (\`url:\`)
+inputs and entity references can't be resolved without a running backend, so
+they're reported as deferred, never silently skipped.
 
 ${colors.bright}Options:${colors.reset}
-  --strict           Treat findings as errors (non-zero exit for CI)
+  --lax              Report violations without failing (exit 0)
   --json             Machine-readable output (for CI annotations)
   --site <name>      Check one site in a multi-site workspace
 
-Exit codes: 0 clean (or warn-only), 1 violations under --strict, 2 setup error.
+Exit codes: 0 clean (or --lax), 1 violations, 2 setup error.
 `,
     register: `
 ${colors.cyan}${colors.bright}uniweb register${colors.reset} ${colors.dim}— Register (release) a foundation + its data schemas with the backend registry${colors.reset}
@@ -2090,7 +2093,7 @@ ${colors.bright}Publish Options:${colors.reset}
   --org @org         Work in @org for this publish, not your login's workspace
   --personal         Work in your personal workspace for this publish
   --no-save          Do not record this deploy in deploy.yml
-  --no-validate      Skip the content-conformance check (it only warns)
+  --no-validate      Skip the content-conformance check (it stops a publish)
 
   uniweb publish is the smart Uniweb-hosting path: it brings the site's
   foundation along, syncs, and goes live. To register a foundation on its own
@@ -2104,7 +2107,7 @@ ${colors.bright}Deploy Options:${colors.reset}
   --target <name>    Pick a target from deploy.yml (default: deploy.yml's \`default:\`)
   --dry-run          Resolve the target + adapter; print summary; upload nothing
   --no-save          Do not record this deploy in deploy.yml
-  --no-validate      Skip the content-conformance check (it only warns)
+  --no-validate      Skip the content-conformance check (a static host warns)
   To deploy on every push instead, see \`uniweb add ci --help\`.
 
 ${colors.bright}Dev Options:${colors.reset}

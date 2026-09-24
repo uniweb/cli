@@ -4,14 +4,17 @@
  *
  * For each section that consumes file-based data, this resolves the schema the
  * foundation bound to that input (via `meta.js` `data:`) and checks the data
- * items against it. It answers "does my data match what I promised?" — distinct
- * from `doctor`, which checks your project against framework conventions.
+ * items against it — and every record file in the records directory against the
+ * schema its folder names, whether or not a section reads it. It answers "does my
+ * data match what I promised?" — distinct from `doctor`, which checks your project
+ * against framework conventions.
  *
- * It warns by default; `--strict` turns findings into a non-zero exit for CI.
- * The live render path stays tolerant — this gate runs before a site is live,
- * by choice. Dynamic (remote) inputs and entity references can't be resolved
- * without a running backend, so they're reported as deferred, never silently
- * skipped.
+ * ⭐ A violation fails it (exit 1); `--lax` reports without failing. It warned by
+ * default until 2026-09-24, with `--strict` to fail — a gate that passes is one
+ * nobody reads, and `push` / `publish` now refuse the same findings. The live render
+ * path stays tolerant. Dynamic (remote) inputs and entity references can't be
+ * resolved without a running backend, so they're reported as deferred, never
+ * silently skipped.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -201,7 +204,9 @@ function dedupeUsers(users) {
 
 export async function validate(args = []) {
   const asJson = args.includes('--json')
-  const strict = args.includes('--strict')
+  // A violation fails the run unless `--lax` says to only report it. (`--strict`, the
+  // flag that turned failing on until 2026-09-24, is simply the default now.)
+  const strict = !args.includes('--lax')
   const siteFilter = flagValue(args, '--site')
   const positional = args.find(
     (a, i) => !a.startsWith('--') && args[i - 1] !== '--site'
@@ -353,7 +358,7 @@ export async function validate(args = []) {
           ? `${colors.red}error${colors.reset}`
           : `${colors.yellow}warning${colors.reset}`
         log(
-          `${totalViolations} violation(s) — reported as ${mode}${strict ? '' : ` ${colors.dim}(pass --strict to fail CI)${colors.reset}`}`
+          `${totalViolations} violation(s) — reported as ${mode}${strict ? '' : ` ${colors.dim}(--lax: without it, this fails)${colors.reset}`}`
         )
       }
       if (hadError)
@@ -362,9 +367,8 @@ export async function validate(args = []) {
     }
   }
 
-  // Exit semantics: 2 = couldn't run; 1 = violations under --strict; 0 = clean
-  // or warn-only (the live path stays tolerant, so findings don't fail by
-  // default). Setup/read failures are surfaced but don't fail the build.
+  // Exit semantics: 2 = couldn't run; 1 = violations (unless --lax); 0 = clean, or
+  // violations reported under --lax. Setup/read failures are surfaced but don't fail.
   if (hadError) return { exitCode: 2 }
   if (totalViolations > 0 && strict) return { exitCode: 1 }
   return { exitCode: 0 }

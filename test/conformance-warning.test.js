@@ -10,9 +10,11 @@
  * tests it — but the three properties that make an advisory check safe to run
  * inside a command whose actual job is to ship:
  *
- *   1. it NEVER blocks, and never throws into its caller, even when the
- *      checker itself explodes. A warning that can abort a deploy is a
- *      regression with no upside.
+ *   1. on a STATIC host it NEVER blocks, and never throws into its caller, even
+ *      when the checker itself explodes. A warning that can abort a deploy is a
+ *      regression with no upside. ⭐ On a BACKEND (`push`, `publish`) a violation
+ *      stops the ship before anything is sent — the backend enforces the schemas
+ *      the push registers (2026-09-24); see the tests at the end.
  *   2. it is SILENT unless it has something to say — including when it cannot
  *      check at all, which is the common case for the registry-ref sites
  *      `publish` is normally used on. A line on every deploy saying what was
@@ -27,6 +29,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   warnIfContentDoesNotConform,
+  refuseIfContentDoesNotConform,
   formatConformanceWarning
 } from '../src/utils/conformance.js'
 
@@ -237,4 +240,83 @@ test('both kinds at once are counted and named separately', () => {
     'Found 1 content record that does not match the schemas src declares ' +
       'and 2 problems with how data reaches your sections.'
   )
+})
+
+
+// ── on a backend, a gate ─────────────────────────────────────────────────────
+// `push` and `publish` register the foundation first, so the backend checks the
+// records against the very schemas checked here: a violation is a refusal on
+// arrival, or a value lost on the way. [Diego, 2026-09-24] — the warn-and-ship rule
+// "was in the context of static sites. It was never meant for pushed sites."
+
+/** A workspace with a local foundation whose `@/member` a section binds. */
+function makeWorkspace(member) {
+  return makeSite({
+    'pnpm-workspace.yaml': 'packages:\n  - foundation\n  - site\n',
+    'package.json': JSON.stringify({ name: 'ws', private: true }),
+    'foundation/package.json': JSON.stringify({ name: 'foundation', type: 'module', main: './_entry.generated.js' }),
+    'foundation/main.js': 'export default {}\n',
+    'foundation/schemas/member.yml': 'name: member\nfields:\n  name: { type: string, required: true }\n  joined: { type: date }\n',
+    'foundation/sections/Team/meta.js': "export default { title: 'Team', data: { members: '@/member' } }\n",
+    'site/site.yml': 'name: s\nfoundation: foundation\nqueries:\n  members:\n    schema: "@/member"\n',
+    'site/theme.yml': '',
+    'site/pages/team/page.yml': 'title: Team\n',
+    'site/pages/team/team.md': '---\ntype: Team\nquery: members\n---\n\n# Team\n',
+    'site/records/member/ada.yml': member
+  })
+}
+
+function refusalCollector() {
+  const lines = []
+  return {
+    lines,
+    error: (m) => lines.push(`error: ${plain(m)}`),
+    warn: (m) => lines.push(`warn: ${plain(m)}`),
+    dim: (m) => lines.push(`dim: ${plain(m)}`)
+  }
+}
+
+test('push/publish: a record that does not conform stops the ship, saying nothing was sent', async () => {
+  const ws = makeWorkspace('name: Ada\njoined: March 2021\n')
+  try {
+    const out = refusalCollector()
+    const stopped = await refuseIfContentDoesNotConform(join(ws, 'site'), out)
+    assert.equal(stopped, 1)
+    assert.match(out.lines[0], /^error: Found 1 content record that does not match/)
+    assert.ok(out.lines.some((l) => /joined: "March 2021" is not a date/.test(l)), out.lines.join('\n'))
+    assert.match(out.lines.at(-1), /Nothing was sent.*--no-validate/)
+  } finally {
+    rmSync(ws, { recursive: true, force: true })
+  }
+})
+
+test('CONTROL — a record that conforms lets the ship go on, silently', async () => {
+  const ws = makeWorkspace('name: Ada\njoined: 2021-03-15\n')
+  try {
+    const out = refusalCollector()
+    assert.equal(await refuseIfContentDoesNotConform(join(ws, 'site'), out), 0)
+    assert.deepEqual(out.lines, [])
+  } finally {
+    rmSync(ws, { recursive: true, force: true })
+  }
+})
+
+test('`--no-validate` leaves the records to the backend — nothing is checked', async () => {
+  const ws = makeWorkspace('joined: March 2021\n')
+  try {
+    const out = refusalCollector()
+    assert.equal(await refuseIfContentDoesNotConform(join(ws, 'site'), { ...out, args: ['--no-validate'] }), 0)
+    assert.deepEqual(out.lines, [])
+  } finally {
+    rmSync(ws, { recursive: true, force: true })
+  }
+})
+
+test('the refusal wording says what did not happen', () => {
+  const out = formatConformanceWarning(
+    { foundation: 'src', report: { violations: [{ file: '/s/x.yml', item: 'a', field: 'name', message: 'missing' }], setupErrors: [] } },
+    '/s',
+    { stops: true }
+  )
+  assert.match(out.details.at(-1), /^Nothing was sent\./)
 })

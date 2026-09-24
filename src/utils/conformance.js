@@ -8,17 +8,26 @@
  * it. The first symptom was a section rendering nothing on a live site, with no
  * error anywhere in the chain.
  *
- * ## It WARNS. It never blocks, and that is a decision, not a TODO.
+ * ## On a STATIC host it warns and never blocks — and on a backend it is a gate.
+ *
+ * ⭐ Two answers, one per destination [Diego, 2026-09-24: "The old rationale was in
+ * the context of static sites. It was never meant for pushed sites since that didn't
+ * even exist at the time."]. `push` and `publish` register the foundation first, so
+ * the backend checks the records against the very schemas checked here: a finding
+ * there is a refusal on arrival, or a value lost on the way — never a disagreement to
+ * ship through. `refuseIfContentDoesNotConform` is that gate; `deploy` to a static
+ * host keeps the warning below, whose reasoning is unchanged for it:
  *
  * A schema can be newer than the content that was valid when it was authored —
  * a foundation upgrade, a `@std/*` revision — so a finding does not mean the
  * content is wrong, it means the two disagree. A framework that refused to
  * publish over that would make an author's site hostage to a schema release,
- * for a defect whose real-world cost is one section rendering wrong. `--strict`
- * on `uniweb validate` is where the gate lives, and CI is where it belongs.
+ * for a defect whose real-world cost is one section rendering wrong. `uniweb
+ * validate` is where the gate lives for a static site, and CI is where it belongs.
  *
- * So: silent when everything conforms, silent when it cannot check, one compact
- * block when it finds something, and **the ship proceeds either way**.
+ * So, on a static host: silent when everything conforms, silent when it cannot
+ * check, one compact block when it finds something, and **the ship proceeds
+ * either way**.
  *
  * ## Why it is quiet about being unable to check
  *
@@ -41,7 +50,8 @@ const c = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
   dim: '\x1b[2m',
-  yellow: '\x1b[33m'
+  yellow: '\x1b[33m',
+  red: '\x1b[31m'
 }
 
 /** How many findings to print before summarizing the rest. */
@@ -145,6 +155,47 @@ export async function warnIfContentDoesNotConform(siteDir, options = {}) {
 }
 
 /**
+ * The same check as a GATE, for `push` and `publish` — see the header for why a
+ * backend gets a gate where a static host gets a warning.
+ *
+ * Only VIOLATIONS stop it: a record the backend would refuse, or whose value it would
+ * lose. A setup error is about how data reaches a section — a rendering question, not
+ * a record — so it is still printed as a warning and the ship goes on. A checker that
+ * cannot run says nothing and stops nothing, as above. `--no-validate` skips the check
+ * and leaves the records to the backend.
+ *
+ * @param {string} siteDir
+ * @param {object} [options] - `args`, and the caller's `error` / `warn` / `dim` printers
+ * @returns {Promise<number>} the violations that stop the ship (0 to go on)
+ */
+export async function refuseIfContentDoesNotConform(siteDir, options = {}) {
+  const {
+    args = [],
+    error = (m) => console.log(`${c.red}✗${c.reset} ${m}`),
+    warn = (m) => console.log(`${c.yellow}⚠${c.reset} ${m}`),
+    dim = (m) => console.log(`  ${c.dim}${m}${c.reset}`)
+  } = options
+
+  if (args.includes('--no-validate')) return 0
+
+  let result
+  try {
+    result = await checkSiteConformance(siteDir)
+  } catch {
+    return 0
+  }
+  if (result.status !== 'checked') return 0
+
+  const violations = result.report?.violations?.length || 0
+  const formatted = formatConformanceWarning(result, siteDir, { stops: violations > 0 })
+  if (!formatted) return 0
+
+  ;(violations > 0 ? error : warn)(formatted.headline)
+  for (const line of formatted.details) dim(line)
+  return violations
+}
+
+/**
  * Turn a report into the lines to print, or `null` when there is nothing to say.
  *
  * Split out from the reporting so the *warning* itself is testable without
@@ -154,9 +205,11 @@ export async function warnIfContentDoesNotConform(siteDir, options = {}) {
  *
  * @param {{report?: object, foundation?: string}} result
  * @param {string} siteDir
+ * @param {{ stops?: boolean }} [options] - `stops`: the ship stops on this report
+ *   (`refuseIfContentDoesNotConform`), so the last line says nothing was sent
  * @returns {{headline: string, details: string[], total: number}|null}
  */
-export function formatConformanceWarning(result, siteDir = '') {
+export function formatConformanceWarning(result, siteDir = '', { stops = false } = {}) {
   const violations = result?.report?.violations || []
   const setupErrors = result?.report?.setupErrors || []
   const total = violations.length + setupErrors.length
@@ -201,9 +254,14 @@ export function formatConformanceWarning(result, siteDir = '') {
   const details = lines.slice(0, MAX_SHOWN).map((l) => `• ${l}`)
   if (lines.length > MAX_SHOWN) details.push(`…and ${lines.length - MAX_SHOWN} more`)
 
-  // Name the command that explains it, and say plainly that this is not a
-  // refusal — a warning during a ship reads as a failure unless it says so.
-  details.push('Shipping anyway. Run `uniweb validate` for the full report.')
+  // Name the command that explains it, and say plainly which this is — a warning
+  // during a ship reads as a failure unless it says so, and a refusal must say what
+  // did not happen.
+  details.push(
+    stops
+      ? 'Nothing was sent. Run `uniweb validate` for the full report, or pass `--no-validate` to send it anyway and let the backend decide.'
+      : 'Shipping anyway. Run `uniweb validate` for the full report.'
+  )
 
   return { headline, details, total }
 }
