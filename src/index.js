@@ -1440,9 +1440,10 @@ ${colors.bright}Usage:${colors.reset}
 The most ergonomic command in the tool: \`uniweb login && uniweb publish\` reads
 your project and makes the site live on Uniweb hosting. It resolves which site,
 BRINGS THE FOUNDATION ALONG (releases the local foundation when its code
-changed), syncs content, settles payment when go-live needs it (a browser
-handoff), and goes live. A published-registry foundation needs no release; an
-already-paid site opens no browser.
+changed — under the next version when its own is registered; commit the
+package.json it writes), syncs content, settles payment when go-live needs it
+(a browser handoff), and goes live. A published-registry foundation needs no
+release; an already-paid site opens no browser.
 
 For a third-party host use \`uniweb deploy --host=<name>\`; to register a
 FOUNDATION on its own use \`uniweb register\` (alias \`uniweb release\`).
@@ -1455,9 +1456,8 @@ ${colors.bright}Options:${colors.reset}
                      when only the content should go live. Refused if the
                      foundation has never been released — there is nothing to
                      bind to, and the app cannot open such a site.
-  --bump             Release a changed local foundation under the next version
-                     above the registered one, written into its package.json.
-                     Does nothing when the code is unchanged.
+  --bump             When the registry holds a newer version of the foundation
+                     than yours, release yours above it instead of stopping
   --no-save          Do not record this deploy in deploy.yml
   --no-validate      Skip the content-conformance check, which stops a publish
                      whose content does not conform to its data schemas
@@ -2093,7 +2093,7 @@ ${colors.bright}Publish Options:${colors.reset}
   --dry-run          Resolve everything; release/sync/POST nothing
   --yes              Skip confirmations (CI); never block on a prompt
   --no-release       Ship content against the already-released code; release nothing
-  --bump             Release changed foundation code under the next version
+  --bump             Release above a newer registered foundation version
   --org @org         Work in @org for this publish, not your login's workspace
   --personal         Work in your personal workspace for this publish
   --no-save          Do not record this deploy in deploy.yml

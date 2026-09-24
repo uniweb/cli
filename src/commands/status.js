@@ -38,6 +38,7 @@ import {
   foundationScopedName
 } from '../backend/foundation-bring-along.js'
 import { computeFoundationDigest } from '../utils/code-upload.js'
+import { compareSemverPrecedence } from '../utils/semver-precedence.js'
 import { checkFlags } from '../utils/flag-guard.js'
 
 const c = {
@@ -120,6 +121,7 @@ export async function status(args = []) {
   let site = null
   let fdnLatest = null
   let foundationFresh = null // true/false when both digests are known; else null
+  let localFoundationVersion = null
   let remoteError = null // a refusal about the workspace — the one remote failure worth saying
   if (remote) {
     try {
@@ -138,6 +140,7 @@ export async function status(args = []) {
       // site.yml ref. The digest compare is read-only — it never builds, so it
       // only fires when the local foundation is already built (dist present).
       const local = resolveLocalFoundation(siteDir, siteYml)
+      localFoundationVersion = local?.version ?? null
       const lookupName =
         (local && (await foundationScopedName(local.dir))) || fndScope
       if (lookupName) fdnLatest = await client.readFoundationLatest(lookupName)
@@ -240,10 +243,21 @@ export async function status(args = []) {
         `A newer foundation version (${fdnLatest.latest_version}) is registered than the site pins (${fndVersion}).`
       )
     }
+    // What the next push or publish does with it (`backend/foundation-bring-along.js`):
+    // release changed code — under the next version when its own is taken — unless the
+    // registry holds a NEWER version, which stops them. ⛔ This pointed at `uniweb
+    // register` until 2026-09-24 — which cannot release a change under a version
+    // already registered, since a registered version is immutable.
     if (foundationFresh === false) {
-      say.info(
-        'Local foundation differs from the registered version — `uniweb register` (or `uniweb publish`) to release the change.'
-      )
+      if (compareSemverPrecedence(localFoundationVersion, fdnLatest.latest_version) === -1) {
+        say.info(
+          `The registry holds foundation ${fdnLatest.latest_version}, newer than your ${localFoundationVersion} — a push or publish stops until you pull that change, or pass \`--bump\` to release yours above it.`
+        )
+      } else {
+        say.info(
+          'Local foundation differs from the registered version — the next `uniweb push` or `uniweb publish` releases it.'
+        )
+      }
     } else if (foundationFresh === true) {
       say.ok('Local foundation matches the registered version.')
     }

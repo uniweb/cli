@@ -133,11 +133,13 @@ test('the message names the verb the user actually ran', async () => {
   assert.deepEqual(publishMentions, [], 'told a `push` user to re-run `publish`')
 })
 
-// ─── code changed, version not bumped: three outcomes, not two ───────────────
-// `--yes` and "no TTY" were one condition until 2026-08-19. They are opposite
-// answers: a flag is a decision made in advance, an absent TTY is the ABSENCE of
-// one. Conflated, the only caller that never got asked was the agent — the one
-// that reports "pushed" on exit 0 and does not look again.
+// ─── code changed, version not bumped: released, for everyone ────────────────
+// From 2026-08-19 to 2026-09-24 this had three outcomes — `--yes` shipped the
+// REGISTERED code, no TTY refused, a terminal was asked — because shipping a site
+// bound to code that was not the working tree's is a silent wrong success for an
+// agent. Releasing the change removes that outcome instead of guarding it: the site
+// is bound to the code just released [Diego, 2026-09-24]. The full matrix is in
+// foundation-bump.test.js; these pin that the three callers now agree.
 
 import { chmodSync } from 'node:fs'
 
@@ -197,40 +199,23 @@ async function runCase(args, { digest = 'sha256:something-else' } = {}) {
   }
 }
 
-test('--yes is CONSENT: it proceeds, and warns rather than whispering', async () => {
-  const { res, said, asked } = await runCase(['--yes'])
-  assert.equal(res.proceed, true, '--yes must not block the push')
-  assert.equal(res.released, false, 'an immutable registered version is not re-released')
-  assert.equal(asked, false, 'consent given in advance must not prompt')
-  // The consequence — the site will not run your local code — belongs at warn.
-  // It used to print at `dim`, the level reserved for things nobody needs to read.
-  assert.ok(
-    said.warn.some((m) => /will NOT be live/i.test(m)),
-    `expected a warn naming the consequence, got ${JSON.stringify(said)}`
-  )
-})
-
-test('no TTY is ABSENCE, not consent: it refuses, and says what to run', async () => {
-  const { res, said, asked } = await runCase(['--non-interactive'])
-  assert.equal(res.proceed, false, 'nobody was asked — must not proceed')
-  assert.equal(res.refused, true, 'a refusal is not a human declining; callers exit differently')
-  assert.equal(asked, false)
-  assert.ok(said.err.length, 'a refusal must be reported at error level')
-  const guidance = said.dim.join('\n')
-  assert.match(guidance, /Nothing was sent/, 'must say the push did not happen')
-  assert.match(guidance, /bump/i, 'must offer the release path')
-  // ⭐ It must teach `--no-release`, the flag that NAMES this, not `--yes`. Both work;
-  // `--yes` means "do not ask me" and does this only as a side effect, so pointing a
-  // stuck user at it teaches a blunt instrument for a precise job.
-  assert.match(guidance, /--no-release/, 'must offer the ship-anyway path by its own name')
-  assert.doesNotMatch(guidance, /--yes/, 'must not teach the confirmation-skipper for this')
-})
-
-test('CONTROL: --yes wins over a missing TTY — the flag is checked first', async () => {
-  // Both conditions are true here. If the order ever flips, an explicit --yes
-  // starts failing, which is the expensive direction.
-  const { res } = await runCase(['--yes', '--non-interactive'])
+test('--yes releases the change too — there is nothing left to consent to', async () => {
+  const { res, asked } = await runCase(['--yes'])
   assert.equal(res.proceed, true)
+  assert.equal(res.released, true, 'the change is released, not shipped against the old code')
+  assert.equal(res.bumped, '1.4.3')
+  assert.equal(res.ref, '@acme/base@1.4.3')
+  assert.equal(asked, false)
+})
+
+test('no TTY releases it as well — nothing refused, nothing asked', async () => {
+  const { res, said, asked } = await runCase(['--non-interactive'])
+  assert.equal(res.proceed, true)
+  assert.equal(res.refused, undefined, 'the change is not a reason to stop any more')
+  assert.equal(res.released, true)
+  assert.equal(asked, false)
+  // The way out, for the one who did not want the code shipped, by its own name.
+  assert.match(said.dim.join('\n'), /--no-release/)
 })
 
 test('CONTROL: an UNVERIFIABLE digest still proceeds non-interactively', async () => {

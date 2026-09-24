@@ -65,7 +65,7 @@ const VERBS = {
     // exactly the hand-enumeration failure that test exists to catch.
     '--no-verify',
     // ship content against the already-released code, releasing nothing — or
-    // release the changed code under the next version (both bring-along)
+    // release above a newer registered version instead of stopping (both bring-along)
     '--no-release', '--bump', ...VIA_DEPLOY
   ],
   publish: [

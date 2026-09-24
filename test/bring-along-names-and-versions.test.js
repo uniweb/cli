@@ -11,8 +11,10 @@
  * up at all: the `@org/src` in the catalog is some other project's.
  *
  * A registry takes a new version only when it is greater than every version it
- * holds. An older local version may still be one it already has, so bring-along
- * cannot refuse it; it has to say so instead of calling it a new version.
+ * holds. A local version OLDER than the registered latest stops the push: that
+ * version was released from another copy, whose code this one may not have
+ * (2026-09-24; it was submitted for the registry to decide until then). One equal
+ * in precedence is the registered version itself.
  *
  * Run: `pnpm test` or `node --test test/`
  */
@@ -178,17 +180,18 @@ const registered = (latest_version) => ({
   readFoundationLatest: async () => ({ latest_version, digest: 'sha256:not-the-local-code' })
 })
 
-test('a local version older than the registered latest is not called a new version', async () => {
+test('a local version older than the registered latest stops — it is not called a new version', async () => {
   const { res, said } = await run(workspace({ name: '@acme/base', version: '1.4.1' }), registered('1.4.2'))
-  assert.equal(res.proceed, true, 'still submitted — the registry decides')
-  const line = said.info.join('\n')
-  assert.match(line, /not newer than the registered latest 1\.4\.2/)
-  assert.doesNotMatch(line, /new version/)
+  assert.equal(res.proceed, false)
+  assert.equal(res.refused, true)
+  assert.match(said.err.join('\n'), /1\.4\.2, newer than your 1\.4\.1/)
+  assert.doesNotMatch(said.info.join('\n'), /new version/)
 })
 
-test('a version equal in precedence (build metadata only) is not newer either', async () => {
-  const { said } = await run(workspace({ name: '@acme/base', version: '1.4.2+build.7' }), registered('1.4.2'))
-  assert.match(said.info.join('\n'), /not newer than the registered latest/)
+test('a version equal in precedence (build metadata only) is the registered one — its change goes under the next', async () => {
+  const { res, said } = await run(workspace({ name: '@acme/base', version: '1.4.2+build.7' }), registered('1.4.2'))
+  assert.equal(res.bumped, '1.4.3')
+  assert.match(said.info.join('\n'), /as 1\.4\.3/)
 })
 
 test('CONTROL: a greater version is still released as a new version', async () => {

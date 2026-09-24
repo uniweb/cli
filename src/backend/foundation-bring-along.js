@@ -5,18 +5,29 @@
  * A publish must never ship a site pointing at stale or missing foundation code
  * (the footgun: a site goes live referencing a version the catalog doesn't
  * have). So when the site references a LOCAL foundation, the verb fingerprints it
- * and reconciles with the catalog. Three cases (§4):
+ * and reconciles with the catalog (§4):
  *
- *   | version not yet registered    | release it, then publish        |
- *   | registered, code unchanged    | skip the release (digest match) |
- *   | registered, code CHANGED      | warn / prompt — never silent    |
+ *   | version not yet registered      | release it                            |
+ *   | registered, code unchanged      | skip the release (digest match)       |
+ *   | registered, code CHANGED        | release it under the next version     |
+ *   | a NEWER version is registered   | stop — `--bump` releases above it     |
  *
- * ⭐ In the third case the fix is a new version, and `--bump` makes it one: the next
- * version above the registered one, written into the package's `package.json`, then
- * released. At a terminal it is the first thing offered. *[Diego, 2026-09-24: "Bump
- * before releasing" · "it sounds useful even with a terminal".]* ⛔ This reverses an
- * earlier "no auto-bump" decision, whose objection was a bump made without consent;
- * this one is asked for — a flag, or a yes — and never assumed.
+ * ⭐ **Changed code is released by default** *[Diego, 2026-09-24]*. A site whose project
+ * holds its own foundation is a content+code bundle — *"a developer is used to code
+ * going with the site, so they don't think of bumping the code of a site"* — and the
+ * version there decides nothing: the only site reading it is the one being pushed.
+ * Since a registered version is immutable, the change goes under the next version
+ * above the registered one, written into the package's `package.json` first. ⛔ This
+ * reverses the version-bump release gate of 2026-06-23, whose reasoning — a deliberate,
+ * npm-style release — fits a foundation other sites use as a product; those sites pin
+ * a catalog ref and never reach this code. (A library's own demo site, which names it
+ * by path, does — whether such a foundation should declare its releases deliberate is
+ * open.)
+ *
+ * ⛔ **A NEWER registered version still stops it.** It was released from another copy
+ * of the project, whose code this one may not have, and releasing above it would make
+ * the older code the newest — the code twin of push's content staleness gate. `--bump`
+ * releases above it anyway; `--no-release` ships the content bound to it.
  *
  * The freshness signal is the backend-stored, framework-computed digest (§4.1):
  * no local state, multi-machine-safe. When the site references a published
@@ -252,7 +263,8 @@ export async function bringFoundationAlong({
  * @param {{dir: string, version: string|null}} o.local
  * @param {'foundation'|'extension'} o.kind
  * @returns {Promise<{ released: boolean, proceed: boolean, ref: string|null, bumped?: string }>}
- *   `bumped` is the version `--bump` (or a yes at its prompt) wrote into package.json.
+ *   `bumped` is the version written into package.json when changed code was released
+ *   under the next version.
  */
 async function bringLocalCodeAlong({
   client,
@@ -291,11 +303,10 @@ async function bringLocalCodeAlong({
   // says (see the `!reg` branch).
   const noRelease = args.includes('--no-release')
 
-  // `--bump`: where the registry would not take the local version as new, release the
-  // local code under the next version above the registered one. It acts only on what
-  // is known — a digest that differs from the registered version's, or a local version
-  // that is not above the registered latest — so it is a no-op on unchanged code and
-  // safe to pass on every run, which is how a script uses it.
+  // `--bump`: when the registry holds a version NEWER than the local one, release the
+  // local code above it instead of stopping. That is all it does — changed code under
+  // the registered version is released without it, and unchanged code never is — so a
+  // script can pass it on every run.
   const bump = args.includes('--bump')
 
   if (bump && noRelease) {
@@ -370,34 +381,33 @@ async function bringLocalCodeAlong({
     }
   }
 
-  // The next version above the registered one — what a bump releases under. Null when
-  // the registered version is not SemVer, and then there is nothing to bump from.
+  // The next version above the registered one — what changed code is released under
+  // when the local version is taken. Null when the registered version is not SemVer,
+  // and then there is nothing to count up from.
   const bumpTo = nextVersionAbove(reg.latest_version)
 
   // Write it into package.json, then release. `register` rebuilds on its own when the
   // built schema's version no longer matches package.json, so the release carries it.
+  // `optOut` names `--no-release` for a release nobody asked for by flag.
   //
   // ⚖️ A failed release leaves the new version in the file, and that is the useful
   // state: the next run finds a local version above the registered one and releases
   // it, with nothing to redo.
-  const bumpAndRelease = async () => {
+  const releaseAsNext = async (why, { optOut = false } = {}) => {
     if (!bumpTo) {
       say.err(
-        `Cannot bump ${label}: the registered version ${reg.latest_version} is not a SemVer version.`
+        `Cannot release ${label} under a new version: the registered ${reg.latest_version} is not a SemVer version.`
       )
       say.dim(
-        `Nothing was sent. Set a version above it in the ${kind}'s package.json, then re-run \`uniweb ${verb}\`.`
+        `Nothing was sent. Set a version above it in the ${kind}'s package.json, then re-run \`uniweb ${verb}\`; or \`uniweb ${verb} --no-release\` sends content bound to the released ${reg.latest_version}.`
       )
       return { released: false, proceed: false, refused: true, ref: null }
     }
     writePkgVersion(local.dir, bumpTo)
-    say.info(
-      `Bumped the ${kind} ${scopedName || kind} to ${bumpTo} (was ${local.version ?? 'unversioned'}); releasing it…`
-    )
+    say.info(`Releasing the ${kind} ${scopedName || kind} as ${bumpTo} — ${why}…`)
     const released = releaseFoundation(local, args, cliBin, say, client?.origin)
-    say.dim(
-      `The ${kind}'s package.json now says ${bumpTo} — commit it, so the next release starts from there.`
-    )
+    say.dim(`The ${kind}'s package.json now says ${bumpTo} — commit it.`)
+    if (optOut) say.dim('To send content without releasing code, pass `--no-release`.')
     return { released, proceed: true, bumped: bumpTo, ref: await pinnedRef() }
   }
 
@@ -413,66 +423,70 @@ async function bringLocalCodeAlong({
     return { released: false, proceed: true, ref: await pinnedRef() }
   }
 
-  // A different version locally → a new version to release.
+  // A different version locally.
   if (local.version && local.version !== reg.latest_version) {
-    if (noRelease) {
-      // ⚠️ Bind to the REGISTERED version, not the local one. `pinnedRef()` would
-      // return the bumped-but-unreleased `local.version` here — a ref no deployment
-      // can serve, which is the very failure this flag must not create.
-      say.info(
-        `Keeping the released ${kind} ${reg.latest_version} — local ${local.version} not released (\`--no-release\`).`
-      )
-      return { released: false, proceed: true, ref: registeredRef(reg) }
-    }
-    // ⚖️ The registry takes a NEW version only when it is greater than every one
-    // it holds — but an older local version may be one it already has, and
-    // re-registering that resumes. The CLI cannot tell which from here, so it
-    // does not refuse: it submits, says what will decide, and `register` prints
-    // the registry's answer if it is a no.
     const order = compareSemverPrecedence(local.version, reg.latest_version)
-
-    // `--bump` where the local version is not above the registered latest. The
-    // registry may still take it as a resume — when that version is registered with
-    // this very code — but only the latest version's digest is readable, and the
-    // digest folds in the version, so that cannot be told from here. A bump asked
-    // for is a bump done.
-    if (bump && order !== 1) {
-      // ⚠️ The one hazard of a bump: a registered latest ABOVE the local version may
-      // be someone else's release, and the bump makes this code the newer one.
-      if (order === -1) {
-        say.warn(
-          `The registered latest ${reg.latest_version} is newer than your ${label} — if it is someone else's release, their changes are not in yours.`
+    // Equal in precedence (build metadata apart) is the registered version itself, and
+    // is treated as it, below.
+    if (order !== 0) {
+      if (noRelease) {
+        // ⚠️ Bind to the REGISTERED version, not the local one. `pinnedRef()` would
+        // return the bumped-but-unreleased `local.version` here — a ref no deployment
+        // can serve, which is the very failure this flag must not create.
+        say.info(
+          `Keeping the released ${kind} ${reg.latest_version} — local ${local.version} not released (\`--no-release\`).`
         )
+        return { released: false, proceed: true, ref: registeredRef(reg) }
       }
-      return bumpAndRelease()
-    }
 
-    say.info(
-      order === 1
-        ? `Releasing the ${kind} ${label} (new version; registered latest is ${reg.latest_version})…`
-        : order === null
-          ? `Releasing the ${kind} ${label} (registered latest is ${reg.latest_version})…`
-          : `Releasing the ${kind} ${label} — not newer than the registered latest ${reg.latest_version}, so the registry takes it only if ${local.version} is already registered with this code…`
-    )
-    try {
+      // ⛔ OLDER than the registered latest: that version was released from another
+      // copy of the project, and this one may not have its code. Releasing above it
+      // would make this code the newest and bind the site to it — a teammate's release
+      // undone by a push that never saw it. So it stops, and names the ways on.
+      //
+      // Until 2026-09-24 it was submitted, the registry deciding: it took a version it
+      // already held with this very code (a resume), and refused anything else. Only
+      // the latest version's digest is readable, and the digest folds in the version,
+      // so "this code, under an older version" cannot be told apart from here.
+      if (order === -1) {
+        if (bump) {
+          say.warn(
+            `The registry holds ${reg.latest_version}, newer than your ${label} — releasing your code above it (\`--bump\`). If ${reg.latest_version} is someone else's release, its changes are not in yours.`
+          )
+          return releaseAsNext(`above the registered ${reg.latest_version}`)
+        }
+        say.err(
+          `The registry holds ${kind} ${scopedName || kind} ${reg.latest_version}, newer than your ${local.version} — a release this copy does not have.`
+        )
+        say.dim(
+          `Nothing was sent. Pull the change that released it, then re-run \`uniweb ${verb}\`; or:`
+        )
+        if (bumpTo) {
+          say.dim(`  • \`uniweb ${verb} --bump\` — releases your code as ${bumpTo}, above it`)
+        }
+        say.dim(
+          `  • \`uniweb ${verb} --no-release\` — sends content bound to the released ${reg.latest_version}`
+        )
+        return { released: false, proceed: false, refused: true, ref: null }
+      }
+
+      // Newer than anything registered — a new version, released as it stands. Not
+      // SemVer (`order === null`) — nothing to compare, so the same, and the registry
+      // decides; `register` prints its answer if it is a no.
+      say.info(
+        order === 1
+          ? `Releasing the ${kind} ${label} (new version; registered latest is ${reg.latest_version})…`
+          : `Releasing the ${kind} ${label} (registered latest is ${reg.latest_version})…`
+      )
       return {
         released: releaseFoundation(local, args, cliBin, say, client?.origin),
         proceed: true,
         ref: await pinnedRef()
       }
-    } catch (err) {
-      // Said where the refusal is read — beside the failure, not before the release
-      // output scrolled it away.
-      if (order !== 1 && bumpTo) {
-        say.dim(
-          `If the registry refused ${local.version}: \`uniweb ${verb} --bump\` releases your code as ${bumpTo}, above the registered ${reg.latest_version}.`
-        )
-      }
-      throw err
     }
   }
 
-  // Same version, but the digest differs or the backend can't confirm it.
+  // The registered version — but the digest differs, or the backend can't confirm it.
   if (!reg.digest) {
     // Degrade: the backend doesn't return the stored digest yet, so we can't
     // be sure the registered version matches local. Offer to re-deliver.
@@ -486,8 +500,10 @@ async function bringLocalCodeAlong({
       `Can't verify the registered ${label} matches your local copy (backend returned no digest).`
     )
     if (skipPrompts || isNonInteractive(args)) {
+      // ⚖️ Not released: nothing says the code changed, and releasing on no evidence
+      // would mint a version on every push against such a backend.
       say.dim(
-        'Proceeding without re-releasing — pass nothing to re-deliver, or bump the version to release a change.'
+        `Proceeding without re-releasing — to release a change, set a higher version in the ${kind}'s package.json.`
       )
       return { released: false, proceed: true, ref: await pinnedRef() }
     }
@@ -504,10 +520,8 @@ async function bringLocalCodeAlong({
     return { released: false, proceed: true, ref: await pinnedRef() }
   }
 
-  // Case 3 (§4): the code was edited but the version wasn't bumped. The
-  // registered version is immutable, so we never silently ship the old code —
-  // the deliberate release gate is a version bump (§3.1).
-  // Asked for explicitly: the case this flag exists to name.
+  // The code changed and the version did not. A registered version is immutable, so
+  // the change is released under the next one.
   if (noRelease) {
     say.info(
       `Keeping the released ${kind} ${reg.latest_version} — your local changes are not released (\`--no-release\`).`
@@ -515,86 +529,17 @@ async function bringLocalCodeAlong({
     return { released: false, proceed: true, ref: registeredRef(reg) }
   }
 
-  // ⭐ THREE OUTCOMES, NOT TWO — `--yes` and "no TTY" are not the same answer.
+  // ⭐ RELEASED BY DEFAULT — for a person and an agent alike, with no question.
   //
-  // They were one condition until 2026-08-19, and conflating them meant the only
-  // party that never got asked was the one that most needed asking. A `--yes` is a
-  // decision someone made in advance; an absent TTY is the ABSENCE of a decision,
-  // and absence is not consent.
-  //
-  // ⚖️ Which flips the safe default by caller, for a reason particular to this
-  // situation: proceeding here ships a site bound to code that is NOT the code in
-  // the working tree. A human is at a terminal, reads the warning, and decides. An
-  // agent re-runs commands for free and reports "pushed" on exit 0 — so for it the
-  // cheap outcome is one more cycle and the expensive one is a silent wrong success
-  // it will not look at again. Refusing costs an agent a retry; proceeding costs it
-  // a false completion report and a live site nobody notices is stale.
-
-  // 0. The fix, asked for in advance: release the change under a new version. Before
-  //    `--yes`, because it names what to do, where `--yes` only says not to ask.
-  if (bump) return bumpAndRelease()
-
-  // 1. Explicit consent — proceed, but at WARN. `dim` is what we print for things
-  //    nobody needs to read, and "your changes are not live" is not that.
-  if (skipPrompts) {
-    say.warn(
-      `Local ${label} differs from the registered ${reg.latest_version} and the version wasn't bumped — ` +
-        `shipping against the registered code. Your local changes will NOT be live.`
-    )
-    return { released: false, proceed: true, ref: await pinnedRef() }
-  }
-
-  // 2. Nobody to ask. Refuse, and name both real options as runnable commands so
-  //    the caller's next step needs no interpretation. `refused` marks this as a
-  //    hard stop rather than a human's "no", which callers map to different exits.
-  if (isNonInteractive(args)) {
-    say.err(
-      `Local ${kind} ${label} differs from the registered ${reg.latest_version}, and the version wasn't bumped.`
-    )
-    say.dim(`Nothing was sent. Either release the change, or ship without it:`)
-    say.dim(
-      bumpTo
-        ? `  • \`uniweb ${verb} --bump\` — releases it as ${bumpTo}, written into the ${kind}'s package.json (or set a higher version there yourself)`
-        : `  • bump the ${kind}'s version in package.json, then re-run \`uniweb ${verb}\``
-    )
-    // Teach the flag that NAMES this, not `--yes`. Both work, but `--yes` means "do
-    // not ask me" and only does this as a side effect — pointing a stuck user at it
-    // teaches a blunt instrument for a precise job.
-    say.dim(
-      `  • \`uniweb ${verb} --no-release\` — sends content bound to the released ${reg.latest_version}`
-    )
-    return { released: false, proceed: false, refused: true, ref: null }
-  }
-
-  // 3. A human is here. State it, then ask.
-  say.warn(
-    `Your local ${label} differs from the registered version ${reg.latest_version}, but the version wasn't bumped.`
-  )
-  say.dim(
-    `A registered version is immutable, so a change is released under a new version.`
-  )
-  // Offered first, and yes by default: a changed foundation is usually a change its
-  // developer means to release. A no leads to the question below, as before.
-  if (
-    bumpTo &&
-    (await confirm(
-      `Release your changes as ${bumpTo}? (written into the ${kind}'s package.json)`,
-      true
-    ))
-  ) {
-    return bumpAndRelease()
-  }
-  const proceed = await confirm(
-    `Continue with the already-registered ${reg.latest_version} anyway?`,
-    false
-  )
-  if (!proceed) {
-    say.info(
-      `Aborted — nothing was sent. Bump the ${kind} version (or pass \`--bump\`), then re-run \`uniweb ${verb}\`.`
-    )
-    return { released: false, proceed: false, ref: null }
-  }
-  return { released: false, proceed: true, ref: await pinnedRef() }
+  // Until 2026-09-24 this stopped: a terminal was asked, a run without one refused, and
+  // `--yes` shipped the REGISTERED code. That guarded against a site bound to code that
+  // was not the working tree's — which is exactly what releasing prevents: the site is
+  // bound to the code just released, as it is to the content pushed with it. `--yes`
+  // has nothing left to consent to here, and a question whose answer is nearly always
+  // yes teaches people to stop reading it.
+  return releaseAsNext(`its code changed since ${reg.latest_version} was registered`, {
+    optOut: true
+  })
 }
 
 // Build the foundation so its dist/ can be fingerprinted. Idempotent — the
