@@ -896,6 +896,8 @@ The body — the value of the schema's content field, `article_body.content`.
 
 **A component receives it differently from how the file writes it**, the same way on a static site and a hosted one: the brief's fields at the top (`article.title`), every other section under its name (`article.article_body.content`, `article.article_body.author`), and `$name`, the handle. Lists carry the brief alone unless the query says otherwise (`deferred:`, below). Full rules: `reference/entity-content.md`.
 
+**A reference names the record it points at.** A `{ ref: '@/speaker' }` field is written as that record's name — `speaker: ada` for `records/speaker/ada.yml` (its file's name, or its `slug:`) — and a `many` one as a list of names. A component receives `{ entity, brief }`: the record reduced to its brief, so `talk.speaker.brief.name`. `uniweb validate` and a push report a name that matches no record; a push sends each reference to the record it names (a second pass when that record is new too), and a pull writes the name back.
+
 **`records/folder.yml` — optional, and only for folders.** It is the one file in `records/` that is not a record, it moves with the directory (`paths.records`), and like a pages folder's `folder.yml` it describes the folder it sits in. Every record sits at the top of the site's records folder unless `folder.yml` places it in a sub-folder. Add one only when a query needs to ask for a *slice* of the records rather than all of them — most sites never do:
 
 ```yaml
