@@ -20,9 +20,10 @@
  * above the registered one, written into the package's `package.json` first. ⛔ This
  * reverses the version-bump release gate of 2026-06-23, whose reasoning — a deliberate,
  * npm-style release — fits a foundation other sites use as a product; those sites pin
- * a catalog ref and never reach this code. (A library's own demo site, which names it
- * by path, does — whether such a foundation should declare its releases deliberate is
- * open.)
+ * a catalog ref and never reach this code. Its author's demo site, which names it by
+ * path, does — and gets the same default, by ruling [Diego, 2026-09-24]. The release is
+ * always the next patch, so a change that is not backwards compatible needs a higher
+ * version set in `package.json` by hand.
  *
  * ⛔ **A NEWER registered version still stops it.** It was released from another copy
  * of the project, whose code this one may not have, and releasing above it would make
