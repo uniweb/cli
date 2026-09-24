@@ -1,6 +1,11 @@
 /**
  * The record of what a machine wrote into a site project — pull's own output.
  *
+ * ⭐ And, since 2026-09-23, what a push delivered: the files of the units the backend
+ * now holds as they were sent (`recordPushedUnits`, site-sync.js). Both are "the last
+ * version this file synced at", which is what `pull --merge` needs as its ancestor —
+ * found again in the repo's history by this hash (`findCommitted`, utils/git.js).
+ *
  * ## What it is for
  *
  * `uniweb pull` refuses to run when there are uncommitted changes under the files

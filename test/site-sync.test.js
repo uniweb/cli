@@ -39,7 +39,9 @@ import {
   mergeBaseVersions
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
+import { createHash } from 'node:crypto'
 import { readSiteIdentity } from '../src/utils/site-identity.js'
+import { readWritten } from '../src/utils/pull-written.js'
 
 const ORIGIN = 'http://x'
 
@@ -449,6 +451,7 @@ test('heldTokens: a unit the backend kept for someone else keeps the token we ho
   // No token for cta: the one we hold is for OUR content, which is what makes the
   // next push that changes it a conflict instead of an overwrite.
   assert.deepEqual(t.itemVersions, { 'U-home': 'h1', 'U-pricing': 'p1' })
+  assert.deepEqual(t.held, ['pages/home/page.yml', 'pages/home/pricing.md'])
   assert.deepEqual(t.kept, ['pages/home/cta.md'])
   assert.deepEqual(t.foreign, [])
   // A kept EDIT does not hold the entity token back — it only dates absent items.
@@ -487,7 +490,7 @@ test("heldTokens: the backend's own fields and key order are not a difference", 
 
 test('heldTokens: with no document to compare against, the tokens are banked as sent', () => {
   const t = heldTokens({ sent: null, written: null, version: 'V1', itemVersions: { R: 't1' } })
-  assert.deepEqual(t, { version: 'V1', itemVersions: { R: 't1' }, kept: [], foreign: [] })
+  assert.deepEqual(t, { version: 'V1', itemVersions: { R: 't1' }, held: [], kept: [], foreign: [] })
 })
 
 test("⛔ A PUSH THAT MERGED SOMEONE ELSE'S EDIT does not bank its token — the next push is refused, not an overwrite", async () => {
@@ -573,6 +576,41 @@ test("⛔ A PUSH THAT KEPT SOMEONE ELSE'S NEW SECTION does not bank the entity t
   // A's own write is banked as usual.
   assert.deepEqual(readItemBaseVersions(dir, ORIGIN), { 'U-home': 'h0', 'U-cta': 'c1' })
   assert.match(calls.note.join('\n'), /not in your files yet: pages\/home\/added\.md/)
+})
+
+test("a push records the files the backend holds as sent — the next merge's ancestor — and not one it kept", async () => {
+  // `pull --merge` finds a file's last synced version by the hash in pull-written.json.
+  // Without the push's share of it, the ancestor after a merge-and-push was the pull's
+  // raw output — never committed — and the next merge put both whole files under
+  // markers. A unit the backend kept for someone else is NOT synced, so not recorded.
+  const dir = tmpSite()
+  mergeBaseVersions(dir, ORIGIN, { S1: 'V0' })
+  mergeItemBaseVersions(dir, ORIGIN, { 'U-home': 'h0', 'U-cta': 'c0', 'U-pricing': 'p0' })
+  mkdirSync(join(dir, 'pages/home'), { recursive: true })
+  writeFileSync(join(dir, 'pages/home/cta.md'), '# cta, as A holds it\n')
+  writeFileSync(join(dir, 'pages/home/pricing.md'), '# pricing, as A pushed it\n')
+  const sent = siteDoc([held('cta', 'the text A pulled'), held('pricing', 'A edited this')])
+  const written = asStored(siteDoc([held('cta', 'B edited this'), held('pricing', 'A edited this')]))
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1', item_versions: {}, document: written }]))
+  }
+  const { report } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    report,
+    pkg: {
+      ...siteOnlyPkg({ siteContentUuid: 'S1' }),
+      siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) }
+    }
+  })
+  assert.equal(res.exitCode, 0)
+  const recorded = readWritten(dir).files
+  const sha = (s) => createHash('sha256').update(s).digest('hex')
+  assert.equal(recorded['pages/home/pricing.md'], sha('# pricing, as A pushed it\n'))
+  assert.equal(recorded['pages/home/cta.md'], undefined)
 })
 
 test('a push that holds everything it was sent banks every token, and says nothing', async () => {

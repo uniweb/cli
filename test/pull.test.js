@@ -34,6 +34,8 @@ import {
   readPullVersions
 } from '../src/commands/pull.js'
 import { createZip } from '@uniweb/build/uwx'
+import { readWritten, isPullOutput } from '../src/utils/pull-written.js'
+import { readBaseVersions, readItemBaseVersions } from '../src/backend/site-sync.js'
 
 // ⭐ These exercise the pull lanes, not the workspace: a command works in the one chosen
 // with the login (backend/workspace.js), and a test has no login to choose one. Named
@@ -459,13 +461,21 @@ test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (
   try {
     writeFileSync(join(dir, 'site.yml'), "name: Keep\nfoundation: '@a/base'\n")
     bindSite(dir, 'SITE304')
+    // A clean repo, so the pull needs no `--force` — which is unconditional (below).
+    writeFileSync(join(dir, '.gitignore'), '.uniweb\n')
+    execFileSync('git', ['init', '-q'], { cwd: dir, stdio: 'ignore' })
+    execFileSync('git', ['add', '-A'], { cwd: dir, stdio: 'ignore' })
+    execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base'], {
+      cwd: dir,
+      stdio: 'ignore'
+    })
     mkdirSync(join(dir, '.uniweb'), { recursive: true })
     writeFileSync(
       join(dir, '.uniweb/pull-cache.json'),
-      JSON.stringify({ version: 1, content: '"abc123"' })
+      JSON.stringify({ version: 2, content: '"abc123"' })
     )
     let sentINM
-    const res = await pull(['--no-records', '--force'], {
+    const res = await pull(['--no-records', '--non-interactive'], {
       resolveSiteDir: async () => dir,
       getToken: async () => 'tok',
       fetch: async (url, opts) => {
@@ -485,6 +495,31 @@ test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (
       yaml.load(readFileSync(join(dir, 'site.yml'), 'utf8')).name,
       'Keep'
     )
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('pull --force is unconditional — it takes the backend version whatever the ETag says', async () => {
+  // An ETag says whether the BACKEND moved, never whether the files still hold what it
+  // sent: after a `git checkout`, an echoed ETag got a 304 and the checked-out files
+  // stayed — so "take the backend's version" did nothing.
+  const dir = tempSite()
+  try {
+    writeFileSync(join(dir, 'site.yml'), "name: Keep\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE-FORCE')
+    mkdirSync(join(dir, '.uniweb'), { recursive: true })
+    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 2, content: '"abc123"' }))
+    let sentINM = 'unset'
+    await pull(['--no-records', '--force'], {
+      resolveSiteDir: async () => dir,
+      getToken: async () => 'tok',
+      fetch: async (url, opts) => {
+        sentINM = opts?.headers?.['If-None-Match']
+        return jsonRes(null, 404)
+      }
+    })
+    assert.equal(sentINM, undefined)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -934,6 +969,215 @@ test(
     }
   }
 )
+
+// ── pull --merge in the DEFAULT layout — the repo is the project, the site is `site/`
+// Every merge test above runs with the repo AT the site directory, the one layout in
+// which `git show HEAD:<path>` finds a site-relative path. In the default one the
+// lookup named nothing, every file "kept yours", and the pull then recorded the
+// backend's version as taken — so the next push overwrote it (measured 2026-09-23).
+
+const commitAll = (cwd, msg) => {
+  execFileSync('git', ['add', '-A'], { cwd, stdio: 'ignore' })
+  execFileSync(
+    'git',
+    ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', msg],
+    { cwd, stdio: 'ignore' }
+  )
+}
+
+// A project whose repo is its root, with the site pulled into `site/` — committed, or
+// (`commit: false`) left as the pull wrote it.
+async function pulledProject(baseContent, { commit = true } = {}) {
+  const root = tempSite()
+  const dir = join(root, 'site')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
+  bindSite(dir, 'SITE')
+  execFileSync('git', ['init', '-q'], { cwd: root, stdio: 'ignore' })
+  writeFileSync(join(root, '.gitignore'), '.uniweb\n')
+  writeFileSync(join(root, 'README.md'), 'project\n')
+  if (!commit) commitAll(root, 'init') // a HEAD that does not hold the site
+  await pull(['--force'], {
+    resolveSiteDir: async () => dir,
+    getToken: async () => 'tok',
+    fetch: makeFetch([['/dev/site/content/pull/SITE', siteDocWith(baseContent)]])
+  })
+  if (commit) commitAll(root, 'base')
+  return { root, dir }
+}
+
+const mergeAgainst = (dir, content) =>
+  pull(['--merge'], {
+    resolveSiteDir: async () => dir,
+    getToken: async () => 'tok',
+    fetch: makeFetch([['/dev/site/content/pull/SITE', siteDocWith(content)]])
+  })
+
+test(
+  'pull --merge merges in the default layout — the repo is the project, the site is in site/',
+  { skip: !hasGit },
+  async () => {
+    const { root, dir } = await pulledProject(
+      twoPara('First paragraph about pricing.', 'Second paragraph about support.')
+    )
+    try {
+      const file = join(dir, 'pages/home/welcome.md')
+      writeFileSync(file, readFileSync(file, 'utf8').replace('about pricing.', 'about pricing, now with tiers.'))
+      const res = await mergeAgainst(
+        dir,
+        twoPara('First paragraph about pricing.', 'Second paragraph about support, now 24/7.')
+      )
+      assert.equal(res.exitCode, 0)
+      const merged = readFileSync(file, 'utf8')
+      assert.match(merged, /now with tiers/) // mine survived
+      assert.match(merged, /now 24\/7/) // theirs arrived — it never did in this layout
+      assert.ok(!merged.includes('<<<<<<<'))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }
+)
+
+test(
+  'pull --merge keeps a COMMITTED edit that was never pushed — the ancestor is what the pull wrote, not HEAD',
+  { skip: !hasGit },
+  async () => {
+    // Commit, push refused, `uniweb refresh`: with HEAD as the ancestor the commit
+    // read as the starting point, the backend's version won whole, and the edit was
+    // reverted in the working tree. A clean tree also hid it from the dirty scan.
+    const { root, dir } = await pulledProject(
+      twoPara('First paragraph about pricing.', 'Second paragraph about support.')
+    )
+    try {
+      const file = join(dir, 'pages/home/welcome.md')
+      writeFileSync(file, readFileSync(file, 'utf8').replace('about pricing.', 'about pricing, now with tiers.'))
+      commitAll(root, 'my edit')
+      const res = await mergeAgainst(
+        dir,
+        twoPara('First paragraph about pricing.', 'Second paragraph about support, now 24/7.')
+      )
+      assert.equal(res.exitCode, 0)
+      const merged = readFileSync(file, 'utf8')
+      assert.match(merged, /now with tiers/)
+      assert.match(merged, /now 24\/7/)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }
+)
+
+test(
+  'pull --merge with no common version shows BOTH, never ours alone',
+  { skip: !hasGit },
+  async () => {
+    // The pull's version was never committed, so there is no ancestor. Keeping ours
+    // hid the backend's change entirely — and recorded it as taken.
+    const { root, dir } = await pulledProject(twoPara('A.', 'B.'), { commit: false })
+    try {
+      const file = join(dir, 'pages/home/welcome.md')
+      writeFileSync(file, readFileSync(file, 'utf8').replace('A.', 'A, mine.'))
+      const res = await mergeAgainst(dir, twoPara('A.', 'B, theirs.'))
+      assert.equal(res.exitCode, 1) // a conflict is work left for a person
+      const merged = readFileSync(file, 'utf8')
+      assert.match(merged, /<<<<<<</)
+      assert.match(merged, /A, mine\./)
+      assert.match(merged, /B, theirs\./)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }
+)
+
+test(
+  'after a merge, the merged-in edit is still local work — not recorded as the pull\'s output',
+  { skip: !hasGit },
+  async () => {
+    // Recorded after the merge, the edit read as pull output: a later plain pull
+    // would overwrite it without refusing, and a push saw nothing to send.
+    const { root, dir } = await pulledProject(
+      twoPara('First paragraph about pricing.', 'Second paragraph about support.')
+    )
+    try {
+      const rel = 'pages/home/welcome.md'
+      const file = join(dir, rel)
+      writeFileSync(file, readFileSync(file, 'utf8').replace('about pricing.', 'about pricing, now with tiers.'))
+      await mergeAgainst(
+        dir,
+        twoPara('First paragraph about pricing.', 'Second paragraph about support, now 24/7.')
+      )
+      assert.equal(isPullOutput(dir, rel, readWritten(dir)), false)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }
+)
+
+test('the version tokens a pull carries are banked once its merge is done', async () => {
+  // Control for the rule that withholds them when a merge cannot run: the ordinary
+  // pull must still re-arm the gate from what it took.
+  const dir = tempSite()
+  try {
+    writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE')
+    const zip = createZip([
+      {
+        name: 'manifest.json',
+        data: Buffer.from(
+          JSON.stringify({
+            format: 'uwx/1',
+            entries: [
+              {
+                kind: 'entity',
+                uuid: 'SITE',
+                file: 'entities/SITE.json',
+                version: 'V1',
+                item_versions: { P1: 'p1', S1: 's1' }
+              }
+            ]
+          })
+        )
+      },
+      { name: 'entities/SITE.json', data: Buffer.from(JSON.stringify(siteDocWith(twoPara('A.', 'B.')))) }
+    ])
+    await pull(['--force', '--no-records'], {
+      resolveSiteDir: async () => dir,
+      getToken: async () => 'tok',
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        statusText: '',
+        headers: { get: () => null },
+        arrayBuffer: async () => zip
+      })
+    })
+    assert.deepEqual(readBaseVersions(dir, TEST_ORIGIN), { SITE: 'V1' })
+    assert.deepEqual(readItemBaseVersions(dir, TEST_ORIGIN), { P1: 'p1', S1: 's1' })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('an ETag cached by an older pull is not echoed — it may describe content never taken', async () => {
+  const dir = tempSite()
+  try {
+    writeFileSync(join(dir, 'site.yml'), "name: Keep\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE-V1')
+    mkdirSync(join(dir, '.uniweb'), { recursive: true })
+    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 1, content: '"stale"' }))
+    let sentINM = 'unset'
+    await pull(['--no-records', '--force'], {
+      resolveSiteDir: async () => dir,
+      getToken: async () => 'tok',
+      fetch: async (url, opts) => {
+        sentINM = opts?.headers?.['If-None-Match']
+        return jsonRes(null, 404)
+      }
+    })
+    assert.equal(sentINM, undefined)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 
 // ⭐ Pins HERMETICITY itself, not the mechanism that currently provides it.
 //

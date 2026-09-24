@@ -18,6 +18,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { readFileSync, realpathSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import yaml from 'js-yaml'
@@ -173,8 +174,25 @@ export function uncommittedUnder(dir, relPaths) {
  *   never committed has no ancestor, so there is nothing to merge against).
  */
 export function showAtHead(dir, relPath) {
+  return showAt(dir, 'HEAD', relPath)
+}
+
+/**
+ * A file's content at a revision, by a path relative to `dir`.
+ *
+ * ⛔ THE `./` IS WHAT MAKES THE PATH RELATIVE TO `dir`. In `<rev>:<path>` a bare path
+ * is read from the REPOSITORY ROOT, whatever the cwd. With the repo at the project
+ * root and the site in `site/` — the default layout — `HEAD:pages/home/hero.md`
+ * named nothing, every lookup failed, and `pull --merge` "kept yours" for every file:
+ * the backend's changes never merged in, while the pull recorded them as taken
+ * (2026-09-23). Every merge test ran with the repo AT the site directory, the one
+ * layout where a bare path happens to work.
+ *
+ * @returns {Buffer|null} null when the path isn't in that revision
+ */
+export function showAt(dir, rev, relPath) {
   try {
-    return execFileSync('git', ['show', `HEAD:${relPath}`], {
+    return execFileSync('git', ['show', `${rev}:./${relPath}`], {
       cwd: dir,
       stdio: ['ignore', 'pipe', 'ignore'],
       maxBuffer: 64 * 1024 * 1024
@@ -182,6 +200,35 @@ export function showAtHead(dir, relPath) {
   } catch {
     return null
   }
+}
+
+/**
+ * The most recent committed version of a file whose content hashes to `sha256` —
+ * how the version a pull wrote is found again, as the ancestor of a merge.
+ *
+ * HEAD is that version only until the user commits an edit on top of it. After that
+ * HEAD is THEIR edit, and a merge against it reads their change as the starting
+ * point: the backend's version wins whole and the committed edit is reverted in the
+ * working tree. The pull recorded the hash of what it wrote (`pull-written.json`),
+ * so the version is recoverable from history by content, wherever it was committed.
+ *
+ * @param {number} [limit] - how many commits touching the file to search
+ * @returns {Buffer|null} null when no committed version matches
+ */
+export function findCommitted(dir, relPath, sha256, { limit = 50 } = {}) {
+  let revs
+  try {
+    revs = git(['log', `-n${limit}`, '--format=%H', '--', `./${relPath}`], dir)
+      .split('\n')
+      .filter(Boolean)
+  } catch {
+    return null
+  }
+  for (const rev of revs) {
+    const buf = showAt(dir, rev, relPath)
+    if (buf && createHash('sha256').update(buf).digest('hex') === sha256) return buf
+  }
+  return null
 }
 
 /**

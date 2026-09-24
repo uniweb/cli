@@ -28,9 +28,9 @@
  * three-way merge local work with what the backend sends, instead of choosing
  * between them. Most "conflicts" are two people editing different paragraphs of one
  * section, which merges silently; only genuine overlaps get conflict markers. The
- * common ancestor is the COMMITTED version of each file — the backend keeps no
- * per-version history and does not need to — so `--merge` requires a repo, and the
- * merge itself is `git merge-file`.
+ * common ancestor is the version the last pull wrote, found in the repo's history —
+ * the backend keeps no per-version history and does not need to — so `--merge`
+ * requires a repo, and the merge itself is `git merge-file`.
  *
  * `uniweb login && uniweb pull`. Run from a site, or a workspace with one site.
  *
@@ -97,6 +97,7 @@ import {
   uncommittedUnder,
   siteContentRoots,
   showAtHead,
+  findCommitted,
   mergeFile
 } from '../utils/git.js'
 import { isNonInteractive } from '../utils/interactive.js'
@@ -203,10 +204,15 @@ function readYamlUuid(filePath) {
 function pullCachePath(siteDir) {
   return join(siteDir, '.uniweb', 'pull-cache.json')
 }
+// ⛔ VERSION 2 DISOWNS EVERY ETAG A VERSION-1 PULL WROTE. Before 2026-09-23 a
+// `--merge` that kept a local file whole — every one, in the default layout (see
+// `showAt`) — still cached the ETag of content it never took. Every later pull then
+// answered 304 and the file never caught up. Ignoring those once costs one full pull.
+const PULL_CACHE_VERSION = 2
 function readPullCache(siteDir) {
   try {
     const obj = JSON.parse(readFileSync(pullCachePath(siteDir), 'utf8'))
-    return obj && typeof obj === 'object' ? obj : {}
+    return obj && typeof obj === 'object' && obj.version >= PULL_CACHE_VERSION ? obj : {}
   } catch {
     return {}
   }
@@ -216,7 +222,7 @@ function writePullCache(siteDir, { content, folder }) {
   mkdirSync(dirname(p), { recursive: true })
   writeFileSync(
     p,
-    JSON.stringify({ version: 1, content, folder }, null, 2) + '\n'
+    JSON.stringify({ version: PULL_CACHE_VERSION, content, folder }, null, 2) + '\n'
   )
 }
 
@@ -438,39 +444,66 @@ async function checkWorkingTree(siteDir, args) {
  * merging afterwards — so the projector stays a plain writer and needs no hook, and
  * nothing is lost in between because "mine" is already in memory.
  *
- * Requires a repo, and that is not a mandate creeping in: the ancestor IS the
+ * Requires a repo, and that is not a mandate creeping in: the ancestor is a
  * committed version, and the merge is git's. There is nothing to merge against
  * without one.
  *
- * @returns {Map<string, {content: Buffer, inHead: boolean}>|null} captured work, or
- *   null when merging isn't possible here (the caller reports and stops).
+ * ⭐ THE ANCESTOR IS THE VERSION THE LAST PULL WROTE — found in history by the hash
+ * the pull recorded (`findCommitted`), HEAD's only for a file no pull ever wrote.
+ * HEAD stops being that version the moment someone commits an edit on top of it,
+ * and a merge against it read their edit as the starting point: the backend's
+ * version won whole, reverting the committed edit (measured 2026-09-23 — commit,
+ * push refused, `uniweb refresh`, the edit gone from the working tree). The same
+ * reason brings in work that is COMMITTED but was never pushed: clean to git, so a
+ * dirty scan cannot see it, yet the projection would overwrite it.
+ *
+ * @returns {Map<string, {content: Buffer, base: Buffer|null}>|null} captured work,
+ *   or null when merging isn't possible here (the caller reports and stops).
  */
 function captureLocalWork(siteDir) {
   const dirty = uncommittedUnder(siteDir, siteContentRoots(siteDir))
   if (dirty === null) return null
   const written = readWritten(siteDir)
+  const ancestorOf = (rel) => {
+    const recorded = written.files[rel]
+    return (recorded && findCommitted(siteDir, rel, recorded)) || showAtHead(siteDir, rel)
+  }
   const out = new Map()
   for (const rel of dirty) {
     if (isPullOutput(siteDir, rel, written)) continue // pull's own output, not work
     try {
-      out.set(rel, {
-        content: readFileSync(join(siteDir, rel)),
-        inHead: showAtHead(siteDir, rel) !== null
-      })
+      out.set(rel, { content: readFileSync(join(siteDir, rel)), base: ancestorOf(rel) })
     } catch {
       // Locally deleted. Pull will restore the backend's copy, which is the
       // sensible reading of "I removed this and then asked for their version".
     }
   }
+  // Committed work: a file a pull wrote, edited and committed since. Its ancestor is
+  // only ever the version the pull wrote — HEAD is the edit itself — and when that is
+  // not in history there is none, which the merge treats as such.
+  for (const [rel, recorded] of Object.entries(written.files)) {
+    if (out.has(rel) || dirty.includes(rel)) continue
+    let content
+    try {
+      content = readFileSync(join(siteDir, rel))
+    } catch {
+      continue
+    }
+    if (createHash('sha256').update(content).digest('hex') === recorded) continue // untouched
+    out.set(rel, { content, base: findCommitted(siteDir, rel, recorded) })
+  }
   return out
 }
 
-// Merge captured work back over what the projection just wrote. Returns a report.
+// Merge captured work back over what the projection just wrote. Returns a report;
+// `unavailable` lists files whose merge could not run at all — they did NOT take the
+// backend's version, so the caller must not record this pull as taken.
 function mergeLocalWork(siteDir, captured) {
   const clean = []
   const conflicted = []
   const kept = []
-  for (const [rel, { content: mine, inHead }] of captured) {
+  const unavailable = []
+  for (const [rel, { content: mine, base }] of captured) {
     const abs = join(siteDir, rel)
     let theirs = null
     try {
@@ -490,27 +523,23 @@ function mergeLocalWork(siteDir, captured) {
     }
     if (theirs.equals(mine)) continue // both sides agree already
 
-    const base = inHead ? showAtHead(siteDir, rel) : null
-    if (!base) {
-      // No committed ancestor — a file added locally and never committed. There is
-      // no third input, so a three-way merge is not defined. Keep ours rather than
-      // guess, and say so.
-      writeFileSync(abs, mine)
-      kept.push(`${rel} (no committed ancestor, kept yours)`)
-      continue
-    }
-
+    // ⛔ NO ANCESTOR IS A TWO-WAY MERGE, NOT "KEEP OURS". Both sides hold the file and
+    // no common version is on record — added on both sides, or a pull's version that
+    // was never committed. Keeping ours hid the backend's version entirely, and the
+    // pull then recorded it as taken. An empty ancestor is git's add/add: both
+    // versions, under conflict markers, for a person to settle.
     const dir = mkdtempSync(join(tmpdir(), 'uniweb-merge-'))
     try {
       const basePath = join(dir, 'base')
       const theirsPath = join(dir, 'theirs')
-      writeFileSync(basePath, base)
+      writeFileSync(basePath, base || '')
       writeFileSync(theirsPath, theirs)
       writeFileSync(abs, mine) // merge-file rewrites this in place
       const r = mergeFile(siteDir, abs, basePath, theirsPath)
       if (!r.merged) {
         writeFileSync(abs, mine) // merge couldn't run — never leave a half-state
         kept.push(`${rel} (merge unavailable, kept yours)`)
+        unavailable.push(rel)
       } else if (r.conflicted) {
         conflicted.push(rel)
       } else {
@@ -520,7 +549,7 @@ function mergeLocalWork(siteDir, captured) {
       rmSync(dir, { recursive: true, force: true })
     }
   }
-  return { clean, conflicted, kept }
+  return { clean, conflicted, kept, unavailable }
 }
 
 // Minimal yes/no prompt; defaults to no, because the default must not destroy.
@@ -704,12 +733,16 @@ export async function pull(args = [], deps = {}) {
       const etag = res.headers?.get?.('etag') ?? null
       const buf = Buffer.from(await res.arrayBuffer())
       const docs = readPullDocuments(buf)
-      // Bank the per-entity staleness tokens this lane carried, so the next push
-      // is gated against the state we just took. A 304 skips this — correctly:
-      // unchanged upstream means the token we already hold is still current.
-      mergeBaseVersions(siteDir, client.origin, readPullVersions(buf))
-      mergeItemBaseVersions(siteDir, client.origin, readPullItemVersions(buf))
-      return { docs, etag }
+      // The staleness tokens this lane carried, so the next push is gated against
+      // the state we took. Banked by the caller once local work is merged back — a
+      // file the merge did not take must not have its token recorded as taken. A 304
+      // carries none, correctly: the tokens we hold are still current.
+      return {
+        docs,
+        etag,
+        versions: readPullVersions(buf),
+        itemVersions: readPullItemVersions(buf)
+      }
     } catch (err) {
       error(`Could not read the ${label} response: ${err.message}`)
       return null
@@ -747,10 +780,15 @@ export async function pull(args = [], deps = {}) {
     return pullScope
   }
 
+  // ⛔ `--force` IS UNCONDITIONAL. It means "take the backend's version over mine", and
+  // an ETag answers a different question — whether the BACKEND moved, never whether
+  // the files still hold what it sent. Echoed here, a `git checkout` followed by
+  // `pull --force` got a 304 and left the checked-out files in place (2026-09-23).
+  const conditional = !force
   // Lane 1 — content → config + pages/** + layout/**. The .uwx carries a single
   // entity (the site-content document). A 304 (unchanged) leaves local files as-is.
   const content = await getDocs('content', () =>
-    client.pullSiteContent(siteContentUuid, { etag: etagContent })
+    client.pullSiteContent(siteContentUuid, { etag: conditional ? etagContent : undefined })
   )
   if (content?.refused) return { exitCode: 1 }
   if (content && !content.notModified) {
@@ -865,10 +903,12 @@ export async function pull(args = [], deps = {}) {
   // (the backend resolves the site's `@uniweb/folder` from it; the framework never
   // holds a folder uuid). Models are resolved by name (async) up front, so
   // recordsToProject keeps its synchronous contract. A 304 leaves files as-is.
+  let folderLane = null
   if (!noRecords) {
     const folder = await getDocs('records', () =>
-      client.pullFolder(siteContentUuid, { etag: etagFolder })
+      client.pullFolder(siteContentUuid, { etag: conditional ? etagFolder : undefined })
     )
+    folderLane = folder
     if (folder?.refused) return { exitCode: 1 }
     if (folder && !folder.notModified && folder.docs?.length) {
       const { folderDoc, recordDocs } = splitRecordsPull(folder.docs)
@@ -918,27 +958,15 @@ export async function pull(args = [], deps = {}) {
     if (folder?.etag) etagFolder = folder.etag
   }
 
-  // Persist the ETags so the next pull is conditional (304 when unchanged).
-  writePullCache(siteDir, { content: etagContent, folder: etagFolder })
+  // ⛔ WHAT THIS PULL WROTE, AND THE HASHES A PUSH DIFFS AGAINST, DESCRIBE THE
+  // BACKEND'S CONTENT — so both are taken over the projection, BEFORE local work is
+  // merged back. Taken after it, as they were until 2026-09-23, they recorded the
+  // merged-in local edits as pull output and as already pushed: the next push said
+  // "Nothing to push", `status` said in sync, and the edit never left this machine —
+  // while a later plain pull would have overwritten it as its own output.
+  //
   // Config files are rewritten every pull whether or not they changed; include the
   // ones the projector owns so a pull-then-pull doesn't trip on them either.
-  // Merge captured local work back over what the projection just wrote. Runs after
-  // BOTH lanes, so a file either lane produced is merged the same way.
-  if (captured && captured.size) {
-    mergeReport = mergeLocalWork(siteDir, captured)
-    const r = mergeReport
-    if (r.clean.length) {
-      info(`Merged your changes into ${r.clean.length} file(s):`)
-      for (const f of r.clean) note(`  ${f}`)
-    }
-    for (const f of r.kept) note(`\u21b7 ${f}`)
-    if (r.conflicted.length) {
-      error(`${r.conflicted.length} file(s) have conflicts to resolve:`)
-      for (const f of r.conflicted) note(`  ${f}`)
-      note('Conflict markers are in place. Resolve them, then commit and push.')
-    }
-  }
-
   recordWritten(
     siteDir,
     [
@@ -976,6 +1004,45 @@ export async function pull(args = [], deps = {}) {
       note(`! could not re-bank the sync cache: ${err.message}`)
       note('  The next push will re-send content that is already current.')
     }
+  }
+
+  // Merge captured local work back over what the projection just wrote. Runs after
+  // BOTH lanes, so a file either lane produced is merged the same way.
+  if (captured && captured.size) {
+    mergeReport = mergeLocalWork(siteDir, captured)
+    const r = mergeReport
+    if (r.clean.length) {
+      info(`Merged your changes into ${r.clean.length} file(s):`)
+      for (const f of r.clean) note(`  ${f}`)
+    }
+    for (const f of r.kept) note(`\u21b7 ${f}`)
+    if (r.conflicted.length) {
+      error(`${r.conflicted.length} file(s) have conflicts to resolve:`)
+      for (const f of r.conflicted) note(`  ${f}`)
+      note('Conflict markers are in place. Resolve them, then commit and push.')
+    }
+  }
+
+  // ⛔ THE TOKENS AND ETAGS SAY "THIS COPY HOLDS THE BACKEND'S VERSION" — so they are
+  // banked only once every file has taken it, merged or in conflict. A token banked
+  // for a file that kept ours makes the next push of it read as "only you changed it"
+  // and overwrite the backend's version; an ETag banked for it makes every later pull
+  // answer 304, so the file never catches up. Measured 2026-09-23, both: a refused
+  // push, `uniweb refresh`, and a push that quietly put back a heading another writer
+  // had replaced. When a merge could not run, nothing of this pull is recorded as
+  // taken, and the next pull fetches it again.
+  const unavailable = mergeReport?.unavailable || []
+  if (unavailable.length) {
+    note("! Not recorded as taken — a merge could not run, so those files keep yours.")
+    note('  Pushing them is refused until a pull merges them; fix git, then `uniweb pull --merge` again.')
+  } else {
+    for (const lane of [content, folderLane]) {
+      if (!lane || lane.notModified || lane.refused) continue
+      mergeBaseVersions(siteDir, client.origin, lane.versions)
+      mergeItemBaseVersions(siteDir, client.origin, lane.itemVersions)
+    }
+    // Persist the ETags so the next pull is conditional (304 when unchanged).
+    writePullCache(siteDir, { content: etagContent, folder: etagFolder })
   }
 
   success(

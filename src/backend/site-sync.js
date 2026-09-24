@@ -15,6 +15,7 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from '
 import { join, dirname, relative, isAbsolute } from 'node:path'
 import yaml from 'js-yaml'
 import { hasUncommittedContent } from '../utils/git.js'
+import { recordWritten } from '../utils/pull-written.js'
 import { humanBytes } from '../utils/bytes.js'
 import { isAuthoredPreview } from '../utils/preview.js'
 import {
@@ -151,15 +152,17 @@ function writtenAsSent(sent, written) {
  * there.
  *
  * @returns {{ version: string|null, itemVersions: Object<string,string>|null,
- *   kept: string[], foreign: string[] }} `kept`: units the backend kept someone
- *   else's content for; `foreign`: units it holds that we did not send. Both paths.
+ *   held: string[], kept: string[], foreign: string[] }} `held`: units the backend
+ *   holds as we sent them; `kept`: units it kept someone else's content for;
+ *   `foreign`: units it holds that we did not send. All paths.
  */
 export function heldTokens({ sent, written, version = null, itemVersions = null }) {
-  if (!sent || !written) return { version, itemVersions, kept: [], foreign: [] }
+  if (!sent || !written) return { version, itemVersions, held: [], kept: [], foreign: [] }
   const ours = collectSiteUnits(sent)
   const theirs = collectSiteUnits(written)
   const uuidAt = collectUnitUuids(written)
   const units = new Set(Object.values(uuidAt))
+  const held = []
   const kept = []
   const foreign = []
   const items = {}
@@ -172,6 +175,7 @@ export function heldTokens({ sent, written, version = null, itemVersions = null 
       kept.push(path)
       continue
     }
+    held.push(path)
     if (itemVersions?.[uuid]) items[uuid] = itemVersions[uuid]
   }
   // A token for an item that is not a unit (a `queries` declaration) is never sent
@@ -183,9 +187,45 @@ export function heldTokens({ sent, written, version = null, itemVersions = null 
   return {
     version: foreign.length ? null : version,
     itemVersions: itemVersions ? items : null,
+    held: held.sort(),
     kept: kept.sort(),
     foreign: foreign.sort()
   }
+}
+
+// The files a unit projects to, under the site's own roots — `site.yml::paths` can
+// relocate `pages` and `layout`. `site.yml` stands for the `info` unit, which projects
+// to three files.
+function unitFilesOf(siteDir, unitPath) {
+  if (unitPath === 'site.yml') return ['site.yml', 'theme.yml', 'head.html']
+  let paths = {}
+  try {
+    paths = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))?.paths || {}
+  } catch {
+    /* no or unreadable site.yml — the defaults are right */
+  }
+  for (const root of ['pages', 'layout']) {
+    if (unitPath.startsWith(`${root}/`)) return [`${paths[root] || root}${unitPath.slice(root.length)}`]
+  }
+  return []
+}
+
+/**
+ * Record, as synced, the files of the units a push left on the backend as we sent them.
+ *
+ * ⭐ WHAT A PUSH DELIVERED IS THE NEXT MERGE'S ANCESTOR. `pull --merge` finds the
+ * version a file last synced at by the hash in `pull-written.json`. A pull records what
+ * it wrote; this records what a push delivered — the units `heldTokens` says the
+ * backend holds as ours, never one it kept for someone else. Without it, after a merge
+ * and a push the ancestor was the pull's raw output, which nobody commits: the next
+ * merge found no common version and put both whole files under conflict markers, for
+ * edits on different lines (measured 2026-09-23).
+ */
+function recordPushedUnits(siteDir, unitPaths) {
+  const files = new Set()
+  for (const p of unitPaths) for (const f of unitFilesOf(siteDir, p)) files.add(f)
+  const present = [...files].map((f) => join(siteDir, f)).filter((abs) => existsSync(abs))
+  if (present.length) recordWritten(siteDir, present)
 }
 
 // Pull the finalized entities out of the restore response. The backend returns
@@ -1560,6 +1600,7 @@ export async function pushSyncPackages({
   // collected here, to re-base attribution and to say so.
   const sentSiteDoc = siteContent ? entityDocFromUwx(siteContent.buffer) : null
   const notHeld = { kept: [], foreign: [] }
+  const heldUnits = []
   const harvestSiteContent = (finalized) => {
     for (const f of finalized || []) {
       const held = heldTokens({
@@ -1569,6 +1610,7 @@ export async function pushSyncPackages({
         itemVersions: f.itemVersions
       })
       harvest([{ ...f, version: held.version, itemVersions: held.itemVersions }])
+      heldUnits.push(...held.held)
       notHeld.kept.push(...held.kept)
       notHeld.foreign.push(...held.foreign)
     }
@@ -1751,6 +1793,9 @@ export async function pushSyncPackages({
       )
     }
   }
+  // The files of the units the backend now holds as ours are the synced version — the
+  // ancestor the next `pull --merge` merges from.
+  if (heldUnits.length) recordPushedUnits(siteDir, heldUnits)
   // What the backend holds that this copy doesn't. None of it was overwritten, and no
   // later push will overwrite it — but the files are behind until a pull.
   if (notHeld.kept.length || notHeld.foreign.length) {
