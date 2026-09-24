@@ -12,9 +12,10 @@
  * ⭐ A violation fails it (exit 1); `--lax` reports without failing. It warned by
  * default until 2026-09-24, with `--strict` to fail — a gate that passes is one
  * nobody reads, and `push` / `publish` now refuse the same findings. The live render
- * path stays tolerant. Dynamic (remote) inputs and entity references can't be
- * resolved without a running backend, so they're reported as deferred, never
- * silently skipped.
+ * path stays tolerant. Remote (`url:`) inputs are not in the project, so they're
+ * reported as deferred, never silently skipped. The value of an entity reference is
+ * not checked against the entity it names. ⛔ This said references were "reported as
+ * deferred" until 2026-09-24; no check ever reported them.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -171,7 +172,7 @@ function printSiteHuman(result) {
   }
 
   if (deferred.length > 0) {
-    log(`  ${colors.dim}↪ deferred (not statically checkable):${colors.reset}`)
+    log(`  ${colors.dim}↪ deferred (not checked):${colors.reset}`)
     for (const d of deferred) {
       const extra = d.url
         ? ` ${colors.dim}(${d.url})${colors.reset}`

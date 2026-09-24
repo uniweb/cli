@@ -1870,7 +1870,7 @@ fetch:
 
 **Component-side fetching.** When a component genuinely needs to fetch on its own (a search box, "load more", a lazy popover), use the kit hooks — `useFetched`, `useCacheEntry`, `useWholeRecord`. They share the framework's cache and dispatcher with declarative fetches; same-key requests dedupe automatically.
 
-**Validate before shipping.** `uniweb validate` checks file-based data against your declared schemas — missing required fields, type/enum/format mismatches, nested fields. A violation fails it (`--lax` only reports); it checks every record file in `records/`, and `push` / `publish` refuse the same findings before sending anything. Distinct from `uniweb doctor` (project structure): `validate` checks your *data* against the schemas you *declared*. External queries (`url:`), `ref`/`options`, and rich `sections`-form inputs are reported deferred.
+**Validate before shipping.** `uniweb validate` checks file-based data against your declared schemas — missing required fields, type/enum/format mismatches, nested fields. A violation fails it (`--lax` only reports); it checks every record file in `records/`, and `push` / `publish` refuse the same findings before sending anything. Distinct from `uniweb doctor` (project structure): `validate` checks your *data* against the schemas you *declared*. External queries (`url:`) are reported as deferred — their data isn't in the project; the value of a `ref`/`options` field is not checked against the entity it names.
 
 ### Fetching from other sources (`fetcher:`)
 

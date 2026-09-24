@@ -1697,9 +1697,9 @@ project against framework conventions.
 
 Every record file is checked against the schema its folder names, whether or
 not a section reads it. A violation fails the run; \`push\` and \`publish\` refuse
-the same findings. The live render path stays tolerant. Dynamic (\`url:\`)
-inputs and entity references can't be resolved without a running backend, so
-they're reported as deferred, never silently skipped.
+the same findings. The live render path stays tolerant. Remote (\`url:\`)
+inputs are not in the project, so they're reported as deferred, never silently
+skipped. A reference field's value is not checked against the entity it names.
 
 ${colors.bright}Options:${colors.reset}
   --lax              Report violations without failing (exit 0)
