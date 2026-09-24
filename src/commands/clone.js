@@ -102,7 +102,7 @@ function slugify(s) {
 // than imported because pull.js statically imports @uniweb/build).
 export function extractDocument(payload) {
   if (!payload || typeof payload !== 'object') return null
-  if (payload.$model || payload.$id || payload.info) return payload
+  if (payload.$schema || payload.$uuid || payload.$id || payload.info) return payload
   return payload.document || payload.entity || null
 }
 

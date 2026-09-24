@@ -1077,6 +1077,31 @@ async function recordAndDescribeOwner({ client, siteDir, payload, note }) {
 }
 
 /**
+ * Stop a push or publish before it sends anything, when a record cannot be sent as
+ * written — the emit's `refusals` (`@uniweb/build`'s `recordsToEntities`).
+ *
+ * ⛔ Checked BEFORE the site is created or a byte uploaded, not only before the send:
+ * both are writes of their own, which a refused records lane does not undo. (The lane
+ * itself is one transaction on the backend since 2026-09-24, so a refusal there writes
+ * nothing. Before that, a refused lane left the folder's entries and entities with no
+ * data behind, and every later push of the site's records was refused — measured
+ * 2026-09-23, from one record written by section.)
+ *
+ * @param {string[]|undefined} refusals
+ * @param {{ error: (m: string) => void, note: (m: string) => void }} report
+ * @returns {boolean} true when the caller must stop
+ */
+export function refuseUnsendableRecords(refusals, { error, note }) {
+  if (!refusals?.length) return false
+  const n = refusals.length
+  error(
+    `${n === 1 ? 'A record' : `${n} records`} cannot be pushed as written — no content was sent.`
+  )
+  for (const r of refusals) note(`  ${r}`)
+  return true
+}
+
+/**
  * Guarantee we have per-item identity before an identity-bearing push.
  *
  * Fires only when the site HAS been pushed to this backend before (its uuid is in

@@ -5,7 +5,7 @@
  *   - folder lane → one `@uniweb/folder` + the collection-record entities it
  *     references (the dynamic half; the `$ref` closure rides together).
  *
- * Each entity is an entity-content document (`$id` + `$model` + sections). The site's
+ * Each entity is an entity-content document (`$id` + `$schema` + sections). The site's
  * identity on a backend is its site-content uuid, in that backend's section of
  * `sync.json`. A first push to a backend has none — it CREATEs the site (uuid-less),
  * the backend mints + adopts it and returns the new uuid, which `push` records in
@@ -83,6 +83,7 @@ import {
   readFolderItemUuids,
   readQueryUuids,
   ensureItemUuids,
+  refuseUnsendableRecords,
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
@@ -394,6 +395,7 @@ export async function push(args = [], deps = {}) {
   let assetIds = null
   if (!output && !dryRun) {
     let mediaRefs = []
+    let refusals = []
     try {
       const probe = await emitSyncPackages(siteDir, {
       backend: client.origin,
@@ -403,10 +405,14 @@ export async function push(args = [], deps = {}) {
         resolveModel: makeModelResolver({ client, offline: false })
       })
       mediaRefs = probe.localAssets || []
+      refusals = probe.refusals || []
     } catch (err) {
       error(`Could not scan the site for local media: ${err.message}`)
       return { exitCode: 2 }
     }
+    // A record the backend would refuse stops the push HERE — before the site is
+    // created or a byte uploaded, not merely before the send (`refuseUnsendableRecords`).
+    if (refuseUnsendableRecords(refusals, { error, note })) return { exitCode: 1 }
     if (mediaRefs.length) {
       // The site has to exist before its bytes do — an upload with no owning
       // entity is charged and cannot be freed, because freeing means deleting the
@@ -530,6 +536,9 @@ export async function push(args = [], deps = {}) {
   const { siteContent, records, siteContentUuid, warnings, skipped } = pkg
   log('')
   for (const w of warnings) note(`! ${w}`)
+  // The same stop for the paths the probe above does not run on — `-o` and
+  // `--dry-run` say what a push would do, and a push would stop here.
+  if (refuseUnsendableRecords(pkg.refusals, { error, note })) return { exitCode: 1 }
   // Warn level, not dim: this is the author choosing entities vs static files.
   reportSchemalessQueries(pkg.schemaless, { warn, dim: note })
 

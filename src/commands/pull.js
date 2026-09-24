@@ -76,7 +76,8 @@ import {
   readZip,
   computeUnitHashes,
   collectUnitUuids,
-  collectQueryUuids
+  collectQueryUuids,
+  documentSchema
 } from '@uniweb/build/uwx'
 import {
   readWritten,
@@ -230,7 +231,10 @@ function writePullCache(siteDir, { content, folder }) {
 // document, or a `{ document }` / `{ entity }` envelope. (Adjust at live e2e.)
 export function extractDocument(payload) {
   if (!payload || typeof payload !== 'object') return null
-  if (payload.$model || payload.$id || payload.info) return payload
+  // ⛔ `$uuid` counts: every stored entity has one. Without it, a document naming no
+  // `$schema` stopped being a document at all — it vanished from the pull, which then
+  // reported "0 record(s)" and succeeded (2026-09-24, when `$model` left this test).
+  if (payload.$schema || payload.$uuid || payload.$id || payload.info) return payload
   return payload.document || payload.entity || null
 }
 
@@ -250,8 +254,59 @@ export function splitRecordsPull(payload) {
   if (!list) return { folderDoc: null, recordDocs: [] }
   const docs = list.map(extractDocument).filter(Boolean)
   return {
-    folderDoc: docs.find((d) => d.$model === FOLDER_MODEL) || null,
-    recordDocs: docs.filter((d) => d.$model !== FOLDER_MODEL)
+    folderDoc: docs.find((d) => documentSchema(d) === FOLDER_MODEL) || null,
+    recordDocs: docs.filter((d) => documentSchema(d) !== FOLDER_MODEL)
+  }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Say why a pull did not place every record it was sent: a headline for an error
+ * and the lines under it.
+ *
+ * ⛔ A data schema named by id, or not named at all, is said first, and instead of the
+ * per-record reasons. The folder is found by its data schema's scoped name
+ * (`splitRecordsPull`) and a record is placed in `records/<schema>/` by its data
+ * schema's scoped name, so a response naming them by id — or naming none — places
+ * nothing, and every record is then skipped as "not in the folder", which hides the
+ * cause. Measured 2026-09-23: a backend answered the folder lane with ids for the
+ * folder and every record, under the key `$schema` replaced (`$model`).
+ *
+ * @param {{ docs: object[], taken: number, skipped: object[] }} lane - every document
+ *        the lane carried, how many records were written or already current, and the
+ *        projection's skips
+ * @returns {{ headline: string, lines: string[] }}
+ */
+export function describeUnplacedRecords({ docs, taken, skipped }) {
+  const none = taken === 0
+  const lead = none ? 'No record' : 'Not every record'
+  const placedBy =
+    "A record is placed in records/<schema>/ by its data schema's scoped name, so these cannot be placed."
+  const byId = [
+    ...new Set((docs || []).map((d) => documentSchema(d)).filter((m) => m && UUID_RE.test(m)))
+  ]
+  if (byId.length) {
+    return {
+      headline: `${lead} could be placed — the backend named their data schemas by id, not by scoped name.`,
+      lines: [
+        `Named by id: ${byId.slice(0, 3).join(', ')}${byId.length > 3 ? ', …' : ''}`,
+        placedBy,
+        'Your record files are unchanged.'
+      ]
+    }
+  }
+  const unnamed = (docs || []).filter((d) => !documentSchema(d)).length
+  if (unnamed) {
+    return {
+      headline: `${lead} could be placed — ${unnamed} of the backend's documents name no data schema (\`$schema\`).`,
+      lines: [placedBy, 'Your record files are unchanged.']
+    }
+  }
+  const n = skipped.length
+  return {
+    headline: `${n} record${n === 1 ? '' : 's'} could not be placed — ${n === 1 ? 'its file is' : 'their files are'} unchanged.`,
+    lines: skipped.map((s) => `↷ ${s.slug ?? s.uuid ?? '(record)'}: ${s.reason}`)
   }
 }
 
@@ -757,6 +812,9 @@ export async function pull(args = [], deps = {}) {
   let sections = 0
   let records = 0
   let deleted = 0
+  // Set when the folder lane carried records this pull did not place — see the ⛔
+  // where it is set.
+  let recordsNotPlaced = null
 
   // Conditional-pull cache: the last ETag seen per lane (opaque token — cached and
   // echoed verbatim, never recomputed). Lives in the gitignored `.uniweb/`.
@@ -794,7 +852,7 @@ export async function pull(args = [], deps = {}) {
   if (content && !content.notModified) {
     const siteDoc =
       content.docs &&
-      (content.docs.find((d) => d?.info || d?.$model) ||
+      (content.docs.find((d) => d?.info || documentSchema(d)) ||
         content.docs[0] ||
         null)
     if (siteDoc) {
@@ -915,7 +973,7 @@ export async function pull(args = [], deps = {}) {
       const resolveModel = makeModelResolver({ client })
       const declByModel = new Map()
       for (const model of [
-        ...new Set(recordDocs.map((d) => d.$model).filter(Boolean))
+        ...new Set(recordDocs.map((d) => documentSchema(d)).filter(Boolean))
       ]) {
         try {
           declByModel.set(model, await resolveModel(model))
@@ -923,8 +981,8 @@ export async function pull(args = [], deps = {}) {
           note(`! could not resolve model ${model}: ${err.message}`)
         }
       }
-      // ⛔ NO QUERY CONFIG. A record's home is decided by what it IS — its
-      // `$model` names the pool folder — not by any query that happens to select
+      // ⛔ NO QUERY CONFIG. A record's home is decided by what it IS — its data
+      // schema (`documentSchema`) names the pool folder — not by any query that happens to select
       // it. Handed the foundation's scope (`scopeFor`), `recordsToProject` places a
       // `@/x` model the producer resolved to `@acme/x` back where the author wrote it.
       const report = recordsToProject({
@@ -951,8 +1009,22 @@ export async function pull(args = [], deps = {}) {
         removed.push(resolve(siteDir, report.recordsFile))
       }
       records += report.placed.length + report.updated.length
-      for (const s of report.skipped)
-        note(`↷ ${s.slug ?? s.uuid ?? '(record)'}: ${s.reason}`)
+      // ⛔ A PULL THAT DID NOT PLACE A RECORD HAS NOT TAKEN THE BACKEND'S RECORDS.
+      // Until 2026-09-23 each skip was a dim note, the pull said "✓ Pulled … 0
+      // record(s)" and exited 0, and it banked the lane's ETag and tokens. So the next
+      // pull would hear 304 and never retry, and a `refresh && push` would go on to
+      // push — and a push sends the folder whole (`utils/records-guard.js`), so the
+      // skipped records would leave it. It is an error now, the lane is not recorded
+      // as taken (below), and the exit is non-zero (the end).
+      if (report.skipped.length) {
+        recordsNotPlaced = describeUnplacedRecords({
+          docs: folder.docs,
+          taken: report.placed.length + report.updated.length + report.unchanged.length,
+          skipped: report.skipped
+        })
+        error(recordsNotPlaced.headline)
+        for (const line of recordsNotPlaced.lines) note(`  ${line}`)
+      }
       for (const w of report.warnings) note(`! ${w}`)
     }
     if (folder?.etag) etagFolder = folder.etag
@@ -1038,21 +1110,34 @@ export async function pull(args = [], deps = {}) {
   } else {
     for (const lane of [content, folderLane]) {
       if (!lane || lane.notModified || lane.refused) continue
+      // Records this pull did not place were not taken, so neither is their lane.
+      if (lane === folderLane && recordsNotPlaced) continue
       mergeBaseVersions(siteDir, client.origin, lane.versions)
       mergeItemBaseVersions(siteDir, client.origin, lane.itemVersions)
     }
-    // Persist the ETags so the next pull is conditional (304 when unchanged).
-    writePullCache(siteDir, { content: etagContent, folder: etagFolder })
+    // Persist the ETags so the next pull is conditional (304 when unchanged). The
+    // folder's is DROPPED when records were not placed, so the next pull fetches
+    // them again rather than hearing 304 about a state it never took.
+    writePullCache(siteDir, {
+      content: etagContent,
+      folder: recordsNotPlaced ? null : etagFolder
+    })
+  }
+  if (recordsNotPlaced) {
+    note('Records not recorded as taken — the next pull fetches them again.')
   }
 
-  success(
+  const summary =
     `Pulled — ${pages} page(s), ${sections} section(s), ${records} record(s)` +
-      (deleted ? `, ${deleted} deleted` : '')
-  )
+    (deleted ? `, ${deleted} deleted` : '')
+  if (recordsNotPlaced) info(summary)
+  else success(summary)
   // Unresolved conflicts are a non-zero exit, the way a conflicted `git merge` is.
   // The pull itself worked; there is work left for a human. This is what makes a
   // chained `uniweb pull --merge && uniweb push` safe by construction — without it,
   // the obvious one-liner pushes conflict markers into live content.
+  // Records it could not place are the same: the pull ran, and what it was sent is not
+  // all in the files — a chained push must not go on as if it were.
   const conflicts = mergeReport?.conflicted?.length ?? 0
-  return { exitCode: conflicts ? 1 : 0, merge: mergeReport }
+  return { exitCode: conflicts || recordsNotPlaced ? 1 : 0, merge: mergeReport }
 }

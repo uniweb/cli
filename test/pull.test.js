@@ -31,7 +31,8 @@ import {
   extractDocument,
   splitRecordsPull,
   readPullDocuments,
-  readPullVersions
+  readPullVersions,
+  describeUnplacedRecords
 } from '../src/commands/pull.js'
 import { createZip } from '@uniweb/build/uwx'
 import { readWritten, isPullOutput } from '../src/utils/pull-written.js'
@@ -165,6 +166,9 @@ test('extractDocument tolerates raw, {document}, and {entity} envelopes', () => 
   assert.equal(extractDocument({ document: raw }), raw)
   assert.equal(extractDocument({ entity: raw }), raw)
   assert.equal(extractDocument(null), null)
+  // The agreed key (2026-09-24) — a document naming its data schema by `$schema`.
+  const named = { $schema: '@uniweb/site-content' }
+  assert.equal(extractDocument(named), named)
 })
 
 test('readPullDocuments reads entity docs out of a .uwx zip, and tolerates JSON envelopes', () => {
@@ -185,13 +189,23 @@ test('readPullDocuments reads entity docs out of a .uwx zip, and tolerates JSON 
 })
 
 test('splitRecordsPull partitions the folder from the records', () => {
-  const folder = { $model: '@uniweb/folder', contents: [] }
-  const rec = { $model: '@acme/article', article: {} }
+  const folder = { $schema: '@uniweb/folder', contents: [] }
+  const rec = { $schema: '@acme/article', article: {} }
   const { folderDoc, recordDocs } = splitRecordsPull({
     entities: [folder, rec]
   })
   assert.equal(folderDoc, folder)
   assert.deepEqual(recordDocs, [rec])
+})
+
+test('splitRecordsPull does not read the old key: a `$model` document names no data schema', () => {
+  // No fallback [Diego, 2026-09-24] — and no silent drop either: a stored entity is
+  // still a document (its `$uuid`), so the pull reaches it and says what is wrong.
+  const folder = { $uuid: 'F1', $model: '@uniweb/folder', contents: [] }
+  const rec = { $uuid: 'R1', $model: '@acme/article', article: {} }
+  const { folderDoc, recordDocs } = splitRecordsPull({ entities: [folder, rec] })
+  assert.equal(folderDoc, null)
+  assert.deepEqual(recordDocs, [folder, rec])
 })
 
 test('pull is a no-op with no $uuid in files', async () => {
@@ -296,7 +310,7 @@ test('pull fetches the folder lane by the site-content uuid (no query config nee
     // The folder document carries no $uuid of its own (the backend owns it).
     const folderDoc = {
       $id: '@folder',
-      $model: '@uniweb/folder',
+      $schema: '@uniweb/folder',
       contents: [
         {
           kind: 'branch',
@@ -305,7 +319,7 @@ test('pull fetches the folder lane by the site-content uuid (no query config nee
             {
               kind: 'ref',
               name: 'hello',
-              entry: { model: '@acme/article', entity: 'R9' }
+              entry: { schema: '@acme/article', entity: 'R9' }
             }
           ]
         }
@@ -313,7 +327,7 @@ test('pull fetches the folder lane by the site-content uuid (no query config nee
     }
     const recordDoc = {
       $uuid: 'R9',
-      $model: '@acme/article',
+      $schema: '@acme/article',
       article: { title: { en: 'Hello' }, body: { en: '\n# Hi\n' } }
     }
     const declaration = {
@@ -362,7 +376,7 @@ test('pull projects the collections lane, resolving the model via a mock model-r
 
     const folderDoc = {
       $id: '@folder',
-      $model: '@uniweb/folder',
+      $schema: '@uniweb/folder',
       contents: [
         {
           kind: 'branch',
@@ -371,7 +385,7 @@ test('pull projects the collections lane, resolving the model via a mock model-r
             {
               kind: 'ref',
               name: 'hello',
-              entry: { model: '@acme/article', entity: 'R1' }
+              entry: { schema: '@acme/article', entity: 'R1' }
             }
           ]
         }
@@ -379,7 +393,7 @@ test('pull projects the collections lane, resolving the model via a mock model-r
     }
     const recordDoc = {
       $uuid: 'R1',
-      $model: '@acme/article',
+      $schema: '@acme/article',
       article: { title: { en: 'Hello' }, body: { en: '\n# Hi\n' } }
     }
     const declaration = {
@@ -412,6 +426,163 @@ test('pull projects the collections lane, resolving the model via a mock model-r
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+// ── records a pull could not place ─────────────────────────────────────────
+// ⛔ Measured 2026-09-23: a backend answered the folder lane naming the folder's Model
+// and every record's by id. Nothing could be placed, and the pull said "✓ Pulled … 0
+// record(s)", exited 0 and banked the lane's ETag and tokens — so the next pull would
+// hear 304 and never try again, and a `refresh && push` would go on to push.
+
+// The folder lane as a backend serves it: a `.uwx` whose manifest carries each
+// entity's version token, and an ETag.
+function folderLane(docs) {
+  const zip = createZip([
+    {
+      name: 'manifest.json',
+      data: Buffer.from(
+        JSON.stringify({
+          format: 'uwx/1',
+          entries: docs.map((d) => ({
+            kind: 'entity',
+            uuid: d.$uuid,
+            file: `entities/${d.$uuid}.json`,
+            version: `V-${d.$uuid}`,
+            item_versions: { [`I-${d.$uuid}`]: `iv-${d.$uuid}` }
+          }))
+        })
+      )
+    },
+    ...docs.map((d) => ({ name: `entities/${d.$uuid}.json`, data: Buffer.from(JSON.stringify(d)) }))
+  ])
+  return {
+    ok: true,
+    status: 200,
+    statusText: '',
+    headers: { get: (k) => (String(k).toLowerCase() === 'etag' ? '"F-ETAG"' : null) },
+    arrayBuffer: async () => zip
+  }
+}
+
+const memberDecl = {
+  name: '@acme/member',
+  sections: { member: { brief: true, fields: { name: { type: 'string' } } } }
+}
+
+// A folder placing one member, its data schemas named as given. `$schema` (with
+// `schema` in each entry) is the agreed shape; `$model` holding an id is what a
+// backend without the fix sends.
+async function pullFolderNamed(dir, { folderModel, memberModel, key = '$schema' }) {
+  const ref = key === '$schema' ? 'schema' : 'model'
+  const docs = [
+    {
+      $uuid: 'F1',
+      [key]: folderModel,
+      contents: [{ kind: 'ref', name: 'alice', entry: { [ref]: memberModel, entity: 'R1' } }]
+    },
+    { $uuid: 'R1', [key]: memberModel, member: { name: 'Alice' } }
+  ]
+  return pull(['--force'], {
+    resolveSiteDir: async () => dir,
+    getToken: async () => 'tok',
+    fetch: async (url) =>
+      url.includes('/dev/site/folder/pull/SITE1')
+        ? folderLane(docs)
+        : url.includes('/dev/registry/data-schemas/acme/member')
+          ? jsonRes(memberDecl)
+          : jsonRes(null, 404)
+  })
+}
+
+const pulledCache = (dir) => JSON.parse(readFileSync(join(dir, '.uniweb/pull-cache.json'), 'utf8'))
+
+test('⛔ a pull that places none of the records it was sent fails, and does not record the lane as taken', async () => {
+  const dir = tempSite()
+  try {
+    writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE1')
+    const res = await pullFolderNamed(dir, {
+      folderModel: '11111111-1111-7111-8111-111111111111',
+      memberModel: '22222222-2222-7222-8222-222222222222'
+    })
+    assert.equal(res.exitCode, 1)
+    assert.equal(existsSync(join(dir, 'records')), false, 'nothing was placed')
+    assert.equal(pulledCache(dir).folder, null, 'the next pull must fetch the records again')
+    assert.equal(readBaseVersions(dir, TEST_ORIGIN).R1, undefined)
+    assert.equal(readItemBaseVersions(dir, TEST_ORIGIN)['I-R1'], undefined)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a lane whose documents name no data schema fails too — they are not dropped in silence', async () => {
+  const dir = tempSite()
+  try {
+    writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE1')
+    const res = await pullFolderNamed(dir, {
+      folderModel: '@uniweb/folder',
+      memberModel: '@acme/member',
+      key: '$model'
+    })
+    assert.equal(res.exitCode, 1)
+    assert.equal(existsSync(join(dir, 'records')), false)
+    assert.equal(pulledCache(dir).folder, null)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('CONTROL — the same lane in the agreed shape (`$schema`, scoped names) is placed, and recorded as taken', async () => {
+  const dir = tempSite()
+  try {
+    writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE1')
+    const res = await pullFolderNamed(dir, { folderModel: '@uniweb/folder', memberModel: '@acme/member' })
+    assert.equal(res.exitCode, 0)
+    assert.ok(existsSync(join(dir, 'records/acme/member/alice.yml')))
+    assert.equal(pulledCache(dir).folder, '"F-ETAG"')
+    assert.equal(readBaseVersions(dir, TEST_ORIGIN).R1, 'V-R1')
+    assert.equal(readItemBaseVersions(dir, TEST_ORIGIN)['I-R1'], 'iv-R1')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('describeUnplacedRecords says a data schema named by id first, instead of every record "not in the folder"', () => {
+  const said = describeUnplacedRecords({
+    docs: [
+      { $uuid: 'F1', $schema: '11111111-1111-7111-8111-111111111111' },
+      { $uuid: 'R1', $schema: '22222222-2222-7222-8222-222222222222' }
+    ],
+    taken: 0,
+    skipped: [
+      { uuid: 'F1', reason: 'no slug (not in the folder, no $id)' },
+      { uuid: 'R1', reason: 'no slug (not in the folder, no $id)' }
+    ]
+  })
+  assert.equal(said.headline, 'No record could be placed — the backend named their data schemas by id, not by scoped name.')
+  assert.match(said.lines[0], /11111111-1111-7111-8111-111111111111/)
+  assert.ok(!said.lines.some((l) => /not in the folder/.test(l)))
+})
+
+test('describeUnplacedRecords says when documents name no data schema at all', () => {
+  const said = describeUnplacedRecords({
+    docs: [{ $uuid: 'F1', $model: '@uniweb/folder' }, { $uuid: 'R1', $model: '@acme/member' }],
+    taken: 0,
+    skipped: [{ uuid: 'F1', reason: 'no slug (not in the folder, no $id)' }]
+  })
+  assert.equal(said.headline, "No record could be placed — 2 of the backend's documents name no data schema (`$schema`).")
+})
+
+test('describeUnplacedRecords, with data schemas named, gives each record its reason', () => {
+  const said = describeUnplacedRecords({
+    docs: [{ $uuid: 'R1', $schema: '@acme/unknown' }],
+    taken: 2,
+    skipped: [{ slug: 'x', reason: 'unresolved model @acme/unknown' }]
+  })
+  assert.equal(said.headline, '1 record could not be placed — its file is unchanged.')
+  assert.deepEqual(said.lines, ['↷ x: unresolved model @acme/unknown'])
 })
 
 test('pull --no-records skips the folder lane', async () => {

@@ -87,6 +87,7 @@ import {
   ensureItemUuids,
   readFolderItemUuids,
   ensureSiteExists,
+  refuseUnsendableRecords,
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
   pushSyncPackages
@@ -568,6 +569,11 @@ export async function publish(args = []) {
     say.err(`Could not build the sync package: ${err.message}`)
     return { exitCode: 1 }
   }
+  // A record the backend would refuse stops the publish HERE — before the site is
+  // created or a byte uploaded, not merely before the send (`refuseUnsendableRecords`).
+  if (refuseUnsendableRecords(probe.refusals, { error: say.err, note: say.dim })) {
+    return { exitCode: 1 }
+  }
   const schemalessNames = (probe.schemaless || []).map((col) => col.name)
   // A product decision the author is usually making unknowingly — say it at warn
   // level, not dim among everything else. See the helper for what the old
@@ -964,6 +970,9 @@ export async function publish(args = []) {
     return { exitCode: 1 }
   }
   for (const w of pkg.warnings) say.dim(`! ${w}`)
+  if (refuseUnsendableRecords(pkg.refusals, { error: say.err, note: say.dim })) {
+    return { exitCode: 1 }
+  }
   const report = {
     info: (m) => say.info(m),
     note: (m) => say.dim(m),
