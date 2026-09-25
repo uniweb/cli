@@ -42,6 +42,7 @@ import {
   ensureItemUuids,
   recoverItemUuids,
   recoverUnbankedIdentity,
+  recoverRecordsIdentity,
   heldTokens,
   mergeBaseVersions
 } from '../src/backend/site-sync.js'
@@ -2335,6 +2336,69 @@ test('recoverUnbankedIdentity reads only when the package went out without ident
   assert.equal(reads, 1)
   assert.deepEqual(again, { itemUuids: LANDED_UNITS })
 })
+
+// ─── the records lane: which stored record each is, and its placement ─────────
+// Measured 2026-09-25 on the same blog site: its binding held no `records` and no `folders`, so
+// its folder sent three placements with no `$uuid` while three were stored, and was refused.
+
+const folderLane = (docs) => {
+  const zip = createZip([
+    { name: 'manifest.json', data: Buffer.from(JSON.stringify({ format: 'uwx/1', entries: [] })) },
+    ...docs.map((d) => ({ name: `entities/${d.$uuid}.json`, data: Buffer.from(JSON.stringify(d)) }))
+  ])
+  return { ok: true, arrayBuffer: async () => zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) }
+}
+const STORED_FOLDER = {
+  $uuid: 'FOLDER',
+  $schema: '@uniweb/folder',
+  contents: [
+    { kind: 'ref', name: 'designing', entry: { schema: '@std/article', entity: 'T1' }, $uuid: 'P1' },
+    { kind: 'ref', name: 'start', entry: { schema: '@std/article', entity: 'T2' }, $uuid: 'P2' }
+  ]
+}
+const STORED_T1 = { $uuid: 'T1', $schema: '@std/article', article: { title: 'Designing' }, links: [{ url: 'a', $uuid: 'L1' }] }
+const STORED_T2 = { $uuid: 'T2', $schema: '@std/article', article: { title: 'Start' } }
+const BLOG_INDEX = [
+  { kind: 'folder' },
+  { id: 'std/article/designing', model: '@std/article', slug: 'designing', ownId: 'U1' },
+  { id: 'std/article/start', model: '@std/article', slug: 'start', ownId: 'U2' }
+]
+
+test('⭐ a copy that lost its records and folder maps recovers both from one read of the folder lane', async () => {
+  const dir = tmpSite()
+  bind(dir, 'SITE')
+  let asked = null
+  const client = {
+    origin: ORIGIN,
+    pullFolder: async (uuid) => {
+      asked = uuid
+      return folderLane([STORED_FOLDER, STORED_T1, STORED_T2])
+    }
+  }
+  const said = []
+  const n = await recoverRecordsIdentity({ client, siteDir: dir, index: BLOG_INDEX, note: (m) => said.push(m) })
+  assert.equal(asked, 'SITE', 'read by the site the copy is bound to')
+  assert.equal(n, 2 + 4, 'two records, four placement keys (by record and by name)')
+  const state = JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends[ORIGIN]
+  assert.deepEqual(state.records, { U1: 'T1', U2: 'T2' })
+  assert.deepEqual(state.folders, { '@T1': 'P1', '@T2': 'P2', designing: 'P1', start: 'P2' })
+  assert.deepEqual(state.recordItems, { T1: { 'links[0]': 'L1' }, T2: {} }, 'the list items of the matched records, from the same read')
+  assert.match(said[0], /Recovered the identity of 2 record\(s\) and 4 folder placement\(s\)/)
+})
+
+test('CONTROL — a copy whose maps name every record it sends reads nothing', async () => {
+  const dir = tmpSite()
+  bind(dir, 'SITE')
+  const store = JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8'))
+  store.backends[ORIGIN].records = { U1: 'T1', U2: 'T2' }
+  store.backends[ORIGIN].folders = { '@T1': 'P1' }
+  writeFileSync(join(dir, 'sync.json'), JSON.stringify(store))
+  let reads = 0
+  const client = { origin: ORIGIN, pullFolder: async () => { reads++; return folderLane([STORED_FOLDER]) } }
+  assert.equal(await recoverRecordsIdentity({ client, siteDir: dir, index: BLOG_INDEX }), 0)
+  assert.equal(reads, 0)
+})
+
 
 // ─── the designation outcome (E6) ────────────────────────────────────────────
 // A push carries the author's `template:` intent in `info`; what the backend DID

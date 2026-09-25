@@ -45,7 +45,8 @@ import {
   removeYamlScalar,
   harvestRecordItems,
   storedRecordItems,
-  reprintRecordItems
+  reprintRecordItems,
+  matchStoredRecords
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -879,6 +880,64 @@ export async function recoverRecordItemUuids({ client, siteDir, uuids, note }) {
 }
 
 /**
+ * Recover the records lane's identity this copy lacks for the site it is bound to — which stored
+ * record each of its records is (`records`), each placement's in the folder (`folders`), and the
+ * list items of the records it matches (`recordItems`) — from one read of the backend's folder
+ * lane. What the copy already holds is kept.
+ *
+ * ⛔ Until 2026-09-25 nothing recovered these, and a copy whose `sync.json` had lost them — a
+ * blog site whose push was refused after its content landed, with an older CLI — was refused on
+ * every push after: its folder sent three placements with no `$uuid` while three were stored
+ * ("one section carries no item identity (section contents)"). Unrefused, its records would have
+ * gone up with none, and the backend would have made a second entity of each.
+ *
+ * Reads only when the package names a record the map does not, or the folder map is empty; a
+ * record new to the backend costs that read and finds nothing (`matchStoredRecords`).
+ *
+ * @param {object} params
+ * @param {object[]} params.index - the records the package sends (`pkg.records.index`)
+ * @returns {Promise<number>} how many records and placements were recovered
+ */
+export async function recoverRecordsIdentity({ client, siteDir, index, note }) {
+  const state = readBackendState(siteDir, client.origin)
+  const siteUuid = state.site?.uuid || null
+  const recordMap = state.records || {}
+  const records = (index || []).filter((e) => e?.ownId && e.model && e.slug)
+  const folders = readFolderItemUuids(siteDir, client.origin)
+  const unmapped = records.some((e) => !recordMap[e.ownId])
+  if (!siteUuid || !records.length || (!unmapped && Object.keys(folders).length)) return 0
+  try {
+    const res = await client.pullFolder(siteUuid)
+    if (!res?.ok) return 0
+    const docs = entityDocsFromUwx(Buffer.from(await res.arrayBuffer()))
+    const folderDoc = docs.find((d) => d?.$schema === '@uniweb/folder')
+    if (!folderDoc) return 0
+    const learned = matchStoredRecords({ index: records, recordMap, folderDoc })
+    const matched = Object.keys(learned).length
+    if (matched) {
+      updateBackendMap(siteDir, client.origin, 'records', learned)
+      const stored = new Map(docs.map((d) => [d?.$uuid, d]))
+      const items = {}
+      for (const theirs of Object.values(learned)) {
+        const doc = stored.get(theirs)
+        if (doc) items[theirs] = storedRecordItems(doc)
+      }
+      writeRecordItemUuids(siteDir, client.origin, items)
+    }
+    const placements = collectFolderItemUuids(folderDoc)
+    const missing = Object.fromEntries(Object.entries(placements).filter(([k]) => !folders[k]))
+    writeFolderItemUuids(siteDir, client.origin, missing)
+    const placed = Object.keys(missing).length
+    if (matched || placed) {
+      note?.(`Recovered the identity of ${matched} record(s) and ${placed} folder placement(s) from the backend.`)
+    }
+    return matched + placed
+  } catch {
+    return 0
+  }
+}
+
+/**
  * The workspace this site was created in on `backend` — its owner, as the create
  * answered it — in the header's form: `@handle`, a unit's bare uuid when that unit has
  * no handle, or null for the personal workspace (or no record).
@@ -1263,8 +1322,9 @@ export async function recoverItemUuids({ client, siteDir, note }) {
 
 /**
  * Recover the identity a package just built went out without, when the backend may hold it —
- * a page or section (`itemIdentity.unknown`), or a record's list items
- * (`recordItemIdentity.unbanked`) — and say what to build the package again with.
+ * a page or section (`itemIdentity.unknown`), a record or a folder placement
+ * (`recoverRecordsIdentity`), or a record's list items (`recordItemIdentity.unbanked`) — and say
+ * what to build the package again with.
  *
  * A page added since the last push is also without identity, and costs one read that finds
  * nothing. That is the price of never sending as new an item the backend already holds.
@@ -1276,6 +1336,15 @@ export async function recoverUnbankedIdentity({ client, siteDir, pkg, note }) {
   let again = null
   if (pkg?.itemIdentity?.unknown > 0 && (await recoverItemUuids({ client, siteDir, note }))) {
     again = { ...again, itemUuids: readItemUuids(siteDir, client.origin) }
+  }
+  // The records the package sends, and the folder placing them. The emit reads the `records`
+  // map from sync.json itself, so it needs no option — only the build again.
+  if (await recoverRecordsIdentity({ client, siteDir, index: pkg?.records?.index, note })) {
+    again = {
+      ...again,
+      folderItemUuids: readFolderItemUuids(siteDir, client.origin),
+      recordItemUuids: readRecordItemUuids(siteDir, client.origin)
+    }
   }
   const unbanked = pkg?.recordItemIdentity?.unbanked
   if (unbanked?.length && (await recoverRecordItemUuids({ client, siteDir, uuids: unbanked, note }))) {
