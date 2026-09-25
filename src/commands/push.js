@@ -82,6 +82,8 @@ import {
   readItemUuids,
   readFolderItemUuids,
   readQueryUuids,
+  readRecordItemUuids,
+  recoverRecordItemUuids,
   ensureItemUuids,
   refuseUnsendableRecords,
   ensureSiteExists,
@@ -496,40 +498,55 @@ export async function push(args = [], deps = {}) {
     output || dryRun
       ? readItemUuids(siteDir, client.origin)
       : await ensureItemUuids({ client, siteDir, note })
+  const emitOptions = {
+    backend: client.origin,
+    // Placement identity for the folder — see writeFolderItemUuids.
+    folderItemUuids: readFolderItemUuids(siteDir, client.origin),
+    // Identity for the `queries` section — see readQueryUuids. Keyed by
+    // name, because a declaration has no file for a path-keyed map to hold.
+    queryUuids: readQueryUuids(siteDir, client.origin),
+    // Identity for the records' list items — see readRecordItemUuids.
+    recordItemUuids: readRecordItemUuids(siteDir, client.origin),
+    ...(foundationDir ? { foundationDir } : {}),
+    resolveModel: makeModelResolver({
+      client,
+      offline: Boolean(output) || dryRun
+    }),
+    priorHashes,
+    sendAll,
+    itemUuids,
+    // The PINNED foundation ref from the bring-along above, stamped over the
+    // authored `site.yml` string. Delivery is version-pinned end to end, so an
+    // unpinned local name on the wire names code no host can serve. Absent when
+    // the site already references a registry ref or URL — then site.yml's own
+    // value rides verbatim.
+    ...(fnd.ref ? { injectInfo: { foundation: fnd.ref } } : {}),
+    // Both grains are dropped together by --force: one flag, one meaning,
+    // no partial-force mode.
+    ...(force
+      ? {}
+      : {
+          baseVersions: readBaseVersions(siteDir, client.origin),
+          itemBaseVersions: readItemBaseVersions(siteDir, client.origin)
+        }),
+    ...(assetRewrite ? { assetRewrite } : {}),
+    ...(assetIds ? { assetIds } : {})
+  }
   let pkg
   try {
-    pkg = await emitSyncPackages(siteDir, {
-      backend: client.origin,
-      // Placement identity for the folder — see writeFolderItemUuids.
-      folderItemUuids: readFolderItemUuids(siteDir, client.origin),
-      // Identity for the `queries` section — see readQueryUuids. Keyed by
-      // name, because a declaration has no file for a path-keyed map to hold.
-      queryUuids: readQueryUuids(siteDir, client.origin),
-      ...(foundationDir ? { foundationDir } : {}),
-      resolveModel: makeModelResolver({
-        client,
-        offline: Boolean(output) || dryRun
-      }),
-      priorHashes,
-      sendAll,
-      itemUuids,
-      // The PINNED foundation ref from the bring-along above, stamped over the
-      // authored `site.yml` string. Delivery is version-pinned end to end, so an
-      // unpinned local name on the wire names code no host can serve. Absent when
-      // the site already references a registry ref or URL — then site.yml's own
-      // value rides verbatim.
-      ...(fnd.ref ? { injectInfo: { foundation: fnd.ref } } : {}),
-      // Both grains are dropped together by --force: one flag, one meaning,
-      // no partial-force mode.
-      ...(force
-        ? {}
-        : {
-            baseVersions: readBaseVersions(siteDir, client.origin),
-            itemBaseVersions: readItemBaseVersions(siteDir, client.origin)
-          }),
-      ...(assetRewrite ? { assetRewrite } : {}),
-      ...(assetIds ? { assetIds } : {})
-    })
+    pkg = await emitSyncPackages(siteDir, emitOptions)
+    // A record the backend holds whose list items this copy never banked — pushed before the
+    // bank existed, say — is refused if sent without them. Recover them from the backend, and
+    // build the package again with them.
+    const unbanked = pkg.recordItemIdentity?.unbanked
+    if (unbanked?.length && !output && !dryRun) {
+      if (await recoverRecordItemUuids({ client, siteDir, uuids: unbanked, note })) {
+        pkg = await emitSyncPackages(siteDir, {
+          ...emitOptions,
+          recordItemUuids: readRecordItemUuids(siteDir, client.origin)
+        })
+      }
+    }
   } catch (err) {
     error(`Could not build the sync package: ${err.message}`)
     return { exitCode: 2 }

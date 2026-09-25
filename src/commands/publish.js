@@ -86,6 +86,8 @@ import {
   readItemBaseVersions,
   ensureItemUuids,
   readFolderItemUuids,
+  readRecordItemUuids,
+  recoverRecordItemUuids,
   ensureSiteExists,
   refuseUnsendableRecords,
   clearRemoteSyncStateIfUnbound,
@@ -946,28 +948,41 @@ export async function publish(args = []) {
   // edited since this clone last synced, the push is refused rather than
   // overwriting them, and nothing goes live. `--force` drops the precondition.
   const forced = args.includes('--force')
+  const emitOptions = {
+    backend: client.origin,
+    ...(declaration.declare ? {} : { declareServices: false }),
+    // Placement identity for the folder — see writeFolderItemUuids.
+    folderItemUuids: readFolderItemUuids(siteDir, client.origin),
+    // Identity for the records' list items — see readRecordItemUuids.
+    recordItemUuids: readRecordItemUuids(siteDir, client.origin),
+    ...(foundationDir ? { foundationDir } : {}),
+    resolveModel,
+    priorHashes,
+    itemUuids,
+    ...(forced
+      ? {}
+      : {
+          baseVersions: readBaseVersions(siteDir, client.origin),
+          itemBaseVersions: readItemBaseVersions(siteDir, client.origin)
+        }),
+    ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
+    ...(Object.keys(ext.pins).length ? { injectExtensions: ext.pins } : {}),
+    ...(assetRewrite ? { assetRewrite } : {}),
+    ...(assetIds ? { assetIds } : {})
+  }
   let pkg
   try {
-    pkg = await emitSyncPackages(siteDir, {
-      backend: client.origin,
-      ...(declaration.declare ? {} : { declareServices: false }),
-      // Placement identity for the folder — see writeFolderItemUuids.
-      folderItemUuids: readFolderItemUuids(siteDir, client.origin),
-      ...(foundationDir ? { foundationDir } : {}),
-      resolveModel,
-      priorHashes,
-      itemUuids,
-      ...(forced
-        ? {}
-        : {
-            baseVersions: readBaseVersions(siteDir, client.origin),
-            itemBaseVersions: readItemBaseVersions(siteDir, client.origin)
-          }),
-      ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
-      ...(Object.keys(ext.pins).length ? { injectExtensions: ext.pins } : {}),
-      ...(assetRewrite ? { assetRewrite } : {}),
-      ...(assetIds ? { assetIds } : {})
-    })
+    pkg = await emitSyncPackages(siteDir, emitOptions)
+    // Records the backend holds whose list items this copy never banked — see `uniweb push`.
+    const unbanked = pkg.recordItemIdentity?.unbanked
+    if (unbanked?.length) {
+      if (await recoverRecordItemUuids({ client, siteDir, uuids: unbanked, note: (m) => say.dim(m) })) {
+        pkg = await emitSyncPackages(siteDir, {
+          ...emitOptions,
+          recordItemUuids: readRecordItemUuids(siteDir, client.origin)
+        })
+      }
+    }
   } catch (err) {
     say.err(`Could not build the sync package: ${err.message}`)
     return { exitCode: 1 }

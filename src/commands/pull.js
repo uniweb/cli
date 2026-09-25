@@ -962,6 +962,9 @@ export async function pull(args = [], deps = {}) {
   // holds a folder uuid). Models are resolved by name (async) up front, so
   // recordsToProject keeps its synchronous contract. A 304 leaves files as-is.
   let folderLane = null
+  // The record documents this pull took — the re-bank below pairs their list items with the
+  // files just written.
+  let pulledRecordDocs = []
   if (!noRecords) {
     const folder = await getDocs('records', () =>
       client.pullFolder(siteContentUuid, { etag: conditional ? etagFolder : undefined })
@@ -970,6 +973,7 @@ export async function pull(args = [], deps = {}) {
     if (folder?.refused) return { exitCode: 1 }
     if (folder && !folder.notModified && folder.docs?.length) {
       const { folderDoc, recordDocs } = splitRecordsPull(folder.docs)
+      pulledRecordDocs = recordDocs
       const resolveModel = makeModelResolver({ client })
       const declByModel = new Map()
       for (const model of [
@@ -1071,7 +1075,7 @@ export async function pull(args = [], deps = {}) {
   // wrong content, and must not fail a pull whose files are already written.
   if (!dryRun) {
     try {
-      await rebankSyncHashes(siteDir, client.origin)
+      await rebankSyncHashes(siteDir, client.origin, { recordDocs: pulledRecordDocs })
     } catch (err) {
       note(`! could not re-bank the sync cache: ${err.message}`)
       note('  The next push will re-send content that is already current.')

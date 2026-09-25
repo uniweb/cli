@@ -35,10 +35,12 @@ import {
   readItemUuids,
   probeUnpushed,
   rebankSyncHashes,
+  readRecordItemUuids,
+  recoverRecordItemUuids,
   heldTokens,
   mergeBaseVersions
 } from '../src/backend/site-sync.js'
-import { createZip, computeUnitHashes } from '@uniweb/build/uwx'
+import { createZip, computeUnitHashes, readZip } from '@uniweb/build/uwx'
 import { createHash } from 'node:crypto'
 import { readSiteIdentity } from '../src/utils/site-identity.js'
 import { readWritten } from '../src/utils/pull-written.js'
@@ -1996,6 +1998,174 @@ test('a push that names a new record by $ref leaves nothing to send', async () =
 
   const rebanked = await pushOnce({ rebank: true })
   assert.equal(rebanked.changed, 0, `nothing to send after the push — got ${JSON.stringify(rebanked)}`)
+})
+
+/**
+ * ⭐ A RECORD'S LIST ITEMS KEEP THEIR IDENTITY: banked from a push, from a pull, or recovered.
+ *
+ * An item of a record's `many` section without a `$uuid` is a new row, so a record re-sent
+ * with its items uuid-less is refused whole (`identity_required`) — measured 2026-09-25 on an
+ * edit of a talk's title. Each item's `$uuid` is banked per record in `sync.json`, and the
+ * next emit stamps it.
+ */
+function talkSite() {
+  const root = mkdtempSync(join(tmpdir(), 'record-items-'))
+  const site = join(root, 'site')
+  const fnd = join(root, 'foundation')
+  mkdirSync(join(fnd, 'dist', 'meta'), { recursive: true })
+  writeFileSync(join(fnd, 'package.json'), JSON.stringify({ name: '@acme/marketing', version: '1.0.0' }))
+  writeFileSync(
+    join(fnd, 'dist', 'meta', 'schema.json'),
+    JSON.stringify({
+      _self: { name: '@acme/marketing', version: '1', role: 'foundation' },
+      dataSchemas: {
+        '@/talk': {
+          name: 'talk',
+          sections: {
+            brief: { kind: 'single', brief: true, fields: { title: { type: 'string' } } },
+            sessions: { kind: 'multi', fields: { room: { type: 'string' } } }
+          }
+        }
+      }
+    })
+  )
+  mkdirSync(join(site, 'pages', 'home'), { recursive: true })
+  mkdirSync(join(site, 'records', 'talk'), { recursive: true })
+  writeFileSync(join(site, 'site.yml'), 'name: Acme\nfoundation: "@acme/marketing"\n')
+  writeFileSync(join(site, 'package.json'), JSON.stringify({ name: 's', dependencies: { '@acme/marketing': 'file:../foundation' } }))
+  writeFileSync(join(site, 'pages', 'home', 'page.yml'), 'title: Home\n')
+  const talk = join(site, 'records', 'talk', 'opening.yml')
+  writeFileSync(talk, 'brief:\n  title: Opening\nsessions:\n  - room: Hall A\n  - room: Hall B\n')
+  bind(site, 'SITE')
+  return { root, site, talk }
+}
+const talkOf = (pkg) => {
+  for (const [name, buf] of readZip(pkg.records.buffer)) {
+    if (!name.startsWith('entities/')) continue
+    const doc = JSON.parse(buf.toString('utf8'))
+    if (doc.$id === 'talk/opening') return doc
+  }
+  return null
+}
+// The backend's copy of a document it stored: its uuid, and one for every item of a list.
+const storedAs = (doc, uuid) => ({
+  ...doc,
+  $uuid: uuid,
+  sessions: doc.sessions.map((s, i) => ({ ...s, $uuid: `ITEM-${i}` }))
+})
+
+test('a push banks each record’s list items, and the next send carries them', async () => {
+  const { root, site, talk } = talkSite()
+  const { emitSyncPackages } = await import('@uniweb/build/uwx')
+  try {
+    const first = await emitSyncPackages(site, { backend: ORIGIN })
+    const sent = talkOf(first)
+    const client = {
+      origin: ORIGIN,
+      updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'SITE', changed: true }])),
+      pushFolder: async () =>
+        ok(
+          finalized(
+            first.records.index.map((entry, index) =>
+              entry.kind === 'folder'
+                ? { index, uuid: 'FOLDER', changed: true }
+                : { index, uuid: 'MINT-TALK', changed: true, document: storedAs(sent, 'MINT-TALK') }
+            )
+          )
+        )
+    }
+    const { report, calls } = makeReport()
+    const res = await pushSyncPackages({ client, siteDir: site, pkg: first, report })
+    assert.equal(res.exitCode, 0, calls.error.join('\n'))
+    const bank = readRecordItemUuids(site, ORIGIN)
+    assert.deepEqual(Object.keys(bank), ['MINT-TALK'])
+    assert.deepEqual(
+      Object.entries(bank['MINT-TALK']).map(([place, v]) => [place, v.split(' ')[0]]),
+      [['sessions[0]', 'ITEM-0'], ['sessions[1]', 'ITEM-1']]
+    )
+
+    // An edit, then the next send: each item carries its uuid — a room inserted above them
+    // goes as new, and the two banked ones are found by what they hold.
+    writeFileSync(talk, readFileSync(talk, 'utf8').replace('sessions:\n', 'sessions:\n  - room: Foyer\n'))
+    const next = await emitSyncPackages(site, { backend: ORIGIN, recordItemUuids: bank })
+    assert.deepEqual(talkOf(next).sessions.map((s) => s.$uuid), [undefined, 'ITEM-0', 'ITEM-1'])
+    assert.equal(next.recordItemIdentity.stamped, 2)
+
+    // CONTROL — without the bank the record is named as unbanked, its items uuid-less.
+    const blind = await emitSyncPackages(site, { backend: ORIGIN })
+    assert.deepEqual(blind.recordItemIdentity.unbanked, ['MINT-TALK'])
+    assert.ok(talkOf(blind).sessions.every((s) => !('$uuid' in s)))
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('a pull banks the list items of the records it took, against the files it wrote', async () => {
+  const { root, site, talk } = talkSite()
+  const { emitSyncPackages } = await import('@uniweb/build/uwx')
+  try {
+    // As a pull leaves it: the record's file carries its uuid, which maps to itself here.
+    writeFileSync(talk, `$uuid: MINT-TALK\n${readFileSync(talk, 'utf8')}`)
+    const doc = JSON.parse(readFileSync(join(site, 'sync.json'), 'utf8'))
+    doc.backends[ORIGIN].records = { 'MINT-TALK': 'MINT-TALK' }
+    writeFileSync(join(site, 'sync.json'), JSON.stringify(doc))
+    const stored = {
+      $uuid: 'MINT-TALK',
+      $schema: '@acme/talk',
+      brief: { title: { en: 'Opening' }, $uuid: 'BRIEF' },
+      sessions: [
+        { room: { en: 'Hall A' }, $uuid: 'ITEM-0' },
+        { room: { en: 'Hall B' }, $uuid: 'ITEM-1' }
+      ]
+    }
+    await rebankSyncHashes(site, ORIGIN, { recordDocs: [stored] })
+    const bank = readRecordItemUuids(site, ORIGIN)
+    assert.match(bank['MINT-TALK']['sessions[1]'], /^ITEM-1 [0-9a-f]{16}$/)
+    // The next send finds each item by what it holds, wherever it moved.
+    writeFileSync(talk, readFileSync(talk, 'utf8').replace(/- room: Hall A\n  - room: Hall B/, '- room: Hall B\n  - room: Hall A'))
+    const next = await emitSyncPackages(site, { backend: ORIGIN, recordItemUuids: bank })
+    assert.deepEqual(talkOf(next).sessions.map((s) => s.$uuid), ['ITEM-1', 'ITEM-0'])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('a record never banked is recovered from the backend’s own document, by place', async () => {
+  const { root, site } = talkSite()
+  try {
+    const stored = {
+      $uuid: 'MINT-TALK',
+      $schema: '@acme/talk',
+      brief: { title: { en: 'Opening' }, $uuid: 'BRIEF' },
+      sessions: [
+        { room: { en: 'Hall A' }, $uuid: 'ITEM-0' },
+        { room: { en: 'Hall B' }, $uuid: 'ITEM-1' }
+      ]
+    }
+    const zip = createZip([
+      { name: 'manifest.json', data: Buffer.from(JSON.stringify({ format: 'uwx/1', entries: [] })) },
+      { name: 'entities/FOLDER.json', data: Buffer.from(JSON.stringify({ $uuid: 'FOLDER', $schema: '@uniweb/folder', contents: [] })) },
+      { name: 'entities/MINT-TALK.json', data: Buffer.from(JSON.stringify(stored)) }
+    ])
+    let asked = null
+    const client = {
+      origin: ORIGIN,
+      pullFolder: async (uuid) => {
+        asked = uuid
+        return { ok: true, arrayBuffer: async () => zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) }
+      }
+    }
+    const said = []
+    const n = await recoverRecordItemUuids({ client, siteDir: site, uuids: ['MINT-TALK'], note: (m) => said.push(m) })
+    assert.equal(n, 1)
+    assert.equal(asked, 'SITE', 'read by the site the copy is bound to')
+    assert.deepEqual(readRecordItemUuids(site, ORIGIN), {
+      'MINT-TALK': { 'sessions[0]': 'ITEM-0', 'sessions[1]': 'ITEM-1' }
+    })
+    assert.match(said[0], /Recovered the identity of the list items of 1 record/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 // ─── the designation outcome (E6) ────────────────────────────────────────────

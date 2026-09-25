@@ -42,7 +42,10 @@ import {
   updateBackendMap,
   clearBackendSections,
   normalizeBackendOrigin,
-  removeYamlScalar
+  removeYamlScalar,
+  harvestRecordItems,
+  storedRecordItems,
+  reprintRecordItems
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -60,6 +63,21 @@ function entityDocFromUwx(buf) {
     }
   }
   return null
+}
+
+// Every entity `$`-document of a `.uwx` — the folder lane holds the folder and its records.
+function entityDocsFromUwx(buf) {
+  const docs = []
+  if (!buf || buf.length < 2 || buf[0] !== 0x50 || buf[1] !== 0x4b) return docs
+  for (const [name, data] of readZip(buf)) {
+    if (name === 'manifest.json' || !name.endsWith('.json')) continue
+    try {
+      docs.push(JSON.parse(data.toString('utf8')))
+    } catch {
+      // not a document
+    }
+  }
+  return docs
 }
 
 /**
@@ -794,6 +812,73 @@ export function writeItemUuids(siteDir, backend, map) {
 }
 
 /**
+ * The identity of each record's list items:
+ * `{ <record $uuid>: { <place>: "<item $uuid> <fingerprint>" } }`.
+ *
+ * ⛔ THE FOURTH MAP, FOR THE SAME REASON AS THE OTHER THREE. An item of a record's `many`
+ * section — or of a list nested in one, or of a tree's `$children` — is a `multi` row with no
+ * file and no name, so neither a path-keyed map nor the record's own file can hold it. Sent
+ * without it, the record is refused whole (`identity_required`), since applying it would
+ * replace every stored item: measured 2026-09-25 on an edit of a talk's title. Banked per
+ * record from a push's finalized documents (paired by place with what was sent) and from a
+ * pull; matched on the next send by content, then by place (`@uniweb/build`'s
+ * `record-items.js`). Each record's entry is replaced whole.
+ */
+export function readRecordItemUuids(siteDir, backend) {
+  return readBackendState(siteDir, backend).recordItems || {}
+}
+export function writeRecordItemUuids(siteDir, backend, map) {
+  if (!map || !Object.keys(map).length) return
+  updateBackendMap(siteDir, backend, 'recordItems', map)
+}
+
+// The records' list items, banked from the documents the backend returned for them —
+// `returned` by `$uuid` — paired by place with the lists as sent, which ride on each record's
+// index entry (`lists`). A record keeps an entry only while it has list items, or had one.
+function bankRecordItems(siteDir, backend, pairs) {
+  const prior = readRecordItemUuids(siteDir, backend)
+  const bank = {}
+  for (const { uuid, lists, returned } of pairs) {
+    if (!uuid || !lists || !returned) continue
+    const items = harvestRecordItems(lists, returned)
+    if (Object.keys(items).length || prior[uuid]) bank[uuid] = items
+  }
+  writeRecordItemUuids(siteDir, backend, bank)
+  return Object.keys(bank).length
+}
+
+/**
+ * Recover the list-item identity of records the backend holds and this copy never banked —
+ * `uuids`, the emit's `recordItemIdentity.unbanked` — from the backend's own documents: one read
+ * of the folder lane, and nothing written but `sync.json`. The send that follows matches their
+ * items by place alone (`storedRecordItems`): what was sent before is unknown here.
+ *
+ * Best-effort, like `ensureItemUuids`: a failure leaves them unbanked, and the backend refuses
+ * the send rather than replace their items.
+ *
+ * @returns {Promise<number>} how many records were recovered
+ */
+export async function recoverRecordItemUuids({ client, siteDir, uuids, note }) {
+  const siteUuid = readBackendState(siteDir, client.origin).site?.uuid || null
+  if (!siteUuid || !uuids?.length) return 0
+  try {
+    const res = await client.pullFolder(siteUuid)
+    if (!res?.ok) return 0
+    const wanted = new Set(uuids)
+    const bank = {}
+    for (const doc of entityDocsFromUwx(Buffer.from(await res.arrayBuffer()))) {
+      if (wanted.has(doc?.$uuid)) bank[doc.$uuid] = storedRecordItems(doc)
+    }
+    writeRecordItemUuids(siteDir, client.origin, bank)
+    const n = Object.keys(bank).length
+    if (n) note?.(`Recovered the identity of the list items of ${n} record(s) from the backend.`)
+    return n
+  } catch {
+    return 0
+  }
+}
+
+/**
  * The workspace this site was created in on `backend` — its owner, as the create
  * answered it — in the header's form: `@handle`, a unit's bare uuid when that unit has
  * no handle, or null for the personal workspace (or no record).
@@ -1260,16 +1345,36 @@ async function comparisonEmit(
  * ⭐ Re-banking is the correct answer rather than clearing, because after a pull the
  * on-disk state IS the agreed state: it came from the backend. A push with no edits
  * in between should send nothing, and clearing would make it send everything.
+ *
+ * @param {object} [opts]
+ * @param {object[]} [opts.recordDocs] - the record documents the pull took; their list items'
+ *        identity is banked against the files just written (`readRecordItemUuids`)
  */
-export async function rebankSyncHashes(siteDir, backend = null) {
+export async function rebankSyncHashes(siteDir, backend = null, { recordDocs } = {}) {
   const pkg = await comparisonEmit(siteDir, { backend, sendAll: true })
   writeSyncCache(siteDir, backend, pkg.hashes || {}, pkg.applied || {})
+  // ⭐ And the identity of the records' list items, from the documents the pull just took:
+  // the files it wrote hold the stored items in stored order, so the emit over them pairs
+  // with each document item for item.
+  if (recordDocs?.length) {
+    const byUuid = new Map(recordDocs.filter((d) => d?.$uuid).map((d) => [d.$uuid, d]))
+    const recordUuids = readBackendState(siteDir, backend).records || {}
+    bankRecordItems(
+      siteDir,
+      backend,
+      (pkg.records?.index || []).map((entry) => {
+        const uuid = entry.ownId ? recordUuids[entry.ownId] : null
+        return { uuid, lists: entry.lists, returned: uuid ? byUuid.get(uuid) : null }
+      })
+    )
+  }
   return Object.keys(pkg.hashes || {}).length
 }
 
 /**
  * Re-bank the hashes of the records a push sent naming a record it created — `keys`,
- * the emit's `namesNew` — as the next push will hash them.
+ * the emit's `namesNew` — as the next push will hash them, and fingerprint their list
+ * items the same way.
  *
  * ⭐ Such a record names its new record by `$ref`, and the backend stores the uuid it
  * mints. The next push names it by that uuid: the same reference, and another hash — so
@@ -1287,6 +1392,18 @@ export async function rebankRecordHashes(siteDir, backend, keys) {
   const hashes = { ...readSyncCache(siteDir, backend) }
   for (const key of keys) if (pkg.hashes?.[key]) hashes[key] = pkg.hashes[key]
   writeSyncCache(siteDir, backend, hashes, readAppliedInjections(siteDir, backend))
+  // Their list items too: an item that named a new record is fingerprinted anew, each uuid kept
+  // at its place (`reprintRecordItems`) — or the next send finds it by place alone.
+  const wanted = new Set(keys)
+  const recordUuids = readBackendState(siteDir, backend).records || {}
+  const bank = readRecordItemUuids(siteDir, backend)
+  const reprinted = {}
+  for (const entry of pkg.records?.index || []) {
+    if (!wanted.has(`${entry.model} ${entry.id}`)) continue
+    const uuid = entry.ownId ? recordUuids[entry.ownId] : null
+    if (uuid && bank[uuid]) reprinted[uuid] = reprintRecordItems(bank[uuid], entry.lists)
+  }
+  writeRecordItemUuids(siteDir, backend, reprinted)
 }
 
 /**
@@ -1766,6 +1883,18 @@ export async function pushSyncPackages({
     }
     for (const w of bf.warnings) note(`! ${w}`)
     for (const d of bf.deferred) note(`↷ ${d.id ?? `#${d.index}`}: ${d.reason}`)
+    // ⭐ BANK THE RECORDS' LIST ITEMS: each item's `$uuid` in the document the backend returned,
+    // paired by place with the lists as sent — so the next send of a record updates its items
+    // rather than being refused for replacing them (`readRecordItemUuids`).
+    bankRecordItems(
+      siteDir,
+      client.origin,
+      finalized.map((f) => ({
+        uuid: f?.uuid,
+        lists: Number.isInteger(f?.index) ? records.index?.[f.index]?.lists : null,
+        returned: f?.document
+      }))
+    )
     draftsNotKept = bf.notKeptAsDrafts || []
     if (bf.updated.length)
       wrote.push(`wrote ${bf.updated.length} record file(s)`)
