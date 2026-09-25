@@ -83,7 +83,7 @@ import {
   readFolderItemUuids,
   readQueryUuids,
   readRecordItemUuids,
-  recoverRecordItemUuids,
+  recoverUnbankedIdentity,
   ensureItemUuids,
   refuseUnsendableRecords,
   ensureSiteExists,
@@ -535,18 +535,12 @@ export async function push(args = [], deps = {}) {
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, emitOptions)
-    // A record the backend holds whose list items this copy never banked — pushed before the
-    // bank existed, say — is refused if sent without them. Recover them from the backend, and
-    // build the package again with them.
-    const unbanked = pkg.recordItemIdentity?.unbanked
-    if (unbanked?.length && !output && !dryRun) {
-      if (await recoverRecordItemUuids({ client, siteDir, uuids: unbanked, note })) {
-        pkg = await emitSyncPackages(siteDir, {
-          ...emitOptions,
-          recordItemUuids: readRecordItemUuids(siteDir, client.origin)
-        })
-      }
-    }
+    // A page, section or record list item the backend holds and this copy has no identity
+    // for — a map left partial, or a record pushed before its items were banked — is refused
+    // if sent without it. Recover it from the backend, and build the package again with it.
+    const again =
+      output || dryRun ? null : await recoverUnbankedIdentity({ client, siteDir, pkg, note })
+    if (again) pkg = await emitSyncPackages(siteDir, { ...emitOptions, ...again })
   } catch (err) {
     error(`Could not build the sync package: ${err.message}`)
     return { exitCode: 2 }

@@ -1196,35 +1196,92 @@ export function refuseUnsendableRecords(refusals, { error, note }) {
  * left alone. (The map sat in the gitignored cache until 2026-09-20, so a fresh
  * `git clone` or a deleted `.uniweb/` was what emptied it; it is committed now.)
  *
+ * ⚠️ A PARTIAL map is not this function's: it runs before the package is built, when
+ * nothing yet says which items went without identity. `recoverUnbankedIdentity` runs
+ * after, and fills in what is missing.
+ *
  * @returns {Promise<Object<string,string>>} the map (possibly empty)
  */
 export async function ensureItemUuids({ client, siteDir, note }) {
   const cached = readItemUuids(siteDir, client.origin)
   if (Object.keys(cached).length) return cached
-  // A site that has never been pushed has no identity to recover — and nothing to
-  // lose, since every item is genuinely new.
+  const harvested = await storedItemUuids({ client, siteDir })
+  if (!harvested || !Object.keys(harvested).length) return cached
+  writeItemUuids(siteDir, client.origin, harvested)
+  note?.(`Recovered identity for ${Object.keys(harvested).length} item(s) from the backend.`)
+  return harvested
+}
+
+/**
+ * Each page and section `$uuid` the backend holds for the site this copy is bound to, by
+ * the path it projects to — one read of its own document. Null when the copy is bound to
+ * no site there (a site never pushed has no identity to recover, and nothing to lose,
+ * since every item is genuinely new) or the read fails.
+ *
+ * Best-effort: a failure leaves the push identity-blind, which the backend refuses rather
+ * than silently applying. Better to hit that than to guess.
+ *
+ * @returns {Promise<Object<string,string>|null>}
+ */
+async function storedItemUuids({ client, siteDir }) {
   // The site to recover identity against — this backend's, from sync.json. It read
   // `site.yml::$uuid`, so after step 4 it found nothing and never recovered.
   const siteContentUuid = readBackendState(siteDir, client.origin).site?.uuid || null
-  if (!siteContentUuid) return cached
+  if (!siteContentUuid) return null
   try {
     const res = await client.pullSiteContent(siteContentUuid)
-    if (!res?.ok) return cached
+    if (!res?.ok) return null
     const doc = entityDocFromUwx(Buffer.from(await res.arrayBuffer()))
-    if (!doc) return cached
-    const harvested = collectUnitUuids(doc)
-    if (Object.keys(harvested).length) {
-      writeItemUuids(siteDir, client.origin, harvested)
-      note?.(
-        `Recovered identity for ${Object.keys(harvested).length} item(s) from the backend.`
-      )
-    }
-    return harvested
+    return doc ? collectUnitUuids(doc) : null
   } catch {
-    // Best-effort: a failure here leaves the push identity-blind, which the backend
-    // refuses rather than silently applying. Better to hit that than to guess.
-    return cached
+    return null
   }
+}
+
+/**
+ * Fill in the page and section identity this copy LACKS for the site it is bound to, from
+ * the backend's own document. What the copy already holds is kept.
+ *
+ * ⛔ `ensureItemUuids` recovers only an EMPTY map, and a map can be partial: until
+ * 2026-09-25 a push whose records were refused after its pages landed saved the pages'
+ * identity nowhere (`pushSyncPackages`), leaving the map with `site.yml` alone. Every push
+ * after that sent the pages with no `$uuid` while the backend held them, and was refused —
+ * "one section carries no item identity (section pages)" — with nothing ever recovering it.
+ *
+ * @returns {Promise<number>} how many pages and sections were recovered
+ */
+export async function recoverItemUuids({ client, siteDir, note }) {
+  const cached = readItemUuids(siteDir, client.origin)
+  const harvested = await storedItemUuids({ client, siteDir })
+  if (!harvested) return 0
+  const missing = Object.keys(harvested).filter((path) => !cached[path])
+  if (!missing.length) return 0
+  writeItemUuids(siteDir, client.origin, { ...harvested, ...cached })
+  note?.(`Recovered identity for ${missing.length} item(s) from the backend.`)
+  return missing.length
+}
+
+/**
+ * Recover the identity a package just built went out without, when the backend may hold it —
+ * a page or section (`itemIdentity.unknown`), or a record's list items
+ * (`recordItemIdentity.unbanked`) — and say what to build the package again with.
+ *
+ * A page added since the last push is also without identity, and costs one read that finds
+ * nothing. That is the price of never sending as new an item the backend already holds.
+ *
+ * @returns {Promise<object|null>} emit options to build the package again with, or null
+ *   when nothing was recovered
+ */
+export async function recoverUnbankedIdentity({ client, siteDir, pkg, note }) {
+  let again = null
+  if (pkg?.itemIdentity?.unknown > 0 && (await recoverItemUuids({ client, siteDir, note }))) {
+    again = { ...again, itemUuids: readItemUuids(siteDir, client.origin) }
+  }
+  const unbanked = pkg?.recordItemIdentity?.unbanked
+  if (unbanked?.length && (await recoverRecordItemUuids({ client, siteDir, uuids: unbanked, note }))) {
+    again = { ...again, recordItemUuids: readRecordItemUuids(siteDir, client.origin) }
+  }
+  return again
 }
 
 export function readUnitBases(siteDir, backend) {
@@ -1791,6 +1848,73 @@ export async function pushSyncPackages({
   // The backend's post-write copy of the site-content document, kept for the
   // remote-side unit base (see writeUnitBases).
   let siteFinalizedDoc = null
+  // ⭐ WHAT THE SITE-CONTENT LANE LANDED IS SETTLED THE MOMENT IT LANDS — its query and item
+  // identity, its unit bases and the files it now holds as synced — on either path to it.
+  // ⛔ Until 2026-09-25 the item identity and the bases were settled at the END, after the
+  // records lane, so a records lane that was refused returned before them: the pages were
+  // stored, their identity was saved nowhere, and every later push sent them without it and
+  // was refused — "one section carries no item identity (section pages)" — while the
+  // queries, banked at once, were kept. And the queries were banked on the update path
+  // only, so a site created with no media never saved theirs.
+  const settleSiteContent = () => {
+    // ⭐ BANK COLLECTION-DECLARATION IDENTITY, the sibling of the folder's placements
+    // below. These items have no file to back-fill into — they all come from one
+    // `collections/collections.yml` — so the only place their `$uuid` can live is
+    // `sync.json` (this backend's `queries` map), keyed by the name the backend enforces
+    // unique. Without it every push after the first re-sends the whole `collections`
+    // section uuid-less and is refused.
+    if (siteFinalizedDoc) {
+      const recordIds = collectQueryUuids(siteFinalizedDoc)
+      if (Object.keys(recordIds).length) writeQueryUuids(siteDir, client.origin, recordIds)
+    }
+    // Re-base the page attribution: our emitted document and the backend's post-write
+    // copy of it are the two sides' new agreed state.
+    const patch = {}
+    const ours = sentSiteDoc
+    if (ours) patch.local = computeUnitHashes(ours)
+    // `finalized[].document` is the backend's own representation, read back from
+    // the stored row — the only remote-side base a push can produce.
+    const theirs = siteFinalizedDoc?.pages ? siteFinalizedDoc : null
+    if (theirs) {
+      patch.remote = computeUnitHashes(theirs)
+      // A unit the backend kept for someone else is not agreed state: its remote base
+      // stays where it was, so a refusal names it as changed upstream.
+      const before = readUnitBases(siteDir, client.origin).remote
+      for (const path of notHeld.kept) {
+        if (before[path]) patch.remote[path] = before[path]
+        else delete patch.remote[path]
+      }
+    }
+    if (Object.keys(patch).length) writeUnitBases(siteDir, client.origin, patch)
+    // The backend's post-write document carries `$uuid` per item at every nesting
+    // level, so the push that just landed also re-arms identity for the next one.
+    // Replaced wholesale: an item that no longer exists must not keep a uuid that
+    // would re-target something else.
+    if (theirs) writeItemUuids(siteDir, client.origin, collectUnitUuids(theirs))
+    else {
+      // ⛔ BANKING IS BEST-EFFORT AND ITS FAILURE USED TO BE SILENT — say it here,
+      // because the cost lands two commands away and names something else.
+      //
+      // Without `finalized[0].document` (carrying `pages`) this push banks NO item
+      // identity. The push still reports success. The next `push`/`publish` then
+      // emits with no `$uuid` per item, and the backend refuses — correctly, since
+      // silently re-identifying every stored row is far worse. But that refusal
+      // reads as a stale-token or a producer bug, with nothing pointing back at the
+      // push that failed to bank.
+      //
+      // ⚠️ We cannot tell WHY it is absent from here — a response shape that
+      // changed, a lane that shipped nothing, a backend that does not echo the
+      // document. Report the observable fact and let the operator carry it.
+      note(
+        'identity not banked: this push returned no post-write document, so no per-item ' +
+          '$uuid was stored. The next push or publish will be identity-blind and the backend ' +
+          'may refuse it. `uniweb pull` re-arms identity if that happens.'
+      )
+    }
+    // The files of the units the backend now holds as ours are the synced version — the
+    // ancestor the next `pull --merge` merges from.
+    if (heldUnits.length) recordPushedUnits(siteDir, heldUnits)
+  }
   if (siteContent) {
     if (siteContentUuid) {
       const finalized = await pushLane(
@@ -1812,18 +1936,8 @@ export async function pushSyncPackages({
       }
       harvestSiteContent(finalized)
       siteFinalizedDoc = finalized[0]?.document || null
-      // ⭐ BANK COLLECTION-DECLARATION IDENTITY, the sibling of the folder's
-      // placements below. These items have no file to back-fill into — they all
-      // come from one `collections/collections.yml` — so the only place their
-      // `$uuid` can live is `sync.json` (this backend's `queries` map), keyed by the
-      // name the backend enforces unique. Without it every push after the first re-sends the whole
-      // `collections` section uuid-less and is refused.
-      if (siteFinalizedDoc) {
-        const recordIds = collectQueryUuids(siteFinalizedDoc)
-        if (Object.keys(recordIds).length)
-          writeQueryUuids(siteDir, client.origin, recordIds)
-      }
       finalizedTotal += finalized.length
+      settleSiteContent()
     } else {
       const payload = await postLane(
         'site-content',
@@ -1857,6 +1971,7 @@ export async function pushSyncPackages({
       harvestSiteContent(createdFinalized)
       siteFinalizedDoc = createdFinalized?.[0]?.document || null
       finalizedTotal += createdFinalized?.length ?? 1
+      settleSiteContent()
     }
   }
 
@@ -1940,56 +2055,7 @@ export async function pushSyncPackages({
     }
   }
   mergeHarvested()
-  // Re-base the page attribution: our emitted document and the backend's post-write
-  // copy of it are the two sides' new agreed state. Only when the site-content lane
-  // actually shipped — a push that skipped it left that state where it was.
-  if (siteContent) {
-    const patch = {}
-    const ours = sentSiteDoc
-    if (ours) patch.local = computeUnitHashes(ours)
-    // `finalized[].document` is the backend's own representation, read back from
-    // the stored row — the only remote-side base a push can produce.
-    const theirs = siteFinalizedDoc?.pages ? siteFinalizedDoc : null
-    if (theirs) {
-      patch.remote = computeUnitHashes(theirs)
-      // A unit the backend kept for someone else is not agreed state: its remote base
-      // stays where it was, so a refusal names it as changed upstream.
-      const before = readUnitBases(siteDir, client.origin).remote
-      for (const path of notHeld.kept) {
-        if (before[path]) patch.remote[path] = before[path]
-        else delete patch.remote[path]
-      }
-    }
-    if (Object.keys(patch).length) writeUnitBases(siteDir, client.origin, patch)
-    // The backend's post-write document carries `$uuid` per item at every nesting
-    // level, so the push that just landed also re-arms identity for the next one.
-    // Replaced wholesale: an item that no longer exists must not keep a uuid that
-    // would re-target something else.
-    if (theirs) writeItemUuids(siteDir, client.origin, collectUnitUuids(theirs))
-    else {
-      // ⛔ BANKING IS BEST-EFFORT AND ITS FAILURE USED TO BE SILENT — say it here,
-      // because the cost lands two commands away and names something else.
-      //
-      // Without `finalized[0].document` (carrying `pages`) this push banks NO item
-      // identity. The push still reports success. The next `push`/`publish` then
-      // emits with no `$uuid` per item, and the backend refuses — correctly, since
-      // silently re-identifying every stored row is far worse. But that refusal
-      // reads as a stale-token or a producer bug, with nothing pointing back at the
-      // push that failed to bank.
-      //
-      // ⚠️ We cannot tell WHY it is absent from here — a response shape that
-      // changed, a lane that shipped nothing, a backend that does not echo the
-      // document. Report the observable fact and let the operator carry it.
-      note(
-        'identity not banked: this push returned no post-write document, so no per-item ' +
-          '$uuid was stored. The next push or publish will be identity-blind and the backend ' +
-          'may refuse it. `uniweb pull` re-arms identity if that happens.'
-      )
-    }
-  }
-  // The files of the units the backend now holds as ours are the synced version — the
-  // ancestor the next `pull --merge` merges from.
-  if (heldUnits.length) recordPushedUnits(siteDir, heldUnits)
+  // (The site-content lane's own state was settled when it landed — `settleSiteContent`.)
   // What the backend holds that this copy doesn't. None of it was overwritten, and no
   // later push will overwrite it — but the files are behind until a pull.
   if (notHeld.kept.length || notHeld.foreign.length) {

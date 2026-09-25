@@ -37,6 +37,11 @@ import {
   rebankSyncHashes,
   readRecordItemUuids,
   recoverRecordItemUuids,
+  readQueryUuids,
+  writeItemUuids,
+  ensureItemUuids,
+  recoverItemUuids,
+  recoverUnbankedIdentity,
   heldTokens,
   mergeBaseVersions
 } from '../src/backend/site-sync.js'
@@ -2214,6 +2219,121 @@ test('a record never banked is recovered from the backend’s own document, by p
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+// ─── the site's page and section identity: saved when it lands, recovered when missing ──
+// Measured 2026-09-25 on a blog site whose `sync.json` held `site.yml` and the query, and no
+// page — so every push sent the pages uuid-less while the backend held them, and was
+// refused ("one section carries no item identity (section pages)"). Two defects: the pages'
+// identity was saved only after the records lane, which had been refused; and the recovery
+// ran only on an EMPTY map, so a map holding `site.yml` alone was never repaired.
+
+// The backend's post-write copy of a site: its `info`, one page with one section, one query.
+const LANDED_SITE = {
+  $uuid: 'SITE',
+  $model: '@uniweb/site-content',
+  info: { $uuid: 'INFO' },
+  pages: [{ $uuid: 'P-HOME', slug: { en: 'home' }, page_sections: [{ $uuid: 'S-HERO', stable_id: 'hero' }] }],
+  queries: [{ $uuid: 'Q-ART', name: 'articles' }]
+}
+const LANDED_UNITS = { 'site.yml': 'INFO', 'pages/home/page.yml': 'P-HOME', 'pages/home/hero.md': 'S-HERO' }
+
+const siteContentZip = (doc) => {
+  const zip = createZip([
+    { name: 'manifest.json', data: Buffer.from(JSON.stringify({ format: 'uwx/1', entries: [] })) },
+    { name: 'entities/site-content.json', data: Buffer.from(JSON.stringify(doc)) }
+  ])
+  return { ok: true, arrayBuffer: async () => zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) }
+}
+
+test('⭐ the pages a push landed keep their identity when the records lane is refused after them', async () => {
+  const dir = tmpSite()
+  bind(dir, 'SITE')
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'SITE', changed: true, document: LANDED_SITE }])),
+    pushFolder: async () => fail(422, JSON.stringify({ title: 'refused', detail: 'not this time' }))
+  }
+  const pkg = siteOnlyPkg({
+    siteContentUuid: 'SITE',
+    records: { buffer: Buffer.from('c'), entityCount: 1, models: ['@uniweb/folder'], index: [{ kind: 'folder' }] }
+  })
+  const { report } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, report })
+  assert.equal(res.exitCode, 1, 'the records lane was refused')
+  assert.deepEqual(readItemUuids(dir, ORIGIN), LANDED_UNITS, 'the pages it landed are saved')
+  assert.deepEqual(readQueryUuids(dir, ORIGIN), { articles: 'Q-ART' })
+})
+
+test('a site created by its content push saves its queries’ identity too', async () => {
+  const dir = tmpSite()
+  const client = {
+    origin: ORIGIN,
+    createSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'SITE', changed: true, document: LANDED_SITE }]))
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: undefined }), report })
+  assert.equal(res.exitCode, 0, calls.error.join('\n'))
+  assert.deepEqual(readItemUuids(dir, ORIGIN), LANDED_UNITS)
+  assert.deepEqual(readQueryUuids(dir, ORIGIN), { articles: 'Q-ART' }, 'it was saved on the update path only')
+})
+
+test('⭐ a PARTIAL item map is filled in from the backend’s document, keeping what the copy holds', async () => {
+  const dir = tmpSite()
+  bind(dir, 'SITE')
+  writeItemUuids(dir, ORIGIN, { 'site.yml': 'INFO-MINE' })
+  let reads = 0
+  const client = {
+    origin: ORIGIN,
+    pullSiteContent: async (uuid) => {
+      reads++
+      assert.equal(uuid, 'SITE', 'read by the site the copy is bound to')
+      return siteContentZip(LANDED_SITE)
+    }
+  }
+  // CONTROL — the recovery before the package is built leaves a partial map alone, which is
+  // why a map holding `site.yml` alone was never repaired.
+  assert.deepEqual(await ensureItemUuids({ client, siteDir: dir }), { 'site.yml': 'INFO-MINE' })
+  assert.equal(reads, 0)
+
+  const said = []
+  assert.equal(await recoverItemUuids({ client, siteDir: dir, note: (m) => said.push(m) }), 2)
+  assert.deepEqual(readItemUuids(dir, ORIGIN), { ...LANDED_UNITS, 'site.yml': 'INFO-MINE' })
+  assert.match(said[0], /Recovered identity for 2 item\(s\)/)
+
+  // Nothing missing now: nothing written, nothing said.
+  assert.equal(await recoverItemUuids({ client, siteDir: dir, note: (m) => said.push(m) }), 0)
+  assert.equal(said.length, 1)
+})
+
+test('recoverUnbankedIdentity reads only when the package went out without identity, on a bound site', async () => {
+  let reads = 0
+  const client = {
+    origin: ORIGIN,
+    pullSiteContent: async () => {
+      reads++
+      return siteContentZip(LANDED_SITE)
+    }
+  }
+  const unknownOf = (n) => ({ itemIdentity: { stamped: 0, unknown: n, collisions: [] } })
+
+  // A site never pushed: every item is new, and there is nothing to read.
+  const fresh = tmpSite()
+  assert.equal(await recoverUnbankedIdentity({ client, siteDir: fresh, pkg: unknownOf(3) }), null)
+  assert.equal(reads, 0)
+
+  // Every item stamped: nothing to recover, and nothing read.
+  const bound = tmpSite()
+  bind(bound, 'SITE')
+  assert.equal(await recoverUnbankedIdentity({ client, siteDir: bound, pkg: unknownOf(0) }), null)
+  assert.equal(reads, 0)
+
+  // Items went out without identity: one read, and the package is built again with the map.
+  const again = await recoverUnbankedIdentity({ client, siteDir: bound, pkg: unknownOf(3) })
+  assert.equal(reads, 1)
+  assert.deepEqual(again, { itemUuids: LANDED_UNITS })
 })
 
 // ─── the designation outcome (E6) ────────────────────────────────────────────
