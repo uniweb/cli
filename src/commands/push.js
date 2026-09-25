@@ -87,7 +87,7 @@ import {
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
-  pushInPasses
+  pushSyncPackages
 } from '../backend/site-sync.js'
 import { resolveWorkspace, describeWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 
@@ -496,9 +496,9 @@ export async function push(args = [], deps = {}) {
     output || dryRun
       ? readItemUuids(siteDir, client.origin)
       : await ensureItemUuids({ client, siteDir, note })
-  // The emit's options, read afresh for each pass (`pushInPasses`): a pass banks
-  // hashes, identity and base versions that the next one must build on.
-  const emitOptions = ({ priorHashes, sendAll, itemUuids }) => ({
+  let pkg
+  try {
+    pkg = await emitSyncPackages(siteDir, {
       backend: client.origin,
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir, client.origin),
@@ -529,10 +529,7 @@ export async function push(args = [], deps = {}) {
           }),
       ...(assetRewrite ? { assetRewrite } : {}),
       ...(assetIds ? { assetIds } : {})
-  })
-  let pkg
-  try {
-    pkg = await emitSyncPackages(siteDir, emitOptions({ priorHashes, sendAll, itemUuids }))
+    })
   } catch (err) {
     error(`Could not build the sync package: ${err.message}`)
     return { exitCode: 2 }
@@ -598,9 +595,8 @@ export async function push(args = [], deps = {}) {
   }
 
   // Submit both lanes, back-fill the minted uuids, and persist the send-only-changed
-  // cache — again for any record whose reference names a record this push created.
-  // Shared with `uniweb publish` via ../backend/site-sync.js.
-  const result = await pushInPasses({
+  // cache. Shared with `uniweb publish` via ../backend/site-sync.js.
+  const result = await pushSyncPackages({
     client,
     siteDir,
     pkg,
@@ -609,16 +605,7 @@ export async function push(args = [], deps = {}) {
       note,
       error,
       dim: (s) => `${colors.dim}${s}${colors.reset}`
-    },
-    reemit: () =>
-      emitSyncPackages(
-        siteDir,
-        emitOptions({
-          priorHashes: readSyncCache(siteDir, client.origin),
-          sendAll: false,
-          itemUuids: readItemUuids(siteDir, client.origin)
-        })
-      )
+    }
   })
   if (result.exitCode !== 0) return { exitCode: result.exitCode }
   success(

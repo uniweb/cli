@@ -90,8 +90,7 @@ import {
   refuseUnsendableRecords,
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
-  readItemUuids,
-  pushInPasses
+  pushSyncPackages
 } from '../backend/site-sync.js'
 import { resolveWorkspace, describeWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
@@ -943,14 +942,13 @@ export async function publish(args = []) {
     say.dim('Services unchanged.')
   }
 
-  // The emit's options, read afresh for each pass (`pushInPasses`): a pass banks
-  // hashes, identity and base versions that the next one must build on.
-  //
   // publish rides the same gated push as `uniweb push`: if an app author has
   // edited since this clone last synced, the push is refused rather than
   // overwriting them, and nothing goes live. `--force` drops the precondition.
   const forced = args.includes('--force')
-  const emitOptions = ({ priorHashes, itemUuids }) => ({
+  let pkg
+  try {
+    pkg = await emitSyncPackages(siteDir, {
       backend: client.origin,
       ...(declaration.declare ? {} : { declareServices: false }),
       // Placement identity for the folder — see writeFolderItemUuids.
@@ -969,10 +967,7 @@ export async function publish(args = []) {
       ...(Object.keys(ext.pins).length ? { injectExtensions: ext.pins } : {}),
       ...(assetRewrite ? { assetRewrite } : {}),
       ...(assetIds ? { assetIds } : {})
-  })
-  let pkg
-  try {
-    pkg = await emitSyncPackages(siteDir, emitOptions({ priorHashes, itemUuids }))
+    })
   } catch (err) {
     say.err(`Could not build the sync package: ${err.message}`)
     return { exitCode: 1 }
@@ -987,19 +982,11 @@ export async function publish(args = []) {
     error: (m) => say.err(m),
     dim: (s) => `${c.dim}${s}${c.reset}`
   }
-  const pushResult = await pushInPasses({
+  const pushResult = await pushSyncPackages({
     client,
     siteDir,
     pkg,
-    report,
-    reemit: () =>
-      emitSyncPackages(
-        siteDir,
-        emitOptions({
-          priorHashes: readSyncCache(siteDir, client.origin),
-          itemUuids: readItemUuids(siteDir, client.origin)
-        })
-      )
+    report
   })
   if (pushResult.exitCode !== 0) return { exitCode: pushResult.exitCode }
   const siteUuid = pushResult.boundSiteUuid

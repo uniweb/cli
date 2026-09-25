@@ -1916,6 +1916,88 @@ test('rebankSyncHashes makes the tree a fixed point for probeUnpushed', async ()
   }
 })
 
+/**
+ * ⭐ A PUSH THAT NAMES A NEW RECORD BY `$ref` BANKS WHAT THE NEXT PUSH WILL SEND.
+ *
+ * A talk naming a speaker the same push creates sends `speaker: { $ref: "speaker/ada" }`,
+ * and the backend stores the uuid it mints. The next push names the speaker by that
+ * uuid — the same reference, another hash — so a talk banked as it was sent reads as
+ * changed after every push, and is sent again. That is not harmless: a record's
+ * list-section items go without the identity a re-send needs, and the backend refuses
+ * it (`identity_required`).
+ *
+ * The property is the fixed point of the test above, across a real push: nothing to
+ * send once the push has been applied. The CONTROL runs the same push with the
+ * re-bank taken out, and must leave the talk to send — which is also what shows the
+ * probe emits the records at all.
+ */
+test('a push that names a new record by $ref leaves nothing to send', async () => {
+  const pushOnce = async ({ rebank }) => {
+    const root = mkdtempSync(join(tmpdir(), 'ref-rebank-'))
+    const site = join(root, 'site')
+    const fnd = join(root, 'foundation')
+    mkdirSync(join(fnd, 'dist', 'meta'), { recursive: true })
+    writeFileSync(join(fnd, 'package.json'), JSON.stringify({ name: '@acme/marketing', version: '1.0.0' }))
+    writeFileSync(
+      join(fnd, 'dist', 'meta', 'schema.json'),
+      JSON.stringify({
+        _self: { name: '@acme/marketing', version: '1', role: 'foundation' },
+        dataSchemas: {
+          '@/speaker': { name: 'speaker', fields: { name: { type: 'string' } } },
+          '@/talk': {
+            name: 'talk',
+            fields: { title: { type: 'string' }, speaker: { type: 'ref', ref: '@/speaker', required: true } }
+          }
+        }
+      })
+    )
+    mkdirSync(join(site, 'pages', 'home'), { recursive: true })
+    mkdirSync(join(site, 'records', 'speaker'), { recursive: true })
+    mkdirSync(join(site, 'records', 'talk'), { recursive: true })
+    writeFileSync(join(site, 'site.yml'), 'name: Acme\nfoundation: "@acme/marketing"\n')
+    writeFileSync(join(site, 'package.json'), JSON.stringify({ name: 's', dependencies: { '@acme/marketing': 'file:../foundation' } }))
+    writeFileSync(join(site, 'pages', 'home', 'page.yml'), 'title: Home\n')
+    writeFileSync(join(site, 'records', 'speaker', 'ada.yml'), 'name: Ada\n')
+    writeFileSync(join(site, 'records', 'talk', 'opening.yml'), 'title: Opening\nspeaker: ada\n')
+    bind(site, 'SITE')
+
+    const { emitSyncPackages } = await import('@uniweb/build/uwx')
+    const pkg = await emitSyncPackages(site, { backend: ORIGIN })
+    assert.deepEqual(pkg.refusals, [])
+    assert.deepEqual(pkg.namesNew, ['@acme/talk talk/opening'], 'the talk names the speaker this push creates')
+    if (!rebank) pkg.namesNew = []
+
+    const minted = (id) => `01a0d4fb-0000-7000-8000-${Buffer.from(id).toString('hex').slice(0, 12).padEnd(12, '0')}`
+    const client = {
+      origin: ORIGIN,
+      updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'SITE', changed: true }])),
+      pushFolder: async () =>
+        ok(
+          finalized(
+            pkg.records.index.map((entry, index) =>
+              entry.kind === 'folder'
+                ? { index, uuid: 'FOLDER', changed: true }
+                : { index, uuid: minted(entry.id), changed: true }
+            )
+          )
+        )
+    }
+    const { report, calls } = makeReport()
+    const res = await pushSyncPackages({ client, siteDir: site, pkg, report })
+    assert.equal(res.exitCode, 0, calls.error.join('\n'))
+    const after = await probeUnpushed(site, { backend: ORIGIN })
+    rmSync(root, { recursive: true, force: true })
+    return after
+  }
+
+  // CONTROL — banked as sent, the talk is left to send, and the folder rides with it.
+  const unbanked = await pushOnce({ rebank: false })
+  assert.equal(unbanked.changed, 2, `control: the talk and its folder — got ${JSON.stringify(unbanked)}`)
+
+  const rebanked = await pushOnce({ rebank: true })
+  assert.equal(rebanked.changed, 0, `nothing to send after the push — got ${JSON.stringify(rebanked)}`)
+})
+
 // ─── the designation outcome (E6) ────────────────────────────────────────────
 // A push carries the author's `template:` intent in `info`; what the backend DID
 // with it comes back as `template` — `designated` · `undesignated`, absent when it

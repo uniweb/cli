@@ -58,9 +58,8 @@ test('every command that creates a site refuses unsendable records before creati
     const first = text.indexOf('refuseUnsendableRecords(')
     if (first === -1 || first > create) late.push(f)
     // The send — `-o` and `--dry-run` never reach the probe, so the check after the
-    // main emit is theirs. A command sends through `pushInPasses`, which checks each
-    // later pass's refusals itself.
-    const send = text.indexOf('pushInPasses(')
+    // main emit is theirs.
+    const send = text.indexOf('pushSyncPackages(')
     const last = text.lastIndexOf('refuseUnsendableRecords(', send)
     if (send === -1 || last === -1 || last <= create) unguarded.push(f)
   }
