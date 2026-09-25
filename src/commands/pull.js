@@ -77,6 +77,7 @@ import {
   computeUnitHashes,
   collectUnitUuids,
   collectQueryUuids,
+  collectFolderItemUuids,
   documentSchema
 } from '@uniweb/build/uwx'
 import {
@@ -91,7 +92,8 @@ import {
   mergeBaseVersions,
   mergeItemBaseVersions,
   writeUnitBases,
-  writeItemUuids
+  writeItemUuids,
+  writeFolderItemUuids
 } from '../backend/site-sync.js'
 import { resolveWorkspace } from '../backend/workspace.js'
 import {
@@ -849,6 +851,9 @@ export async function pull(args = [], deps = {}) {
     client.pullSiteContent(siteContentUuid, { etag: conditional ? etagContent : undefined })
   )
   if (content?.refused) return { exitCode: 1 }
+  // The Models the pulled site's queries name, as the push qualified them — the re-bank
+  // below resolves with them too (see there).
+  let pulledQueryModels = []
   if (content && !content.notModified) {
     const siteDoc =
       content.docs &&
@@ -856,6 +861,9 @@ export async function pull(args = [], deps = {}) {
         content.docs[0] ||
         null)
     if (siteDoc) {
+      pulledQueryModels = (Array.isArray(siteDoc.queries) ? siteDoc.queries : [])
+        .map((q) => q?.schema)
+        .filter((s) => typeof s === 'string' && /^@[^/]+\//.test(s))
       // Re-base the page attribution. The pulled document IS the backend's own
       // representation, so it becomes the remote base directly. We deliberately
       // CLEAR the local base rather than reuse it: our source files were just
@@ -965,6 +973,9 @@ export async function pull(args = [], deps = {}) {
   // The record documents this pull took — the re-bank below pairs their list items with the
   // files just written.
   let pulledRecordDocs = []
+  // The Models this pull read from the backend, by name — the re-bank below resolves with
+  // them, since a clone's foundation is not in the project to resolve them offline.
+  let pulledDeclarations = null
   if (!noRecords) {
     const folder = await getDocs('records', () =>
       client.pullFolder(siteContentUuid, { etag: conditional ? etagFolder : undefined })
@@ -976,6 +987,7 @@ export async function pull(args = [], deps = {}) {
       pulledRecordDocs = recordDocs
       const resolveModel = makeModelResolver({ client })
       const declByModel = new Map()
+      pulledDeclarations = declByModel
       for (const model of [
         ...new Set(recordDocs.map((d) => documentSchema(d)).filter(Boolean))
       ]) {
@@ -1002,6 +1014,12 @@ export async function pull(args = [], deps = {}) {
           scope: await scopeFor(null)
         }
       })
+      // ⭐ THE FOLDER'S PLACEMENT IDENTITY, from the folder this pull took — as a push banks
+      // it from the folder it sent. ⛔ Only a push banked it until 2026-09-25, so a copy that
+      // had never pushed (every clone) sent its first folder with its placements uuid-less,
+      // and the backend refused that push (`identity_required`, section `contents`) —
+      // measured on a template clone's first edit.
+      if (folderDoc) writeFolderItemUuids(siteDir, client.origin, collectFolderItemUuids(folderDoc))
       // The folder's organization, `folder.yml` in the records directory — named as
       // the author would write it (`records/folder.yml`, or under `paths.records`).
       if (report.records === 'updated') {
@@ -1073,9 +1091,30 @@ export async function pull(args = [], deps = {}) {
   //
   // Best-effort: a failure here costs an unnecessary re-send on the next push, never
   // wrong content, and must not fail a pull whose files are already written.
-  if (!dryRun) {
+  // Nothing projected — both lanes unchanged (304) — leaves the banked state describing the
+  // files as they are, so there is nothing to re-bank. Re-banking anyway only failed, noisily,
+  // where the Models cannot be resolved offline (a clone's).
+  const projected = Boolean(content && !content.notModified) || Boolean(folderLane && !folderLane.notModified)
+  if (!dryRun && projected) {
     try {
-      await rebankSyncHashes(siteDir, client.origin, { recordDocs: pulledRecordDocs })
+      // ⭐ With the Models this pull read, and those its queries name — a query may name a
+      // schema no record uses yet. The re-bank is offline, and a site whose foundation is not
+      // in the project (a clone's) resolves none of them otherwise: every template clone
+      // said "could not re-bank" until 2026-09-25, and banked nothing.
+      const declarations = pulledDeclarations || new Map()
+      const readModel = makeModelResolver({ client })
+      for (const model of pulledQueryModels) {
+        if (declarations.has(model)) continue
+        try {
+          declarations.set(model, await readModel(model))
+        } catch {
+          // Unreadable here: the re-bank says so if it needs it.
+        }
+      }
+      await rebankSyncHashes(siteDir, client.origin, {
+        recordDocs: pulledRecordDocs,
+        ...(declarations.size ? { declarations } : {})
+      })
     } catch (err) {
       note(`! could not re-bank the sync cache: ${err.message}`)
       note('  The next push will re-send content that is already current.')

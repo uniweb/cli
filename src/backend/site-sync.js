@@ -1304,7 +1304,7 @@ export async function probeUnpushed(siteDir, { backend = null, sendAll = false }
  */
 async function comparisonEmit(
   siteDir,
-  { backend = null, priorHashes = {}, sendAll = false } = {}
+  { backend = null, priorHashes = {}, sendAll = false, declarations = null } = {}
 ) {
   const applied = readAppliedInjections(siteDir, backend)
   // ⛔ Per backend: an asset id is minted by one and means nothing to another, so a
@@ -1314,7 +1314,13 @@ async function comparisonEmit(
   const queryUuids = readQueryUuids(siteDir, backend)
   return emitSyncPackages(siteDir, {
     backend,
-    resolveModel: makeModelResolver({ client: null, offline: true }),
+    // Offline, always. A caller that has just read the Models from the backend — a pull —
+    // may hand them in: the declarations a push would resolve, so the hashes still compare.
+    // Without them a site whose foundation is not in the project (a clone's) resolves none
+    // of its Models here, and nothing is banked.
+    resolveModel: declarations
+      ? async (name) => declarations.get(name) ?? null
+      : makeModelResolver({ client: null, offline: true }),
     priorHashes,
     sendAll,
     ...applied,
@@ -1349,9 +1355,11 @@ async function comparisonEmit(
  * @param {object} [opts]
  * @param {object[]} [opts.recordDocs] - the record documents the pull took; their list items'
  *        identity is banked against the files just written (`readRecordItemUuids`)
+ * @param {Map<string,object>} [opts.declarations] - the Models the pull read, by name — so a
+ *        site whose foundation is not in the project (a clone's) can be re-banked offline
  */
-export async function rebankSyncHashes(siteDir, backend = null, { recordDocs } = {}) {
-  const pkg = await comparisonEmit(siteDir, { backend, sendAll: true })
+export async function rebankSyncHashes(siteDir, backend = null, { recordDocs, declarations } = {}) {
+  const pkg = await comparisonEmit(siteDir, { backend, sendAll: true, declarations })
   writeSyncCache(siteDir, backend, pkg.hashes || {}, pkg.applied || {})
   // ⭐ And the identity of the records' list items, from the documents the pull just took:
   // the files it wrote hold the stored items in stored order, so the emit over them pairs

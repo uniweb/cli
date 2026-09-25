@@ -36,7 +36,7 @@ import {
 } from '../src/commands/pull.js'
 import { createZip } from '@uniweb/build/uwx'
 import { readWritten, isPullOutput } from '../src/utils/pull-written.js'
-import { readBaseVersions, readItemBaseVersions } from '../src/backend/site-sync.js'
+import { readBaseVersions, readItemBaseVersions, readFolderItemUuids, readSyncCache } from '../src/backend/site-sync.js'
 
 // ⭐ These exercise the pull lanes, not the workspace: a command works in the one chosen
 // with the login (backend/workspace.js), and a test has no login to choose one. Named
@@ -478,7 +478,7 @@ async function pullFolderNamed(dir, { folderModel, memberModel, key = '$schema' 
     {
       $uuid: 'F1',
       [key]: folderModel,
-      contents: [{ kind: 'ref', name: 'alice', entry: { [ref]: memberModel, entity: 'R1' } }]
+      contents: [{ kind: 'ref', name: 'alice', $uuid: 'P1', entry: { [ref]: memberModel, entity: 'R1' } }]
     },
     { $uuid: 'R1', [key]: memberModel, member: { name: 'Alice' } }
   ]
@@ -541,6 +541,9 @@ test('CONTROL — the same lane in the agreed shape (`$schema`, scoped names) is
     const res = await pullFolderNamed(dir, { folderModel: '@uniweb/folder', memberModel: '@acme/member' })
     assert.equal(res.exitCode, 0)
     assert.ok(existsSync(join(dir, 'records/acme/member/alice.yml')))
+    // ⭐ The folder's placement identity is banked from the folder the pull took — a copy that
+    // never pushed (a clone) sends its first folder with it, rather than being refused.
+    assert.deepEqual(readFolderItemUuids(dir, TEST_ORIGIN), { '@R1': 'P1', alice: 'P1' })
     assert.equal(pulledCache(dir).folder, '"F-ETAG"')
     assert.equal(readBaseVersions(dir, TEST_ORIGIN).R1, 'V-R1')
     assert.equal(readItemBaseVersions(dir, TEST_ORIGIN)['I-R1'], 'iv-R1')
@@ -645,6 +648,11 @@ test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (
       join(dir, '.uniweb/pull-cache.json'),
       JSON.stringify({ version: 2, content: '"abc123"' })
     )
+    // A banked hash that a re-bank would replace: nothing was projected, so nothing is re-banked.
+    writeFileSync(
+      join(dir, '.uniweb/backend-cache.json'),
+      JSON.stringify({ backends: { [TEST_ORIGIN]: { hashes: { 'x y': 'BANKED' } } } })
+    )
     let sentINM
     const res = await pull(['--no-records', '--non-interactive'], {
       resolveSiteDir: async () => dir,
@@ -666,6 +674,8 @@ test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (
       yaml.load(readFileSync(join(dir, 'site.yml'), 'utf8')).name,
       'Keep'
     )
+    // …and the bank left as it was
+    assert.deepEqual(readSyncCache(dir, TEST_ORIGIN), { 'x y': 'BANKED' })
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

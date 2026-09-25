@@ -2130,6 +2130,54 @@ test('a pull banks the list items of the records it took, against the files it w
   }
 })
 
+test('a clone re-banks with the Models its pull read — its foundation is not in the project', async () => {
+  // Measured 2026-09-25 on every template clone: the pull wrote the files, then its offline
+  // re-bank could resolve none of the foundation's Models, so nothing was banked — "could not
+  // re-bank the sync cache: Model @std/person could not be resolved".
+  const root = mkdtempSync(join(tmpdir(), 'clone-rebank-'))
+  const site = join(root, 'site')
+  try {
+    mkdirSync(join(site, 'pages', 'home'), { recursive: true })
+    mkdirSync(join(site, 'records', 'talk'), { recursive: true })
+    writeFileSync(join(site, 'site.yml'), 'name: Acme\nfoundation: "@acme/fnd@1.0.0"\n')
+    // The query a pull writes back names the schema, as the live clone's `people` did.
+    writeFileSync(join(site, 'queries.yml'), 'talks:\n  schema: "@/talk"\n')
+    writeFileSync(join(site, 'pages', 'home', 'page.yml'), 'title: Home\n')
+    writeFileSync(join(site, 'records', 'talk', 'opening.yml'), '$uuid: MINT-TALK\nbrief:\n  title: Opening\nsessions:\n  - room: Hall A\n')
+    bind(site, 'SITE')
+    const doc = JSON.parse(readFileSync(join(site, 'sync.json'), 'utf8'))
+    doc.backends[ORIGIN].records = { 'MINT-TALK': 'MINT-TALK' }
+    writeFileSync(join(site, 'sync.json'), JSON.stringify(doc))
+    const declarations = new Map([
+      [
+        '@acme/talk',
+        {
+          name: '@acme/talk',
+          sections: {
+            brief: { brief: true, fields: { title: { type: 'string' } } },
+            sessions: { multiple: true, fields: { room: { type: 'string' } } }
+          }
+        }
+      ]
+    ])
+    const stored = {
+      $uuid: 'MINT-TALK',
+      $schema: '@acme/talk',
+      brief: { title: 'Opening', $uuid: 'BRIEF' },
+      sessions: [{ room: 'Hall A', $uuid: 'ITEM-0' }]
+    }
+
+    // CONTROL — offline, with nothing to resolve the foundation's Models by.
+    await assert.rejects(rebankSyncHashes(site, ORIGIN, { recordDocs: [stored] }), /could not be resolved/)
+
+    const banked = await rebankSyncHashes(site, ORIGIN, { recordDocs: [stored], declarations })
+    assert.ok(banked > 0, 'hashes were banked')
+    assert.match(readRecordItemUuids(site, ORIGIN)['MINT-TALK']['sessions[0]'], /^ITEM-0 [0-9a-f]{16}$/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('a record never banked is recovered from the backend’s own document, by place', async () => {
   const { root, site } = talkSite()
   try {
