@@ -275,7 +275,9 @@ test('pull projects the site-content lane (pages + sections + config) from a moc
     const pageYml = yaml.load(
       readFileSync(join(dir, 'pages/home/page.yml'), 'utf8')
     )
-    assert.deepEqual(pageYml.sections, ['hero', '...']) // rest marker keeps the page open to new sections
+    // One section file: its name is the order, so no `sections:` list — and with none, a section
+    // added later is found as well.
+    assert.equal(pageYml.sections, undefined)
     assert.equal(pageYml.uuid, undefined)
     assert.equal(pageYml.ids, undefined)
     assert.ok(existsSync(join(dir, 'pages/home/hero.md')))
