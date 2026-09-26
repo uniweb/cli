@@ -76,6 +76,11 @@ export function fingerprintDeclaration(declared) {
     .slice(0, 16)
 }
 
+/** Absent, or an empty list — a stored request that asks for nothing. */
+function isNothing(value) {
+  return value === undefined || value === null || (Array.isArray(value) && value.length === 0)
+}
+
 /** Deterministic JSON: object keys sorted at every depth, arrays left in order. */
 function stableString(value) {
   return JSON.stringify(value, (_k, v) =>
@@ -212,6 +217,12 @@ export function reconcile(localValue, remoteValue, baseFingerprint) {
   const base = baseFingerprint || null
 
   if (local === remote) return { action: 'none', local, remote }
+  // ⛔ A FILE THAT DECLARES NOTHING ASKS NOTHING, so it is never one side of a conflict. With
+  // nothing stored either — an empty list is the store's nothing — there is nothing to do; with
+  // something stored, the file is merely behind. Until 2026-09-26 this was a `conflict`, and the
+  // first publish of a site whose file is silent warned that its services "were changed
+  // elsewhere, and site.yml changed too", listing both as nothing.
+  if (local === null) return { action: isNothing(remoteValue) ? 'none' : 'adopt', local, remote }
   if (!base) return { action: 'conflict', local, remote }
 
   const localMoved = local !== base

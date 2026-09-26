@@ -238,10 +238,19 @@ test("the backend's omitted keys compare equal to a file that omits them", () =>
 test('a site with no $services and a backend with rows → adopt, not send', () => {
   // A project that never pulled, against a site that has bought services. The file
   // is silent — "no opinion" — so there is nothing to ask and plenty to learn.
+  // ⛔ This asserted `conflict` until 2026-09-26, against its own name: a silent file is no
+  // intent, so there is only one side and nothing to rank.
   const r = recon({}, API_PRO, { servicesRequest: null })
-  assert.equal(r.action, 'conflict', 'no base ⇒ conservative')
+  assert.equal(r.action, 'adopt')
   const withBase = recon({}, API_PRO, banked({}))
-  assert.equal(withBase.action, 'conflict', 'still no servicesRequest banked')
+  assert.equal(withBase.action, 'adopt')
+})
+
+test('⭐ a site with no $services and nothing stored → nothing to ask, not a conflict', () => {
+  // The first publish of a site whose file is silent: the backend stores `[]`. Measured
+  // 2026-09-26 — this warned "changed elsewhere, and site.yml changed too", listing both as nothing.
+  assert.equal(recon({}, [], null).action, 'none')
+  assert.equal(recon({}, undefined, null).action, 'none')
 })
 
 // ── the same reconcile over the language selection ──────────────────────────
