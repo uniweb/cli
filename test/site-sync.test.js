@@ -35,6 +35,7 @@ import {
   readItemUuids,
   probeUnpushed,
   rebankSyncHashes,
+  writeSyncCache,
   readRecordItemUuids,
   recoverRecordItemUuids,
   readQueryUuids,
@@ -1921,6 +1922,69 @@ test('rebankSyncHashes makes the tree a fixed point for probeUnpushed', async ()
     )
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+/**
+ * ⛔ A PULL BANKS ONLY WHAT IT TOOK. A record written since the last push is not on the
+ * backend, so not among the documents a pull takes, and it stays to send — with the folder
+ * that places it. Until 2026-09-26 the re-bank banked the whole tree, so the next push
+ * skipped such a record for good and `status` said "in sync".
+ */
+test('rebankSyncHashes: a record the pull did not take stays to send, and the folder with it', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'rebank-local-'))
+  const A = '01a0d4fb-0000-7000-8000-00000000000a'
+  const B = '01a0d4fb-0000-7000-8000-00000000000b'
+  try {
+    const site = join(root, 'site')
+    const fnd = join(root, 'foundation')
+    mkdirSync(join(fnd, 'dist', 'meta'), { recursive: true })
+    writeFileSync(join(fnd, 'package.json'), JSON.stringify({ name: '@acme/marketing', version: '1.0.0' }))
+    writeFileSync(
+      join(fnd, 'dist', 'meta', 'schema.json'),
+      JSON.stringify({
+        _self: { name: '@acme/marketing', version: '1', role: 'foundation' },
+        dataSchemas: { '@/note': { name: 'note', sections: { brief: { kind: 'single', brief: true, fields: { title: { type: 'string' } } } } } }
+      })
+    )
+    mkdirSync(join(site, 'pages', 'home'), { recursive: true })
+    mkdirSync(join(site, 'records', 'note'), { recursive: true })
+    writeFileSync(join(site, 'site.yml'), 'name: Acme\nfoundation: "@acme/marketing"\n')
+    writeFileSync(join(site, 'package.json'), JSON.stringify({ name: 's', dependencies: { '@acme/marketing': 'file:../foundation' } }))
+    writeFileSync(join(site, 'pages', 'home', 'page.yml'), 'title: Home\n')
+    writeFileSync(join(site, 'records', 'note', 'a.yml'), `$uuid: ${A}\ntitle: Pulled\n`)
+    writeFileSync(join(site, 'records', 'note', 'b.yml'), 'title: Written since\n')
+    bind(site, 'SITE')
+    const mapRecords = (map) => {
+      const file = join(site, 'sync.json')
+      const doc = JSON.parse(readFileSync(file, 'utf8'))
+      doc.backends[ORIGIN].records = map
+      writeFileSync(file, JSON.stringify(doc, null, 2) + '\n')
+    }
+    mapRecords({ [A]: A })
+
+    await rebankSyncHashes(site, ORIGIN, { recordDocs: [{ $uuid: A, $schema: '@acme/note' }] })
+    const after = await probeUnpushed(site, { backend: ORIGIN })
+    assert.equal(after.changed, 2, `the new record and the folder that places it — got ${JSON.stringify(after)}`)
+
+    // …and a cache the old re-bank poisoned heals — the whole tree banked, as it did: a hash for a
+    // record this backend never accepted is dropped, not kept.
+    const { emitSyncPackages } = await import('@uniweb/build/uwx')
+    const tree = await emitSyncPackages(site, { backend: ORIGIN, sendAll: true })
+    writeSyncCache(site, ORIGIN, tree.hashes, {})
+    assert.equal((await probeUnpushed(site, { backend: ORIGIN })).changed, 0, 'control: the poisoned cache hides it')
+    await rebankSyncHashes(site, ORIGIN, { recordDocs: [{ $uuid: A, $schema: '@acme/note' }] })
+    const healed = await probeUnpushed(site, { backend: ORIGIN })
+    assert.ok(healed.changed >= 1, `a record the backend never accepted is sent — got ${JSON.stringify(healed)}`)
+
+    // CONTROL — once the backend holds it too, a pull that takes both leaves nothing to send.
+    writeFileSync(join(site, 'records', 'note', 'b.yml'), `$uuid: ${B}\ntitle: Written since\n`)
+    mapRecords({ [A]: A, [B]: B })
+    await rebankSyncHashes(site, ORIGIN, { recordDocs: [{ $uuid: A, $schema: '@acme/note' }, { $uuid: B, $schema: '@acme/note' }] })
+    const settled = await probeUnpushed(site, { backend: ORIGIN })
+    assert.equal(settled.changed, 0, `control: nothing to send — got ${JSON.stringify(settled)}`)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
 })
 

@@ -1486,7 +1486,7 @@ async function comparisonEmit(
  */
 export async function rebankSyncHashes(siteDir, backend = null, { recordDocs, declarations } = {}) {
   const pkg = await comparisonEmit(siteDir, { backend, sendAll: true, declarations })
-  writeSyncCache(siteDir, backend, pkg.hashes || {}, pkg.applied || {})
+  writeSyncCache(siteDir, backend, onlyWhatThePullTook(siteDir, backend, pkg, recordDocs), pkg.applied || {})
   // ⭐ And the identity of the records' list items, from the documents the pull just took:
   // the files it wrote hold the stored items in stored order, so the emit over them pairs
   // with each document item for item.
@@ -1503,6 +1503,44 @@ export async function rebankSyncHashes(siteDir, backend = null, { recordDocs, de
     )
   }
   return Object.keys(pkg.hashes || {}).length
+}
+
+/**
+ * The hashes a pull may bank: the tree's, except for a record the pull did not take.
+ *
+ * ⛔ ONLY WHAT CAME FROM THE BACKEND IS AGREED. A record on disk that the backend did not
+ * hand back — written since the last push, or one a push had refused — is not in sync
+ * because a pull ran. Until 2026-09-26 it was banked with the rest, so every later push
+ * skipped it and `uniweb status` said "in sync": a record written before a `uniweb sync`
+ * (which pulls, then pushes) never reached the backend. One this backend never accepted —
+ * no identity from it — is always sent: a hash it has banked can only be that mistake's.
+ * One it did accept keeps what the last push banked. The folder keeps its hash too while
+ * it places such a record. A pull that took no records (`--no-records`, a 304) leaves
+ * every record's hash as it was.
+ *
+ * @param {object[]|undefined} recordDocs - the record documents the pull took
+ */
+function onlyWhatThePullTook(siteDir, backend, pkg, recordDocs) {
+  const hashes = { ...(pkg.hashes || {}) }
+  const prior = readSyncCache(siteDir, backend)
+  const keep = (key) => {
+    if (Object.hasOwn(prior, key)) hashes[key] = prior[key]
+    else delete hashes[key]
+  }
+  const taken = new Set((recordDocs || []).map((d) => d?.$uuid).filter(Boolean))
+  const recordUuids = readBackendState(siteDir, backend).records || {}
+  let notTaken = 0
+  for (const entry of pkg.records?.index || []) {
+    if (entry.kind === 'folder') continue // the folder itself — held below while it places one
+    const theirs = entry.ownId ? recordUuids[entry.ownId] : null
+    if (theirs && taken.has(theirs)) continue
+    notTaken++
+    const key = `${entry.model} ${entry.id}`
+    if (theirs) keep(key)
+    else delete hashes[key]
+  }
+  if (notTaken) for (const key of Object.keys(hashes)) if (key.startsWith('@uniweb/folder ')) keep(key)
+  return hashes
 }
 
 /**
