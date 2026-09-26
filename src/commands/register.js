@@ -835,10 +835,18 @@ async function runRegister(args = []) {
   if (!res.ok) {
     // Resume path: a registered version is immutable, so re-running after a
     // partial code delivery hits the duplicate rejection here — a STRUCTURED
-    // 409 (problem+json, title "Conflict") — and proceeds to phase 2 (the
-    // code-uploads plan authorizes against the REGISTERED version; files it
-    // already stores come back `present` and are skipped).
-    const isDuplicate = !standalone && res.status === 409
+    // 409 (problem+json, title "Conflict", naming the `version` it refused) — and
+    // proceeds to phase 2 (the code-uploads plan authorizes against the REGISTERED
+    // version; files it already stores come back `present` and are skipped).
+    //
+    // ⛔ ONE STATUS, MORE THAN ONE MEANING. A 409 that names no version is another
+    // refusal — a data schema changed where the backend holds records of it
+    // (`reason: "destructive_republish"`) — and until 2026-09-26 it was read as a
+    // resume too: "already registered — resuming code delivery", then a 404 for a
+    // version that was never registered, and the refusal's own sentence never shown.
+    // A body with no shape to read resumes, as it always did.
+    const isDuplicate =
+      !standalone && res.status === 409 && (!parsedBody || typeof parsedBody !== 'object' || parsedBody.version !== undefined)
     if (isDuplicate) {
       alreadyRegistered = true
       info(
@@ -869,8 +877,9 @@ async function runRegister(args = []) {
       // because a 422 the CLI did not know about arrived exactly that way.
       if (parsedBody?.detail) {
         log(`  ${parsedBody.detail}`)
-        if (parsedBody.code) {
-          log(`  ${colors.dim}(${parsedBody.code})${colors.reset}`)
+        const code = parsedBody.code ?? parsedBody.reason
+        if (code) {
+          log(`  ${colors.dim}(${code})${colors.reset}`)
         }
       } else if (rawBody) {
         log(`  ${colors.dim}${rawBody.slice(0, 500)}${colors.reset}`)
