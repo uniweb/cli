@@ -87,6 +87,7 @@ import {
   ensureItemUuids,
   readFolderItemUuids,
   readRecordItemUuids,
+  deploymentQueryFields,
   recoverUnbankedIdentity,
   ensureSiteExists,
   refuseUnsendableRecords,
@@ -339,10 +340,11 @@ export async function publish(args = []) {
   // (2026-08-30). Restoring a reader for it would re-create a check that cannot fail
   // while implying a capability that was never negotiable.
   //
-  // Discovery is not consulted on this path at all — nor anywhere else: its last leaf
-  // the CLI read, `delivery.siteSubscriptionRequired`, was deleted 2026-08-30, and
-  // `client.discover()` is uncalled. (This said that leaf was still read, after the
-  // site create, until 2026-09-26.)
+  // Discovery is not consulted for a gate: the one leaf the CLI reads is
+  // `siteContent.queryFields`, which says what the push below may SEND
+  // (`deploymentQueryFields`), never whether to publish. (`delivery.siteSubscriptionRequired`
+  // was deleted 2026-08-30; this said it was still read, after the site create, until
+  // 2026-09-26.)
 
   // ⛔ NOTHING about a runtime is sent from here. `site.yml::runtime` was a
   // vestigial prop and is no longer read [Diego, 2026-08-22]; `?runtime=` is no
@@ -962,8 +964,11 @@ export async function publish(args = []) {
   // edited since this clone last synced, the push is refused rather than
   // overwriting them, and nothing goes live. `--force` drops the precondition.
   const forced = args.includes('--force')
+  const queryFields = await deploymentQueryFields({ client, siteDir })
   const emitOptions = {
     backend: client.origin,
+    // The keys this deployment's `queries` Section takes — see deploymentQueryFields.
+    ...(queryFields ? { queryFields } : {}),
     ...(declaration.declare ? {} : { declareServices: false }),
     // Placement identity for the folder — see writeFolderItemUuids.
     folderItemUuids: readFolderItemUuids(siteDir, client.origin),

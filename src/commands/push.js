@@ -83,6 +83,7 @@ import {
   readFolderItemUuids,
   readQueryUuids,
   readRecordItemUuids,
+  deploymentQueryFields,
   recoverUnbankedIdentity,
   ensureItemUuids,
   refuseUnsendableRecords,
@@ -498,6 +499,11 @@ export async function push(args = [], deps = {}) {
     output || dryRun
       ? readItemUuids(siteDir, client.origin)
       : await ensureItemUuids({ client, siteDir, note })
+  const queryFields = await deploymentQueryFields({
+    client,
+    siteDir,
+    offline: Boolean(output) || dryRun
+  })
   const emitOptions = {
     backend: client.origin,
     // Placement identity for the folder — see writeFolderItemUuids.
@@ -505,6 +511,8 @@ export async function push(args = [], deps = {}) {
     // Identity for the `queries` section — see readQueryUuids. Keyed by
     // name, because a declaration has no file for a path-keyed map to hold.
     queryUuids: readQueryUuids(siteDir, client.origin),
+    // The keys this deployment's `queries` Section takes — see deploymentQueryFields.
+    ...(queryFields ? { queryFields } : {}),
     // Identity for the records' list items — see readRecordItemUuids.
     recordItemUuids: readRecordItemUuids(siteDir, client.origin),
     ...(foundationDir ? { foundationDir } : {}),

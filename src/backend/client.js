@@ -75,9 +75,11 @@ export function resolveBackendOrigin() {
  * credential in hand) or did not answer. Keeps the client non-breaking.
  *
  * ⭐ **It is EMPTY, and that is the accurate shape.** The CLI reads exactly one leaf of
- * that document — `delivery.siteSubscriptionRequired` — and its absence is meaningful:
- * unknown reads falsy, and the caller stays silent rather than claiming a deployment
- * does or does not charge. Every other key that used to sit here had no reader.
+ * that document — `siteContent.queryFields` — and its absence is meaningful: unknown
+ * means a push sends no optional `queries` key, which every deployment accepts, rather
+ * than claiming a deployment takes one. Every other key that used to sit here had no
+ * reader. *(The leaf named here was `delivery.siteSubscriptionRequired` until
+ * 2026-09-26; it went 2026-08-30.)*
  *
  * ⛔ **Do not restore a key "for completeness".** A default for a field nothing reads is
  * a reader waiting to happen, and it is how this file came to describe a client that
@@ -458,8 +460,11 @@ export class BackendClient {
    * (`serve_base`, `serve_url`, `config.base`), never from a handshake; `auth.loginPath`
    * is not read either — the login path is a hardcoded constant
    * (`utils/registry-auth.js`). What is actually consumed is ONE leaf —
-   * `delivery.siteSubscriptionRequired` — and nothing else. Do not add a reader for the
-   * rest: each one would be a second place a backend's layout is pinned.
+   * `siteContent.queryFields`, the keys the deployment's `queries` Section declares
+   * (`site-sync.js::deploymentQueryFields`) — which is policy, never an address. Do not
+   * add a reader for the rest: each one would be a second place a backend's layout is
+   * pinned. (This named `delivery.siteSubscriptionRequired` until 2026-09-26; that leaf
+   * went 2026-08-30.)
    *
    * @returns {Promise<object>}
    */

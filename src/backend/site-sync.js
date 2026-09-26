@@ -654,6 +654,23 @@ export function readAppliedInjections(siteDir, backend) {
 }
 
 /**
+ * The keys this deployment's `queries` Section declares, as it says so itself —
+ * `GET /dev/config` → `siteContent.queryFields` — so a push sends an optional key
+ * only to a deployment that takes it (`typed_by_data_key`; one that does not declare
+ * a key refuses a push carrying it). Offline — a dry run, `--output` — the list the
+ * last push to this backend banked, so the package is the one that push would build.
+ *
+ * `null` when the answer is not in hand: nothing optional is sent, which every
+ * deployment accepts.
+ */
+export async function deploymentQueryFields({ client, siteDir, offline = false }) {
+  const fields = offline
+    ? readAppliedInjections(siteDir, client.origin).queryFields
+    : (await client.discover())?.siteContent?.queryFields
+  return Array.isArray(fields) ? fields : null
+}
+
+/**
  * Bank the content hashes and the injections that produced them. ⛔ ONE call, both
  * maps: they describe the same document, so writing either alone leaves the cache
  * self-inconsistent — and the failure is silent, since a hash never says which
