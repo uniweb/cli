@@ -2717,6 +2717,8 @@ Running `extract` before a build is the usual first mistake — it reads the com
 { "e5f6g7h8": { "default": "Learn More", "overrides": { "/pricing:cta": "See Pricing" } } }
 ```
 
+An override key is the page's route and the section's id (`cta` for `2-cta.md`); a page's own title, label, description and keywords are `/pricing:_meta`, and in `locales/records/` a record is named by its manifest context (`std/article/launch`).
+
 *Free-form bodies* — when a language needs different structure, different images, or copy rewritten rather than translated. The file replaces one section's content:
 
 ```
@@ -2726,7 +2728,7 @@ locales/freeform/es/records/article/x.md       # records work too
 
 These are **body only — no frontmatter**; params and config still come from the source section. `uniweb i18n init-freeform es pages/about hero` creates one pre-filled and records a source hash, so `uniweb i18n status --freeform` can tell you when the original moved on (`update-hash` to acknowledge). `move`, `rename`, and `prune --freeform` keep them aligned when pages get reorganized.
 
-**Records translate in the same `extract` run**, into their own manifest at `locales/records/manifest.json` — keyed by the RECORD, so a record translated once is found by every query that returns it.
+**Records translate in the same `extract` run**, into their own manifest at `locales/records/manifest.json` — keyed by the RECORD, so a record translated once is found by every query that returns it. A record whose query has a data schema translates exactly the fields the schema says are text — never an enum, a URL, a date, a number, a file, a reference or a `translatable: false` field — which are the fields a push carries in each language; mark a string that is a code or a key `translatable: false` and no translator is asked for it. An excerpt the build derives is re-derived from each language's body.
 
 **Component side.** Nothing to do: `content.title` arrives in the active language. The one thing a foundation builds is a switcher.
 
