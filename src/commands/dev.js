@@ -24,6 +24,14 @@
  * site by default (mirrors the `pnpm dev` shortcut `uniweb create` writes).
  * Use `--site` to pick a different one without editing the root scripts.
  *
+ * A site whose foundation is a catalog ref — every clone — has no build of it, and
+ * only the backend the site is on can say where that version is served. So `dev`
+ * asks it, through the site, and hands the answer to the dev server it starts in its
+ * environment (`UNIWEB_PREVIEW`), with the backend it asked, which is also where the
+ * site's kept media URLs are fetched from. Nothing is written: `site.yml` keeps the
+ * ref and the round trip never sees the URL. A backend that does not say is an
+ * ordinary answer — `dev` says so and starts nothing (`backend/site-preview.js`).
+ *
  * Implementation: shells out to the package manager that invoked the CLI
  * (detected via npm_config_user_agent), running the workspace-filtered
  * dev command (`pnpm --filter <name> dev` or `npm -w <name> run dev`).
@@ -121,12 +129,32 @@ export async function dev(args = []) {
   const [bin, ...rest] = command.split(' ')
   const sitePath = join(rootDir, site.path)
 
+  // ⭐ A SITE WHOSE FOUNDATION IS A CATALOG REF — a clone — is previewed with what the backend
+  // it is on says: where that version is served. Asked here, for this dev server alone, and
+  // handed to it in its environment; nothing is written (`backend/site-preview.js`). Any other
+  // site needs nothing from a backend, and this asks nothing.
+  const { readSitePreview } = await import('../backend/site-preview.js')
+  const asked = await readSitePreview({ siteDir: sitePath, args })
+  if (asked?.refused) {
+    console.error(`${RED}✗${RESET} ${asked.refused[0]}`)
+    for (const line of asked.refused.slice(1)) console.error(`  ${line}`)
+    process.exit(1)
+  }
+  let env = process.env
+  if (asked?.preview) {
+    const { PREVIEW_ENV, encodePreview } = await import('@uniweb/build/site')
+    env = { ...process.env, [PREVIEW_ENV]: encodePreview(asked.preview) }
+    console.error(
+      `${DIM}→ Previewing with ${asked.preview.foundation.ref}, served by ${asked.preview.backend}${RESET}`
+    )
+  }
+
   console.error(
     `${DIM}→ ${command}${RESET} ${DIM}(site: ${site.name}, dir: ${sitePath})${RESET}`
   )
   console.error('')
 
-  const child = spawn(bin, rest, { cwd: rootDir, stdio: 'inherit' })
+  const child = spawn(bin, rest, { cwd: rootDir, stdio: 'inherit', env })
   child.on('close', (code) => process.exit(code ?? 0))
   child.on('error', (err) => {
     console.error(`${RED}✗${RESET} Failed to start dev server: ${err.message}`)
