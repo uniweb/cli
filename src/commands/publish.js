@@ -88,6 +88,7 @@ import {
   readFolderItemUuids,
   readRecordItemUuids,
   deploymentQueryFields,
+  ensureRegisteredFoundation,
   recoverUnbankedIdentity,
   ensureSiteExists,
   refuseUnsendableRecords,
@@ -965,6 +966,14 @@ export async function publish(args = []) {
   // overwriting them, and nothing goes live. `--force` drops the precondition.
   const forced = args.includes('--force')
   const queryFields = await deploymentQueryFields({ client, siteDir })
+  // A foundation named by catalog ref — a clone's: its kept registered version types a query named
+  // for a data key (`ensureRegisteredFoundation`).
+  await ensureRegisteredFoundation({
+    client,
+    siteDir,
+    siteUuid: readBackendState(siteDir, client.origin).site?.uuid,
+    ref: siteYml?.foundation
+  })
   const emitOptions = {
     backend: client.origin,
     // The keys this deployment's `queries` Section takes — see deploymentQueryFields.

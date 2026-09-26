@@ -46,7 +46,10 @@ import {
   harvestRecordItems,
   storedRecordItems,
   reprintRecordItems,
-  matchStoredRecords
+  matchStoredRecords,
+  parseCatalogRef,
+  readRegisteredFoundation,
+  writeRegisteredFoundation
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -663,6 +666,27 @@ export function readAppliedInjections(siteDir, backend) {
  * `null` when the answer is not in hand: nothing optional is sent, which every
  * deployment accepts.
  */
+/**
+ * ⭐ THE REGISTERED FOUNDATION A CLONE KEEPS. A site whose foundation is a catalog ref has no build of
+ * it in the project, and the section types' `data:` it declares are what type a query named for a
+ * data key — `team:` read as `@acme/member` (`typed_by_data_key`). Read once from the backend,
+ * through the site, and kept under `.uniweb/` (`@uniweb/build`'s `registered-foundation.js`), where
+ * the build, the push and the pull read it; a registered version never changes, so a kept copy is
+ * never read again.
+ *
+ * Null when the foundation is not a catalog ref, the site is not on this backend yet, or the read
+ * fails: nothing is then typed by it — a pull writes such a query's schema out, and a push sends
+ * what that says — so both go on.
+ */
+export async function ensureRegisteredFoundation({ client, siteDir, siteUuid, ref }) {
+  if (!parseCatalogRef(ref)) return null
+  const kept = readRegisteredFoundation(siteDir, ref)
+  if (kept) return kept
+  const reply = siteUuid ? await client.readRegisteredFoundation(siteUuid, ref) : null
+  if (reply) writeRegisteredFoundation(siteDir, ref, reply)
+  return reply
+}
+
 export async function deploymentQueryFields({ client, siteDir, offline = false }) {
   const fields = offline
     ? readAppliedInjections(siteDir, client.origin).queryFields
@@ -1447,7 +1471,7 @@ export async function probeUnpushed(siteDir, { backend = null, sendAll = false }
  */
 async function comparisonEmit(
   siteDir,
-  { backend = null, priorHashes = {}, sendAll = false, declarations = null } = {}
+  { backend = null, priorHashes = {}, sendAll = false, declarations = null, queryFields = null } = {}
 ) {
   const applied = readAppliedInjections(siteDir, backend)
   // ⛔ Per backend: an asset id is minted by one and means nothing to another, so a
@@ -1467,6 +1491,8 @@ async function comparisonEmit(
     priorHashes,
     sendAll,
     ...applied,
+    // The deployment's own answer, when the caller has just read it, over what the last push banked.
+    ...(Array.isArray(queryFields) ? { queryFields } : {}),
     ...(Object.keys(queryUuids).length ? { queryUuids } : {}),
     ...(Object.keys(assetIds).length ? { assetIds } : {})
     // ⛔ No `org`: a site's `@/x` refs resolve into its FOUNDATION's scope, which the
@@ -1501,8 +1527,11 @@ async function comparisonEmit(
  * @param {Map<string,object>} [opts.declarations] - the Models the pull read, by name — so a
  *        site whose foundation is not in the project (a clone's) can be re-banked offline
  */
-export async function rebankSyncHashes(siteDir, backend = null, { recordDocs, declarations } = {}) {
-  const pkg = await comparisonEmit(siteDir, { backend, sendAll: true, declarations })
+export async function rebankSyncHashes(siteDir, backend = null, { recordDocs, declarations, queryFields = null } = {}) {
+  // ⛔ With the keys this deployment's `queries` Section takes, when the caller has them: they shape
+  // the document the next push sends (`typed_by_data_key`), so a hash banked without them marks a
+  // clone's first push as changed. Until 2026-09-26 a pull banked none.
+  const pkg = await comparisonEmit(siteDir, { backend, sendAll: true, declarations, queryFields })
   writeSyncCache(siteDir, backend, onlyWhatThePullTook(siteDir, backend, pkg, recordDocs), pkg.applied || {})
   // ⭐ And the identity of the records' list items, from the documents the pull just took:
   // the files it wrote hold the stored items in stored order, so the emit over them pairs

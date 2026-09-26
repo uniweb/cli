@@ -18,7 +18,9 @@ import { emitSyncPackages } from '@uniweb/build/uwx'
 import {
   deploymentQueryFields,
   writeSyncCache,
-  probeUnpushed
+  readSyncCache,
+  probeUnpushed,
+  rebankSyncHashes
 } from '../src/backend/site-sync.js'
 
 const ORIGIN = 'http://backend.test'
@@ -97,6 +99,29 @@ test('⭐ `status` after a push that sent the mark finds nothing to send', async
     const { queryFields: _dropped, ...rest } = pushed.applied
     writeSyncCache(site, ORIGIN, pushed.hashes, rest)
     assert.ok((await probeUnpushed(site, { backend: ORIGIN })).changed > 0)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('⭐ a pull re-banks with the deployment’s keys — the next push finds nothing to send', async () => {
+  const { root, site } = makeSite()
+  try {
+    await rebankSyncHashes(site, ORIGIN, { queryFields: FIELDS })
+    const pushed = await emitSyncPackages(site, { backend: ORIGIN, queryFields: FIELDS, priorHashes: readSyncCache(site, ORIGIN) })
+    assert.equal(pushed.siteContent, null)
+
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('CONTROL — a fresh clone re-banked without them, as every pull did, reads as changed', async () => {
+  const { root, site } = makeSite()
+  try {
+    await rebankSyncHashes(site, ORIGIN)
+    const pushed = await emitSyncPackages(site, { backend: ORIGIN, queryFields: FIELDS, priorHashes: readSyncCache(site, ORIGIN) })
+    assert.ok(pushed.siteContent)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

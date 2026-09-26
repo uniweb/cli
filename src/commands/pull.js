@@ -87,6 +87,8 @@ import {
 } from '../utils/pull-written.js'
 import {
   makeModelResolver,
+  ensureRegisteredFoundation,
+  deploymentQueryFields,
   rebankSyncHashes,
   writeQueryUuids,
   mergeBaseVersions,
@@ -957,6 +959,11 @@ export async function pull(args = [], deps = {}) {
           // unreadable here
         }
       }
+      // A foundation named by catalog ref — a clone's: keep its registered version before the
+      // queries are written, since its section types are what type a query named for a data key.
+      if (!keepAuthoredFoundation) {
+        await ensureRegisteredFoundation({ client, siteDir, siteUuid: siteContentUuid, ref: siteDoc?.info?.foundation })
+      }
       const report = siteContentDocumentToProject({
         document: siteDoc,
         siteRoot: siteDir,
@@ -1128,7 +1135,8 @@ export async function pull(args = [], deps = {}) {
       }
       await rebankSyncHashes(siteDir, client.origin, {
         recordDocs: pulledRecordDocs,
-        ...(declarations.size ? { declarations } : {})
+        ...(declarations.size ? { declarations } : {}),
+        queryFields: await deploymentQueryFields({ client, siteDir })
       })
     } catch (err) {
       note(`! could not re-bank the sync cache: ${err.message}`)

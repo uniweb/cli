@@ -582,6 +582,32 @@ export class BackendClient {
     }
   }
 
+  /**
+   * GET /dev/site/foundation-schema/{site}/{@scope}/{name}/{version} → the registered version of a
+   * foundation a site uses, as the backend holds it: its `schema` (section types with their
+   * `data:`), `info`, `data_schemas` (names), `module_url` and `css_url`. Read through the SITE,
+   * which is the licence: the caller must be able to read the site, and the site must use the
+   * foundation. Null on a 404 (not registered, or not this site's) and on any failure — a caller
+   * degrades, since what it is read for can be done without it, less well.
+   * @param {string} siteUuid - the site-content uuid
+   * @param {string} ref - the catalog ref, `@scope/name@version`
+   * @returns {Promise<object|null>}
+   */
+  async readRegisteredFoundation(siteUuid, ref) {
+    const m = /^(@[^/]+)\/([^@/]+)@(.+)$/.exec(String(ref || ''))
+    if (!siteUuid || !m) return null
+    try {
+      const res = await this.request(
+        `/dev/site/foundation-schema/${encodeURIComponent(siteUuid)}/${m[1]}/${encodeURIComponent(m[2])}/${encodeURIComponent(m[3])}`
+      )
+      if (!res.ok) return null
+      const body = await res.json().catch(() => null)
+      return body && typeof body === 'object' && body.schema && typeof body.schema === 'object' ? body : null
+    } catch {
+      return null
+    }
+  }
+
   // ── Orgs ──────────────────────────────────────────────────────────────────────
 
   /** GET /dev/orgs → { account_handle, orgs[] }. */

@@ -84,6 +84,7 @@ import {
   readQueryUuids,
   readRecordItemUuids,
   deploymentQueryFields,
+  ensureRegisteredFoundation,
   recoverUnbankedIdentity,
   ensureItemUuids,
   refuseUnsendableRecords,
@@ -504,6 +505,16 @@ export async function push(args = [], deps = {}) {
     siteDir,
     offline: Boolean(output) || dryRun
   })
+  // A foundation named by catalog ref — a clone's: its kept registered version types a query named
+  // for a data key (`ensureRegisteredFoundation`). Offline, only what is already kept.
+  if (!output && !dryRun) {
+    await ensureRegisteredFoundation({
+      client,
+      siteDir,
+      siteUuid: readBackendState(siteDir, client.origin).site?.uuid,
+      ref: siteYml?.foundation
+    })
+  }
   const emitOptions = {
     backend: client.origin,
     // Placement identity for the folder — see writeFolderItemUuids.
