@@ -1833,6 +1833,18 @@ export async function pushSyncPackages({
         if (problem.detail) note(String(problem.detail))
         return null
       }
+      // ⭐ A RECORD KEEPS ITS TYPE. A record file moved to another type's folder keeps its `$uuid`, and
+      // the backend refuses it as that type (`type_changed`, naming the record and both types), before
+      // writing anything. Storing it as the new type makes it a new record.
+      if (problem?.reason === 'type_changed') {
+        error(`${label} push refused — a stored record would change its type.`)
+        if (problem.detail) note(String(problem.detail))
+        note(
+          'A record keeps its type. To store it as the new type, make it a new record: delete the ' +
+            '`$uuid` line from its file, then push again.'
+        )
+        return null
+      }
       if (problem?.reason === 'stale_base') {
         error(
           `${label} push refused — the backend has newer content than your last pull.`

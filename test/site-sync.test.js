@@ -948,6 +948,32 @@ test('pushSyncPackages: a 409 is shown as the backend names it — with no expla
   rmSync(dir, { recursive: true, force: true })
 })
 
+test('pushSyncPackages: a record that would change its type is explained — keep it, or make it a new record', async () => {
+  const dir = tmpSite()
+  const client = {
+    origin: 'http://x',
+    createSiteContent: async () =>
+      fail(409, JSON.stringify({
+        status: 409,
+        title: 'Type Changed',
+        reason: 'type_changed',
+        detail: 'record 01a0-… is stored as @acme/note, and this push sends it as @acme/article',
+      }))
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: siteOnlyPkg({ siteContentUuid: undefined, hashes: { x: 'y' } }),
+    report
+  })
+  assert.equal(res.exitCode, 1)
+  assert.ok(calls.error.some((m) => /would change its type/.test(m)))
+  assert.ok(calls.note.some((m) => /stored as @acme\/note/.test(m)), 'the backend\'s naming of the record')
+  assert.ok(calls.note.some((m) => /delete the `\$uuid` line/.test(m)), 'what to do')
+  rmSync(dir, { recursive: true, force: true })
+})
+
 test('pushSyncPackages: the folder lane is keyed by the bound site uuid', async () => {
   const dir = tmpSite()
   let folderKey = null
