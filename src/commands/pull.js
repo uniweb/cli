@@ -715,7 +715,7 @@ export async function pull(args = [], deps = {}) {
     command: 'Pulling'
   })
   // One reader of Models for the whole pull, so a Model is read once whichever lane asks first.
-  const readModel = makeModelResolver({ client })
+  const readModel = makeModelResolver({ client, siteDir })
 
   // ⭐ No scope check any more — and none is needed. This project's identity on
   // `client.origin` is read from that origin's own section of sync.json, so a

@@ -329,16 +329,44 @@ function changedSummary(finalized) {
 // 404 → null (the emitter then says "register it first"). The bearer is acquired lazily
 // by the client, so a fully-local sync never authenticates.
 //
-// `offline` (set for `-o` / `--dry-run`) forces every non-local Model to null WITHOUT
-// touching the backend — an offline emit must never authenticate.
-export function makeModelResolver({ client, offline = false }) {
+// `offline` (set for `-o` / `--dry-run`, and for `status`) never touches the backend — an
+// offline emit must never authenticate. It answers with the Models a push or a pull KEPT for
+// this backend (`keptModels`), or null. ⭐ With `siteDir`, an online read keeps each Model it
+// reads, per backend — so a clone, whose foundation is not in the project to declare them, can
+// still compare offline. ⛔ Until 2026-09-26 nothing was kept, and `uniweb status` in a clone
+// could not resolve a Model ("… could not be resolved").
+export function makeModelResolver({ client, offline = false, siteDir = null, backend = null }) {
+  const origin = backend ?? client?.origin ?? null
+  const kept = siteDir && origin ? keptModels(siteDir, origin) : {}
   const cache = new Map()
   return async (modelName) => {
     if (cache.has(modelName)) return cache.get(modelName)
-    const decl = offline ? null : await client.readDataSchema(modelName)
+    let decl
+    if (offline) {
+      decl = kept[modelName] ?? null
+    } else {
+      decl = await client.readDataSchema(modelName)
+      if (decl && siteDir && origin) keepModels(siteDir, origin, { [modelName]: decl })
+    }
     cache.set(modelName, decl)
     return decl
   }
+}
+
+/**
+ * The Models a push or a pull read from this backend, by name — kept in `.uniweb/backend-cache.json`
+ * so an offline emit resolves what an online one did. Regenerable: losing them costs `status` its
+ * comparison until the next push or pull, never a wrong answer.
+ */
+export function keptModels(siteDir, backend) {
+  const models = readSyncCacheFile(siteDir, backend).models
+  return models && typeof models === 'object' ? models : {}
+}
+
+/** Keep Models read from this backend, beside the ones already kept. */
+export function keepModels(siteDir, backend, models) {
+  if (!models || !Object.keys(models).length) return
+  updateSyncCache(siteDir, backend, { models: { ...keptModels(siteDir, backend), ...models } })
 }
 
 // `.uniweb/backend-cache.json` — what a backend had and what we last sent it, so the
@@ -1487,7 +1515,7 @@ async function comparisonEmit(
     // of its Models here, and nothing is banked.
     resolveModel: declarations
       ? async (name) => declarations.get(name) ?? null
-      : makeModelResolver({ client: null, offline: true }),
+      : makeModelResolver({ client: null, offline: true, siteDir, backend }),
     priorHashes,
     sendAll,
     ...applied,

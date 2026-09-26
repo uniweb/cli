@@ -407,7 +407,7 @@ export async function push(args = [], deps = {}) {
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir, client.origin),
         ...(foundationDir ? { foundationDir } : {}),
-        resolveModel: makeModelResolver({ client, offline: false })
+        resolveModel: makeModelResolver({ client, offline: false, siteDir })
       })
       mediaRefs = probe.localAssets || []
       refusals = probe.refusals || []
@@ -529,7 +529,8 @@ export async function push(args = [], deps = {}) {
     ...(foundationDir ? { foundationDir } : {}),
     resolveModel: makeModelResolver({
       client,
-      offline: Boolean(output) || dryRun
+      offline: Boolean(output) || dryRun,
+      siteDir
     }),
     priorHashes,
     sendAll,

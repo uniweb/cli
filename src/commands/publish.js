@@ -554,7 +554,7 @@ export async function publish(args = []) {
   }
 
   // Non-local @std/registry Model schemas resolve through the backend (same as push).
-  const resolveModel = makeModelResolver({ client, offline: false })
+  const resolveModel = makeModelResolver({ client, offline: false, siteDir })
 
   // ⛔ AN EMPTY RECORDS DIRECTORY REMOVES. It is the one path where an ordinary act
   // is destructive — a directory emptied by accident, or kept with only a
