@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import {
-  deploymentQueryFields,
+  deploymentFields,
   writeSyncCache,
   readSyncCache,
   probeUnpushed,
@@ -59,27 +59,28 @@ function makeSite() {
   return { root, site: join(root, 'site') }
 }
 
-test('deploymentQueryFields reads the deployment’s answer', async () => {
+test('deploymentFields reads the deployment’s answer', async () => {
   const { root, site } = makeSite()
   try {
-    const client = clientAnswering({ siteContent: { queryFields: FIELDS } })
-    assert.deepEqual(await deploymentQueryFields({ client, siteDir: site }), FIELDS)
+    const PAGE = ['title', 'og_title', 'og_description']
+    const client = clientAnswering({ siteContent: { queryFields: FIELDS, pageFields: PAGE, other: ['x'] } })
+    assert.deepEqual(await deploymentFields({ client, siteDir: site }), { queryFields: FIELDS, pageFields: PAGE })
     // Not an array — an older deployment, or no answer: nothing optional is sent.
     for (const doc of [{}, { siteContent: {} }, { siteContent: { queryFields: 'typed_by_data_key' } }]) {
-      assert.equal(await deploymentQueryFields({ client: clientAnswering(doc), siteDir: site }), null)
+      assert.deepEqual(await deploymentFields({ client: clientAnswering(doc), siteDir: site }), {})
     }
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
 })
 
-test('deploymentQueryFields, offline, is what the last push banked — and asks nothing', async () => {
+test('deploymentFields, offline, is what the last push banked — and asks nothing', async () => {
   const { root, site } = makeSite()
   try {
     const client = clientAnswering({ siteContent: { queryFields: ['name'] } })
-    assert.equal(await deploymentQueryFields({ client, siteDir: site, offline: true }), null)
+    assert.deepEqual(await deploymentFields({ client, siteDir: site, offline: true }), {})
     writeSyncCache(site, ORIGIN, {}, { queryFields: FIELDS })
-    assert.deepEqual(await deploymentQueryFields({ client, siteDir: site, offline: true }), FIELDS)
+    assert.deepEqual(await deploymentFields({ client, siteDir: site, offline: true }), { queryFields: FIELDS })
     assert.equal(client.asked, 0)
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -107,7 +108,7 @@ test('⭐ `status` after a push that sent the mark finds nothing to send', async
 test('⭐ a pull re-banks with the deployment’s keys — the next push finds nothing to send', async () => {
   const { root, site } = makeSite()
   try {
-    await rebankSyncHashes(site, ORIGIN, { queryFields: FIELDS })
+    await rebankSyncHashes(site, ORIGIN, { fields: { queryFields: FIELDS } })
     const pushed = await emitSyncPackages(site, { backend: ORIGIN, queryFields: FIELDS, priorHashes: readSyncCache(site, ORIGIN) })
     assert.equal(pushed.siteContent, null)
 

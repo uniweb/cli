@@ -90,7 +90,7 @@ import {
 import {
   makeModelResolver,
   ensureRegisteredFoundation,
-  deploymentQueryFields,
+  deploymentFields,
   rebankSyncHashes,
   writeQueryUuids,
   mergeBaseVersions,
@@ -1164,7 +1164,7 @@ export async function pull(args = [], deps = {}) {
       await rebankSyncHashes(siteDir, client.origin, {
         recordDocs: pulledRecordDocs,
         ...(declarations.size ? { declarations } : {}),
-        queryFields: await deploymentQueryFields({ client, siteDir })
+        fields: await deploymentFields({ client, siteDir })
       })
     } catch (err) {
       note(`! could not re-bank the sync cache: ${err.message}`)

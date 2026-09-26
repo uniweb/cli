@@ -87,7 +87,7 @@ import {
   ensureItemUuids,
   readFolderItemUuids,
   readRecordItemUuids,
-  deploymentQueryFields,
+  deploymentFields,
   ensureRegisteredFoundation,
   recoverUnbankedIdentity,
   ensureSiteExists,
@@ -341,9 +341,9 @@ export async function publish(args = []) {
   // (2026-08-30). Restoring a reader for it would re-create a check that cannot fail
   // while implying a capability that was never negotiable.
   //
-  // Discovery is not consulted for a gate: the one leaf the CLI reads is
-  // `siteContent.queryFields`, which says what the push below may SEND
-  // (`deploymentQueryFields`), never whether to publish. (`delivery.siteSubscriptionRequired`
+  // Discovery is not consulted for a gate: the CLI reads the key lists under `siteContent`
+  // (`queryFields`, `pageFields`, `settingsFields`), which say what the push below may SEND
+  // (`deploymentFields`), never whether to publish. (`delivery.siteSubscriptionRequired`
   // was deleted 2026-08-30; this said it was still read, after the site create, until
   // 2026-09-26.)
 
@@ -965,7 +965,7 @@ export async function publish(args = []) {
   // edited since this clone last synced, the push is refused rather than
   // overwriting them, and nothing goes live. `--force` drops the precondition.
   const forced = args.includes('--force')
-  const queryFields = await deploymentQueryFields({ client, siteDir })
+  const fields = await deploymentFields({ client, siteDir })
   // A foundation named by catalog ref — a clone's: its kept registered version types a query named
   // for a data key (`ensureRegisteredFoundation`).
   await ensureRegisteredFoundation({
@@ -976,8 +976,8 @@ export async function publish(args = []) {
   })
   const emitOptions = {
     backend: client.origin,
-    // The keys this deployment's `queries` Section takes — see deploymentQueryFields.
-    ...(queryFields ? { queryFields } : {}),
+    // The keys this deployment's Sections take — see deploymentFields.
+    ...fields,
     ...(declaration.declare ? {} : { declareServices: false }),
     // Placement identity for the folder — see writeFolderItemUuids.
     folderItemUuids: readFolderItemUuids(siteDir, client.origin),

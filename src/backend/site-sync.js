@@ -685,16 +685,6 @@ export function readAppliedInjections(siteDir, backend) {
 }
 
 /**
- * The keys this deployment's `queries` Section declares, as it says so itself —
- * `GET /dev/config` → `siteContent.queryFields` — so a push sends an optional key
- * only to a deployment that takes it (`typed_by_data_key`; one that does not declare
- * a key refuses a push carrying it). Offline — a dry run, `--output` — the list the
- * last push to this backend banked, so the package is the one that push would build.
- *
- * `null` when the answer is not in hand: nothing optional is sent, which every
- * deployment accepts.
- */
-/**
  * ⭐ THE REGISTERED FOUNDATION A CLONE KEEPS. A site whose foundation is a catalog ref has no build of
  * it in the project, and the section types' `data:` it declares are what type a query named for a
  * data key — `team:` read as `@acme/member` (`typed_by_data_key`). Read once from the backend,
@@ -715,11 +705,27 @@ export async function ensureRegisteredFoundation({ client, siteDir, siteUuid, re
   return reply
 }
 
-export async function deploymentQueryFields({ client, siteDir, offline = false }) {
-  const fields = offline
-    ? readAppliedInjections(siteDir, client.origin).queryFields
-    : (await client.discover())?.siteContent?.queryFields
-  return Array.isArray(fields) ? fields : null
+// The Sections whose declared keys a push reads before it sends an optional one.
+const DEPLOYMENT_FIELD_LISTS = ['queryFields', 'pageFields', 'settingsFields']
+
+/**
+ * The keys this deployment's `queries`, page and `settings` Sections declare, as it says so itself —
+ * `GET /dev/config` → `siteContent.queryFields` / `pageFields` / `settingsFields` — so a push sends
+ * an optional key only to a deployment that takes it (`typed_by_data_key`; `og_title` and
+ * `og_description`): one that does not declare a key refuses a push carrying it. Offline — a dry
+ * run, `--output` — the lists the last push to this backend banked, so the package is the one that
+ * push would build.
+ *
+ * Only the lists in hand are returned, as emit options: with none, nothing optional is sent, which
+ * every deployment accepts.
+ */
+export async function deploymentFields({ client, siteDir, offline = false }) {
+  const source = offline
+    ? readAppliedInjections(siteDir, client.origin)
+    : (await client.discover())?.siteContent
+  const out = {}
+  for (const name of DEPLOYMENT_FIELD_LISTS) if (Array.isArray(source?.[name])) out[name] = source[name]
+  return out
 }
 
 /**
@@ -1499,7 +1505,7 @@ export async function probeUnpushed(siteDir, { backend = null, sendAll = false }
  */
 async function comparisonEmit(
   siteDir,
-  { backend = null, priorHashes = {}, sendAll = false, declarations = null, queryFields = null } = {}
+  { backend = null, priorHashes = {}, sendAll = false, declarations = null, fields = null } = {}
 ) {
   const applied = readAppliedInjections(siteDir, backend)
   // ⛔ Per backend: an asset id is minted by one and means nothing to another, so a
@@ -1519,8 +1525,9 @@ async function comparisonEmit(
     priorHashes,
     sendAll,
     ...applied,
-    // The deployment's own answer, when the caller has just read it, over what the last push banked.
-    ...(Array.isArray(queryFields) ? { queryFields } : {}),
+    // The deployment's own answer (`deploymentFields`), when the caller has just read it, over what
+    // the last push banked.
+    ...(fields || {}),
     ...(Object.keys(queryUuids).length ? { queryUuids } : {}),
     ...(Object.keys(assetIds).length ? { assetIds } : {})
     // ⛔ No `org`: a site's `@/x` refs resolve into its FOUNDATION's scope, which the
@@ -1555,11 +1562,11 @@ async function comparisonEmit(
  * @param {Map<string,object>} [opts.declarations] - the Models the pull read, by name — so a
  *        site whose foundation is not in the project (a clone's) can be re-banked offline
  */
-export async function rebankSyncHashes(siteDir, backend = null, { recordDocs, declarations, queryFields = null } = {}) {
-  // ⛔ With the keys this deployment's `queries` Section takes, when the caller has them: they shape
-  // the document the next push sends (`typed_by_data_key`), so a hash banked without them marks a
-  // clone's first push as changed. Until 2026-09-26 a pull banked none.
-  const pkg = await comparisonEmit(siteDir, { backend, sendAll: true, declarations, queryFields })
+export async function rebankSyncHashes(siteDir, backend = null, { recordDocs, declarations, fields = null } = {}) {
+  // ⛔ With the keys this deployment's Sections take, when the caller has them (`deploymentFields`):
+  // they shape the document the next push sends (`typed_by_data_key`, `og_title`), so a hash banked
+  // without them marks a clone's first push as changed. Until 2026-09-26 a pull banked none.
+  const pkg = await comparisonEmit(siteDir, { backend, sendAll: true, declarations, fields })
   writeSyncCache(siteDir, backend, onlyWhatThePullTook(siteDir, backend, pkg, recordDocs), pkg.applied || {})
   // ⭐ And the identity of the records' list items, from the documents the pull just took:
   // the files it wrote hold the stored items in stored order, so the emit over them pairs
