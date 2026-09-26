@@ -921,11 +921,12 @@ test('pushSyncPackages: a rejected lane returns exit 1, reports the error, and d
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('pushSyncPackages: a 409 explains the facet-genesis fix (push as a new site) instead of a bare error', async () => {
+test('pushSyncPackages: a 409 is shown as the backend names it — with no explanation of our own', async () => {
   const dir = tmpSite()
   const client = {
     origin: 'http://x',
-    createSiteContent: async () => fail(409, 'folder facet already established')
+    createSiteContent: async () =>
+      fail(409, JSON.stringify({ status: 409, title: 'Bad Reference', detail: 'item.data.entry names a record that cannot be referenced' }))
   }
   const { report, calls } = makeReport()
   const res = await pushSyncPackages({
@@ -937,18 +938,13 @@ test('pushSyncPackages: a 409 explains the facet-genesis fix (push as a new site
 
   assert.equal(res.exitCode, 1)
   assert.ok(calls.error.some((m) => /rejected: HTTP 409/.test(m)))
-  // the friendlier guidance — the v1 folder is genesis-owned, so the change lands as a
-  // new site. It said "clear `$uuid` in site.yml" until 2026-09-21, a key that had left
-  // site.yml the day before; forgetting this backend is what drops the binding now.
   assert.ok(
-    calls.note.some(
-      (m) =>
-        /push it as a new site/.test(m) &&
-        /uniweb forget --backend http:\/\/x, then push again/.test(m) &&
-        !/\$uuid/.test(m)
-    ),
-    `explains the forget-and-push fix:\n${calls.note.join('\n')}`
+    calls.note.includes('Bad Reference — item.data.entry names a record that cannot be referenced'),
+    `shows the backend's cause:\n${calls.note.join('\n')}`
   )
+  // ⛔ Until 2026-09-26 every 409 was explained as the first folder's rule — "this site's record
+  // structure is already established … push it as a new site" — which the backend no longer has.
+  assert.ok(!calls.note.some((m) => /push it as a new site/.test(m)))
   rmSync(dir, { recursive: true, force: true })
 })
 

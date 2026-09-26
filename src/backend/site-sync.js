@@ -1910,15 +1910,14 @@ export async function pushSyncPackages({
           `  deleted there  →  uniweb forget --backend ${client.origin}, then push again: it creates a NEW site`
         )
         note('Deleting this folder removes only your local copy, either way.')
-      } else if (res.status === 409) {
-        // The site's @uniweb/folder is genesis-owned: its structure is fixed on first
-        // deploy and not reconciled in place (the v1 rule — see gotcha #20's mode switch).
-        note(
-          "This site's record structure is already established on the backend and can't be changed " +
-            'in place — e.g. adding or removing a schema-backed query, or switching one between ' +
-            'static (data-bundle) and schema-backed delivery. To change it, push it as a new site: ' +
-            `uniweb forget --backend ${client.origin}, then push again (the old site stays until it is deleted).`
-        )
+      } else if (res.status === 409 && (problem?.title || problem?.detail)) {
+        // ⛔ A 409 names its own cause — a reference the store refuses, a rule of the record's type,
+        // an append-only section — so it is shown as the backend put it, not explained by us. Until
+        // 2026-09-26 every one was explained as "this site's record structure is already established
+        // … push it as a new site", a rule the backend no longer has, and it misled over a refused
+        // reference. (`stale_base` and `item_uuid_conflict` have their own explanations, above.)
+        note([problem.title, problem.detail].filter(Boolean).join(' — '))
+        return null
       }
       if (body) note(body.slice(0, 800))
       return null
