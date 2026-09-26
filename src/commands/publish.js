@@ -339,9 +339,10 @@ export async function publish(args = []) {
   // (2026-08-30). Restoring a reader for it would re-create a check that cannot fail
   // while implying a capability that was never negotiable.
   //
-  // Discovery is not consulted on this path at all. The one leaf the CLI still reads
-  // (`delivery.siteSubscriptionRequired`) is read after the site create, where a
-  // credential is already in hand.
+  // Discovery is not consulted on this path at all — nor anywhere else: its last leaf
+  // the CLI read, `delivery.siteSubscriptionRequired`, was deleted 2026-08-30, and
+  // `client.discover()` is uncalled. (This said that leaf was still read, after the
+  // site create, until 2026-09-26.)
 
   // ⛔ NOTHING about a runtime is sent from here. `site.yml::runtime` was a
   // vestigial prop and is no longer read [Diego, 2026-08-22]; `?runtime=` is no
