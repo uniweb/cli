@@ -668,7 +668,10 @@ async function buildSiteLink(projectDir, options = {}) {
             projectDir,
             i18nConfig.localesDir,
             'records'
-          )
+          ),
+          // Free-form record translations live under it — the default was `locales/`
+          // whatever the site said.
+          localesDir: join(projectDir, i18nConfig.localesDir)
         })
         const recordCount = Object.values(recordOutputs).reduce(
           (sum, localeOutputs) => sum + Object.keys(localeOutputs).length,
@@ -789,7 +792,10 @@ async function buildSite(projectDir, options = {}) {
             projectDir,
             i18nConfig.localesDir,
             'records'
-          )
+          ),
+          // Free-form record translations live under it — the default was `locales/`
+          // whatever the site said.
+          localesDir: join(projectDir, i18nConfig.localesDir)
         })
 
         // Count collections translated
