@@ -370,6 +370,50 @@ test('pull fetches the folder lane by the site-content uuid (no query config nee
   }
 })
 
+// ⭐ A clone has no foundation to read its queries' schemas from, so it judges a query's `deferred:`
+// by the Model the pull reads from the backend. ⛔ Until 2026-09-26 it wrote the derivation into its
+// queries as though authored.
+for (const [label, served, expected] of [
+  ['⛔ a clone does not write a query’s derived deferred: — judged by the Model the backend serves', true, undefined],
+  ['CONTROL — with no Model to judge by, the value is kept (the safe direction)', false, ['article_body']]
+]) {
+  test(label, async () => {
+    const dir = tempSite()
+    try {
+      writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@acme/fnd@1.0.0'\n")
+      bindSite(dir, 'SITEQ')
+      const siteContent = {
+        $uuid: 'SITEQ',
+        $schema: '@uniweb/site-content',
+        info: { name: 'S', foundation: '@acme/fnd@1.0.0' },
+        pages: [],
+        layout_sections: [],
+        queries: [{ name: 'articles', schema: '@acme/article', deferred: ['article_body'] }]
+      }
+      const declaration = {
+        name: '@acme/article',
+        sections: {
+          article: { brief: true, fields: { title: { type: 'string' } } },
+          article_body: { fields: { content: { type: 'json', format: 'prosemirror' } } }
+        }
+      }
+      const res = await pull(['--force', '--no-records'], {
+        resolveSiteDir: async () => dir,
+        getToken: async () => 'tok',
+        fetch: makeFetch([
+          ['/dev/site/content/pull/SITEQ', siteContent],
+          ['/dev/registry/data-schemas/acme/article', served ? declaration : 404]
+        ])
+      })
+      assert.equal(res.exitCode, 0)
+      const queries = yaml.load(readFileSync(join(dir, 'queries.yml'), 'utf8'))
+      assert.deepEqual(queries.articles.deferred, expected)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+}
+
 test('pull projects the collections lane, resolving the model via a mock model-read', async () => {
   const dir = tempSite()
   try {

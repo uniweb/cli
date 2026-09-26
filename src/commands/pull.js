@@ -684,6 +684,8 @@ export async function pull(args = [], deps = {}) {
     args,
     command: 'Pulling'
   })
+  // One reader of Models for the whole pull, so a Model is read once whichever lane asks first.
+  const readModel = makeModelResolver({ client })
 
   // ⭐ No scope check any more — and none is needed. This project's identity on
   // `client.origin` is read from that origin's own section of sync.json, so a
@@ -942,9 +944,23 @@ export async function pull(args = [], deps = {}) {
         // which is the pre-existing behaviour and right for a fresh clone.
       }
 
+      // ⭐ The Models the site's queries name — what a clone, with no foundation to read them from,
+      // tells a query's derived `deferred:` from its author's by. ⛔ Until 2026-09-26 a clone wrote
+      // the derivation into its queries as though authored. One that cannot be read is judged
+      // without it, which keeps the value: the safe direction.
+      const models = {}
+      for (const model of pulledQueryModels) {
+        try {
+          const declaration = await readModel(model)
+          if (declaration) models[model] = declaration
+        } catch {
+          // unreadable here
+        }
+      }
       const report = siteContentDocumentToProject({
         document: siteDoc,
         siteRoot: siteDir,
+        models,
         // Which backend's asset ids to read back as the author's own paths. Without
         // it a pull leaves every image pointing at a backend route.
         backend: client.origin,
@@ -985,7 +1001,7 @@ export async function pull(args = [], deps = {}) {
     if (folder && !folder.notModified && folder.docs?.length) {
       const { folderDoc, recordDocs } = splitRecordsPull(folder.docs)
       pulledRecordDocs = recordDocs
-      const resolveModel = makeModelResolver({ client })
+      const resolveModel = readModel
       const declByModel = new Map()
       pulledDeclarations = declByModel
       for (const model of [
@@ -1102,7 +1118,6 @@ export async function pull(args = [], deps = {}) {
       // in the project (a clone's) resolves none of them otherwise: every template clone
       // said "could not re-bank" until 2026-09-25, and banked nothing.
       const declarations = pulledDeclarations || new Map()
-      const readModel = makeModelResolver({ client })
       for (const model of pulledQueryModels) {
         if (declarations.has(model)) continue
         try {
