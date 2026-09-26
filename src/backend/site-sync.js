@@ -701,8 +701,13 @@ export async function ensureRegisteredFoundation({ client, siteDir, siteUuid, re
   const kept = readRegisteredFoundation(siteDir, ref)
   if (kept) return kept
   const reply = siteUuid ? await client.readRegisteredFoundation(siteUuid, ref) : null
-  if (reply) writeRegisteredFoundation(siteDir, ref, reply)
-  return reply
+  if (!reply) return null
+  // ⛔ ONLY WHAT WE READ — the section types. The reply carries more than we asked for, a serve
+  // location among it, and a serve location is decided at publish and read from the response that
+  // carries it, never kept. Until 2026-09-26 the whole reply was kept.
+  const sectionTypes = { schema: reply.schema }
+  writeRegisteredFoundation(siteDir, ref, sectionTypes)
+  return sectionTypes
 }
 
 // The Sections whose declared keys a push reads before it sends an optional one.

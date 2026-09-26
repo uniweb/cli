@@ -26,13 +26,14 @@ const clientAnswering = (reply) => {
   return client
 }
 
-test('reads the version through the site once, and keeps it', async () => {
+test('reads the version through the site once, and keeps its section types only', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'registered-fnd-'))
   try {
     const client = clientAnswering(REPLY)
-    assert.deepEqual(await ensureRegisteredFoundation({ client, siteDir: dir, siteUuid: 'SITE', ref: REF }), REPLY)
+    assert.deepEqual(await ensureRegisteredFoundation({ client, siteDir: dir, siteUuid: 'SITE', ref: REF }), { schema: REPLY.schema })
     assert.deepEqual(client.asked, [['SITE', REF]])
-    assert.deepEqual(readRegisteredFoundation(dir, REF), REPLY)
+    // Only the section types — never the reply's serve location.
+    assert.deepEqual(readRegisteredFoundation(dir, REF), { schema: REPLY.schema })
     // A registered version never changes: a kept copy is not read again.
     await ensureRegisteredFoundation({ client, siteDir: dir, siteUuid: 'SITE', ref: REF })
     assert.equal(client.asked.length, 1)
