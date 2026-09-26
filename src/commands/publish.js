@@ -37,9 +37,9 @@
  *   uniweb publish --no-save       Do not record this publish in deploy.yml
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { execSync } from 'node:child_process'
 import yaml from 'js-yaml'
 
@@ -143,14 +143,27 @@ function readSiteYml(path) {
   }
 }
 
-// Languages from the BUILT site-content.json (config.languages) — the authority
-// after a build. Three accepted shapes: 'en', { value, label }, { code, label }.
-function languagesFromContent(siteContent) {
+// Languages from the BUILT site — the authority after a build: `config.languages` where
+// the site declares them (three accepted shapes: 'en', { value, label }, { code, label }),
+// else its default and each language the build produced (`dist/<locale>/site-content.json`).
+// ⛔ Until 2026-09-26 a site that declares no `languages:` — its languages made by its
+// translation files — went live as `['en']`, though the build had produced the others.
+export function languagesFromContent(siteContent, distDir = null) {
   const langs = siteContent?.config?.languages
-  if (!Array.isArray(langs) || langs.length === 0) return ['en']
-  return langs
-    .map((l) => (typeof l === 'string' ? l : l?.value || l?.code))
-    .filter(Boolean)
+  if (Array.isArray(langs) && langs.length > 0) {
+    return langs
+      .map((l) => (typeof l === 'string' ? l : l?.value || l?.code))
+      .filter(Boolean)
+  }
+  const source = siteContent?.config?.defaultLanguage || 'en'
+  const built =
+    distDir && existsSync(distDir)
+      ? readdirSync(distDir, { withFileTypes: true })
+          .filter((e) => e.isDirectory() && e.name !== source && existsSync(join(distDir, e.name, 'site-content.json')))
+          .map((e) => e.name)
+          .sort()
+      : []
+  return [source, ...built]
 }
 
 // Languages from site.yml — used only for the dry-run summary (no build yet).
@@ -1005,7 +1018,7 @@ export async function publish(args = []) {
 
   // 7. Go live — make the just-pushed composite live (its current backend state).
   const siteContent = JSON.parse(await readFile(contentPath, 'utf8'))
-  const languages = languagesFromContent(siteContent)
+  const languages = languagesFromContent(siteContent, dirname(contentPath))
   say.info(`Publishing to ${c.dim}${client.origin}${c.reset} …`)
   let pubRes
   try {
