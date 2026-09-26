@@ -60,7 +60,9 @@ import {
   writeFileSync,
   mkdirSync,
   mkdtempSync,
-  rmSync
+  rmSync,
+  readdirSync,
+  statSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
@@ -429,6 +431,27 @@ function readManifestTokens(buf) {
  * @param {object} [deps] - injectable seams for testing: `fetch` (default global
  *   fetch), `resolveSiteDir`, `getToken` (skip auth).
  */
+// Every file under `roots` (site-relative paths, files or directories), site-relative.
+function filesUnder(siteDir, roots) {
+  const out = []
+  const walk = (rel) => {
+    const abs = join(siteDir, rel)
+    let stat
+    try {
+      stat = statSync(abs)
+    } catch {
+      return
+    }
+    if (stat.isDirectory()) {
+      for (const name of readdirSync(abs)) walk(join(rel, name))
+    } else if (stat.isFile()) {
+      out.push(rel)
+    }
+  }
+  for (const root of roots) walk(root)
+  return out
+}
+
 /**
  * Refuse a pull that would overwrite unsaved work. Returns a result object to
  * return from `pull`, or null to proceed.
@@ -442,7 +465,12 @@ async function checkWorkingTree(siteDir, args) {
   let dirty = uncommittedUnder(siteDir, roots)
 
   if (dirty === null) {
-    // Not a git work tree. Nothing to fall back on if this goes wrong.
+    // Not a git work tree. Nothing to fall back on if this goes wrong — unless nothing here is the
+    // author's: every file under pull's roots is one a pull, or the clone that made this site, wrote
+    // and nothing has changed since (`pull-written.js`). ⛔ Until 2026-09-26 a fresh clone's own pull,
+    // which runs with no terminal to ask, refused here, and `uniweb clone` could not finish.
+    const written = readWritten(siteDir)
+    if (filesUnder(siteDir, roots).every((f) => isPullOutput(siteDir, f, written))) return null
     if (isNonInteractive(args)) {
       error('Refusing to pull: this site is not in a git repository.')
       note(

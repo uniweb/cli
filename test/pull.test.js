@@ -35,7 +35,7 @@ import {
   describeUnplacedRecords
 } from '../src/commands/pull.js'
 import { createZip } from '@uniweb/build/uwx'
-import { readWritten, isPullOutput } from '../src/utils/pull-written.js'
+import { readWritten, isPullOutput, recordWritten } from '../src/utils/pull-written.js'
 import { readBaseVersions, readItemBaseVersions, readFolderItemUuids, readSyncCache } from '../src/backend/site-sync.js'
 
 // ⭐ These exercise the pull lanes, not the workspace: a command works in the one chosen
@@ -1445,5 +1445,64 @@ test('pull is hermetic — a hostile ambient origin cannot reach it', async () =
   } finally {
     if (prior === undefined) delete process.env.UNIWEB_REGISTER_URL
     else process.env.UNIWEB_REGISTER_URL = prior
+  }
+})
+
+/**
+ * ⭐ OUTSIDE GIT, A PULL OVER WHAT ONLY A PULL (OR A CLONE) WROTE HAS NOTHING TO LOSE.
+ *
+ * A fresh clone runs its pull with no terminal, in a directory that is not in git. That pull
+ * refused — "this site is not in a git repository … this session cannot ask" — so `uniweb clone`
+ * could not finish. Every file there is one the clone recorded as written (`pull-written.js`),
+ * so there is nothing of the author's to protect.
+ */
+const cloneSiteDoc = () => ({
+  $uuid: 'SITE',
+  $id: 'site-content',
+  $model: '@uniweb/site-content',
+  info: { name: { en: 'Pulled' }, foundation: '@a/base' },
+  pages: [{ $id: 'home', $uuid: 'P1', slug: 'home', mode: 'page', stable_id: 'home', is_index: true, page_sections: [] }],
+  layout_sections: [],
+  extensions: [],
+  collections: []
+})
+
+function freshClone() {
+  const dir = tempSite()
+  writeFileSync(join(dir, 'site.yml'), "name: Old\nfoundation: '@a/base'\n")
+  bindSite(dir, 'SITE')
+  recordWritten(dir, [join(dir, 'site.yml')])
+  return dir
+}
+
+test('⭐ outside git, a pull over files only a clone wrote goes ahead without asking', async () => {
+  const dir = freshClone()
+  try {
+    const res = await pull(['--no-records', '--non-interactive'], {
+      resolveSiteDir: async () => dir,
+      getToken: async () => 'tok',
+      fetch: makeFetch([['/dev/site/content/pull/SITE', cloneSiteDoc()]])
+    })
+    assert.equal(res.exitCode, 0)
+    assert.equal(yaml.load(readFileSync(join(dir, 'site.yml'), 'utf8')).name, 'Pulled')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('CONTROL — outside git, a file of the author’s under what a pull rewrites still stops it', async () => {
+  const dir = freshClone()
+  try {
+    mkdirSync(join(dir, 'pages', 'home'), { recursive: true })
+    writeFileSync(join(dir, 'pages', 'home', 'notes.md'), '# Mine\n')
+    const res = await pull(['--no-records', '--non-interactive'], {
+      resolveSiteDir: async () => dir,
+      getToken: async () => 'tok',
+      fetch: makeFetch([['/dev/site/content/pull/SITE', cloneSiteDoc()]])
+    })
+    assert.equal(res.exitCode, 1)
+    assert.equal(yaml.load(readFileSync(join(dir, 'site.yml'), 'utf8')).name, 'Old')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })

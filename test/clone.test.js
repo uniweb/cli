@@ -168,3 +168,23 @@ test('clone forwards --no-records to the delegated pull', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('clone forwards the workspace it was told to work in to the delegated pull', async () => {
+  const dir = tmpCwd()
+  let pulledArgs = null
+  try {
+    const res = await clone(['SITE-1', 'solo', '--org', '@acme'], {
+      getToken: async () => 'tok',
+      skipInstall: true,
+      runPull: async (_siteDir, _pm, extra) => {
+        pulledArgs = extra
+      },
+      cwd: dir,
+      fetch: async () => uwxRes(siteDoc())
+    })
+    assert.equal(res.exitCode, 0)
+    assert.deepEqual(pulledArgs, ['--org', '@acme'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

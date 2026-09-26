@@ -426,6 +426,12 @@ export async function clone(args = [], deps = {}) {
 
   const pullExtra = []
   if (noRecords) pullExtra.push('--no-records')
+  // The workspace this clone was told to work in: the pull is another process, and asks the same
+  // question. ⛔ Until 2026-09-26 it was not told, so it used the login's — or, with none chosen,
+  // refused: "none is chosen". A workspace from the login or the environment reaches it by itself.
+  const orgFlag = flagValue(args, '--org')
+  if (orgFlag) pullExtra.push('--org', orgFlag)
+  if (args.includes('--personal')) pullExtra.push('--personal')
 
   if (deps.skipPull) {
     note('Skipping pull (test mode).')
