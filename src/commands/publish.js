@@ -11,11 +11,13 @@
  *   2. BRINGS THE FOUNDATION ALONG — if the site's local foundation changed
  *      since its last release, releases the new version first (or asks); a
  *      published registry ref needs nothing (§4, foundation-bring-along.js);
- *   3. SYNCS — builds the site data (link mode), uploads media + the static-data
- *      ball, and pushes content (the same two-lane sync `uniweb push` uses);
- *   4. SETTLES PAYMENT when the backend says go-live needs it — opens a browser
- *      to uniweb.app, waits, continues (provider-agnostic; payment-handoff.js);
- *   5. GOES LIVE — POST /dev/site/publish/{uuid}.
+ *   3. SYNCS — builds the site data (link mode), uploads media and the
+ *      schema-less data files, and pushes content (the same two-lane sync
+ *      `uniweb push` uses);
+ *   4. GOES LIVE — POST /dev/site/publish/{uuid}. When the backend answers 402
+ *      (the site must be paid for first), it opens the settlement URL the
+ *      backend hands over, verbatim, and stops; the content is already synced,
+ *      so the author settles and runs publish again (payment-handoff.js).
  *
  * Distinct from `uniweb deploy` (third-party hosts) and `uniweb register`
  * (foundation code → catalog). For a self-contained artifact, see `uniweb export`.
@@ -644,8 +646,9 @@ export async function publish(args = []) {
     return { exitCode: 1 }
   }
 
-  // 4. Assemble the static-data ball (schema-less data + search index) BEFORE
-  //    uploading, since its records can carry local media too.
+  // 4. Gather the schema-less data files BEFORE uploading media, since their
+  //    records can carry local media too. (No search index rides here since
+  //    2026-08-01, and nothing is bundled — `build/src/site/schemaless-data.js`.)
   let ball = await collectSchemalessData(distDir, schemalessNames)
   const ballAssets = collectSchemalessDataAssets(ball)
 
