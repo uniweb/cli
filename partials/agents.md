@@ -1626,7 +1626,7 @@ The developer builds `NetworkDiagram` as an ordinary React component with `inset
 
 **Insets are full section types** — they receive `{ content, params, block }`. The alt text becomes `content.title` and attributes become `params`: `![npm create uniweb](@CommandBlock){note="Ready to go"}` → `content.title = "npm create uniweb"`, `params.note = "Ready to go"`.
 
-**Don't use `hidden: true` on insets.** `hidden` means "don't export this component at all" (internal helpers); `inset: true` means "available for `@Component` references in markdown."
+**Don't use `hidden: true` on insets.** `hidden` means "don't export this component at all" (internal helpers); `inset: true` means "available for `@Component` references in markdown" — and a visual editor then offers it as an inset only. For a component placed both as a section and as an inset, add `section: true`.
 
 **Block insets — a component that wraps content.** The image form is a leaf: it takes params but no body. When the component should surround authored prose — a callout, a disclosure, an admonition — use the fenced form instead. Same `@Component{params}` reference, written as a code fence's info string:
 
