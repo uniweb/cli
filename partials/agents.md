@@ -879,22 +879,22 @@ Keep those folders flat: `records/article/design-tips.md` works; `records/articl
 
 Item frontmatter conventionally uses `title`, `date`, `tags`, `image`, `description`, `author` — plus any fields your content needs (`price`, `role`, `order`). Images can sit beside the item file and be referenced with `./`. **`draft: true` keeps a record off the live site without deleting it**: it is still a record, in `records/`, and `pnpm dev` shows it so you can preview it, but a build for hosting leaves it out, and a backend you `uniweb push` it to keeps it in the site's folder without delivering it. (`published: false`, an older spelling, is refused.)
 
-**A record's file follows its data schema's sections.** A schema with one section (the `fields:` form) is written flat, as above. A schema with more than one is written **by section** — each field under its section's name — and a field left at the top stops the build and a push, naming where it goes. `@std/article` has two, its card `article` and `article_body`:
+**A record's file follows its data schema's sections.** A schema with one section (the `fields:` form) is written flat, as above. A schema with more than one is written **by section** — each field under its section's name — and a field left at the top stops the build and a push, naming where it goes. `@std/article` has two, its card `brief` and `body`:
 
 ```markdown
 <!-- records/std/article/hello.md -->
 ---
-article:
+brief:
   title: Hello
   date: 2026-05-01
-article_body:
+body:
   author: Ada
 ---
 
-The body — the value of the schema's content field, `article_body.content`.
+The body — the value of the schema's content field, `body.content`.
 ```
 
-**A component receives it differently from how the file writes it**, the same way on a static site and a hosted one: the brief's fields at the top (`article.title`), every other section under its name (`article.article_body.content`, `article.article_body.author`), and `$name`, the handle. Lists carry the brief alone unless the query says otherwise (`deferred:`, below). Full rules: `reference/entity-content.md`.
+**A component receives it differently from how the file writes it**, the same way on a static site and a hosted one: the brief's fields at the top (`article.title`), every other section under its name (`article.body.content`, `article.body.author`), and `$name`, the handle. Lists carry the brief alone unless the query says otherwise (`deferred:`, below). Full rules: `reference/entity-content.md`.
 
 **A reference names the record it points at.** A `{ ref: '@/speaker' }` field is written as that record's name — `speaker: ada` for `records/speaker/ada.yml` (its file's name, or its `slug:`) — and a `many` one as a list of names. A component receives `{ entity, brief }`: the record reduced to its brief, so `talk.speaker.brief.name`. `uniweb validate` and a push report a name that matches no record; a push sends each reference to the record it names (in the same push when that record is new too), and a pull writes the name back.
 
@@ -965,7 +965,7 @@ pages/blog/
 
 **Two options for bigger sets:**
 
-`deferred: [body]` strips heavy fields from the list payload — cards stay light, while a `[slug]` page still receives the full record automatically and other components fetch the whole record on demand with `useWholeRecord`. It names keys of the record as a component receives it — a field, or a section's name — and a schema with more than one section implies it: every section but the brief (`[article_body]` for `@std/article`), so it is rarely written. File-based records emit per-record files at `/data/<name>/<slug>.json` and need no configuration; an external query names its one-record request with `record:` instead (*Fetching from other sources* in Part 4).
+`deferred: [body]` strips heavy fields from the list payload — cards stay light, while a `[slug]` page still receives the full record automatically and other components fetch the whole record on demand with `useWholeRecord`. It names keys of the record as a component receives it — a field, or a section's name — and a schema with more than one section implies it: every section but the brief (`[body]` for `@std/article`), so it is rarely written. File-based records emit per-record files at `/data/<name>/<slug>.json` and need no configuration; an external query names its one-record request with `record:` instead (*Fetching from other sources* in Part 4).
 
 `queryable:` declares which fields a reader may filter on, with enough metadata for the foundation to render controls:
 
