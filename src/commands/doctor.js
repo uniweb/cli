@@ -984,8 +984,8 @@ function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix,
   ])
 
   if (existsSync(dataDir)) {
-    // A collection `x` owns `x.json` (the cascade) and `x/` (per-record files
-    // when it declares `deferred:`). Anything else is unaccounted for.
+    // A query `x` owns `x.json` (its list) and `x/` (its records' own files).
+    // Anything else is unaccounted for.
     const orphans = readdirSync(dataDir, { withFileTypes: true })
       .filter((entry) => {
         const name = entry.isDirectory()

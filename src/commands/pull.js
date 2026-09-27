@@ -974,19 +974,6 @@ export async function pull(args = [], deps = {}) {
         // which is the pre-existing behaviour and right for a fresh clone.
       }
 
-      // ⭐ The Models the site's queries name — what a clone, with no foundation to read them from,
-      // tells a query's derived `deferred:` from its author's by. ⛔ Until 2026-09-26 a clone wrote
-      // the derivation into its queries as though authored. One that cannot be read is judged
-      // without it, which keeps the value: the safe direction.
-      const models = {}
-      for (const model of pulledQueryModels) {
-        try {
-          const declaration = await readModel(model)
-          if (declaration) models[model] = declaration
-        } catch {
-          // unreadable here
-        }
-      }
       // A foundation named by catalog ref — a clone's: keep its registered version before the
       // queries are written, since its section types are what type a query named for a data key.
       if (!keepAuthoredFoundation) {
@@ -995,7 +982,6 @@ export async function pull(args = [], deps = {}) {
       const report = siteContentDocumentToProject({
         document: siteDoc,
         siteRoot: siteDir,
-        models,
         // Which backend's asset ids to read back as the author's own paths. Without
         // it a pull leaves every image pointing at a backend route.
         backend: client.origin,

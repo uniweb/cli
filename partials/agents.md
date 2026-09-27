@@ -72,7 +72,7 @@ Then **follow the link the index gives you** rather than constructing one yourse
 git clone --depth 1 https://github.com/uniweb/docs .uniweb-docs   # then gitignore it
 ```
 
-Same content, greppable, and one network operation instead of many. `grep -ri "deferred" .uniweb-docs` beats any number of fetches while you're still exploring.
+Same content, greppable, and one network operation instead of many. `grep -ri "queryable" .uniweb-docs` beats any number of fetches while you're still exploring.
 
 Documentation paths in this guide are given bare — `development/creating-components.md` — so they resolve three ways: as a key in the index, as a file in a clone, or at `https://raw.githubusercontent.com/uniweb/docs/main/{path}`.
 
@@ -965,7 +965,7 @@ pages/blog/
 
 **Two options for bigger sets:**
 
-A list carries briefs, so a schema that keeps its heavy parts out of the brief — `@std/article`'s body is its own section — keeps lists light with no configuration, while a section declaring `/*` still receives the whole record on a `[slug]` page, and other components fetch it on demand with `useWholeRecord`. File-based records are written one file per record, whole, at `/data/<name>/<name of the record>.json`; an external query names its one-record request with `record:` instead (*Fetching from other sources* in Part 4). `deferred: [content]` leaves fields of the brief out of a static site's lists — and out of what a component expecting briefs receives there, on the record's page too; a hosted site ignores it.
+A list carries briefs, so a schema that keeps its heavy parts out of the brief — `@std/article`'s body is its own section — keeps lists light with no configuration, while a section declaring `/*` still receives the whole record on a `[slug]` page, and other components fetch it on demand with `useWholeRecord`. File-based records are written one file per record, whole, at `/data/<name>/<name of the record>.json`; an external query names its one-record request with `record:` instead (*Fetching from other sources* in Part 4). (`deferred:` is removed: a schema's brief decides what a list holds.)
 
 `queryable:` declares which fields a reader may filter on, with enough metadata for the foundation to render controls:
 
@@ -1887,7 +1887,7 @@ fetch:
   limit: 3
 ```
 
-**Lean lists.** A list carries each record's brief, so heavy parts belong in a section of their own — `@std/article`'s body is `body` — and never ride a list. A section that shows them declares `/*`; elsewhere components fetch the whole record on demand with `useWholeRecord(record, { query })`, which returns it as stored — `full.body.content`. Every file-based record gets its own file, `/data/<name>/<name of the record>.json`. `deferred: [content]` leaves fields of the brief out of a static site's lists, and so out of what a component expecting briefs receives there — on the record's page too; a hosted site ignores it. (An external query declares no `deferred:` — its whole record comes from `record:`, below.) The hook is safe to call on any query: when the query has no separate source for one record it returns the record you passed in.
+**Lean lists.** A list carries each record's brief, so heavy parts belong in a section of their own — `@std/article`'s body is `body` — and never ride a list. A section that shows them declares `/*`; elsewhere components fetch the whole record on demand with `useWholeRecord(record, { query })`, which returns it as stored — `full.body.content`. Every file-based record gets its own file, `/data/<name>/<name of the record>.json`. An external query's whole record comes from its `record:` request, below. (`deferred:` is removed — the build stops on it.) The hook is safe to call on any query: when the query has no separate source for one record it returns the record you passed in.
 
 **Component-side fetching.** When a component genuinely needs to fetch on its own (a search box, "load more", a lazy popover), use the kit hooks — `useFetched`, `useCacheEntry`, `useWholeRecord`. They share the framework's cache and dispatcher with declarative fetches; same-key requests dedupe automatically.
 

@@ -370,12 +370,12 @@ test('pull fetches the folder lane by the site-content uuid (no query config nee
   }
 })
 
-// ⭐ A clone has no foundation to read its queries' schemas from, so it judges a query's `deferred:`
-// by the Model the pull reads from the backend. ⛔ Until 2026-09-26 it wrote the derivation into its
-// queries as though authored.
-for (const [label, served, expected] of [
-  ['⛔ a clone does not write a query’s derived deferred: — judged by the Model the backend serves', true, undefined],
-  ['CONTROL — with no Model to judge by, the value is kept (the safe direction)', false, ['article_body']]
+// ⛔ `deferred:` is retired (2026-09-27): a pull drops one a store still holds from an older push —
+// with or without the Model it names — since the build refuses the key. Until then a clone judged a
+// derived `deferred:` by the Model the pull read, and kept one it could not judge.
+for (const [label, served] of [
+  ['a pull drops a stored deferred: — with the Model the backend serves', true],
+  ['…and without it', false]
 ]) {
   test(label, async () => {
     const dir = tempSite()
@@ -388,7 +388,7 @@ for (const [label, served, expected] of [
         info: { name: 'S', foundation: '@acme/fnd@1.0.0' },
         pages: [],
         layout_sections: [],
-        queries: [{ name: 'articles', schema: '@acme/article', deferred: ['article_body'] }]
+        queries: [{ name: 'articles', schema: '@acme/article', sort: 'date desc', deferred: ['article_body'] }]
       }
       const declaration = {
         name: '@acme/article',
@@ -407,7 +407,9 @@ for (const [label, served, expected] of [
       })
       assert.equal(res.exitCode, 0)
       const queries = yaml.load(readFileSync(join(dir, 'queries.yml'), 'utf8'))
-      assert.deepEqual(queries.articles.deferred, expected)
+      // CONTROL — the query itself is written
+      assert.equal(queries.articles.sort, 'date desc')
+      assert.equal(queries.articles.deferred, undefined)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

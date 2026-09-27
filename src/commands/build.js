@@ -589,7 +589,7 @@ function resolveFoundationDir(projectDir, siteConfig) {
  * Emits exactly what `uniweb publish` ships to Uniweb hosting:
  *   dist/site-content.json (full sections inlined)
  *   dist/<lang>/site-content.json per non-default locale
- *   dist/data/<collection>.json (+ per-record files for `deferred:`)
+ *   dist/data/<query>.json (+ a file per record, dist/data/<query>/<name>.json)
  *   dist/assets/<media> (processed images, video posters, PDF thumbnails)
  *
  * Does NOT emit HTML, JS, CSS, source maps, _importmap chunks, or
