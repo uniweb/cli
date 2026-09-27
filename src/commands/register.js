@@ -46,8 +46,8 @@
 // lost, and the legacy code could be removed). Implement as `register` flags (or
 // backend-side policy) when the need is real:
 //
-//   • ACCESS POLICY — legacy `--edit-access open|restricted`. On the old platform
-//     this gated who could act on the foundation in the app. Its meaning is
+//   • ACCESS POLICY — legacy `--edit-access open|restricted`. On the old registry
+//     this gated who could act on the foundation. Its meaning is
 //     unclear for the new model: there is no editing of a foundation's code or
 //     schema, so it is most likely a LICENSING / access-control concern (who may
 //     use/reference the foundation), not "editing". Revisit as `--access` (or an
@@ -56,9 +56,8 @@
 //   • VERSION PROPAGATION — legacy `--propagate`. Opts a newly-registered version
 //     into the registry's version-update walk: trusting sites whose policy allows
 //     the jump (e.g. auto-patch) adopt it with no rebuild; default was "silent"
-//     (stored, nothing moves). The SAME concept applies to `runtime register`
-//     (legacy deploy-runtime had `--propagate` too). Implement once the backend
-//     has a version-update/propagation policy; until then every register is silent.
+//     (stored, nothing moves). Implement once the backend has a
+//     version-update/propagation policy; until then every register is silent.
 
 import {
   existsSync,
