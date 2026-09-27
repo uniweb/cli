@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-27T03:02:47.415Z",
+  "generatedAt": "2026-09-27T19:27:55.485Z",
   "packages": {
     "@uniweb/api": {
-      "version": "0.6.3",
+      "version": "0.6.4",
       "path": "framework/api",
       "deps": [
         "@uniweb/core"
       ]
     },
     "@uniweb/build": {
-      "version": "0.64.2",
+      "version": "0.65.0",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -35,7 +35,7 @@
       "deps": []
     },
     "@uniweb/core": {
-      "version": "0.30.1",
+      "version": "0.31.0",
       "path": "framework/core",
       "deps": [
         "@uniweb/semantic-parser",
@@ -48,14 +48,14 @@
       "deps": []
     },
     "@uniweb/icons": {
-      "version": "0.4.21",
+      "version": "0.4.22",
       "path": "framework/icons",
       "deps": [
         "@uniweb/core"
       ]
     },
     "@uniweb/kit": {
-      "version": "0.19.5",
+      "version": "0.19.6",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core",
@@ -75,7 +75,7 @@
       "deps": []
     },
     "@uniweb/projections": {
-      "version": "0.7.4",
+      "version": "0.7.5",
       "path": "framework/projections",
       "deps": [
         "@uniweb/content-writer",
@@ -83,7 +83,7 @@
       ]
     },
     "@uniweb/runtime": {
-      "version": "0.27.6",
+      "version": "0.27.7",
       "path": "framework/runtime",
       "deps": [
         "@uniweb/core",
@@ -96,7 +96,7 @@
       "deps": []
     },
     "@uniweb/schemas": {
-      "version": "0.7.2",
+      "version": "0.8.0",
       "path": "framework/schemas",
       "deps": []
     },
@@ -116,7 +116,7 @@
       "deps": []
     },
     "@uniweb/templates": {
-      "version": "0.17.3",
+      "version": "0.17.4",
       "path": "framework/templates",
       "deps": []
     },
@@ -126,7 +126,7 @@
       "deps": []
     },
     "@uniweb/unipress": {
-      "version": "0.10.7",
+      "version": "0.10.8",
       "path": "framework/unipress",
       "deps": [
         "@uniweb/build",
