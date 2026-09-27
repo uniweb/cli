@@ -54,9 +54,13 @@ async function loadDependencies() {
       import('@uniweb/content-reader'),
       import('@uniweb/semantic-parser')
     ])
+    // Optional: the inset lift a Block runs (`@uniweb/core/insets`). An older
+    // install without it shows the insets unlifted, as `inset_ref` nodes.
+    const coreInsets = await import('@uniweb/core/insets').catch(() => null)
     return {
       markdownToProseMirror: contentReader.markdownToProseMirror,
       parseContent: semanticParser.parseContent,
+      liftInsets: coreInsets?.liftInsets,
       // Optional: present from @uniweb/semantic-parser >= the staircase
       // release; older installs simply show no findings.
       lintContent: semanticParser.lintContent
@@ -122,41 +126,6 @@ function splitParams(frontMatter) {
     reserved: { data, id, background, theme, input },
     params
   }
-}
-
-/**
- * Extract inset references from a ProseMirror document.
- * Exact match of content-collector lines 192-218.
- *
- * @param {object} doc - ProseMirror document (mutated in place)
- * @returns {Array} Array of { refId, type, params, description }
- */
-function extractInsets(doc) {
-  if (!doc?.content || !Array.isArray(doc.content)) return []
-
-  const insets = []
-  let refIndex = 0
-
-  for (let i = 0; i < doc.content.length; i++) {
-    const node = doc.content[i]
-    if (node.type === 'inset_ref') {
-      const { component, alt, ...params } = node.attrs || {}
-      const refId = `inset_${refIndex++}`
-      insets.push({
-        refId,
-        type: component,
-        params: Object.keys(params).length > 0 ? params : {},
-        description: alt || null
-      })
-      // Replace in-place with placeholder
-      doc.content[i] = {
-        type: 'inset_placeholder',
-        attrs: { refId }
-      }
-    }
-  }
-
-  return insets
 }
 
 /**
@@ -253,11 +222,22 @@ function processFile(fileContent, fileName, deps, options) {
   const { frontMatter, markdown } = extractFrontmatter(fileContent)
   const { type, preset, reserved, params } = splitParams(frontMatter)
 
-  // Parse markdown to ProseMirror
-  const doc = markdownToProseMirror(markdown)
+  // Parse markdown to ProseMirror — the document as stored, insets as written.
+  const stored = markdownToProseMirror(markdown)
 
-  // Extract insets (mutates doc)
-  const insets = extractInsets(doc)
+  // What the component receives: the insets lifted the way a Block lifts them —
+  // a placeholder in the content, the inset itself listed beside it. ⛔ This
+  // file carried its own copy of the site build's extractor until 2026-09-27,
+  // and it had drifted (top-level only, no inline insets, `description` for
+  // `title`); insets are lifted by core now, so this asks core.
+  const lifted = deps.liftInsets
+    ? deps.liftInsets(stored)
+    : { content: stored, leaves: [], containers: [] }
+  const doc = lifted.content
+  const insets = [
+    ...lifted.leaves,
+    ...lifted.containers.map(({ refId, type, params }) => ({ refId, type, params, container: true }))
+  ]
 
   // Build result
   const result = {}
@@ -279,9 +259,8 @@ function processFile(fileContent, fileName, deps, options) {
   }
 
   if (raw) {
-    // Raw mode: return ProseMirror AST
-    result.prosemirror = doc
-    if (insets.length > 0) result.insets = insets
+    // Raw mode: the ProseMirror AST as stored — insets in it as the author wrote them.
+    result.prosemirror = stored
     return result
   }
 
