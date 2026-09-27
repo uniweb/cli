@@ -1563,6 +1563,8 @@ Pages are sequences of sections — the obvious layer. The framework also suppor
 
 Does the author write content *inside* the nested element? **Yes** → child sections, or a block inset when the wrapper is presentational and lives mid-page. **No** (self-contained, param-driven) → inset. Repeating same-structure groups → items. These compose: a child section can contain insets; items work inside children; a block inset can contain both.
 
+**Child sections in columns.** A section type that lays its children out in a grid offers layouts in `meta.js` — `children: { grid: [3, 2, '40/60'] }`, the first being its default — and renders them with kit's `<ChildGrid from={block} fallback={3} />`. The author picks one with `grid:` in the parent's frontmatter (`grid: 3`, `grid: '40/60'`), a section key like `type`, not a param. Don't declare a param named `grid`.
+
 ### Concept blocks — naming *what* content is
 
 A ` ```md:<tag> ` fence marks a run of prose as a named kind of thing. The author writes ordinary markdown; the tag says what it is:
