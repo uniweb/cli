@@ -1129,7 +1129,8 @@ async function runInitFreeform(siteRoot, config, args) {
         const items = JSON.parse(dataRaw)
 
         for (const item of items) {
-          if (item.slug === sectionId) {
+          // A compiled record is named by `$name` — it carries no `slug` since 2026-09-27.
+          if (item.$name === sectionId) {
             sourceContent = item.content
             break
           }
