@@ -1041,9 +1041,17 @@ function MyComponent({ content, params, block }) {
 }
 ```
 
-Frontmatter becomes `params`, minus the keys the framework takes for itself: `type`, `id`, `hidden`, `query`, `fetch` (a `data:` key is refused — it was `query:`'s old name; `preset:` and `input:` are ignored with a warning). `props:` is the one that isn't dropped but merged *into* params.
+**Frontmatter becomes `params` — except the names framework keeps for itself.** Every section can be given these, whatever its type, and none of them reaches your component as a param. So **never declare one in `meta.js` `params:`** — a component that does never receives what an author writes.
 
-**The section's own settings are not params either.** `theme`, `background`, `grid` and `vars` are framework's: it applies them — the color context and the background around your component, the section's theme and your component's CSS variables in the page stylesheet, the child layout through `ChildGrid` — so your component never receives them in `params`, and the build warns on a param declared with one of those names. When a component needs one for its own logic, it reads it from `block`: `useColorContext(block)` for the context (a light vs. dark logo, say), `<SectionBackground block={block} />` to draw the background itself, `<ChildGrid from={block} />` for the grid. Every other key is a param, declared or not; components ignore the ones they don't use.
+| in a section's frontmatter | what it is | a component reads it from |
+|---|---|---|
+| `type`, `id`, `hidden` | the section itself — its section type, its id, and a draft (`hidden: true`: left out of a published build, kept by `uniweb dev`) | — |
+| `query`, `fetch` | the section's data | `content.data`, under the keys its `meta.js` `data:` declares |
+| `theme`, `background`, `grid`, `vars` | the section's settings, which framework applies — the color context and the background around your component, the section's theme and your component's CSS variables in the page stylesheet, the child layout | `block`, when the component needs one for its own logic: `useColorContext(block)` for the context (a light vs. dark logo, say), `<SectionBackground block={block} />` to draw the background itself, `<ChildGrid from={block} />` for the grid |
+| `props` | params written as one map | `params` — its keys are merged in, one by one |
+| `data`, `preset`, `input` | nothing: `data:` is refused (it was `query:`'s old name); `preset:` and `input:` are ignored with a warning | — |
+
+The build warns when `params:` declares `theme`, `background`, `grid`, `vars` or `fetch`. A preset may still set `theme` or `background` — a preset's params are written into the section's frontmatter when an author starts a section from it, so `dark: { label: 'Dark', params: { theme: 'dark' } }` is a dark section. Every other key is a param, declared or not; components ignore the ones they don't use.
 
 ### Rendering content with Kit
 
@@ -2415,7 +2423,7 @@ For cases the factory doesn't cover, write handlers directly using `Loom`, `inst
 
 > **`instantiateContent` resolves `{placeholders}` in text nodes only** — not in link `href`s or other node/mark attributes. So `[{email}](mailto:{email})` fills the visible label but leaves the `mailto:` URL literal. For dynamic URLs, emit the value as plain text and let the component linkify it, or build the href in the handler yourself.
 
-**Reserved frontmatter:** `source` and `where` are convention-level reserved fields — they flow to both `block.properties` (for handler access) and `params` (visible to components), consistent with `background` and `theme`. Components can ignore them. List them in `meta.js` params with descriptions so the editor and schema recognize them.
+**`source` and `where` are ordinary params** that the Loom handler reads — they reach both `block.properties` (for handler access) and `params` (visible to components). Components can ignore them. List them in `meta.js` params with descriptions so the editor and schema recognize them. (Unlike `theme` and `background`, which are the section's own settings and never reach `params` — see the table under *Frontmatter becomes `params`*.)
 <!-- /template:loom -->
 
 ---
