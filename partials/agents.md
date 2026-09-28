@@ -1051,7 +1051,7 @@ function MyComponent({ content, params, block }) {
 | `props` | params written as one map | `params` — its keys are merged in, one by one |
 | `data`, `preset`, `input` | nothing: `data:` is refused (it was `query:`'s old name); `preset:` and `input:` are ignored with a warning | — |
 
-The build warns when `params:` declares `theme`, `background`, `grid`, `vars` or `fetch`. A preset may still set `theme` or `background` — a preset's params are written into the section's frontmatter when an author starts a section from it, so `dark: { label: 'Dark', params: { theme: 'dark' } }` is a dark section. Every other key is a param, declared or not; components ignore the ones they don't use.
+The build warns when `params:` declares any of them. A preset may still set `theme` or `background` — a preset's params are written into the section's frontmatter when an author starts a section from it, so `dark: { label: 'Dark', params: { theme: 'dark' } }` is a dark section. Every other key is a param, declared or not; components ignore the ones they don't use.
 
 ### Rendering content with Kit
 
