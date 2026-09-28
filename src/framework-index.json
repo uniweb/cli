@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-28T02:26:09.807Z",
+  "generatedAt": "2026-09-28T04:32:38.799Z",
   "packages": {
     "@uniweb/api": {
-      "version": "0.6.5",
+      "version": "0.6.6",
       "path": "framework/api",
       "deps": [
         "@uniweb/core"
       ]
     },
     "@uniweb/build": {
-      "version": "0.69.0",
+      "version": "0.70.0",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -35,7 +35,7 @@
       "deps": []
     },
     "@uniweb/core": {
-      "version": "0.32.2",
+      "version": "0.33.0",
       "path": "framework/core",
       "deps": [
         "@uniweb/semantic-parser",
@@ -48,14 +48,14 @@
       "deps": []
     },
     "@uniweb/icons": {
-      "version": "0.4.23",
+      "version": "0.4.24",
       "path": "framework/icons",
       "deps": [
         "@uniweb/core"
       ]
     },
     "@uniweb/kit": {
-      "version": "0.19.8",
+      "version": "0.19.9",
       "path": "framework/kit",
       "deps": [
         "@uniweb/core",
@@ -76,7 +76,7 @@
       "deps": []
     },
     "@uniweb/projections": {
-      "version": "0.7.8",
+      "version": "0.7.9",
       "path": "framework/projections",
       "deps": [
         "@uniweb/content-writer",
@@ -84,7 +84,7 @@
       ]
     },
     "@uniweb/runtime": {
-      "version": "0.27.10",
+      "version": "0.28.0",
       "path": "framework/runtime",
       "deps": [
         "@uniweb/core",
@@ -97,7 +97,7 @@
       "deps": []
     },
     "@uniweb/schemas": {
-      "version": "0.8.3",
+      "version": "0.9.0",
       "path": "framework/schemas",
       "deps": []
     },
@@ -117,17 +117,17 @@
       "deps": []
     },
     "@uniweb/templates": {
-      "version": "0.17.6",
+      "version": "0.17.7",
       "path": "framework/templates",
       "deps": []
     },
     "@uniweb/theming": {
-      "version": "0.1.15",
+      "version": "0.1.16",
       "path": "framework/theming",
       "deps": []
     },
     "@uniweb/unipress": {
-      "version": "0.10.12",
+      "version": "0.10.13",
       "path": "framework/unipress",
       "deps": [
         "@uniweb/build",
