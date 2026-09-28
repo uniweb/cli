@@ -1754,7 +1754,7 @@ export async function pushSyncPackages({
       // Two unrelated conflicts share HTTP 409, so branch on the machine-readable
       // `reason` — never on `detail`, which is prose the backend may reword.
       let problem = null
-      if ((res.status === 409 || res.status === 400) && body) {
+      if ((res.status === 409 || res.status === 400 || res.status === 422) && body) {
         try {
           problem = JSON.parse(body)
         } catch {
@@ -1934,6 +1934,15 @@ export async function pushSyncPackages({
           `  deleted there  →  uniweb forget --backend ${client.origin}, then push again: it creates a NEW site`
         )
         note('Deleting this folder removes only your local copy, either way.')
+      } else if (problem?.reason === 'template_records_not_copyable' && Array.isArray(problem.records)) {
+        // ⭐ A push asking to designate the site a template is refused whole when a record in its
+        // folder cannot be copied into the sites made from it — each named, with a `detail` written
+        // to be shown. Until 2026-09-28 this printed the raw problem document, cut at 800 characters.
+        note(problem.title || 'These records cannot be copied into a template:')
+        for (const r of problem.records) {
+          note(`  ${r?.name ?? '(unnamed)'} — ${r?.detail || r?.reason || 'no reason given'}`)
+        }
+        return null
       } else if (res.status === 409 && (problem?.title || problem?.detail)) {
         // ⛔ A 409 names its own cause — a reference the store refuses, a rule of the record's type,
         // an append-only section — so it is shown as the backend put it, not explained by us. Until

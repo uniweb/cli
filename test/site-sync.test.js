@@ -1087,6 +1087,39 @@ test('CONTROL — a draft the backend kept pushes cleanly and stays a draft', as
   rmSync(dir, { recursive: true, force: true })
 })
 
+test('a 422 template refusal names each record it cannot copy, in the backend\'s words', async () => {
+  const dir = tmpSite()
+  // As measured on a local backend (2026-09-28): a push asking `template: true` over a folder
+  // holding a record from another workspace is refused whole, naming each record.
+  const problem = {
+    status: 422,
+    title: 'Template Records Not Copyable',
+    reason: 'template_records_not_copyable',
+    records: [{ name: 'personal-book', entity: '01a0e8f4', reason: 'outside_workspace', detail: '`personal-book` belongs to another workspace' }],
+    limit: 20
+  }
+  const client = {
+    origin: 'http://x',
+    updateSiteContent: async () => ({
+      ok: false,
+      status: 422,
+      statusText: 'Unprocessable Content',
+      text: async () => JSON.stringify(problem),
+      json: async () => problem
+    }),
+    pullSiteContent: async () => ({ ok: false, status: 500 })
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }), report })
+  assert.equal(res.exitCode, 1)
+  const out = [...calls.error, ...calls.note].join('\n')
+  assert.match(out, /Template Records Not Copyable/)
+  assert.match(out, /personal-book — `personal-book` belongs to another workspace/)
+  // ⛔ Not the raw problem document it printed until 2026-09-28.
+  assert.doesNotMatch(out, /"reason":"template_records_not_copyable"/)
+  rmSync(dir, { recursive: true, force: true })
+})
+
 test('an identity_required 400 is explained, not surfaced as a raw error', async () => {
   const dir = tmpSite()
   const problem = {
