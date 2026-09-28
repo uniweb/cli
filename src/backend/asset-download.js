@@ -171,3 +171,52 @@ export async function downloadMissingAssets({
     updateBackendMap(siteDir, origin, 'assets', learned, carryServed)
   return out
 }
+
+/**
+ * Fetch the files a pull's file records name (`@uniweb/file`) to where each lands in
+ * `records/uniweb/file/` — the list `recordsToProject` returns as `fileDownloads` — and record each
+ * one's asset under its key (`sync.json` `assets`), as a push records the upload, so the next pull
+ * knows the bytes on disk are that asset and fetches nothing.
+ *
+ * @param {object} opts
+ * @param {Array<{ url: string, path: string, ref: string, assetId?: string, assetExt?: string }>} opts.downloads
+ * @param {string} opts.siteDir
+ * @param {string} opts.origin - backend origin, to resolve an origin-relative URL
+ * @param {typeof fetch} [opts.fetchImpl]
+ * @param {(m: string) => void} [opts.onProgress]
+ * @param {(m: string) => void} [opts.warn]
+ * @returns {Promise<{ downloaded: string[], failed: string[] }>} paths
+ */
+export async function downloadFileRecords({
+  downloads = [],
+  siteDir,
+  origin,
+  fetchImpl,
+  onProgress = () => {},
+  warn = () => {}
+}) {
+  const doFetch = fetchImpl || ((u) => globalThis.fetch(u))
+  const out = { downloaded: [], failed: [] }
+  const learned = {}
+  for (const d of downloads) {
+    try {
+      const res = await doFetch(new URL(d.url, origin).href)
+      if (!res.ok) {
+        warn(`file ${d.ref}: HTTP ${res.status} — not fetched`)
+        out.failed.push(d.path)
+        continue
+      }
+      const bytes = Buffer.from(await res.arrayBuffer())
+      mkdirSync(dirname(d.path), { recursive: true })
+      writeFileSync(d.path, bytes)
+      onProgress(`↓ ${d.ref}`)
+      out.downloaded.push(d.path)
+      if (d.assetId) learned[d.ref] = { id: d.assetId, ext: d.assetExt || '' }
+    } catch (err) {
+      warn(`file ${d.ref}: ${err.message} — not fetched`)
+      out.failed.push(d.path)
+    }
+  }
+  if (Object.keys(learned).length) updateBackendMap(siteDir, origin, 'assets', learned, carryServed)
+  return out
+}

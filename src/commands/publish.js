@@ -656,7 +656,8 @@ export async function publish(args = []) {
   //     the ref→serveUrl map; rewrite the entity content AND the ball with it.
   let assetRewrite = null
   let assetIds = null
-  const mediaRefs = [...new Set([...localAssets, ...ballAssets])]
+  // …and each file record's file (`@uniweb/file` — `{ ref, path, contentType }`, already located).
+  const mediaRefs = [...new Set([...localAssets, ...ballAssets]), ...(probe.localFiles || [])]
   if (mediaRefs.length) {
     say.info('Uploading media…')
     try {

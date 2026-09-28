@@ -409,7 +409,8 @@ export async function push(args = [], deps = {}) {
         ...(foundationDir ? { foundationDir } : {}),
         resolveModel: makeModelResolver({ client, offline: false, siteDir })
       })
-      mediaRefs = probe.localAssets || []
+      // Site-root media, and each file record's file (`@uniweb/file` — `{ ref, path, contentType }`).
+      mediaRefs = [...(probe.localAssets || []), ...(probe.localFiles || [])]
       refusals = probe.refusals || []
     } catch (err) {
       error(`Could not scan the site for local media: ${err.message}`)

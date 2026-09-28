@@ -310,3 +310,44 @@ test('a refusal with a missing extra still produces usable lines (no "undefined"
   assert.match(out.headline, /Storage quota reached/)
   assert.ok(!out.notes.join('\n').includes('undefined'))
 })
+
+// ⭐ A FILE RECORD (`@uniweb/file`, 2026-09-28) is already located — it lives in the records
+// directory, not under public/ — and declares its own type: it rides the same upload by
+// `{ ref, path, contentType }`, keyed by its `ref` like any media ref.
+test('uploadSiteMedia takes a file already located — `{ ref, path, contentType }` — keyed by its ref', async () => {
+  const dir = makeSite()
+  const file = join(dir, 'records', 'uniweb', 'file', 'price-list.xlsx')
+  mkdirSync(join(dir, 'records', 'uniweb', 'file'), { recursive: true })
+  writeFileSync(file, 'XLSX')
+  let captured = null
+  const client = {
+    origin: 'http://x',
+    uploadSiteAssets: async ({ files }) => {
+      captured = files
+      return {
+        failed: [],
+        assetsByLocalUrl: {
+          'records/uniweb/file/price-list.xlsx': { id: 'X1', ext: 'xlsx', serveUrl: 'https://cdn.example/X1/base.xlsx' },
+          '/images/banner.png': { id: 'SHA1', ext: 'png', serveUrl: 'https://cdn.example/SHA1/base.png' }
+        }
+      }
+    }
+  }
+  try {
+    const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    const { map, ids } = await uploadSiteMedia(client, dir, [
+      '/images/banner.png',
+      { ref: 'records/uniweb/file/price-list.xlsx', path: file, contentType: type }
+    ])
+    const sent = captured.find((f) => f.localUrl === 'records/uniweb/file/price-list.xlsx')
+    assert.equal(sent.path, 'records/uniweb/file/price-list.xlsx')
+    assert.equal(sent.content_type, type)
+    assert.equal(sent.diskPath, file)
+    assert.equal(map['records/uniweb/file/price-list.xlsx'], 'https://cdn.example/X1/base.xlsx')
+    assert.equal(ids['records/uniweb/file/price-list.xlsx'].id, 'X1')
+    // CONTROL — a media ref still resolves under public/ as before
+    assert.equal(map['/images/banner.png'], 'https://cdn.example/SHA1/base.png')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

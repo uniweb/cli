@@ -20,6 +20,7 @@ import {
 } from '@uniweb/build/uwx'
 import {
   downloadMissingAssets,
+  downloadFileRecords,
   collectAssetRefs,
   genericRefFor
 } from '../src/backend/asset-download.js'
@@ -274,4 +275,42 @@ test("the app's generated preview (a timestamp) is not an asset", () => {
     collectAssetRefs({ info: { preview: '2026-09-10T12:34:56Z' } }, CARD),
     []
   )
+})
+
+// ⭐ A FILE RECORD'S BYTES (`@uniweb/file`, 2026-09-28): fetched to where the pull placed it, and its
+// asset recorded under its key — so the next pull knows the bytes on disk ARE that asset.
+test('downloadFileRecords fetches each to its place and records its asset', async () => {
+  const dir = site()
+  const path = join(dir, 'records', 'uniweb', 'file', 'annual-report.pdf')
+  try {
+    const out = await downloadFileRecords({
+      downloads: [{ url: 'https://cdn.example/a9/base.pdf', path, ref: 'records/uniweb/file/annual-report.pdf', assetId: 'a9', assetExt: 'pdf' }],
+      siteDir: dir,
+      origin: ORIGIN,
+      fetchImpl: okFetch('PDF')
+    })
+    assert.deepEqual(out, { downloaded: [path], failed: [] })
+    assert.equal(readFileSync(path, 'utf8'), 'PDF')
+    assert.deepEqual(readBackendState(dir, ORIGIN).assets['records/uniweb/file/annual-report.pdf'], { id: 'a9', ext: 'pdf' })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('CONTROL — a file that does not arrive is reported, and nothing is recorded', async () => {
+  const dir = site()
+  const path = join(dir, 'records', 'uniweb', 'file', 'x.pdf')
+  try {
+    const out = await downloadFileRecords({
+      downloads: [{ url: 'https://cdn.example/x', path, ref: 'records/uniweb/file/x.pdf', assetId: 'x' }],
+      siteDir: dir,
+      origin: ORIGIN,
+      fetchImpl: async () => ({ ok: false, status: 404 })
+    })
+    assert.deepEqual(out.failed, [path])
+    assert.equal(existsSync(path), false)
+    assert.equal(readBackendState(dir, ORIGIN).assets, undefined)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

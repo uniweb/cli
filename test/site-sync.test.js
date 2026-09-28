@@ -1103,6 +1103,43 @@ test('a link record takes the uuid the backend gives its folder entry, into its 
   rmSync(dir, { recursive: true, force: true })
 })
 
+// ⭐ A FILE RECORD'S IDENTITY is its folder entry's `$uuid`, banked by the file's path — a file
+// cannot carry it (`@uniweb/file`, 2026-09-28).
+test('a file record’s entry uuid is banked by the file’s path', async () => {
+  const dir = tmpSite()
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'SITE', changed: true }])),
+    pushFolder: async () =>
+      ok(
+        finalized([
+          {
+            index: 0,
+            uuid: 'FOLDER',
+            changed: true,
+            document: { contents: [{ kind: 'file', name: 'brochure', file: { url: 'https://cdn.example/a1/base.pdf' }, $uuid: 'F1' }] }
+          }
+        ])
+      )
+  }
+  const pkg = siteOnlyPkg({
+    siteContentUuid: 'SITE',
+    records: {
+      buffer: Buffer.from('c'),
+      entityCount: 1,
+      models: ['@uniweb/folder'],
+      index: [{ kind: 'folder' }],
+      files: [{ id: 'uniweb/file/brochure', slug: 'brochure', poolPath: 'uniweb/file/brochure.pdf', uuid: null }]
+    }
+  })
+  const { report } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, report })
+  assert.equal(res.exitCode, 0)
+  const state = JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends[ORIGIN]
+  assert.deepEqual(state.files, { 'uniweb/file/brochure.pdf': 'F1' })
+  rmSync(dir, { recursive: true, force: true })
+})
+
 test('a draft the backend stored enabled fails the push, naming it, and the file stays a draft', async () => {
   const { dir, file, client, pkg } = draftPush(false)
   const { report, calls } = makeReport()

@@ -69,7 +69,7 @@ import { createHash } from 'node:crypto'
 import { createInterface } from 'node:readline/promises'
 import { join, dirname, relative, resolve } from 'node:path'
 import yaml from 'js-yaml'
-import { downloadMissingAssets } from '../backend/asset-download.js'
+import { downloadMissingAssets, downloadFileRecords } from '../backend/asset-download.js'
 import {
   readBackendState,
   siteContentDocumentToProject,
@@ -1068,6 +1068,25 @@ export async function pull(args = [], deps = {}) {
         removed.push(resolve(siteDir, report.recordsFile))
       }
       records += report.placed.length + report.updated.length
+      // ⭐ A FILE RECORD'S BYTES (`@uniweb/file`, 2026-09-28): fetched to where `folder.yml` now
+      // places each one, as media are fetched. A file that did not arrive is a record not taken —
+      // reported, and the pull fails below as it does for any, so the next one fetches it again.
+      if (report.fileDownloads?.length) {
+        const got = await downloadFileRecords({
+          downloads: report.fileDownloads,
+          siteDir,
+          origin: client.origin,
+          onProgress: (m) => note(`  ${m}`),
+          warn: (m) => note(`! ${m}`)
+        })
+        records += got.downloaded.length
+        wrote.push(...got.downloaded)
+        if (got.failed.length) {
+          report.skipped.push(
+            ...got.failed.map((path) => ({ slug: relative(siteDir, path), reason: 'its file could not be fetched' }))
+          )
+        }
+      }
       // ⛔ A PULL THAT DID NOT PLACE A RECORD HAS NOT TAKEN THE BACKEND'S RECORDS.
       // Until 2026-09-23 each skip was a dim note, the pull said "✓ Pulled … 0
       // record(s)" and exited 0, and it banked the lane's ETag and tokens. So the next

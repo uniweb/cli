@@ -4,7 +4,9 @@ dist
 .DS_Store
 *.local
 
-# Compiled collections. Generated from collections/ on every build — it lands
-# in the source tree rather than dist/, so without this it looks permanent,
-# gets committed, and then looks like something you may edit. It isn't.
+# Generated from records/ on every build — compiled queries in public/data/, and
+# each record's files, published in public/records/. Both land in the source tree
+# rather than dist/, so without this they look permanent, get committed, and then
+# look like something you may edit. They aren't: records live in records/.
 public/data/
+public/records/

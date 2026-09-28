@@ -24,7 +24,8 @@ import { humanBytes } from '../utils/bytes.js'
  * @param {object} client - BackendClient (uploadSiteAssets). No `discover` — this
  *        lane stopped consulting the capability doc when `assetBase` was removed.
  * @param {string} siteDir - the site root (site-root refs resolve under public/)
- * @param {string[]} refs - site-root local asset refs (`/images/x.png`)
+ * @param {Array<string|{ ref: string, path: string, contentType?: string }>} refs - site-root local
+ *        asset refs (`/images/x.png`), or files already located (a file record's)
  * @param {{ siteUuid?: string|null, onProgress?: (m: string) => void, warn?: (m: string) => void }} [opts]
  *   `siteUuid` is the owner the uploaded bytes are charged to. Callers create the
  *   site before uploading precisely so this is set — an unowned upload is charged
@@ -47,8 +48,15 @@ export async function uploadSiteMedia(
 
   const files = []
   const missing = []
-  for (const ref of refs) {
-    const { resolved } = resolveAssetPath(ref, siteDir, siteDir)
+  // ⭐ A ref is a site-root media path (`/images/x.png`), resolved under the site — or a file the
+  // caller already located, `{ ref, path, contentType }`: a file record's file and its preview, which
+  // live in the records directory and declare their own type (`@uniweb/file`, 2026-09-28).
+  const keys = []
+  for (const item of refs) {
+    const ref = typeof item === 'string' ? item : item?.ref
+    if (typeof ref !== 'string' || !ref) continue
+    keys.push(ref)
+    const resolved = typeof item === 'string' ? resolveAssetPath(ref, siteDir, siteDir).resolved : item.path
     if (!resolved || !existsSync(resolved)) {
       warn?.(`local-media: ${ref} not found under the site (skipped)`)
       missing.push(ref)
@@ -57,7 +65,7 @@ export async function uploadSiteMedia(
     const bytes = readFileSync(resolved)
     files.push({
       path: ref.replace(/^\/+/, ''), // bookkeeping key into the plan (must be unique)
-      content_type: contentTypeFor(basename(resolved)),
+      content_type: (typeof item === 'object' && item.contentType) || contentTypeFor(basename(resolved)),
       size: bytes.length,
       sha256: createHash('sha256').update(bytes).digest('hex'),
       localUrl: ref, // the rewrite key — the original content ref
@@ -77,7 +85,7 @@ export async function uploadSiteMedia(
   // dedup skip, so a re-push of unchanged media still records identity without
   // moving bytes — which is what makes the committed map cheap to keep accurate.
   const ids = {}
-  for (const ref of refs) {
+  for (const ref of keys) {
     const entry = result.assetsByLocalUrl[ref]
     if (!entry) continue
     // `served` — a fingerprint of the address, never the address. It is how a pull

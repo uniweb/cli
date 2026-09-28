@@ -51,7 +51,8 @@ import {
   readRegisteredFoundation,
   writeRegisteredFoundation,
   backfillLinkUuids,
-  LINK_MODEL
+  LINK_MODEL,
+  bankedFileUuids
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -2260,6 +2261,12 @@ export async function pushSyncPackages({
         if (Object.keys(lb.mapped).length) updateBackendMap(siteDir, client.origin, 'records', lb.mapped)
         for (const w of lb.warnings) note(`! ${w}`)
         if (lb.updated.length) wrote.push(`wrote ${lb.updated.length} link file(s)`)
+      }
+      // ⭐ …and a FILE RECORD's: a file cannot carry it, so it is banked per backend by the file's
+      // path (`sync.json` `files`; `file-records.js`, 2026-09-28).
+      if (records.files?.length) {
+        const fb = bankedFileUuids({ files: records.files, folderDoc })
+        if (Object.keys(fb).length) updateBackendMap(siteDir, client.origin, 'files', fb)
       }
     }
     finalizedTotal += finalized.length
