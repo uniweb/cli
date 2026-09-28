@@ -866,6 +866,8 @@ site/
 
 Keep those folders flat: `records/article/design-tips.md` works; `records/article/2025/design-tips.md` is read as the `2025` schema of an `article` org, which is not what you meant. Organise in `records/folder.yml` instead. A file whose name starts with `_` is not a record — somewhere to keep work in progress.
 
+**Links are records too — `@uniweb/link`.** A file in `records/uniweb/link/` holding `url:` and nothing else is a link record (one per file; no body, no other fields). Its display text and tags go on its `records/folder.yml` entry (`- path: uniweb/link/launch-video.yml` with `label:` / `tags:`), like any record's. Select links with a query `schema: '@uniweb/link'` and declare them in `meta.js` as `data: { videos: '@uniweb/link' }`; each arrives as `{ url, $name, $label, $tags }`. `uniweb push` refuses a `draft: true` link.
+
 **Four formats, one shape.** All of these produce the same records at runtime:
 
 | Format | Best for | Notes |

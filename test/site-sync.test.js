@@ -1062,6 +1062,47 @@ const draftPush = (echo) => {
   return { dir, file, client, pkg }
 }
 
+// ⭐ A LINK RECORD'S IDENTITY is its folder entry's `$uuid` (`@uniweb/link`, 2026-09-28): the push
+// banks it as a record's — into the file the first time, then mapped per backend.
+test('a link record takes the uuid the backend gives its folder entry, into its file and the map', async () => {
+  const dir = tmpSite()
+  mkdirSync(join(dir, 'records', 'uniweb', 'link'), { recursive: true })
+  const file = join(dir, 'records', 'uniweb', 'link', 'tour.yml')
+  writeFileSync(file, 'url: https://vimeo.com/1\n')
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'SITE', changed: true }])),
+    pushFolder: async () =>
+      ok(
+        finalized([
+          {
+            index: 0,
+            uuid: 'FOLDER',
+            changed: true,
+            document: { contents: [{ kind: 'link', name: 'tour', url: 'https://vimeo.com/1', $uuid: 'L1' }] }
+          }
+        ])
+      )
+  }
+  const pkg = siteOnlyPkg({
+    siteContentUuid: 'SITE',
+    records: {
+      buffer: Buffer.from('c'),
+      entityCount: 1,
+      models: ['@uniweb/folder'],
+      index: [{ kind: 'folder' }],
+      links: [{ id: 'uniweb/link/tour', slug: 'tour', url: 'https://vimeo.com/1', ownId: null, uuid: null, sourceFile: file }]
+    }
+  })
+  const { report } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, report })
+  assert.equal(res.exitCode, 0)
+  assert.deepEqual(yaml.load(readFileSync(file, 'utf8')), { $uuid: 'L1', url: 'https://vimeo.com/1' })
+  const state = JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends[ORIGIN]
+  assert.equal(state.records.L1, 'L1')
+  rmSync(dir, { recursive: true, force: true })
+})
+
 test('a draft the backend stored enabled fails the push, naming it, and the file stays a draft', async () => {
   const { dir, file, client, pkg } = draftPush(false)
   const { report, calls } = makeReport()

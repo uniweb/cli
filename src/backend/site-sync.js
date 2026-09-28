@@ -49,7 +49,9 @@ import {
   matchStoredRecords,
   parseCatalogRef,
   readRegisteredFoundation,
-  writeRegisteredFoundation
+  writeRegisteredFoundation,
+  backfillLinkUuids,
+  LINK_MODEL
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -1419,7 +1421,9 @@ export async function recoverUnbankedIdentity({ client, siteDir, pkg, note }) {
   }
   // The records the package sends, and the folder placing them. The emit reads the `records`
   // map from sync.json itself, so it needs no option — only the build again.
-  if (await recoverRecordsIdentity({ client, siteDir, index: pkg?.records?.index, note })) {
+  // Link records are matched as records are — by Model and name (`@uniweb/link`, `link-records.js`).
+  const links = (pkg?.records?.links || []).map((l) => ({ ownId: l.ownId, model: LINK_MODEL, slug: l.slug }))
+  if (await recoverRecordsIdentity({ client, siteDir, index: [...(pkg?.records?.index || []), ...links], note })) {
     again = {
       ...again,
       folderItemUuids: readFolderItemUuids(siteDir, client.origin),
@@ -2249,6 +2253,14 @@ export async function pushSyncPackages({
       const placements = collectFolderItemUuids(folderDoc)
       if (Object.keys(placements).length)
         writeFolderItemUuids(siteDir, client.origin, placements)
+      // ⭐ A LINK RECORD'S IDENTITY is its folder entry's `$uuid`, banked as a record's is: into
+      // its file the first time, then mapped per backend (`link-records.js`, 2026-09-28).
+      if (records.links?.length) {
+        const lb = backfillLinkUuids({ links: records.links, folderDoc })
+        if (Object.keys(lb.mapped).length) updateBackendMap(siteDir, client.origin, 'records', lb.mapped)
+        for (const w of lb.warnings) note(`! ${w}`)
+        if (lb.updated.length) wrote.push(`wrote ${lb.updated.length} link file(s)`)
+      }
     }
     finalizedTotal += finalized.length
   }
