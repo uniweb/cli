@@ -641,7 +641,7 @@ background:                                              # Object form for more 
   overlay: { enabled: true, type: dark, opacity: 0.5 }
 ```
 
-Components that render their own background declare `background: 'self'` in `meta.js`.
+Components that render their own background declare `background: 'self'` in `meta.js`, and the runtime then draws none; to draw the author's background themselves they render kit's `<SectionBackground block={block} />`.
 
 ### Page organization
 
@@ -1037,9 +1037,9 @@ function MyComponent({ content, params, block }) {
 }
 ```
 
-Frontmatter becomes `params`, minus the keys the framework consumes outright: `type`, `preset`, `input`, `props`, `query`, `fetch`, `id` (a `data:` key is refused — it was `query:`'s old name). `props:` is the one that isn't dropped but merged *into* params.
+Frontmatter becomes `params`, minus the keys the framework takes for itself: `type`, `id`, `hidden`, `query`, `fetch` (a `data:` key is refused — it was `query:`'s old name; `preset:` and `input:` are ignored with a warning). `props:` is the one that isn't dropped but merged *into* params.
 
-**Framework fields you'd expect to be stripped are not.** `background`, `theme`, `source`, `where`, and `vars` are acted on by the runtime *and* passed through — so `params.theme` is readable when a component needs logic beyond CSS tokens (a light vs. dark logo, say). Components ignore the keys they don't use, the same way they ignore unused `content.data` keys.
+**The section's own settings are not params either.** `theme`, `background`, `grid` and `vars` are framework's: it applies them — the color context and the background around your component, the section's theme and your component's CSS variables in the page stylesheet, the child layout through `ChildGrid` — so your component never receives them in `params`, and the build warns on a param declared with one of those names. When a component needs one for its own logic, it reads it from `block`: `useColorContext(block)` for the context (a light vs. dark logo, say), `<SectionBackground block={block} />` to draw the background itself, `<ChildGrid from={block} />` for the grid. Every other key is a param, declared or not; components ignore the ones they don't use.
 
 ### Rendering content with Kit
 
@@ -1363,7 +1363,7 @@ Components use **semantic CSS tokens** instead of hardcoded colors. The runtime 
 >
 > A rule prints → the utility exists, and something at runtime is overriding it. Nothing prints → Tailwind never generated it, and there are only two reasons: your `styles.css` doesn't `@import "@uniweb/kit/theme-tokens.css"` (or declares its own `@theme inline` that omits the token), or your `@source` globs don't cover the file the class is written in. Either way, write the class into a real source file first — a token that's only ever composed at runtime is invisible to the scanner by design.
 
-**Authors control context** via `theme: dark` in frontmatter, alternating `light` (default), `medium`, and `dark` across sections for visual rhythm. **The three presets aren't the limit** — the object form overrides any token per section:
+**Authors control context** via `theme: dark` in frontmatter, alternating `light` (default), `medium`, and `dark` across sections for visual rhythm. **The three presets aren't the limit** — a section's `theme:` is `theme.yml` for that section: tokens beside `mode`, and `theme.yml`'s own `colors`, `contexts` and `vars`, scoped to it:
 
 ```yaml
 theme:
@@ -1371,6 +1371,9 @@ theme:
   section: neutral-100               # Subtle off-white surface
   card: neutral-50                   # Cards lighter than surface
   primary: neutral-900               # Dark buttons instead of brand color
+  colors: { accent: '#e65100' }      # A palette for this section only
+  contexts:                          # Per context, for a section that follows the site's scheme
+    dark: { link: accent-300 }
 ```
 
 `background:` also accepts CSS variables and hex, so authors can alternate `var(--neutral-50)` / `var(--primary-50)` surfaces with no component code. If a source design uses subtle surface variations (`--surface-base` vs `--surface-sunken`), map those to backgrounds or token overrides in frontmatter — not to component code.
@@ -1563,7 +1566,7 @@ Pages are sequences of sections — the obvious layer. The framework also suppor
 
 Does the author write content *inside* the nested element? **Yes** → child sections, or a block inset when the wrapper is presentational and lives mid-page. **No** (self-contained, param-driven) → inset. Repeating same-structure groups → items. These compose: a child section can contain insets; items work inside children; a block inset can contain both.
 
-**Child sections in columns.** A section type that lays its children out in a grid offers layouts in `meta.js` — `children: { grid: [3, 2, '40/60'] }`, the first being its default — and renders them with kit's `<ChildGrid from={block} fallback={3} />`. The author picks one with `grid:` in the parent's frontmatter (`grid: 3`, `grid: '40/60'`), a section key like `type`, not a param. Don't declare a param named `grid`.
+**Child sections in columns.** A section type that lays its children out in a grid offers layouts in `meta.js` — `children: { grid: [3, 2, '40/60'] }`, the first being its default — and renders them with kit's `<ChildGrid from={block} fallback={3} />`. The author picks one with `grid:` in the parent's frontmatter (`grid: 3`, `grid: '40/60'`), a section key like `type`, not a param. Each child renders as a section, so its own `theme:` and `background:` apply. Don't declare a param named `grid`.
 
 ### Concept blocks — naming *what* content is
 
