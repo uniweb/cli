@@ -531,7 +531,7 @@ Optional attributes: `{size=20}`, `{color=red}`. Custom SVGs: `![Logo](./logo.sv
 ![alt](./img.jpg){href=/products}       <!-- Clickable media: href + target ride along -->
 ```
 
-Sizing and loading ride on the image: `{width=800 height=600 loading=lazy fit=cover position=center}`. A video adds `{poster=./thumb.jpg autoplay muted loop controls}`; a `{role=pdf}` document adds `{preview=./cover.jpg author=… description=…}` and arrives in `content.documents` — declare it in `content:` as `documents`.
+Sizing and loading ride on the image: `{width=800 height=600 loading=lazy fit=cover position=center}`. A video adds `{poster=./thumb.jpg autoplay muted loop controls}`; a `{role=pdf}` document adds `{preview=./cover.jpg author=… description=…}` and arrives in `content.documents` — `{ url, name, mime, size?, alt, caption, … }` — declare it in `content:` as `documents`.
 
 **Quote values containing spaces:** `{note="Ready to go"}`, not `{note=Ready to go}` — unquoted values end at the first space.
 
@@ -1089,7 +1089,7 @@ Names only — for signatures and props, read the package: it's on disk at `node
 
 **Text:** `H1`–`H6`, `P`, `Span`, `Div`, `Text` (with `as`)
 **Content:** `Section`, `Prose`, `Article`, `Render` (ProseMirror → React), `ChildBlocks`, `splitContent()`
-**Media:** `Visual` (first non-empty: inset/video/image), `Image`, `Media`, `Icon`, `Asset`
+**Media:** `Visual` (a `content.media` item by its kind; or the first of inset/video/image), `Image`, `Media` (video), `Icon`, `Asset`
 **Navigation:** `Link`, `useActiveRoute()`, `useWebsite()`, `useRouting()`
 **Header/layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()`
 **Overlays:** `Overlay` (modals, palettes, drawers, toasts — portals out of the layout, contains focus; read the note below before hand-rolling one)
@@ -1168,13 +1168,17 @@ export default {
   // hidden: true,          // Exclude from export entirely (internal helpers)
   // background: 'self',    // Component renders its own background
   // inset: true,           // Available for @ComponentName in markdown
-  // visuals: 1,            // Expects 1 visual
   // children: true,        // Accepts child sections
 
   content: {
     title: 'Section heading',
     paragraphs: 'Introduction [0-1]',
-    items: 'Feature cards with icon, title, description',
+    items: {
+      label: 'Feature cards [3-6]',
+      content: { icon: 'Icon [1]', title: 'Feature', paragraphs: 'Description' },  // one entry
+    },
+    // media: 'Photo, video or diagram [1]',  // an image, a video, or an embedded component
+    // sequence: 'Prose and media',           // renders content.sequence — the section as written
   },
 
   params: {
@@ -1194,6 +1198,13 @@ export default {
 ```
 
 **All defaults belong in `meta.js`, not inline in component code.** `meta.js` is also the catalog entry another agent reads to discover your section type (Part 2, step 2) — write `description` and `content:` for that reader.
+
+**`content:` names what the component reads**, each as a label for the author with an optional count (`'Cards [3-6]'`): `title`, `pretitle`, `subtitle`, `paragraphs`, `links`, `lists`, `items`, `media`, `icons`, `documents`, `snippets`, `tables`, `math`, `quotes`, `sequence`.
+
+- **`media` is an image, a video, or an embedded component.** `media: 'Hero media [1]'` takes any of the three; `media: { label, types: ['image'] }` narrows it; `image:`, `videos:` and `insets:` are the same slot narrowed to one type. Read it as `content.media` — the author's order, each item with its `kind` — and render it with `<Visual media={content.media} block={block} />`. Rendering the slot with `<Image>` drops a diagram an author placed there, and kit's `<Media>` is a video player.
+- **`sequence`** says the component renders `content.sequence` — the whole section as written, headline included. `{ label, except: ['table', 'math'] }` names the kinds it leaves out.
+- **`items: { label, content: { … } }`** says what each entry holds, in the same vocabulary.
+- The build warns on what it can't read, and refuses `visuals:` (declare `media`) and the `content:` element `data` (declare the block's tag in `data:`).
 
 > **`meta.js` is a user interface, not just metadata.** When a foundation is published, every `meta.js` is registered as the foundation's schema, and the visual editor builds its controls from it: the build generates a `schema.json` from every `meta.js` in the foundation, and the editor renders it: a `select` param with `options` becomes a dropdown, a `boolean` becomes a toggle, `label` and `description` become the words a non-technical author reads, and each entry in `presets` becomes a one-click choice. That's the real reason param naming matters — `variant: centered` and `renderMode: flex-center` aren't a style preference, they're the difference between a legible control and a baffling one. Write `meta.js` as though someone who will never see your code has to use it, because that's exactly who does.
 
@@ -1617,7 +1628,7 @@ Back up your database **before** running this. It is not reversible.
 
 That makes one distinction worth holding onto. You **may** declare a schema describing the form *definition's envelope* — `title`, `description`, `fields` as a map — and get build-time validation that an authored form is well-formed. What you can't declare is a schema whose fields are *the form's* fields (`name`, `email`, …); that's describing the visitor's answers, which arrive at runtime and belong to a form you've never seen. Declare the key either way — it is what delivers the block — and give it a schema only if you want it checked, and only of the envelope (`{}` declares the key with none).
 
-**Reading one in a component.** Declare the tag as a key (`data: { faq: {} }`), and `content.data[tag]` gives you both views: `items` for anything row-shaped (an accordion, a step list), `sequence` when you don't recognize the tag and want to render it faithfully in document order. Both are derived, so nothing is stored twice.
+**Reading one in a component.** Declare it the way the author writes the fence — `data: { 'md:faq': 'Questions and answers [3+]' }`. The value is the author's label (its count counts the entries), or `{ label, hint, content: { title: 'Question', paragraphs: 'Answer' } }` to say what each entry holds. The component still reads `content.data.faq`, which gives you both views: `items` for anything row-shaped (an accordion, a step list), `sequence` when you don't recognize the tag and want to render it faithfully in document order. Both are derived, so nothing is stored twice. (`faq: {}` also declares the key, saying nothing about the block.)
 
 ```jsx
 function Faq({ content }) {
@@ -1635,10 +1646,11 @@ function Faq({ content }) {
 ![Architecture overview](@NetworkDiagram){variant=compact}
 ```
 
-The developer builds `NetworkDiagram` as an ordinary React component with `inset: true` in `meta.js`. Kit's `<Visual>` renders the first non-empty candidate, so one section type works whether the author supplies an image, a video, or an interactive component:
+The developer builds `NetworkDiagram` as an ordinary React component with `inset: true` in `meta.js`. The section that hosts it declares a `media` slot, and kit's `<Visual>` renders the author's item by its kind — so one section type works whether the author supplies an image, a video, or an interactive component:
 
 ```jsx
-<Visual inset={block.insets[0]} video={content.videos[0]} image={content.images[0]} className="rounded-2xl" />
+// meta.js: content: { title: 'Headline', media: 'Illustration [1]' }
+<Visual media={content.media} block={block} className="rounded-2xl" />
 ```
 
 **Insets are full section types** — they receive `{ content, params, block }`. The alt text becomes `content.title` and attributes become `params`: `![npm create uniweb](@CommandBlock){note="Ready to go"}` → `content.title = "npm create uniweb"`, `params.note = "Ready to go"`.
