@@ -189,6 +189,24 @@ function loadSiteYml(dir) {
  * `node_modules` — this answers "did the developer write this", so a match
  * inside a dependency is the wrong answer.
  */
+/**
+ * Does this foundation render kit's <Prose> or <Article> — under its own name or an alias?
+ *
+ * The JSX tag alone missed `import { Article as ArticleBody } from '@uniweb/kit'`, which
+ * renders `<ArticleBody>`: two official templates shipped that way with no prose styles
+ * until 2026-09-29. So the import counts too. (The foundation build checks the same thing
+ * from its module graph, which no alias can hide from.)
+ *
+ * @param {string} dir - the foundation's source directory
+ * @returns {boolean}
+ */
+export function rendersKitProse(dir) {
+  return (
+    sourceMatches(dir, /<(Prose|Article)\b/) ||
+    sourceMatches(dir, /import\s*\{[^}]*\b(Prose|Article)\b[^}]*\}\s*from\s*['"]@uniweb\/kit['"]/)
+  )
+}
+
 function sourceMatches(dir, pattern) {
   let found = false
   forEachSourceFile(dir, (text) => {
@@ -1217,8 +1235,8 @@ export async function doctor(args = []) {
 
     // Does anything here actually ask for prose? Either the class in the
     // stylesheet, or kit's components, which render it.
+    const usesProseComponent = rendersKitProse(f.path)
     const usesProseClass = /(^|[\s"'`])prose(\s|["'`]|$)/m.test(styles)
-    const usesProseComponent = sourceMatches(f.path, /<(Prose|Article)\b/)
 
     if (!usesProseClass && !usesProseComponent) continue
 
