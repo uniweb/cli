@@ -366,6 +366,7 @@ content = {
   images: [],       // { src, alt, role, href }
   icons: [],        // { library, name, role }
   videos: [],       // { src, alt, role, poster, href }
+  documents: [],    // { url, alt, caption, role: 'pdf', preview?, author?, description? } — from {role=pdf}
   insets: [],       // Inline @Component references — { refId }
   lists: [],        // [[{ paragraphs, links, lists, … }]] — each item is an object, not a string
   quotes: [],       // Blockquotes
@@ -524,12 +525,13 @@ Optional attributes: `{size=20}`, `{color=red}`. Custom SVGs: `![Logo](./logo.sv
 ```markdown
 [text](url){target=_blank}              <!-- Open in new tab -->
 [text](./file.pdf){download}            <!-- Download -->
-![alt](./img.jpg){role=banner}          <!-- Role determines array: images, icons, or videos -->
+![alt](./img.jpg){role=banner}          <!-- Role determines array: images, icons, videos or documents -->
 ![alt](./demo.mp4){role=video}          <!-- → content.videos[], not content.images[] -->
+![alt](./report.pdf){role=pdf}          <!-- → content.documents[] — a file, drawn as a link -->
 ![alt](./img.jpg){href=/products}       <!-- Clickable media: href + target ride along -->
 ```
 
-Sizing and loading ride on the image: `{width=800 height=600 loading=lazy fit=cover position=center}`. A video adds `{poster=./thumb.jpg autoplay muted loop controls}`; a `{role=pdf}` document adds `{preview=./cover.jpg author=… description=…}`.
+Sizing and loading ride on the image: `{width=800 height=600 loading=lazy fit=cover position=center}`. A video adds `{poster=./thumb.jpg autoplay muted loop controls}`; a `{role=pdf}` document adds `{preview=./cover.jpg author=… description=…}` and arrives in `content.documents` — declare it in `content:` as `documents`.
 
 **Quote values containing spaces:** `{note="Ready to go"}`, not `{note=Ready to go}` — unquoted values end at the first space.
 
@@ -1098,7 +1100,7 @@ Names only — for signatures and props, read the package: it's on disk at `node
 @import "@uniweb/kit/prose-tokens.css";   /* the plugin, wired to theme.yml */
 ```
 
-Nothing to install — the import brings the plugin with it. **Skip the import and prose is completely unstyled**, silently: the class is there and no rules are behind it. `uniweb doctor` flags that. Use **one** `prose` container per subtree — the `--tw-prose-*` variables are inherited, so a nested one silently resets them and the outer container goes on looking correct. The section that renders the document is usually the better owner; a layout should supply column width and padding.
+Nothing to install — the import brings the plugin with it. **Skip the import and prose is completely unstyled** — lists lose their bullets and numbers, and text its typography — while the markup looks right. The foundation build warns about it, and `uniweb doctor` flags it. Use **one** `prose` container per subtree — the `--tw-prose-*` variables are inherited, so a nested one silently resets them and the outer container goes on looking correct. The section that renders the document is usually the better owner; a layout should supply column width and padding.
 
 **Documentation shells:** `useHeadings()` (the page's headings + the one being read, derived from content so it prerenders), `website.getBranchHierarchy({ route, for })` (the page tree for one branch). Kit ships no ready-made layout — a layout is your foundation's design; write it in `src/layouts/` and use these for the behaviour.
 **Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`
