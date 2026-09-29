@@ -90,6 +90,8 @@ export async function generateStarter({ name, sectionDir, preset, json, write })
   const metaPath = join(sectionDir, 'meta.js')
   const meta = existsSync(metaPath) ? await loadMeta(metaPath) : {}
   const result = starterContent({ name, ...meta }, { preset })
+  // What the declaration says that could not be read — the build warns the same way.
+  result.problems = describeContent({ name, ...meta }).problems
 
   const doc = buildDoc(result.content)
   const markdown = doc ? serializeSection(result.params, doc) : ''
@@ -157,11 +159,14 @@ export function reportStarter(result, { write } = {}) {
     console.log('')
     console.log(`  ${c.yellow}!${c.reset} Not filled: ${result.unfilled.join(', ')}`)
     console.log(
-      `    ${c.dim}\`background\` is frontmatter, not content. A video needs an address we cannot invent.${c.reset}`,
+      `    ${c.dim}A starter makes up no file, video or embedded component, and writes no table, equation,${c.reset}`,
     )
-    console.log(
-      `    ${c.dim}A \`data\` block needs a schema: a @/ ref resolves at build, and an empty {} declares no shape.${c.reset}`,
-    )
+    console.log(`    ${c.dim}quote or concept block (md:<tag>) — add those in the section.${c.reset}`)
+  }
+
+  if (result.problems?.length) {
+    console.log('')
+    for (const problem of result.problems) console.log(`  ${c.yellow}!${c.reset} ${problem}`)
   }
 
   if (write) {
@@ -189,7 +194,6 @@ export async function declarationFor(result) {
     icons: 'Icon [1]',
     videos: 'Video [1]',
     snippets: 'Code sample [1]',
-    data: 'The data block the author writes',
   }
   // ⛔ The slot → declaration spelling comes from @uniweb/schemas, not from a
   // copy here. `image` declares and `images` delivers; that mapping is the
