@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-30T04:21:51.611Z",
+  "generatedAt": "2026-09-30T04:35:27.776Z",
   "packages": {
     "@uniweb/api": {
       "version": "0.6.8",
@@ -10,7 +10,7 @@
       ]
     },
     "@uniweb/build": {
-      "version": "0.74.0",
+      "version": "0.74.1",
       "path": "framework/build",
       "deps": [
         "@uniweb/content-reader",
@@ -84,7 +84,7 @@
       ]
     },
     "@uniweb/runtime": {
-      "version": "0.28.4",
+      "version": "0.28.5",
       "path": "framework/runtime",
       "deps": [
         "@uniweb/core",
