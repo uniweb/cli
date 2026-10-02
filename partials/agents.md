@@ -2861,3 +2861,7 @@ Source repo (public, cloneable): **https://github.com/uniweb/docs** · any page 
 | `reference/` | site.yml, page.yml, content structure, meta.js, kit API, navigation, records, queries, data fetching, parametric pages, CLI, deployment |
 
 The by-task table is in Part 0. For CLI flags, prefer `uniweb <command> --help` over this file — it's always current.
+
+## Notes about this project
+
+Conventions, decisions, where things are — keep them in a file of your own (`NOTES.md`, say). `uniweb update` rewrites this file for each new version, and the one part it keeps is a block between `<!-- project-notes:start -->` and `<!-- project-notes:end -->`, each on a line of its own, which it moves to the end of the file. That block is the place for a line pointing to your notes, or for short notes themselves.

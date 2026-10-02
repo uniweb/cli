@@ -47,7 +47,9 @@ import prompts from 'prompts'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import {
   readAgentsVersion,
-  generateAgentsContent
+  refreshAgentsContent,
+  PROJECT_NOTES_START,
+  PROJECT_NOTES_END
 } from '../utils/agents-stamp.js'
 import { getCliVersion } from '../versions.js'
 import { isNonInteractive } from '../utils/interactive.js'
@@ -775,9 +777,27 @@ async function refreshAgents(ctx) {
     return 'current'
   }
 
+  // The project's notes travel to the new file (`refreshAgentsContent`). Markers that do not pair
+  // up leave AGENTS.md as it is: where a block ends would be a guess, and a wrong one loses notes.
+  const refreshed = refreshAgentsContent(
+    existsSync(agentsPath) ? readFileSync(agentsPath, 'utf8') : null
+  )
+  if (refreshed.error) {
+    warn(`AGENTS.md left as it is: ${refreshed.error}.`)
+    log(
+      `${colors.dim}Your project notes are kept between ${PROJECT_NOTES_START} and ${PROJECT_NOTES_END}, each on a line of its own. Fix the markers, then re-run${colors.reset} ${colors.cyan}uniweb update${colors.reset}${colors.dim}.${colors.reset}`
+    )
+    log('')
+    if (agentsOnly) process.exit(1)
+    return 'skipped'
+  }
+  const keeping = refreshed.kept
+    ? `, keeping ${refreshed.kept === 1 ? 'its project notes' : `its ${refreshed.kept} project-notes blocks`}`
+    : ''
+
   if (dryRun) {
     info(
-      `Dry-run: would ${currentAgentsVersion ? `update AGENTS.md (v${currentAgentsVersion} → v${cliVersion})` : `create AGENTS.md (v${cliVersion})`}.`
+      `Dry-run: would ${currentAgentsVersion ? `update AGENTS.md (v${currentAgentsVersion} → v${cliVersion})` : `create AGENTS.md (v${cliVersion})`}${keeping}.`
     )
     return 'skipped'
   }
@@ -798,9 +818,9 @@ async function refreshAgents(ctx) {
     }
   }
 
-  writeFileSync(agentsPath, generateAgentsContent())
+  writeFileSync(agentsPath, refreshed.content)
   if (currentAgentsVersion) {
-    success(`Updated AGENTS.md (v${currentAgentsVersion} → v${cliVersion}).`)
+    success(`Updated AGENTS.md (v${currentAgentsVersion} → v${cliVersion})${keeping}.`)
     return 'updated'
   }
   success(`Created AGENTS.md (v${cliVersion}).`)
