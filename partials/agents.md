@@ -2742,6 +2742,8 @@ uniweb build                   # merges translations, emits dist/es/, dist/fr/
 
 Running `extract` before a build is the usual first mistake — it reads the compiled content, so a stale build yields a stale manifest. After content changes, `uniweb i18n sync` updates the manifest and `init` refreshes the language files; `status` and `audit` report coverage and stale entries.
 
+**A value is inline Markdown.** A sentence's links and bold go into its translation — `"Voir [Rôles](page:docs/roles)."` — or it renders without them, and coverage still counts it; `uniweb i18n status` lists these under *Loses markup*. A **button** — a line that is only a link — is the exception: translate its label alone and it keeps its link and options (`{role=primary}`). Buttons on consecutive lines are one string; give one label per line (`"Créer un groupe\nEn savoir plus"`).
+
 **Two mechanisms.** *Hash-based strings* (the default) — `locales/{locale}.json` maps content hash → translation, so structure stays identical across languages. When one source string needs different translations depending on where it appears, the value takes an override form:
 
 ```json
