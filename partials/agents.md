@@ -2726,8 +2726,8 @@ That freezes sites using your foundation on the recorded version. Only reach for
 ```yaml
 # site.yml
 defaultLanguage: en
-languages: [en, es, fr]        # or [{ code: es, label: Español }, …], or '*' to
-                               # auto-discover from the locales/ folder
+languages: [en, es, fr]        # codes only — a language's name comes from its code;
+                               # or '*' to auto-discover from the locales/ folder
 publishLanguages: [en, es]     # optional — fr stays a dev-previewable draft,
                                # excluded from production output entirely
 ```
