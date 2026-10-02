@@ -73,6 +73,7 @@ import { downloadMissingAssets, downloadFileRecords } from '../backend/asset-dow
 import {
   readBackendState,
   siteContentDocumentToProject,
+  dataBlockModels,
   recordsToProject,
   siteSelfScope,
   readZip,
@@ -988,7 +989,10 @@ export async function pull(args = [], deps = {}) {
         prune,
         keepAuthoredFoundation,
         // So a query's `@acme/member` comes back as the author's `@/member`.
-        scope: await scopeFor(siteDoc)
+        scope: await scopeFor(siteDoc),
+        // A translated data block is read back by what its section's type declares it is, as the
+        // push translated it — after the registered foundation above, whose section types say it.
+        dataModel: await dataBlockModels(siteDir)
       })
       wrote.push(...report.pages, ...report.sections, ...report.layout)
       removed.push(
