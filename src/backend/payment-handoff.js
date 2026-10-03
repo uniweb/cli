@@ -91,8 +91,8 @@ const OPENABLE = /^https?:\/\//i
  * @param {string} [o.contentType] - the response's content-type header
  * @param {string} [o.body] - the raw response body
  * @returns {{ kind: 'not-payment' }
- *          | { kind: 'settle', url: string, handle: string|null, reason: string, message: string|null }
- *          | { kind: 'stop', reason: string|null, message: string|null }}
+ *          | { kind: 'settle', url: string, handle: string|null, reason: string, message: string|null, confirm: { prompt: string, token: string }|null }
+ *          | { kind: 'stop', reason: string|null, message: string|null, confirm: { prompt: string, token: string }|null }}
  */
 export function readPaymentRefusal({ status, contentType = '', body = '' } = {}) {
   if (status !== 402) return { kind: 'not-payment' }
@@ -134,7 +134,17 @@ export function readPaymentRefusal({ status, contentType = '', body = '' } = {})
   // problem body carries the number, so the two are not distinguishable by their
   // fields. Reading a URL out of a body that never promised this envelope is how
   // a `settle` gets synthesised from something that is not a refusal at all.
-  if (!isProblem) return { kind: 'stop', reason, message }
+  if (!isProblem) return { kind: 'stop', reason, message, confirm: null }
+
+  // ⭐ A CHANGE THE TERMINAL MAY CONFIRM (since 2026-10-03): `{ prompt, token }`
+  // beside the door, when everything the publish owes is a change to a plan the site already has.
+  // `prompt` is the backend's sentence, shown verbatim; `token` goes back as it came. Read only
+  // whole — a confirm missing either half is not one.
+  const confirm =
+    problem.confirm && typeof problem.confirm.prompt === 'string' && problem.confirm.prompt &&
+    typeof problem.confirm.token === 'string' && problem.confirm.token
+      ? { prompt: problem.confirm.prompt, token: problem.confirm.token }
+      : null
 
   // The door, if one was handed over. `remedy_url` is the current spelling — ONE
   // key for every reason, which is what lets a reason we have never heard of still
@@ -160,7 +170,7 @@ export function readPaymentRefusal({ status, contentType = '', body = '' } = {})
   // the platform's URL opener; a `file:` or a `javascript:` URL is not a place a
   // person goes. Refusing them costs a legitimate backend nothing.
   const url = candidate && OPENABLE.test(candidate) ? candidate : null
-  if (!url) return { kind: 'stop', reason, message }
+  if (!url) return { kind: 'stop', reason, message, confirm }
 
   return {
     kind: 'settle',
@@ -170,7 +180,8 @@ export function readPaymentRefusal({ status, contentType = '', body = '' } = {})
         ? legacy.handle
         : null,
     reason,
-    message
+    message,
+    confirm
   }
 }
 
@@ -187,9 +198,11 @@ export function readPaymentRefusal({ status, contentType = '', body = '' } = {})
  * @param {string[]} o.args - argv slice (for --non-interactive detection)
  * @param {object} o.say - { ok, info, warn, err, dim } reporters
  * @param {(url: string) => Promise<boolean>} [o.open] - injected for tests
+ * @param {boolean} [o.interactive] - whether someone is at the terminal, when the caller has decided
+ *   it already (`settleRefusal`); else read from `args` and stdin
  * @returns {Promise<{ opened: boolean }>}
  */
-export async function reportPaymentRefusal({ verdict, args = [], say, open }) {
+export async function reportPaymentRefusal({ verdict, args = [], say, open, interactive }) {
   // The backend's own sentence is the HEADLINE when there is one. A generic
   // lead would be wrong as often as right — "payment is required" does not
   // describe a declined card — and `detail` is written for this reader.
@@ -201,24 +214,113 @@ export async function reportPaymentRefusal({ verdict, args = [], say, open }) {
     return { opened: false }
   }
 
-  const { isNonInteractive } = await import('../utils/interactive.js')
-  if (isNonInteractive(args)) {
+  if (interactive === undefined) {
+    const { isNonInteractive } = await import('../utils/interactive.js')
+    interactive = !isNonInteractive(args)
+  }
+  if (!interactive) {
     say.dim(`Finish this in a browser, then re-run \`uniweb publish\`:`)
     say.dim(`  ${verdict.url}`)
     return { opened: false }
   }
 
+  return openDoor({ url: verdict.url, say, open })
+}
+
+/** Open the backend's door, verbatim, and say how to come back. */
+async function openDoor({ url, say, open }) {
   const openBrowser = open || (await import('../utils/registry-auth.js')).openBrowser
-  // ⛔ Reason-agnostic wording. The backend's own `detail` above carries the
-  // specifics; a lead sentence naming payment would be wrong the moment a refusal
-  // is a quota or an unverified domain — and the reason set is open by design.
+  // ⛔ Reason-agnostic wording. The backend's own `detail` carries the specifics;
+  // a lead sentence naming payment would be wrong the moment a refusal is a quota
+  // or an unverified domain — and the reason set is open by design.
   say.info('Opening your browser to finish this…')
-  say.dim(`  ${verdict.url}`)
+  say.dim(`  ${url}`)
   // VERBATIM. Nothing is appended — see the header.
-  const opened = await openBrowser(verdict.url)
+  const opened = await openBrowser(url)
   if (!opened) {
     say.warn('Could not open a browser automatically — open the URL above.')
   }
   say.dim('Once that is done, re-run `uniweb publish`.')
   return { opened }
+}
+
+const CONFIRM = 'Confirm and publish'
+const OPEN = 'Open it in the app'
+const CANCEL = 'Cancel'
+
+/**
+ * ⭐ A REFUSAL THE TERMINAL MAY SETTLE (since 2026-10-03). When everything a publish owes is a change
+ * to a plan the site already has, the `402` carries `confirm: { prompt, token }` beside its door. At
+ * an interactive terminal the owner gets three answers to the backend's own sentence — confirm, open
+ * the app, or cancel — and Enter cancels. Confirming publishes again with the token (`?confirm=`):
+ *
+ * - `200` — settled and published: the response is returned, for the caller to finish with.
+ * - `402` with a fresh `confirm` — the change or its price moved and nothing was applied: asked again,
+ *   with the new sentence.
+ * - `402` without one — the card could not settle it: its sentence, and its door.
+ *
+ * ⛔ **No flag and no environment variable answers yes.** With no one at the terminal there is no
+ * prompt: the refusal is reported as before, its door printed, and the publish fails. Whether a flag
+ * may answer for an agent is the backend's to rule; until then this never confirms unattended.
+ * ⭐ A refusal with no `confirm`, or a CLI that never reads one, behaves as it always has.
+ *
+ * @param {object} o
+ * @param {ReturnType<typeof readPaymentRefusal>} o.verdict - the first refusal
+ * @param {string[]} o.args - argv slice (for --non-interactive detection)
+ * @param {object} o.say - { ok, info, warn, err, dim } reporters
+ * @param {(token: string) => Promise<Response>} o.republish - the same publish, with `?confirm=<token>`
+ * @param {boolean} [o.interactive] - whether someone is at the terminal; read from `args` and stdin
+ * @param {(question: string, options: string[], fallback: string) => Promise<string>} [o.ask]
+ * @param {(url: string) => Promise<boolean>} [o.open]
+ * @returns {Promise<{ exitCode: number } | { response: Response, body?: string }>} `response` when
+ *   the publish went through, or failed for a reason that is not payment (with its body, read)
+ */
+export async function settleRefusal({ verdict, args = [], say, republish, interactive, ask, open }) {
+  if (interactive === undefined) {
+    const { isNonInteractive } = await import('../utils/interactive.js')
+    interactive = !isNonInteractive(args)
+  }
+  let current = verdict
+  for (;;) {
+    if (!current.confirm || !interactive) {
+      await reportPaymentRefusal({ verdict: current, args, say, open, interactive })
+      return { exitCode: 1 }
+    }
+
+    const choices = [CONFIRM, ...(current.kind === 'settle' ? [OPEN] : []), CANCEL]
+    const pick = ask
+      ? await ask(current.confirm.prompt, choices, CANCEL)
+      : await (await import('../utils/interactive.js')).pickOne(current.confirm.prompt, choices, CANCEL)
+
+    if (pick === OPEN) {
+      await openDoor({ url: current.url, say, open })
+      return { exitCode: 1 }
+    }
+    if (pick !== CONFIRM) {
+      say.dim('Cancelled — nothing changed, and nothing was made live. The site is synced as a draft.')
+      return { exitCode: 1 }
+    }
+
+    let response
+    try {
+      response = await republish(current.confirm.token)
+    } catch (err) {
+      say.err(String(err?.message || err))
+      return { exitCode: 1 }
+    }
+    if (response.ok) return { response }
+
+    const body = await response.text().catch(() => '')
+    const next = readPaymentRefusal({
+      status: response.status,
+      contentType: response.headers?.get?.('content-type') || '',
+      body
+    })
+    if (next.kind === 'not-payment') return { response, body }
+    if (next.confirm) {
+      // Nothing was applied: the change or its price moved since the offer. Ask again.
+      say.warn('The change or its price moved since that offer, so nothing was applied.')
+    }
+    current = next
+  }
 }

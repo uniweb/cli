@@ -748,8 +748,11 @@ export class BackendClient {
    * @param {string[]} [opts.languages]
    * @returns {Promise<Response>}
    */
-  async publishSite(uuid, { languages } = {}) {
-    return this.request(`/dev/site/publish/${encodeURIComponent(uuid)}`, {
+  async publishSite(uuid, { languages, confirm } = {}) {
+    // `confirm`: the token of a confirm the backend offered on a refused publish, sent back as it
+    // came, to settle a change to the site's plan and publish in one call.
+    const query = confirm ? `?confirm=${encodeURIComponent(confirm)}` : ''
+    return this.request(`/dev/site/publish/${encodeURIComponent(uuid)}${query}`, {
       method: 'POST',
       ...(languages ? { body: JSON.stringify({ languages }) } : {})
     })

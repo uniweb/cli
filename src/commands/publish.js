@@ -112,7 +112,7 @@ import {
 } from '../backend/foundation-bring-along.js'
 import {
   readPaymentRefusal,
-  reportPaymentRefusal
+  settleRefusal
 } from '../backend/payment-handoff.js'
 import { reportSchemalessQueries } from '../utils/schemaless-report.js'
 import {
@@ -1050,31 +1050,42 @@ export async function publish(args = []) {
       say.dim('Is that the backend you meant? Switch with: uniweb login --backend <url>')
     return { exitCode: 1 }
   }
+  // The body of a publish that did not go through — read once, and kept for the report below.
+  let failedBody = ''
   if (!pubRes.ok) {
-    const body = await pubRes.text().catch(() => '')
+    failedBody = await pubRes.text().catch(() => '')
 
     // A 402 is the backend's payment gate — the ONLY gate, evaluated here on
     // every publish against whatever posture that deployment runs. It is a
     // refusal, not a fault: the content is already synced as a draft, so the
     // recovery is to settle and re-run. Give it the backend's own sentence
-    // rather than the raw envelope.
+    // rather than the raw envelope — and when it offers a change the terminal
+    // may confirm, ask, and publish again with the answer.
     const refusal = readPaymentRefusal({
       status: pubRes.status,
       contentType: pubRes.headers?.get?.('content-type') || '',
-      body
+      body: failedBody
     })
     if (refusal.kind !== 'not-payment') {
-      await reportPaymentRefusal({ verdict: refusal, args, say })
-      return { exitCode: 1 }
+      const settled = await settleRefusal({
+        verdict: refusal,
+        args,
+        say,
+        republish: (token) => client.publishSite(siteUuid, { ...(languages ? { languages } : {}), confirm: token })
+      })
+      if ('exitCode' in settled) return { exitCode: settled.exitCode }
+      pubRes = settled.response
+      failedBody = settled.body ?? ''
     }
-
+  }
+  if (!pubRes.ok) {
     say.err(`Publish rejected: HTTP ${pubRes.status} ${pubRes.statusText}`)
     if (pubRes.status === 401 || pubRes.status === 403) {
       say.dim(
         "Credentials weren't accepted — run `uniweb login` again."
       )
     }
-    if (body) say.dim(body.slice(0, 800))
+    if (failedBody) say.dim(failedBody.slice(0, 800))
     return { exitCode: 1 }
   }
   let result
@@ -1163,6 +1174,11 @@ export async function publish(args = []) {
   say.ok(
     `Published ${c.bold}${siteUuid}${c.reset}${result.status ? ` (${result.status})` : ''}`
   )
+  // What the request changed, in the backend's own sentences — a confirmed change, or a reduction
+  // (`applied`, its §4A). Absent when nothing changed.
+  for (const line of Array.isArray(result.applied) ? result.applied : []) {
+    if (typeof line === 'string' && line) say.info(line)
+  }
 
   // ⛔ SAY IT WHEN A LANGUAGE ASKED FOR DID NOT GO OUT.
   //
