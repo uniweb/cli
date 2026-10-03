@@ -1071,7 +1071,8 @@ export async function publish(args = []) {
         verdict: refusal,
         args,
         say,
-        republish: (token) => client.publishSite(siteUuid, { ...(languages ? { languages } : {}), confirm: token })
+        republish: (token, { unattended } = {}) =>
+          client.publishSite(siteUuid, { ...(languages ? { languages } : {}), confirm: token, unattended })
       })
       if ('exitCode' in settled) return { exitCode: settled.exitCode }
       pubRes = settled.response

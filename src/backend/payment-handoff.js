@@ -91,8 +91,8 @@ const OPENABLE = /^https?:\/\//i
  * @param {string} [o.contentType] - the response's content-type header
  * @param {string} [o.body] - the raw response body
  * @returns {{ kind: 'not-payment' }
- *          | { kind: 'settle', url: string, handle: string|null, reason: string, message: string|null, confirm: { prompt: string, token: string }|null }
- *          | { kind: 'stop', reason: string|null, message: string|null, confirm: { prompt: string, token: string }|null }}
+ *          | { kind: 'settle', url: string, handle: string|null, reason: string, message: string|null, confirm: { prompt: string, token: string, reduction: boolean }|null }
+ *          | { kind: 'stop', reason: string|null, message: string|null, confirm: { prompt: string, token: string, reduction: boolean }|null }}
  */
 export function readPaymentRefusal({ status, contentType = '', body = '' } = {}) {
   if (status !== 402) return { kind: 'not-payment' }
@@ -136,14 +136,14 @@ export function readPaymentRefusal({ status, contentType = '', body = '' } = {})
   // a `settle` gets synthesised from something that is not a refusal at all.
   if (!isProblem) return { kind: 'stop', reason, message, confirm: null }
 
-  // ⭐ A CHANGE THE TERMINAL MAY CONFIRM (since 2026-10-03): `{ prompt, token }`
+  // ⭐ A CHANGE THE TERMINAL MAY CONFIRM (since 2026-10-03): `{ prompt, token, reduction }`
   // beside the door, when everything the publish owes is a change to a plan the site already has.
   // `prompt` is the backend's sentence, shown verbatim; `token` goes back as it came. Read only
   // whole — a confirm missing either half is not one.
   const confirm =
     problem.confirm && typeof problem.confirm.prompt === 'string' && problem.confirm.prompt &&
     typeof problem.confirm.token === 'string' && problem.confirm.token
-      ? { prompt: problem.confirm.prompt, token: problem.confirm.token }
+      ? { prompt: problem.confirm.prompt, token: problem.confirm.token, reduction: problem.confirm.reduction === true }
       : null
 
   // The door, if one was handed over. `remedy_url` is the current spelling — ONE
@@ -245,14 +245,18 @@ async function openDoor({ url, say, open }) {
 }
 
 const CONFIRM = 'Confirm and publish'
+const CONTINUE = 'Continue and publish'
 const OPEN = 'Open it in the app'
 const CANCEL = 'Cancel'
 
+// A reduction offered again and again, with no one to ask, is answered this many times and no more.
+const MAX_UNATTENDED = 3
+
 /**
  * ⭐ A REFUSAL THE TERMINAL MAY SETTLE (since 2026-10-03). When everything a publish owes is a change
- * to a plan the site already has, the `402` carries `confirm: { prompt, token }` beside its door. At
- * an interactive terminal the owner gets three answers to the backend's own sentence — confirm, open
- * the app, or cancel — and Enter cancels. Confirming publishes again with the token (`?confirm=`):
+ * to a plan the site already has, the `402` carries `confirm: { prompt, token, reduction }` beside its
+ * door, and the backend's sentence is asked at an interactive terminal: confirm, open the app, or
+ * cancel. Confirming publishes again with the token (`?confirm=`):
  *
  * - `200` — settled and published: the response is returned, for the caller to finish with.
  * - `402` with a fresh `confirm` — the change or its price moved and nothing was applied: asked again,
@@ -262,51 +266,78 @@ const CANCEL = 'Cancel'
  *   a confirmed change is invoiced as it applies, and a decline later shows in the app's billing.
  *   *(This said "the card could not settle it" until the day it was written, 2026-10-03.)*
  *
- * ⛔ **No flag and no environment variable answers yes.** With no one at the terminal there is no
- * prompt: the refusal is reported as before, its door printed, and the publish fails. Whether a flag
- * may answer for an agent is the backend's to rule; until then this never confirms unattended.
- * ⭐ A refusal with no `confirm`, or a CLI that never reads one, behaves as it always has.
+ * ⭐ **A CHARGE AND A REDUCTION ARE ASKED DIFFERENTLY** (`reduction`, a field the backend keeps
+ * stable). A charge is confirmed only by someone at the terminal: Enter cancels, no flag answers it,
+ * and with `--yes` — which promises never to block on a prompt — it is not asked either, but reported
+ * with the way to confirm it. A reduction — the offer only lowers what the site pays — asks lightly: Enter continues, and
+ * `--yes` answers it without asking, with or without a terminal, telling the backend it was answered
+ * unattended (`&unattended=true`), which settles a reduction and nothing else. *[Diego, 2026-10-03:
+ * "allow it for reductions only, keep charges interactive".]*
+ *
+ * With no one at the terminal and nothing to answer it, there is no prompt: the refusal is reported as
+ * before, its door printed, and the publish fails. A refusal with no `confirm` behaves as it always has.
  *
  * @param {object} o
  * @param {ReturnType<typeof readPaymentRefusal>} o.verdict - the first refusal
- * @param {string[]} o.args - argv slice (for --non-interactive detection)
+ * @param {string[]} o.args - argv slice (for `--yes` and --non-interactive detection)
  * @param {object} o.say - { ok, info, warn, err, dim } reporters
- * @param {(token: string) => Promise<Response>} o.republish - the same publish, with `?confirm=<token>`
+ * @param {(token: string, options?: { unattended?: boolean }) => Promise<Response>} o.republish - the
+ *   same publish, with `?confirm=<token>` (and `&unattended=true` when no one answered)
  * @param {boolean} [o.interactive] - whether someone is at the terminal; read from `args` and stdin
+ * @param {boolean} [o.yes] - whether `--yes` answers a reduction; read from `args`
  * @param {(question: string, options: string[], fallback: string) => Promise<string>} [o.ask]
  * @param {(url: string) => Promise<boolean>} [o.open]
  * @returns {Promise<{ exitCode: number } | { response: Response, body?: string }>} `response` when
  *   the publish went through, or failed for a reason that is not payment (with its body, read)
  */
-export async function settleRefusal({ verdict, args = [], say, republish, interactive, ask, open }) {
+export async function settleRefusal({ verdict, args = [], say, republish, interactive, yes, ask, open }) {
   if (interactive === undefined) {
     const { isNonInteractive } = await import('../utils/interactive.js')
     interactive = !isNonInteractive(args)
   }
+  if (yes === undefined) yes = args.includes('--yes')
   let current = verdict
+  let unattended = 0
   for (;;) {
-    if (!current.confirm || !interactive) {
-      await reportPaymentRefusal({ verdict: current, args, say, open, interactive })
-      return { exitCode: 1 }
-    }
+    const offer = current.confirm
+    const reduction = offer?.reduction === true
+    let answered
 
-    const choices = [CONFIRM, ...(current.kind === 'settle' ? [OPEN] : []), CANCEL]
-    const pick = ask
-      ? await ask(current.confirm.prompt, choices, CANCEL)
-      : await (await import('../utils/interactive.js')).pickOne(current.confirm.prompt, choices, CANCEL)
+    if (reduction && yes && unattended < MAX_UNATTENDED) {
+      // `--yes` answers a change that only lowers the bill — said, so the log shows what was accepted.
+      unattended++
+      say.info(offer.prompt)
+      say.dim('Continuing: `--yes` answers a change that only lowers what the site pays.')
+      answered = { unattended: true }
+    } else if (!offer || !interactive || (yes && !reduction)) {
+      await reportPaymentRefusal({ verdict: current, args, say, open, interactive: interactive && !yes })
+      if (offer && !reduction) {
+        say.dim('This change charges the site\'s card, so only you can confirm it: run `uniweb publish` at a terminal, without `--yes`.')
+      }
+      return { exitCode: 1 }
+    } else {
+      const go = reduction ? CONTINUE : CONFIRM
+      const choices = [go, ...(current.kind === 'settle' ? [OPEN] : []), CANCEL]
+      // Enter continues a reduction and cancels a charge.
+      const fallback = reduction ? CONTINUE : CANCEL
+      const pick = ask
+        ? await ask(offer.prompt, choices, fallback)
+        : await (await import('../utils/interactive.js')).pickOne(offer.prompt, choices, fallback)
 
-    if (pick === OPEN) {
-      await openDoor({ url: current.url, say, open })
-      return { exitCode: 1 }
-    }
-    if (pick !== CONFIRM) {
-      say.dim('Cancelled — nothing changed, and nothing was made live. The site is synced as a draft.')
-      return { exitCode: 1 }
+      if (pick === OPEN) {
+        await openDoor({ url: current.url, say, open })
+        return { exitCode: 1 }
+      }
+      if (pick !== go) {
+        say.dim('Cancelled — nothing changed, and nothing was made live. The site is synced as a draft.')
+        return { exitCode: 1 }
+      }
+      answered = {}
     }
 
     let response
     try {
-      response = await republish(current.confirm.token)
+      response = await republish(offer.token, answered)
     } catch (err) {
       say.err(String(err?.message || err))
       return { exitCode: 1 }
