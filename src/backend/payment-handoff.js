@@ -313,6 +313,8 @@ export async function settleRefusal({ verdict, args = [], say, republish, intera
       await reportPaymentRefusal({ verdict: current, args, say, open, interactive: interactive && !yes })
       if (offer && !reduction) {
         say.dim('This change charges the site\'s card, so only you can confirm it: run `uniweb publish` at a terminal, without `--yes`.')
+      } else if (reduction) {
+        say.dim('This change only lowers what the site pays: `uniweb publish --yes` continues it without a prompt.')
       }
       return { exitCode: 1 }
     } else {

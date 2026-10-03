@@ -177,11 +177,12 @@ test('`--yes` answers a reduction without asking — and says so to the backend,
   }
 })
 
-test('CONTROL — no one at the terminal and no `--yes`: a reduction is reported, not answered', async () => {
+test('CONTROL — no one at the terminal and no `--yes`: a reduction is reported, not answered — with the flag that would', async () => {
   const h = harness()
   const out = await settleRefusal({ verdict: verdict({ confirm: REDUCTION }), interactive: false, ...h })
   assert.deepEqual(out, { exitCode: 1 })
   assert.equal(h.tokens.length, 0)
+  assert.ok(h.lines.some((l) => l.includes('uniweb publish --yes')))
 })
 
 test('⛔ `--yes` never answers a charge — and, never blocking on a prompt, does not ask it either', async () => {
