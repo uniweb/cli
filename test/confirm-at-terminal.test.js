@@ -108,8 +108,10 @@ test('a fresh confirm means nothing was applied: asked again, with the new sente
   assert.equal(out.response.status, 200)
 })
 
-test('a refusal without a confirm — the card could not settle it: its sentence, and its door', async () => {
-  const declined = 'your card was declined — update it in the app to publish'
+test('a refusal without a confirm — no longer confirmable here: its sentence, and its door', async () => {
+  // E.g. the request now asks for a first plan, which the app settles. Never a declined card: a
+  // confirmed change is invoiced as it applies.
+  const declined = 'this site now asks for a hosting plan — choose one in the app to publish'
   const h = harness({ answers: ['Confirm and publish'], responses: [() => refused({ confirm: null, detail: declined })] })
   const out = await settleRefusal({ verdict: verdict(), interactive: true, ...h })
   assert.deepEqual(out, { exitCode: 1 })

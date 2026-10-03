@@ -257,7 +257,10 @@ const CANCEL = 'Cancel'
  * - `200` — settled and published: the response is returned, for the caller to finish with.
  * - `402` with a fresh `confirm` — the change or its price moved and nothing was applied: asked again,
  *   with the new sentence.
- * - `402` without one — the card could not settle it: its sentence, and its door.
+ * - `402` without one — what is owed can no longer be confirmed here (it now asks for a first plan,
+ *   or the plan's card can no longer be named): its sentence, and its door. ⛔ Not a declined card —
+ *   a confirmed change is invoiced as it applies, and a decline later shows in the app's billing.
+ *   *(This said "the card could not settle it" until the day it was written, 2026-10-03.)*
  *
  * ⛔ **No flag and no environment variable answers yes.** With no one at the terminal there is no
  * prompt: the refusal is reported as before, its door printed, and the publish fails. Whether a flag
