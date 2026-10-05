@@ -249,10 +249,7 @@ async function buildFoundation(projectDir, options = {}) {
   log('')
   log(`${colors.bright}Share with clients:${colors.reset}`)
   log(
-    `  ${colors.bright}uniweb publish${colors.reset}              Register your foundation (one-time setup)`
-  )
-  log(
-    `  ${colors.bright}uniweb handoff <email>${colors.reset}      Hand off a site to a client`
+    `  ${colors.bright}uniweb register${colors.reset}             Release your foundation to the catalog (alias: uniweb release)`
   )
 }
 
@@ -1025,9 +1022,6 @@ function showNextSteps(hasFoundations, hasSites) {
     log(`${colors.bright}Share with clients:${colors.reset}`)
     log(
       `  ${colors.bright}uniweb register${colors.reset}             Release your foundation to the catalog (alias: uniweb release)`
-    )
-    log(
-      `  ${colors.bright}uniweb handoff <email>${colors.reset}      Hand off a site to a client`
     )
   }
   if (hasSites) {
