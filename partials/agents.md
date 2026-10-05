@@ -892,9 +892,8 @@ Item frontmatter conventionally uses `title`, `date`, `tags`, `image`, `descript
 ---
 brief:
   title: Hello
-  date: 2026-05-01
-body:
   author: Ada
+  date: 2026-05-01
 ---
 
 The body — the value of the schema's content field, `body.content`.
