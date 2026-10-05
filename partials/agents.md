@@ -2415,7 +2415,7 @@ Content handlers are a transform layer between data assembly and the component, 
 | `content` | After the data handler | `(data, block)` | ProseMirror document, or null | Transform raw content (Loom instantiation, template expansion) |
 | `props` | After parsing, defaults, and guarantees | `(content, params, block)` | `{ content, params }`, or null | Post-process the final shape before the component sees it |
 
-The `content` handler receives `block.parsedContent.data` — the section's declared keys, its foundation's `main.js` `data:` included, so **declare there every key a handler reads** — and reads raw ProseMirror from `block.rawContent`, returning a new ProseMirror document that the framework re-parses through the semantic parser. Returning `null` — or the same reference as `block.rawContent` — signals no change.
+The `content` handler receives `block.parsedContent.data` — the section's declared keys, its foundation's `main.js` `data:` included, so **declare there every key a handler reads** — and reads raw ProseMirror from `block.rawContent`, returning a new ProseMirror document that the framework re-parses through the semantic parser. Returning `null` — or the same reference as `block.rawContent` — signals no change. Anything that is not a document is ignored, with a warning once per handler: the first argument is the section's *data*, so a pass-through `(x) => x` returns the data, not the content.
 
 > **`block.rawContent` may or may not be wrapped.** Unwrap it defensively — `const doc = block.rawContent?.doc ?? block.rawContent` — before passing it to `instantiateContent` / `instantiateRepeated`. This is the first thing a hand-written handler gets wrong.
 
