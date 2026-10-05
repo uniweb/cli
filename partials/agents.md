@@ -1762,7 +1762,7 @@ export default function DocsLayout({ header, body, footer, left, right, params }
 
 Layouts are full components with their own `params` in `meta.js`, not just structural wrappers — a header height or sidebar width is a layout param.
 
-**Layout `meta.js`** declares areas and optional scroll behavior: `{ areas: ['header', 'footer', 'left'], scroll: 'self' }`. Area names are arbitrary. `scroll` controls scroll restoration: unset = runtime manages `window` (default), `'self'` = the layout scrolls itself, or a CSS selector (`'main'`) = runtime manages that element.
+**Layout `meta.js`** declares areas and optional scroll behavior: `{ areas: ['header', 'footer', 'left'], scroll: 'self' }`. Area names are arbitrary. `areas` tells an editor what to offer; a page renders the areas its site's `layout/` folder fills. `scroll` controls scroll restoration: unset = runtime manages `window` (default), `'self'` = the layout scrolls itself, or a CSS selector (`'main'`) = runtime manages that element.
 
 Two optional keys tune how areas behave across a navigation. `transitions` renames or opts regions out of per-area view transitions (`{ left: null }`, or `false` for the whole layout). `layers` sets which area paints on top — every area is stacked above the body by default, so a fixed header works without declaring anything, but areas are equal to each other, so a layout whose chrome overlaps says which wins: `layers: { header: 2, left: 1 }`. Both take an object to override per region, or `false` to opt out. **A `z-index` inside an area cannot lift it past another area** — each area is its own stacking context — so reach for `layers` rather than a bigger number, and for `<Overlay>` when a modal needs to escape the area entirely.
 
@@ -1890,7 +1890,7 @@ function Article({ content, block }) {
 
 When a record genuinely needs to be a single object, that's the foundation's job — read `[0]`, or reshape once with a `handlers.data` hook.
 
-**Declaring keys and schemas.** `meta.js` declares each `content.data` key the component receives, with its schema, in a single `data:` field — there is no separate `schemas:` key. Each value is a **named ref**, an **inline field map**, an **inline rich-form** (`{ fields: [...] }`, an editor form), or `{}` for a key with no schema (an external API's records). Refs resolve on disk at build time, never fetched: `@/name` (this foundation's `schemas/`), `@std/name` (shared standards, from `@uniweb/schemas`), `@org/name` (an org's own `@org/schemas` package). A schema supplies field defaults, drives the editor, and lets a fetch of another name fill the key. ⛔ **Delivery was default-on until this change** — every fetched key reached every component, and `data:` was a hint; a component that reads a key it does not declare now receives nothing under it. `data: false` declares nothing, like no `data:`. Keys a foundation's handlers (or a shared hook) read go in `main.js` `data:`, in the same form, and every section receives them.
+**Declaring keys and schemas.** `meta.js` declares each `content.data` key the component receives, with its schema, in a single `data:` field — there is no separate `schemas:` key. Each value is a **named ref**, an **inline field map**, an **inline rich-form** (`{ fields: [...] }`, an editor form), or `{}` for a key with no schema (an external API's records). Refs resolve on disk at build time, never fetched: `@/name` (this foundation's `schemas/`), `@std/name` (shared standards, from `@uniweb/schemas`), `@org/name` (an org's own `@org/schemas` package). A schema drives the editor, checks your data (`uniweb validate`), and lets a fetch of another name fill the key — it fills no field: **a record reaches the component as it is**, so a field it lacks is absent, and what that renders as is your component's choice (`record.status ?? 'published'`). **A named schema declares no `default:`** — the build refuses one; a `default:` belongs only in an inline field map or form, where an editor pre-fills from it. ⛔ **Delivery was default-on until this change** — every fetched key reached every component, and `data:` was a hint; a component that reads a key it does not declare now receives nothing under it. `data: false` declares nothing, like no `data:`. Keys a foundation's handlers (or a shared hook) read go in `main.js` `data:`, in the same form, and every section receives them.
 
 ```js
 // meta.js
@@ -1898,7 +1898,7 @@ export default {
   data: {
     articles: '@/article',                               // named ref (this foundation)
     authors:  '@std/person',                             // named ref (shared standard)
-    pricing:  { tier: { type: 'string', default: '' } }, // inline field map
+    pricing:  { tier: { type: 'string' } },              // inline field map
   },
 }
 ```
