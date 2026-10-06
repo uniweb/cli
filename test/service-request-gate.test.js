@@ -300,3 +300,138 @@ test('banking services and languages together keeps them independent', () => {
   assert.ok(fp.servicesRequest && fp.publishLanguagesRequest)
   assert.notEqual(fp.servicesRequest, fp.publishLanguagesRequest)
 })
+
+// ── taking the site's services, and what a publish banks ────────────────────
+//
+// ⛔ Until 2026-10-06 a yes to "take the site's services" wrote `site.yml::$services`,
+// which nothing has read since the rows moved to `sync.json` (2026-09-20), and the base
+// banked in `deploy.yml` stayed where it was. So the project's copy never moved, the same
+// offer came back on every publish, and once the copy did move — by a pull — the site's
+// next change read as a conflict. These pin the write, the base, and the language
+// selection the same bank was dropping.
+
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { adoptServices, bankRequest } from '../src/backend/service-request.js'
+
+const A = 'http://backend-a.test'
+const B = 'http://backend-b.test'
+const STARTER = [{ name: 'api', enabled: true, config: { grade: 'starter' } }]
+const API_OFF = [{ name: 'api', enabled: false }]
+
+const made = []
+process.on('exit', () => {
+  for (const d of made) rmSync(d, { recursive: true, force: true })
+})
+
+/** A site directory holding a site.yml and a sync.json with two backends. */
+function siteWithTwoBackends() {
+  const dir = mkdtempSync(join(tmpdir(), 'service-adopt-'))
+  made.push(dir)
+  writeFileSync(join(dir, 'site.yml'), "name: Acme\nfoundation: '@a/base'\n")
+  writeFileSync(
+    join(dir, 'sync.json'),
+    JSON.stringify({
+      version: 1,
+      backends: {
+        [A]: { site: { uuid: 'SITE-A' }, services: API_PRO },
+        [B]: { site: { uuid: 'SITE-B' }, services: [{ name: 'search' }] }
+      }
+    })
+  )
+  return dir
+}
+
+const backendsIn = (dir) => JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends
+
+test('⭐ taking the site services writes THIS backend in sync.json, the way a pull writes it', () => {
+  const dir = siteWithTwoBackends()
+  const siteYmlBefore = readFileSync(join(dir, 'site.yml'), 'utf8')
+
+  const stored = adoptServices(dir, A, [{ $id: 'api', ...STARTER[0] }])
+
+  assert.deepEqual(stored, STARTER, '$id is payload-local and dropped, as pull drops it')
+  const backends = backendsIn(dir)
+  assert.deepEqual(backends[A].services, STARTER)
+  assert.equal(backends[A].site.uuid, 'SITE-A', 'the rest of the entry is untouched')
+  assert.deepEqual(backends[B].services, [{ name: 'search' }], 'another backend is untouched')
+  // ⛔ The defect: the rows went to site.yml, where nothing reads them.
+  assert.equal(readFileSync(join(dir, 'site.yml'), 'utf8'), siteYmlBefore)
+})
+
+test('taking a site that turned everything off stores an empty list, not nothing', () => {
+  // `[]` is a real state — "this site has no service rows" — and the one a pull writes.
+  const dir = siteWithTwoBackends()
+  assert.deepEqual(adoptServices(dir, A, []), [])
+  assert.deepEqual(backendsIn(dir)[A].services, [])
+})
+
+test('⭐ after taking the site services, the site’s next change reads as the site’s', () => {
+  const dir = siteWithTwoBackends()
+  const prior = fingerprintOf({ $services: API_PRO })
+
+  // The app changed the services; the project's copy did not move.
+  assert.equal(reconcileRequest({}, STARTER, prior, { services: API_PRO }).action, 'adopt')
+
+  // The owner takes the site's.
+  const provisioned = { services: adoptServices(dir, A, STARTER) }
+  const banked = bankRequest({}, provisioned, { declare: false, reason: 'adopted' }, prior)
+
+  // Next publish, nothing changed anywhere: nothing to ask.
+  assert.equal(reconcileRequest({}, STARTER, banked, provisioned).action, 'none')
+  // The app changes them again: the site moved, the project did not.
+  assert.equal(reconcileRequest({}, API_OFF, banked, provisioned).action, 'adopt')
+  // CONTROL — the base carried forward, as it was until 2026-10-06, reads that same
+  // change as a conflict the owner never made.
+  assert.equal(reconcileRequest({}, API_OFF, prior, provisioned).action, 'conflict')
+})
+
+test('⭐ a pull that brought the copy in line moves the base too', () => {
+  // The pull wrote the site's rows into sync.json; the publish that follows finds the
+  // two equal. That is an agreement, whoever moved last.
+  const prior = fingerprintOf({ $services: API_PRO })
+  const pulled = { services: STARTER }
+  assert.equal(reconcileRequest({}, STARTER, prior, pulled).action, 'none')
+
+  const banked = bankRequest({}, pulled, { declare: false, reason: 'in-sync' }, prior)
+  assert.equal(banked.servicesRequest, fingerprintDeclaration(STARTER))
+  assert.equal(reconcileRequest({}, API_OFF, banked, pulled).action, 'adopt')
+  // CONTROL — the old base: a conflict.
+  assert.equal(reconcileRequest({}, API_OFF, prior, pulled).action, 'conflict')
+})
+
+test('nothing agreed → the last agreement stands', () => {
+  const prior = { ...fingerprintOf({ $services: API_PRO, $secrets: [{ name: 'k' }] }) }
+  const local = { services: STARTER, secrets: [{ name: 'k2' }] }
+  for (const reason of ['adopt', 'conflict', 'unchanged']) {
+    const banked = bankRequest({}, local, { declare: false, reason }, prior)
+    assert.equal(banked.servicesRequest, prior.servicesRequest, `${reason}: services carried`)
+    assert.equal(banked.secretsRequest, prior.secretsRequest, `${reason}: secrets carried`)
+  }
+})
+
+test('a sent request banks exactly what was sent', () => {
+  const siteYml = { publishLanguages: ['en'] }
+  const local = { services: STARTER, secrets: [{ name: 'k' }] }
+  const banked = bankRequest(siteYml, local, { declare: true, reason: 'changed' }, null)
+  assert.deepEqual(banked, fingerprintRequest(siteYml, local))
+})
+
+test('secrets are not compared with the site, so agreeing on services leaves them alone', () => {
+  const prior = fingerprintOf({ $secrets: [{ name: 'k' }] })
+  const local = { services: STARTER, secrets: [{ name: 'k2' }] }
+  const banked = bankRequest({}, local, { declare: false, reason: 'in-sync' }, prior)
+  assert.equal(banked.secretsRequest, prior.secretsRequest)
+})
+
+test('⛔ the language selection is banked even when the services are withheld', () => {
+  const siteYml = { publishLanguages: ['en', 'fr'] }
+  const banked = bankRequest(siteYml, { services: API_PRO }, { declare: false, reason: 'in-sync' }, null)
+  assert.equal(banked.publishLanguagesRequest, fingerprintDeclaration(['en', 'fr']))
+
+  // So an added language reads as a request — the one that may cost more…
+  assert.equal(reconcile(['en', 'fr', 'es'], ['en', 'fr'], banked.publishLanguagesRequest).action, 'send')
+  // CONTROL — …where the dropped base, as it was until 2026-10-06, read it as a conflict.
+  assert.equal(reconcile(['en', 'fr', 'es'], ['en', 'fr'], undefined).action, 'conflict')
+})

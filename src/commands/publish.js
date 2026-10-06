@@ -55,8 +55,9 @@ import {
 } from '@uniweb/build/site'
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import {
+  adoptServices,
+  bankRequest,
   decideDeclaration,
-  fingerprintRequest,
   reconcile,
   reconcileRequest
 } from '../backend/service-request.js'
@@ -818,7 +819,10 @@ export async function publish(args = []) {
   const injectInfo = {
     ...(fnd.ref ? { foundation: fnd.ref } : {})
   }
-  // ⛔ IS THE FILE ASKING FOR ANYTHING BY ITS `$services` / `$secrets` BLOCK?
+  // ⛔ IS THE PROJECT ASKING FOR ANYTHING BY ITS `services` / `secrets` ROWS?
+  //
+  // They are this backend's entry in `sync.json` — `site.yml::$services` / `$secrets`
+  // until 2026-09-20 — and "the file" below means that entry.
   //
   // The blocks ride inside the site-content document, so without this gate every
   // push re-sends them — and the backend REPLACES what it is sent. A paragraph
@@ -829,8 +833,8 @@ export async function publish(args = []) {
   // ⚠️ The residual window, stated because it is real and narrow: the base is
   // banked at publish, so a request changed in the app BETWEEN a `uniweb pull` and
   // the next publish is not seen — the pulled block reads as unchanged-from-nothing
-  // and is declared. It closes when the status route carries the stored request
-  // (backend is adding it) and we compare against theirs instead of our memory.
+  // and is declared. It closes wherever the status route carries the stored
+  // request, which it does: we compare against theirs instead of our memory, below.
   //
   // ⭐ ASK THE BACKEND rather than trusting our memory, when it will tell us. The
   // banked fingerprint says what WE last sent; the status read says what the site
@@ -861,16 +865,16 @@ export async function publish(args = []) {
     } else if (r.action === 'send') {
       declaration = { declare: true, reason: 'changed' }
     } else if (r.action === 'adopt') {
-      // The owner decided in the app and this file is simply behind. Nothing to
-      // ask for, so nothing is sent — and the file can be brought in line, which
-      // is offered rather than done, because site.yml is theirs.
+      // The owner decided in the app and this project's copy is simply behind.
+      // Nothing to ask for, so nothing is sent — and the copy can be brought in
+      // line, which is offered rather than done (below).
       declaration = { declare: false, reason: 'adopt' }
       adopted = status.services
     } else {
       // ⛔ CONFLICT — both moved. Withhold and SAY SO. Not a stop: the content
       // publish is a separate thing the owner asked for, and blocking it over a
       // services disagreement couples two unrelated intents. Not a guess either;
-      // the request stays in their file, unsent, and they are told.
+      // the request stays in sync.json, unsent, and they are told.
       declaration = { declare: false, reason: 'conflict' }
       adopted = status.services
     }
@@ -881,8 +885,11 @@ export async function publish(args = []) {
   // "request", "declaration", "send", "adopt", "reconcile" are how this file
   // MODELS the problem and they are the wrong words to say out loud: an author
   // does not think they are sending a request, they think they want their site to
-  // have search. Say services, on and off, site.yml and your site. The internal
-  // vocabulary stays in the code and the comments, where it earns its precision.
+  // have search. Say services, on and off, sync.json and your site — and site.yml
+  // only for what it still holds, the language selection. The internal vocabulary
+  // stays in the code and the comments, where it earns its precision.
+  // ⛔ The services lines said "site.yml" until 2026-10-06, a file that has not held
+  // them since 2026-09-20, while printing "in sync.json" beneath.
   //
   // ⭐ THE OWNER IS THE ONLY ONE WHO CAN RANK TWO OF THEIR OWN INTENTS.
   //
@@ -892,12 +899,12 @@ export async function publish(args = []) {
   // relative to, so editing it produces the same conflict forever. That shipped
   // for one commit. Asking is the only thing that resolves it.
   if (declaration.reason === 'conflict') {
-    say.warn('Your site\'s services were changed elsewhere, and site.yml changed too.')
+    say.warn('Your site\'s services were changed elsewhere, and sync.json changed too.')
     say.dim(`  in sync.json: ${describeServices(provisioned.services)}`)
     say.dim(`  on your site: ${describeServices(adopted)}`)
     if (isNonInteractive(args)) {
       say.dim('  Left your site as it is — run without --non-interactive to choose.')
-    } else if (await confirm('Use the services listed in site.yml?', false)) {
+    } else if (await confirm('Use the services listed in sync.json?', false)) {
       declaration = { declare: true, reason: 'resolved-send' }
       adopted = null
     } else {
@@ -943,24 +950,26 @@ export async function publish(args = []) {
     // decision made in the app — but the same state follows a request of ours the
     // site refused, where nothing of theirs changed and ours simply did not take.
     // We cannot tell those apart here, so the wording claims neither.
-    say.info('Your site has different services than site.yml lists.')
+    say.info('Your site has different services than sync.json lists.')
     say.dim(`  in sync.json: ${describeServices(provisioned.services)}`)
     say.dim(`  on your site: ${describeServices(adopted)}`)
-    // ⭐ OFFERED, NEVER DONE. site.yml is the owner's file, and a publish that
-    // silently rewrites an authored file is the surprise this seam exists to
-    // avoid. Default No, and declining costs nothing: the site is already
-    // correct, only the file is behind, and the offer returns next publish.
+    // ⭐ OFFERED, NEVER DONE — as it was when these rows lived in site.yml. A
+    // publish changes the project's committed record of its services only when
+    // asked. Default No, and declining costs nothing: the site is already
+    // correct, only the project's copy is behind, and the offer returns next
+    // publish.
     //
     // ⚖️ A DECLINED conflict reaches here too, and that is deliberate — having
     // been asked which they meant and said "not mine", taking the site's is the
     // other half of the same question, not a silent overwrite of an edit.
-    if (!isNonInteractive(args) && (await confirm('Update site.yml to match?', false))) {
-      const { writeSiteConfig } = await import('@uniweb/build/uwx')
-      writeSiteConfig(siteDir, { $services: adopted })
-      // Keep the in-memory copy in step, or the deploy.yml bank below records the
-      // file as it WAS and the offer repeats forever.
-      siteYml.$services = adopted
-      say.ok('site.yml updated.')
+    if (!isNonInteractive(args) && (await confirm('Update sync.json to match?', false))) {
+      // Written where every reader takes them from, the way a pull writes them —
+      // and `provisioned` holds them too, because the deploy.yml bank below
+      // fingerprints it: 'adopted' tells it the two now agree, so the site's next
+      // change reads as the site's and not as a conflict.
+      provisioned.services = adoptServices(siteDir, client.origin, adopted)
+      declaration = { declare: false, reason: 'adopted' }
+      say.ok('sync.json updated.')
     }
   } else if (!declaration.declare && declaration.reason !== 'adopt') {
     say.dim('Services unchanged.')
@@ -1127,24 +1136,13 @@ export async function publish(args = []) {
     lastDeploy: {
       at: new Date().toISOString(),
       host: 'uniweb',
-      // The request this publish is known to have sent — the base the declaration
-      // gate compares against next time. ⛔ A FINGERPRINT, never the block:
-      // deploy.yml is committed, `$secrets` carries secret material and a
-      // service's `config` is opaque, so recording either verbatim would write
-      // them into git. Absent when the file declares no block.
-      ...(declaration.declare
-        ? fingerprintRequest(siteYml, provisioned)
-        : {
-            // Nothing was sent, so the base is unchanged — carry it forward
-            // rather than dropping it, or the next publish would read "no record"
-            // and declare.
-            ...(priorRequest?.servicesRequest
-              ? { servicesRequest: priorRequest.servicesRequest }
-              : {}),
-            ...(priorRequest?.secretsRequest
-              ? { secretsRequest: priorRequest.secretsRequest }
-              : {})
-          }),
+      // The last request both sides agreed on — the base the declaration gate
+      // compares against next time (bankRequest says what moves it, field by
+      // field). ⛔ A FINGERPRINT, never the block: deploy.yml is committed,
+      // `secrets` names every secret the site has and a service's `config` is
+      // opaque, so recording either verbatim would write them into git. Absent
+      // when the project holds no rows.
+      ...bankRequest(siteYml, provisioned, declaration, priorRequest),
       // What was actually shipped. A version number can't answer that — two
       // publishes of "0.1.0" are not the same content — and after the fact the
       // working tree has moved on. `dirty` matters as much as the sha: it says the

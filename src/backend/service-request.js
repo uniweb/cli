@@ -4,10 +4,11 @@
  *
  * ## The defect this exists to close
  *
- * `$services` / `$secrets` are Sections of the site-content document, so they ride
- * inside **every** push — the block is emitted whenever the key exists in
- * `site.yml`. Editing one paragraph on one page therefore re-sends the whole
- * request block.
+ * `services` / `secrets` are Sections of the site-content document, so they ride
+ * inside **every** push — each is emitted whenever this backend's entry in
+ * `sync.json` carries its key. Editing one paragraph on one page therefore re-sends
+ * the whole request block. *(The rows were `site.yml::$services` / `$secrets` until
+ * 2026-09-20, and this read "whenever the key exists in `site.yml`" until 2026-10-06.)*
  *
  * ⛔ And the backend REPLACES what it is sent: a row anchors by its natural key and
  * is updated in place (`SectionScope::DeclaredOnly`; backend's
@@ -19,6 +20,7 @@
  * ⭐ Under the model the file follows — *"the services in `site.yml` are a request,
  * never a tracking of what is running"* [Diego, 2026-09-05] — **re-sending an
  * unchanged block is making a request nobody made.** You ask by CHANGING the file.
+ * The rows moved to `sync.json` on 2026-09-20; the model did not.
  *
  * ⚠️ It was mostly inert until 2026-09-08: `enabled` was honoured for `api` alone,
  * so a stale re-send of the other names overwrote rows nothing read. That stopped
@@ -49,6 +51,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import { updateBackendState } from '@uniweb/build/uwx'
 
 /**
  * A stable fingerprint of one declared block, or `null` when the key is absent.
@@ -230,4 +233,82 @@ export function reconcile(localValue, remoteValue, baseFingerprint) {
   if (!localMoved && remoteMoved) return { action: 'adopt', local, remote }
   if (localMoved && !remoteMoved) return { action: 'send', local, remote }
   return { action: 'conflict', local, remote }
+}
+
+/**
+ * Take the site's services as this project's own — what a `pull` would have written.
+ *
+ * ⭐ The rows go to THIS BACKEND's entry in `sync.json`, replacing the list, with the
+ * payload-local `$id` dropped exactly as `pull` drops it (`uwx/site-project.js`). That
+ * is the copy every reader takes them from: the producer emits it, and `reconcileRequest`
+ * compares it.
+ *
+ * ⛔ Until 2026-10-06 `publish` wrote them to `site.yml::$services`, which nothing has
+ * read since the rows moved to `sync.json` (2026-09-20). A yes to the offer left a dead
+ * key in the author's file, the project's copy stayed behind, and the same offer came
+ * back on every publish.
+ *
+ * @param {string} siteDir
+ * @param {string} origin - the backend being published to
+ * @param {object[]} rows - the site's stored services, as its status read serves them
+ * @returns {object[]} the rows as stored — what the next comparison fingerprints
+ */
+export function adoptServices(siteDir, origin, rows) {
+  const services = (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && typeof row === 'object' && !Array.isArray(row))
+    .map(({ $id: _id, ...fields }) => fields)
+  updateBackendState(siteDir, origin, { services })
+  return services
+}
+
+/**
+ * The publish outcomes after which the project's services and the site's are the same
+ * rows: the reconcile found them equal, or the owner took the site's.
+ */
+const AGREED = new Set(['in-sync', 'adopted'])
+
+/**
+ * What a publish records in `deploy.yml` as the last agreed request — field by field.
+ *
+ * ⭐ The base answers "who moved?" next time, so it must be the last state BOTH sides
+ * held, not merely the last one this CLI sent:
+ *
+ *   - **sent** — what was sent is agreed.
+ *   - **found equal, or adopted** — the two agree now, whoever moved last. ⛔ Until
+ *     2026-10-06 this carried the older base forward, so a project that took the site's
+ *     services — by pull or by the offer — read as having moved itself, and the site's
+ *     next change was reported as a conflict the owner never made.
+ *   - **anything else** — nothing new was agreed, and the last agreement stands.
+ *
+ * `secrets` are not compared with the site (its status read serves no secrets), so they
+ * move only when sent.
+ *
+ * ⭐ The language selection is banked on EVERY publish. It rides the content push, not
+ * this gate, so what went live is what was agreed. ⛔ Until 2026-10-06 a publish that
+ * withheld the services dropped it, and the next added language read as a conflict
+ * instead of as a request that may cost more.
+ *
+ * @param {object} siteYml
+ * @param {object} provisioned - this backend's `sync.json` entry, as it stands after
+ *   the reconcile (adopted rows included)
+ * @param {{declare: boolean, reason: string}} declaration
+ * @param {object|null} prior - `deploy.yml::lastDeploy.<target>`
+ * @returns {{servicesRequest?: string, secretsRequest?: string, publishLanguagesRequest?: string}}
+ */
+export function bankRequest(siteYml, provisioned, declaration, prior) {
+  const now = fingerprintRequest(siteYml, provisioned)
+  const out = {}
+  let services
+  let secrets
+  if (declaration?.declare) {
+    services = now.servicesRequest
+    secrets = now.secretsRequest
+  } else {
+    services = AGREED.has(declaration?.reason) ? now.servicesRequest : prior?.servicesRequest
+    secrets = prior?.secretsRequest
+  }
+  if (services) out.servicesRequest = services
+  if (secrets) out.secretsRequest = secrets
+  if (now.publishLanguagesRequest) out.publishLanguagesRequest = now.publishLanguagesRequest
+  return out
 }
