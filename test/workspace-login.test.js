@@ -121,7 +121,8 @@ test('none chosen: personal when you belong to no organization; refused when you
   assert.deepEqual(none, { workspace: null, source: 'personal' })
   const { result: some } = await scene({ session: { token: 't' }, orgs: ACME }, () => resolveWorkspace({ client: client() }))
   assert.equal(some.refused, true)
-  assert.match(some.reason, /uniweb login --backend http:\/\/backend\.test --org @acme/)
+  // The session is on this backend, so a switch reaches it with no --backend.
+  assert.match(some.reason, /uniweb login --org @acme/)
 })
 
 test('a preview never authenticates: none chosen is "not resolved", not a request', async () => {
@@ -149,7 +150,8 @@ test('--org must name an organization you belong to', async () => {
 test('organizations and no terminal: refused, naming every workspace you can choose', async () => {
   const { result } = await scene({ orgs: ACME }, () => chooseWorkspace({ apiBase: ORIGIN, token: 't' }))
   assert.equal(result.refused, true)
-  // ⛔ The backend is named — a bare `uniweb login` goes to the default backend, not this one.
+  // Logged in nowhere (no session in this scene), a switch would go to the default backend —
+  // so the hint names this one.
   assert.match(result.reason, /login --backend http:\/\/backend\.test --org @acme \(or --personal\)/)
   assert.match(result.reason, /will not ask you to sign in again/)
 })
@@ -184,7 +186,8 @@ test('a login with organizations and no workspace named keeps the session and ex
   assert.equal(readSession(home).workspace, undefined)
   // ⭐ It says what happened: logged in, no workspace yet, and the one command that finishes it.
   assert.match(printed, /Logged in to http:\/\/backend\.test.* — with no workspace chosen yet/)
-  assert.match(printed, /login --backend http:\/\/backend\.test --org @acme \(or --personal\) — it will not ask you to sign in again/)
+  // The new session is on this backend, and a switch acts on it: no --backend needed.
+  assert.match(printed, /uniweb login --org @acme \(or --personal\) — it will not ask you to sign in again/)
 })
 
 /** As an interactive terminal inside `scene`: a TTY, and no CI. */
@@ -220,7 +223,7 @@ test('⛔ a workspace pick cancelled at a terminal is not a cancelled login: sai
   assert.equal(exit, 2)
   assert.equal(readSession(home).token, 'T1')
   assert.match(printed, /with no workspace chosen yet/)
-  assert.match(printed, /No workspace chosen\. Choose one: .*login --backend http:\/\/backend\.test --org @acme/)
+  assert.match(printed, /No workspace chosen\. Choose one: uniweb login --org @acme/)
   assert.doesNotMatch(printed, /^Cancelled\./m)
 })
 
@@ -269,6 +272,66 @@ test('loginCommand names the backend unless it is where a bare login goes', asyn
     // UNIWEB_REGISTER_URL is where a bare login goes, so it needs no flag
     process.env.UNIWEB_REGISTER_URL = 'http://localhost:8080'
     assert.equal(loginCommand('http://localhost:8080'), 'uniweb login')
+  } finally {
+    process.env.HOME = saved.home
+    if (saved.url === undefined) delete process.env.UNIWEB_REGISTER_URL
+    else process.env.UNIWEB_REGISTER_URL = saved.url
+  }
+})
+
+// ⭐ A WORKSPACE SWITCH ACTS ON YOUR SESSION *[Diego, 2026-10-06: "`uniweb login --org @x` or
+// `--personal`, with no `--backend`, should switch to the workspace on the backend you're already
+// logged in to"]*. A login that signs in still goes to the default backend. Until then a switch
+// went to the default backend too, and on any other backend began a new login there.
+test('resolveLoginOrigin: a switch goes to the backend you are logged in to; a sign-in to the default', async () => {
+  const { resolveLoginOrigin, isWorkspaceSwitch } = await import('../src/utils/config.js')
+  const LOCAL = 'http://localhost:8080'
+  const withSession = (origin) => {
+    const home = mkdtempSync(join(tmpdir(), 'uw-switch-'))
+    if (origin) {
+      mkdirSync(join(home, '.uniweb'), { recursive: true })
+      writeFileSync(join(home, '.uniweb', 'registry-auth.json'),
+        JSON.stringify({ version: 2, current: origin, sessions: { [origin]: { token: 'T' } } }))
+    }
+    return home
+  }
+  const saved = { home: process.env.HOME, url: process.env.UNIWEB_REGISTER_URL }
+  delete process.env.UNIWEB_REGISTER_URL
+  try {
+    process.env.HOME = withSession(LOCAL)
+    assert.equal(resolveLoginOrigin(undefined, ['--org', '@acme']), LOCAL)
+    assert.equal(resolveLoginOrigin(undefined, ['--org=@acme']), LOCAL)
+    assert.equal(resolveLoginOrigin(undefined, ['--personal']), LOCAL)
+    // signing in is not a switch: the default backend, as a bare login
+    assert.equal(resolveLoginOrigin(undefined, ['--org', '@acme', '--token', 'T2']), 'https://uniweb.app')
+    assert.equal(resolveLoginOrigin(undefined, ['--personal', '--browser']), 'https://uniweb.app')
+    assert.equal(resolveLoginOrigin(undefined, []), 'https://uniweb.app')
+    // --backend always names it
+    assert.equal(resolveLoginOrigin('http://other.test:9', ['--org', '@acme']), 'http://other.test:9')
+    // logged in nowhere: a switch is a first login, and goes where one goes
+    process.env.HOME = withSession(null)
+    assert.equal(resolveLoginOrigin(undefined, ['--org', '@acme']), 'https://uniweb.app')
+    assert.equal(isWorkspaceSwitch(['--org', '@acme', '--non-interactive']), true)
+    assert.equal(isWorkspaceSwitch(['--token-paste', '--personal']), false)
+  } finally {
+    process.env.HOME = saved.home
+    if (saved.url === undefined) delete process.env.UNIWEB_REGISTER_URL
+    else process.env.UNIWEB_REGISTER_URL = saved.url
+  }
+})
+
+test('loginCommand: no --backend for the backend you are logged in to — a switch reaches it', async () => {
+  const { loginCommand } = await import('../src/utils/config.js')
+  const saved = { home: process.env.HOME, url: process.env.UNIWEB_REGISTER_URL }
+  delete process.env.UNIWEB_REGISTER_URL
+  const home = mkdtempSync(join(tmpdir(), 'uw-login-cmd-session-'))
+  mkdirSync(join(home, '.uniweb'), { recursive: true })
+  writeFileSync(join(home, '.uniweb', 'registry-auth.json'),
+    JSON.stringify({ version: 2, current: 'http://localhost:8080', sessions: { 'http://localhost:8080': { token: 'T' } } }))
+  process.env.HOME = home
+  try {
+    assert.equal(loginCommand('http://localhost:8080'), 'uniweb login')
+    assert.equal(loginCommand('https://uniweb.app'), 'uniweb login --backend https://uniweb.app')
   } finally {
     process.env.HOME = saved.home
     if (saved.url === undefined) delete process.env.UNIWEB_REGISTER_URL

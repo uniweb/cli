@@ -107,14 +107,14 @@ export function getDefaultBackendOrigin() {
 }
 
 /**
- * The `uniweb login` that reaches `origin` — with `--backend` unless `origin` is where a bare
- * login goes (`getDefaultBackendOrigin`).
+ * The `uniweb login` that SWITCHES the workspace on `origin` — the caller appends `--org @x`
+ * or `--personal` — with `--backend` unless a switch without it reaches `origin`
+ * (`resolveLoginOrigin`): the backend you are logged in to, or, logged in nowhere, the
+ * default backend.
  *
- * ⛔ A bare `uniweb login` goes to the DEFAULT backend, never to the one you are logged in to
- * (`resolveLoginOrigin`), so a hint that names a login — to choose or switch a workspace —
- * must name the backend whenever it is another. *Measured 2026-10-06 against a local
- * backend:* `uniweb login --org @acme` went to https://uniweb.app, "logging you out" of the
- * local one, where it should have chosen the workspace of the session it was asked about.
+ * ⚠️ *Measured 2026-10-06 against a local backend, before switches acted on the session:*
+ * `uniweb login --org @acme` went to https://uniweb.app and began a new login there — the
+ * reason a hint about any other backend names it.
  *
  * @param {string} origin - the backend the hint is about
  * @param {string} [prefix='uniweb'] - how the user runs the CLI (`getCliPrefix`)
@@ -122,22 +122,55 @@ export function getDefaultBackendOrigin() {
  */
 export function loginCommand(origin, prefix = 'uniweb') {
   const o = originOrNull(origin)
-  return o && o !== getDefaultBackendOrigin() ? `${prefix} login --backend ${o}` : `${prefix} login`
+  const reached = originOrNull(loggedInOrigin()) || getDefaultBackendOrigin()
+  return o && o !== reached ? `${prefix} login --backend ${o}` : `${prefix} login`
+}
+
+/** The flags with which `uniweb login` SIGNS IN — a method, or a credential. */
+const SIGN_IN_FLAGS = ['--token', '--browser', '--password', '--token-paste']
+
+/**
+ * Whether a `uniweb login` is a WORKSPACE SWITCH: `--org` or `--personal`, and nothing that
+ * signs in (`SIGN_IN_FLAGS`).
+ *
+ * @param {string[]} [args]
+ * @returns {boolean}
+ */
+export function isWorkspaceSwitch(args = []) {
+  const names = args.map((a) => String(a).split('=')[0])
+  return (
+    (names.includes('--org') || names.includes('--personal')) &&
+    !SIGN_IN_FLAGS.some((f) => names.includes(f))
+  )
 }
 
 /**
- * The backend `uniweb login` logs in to: `--backend`, else the default backend.
+ * The backend `uniweb login` logs in to: `--backend`; else, for a workspace switch, the
+ * backend you are logged in to; else the default backend.
+ *
+ * ⭐ A SWITCH ACTS ON YOUR SESSION *[Diego, 2026-10-06: "`uniweb login --org @x` or
+ * `--personal`, with no `--backend`, should switch to the workspace on the backend you're
+ * already logged in to so we can fullfil the promise 'switches without logging in again'"]*.
+ * Logged in nowhere, it is a first login, and goes where any first login goes. A login that
+ * signs in — a method or a credential named (`isWorkspaceSwitch`) — still goes to the
+ * default backend *[Diego, 2026-09-21: "the default backend for login, if not specified, is
+ * uniweb.app"]*. ⛔ Until 2026-10-06 a switch went to the default backend too, so on any
+ * other backend it began a new login there, logging you out of the one you were on.
  *
  * ⛔ A mistyped `--backend` is an error, never a fallback — it would log you in, and so
  * point every command, somewhere you did not name.
  *
  * @param {string|null|undefined} flag - `readFlagValue`'s answer: undefined when the
  *   flag is absent, null when it was given with no value
+ * @param {string[]} [args] - the login's argv, to tell a switch from a sign-in
  * @returns {string}
  * @throws {Error} when --backend was given and is not a URL
  */
-export function resolveLoginOrigin(flag) {
-  if (flag === undefined) return getDefaultBackendOrigin()
+export function resolveLoginOrigin(flag, args = []) {
+  if (flag === undefined) {
+    const session = isWorkspaceSwitch(args) ? originOrNull(loggedInOrigin()) : null
+    return session || getDefaultBackendOrigin()
+  }
   const origin = originOrNull(flag)
   if (!origin) throw new Error(flag ? `Not a URL: ${flag}` : '--backend needs a URL')
   return origin

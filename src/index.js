@@ -917,10 +917,12 @@ async function main() {
   // Handle login command — the backend (username/password · paste a token ·
   // --token <bearer>). ⭐ `--backend <url>` names it; without the flag it is the DEFAULT
   // backend — UNIWEB_REGISTER_URL, else ~/.uniweb/config.json, else https://uniweb.app —
-  // and never the project's backend or the current session *[Diego, 2026-09-21: "the
-  // default backend for login, if not specified, is uniweb.app"]*. The backend logged in
-  // to becomes CURRENT, and every backend command goes there (only UNIWEB_REGISTER_URL
-  // outranks it) — which is why this is the one place a backend is chosen.
+  // and never the project's backend *[Diego, 2026-09-21: "the default backend for login, if
+  // not specified, is uniweb.app"]*. ⭐ Except a WORKSPACE SWITCH — `--org` / `--personal`
+  // and no way of signing in — which acts on the backend you are logged in to *[Diego,
+  // 2026-10-06]* (`resolveLoginOrigin`). The backend logged in to becomes CURRENT, and
+  // every backend command goes there (only UNIWEB_REGISTER_URL outranks it) — which is why
+  // this is the one place a backend is chosen.
   //
   // ⛔ Until 2026-09-21 a bare login went to the backend of the project in the cwd, and
   // asked when the machine knew several backends. Both are gone: the default is the
@@ -932,7 +934,7 @@ async function main() {
     const { resolveLoginOrigin } = await import('./utils/config.js')
     let apiBase
     try {
-      apiBase = resolveLoginOrigin(readFlagValue(loginArgs, '--backend'))
+      apiBase = resolveLoginOrigin(readFlagValue(loginArgs, '--backend'), loginArgs)
     } catch (err) {
       console.error(
         `\x1b[31m✗\x1b[0m ${err.message} — e.g. uniweb login --backend http://localhost:8080`
@@ -1801,12 +1803,12 @@ ${colors.bright}The workspace you work in.${colors.reset} A login works in ONE w
 personal one, or an organization's — and every push, pull and publish works in it:
 a site it creates is created there, and a site kept in another workspace is refused.
 With no organization it is your personal workspace; with organizations you are asked,
-or name it. Already logged in, \`uniweb login --org @other\` switches without logging
-in again — with \`--backend <url>\` when you are logged in to a backend other than the
-default, since a login without it goes to the default.
+or name it. Already logged in, \`uniweb login --org @other\` (or \`--personal\`) switches
+the workspace on the backend you are logged in to, without logging in again.
 
 ${colors.bright}Options:${colors.reset}
-  --backend <url>    The backend to log in to
+  --backend <url>    The backend to log in to (without it: the default backend — or, for
+                     --org / --personal alone, the one you are logged in to)
   --org @org         Work in @org (an organization you belong to)
   --personal         Work in your personal workspace
   --token <bearer>   Seed + verify a session from a bearer token (non-interactive)
@@ -1818,8 +1820,7 @@ In non-interactive mode (no TTY — an agent, a script), pass \`--token <bearer>
 \`--org @org\` or \`--personal\`, or set \`UNIWEB_USERNAME\` + \`UNIWEB_PASSWORD\`, or set
 \`UNIWEB_TOKEN\` (per process, not stored) with \`UNIWEB_WORKSPACE=@org\` or \`personal\`.
 A login with organizations that names no workspace signs you in but exits 2;
-\`uniweb login --org @org\` (or \`--personal\`) finishes it without signing in again —
-with \`--backend <url>\` off the default backend.
+\`uniweb login --org @org\` (or \`--personal\`) finishes it without signing in again.
 \`uniweb logout\` logs you out.
 `,
     refresh: `

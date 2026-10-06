@@ -2635,8 +2635,8 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 > uniweb push --org @acme       # this command only
 > ```
 >
-> Already logged in, `uniweb login --org @other` switches without logging in again — add
-> `--backend <url>` when that is not the default backend: a login without it goes to the default. **Without a
+> Already logged in, `uniweb login --org @other` (or `--personal`) switches the workspace on the
+> backend you are logged in to, without logging in again. **Without a
 > terminal — you, an agent — a login with organizations and no workspace named signs you in but
 > exits 2**: `uniweb login --org @acme` (or `--personal`) finishes it without signing in again.
 > Until then every command that works on a site refuses, and so does registering a foundation whose
