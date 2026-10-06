@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-06T01:57:25.800Z",
+  "generatedAt": "2026-10-06T02:16:00.292Z",
   "packages": {
     "@uniweb/api": {
       "version": "0.6.10",
@@ -43,7 +43,7 @@
       ]
     },
     "@uniweb/frame-bridge": {
-      "version": "0.3.1",
+      "version": "0.3.2",
       "path": "framework/frame-bridge",
       "deps": []
     },
