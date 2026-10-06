@@ -1,71 +1,51 @@
 /**
- * The services request — is the file ASKING for something, or just carrying an
- * old answer?
+ * The requests a push or publish carries — what the owner asks for, and whether it
+ * is new.
  *
- * ## The defect this exists to close
+ * Two of them, kept by two mechanisms:
  *
- * `services` / `secrets` are Sections of the site-content document, so they ride
- * inside **every** push — each is emitted whenever this backend's entry in
- * `sync.json` carries its key. Editing one paragraph on one page therefore re-sends
- * the whole request block. *(The rows were `site.yml::$services` / `$secrets` until
- * 2026-09-20, and this read "whenever the key exists in `site.yml`" until 2026-10-06.)*
+ *   - ⭐ **The services** — `site.yml::services`, a map by service name *[Diego,
+ *     2026-10-06]*. Sent as the site's own list with the owner's CHANGED asks applied,
+ *     decided per service by comparing the file, the site now and the record of the
+ *     last agreement in `sync.json` (`settleServices`; spec:
+ *     kb/framework/reference/site-services-request.md).
+ *   - **The language selection** — `site.yml::publishLanguages` — told apart from the
+ *     status quo by a fingerprint banked in `deploy.yml` (`reconcile`, `bankLanguages`).
  *
- * ⛔ And the backend REPLACES what it is sent: a row anchors by its natural key and
- * is updated in place (`SectionScope::DeclaredOnly`; backend's
- * `uuidless_records_anchor_by_natural_key_and_keep_the_stored_uuid`, written
- * against this emitter's shape). So a re-send is not a harmless echo — it
- * **overwrites the stored request**, including a decision the owner made in the
- * app, which is where the consent workflow's publish happens.
+ * ⭐ The model both follow — *"the services in `site.yml` are a request, never a
+ * tracking of what is running"* [Diego, 2026-09-05]. You ask by CHANGING the file. An
+ * unchanged ask is not re-sent: the backend REPLACES the services it is sent, so a
+ * re-send would overwrite a decision the owner made in the app since.
  *
- * ⭐ Under the model the file follows — *"the services in `site.yml` are a request,
- * never a tracking of what is running"* [Diego, 2026-09-05] — **re-sending an
- * unchanged block is making a request nobody made.** You ask by CHANGING the file.
- * The rows moved to `sync.json` on 2026-09-20; the model did not.
- *
- * ⚠️ It was mostly inert until 2026-09-08: `enabled` was honoured for `api` alone,
- * so a stale re-send of the other names overwrote rows nothing read. That stopped
- * being true the same day, and `api` was never inert — an `enabled: false` on it
- * with a live plan schedules a paid service to end.
- *
- * ## What "changed" is measured against
- *
- * The last block we are known to have sent, recorded in **`deploy.yml`** — a
- * COMMITTED project file that travels with a clone.
- *
- * ⛔ Deliberately NOT `.uniweb/sync-cache.json`, which is the obvious place and the
- * wrong one: it is gitignored, per-clone and deletable, so a teammate's fresh clone
- * has no base at all — and this workflow is multi-machine by construction (consent
- * in a browser, publish from the app). A base that vanishes turns this gate into
- * either the original defect or a silently dropped request.
- *
- * ## ⛔ A HASH, never the block
- *
- * `$secrets` names every secret the site has (values are the `#ref` marker, never
- * secret material — the old wording here said otherwise), and `$services[].config` is opaque and
- * per-service — anything may be in it. `deploy.yml` is committed, so recording
- * either verbatim would write them into git. Equality is all this gate needs;
- * *what* differs is a question for the backend's own copy of the request, not for
- * a mirror of our own.
+ * ⛔ *From 2026-09-20 to 2026-10-06 the services lived only in `sync.json`, which
+ * nobody edits, so a CLI user could ask for nothing; and this module compared them by
+ * a fingerprint in `deploy.yml`, which could not tell who moved.*
  *
  * @module
  */
 
 import { createHash } from 'node:crypto'
-import { updateBackendState } from '@uniweb/build/uwx'
+import {
+  readServicesRequest,
+  takeServices,
+  mergeServiceRows,
+  reconcileServices,
+  recordAfter,
+  readBackendState,
+  updateBackendState,
+  writeSiteConfig
+} from '@uniweb/build/uwx'
 
 /**
- * A stable fingerprint of one declared block, or `null` when the key is absent.
+ * A stable fingerprint of one declared value, or `null` when the key is absent.
  *
- * ⭐ `null` (absent) and the hash of `[]` are DIFFERENT, and must stay so: absent
- * means *"I am not telling you about this"* and `[]` is an explicit clear. This
- * function only has to preserve that distinction — the destructive difference
- * between them is the backend's.
+ * ⭐ `null` (absent) and the hash of `[]` are DIFFERENT, and must stay so: for the
+ * language selection, no key means "every declared language" and `[]` means none.
  *
- * Rows are ordered by their serialized form and object keys sorted, so reordering
- * rows or keys in the file is not a change. It is not a request to move a line.
+ * List entries are ordered by their serialized form and object keys sorted, so
+ * reordering them in the file is not a change.
  *
- * @param {*} declared - the raw value: provisioned `services` / `secrets` rows (from
- *   `sync.json`), what the site has stored for them, or `site.yml::publishLanguages`
+ * @param {*} declared
  * @returns {string|null} 16 hex chars, or null when undeclared
  */
 export function fingerprintDeclaration(declared) {
@@ -73,13 +53,10 @@ export function fingerprintDeclaration(declared) {
   const canonical = Array.isArray(declared)
     ? declared.map(stableString).sort()
     : [stableString(declared)]
-  return createHash('sha256')
-    .update(JSON.stringify(canonical))
-    .digest('hex')
-    .slice(0, 16)
+  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex').slice(0, 16)
 }
 
-/** Absent, or an empty list — a stored request that asks for nothing. */
+/** Absent, or an empty list — a stored value that asks for nothing. */
 function isNothing(value) {
   return value === undefined || value === null || (Array.isArray(value) && value.length === 0)
 }
@@ -94,125 +71,22 @@ function stableString(value) {
 }
 
 /**
- * Both blocks' fingerprints, in the shape `deploy.yml::lastDeploy.<target>` keeps
- * them. Keys are omitted rather than set to null, so an undeclared block leaves no
- * trace in the file.
+ * A two-way request field, reconciled against what the site has stored.
  *
- * @param {object} siteYml
- * @returns {{servicesRequest?: string, secretsRequest?: string}}
- */
-export function fingerprintRequest(siteYml, provisioned = {}) {
-  const out = {}
-  // ⭐ Two sources, on purpose. The PROVISIONED rows come from `sync.json` for the
-  // backend being published to (they were `site.yml::$services` / `$secrets` until
-  // 2026-09-20). The language selection below is still authored, so still site.yml.
-  const services = fingerprintDeclaration(provisioned?.services)
-  if (services) out.servicesRequest = services
-  const secrets = fingerprintDeclaration(provisioned?.secrets)
-  if (secrets) out.secretsRequest = secrets
-  // ⭐ The language selection is a request too, and it is the one that moves a
-  // PRICE — the line is billed on how many languages go out. Banking it is what
-  // lets a later edit read as "the owner asked for another language" rather than
-  // as a value that was always there.
-  const langs = fingerprintDeclaration(siteYml?.publishLanguages)
-  if (langs) out.publishLanguagesRequest = langs
-  return out
-}
-
-/**
- * Should this push DECLARE the request blocks?
+ * `site.yml::publishLanguages` is the owner's ASK, pushed up, projected back on pull,
+ * and stored on the other side where something else may move it.
  *
- * ⛔ **Absence of a record means YES.** Three reasons, and the third is the one
- * that decides it:
- *
- *   1. It is the behaviour every CLI has had, so nothing regresses.
- *   2. A project may legitimately have no `deploy.yml` (never published, or
- *      `autoSave: off`), and that is not evidence about the request.
- *   3. ⭐ Failing the other way DROPS A REAL REQUEST IN SILENCE. Between the two
- *      failure directions, sending an unchanged block writes back what is usually
- *      already there, while withholding a changed one leaves an owner's edit with
- *      no effect and nothing said. The loud failure is the better one.
- *
- * @param {object} siteYml - the parsed site.yml
- * @param {object|null} lastDeploy - `deploy.yml::lastDeploy.<target>`, or null
- * @returns {{declare: boolean, reason: 'no-record'|'changed'|'unchanged'|'undeclared'}}
- */
-export function decideDeclaration(siteYml, lastDeploy, provisioned = {}) {
-  const now = fingerprintRequest(siteYml, provisioned)
-  if (!now.servicesRequest && !now.secretsRequest) {
-    // Nothing in the file to send. The gate is moot; say so rather than
-    // reporting "unchanged", which would imply a comparison happened.
-    return { declare: true, reason: 'undeclared' }
-  }
-  if (!lastDeploy || typeof lastDeploy !== 'object') {
-    return { declare: true, reason: 'no-record' }
-  }
-  const same =
-    now.servicesRequest === (lastDeploy.servicesRequest || undefined) &&
-    now.secretsRequest === (lastDeploy.secretsRequest || undefined)
-  return same
-    ? { declare: false, reason: 'unchanged' }
-    : { declare: true, reason: 'changed' }
-}
-
-/**
- * The four-way reconcile, once the backend's own copy of the request is in hand.
- *
- * ⭐ THIS SUPERSEDES `decideDeclaration` WHERE THE STATUS READ SUCCEEDS. That one
- * compares the file to our MEMORY of what we last sent, which leaves a window: a
- * request changed in the app between a `uniweb pull` and the next publish reads as
- * unchanged-from-nothing. Comparing to the backend's own rows closes it, because
- * the base stops being something we have to remember correctly.
- *
- * ⛔ It still needs the banked fingerprint. Local and remote differing says the two
- * disagree; it does not say WHO MOVED. Only the last agreed state does, and that is
- * the difference between "the app decided, adopt it" and "you edited, send it".
- *
- * ## The four outcomes
- *
- * | local | remote | |
- * |---|---|---|
- * | unchanged | unchanged | `none` — nobody asked anything |
- * | unchanged | **moved** | `adopt` — the app decided; the file is merely behind |
- * | **edited** | unchanged | `send` — a real request |
- * | **edited** | **moved** | `conflict` — ⛔ two intents, and only the owner ranks them |
- *
- * ⛔ `conflict` never guesses and never sends. A last-write-wins on a field that
- * schedules a paid service to end is not a tie-break, it is a coin toss with the
- * owner's money.
- *
- * ⚖️ No base ⇒ we cannot tell `adopt` from `conflict`, so we fall back to the
- * conservative reading of a difference: if the two differ, `conflict`; if they
- * agree, `none`. That withholds rather than sends, which is safe HERE — unlike
- * `decideDeclaration`, nothing is silently dropped, because a conflict is reported.
- *
- * @param {object} siteYml
- * @param {*} remoteServices - the status read's `services` rows, or undefined
- * @param {object|null} lastDeploy - the banked base
- * @returns {{action:'none'|'adopt'|'send'|'conflict', local:string|null, remote:string|null}}
- */
-export function reconcileRequest(siteYml, remoteServices, lastDeploy, provisioned = {}) {
-  return reconcile(provisioned?.services, remoteServices, lastDeploy?.servicesRequest)
-}
-
-/**
- * The same reconcile over any two-way request field.
- *
- * ⭐ `$services` was the first, not the only one. `site.yml::publishLanguages` is
- * the same shape — the owner's ASK, pushed up, projected back on pull, and stored
- * on the other side where something else may move it.
- *
- * ⛔ AND A BASE IS NEEDED EVEN WHERE NOTHING ELSE WRITES THE FIELD. That was the
- * reasoning that nearly left languages out: "nobody overwrites it, so there is no
- * hazard." Overwriting is not the only thing a base is for — without one, a value
- * that has always been in the file is indistinguishable from one the owner just
- * typed, so the CLI cannot tell an intentional change from the status quo. For
- * languages that difference is money: the count is priced, so a new language is a
- * charge, and saying so before sending requires knowing it is new.
+ * ⛔ A BASE IS NEEDED EVEN WHERE NOTHING ELSE WRITES THE FIELD. Overwriting is not the
+ * only thing a base is for — without one, a value that has always been in the file
+ * is indistinguishable from one the owner just typed, so the CLI cannot tell an
+ * intentional change from the status quo. For languages that difference is money:
+ * the count is priced, so a new language is a charge, and saying so before sending
+ * requires knowing it is new.
  *
  * @param {*} localValue - the file's declaration
  * @param {*} remoteValue - what the site has stored
  * @param {string|null} baseFingerprint - what we last agreed on
+ * @returns {{action: 'none'|'adopt'|'send'|'conflict', local: string|null, remote: string|null}}
  */
 export function reconcile(localValue, remoteValue, baseFingerprint) {
   const local = fingerprintDeclaration(localValue)
@@ -220,11 +94,9 @@ export function reconcile(localValue, remoteValue, baseFingerprint) {
   const base = baseFingerprint || null
 
   if (local === remote) return { action: 'none', local, remote }
-  // ⛔ A FILE THAT DECLARES NOTHING ASKS NOTHING, so it is never one side of a conflict. With
-  // nothing stored either — an empty list is the store's nothing — there is nothing to do; with
-  // something stored, the file is merely behind. Until 2026-09-26 this was a `conflict`, and the
-  // first publish of a site whose file is silent warned that its services "were changed
-  // elsewhere, and site.yml changed too", listing both as nothing.
+  // ⛔ A FILE THAT DECLARES NOTHING ASKS NOTHING, so it is never one side of a conflict.
+  // With nothing stored either there is nothing to do; with something stored, the file
+  // is merely behind.
   if (local === null) return { action: isNothing(remoteValue) ? 'none' : 'adopt', local, remote }
   if (!base) return { action: 'conflict', local, remote }
 
@@ -236,79 +108,157 @@ export function reconcile(localValue, remoteValue, baseFingerprint) {
 }
 
 /**
- * Take the site's services as this project's own — what a `pull` would have written.
+ * What a publish records in `deploy.yml` about the language selection: its
+ * fingerprint, on EVERY publish — it rides the content push, so what went live is
+ * what was agreed.
  *
- * ⭐ The rows go to THIS BACKEND's entry in `sync.json`, replacing the list, with the
- * payload-local `$id` dropped exactly as `pull` drops it (`uwx/site-project.js`). That
- * is the copy every reader takes them from: the producer emits it, and `reconcileRequest`
- * compares it.
- *
- * ⛔ Until 2026-10-06 `publish` wrote them to `site.yml::$services`, which nothing has
- * read since the rows moved to `sync.json` (2026-09-20). A yes to the offer left a dead
- * key in the author's file, the project's copy stayed behind, and the same offer came
- * back on every publish.
- *
- * @param {string} siteDir
- * @param {string} origin - the backend being published to
- * @param {object[]} rows - the site's stored services, as its status read serves them
- * @returns {object[]} the rows as stored — what the next comparison fingerprints
- */
-export function adoptServices(siteDir, origin, rows) {
-  const services = (Array.isArray(rows) ? rows : [])
-    .filter((row) => row && typeof row === 'object' && !Array.isArray(row))
-    .map(({ $id: _id, ...fields }) => fields)
-  updateBackendState(siteDir, origin, { services })
-  return services
-}
-
-/**
- * The publish outcomes after which the project's services and the site's are the same
- * rows: the reconcile found them equal, or the owner took the site's.
- */
-const AGREED = new Set(['in-sync', 'adopted'])
-
-/**
- * What a publish records in `deploy.yml` as the last agreed request — field by field.
- *
- * ⭐ The base answers "who moved?" next time, so it must be the last state BOTH sides
- * held, not merely the last one this CLI sent:
- *
- *   - **sent** — what was sent is agreed.
- *   - **found equal, or adopted** — the two agree now, whoever moved last. ⛔ Until
- *     2026-10-06 this carried the older base forward, so a project that took the site's
- *     services — by pull or by the offer — read as having moved itself, and the site's
- *     next change was reported as a conflict the owner never made.
- *   - **anything else** — nothing new was agreed, and the last agreement stands.
- *
- * `secrets` are not compared with the site (its status read serves no secrets), so they
- * move only when sent.
- *
- * ⭐ The language selection is banked on EVERY publish. It rides the content push, not
- * this gate, so what went live is what was agreed. ⛔ Until 2026-10-06 a publish that
- * withheld the services dropped it, and the next added language read as a conflict
- * instead of as a request that may cost more.
+ * ⛔ A FINGERPRINT, never the list: `deploy.yml` records what a publish did, and the
+ * selection itself is in `site.yml`.
  *
  * @param {object} siteYml
- * @param {object} provisioned - this backend's `sync.json` entry, as it stands after
- *   the reconcile (adopted rows included)
- * @param {{declare: boolean, reason: string}} declaration
- * @param {object|null} prior - `deploy.yml::lastDeploy.<target>`
- * @returns {{servicesRequest?: string, secretsRequest?: string, publishLanguagesRequest?: string}}
+ * @returns {{publishLanguagesRequest?: string}}
  */
-export function bankRequest(siteYml, provisioned, declaration, prior) {
-  const now = fingerprintRequest(siteYml, provisioned)
-  const out = {}
-  let services
-  let secrets
-  if (declaration?.declare) {
-    services = now.servicesRequest
-    secrets = now.secretsRequest
-  } else {
-    services = AGREED.has(declaration?.reason) ? now.servicesRequest : prior?.servicesRequest
-    secrets = prior?.secretsRequest
+export function bankLanguages(siteYml) {
+  const langs = fingerprintDeclaration(siteYml?.publishLanguages)
+  return langs ? { publishLanguagesRequest: langs } : {}
+}
+
+/** One service, as an owner reads it: `on`, `off`, `on (grade: pro)`. */
+function describeService(row) {
+  if (!row || typeof row !== 'object') return 'nothing set'
+  const state = row.enabled === false ? 'off' : 'on'
+  const settings =
+    row.config && typeof row.config === 'object' ? Object.entries(row.config) : []
+  if (!settings.length) return state
+  const shown = settings
+    .map(([k, v]) => `${k}: ${v !== null && typeof v === 'object' ? '…' : String(v)}`)
+    .join(', ')
+  return `${state} (${shown})`
+}
+
+const rowNamed = (rows, name) =>
+  Array.isArray(rows) ? rows.find((r) => r && typeof r === 'object' && r.name === name) : undefined
+
+/**
+ * Decide what a push or publish sends of `site.yml::services` — and, once it has
+ * succeeded, what the project records.
+ *
+ * Per service the file names, three states are compared: the file, the site now
+ * (`status.services`), and the record of the last agreement (this backend's entry in
+ * `sync.json`). What the owner changed is sent; what the site changed is kept, and
+ * offered into `site.yml`; where both changed, the owner is asked. The list sent is the
+ * site's own, with only the changed asks applied (`mergeServiceRows`) — so every other
+ * service and setting the site holds is sent as it is stored.
+ *
+ * ⛔ An open decision — an offer declined, a conflict not resolved, or no terminal to
+ * ask at — is never sent, and the record keeps the earlier agreement for it, so the
+ * next run still sees the site's change rather than reading it as the file's.
+ *
+ * @param {object} p
+ * @param {object} p.client - the backend client (`origin`, `siteStatus`)
+ * @param {string} p.siteDir
+ * @param {object} p.siteYml - parsed; updated in place when the owner takes the site's services
+ * @param {object|null} [p.status] - the site's status, when the caller has just read it
+ * @param {boolean} [p.offline] - read nothing from the backend (`--dry-run`, `-o`)
+ * @param {boolean} [p.interactive] - whether the owner can be asked
+ * @param {(message: string, initial?: boolean) => Promise<boolean>} p.confirm
+ * @param {{ info: Function, warn: Function, dim: Function, ok: Function }} p.say
+ * @returns {Promise<{ emit: object, after: () => void }>} `emit` — options for the
+ *   producer; `after` — call once the push succeeded (or had nothing to send)
+ */
+export async function settleServices({
+  client,
+  siteDir,
+  siteYml,
+  status,
+  offline = false,
+  interactive = false,
+  confirm,
+  say
+}) {
+  const nothing = { emit: {}, after: () => {} }
+  const asks = readServicesRequest(siteYml?.services, { warn: (m) => say.warn(m) })
+  if (!asks) return nothing
+
+  const state = readBackendState(siteDir, client.origin)
+  const record = Array.isArray(state.services) ? state.services : undefined
+  const siteUuid = state.site?.uuid || null
+  let read = status
+  if (read === undefined && !offline && siteUuid) read = await client.siteStatus(siteUuid)
+  const stored = Array.isArray(read?.services) ? read.services : undefined
+
+  const decision = reconcileServices({ asks, record, stored, siteKnown: Boolean(siteUuid) })
+  if (decision.unreadable) {
+    say.warn("site.yml asks for services, but this project has no record of your site's and could not read them, so none were sent.")
+    say.dim('  Run `uniweb pull` to take them, then push again.')
+    return nothing
   }
-  if (services) out.servicesRequest = services
-  if (secrets) out.secretsRequest = secrets
-  if (now.publishLanguagesRequest) out.publishLanguagesRequest = now.publishLanguagesRequest
-  return out
+
+  const askFor = (name) => asks.find((a) => a.name === name)
+  const send = [...decision.send]
+  let offered = [...decision.adopt]
+  const open = []
+
+  // ⛔ BOTH MOVED: only the owner can rank two of their own decisions. Not a stop — the
+  // content they asked to push is a separate thing — and never a guess.
+  if (decision.conflict.length) {
+    say.warn(
+      record
+        ? "Your site's services and site.yml both changed since your last sync:"
+        : 'site.yml asks for services your site has set differently:'
+    )
+    for (const name of decision.conflict) {
+      say.dim(`  ${name}: site.yml asks ${describeService(askFor(name))} — your site has ${describeService(rowNamed(stored, name))}`)
+    }
+    if (!interactive) {
+      say.dim("  Left as your site has them — run without --non-interactive to choose.")
+      open.push(...decision.conflict)
+    } else if (await confirm('Use the services in site.yml?', false)) {
+      send.push(...decision.conflict)
+    } else {
+      // Declining to send is not yet a decision to take the site's: offered below.
+      offered = [...offered, ...decision.conflict]
+    }
+  }
+
+  // The site moved and the file did not: the file is behind. Offered, never done — a
+  // push changes `site.yml` only when the owner says so.
+  if (offered.length) {
+    say.info("Your site's services changed since your last sync:")
+    for (const name of offered) {
+      say.dim(`  ${name}: your site has ${describeService(rowNamed(stored, name))} — site.yml says ${describeService(askFor(name))}`)
+    }
+    if (interactive && (await confirm('Update site.yml to match?', false))) {
+      const services = takeServices(siteYml.services, stored, offered)
+      writeSiteConfig(siteDir, { services })
+      if (services) siteYml.services = services
+      else delete siteYml.services
+      say.ok('site.yml updated.')
+    } else {
+      open.push(...offered)
+    }
+  }
+
+  if (send.length) {
+    say.info(`Asking for: ${send.map((n) => `${n} ${describeService(askFor(n))}`).join(', ')}`)
+  }
+
+  // The list to send: the site's rows with the changed asks applied. With the site
+  // unreadable and nothing changed, nothing is sent — the record may be stale, and
+  // sending it would be asking for what the site may have moved away from.
+  const base = stored ?? record ?? (siteUuid ? undefined : [])
+  if (!stored && !send.length) {
+    return {
+      emit: { declareServices: false },
+      after: () => {}
+    }
+  }
+  const rows = mergeServiceRows(base, asks.filter((a) => send.includes(a.name)))
+  return {
+    emit: { serviceRows: rows },
+    after: () => {
+      const next = recordAfter({ record, agreed: rows, open })
+      if (next) updateBackendState(siteDir, client.origin, { services: next })
+    }
+  }
 }

@@ -74,7 +74,8 @@ import {
   syncedElsewhere,
   describeSyncedElsewhere
 } from '../utils/site-identity.js'
-import { confirm } from '../utils/interactive.js'
+import { confirm, isNonInteractive } from '../utils/interactive.js'
+import { settleServices } from '../backend/service-request.js'
 import { guardEmptyRecords } from '../utils/records-guard.js'
 import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
 import {
@@ -520,6 +521,20 @@ export async function push(args = [], deps = {}) {
       ref: siteYml?.foundation
     })
   }
+  // ⭐ THE SERVICES `site.yml` ASKS FOR — what the owner changed is sent over the site's
+  // own list; what the site changed is kept and offered into the file; where both
+  // changed, the owner is asked. Shared with `uniweb publish` (`settleServices`).
+  // Offline for `-o` and `--dry-run`: nothing is read, and nothing is recorded.
+  const offline = Boolean(output) || dryRun
+  const services = await settleServices({
+    client,
+    siteDir,
+    siteYml,
+    offline,
+    interactive: !offline && !isNonInteractive(args),
+    confirm,
+    say: { info, warn, dim: note, ok: success }
+  })
   const emitOptions = {
     backend: client.origin,
     // Placement identity for the folder — see writeFolderItemUuids.
@@ -555,7 +570,9 @@ export async function push(args = [], deps = {}) {
           itemBaseVersions: readItemBaseVersions(siteDir, client.origin)
         }),
     ...(assetRewrite ? { assetRewrite } : {}),
-    ...(assetIds ? { assetIds } : {})
+    ...(assetIds ? { assetIds } : {}),
+    // The `services` Section as settled above — or withheld.
+    ...services.emit
   }
   let pkg
   try {
@@ -584,6 +601,8 @@ export async function push(args = [], deps = {}) {
 
   // Nothing changed since the last push — the backend is already up to date.
   if (totalEntities === 0) {
+    // The site already holds what this copy has, so what was settled is agreed.
+    if (!offline) services.after()
     success(
       `Nothing to push — ${skipped} entit${skipped === 1 ? 'y' : 'ies'} unchanged since the last push.`
     )
@@ -644,6 +663,7 @@ export async function push(args = [], deps = {}) {
     }
   })
   if (result.exitCode !== 0) return { exitCode: result.exitCode }
+  services.after()
   success(
     `Pushed ${result.finalizedTotal} entit${result.finalizedTotal === 1 ? 'y' : 'ies'}` +
       (result.wrote.length ? ` — ${result.wrote.join(', ')}` : '')

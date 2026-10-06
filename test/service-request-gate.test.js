@@ -1,437 +1,307 @@
 /**
- * The services-request declaration gate.
+ * The requests a push or publish carries — the services `site.yml` asks for, and the
+ * language selection.
  *
- * `$services` / `$secrets` ride inside the site-content document, so every push
- * re-sends them — and the backend REPLACES what it is sent, anchoring each row by
- * its natural key. So a re-send overwrites the stored request, which in the consent
- * workflow is a decision the owner made in the app. Under "the file is a request",
- * an unchanged block is not asking for anything, and this gate is what stops the
- * CLI asking on the owner's behalf.
- *
- * ⭐ The tests that matter most are the two DIRECTIONS OF FAILURE, because both are
- * silent in production: withholding a real request loses an owner's edit with
- * nothing said, and declaring an unchanged one overwrites a decision with nothing
- * said. Every case below is one or the other.
+ * ⭐ The services cases that matter most are the two silent failures: a stale ask
+ * re-sent over a decision the owner made in the app, and a partial list that drops
+ * the site's other rows. Each `settleServices` case below is one row of
+ * kb/framework/reference/site-services-request.md §4, run through the step push and
+ * publish share — a site directory, `sync.json`, and a backend that answers the
+ * status read.
  */
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-
-import {
-  fingerprintDeclaration,
-  fingerprintRequest,
-  decideDeclaration
-} from '../src/backend/service-request.js'
-
-// ⭐ The provisioned rows moved from `site.yml::$services` / `$secrets` to
-// `sync.json` (2026-09-20), so the functions take them as a separate argument. The
-// fixtures below keep the old single-object shape because it reads as the request a
-// person would picture; `split` is the one place that maps it onto the new call.
-const split = (y = {}) => {
-  const { $services, $secrets, ...authored } = y || {}
-  return [
-    authored,
-    {
-      ...($services !== undefined ? { services: $services } : {}),
-      ...($secrets !== undefined ? { secrets: $secrets } : {})
-    }
-  ]
-}
-const fingerprintOf = (y) => fingerprintRequest(...split(y))
-const decide = (y, last) => {
-  const [a, b] = split(y)
-  return decideDeclaration(a, last, b)
-}
-const recon = (y, remote, last) => {
-  const [a, b] = split(y)
-  return reconcileRequest(a, remote, last, b)
-}
-
-const API_PRO = [{ name: 'api', enabled: true, config: { grade: 'pro' } }]
-
-test('absent and empty are different fingerprints — the distinction is destructive', () => {
-  // Absent means "I am not telling you about this"; [] is an explicit clear. If
-  // these ever collapse, a project that never declared the key would read as
-  // asking to wipe every stored row.
-  assert.equal(fingerprintDeclaration(undefined), null)
-  assert.equal(fingerprintDeclaration(null), null)
-  assert.notEqual(fingerprintDeclaration([]), null)
-  assert.notEqual(fingerprintDeclaration([]), fingerprintDeclaration(API_PRO))
-})
-
-test('a changed value changes the fingerprint', () => {
-  const pro = fingerprintDeclaration(API_PRO)
-  const starter = fingerprintDeclaration([
-    { name: 'api', enabled: true, config: { grade: 'starter' } }
-  ])
-  const off = fingerprintDeclaration([
-    { name: 'api', enabled: false, config: { grade: 'pro' } }
-  ])
-  assert.notEqual(pro, starter)
-  assert.notEqual(pro, off, 'flipping enabled must be a change — it moves money')
-})
-
-test('reordering rows or keys is NOT a change', () => {
-  // Moving a line in a YAML file is not a request. If this failed, every
-  // reformat would re-send the block and overwrite the stored request.
-  const a = fingerprintDeclaration([
-    { name: 'api', enabled: true },
-    { name: 'search', enabled: false }
-  ])
-  const b = fingerprintDeclaration([
-    { name: 'search', enabled: false },
-    { enabled: true, name: 'api' }
-  ])
-  assert.equal(a, b)
-})
-
-test('nested key order does not change the fingerprint either', () => {
-  const a = fingerprintDeclaration([{ name: 'api', config: { grade: 'pro', tier: 2 } }])
-  const b = fingerprintDeclaration([{ name: 'api', config: { tier: 2, grade: 'pro' } }])
-  assert.equal(a, b)
-})
-
-test('fingerprintRequest omits keys for undeclared blocks', () => {
-  assert.deepEqual(fingerprintOf({}), {})
-  const only = fingerprintOf({ $services: API_PRO })
-  assert.ok(only.servicesRequest)
-  assert.ok(!('secretsRequest' in only), 'an undeclared block leaves no trace')
-})
-
-// ── the gate ────────────────────────────────────────────────────────────────
-
-test('unchanged since the last publish → do NOT declare', () => {
-  // The headline case: owner publishes, hits a 402, changes their mind in the app,
-  // then publishes again without touching the file. The CLI must not re-assert.
-  const siteYml = { $services: API_PRO }
-  const prior = fingerprintOf(siteYml)
-  const d = decide(siteYml, prior)
-  assert.equal(d.declare, false)
-  assert.equal(d.reason, 'unchanged')
-})
-
-test('edited since the last publish → declare', () => {
-  const prior = fingerprintOf({ $services: API_PRO })
-  const d = decide(
-    { $services: [{ name: 'api', enabled: true, config: { grade: 'starter' } }] },
-    prior
-  )
-  assert.equal(d.declare, true)
-  assert.equal(d.reason, 'changed')
-})
-
-test('⛔ no record → DECLARE, because the other failure is silent', () => {
-  // A fresh clone, a never-published project, or autoSave: off. Withholding here
-  // would drop a real request with nothing said; declaring writes back what is
-  // usually already there. Between two silent failures, take the recoverable one.
-  const d = decide({ $services: API_PRO }, null)
-  assert.equal(d.declare, true)
-  assert.equal(d.reason, 'no-record')
-})
-
-test('a record that predates this gate → declare', () => {
-  // deploy.yml written by an older CLI has no fingerprints. That is "no record"
-  // for our purposes, not "unchanged" — it must not read as a match.
-  const d = decide({ $services: API_PRO }, { at: '2026-01-01', host: 'uniweb' })
-  assert.equal(d.declare, true)
-  assert.equal(d.reason, 'changed')
-})
-
-test('file declares nothing → the gate is moot and says so', () => {
-  const d = decide({ name: 'site' }, { servicesRequest: 'abc' })
-  assert.equal(d.declare, true)
-  assert.equal(d.reason, 'undeclared', 'not "unchanged" — no comparison happened')
-})
-
-test('an explicit clear is a request, and stays one until it is sent', () => {
-  // `$services: []` means "drop every stored row". It must declare the first time…
-  const first = decide({ $services: [] }, null)
-  assert.equal(first.declare, true)
-  // …and must NOT be re-sent on every later publish.
-  const banked = fingerprintOf({ $services: [] })
-  const second = decide({ $services: [] }, banked)
-  assert.equal(second.declare, false)
-})
-
-test('secrets move the gate independently of services', () => {
-  const prior = fingerprintOf({ $services: API_PRO, $secrets: [{ name: 'k' }] })
-  const d = decide(
-    { $services: API_PRO, $secrets: [{ name: 'k', service: 'api' }] },
-    prior
-  )
-  assert.equal(d.declare, true, 'a secrets-only edit must still be sent')
-})
-
-test('⛔ the fingerprint leaks no value — it is a hash, and deploy.yml is committed', () => {
-  const fp = fingerprintDeclaration([
-    { name: 'k', service: 'api', value: 'super-secret-token' }
-  ])
-  assert.match(fp, /^[0-9a-f]{16}$/)
-  assert.ok(!fp.includes('secret'))
-  assert.ok(!JSON.stringify(fingerprintOf({ $secrets: [{ value: 'tok' }] })).includes('tok'))
-})
-
-// ── the four-way reconcile, once the backend's rows are in hand ─────────────
-
-import { reconcileRequest, reconcile } from '../src/backend/service-request.js'
-
-const banked = (siteYml) => fingerprintOf(siteYml)
-
-test('in sync → nothing to ask', () => {
-  const site = { $services: API_PRO }
-  const r = recon(site, API_PRO, banked(site))
-  assert.equal(r.action, 'none')
-})
-
-test('⭐ the app decided and the file is behind → adopt, never send', () => {
-  // The headline case the banked-only comparison could not see: the owner changed
-  // their mind in the app, so the file is stale through no edit of theirs. Sending
-  // it would re-assert what they abandoned.
-  const site = { $services: API_PRO }
-  const base = banked(site)
-  const remote = [{ name: 'api', enabled: true, config: { grade: 'starter' } }]
-  const r = recon(site, remote, base)
-  assert.equal(r.action, 'adopt')
-})
-
-test('the owner edited and nobody else did → send', () => {
-  const base = banked({ $services: API_PRO })
-  const edited = {
-    $services: [{ name: 'api', enabled: true, config: { grade: 'starter' } }]
-  }
-  const r = recon(edited, API_PRO, base)
-  assert.equal(r.action, 'send')
-})
-
-test('⛔ both moved → conflict, and conflict never sends', () => {
-  // Two intents. A last-write-wins here would decide, with the owner's money,
-  // which of two people-who-are-the-same-person meant it.
-  const base = banked({ $services: API_PRO })
-  const edited = { $services: [{ name: 'api', enabled: false }] }
-  const remote = [{ name: 'api', enabled: true, config: { grade: 'starter' } }]
-  const r = recon(edited, remote, base)
-  assert.equal(r.action, 'conflict')
-})
-
-test('no base → a difference is a conflict, not an adopt', () => {
-  // Without the last agreed state we know the two differ and NOT who moved. The
-  // conservative reading withholds and reports; it cannot silently drop anything,
-  // because a conflict is always said out loud.
-  const r = recon({ $services: API_PRO }, [{ name: 'api' }], null)
-  assert.equal(r.action, 'conflict')
-})
-
-test('no base but identical → still nothing to ask', () => {
-  const r = recon({ $services: API_PRO }, API_PRO, null)
-  assert.equal(r.action, 'none')
-})
-
-test("the backend's omitted keys compare equal to a file that omits them", () => {
-  // Backend serves `{"name":"search"}` — no `enabled`, no `config` — precisely so a
-  // row is byte-comparable with what we would push. If this ever fails, every
-  // comparison reports a change that is not one, and the CLI adopts forever.
-  const site = { $services: [{ name: 'search' }] }
-  const r = recon(site, [{ name: 'search' }], banked(site))
-  assert.equal(r.action, 'none')
-})
-
-test('a site with no $services and a backend with rows → adopt, not send', () => {
-  // A project that never pulled, against a site that has bought services. The file
-  // is silent — "no opinion" — so there is nothing to ask and plenty to learn.
-  // ⛔ This asserted `conflict` until 2026-09-26, against its own name: a silent file is no
-  // intent, so there is only one side and nothing to rank.
-  const r = recon({}, API_PRO, { servicesRequest: null })
-  assert.equal(r.action, 'adopt')
-  const withBase = recon({}, API_PRO, banked({}))
-  assert.equal(withBase.action, 'adopt')
-})
-
-test('⭐ a site with no $services and nothing stored → nothing to ask, not a conflict', () => {
-  // The first publish of a site whose file is silent: the backend stores `[]`. Measured
-  // 2026-09-26 — this warned "changed elsewhere, and site.yml changed too", listing both as nothing.
-  assert.equal(recon({}, [], null).action, 'none')
-  assert.equal(recon({}, undefined, null).action, 'none')
-})
-
-// ── the same reconcile over the language selection ──────────────────────────
-
-test('publishLanguages is banked, so a later edit reads as intentional', () => {
-  const banked = fingerprintOf({ publishLanguages: ['en', 'fr'] })
-  assert.ok(banked.publishLanguagesRequest, 'the selection must be banked at all')
-  // Unchanged file → nothing new asked for.
-  assert.equal(
-    reconcile(['en', 'fr'], ['en', 'fr'], banked.publishLanguagesRequest).action,
-    'none'
-  )
-  // The owner adds one → a real ask, and this one moves the price.
-  assert.equal(
-    reconcile(['en', 'fr', 'es'], ['en', 'fr'], banked.publishLanguagesRequest).action,
-    'send'
-  )
-})
-
-test('⛔ absent and empty are opposite language answers, not near-misses', () => {
-  // No key means "every declared language is publishable"; [] means "none", which
-  // a publish refuses. Collapsing them would turn "all" into "nothing".
-  assert.equal(fingerprintDeclaration(undefined), null)
-  assert.notEqual(fingerprintDeclaration([]), fingerprintDeclaration(['en']))
-  assert.notEqual(fingerprintDeclaration([]), null)
-})
-
-test('language order is not a change', () => {
-  const banked = fingerprintOf({ publishLanguages: ['en', 'fr'] })
-  assert.equal(
-    reconcile(['fr', 'en'], ['en', 'fr'], banked.publishLanguagesRequest).action,
-    'none'
-  )
-})
-
-test('the site moved and the file did not → adopt, not send', () => {
-  const banked = fingerprintOf({ publishLanguages: ['en', 'fr'] })
-  const r = reconcile(['en', 'fr'], ['en'], banked.publishLanguagesRequest)
-  assert.equal(r.action, 'adopt')
-})
-
-test('banking services and languages together keeps them independent', () => {
-  const fp = fingerprintOf({
-    $services: API_PRO,
-    publishLanguages: ['en']
-  })
-  assert.ok(fp.servicesRequest && fp.publishLanguagesRequest)
-  assert.notEqual(fp.servicesRequest, fp.publishLanguagesRequest)
-})
-
-// ── taking the site's services, and what a publish banks ────────────────────
-//
-// ⛔ Until 2026-10-06 a yes to "take the site's services" wrote `site.yml::$services`,
-// which nothing has read since the rows moved to `sync.json` (2026-09-20), and the base
-// banked in `deploy.yml` stayed where it was. So the project's copy never moved, the same
-// offer came back on every publish, and once the copy did move — by a pull — the site's
-// next change read as a conflict. These pin the write, the base, and the language
-// selection the same bank was dropping.
-
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { adoptServices, bankRequest } from '../src/backend/service-request.js'
+import yaml from 'js-yaml'
 
-const A = 'http://backend-a.test'
-const B = 'http://backend-b.test'
-const STARTER = [{ name: 'api', enabled: true, config: { grade: 'starter' } }]
-const API_OFF = [{ name: 'api', enabled: false }]
+import {
+  fingerprintDeclaration,
+  reconcile,
+  bankLanguages,
+  settleServices
+} from '../src/backend/service-request.js'
 
+// ── fingerprints and the language selection ────────────────────────────────
+
+test('absent and empty are different fingerprints', () => {
+  assert.equal(fingerprintDeclaration(undefined), null)
+  assert.equal(fingerprintDeclaration(null), null)
+  assert.notEqual(fingerprintDeclaration([]), null)
+  assert.notEqual(fingerprintDeclaration([]), fingerprintDeclaration(['en']))
+})
+
+test('reordering entries or keys is not a change', () => {
+  assert.equal(fingerprintDeclaration(['en', 'fr']), fingerprintDeclaration(['fr', 'en']))
+  assert.equal(
+    fingerprintDeclaration([{ a: 1, b: { c: 2, d: 3 } }]),
+    fingerprintDeclaration([{ b: { d: 3, c: 2 }, a: 1 }])
+  )
+})
+
+test('⛔ the fingerprint leaks no value — it is a hash, and deploy.yml is committed', () => {
+  const fp = fingerprintDeclaration(['super-secret-token'])
+  assert.match(fp, /^[0-9a-f]{16}$/)
+  assert.ok(!fp.includes('secret'))
+})
+
+test('publishLanguages is banked, so a later edit reads as intentional', () => {
+  const banked = bankLanguages({ publishLanguages: ['en', 'fr'] })
+  assert.ok(banked.publishLanguagesRequest, 'the selection must be banked at all')
+  assert.equal(reconcile(['en', 'fr'], ['en', 'fr'], banked.publishLanguagesRequest).action, 'none')
+  // The owner adds one → a real ask, and this one moves the price.
+  assert.equal(reconcile(['en', 'fr', 'es'], ['en', 'fr'], banked.publishLanguagesRequest).action, 'send')
+  // CONTROL — with no base the same edit cannot be told from the status quo.
+  assert.equal(reconcile(['en', 'fr', 'es'], ['en', 'fr'], undefined).action, 'conflict')
+})
+
+test('the site moved and the file did not → adopt, not send', () => {
+  const banked = bankLanguages({ publishLanguages: ['en', 'fr'] })
+  assert.equal(reconcile(['en', 'fr'], ['en'], banked.publishLanguagesRequest).action, 'adopt')
+})
+
+test('a file that declares no selection asks nothing — never a conflict', () => {
+  assert.equal(reconcile(undefined, [], null).action, 'none')
+  assert.equal(reconcile(undefined, ['en'], null).action, 'adopt')
+  assert.deepEqual(bankLanguages({}), {})
+})
+
+// ── the services ────────────────────────────────────────────────────────────
+
+const ORIGIN = 'http://backend.test'
 const made = []
 process.on('exit', () => {
   for (const d of made) rmSync(d, { recursive: true, force: true })
 })
 
-/** A site directory holding a site.yml and a sync.json with two backends. */
-function siteWithTwoBackends() {
-  const dir = mkdtempSync(join(tmpdir(), 'service-adopt-'))
+/**
+ * A site directory: `site.yml` with `services`, and this backend's entry in sync.json.
+ * `site` defaults to an existing site; pass `site: null` for one not created yet.
+ */
+function siteDir({ services, record, site = { uuid: 'SITE-1' } } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'settle-services-'))
   made.push(dir)
-  writeFileSync(join(dir, 'site.yml'), "name: Acme\nfoundation: '@a/base'\n")
-  writeFileSync(
-    join(dir, 'sync.json'),
-    JSON.stringify({
-      version: 1,
-      backends: {
-        [A]: { site: { uuid: 'SITE-A' }, services: API_PRO },
-        [B]: { site: { uuid: 'SITE-B' }, services: [{ name: 'search' }] }
-      }
-    })
-  )
+  const siteYml = { name: 'Acme', foundation: '@a/base', ...(services ? { services } : {}) }
+  writeFileSync(join(dir, 'site.yml'), yaml.dump(siteYml))
+  const entry = { ...(site ? { site } : {}), ...(record ? { services: record } : {}) }
+  if (Object.keys(entry).length) {
+    writeFileSync(join(dir, 'sync.json'), JSON.stringify({ version: 1, backends: { [ORIGIN]: entry } }))
+  }
   return dir
 }
 
-const backendsIn = (dir) => JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends
-
-test('⭐ taking the site services writes THIS backend in sync.json, the way a pull writes it', () => {
-  const dir = siteWithTwoBackends()
-  const siteYmlBefore = readFileSync(join(dir, 'site.yml'), 'utf8')
-
-  const stored = adoptServices(dir, A, [{ $id: 'api', ...STARTER[0] }])
-
-  assert.deepEqual(stored, STARTER, '$id is payload-local and dropped, as pull drops it')
-  const backends = backendsIn(dir)
-  assert.deepEqual(backends[A].services, STARTER)
-  assert.equal(backends[A].site.uuid, 'SITE-A', 'the rest of the entry is untouched')
-  assert.deepEqual(backends[B].services, [{ name: 'search' }], 'another backend is untouched')
-  // ⛔ The defect: the rows went to site.yml, where nothing reads them.
-  assert.equal(readFileSync(join(dir, 'site.yml'), 'utf8'), siteYmlBefore)
-})
-
-test('taking a site that turned everything off stores an empty list, not nothing', () => {
-  // `[]` is a real state — "this site has no service rows" — and the one a pull writes.
-  const dir = siteWithTwoBackends()
-  assert.deepEqual(adoptServices(dir, A, []), [])
-  assert.deepEqual(backendsIn(dir)[A].services, [])
-})
-
-test('⭐ after taking the site services, the site’s next change reads as the site’s', () => {
-  const dir = siteWithTwoBackends()
-  const prior = fingerprintOf({ $services: API_PRO })
-
-  // The app changed the services; the project's copy did not move.
-  assert.equal(reconcileRequest({}, STARTER, prior, { services: API_PRO }).action, 'adopt')
-
-  // The owner takes the site's.
-  const provisioned = { services: adoptServices(dir, A, STARTER) }
-  const banked = bankRequest({}, provisioned, { declare: false, reason: 'adopted' }, prior)
-
-  // Next publish, nothing changed anywhere: nothing to ask.
-  assert.equal(reconcileRequest({}, STARTER, banked, provisioned).action, 'none')
-  // The app changes them again: the site moved, the project did not.
-  assert.equal(reconcileRequest({}, API_OFF, banked, provisioned).action, 'adopt')
-  // CONTROL — the base carried forward, as it was until 2026-10-06, reads that same
-  // change as a conflict the owner never made.
-  assert.equal(reconcileRequest({}, API_OFF, prior, provisioned).action, 'conflict')
-})
-
-test('⭐ a pull that brought the copy in line moves the base too', () => {
-  // The pull wrote the site's rows into sync.json; the publish that follows finds the
-  // two equal. That is an agreement, whoever moved last.
-  const prior = fingerprintOf({ $services: API_PRO })
-  const pulled = { services: STARTER }
-  assert.equal(reconcileRequest({}, STARTER, prior, pulled).action, 'none')
-
-  const banked = bankRequest({}, pulled, { declare: false, reason: 'in-sync' }, prior)
-  assert.equal(banked.servicesRequest, fingerprintDeclaration(STARTER))
-  assert.equal(reconcileRequest({}, API_OFF, banked, pulled).action, 'adopt')
-  // CONTROL — the old base: a conflict.
-  assert.equal(reconcileRequest({}, API_OFF, prior, pulled).action, 'conflict')
-})
-
-test('nothing agreed → the last agreement stands', () => {
-  const prior = { ...fingerprintOf({ $services: API_PRO, $secrets: [{ name: 'k' }] }) }
-  const local = { services: STARTER, secrets: [{ name: 'k2' }] }
-  for (const reason of ['adopt', 'conflict', 'unchanged']) {
-    const banked = bankRequest({}, local, { declare: false, reason }, prior)
-    assert.equal(banked.servicesRequest, prior.servicesRequest, `${reason}: services carried`)
-    assert.equal(banked.secretsRequest, prior.secretsRequest, `${reason}: secrets carried`)
+const readSiteYml = (dir) => yaml.load(readFileSync(join(dir, 'site.yml'), 'utf8'))
+const readRecord = (dir) => {
+  try {
+    return JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends[ORIGIN]?.services
+  } catch {
+    return undefined
   }
+}
+
+/** Run the step as push does: the site's rows come from a status read. */
+async function settle(dir, { stored, answer = false, interactive = true, offline = false } = {}) {
+  const said = []
+  const asked = []
+  const say = Object.fromEntries(
+    ['info', 'warn', 'dim', 'ok'].map((level) => [level, (m) => said.push(`${level}: ${m}`)])
+  )
+  const client = {
+    origin: ORIGIN,
+    siteStatus: async () => (stored === undefined ? null : { services: stored })
+  }
+  const result = await settleServices({
+    client,
+    siteDir: dir,
+    siteYml: readSiteYml(dir),
+    offline,
+    interactive,
+    confirm: async (question) => {
+      asked.push(question)
+      return answer
+    },
+    say
+  })
+  return { ...result, said: said.join('\n'), asked }
+}
+
+const API_STARTER = { name: 'api', config: { grade: 'starter', auth: { providers: ['google'] } } }
+
+test('a file that asks nothing sends nothing and records nothing', async () => {
+  const dir = siteDir({ record: [API_STARTER] })
+  const { emit, after } = await settle(dir, { stored: [API_STARTER] })
+  assert.deepEqual(emit, {})
+  after()
+  assert.deepEqual(readRecord(dir), [API_STARTER])
 })
 
-test('a sent request banks exactly what was sent', () => {
-  const siteYml = { publishLanguages: ['en'] }
-  const local = { services: STARTER, secrets: [{ name: 'k' }] }
-  const banked = bankRequest(siteYml, local, { declare: true, reason: 'changed' }, null)
-  assert.deepEqual(banked, fingerprintRequest(siteYml, local))
+test("⭐ what the owner changed is sent — over the site's own list, nothing dropped", async () => {
+  const dir = siteDir({ services: { search: true }, record: [API_STARTER] })
+  const { emit, after, said } = await settle(dir, { stored: [API_STARTER] })
+  assert.deepEqual(emit.serviceRows, [API_STARTER, { name: 'search' }])
+  assert.match(said, /Asking for: search on/)
+  after()
+  assert.deepEqual(readRecord(dir), [API_STARTER, { name: 'search' }])
 })
 
-test('secrets are not compared with the site, so agreeing on services leaves them alone', () => {
-  const prior = fingerprintOf({ $secrets: [{ name: 'k' }] })
-  const local = { services: STARTER, secrets: [{ name: 'k2' }] }
-  const banked = bankRequest({}, local, { declare: false, reason: 'in-sync' }, prior)
-  assert.equal(banked.secretsRequest, prior.secretsRequest)
+test('a setting the owner changes goes over the stored ones, key by key', async () => {
+  const dir = siteDir({ services: { api: { grade: 'pro' } }, record: [API_STARTER] })
+  const { emit } = await settle(dir, { stored: [API_STARTER] })
+  assert.deepEqual(emit.serviceRows, [
+    { name: 'api', config: { grade: 'pro', auth: { providers: ['google'] } } }
+  ])
 })
 
-test('⛔ the language selection is banked even when the services are withheld', () => {
-  const siteYml = { publishLanguages: ['en', 'fr'] }
-  const banked = bankRequest(siteYml, { services: API_PRO }, { declare: false, reason: 'in-sync' }, null)
-  assert.equal(banked.publishLanguagesRequest, fingerprintDeclaration(['en', 'fr']))
+test("⭐ the site moved and the file did not → the site's is kept, offered, and still offered next time", async () => {
+  const dir = siteDir({ services: { search: true }, record: [{ name: 'search' }] })
+  const off = [{ name: 'search', enabled: false }]
 
-  // So an added language reads as a request — the one that may cost more…
-  assert.equal(reconcile(['en', 'fr', 'es'], ['en', 'fr'], banked.publishLanguagesRequest).action, 'send')
-  // CONTROL — …where the dropped base, as it was until 2026-10-06, read it as a conflict.
-  assert.equal(reconcile(['en', 'fr', 'es'], ['en', 'fr'], undefined).action, 'conflict')
+  const first = await settle(dir, { stored: off, answer: false })
+  assert.deepEqual(first.asked, ['Update site.yml to match?'])
+  // Nothing of the file's is applied: the site's decision is what goes back.
+  assert.deepEqual(first.emit.serviceRows, off)
+  first.after()
+  // Declined: site.yml as the owner wrote it, and the record keeps the earlier agreement…
+  assert.deepEqual(readSiteYml(dir).services, { search: true })
+  assert.deepEqual(readRecord(dir), [{ name: 'search' }])
+
+  // …so the next run still sees the SITE as the one that moved — never the file.
+  const second = await settle(dir, { stored: off, answer: false })
+  assert.deepEqual(second.emit.serviceRows, off)
+  assert.deepEqual(second.asked, ['Update site.yml to match?'])
+})
+
+test("⭐ taking the site's writes site.yml — and the site's next change is the site's again", async () => {
+  const dir = siteDir({
+    services: { search: true, submit: true },
+    record: [{ name: 'search' }, { name: 'submit' }]
+  })
+  const off = [{ name: 'search', enabled: false }, { name: 'submit' }]
+
+  const first = await settle(dir, { stored: off, answer: true })
+  assert.deepEqual(readSiteYml(dir).services, { search: false, submit: true })
+  first.after()
+  assert.deepEqual(readRecord(dir), off)
+
+  // Nothing changed anywhere: nothing to ask.
+  const second = await settle(dir, { stored: off })
+  assert.deepEqual(second.asked, [])
+  assert.doesNotMatch(second.said, /Asking for/)
+
+  // The app turns search back on: the site moved, the file did not.
+  const third = await settle(dir, { stored: [{ name: 'search' }, { name: 'submit' }] })
+  assert.deepEqual(third.asked, ['Update site.yml to match?'])
+  assert.doesNotMatch(third.said, /both changed/)
+})
+
+test('⛔ both moved → asked; without a terminal nothing of it is sent, and it stays open', async () => {
+  const dir = siteDir({
+    services: { api: { grade: 'pro' } },
+    record: [{ name: 'api', config: { grade: 'starter' } }]
+  })
+  const team = [{ name: 'api', config: { grade: 'team' } }]
+
+  const run = await settle(dir, { stored: team, interactive: false })
+  assert.match(run.said, /both changed since your last sync/)
+  assert.match(run.said, /api: site\.yml asks on \(grade: pro\) — your site has on \(grade: team\)/)
+  assert.deepEqual(run.emit.serviceRows, team, "the site's decision is what goes back")
+  run.after()
+  assert.deepEqual(readRecord(dir), [{ name: 'api', config: { grade: 'starter' } }])
+})
+
+test('both moved, and the owner chooses the file → sent', async () => {
+  const dir = siteDir({
+    services: { api: { grade: 'pro' } },
+    record: [{ name: 'api', config: { grade: 'starter' } }]
+  })
+  const run = await settle(dir, { stored: [{ name: 'api', config: { grade: 'team' } }], answer: true })
+  assert.equal(run.asked[0], 'Use the services in site.yml?')
+  assert.deepEqual(run.emit.serviceRows, [{ name: 'api', config: { grade: 'pro' } }])
+})
+
+test('no record (a project that never pulled): a service the site holds differently is asked', async () => {
+  const dir = siteDir({ services: { search: true } })
+  const run = await settle(dir, { stored: [{ name: 'search', enabled: false }], interactive: false })
+  assert.match(run.said, /asks for services your site has set differently/)
+  assert.deepEqual(run.emit.serviceRows, [{ name: 'search', enabled: false }])
+})
+
+test('no record: a service the site holds nothing for is sent', async () => {
+  const dir = siteDir({ services: { search: true } })
+  const run = await settle(dir, { stored: [API_STARTER] })
+  assert.deepEqual(run.emit.serviceRows, [API_STARTER, { name: 'search' }])
+})
+
+test('⛔ an existing site this project cannot read and holds no record of gets nothing', async () => {
+  const dir = siteDir({ services: { search: true } })
+  const run = await settle(dir, { stored: undefined })
+  assert.deepEqual(run.emit, {})
+  assert.match(run.said, /could not read them, so none were sent/)
+  assert.match(run.said, /uniweb pull/)
+})
+
+test('a site not created yet has nothing stored — the file is the list', async () => {
+  const dir = siteDir({ services: { search: true, submit: false }, site: null })
+  const run = await settle(dir, {})
+  assert.deepEqual(run.emit.serviceRows, [{ name: 'search' }, { name: 'submit', enabled: false }])
+})
+
+test('the site unreadable: what changed against the record is sent over it…', async () => {
+  const dir = siteDir({ services: { search: false }, record: [API_STARTER, { name: 'search' }] })
+  const run = await settle(dir, { stored: undefined })
+  assert.deepEqual(run.emit.serviceRows, [API_STARTER, { name: 'search', enabled: false }])
+})
+
+test('…and with nothing changed, nothing is sent — the record may be stale', async () => {
+  const dir = siteDir({ services: { search: true }, record: [{ name: 'search' }] })
+  const run = await settle(dir, { stored: undefined })
+  assert.deepEqual(run.emit, { declareServices: false })
+})
+
+test('offline (`--dry-run`, `-o`) reads nothing from the backend', async () => {
+  const dir = siteDir({ services: { search: false }, record: [{ name: 'search' }] })
+  let reads = 0
+  const result = await settleServices({
+    client: {
+      origin: ORIGIN,
+      siteStatus: async () => {
+        reads++
+        return { services: [] }
+      }
+    },
+    siteDir: dir,
+    siteYml: readSiteYml(dir),
+    offline: true,
+    interactive: false,
+    confirm: async () => false,
+    say: { info: () => {}, warn: () => {}, dim: () => {}, ok: () => {} }
+  })
+  assert.equal(reads, 0)
+  assert.deepEqual(result.emit.serviceRows, [{ name: 'search', enabled: false }])
+})
+
+test('publish hands in the status it already read — no second read', async () => {
+  const dir = siteDir({ services: { search: true }, record: [] })
+  let reads = 0
+  const result = await settleServices({
+    client: { origin: ORIGIN, siteStatus: async () => (reads++, null) },
+    siteDir: dir,
+    siteYml: readSiteYml(dir),
+    status: { services: [] },
+    interactive: false,
+    confirm: async () => false,
+    say: { info: () => {}, warn: () => {}, dim: () => {}, ok: () => {} }
+  })
+  assert.equal(reads, 0)
+  assert.deepEqual(result.emit.serviceRows, [{ name: 'search' }])
+})
+
+test('a value it cannot read is said, with where it belongs', async () => {
+  const dir = siteDir({ services: { submit: '/forms', search: true }, record: [] })
+  const run = await settle(dir, { stored: [] })
+  assert.match(run.said, /services\.submit` is true, false, or a map/)
+  assert.match(run.said, /top-level `submit:` key/)
+  assert.deepEqual(run.emit.serviceRows, [{ name: 'search' }])
 })

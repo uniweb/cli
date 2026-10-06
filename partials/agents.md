@@ -2012,16 +2012,16 @@ A form gets its destination from the first of these that applies:
 
 1. **One the host supplies** — `services.submit` in the served payload. Where the
    host handles submissions, that is the destination and nothing in `site.yml`
-   overrides it — so a site published to Uniweb Cloud normally needs **no
-   `submit:` at all**.
+   overrides it — so a site published to Uniweb Cloud needs **no `submit:`**: it
+   asks for form handling with `services:` instead (*Uniweb Cloud*, below).
 2. **`submit:` in `site.yml`** — an endpoint you name yourself, for a host that
    does not handle submissions, or a static site.
-3. **Neither** — there is no destination, and the form says so instead of
-   guessing at one.
+3. **Neither** — there is no destination: render no form, or fall back to contact
+   details the site already carries.
 
-That is the general arrangement, not a forms-only one. A host declares
-everything it offers under `services`, keyed by name, and every service resolves
-by the same rule — the host's offer, then your declaration, then neither.
+That is the general arrangement, not a forms-only one. A host states everything
+it offers in the served payload's `services`, keyed by name, and every service
+resolves by the same rule — the host's offer, then your declaration, then neither.
 
 ⭐ **Before you render UI for a service, ask whether the site has it** — one predicate per service,
 no arguments: `isSearchEnabled()`, `isSubmitEnabled()`, `isApiEnabled()`, `isAssistantEnabled()`,
@@ -2138,9 +2138,9 @@ if (!canSubmit) return null    // nowhere to send — render no form, or fall ba
 ```
 
 > **The framework never invents an endpoint — but a host may supply one.** Don't
-> reach for `submit:` reflexively: on Uniweb Cloud it is redundant, and setting
-> it there overrides what the platform provides. Reach for it when you are the
-> one hosting.
+> reach for `submit:` reflexively: on Uniweb Cloud the host's form handling wins
+> wherever it is on, so a `submit:` there answers only when it is off — ask for it
+> with `services:` instead. Reach for `submit:` when you are the one hosting.
 >
 > `canSubmit` is false only when neither a declaration nor a host supplies a
 > destination. **Check it when you render, not only on the button press** — a
@@ -2656,6 +2656,24 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 **Nobody's work is overwritten without asking.** `uniweb push` is refused if the site changed on the backend since your last pull — usually an author editing in the app — and reports what changed; nothing is written. Edits to different sections never collide. `uniweb pull` overwrites rather than merges, so it refuses while you have uncommitted changes. The recovery for both is `uniweb pull --merge` (or `uniweb refresh`, which runs `git pull` first): changes to different parts of a file combine silently, and a genuine overlap leaves conflict markers and a non-zero exit — so `uniweb pull --merge && uniweb push` never ships markers. `--force` is the deliberate overwrite (on `push` it replaces the backend's changes, on `pull` it discards yours); don't use it to get past a refusal. `uniweb sync` is `refresh` then `push`; neither publishes.
 
 **`sync.json` says which site this is, on each backend.** The first push to a backend records what that backend assigned — the site's id and owner, the ids of its records and uploaded files — in `sync.json` beside `site.yml`. Commit it; never edit it. **To make a new site from a copy of a project, run `uniweb forget --all` in the copy before its first push** — the copy carries the original's `sync.json`, so otherwise its push updates the original's site. When two projects in one workspace hold the same site, a push or publish from either is refused until that is done. `uniweb forget --backend <url>` removes just one backend's records, such as a scratch server's. A record file's `$uuid` is its own id and stays in both cases. **`push`, `pull` and `publish` go to the backend you are logged in to** — the last `uniweb login --backend <url>` — and never to one you are not logged in to. A bare `uniweb login` logs in to https://uniweb.app; for any other backend, name it — logging in is how you switch, and the backend commands take no `--backend` of their own. When the project has no site on that backend but has one elsewhere, a push says so before creating a new one.
+
+**`services:` in `site.yml` asks your host for services** — site search, form handling, accounts:
+
+```yaml
+services:
+  search: true       # turn it on
+  submit: false      # turn it off
+  api:               # turn it on, with the service's own settings
+    grade: pro
+```
+
+A service you leave out keeps whatever the site has, and settings you leave out keep theirs — to turn
+one off, say `false`. `uniweb push` and `uniweb publish` send what you changed since your last sync;
+if the site's services changed elsewhere in the meantime — an author in the app — they offer to update
+`site.yml` rather than send your older choice over it, and if both changed the same service they ask
+which to keep. `uniweb pull` writes what the site has into `services:`. A change that needs payment is
+settled in the app: `publish` opens it. ⛔ **Not the same as `search:` / `submit:`**, which configure a
+provider the site brings itself — and `services:` never reaches the built site.
 
 **The Cloud also provides a real backend for structured data:** a database for every registered data schema, and a CMS that edits both static page content and dynamic data entities typed by those schemas. That's the piece that makes it viable for teams and client work — the client manages records, not markdown files.
 
