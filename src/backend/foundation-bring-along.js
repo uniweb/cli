@@ -291,9 +291,16 @@ async function bringLocalCodeAlong({
 }) {
   const Kind = kind === 'extension' ? 'Extension ' : 'Foundation'
   const scopedName = await foundationScopedName(local.dir)
+  // A name with no scope yet (it has never registered) is still a name: say it. ⛔ Until
+  // 2026-10-06 the label fell back to the KIND, and the line read "Releasing the foundation
+  // foundation@0.1.0".
+  const bareName = scopedName
+    ? null
+    : await readFoundationName(local.dir).then((r) => (r?.name && !checkFoundationName(r.name) ? r.name : null), () => null)
+  const shown = scopedName || bareName
   const label =
-    scopedName || local.version
-      ? `${scopedName || kind}${local.version ? `@${local.version}` : ''}`
+    shown || local.version
+      ? `${shown || kind}${local.version ? `@${local.version}` : ''}`
       : `the local ${kind}`
   const skipPrompts =
     args.includes('--yes') ||
