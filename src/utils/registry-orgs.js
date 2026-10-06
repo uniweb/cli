@@ -252,10 +252,11 @@ export async function deriveScope({
     // the choice is theirs. ⚠️ Until then this answered your personal scope, said: a team's
     // foundation registered as one member's.
     const { getCliPrefix } = await import('./interactive.js')
+    const { loginCommand } = await import('./config.js')
     const first = orgs[0].handle
     console.error(
       `\x1b[31m✗\x1b[0m You belong to organizations (${orgs.map((o) => `@${o.handle}`).join(', ')}), so no scope is assumed.\n` +
-        `  Choose the workspace you work in — ${getCliPrefix()} login --org @${first} (or --personal) — and the name takes its scope;\n` +
+        `  Choose the workspace you work in — ${loginCommand(apiBase, getCliPrefix())} --org @${first} (or --personal) — and the name takes its scope;\n` +
         `  or name the scope here: --scope @${first}, or --scope @${personal} for your own.`
     )
     return null

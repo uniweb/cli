@@ -26,6 +26,7 @@
  */
 
 import { readOrgFlag } from '../utils/args.js'
+import { loginCommand } from '../utils/config.js'
 import { fetchOrgs, bareHandle, validateHandle } from '../utils/registry-orgs.js'
 import { readRegistryAuth } from '../utils/registry-auth.js'
 import { workspaceHandle, describeWorkspace } from './client.js'
@@ -65,12 +66,14 @@ export const SOURCE_LABEL = {
   offline: 'not resolved in a preview'
 }
 
-const CHOOSE = [
-  'Choose the workspace you work in:',
-  '    uniweb login --org @acme      (or --personal) — for every command after',
-  '    --org @acme / --personal      — for this command only',
-  `    ${WORKSPACE_ENV}=@acme        — for a process logged in with UNIWEB_TOKEN`
-].join('\n')
+/** How to choose, for a command on `origin` — its login names the backend when it must (`loginCommand`). */
+const choose = (origin) =>
+  [
+    'Choose the workspace you work in:',
+    `    ${loginCommand(origin)} --org @acme   (or --personal) — for every command after`,
+    '    --org @acme / --personal      — for this command only',
+    `    ${WORKSPACE_ENV}=@acme        — for a process logged in with UNIWEB_TOKEN`
+  ].join('\n')
 
 /**
  * The workspace this command works in.
@@ -119,7 +122,7 @@ export async function resolveWorkspace({ client, args = [], offline = false }) {
   if (!orgs.length) return { workspace: null, source: 'personal' }
   return {
     refused: true,
-    reason: `You belong to organizations, so no workspace is assumed.\n  ${CHOOSE}`
+    reason: `You belong to organizations, so no workspace is assumed.\n  ${choose(client.origin)}`
   }
 }
 
@@ -199,7 +202,7 @@ export async function chooseWorkspace({ apiBase, token, args = [] }) {
   // login methods), so the login that finishes this signs nobody in again.
   const others = [...mine.slice(1).map((h) => `--org ${h}`), '--personal']
   const howToChoose =
-    `Choose one: ${getCliPrefix()} login --org ${mine[0]} (or ${others.join(', ')}) — ` +
+    `Choose one: ${loginCommand(apiBase, getCliPrefix())} --org ${mine[0]} (or ${others.join(', ')}) — ` +
     'it will not ask you to sign in again.'
   if (isNonInteractive(args)) {
     return {

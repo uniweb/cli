@@ -1802,7 +1802,8 @@ personal one, or an organization's — and every push, pull and publish works in
 a site it creates is created there, and a site kept in another workspace is refused.
 With no organization it is your personal workspace; with organizations you are asked,
 or name it. Already logged in, \`uniweb login --org @other\` switches without logging
-in again.
+in again — with \`--backend <url>\` when you are logged in to a backend other than the
+default, since a login without it goes to the default.
 
 ${colors.bright}Options:${colors.reset}
   --backend <url>    The backend to log in to
@@ -1817,7 +1818,8 @@ In non-interactive mode (no TTY — an agent, a script), pass \`--token <bearer>
 \`--org @org\` or \`--personal\`, or set \`UNIWEB_USERNAME\` + \`UNIWEB_PASSWORD\`, or set
 \`UNIWEB_TOKEN\` (per process, not stored) with \`UNIWEB_WORKSPACE=@org\` or \`personal\`.
 A login with organizations that names no workspace signs you in but exits 2;
-\`uniweb login --org @org\` (or \`--personal\`) finishes it without signing in again.
+\`uniweb login --org @org\` (or \`--personal\`) finishes it without signing in again —
+with \`--backend <url>\` off the default backend.
 \`uniweb logout\` logs you out.
 `,
     refresh: `

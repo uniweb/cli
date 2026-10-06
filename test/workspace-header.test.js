@@ -110,7 +110,8 @@ test('⛔ a site in another workspace STOPS the command — nothing adopted, no 
     assert.equal(err.named, '@acme')
     assert.equal(err.answer, '@client')
     assert.match(err.message, /This site is in @client, and you are working in @acme\./)
-    assert.match(err.message, /To work on it: uniweb login --org @client$/)
+    // The backend is named: a bare `uniweb login` would go to the default one instead.
+    assert.match(err.message, /To work on it: uniweb login --backend http:\/\/backend\.test --org @client$/)
     return true
   })
   assert.equal(calls.length, 1)
@@ -121,8 +122,8 @@ test('the way out is said the way the workspace was chosen — flag, env, login'
   const cases = [
     ['flag', /\(named on this command\)\. To work on it, pass --org @client\./],
     ['env', /\(UNIWEB_WORKSPACE\)\. To work on it, set UNIWEB_WORKSPACE=@client\./],
-    ['login', /To work on it: uniweb login --org @client$/],
-    ['personal', /To work on it: uniweb login --org @client$/]
+    ['login', /To work on it: uniweb login --backend http:\/\/backend\.test --org @client$/],
+    ['personal', /To work on it: uniweb login --backend http:\/\/backend\.test --org @client$/]
   ]
   for (const [source, expected] of cases) {
     const { client } = recorded(wrongWorkspace('client'))
@@ -138,7 +139,7 @@ test('the way out is said the way the workspace was chosen — flag, env, login'
 test('a site in the personal workspace, or in a unit with no handle, is said as such', async () => {
   const personal = recorded(wrongWorkspace(null))
   personal.client.setWorkspace('@acme')
-  await assert.rejects(personal.client.request(SITE), /in your personal workspace, .* uniweb login --personal/)
+  await assert.rejects(personal.client.request(SITE), /in your personal workspace, .* uniweb login --backend http:\/\/backend\.test --personal/)
 
   const unit = recorded(wrongWorkspace(null, UNIT))
   unit.client.setWorkspace('@acme')

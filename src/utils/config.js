@@ -107,6 +107,25 @@ export function getDefaultBackendOrigin() {
 }
 
 /**
+ * The `uniweb login` that reaches `origin` — with `--backend` unless `origin` is where a bare
+ * login goes (`getDefaultBackendOrigin`).
+ *
+ * ⛔ A bare `uniweb login` goes to the DEFAULT backend, never to the one you are logged in to
+ * (`resolveLoginOrigin`), so a hint that names a login — to choose or switch a workspace —
+ * must name the backend whenever it is another. *Measured 2026-10-06 against a local
+ * backend:* `uniweb login --org @acme` went to https://uniweb.app, "logging you out" of the
+ * local one, where it should have chosen the workspace of the session it was asked about.
+ *
+ * @param {string} origin - the backend the hint is about
+ * @param {string} [prefix='uniweb'] - how the user runs the CLI (`getCliPrefix`)
+ * @returns {string} e.g. `uniweb login`, or `uniweb login --backend http://localhost:8080`
+ */
+export function loginCommand(origin, prefix = 'uniweb') {
+  const o = originOrNull(origin)
+  return o && o !== getDefaultBackendOrigin() ? `${prefix} login --backend ${o}` : `${prefix} login`
+}
+
+/**
  * The backend `uniweb login` logs in to: `--backend`, else the default backend.
  *
  * ⛔ A mistyped `--backend` is an error, never a fallback — it would log you in, and so

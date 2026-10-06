@@ -121,7 +121,7 @@ test('none chosen: personal when you belong to no organization; refused when you
   assert.deepEqual(none, { workspace: null, source: 'personal' })
   const { result: some } = await scene({ session: { token: 't' }, orgs: ACME }, () => resolveWorkspace({ client: client() }))
   assert.equal(some.refused, true)
-  assert.match(some.reason, /uniweb login --org @acme/)
+  assert.match(some.reason, /uniweb login --backend http:\/\/backend\.test --org @acme/)
 })
 
 test('a preview never authenticates: none chosen is "not resolved", not a request', async () => {
@@ -149,7 +149,8 @@ test('--org must name an organization you belong to', async () => {
 test('organizations and no terminal: refused, naming every workspace you can choose', async () => {
   const { result } = await scene({ orgs: ACME }, () => chooseWorkspace({ apiBase: ORIGIN, token: 't' }))
   assert.equal(result.refused, true)
-  assert.match(result.reason, /login --org @acme \(or --personal\)/)
+  // ⛔ The backend is named — a bare `uniweb login` goes to the default backend, not this one.
+  assert.match(result.reason, /login --backend http:\/\/backend\.test --org @acme \(or --personal\)/)
   assert.match(result.reason, /will not ask you to sign in again/)
 })
 
@@ -183,7 +184,7 @@ test('a login with organizations and no workspace named keeps the session and ex
   assert.equal(readSession(home).workspace, undefined)
   // ⭐ It says what happened: logged in, no workspace yet, and the one command that finishes it.
   assert.match(printed, /Logged in to http:\/\/backend\.test.* — with no workspace chosen yet/)
-  assert.match(printed, /login --org @acme \(or --personal\) — it will not ask you to sign in again/)
+  assert.match(printed, /login --backend http:\/\/backend\.test --org @acme \(or --personal\) — it will not ask you to sign in again/)
 })
 
 /** As an interactive terminal inside `scene`: a TTY, and no CI. */
@@ -219,7 +220,7 @@ test('⛔ a workspace pick cancelled at a terminal is not a cancelled login: sai
   assert.equal(exit, 2)
   assert.equal(readSession(home).token, 'T1')
   assert.match(printed, /with no workspace chosen yet/)
-  assert.match(printed, /No workspace chosen\. Choose one: .*login --org @acme/)
+  assert.match(printed, /No workspace chosen\. Choose one: .*login --backend http:\/\/backend\.test --org @acme/)
   assert.doesNotMatch(printed, /^Cancelled\./m)
 })
 
@@ -251,4 +252,26 @@ test('⭐ switching workspace needs no new login — --org on a valid session', 
   assert.equal(readSession(home).workspace, '@acme')
   assert.match(printed, /Now working in .*@acme/)
   assert.ok(!requests.some((u) => u.endsWith('/dev/auth/login')), 'no authentication')
+})
+
+// ⛔ A bare `uniweb login` goes to the DEFAULT backend, never to the one you are logged in to — so a
+// hint that names a login must name any other backend. Measured 2026-10-06 against a local backend:
+// "uniweb login --org @acme" went to https://uniweb.app and began a new login there.
+test('loginCommand names the backend unless it is where a bare login goes', async () => {
+  const { loginCommand } = await import('../src/utils/config.js')
+  const saved = { home: process.env.HOME, url: process.env.UNIWEB_REGISTER_URL }
+  process.env.HOME = mkdtempSync(join(tmpdir(), 'uw-login-cmd-')) // no saved registryApiUrl
+  delete process.env.UNIWEB_REGISTER_URL
+  try {
+    assert.equal(loginCommand('https://uniweb.app'), 'uniweb login')
+    assert.equal(loginCommand('http://localhost:8080'), 'uniweb login --backend http://localhost:8080')
+    assert.equal(loginCommand('http://localhost:8080/dev/site', 'pnpm uniweb'), 'pnpm uniweb login --backend http://localhost:8080')
+    // UNIWEB_REGISTER_URL is where a bare login goes, so it needs no flag
+    process.env.UNIWEB_REGISTER_URL = 'http://localhost:8080'
+    assert.equal(loginCommand('http://localhost:8080'), 'uniweb login')
+  } finally {
+    process.env.HOME = saved.home
+    if (saved.url === undefined) delete process.env.UNIWEB_REGISTER_URL
+    else process.env.UNIWEB_REGISTER_URL = saved.url
+  }
 })

@@ -29,7 +29,7 @@
  * single home.
  */
 
-import { getRegistryApiBaseUrl } from '../utils/config.js'
+import { getRegistryApiBaseUrl, loginCommand } from '../utils/config.js'
 import {
   ensureRegistryAuth,
   fetchMe,
@@ -191,11 +191,12 @@ export function workspaceHeader(value) {
  */
 export class WorkspaceMismatchError extends Error {
   /**
-   * @param {{ named: string|null, answer: string|null, source?: string }} p - the
-   *   workspace the request named and the one the backend named (`@handle`, a unit's
-   *   uuid, null for personal), and where the named one came from (`workspace.js`)
+   * @param {{ named: string|null, answer: string|null, source?: string, origin?: string|null }} p -
+   *   the workspace the request named and the one the backend named (`@handle`, a unit's
+   *   uuid, null for personal), where the named one came from (`workspace.js`), and the
+   *   backend — a login that switches must name it unless it is the default (`loginCommand`)
    */
-  constructor({ named, answer, source = 'login' }) {
+  constructor({ named, answer, source = 'login', origin = null }) {
     const where = (w) =>
       !w ? 'your personal workspace' : w.startsWith('@') ? w : `the unit ${w}`
     // How to work in the site's workspace, said for the way this one was chosen.
@@ -204,7 +205,11 @@ export class WorkspaceMismatchError extends Error {
       : answer.startsWith('@')
         ? { flag: `pass --org ${answer}`, env: `set UNIWEB_WORKSPACE=${answer}` }
         : null
-    const login = !answer ? 'uniweb login --personal' : answer.startsWith('@') ? `uniweb login --org ${answer}` : null
+    const login = !answer
+      ? `${loginCommand(origin)} --personal`
+      : answer.startsWith('@')
+        ? `${loginCommand(origin)} --org ${answer}`
+        : null
     const fix = !switchTo
       ? 'It has no handle, so the CLI cannot work in it.'
       : source === 'flag'
@@ -392,7 +397,8 @@ export class BackendClient {
     throw new WorkspaceMismatchError({
       named: this._workspace,
       answer,
-      source: this._workspaceSource
+      source: this._workspaceSource,
+      origin: this.origin
     })
   }
 
