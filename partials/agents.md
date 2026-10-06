@@ -1962,15 +1962,15 @@ When an external query is enough and when a transport is the answer: `developmen
 
 Full model: `reference/data-fetching.md`. Where-object format with examples: `authoring/predicates.md`.
 
-### Search (`search:`)
+### Search (`services.search`)
 
-Search follows the same arrangement as `fetcher:` — the **site** declares where results come from, and a search UI reads them the same way regardless. Never hardcode a search endpoint in a component; that couples the foundation to one host.
+Search follows the same arrangement as `fetcher:` — the **site** declares where results come from, and a search UI reads them the same way regardless. Never hardcode a search endpoint in a component; that couples the foundation to one host. Search is on by default; its entry under `services:` (see *Services*, below) turns it off, sets options, or — on a site you publish — asks the host for it:
 
 ```yaml
 # site.yml
-search:
-  enabled: true
-  provider: index        # default — download an index, match in the browser
+services:
+  search:
+    provider: index      # default — download an index, match in the browser
 ```
 
 | Provider | Answers with | Trade-off |
@@ -1980,12 +1980,13 @@ search:
 | *any other name* | A foundation-supplied search transport | Fully open — Typesense, Meilisearch, Pagefind, a vendor API |
 
 ```yaml
-search:
-  provider: endpoint
-  endpoint: _search      # REQUIRED — there is no default
+services:
+  search:
+    provider: endpoint
+    endpoint: _search    # REQUIRED — there is no default
 ```
 
-`endpoint:` is **required** with `provider: endpoint`; omit it and the provider refuses the query rather than guessing a path. It resolves against the site's base path — `/` → `/_search`, `base: /docs/` → `/docs/_search`, a subpath-served site follows its subpath. An absolute `https://…` URL points at another origin. A host that serves the site may offer search itself, supplying the address so the site declares none.
+`endpoint:` is **required** with `provider: endpoint`; omit it and the provider refuses the query rather than guessing a path. It resolves against the site's base path — `/` → `/_search`, `base: /docs/` → `/docs/_search`, a subpath-served site follows its subpath. An absolute `https://…` URL points at another origin. A host that serves the site may offer search itself: `search: true` asks for it, and the host supplies the address. An endpoint of your own asks the host to leave its search off, so yours answers.
 
 **Results have one shape, whatever the provider.** Always present: `id`, `type`, `route`, `href`, `title`, `pageTitle`, `excerpt`, `snippetHtml`. Provider-optional (`null` when absent): `sectionId`, `anchor`, `description`, `component`, `snippetText`, `matches`, `group`, `item`. `type` is `page`, `section` or `record`; on a record hit, `item` holds the record's fields and `group` names the set it came from. Whether an optional field arrives is a deployment fact, not a content fact — the same site yields `item` from a server provider and `null` from the local index — so guard them: `result.item?.image`.
 
@@ -2002,26 +2003,27 @@ const { results, isLoading, query } = useSearch(website)   // `query` is a funct
 
 Full reference: `authoring/search.md`.
 
-### Forms (`submit:`)
+### Forms (`services.submit`)
 
 Drawing a form is a foundation's job; delivering what a visitor typed needs a
 server. Where that server is comes from the **site or its host** — never from a
-section type, same arrangement as `fetcher:` and `search:`.
+section type, same arrangement as `fetcher:` and search.
 
 A form gets its destination from the first of these that applies:
 
-1. **One the host supplies** — `services.submit` in the served payload. Where the
-   host handles submissions, that is the destination and nothing in `site.yml`
-   overrides it — so a site published to Uniweb Cloud needs **no `submit:`**: it
-   asks for form handling with `services:` instead (*Uniweb Cloud*, below).
-2. **`submit:` in `site.yml`** — an endpoint you name yourself, for a host that
-   does not handle submissions, or a static site.
+1. **One the host supplies** — `config.services.submit` in the payload it serves. Where the
+   host handles submissions, that is the destination. A site published to Uniweb
+   Cloud asks for it with `submit: true` under `services:` and names no address.
+2. **An address of the site's own** — `submit: <url>` under `services:`, for a
+   static site or a host that does not handle submissions. On a host that does, it
+   asks the host to leave its own off, so this one answers.
 3. **Neither** — there is no destination: render no form, or fall back to contact
    details the site already carries.
 
 That is the general arrangement, not a forms-only one. A host states everything
-it offers in the served payload's `services`, keyed by name, and every service
-resolves by the same rule — the host's offer, then your declaration, then neither.
+it offers in the served payload's `config.services`, keyed by name, and every service
+resolves by the same rule — the host's offer, then the site's own address, then
+neither.
 
 ⭐ **Before you render UI for a service, ask whether the site has it** — one predicate per service,
 no arguments: `isSearchEnabled()`, `isSubmitEnabled()`, `isApiEnabled()`, `isAssistantEnabled()`,
@@ -2116,10 +2118,15 @@ wherever tracking is configured, with no help from your components. List
 leaving it out does not switch the baseline off.
 
 ```yaml
-# site.yml — only when YOU are providing the endpoint. Publishing to Uniweb
-# Cloud needs nothing here; `uniweb export` and most `deploy --host` targets do.
-submit: /forms                              # base-relative, resolved like search.endpoint
-submit: https://forms.example.com/intake    # or another origin
+# site.yml
+services:
+  submit: true                              # your host's form handling (Uniweb Cloud)
+```
+
+```yaml
+# site.yml — when YOU are providing the endpoint: `uniweb export`, most `deploy --host` targets
+services:
+  submit: https://forms.example.com/intake  # or /forms, base-relative like search's endpoint
 ```
 
 ```jsx
@@ -2138,12 +2145,12 @@ if (!canSubmit) return null    // nowhere to send — render no form, or fall ba
 ```
 
 > **The framework never invents an endpoint — but a host may supply one.** Don't
-> reach for `submit:` reflexively: on Uniweb Cloud the host's form handling wins
-> wherever it is on, so a `submit:` there answers only when it is off — ask for it
-> with `services:` instead. Reach for `submit:` when you are the one hosting.
+> write an address reflexively: on Uniweb Cloud an address asks the host to turn its
+> own form handling off — `submit: true` is the whole declaration there. Reach for an
+> address when you are the one hosting.
 >
-> `canSubmit` is false only when neither a declaration nor a host supplies a
-> destination. **Check it when you render, not only on the button press** — a
+> `canSubmit` is false only when neither the host nor an address of the site's own
+> supplies a destination. **Check it when you render, not only on the button press** — a
 > form nobody can send should not be on the page at all. A read that 404s
 > degrades to `[]` and the page still renders; a write that 404s loses what a
 > person typed, so it gets no silent fallback.
@@ -2197,7 +2204,7 @@ from. `values` keeps the `File` so your input can show its selection.
 
 Full reference: `development/receiving-form-submissions.md`.
 
-### Tracking (`tracking:`)
+### Tracking (`services.tracking`)
 
 A site may declare one **tracking destination**, and everything worth counting
 goes there as an event on a single stream. A page visit is just the event the
@@ -2205,23 +2212,28 @@ runtime emits by itself.
 
 ```yaml
 # site.yml — your own collector, on any host
-tracking: https://collector.example.com/events
-
-# or, when it needs more than an address
-tracking:
-  endpoint: /collect
-  consent: required
+services:
+  tracking: https://collector.example.com/events
 ```
 
-A host may also supply one under `services.tracking`, and the usual precedence
-applies: the host's, then yours, then neither.
+```yaml
+# or, when it needs more than an address
+services:
+  tracking:
+    endpoint: /collect
+    consent: required
+```
+
+A host may also supply one — `tracking: true` asks for it on a site you publish —
+and the usual precedence applies: the host's, then yours, then neither. An
+endpoint of your own asks the host to leave its collector off, so yours answers.
 
 ⚠️ **The endpoint has to accept the framework's own format** — a batched
 `{ "events": [ … ] }` POST, documented in `reference/site-configuration.md`. It
 is not a third-party analytics product's public API, which expects that
 product's own shape.
 
-A site may also name a vendor's own script under `tracking.scripts`, which the
+A site may also name a vendor's own script under `services.tracking.scripts`, which the
 runtime loads once, after consent when a gate is declared, and never in a frame
 or during prerender. That is a **separate path with no connection to the stream
 below** — the vendor measures its own way, and nothing you `track()` reaches it.
@@ -2271,21 +2283,24 @@ Narrow or widen that with `emit`:
 
 ```yaml
 # site.yml — your own collector
-tracking:
-  endpoint: https://collector.example.com/events
-  emit: standard        # minimal | standard | all — or a list of event names
+services:
+  tracking:
+    endpoint: https://collector.example.com/events
+    emit: standard      # minimal | standard | all — or a list of event names
+```
 
+```yaml
 # site.yml — a host that supplies the collector: say what to send, not where
-tracking:
-  emit: minimal
+services:
+  tracking:
+    emit: minimal
 ```
 
 ⭐ **`emit` needs no endpoint of its own.** Where a host provides one, the site
 declares only what it wants sent and the address comes from the host. The two
 are read key by key, so naming `emit` alone overrides nothing else the host
-declared. An `endpoint:` of your own is used wherever the host supplies no
-collector — on a host without one, and on none — and where the host supplies
-one, the host's is used.
+declared. An `endpoint:` of your own means you collect yourself, and asks the host
+to leave its collector off.
 
 `minimal` is `page_view` alone. `standard` is the default when the collector is
 your own. `all` is a standing yes, so an event added in a later framework
@@ -2540,8 +2555,9 @@ permission model and a CSS one.
 You do not need a live backend to build against one. In `site.yml`:
 
 ```yaml
-api: /_api                 # where it answers — the same value in production
-$devApi: ./mock/api.js     # what answers it locally; `$` keys are never published
+services:
+  api: true                # ask your host for an app backend when you publish
+$devApi: ./mock/api.js     # what answers it in `uniweb dev`; `$` keys are never published
 ```
 
 ```js
@@ -2550,8 +2566,10 @@ import { createMockBackend } from '@uniweb/api/mock'
 export default createMockBackend({ seed }).fetch
 ```
 
-`uniweb dev` mounts it at your `api:` address, same-origin, so cookies and your
-site's configuration behave exactly as they will in production. It **enforces** who
+`uniweb dev` answers your site's `api` service with it, at an address the dev server
+supplies on its own origin, so cookies behave exactly as they will in production. Write
+no address of your own for it: under `services:` an address means a backend you run, and
+asks your host to leave its own off. It **enforces** who
 may edit an entry and `append_only`, so a permission you are relying on fails on your
 machine rather than in front of a user. State is in memory; restart to reset.
 
@@ -2657,23 +2675,30 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 
 **`sync.json` says which site this is, on each backend.** The first push to a backend records what that backend assigned — the site's id and owner, the ids of its records and uploaded files — in `sync.json` beside `site.yml`. Commit it; never edit it. **To make a new site from a copy of a project, run `uniweb forget --all` in the copy before its first push** — the copy carries the original's `sync.json`, so otherwise its push updates the original's site. When two projects in one workspace hold the same site, a push or publish from either is refused until that is done. `uniweb forget --backend <url>` removes just one backend's records, such as a scratch server's. A record file's `$uuid` is its own id and stays in both cases. **`push`, `pull` and `publish` go to the backend you are logged in to** — the last `uniweb login --backend <url>` — and never to one you are not logged in to. A bare `uniweb login` logs in to https://uniweb.app; for any other backend, name it — logging in is how you switch, and the backend commands take no `--backend` of their own. When the project has no site on that backend but has one elsewhere, a push says so before creating a new one.
 
-**`services:` in `site.yml` asks your host for services** — site search, form handling, accounts:
+**`services:` in `site.yml` is where a site says which services it uses** — site search, form
+handling, analytics, an assistant, accounts — one entry per service:
 
 ```yaml
 services:
-  search: true       # turn it on
-  submit: false      # turn it off
-  api:               # turn it on, with the service's own settings
+  search: true                                     # on — your host's, or the built-in index
+  submit: false                                    # off
+  tracking: https://collector.example.com/events   # a provider you bring
+  api:                                             # on, with the service's own settings
     grade: pro
 ```
 
-A service you leave out keeps whatever the site has, and settings you leave out keep theirs — to turn
-one off, say `false`. `uniweb push` and `uniweb publish` send what you changed since your last sync;
-if the site's services changed elsewhere in the meantime — an author in the app — they offer to update
-`site.yml` rather than send your older choice over it, and if both changed the same service they ask
-which to keep. `uniweb pull` writes what the site has into `services:`. A change that needs payment is
-settled in the app: `publish` opens it. ⛔ **Not the same as `search:` / `submit:`**, which configure a
-provider the site brings itself — and `services:` never reaches the built site.
+An entry is `true`, `false`, an address of your own (a string, or `endpoint:` in a map), or a map
+of options. On a site you push or publish it is also **what you ask your host for**: `true` asks for
+its service, `false` asks it to turn its service off, and an address asks it to leave its own off so
+yours answers. A service you leave out keeps whatever the site has, and settings you leave out keep
+theirs — to turn one off, say `false`. `uniweb push` and `uniweb publish` send what you changed since
+your last sync; if the site's services changed elsewhere in the meantime — an author in the app —
+they offer to update `site.yml` rather than send your older choice over it, and if both changed the
+same service they ask which to keep. `uniweb pull` writes what the site has into `services:`. A
+change that needs payment is settled in the app: `publish` opens it. **Everything in an entry but a
+credential is public** — it is built into the site, except `api`'s settings, which only your host
+reads; a key or token is set in the app. ⛔ The top-level `search:` / `submit:` / `assistant:` /
+`tracking:` / `api:` keys are retired: the build stops on them and says where each one moves.
 
 **The Cloud also provides a real backend for structured data:** a database for every registered data schema, and a CMS that edits both static page content and dynamic data entities typed by those schemas. That's the piece that makes it viable for teams and client work — the client manages records, not markdown files.
 

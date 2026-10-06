@@ -298,10 +298,16 @@ test('publish hands in the status it already read — no second read', async () 
   assert.deepEqual(result.emit.serviceRows, [{ name: 'search' }])
 })
 
-test('a value it cannot read is said, with where it belongs', async () => {
-  const dir = siteDir({ services: { submit: '/forms', search: true }, record: [] })
+test('a value it cannot read is said', async () => {
+  const dir = siteDir({ services: { submit: 3, search: true }, record: [] })
   const run = await settle(dir, { stored: [] })
-  assert.match(run.said, /services\.submit` is true, false, or a map/)
-  assert.match(run.said, /top-level `submit:` key/)
+  assert.match(run.said, /services\.submit` is true, false, an address, or a map/)
   assert.deepEqual(run.emit.serviceRows, [{ name: 'search' }])
+})
+
+test('⭐ an address is the site\'s own provider: the host is asked to leave its own off, and told why', async () => {
+  const dir = siteDir({ services: { submit: 'https://forms.example.com/f/abc' }, record: [{ name: 'submit' }] })
+  const run = await settle(dir, { stored: [{ name: 'submit' }] })
+  assert.deepEqual(run.emit.serviceRows, [{ name: 'submit', enabled: false }])
+  assert.match(run.said, /Asking for: submit off — your own at https:\/\/forms\.example\.com\/f\/abc/)
 })

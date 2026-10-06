@@ -116,11 +116,12 @@ test('warns when a form has no destination and no host is in the picture', async
   }
 })
 
-test('silent when the site declares submit:', async () => {
+test('silent when the site names its form service, or asks its host for one', async () => {
   const dir = makeSite({ 'pages/contact/1-form.md': FORM_MD })
   const issues = []
   try {
-    await checkFormSubmitTarget({ sitePath: dir, siteName: 'site', siteYml: { submit: '/forms' }, issues })
+    await checkFormSubmitTarget({ sitePath: dir, siteName: 'site', siteYml: { services: { submit: '/forms' } }, issues })
+    await checkFormSubmitTarget({ sitePath: dir, siteName: 'site', siteYml: { services: { submit: true } }, issues })
     assert.deepEqual(issues, [])
   } finally {
     rmSync(dir, { recursive: true, force: true })

@@ -19,6 +19,7 @@ import {
 } from '@uniweb/build'
 import { loadDeployYml, AGENTS_KEYS } from '@uniweb/build/site'
 import { listAdapters } from '@uniweb/build/hosts'
+import { RUNTIME_KEYS } from '@uniweb/build/uwx'
 import { getCliVersion } from '../versions.js'
 import { readAgentsVersion } from '../utils/agents-stamp.js'
 import { writeJsonPreservingStyle } from '../utils/json-file.js'
@@ -388,17 +389,12 @@ function nearestKnownKey(input, known) {
 }
 
 /**
- * The options `tracking:` actually has a reader.
- *
- * ⚠️ **Kept here rather than imported, because nothing at runtime enumerates
- * them** — `wireTracker` reads named properties off the resolved declaration, it
- * does not iterate a list. So there is no existing array to import and this
- * duplicates nothing. It does mean the list can drift: the readers are
- * `runtime/src/wire-foundation.js::wireTracker` (`consent`, `scripts`, `debug`)
- * and `core/src/services.js::readEndpoint` (`endpoint`). Add a key there, add it
- * here.
+ * The options `services.tracking` has a reader for — the build's list, which also
+ * decides what a push sends the host as its settings (`RUNTIME_KEYS`, `@uniweb/build`).
+ * ⛔ *Until 2026-10-06 doctor kept a copy of its own, which had drifted: it lacked
+ * `emit` and `flushIntervalMs`, which `wireTracker` reads.*
  */
-const TRACKING_KEYS = ['endpoint', 'consent', 'scripts', 'debug']
+const TRACKING_KEYS = RUNTIME_KEYS.tracking
 
 /**
  * Spellings that read as an ATTEMPT to require consent but do not require it.
@@ -414,10 +410,10 @@ const TRACKING_KEYS = ['endpoint', 'consent', 'scripts', 'debug']
 const CONSENT_NEAR_MISSES = new Set(['require', 'requires', 'required.', 'true', 'yes', 'on', '1'])
 
 /**
- * `tracking:` — flag the keys and values that are carried and never acted on.
+ * `services.tracking` — flag the keys and values that are carried and never acted on.
  *
- * The block is forwarded to the host as opaque data and resolved at render, so
- * nothing downstream rejects a mistake in it. Every error here therefore fails
+ * A key the site's tracking does not read goes to the host as a setting, and the
+ * rest is resolved at render, so nothing downstream rejects a mistake in it. Every error here therefore fails
  * the same way: **silently, at a visitor's browser, as an absence** — which is
  * also exactly what a site that configured nothing looks like. There is no
  * symptom to notice and nothing to grep for.
@@ -425,8 +421,8 @@ const CONSENT_NEAR_MISSES = new Set(['require', 'requires', 'required.', 'true',
  * ⭐ That is the whole argument for checking it at `doctor` time: it is the only
  * moment in the chain where a person who can fix it is looking at it.
  *
- * A bare `tracking: <url>` string is the documented shorthand and carries no
- * options — there is nothing in it to be wrong.
+ * An address, `true` or `false` carries no options — there is nothing in it to be
+ * wrong.
  */
 /**
  * `uniweb doctor` — is `package.json` behind what the build derived?
@@ -806,8 +802,8 @@ export function checkUngatedServiceControls({ foundationName, folderName, srcDir
 }
 
 export function checkTrackingBlock({ siteName, siteYml, issues }) {
-  const tracking = siteYml?.tracking
-  if (tracking === undefined || tracking === null) return
+  const tracking = siteYml?.services?.tracking
+  if (tracking === undefined || tracking === null || typeof tracking === 'boolean') return
   if (typeof tracking === 'string') return
 
   if (typeof tracking !== 'object' || Array.isArray(tracking)) {
@@ -816,9 +812,9 @@ export function checkTrackingBlock({ siteName, siteYml, issues }) {
       id,
       type: 'warning',
       site: siteName,
-      message: `site.yml: \`tracking:\` should be an endpoint string, or a map of options`
+      message: `site.yml: \`services.tracking\` should be true, false, an address, or a map of options`
     })
-    warn(`[${id}] ${siteName}: \`tracking:\` is neither an endpoint string nor a map of options.`)
+    warn(`[${id}] ${siteName}: \`services.tracking\` is neither true, false, an address nor a map of options.`)
     return
   }
 
@@ -830,10 +826,10 @@ export function checkTrackingBlock({ siteName, siteYml, issues }) {
       id,
       type: 'warning',
       site: siteName,
-      message: `site.yml: \`tracking:\` has ${unknown.length === 1 ? 'an unknown key' : 'unknown keys'}: ${unknown.join(', ')}`
+      message: `site.yml: \`services.tracking\` has ${unknown.length === 1 ? 'an unknown key' : 'unknown keys'}: ${unknown.join(', ')}`
     })
     warn(
-      `[${id}] ${siteName}: \`tracking:\` ${unknown.length === 1 ? 'key' : 'keys'} ${unknown
+      `[${id}] ${siteName}: \`services.tracking\` ${unknown.length === 1 ? 'key' : 'keys'} ${unknown
         .map((k) => `'${k}'`)
         .join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not recognized.`
     )
@@ -842,7 +838,7 @@ export function checkTrackingBlock({ siteName, siteYml, issues }) {
       if (near) log(`    ${colors.dim}'${key}' — did you mean ${colors.reset}${colors.green}${near}${colors.reset}${colors.dim}?${colors.reset}`)
     }
     log(
-      `    ${colors.dim}Carried to the host as opaque data and never read. Known: ${TRACKING_KEYS.join(', ')}.${colors.reset}`
+      `    ${colors.dim}Not an option the site's tracking reads — sent to your host as a setting. Known: ${TRACKING_KEYS.join(', ')}.${colors.reset}`
     )
   }
 
@@ -869,9 +865,9 @@ export function checkTrackingBlock({ siteName, siteYml, issues }) {
         id,
         type: 'warning',
         site: siteName,
-        message: `site.yml: \`tracking.consent:\` is ${shown} — only the exact value \`required\` turns the gate on`
+        message: `site.yml: \`services.tracking.consent\` is ${shown} — only the exact value \`required\` turns the gate on`
       })
-      warn(`[${id}] ${siteName}: \`tracking.consent:\` is ${shown}; the gate is OFF.`)
+      warn(`[${id}] ${siteName}: \`services.tracking.consent\` is ${shown}; the gate is OFF.`)
       log(
         `    ${colors.dim}Only \`consent: required\` holds events until a visitor answers. Anything else${colors.reset}`
       )
@@ -894,10 +890,10 @@ export function checkTrackingBlock({ siteName, siteYml, issues }) {
         id,
         type: 'warning',
         site: siteName,
-        message: `site.yml: \`tracking.scripts:\` has ${bad.length} ${bad.length === 1 ? 'entry' : 'entries'} with no URL`
+        message: `site.yml: \`services.tracking.scripts\` has ${bad.length} ${bad.length === 1 ? 'entry' : 'entries'} with no URL`
       })
       warn(
-        `[${id}] ${siteName}: ${bad.length} \`tracking.scripts:\` ${bad.length === 1 ? 'entry has' : 'entries have'} no URL and will not load.`
+        `[${id}] ${siteName}: ${bad.length} \`services.tracking.scripts\` ${bad.length === 1 ? 'entry has' : 'entries have'} no URL and will not load.`
       )
       log(
         `    ${colors.dim}An entry is a URL, or an object with a \`src\`. Anything else is dropped silently.${colors.reset}`
@@ -927,19 +923,19 @@ function editDistance(a, b) {
 /**
  * A site whose content declares a form needs somewhere to send it.
  *
- * Two things can supply that: `submit:` in site.yml, or the host at serve time.
- * Doctor can only see the first — so it warns only when *nothing* could
- * plausibly supply one: no declaration, and no deploy target that would put a
- * host in the picture. On a site bound to a host, having no `submit:` is the
- * correct configuration, and warning there would nag exactly the people who got
- * it right.
+ * Two things can supply that: `services.submit` in site.yml — asking the host for
+ * form handling, or naming the site's own — or the host at serve time. Doctor can
+ * only see the first — so it warns only when *nothing* could plausibly supply one:
+ * no entry, and no deploy target that would put a host in the picture. On a site
+ * bound to a host, an absent entry can be the correct configuration, and warning
+ * there would nag exactly the people who got it right.
  *
  * The consequence of being wrong in the other direction is what justifies the
- * check at all: a form with no destination renders disabled, which is visible
- * on the page but easy to ship without noticing.
+ * check at all: a form with no destination is not drawn, which is easy to ship
+ * without noticing.
  */
 export async function checkFormSubmitTarget({ sitePath, siteName, siteYml, issues }) {
-  if (siteYml?.submit) return
+  if (siteYml?.services?.submit) return
 
   const forms = findFormContent(sitePath, siteYml)
   if (forms.length === 0) return
@@ -966,7 +962,7 @@ export async function checkFormSubmitTarget({ sitePath, siteName, siteYml, issue
   for (const f of forms.slice(0, 5)) log(`    • ${f}`)
   if (n > 5) log(`    ${colors.dim}…and ${n - 5} more${colors.reset}`)
   log(
-    `    Set ${colors.green}submit${colors.reset} in site.yml if you are providing the endpoint.`
+    `    Ask your host for form handling — ${colors.green}services: { submit: true }${colors.reset} — or name your own: ${colors.green}services: { submit: https://… }${colors.reset}.`
   )
   log(
     `    ${colors.dim}A host that handles submissions supplies one itself — this check is skipped once a deploy target is configured.${colors.reset}`

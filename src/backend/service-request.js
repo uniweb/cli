@@ -136,6 +136,20 @@ function describeService(row) {
   return `${state} (${shown})`
 }
 
+/**
+ * The file's entry, as its owner reads it — `off — your own at <address>` for a
+ * service the site brings itself (which asks the host to leave its own off).
+ */
+function describeEntry(entry, ask) {
+  const own =
+    typeof entry === 'string'
+      ? entry
+      : entry && typeof entry === 'object' && typeof entry.endpoint === 'string'
+        ? entry.endpoint
+        : null
+  return own ? `off — your own at ${own}` : describeService(ask)
+}
+
 const rowNamed = (rows, name) =>
   Array.isArray(rows) ? rows.find((r) => r && typeof r === 'object' && r.name === name) : undefined
 
@@ -195,6 +209,7 @@ export async function settleServices({
   }
 
   const askFor = (name) => asks.find((a) => a.name === name)
+  const entryFor = (name) => siteYml?.services?.[name]
   const send = [...decision.send]
   let offered = [...decision.adopt]
   const open = []
@@ -208,7 +223,7 @@ export async function settleServices({
         : 'site.yml asks for services your site has set differently:'
     )
     for (const name of decision.conflict) {
-      say.dim(`  ${name}: site.yml asks ${describeService(askFor(name))} — your site has ${describeService(rowNamed(stored, name))}`)
+      say.dim(`  ${name}: site.yml asks ${describeEntry(entryFor(name), askFor(name))} — your site has ${describeService(rowNamed(stored, name))}`)
     }
     if (!interactive) {
       say.dim("  Left as your site has them — run without --non-interactive to choose.")
@@ -226,7 +241,7 @@ export async function settleServices({
   if (offered.length) {
     say.info("Your site's services changed since your last sync:")
     for (const name of offered) {
-      say.dim(`  ${name}: your site has ${describeService(rowNamed(stored, name))} — site.yml says ${describeService(askFor(name))}`)
+      say.dim(`  ${name}: your site has ${describeService(rowNamed(stored, name))} — site.yml says ${describeEntry(entryFor(name), askFor(name))}`)
     }
     if (interactive && (await confirm('Update site.yml to match?', false))) {
       const services = takeServices(siteYml.services, stored, offered)
@@ -240,7 +255,7 @@ export async function settleServices({
   }
 
   if (send.length) {
-    say.info(`Asking for: ${send.map((n) => `${n} ${describeService(askFor(n))}`).join(', ')}`)
+    say.info(`Asking for: ${send.map((n) => `${n} ${describeEntry(entryFor(n), askFor(n))}`).join(', ')}`)
   }
 
   // The list to send: the site's rows with the changed asks applied. With the site

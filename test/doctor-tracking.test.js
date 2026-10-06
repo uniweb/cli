@@ -21,7 +21,7 @@ import { checkTrackingBlock } from '../src/commands/doctor.js'
 /** @returns {string[]} the ids of every issue raised for this block */
 function idsFor(tracking) {
   const issues = []
-  checkTrackingBlock({ siteName: 'site', siteYml: { tracking }, issues })
+  checkTrackingBlock({ siteName: 'site', siteYml: { services: { tracking } }, issues })
   return issues.map((i) => i.id)
 }
 
@@ -32,6 +32,12 @@ test('says nothing about a correctly configured block', () => {
   assert.deepEqual(idsFor({ endpoint: '/collect', consent: 'required' }), [])
   assert.deepEqual(idsFor({ scripts: ['https://vendor.example.com/tag.js'] }), [])
   assert.deepEqual(idsFor({ scripts: [{ src: '/js/local.js' }], debug: true }), [])
+  // On or off says nothing to check.
+  assert.deepEqual(idsFor(true), [])
+  assert.deepEqual(idsFor(false), [])
+  // ⛔ `emit` and `flushIntervalMs` are read by the runtime — the copy doctor kept of the
+  // list lacked them until 2026-10-06, and flagged them as never read.
+  assert.deepEqual(idsFor({ emit: 'minimal', flushIntervalMs: 5000 }), [])
 })
 
 test('flags a key that is carried and never read', () => {
