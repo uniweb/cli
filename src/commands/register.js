@@ -90,6 +90,7 @@ import {
 } from '../utils/code-upload.js'
 import { deriveScope, publishScope } from '../utils/registry-orgs.js'
 import { BackendClient } from '../backend/client.js'
+import { resolveWorkspace, scopeOfWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import {
   findWorkspaceRoot,
@@ -375,11 +376,35 @@ export async function settleFoundationScope(targetDir, { args, isPreview, flagSc
 }
 
 /**
- * A scope derived from the login (`deriveScope`): your personal scope when you belong
- * to no org, else a pick — as `@handle`, or null when none was chosen.
+ * The scope a bare name registers under when `--scope` names none — as `@handle`, or null
+ * when none was chosen.
+ *
+ * ⭐ THE WORKSPACE THIS COMMAND WORKS IN *[Diego, 2026-10-06]* — an organization's handle,
+ * or your own for your personal workspace — said, not asked (`scopeOfWorkspace`). A team
+ * working in `@acme` registers `@acme/…`, which any of its members can release.
+ * ⛔ Until 2026-10-06 the default was your personal scope wherever you worked, so a team's
+ * foundation registered as `@jane/…` — releasable by Jane alone, and fixed only by
+ * renaming it into a new foundation.
+ *
+ * When the workspace names no scope — none is chosen, or it is a unit without a handle —
+ * the scope is derived from your orgs as before (`deriveScope`): your personal scope when
+ * you belong to none, else a pick at a terminal, your personal scope without one.
  */
 async function deriveScopeFromLogin(client, args) {
   const token = await client.token()
+  const ws = await resolveWorkspace({ client, args })
+  const personal = !ws.refused && ws.source !== 'offline' && ws.workspace === null
+  const accountHandle = personal ? (await client.fetchOrgs()).account_handle : null
+  const fromWorkspace = scopeOfWorkspace(ws, accountHandle)
+  if (fromWorkspace) {
+    const named = `${colors.bright}${fromWorkspace}${colors.reset}`
+    console.error(
+      personal
+        ? `Registering under your personal scope ${named} — you work in your personal workspace (${SOURCE_LABEL[ws.source]}). For an org: --scope @org.`
+        : `Registering under ${named} — the workspace you work in (${SOURCE_LABEL[ws.source]}). For another scope: --scope @org.`
+    )
+    return fromWorkspace
+  }
   const sess = await readRegistryAuth(client.origin)
   const derived = await deriveScope({
     apiBase: client.origin,
@@ -691,8 +716,8 @@ async function runRegister(args = []) {
     }
   }
 
-  // A schemas-only package with no scope, on a real submit → derive it from the login
-  // (your personal scope, or a pick among it and your orgs) and persist it to package.json.
+  // A schemas-only package with no scope, on a real submit → the workspace you work in,
+  // else derived from your orgs (`deriveScopeFromLogin`), and persisted to package.json.
   // (A foundation's was settled before its build — `settleFoundationScope`.)
   if (standalone && !scope && !isPreview) {
     const derived = await deriveScopeFromLogin(client, args)

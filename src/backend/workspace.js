@@ -26,7 +26,7 @@
  */
 
 import { readOrgFlag } from '../utils/args.js'
-import { fetchOrgs } from '../utils/registry-orgs.js'
+import { fetchOrgs, bareHandle, validateHandle } from '../utils/registry-orgs.js'
 import { readRegistryAuth } from '../utils/registry-auth.js'
 import { workspaceHandle, describeWorkspace } from './client.js'
 
@@ -121,6 +121,34 @@ export async function resolveWorkspace({ client, args = [], offline = false }) {
     refused: true,
     reason: `You belong to organizations, so no workspace is assumed.\n  ${CHOOSE}`
   }
+}
+
+/**
+ * The scope a bare name registers under by default — the workspace the command works in
+ * *[Diego, 2026-10-06]*: an organization's handle, or your own handle for your personal
+ * workspace.
+ *
+ * ⭐ A default, asked once: a name that carries a scope keeps it, and `--scope` names
+ * another. The workspace still never decides anything else about a foundation — it
+ * decides which SITE a command works on; here it only answers the question a bare name
+ * asks the first time it registers.
+ *
+ * Null when the workspace names no scope, and the caller derives one as before
+ * (`deriveScope`): none is chosen (you belong to organizations and none is named), the
+ * command is a preview, the workspace is a unit without a handle, or the account has no
+ * handle (a service account).
+ *
+ * @param {{ workspace?: string|null, source?: string, refused?: boolean }} ws -
+ *   `resolveWorkspace`'s answer
+ * @param {string|null} accountHandle - the account's own handle (`GET /dev/orgs`), read
+ *   only for the personal workspace
+ * @returns {string|null} `@handle`
+ */
+export function scopeOfWorkspace(ws, accountHandle) {
+  if (!ws || ws.refused || ws.source === 'offline') return null
+  if (typeof ws.workspace === 'string') return ws.workspace.startsWith('@') ? ws.workspace : null
+  const h = bareHandle(accountHandle || '')
+  return h && !validateHandle(h) ? `@${h}` : null
 }
 
 /**

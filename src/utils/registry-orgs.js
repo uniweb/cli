@@ -157,9 +157,15 @@ export async function createOrg({ apiBase, token, handle }) {
 }
 
 /**
- * The scope to register under, from the login, when none was named — a bare handle,
- * or null when none was chosen. Persists nothing; the caller records it (in the
- * foundation's name, or a schemas-only package's `package.json`).
+ * The scope to register under, from the login's orgs, when none was named and the
+ * workspace the command works in names none either — a bare handle, or null when none
+ * was chosen. Persists nothing; the caller records it (in the foundation's name, or a
+ * schemas-only package's `package.json`).
+ *
+ * ⚠️ The FALLBACK since 2026-10-06: a bare name first takes the workspace the command
+ * works in (`register.js::deriveScopeFromLogin`, `workspace.js::scopeOfWorkspace`). This
+ * answers only when no workspace is chosen — you belong to orgs and named none — or the
+ * one chosen is a unit without a handle.
  *
  * ⭐ A SCOPE IS A NAMESPACE (2026-09-23): your account's own, `@<handle>`, needs no org.
  *

@@ -63,6 +63,7 @@ import {
 } from '@uniweb/build'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { isNonInteractive } from '../utils/interactive.js'
+import { readOrgFlag } from '../utils/args.js'
 import { writeJsonPreservingStyle } from '../utils/json-file.js'
 import {
   compareSemverPrecedence,
@@ -191,13 +192,22 @@ function writePkgVersion(dir, version) {
   writeJsonPreservingStyle(path, { ...JSON.parse(src), version }, src)
 }
 
-// What travels to the spawned `uniweb register` / `build` on the command line: only
-// --non-interactive. The BACKEND travels in the child's environment
-// (releaseFoundation), and the SESSION is the shared session file — or UNIWEB_TOKEN,
-// which the child inherits. The backend commands take no `--backend` or `--token`.
-function forwardedFlags(args) {
+// What travels to the spawned `uniweb register` on the command line: --non-interactive,
+// and the WORKSPACE this command names (`--org` / `--personal`). The BACKEND travels in
+// the child's environment (releaseFoundation), and the SESSION is the shared session
+// file — or UNIWEB_TOKEN, which the child inherits. The backend commands take no
+// `--backend` or `--token`.
+//
+// ⭐ The workspace travels because a bare name registers under the workspace the command
+// works in *[Diego, 2026-10-06]*, and a workspace named on this command is this command's
+// alone: the child cannot read it from the session. One chosen at the login, or in
+// UNIWEB_WORKSPACE, reaches the child on its own.
+export function forwardedFlags(args) {
   const out = []
   if (isNonInteractive(args)) out.push('--non-interactive')
+  const org = readOrgFlag(args)
+  if (org) out.push('--org', org)
+  else if (args.includes('--personal')) out.push('--personal')
   return out
 }
 
