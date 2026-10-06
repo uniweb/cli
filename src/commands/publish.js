@@ -492,8 +492,9 @@ export async function publish(args = []) {
       cliBin: process.argv[1]
     })
   } catch (err) {
-    say.err(`Foundation release failed: ${err.message}`)
-    say.dim('Fix the foundation, then re-run `uniweb publish`.')
+    // A scope you are not a member of is said as that, with the ways on (`explainReleaseFailure`).
+    say.err(err.notMember ? err.message : `Foundation release failed: ${err.message}`)
+    for (const line of err.notMember ? err.ways : ['Fix the foundation, then re-run `uniweb publish`.']) say.dim(line)
     return { exitCode: 1 }
   }
 
@@ -512,8 +513,8 @@ export async function publish(args = []) {
       cliBin: process.argv[1]
     })
   } catch (err) {
-    say.err(`Extension release failed: ${err.message}`)
-    say.dim('Fix the extension, then re-run `uniweb publish`.')
+    say.err(err.notMember ? err.message : `Extension release failed: ${err.message}`)
+    for (const line of err.notMember ? err.ways : ['Fix the extension, then re-run `uniweb publish`.']) say.dim(line)
     return { exitCode: 1 }
   }
   if (!ext.proceed) return { exitCode: 1 }

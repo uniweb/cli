@@ -274,8 +274,9 @@ export async function push(args = [], deps = {}) {
       verb: 'push'
     })
   } catch (err) {
-    error(`Foundation release failed: ${err.message}`)
-    note('Fix the foundation, then re-run `uniweb push`.')
+    // A scope you are not a member of is said as that, with the ways on (`explainReleaseFailure`).
+    error(err.notMember ? err.message : `Foundation release failed: ${err.message}`)
+    for (const line of err.notMember ? err.ways : ['Fix the foundation, then re-run `uniweb push`.']) note(line)
     return { exitCode: 1 }
   }
   if (!fnd.proceed) return { exitCode: 1 }

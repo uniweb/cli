@@ -64,6 +64,7 @@ import {
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import { readOrgFlag } from '../utils/args.js'
+import { belongsToScope } from '../utils/registry-orgs.js'
 import { writeJsonPreservingStyle } from '../utils/json-file.js'
 import {
   compareSemverPrecedence,
@@ -371,6 +372,16 @@ async function bringLocalCodeAlong({
   // answer / no scoped name to look up) → release.
   const reg = scopedName ? await client.readFoundationLatest(scopedName) : null
 
+  // Every release below goes through here, so a refusal for a scope you are not a member
+  // of is said as that, with the ways on (`explainReleaseFailure`).
+  const release = async () => {
+    try {
+      return releaseFoundation(local, args, cliBin, say, client?.origin)
+    } catch (err) {
+      throw await explainReleaseFailure(err, { client, local, reg, verb })
+    }
+  }
+
   if (!reg) {
     // ⛔ Nothing to bind to. Releasing anyway would be the opposite of what was asked,
     // and shipping anyway would leave a site the app cannot open — so stop and say so.
@@ -386,7 +397,7 @@ async function bringLocalCodeAlong({
     }
     say.info(`Releasing the ${kind} ${label} (not yet registered)…`)
     return {
-      released: releaseFoundation(local, args, cliBin, say, client?.origin),
+      released: await release(),
       proceed: true,
       ref: await pinnedRef()
     }
@@ -416,7 +427,7 @@ async function bringLocalCodeAlong({
     }
     writePkgVersion(local.dir, bumpTo)
     say.info(`Releasing the ${kind} ${scopedName || kind} as ${bumpTo} — ${why}…`)
-    const released = releaseFoundation(local, args, cliBin, say, client?.origin)
+    const released = await release()
     say.dim(`The ${kind}'s package.json now says ${bumpTo} — commit it.`)
     if (optOut) say.dim('To send content without releasing code, pass `--no-release`.')
     return { released, proceed: true, bumped: bumpTo, ref: await pinnedRef() }
@@ -490,7 +501,7 @@ async function bringLocalCodeAlong({
           : `Releasing the ${kind} ${label} (registered latest is ${reg.latest_version})…`
       )
       return {
-        released: releaseFoundation(local, args, cliBin, say, client?.origin),
+        released: await release(),
         proceed: true,
         ref: await pinnedRef()
       }
@@ -524,7 +535,7 @@ async function bringLocalCodeAlong({
     )
     if (reRelease)
       return {
-        released: releaseFoundation(local, args, cliBin, say, client?.origin),
+        released: await release(),
         proceed: true,
         ref: await pinnedRef()
       }
@@ -578,6 +589,44 @@ function releaseFoundation(local, args, cliBin, say, origin) {
   })
   console.log('')
   return true
+}
+
+/**
+ * A failed release, explained when the cause is a scope you are not a member of
+ * *[Diego, 2026-10-06]* — or the error as it came.
+ *
+ * The scope is the one in the foundation's name: `register` writes a bare name's scope
+ * before it submits, so a refused release leaves the name scoped. When the orgs read
+ * says the account is neither that scope's owner nor a member of its org, the error
+ * says so (`notMember`) and carries the ways on (`ways`): `--no-release`, where a
+ * released version exists to send the content against, and a member releasing it.
+ *
+ * ⛔ The registry decides membership; this only names it after a refusal, and passes
+ * the error through whenever it cannot tell.
+ *
+ * @param {Error} err - the release's failure
+ * @param {object} o
+ * @param {import('./client.js').BackendClient} o.client
+ * @param {{ dir: string }} o.local
+ * @param {{ latest_version?: string }|null} o.reg - the catalog's answer for this name
+ * @param {string} o.verb - `push` or `publish`, for the ways on
+ * @returns {Promise<Error>}
+ */
+export async function explainReleaseFailure(err, { client, local, reg, verb }) {
+  const name = await foundationScopedName(local.dir).catch(() => null)
+  const scope = name ? name.split('/')[0] : null
+  if (!scope || typeof client?.fetchOrgs !== 'function') return err
+  const member = belongsToScope(scope, await client.fetchOrgs().catch(() => null))
+  if (member !== false) return err
+  const explained = new Error(`You can't release ${name}: you're not a member of ${scope}.`)
+  explained.notMember = true
+  explained.ways = reg?.latest_version
+    ? [
+        `Send the content against the released ${reg.latest_version}: \`uniweb ${verb} --no-release\`.`,
+        `Or ask a member of ${scope} to release it.`
+      ]
+    : [`Ask a member of ${scope} to release it.`]
+  return explained
 }
 
 /**

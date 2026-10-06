@@ -88,7 +88,7 @@ import {
   computeFoundationDigest,
   readRuntimePin
 } from '../utils/code-upload.js'
-import { deriveScope, publishScope } from '../utils/registry-orgs.js'
+import { deriveScope, publishScope, belongsToScope } from '../utils/registry-orgs.js'
 import { BackendClient } from '../backend/client.js'
 import { resolveWorkspace, scopeOfWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
@@ -877,10 +877,27 @@ async function runRegister(args = []) {
         `${colors.dim}Schema for this version is already registered — resuming code delivery.${colors.reset}`
       )
     } else {
-      error(
-        `Registry rejected the submission: HTTP ${res.status} ${res.statusText}`
-      )
-      if (res.status === 401 || res.status === 403) {
+      // ⭐ NOT A MEMBER OF THE SCOPE IS SAID AS THAT *[Diego, 2026-10-06]*. The registry
+      // decides who may release into a scope — its account, or an org's members — and
+      // when the orgs read says you are neither, that is the refusal to name. ⛔ Until then
+      // a 403 here printed "log in again", the wrong advice for a scope that is not yours.
+      // Read to explain a refusal, never to gate one; a 401 is the credential itself.
+      const member =
+        res.status === 401 ? null : belongsToScope(scope, await client.fetchOrgs().catch(() => null))
+      if (member === false) {
+        const what = standalone
+          ? `data schemas under ${scope}`
+          : doc.entities.find((e) => e.model === '@uniweb/foundation-schema')?.info?.name || `a foundation under ${scope}`
+        error(`You can't release ${what}: you're not a member of ${scope}.`)
+        log(
+          `  ${colors.dim}A member of ${scope} can release it. (The registry answered HTTP ${res.status}.)${colors.reset}`
+        )
+      } else {
+        error(
+          `Registry rejected the submission: HTTP ${res.status} ${res.statusText}`
+        )
+      }
+      if (member !== false && (res.status === 401 || res.status === 403)) {
         log(
           `  ${colors.dim}The registry didn't accept your credentials — it may use different ones than \`uniweb login\`.${colors.reset}`
         )

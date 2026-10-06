@@ -82,6 +82,25 @@ export function publishScope(value) {
 }
 
 /**
+ * Whether the orgs read (`GET /dev/orgs`) says this account may release into `scope`:
+ * the account's own handle, or an org it belongs to. True or false; null when there is
+ * nothing to say (no scope, no read).
+ *
+ * ⛔ For EXPLAINING a refusal only, never to gate a release: the registry decides who
+ * may publish into a scope, and this knows only the memberships that read lists.
+ *
+ * @param {string|null} scope - `@acme`, `acme` or `@acme/…`
+ * @param {{ account_handle?: string|null, orgs?: Array<{ handle?: string }> }|null} envelope
+ * @returns {boolean|null}
+ */
+export function belongsToScope(scope, envelope) {
+  const h = bareHandle(scope)
+  if (!h || !envelope || typeof envelope !== 'object') return null
+  if (bareHandle(envelope.account_handle || '') === h) return true
+  return (Array.isArray(envelope.orgs) ? envelope.orgs : []).some((o) => bareHandle(o?.handle) === h)
+}
+
+/**
  * Validate a handle's GRAMMAR client-side (reserved names are the server's
  * call — a 409 carries the verdict). Returns an error string, or null.
  */
