@@ -819,6 +819,67 @@ export class BackendClient {
    * @param {string} uuid - the site-content uuid
    * @returns {Promise<object|null>}
    */
+  /**
+   * Whether the backend holds the site `uuid` names — `live`, `gone` or `unknown`, kept
+   * apart — for a script that must decide, before any push, whether a binding still
+   * points at a site (`uniweb status --remote --json`, `remote.site_state`).
+   *
+   * ⛔ `gone` ONLY ON THE BACKEND'S OWN WORD ABOUT THIS SITE: a `404` whose problem names
+   * it — `kind: "site"`, `key: <uuid>`. A push from an unbound copy CREATES a site, so a
+   * binding dropped because its site was merely unreadable leaves a second copy beside
+   * the first. Folding `unknown` into `gone` would be worse than no answer.
+   *
+   *   live     the site's status came back, or the site was refused as belonging to
+   *            another workspace (`409 wrong_workspace` names where it is: it exists)
+   *   gone     a `404` naming this site
+   *   unknown  anything else — no answer, a credential or an id refused, a `404` that
+   *            names something else (a backend too old for the route)
+   *
+   * *Measured 2026-10-06 against a local backend — its wire, its to change:* `200` with
+   * the status; `409 wrong_workspace` naming the site's workspace; `404 {kind: "site",
+   * key}`; `400` for a malformed id; `401` for a bad bearer.
+   *
+   * @param {string} uuid
+   * @returns {Promise<{ state: 'live'|'gone'|'unknown', status: number|null, site?: object, workspace?: string|null, detail?: string|null }>}
+   */
+  async siteState(uuid) {
+    let res
+    try {
+      res = await this.request(`/dev/site/status/${encodeURIComponent(uuid)}`)
+    } catch (err) {
+      if (err instanceof WorkspaceMismatchError) {
+        return { state: 'live', status: 409, workspace: err.answer, detail: err.message }
+      }
+      return { state: 'unknown', status: null, detail: err?.message || String(err) }
+    }
+    const body = await res.text().catch(() => '')
+    let parsed = null
+    try {
+      parsed = body ? JSON.parse(body) : null
+    } catch {
+      parsed = null
+    }
+    if (res.ok) return { state: 'live', status: res.status, ...(parsed ? { site: parsed } : {}) }
+    if (res.status === 409 && parsed?.reason === 'wrong_workspace') {
+      const w = parsed.workspace || {}
+      return {
+        state: 'live',
+        status: 409,
+        workspace: w.handle ? workspaceHandle(w.handle) : w.unit_uuid || null,
+        detail: parsed.detail || null
+      }
+    }
+    const names = (v) => String(v ?? '').toLowerCase() === String(uuid).toLowerCase()
+    if (res.status === 404 && parsed?.kind === 'site' && names(parsed.key)) {
+      return { state: 'gone', status: 404, detail: parsed.detail || null }
+    }
+    return {
+      state: 'unknown',
+      status: res.status,
+      detail: parsed?.detail || parsed?.title || (body ? body.slice(0, 200) : null)
+    }
+  }
+
   async siteStatus(uuid) {
     try {
       const res = await this.request(

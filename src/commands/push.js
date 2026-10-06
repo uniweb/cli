@@ -37,6 +37,9 @@
  *   uniweb push --foundation <dir>       Use this local foundation for the Model schema
  *   uniweb push --all                    Send every record (bypass the changed-only cache)
  *   uniweb push --force                  Overwrite upstream changes (drop the staleness gate)
+ *   uniweb push --no-release             Send content against the foundation already
+ *                                        released; release nothing
+ *   uniweb push --bump                   Release above a newer registered version
  *
  * Pushes are GATED by default: each entity carries the backend `version` this clone
  * last saw (a top-level `base_version` on the manifest entry), and the backend refuses the whole package

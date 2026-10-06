@@ -14,8 +14,11 @@
  *
  * Usage:
  *   uniweb status            Sync identity + unpushed content + foundation ref (local)
- *   uniweb status --remote   Also: draft-vs-live + a newer-registered-foundation check
- *   uniweb status --json     One JSON line (adds a `remote` object under --remote)
+ *   uniweb status --remote   Also: whether the backend still holds the site, draft-vs-live,
+ *                            and a newer-registered-foundation check
+ *   uniweb status --json     One JSON line (adds a `remote` object under --remote, whose
+ *                            `site_state` is live / gone / unknown — `gone` only on the
+ *                            backend's own word that it holds no such site)
  *
  * Run from a site, or a workspace with one site.
  */
@@ -119,6 +122,9 @@ export async function status(args = []) {
   // Remote signals — opt-in (`--remote`). May prompt for login. Degrades to null
   // on 404 / any failure, so a backend without the endpoints just shows local.
   let site = null
+  // Whether the backend holds the site this binding names — live / gone / unknown, never
+  // folded (`client.siteState`). Null when there is no binding to ask about.
+  let siteState = null
   let fdnLatest = null
   let foundationFresh = null // true/false when both digests are known; else null
   let localFoundationVersion = null
@@ -134,7 +140,14 @@ export async function status(args = []) {
       const ws = await resolveWorkspace({ client, args })
       if (ws.refused) throw Object.assign(new Error(ws.reason), { status: 409 })
       client.setWorkspace(ws.workspace, { source: ws.source })
-      if (uuid) site = await client.siteStatus(uuid)
+      if (uuid) {
+        siteState = await client.siteState(uuid)
+        if (siteState.state === 'live') {
+          site = siteState.site || null
+          // In another workspace: it exists, and the refusal says where — report it.
+          if (siteState.status === 409) remoteError = siteState.detail
+        }
+      }
       // Foundation freshness: prefer the LOCAL foundation's scoped name (so a
       // local-foundation site can be checked too); fall back to a scoped
       // site.yml ref. The digest compare is read-only — it never builds, so it
@@ -153,6 +166,8 @@ export async function status(args = []) {
       // backend does not work on this site from, or the deployment has another. Saying
       // nothing would read as "fine".
       if (err instanceof WorkspaceMismatchError || err?.status === 409) remoteError = err.message
+      // Not asked, or not answered: that is not knowing, never `gone`.
+      if (uuid && !siteState) siteState = { state: 'unknown', status: null, detail: err?.message || null }
     }
   }
 
@@ -168,6 +183,10 @@ export async function status(args = []) {
         ...(remote
           ? {
               remote: {
+                // ⭐ live · gone · unknown — `gone` only on the backend's own word about
+                // this site; null when this directory names no site on this backend.
+                site_state: siteState ? siteState.state : null,
+                site_state_detail: siteState?.detail ?? null,
                 site,
                 foundation_latest: fdnLatest?.latest_version ?? null,
                 foundation_fresh: foundationFresh,
@@ -221,6 +240,16 @@ export async function status(args = []) {
   // Remote signals
   if (remote) {
     if (remoteError) say.warn(remoteError)
+    if (siteState?.state === 'gone') {
+      say.warn(`The backend has no site ${uuid} — it was deleted there, or the backend was rebuilt.`)
+      say.dim(
+        `To push this as a new site: uniweb forget --backend ${probeBackend}, then uniweb push.`
+      )
+    } else if (siteState?.state === 'unknown') {
+      say.dim(
+        `Could not tell whether the backend holds this site${siteState.detail ? ` (${siteState.detail})` : ''}.`
+      )
+    }
     if (site) {
       if (site.draft_dirty) {
         say.info(

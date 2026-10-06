@@ -2097,6 +2097,16 @@ ${colors.bright}Global Options:${colors.reset}
   a script can aim and authenticate one process with UNIWEB_REGISTER_URL and
   UNIWEB_TOKEN instead.
 
+${colors.bright}Push Options:${colors.reset}
+  --dry-run          Report what would be pushed; send nothing (-o <file> writes the .uwx)
+  --no-release       Send content against the already-released code; release nothing
+  --bump             Release above a newer registered foundation version
+  --force            Overwrite upstream changes (drop the staleness gate)
+  --all              Send every record (bypass the changed-only cache)
+  --org @org         Work in @org for this push, not your login's workspace
+  --personal         Work in your personal workspace for this push
+  --no-validate      Skip the content-conformance check (it stops a push)
+
 ${colors.bright}Publish Options:${colors.reset}
   --dry-run          Resolve everything; release/sync/POST nothing
   --yes              Skip confirmations (CI); never block on a prompt
