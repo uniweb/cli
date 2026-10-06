@@ -332,12 +332,16 @@ export class BackendClient {
       return this._token
     }
     // ⛔ NO ORIGIN-MISMATCH GUARD HERE, AND DO NOT RE-ADD ONE (removed 2026-09-20).
-    // It existed because the session store held ONE record: a session for another
-    // backend was the only session, so it was about to be sent here and rejected, and a
-    // warning was the best available move. Sessions are keyed by origin now
-    // (utils/registry-auth.js), so being logged into another backend is just a fact
-    // about another backend — `ensureRegistryAuth` below finds this origin's session or
-    // asks for one. Warning about the other would be noise about nothing.
+    // It existed because the session store held ONE record, read without an origin: a
+    // session for another backend was about to be sent here and rejected, and a warning
+    // was the best available move. The session is looked up BY ORIGIN now
+    // (`readRegistryAuth(origin)`, utils/registry-auth.js), so another backend's token is
+    // never sent here — `ensureRegistryAuth` below finds this origin's session or asks
+    // for one. ⚠️ There is still ONE session (since 2026-09-21): a login it asks for
+    // replaces the other backend's session, and says so. *(Until 2026-10-05 this read
+    // "sessions are keyed by origin now … being logged into another backend is just a
+    // fact about another backend" — true of the per-backend store of 2026-09-20→21, and
+    // read as "several sessions coexist".)*
     this._token = await ensureRegistryAuth({
       apiBase: this.origin,
       command: this._command,

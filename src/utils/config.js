@@ -125,14 +125,17 @@ export function resolveLoginOrigin(flag) {
 }
 
 /**
- * **The backend a command talks to** when no `--backend` is given — the base of every
- * `/dev/*` route (`register` POSTs to {origin}/dev/registry/register, and so on).
+ * **The backend a command talks to** — the base of every `/dev/*` route (`register`
+ * POSTs to {origin}/dev/registry/register, and so on).
  *
  * `UNIWEB_REGISTER_URL` > **the backend the user is logged in to** > the default
  * (`getDefaultBackendOrigin`). ⭐ Nothing talks to a backend the user is not logged in
  * to *[Diego, 2026-09-21]*: when this falls through to the default, the command's first
  * request asks for that login — so the default is where the login goes, never a
- * backend reached without one. `resolveBackendOrigin` puts `--backend` on top.
+ * backend reached without one. `resolveBackendOrigin` (backend/client.js) returns this
+ * unchanged: no command takes a `--backend`. ⛔ *Until 2026-10-05 this said "when no
+ * `--backend` is given" and that `resolveBackendOrigin` put `--backend` on top — read as
+ * a per-command flag outranking the login. The verbs lost that flag on 2026-09-21.*
  *
  * @returns {string}
  */
