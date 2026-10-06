@@ -7,9 +7,11 @@
  * `fetch(… Authorization: Bearer …)` against a per-command default origin. It
  * owns the three things that were previously scattered across a dozen files:
  *
- *   1. ORIGIN   — where the backend is. resolveBackendOrigin(): an explicit
- *                 flag (`--backend`) > UNIWEB_REGISTER_URL >
- *                 the local default. Any full URL is reduced to its origin.
+ *   1. ORIGIN   — where the backend is. resolveBackendOrigin(): UNIWEB_REGISTER_URL >
+ *                 the backend you are logged in to > the default backend (below).
+ *                 Each is reduced to its origin, http(s) only. *(This named a
+ *                 `--backend` flag as the first tier until 2026-10-05; the verbs
+ *                 lost that flag on 2026-09-21.)*
  *   2. AUTH     — the opaque session bearer (utils/registry-auth.js). Resolved
  *                 LAZILY on the first authed call, so dry-runs and fully-local
  *                 work never trigger a login.
