@@ -32,11 +32,19 @@ async function scene({ session = null, env = {}, orgs = null, account = 'dev', m
   }
   const saved = { home: process.env.HOME, fetch: globalThis.fetch, exit: process.exit, err: console.error }
   const savedEnv = Object.fromEntries(
-    ['UNIWEB_WORKSPACE', 'UNIWEB_TOKEN', 'CI', ...Object.keys(env)].map((k) => [k, process.env[k]])
+    ['UNIWEB_WORKSPACE', 'UNIWEB_TOKEN', 'CI', 'npm_config_user_agent', ...Object.keys(env)].map((k) => [
+      k,
+      process.env[k]
+    ])
   )
   process.env.HOME = home
   delete process.env.UNIWEB_WORKSPACE
   delete process.env.UNIWEB_TOKEN
+  // The runner's package manager must not reach a hint: `getCliPrefix` mirrors
+  // `npm_config_user_agent`, which `pnpm test` sets — so a hint read `pnpm uniweb …`
+  // there and `uniweb …` under `node --test`. A scene runs the CLI as run directly;
+  // a test that wants a manager passes it in `env`.
+  delete process.env.npm_config_user_agent
   process.env.CI = '1' // no terminal: a pick is refused, never prompted
   Object.assign(process.env, env)
   const requests = []
@@ -225,6 +233,23 @@ test('⛔ a workspace pick cancelled at a terminal is not a cancelled login: sai
   assert.match(printed, /with no workspace chosen yet/)
   assert.match(printed, /No workspace chosen\. Choose one: uniweb login --org @acme/)
   assert.doesNotMatch(printed, /^Cancelled\./m)
+})
+
+test('CONTROL — the hint names the command the way it was run', async () => {
+  // The scene clears the runner's user agent; set one, and the hint follows it.
+  const { runRegistryLogin } = await import('../src/utils/registry-auth.js')
+  const prompts = (await import('prompts')).default
+  const { printed } = await scene(
+    { orgs: ACME, env: { npm_config_user_agent: 'pnpm/10.0.0 npm/? node/v22.0.0 darwin arm64' } },
+    () =>
+      atTerminal(async () => {
+        prompts.inject([new Error('cancelled')])
+        try {
+          await runRegistryLogin({ apiBase: ORIGIN, args: ['--token', 'T1'] })
+        } catch {}
+      })
+  )
+  assert.match(printed, /No workspace chosen\. Choose one: pnpm uniweb login --org @acme/)
 })
 
 test('a switch to a workspace you are not a member of leaves the one you work in — and says so', async () => {
