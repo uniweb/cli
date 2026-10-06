@@ -2690,3 +2690,72 @@ test('⛔ a state we do not know about is printed, not swallowed', async () => {
   rmSync(dir, { recursive: true, force: true })
   assert.match(calls.note.join('\n'), /template state as "queued-for-review"/)
 })
+
+// ⭐ A FOUNDATION THE SITE MAY NOT TAKE is said, with the next step. A site takes any version
+// of a foundation it already uses, and a new one only from a scope its author owns; a push
+// naming another is refused `403 foundation_not_licensed`. ⛔ Until 2026-10-06 a push
+// printed "Credentials weren't accepted — log in again" for it: a 403 read as a credential.
+test('pushSyncPackages: a foundation that is not yours to attach is said, with the templates that carry it', async () => {
+  const dir = tmpSite()
+  const client = {
+    origin: 'http://x',
+    createSiteContent: async () =>
+      fail(403, JSON.stringify({
+        status: 403,
+        reason: 'foundation_not_licensed',
+        package: '@agency/theme',
+        templates: [{ uuid: 't-1', name: 'Agency Starter' }]
+      }))
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: siteOnlyPkg({ siteContentUuid: undefined, hashes: { x: 'y' } }),
+    report
+  })
+  assert.equal(res.exitCode, 1)
+  assert.ok(calls.error.some((m) => /@agency\/theme is not yours to attach/.test(m)), calls.error.join('\n'))
+  assert.ok(calls.note.some((m) => /“Agency Starter” in the app/.test(m) && /uniweb clone/.test(m)), calls.note.join('\n'))
+  assert.ok(!calls.note.some((m) => /Credentials weren't accepted/.test(m)), 'not a credential problem')
+  rmSync(dir, { recursive: true, force: true })
+})
+
+test('pushSyncPackages: a 403 with no attach reason is still a credential problem — the control', async () => {
+  const dir = tmpSite()
+  const client = {
+    origin: 'http://x',
+    createSiteContent: async () => fail(403, JSON.stringify({ status: 403, title: 'Forbidden' }))
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: siteOnlyPkg({ siteContentUuid: undefined, hashes: { x: 'y' } }),
+    report
+  })
+  assert.equal(res.exitCode, 1)
+  assert.ok(calls.note.some((m) => /Credentials weren't accepted/.test(m)), calls.note.join('\n'))
+  assert.ok(!calls.error.some((m) => /not yours to attach/.test(m)))
+  rmSync(dir, { recursive: true, force: true })
+})
+
+test('pushSyncPackages: a foundation this backend has not registered is said by version', async () => {
+  const dir = tmpSite()
+  const client = {
+    origin: 'http://x',
+    createSiteContent: async () =>
+      fail(400, JSON.stringify({ status: 400, reason: 'foundation_not_registered', foundation: '@x/theme@1.2.0' }))
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: siteOnlyPkg({ siteContentUuid: undefined, hashes: { x: 'y' } }),
+    report
+  })
+  assert.equal(res.exitCode, 1)
+  assert.ok(calls.error.some((m) => /@x\/theme@1\.2\.0 is not registered on this backend/.test(m)), calls.error.join('\n'))
+  assert.ok(calls.note.some((m) => /uniweb register/.test(m)))
+  rmSync(dir, { recursive: true, force: true })
+})

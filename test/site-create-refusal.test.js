@@ -146,3 +146,59 @@ test('a prose (non-JSON) refusal still falls through to the generic line', async
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+// ⭐ The create names the site's foundation, and a site takes a new foundation only from a
+// scope its author owns — so a create can be refused for it. Said, with the next step,
+// rather than as the reason's bare name.
+test('a foundation that is not yours to attach: the templates that carry it, then clone', async () => {
+  const dir = siteDir()
+  try {
+    const res = await ensureSiteExists({
+      client: refusingClient(403, 'Forbidden', JSON.stringify({
+        status: 403,
+        reason: 'foundation_not_licensed',
+        package: '@acme/base',
+        templates: [{ uuid: 't-1', name: 'Acme Starter' }, { uuid: 't-2', name: 'Acme Blog' }]
+      })),
+      siteDir: dir
+    })
+    assert.equal(res.uuid, null)
+    assert.match(res.reason, /@acme\/base is not yours to attach/)
+    assert.match(res.reason, /one of “Acme Starter”, “Acme Blog” in the app/)
+    assert.match(res.reason, /uniweb clone/)
+    assert.ok(!/foundation_not_licensed/.test(res.reason), `the reason's name leaked: ${res.reason}`)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a foundation that is not yours, with no template carrying it: register one you own', async () => {
+  const dir = siteDir()
+  try {
+    const res = await ensureSiteExists({
+      client: refusingClient(403, 'Forbidden', JSON.stringify({
+        status: 403, reason: 'foundation_not_licensed', package: '@acme/base', templates: []
+      })),
+      siteDir: dir
+    })
+    assert.match(res.reason, /@acme\/base is not yours to attach/)
+    assert.match(res.reason, /Register a foundation under a scope you own/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a foundation version this backend has not registered is named', async () => {
+  const dir = siteDir()
+  try {
+    const res = await ensureSiteExists({
+      client: refusingClient(400, 'Bad Request', JSON.stringify({
+        status: 400, reason: 'foundation_not_registered', foundation: '@acme/base@1.0.0'
+      })),
+      siteDir: dir
+    })
+    assert.match(res.reason, /@acme\/base@1\.0\.0 is not registered on this backend/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

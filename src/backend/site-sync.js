@@ -1109,8 +1109,8 @@ function recordSiteWorkspace(siteDir, backend, owner) {
  * ⚖️ The wording deliberately DIVERGES from the asset lane's on one point. There the
  * allowance belongs to the site's owner, who may not be the person pushing. Here
  * there is no site yet, so the only workspace in play is the one the site would be
- * created in — `--as <org>` included. Saying "the site owner's workspace" would be
- * incoherent for a site that does not exist.
+ * created in — one named with `--org` included. Saying "the site owner's workspace"
+ * would be incoherent for a site that does not exist.
  *
  * @param {string} body - the raw response body
  * @returns {string|null}
@@ -1124,6 +1124,9 @@ function describeCreateRefusal(body) {
     return null // prose refusal, or an upstream error page
   }
   if (!p || typeof p !== 'object' || typeof p.reason !== 'string') return null
+
+  const attach = describeAttachRefusal(p)
+  if (attach) return [attach.headline, ...attach.steps].join('\n  ')
 
   if (p.reason === 'storage_quota_exceeded') {
     const parts = []
@@ -1142,6 +1145,63 @@ function describeCreateRefusal(body) {
   // backend's own prose follow when it sent any.
   const detail = typeof p.detail === 'string' ? p.detail : ''
   return `the backend refused the site create (${p.reason})${detail ? ` — ${detail}` : ''}`
+}
+
+/**
+ * The backend's refusals to ATTACH a foundation to a site, as what happened and what to
+ * do next — or null for any other problem document.
+ *
+ * A site takes any version of a foundation it already uses, and a new one only from a
+ * scope its author owns. The create, the first push and a push that changes the site's
+ * foundation can each be refused:
+ *
+ *   `foundation_not_licensed`    not yours to attach. `templates` names the app
+ *                                templates that carry it: start from one in the app,
+ *                                then clone the site you made. With none, register a
+ *                                foundation under a scope you own.
+ *   `foundation_not_registered`  this backend has no such version.
+ *
+ * ⛔ Branch on `reason`, never on the status: a `403` is also a rejected credential, and
+ * "log in again" is the wrong advice for a foundation that is not yours. ⚠️ Until
+ * 2026-10-06 a push printed exactly that for this refusal, and the create printed the
+ * reason's bare name.
+ *
+ * @param {object|null} problem - a parsed problem document
+ * @returns {{ headline: string, steps: string[] } | null}
+ */
+export function describeAttachRefusal(problem) {
+  if (!problem || typeof problem !== 'object') return null
+  const named = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+
+  if (problem.reason === 'foundation_not_licensed') {
+    const pkg = named(problem.package) || 'This foundation'
+    const templates = (Array.isArray(problem.templates) ? problem.templates : [])
+      .map((t) => named(t?.name))
+      .filter(Boolean)
+    const SHOWN = 5
+    const list =
+      templates
+        .slice(0, SHOWN)
+        .map((n) => `“${n}”`)
+        .join(', ') + (templates.length > SHOWN ? ` and ${templates.length - SHOWN} more` : '')
+    const steps = templates.length
+      ? [
+          `Start from ${templates.length === 1 ? list : `one of ${list}`} in the app — ` +
+            `${templates.length === 1 ? 'that template carries' : 'those templates carry'} it — ` +
+            "then `uniweb clone <your site's uuid>`."
+        ]
+      : ['Register a foundation under a scope you own, and name it in site.yml.']
+    return { headline: `${pkg} is not yours to attach.`, steps }
+  }
+
+  if (problem.reason === 'foundation_not_registered') {
+    const f = named(problem.foundation) || 'The foundation this site names'
+    return {
+      headline: `${f} is not registered on this backend.`,
+      steps: ['Register it here first (`uniweb register` in its directory), or name a version this backend has.']
+    }
+  }
+  return null
 }
 
 /**
@@ -1759,12 +1819,21 @@ export async function pushSyncPackages({
       // Two unrelated conflicts share HTTP 409, so branch on the machine-readable
       // `reason` — never on `detail`, which is prose the backend may reword.
       let problem = null
-      if ((res.status === 409 || res.status === 400 || res.status === 422) && body) {
+      if ((res.status === 409 || res.status === 400 || res.status === 403 || res.status === 422) && body) {
         try {
           problem = JSON.parse(body)
         } catch {
           /* not a problem document */
         }
+      }
+      // A foundation the site may not take (`foundation_not_licensed`, a 403) or that this
+      // backend does not have (`foundation_not_registered`) — said, with what to do next.
+      // Before the credential branch below, which a 403 would otherwise reach.
+      const attach = describeAttachRefusal(problem)
+      if (attach) {
+        error(`${label} push refused — ${attach.headline}`)
+        for (const step of attach.steps) note(step)
+        return null
       }
       // The package carried no identity for records the backend already stores, so
       // applying it would replace every one of them. `ensureItemUuids` is supposed
