@@ -98,7 +98,8 @@ export function getRegistryAuthPath() {
  * always logs you out of the one backend you may be logged in"]*. A login REPLACES the
  * file — once it succeeds, so a cancelled or failed login leaves you where you were —
  * and a logout deletes it. So "the backend you are logged in to" is exactly one thing
- * or nothing, and logout needs no selector.
+ * or nothing, and logout needs no selector. ⚠️ One exception, and it says so: a login that
+ * signs in but cannot choose a workspace keeps the session and exits 2 (`finishLogin`).
  *
  * ⚖️ The v2 map is kept, holding one entry: the file then has one reader
  * (utils/session-file.js), and it still understands what came before — a v1 flat
@@ -720,7 +721,12 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
       if (wants || !session.workspace) {
         const settled = await settleWorkspace(session, args)
         if (settled.refused) {
-          console.error(`\x1b[32m✓\x1b[0m Logged in to ${key}${who ? ` as \x1b[1m${who}\x1b[0m` : ''}.`)
+          // Say what the session works in now: unchanged, or — one from before workspaces —
+          // nothing yet (`finishLogin`).
+          const where = session.workspace
+            ? `${await workspaceTail(session)} — unchanged`
+            : ' — with no workspace chosen yet'
+          console.error(`\x1b[32m✓\x1b[0m Logged in to ${key}${who ? ` as \x1b[1m${who}\x1b[0m` : ''}${where}.`)
           console.error(`\x1b[31m✗\x1b[0m ${settled.refused}`)
           process.exit(2)
         }
@@ -839,15 +845,22 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
 
 /**
  * A login succeeded and its session is stored: choose its workspace, and say where the
- * login works. Without a workspace (no terminal, organizations, no flag) the session
- * stays, the reason is printed, and the login exits 2 — every command would refuse.
+ * login works.
+ *
+ * ⭐ WITHOUT A WORKSPACE THE SESSION STAYS, AND THE LOGIN SAYS SO *[Diego, 2026-10-06]*. No
+ * terminal, organizations, neither `--org` nor `--personal` — or a pick cancelled at a
+ * terminal: you are logged in, with no workspace, and the login exits 2 naming the one
+ * command that finishes it without signing in again. The credential was good, and a
+ * second sign-in can be a second browser round trip. ⚠️ So this is the one login that
+ * exits non-zero having replaced your session — the reason it says so in as many words.
  */
 async function finishLogin(record, apiBase, args) {
   const settled = await settleWorkspace(record, args)
   const who = settled.record.username ? ` as \x1b[1m${settled.record.username}\x1b[0m` : ''
   if (settled.refused) {
-    console.error(`\x1b[32m✓\x1b[0m Logged in${who} (${apiBase}).`)
+    console.error(`\x1b[32m✓\x1b[0m Logged in to ${normOrigin(apiBase)}${who} — with no workspace chosen yet.`)
     console.error(`\x1b[31m✗\x1b[0m ${settled.refused}`)
+    console.error('\x1b[2m  Until one is chosen, the commands that work on a site refuse.\x1b[0m')
     process.exit(2)
   }
   console.error(`\x1b[32m✓\x1b[0m Logged in${who} (${apiBase})${await workspaceTail(settled.record)}.`)

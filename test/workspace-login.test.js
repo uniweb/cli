@@ -149,7 +149,8 @@ test('--org must name an organization you belong to', async () => {
 test('organizations and no terminal: refused, naming every workspace you can choose', async () => {
   const { result } = await scene({ orgs: ACME }, () => chooseWorkspace({ apiBase: ORIGIN, token: 't' }))
   assert.equal(result.refused, true)
-  assert.match(result.reason, /--org @acme \| --personal/)
+  assert.match(result.reason, /login --org @acme \(or --personal\)/)
+  assert.match(result.reason, /will not ask you to sign in again/)
 })
 
 // ─── uniweb login ─────────────────────────────────────────────────────────────
@@ -180,7 +181,63 @@ test('a login with organizations and no workspace named keeps the session and ex
   assert.equal(exit, 2)
   assert.equal(readSession(home).token, 'T1', 'the login itself stands')
   assert.equal(readSession(home).workspace, undefined)
-  assert.match(printed, /name the workspace you work in/)
+  // ⭐ It says what happened: logged in, no workspace yet, and the one command that finishes it.
+  assert.match(printed, /Logged in to http:\/\/backend\.test.* — with no workspace chosen yet/)
+  assert.match(printed, /login --org @acme \(or --personal\) — it will not ask you to sign in again/)
+})
+
+/** As an interactive terminal inside `scene`: a TTY, and no CI. */
+async function atTerminal(fn) {
+  const tty = process.stdin.isTTY
+  const ci = process.env.CI
+  process.stdin.isTTY = true
+  delete process.env.CI
+  try {
+    return await fn()
+  } finally {
+    process.stdin.isTTY = tty
+    if (ci === undefined) delete process.env.CI
+    else process.env.CI = ci
+  }
+}
+
+test('⛔ a workspace pick cancelled at a terminal is not a cancelled login: said, session kept, exit 2', async () => {
+  const { runRegistryLogin } = await import('../src/utils/registry-auth.js')
+  const prompts = (await import('prompts')).default
+  let exit = null
+  const { printed, home } = await scene({ orgs: ACME }, () =>
+    atTerminal(async () => {
+      prompts.inject([new Error('cancelled')]) // what prompts does when the user escapes
+      try {
+        await runRegistryLogin({ apiBase: ORIGIN, args: ['--token', 'T1'] })
+      } catch (err) {
+        exit = err.exitCode
+      }
+    })
+  )
+  // Until 2026-10-06: "Cancelled." and exit 0 — with the new session already in place.
+  assert.equal(exit, 2)
+  assert.equal(readSession(home).token, 'T1')
+  assert.match(printed, /with no workspace chosen yet/)
+  assert.match(printed, /No workspace chosen\. Choose one: .*login --org @acme/)
+  assert.doesNotMatch(printed, /^Cancelled\./m)
+})
+
+test('a switch to a workspace you are not a member of leaves the one you work in — and says so', async () => {
+  const { runRegistryLogin } = await import('../src/utils/registry-auth.js')
+  let exit = null
+  const { printed, home } = await scene({ session: { token: 'T1', workspace: '@acme' }, orgs: ACME }, async () => {
+    try {
+      await runRegistryLogin({ apiBase: ORIGIN, args: ['--org', '@beta'] })
+    } catch (err) {
+      exit = err.exitCode
+    }
+  })
+  assert.equal(exit, 2)
+  assert.equal(readSession(home).workspace, '@acme')
+  assert.match(printed, /working in .*@acme.* — unchanged/)
+  assert.doesNotMatch(printed, /no workspace chosen yet/)
+  assert.match(printed, /not a member of @beta/)
 })
 
 test('⭐ switching workspace needs no new login — --org on a valid session', async () => {

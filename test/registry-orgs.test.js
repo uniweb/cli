@@ -124,13 +124,18 @@ test('an org named after you — made before 2026-09-23 — is your personal sco
   assert.equal(result, 'jane')
 })
 
-test('orgs, non-interactive: your personal scope, said — pass --scope for an org', async () => {
+// ⛔ No default for a member of organizations *[Diego, 2026-10-06: "someone in an org, with no
+// workspace chosen must choose one. we should not default to personal"]*. Until then: your
+// personal scope, said.
+test('orgs, non-interactive: refused — choose a workspace, or name the scope', async () => {
   const { result, errs } = await withOrgs(
     { list: [{ handle: 'acme', is_primary: true }] },
     () => deriveScope({ ...BASE, args: ['--non-interactive'] })
   )
-  assert.equal(result, 'jane')
-  assert.match(errs, /--scope @org/)
+  assert.equal(result, null)
+  assert.match(errs, /You belong to organizations \(@acme\), so no scope is assumed/)
+  assert.match(errs, /login --org @acme \(or --personal\)/)
+  assert.match(errs, /--scope @acme, or --scope @jane for your own/)
 })
 
 test('orgs, at a terminal: a pick — your personal scope first, then each org', async () => {

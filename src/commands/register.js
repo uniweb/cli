@@ -317,8 +317,10 @@ export async function settleFoundationName(targetDir, { args, isPreview }) {
  * A preview (`--dry-run`, `-o`) writes nothing: a bare name previews under `--scope`,
  * or unscoped.
  *
- * @returns {Promise<{ scope: string|null, source: string|null } | { cancelled: true } | null>}
- *   null when refused (the reason is printed); `cancelled` when no org was chosen
+ * @returns {Promise<{ scope: string|null, source: string|null } | null>}
+ *   null when refused, the reason printed — no scope chosen included, since a name with
+ *   no scope cannot register. ⛔ Until 2026-10-06 "no scope chosen" was `cancelled`, and
+ *   register exited 0 having registered nothing.
  */
 export async function settleFoundationScope(targetDir, { args, isPreview, flagScope, client }) {
   let read
@@ -352,7 +354,7 @@ export async function settleFoundationScope(targetDir, { args, isPreview, flagSc
   let source = flagScope ? '--scope' : null
   if (!scope) {
     scope = await deriveScopeFromLogin(client, args)
-    if (!scope) return { cancelled: true }
+    if (!scope) return null
     source = 'login'
   }
 
@@ -665,7 +667,6 @@ async function runRegister(args = []) {
       client
     })
     if (!settled) return { exitCode: 2 }
-    if (settled.cancelled) return { exitCode: 0 }
     scope = settled.scope
     scopeSource = settled.source
     // Build-if-stale (`foundationNeedsBuild`): a missing or stale dist/ gets
@@ -721,7 +722,7 @@ async function runRegister(args = []) {
   // (A foundation's was settled before its build — `settleFoundationScope`.)
   if (standalone && !scope && !isPreview) {
     const derived = await deriveScopeFromLogin(client, args)
-    if (!derived) return { exitCode: 0 }
+    if (!derived) return { exitCode: 2 }
     scope = derived
     scopeSource = 'login'
     try {

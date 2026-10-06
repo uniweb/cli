@@ -194,11 +194,17 @@ export async function chooseWorkspace({ apiBase, token, args = [] }) {
     }
   }
 
-  const { isNonInteractive } = await import('../utils/interactive.js')
+  const { isNonInteractive, getCliPrefix } = await import('../utils/interactive.js')
+  // ⭐ How to choose, said whole: the session is stored already (`registry-auth.js`, the
+  // login methods), so the login that finishes this signs nobody in again.
+  const others = [...mine.slice(1).map((h) => `--org ${h}`), '--personal']
+  const howToChoose =
+    `Choose one: ${getCliPrefix()} login --org ${mine[0]} (or ${others.join(', ')}) — ` +
+    'it will not ask you to sign in again.'
   if (isNonInteractive(args)) {
     return {
       refused: true,
-      reason: `You belong to organizations — name the workspace you work in: ${[...mine, '--personal'].map((w) => (w.startsWith('@') ? `--org ${w}` : w)).join(' | ')}.`
+      reason: `You belong to organizations, so no workspace is assumed. ${howToChoose}`
     }
   }
   const prompts = (await import('prompts')).default
@@ -216,12 +222,10 @@ export async function chooseWorkspace({ apiBase, token, args = [] }) {
       ],
       initial: 0
     },
-    {
-      onCancel: () => {
-        console.error('\nCancelled.')
-        process.exit(0)
-      }
-    }
+    // ⛔ A cancelled pick is NOT a cancelled login: the session is stored already, so the
+    // login says so and how to finish it (`finishLogin`), and exits 2. Until 2026-10-06 this
+    // printed "Cancelled." and exited 0 — with the new session in place of the old one.
+    { onCancel: () => false }
   )
-  return choice ? { choice } : { refused: true, reason: 'No workspace chosen.' }
+  return choice ? { choice } : { refused: true, reason: `No workspace chosen. ${howToChoose}` }
 }

@@ -2636,8 +2636,10 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 > ```
 >
 > Already logged in, `uniweb login --org @other` switches without logging in again. **Without a
-> terminal — you, an agent — a login with organizations refuses until one is named**, and so
-> does a command when none was. A process logged in with `UNIWEB_TOKEN` names its workspace with
+> terminal — you, an agent — a login with organizations and no workspace named signs you in but
+> exits 2**: `uniweb login --org @acme` (or `--personal`) finishes it without signing in again.
+> Until then every command that works on a site refuses, and so does registering a foundation whose
+> name has no scope. A process logged in with `UNIWEB_TOKEN` names its workspace with
 > `UNIWEB_WORKSPACE=@acme` (or `personal`). **Ask the human which workspace to use** rather than
 > picking for them — a site created in the wrong one cannot be moved from here.
 >
@@ -2696,7 +2698,7 @@ Platform-specific configuration that doesn't belong in npm-standard fields. All 
 |---|---|---|---|
 | `runtimePolicy` | `dist/runtime-pin.json` | unset | Declares how far past the recorded runtime version a host may move a site. |
 
-**The foundation's name is not here — it is `name` in `main.js`** (else `package.json`'s `name`), **and so is the scope it registers under: the scope is part of the name**, `name: '@acme/marketing'`. A scope is a namespace — your personal one, `@<your handle>`, which needs no org, or an org's. A name with no scope has not been registered yet: the first `uniweb register` takes `--scope`, else the workspace you work in — an org's scope, or your personal one (asking only when you belong to orgs and chose no workspace) — and writes it into the name; a `--scope` naming another scope than the name's is refused. The foundation's own data schemas register under the same scope (`@/article` → `@acme/article`). ⛔ `uniweb.id` and `uniweb.scope` are no longer read for a foundation: `uniweb register` refuses them and prints the `main.js` line to write instead. (A schemas-only package has no `main.js`, and still records its scope in `uniweb.scope`.)
+**The foundation's name is not here — it is `name` in `main.js`** (else `package.json`'s `name`), **and so is the scope it registers under: the scope is part of the name**, `name: '@acme/marketing'`. A scope is a namespace — your personal one, `@<your handle>`, which needs no org, or an org's. A name with no scope has not been registered yet: the first `uniweb register` takes `--scope`, else the workspace you work in — an org's scope, or your personal one; when you belong to orgs and chose no workspace, it asks at a terminal and refuses without one — and writes it into the name; a `--scope` naming another scope than the name's is refused. The foundation's own data schemas register under the same scope (`@/article` → `@acme/article`). ⛔ `uniweb.id` and `uniweb.scope` are no longer read for a foundation: `uniweb register` refuses them and prints the `main.js` line to write instead. (A schemas-only package has no `main.js`, and still records its scope in `uniweb.scope`.)
 
 **Runtime updates — handled for you.** Your foundation's code links against the runtime: it externalizes `react`, `react-dom`, `react-dom/server`, both JSX runtimes and `@uniweb/core`, and the runtime supplies all of them at load time. So a build is bound to *that* React and *that* core API.
 

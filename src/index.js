@@ -1816,6 +1816,8 @@ ${colors.bright}Options:${colors.reset}
 In non-interactive mode (no TTY — an agent, a script), pass \`--token <bearer>\` with
 \`--org @org\` or \`--personal\`, or set \`UNIWEB_USERNAME\` + \`UNIWEB_PASSWORD\`, or set
 \`UNIWEB_TOKEN\` (per process, not stored) with \`UNIWEB_WORKSPACE=@org\` or \`personal\`.
+A login with organizations that names no workspace signs you in but exits 2;
+\`uniweb login --org @org\` (or \`--personal\`) finishes it without signing in again.
 \`uniweb logout\` logs you out.
 `,
     refresh: `

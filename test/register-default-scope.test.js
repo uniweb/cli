@@ -124,12 +124,14 @@ test('a UNIWEB_TOKEN process takes UNIWEB_WORKSPACE, never the session\'s', asyn
   assert.match(r.printed, /UNIWEB_WORKSPACE/)
 })
 
-test('no workspace chosen and organizations → derived as before (the control: not the workspace rule)', async () => {
+// ⛔ "someone in an org, with no workspace chosen must choose one. we should not default to
+// personal" *[Diego, 2026-10-06]*. Until then this registered under your personal scope, said.
+test('no workspace chosen and organizations, no terminal → refused, and nothing is written', async () => {
   const r = await settle({ session: {}, orgs: [{ handle: 'acme' }] })
-  // deriveScope without a terminal: your personal scope, said as a non-interactive choice.
-  assert.equal(r.result.scope, '@dev')
-  assert.match(r.printed, /\(non-interactive\)/)
-  assert.doesNotMatch(r.printed, /the workspace you work in/)
+  assert.equal(r.result, null, 'refused — register exits 2')
+  assert.match(r.main, /name: 'marketing'/, 'the name is left bare')
+  assert.match(r.printed, /so no scope is assumed/)
+  assert.doesNotMatch(r.printed, /Registering under/)
 })
 
 test('a scoped name is untouched, and no workspace or org is read for it', async () => {

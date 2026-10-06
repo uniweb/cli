@@ -190,7 +190,8 @@ export async function createOrg({ apiBase, token, handle }) {
  *
  *   no org              → your personal scope — said, never asked, in CI too
  *   orgs                → pick: your personal scope first, then each org;
- *                         non-interactive, your personal scope, said
+ *                         non-interactive, REFUSED — choose a workspace, or --scope
+ *                         (until 2026-10-06: your personal scope, said)
  *   no account handle   → (a service account) its one org, said; several are asked,
  *                         or refused in CI; none is a pointer to `--scope`
  *
@@ -245,10 +246,19 @@ export async function deriveScope({
       )
       return null
     }
+    // ⛔ NO DEFAULT FOR A MEMBER OF ORGANIZATIONS *[Diego, 2026-10-06: "someone in an org,
+    // with no workspace chosen must choose one. we should not default to personal"]*. Only
+    // reached when the workspace the command works in names no scope — none is chosen — so
+    // the choice is theirs. ⚠️ Until then this answered your personal scope, said: a team's
+    // foundation registered as one member's.
+    const { getCliPrefix } = await import('./interactive.js')
+    const first = orgs[0].handle
     console.error(
-      `Registering under your personal scope ${bold(personal)} (non-interactive). Pass --scope @org for an org.`
+      `\x1b[31m✗\x1b[0m You belong to organizations (${orgs.map((o) => `@${o.handle}`).join(', ')}), so no scope is assumed.\n` +
+        `  Choose the workspace you work in — ${getCliPrefix()} login --org @${first} (or --personal) — and the name takes its scope;\n` +
+        `  or name the scope here: --scope @${first}, or --scope @${personal} for your own.`
     )
-    return personal
+    return null
   }
   const prompts = (await import('prompts')).default
   const { choice } = await prompts(
@@ -274,5 +284,6 @@ export async function deriveScope({
       }
     }
   )
+  if (!choice) console.error('\x1b[31m✗\x1b[0m No scope chosen.')
   return choice || null
 }
