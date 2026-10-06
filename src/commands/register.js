@@ -612,11 +612,13 @@ async function runRegister(args = []) {
     : await resolveFoundationDir(args)
 
   // Scope. ⭐ A FOUNDATION's is the one in its name (`name: '@acme/marketing'` in
-  // main.js), settled below before the build; a bare name takes --scope, else one
-  // derived from your orgs, and register writes it into the name (2026-09-22).
-  // A SCHEMAS-ONLY package has no name to carry one: --scope, else package.json
-  // `uniweb.scope`, else (real submit only) derived from login membership. Either
-  // spelling, `@acme` or `acme`, and from here on the one form: `@acme` (publishScope).
+  // main.js), settled below before the build; a bare name takes --scope, else the
+  // workspace the command works in (`deriveScopeFromLogin`), and register writes it
+  // into the name (2026-09-22). A SCHEMAS-ONLY package has no name to carry one:
+  // --scope, else package.json `uniweb.scope`, else (real submit only) the workspace
+  // the command works in. Either spelling, `@acme` or `acme`, and from here on the one
+  // form: `@acme` (publishScope). ⛔ This said "derived from your orgs" / "from login
+  // membership" until 2026-10-06, read as the personal-scope default that was replaced.
   const pkgScope = standalone ? readPkgScope(targetDir) : null
   const givenScope = scopeFlag || pkgScope
   let scope = publishScope(givenScope)
