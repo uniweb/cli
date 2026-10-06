@@ -600,6 +600,10 @@ function releaseFoundation(local, args, cliBin, say, origin) {
  * says the account is neither that scope's owner nor a member of its org, the error
  * says so (`notMember`) and carries the ways on (`ways`): `--no-release`, where a
  * released version exists to send the content against, and a member releasing it.
+ * Its message is what the refusal means for the push — nothing was sent — since the
+ * `register` it ran has just printed the refusal itself, membership and the registry's
+ * own sentence included (measured against a local backend, 2026-10-06: HTTP 400, no
+ * typed reason).
  *
  * ⛔ The registry decides membership; this only names it after a refusal, and passes
  * the error through whenever it cannot tell.
@@ -618,7 +622,7 @@ export async function explainReleaseFailure(err, { client, local, reg, verb }) {
   if (!scope || typeof client?.fetchOrgs !== 'function') return err
   const member = belongsToScope(scope, await client.fetchOrgs().catch(() => null))
   if (member !== false) return err
-  const explained = new Error(`You can't release ${name}: you're not a member of ${scope}.`)
+  const explained = new Error(`${name} was not released, so nothing was sent.`)
   explained.notMember = true
   explained.ways = reg?.latest_version
     ? [

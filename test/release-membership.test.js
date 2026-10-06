@@ -60,7 +60,8 @@ test('a release refused in a scope you are not a member of: said, with --no-rele
     verb: 'publish'
   })
   assert.equal(err.notMember, true)
-  assert.equal(err.message, "You can't release @agency/theme: you're not a member of @agency.")
+  // register has just said why (its own output); the push says what that means for it.
+  assert.equal(err.message, '@agency/theme was not released, so nothing was sent.')
   assert.match(err.ways[0], /released 1\.4\.0: `uniweb publish --no-release`/)
   assert.match(err.ways[1], /member of @agency/)
 })
