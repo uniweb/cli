@@ -124,17 +124,17 @@ const jsonRes = (body, status = 200) => ({
 // for that origin and stops.
 //
 // ⚠️ The failure is machine-local and reads as a product bug. Anyone who runs
-// `uniweb login --backend http://localhost:8080` — the documented local-dev
+// `uniweb login --server http://localhost:8080` — the documented local-dev
 // flow — breaks the tests here, while CI, which has no session, stays green.
 // Measured 2026-08-26 (then against the since-deleted scope guard).
 //
 // The value is the backend the fixtures are bound on in sync.json (`bindSite`).
 // `fetch` is mocked in every test, so nothing leaves the machine.
 const TEST_ORIGIN = 'https://uniweb.app'
-// Aimed the way automation aims: UNIWEB_REGISTER_URL, which outranks the login. This
+// Aimed the way automation aims: UNIWEB_SERVER, which outranks the login. This
 // file runs in its own process, so setting it once is contained. (It passed
 // `--backend` on every call until that flag left the backend verbs, 2026-09-21.)
-process.env.UNIWEB_REGISTER_URL = TEST_ORIGIN
+process.env.UNIWEB_SERVER = TEST_ORIGIN
 
 /** Bind a test site on the pinned backend — identity lives in sync.json since 2026-09-20. */
 function bindSite(dir, uuid) {
@@ -1415,7 +1415,7 @@ test('an ETag cached by an older pull is not echoed — it may describe content 
 //
 // The defect this guards against is invisible on the machine most likely to run
 // the suite: it appears only when the developer has a logged-in session or a
-// `UNIWEB_REGISTER_URL`, and CI has neither. So a regression would pass review,
+// `UNIWEB_SERVER`, and CI has neither. So a regression would pass review,
 // pass CI, and break on the laptops of exactly the people doing local-backend
 // work.
 //
@@ -1423,8 +1423,8 @@ test('an ETag cached by an older pull is not echoed — it may describe content 
 // `--backend` pins above as redundant and this goes red on a clean checkout,
 // rather than months later on one developer's machine.
 test('pull is hermetic — a hostile ambient origin cannot reach it', async () => {
-  const prior = process.env.UNIWEB_REGISTER_URL
-  process.env.UNIWEB_REGISTER_URL = 'http://hostile.invalid'
+  const prior = process.env.UNIWEB_SERVER
+  process.env.UNIWEB_SERVER = 'http://hostile.invalid'
   try {
     const dir = tempSite()
     writeFileSync(join(dir, 'site.yml'), "name: Old\nfoundation: '@a/base'\n")
@@ -1448,8 +1448,8 @@ test('pull is hermetic — a hostile ambient origin cannot reach it', async () =
     // Verified 2026-08-26 by removing it: this case, and only this case, fails.
     assert.equal(res.exitCode, 0)
   } finally {
-    if (prior === undefined) delete process.env.UNIWEB_REGISTER_URL
-    else process.env.UNIWEB_REGISTER_URL = prior
+    if (prior === undefined) delete process.env.UNIWEB_SERVER
+    else process.env.UNIWEB_SERVER = prior
   }
 })
 

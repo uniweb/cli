@@ -48,7 +48,7 @@ async function settle({ session = null, env = {}, orgs = [], account = 'dev', ar
       JSON.stringify({ version: 2, current: ORIGIN, sessions: { [ORIGIN]: { token: 'tok', ...session } } })
     )
   }
-  const keys = ['UNIWEB_WORKSPACE', 'UNIWEB_TOKEN', 'UNIWEB_REGISTER_URL', 'CI', ...Object.keys(env)]
+  const keys = ['UNIWEB_WORKSPACE', 'UNIWEB_TOKEN', 'UNIWEB_SERVER', 'CI', ...Object.keys(env)]
   const saved = {
     home: process.env.HOME,
     fetch: globalThis.fetch,
@@ -57,7 +57,7 @@ async function settle({ session = null, env = {}, orgs = [], account = 'dev', ar
     env: Object.fromEntries(keys.map((k) => [k, process.env[k]]))
   }
   process.env.HOME = home
-  for (const k of ['UNIWEB_WORKSPACE', 'UNIWEB_TOKEN', 'UNIWEB_REGISTER_URL']) delete process.env[k]
+  for (const k of ['UNIWEB_WORKSPACE', 'UNIWEB_TOKEN', 'UNIWEB_SERVER']) delete process.env[k]
   process.env.CI = '1'
   Object.assign(process.env, env)
   const requests = []

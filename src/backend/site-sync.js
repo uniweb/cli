@@ -571,7 +571,7 @@ const readMap = (siteDir, backend, key) => {
  *     not change** — a partial site, published successfully, with nothing to
  *     indicate it.
  *
- * The guidance is `uniweb forget --backend <url>` now, which removes the uuid and the
+ * The guidance is `uniweb forget --server <url>` now, which removes the uuid and the
  * maps together, so following it no longer leads here.
  *
  * Call this BEFORE `ensureSiteExists`, which mints a uuid and would otherwise make
@@ -1902,7 +1902,7 @@ export async function pushSyncPackages({
     } catch (err) {
       error(describeRequestError(err, client.origin))
       if (!(err instanceof WorkspaceMismatchError))
-        note('Is that the backend you meant? Switch with: uniweb login --backend <url>')
+        note('Is that the backend you meant? Switch with: uniweb login --server <url>')
       return null
     }
     if (!res.ok) {
@@ -2067,7 +2067,7 @@ export async function pushSyncPackages({
       error(`${label} push rejected: HTTP ${res.status} ${res.statusText}`)
       if (res.status === 401 || res.status === 403) {
         note(
-          "Credentials weren't accepted — log in again (`uniweb login --backend <url>`), or check UNIWEB_TOKEN."
+          "Credentials weren't accepted — log in again (`uniweb login --server <url>`), or check UNIWEB_TOKEN."
         )
       } else if (res.status === 404 && boundUuid) {
         // The clone is bound to a site the backend does not have. There is no CLI
@@ -2097,10 +2097,10 @@ export async function pushSyncPackages({
           'Two causes. Check the cheap one first: is this the backend the site lives on?'
         )
         note(
-          `  wrong backend  →  uniweb login --backend <the right one>   (nothing is lost)`
+          `  wrong backend  →  uniweb login --server <the right one>   (nothing is lost)`
         )
         note(
-          `  deleted there  →  uniweb forget --backend ${client.origin}, then push again: it creates a NEW site`
+          `  deleted there  →  uniweb forget --server ${client.origin}, then push again: it creates a NEW site`
         )
         note('Deleting this folder removes only your local copy, either way.')
       } else if (problem?.reason === 'template_records_not_copyable' && Array.isArray(problem.records)) {

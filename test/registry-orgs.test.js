@@ -134,7 +134,7 @@ test('orgs, non-interactive: refused — choose a workspace, or name the scope',
   )
   assert.equal(result, null)
   assert.match(errs, /You belong to organizations \(@acme\), so no scope is assumed/)
-  assert.match(errs, /login --backend http:\/\/localhost:8080 --org @acme \(or --personal\)/)
+  assert.match(errs, /login --server http:\/\/localhost:8080 --org @acme \(or --personal\)/)
   assert.match(errs, /--scope @acme, or --scope @jane for your own/)
 })
 

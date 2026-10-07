@@ -21,7 +21,7 @@ import { belongsToScope } from '../src/utils/registry-orgs.js'
 import { explainReleaseFailure } from '../src/backend/foundation-bring-along.js'
 
 const ORIGIN = 'http://registry.test'
-const ENV = { UNIWEB_REGISTER_URL: ORIGIN, UNIWEB_TOKEN: 'test-token' }
+const ENV = { UNIWEB_SERVER: ORIGIN, UNIWEB_TOKEN: 'test-token' }
 
 test('belongsToScope: your own handle, or an org you belong to — from the orgs read', () => {
   const env = { account_handle: 'jane', orgs: [{ handle: 'acme' }] }

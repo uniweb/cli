@@ -48,9 +48,9 @@
  * backend's reconcile deletes items absent from the package, so an author's NEW page
  * would be hard-deleted). `--force` omits the token and restores last-push-wins.
  *
- * Backend: the one you are logged in to — UNIWEB_REGISTER_URL overrides it for a script
+ * Backend: the one you are logged in to — UNIWEB_SERVER overrides it for a script
  *   (resolveBackendOrigin). Auth: UNIWEB_TOKEN  >  the stored session  >  `uniweb login`.
- *   No `--backend` or `--token`: switching and signing in are `uniweb login`.
+ *   No `--server` or `--token`: switching and signing in are `uniweb login`.
  *
  * The two-lane SUBMISSION (POST both lanes, back-fill uuids, persist the
  * send-only-changed cache) lives in `../backend/site-sync.js` so `uniweb publish`
@@ -162,10 +162,10 @@ export async function push(args = [], deps = {}) {
   // arrival or lose a value on the way. See utils/conformance.js.
   if (await refuseIfContentDoesNotConform(siteDir, { args })) return { exitCode: 1 }
   // ⭐ THE BACKEND YOU ARE LOGGED IN TO is where this goes *[Diego, 2026-09-21]*, for every
-  // backend verb (resolveBackendOrigin). Only UNIWEB_REGISTER_URL — the automation
+  // backend verb (resolveBackendOrigin). Only UNIWEB_SERVER — the automation
   // override — outranks it, and nothing talks to a backend the user is not logged in to:
   // logged in nowhere, the origin is the default backend and the first request asks for
-  // that login. ⛔ There is no `--backend` here: switching is `uniweb login --backend`.
+  // that login. ⛔ There is no `--server` here: switching is `uniweb login --server`.
   // ⛔ The project's own record — its synced backend, deploy.yml's default target — routes
   // NOTHING. For part of 2026-09-21 it answered a "logged in nowhere" tier, which cannot
   // be reached: *"We do not allow any communication with backend if the user is not
@@ -209,8 +209,8 @@ export async function push(args = [], deps = {}) {
   // ⚠️ Logged in to a backend where this project has no site, while it has one
   // elsewhere: following the login CREATES a second site. Say so before the owner
   // question, which otherwise arrives with no reason attached. Not for `-o` (nothing is
-  // created) and not when UNIWEB_REGISTER_URL chose the backend — that is a decision.
-  if (!output && !process.env.UNIWEB_REGISTER_URL) {
+  // created) and not when UNIWEB_SERVER chose the backend — that is a decision.
+  if (!output && !process.env.UNIWEB_SERVER) {
     const known = syncedElsewhere(siteDir, client.origin)
     if (known) {
       const [headline, ...rest] = describeSyncedElsewhere(known, client.origin, 'push')

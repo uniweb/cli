@@ -243,7 +243,7 @@ export async function status(args = []) {
     if (siteState?.state === 'gone') {
       say.warn(`The backend has no site ${uuid} — it was deleted there, or the backend was rebuilt.`)
       say.dim(
-        `To push this as a new site: uniweb forget --backend ${probeBackend}, then uniweb push.`
+        `To push this as a new site: uniweb forget --server ${probeBackend}, then uniweb push.`
       )
     } else if (siteState?.state === 'unknown') {
       say.dim(

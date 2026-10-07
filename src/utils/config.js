@@ -53,7 +53,7 @@ function readCliConfig() {
 /**
  * The origin the LAST `uniweb login` authenticated against — persisted on the
  * session record so subsequent verbs default to the backend you logged into
- * (no `--backend` per command). Sync read; null when there's no session or it
+ * (no backend flag per command). Sync read; null when there's no session or it
  * carries no origin (older sessions). Read directly (not via registry-auth.js)
  * to keep this module off the optional-peer / import-cycle path.
  * @returns {string|null}
@@ -91,7 +91,7 @@ function originOrNull(value) {
  * **The default backend** — where a bare `uniweb login` goes, and where a backend command
  * goes when nobody is logged in (the login it asks for is then this one).
  *
- * `UNIWEB_REGISTER_URL`, else `~/.uniweb/config.json` `registryApiUrl`, else
+ * `UNIWEB_SERVER`, else `~/.uniweb/config.json` `registryApiUrl`, else
  * https://uniweb.app. ⛔ **Never the current session** *[Diego, 2026-09-21: "the default
  * backend for login, if not specified, is uniweb.app"]* — a bare `uniweb login` means the
  * default backend, not "the one I am already on".
@@ -100,7 +100,7 @@ function originOrNull(value) {
  */
 export function getDefaultBackendOrigin() {
   return (
-    originOrNull(process.env.UNIWEB_REGISTER_URL) ||
+    originOrNull(process.env.UNIWEB_SERVER) ||
     originOrNull(readCliConfig().registryApiUrl) ||
     DEFAULT_BACKEND_ORIGIN
   )
@@ -108,7 +108,7 @@ export function getDefaultBackendOrigin() {
 
 /**
  * The `uniweb login` that SWITCHES the workspace on `origin` — the caller appends `--org @x`
- * or `--personal` — with `--backend` unless a switch without it reaches `origin`
+ * or `--personal` — with `--server` unless a switch without it reaches `origin`
  * (`resolveLoginOrigin`): the backend you are logged in to, or, logged in nowhere, the
  * default backend.
  *
@@ -118,12 +118,12 @@ export function getDefaultBackendOrigin() {
  *
  * @param {string} origin - the backend the hint is about
  * @param {string} [prefix='uniweb'] - how the user runs the CLI (`getCliPrefix`)
- * @returns {string} e.g. `uniweb login`, or `uniweb login --backend http://localhost:8080`
+ * @returns {string} e.g. `uniweb login`, or `uniweb login --server http://localhost:8080`
  */
 export function loginCommand(origin, prefix = 'uniweb') {
   const o = originOrNull(origin)
   const reached = originOrNull(loggedInOrigin()) || getDefaultBackendOrigin()
-  return o && o !== reached ? `${prefix} login --backend ${o}` : `${prefix} login`
+  return o && o !== reached ? `${prefix} login --server ${o}` : `${prefix} login`
 }
 
 /** The flags with which `uniweb login` SIGNS IN — a method, or a credential. */
@@ -145,7 +145,7 @@ export function isWorkspaceSwitch(args = []) {
 }
 
 /**
- * The backend `uniweb login` logs in to: `--backend`; else, for a workspace switch, the
+ * The backend `uniweb login` logs in to: `--server`; else, for a workspace switch, the
  * backend you are logged in to; else the default backend.
  *
  * ⭐ A SWITCH ACTS ON YOUR SESSION *[Diego, 2026-10-06: "`uniweb login --org @x` or
@@ -157,14 +157,14 @@ export function isWorkspaceSwitch(args = []) {
  * uniweb.app"]*. ⛔ Until 2026-10-06 a switch went to the default backend too, so on any
  * other backend it began a new login there, logging you out of the one you were on.
  *
- * ⛔ A mistyped `--backend` is an error, never a fallback — it would log you in, and so
+ * ⛔ A mistyped `--server` is an error, never a fallback — it would log you in, and so
  * point every command, somewhere you did not name.
  *
  * @param {string|null|undefined} flag - `readFlagValue`'s answer: undefined when the
  *   flag is absent, null when it was given with no value
  * @param {string[]} [args] - the login's argv, to tell a switch from a sign-in
  * @returns {string}
- * @throws {Error} when --backend was given and is not a URL
+ * @throws {Error} when --server was given and is not a URL
  */
 export function resolveLoginOrigin(flag, args = []) {
   if (flag === undefined) {
@@ -172,7 +172,7 @@ export function resolveLoginOrigin(flag, args = []) {
     return session || getDefaultBackendOrigin()
   }
   const origin = originOrNull(flag)
-  if (!origin) throw new Error(flag ? `Not a URL: ${flag}` : '--backend needs a URL')
+  if (!origin) throw new Error(flag ? `Not a URL: ${flag}` : '--server needs a URL')
   return origin
 }
 
@@ -180,12 +180,12 @@ export function resolveLoginOrigin(flag, args = []) {
  * **The backend a command talks to** — the base of every `/dev/*` route (`register`
  * POSTs to {origin}/dev/registry/register, and so on).
  *
- * `UNIWEB_REGISTER_URL` > **the backend the user is logged in to** > the default
+ * `UNIWEB_SERVER` > **the backend the user is logged in to** > the default
  * (`getDefaultBackendOrigin`). ⭐ Nothing talks to a backend the user is not logged in
  * to *[Diego, 2026-09-21]*: when this falls through to the default, the command's first
  * request asks for that login — so the default is where the login goes, never a
  * backend reached without one. `resolveBackendOrigin` (backend/client.js) returns this
- * unchanged: no command takes a `--backend`. ⛔ *Until 2026-10-05 this said "when no
+ * unchanged: no command takes a backend flag. ⛔ *Until 2026-10-05 this said "when no
  * `--backend` is given" and that `resolveBackendOrigin` put `--backend` on top — read as
  * a per-command flag outranking the login. The verbs lost that flag on 2026-09-21.*
  *
@@ -193,7 +193,7 @@ export function resolveLoginOrigin(flag, args = []) {
  */
 export function getRegistryApiBaseUrl() {
   return (
-    originOrNull(process.env.UNIWEB_REGISTER_URL) ||
+    originOrNull(process.env.UNIWEB_SERVER) ||
     originOrNull(loggedInOrigin()) ||
     getDefaultBackendOrigin()
   )

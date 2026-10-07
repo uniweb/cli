@@ -84,7 +84,7 @@ test('a site that is not on the backend the user is logged in to names where it 
     const client = clientAnswering(REPLY)
     const asked = await readSitePreview({ siteDir: dir, args: ARGS, client })
     assert.match(asked.refused.join('\n'), /on http:\/\/elsewhere\.test — not on http:\/\/backend\.test/)
-    assert.match(asked.refused.join('\n'), /uniweb login --backend/)
+    assert.match(asked.refused.join('\n'), /uniweb login --server/)
     assert.deepEqual(client.asked, [])
   } finally {
     rmSync(dir, { recursive: true, force: true })

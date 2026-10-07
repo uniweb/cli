@@ -1511,7 +1511,7 @@ test('a 404 on a uuid-bound lane names BOTH causes, recoverable one first', asyn
   assert.match(notes, /http:\/\/x/) // names WHICH backend answered 404
   assert.match(notes, /wrong backend/)
   assert.match(notes, /deleted there/)
-  assert.match(notes, /uniweb forget --backend http:\/\/x, then push again/)
+  assert.match(notes, /uniweb forget --server http:\/\/x, then push again/)
   assert.doesNotMatch(notes, /\$uuid/, 'site.yml holds no identity to clear')
   // The ordering is the point, not decoration: the destructive remedy must not be the
   // first thing a reader acts on. Assert it structurally so a later reword cannot

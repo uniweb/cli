@@ -16,7 +16,7 @@ import { join } from 'node:path'
 import { runVerb, tmp } from './helpers/run-verb.js'
 
 const ORIGIN = 'http://backend.test'
-const ENV = { UNIWEB_REGISTER_URL: ORIGIN, UNIWEB_TOKEN: 'TKN' }
+const ENV = { UNIWEB_SERVER: ORIGIN, UNIWEB_TOKEN: 'TKN' }
 const UUID = '01a116cf-1a07-79f0-86e1-855d3a95e987'
 const OTHER = '01a116e8-8dd0-7990-8a15-6912794b0a7b'
 

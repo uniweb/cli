@@ -325,7 +325,7 @@ async function remove(args) {
     if (await forgetDeletedSite(target.siteDir, client.origin)) {
       say.dim(`This project no longer records a site on ${client.origin}; its next push creates a new one.`)
     } else {
-      say.dim(`This project still records it — run \`uniweb forget --backend ${client.origin}\` in it.`)
+      say.dim(`This project still records it — run \`uniweb forget --server ${client.origin}\` in it.`)
     }
   }
   return { exitCode: 0 }

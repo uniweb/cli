@@ -31,7 +31,8 @@
  *   uniweb refresh                 git pull, then merge the backend's content
  *   uniweb refresh --no-git        skip the git remote; backend only
  *   uniweb refresh --no-backend    skip the backend; git only
- *   uniweb refresh --backend <url> Override the backend origin
+ *
+ * The backend is the one you are logged in to, as for every backend verb (no flag picks it).
  */
 
 import { readFileSync } from 'node:fs'

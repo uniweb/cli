@@ -645,6 +645,15 @@ async function main() {
   const command = args[0]
   const pm = detectPackageManager()
 
+  // ⛔ THE VARIABLE THAT AIMS A PROCESS IS UNIWEB_SERVER — UNIWEB_REGISTER_URL until 2026-10-07.
+  // Set ALONE, the old name is refused rather than ignored: ignored, a script that meant a
+  // local or staging backend would go to the default one, uniweb.app, and say nothing. Set
+  // beside the new one it is ignored, so a script can carry both while CLIs of both ages run it.
+  if (process.env.UNIWEB_REGISTER_URL && !process.env.UNIWEB_SERVER) {
+    error('UNIWEB_REGISTER_URL is now UNIWEB_SERVER — rename it, and the command goes to the same backend.')
+    process.exit(2)
+  }
+
   // Handle --version / -v
   //
   // Output convention: the version goes to stdout (parseable, scriptable —
@@ -915,13 +924,13 @@ async function main() {
   }
 
   // Handle login command — the backend (username/password · paste a token ·
-  // --token <bearer>). ⭐ `--backend <url>` names it; without the flag it is the DEFAULT
-  // backend — UNIWEB_REGISTER_URL, else ~/.uniweb/config.json, else https://uniweb.app —
+  // --token <bearer>). ⭐ `--server <url>` names it; without the flag it is the DEFAULT
+  // backend — UNIWEB_SERVER, else ~/.uniweb/config.json, else https://uniweb.app —
   // and never the project's backend *[Diego, 2026-09-21: "the default backend for login, if
   // not specified, is uniweb.app"]*. ⭐ Except a WORKSPACE SWITCH — `--org` / `--personal`
   // and no way of signing in — which acts on the backend you are logged in to *[Diego,
   // 2026-10-06]* (`resolveLoginOrigin`). The backend logged in to becomes CURRENT, and
-  // every backend command goes there (only UNIWEB_REGISTER_URL outranks it) — which is why
+  // every backend command goes there (only UNIWEB_SERVER outranks it) — which is why
   // this is the one place a backend is chosen.
   //
   // ⛔ Until 2026-09-21 a bare login went to the backend of the project in the cwd, and
@@ -932,12 +941,19 @@ async function main() {
     const { readFlagValue } = await import('./utils/args.js')
     const { runRegistryLogin } = await import('./utils/registry-auth.js')
     const { resolveLoginOrigin } = await import('./utils/config.js')
+    // `--backend` was this flag's name until 2026-10-07 — renamed so it is not read as a
+    // site's `backend` service. Refused with the new name, never treated as unknown and dropped:
+    // dropped, the login would go to the default backend.
+    if (loginArgs.some((a) => a === '--backend' || a.startsWith('--backend='))) {
+      console.error('\x1b[31m✗\x1b[0m `--backend` is now `--server`: uniweb login --server <url>')
+      process.exit(2)
+    }
     let apiBase
     try {
-      apiBase = resolveLoginOrigin(readFlagValue(loginArgs, '--backend'), loginArgs)
+      apiBase = resolveLoginOrigin(readFlagValue(loginArgs, '--server'), loginArgs)
     } catch (err) {
       console.error(
-        `\x1b[31m✗\x1b[0m ${err.message} — e.g. uniweb login --backend http://localhost:8080`
+        `\x1b[31m✗\x1b[0m ${err.message} — e.g. uniweb login --server http://localhost:8080`
       )
       process.exit(2)
     }
@@ -1809,7 +1825,7 @@ logged in to is where the backend commands go (push, pull, publish, status,
 register, clone) — so this is how you switch. Already logged in to it, login
 does nothing; add --password, --browser, --token-paste or --token to log in again.
 
-Without --backend: https://uniweb.app (or \$UNIWEB_REGISTER_URL). No command talks
+Without --server: https://uniweb.app (or \$UNIWEB_SERVER). No command talks
 to a backend you are not logged in to — run one before logging in and it asks first.
 
 ${colors.bright}The workspace you work in.${colors.reset} A login works in ONE workspace — your
@@ -1820,7 +1836,7 @@ or name it. Already logged in, \`uniweb login --org @other\` (or \`--personal\`)
 the workspace on the backend you are logged in to, without logging in again.
 
 ${colors.bright}Options:${colors.reset}
-  --backend <url>    The backend to log in to (without it: the default backend — or, for
+  --server <url>    The backend to log in to (without it: the default backend — or, for
                      --org / --personal alone, the one you are logged in to)
   --org @org         Work in @org (an organization you belong to)
   --personal         Work in your personal workspace
@@ -1888,13 +1904,13 @@ so it is deliberately kept away from the refresh half.
 ${colors.cyan}${colors.bright}uniweb forget${colors.reset} ${colors.dim}— Remove what this project recorded about where it synced${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
-  uniweb forget --backend <url>
+  uniweb forget --server <url>
   uniweb forget --all
 
 Local files only. Every site stays where it is on its backend.
 
 ${colors.bright}Options:${colors.reset}
-  --backend <url>    Forget one backend: its entries in sync.json and in the local
+  --server <url>    Forget one backend: its entries in sync.json and in the local
                      cache, and its deploy records in deploy.yml. Its targets stay,
                      so the next publish there creates a new site.
   --all              For a COPY of a project that should become a new one. Deletes
@@ -2107,8 +2123,8 @@ ${colors.bright}Global Options:${colors.reset}
 
   Backend commands (push, pull, publish, status, register, clone) go to the
   backend you are logged in to, with its session. Switch with
-  \`uniweb login --backend <url>\` (add \`--token <bearer>\` to sign in with a token);
-  a script can aim and authenticate one process with UNIWEB_REGISTER_URL and
+  \`uniweb login --server <url>\` (add \`--token <bearer>\` to sign in with a token);
+  a script can aim and authenticate one process with UNIWEB_SERVER and
   UNIWEB_TOKEN instead.
 
 ${colors.bright}Push Options:${colors.reset}

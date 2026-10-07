@@ -22,19 +22,19 @@ const DEFAULT = 'https://uniweb.app'
 
 /** Run `fn` with HOME pointed at a fresh dir holding `session` (if any). */
 async function withHome(session, fn) {
-  const saved = { home: process.env.HOME, env: process.env.UNIWEB_REGISTER_URL }
+  const saved = { home: process.env.HOME, env: process.env.UNIWEB_SERVER }
   const home = tmp('uw-home-')
   if (session) {
     mkdirSync(join(home, '.uniweb'), { recursive: true })
     writeFileSync(join(home, '.uniweb', 'registry-auth.json'), JSON.stringify(session))
   }
   process.env.HOME = home
-  delete process.env.UNIWEB_REGISTER_URL
+  delete process.env.UNIWEB_SERVER
   try {
     return await fn(home)
   } finally {
     process.env.HOME = saved.home
-    if (saved.env !== undefined) process.env.UNIWEB_REGISTER_URL = saved.env
+    if (saved.env !== undefined) process.env.UNIWEB_SERVER = saved.env
   }
 }
 
@@ -85,7 +85,7 @@ test('every login replaces the session; logging out leaves nobody logged in', as
   })
 })
 
-test('⭐ `uniweb login --backend X` when X is the session: nothing to do', async () => {
+test('⭐ `uniweb login --server X` when X is the session: nothing to do', async () => {
   // Logging in again is behind a method flag. Also where a file from the per-backend
   // days, holding X among others, becomes single: only X's session is kept.
   const { runRegistryLogin } = await import('../src/utils/registry-auth.js')

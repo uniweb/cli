@@ -22,9 +22,9 @@
  * Distinct from `uniweb deploy` (third-party hosts) and `uniweb register`
  * (foundation code → catalog). For a self-contained artifact, see `uniweb export`.
  *
- * Backend: the one you are logged in to — UNIWEB_REGISTER_URL overrides it for a script
+ * Backend: the one you are logged in to — UNIWEB_SERVER overrides it for a script
  *   (resolveBackendOrigin). Auth: UNIWEB_TOKEN  >  the stored session  >  `uniweb login`.
- *   No `--backend` or `--token`: switching and signing in are `uniweb login`.
+ *   No `--server` or `--token`: switching and signing in are `uniweb login`.
  *
  * Usage:
  *   uniweb publish                 Bring the foundation along, sync, and go live
@@ -270,10 +270,10 @@ export async function publish(args = []) {
   }
   const siteYml = readSiteYml(join(siteDir, 'site.yml'))
   // ⭐ THE BACKEND YOU ARE LOGGED IN TO is where this goes *[Diego, 2026-09-21]*, for every
-  // backend verb (resolveBackendOrigin). Only UNIWEB_REGISTER_URL — the automation
+  // backend verb (resolveBackendOrigin). Only UNIWEB_SERVER — the automation
   // override — outranks it, and nothing talks to a backend the user is not logged in to:
   // logged in nowhere, the origin is the default backend and the first request asks for
-  // that login. ⛔ There is no `--backend` here: switching is `uniweb login --backend`.
+  // that login. ⛔ There is no `--server` here: switching is `uniweb login --server`.
   // ⛔ The project's own record — its synced backend, deploy.yml's default target — routes
   // NOTHING. For part of 2026-09-21 it answered a "logged in nowhere" tier, which cannot
   // be reached: *"We do not allow any communication with backend if the user is not
@@ -303,8 +303,8 @@ export async function publish(args = []) {
   // ⚠️ Logged in to a backend where this project has no site, while it has one
   // elsewhere: following the login CREATES a second site. Say so before the owner
   // question, which otherwise arrives with no reason attached. Not when
-  // UNIWEB_REGISTER_URL chose the backend — that is already a decision.
-  if (!process.env.UNIWEB_REGISTER_URL) {
+  // UNIWEB_SERVER chose the backend — that is already a decision.
+  if (!process.env.UNIWEB_SERVER) {
     const known = syncedElsewhere(siteDir, client.origin)
     if (known) {
       const [headline, ...rest] = describeSyncedElsewhere(known, client.origin, 'publish')
@@ -933,7 +933,7 @@ export async function publish(args = []) {
   } catch (err) {
     say.err(describeRequestError(err, client.origin))
     if (!(err instanceof WorkspaceMismatchError))
-      say.dim('Is that the backend you meant? Switch with: uniweb login --backend <url>')
+      say.dim('Is that the backend you meant? Switch with: uniweb login --server <url>')
     return { exitCode: 1 }
   }
   // The body of a publish that did not go through — read once, and kept for the report below.

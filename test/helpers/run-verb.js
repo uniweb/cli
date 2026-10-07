@@ -73,7 +73,7 @@ function stubEntry() {
  * @param {string[]} args
  * @param {{ session?: object, env?: object, respond?: Function }} [opts] - `session`:
  *   the contents of `~/.uniweb/registry-auth.json` in the run's HOME — who the user is
- *   logged in as; `env`: variables set for the run only (UNIWEB_REGISTER_URL, say);
+ *   logged in as; `env`: variables set for the run only (UNIWEB_SERVER, say);
  *   `respond(url, init)`: answers a request with a `Response`, or returns nothing to
  *   let it be refused
  * @returns {Promise<{exitCode: number|'threw', output: string, requests: number,

@@ -79,7 +79,7 @@ async function run(dir, args) {
 
 test('⭐ forgets ONE backend and leaves the other whole', async () => {
   const dir = project()
-  const res = await run(dir, ['--backend', A])
+  const res = await run(dir, ['--server', A])
 
   assert.equal(res.exitCode, 0)
   assert.deepEqual(res.removed.sort(), ['.uniweb/backend-cache.json', 'sync.json'])
@@ -95,25 +95,25 @@ test('⛔ never touches a record file — its $uuid is the record\'s own id', as
   const record = join(dir, 'records', 'post', 'hello.md')
   const before = readFileSync(record, 'utf8')
 
-  await run(dir, ['--backend', A])
+  await run(dir, ['--server', A])
 
   assert.equal(readFileSync(record, 'utf8'), before)
 })
 
 test('a full URL forgets the backend it belongs to', async () => {
   const dir = project()
-  await run(dir, ['--backend', `${A}/dev/site/abc`])
+  await run(dir, ['--server', `${A}/dev/site/abc`])
   assert.equal(syncOf(dir)[A], undefined)
 })
 
 test('idempotent — a second call, or an unknown backend, is not an error', async () => {
   const dir = project()
-  await run(dir, ['--backend', A])
-  const again = await run(dir, ['--backend', A])
+  await run(dir, ['--server', A])
+  const again = await run(dir, ['--server', A])
   assert.equal(again.exitCode, 0)
   assert.deepEqual(again.removed, [])
 
-  const never = await run(dir, ['--backend', 'http://never.test'])
+  const never = await run(dir, ['--server', 'http://never.test'])
   assert.equal(never.exitCode, 0)
   assert.deepEqual(never.removed, [])
   assert.ok(syncOf(dir)[B], 'forgetting an unknown backend must not disturb a known one')
@@ -128,7 +128,7 @@ test('⛔ refuses without --backend — forgetting the wrong one duplicates a si
 
 test('refuses a value that is not a URL rather than guessing', async () => {
   const dir = project()
-  const res = await run(dir, ['--backend', 'not a url'])
+  const res = await run(dir, ['--server', 'not a url'])
   assert.equal(res.exitCode, 2)
   assert.ok(syncOf(dir)[A])
 })
@@ -136,7 +136,7 @@ test('refuses a value that is not a URL rather than guessing', async () => {
 test('works when the project has no cache file at all', async () => {
   const dir = project()
   rmSync(join(dir, '.uniweb'), { recursive: true, force: true })
-  const res = await run(dir, ['--backend', A])
+  const res = await run(dir, ['--server', A])
   assert.equal(res.exitCode, 0)
   assert.deepEqual(res.removed, ['sync.json'])
   assert.ok(!existsSync(join(dir, '.uniweb', 'backend-cache.json')))
@@ -179,7 +179,7 @@ const deployText = (dir) => readFileSync(join(dir, 'deploy.yml'), 'utf8')
 
 test('--backend drops that backend\'s deploy record and keeps every target', async () => {
   const dir = withDeployYml(project())
-  const res = await run(dir, ['--backend', A])
+  const res = await run(dir, ['--server', A])
 
   assert.equal(res.exitCode, 0)
   assert.ok(res.removed.includes('deploy.yml'))
@@ -238,7 +238,7 @@ test('--all clears a deploy-only project too — a copy must not ship to the ori
 
 test('⛔ --all and --backend together is refused, and removes nothing', async () => {
   const dir = withDeployYml(project())
-  const res = await run(dir, ['--all', '--backend', A])
+  const res = await run(dir, ['--all', '--server', A])
   assert.equal(res.exitCode, 2)
   assert.ok(syncOf(dir)[A] && syncOf(dir)[B])
   assert.match(deployText(dir), /SITE-DEV/)

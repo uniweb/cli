@@ -195,8 +195,8 @@ export async function deploy(args = []) {
     // uniweb target's `backend:` records where that target's publishes went; it routes
     // nothing (publish files its record under the target naming its backend).
     const goingTo = getRegistryApiBaseUrl()
-    const aimedBy = process.env.UNIWEB_REGISTER_URL
-      ? 'UNIWEB_REGISTER_URL'
+    const aimedBy = process.env.UNIWEB_SERVER
+      ? 'UNIWEB_SERVER'
       : loggedInOrigin()
         ? 'the backend you are logged in to'
         : 'the default backend — you are not logged in'
@@ -215,7 +215,7 @@ export async function deploy(args = []) {
         say.err(
           `Target '${resolved.targetName}' is on ${targetBackend}, but this would publish to ${goingTo} (${aimedBy}).`
         )
-        say.dim(`To publish there, log in to it first: uniweb login --backend ${targetBackend}`)
+        say.dim(`To publish there, log in to it first: uniweb login --server ${targetBackend}`)
         process.exit(1)
       }
       say.dim(

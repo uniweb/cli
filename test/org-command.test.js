@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { runVerb, tmp } from './helpers/run-verb.js'
 
 const ORIGIN = 'http://backend.test'
-const ENV = { UNIWEB_REGISTER_URL: ORIGIN, UNIWEB_TOKEN: 'TKN' }
+const ENV = { UNIWEB_SERVER: ORIGIN, UNIWEB_TOKEN: 'TKN' }
 
 /** Answers `GET /dev/orgs` as the backend does, and records every other request. */
 function orgsBackend({ accountHandle = 'jane', orgs = [] } = {}) {

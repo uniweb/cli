@@ -1,9 +1,9 @@
 /**
  * resolveBackendOrigin — which backend a command talks to.
  *
- * The whole ladder, for every command: UNIWEB_REGISTER_URL → the backend the user is
+ * The whole ladder, for every command: UNIWEB_SERVER → the backend the user is
  * LOGGED IN TO → the default backend, where the command's first request asks for that
- * login. No `--backend`: switching is `uniweb login --backend` (2026-09-21). *[Diego, 2026-09-21: "push and pull are also meant to go to the backend
+ * login. No `--backend`: switching is `uniweb login --server` (2026-09-21). *[Diego, 2026-09-21: "push and pull are also meant to go to the backend
  * you are logged into" · "We do not allow any communication with backend if the user is
  * not logged into a backend. The default backend for login, if not specified, is
  * uniweb.app".]* A project's own record — its synced backend, deploy.yml's target —
@@ -27,10 +27,10 @@ const DEFAULT = 'https://uniweb.app'
 
 /**
  * Run `fn` in a fresh HOME — logged in to `login` when given — with no
- * UNIWEB_REGISTER_URL inherited from the developer's shell.
+ * UNIWEB_SERVER inherited from the developer's shell.
  */
 function isolated(login, fn) {
-  const saved = { home: process.env.HOME, env: process.env.UNIWEB_REGISTER_URL }
+  const saved = { home: process.env.HOME, env: process.env.UNIWEB_SERVER }
   const home = tmp('uw-ladder-')
   if (login) {
     mkdirSync(join(home, '.uniweb'), { recursive: true })
@@ -40,18 +40,18 @@ function isolated(login, fn) {
     )
   }
   process.env.HOME = home
-  delete process.env.UNIWEB_REGISTER_URL
+  delete process.env.UNIWEB_SERVER
   try {
     return fn()
   } finally {
     process.env.HOME = saved.home
-    if (saved.env !== undefined) process.env.UNIWEB_REGISTER_URL = saved.env
+    if (saved.env !== undefined) process.env.UNIWEB_SERVER = saved.env
   }
 }
 
 test('the env override outranks the login — the one override, for automation', () => {
   isolated(LOGIN, () => {
-    process.env.UNIWEB_REGISTER_URL = ENV
+    process.env.UNIWEB_SERVER = ENV
     assert.equal(resolveBackendOrigin(), ENV)
   })
 })
@@ -78,17 +78,17 @@ test('⛔ there is no flag tier — an argument is ignored, not obeyed', () => {
 
 test('an unparseable override falls through instead of winning with a broken value', () => {
   isolated(LOGIN, () => {
-    process.env.UNIWEB_REGISTER_URL = 'not-a-url'
+    process.env.UNIWEB_SERVER = 'not-a-url'
     assert.equal(resolveBackendOrigin(), LOGIN)
     // no scheme: parses as `localhost:` with the origin "null" — must fall through too
-    process.env.UNIWEB_REGISTER_URL = 'localhost:8080'
+    process.env.UNIWEB_SERVER = 'localhost:8080'
     assert.equal(resolveBackendOrigin(), LOGIN)
   })
 })
 
 test('a full endpoint URL is reduced to its origin', () => {
   isolated(null, () => {
-    process.env.UNIWEB_REGISTER_URL = 'https://env.example/a/b?c=1'
+    process.env.UNIWEB_SERVER = 'https://env.example/a/b?c=1'
     assert.equal(resolveBackendOrigin(), ENV)
   })
 })

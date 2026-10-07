@@ -116,8 +116,8 @@ export function syncedElsewhere(siteDir, origin) {
 
 /**
  * The heads-up for `syncedElsewhere`, as lines — each verb prints them with its own
- * reporter. Only worth saying when the verb was not TOLD where to go: a `--backend` the
- * user typed is already a decision.
+ * reporter. Only worth saying when the verb was not TOLD where to go: a backend named with
+ * UNIWEB_SERVER is already a decision.
  *
  * ⚖️ Worded for where the verb GOES, not for why: it is the logged-in backend, or — logged
  * in nowhere — the default one, where the login it is about to ask for will be.
@@ -130,7 +130,7 @@ export function describeSyncedElsewhere(known, origin, verb) {
   const where = known.length === 1 ? `site is on ${known[0]}` : `sites are on ${known.join(', ')}`
   return [
     `This project's ${where} — not on ${origin}, where this ${verb} goes.`,
-    `It creates a new site there. To ${verb} to ${known.length === 1 ? 'that one' : 'one of those'} instead: uniweb login --backend <url>`
+    `It creates a new site there. To ${verb} to ${known.length === 1 ? 'that one' : 'one of those'} instead: uniweb login --server <url>`
   ]
 }
 

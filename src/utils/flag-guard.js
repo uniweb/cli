@@ -9,14 +9,15 @@
  * Tolerable for a cosmetic flag; dangerous for any flag that aims the command or picks
  * its identity. This turns that class into one sentence.
  *
- * ⛔ **`--backend` and `--token` are NOT flags of these verbs** *(2026-09-21)*. Every
+ * ⛔ **A backend flag and `--token` are NOT flags of these verbs** *(2026-09-21)*. Every
  * backend verb goes to the backend you are logged in to, with that login's session:
- * switching and signing in are `uniweb login` (`--backend`, `--token`), and a script
- * aims one process with UNIWEB_REGISTER_URL + UNIWEB_TOKEN. Both flags predate
- * per-backend sessions. Passed now, each is an unknown flag — and this guard is what
- * makes that a loud error, with a pointer to the login, instead of a command that
- * quietly runs against wherever and as whoever you happen to be. `--backend` stays on
- * `forget`, where it SELECTS which backend's records to remove.
+ * switching and signing in are `uniweb login` (`--server`, `--token`), and a script
+ * aims one process with UNIWEB_SERVER + UNIWEB_TOKEN. Passed to a verb, each is an
+ * unknown flag — and this guard is what makes that a loud error, with a pointer to the
+ * login, instead of a command that quietly runs against wherever and as whoever you
+ * happen to be. `--server` stays on `forget`, where it SELECTS which backend's records
+ * to remove. ⛔ *The flag was `--backend` until 2026-10-07, renamed so it is not read as
+ * a site's `backend` service; `--backend` is refused everywhere, naming `--server`.*
  *
  * ⚠️ A wrong rejection is worse than a missed one — it breaks an invocation that
  * works — so the per-command lists must be complete, INCLUDING flags read by
@@ -93,12 +94,12 @@ const VERBS = {
     '--personal'
   ],
   /**
-   * `forget` = remove one backend's records (`--backend <url>`), or everything a
+   * `forget` = remove one backend's records (`--server <url>`), or everything a
    * copied project inherited (`--all`). One of the two is required — the verb refuses
    * without it — and they exclude each other. `--non-interactive` reaches it through
    * resolveSiteDir in a workspace of several sites.
    */
-  forget: ['--backend', '--all'],
+  forget: ['--server', '--all'],
   /**
    * `site list | unpublish | delete` — a workspace's sites. `--yes` confirms a write;
    * `--json` is `list`'s porcelain; the workspace is `--org` / `--personal`.
@@ -196,16 +197,24 @@ export function checkFlags(verb, args = []) {
   if (!unknown.length) return null
 
   const flag = unknown[0]
-  // ⭐ `--backend` and `--token` are not typos on these verbs — they are RETIRED
-  // (2026-09-21), and the useful answer is what replaced them, not "run --help".
-  if (flag === '--backend') {
+  // ⭐ `--backend`, `--server` and `--token` are not typos on these verbs — they aim a
+  // command or pick its identity, which only the login does (2026-09-21), and `--backend`
+  // is `--server` since 2026-10-07. The useful answer is where each went, not "run --help".
+  if (flag === '--backend' && verb === 'forget') {
+    return {
+      flag,
+      suggestion: '--server',
+      message: '`--backend` is now `--server`: uniweb forget --server <url>'
+    }
+  }
+  if (flag === '--backend' || flag === '--server') {
     return {
       flag,
       suggestion: null,
       message: [
-        `\`uniweb ${verb}\` has no \`--backend\`: it goes to the backend you are logged in to.`,
-        '  Switch with: uniweb login --backend <url>',
-        '  (A script can aim one process with UNIWEB_REGISTER_URL instead.)'
+        `\`uniweb ${verb}\` has no \`${flag}\`: it goes to the backend you are logged in to.`,
+        '  Switch with: uniweb login --server <url>',
+        '  (A script can aim one process with UNIWEB_SERVER instead.)'
       ].join('\n')
     }
   }
@@ -215,7 +224,7 @@ export function checkFlags(verb, args = []) {
       suggestion: null,
       message: [
         `\`uniweb ${verb}\` has no \`--token\`: it uses the session of the backend you are logged in to.`,
-        '  Sign in with a token: uniweb login --backend <url> --token <bearer>',
+        '  Sign in with a token: uniweb login --server <url> --token <bearer>',
         '  (A script can authenticate one process with UNIWEB_TOKEN instead.)'
       ].join('\n')
     }

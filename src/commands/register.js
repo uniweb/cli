@@ -35,9 +35,9 @@
  *                                        ({ok,scope,origin,entities:[{name,uuid,version,unchanged}]}),
  *                                        all human output to stderr — for scripted callers
  *
- * Endpoint: UNIWEB_REGISTER_URL  >  the backend you are logged in to  >  the default
- *   (~/.uniweb/config.json, else uniweb.app) — resolveBackendOrigin. No `--backend`:
- *   switching is `uniweb login --backend <url>`.
+ * Endpoint: UNIWEB_SERVER  >  the backend you are logged in to  >  the default
+ *   (~/.uniweb/config.json, else uniweb.app) — resolveBackendOrigin. No backend flag:
+ *   switching is `uniweb login --server <url>`.
  * Auth (submit only):  UNIWEB_TOKEN  >  the stored session  >  `uniweb login`.
  */
 
@@ -595,7 +595,7 @@ async function runRegister(args = []) {
   const dryRun = args.includes('--dry-run')
   const output = flagValue(args, '-o') || flagValue(args, '--output')
   const scopeFlag = flagValue(args, '--scope')
-  // The backend you are logged in to (UNIWEB_REGISTER_URL overrides it for a script) —
+  // The backend you are logged in to (UNIWEB_SERVER overrides it for a script) —
   // resolveBackendOrigin, like every backend command.
   const client = new BackendClient({
     args,
@@ -845,7 +845,7 @@ async function runRegister(args = []) {
   } catch (err) {
     error(`Could not reach the registry at ${client.origin}: ${err.message}`)
     log(
-      `  ${colors.dim}Is that the backend you meant? Switch with: uniweb login --backend <url>${colors.reset}`
+      `  ${colors.dim}Is that the backend you meant? Switch with: uniweb login --server <url>${colors.reset}`
     )
     return { exitCode: 2 }
   }
@@ -905,7 +905,7 @@ async function runRegister(args = []) {
           `  ${colors.dim}The registry didn't accept your credentials — it may use different ones than \`uniweb login\`.${colors.reset}`
         )
         log(
-          `  ${colors.dim}Log in again (uniweb login --backend <url>), or check UNIWEB_TOKEN — an existing one may be wrong or expired.${colors.reset}`
+          `  ${colors.dim}Log in again (uniweb login --server <url>), or check UNIWEB_TOKEN — an existing one may be wrong or expired.${colors.reset}`
         )
       }
       // ⭐ **Surface `detail` as a sentence, not as a JSON dump.** The registry

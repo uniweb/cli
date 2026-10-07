@@ -160,7 +160,7 @@ test('organizations and no terminal: refused, naming every workspace you can cho
   assert.equal(result.refused, true)
   // Logged in nowhere (no session in this scene), a switch would go to the default backend —
   // so the hint names this one.
-  assert.match(result.reason, /login --backend http:\/\/backend\.test --org @acme \(or --personal\)/)
+  assert.match(result.reason, /login --server http:\/\/backend\.test --org @acme \(or --personal\)/)
   assert.match(result.reason, /will not ask you to sign in again/)
 })
 
@@ -287,20 +287,20 @@ test('⭐ switching workspace needs no new login — --org on a valid session', 
 // "uniweb login --org @acme" went to https://uniweb.app and began a new login there.
 test('loginCommand names the backend unless it is where a bare login goes', async () => {
   const { loginCommand } = await import('../src/utils/config.js')
-  const saved = { home: process.env.HOME, url: process.env.UNIWEB_REGISTER_URL }
+  const saved = { home: process.env.HOME, url: process.env.UNIWEB_SERVER }
   process.env.HOME = mkdtempSync(join(tmpdir(), 'uw-login-cmd-')) // no saved registryApiUrl
-  delete process.env.UNIWEB_REGISTER_URL
+  delete process.env.UNIWEB_SERVER
   try {
     assert.equal(loginCommand('https://uniweb.app'), 'uniweb login')
-    assert.equal(loginCommand('http://localhost:8080'), 'uniweb login --backend http://localhost:8080')
-    assert.equal(loginCommand('http://localhost:8080/dev/site', 'pnpm uniweb'), 'pnpm uniweb login --backend http://localhost:8080')
-    // UNIWEB_REGISTER_URL is where a bare login goes, so it needs no flag
-    process.env.UNIWEB_REGISTER_URL = 'http://localhost:8080'
+    assert.equal(loginCommand('http://localhost:8080'), 'uniweb login --server http://localhost:8080')
+    assert.equal(loginCommand('http://localhost:8080/dev/site', 'pnpm uniweb'), 'pnpm uniweb login --server http://localhost:8080')
+    // UNIWEB_SERVER is where a bare login goes, so it needs no flag
+    process.env.UNIWEB_SERVER = 'http://localhost:8080'
     assert.equal(loginCommand('http://localhost:8080'), 'uniweb login')
   } finally {
     process.env.HOME = saved.home
-    if (saved.url === undefined) delete process.env.UNIWEB_REGISTER_URL
-    else process.env.UNIWEB_REGISTER_URL = saved.url
+    if (saved.url === undefined) delete process.env.UNIWEB_SERVER
+    else process.env.UNIWEB_SERVER = saved.url
   }
 })
 
@@ -320,8 +320,8 @@ test('resolveLoginOrigin: a switch goes to the backend you are logged in to; a s
     }
     return home
   }
-  const saved = { home: process.env.HOME, url: process.env.UNIWEB_REGISTER_URL }
-  delete process.env.UNIWEB_REGISTER_URL
+  const saved = { home: process.env.HOME, url: process.env.UNIWEB_SERVER }
+  delete process.env.UNIWEB_SERVER
   try {
     process.env.HOME = withSession(LOCAL)
     assert.equal(resolveLoginOrigin(undefined, ['--org', '@acme']), LOCAL)
@@ -340,15 +340,15 @@ test('resolveLoginOrigin: a switch goes to the backend you are logged in to; a s
     assert.equal(isWorkspaceSwitch(['--token-paste', '--personal']), false)
   } finally {
     process.env.HOME = saved.home
-    if (saved.url === undefined) delete process.env.UNIWEB_REGISTER_URL
-    else process.env.UNIWEB_REGISTER_URL = saved.url
+    if (saved.url === undefined) delete process.env.UNIWEB_SERVER
+    else process.env.UNIWEB_SERVER = saved.url
   }
 })
 
 test('loginCommand: no --backend for the backend you are logged in to — a switch reaches it', async () => {
   const { loginCommand } = await import('../src/utils/config.js')
-  const saved = { home: process.env.HOME, url: process.env.UNIWEB_REGISTER_URL }
-  delete process.env.UNIWEB_REGISTER_URL
+  const saved = { home: process.env.HOME, url: process.env.UNIWEB_SERVER }
+  delete process.env.UNIWEB_SERVER
   const home = mkdtempSync(join(tmpdir(), 'uw-login-cmd-session-'))
   mkdirSync(join(home, '.uniweb'), { recursive: true })
   writeFileSync(join(home, '.uniweb', 'registry-auth.json'),
@@ -356,10 +356,10 @@ test('loginCommand: no --backend for the backend you are logged in to — a swit
   process.env.HOME = home
   try {
     assert.equal(loginCommand('http://localhost:8080'), 'uniweb login')
-    assert.equal(loginCommand('https://uniweb.app'), 'uniweb login --backend https://uniweb.app')
+    assert.equal(loginCommand('https://uniweb.app'), 'uniweb login --server https://uniweb.app')
   } finally {
     process.env.HOME = saved.home
-    if (saved.url === undefined) delete process.env.UNIWEB_REGISTER_URL
-    else process.env.UNIWEB_REGISTER_URL = saved.url
+    if (saved.url === undefined) delete process.env.UNIWEB_SERVER
+    else process.env.UNIWEB_SERVER = saved.url
   }
 })

@@ -197,7 +197,7 @@ function writePkgVersion(dir, version) {
 // and the WORKSPACE this command names (`--org` / `--personal`). The BACKEND travels in
 // the child's environment (releaseFoundation), and the SESSION is the shared session
 // file — or UNIWEB_TOKEN, which the child inherits. The backend commands take no
-// `--backend` or `--token`.
+// backend flag (`--server` is the login's) and no `--token`.
 //
 // ⭐ The workspace travels because a bare name registers under the workspace the command
 // works in *[Diego, 2026-10-06]*, and a workspace named on this command is this command's
@@ -592,7 +592,7 @@ function releaseFoundation(local, args, cliBin, say, origin) {
   execFileSync('node', [cliBin, 'register', ...forwardedFlags(args)], {
     cwd: local.dir,
     stdio: 'inherit',
-    env: origin ? { ...process.env, UNIWEB_REGISTER_URL: origin } : process.env
+    env: origin ? { ...process.env, UNIWEB_SERVER: origin } : process.env
   })
   console.log('')
   return true

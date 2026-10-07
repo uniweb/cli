@@ -21,7 +21,7 @@ import { mkdirSync, readFileSync, writeFileSync, utimesSync } from 'node:fs'
 import { join } from 'node:path'
 
 const ORIGIN = 'http://registry.test'
-const ENV = { UNIWEB_REGISTER_URL: ORIGIN, UNIWEB_TOKEN: 'test-token' }
+const ENV = { UNIWEB_SERVER: ORIGIN, UNIWEB_TOKEN: 'test-token' }
 
 /**
  * A built foundation register can submit as it stands. Its source is older than its

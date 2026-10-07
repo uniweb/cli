@@ -58,8 +58,8 @@ test('publish --dry-run walks its own body without a dead-zone read', () => {
     const r = spawnSync(
       process.execPath,
       [CLI_ENTRY, 'publish', '--dry-run', '--non-interactive'],
-      // The backend is aimed the way a script aims it: UNIWEB_REGISTER_URL, one process.
-      { cwd: dir, encoding: 'utf8', env: { ...process.env, UNIWEB_REGISTER_URL: OFFLINE_BACKEND } }
+      // The backend is aimed the way a script aims it: UNIWEB_SERVER, one process.
+      { cwd: dir, encoding: 'utf8', env: { ...process.env, UNIWEB_SERVER: OFFLINE_BACKEND } }
     )
     const out = `${r.stdout}${r.stderr}`
 

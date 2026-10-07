@@ -46,7 +46,7 @@ export async function readSitePreview({ siteDir, args = [], client = null }) {
       refused: [
         `This site's foundation is ${ref}, and the backend the site is on says where that version is served.`,
         known.length
-          ? `The site is on ${known.join(', ')} — not on ${client.origin}, the backend you are logged in to. To preview it: uniweb login --backend <url>`
+          ? `The site is on ${known.join(', ')} — not on ${client.origin}, the backend you are logged in to. To preview it: uniweb login --server <url>`
           : `The site is on no backend yet: \`uniweb push\` puts it on ${client.origin}.`
       ]
     }

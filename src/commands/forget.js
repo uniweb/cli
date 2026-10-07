@@ -2,10 +2,10 @@
  * `uniweb forget` — remove what this project recorded about where it has synced and
  * deployed. Local files only; nothing on any backend changes.
  *
- *   uniweb forget --backend <url>   one backend
+ *   uniweb forget --server <url>   one backend
  *   uniweb forget --all             everything — for a COPY that is to become a new project
  *
- * ## `--backend <url>`
+ * ## `--server <url>`
  *
  *   - that backend's section of `sync.json` — the site uuid, the record map, asset
  *     ids, provisioned services and the rest of what it minted;
@@ -43,12 +43,12 @@
  * ## Why it exists
  *
  * Two jobs. A script pushes a template site to a short-lived dev server and then
- * removes the traces of it without discarding the rest of the project (`--backend`)
+ * removes the traces of it without discarding the rest of the project (`--server`)
  * — which is also why traceless publish was dropped: push and pull leave traces too.
  * And someone duplicates a project to start a new site from it (`--all`).
  *
  * ⚠️ **No default target.** Forgetting a backend you still use means its next push
- * creates a second site there, so the verb makes you name it — `--backend` is
+ * creates a second site there, so the verb makes you name it — `--server` is
  * required even when the project has synced with only one.
  */
 
@@ -96,9 +96,9 @@ export async function forget(args = []) {
   }
 
   const all = args.includes('--all')
-  const flag = readFlagValue(args, '--backend')
+  const flag = readFlagValue(args, '--server')
   if (all && flag) {
-    say.err('Use --backend <url> or --all, not both.')
+    say.err('Use --server <url> or --all, not both.')
     return { exitCode: 2 }
   }
 
@@ -108,7 +108,7 @@ export async function forget(args = []) {
   if (all) return forgetAll(siteDir)
 
   if (!flag) {
-    say.err('Name what to forget: uniweb forget --backend <url>')
+    say.err('Name what to forget: uniweb forget --server <url>')
     if (known.length) {
       say.dim(`This project has synced with: ${known.join(', ')}`)
     } else {

@@ -7,7 +7,7 @@
  * `fetch(… Authorization: Bearer …)` against a per-command default origin. It
  * owns the three things that were previously scattered across a dozen files:
  *
- *   1. ORIGIN   — where the backend is. resolveBackendOrigin(): UNIWEB_REGISTER_URL >
+ *   1. ORIGIN   — where the backend is. resolveBackendOrigin(): UNIWEB_SERVER >
  *                 the backend you are logged in to > the default backend (below).
  *                 Each is reduced to its origin, http(s) only. *(This named a
  *                 `--backend` flag as the first tier until 2026-10-05; the verbs
@@ -46,7 +46,7 @@ import { uploadSiteAssets } from '../utils/asset-upload.js'
 /**
  * Resolve the backend a command talks to:
  *
- *   1. UNIWEB_REGISTER_URL env — the override for automation (CI, scripts), one process
+ *   1. UNIWEB_SERVER env — the override for automation (CI, scripts), one process
  *   2. ⭐ the backend the user is LOGGED IN TO — the one session there is
  *   3. the default backend — ~/.uniweb/config.json `registryApiUrl`, else uniweb.app —
  *      where the command's first request then asks the user to log in
@@ -60,9 +60,10 @@ import { uploadSiteAssets } from '../utils/asset-upload.js'
  * ⛔ **No `--backend` tier, and no project tier.** The backend verbs had a per-command
  * `--backend` until 2026-09-21 — it predates per-backend sessions, when one session
  * slot made "aim this one command elsewhere" a flag's job; switching is a login now, and
- * a script aims with UNIWEB_REGISTER_URL without touching the machine's login. A
+ * a script aims with UNIWEB_SERVER without touching the machine's login. A
  * project's sync.json and deploy.yml routed commands too, until the same day.
- * `--backend` survives only where it SELECTS rather than routes: `login` (where to log
+ * A backend flag survives only where it SELECTS rather than routes — `--server`, `--backend`
+ * until 2026-10-07: `login` (where to log
  * in) and `forget` (which backend's records to remove). `logout` needs none: there is
  * one session.
  *

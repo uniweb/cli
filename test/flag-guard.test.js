@@ -26,10 +26,22 @@ test('⛔ `--backend` is refused on the backend verbs — saying where the backe
     const bad = checkFlags(verb, ['--backend', 'http://localhost:8080'])
     assert.equal(bad?.flag, '--backend', verb)
     assert.match(bad.message, /backend you are logged in to/, verb)
-    assert.match(bad.message, /uniweb login --backend <url>/, verb)
+    assert.match(bad.message, /uniweb login --server <url>/, verb)
   }
   assert.equal(checkFlags('push', ['--backend=http://x'])?.flag, '--backend', 'the = form too')
-  assert.equal(checkFlags('forget', ['--backend', 'http://localhost:8080']), null, 'forget SELECTS with it')
+  // `forget` SELECTS a backend — with `--server` since 2026-10-07; `--backend` names the new flag.
+  assert.equal(checkFlags('forget', ['--server', 'http://localhost:8080']), null, 'forget SELECTS with --server')
+  const renamed = checkFlags('forget', ['--backend', 'http://localhost:8080'])
+  assert.equal(renamed?.suggestion, '--server')
+  assert.match(renamed.message, /now `--server`/)
+})
+
+test('⛔ `--server` is the login\'s, and refused on the backend verbs the same way', () => {
+  for (const verb of ['push', 'publish', 'pull', 'status', 'site']) {
+    const bad = checkFlags(verb, ['--server', 'http://localhost:8080'])
+    assert.equal(bad?.flag, '--server', verb)
+    assert.match(bad.message, /uniweb login --server <url>/, verb)
+  }
 })
 
 test('⛔ `--token` is refused on the backend verbs — saying how to sign in instead', () => {
@@ -38,7 +50,7 @@ test('⛔ `--token` is refused on the backend verbs — saying how to sign in in
   for (const verb of ['push', 'publish', 'pull', 'clone', 'register', 'status', 'refresh', 'sync']) {
     const bad = checkFlags(verb, ['--token', 'abc'])
     assert.equal(bad?.flag, '--token', verb)
-    assert.match(bad.message, /uniweb login --backend <url> --token <bearer>/, verb)
+    assert.match(bad.message, /uniweb login --server <url> --token <bearer>/, verb)
     assert.match(bad.message, /UNIWEB_TOKEN/, verb)
   }
   assert.equal(checkFlags('push', ['--token=abc'])?.flag, '--token', 'the = form too')
@@ -65,7 +77,7 @@ test('a realistic invocation of every guarded verb passes', () => {
     clone: ['abc-uuid', '--path', './site', '--project', 'p'],
     register: ['--scope', '@acme', '-o', 'out.uwx', '--json'],
     status: ['--remote', '--json'],
-    forget: ['--backend', 'http://localhost:9999'],
+    forget: ['--server', 'http://localhost:9999'],
     refresh: ['--no-git', '--no-validate'],
     sync: ['--no-git', '--force', '--yes'],
     site: ['delete', '01a116cf-1a07-79f0-86e1-855d3a95e987', '--yes', '--org', '@acme']

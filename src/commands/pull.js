@@ -44,9 +44,9 @@
  *
  * The content + folder pull lanes are both keyed by the site's uuid on that backend
  *   (sync.json).
- * Backend: the one you are logged in to — UNIWEB_REGISTER_URL overrides it for a script
+ * Backend: the one you are logged in to — UNIWEB_SERVER overrides it for a script
  *   (resolveBackendOrigin). Auth: UNIWEB_TOKEN  >  the stored session  >  `uniweb login`.
- *   No `--backend` or `--token`: switching and signing in are `uniweb login`.
+ *   No `--server` or `--token`: switching and signing in are `uniweb login`.
  *
  * A project that never pushed has no `$uuid` to pull by — pull is a no-op with a
  * clear message. The backend serves each lane as a `.uwx` (ZIP: `manifest.json` +
@@ -702,10 +702,10 @@ export async function pull(args = [], deps = {}) {
     if (blocked) return blocked
   }
   // ⭐ THE BACKEND YOU ARE LOGGED IN TO is where this goes *[Diego, 2026-09-21]*, for every
-  // backend verb (resolveBackendOrigin). Only UNIWEB_REGISTER_URL — the automation
+  // backend verb (resolveBackendOrigin). Only UNIWEB_SERVER — the automation
   // override — outranks it, and nothing talks to a backend the user is not logged in to:
   // logged in nowhere, the origin is the default backend and the first request asks for
-  // that login. ⛔ There is no `--backend` here: switching is `uniweb login --backend`.
+  // that login. ⛔ There is no `--server` here: switching is `uniweb login --server`.
   // ⛔ The project's own record — its synced backend, deploy.yml's default target — routes
   // NOTHING. For part of 2026-09-21 it answered a "logged in nowhere" tier, which cannot
   // be reached: *"We do not allow any communication with backend if the user is not
@@ -747,14 +747,14 @@ export async function pull(args = [], deps = {}) {
   if (!siteContentUuid) {
     // Following the login can land on a backend with no site for this project while it
     // has one elsewhere — say where, rather than only "push first", which would create a
-    // second site. Not when UNIWEB_REGISTER_URL chose the backend: that is a decision.
-    const known = !process.env.UNIWEB_REGISTER_URL
+    // second site. Not when UNIWEB_SERVER chose the backend: that is a decision.
+    const known = !process.env.UNIWEB_SERVER
       ? syncedElsewhere(siteDir, client.origin)
       : null
     if (known) {
       info(`Nothing to pull — this project has no site on ${client.origin}.`)
       note(
-        `Its ${known.length === 1 ? `site is on ${known[0]}` : `sites are on ${known.join(', ')}`}. To pull from there: uniweb login --backend <url>`
+        `Its ${known.length === 1 ? `site is on ${known[0]}` : `sites are on ${known.join(', ')}`}. To pull from there: uniweb login --server <url>`
       )
       return { exitCode: 0 }
     }
@@ -799,7 +799,7 @@ export async function pull(args = [], deps = {}) {
     } catch (err) {
       error(describeRequestError(err, client.origin))
       if (err instanceof WorkspaceMismatchError) return { refused: true }
-      note('Is that the backend you meant? Switch with: uniweb login --backend <url>')
+      note('Is that the backend you meant? Switch with: uniweb login --server <url>')
       return null
     }
     if (res.status === 404) {
@@ -816,7 +816,7 @@ export async function pull(args = [], deps = {}) {
       if (detail) note(detail)
       if (res.status === 401 || res.status === 403)
         note(
-          "Credentials weren't accepted — log in again (`uniweb login --backend <url>`), or check UNIWEB_TOKEN."
+          "Credentials weren't accepted — log in again (`uniweb login --server <url>`), or check UNIWEB_TOKEN."
         )
       return null
     }

@@ -44,7 +44,7 @@
  *                                        another workspace stops it.
  *
  * Backend: via BackendClient (the site-content pull lane). Origin from
- *   UNIWEB_REGISTER_URL  >  the local default (internal dev overrides;
+ *   UNIWEB_SERVER  >  the local default (internal dev overrides;
  *   not the user-facing path — `uniweb login` determines the origin).
  * Auth:  UNIWEB_TOKEN  >  the stored session  >  `uniweb login`. No `--token` (retired
  *   from the backend commands 2026-09-21).

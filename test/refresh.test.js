@@ -23,7 +23,7 @@ import { refresh } from '../src/commands/refresh.js'
 // read as never synced — green in CI, red on any machine that had logged in. This file
 // runs in its own process, so HOME is set once.
 process.env.HOME = mkdtempSync(join(tmpdir(), 'uw-refresh-home-'))
-delete process.env.UNIWEB_REGISTER_URL
+delete process.env.UNIWEB_SERVER
 mkdirSync(join(process.env.HOME, '.uniweb'), { recursive: true })
 writeFileSync(
   join(process.env.HOME, '.uniweb', 'registry-auth.json'),
@@ -207,7 +207,7 @@ test('refresh hands its delegated pull `--merge` and nothing of its own argv', a
 test('⭐ refresh follows the login — a project whose site is on another backend has nothing to pull', async () => {
   // The test user is logged in to backend.test (top of file). A project synced only
   // elsewhere has no site there, so there is nothing to merge from — and no --backend
-  // to reach the other one with: switching is `uniweb login --backend`.
+  // to reach the other one with: switching is `uniweb login --server`.
   const dir = site({ uuid: 'SITE', on: ['http://elsewhere.test'] })
   try {
     let pulled = false
@@ -241,7 +241,7 @@ test('`refresh --backend` and `--token` are refused — before git or the backen
       })
     )
     assert.equal(rt.exitCode, 2)
-    assert.match(outT, /uniweb login --backend <url> --token <bearer>/)
+    assert.match(outT, /uniweb login --server <url> --token <bearer>/)
     const { r, out } = await capture(() =>
       refresh(['--no-git', '--backend', 'http://elsewhere.test'], {
         resolveSiteDir: async () => dir,
@@ -253,7 +253,7 @@ test('`refresh --backend` and `--token` are refused — before git or the backen
     )
     assert.equal(r.exitCode, 2)
     assert.equal(pulled, false)
-    assert.match(out, /uniweb login --backend <url>/)
+    assert.match(out, /uniweb login --server <url>/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

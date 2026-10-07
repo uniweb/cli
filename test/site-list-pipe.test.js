@@ -44,7 +44,7 @@ test('a long `site list --json` reaches a pipe whole', async () => {
       env: {
         ...process.env,
         HOME: mkdtempSync(join(tmpdir(), 'uw-home-')),
-        UNIWEB_REGISTER_URL: origin,
+        UNIWEB_SERVER: origin,
         UNIWEB_TOKEN: 'TKN',
         CI: '1'
       },
