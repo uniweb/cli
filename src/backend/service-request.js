@@ -123,31 +123,21 @@ export function bankLanguages(siteYml) {
   return langs ? { publishLanguagesRequest: langs } : {}
 }
 
-/** One service, as an owner reads it: `on`, `off`, `on (grade: pro)`. */
+/**
+ * One service, as an owner reads it: `on`, `off`, `on (grade: pro)`, or
+ * `off — your own at <address>` for a provider the site brings itself.
+ */
 function describeService(row) {
   if (!row || typeof row !== 'object') return 'nothing set'
-  const state = row.enabled === false ? 'off' : 'on'
-  const settings =
-    row.config && typeof row.config === 'object' ? Object.entries(row.config) : []
+  const config = row.config && typeof row.config === 'object' ? row.config : {}
+  const own = row.enabled === false && typeof config.endpoint === 'string' ? config.endpoint : null
+  const state = own ? `off — your own at ${own}` : row.enabled === false ? 'off' : 'on'
+  const settings = Object.entries(config).filter(([k]) => !(own && k === 'endpoint'))
   if (!settings.length) return state
   const shown = settings
     .map(([k, v]) => `${k}: ${v !== null && typeof v === 'object' ? '…' : String(v)}`)
     .join(', ')
   return `${state} (${shown})`
-}
-
-/**
- * The file's entry, as its owner reads it — `off — your own at <address>` for a
- * service the site brings itself (which asks the host to leave its own off).
- */
-function describeEntry(entry, ask) {
-  const own =
-    typeof entry === 'string'
-      ? entry
-      : entry && typeof entry === 'object' && typeof entry.endpoint === 'string'
-        ? entry.endpoint
-        : null
-  return own ? `off — your own at ${own}` : describeService(ask)
 }
 
 const rowNamed = (rows, name) =>
@@ -209,7 +199,6 @@ export async function settleServices({
   }
 
   const askFor = (name) => asks.find((a) => a.name === name)
-  const entryFor = (name) => siteYml?.services?.[name]
   const send = [...decision.send]
   let offered = [...decision.adopt]
   const open = []
@@ -223,7 +212,7 @@ export async function settleServices({
         : 'site.yml asks for services your site has set differently:'
     )
     for (const name of decision.conflict) {
-      say.dim(`  ${name}: site.yml asks ${describeEntry(entryFor(name), askFor(name))} — your site has ${describeService(rowNamed(stored, name))}`)
+      say.dim(`  ${name}: site.yml asks ${describeService(askFor(name))} — your site has ${describeService(rowNamed(stored, name))}`)
     }
     if (!interactive) {
       say.dim("  Left as your site has them — run without --non-interactive to choose.")
@@ -241,7 +230,7 @@ export async function settleServices({
   if (offered.length) {
     say.info("Your site's services changed since your last sync:")
     for (const name of offered) {
-      say.dim(`  ${name}: your site has ${describeService(rowNamed(stored, name))} — site.yml says ${describeEntry(entryFor(name), askFor(name))}`)
+      say.dim(`  ${name}: your site has ${describeService(rowNamed(stored, name))} — site.yml says ${describeService(askFor(name))}`)
     }
     if (interactive && (await confirm('Update site.yml to match?', false))) {
       const services = takeServices(siteYml.services, stored, offered)
@@ -255,7 +244,7 @@ export async function settleServices({
   }
 
   if (send.length) {
-    say.info(`Asking for: ${send.map((n) => `${n} ${describeEntry(entryFor(n), askFor(n))}`).join(', ')}`)
+    say.info(`Asking for: ${send.map((n) => `${n} ${describeService(askFor(n))}`).join(', ')}`)
   }
 
   // The list to send: the site's rows with the changed asks applied. With the site

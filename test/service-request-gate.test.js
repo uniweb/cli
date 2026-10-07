@@ -308,6 +308,9 @@ test('a value it cannot read is said', async () => {
 test('⭐ an address is the site\'s own provider: the host is asked to leave its own off, and told why', async () => {
   const dir = siteDir({ services: { submit: 'https://forms.example.com/f/abc' }, record: [{ name: 'submit' }] })
   const run = await settle(dir, { stored: [{ name: 'submit' }] })
-  assert.deepEqual(run.emit.serviceRows, [{ name: 'submit', enabled: false }])
+  // The address rides in the row's `config`, the one place for the whole entry.
+  assert.deepEqual(run.emit.serviceRows, [
+    { name: 'submit', enabled: false, config: { endpoint: 'https://forms.example.com/f/abc' } }
+  ])
   assert.match(run.said, /Asking for: submit off — your own at https:\/\/forms\.example\.com\/f\/abc/)
 })
