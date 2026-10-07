@@ -44,7 +44,7 @@ import {
   updateBackendMap,
   clearBackendSections,
   normalizeBackendOrigin,
-  removeYamlScalar,
+  writeSiteConfig,
   harvestRecordItems,
   storedRecordItems,
   reprintRecordItems,
@@ -718,7 +718,7 @@ export function dropSiteBoundValues(siteDir, backend) {
   if (
     y.preview !== undefined &&
     !isAuthoredPreview(y.preview) &&
-    removeYamlScalar(file, 'preview')
+    writeSiteConfig(siteDir, { preview: null }) === 'updated'
   ) {
     dropped.push('preview')
   }

@@ -33,7 +33,7 @@ import { createRequire } from 'node:module'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import yaml from 'js-yaml'
-import { upsertYamlScalar } from '@uniweb/build/uwx'
+import { writeSiteConfig } from '@uniweb/build/uwx'
 
 import { didYouMean } from '../utils/args.js'
 import { humanBytes } from '../utils/bytes.js'
@@ -431,14 +431,23 @@ export async function snapshot(args = []) {
     return
   }
   const current = siteYml.data.preview
+  // Edited in place, its comments kept (`writeSiteConfig`) — and not at all when site.yml
+  // does not parse: that is said, and the file left as the author has it.
+  const setPreview = () => {
+    try {
+      writeSiteConfig(siteDir, { preview: value })
+      return true
+    } catch (err) {
+      console.log(`  ${YELLOW}site.yml not changed:${RESET} ${DIM}${err.message}${RESET}`)
+      return false
+    }
+  }
   switch (previewDecision(current, value)) {
     case 'set':
-      upsertYamlScalar(siteYml.file, 'preview', value)
-      console.log(`  site.yml: ${CYAN}preview: ${value}${RESET}`)
+      if (setPreview()) console.log(`  site.yml: ${CYAN}preview: ${value}${RESET}`)
       break
     case 'replace':
-      upsertYamlScalar(siteYml.file, 'preview', value)
-      console.log(`  site.yml: ${CYAN}preview: ${value}${RESET} ${DIM}(replaces the app-generated preview)${RESET}`)
+      if (setPreview()) console.log(`  site.yml: ${CYAN}preview: ${value}${RESET} ${DIM}(replaces the app-generated preview)${RESET}`)
       break
     case 'unchanged':
       console.log(`  ${DIM}site.yml already has preview: ${value}${RESET}`)

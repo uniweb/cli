@@ -62,7 +62,7 @@ import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import { getExistingPackageNames, validatePackageName } from '../utils/names.js'
 import { detectPackageManager, installCmd } from '../utils/pm.js'
 import { getCliPrefix } from '../utils/interactive.js'
-import { replaceInTopLevelList, setTopLevelScalar } from '../utils/yaml-edit.js'
+import { replaceInYamlList, setYamlKey } from '@uniweb/build/uwx'
 
 const colors = {
   reset: '\x1b[0m',
@@ -307,9 +307,9 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
         pkgSrc,
         sitePkgPath,
         siteYmlPath,
-        // Edited in place — see utils/yaml-edit.js — and computed HERE, before
+        // Edited in place — `setYamlKey`, @uniweb/build — and computed HERE, before
         // anything moves, so a file it cannot edit stops the rename cleanly.
-        newYmlText: ymlMatches ? setTopLevelScalar(ymlText, 'foundation', newName) : null,
+        newYmlText: ymlMatches ? setYamlKey(ymlText, 'foundation', newName) : null,
         hasDep,
         ymlMatches
       })
@@ -318,7 +318,7 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
   refuseUneditableSiteYml(
     affectedSites.filter((s) => s.ymlMatches && s.newYmlText === null).map((s) => s.path),
     'foundation',
-    `Write it on one line: \`foundation: ${oldName}\`.`
+    `Write \`foundation: ${oldName}\` as a plain value — not through a YAML alias (\`*name\`) or merge key (\`<<:\`).`
   )
 
   // ─── Print plan, then execute ────────────────────────────────
@@ -530,14 +530,14 @@ async function renameExtension(rootDir, oldName, newName, prefix) {
         siteYmlPath,
         hits,
         // Edited in place, and computed before anything moves — as for foundations.
-        newYmlText: replaceInTopLevelList(ymlText, 'extensions', replacements)
+        newYmlText: replaceInYamlList(ymlText, 'extensions', replacements)
       })
     }
   }
   refuseUneditableSiteYml(
     affectedSites.filter((a) => a.newYmlText === null).map((a) => a.site.path),
     'extensions',
-    `Write each entry on a line of its own, e.g. \`- ${oldUrlPrefix}dist/entry.js\`.`
+    'Write `extensions:` as a plain list — not through a YAML alias (`*name`) or merge key (`<<:`).'
   )
 
   log('')

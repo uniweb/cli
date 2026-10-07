@@ -112,15 +112,34 @@ test('rename extension changes only the extension entry of site.yml', async () =
   }
 })
 
-test('a foundation value it cannot edit in place stops the rename before anything moves', async () => {
+test('a foundation value written as a block scalar is edited in place too', async () => {
+  // ⛔ Until 2026-10-07 the line editor refused it and the rename stopped: replacing the key's
+  // line would have left `src` behind on the next one.
   const root = await workspace()
   try {
     const blockScalar = SITE_YML.replace('foundation: src   # the local one', 'foundation: >-\n  src')
     await writeFile(path.join(root, 'site', 'site.yml'), blockScalar)
     const run = rename(root, 'foundation', 'src', 'research-profile')
+    assert.equal(run.status, 0, run.stderr)
+    assert.equal(
+      await readFile(path.join(root, 'site', 'site.yml'), 'utf8'),
+      SITE_YML.replace('foundation: src   # the local one', 'foundation: research-profile')
+    )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('a foundation value it cannot edit in place stops the rename before anything moves', async () => {
+  const root = await workspace()
+  try {
+    // Through an alias: an edit in place cannot keep what the anchor says elsewhere.
+    const aliased = SITE_YML.replace('foundation: src   # the local one', 'local: &local src\nfoundation: *local')
+    await writeFile(path.join(root, 'site', 'site.yml'), aliased)
+    const run = rename(root, 'foundation', 'src', 'research-profile')
     assert.equal(run.status, 1)
     assert.match(run.stderr.replace(/\x1b\[[0-9;]*m/g, ''), /Cannot rename: site\/site\.yml/)
-    assert.equal(await readFile(path.join(root, 'site', 'site.yml'), 'utf8'), blockScalar)
+    assert.equal(await readFile(path.join(root, 'site', 'site.yml'), 'utf8'), aliased)
     assert.ok(existsSync(path.join(root, 'src', 'package.json')), 'the foundation folder moved')
     assert.ok(!existsSync(path.join(root, 'research-profile')))
   } finally {
