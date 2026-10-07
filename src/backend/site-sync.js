@@ -39,6 +39,7 @@ import {
   collectQueryUuids,
   siteItemsByKey,
   sameServiceRow,
+  heldServices,
   readBackendState,
   updateBackendMap,
   clearBackendSections,
@@ -131,16 +132,21 @@ export function describeStaleKeys(staleKeys) {
   const bySection = new Map()
   for (const entry of Array.isArray(staleKeys) ? staleKeys : []) {
     const section = typeof entry?.section === 'string' && entry.section ? entry.section : null
+    if (!section) continue
     const key = entry?.key
+    // A single-item Section (`settings`) is named by the Section alone, `key: {}`.
+    const single = key && typeof key === 'object' && !Object.keys(key).length
     const name =
       key && typeof key === 'object'
         ? typeof key.name === 'string' ? key.name : Object.values(key).filter((v) => typeof v === 'string').join(' ')
         : typeof key === 'string' ? key : null
-    if (!section || !name) continue
+    if (!single && !name) continue
     if (!bySection.has(section)) bySection.set(section, [])
-    bySection.get(section).push(name)
+    if (name) bySection.get(section).push(name)
   }
-  return [...bySection].map(([section, names]) => `Changed on your site since your last pull — ${section}: ${names.join(', ')}`)
+  return [...bySection].map(([section, names]) =>
+    `Changed on your site since your last pull — ${section}${names.length ? `: ${names.join(', ')}` : ''}`
+  )
 }
 
 // A unit in the form it is compared in across the two representations: keys sorted,
@@ -2243,6 +2249,17 @@ export async function pushSyncPackages({
     if (siteFinalizedDoc) {
       const recordIds = collectQueryUuids(siteFinalizedDoc)
       if (Object.keys(recordIds).length) writeQueryUuids(siteDir, client.origin, recordIds)
+      // ⭐ THE SERVICES THIS COPY NOW HOLDS, `{ name: $uuid }`: those the push stated and
+      // those held before, as the site returned them (`heldServices`). A service added on
+      // the site since this copy's last pull is left out — held, the next push would state
+      // it off, switching off a service nobody here has seen. Replaced, not merged.
+      updateBackendState(siteDir, client.origin, {
+        services: heldServices({
+          written: siteFinalizedDoc.services,
+          sent: Array.isArray(sentSiteDoc?.services) ? sentSiteDoc.services : [],
+          prior: readBackendState(siteDir, client.origin).services
+        })
+      })
     }
     // Re-base the page attribution: our emitted document and the backend's post-write
     // copy of it are the two sides' new agreed state.

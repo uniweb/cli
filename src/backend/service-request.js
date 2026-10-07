@@ -5,36 +5,30 @@
  * Two of them, kept by two mechanisms:
  *
  *   - ⭐ **The services** — `site.yml::services`, a map by service name *[Diego,
- *     2026-10-06]*. Sent as the site's own list with the owner's CHANGED asks applied,
- *     decided per service by comparing the file, the site now and the record of the
- *     last agreement in `sync.json` (`settleServices`; spec:
- *     kb/framework/reference/site-services-request.md).
+ *     2026-10-06]*. A push STATES them — the file's, and off for each held one it no
+ *     longer lists — and the backend decides per service from the versions sent
+ *     (`statedServices`, `@uniweb/build/uwx`; spec:
+ *     kb/framework/reference/site-services-request.md). All this module does for them
+ *     is say what the file asks that will not be sent (`announceServices`).
  *   - **The language selection** — `site.yml::publishLanguages` — told apart from the
  *     status quo by a fingerprint banked in `deploy.yml` (`reconcile`, `bankLanguages`).
  *
  * ⭐ The model both follow — *"the services in `site.yml` are a request, never a
- * tracking of what is running"* [Diego, 2026-09-05]. You ask by CHANGING the file. An
- * unchanged ask is not re-sent: the backend REPLACES the services it is sent, so a
- * re-send would overwrite a decision the owner made in the app since.
+ * tracking of what is running"* [Diego, 2026-09-05]. You ask by CHANGING the file.
  *
  * ⛔ *From 2026-09-20 to 2026-10-06 the services lived only in `sync.json`, which
- * nobody edits, so a CLI user could ask for nothing; and this module compared them by
- * a fingerprint in `deploy.yml`, which could not tell who moved.*
+ * nobody edits, so a CLI user could ask for nothing; this module then compared them by
+ * a fingerprint in `deploy.yml`, which could not tell who moved; and until 2026-10-07
+ * it read the site's services before every push and settled each against a record in
+ * `sync.json` (`settleServices`), because the backend replaced the list it was sent.*
  *
  * @module
  */
 
 import { createHash } from 'node:crypto'
-import {
-  readServicesRequest,
-  takeServices,
-  mergeServiceRows,
-  reconcileServices,
-  recordAfter,
-  readBackendState,
-  updateBackendState,
-  writeSiteConfig
-} from '@uniweb/build/uwx'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { readServicesRequest } from '@uniweb/build/uwx'
 
 /**
  * A stable fingerprint of one declared value, or `null` when the key is absent.
@@ -124,155 +118,89 @@ export function bankLanguages(siteYml) {
 }
 
 /**
- * One service, as an owner reads it: `on`, `off`, `on (grade: pro)`, or
- * `off — your own at <address>` for a provider the site brings itself.
+ * The services the site's foundation says it renders — the build's `_self.supports`, else
+ * `package.json::uniweb.supports` — or null when that is unknown: no local foundation, or
+ * one that declares nothing. ⛔ Absent is UNKNOWN, never "none".
+ *
+ * @param {string} siteDir
+ * @param {object} siteYml - parsed
+ * @returns {Promise<string[]|null>}
  */
-function describeService(row) {
-  if (!row || typeof row !== 'object') return 'nothing set'
-  const config = row.config && typeof row.config === 'object' ? row.config : {}
-  const own = row.enabled === false && typeof config.endpoint === 'string' ? config.endpoint : null
-  const state = own ? `off — your own at ${own}` : row.enabled === false ? 'off' : 'on'
-  const settings = Object.entries(config).filter(([k]) => !(own && k === 'endpoint'))
-  if (!settings.length) return state
-  const shown = settings
-    .map(([k, v]) => `${k}: ${v !== null && typeof v === 'object' ? '…' : String(v)}`)
-    .join(', ')
-  return `${state} (${shown})`
+export async function foundationSupports(siteDir, siteYml) {
+  try {
+    if (!siteYml?.foundation) return null
+    const { detectFoundationType } = await import('@uniweb/build')
+    const found = detectFoundationType(siteYml.foundation, siteDir)
+    if (found?.type !== 'local' || !found.path) return null
+    const built = join(found.path, 'dist', 'meta', 'schema.json')
+    if (existsSync(built)) {
+      const derived = JSON.parse(readFileSync(built, 'utf8'))?._self?.supports
+      if (Array.isArray(derived)) return derived
+    }
+    const declared = JSON.parse(readFileSync(join(found.path, 'package.json'), 'utf8'))?.uniweb?.supports
+    return Array.isArray(declared) ? declared : null
+  } catch {
+    return null
+  }
 }
 
-const rowNamed = (rows, name) =>
-  Array.isArray(rows) ? rows.find((r) => r && typeof r === 'object' && r.name === name) : undefined
+const names = (list) => list.map((n) => `\`${n}\``).join(', ')
 
 /**
- * Decide what a push or publish sends of `site.yml::services` — and, once it has
- * succeeded, what the project records.
+ * Say what `site.yml::services` asks that will not be sent as written — a credential,
+ * an entry that is not one, an `api` address — and where it and the foundation disagree,
+ * before a push or publish sends the rest. What a push sends is the producer's
+ * (`statedServices`), from the same file.
  *
- * Per service the file names, three states are compared: the file, the site now
- * (`status.services`), and the record of the last agreement (this backend's entry in
- * `sync.json`). What the owner changed is sent, as the file says it — a setting removed
- * from the file is removed; what the site changed is kept, and offered into `site.yml`;
- * where both changed, the owner is asked — and so is a service the file names for the
- * first time while the site holds it differently, rather than a setting made in the
- * app being erased. The list sent is the site's own, with only the changed asks applied
- * (`mergeServiceRows`) — so every other service is sent as it is stored.
- *
- * ⛔ Without the site's services — unreadable, or offline — none are sent: the list goes
- * whole, and the record cannot stand in for what the site holds now.
- *
- * ⛔ An open decision — an offer declined, a conflict not resolved, or no terminal to
- * ask at — is never sent, and the record keeps the earlier agreement for it, so the
- * next run still sees the site's change rather than reading it as the file's.
+ * ⭐ The foundation INFORMS and never decides [Diego, 2026-10-07]: a service the file turns
+ * on that the foundation does not say it renders is said; so is one it renders that the
+ * file does not mention, since every service is off unless the site asks for it. An
+ * explicit `false` is a decision, and quiets the second. `tracking` is in neither — a
+ * foundation may not claim it, since it renders nothing — and `records` is left to
+ * publish, which knows whether the pages show any (`recordsNotAsked`).
  *
  * @param {object} p
- * @param {object} p.client - the backend client (`origin`, `siteStatus`)
- * @param {string} p.siteDir
- * @param {object} p.siteYml - parsed; updated in place when the owner takes the site's services
- * @param {object|null} [p.status] - the site's status, when the caller has just read it
- * @param {boolean} [p.offline] - read nothing from the backend (`--dry-run`, `-o`)
- * @param {boolean} [p.interactive] - whether the owner can be asked
- * @param {(message: string, initial?: boolean) => Promise<boolean>} p.confirm
- * @param {{ info: Function, warn: Function, dim: Function, ok: Function }} p.say
- * @returns {Promise<{ emit: object, after: () => void }>} `emit` — options for the
- *   producer; `after` — call once the push succeeded (or had nothing to send)
+ * @param {object} p.siteYml - parsed
+ * @param {{ warn: Function }} p.say
+ * @param {string[]|null} [p.supports] - from `foundationSupports`; null = unknown
  */
-export async function settleServices({
-  client,
-  siteDir,
-  siteYml,
-  status,
-  offline = false,
-  interactive = false,
-  confirm,
-  say
-}) {
-  const nothing = { emit: {}, after: () => {} }
-  const asks = readServicesRequest(siteYml?.services, { warn: (m) => say.warn(m) })
-  if (!asks) return nothing
-
-  const state = readBackendState(siteDir, client.origin)
-  const record = Array.isArray(state.services) ? state.services : undefined
-  const named = Array.isArray(state.servicesNamed) ? state.servicesNamed : undefined
-  const siteUuid = state.site?.uuid || null
-  let read = status
-  if (read === undefined && !offline && siteUuid) read = await client.siteStatus(siteUuid)
-  const stored = Array.isArray(read?.services) ? read.services : undefined
-
-  const decision = reconcileServices({ asks, record, named, stored, siteKnown: Boolean(siteUuid) })
-  const withheld = { emit: { declareServices: false }, after: () => {} }
-  if (decision.unreadable) {
-    if (offline) {
-      say.dim("Services are left out: they are settled against your site's when a push reaches it.")
-    } else {
-      say.warn("site.yml asks for services, but your site's could not be read, so none were sent.")
-      say.dim('  Push again once the backend answers.')
-    }
-    return withheld
+export function announceServices({ siteYml, say, supports = null }) {
+  const asks = readServicesRequest(siteYml?.services, { warn: (m) => say.warn(m) }) || []
+  if (!Array.isArray(supports)) return
+  const ignored = new Set(['tracking', 'records'])
+  const has = (ask) => ask.enabled !== false || typeof ask.config?.endpoint === 'string'
+  const unrendered = asks.filter((a) => has(a) && !ignored.has(a.name) && !supports.includes(a.name)).map((a) => a.name)
+  if (unrendered.length) {
+    say.warn(`site.yml turns on ${names(unrendered)}, which your foundation does not say it renders (\`uniweb.supports\`).`)
   }
-
-  const askFor = (name) => asks.find((a) => a.name === name)
-  const send = [...decision.send]
-  let offered = [...decision.adopt]
-  const open = []
-
-  // ⛔ BOTH MOVED: only the owner can rank two of their own decisions. Not a stop — the
-  // content they asked to push is a separate thing — and never a guess. A service the
-  // file names for the first time while the site holds it differently is asked the same
-  // way: sent as written it would erase what the site holds, which the file never had.
-  const asked = [...decision.conflict, ...decision.unseen]
-  if (asked.length) {
-    const show = (name) =>
-      say.dim(`  ${name}: site.yml asks ${describeService(askFor(name))} — your site has ${describeService(rowNamed(stored, name))}`)
-    if (decision.conflict.length) {
-      say.warn("Your site's services and site.yml both changed since your last sync:")
-      decision.conflict.forEach(show)
-    }
-    if (decision.unseen.length) {
-      say.warn('site.yml asks for services your site has set differently:')
-      decision.unseen.forEach(show)
-    }
-    if (!interactive) {
-      say.dim("  Left as your site has them — run without --non-interactive to choose.")
-      open.push(...asked)
-    } else if (await confirm('Use the services in site.yml?', false)) {
-      send.push(...asked)
-    } else {
-      // Declining to send is not yet a decision to take the site's: offered below.
-      offered = [...offered, ...asked]
-    }
+  const mentioned = new Set(asks.map((a) => a.name))
+  const unasked = supports.filter((n) => !ignored.has(n) && !mentioned.has(n))
+  if (unasked.length) {
+    say.warn(
+      `Your foundation renders ${names(unasked)}, which site.yml does not ask for — a service is off ` +
+        `unless the site asks for it. Add ${unasked.length === 1 ? 'it' : 'them'} under \`services:\`, or set ` +
+        `${unasked.length === 1 ? 'it' : 'each'} to \`false\` if that is what you mean.`
+    )
   }
+}
 
-  // The site moved and the file did not: the file is behind. Offered, never done — a
-  // push changes `site.yml` only when the owner says so.
-  if (offered.length) {
-    say.info("Your site's services changed since your last sync:")
-    for (const name of offered) {
-      say.dim(`  ${name}: your site has ${describeService(rowNamed(stored, name))} — site.yml says ${describeService(askFor(name))}`)
-    }
-    if (interactive && (await confirm('Update site.yml to match?', false))) {
-      const services = takeServices(siteYml.services, stored, offered)
-      writeSiteConfig(siteDir, { services })
-      if (services) siteYml.services = services
-      else delete siteYml.services
-      say.ok('site.yml updated.')
-    } else {
-      open.push(...offered)
-    }
-  }
-
-  if (send.length) {
-    say.info(`Asking for: ${send.map((n) => `${n} ${describeService(askFor(n))}`).join(', ')}`)
-  }
-
-  // The list to send: the site's rows with the changed asks applied — or, for a site
-  // not created yet, the asks alone.
-  const rows = mergeServiceRows(stored ?? [], asks.filter((a) => send.includes(a.name)))
-  return {
-    emit: { serviceRows: rows },
-    after: () => {
-      // What the file names now — after an offer taken, which may have changed it.
-      const names = (readServicesRequest(siteYml?.services) || []).map((a) => a.name)
-      const next = recordAfter({ record, named, agreed: rows, open, names })
-      if (next) updateBackendState(siteDir, client.origin, next)
-    }
-  }
+/**
+ * The publish warning for `records`: the site's pages show records live, and `site.yml`
+ * does not ask for the service that delivers them on a published site [Diego, 2026-10-07:
+ * "When records is off and the site is published with us, there is no meant to be a fall
+ * back at all"]. Syncing records does not depend on it, so push and pull say nothing.
+ *
+ * @param {object} p
+ * @param {object} p.siteYml - parsed
+ * @param {string[]} p.shown - from the package (`recordsShown`)
+ * @returns {string|null} the warning, or null
+ */
+export function recordsNotAsked({ siteYml, shown }) {
+  if (!Array.isArray(shown) || !shown.length) return null
+  const records = (readServicesRequest(siteYml?.services) || []).find((a) => a.name === 'records')
+  if (records && records.enabled !== false) return null
+  return (
+    `Your pages show records from ${names(shown)}, but site.yml does not ask for \`records\` — ` +
+    'a published site delivers them only with it on. Add `records: true` under `services:`.'
+  )
 }

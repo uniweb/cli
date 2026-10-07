@@ -593,6 +593,41 @@ test('heldTokens: an item held before and gone after leaves the set', () => {
   assert.deepEqual(t.itemVersions, { 'U-home': 'h1', 'U-cta': 'c1' })
 })
 
+test("⛔ a push holds the services it stated, and never one added on the site since this copy's pull", async () => {
+  // Held, `assistant` would be stated off by the next push — switching off a service
+  // nobody here has seen. And the list a copy kept before 2026-10-07 is replaced.
+  const dir = tmpSite()
+  bind(dir, 'S1')
+  const file = join(dir, 'sync.json')
+  const store = JSON.parse(readFileSync(file, 'utf8'))
+  store.backends[ORIGIN].services = { api: 'U-api' }
+  writeFileSync(file, JSON.stringify(store))
+  const sent = withSections(siteDoc([held('cta', 'x')]), {
+    services: [{ $id: 'search', name: 'search' }, { $id: 'api', name: 'api', enabled: false, $uuid: 'U-api' }]
+  })
+  const written = withSections(asStored(siteDoc([held('cta', 'x')])), {
+    services: [
+      { $uuid: 'U-search', name: 'search' },
+      { $uuid: 'U-api', name: 'api', enabled: false },
+      { $uuid: 'U-new', name: 'assistant' }
+    ]
+  })
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1', item_versions: {}, document: written }]))
+  }
+  const { report } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    report,
+    pkg: { ...siteOnlyPkg({ siteContentUuid: 'S1' }), siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) } }
+  })
+  assert.equal(res.exitCode, 0)
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).backends[ORIGIN].services, { api: 'U-api', search: 'U-search' })
+})
+
 test('a pull holds a version for every site-content item it returns, secrets aside', () => {
   const doc = withSections(asStored(siteDoc([held('cta', 'x')])), {
     queries: [{ $uuid: 'U-q', name: 'articles' }],
@@ -977,6 +1012,10 @@ test('describeStaleKeys: one line per Section, and nothing for an entry it canno
     ]),
     ['Changed on your site since your last pull — services: search', 'Changed on your site since your last pull — secrets: key']
   )
+  // A single-item Section comes named by the Section alone.
+  assert.deepEqual(describeStaleKeys([{ section: 'settings', key: {} }]), [
+    'Changed on your site since your last pull — settings'
+  ])
 })
 
 test('pushSyncPackages CREATE: mints + records the site $uuid, persists the cache, exit 0', async () => {

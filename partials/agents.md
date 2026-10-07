@@ -2690,14 +2690,17 @@ services:
 An entry is `true`, `false`, an address of your own (a string, or `endpoint:` in a map), or a map
 of options. On a site you push or publish it is also **what you ask your host for**: `true` asks for
 its service, `false` asks it to turn its service off, and an address asks it to leave its own off so
-yours answers. A service you leave out keeps whatever the site has — to turn one off, say `false` —
-but an entry says everything about its service: a setting you remove from it is removed on the next
-push. `uniweb push` and `uniweb publish` send what you changed since your last sync; if the site's
-services changed elsewhere in the meantime — an author in the app — they offer to update `site.yml`
-rather than send your older choice over it, and if both changed the same service they ask which to
-keep. They ask too when `site.yml` names a service for the first time that the site already has, set
-differently. `uniweb pull` writes what the site has into `services:` — pull before you edit. A
-change that needs payment is settled in the app: `publish` opens it. **Everything in an entry but a
+yours answers. **On a site your host publishes, a service is off unless `services:` asks for it** —
+list the ones the site uses (the templates list theirs). `records: true` asks for your records to be
+delivered live to the published pages: a query whose records have a data schema shows nothing there
+without it, and `publish` says so; a static build reads records from files and ignores it. An entry
+says everything about its service: a setting you remove from it is removed on the next push, and
+removing the entry switches the service off. `uniweb push` and `uniweb publish` send each service
+`site.yml` lists; a service the site has that this copy has never seen (turned on in the app since
+your last pull) is left as it is, and one changed both in the file and on the site since your last
+pull stops the push, naming it — `uniweb pull --merge`, then push. `uniweb pull` writes what the site
+has into `services:` (an off service with no settings only where the file already names it) — pull
+before you edit. A change that needs payment is settled in the app: `publish` opens it. **Everything in an entry but a
 credential is public** — it is built into the site, except `api`'s settings, which only your host
 reads; a key or token is set in the app. ⛔ The top-level `search:` / `submit:` / `assistant:` /
 `tracking:` / `api:` keys are retired: the build stops on them and says where each one moves.

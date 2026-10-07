@@ -57,7 +57,9 @@ import { emitSyncPackages } from '@uniweb/build/uwx'
 import {
   bankLanguages,
   reconcile,
-  settleServices
+  announceServices,
+  foundationSupports,
+  recordsNotAsked
 } from '../backend/service-request.js'
 import { isSiteRelativeExtensionUrl } from '@uniweb/build'
 import { resolveDefaultLocale } from '@uniweb/core/locale-config'
@@ -804,26 +806,16 @@ export async function publish(args = []) {
   const injectInfo = {
     ...(fnd.ref ? { foundation: fnd.ref } : {})
   }
-  // ⭐ WHAT THE SITE HAS — read before the push, for the two requests a publish
-  // carries: the services (`site.yml::services`) and the language selection. Only
-  // this read sees a decision the owner made in the app since this clone last synced.
-  // It reads this backend's site, from sync.json; a never-synced site has none.
+  // ⭐ WHAT THE SITE HAS — read before the push, for the language selection. Only this
+  // read sees a decision the owner made in the app since this clone last synced. It
+  // reads this backend's site, from sync.json; a never-synced site has none.
   const boundUuid = readBackendState(siteDir, client.origin).site?.uuid || null
   const status = boundUuid ? await client.siteStatus(boundUuid) : null
 
-  // ⭐ THE SERVICES: what the owner changed in `site.yml::services` is sent, applied
-  // over the site's own list; what the site changed is kept and offered into the file;
-  // where both changed, the owner is asked (`settleServices`). An ask whose decision is
-  // still open is never sent over the decision the site holds.
-  const services = await settleServices({
-    client,
-    siteDir,
-    siteYml,
-    status,
-    interactive: !isNonInteractive(args),
-    confirm,
-    say
-  })
+  // ⭐ THE SERVICES are stated by the push itself — the file's, and off for each held
+  // one it no longer lists (`statedServices`) — and the backend decides per service.
+  // Said here: what the file asks that will not be sent as written.
+  announceServices({ siteYml, say, supports: await foundationSupports(siteDir, siteYml) })
 
   // ⭐ THE LANGUAGE SELECTION IS A REQUEST TOO, and it is the one that costs.
   //
@@ -873,8 +865,6 @@ export async function publish(args = []) {
     backend: client.origin,
     // The keys this deployment's Sections take — see deploymentFields.
     ...fields,
-    // The `services` Section as settled above — or withheld.
-    ...services.emit,
     // Placement identity for the folder — see writeFolderItemUuids.
     folderItemUuids: readFolderItemUuids(siteDir, client.origin),
     // Identity for the records' list items — see readRecordItemUuids.
@@ -908,6 +898,10 @@ export async function publish(args = []) {
   if (refuseUnsendableRecords(pkg.refusals, { error: say.err, note: say.dim })) {
     return { exitCode: 1 }
   }
+  // ⭐ `records` is what delivers the records the pages show on the published site — said
+  // here, at publish, and never at push: syncing records does not depend on it.
+  const notAsked = recordsNotAsked({ siteYml, shown: pkg.recordsShown })
+  if (notAsked) say.warn(notAsked)
   const report = {
     info: (m) => say.info(m),
     note: (m) => say.dim(m),
@@ -921,9 +915,6 @@ export async function publish(args = []) {
     report
   })
   if (pushResult.exitCode !== 0) return { exitCode: pushResult.exitCode }
-  // The push stored what it sent: the services agreed on are recorded now, whether or
-  // not the site then goes live.
-  services.after()
   const siteUuid = pushResult.boundSiteUuid
   if (!siteUuid) {
     say.err('Push did not yield a site uuid — cannot go live.')
