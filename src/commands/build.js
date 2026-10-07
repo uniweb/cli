@@ -138,10 +138,11 @@ function detectProjectType(projectDir) {
  */
 function runCommand(command, args, cwd) {
   return new Promise((resolve, reject) => {
+    // No shell: the command is node and a script path, which needs none — and a shell
+    // splits a path with a space in it. (Node warns DEP0190 on args passed with one.)
     const proc = spawn(command, args, {
       cwd,
-      stdio: 'inherit',
-      shell: true
+      stdio: 'inherit'
     })
 
     proc.on('close', (code) => {
@@ -246,6 +247,9 @@ async function buildFoundation(projectDir, options = {}) {
   log('')
   log(`${colors.green}${colors.bright}Build complete!${colors.reset}`)
 
+  // The next step is for someone who ran `uniweb build` — not for a push or publish
+  // that builds the foundation as one of its own steps (UNIWEB_BUILD_STEP).
+  if (process.env.UNIWEB_BUILD_STEP) return
   log('')
   log(`${colors.bright}Share with clients:${colors.reset}`)
   log(

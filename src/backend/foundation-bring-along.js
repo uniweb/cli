@@ -577,7 +577,9 @@ function buildFoundation(local, cliBin) {
   execFileSync('node', [cliBin, 'build', '--target', 'foundation'], {
     cwd: local.dir,
     stdio: 'inherit',
-    env: process.env
+    // A step of this command, so the build skips the next-step hints meant for
+    // someone who ran `uniweb build` themselves.
+    env: { ...process.env, UNIWEB_BUILD_STEP: '1' }
   })
 }
 
