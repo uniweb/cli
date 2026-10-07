@@ -1740,7 +1740,7 @@ source: education
 
 ### Custom layouts
 
-Layouts live in `layouts/` inside the foundation and are auto-discovered. Set `defaultLayout` in `main.js`.
+Layouts live in `layouts/` inside the foundation and are auto-discovered. Set `defaultLayout` in `main.js`, or name a layout `Default`. With neither, a page that names no layout gets the built-in layout — `header`, the page, `footer`, nothing else — and a `defaultLayout` that names none of your layouts stops the build.
 
 ```jsx
 // layouts/DocsLayout/index.jsx
