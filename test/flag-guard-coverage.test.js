@@ -37,7 +37,8 @@ const ENTRY = {
   clone: 'commands/clone.js',
   register: 'commands/register.js',
   status: 'commands/status.js',
-  refresh: 'commands/refresh.js'
+  refresh: 'commands/refresh.js',
+  site: 'commands/site.js'
 }
 
 // Accepted everywhere, so never a gap.

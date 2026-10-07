@@ -786,6 +786,31 @@ export class BackendClient {
   }
 
   /**
+   * GET /dev/site — one page of the sites in the workspace the client names
+   * (`setWorkspace`; none ⇒ personal): `{ sites: [{ uuid, name?, updated_at,
+   * deployment?: { status, published_url, … } }] }`. A page shorter than `limit` is
+   * the last. `deployment` is absent for a site never published.
+   *
+   * @param {{ limit?: number, offset?: number }} [opts]
+   * @returns {Promise<Response>}
+   */
+  async listSites({ limit = 100, offset = 0 } = {}) {
+    return this.request('/dev/site', { query: { limit, offset } })
+  }
+
+  /**
+   * DELETE /dev/site/{uuid} — delete a site, finally: no trash, no restore. Only an
+   * admin of the site may. Refused `409` with `blockers: [{ resource, detail }]` while
+   * anything is still active — `published` among them, which `unpublishSite` clears.
+   *
+   * @param {string} uuid - the site-content uuid
+   * @returns {Promise<Response>}
+   */
+  async deleteSite(uuid) {
+    return this.request(`/dev/site/${encodeURIComponent(uuid)}`, { method: 'DELETE' })
+  }
+
+  /**
    * GET /dev/site/status/{uuid} → the site's publish lifecycle (Contract 3,
    * shipped backend-side — collab backend↔framework):
    *   { published: boolean, last_pushed_at?: string, last_published_at?: string, draft_dirty?: boolean }

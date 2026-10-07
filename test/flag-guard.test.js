@@ -67,13 +67,16 @@ test('a realistic invocation of every guarded verb passes', () => {
     status: ['--remote', '--json'],
     forget: ['--backend', 'http://localhost:9999'],
     refresh: ['--no-git', '--no-validate'],
-    sync: ['--no-git', '--force', '--yes']
+    sync: ['--no-git', '--force', '--yes'],
+    site: ['delete', '01a116cf-1a07-79f0-86e1-855d3a95e987', '--yes', '--org', '@acme']
   }
   for (const [verb, args] of Object.entries(real)) {
     assert.equal(checkFlags(verb, args), null, `${verb} rejected a valid call`)
   }
   // `forget` has two forms and the table holds one call per verb.
   assert.equal(checkFlags('forget', ['--all']), null, 'forget rejected --all')
+  // `site list` is the other form people script.
+  assert.equal(checkFlags('site', ['list', '--json', '--personal']), null, 'site rejected list --json')
   // The name claims EVERY guarded verb; make it a claim the test can keep. A verb
   // added to VERB_FLAGS without a case here would otherwise pass by absence.
   assert.deepEqual(

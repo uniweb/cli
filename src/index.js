@@ -973,6 +973,14 @@ async function main() {
     return
   }
 
+  // Handle site command — the sites in a workspace: list them, unpublish or delete one.
+  // Runs anywhere: inside a project it can act on the site the project is synced to.
+  if (command === 'site') {
+    const { site } = await import('./commands/site.js')
+    const result = await site(args.slice(1))
+    process.exit(result?.exitCode ?? 0)
+  }
+
   // Handle org command (new-backend orgs/units — publish-scope management)
   if (command === 'org') {
     const { org } = await import('./commands/org.js')
@@ -2062,6 +2070,7 @@ ${colors.bright}Commands:${colors.reset}
   sync               Catch up, then push (refresh + push)
   status             Show a site's sync state (unpushed content, foundation)
   forget             Forget a backend, or --all to make a copied project a new one
+  site <cmd>         The sites in a workspace: list, unpublish, delete
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   families           List the standard section families (for meta.js family:)

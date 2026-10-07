@@ -99,6 +99,11 @@ const VERBS = {
    * resolveSiteDir in a workspace of several sites.
    */
   forget: ['--backend', '--all'],
+  /**
+   * `site list | unpublish | delete` — a workspace's sites. `--yes` confirms a write;
+   * `--json` is `list`'s porcelain; the workspace is `--org` / `--personal`.
+   */
+  site: ['--json', '--yes', '--org', '--personal'],
   status: [
     '--json', '--remote', '--dry-run',
     '--force', '--no-verify', '--no-validate', '--yes', '--org', '--personal',
