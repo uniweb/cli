@@ -2688,7 +2688,8 @@ services:
 ```
 
 An entry is `true`, `false`, an address of your own (a string, or `endpoint:` in a map), or a map
-of options. On a site you push or publish it is also **what you ask your host for**: `true` asks for
+of options; anything else stops the build and the push. ⚠️ `yes`, `no`, `on` and `off` are text to
+YAML, not switches — write `true` or `false`. On a site you push or publish it is also **what you ask your host for**: `true` asks for
 its service, `false` asks it to turn its service off, and an address asks it to leave its own off so
 yours answers. **On a site your host publishes, a service is off unless `services:` asks for it** —
 list the ones the site uses (the templates list theirs). `records: true` asks for your records to be

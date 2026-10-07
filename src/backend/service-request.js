@@ -28,7 +28,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { readServicesRequest } from '@uniweb/build/uwx'
+import { readServicesRequest, unreadableServices } from '@uniweb/build/uwx'
 
 /**
  * A stable fingerprint of one declared value, or `null` when the key is absent.
@@ -165,6 +165,10 @@ const names = (list) => list.map((n) => `\`${n}\``).join(', ')
  * @param {string[]|null} [p.supports] - from `foundationSupports`; null = unknown
  */
 export function announceServices({ siteYml, say, supports = null }) {
+  // An entry the push cannot read stops the package build next, which says what to write
+  // (`refuseUnreadableServices`). Nothing to add before it — and what this would say, read
+  // past that entry, is wrong: `search: yes` was "site.yml turns on `search`" (F14).
+  if (unreadableServices(siteYml?.services).length) return
   const asks = readServicesRequest(siteYml?.services, { warn: (m) => say.warn(m) }) || []
   if (!Array.isArray(supports)) return
   const ignored = new Set(['tracking', 'records'])

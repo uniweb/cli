@@ -18,6 +18,7 @@ import {
   announceServices,
   recordsNotAsked
 } from '../src/backend/service-request.js'
+import { unreadableServices } from '@uniweb/build/uwx'
 
 // ── fingerprints and the language selection ────────────────────────────────
 
@@ -76,8 +77,12 @@ test('a file that asks nothing says nothing', () => {
   assert.equal(announce({ search: true, api: { grade: 'pro' } }), '')
 })
 
-test('a value it cannot read is said', () => {
-  assert.match(announce({ submit: 3, search: true }), /services\.submit` is true, false, an address, or a map/)
+test('⛔ a value it cannot read is left to the package build, which stops on it — nothing is said first', () => {
+  // What this step would say, read past such an entry, is wrong: `search: yes` was an address,
+  // and "site.yml turns on `search`" was said while the host's search was asked off (F14).
+  assert.equal(announce({ search: 'yes' }, []), '')
+  assert.equal(announce({ submit: 3, search: true }, ['search', 'submit']), '')
+  assert.match(unreadableServices({ submit: 3 })[0], /`services\.submit` is true, false, an address, or a map/)
 })
 
 test("⭐ an `api` address is said: it asks the host to leave its own off", () => {
