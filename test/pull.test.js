@@ -594,7 +594,10 @@ test('CONTROL — the same lane in the agreed shape (`$schema`, scoped names) is
     assert.deepEqual(readFolderItemUuids(dir, TEST_ORIGIN), { '@R1': 'P1', alice: 'P1' })
     assert.equal(pulledCache(dir).folder, '"F-ETAG"')
     assert.equal(readBaseVersions(dir, TEST_ORIGIN).R1, 'V-R1')
-    assert.equal(readItemBaseVersions(dir, TEST_ORIGIN)['I-R1'], 'iv-R1')
+    // The folder lane is gated by its entity version; its items' versions are not kept.
+    // ⛔ They were merged into the site-content items' map until 2026-10-07, and sent
+    // for nothing — that map is now what a push deletes by (`readItemBaseVersions`).
+    assert.equal(readItemBaseVersions(dir, TEST_ORIGIN)['I-R1'], undefined)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

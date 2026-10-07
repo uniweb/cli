@@ -34,10 +34,11 @@ import {
   diffSiteUnits,
   describeSiteDiff,
   computeUnitHashes,
-  collectSiteUnits,
   collectUnitUuids,
   collectFolderItemUuids,
   collectQueryUuids,
+  siteItemsByKey,
+  sameServiceRow,
   readBackendState,
   updateBackendMap,
   clearBackendSections,
@@ -172,42 +173,65 @@ function writtenAsSent(sent, written) {
  * changes it is `pkg != base, host != base` and refused. And while the backend holds
  * units we don't, the entity token stays where it was, so the next push keeps them.
  *
- * With either document missing there is nothing to compare, and the tokens are banked
- * as the backend sent them — the contract is that `finalized[].document` is always
- * there.
+ * ⭐ SINCE 2026-10-07 A HELD VERSION IS ALSO WHAT LETS A PUSH DELETE, so the rule covers
+ * every item, not only units. The site-content entity sends every version this copy
+ * holds, for items present and items the files dropped (`withBaseVersion`), and the
+ * backend deletes only the items a push holds a version for, while the site left them
+ * unchanged [Diego: "yes, apply it to pages too"; kb/framework/plans/services-exchange.md].
+ * A version banked for an item this copy never saw would therefore delete it. The map
+ * returned is the WHOLE set this copy now holds, in every Section but `secrets`
+ * (`siteItemsByKey`), and it replaces the one held before:
  *
+ *   - an item the backend holds as we sent it → its new version;
+ *   - an item we sent that it kept for someone else → the version we held, for OUR content;
+ *   - an item it holds that we did not send → the version we held, if we had seen it, and
+ *     none if we had not (a unit of it is `foreign`);
+ *   - an item we held that it no longer holds → none: the push deleted it, or the site did.
+ *
+ * ⛔ Until then only units were compared, and every other item's version was banked as
+ * the backend returned it — harmless only while none of them was ever sent.
+ *
+ * A service is compared by its switch and its whole `config` (`sameServiceRow`), every
+ * other item on the keys we sent (`writtenAsSent`).
+ *
+ * With either document missing there is nothing to compare, and with no versions
+ * returned (an older backend) nothing to bank: `itemVersions` is null, and the versions
+ * held stay as they were. The contract is that `finalized[].document` is always there.
+ *
+ * @param {object} p
+ * @param {object|null} p.sent - the site-content document this push sent
+ * @param {object|null} p.written - the backend's post-write copy of it
+ * @param {string|null} [p.version] - the entity's post-write version
+ * @param {Object<string,string>|null} [p.itemVersions] - the post-write version of every item
+ * @param {Object<string,string>} [p.held] - the versions this copy held before the push
  * @returns {{ version: string|null, itemVersions: Object<string,string>|null,
- *   held: string[], kept: string[], foreign: string[] }} `held`: units the backend
+ *   held: string[], kept: string[], foreign: string[] }} `itemVersions`: the versions
+ *   this copy now holds, or null to leave them as they were; `held`: units the backend
  *   holds as we sent them; `kept`: units it kept someone else's content for;
  *   `foreign`: units it holds that we did not send. All paths.
  */
-export function heldTokens({ sent, written, version = null, itemVersions = null }) {
-  if (!sent || !written) return { version, itemVersions, held: [], kept: [], foreign: [] }
-  const ours = collectSiteUnits(sent)
-  const theirs = collectSiteUnits(written)
-  const uuidAt = collectUnitUuids(written)
-  const units = new Set(Object.values(uuidAt))
+export function heldTokens({ sent, written, version = null, itemVersions = null, held: before = {} }) {
+  if (!sent || !written) return { version, itemVersions: null, held: [], kept: [], foreign: [] }
+  const prior = before && typeof before === 'object' ? before : {}
+  const ours = siteItemsByKey(sent)
+  const theirs = siteItemsByKey(written)
+  const same = (key, a, b) => (key.startsWith('services:') ? sameServiceRow(a, b) : writtenAsSent(a, b))
   const held = []
   const kept = []
   const foreign = []
   const items = {}
-  for (const [path, uuid] of Object.entries(uuidAt)) {
-    if (!ours.has(path)) {
-      foreign.push(path)
+  for (const [key, item] of theirs) {
+    if (!item.uuid) continue
+    const unit = key.startsWith('unit:') ? key.slice('unit:'.length) : null
+    const mine = ours.get(key)
+    if (mine && same(key, mine.record, item.record)) {
+      if (unit) held.push(unit)
+      const token = itemVersions?.[item.uuid] ?? prior[item.uuid]
+      if (token) items[item.uuid] = token
       continue
     }
-    if (!writtenAsSent(ours.get(path), theirs.get(path))) {
-      kept.push(path)
-      continue
-    }
-    held.push(path)
-    if (itemVersions?.[uuid]) items[uuid] = itemVersions[uuid]
-  }
-  // A token for an item that is not a unit (a `queries` declaration) is never sent
-  // back — the emit narrows preconditions to units (`withBaseVersion`) — so it is
-  // banked as before: it can neither arm nor disarm anything.
-  for (const [uuid, token] of Object.entries(itemVersions || {})) {
-    if (!units.has(uuid)) items[uuid] = token
+    if (unit) (mine ? kept : foreign).push(unit)
+    if (prior[item.uuid]) items[item.uuid] = prior[item.uuid]
   }
   return {
     version: foreign.length ? null : version,
@@ -216,6 +240,26 @@ export function heldTokens({ sent, written, version = null, itemVersions = null 
     kept: kept.sort(),
     foreign: foreign.sort()
   }
+}
+
+/**
+ * The versions a pull leaves this copy holding: one for every site-content item the
+ * pulled document carries, in every Section but `secrets` (`siteItemsByKey`) — the
+ * whole set, replacing what was held. A pull is how a copy sees the site, so an item
+ * the site no longer has is forgotten, and the next push does not send its version.
+ *
+ * @param {object|null} doc - the pulled site-content document
+ * @param {Object<string,string>|null} itemVersions - the pull manifest's `item_versions`
+ * @returns {Object<string,string>|null} null when there is nothing to bank (no document, or
+ *   an older backend that sends no item versions)
+ */
+export function pulledItemVersions(doc, itemVersions) {
+  if (!doc || !itemVersions || typeof itemVersions !== 'object') return null
+  const out = {}
+  for (const { uuid } of siteItemsByKey(doc).values()) {
+    if (uuid && typeof itemVersions[uuid] === 'string') out[uuid] = itemVersions[uuid]
+  }
+  return out
 }
 
 // The files a unit projects to, under the site's own roots — `site.yml::paths` can
@@ -378,7 +422,9 @@ export function keepModels(siteDir, backend, models) {
 // ⭐ **Everything here is regenerable and losing it never produces a WRONG result** —
 // only a slower transfer or a round trip. That is the membership test; anything
 // failing it belongs in `sync.json` (which is where the uuid maps went on
-// 2026-09-20 — see `readItemUuids` below).
+// 2026-09-20 — see `readItemUuids` below). ⚠️ One exception since 2026-10-07, and it
+// is said where it lives: the item versions are what lets a push delete, so without
+// them a dropped page is kept until the next pull (`readItemBaseVersions`).
 //
 // ⚠️ It was `sync-cache.json` and its header called it "a pure wire-efficiency
 // cache — NOT identity, the minted `$uuid` lives in the source files". That was
@@ -771,19 +817,34 @@ export function readBaseVersions(siteDir, backend) {
 }
 
 /**
- * Per-ITEM staleness tokens: `{ <record $uuid>: <opaque version> }`.
+ * Per-ITEM staleness tokens: `{ <item $uuid>: <opaque version> }` — one for every item
+ * of the site-content entity this copy has seen.
  *
  * The entity token gates the whole document, so a stale base on any one record
  * refuses the entire push — which fires on the common case of two people editing
- * different sections and teaches them to reach for `--force`. These gate per record
+ * different sections and teaches them to reach for `--force`. These gate per item
  * instead. Same contract as the entity token: opaque, cached, echoed, never parsed.
  *
- * Merged rather than replaced: a push carries only CHANGED entities, so a response
- * reports tokens for a subset of the site. Replacing would drop the tokens of every
- * record that wasn't in this package and silently degrade those to ungated.
+ * ⭐ AND THEY ARE WHAT LETS A PUSH DELETE (2026-10-07): the backend deletes only the
+ * items a push holds a version for, so every one held is sent, present or dropped
+ * (`withBaseVersion`). Hence the set is REPLACED, never merged — by a pull
+ * (`pulledItemVersions`) and by a push of the site-content lane (`heldTokens`) — and
+ * holds only items this copy has seen. ⚠️ The one thing losing this cache now costs that
+ * is not a round trip: until the next pull, a page or section the files dropped is kept
+ * on the site rather than deleted, since there is no version to send for it.
+ * ⛔ *It was merged until then, across both lanes, for a push that sent only units.*
  */
 export function readItemBaseVersions(siteDir, backend) {
   return readMap(siteDir, backend, 'itemBaseVersions')
+}
+/**
+ * Replace the item versions this copy holds — a push's (`heldTokens`) or a pull's
+ * (`pulledItemVersions`) whole set. ⛔ Not a merge: an item that left the set must
+ * leave the map, or its version is sent again and asks the backend to delete it.
+ */
+export function writeItemBaseVersions(siteDir, backend, versions) {
+  if (!versions || typeof versions !== 'object') return
+  updateSyncCache(siteDir, backend, { itemBaseVersions: { ...versions } })
 }
 export function mergeItemBaseVersions(siteDir, backend, versions) {
   if (!versions || !Object.keys(versions).length) return
@@ -2079,9 +2140,11 @@ export async function pushSyncPackages({
   // otherwise the next attempt would re-send lane 1 with a base the backend has
   // already moved past, and refuse a push the user just made.
   const newVersions = {}
-  // Per-item tokens from the SAME response. Keyed by record `$uuid` and flat
-  // across entities (the cache is a single map), unlike `newVersions`, which is
-  // keyed by entity uuid.
+  // Per-item tokens from the SAME response — the site-content entity's, keyed by item
+  // `$uuid`: the whole set this copy now holds (`heldTokens`), which replaces the one
+  // it held. Null until that lane lands, which leaves the held set as it was.
+  // ⛔ The records lane's are not kept: that lane is gated by its entity version, and
+  // until 2026-10-07 they were merged into the same map, which was sent for nothing.
   //
   // ⛔ Both grains must be re-armed from the push, for one reason: a push writes,
   // so every token this clone holds for a record it just changed is now stale. Read
@@ -2094,22 +2157,19 @@ export async function pushSyncPackages({
   // exact shape one grain up (see delivery-lane.md "Both feed directions are
   // load-bearing"); the item grain had the same hole until backend `d7e46335`
   // started echoing `item_versions` here.
-  const newItemVersions = {}
+  let heldItemVersions = null
   const harvest = (finalized) => {
     for (const f of finalized || []) {
+      // NOT gated on `changed`: the backend pins "zero-write ⇒ version unmoved", so a
+      // no-op resubmit hands back the value we already hold. (The site-content lane
+      // filters first, `harvestSiteContent`.)
       if (f.uuid && f.version) newVersions[f.uuid] = f.version
-      // NOT gated on `changed` — same rule as the entity token: the backend pins
-      // "zero-write ⇒ version unmoved", so a no-op resubmit hands back the value we
-      // already hold. (The site-content lane filters first, `harvestSiteContent`.)
-      // An older backend omits the field entirely, which leaves the cached tokens
-      // alone and degrades to the entity grain, exactly as before.
-      if (f.itemVersions) Object.assign(newItemVersions, f.itemVersions)
     }
   }
   // Both grains land together, at every point the old code banked the entity one.
   const mergeHarvested = () => {
     mergeBaseVersions(siteDir, client.origin, newVersions)
-    mergeItemBaseVersions(siteDir, client.origin, newItemVersions)
+    if (heldItemVersions) writeItemBaseVersions(siteDir, client.origin, heldItemVersions)
   }
   // ⛔ The site-content lane banks only the tokens for content this copy holds — the
   // document we sent against the one the backend stored (`heldTokens`, and the two
@@ -2124,9 +2184,11 @@ export async function pushSyncPackages({
         sent: sentSiteDoc,
         written: f.document,
         version: f.version,
-        itemVersions: f.itemVersions
+        itemVersions: f.itemVersions,
+        held: heldItemVersions ?? readItemBaseVersions(siteDir, client.origin)
       })
-      harvest([{ ...f, version: held.version, itemVersions: held.itemVersions }])
+      harvest([{ ...f, version: held.version }])
+      if (held.itemVersions) heldItemVersions = held.itemVersions
       heldUnits.push(...held.held)
       notHeld.kept.push(...held.kept)
       notHeld.foreign.push(...held.foreign)

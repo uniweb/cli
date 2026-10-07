@@ -95,7 +95,8 @@ import {
   rebankSyncHashes,
   writeQueryUuids,
   mergeBaseVersions,
-  mergeItemBaseVersions,
+  writeItemBaseVersions,
+  pulledItemVersions,
   writeUnitBases,
   writeItemUuids,
   writeFolderItemUuids
@@ -887,6 +888,9 @@ export async function pull(args = [], deps = {}) {
   // The Models the pulled site's queries name, as the push qualified them — the re-bank
   // below resolves with them too (see there).
   let pulledQueryModels = []
+  // The versions this copy holds after the pull: every site-content item the pulled
+  // document carries (`pulledItemVersions`), banked below once the files have taken it.
+  let pulledVersions = null
   if (content && !content.notModified) {
     const siteDoc =
       content.docs &&
@@ -905,6 +909,7 @@ export async function pull(args = [], deps = {}) {
       // The next push re-establishes it; until then our side reports as unknown,
       // which is honest rather than wrong.
       writeUnitBases(siteDir, client.origin, { remote: computeUnitHashes(siteDoc), local: {} })
+      pulledVersions = pulledItemVersions(siteDoc, content.itemVersions)
       // Per-item identity for the next push. Without it the backend reads our
       // records as new and re-mints every page and section row.
       writeItemUuids(siteDir, client.origin, collectUnitUuids(siteDoc))
@@ -1216,7 +1221,13 @@ export async function pull(args = [], deps = {}) {
       // Records this pull did not place were not taken, so neither is their lane.
       if (lane === folderLane && recordsNotPlaced) continue
       mergeBaseVersions(siteDir, client.origin, lane.versions)
-      mergeItemBaseVersions(siteDir, client.origin, lane.itemVersions)
+    }
+    // ⭐ The site-content items' versions REPLACE what this copy held: a pull is how it
+    // sees the site, and a version kept for an item the site no longer has would be sent
+    // again, asking the backend to delete it. The folder lane's are not kept — that lane
+    // is gated by its entity version. (Both were merged into one map until 2026-10-07.)
+    if (pulledVersions && content && !content.notModified && !content.refused) {
+      writeItemBaseVersions(siteDir, client.origin, pulledVersions)
     }
     // Persist the ETags so the next pull is conditional (304 when unchanged). The
     // folder's is DROPPED when records were not placed, so the next pull fetches

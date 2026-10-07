@@ -45,6 +45,7 @@ import {
   recoverUnbankedIdentity,
   recoverRecordsIdentity,
   heldTokens,
+  pulledItemVersions,
   mergeBaseVersions
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes, readZip } from '@uniweb/build/uwx'
@@ -290,10 +291,15 @@ test('a push that applied NOTHING clears the injections an earlier one banked', 
 // conflicted on records nobody else had touched. Unrecoverable locally: the tokens
 // are opaque, so only a pull could refresh them, and a pull rewrites the tree.
 
+// The smallest site-content exchange a push banks from: one page with one section,
+// sent as ours and returned as the backend stores it (`asStored`, below).
+const onePageSent = () => siteDoc([held('intro', 'hello')])
+
 test('TWO CONSECUTIVE PUSHES: item tokens come from the push response, not a pull', async () => {
   const dir = tmpSite()
   const seen = []
   let round = 0
+  const sent = onePageSent()
   const client = {
     origin: 'http://x',
     updateSiteContent: async () => {
@@ -305,7 +311,8 @@ test('TWO CONSECUTIVE PUSHES: item tokens come from the push response, not a pul
             uuid: 'S1',
             changed: true,
             version: `V${round}`,
-            item_versions: { REC: `t${round}` }
+            item_versions: { 'U-home': `h${round}`, 'U-intro': `t${round}` },
+            document: asStored(sent)
           }
         ])
       )
@@ -315,11 +322,14 @@ test('TWO CONSECUTIVE PUSHES: item tokens come from the push response, not a pul
   const push = async () => {
     // What THIS push would send is what the cache holds when it starts — the same
     // read `push.js` does via readItemBaseVersions.
-    seen.push(readItemBaseVersions(dir, ORIGIN).REC ?? null)
+    seen.push(readItemBaseVersions(dir, ORIGIN)['U-intro'] ?? null)
     return pushSyncPackages({
       client,
       siteDir: dir,
-      pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
+      pkg: {
+        ...siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
+        siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) }
+      },
       report
     })
   }
@@ -331,7 +341,7 @@ test('TWO CONSECUTIVE PUSHES: item tokens come from the push response, not a pul
   // with no pull in between. Reading on pull alone is what made this `[null, null]`,
   // and the backend would then refuse push 2 naming records nobody touched.
   assert.deepEqual(seen, [null, 't1'])
-  assert.deepEqual(readItemBaseVersions(dir, ORIGIN), { REC: 't2' })
+  assert.deepEqual(readItemBaseVersions(dir, ORIGIN), { 'U-home': 'h2', 'U-intro': 't2' })
   // The entity grain keeps working alongside it, in the same file.
   assert.deepEqual(readBaseVersions(dir, ORIGIN), { S1: 'V2' })
 })
@@ -360,6 +370,7 @@ test('an older backend omitting item_versions leaves the cached tokens alone', a
 
 test('item tokens are banked even when the push is not the last lane to succeed', async () => {
   const dir = tmpSite()
+  const sent = onePageSent()
   const client = {
     origin: 'http://x',
     updateSiteContent: async () =>
@@ -370,7 +381,8 @@ test('item tokens are banked even when the push is not the last lane to succeed'
             uuid: 'S1',
             changed: true,
             version: 'V1',
-            item_versions: { REC: 't1' }
+            item_versions: { 'U-home': 'h1', 'U-intro': 't1' },
+            document: asStored(sent)
           }
         ])
       ),
@@ -389,12 +401,13 @@ test('item tokens are banked even when the push is not the last lane to succeed'
     siteDir: dir,
     pkg: {
       ...siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
+      siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) },
       records: { buffer: Buffer.from('PK'), index: [] }
     },
     report
   })
   assert.equal(res.exitCode, 1)
-  assert.deepEqual(readItemBaseVersions(dir, ORIGIN), { REC: 't1' })
+  assert.deepEqual(readItemBaseVersions(dir, ORIGIN), { 'U-home': 'h1', 'U-intro': 't1' })
 })
 
 // ─── a push banks only the tokens for content this copy HOLDS ─────────────────
@@ -492,14 +505,103 @@ test("heldTokens: the backend's own fields and key order are not a difference", 
     version: 'V1',
     itemVersions: { 'U-home': 'h1', 'U-cta': 'c1', 'U-pricing': 'p1', Q1: 'q1' }
   })
-  // Q1 is not a unit (a queries declaration): never sent back, so banked as before.
-  assert.deepEqual(t.itemVersions, { 'U-home': 'h1', 'U-cta': 'c1', 'U-pricing': 'p1', Q1: 'q1' })
+  // Q1 is in neither document: an item this copy never saw, so no version is kept for
+  // it. ⛔ Until 2026-10-07 a version for an item that is not a unit was banked as
+  // returned — and a version held is now what a push deletes by.
+  assert.deepEqual(t.itemVersions, { 'U-home': 'h1', 'U-cta': 'c1', 'U-pricing': 'p1' })
   assert.deepEqual([t.kept, t.foreign, t.version], [[], [], 'V1'])
 })
 
-test('heldTokens: with no document to compare against, the tokens are banked as sent', () => {
-  const t = heldTokens({ sent: null, written: null, version: 'V1', itemVersions: { R: 't1' } })
-  assert.deepEqual(t, { version: 'V1', itemVersions: { R: 't1' }, held: [], kept: [], foreign: [] })
+test('heldTokens: with no document to compare against, nothing is banked and the held versions stay', () => {
+  const t = heldTokens({ sent: null, written: null, version: 'V1', itemVersions: { R: 't1' }, held: { R: 't0' } })
+  // `itemVersions: null` is "leave the set as it is": a version banked unseen could
+  // delete an item on the next push.
+  assert.deepEqual(t, { version: 'V1', itemVersions: null, held: [], kept: [], foreign: [] })
+})
+
+// ─── every Section, not only units — a version held is what a push deletes by ─────
+// Since 2026-10-07 the site-content entity sends every version it holds, present or
+// dropped, and the backend deletes only items a push holds a version for. So a version
+// is kept for an item only as this copy saw it — pulled, or sent and returned as sent
+// — in every Section but `secrets`.
+
+const withSections = (doc, extra) => ({ ...doc, ...extra })
+
+test('heldTokens: queries, services and settings sent as stored are held; secrets never are', () => {
+  const sent = withSections(siteDoc([held('cta', 'x')]), {
+    settings: { placeholders: { vendor: 'Acme' } },
+    queries: [{ $id: 'articles', name: 'articles', schema: '@std/article' }],
+    services: [{ $id: 'search', name: 'search' }],
+    secrets: [{ $id: 'submit:key', service: 'submit', name: 'key', value: '#ref' }]
+  })
+  const written = withSections(asStored(siteDoc([held('cta', 'x')])), {
+    settings: { $uuid: 'U-settings', placeholders: { vendor: 'Acme' } },
+    queries: [{ $uuid: 'U-q', name: 'articles', schema: '@std/article', label: null }],
+    services: [{ $uuid: 'U-svc', name: 'search', enabled: true }],
+    secrets: [{ $uuid: 'U-secret', service: 'submit', name: 'key', value: '#ref' }]
+  })
+  const t = heldTokens({
+    sent,
+    written,
+    version: 'V1',
+    itemVersions: { 'U-home': 'h1', 'U-cta': 'c1', 'U-settings': 's1', 'U-q': 'q1', 'U-svc': 'v1', 'U-secret': 'x1' }
+  })
+  assert.deepEqual(t.itemVersions, { 'U-home': 'h1', 'U-cta': 'c1', 'U-settings': 's1', 'U-q': 'q1', 'U-svc': 'v1' })
+})
+
+test('heldTokens: a service the site holds unlike we sent it keeps the version we held', () => {
+  // We stated `search` on, unchanged; the app had switched it off, so the site's copy
+  // stood. On the keys we sent (`name`) the two are equal — compared by switch and
+  // config, they are not, and banking the off row's version would read our next `on`
+  // as "only you changed it".
+  const sent = withSections(siteDoc([held('cta', 'x')]), { services: [{ $id: 'search', name: 'search' }] })
+  const written = withSections(asStored(siteDoc([held('cta', 'x')])), {
+    services: [{ $uuid: 'U-svc', name: 'search', enabled: false }]
+  })
+  const t = heldTokens({
+    sent,
+    written,
+    version: 'V1',
+    itemVersions: { 'U-home': 'h1', 'U-cta': 'c1', 'U-svc': 'v-off' },
+    held: { 'U-svc': 'v-on' }
+  })
+  assert.equal(t.itemVersions['U-svc'], 'v-on')
+})
+
+test('heldTokens: an item the backend holds that this copy never saw gets no version', () => {
+  // A service added in the app after our last pull: kept by the push, never seen here.
+  // A version banked for it would make the next push — which states it off, being held
+  // and not listed — switch off a service its author never saw.
+  const sent = siteDoc([held('cta', 'x')])
+  const written = withSections(asStored(sent), { services: [{ $uuid: 'U-new', name: 'assistant' }] })
+  const t = heldTokens({ sent, written, version: 'V1', itemVersions: { 'U-home': 'h1', 'U-cta': 'c1', 'U-new': 'n1' } })
+  assert.equal(t.itemVersions['U-new'], undefined)
+})
+
+test('heldTokens: an item held before and gone after leaves the set', () => {
+  // The push dropped `old` (its version was sent, so the backend deleted it), or the
+  // site deleted it: either way a version for it must not be sent again.
+  const sent = siteDoc([held('cta', 'x')])
+  const t = heldTokens({
+    sent,
+    written: asStored(sent),
+    version: 'V1',
+    itemVersions: { 'U-home': 'h1', 'U-cta': 'c1' },
+    held: { 'U-home': 'h0', 'U-cta': 'c0', 'U-old': 'o0' }
+  })
+  assert.deepEqual(t.itemVersions, { 'U-home': 'h1', 'U-cta': 'c1' })
+})
+
+test('a pull holds a version for every site-content item it returns, secrets aside', () => {
+  const doc = withSections(asStored(siteDoc([held('cta', 'x')])), {
+    queries: [{ $uuid: 'U-q', name: 'articles' }],
+    secrets: [{ $uuid: 'U-secret', service: 'submit', name: 'key', value: '#ref' }]
+  })
+  assert.deepEqual(
+    pulledItemVersions(doc, { 'U-home': 'h1', 'U-cta': 'c1', 'U-q': 'q1', 'U-secret': 'x1', 'U-elsewhere': 'e1' }),
+    { 'U-home': 'h1', 'U-cta': 'c1', 'U-q': 'q1' }
+  )
+  assert.equal(pulledItemVersions(doc, null), null)
 })
 
 test("⛔ A PUSH THAT MERGED SOMEONE ELSE'S EDIT does not bank its token — the next push is refused, not an overwrite", async () => {
