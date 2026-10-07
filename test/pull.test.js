@@ -1122,6 +1122,62 @@ test(
 )
 
 test(
+  "⭐ pull --merge settles a site.yml change on its own lines — the author's comments stay, no conflict (F12)",
+  { skip: !hasGit },
+  async () => {
+    // ⛔ Until 2026-10-07 the backend's side of site.yml was the file re-dumped without its
+    // comments, so a merge about one service also fought over the whole commented header.
+    // ⚠️ The two edits are lines apart: a line merge conflicts on edits to NEIGHBOURING lines
+    // whichever side holds what (git merge-file, measured), so that is not this test's question.
+    const commented = [
+      '# Site Configuration — kept by the author',
+      '',
+      '# ─── Build ───',
+      '# prerender writes HTML for every page',
+      'build:',
+      '  prerender: true',
+      '',
+      'name: S',
+      "foundation: '@a/base'",
+      ''
+    ].join('\n')
+    const dir = tempSite()
+    writeFileSync(join(dir, 'site.yml'), commented)
+    bindSite(dir, 'SITE')
+    const g = (a) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' })
+    try {
+      g(['init', '-q'])
+      writeFileSync(join(dir, '.gitignore'), '.uniweb\n')
+      const doc = siteDocWith(twoPara('A.', 'B.'))
+      await pull(['--force'], {
+        resolveSiteDir: async () => dir,
+        getToken: async () => 'tok',
+        fetch: makeFetch([['/dev/site/content/pull/SITE', doc]])
+      })
+      assert.equal(readFileSync(join(dir, 'site.yml'), 'utf8'), commented, 'a pull that changed nothing rewrote site.yml')
+      g(['add', '-A'])
+      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base'], { cwd: dir, stdio: 'ignore' })
+
+      // Mine: the developer turns prerender off. Theirs: the owner turned search on in the app.
+      writeFileSync(join(dir, 'site.yml'), commented.replace('prerender: true', 'prerender: false'))
+      const res = await pull(['--merge'], {
+        resolveSiteDir: async () => dir,
+        getToken: async () => 'tok',
+        fetch: makeFetch([
+          ['/dev/site/content/pull/SITE', { ...doc, services: [{ $id: 'search', $uuid: 'U-search', name: 'search' }] }]
+        ])
+      })
+      assert.equal(res.exitCode, 0)
+      const merged = readFileSync(join(dir, 'site.yml'), 'utf8')
+      assert.ok(!merged.includes('<<<<<<<'), `site.yml was left in conflict:\n${merged}`)
+      assert.equal(merged, commented.replace('prerender: true', 'prerender: false') + 'services:\n  search: true\n')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+)
+
+test(
   'pull --merge marks a genuine overlap instead of silently picking a side',
   { skip: !hasGit },
   async () => {
