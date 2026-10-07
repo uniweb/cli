@@ -978,6 +978,11 @@ async function main() {
   if (command === 'site') {
     const { site } = await import('./commands/site.js')
     const result = await site(args.slice(1))
+    // ⛔ EXIT ONLY ONCE STDOUT HAS DRAINED. To a pipe Node writes asynchronously, so an exit
+    // straight after a long list cut it at 8192 bytes — measured 2026-10-07: `site list --json`
+    // of 79 sites reached a reading process as half a JSON document, while the same command
+    // into a file (synchronous) was whole. Pinned by test/site-list-pipe.test.js.
+    await new Promise((resolve) => process.stdout.write('', resolve))
     process.exit(result?.exitCode ?? 0)
   }
 
