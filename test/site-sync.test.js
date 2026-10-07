@@ -46,6 +46,7 @@ import {
   recoverRecordsIdentity,
   heldTokens,
   pulledItemVersions,
+  describeStaleKeys,
   mergeBaseVersions
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes, readZip } from '@uniweb/build/uwx'
@@ -929,6 +930,53 @@ test('a stale_base 409 is reported as a staleness refusal, not the structure con
   assert.match(out, /--force/)
   // Must NOT misreport it as the genesis-owned collection-structure conflict.
   assert.ok(!/collection structure is already established/.test(out))
+})
+
+test('a stale_base 409 names the services and queries it lists in stale_keys', async () => {
+  // A service or a query has no file path for the per-file account to name, so the
+  // refusal names it by its Section's key — and the user is told which ones to pull.
+  const dir = tmpSite()
+  const problem = {
+    status: 409,
+    reason: 'stale_base',
+    stale_entities: [],
+    stale_items: ['U-svc-1', 'U-svc-2', 'U-q'],
+    stale_keys: [
+      { section: 'services', key: { name: 'search' } },
+      { section: 'services', key: { name: 'api' } },
+      { section: 'queries', key: { name: 'articles' } }
+    ]
+  }
+  const client = {
+    origin: 'http://x',
+    updateSiteContent: async () => ({
+      ok: false,
+      status: 409,
+      statusText: 'Conflict',
+      text: async () => JSON.stringify(problem),
+      json: async () => problem
+    })
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }), report })
+  assert.equal(res.exitCode, 1)
+  const out = calls.note.join('\n')
+  assert.match(out, /services: search, api/)
+  assert.match(out, /queries: articles/)
+  assert.match(out, /pull/)
+})
+
+test('describeStaleKeys: one line per Section, and nothing for an entry it cannot name', () => {
+  assert.deepEqual(describeStaleKeys(undefined), [])
+  assert.deepEqual(
+    describeStaleKeys([
+      { section: 'services', key: { name: 'search' } },
+      { section: 'secrets', key: { service: 'submit', name: 'key' } },
+      { section: 'services' },
+      { key: { name: 'x' } }
+    ]),
+    ['Changed on your site since your last pull — services: search', 'Changed on your site since your last pull — secrets: key']
+  )
 })
 
 test('pushSyncPackages CREATE: mints + records the site $uuid, persists the cache, exit 0', async () => {

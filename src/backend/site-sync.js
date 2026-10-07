@@ -119,6 +119,30 @@ async function explainStaleSiteContent({ client, siteDir, localBuffer, uuid }) {
   }
 }
 
+/**
+ * The items a `stale_base` refusal names by key — `stale_keys`, one
+ * `{ section, key }` per clashing item of a Section matched by a field of its own
+ * (`services` and `queries` by `name`) — as one line per Section.
+ *
+ * @param {*} staleKeys - the refusal's `stale_keys`
+ * @returns {string[]}
+ */
+export function describeStaleKeys(staleKeys) {
+  const bySection = new Map()
+  for (const entry of Array.isArray(staleKeys) ? staleKeys : []) {
+    const section = typeof entry?.section === 'string' && entry.section ? entry.section : null
+    const key = entry?.key
+    const name =
+      key && typeof key === 'object'
+        ? typeof key.name === 'string' ? key.name : Object.values(key).filter((v) => typeof v === 'string').join(' ')
+        : typeof key === 'string' ? key : null
+    if (!section || !name) continue
+    if (!bySection.has(section)) bySection.set(section, [])
+    bySection.get(section).push(name)
+  }
+  return [...bySection].map(([section, names]) => `Changed on your site since your last pull — ${section}: ${names.join(', ')}`)
+}
+
 // A unit in the form it is compared in across the two representations: keys sorted,
 // `$`-keys dropped (`$uuid`, `$id` — identity and payload handles, not content).
 const canonicalUnit = (v) =>
@@ -1994,7 +2018,11 @@ export async function pushSyncPackages({
         // for choosing between pulling and forcing.
         const detail = await explainStale()
         for (const line of detail) note(line)
-        if (!detail.length) {
+        // ⭐ Items no file path names — a service, a query — come named by their Section's
+        // key (`stale_keys`, `{ section, key: { name } }`), so say them by name.
+        const keyed = describeStaleKeys(problem.stale_keys)
+        for (const line of keyed) note(line)
+        if (!detail.length && !keyed.length) {
           const stale = Array.isArray(problem.stale_entities)
             ? problem.stale_entities
             : []
