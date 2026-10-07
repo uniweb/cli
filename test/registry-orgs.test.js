@@ -8,7 +8,17 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import prompts from 'prompts'
+
+// A hint names `--server` only for a backend you are not logged in to (`loginCommand`),
+// read from ~/.uniweb. Without an empty home this file's expectations followed the
+// machine's own login: logged in to http://localhost:8080, the hint omits it and the
+// test failed. (Each test file runs in its own process.)
+process.env.HOME = mkdtempSync(join(tmpdir(), 'uw-registry-orgs-'))
+delete process.env.UNIWEB_SERVER
 import {
   deriveScope,
   validateHandle,
