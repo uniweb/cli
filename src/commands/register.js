@@ -698,7 +698,10 @@ async function runRegister(args = []) {
           // fd 2 is our stderr: progress stays visible, stdout stays parseable.
           // Found by a harness that had to work around it by taking the last
           // JSON line off stdout.
-          stdio: jsonMode ? ['inherit', 2, 'inherit'] : 'inherit'
+          stdio: jsonMode ? ['inherit', 2, 'inherit'] : 'inherit',
+          // A step of register: the build's "Share with clients: uniweb register" hint
+          // would tell someone running register to run register.
+          env: { ...process.env, UNIWEB_BUILD_STEP: '1' }
         })
       } catch (err) {
         error(`Build failed: ${err.message}`)
