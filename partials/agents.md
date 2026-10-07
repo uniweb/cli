@@ -2039,7 +2039,7 @@ resolves by the same rule — the host's offer, then the site's own address, the
 neither.
 
 ⭐ **Before you render UI for a service, ask whether the site has it** — one predicate per service,
-no arguments: `isSearchEnabled()`, `isSubmitEnabled()`, `isApiEnabled()`, `isAssistantEnabled()`,
+no arguments: `isSearchEnabled()`, `isSubmitEnabled()`, `isBackendEnabled()`, `isAssistantEnabled()`,
 `isTrackingEnabled()`.
 
 ```jsx
@@ -2470,7 +2470,7 @@ For cases the factory doesn't cover, write handlers directly using `Loom`, `inst
 ## Part 4b — When the site is also an app
 
 Everything above is a site: content the author writes, built into pages. Some sites
-also have **an `api` service** — accounts, per-visitor data, records their members
+also have **their own backend, the `backend` service** — accounts, per-visitor data, records their members
 create and edit. `@uniweb/api` is its client.
 
 ⛔ **Only reach for this when the site actually has one.** A site without one is
@@ -2484,13 +2484,13 @@ npm install @uniweb/api      # in the FOUNDATION, beside @uniweb/kit
 ### Ask before you draw
 
 ```jsx
-import { isApiEnabled } from '@uniweb/kit'
+import { isBackendEnabled } from '@uniweb/kit'
 import { useSession, SignedIn, SignedOut } from '@uniweb/api'
 
-if (!isApiEnabled()) return <StaticVersion />   // synchronous — nothing to await
+if (!isBackendEnabled()) return <StaticVersion />   // synchronous — nothing to await
 ```
 
-⛔ **When the site has no `api` service, draw nothing** — not a disabled control, and not an
+⛔ **When the site has no `backend` service, draw nothing** — not a disabled control, and not an
 explanation. Same rule as `services` in Part 4: which capabilities a site's operator
 set up is none of a visitor's business, and "sign-in unavailable" reads as breakage
 when it is simply a feature this site does not have. Render the version of your
@@ -2512,7 +2512,7 @@ remove it. `scope: 'mine'` lists only the viewer's own records. Without it, the 
 also gets everyone else's.
 
 ⭐ **`absent` and an empty `ready` are different answers, and confusing them is the
-mistake to avoid.** `absent` = there is no live source (no `api` service, or nobody signed
+mistake to avoid.** `absent` = there is no live source (no `backend` service, or nobody signed
 in) → render the site's authored content. `ready` with `records: []` = the service
 answered and there is nothing there → render your empty state. Showing "nothing yet"
 for the first tells a visitor their content is gone when it was never requested.
@@ -2569,8 +2569,8 @@ You do not need a live backend to build against one. In `site.yml`:
 
 ```yaml
 services:
-  api: true                # ask your host for an app backend when you publish
-$devApi: ./mock/api.js     # what answers it in `uniweb dev`; `$` keys are never published
+  backend: true              # ask your host for it when you publish
+$devBackend: ./mock/api.js   # what answers it in `uniweb dev`; `$` keys are never published
 ```
 
 ```js
@@ -2579,7 +2579,7 @@ import { createMockBackend } from '@uniweb/api/mock'
 export default createMockBackend({ seed }).fetch
 ```
 
-`uniweb dev` answers your site's `api` service with it, at an address the dev server
+`uniweb dev` answers your site's `backend` service with it, at an address the dev server
 supplies on its own origin, so cookies behave exactly as they will in production. Write
 no address of your own for it: under `services:` an address means a backend you run, and
 asks your host to leave its own off. It **enforces** who
@@ -2696,7 +2696,7 @@ services:
   search: true                                     # on — your host's, or the built-in index
   submit: false                                    # off
   tracking: https://collector.example.com/events   # a provider you bring
-  api:                                             # on, with the service's own settings
+  backend:                                         # on, with the service's own settings
     grade: pro
 ```
 
@@ -2715,9 +2715,11 @@ your last pull) is left as it is, and one changed both in the file and on the si
 pull stops the push, naming it — `uniweb pull --merge`, then push. `uniweb pull` writes what the site
 has into `services:` (an off service with no settings only where the file already names it) — pull
 before you edit. A change that needs payment is settled in the app: `publish` opens it. **Everything in an entry but a
-credential is public** — it is built into the site, except `api`'s settings, which only your host
+credential is public** — it is built into the site, except `backend`'s settings, which only your host
 reads; a key or token is set in the app. ⛔ The top-level `search:` / `submit:` / `assistant:` /
-`tracking:` / `api:` keys are retired: the build stops on them and says where each one moves.
+`tracking:` / `api:` keys are retired: the build stops on them and says where each one moves. So
+does `api` under `services:` — the site's own backend is the `backend` service — and `$devApi:`,
+which is `$devBackend:`.
 
 **The Cloud also provides a real backend for structured data:** a database for every registered data schema, and a CMS that edits both static page content and dynamic data entities typed by those schemas. That's the piece that makes it viable for teams and client work — the client manages records, not markdown files.
 

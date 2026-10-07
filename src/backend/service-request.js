@@ -148,7 +148,7 @@ const names = (list) => list.map((n) => `\`${n}\``).join(', ')
 
 /**
  * Say what `site.yml::services` asks that will not be sent as written — a credential,
- * an entry that is not one, an `api` address — and where it and the foundation disagree,
+ * an entry that is not one, a `backend` address — and where it and the foundation disagree,
  * before a push or publish sends the rest. What a push sends is the producer's
  * (`statedServices`), from the same file.
  *

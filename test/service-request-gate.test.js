@@ -74,7 +74,7 @@ const announce = (services, supports = null) => {
 
 test('a file that asks nothing says nothing', () => {
   assert.equal(announce(undefined), '')
-  assert.equal(announce({ search: true, api: { grade: 'pro' } }), '')
+  assert.equal(announce({ search: true, backend: { grade: 'pro' } }), '')
 })
 
 test('⛔ a value it cannot read is left to the package build, which stops on it — nothing is said first', () => {
@@ -83,10 +83,13 @@ test('⛔ a value it cannot read is left to the package build, which stops on it
   assert.equal(announce({ search: 'yes' }, []), '')
   assert.equal(announce({ submit: 3, search: true }, ['search', 'submit']), '')
   assert.match(unreadableServices({ submit: 3 })[0], /`services\.submit` is true, false, an address, or a map/)
+  // ⛔ A renamed service is one of them: `api` is the `backend` service since 2026-10-07.
+  assert.equal(announce({ api: true }, ['backend']), '')
+  assert.match(unreadableServices({ api: true })[0], /`services\.api` is now `services\.backend`/)
 })
 
-test("⭐ an `api` address is said: it asks the host to leave its own off", () => {
-  assert.match(announce({ api: 'https://own.example' }), /asks your host to leave its own `api` off/)
+test("⭐ a `backend` address is said: it asks the host to leave its own off", () => {
+  assert.match(announce({ backend: 'https://own.example' }), /asks your host to leave its own `backend` off/)
 })
 
 test('⛔ a credential is said — it is never sent', () => {
@@ -104,9 +107,9 @@ test('a service the file turns on that the foundation does not render is said', 
 })
 
 test('⭐ a service the foundation renders that the file does not mention is said — off by default', () => {
-  assert.match(announce({}, ['search', 'api']), /Your foundation renders `search`, `api`, which site\.yml does not ask for/)
+  assert.match(announce({}, ['search', 'backend']), /Your foundation renders `search`, `backend`, which site\.yml does not ask for/)
   // An explicit `false` is a decision: nothing to say.
-  assert.equal(announce({ search: false, api: false }, ['search', 'api']), '')
+  assert.equal(announce({ search: false, backend: false }, ['search', 'backend']), '')
 })
 
 test('`tracking` and `records` are in neither warning', () => {

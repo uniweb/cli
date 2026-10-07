@@ -600,15 +600,15 @@ test("⛔ a push holds the services it stated, and never one added on the site s
   bind(dir, 'S1')
   const file = join(dir, 'sync.json')
   const store = JSON.parse(readFileSync(file, 'utf8'))
-  store.backends[ORIGIN].services = { api: 'U-api' }
+  store.backends[ORIGIN].services = { backend: 'U-backend' }
   writeFileSync(file, JSON.stringify(store))
   const sent = withSections(siteDoc([held('cta', 'x')]), {
-    services: [{ $id: 'search', name: 'search' }, { $id: 'api', name: 'api', enabled: false, $uuid: 'U-api' }]
+    services: [{ $id: 'search', name: 'search' }, { $id: 'backend', name: 'backend', enabled: false, $uuid: 'U-backend' }]
   })
   const written = withSections(asStored(siteDoc([held('cta', 'x')])), {
     services: [
       { $uuid: 'U-search', name: 'search' },
-      { $uuid: 'U-api', name: 'api', enabled: false },
+      { $uuid: 'U-backend', name: 'backend', enabled: false },
       { $uuid: 'U-new', name: 'assistant' }
     ]
   })
@@ -625,7 +625,7 @@ test("⛔ a push holds the services it stated, and never one added on the site s
     pkg: { ...siteOnlyPkg({ siteContentUuid: 'S1' }), siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) } }
   })
   assert.equal(res.exitCode, 0)
-  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).backends[ORIGIN].services, { api: 'U-api', search: 'U-search' })
+  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).backends[ORIGIN].services, { backend: 'U-backend', search: 'U-search' })
 })
 
 test('a pull holds a version for every site-content item it returns, secrets aside', () => {
@@ -978,7 +978,7 @@ test('a stale_base 409 names the services and queries it lists in stale_keys', a
     stale_items: ['U-svc-1', 'U-svc-2', 'U-q'],
     stale_keys: [
       { section: 'services', key: { name: 'search' } },
-      { section: 'services', key: { name: 'api' } },
+      { section: 'services', key: { name: 'backend' } },
       { section: 'queries', key: { name: 'articles' } }
     ]
   }
@@ -996,7 +996,7 @@ test('a stale_base 409 names the services and queries it lists in stale_keys', a
   const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }), report })
   assert.equal(res.exitCode, 1)
   const out = calls.note.join('\n')
-  assert.match(out, /services: search, api/)
+  assert.match(out, /services: search, backend/)
   assert.match(out, /queries: articles/)
   assert.match(out, /pull/)
 })
