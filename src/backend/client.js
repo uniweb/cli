@@ -229,6 +229,27 @@ export class WorkspaceMismatchError extends Error {
 }
 
 /**
+ * The backend could not be reached at all — the request never got an answer.
+ *
+ * ⛔ Not an answer, so it must not be read as one. A lookup that folds this into "not
+ * found" sends its caller down the not-found path: `readFoundationLatest` did, and a
+ * publish with the backend down announced "Releasing the foundation (not yet
+ * registered)…", failed inside `register`, and ended on "Fix the foundation".
+ */
+export class BackendUnreachableError extends Error {
+  /**
+   * @param {string} origin
+   * @param {unknown} cause - the transport error `fetch` threw
+   */
+  constructor(origin, cause) {
+    super(`Could not reach the backend at ${origin}: ${cause?.message ?? cause}`)
+    this.name = 'BackendUnreachableError'
+    this.origin = origin
+    this.cause = cause
+  }
+}
+
+/**
  * The line to print when a request THREW rather than answered.
  *
  * A `WorkspaceMismatchError` is the backend's answer, not a transport failure, so it is
@@ -563,7 +584,9 @@ export class BackendClient {
 
   /**
    * GET /dev/registry/{scope}/{name} → the latest registered foundation version
-   * + its content digest, or null on 404 / any failure (callers degrade).
+   * + its content digest, or null when the backend answers with anything else (callers
+   * degrade). ⛔ A backend that cannot be reached is not an answer: that throws
+   * `BackendUnreachableError` rather than reading as "not registered".
    *
    * The bare `{scope}/{name}` path resolves the latest foundation version (the
    * data-schema sibling is `/dev/registry/data-schemas/{scope}/{name}`). The
@@ -590,7 +613,11 @@ export class BackendClient {
         ...body,
         latest_version: body.latest_version ?? body.version ?? null
       }
-    } catch {
+    } catch (err) {
+      // Node's `fetch` throws `TypeError: fetch failed` when nothing answered.
+      if (err instanceof TypeError && /fetch failed/i.test(err.message)) {
+        throw new BackendUnreachableError(this.origin, err)
+      }
       return null
     }
   }

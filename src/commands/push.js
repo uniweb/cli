@@ -65,7 +65,7 @@ import { emitSyncPackages, readBackendState } from '@uniweb/build/uwx'
 import { findSiteCopies, describeSiteCopies } from '../utils/site-copies.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import { updateBackendMap, carryServed, SYNC_STORE_FILE } from '@uniweb/build/uwx'
-import { BackendClient } from '../backend/client.js'
+import { BackendClient, BackendUnreachableError } from '../backend/client.js'
 import { resolveSiteDir } from './deploy.js'
 import { refuseIfContentDoesNotConform } from '../utils/conformance.js'
 import { reportSchemalessQueries } from '../utils/schemaless-report.js'
@@ -278,6 +278,12 @@ export async function push(args = [], deps = {}) {
       verb: 'push'
     })
   } catch (err) {
+    // A backend that did not answer is said as that — not as a release that failed.
+    if (err instanceof BackendUnreachableError) {
+      error(err.message)
+      note('Nothing was released or sent. Check that the backend is running, then re-run `uniweb push`.')
+      return { exitCode: 1 }
+    }
     // A scope you are not a member of is said as that, with the ways on (`explainReleaseFailure`).
     error(err.notMember ? err.message : `Foundation release failed: ${err.message}`)
     for (const line of err.notMember ? err.ways : ['Fix the foundation, then re-run `uniweb push`.']) note(line)

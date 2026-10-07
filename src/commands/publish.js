@@ -66,6 +66,7 @@ import { resolveDefaultLocale } from '@uniweb/core/locale-config'
 
 import {
   BackendClient,
+  BackendUnreachableError,
   describeRequestError,
   WorkspaceMismatchError
 } from '../backend/client.js'
@@ -480,6 +481,12 @@ export async function publish(args = []) {
       cliBin: process.argv[1]
     })
   } catch (err) {
+    // A backend that did not answer is said as that — not as a release that failed.
+    if (err instanceof BackendUnreachableError) {
+      say.err(err.message)
+      say.dim('Nothing was released or sent. Check that the backend is running, then re-run `uniweb publish`.')
+      return { exitCode: 1 }
+    }
     // A scope you are not a member of is said as that, with the ways on (`explainReleaseFailure`).
     say.err(err.notMember ? err.message : `Foundation release failed: ${err.message}`)
     for (const line of err.notMember ? err.ways : ['Fix the foundation, then re-run `uniweb publish`.']) say.dim(line)
