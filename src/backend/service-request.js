@@ -149,10 +149,15 @@ const rowNamed = (rows, name) =>
  *
  * Per service the file names, three states are compared: the file, the site now
  * (`status.services`), and the record of the last agreement (this backend's entry in
- * `sync.json`). What the owner changed is sent; what the site changed is kept, and
- * offered into `site.yml`; where both changed, the owner is asked. The list sent is the
- * site's own, with only the changed asks applied (`mergeServiceRows`) — so every other
- * service and setting the site holds is sent as it is stored.
+ * `sync.json`). What the owner changed is sent, as the file says it — a setting removed
+ * from the file is removed; what the site changed is kept, and offered into `site.yml`;
+ * where both changed, the owner is asked — and so is a service the file names for the
+ * first time while the site holds it differently, rather than a setting made in the
+ * app being erased. The list sent is the site's own, with only the changed asks applied
+ * (`mergeServiceRows`) — so every other service is sent as it is stored.
+ *
+ * ⛔ Without the site's services — unreadable, or offline — none are sent: the list goes
+ * whole, and the record cannot stand in for what the site holds now.
  *
  * ⛔ An open decision — an offer declined, a conflict not resolved, or no terminal to
  * ask at — is never sent, and the record keeps the earlier agreement for it, so the
@@ -186,16 +191,22 @@ export async function settleServices({
 
   const state = readBackendState(siteDir, client.origin)
   const record = Array.isArray(state.services) ? state.services : undefined
+  const named = Array.isArray(state.servicesNamed) ? state.servicesNamed : undefined
   const siteUuid = state.site?.uuid || null
   let read = status
   if (read === undefined && !offline && siteUuid) read = await client.siteStatus(siteUuid)
   const stored = Array.isArray(read?.services) ? read.services : undefined
 
-  const decision = reconcileServices({ asks, record, stored, siteKnown: Boolean(siteUuid) })
+  const decision = reconcileServices({ asks, record, named, stored, siteKnown: Boolean(siteUuid) })
+  const withheld = { emit: { declareServices: false }, after: () => {} }
   if (decision.unreadable) {
-    say.warn("site.yml asks for services, but this project has no record of your site's and could not read them, so none were sent.")
-    say.dim('  Run `uniweb pull` to take them, then push again.')
-    return nothing
+    if (offline) {
+      say.dim("Services are left out: they are settled against your site's when a push reaches it.")
+    } else {
+      say.warn("site.yml asks for services, but your site's could not be read, so none were sent.")
+      say.dim('  Push again once the backend answers.')
+    }
+    return withheld
   }
 
   const askFor = (name) => asks.find((a) => a.name === name)
@@ -204,24 +215,29 @@ export async function settleServices({
   const open = []
 
   // ⛔ BOTH MOVED: only the owner can rank two of their own decisions. Not a stop — the
-  // content they asked to push is a separate thing — and never a guess.
-  if (decision.conflict.length) {
-    say.warn(
-      record
-        ? "Your site's services and site.yml both changed since your last sync:"
-        : 'site.yml asks for services your site has set differently:'
-    )
-    for (const name of decision.conflict) {
+  // content they asked to push is a separate thing — and never a guess. A service the
+  // file names for the first time while the site holds it differently is asked the same
+  // way: sent as written it would erase what the site holds, which the file never had.
+  const asked = [...decision.conflict, ...decision.unseen]
+  if (asked.length) {
+    const show = (name) =>
       say.dim(`  ${name}: site.yml asks ${describeService(askFor(name))} — your site has ${describeService(rowNamed(stored, name))}`)
+    if (decision.conflict.length) {
+      say.warn("Your site's services and site.yml both changed since your last sync:")
+      decision.conflict.forEach(show)
+    }
+    if (decision.unseen.length) {
+      say.warn('site.yml asks for services your site has set differently:')
+      decision.unseen.forEach(show)
     }
     if (!interactive) {
       say.dim("  Left as your site has them — run without --non-interactive to choose.")
-      open.push(...decision.conflict)
+      open.push(...asked)
     } else if (await confirm('Use the services in site.yml?', false)) {
-      send.push(...decision.conflict)
+      send.push(...asked)
     } else {
       // Declining to send is not yet a decision to take the site's: offered below.
-      offered = [...offered, ...decision.conflict]
+      offered = [...offered, ...asked]
     }
   }
 
@@ -247,22 +263,16 @@ export async function settleServices({
     say.info(`Asking for: ${send.map((n) => `${n} ${describeService(askFor(n))}`).join(', ')}`)
   }
 
-  // The list to send: the site's rows with the changed asks applied. With the site
-  // unreadable and nothing changed, nothing is sent — the record may be stale, and
-  // sending it would be asking for what the site may have moved away from.
-  const base = stored ?? record ?? (siteUuid ? undefined : [])
-  if (!stored && !send.length) {
-    return {
-      emit: { declareServices: false },
-      after: () => {}
-    }
-  }
-  const rows = mergeServiceRows(base, asks.filter((a) => send.includes(a.name)))
+  // The list to send: the site's rows with the changed asks applied — or, for a site
+  // not created yet, the asks alone.
+  const rows = mergeServiceRows(stored ?? [], asks.filter((a) => send.includes(a.name)))
   return {
     emit: { serviceRows: rows },
     after: () => {
-      const next = recordAfter({ record, agreed: rows, open })
-      if (next) updateBackendState(siteDir, client.origin, { services: next })
+      // What the file names now — after an offer taken, which may have changed it.
+      const names = (readServicesRequest(siteYml?.services) || []).map((a) => a.name)
+      const next = recordAfter({ record, named, agreed: rows, open, names })
+      if (next) updateBackendState(siteDir, client.origin, next)
     }
   }
 }

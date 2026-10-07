@@ -80,12 +80,16 @@ process.on('exit', () => {
  * A site directory: `site.yml` with `services`, and this backend's entry in sync.json.
  * `site` defaults to an existing site; pass `site: null` for one not created yet.
  */
-function siteDir({ services, record, site = { uuid: 'SITE-1' } } = {}) {
+function siteDir({ services, record, named, site = { uuid: 'SITE-1' } } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'settle-services-'))
   made.push(dir)
   const siteYml = { name: 'Acme', foundation: '@a/base', ...(services ? { services } : {}) }
   writeFileSync(join(dir, 'site.yml'), yaml.dump(siteYml))
-  const entry = { ...(site ? { site } : {}), ...(record ? { services: record } : {}) }
+  const entry = {
+    ...(site ? { site } : {}),
+    ...(record ? { services: record } : {}),
+    ...(named ? { servicesNamed: named } : {})
+  }
   if (Object.keys(entry).length) {
     writeFileSync(join(dir, 'sync.json'), JSON.stringify({ version: 1, backends: { [ORIGIN]: entry } }))
   }
@@ -93,13 +97,15 @@ function siteDir({ services, record, site = { uuid: 'SITE-1' } } = {}) {
 }
 
 const readSiteYml = (dir) => yaml.load(readFileSync(join(dir, 'site.yml'), 'utf8'))
-const readRecord = (dir) => {
+const readEntry = (dir) => {
   try {
-    return JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends[ORIGIN]?.services
+    return JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends[ORIGIN] || {}
   } catch {
-    return undefined
+    return {}
   }
 }
+const readRecord = (dir) => readEntry(dir).services
+const readNamed = (dir) => readEntry(dir).servicesNamed
 
 /** Run the step as push does: the site's rows come from a status read. */
 async function settle(dir, { stored, answer = false, interactive = true, offline = false } = {}) {
@@ -143,19 +149,47 @@ test("⭐ what the owner changed is sent — over the site's own list, nothing d
   assert.deepEqual(emit.serviceRows, [API_STARTER, { name: 'search' }])
   assert.match(said, /Asking for: search on/)
   after()
+  // The full list is the record; only what the file names counts as named.
   assert.deepEqual(readRecord(dir), [API_STARTER, { name: 'search' }])
+  assert.deepEqual(readNamed(dir), ['search'])
 })
 
-test('a setting the owner changes goes over the stored ones, key by key', async () => {
-  const dir = siteDir({ services: { api: { grade: 'pro' } }, record: [API_STARTER] })
+test('⭐ a service the file named before is sent as written — a setting removed from it is removed', async () => {
+  const dir = siteDir({ services: { api: { grade: 'pro' } }, record: [API_STARTER], named: ['api'] })
   const { emit } = await settle(dir, { stored: [API_STARTER] })
-  assert.deepEqual(emit.serviceRows, [
-    { name: 'api', config: { grade: 'pro', auth: { providers: ['google'] } } }
-  ])
+  assert.deepEqual(emit.serviceRows, [{ name: 'api', config: { grade: 'pro' } }])
+})
+
+test('⭐ deleting an option in site.yml deletes it on the site', async () => {
+  const excluded = { name: 'search', config: { exclude: { routes: ['/legal'] } } }
+  const dir = siteDir({ services: { search: true }, record: [excluded], named: ['search'] })
+  const { emit, after, said } = await settle(dir, { stored: [excluded] })
+  assert.deepEqual(emit.serviceRows, [{ name: 'search' }])
+  assert.match(said, /Asking for: search on/)
+  after()
+  assert.deepEqual(readRecord(dir), [{ name: 'search' }])
+})
+
+test("⭐ a service the file names for the first time is asked about — never sent over the app's settings", async () => {
+  // The app set App Services' grade; a push sent the api row as stored, so the record
+  // holds it — but the file never named api, so it never had the grade.
+  const graded = { name: 'api', config: { grade: 'pro' } }
+  const dir = siteDir({
+    services: { search: true, api: true },
+    record: [{ name: 'search' }, graded],
+    named: ['search']
+  })
+  const run = await settle(dir, { stored: [{ name: 'search' }, graded], interactive: false })
+  assert.match(run.said, /asks for services your site has set differently/)
+  assert.match(run.said, /api: site\.yml asks on — your site has on \(grade: pro\)/)
+  assert.deepEqual(run.emit.serviceRows, [{ name: 'search' }, graded], 'the grade stays')
+  run.after()
+  // Still undecided, so still not one the file named: the next run asks again.
+  assert.deepEqual(readNamed(dir), ['search'])
 })
 
 test("⭐ the site moved and the file did not → the site's is kept, offered, and still offered next time", async () => {
-  const dir = siteDir({ services: { search: true }, record: [{ name: 'search' }] })
+  const dir = siteDir({ services: { search: true }, record: [{ name: 'search' }], named: ['search'] })
   const off = [{ name: 'search', enabled: false }]
 
   const first = await settle(dir, { stored: off, answer: false })
@@ -176,7 +210,8 @@ test("⭐ the site moved and the file did not → the site's is kept, offered, a
 test("⭐ taking the site's writes site.yml — and the site's next change is the site's again", async () => {
   const dir = siteDir({
     services: { search: true, submit: true },
-    record: [{ name: 'search' }, { name: 'submit' }]
+    record: [{ name: 'search' }, { name: 'submit' }],
+    named: ['search', 'submit']
   })
   const off = [{ name: 'search', enabled: false }, { name: 'submit' }]
 
@@ -199,7 +234,8 @@ test("⭐ taking the site's writes site.yml — and the site's next change is th
 test('⛔ both moved → asked; without a terminal nothing of it is sent, and it stays open', async () => {
   const dir = siteDir({
     services: { api: { grade: 'pro' } },
-    record: [{ name: 'api', config: { grade: 'starter' } }]
+    record: [{ name: 'api', config: { grade: 'starter' } }],
+    named: ['api']
   })
   const team = [{ name: 'api', config: { grade: 'team' } }]
 
@@ -214,7 +250,8 @@ test('⛔ both moved → asked; without a terminal nothing of it is sent, and it
 test('both moved, and the owner chooses the file → sent', async () => {
   const dir = siteDir({
     services: { api: { grade: 'pro' } },
-    record: [{ name: 'api', config: { grade: 'starter' } }]
+    record: [{ name: 'api', config: { grade: 'starter' } }],
+    named: ['api']
   })
   const run = await settle(dir, { stored: [{ name: 'api', config: { grade: 'team' } }], answer: true })
   assert.equal(run.asked[0], 'Use the services in site.yml?')
@@ -234,12 +271,11 @@ test('no record: a service the site holds nothing for is sent', async () => {
   assert.deepEqual(run.emit.serviceRows, [API_STARTER, { name: 'search' }])
 })
 
-test('⛔ an existing site this project cannot read and holds no record of gets nothing', async () => {
+test("⛔ an existing site whose services cannot be read gets none — the list goes whole", async () => {
   const dir = siteDir({ services: { search: true } })
   const run = await settle(dir, { stored: undefined })
-  assert.deepEqual(run.emit, {})
-  assert.match(run.said, /could not read them, so none were sent/)
-  assert.match(run.said, /uniweb pull/)
+  assert.deepEqual(run.emit, { declareServices: false })
+  assert.match(run.said, /could not be read, so none were sent/)
 })
 
 test('a site not created yet has nothing stored — the file is the list', async () => {
@@ -248,13 +284,13 @@ test('a site not created yet has nothing stored — the file is the list', async
   assert.deepEqual(run.emit.serviceRows, [{ name: 'search' }, { name: 'submit', enabled: false }])
 })
 
-test('the site unreadable: what changed against the record is sent over it…', async () => {
-  const dir = siteDir({ services: { search: false }, record: [API_STARTER, { name: 'search' }] })
+test('⛔ the site unreadable: a change is not sent over the record — the site may hold more since', async () => {
+  const dir = siteDir({ services: { search: false }, record: [API_STARTER, { name: 'search' }], named: ['search'] })
   const run = await settle(dir, { stored: undefined })
-  assert.deepEqual(run.emit.serviceRows, [API_STARTER, { name: 'search', enabled: false }])
+  assert.deepEqual(run.emit, { declareServices: false })
 })
 
-test('…and with nothing changed, nothing is sent — the record may be stale', async () => {
+test('…nor, with nothing changed, is the record re-sent', async () => {
   const dir = siteDir({ services: { search: true }, record: [{ name: 'search' }] })
   const run = await settle(dir, { stored: undefined })
   assert.deepEqual(run.emit, { declareServices: false })
@@ -279,7 +315,8 @@ test('offline (`--dry-run`, `-o`) reads nothing from the backend', async () => {
     say: { info: () => {}, warn: () => {}, dim: () => {}, ok: () => {} }
   })
   assert.equal(reads, 0)
-  assert.deepEqual(result.emit.serviceRows, [{ name: 'search', enabled: false }])
+  // Without the site's services the full list cannot be built, so none go.
+  assert.deepEqual(result.emit, { declareServices: false })
 })
 
 test('publish hands in the status it already read — no second read', async () => {
@@ -306,7 +343,7 @@ test('a value it cannot read is said', async () => {
 })
 
 test('⭐ an address is the site\'s own provider: the host is asked to leave its own off, and told why', async () => {
-  const dir = siteDir({ services: { submit: 'https://forms.example.com/f/abc' }, record: [{ name: 'submit' }] })
+  const dir = siteDir({ services: { submit: 'https://forms.example.com/f/abc' }, record: [{ name: 'submit' }], named: ['submit'] })
   const run = await settle(dir, { stored: [{ name: 'submit' }] })
   // The address rides in the row's `config`, the one place for the whole entry.
   assert.deepEqual(run.emit.serviceRows, [

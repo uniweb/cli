@@ -2690,11 +2690,13 @@ services:
 An entry is `true`, `false`, an address of your own (a string, or `endpoint:` in a map), or a map
 of options. On a site you push or publish it is also **what you ask your host for**: `true` asks for
 its service, `false` asks it to turn its service off, and an address asks it to leave its own off so
-yours answers. A service you leave out keeps whatever the site has, and settings you leave out keep
-theirs — to turn one off, say `false`. `uniweb push` and `uniweb publish` send what you changed since
-your last sync; if the site's services changed elsewhere in the meantime — an author in the app —
-they offer to update `site.yml` rather than send your older choice over it, and if both changed the
-same service they ask which to keep. `uniweb pull` writes what the site has into `services:`. A
+yours answers. A service you leave out keeps whatever the site has — to turn one off, say `false` —
+but an entry says everything about its service: a setting you remove from it is removed on the next
+push. `uniweb push` and `uniweb publish` send what you changed since your last sync; if the site's
+services changed elsewhere in the meantime — an author in the app — they offer to update `site.yml`
+rather than send your older choice over it, and if both changed the same service they ask which to
+keep. They ask too when `site.yml` names a service for the first time that the site already has, set
+differently. `uniweb pull` writes what the site has into `services:` — pull before you edit. A
 change that needs payment is settled in the app: `publish` opens it. **Everything in an entry but a
 credential is public** — it is built into the site, except `api`'s settings, which only your host
 reads; a key or token is set in the app. ⛔ The top-level `search:` / `submit:` / `assistant:` /
