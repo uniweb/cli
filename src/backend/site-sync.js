@@ -12,7 +12,7 @@
  */
 
 import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs'
-import { join, dirname, relative, isAbsolute } from 'node:path'
+import { join, dirname, relative, isAbsolute, basename } from 'node:path'
 import yaml from 'js-yaml'
 import { hasUncommittedContent } from '../utils/git.js'
 import { recordWritten } from '../utils/pull-written.js'
@@ -54,7 +54,8 @@ import {
   writeRegisteredFoundation,
   backfillLinkUuids,
   LINK_MODEL,
-  bankedFileUuids
+  bankedFileUuids,
+  existingSectionFile
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -295,7 +296,15 @@ export function pulledItemVersions(doc, itemVersions) {
 // The files a unit projects to, under the site's own roots — `site.yml::paths` can
 // relocate `pages` and `layout`. `site.yml` stands for the `info` unit, which projects
 // to three files.
-function unitFilesOf(siteDir, unitPath) {
+//
+// ⭐ A section unit's path names it by its id (`pages/about/about.md`), and the author's
+// file may carry an ordering prefix or a child mark (`1-about.md`, `@about.md`), which a
+// pull writes back into in place. So the unit is looked up as a pull finds it
+// (`existingSectionFile`). ⛔ Until 2026-10-07 the id path was taken as the file: a push
+// recorded no file for a numbered section, and the next `pull --merge` merged against an
+// older version — a false conflict on a line only the other side had changed (measured
+// on the starter's `1-welcome.md`).
+export function unitFilesOf(siteDir, unitPath) {
   if (unitPath === 'site.yml') return ['site.yml', 'theme.yml', 'head.html']
   let paths = {}
   try {
@@ -304,7 +313,12 @@ function unitFilesOf(siteDir, unitPath) {
     /* no or unreadable site.yml — the defaults are right */
   }
   for (const root of ['pages', 'layout']) {
-    if (unitPath.startsWith(`${root}/`)) return [`${paths[root] || root}${unitPath.slice(root.length)}`]
+    if (!unitPath.startsWith(`${root}/`)) continue
+    const rel = `${paths[root] || root}${unitPath.slice(root.length)}`
+    if (!rel.endsWith('.md') || existsSync(join(siteDir, rel))) return [rel]
+    const id = basename(rel, '.md')
+    const found = existingSectionFile(join(siteDir, dirname(rel)), id, id, { child: true })
+    return [found ? relative(siteDir, found) : rel]
   }
   return []
 }
@@ -2467,7 +2481,10 @@ export async function pushSyncPackages({
   // What the backend holds that this copy doesn't. None of it was overwritten, and no
   // later push will overwrite it — but the files are behind until a pull.
   if (notHeld.kept.length || notHeld.foreign.length) {
-    const paths = [...new Set([...notHeld.kept, ...notHeld.foreign])].sort()
+    // Named by the file it is in here, not by its id (`unitFilesOf`).
+    const paths = [
+      ...new Set([...notHeld.kept, ...notHeld.foreign].map((p) => (p === 'site.yml' ? p : unitFilesOf(siteDir, p)[0] || p)))
+    ].sort()
     note(`Changed on the backend by someone else, not in your files yet: ${paths.join(', ')}`)
     note('Take them with `uniweb refresh` (or `uniweb pull --merge`). Until then, pushing leaves them as they are.')
   }
