@@ -1504,7 +1504,8 @@ ${colors.bright}Usage:${colors.reset}
 
 ${colors.bright}Options:${colors.reset}
   --template <type>  Project template (default: starter)
-                     Built-in: starter, none, marketing
+                     Built-in: starter, none, blank
+                     Official: marketing, docs, … (\`uniweb template list\`)
                      Local:    ./path/to/template
                      npm:      @scope/template-name
                      GitHub:   github:user/repo or https://github.com/user/repo
