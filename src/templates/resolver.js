@@ -2,92 +2,47 @@
  * Template resolver - parses template identifiers and determines source type
  */
 
-import { readFileSync, statSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
+import { loadFrameworkIndex } from '../versions.js'
 
 // Built-in templates (programmatic, not file-based)
 export const BUILTIN_TEMPLATES = ['blank', 'starter', 'none']
 
 /**
- * Load the official template metadata map — `{ id: { name, description,
- * tags } }`, keyed by template id.
+ * THE OFFICIAL TEMPLATES THIS CLI SCAFFOLDS — one snapshot.
  *
- * There are two sources of truth depending on where the CLI is running:
+ * `../framework-index.json` is written when the CLI is published: the
+ * templates' manifest (`{ id: { name, description, tags } }`) and, in
+ * `packages`, the `@uniweb/templates` version whose release holds their
+ * content. The interactive picker, `uniweb template list` and the download in
+ * `create` all read it, so the CLI offers exactly the templates it can fetch,
+ * and fetches the content released with the package versions it pins. A CLI
+ * goes on scaffolding the templates it was published with until it is
+ * updated — consistent, not newest.
  *
- * 1. **Local dev inside the Uniweb monorepo** — the authoritative file
- *    is `framework/templates/manifest.json`. Adding a new template
- *    there makes it immediately reachable from any locally-run CLI
- *    without republishing. This is the only path that matters for
- *    `node scripts/framework/sandbox.js create`.
+ * ⛔ Until 2026-10-08 a CLI run from a source checkout listed the templates
+ * repo's working manifest instead, and every CLI downloaded from the `latest`
+ * release. So a CLI could offer a template its release did not hold, and
+ * scaffold content newer than the packages it pinned: a template using a kit
+ * export the CLI's kit did not have yet failed to build.
  *
- * 2. **Published CLI (npm-installed)** — the monorepo isn't on disk, so
- *    we read the vendored framework index at `../framework-index.json`,
- *    which the publish pipeline rewrites just before `pnpm publish` runs,
- *    copying the manifest's `templates` verbatim. The framework index is a
- *    single snapshot file that also carries `@uniweb/*` package versions
- *    (consumed by versions.js), so both the template list and the version
- *    resolver share one source of truth.
- *
- * When both sources are available (local dev with a committed snapshot),
- * the live workspace manifest wins so newly-added templates are visible
- * without waiting for a CLI republish.
- *
- * Both files store `templates` as the same `{ id: { name, description,
- * tags } }` shape, so one map feeds both name-resolution
- * (OFFICIAL_TEMPLATES) and the interactive picker (buildTemplateChoices) —
- * neither hardcodes a list. (An earlier version returned only the keys and
- * left the `create` picker with its own hardcoded array, which silently
- * drifted out of sync whenever a template was added.)
+ * (An earlier version still hardcoded the picker's list, which silently
+ * drifted whenever a template was added — the reason no list is written here.)
  */
-function loadOfficialTemplateMap() {
-  // Local dev: framework/templates/manifest.json relative to this file
-  // at framework/cli/src/templates/resolver.js
-  const workspaceManifest = join(
-    __dirname,
-    '..',
-    '..',
-    '..',
-    'templates',
-    'manifest.json'
-  )
-  const picked = tryReadTemplateMap(workspaceManifest)
-  if (picked) return picked
+const INDEX = loadFrameworkIndex()
 
-  // Published CLI fallback: the framework index snapshot, one directory
-  // up at framework/cli/src/framework-index.json.
-  const indexPath = join(__dirname, '..', 'framework-index.json')
-  const fromIndex = tryReadTemplateMap(indexPath)
-  if (fromIndex) return fromIndex
-
-  // If both sources fail, return an empty map rather than a stale
-  // hardcoded list. An unknown template name then falls through to
-  // the npm `@uniweb/template-<name>` lookup path, which is the
-  // intended behavior for third-party templates.
-  return {}
-}
-
-function tryReadTemplateMap(path) {
-  try {
-    if (!statSync(path).isFile()) return null
-    const data = JSON.parse(readFileSync(path, 'utf8'))
-    if (data && data.templates && typeof data.templates === 'object') {
-      return data.templates
-    }
-  } catch {}
-  return null
-}
-
-// Official template metadata keyed by id. Derived from manifest.json (local
-// dev) or framework-index.json (published CLI) at module load time — see
-// loadOfficialTemplateMap() for details. Read once per process; to reflect a
-// just-added template, restart the CLI or rerun the scaffolder.
-export const OFFICIAL_TEMPLATE_MAP = loadOfficialTemplateMap()
+// Official template metadata keyed by id. Empty when the snapshot did not load:
+// an unknown name then falls through to the npm `@uniweb/template-<name>`
+// lookup, the path for third-party templates, rather than to a stale list.
+export const OFFICIAL_TEMPLATE_MAP =
+  INDEX?.templates && typeof INDEX.templates === 'object' ? INDEX.templates : {}
 
 // Official template ids, e.g. ['marketing', 'docs', 'academic', …].
 export const OFFICIAL_TEMPLATES = Object.keys(OFFICIAL_TEMPLATE_MAP)
+
+// The release the official templates download from — `v<@uniweb/templates
+// version>`, the repo's tag — or null when the snapshot names none.
+const TEMPLATES_VERSION = INDEX?.packages?.['@uniweb/templates']?.version
+export const OFFICIAL_TEMPLATES_RELEASE = TEMPLATES_VERSION ? `v${TEMPLATES_VERSION}` : null
 
 // Built-in (programmatic) picker entries — not in the manifest; the CLI
 // generates these itself. "Blank" trails the official templates.
@@ -126,6 +81,24 @@ export function buildTemplateChoices() {
     description: info?.description || ''
   }))
   return [...BUILTIN_LEAD_CHOICES, ...official, BLANK_CHOICE]
+}
+
+/**
+ * How many options the `create` picker shows at once: all of them, when the
+ * terminal has the rows. prompts shows 10 by default and scrolls the rest, and
+ * past ten choices that put most of the official templates below the fold —
+ * a template you have to scroll to find reads as one that is not there.
+ *
+ * Seven rows are kept back: the question, and the highlighted choice's
+ * description, which wraps under it when it is long.
+ *
+ * @param {number} count - the picker's choices
+ * @param {number} [rows] - the terminal's height, when it reports one
+ * @returns {number}
+ */
+export function templatePickerPageSize(count, rows = process.stdout.rows) {
+  const room = Number.isFinite(rows) && rows > 0 ? rows - 7 : count
+  return Math.max(10, Math.min(count, room))
 }
 
 /**

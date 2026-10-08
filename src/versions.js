@@ -240,8 +240,11 @@ function readWorkspaceVersion(packageName) {
  * Returns null if the file doesn't exist, is unparseable, or has a
  * schema version we don't understand. Callers treat null as "no
  * snapshot available" and fall back to their next source.
+ *
+ * Also the official templates' one source (`templates/resolver.js`): their
+ * roster, and the `@uniweb/templates` release their content downloads from.
  */
-function loadFrameworkIndex() {
+export function loadFrameworkIndex() {
   const indexPath = join(__dirname, 'framework-index.json')
   try {
     const raw = readFileSync(indexPath, 'utf8')

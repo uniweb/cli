@@ -41,7 +41,8 @@ import { template } from './commands/template.js'
 import {
   resolveTemplate,
   parseTemplateId,
-  buildTemplateChoices
+  buildTemplateChoices,
+  templatePickerPageSize
 } from './templates/index.js'
 import { validateTemplate } from './templates/validator.js'
 import {
@@ -86,9 +87,8 @@ const colors = {
 }
 
 // Template choices for the interactive prompt — built-ins first, then every
-// official template from the shared manifest (so the list never drifts from
-// framework/templates/manifest.json), with "Blank" last. Composed by
-// buildTemplateChoices() in templates/resolver.js.
+// official template in this CLI's snapshot (the list `create` can download),
+// with "Blank" last. Composed by buildTemplateChoices() in templates/resolver.js.
 const TEMPLATE_CHOICES = buildTemplateChoices()
 
 // Files that may pre-exist in the target dir during `uniweb create .` and
@@ -1190,7 +1190,8 @@ async function main() {
         name: 'template',
         message: 'Template:',
         choices: TEMPLATE_CHOICES,
-        initial: 1
+        initial: 1,
+        optionsPerPage: templatePickerPageSize(TEMPLATE_CHOICES.length)
       },
       {
         onCancel: () => {

@@ -14,43 +14,32 @@ import { fetchWithRetry as sharedFetchWithRetry } from '../../utils/fetch-retry.
 const TEMPLATES_REPO = 'uniweb/templates'
 const GITHUB_API = 'https://api.github.com'
 
-// Cache for manifest (avoid re-fetching in same session)
-let manifestCache = null
-
 /**
- * Fetch the manifest.json from the latest release
+ * Fetch manifest.json from one release of the official templates.
+ *
+ * ⛔ Always a named release — the one the CLI was published with — and never
+ * `latest`: the latest templates can be newer than the packages this CLI pins
+ * (templates/resolver.js, OFFICIAL_TEMPLATES_RELEASE).
  *
  * @param {Object} options - Fetch options
- * @param {string} options.version - Specific version tag (default: latest)
+ * @param {string} options.version - The release tag, e.g. `v0.18.4`
  * @param {Function} options.onProgress - Progress callback
- * @returns {Promise<Object>} { version, templates, downloadUrl }
+ * @returns {Promise<Object>} { version, templates, downloadUrlBase }
  */
 export async function fetchManifest(options = {}) {
   const { version, onProgress } = options
-
-  // Return cached manifest if available and no specific version requested
-  if (manifestCache && !version) {
-    return manifestCache
-  }
+  if (!version) throw new Error('fetchManifest needs the release tag to read')
 
   onProgress?.('Fetching template manifest...')
 
-  // Get release info
-  const releaseUrl = version
-    ? `${GITHUB_API}/repos/${TEMPLATES_REPO}/releases/tags/${version}`
-    : `${GITHUB_API}/repos/${TEMPLATES_REPO}/releases/latest`
-
-  const releaseResponse = await fetchWithRetry(releaseUrl, {
-    headers: getGitHubHeaders()
-  })
+  const releaseResponse = await fetchWithRetry(
+    `${GITHUB_API}/repos/${TEMPLATES_REPO}/releases/tags/${version}`,
+    { headers: getGitHubHeaders() }
+  )
 
   if (!releaseResponse.ok) {
     if (releaseResponse.status === 404) {
-      throw new Error(
-        version
-          ? `Release ${version} not found for ${TEMPLATES_REPO}`
-          : `No releases found for ${TEMPLATES_REPO}`
-      )
+      throw new Error(`Release ${version} not found for ${TEMPLATES_REPO}`)
     }
     await handleGitHubError(releaseResponse)
   }
@@ -80,28 +69,20 @@ export async function fetchManifest(options = {}) {
 
   const manifest = await manifestResponse.json()
 
-  // Build result with download URL base
-  const result = {
+  return {
     version: release.tag_name,
     templates: manifest.templates || {},
     // Base URL for downloading template tarballs
     downloadUrlBase: `https://github.com/${TEMPLATES_REPO}/releases/download/${release.tag_name}`
   }
-
-  // Cache if this was a "latest" fetch
-  if (!version) {
-    manifestCache = result
-  }
-
-  return result
 }
 
 /**
- * Fetch a specific template from GitHub releases
+ * Fetch a template from one release of the official templates
  *
  * @param {string} name - Template name (e.g., 'marketing')
  * @param {Object} options - Fetch options
- * @param {string} options.version - Specific version tag (default: latest)
+ * @param {string} options.version - The release tag, e.g. `v0.18.4`
  * @param {Function} options.onProgress - Progress callback
  * @returns {Promise<Object>} { tempDir, version, metadata }
  */
@@ -164,33 +145,6 @@ export async function fetchOfficialTemplate(name, options = {}) {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {})
     throw err
   }
-}
-
-/**
- * List available templates from the latest release
- *
- * @param {Object} options - Fetch options
- * @param {Function} options.onProgress - Progress callback
- * @returns {Promise<Array>} List of template metadata
- */
-export async function listOfficialTemplates(options = {}) {
-  try {
-    const manifest = await fetchManifest(options)
-    return Object.entries(manifest.templates).map(([id, info]) => ({
-      id,
-      ...info
-    }))
-  } catch {
-    // Return empty list if can't fetch
-    return []
-  }
-}
-
-/**
- * Clear the manifest cache
- */
-export function clearManifestCache() {
-  manifestCache = null
 }
 
 /**

@@ -12,15 +12,13 @@ import {
   getTemplateDisplayName,
   BUILTIN_TEMPLATES,
   OFFICIAL_TEMPLATES,
-  buildTemplateChoices
+  OFFICIAL_TEMPLATES_RELEASE,
+  buildTemplateChoices,
+  templatePickerPageSize
 } from './resolver.js'
 import { fetchNpmTemplate } from './fetchers/npm.js'
 import { fetchGitHubTemplate } from './fetchers/github.js'
-import {
-  fetchOfficialTemplate,
-  listOfficialTemplates
-} from './fetchers/release.js'
-import { validateTemplate } from './validator.js'
+import { fetchOfficialTemplate } from './fetchers/release.js'
 
 /**
  * Resolve a template identifier and return the template path
@@ -61,12 +59,20 @@ export async function resolveTemplate(identifier, options = {}) {
 }
 
 /**
- * Resolve an official template from GitHub releases
+ * Resolve an official template from the release this CLI was published with —
+ * never `latest`, so its content matches the package versions the scaffold pins
+ * (resolver.js, OFFICIAL_TEMPLATES_RELEASE).
  */
 async function resolveOfficialTemplate(name, options = {}) {
   const { onProgress } = options
 
+  if (!OFFICIAL_TEMPLATES_RELEASE) {
+    throw new Error(
+      "This CLI's framework index names no @uniweb/templates release to download from."
+    )
+  }
   const { tempDir, baseTempDir, version } = await fetchOfficialTemplate(name, {
+    version: OFFICIAL_TEMPLATES_RELEASE,
     onProgress
   })
 
@@ -173,35 +179,12 @@ async function resolveLocalTemplate(templatePath, options = {}) {
   }
 }
 
-/**
- * List all available templates
- */
-export async function listAvailableTemplates() {
-  const templates = []
-
-  // Official templates from GitHub releases
-  try {
-    const official = await listOfficialTemplates()
-    for (const t of official) {
-      templates.push({
-        type: 'official',
-        id: t.id,
-        name: t.name || t.id,
-        description: t.description || ''
-      })
-    }
-  } catch {
-    // Ignore errors - templates just won't be listed
-  }
-
-  return templates
-}
-
 // Re-export for convenience
 export {
   parseTemplateId,
   getTemplateDisplayName,
   BUILTIN_TEMPLATES,
   OFFICIAL_TEMPLATES,
-  buildTemplateChoices
+  buildTemplateChoices,
+  templatePickerPageSize
 }
