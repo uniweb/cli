@@ -9,8 +9,9 @@
  *
  * The properties worth pinning: `--json` is parseable ALONE (a human line on
  * stdout would break every pipe), the roster is non-empty and matches the
- * source the interactive `create` picker reads, and the reserved `register`
- * path still refuses rather than being swallowed by the new subcommand.
+ * source the interactive `create` picker reads, and a subcommand other than
+ * `list` is a usage error rather than a listing — `register` was retired
+ * 2026-10-08, and a typo must not read as success.
  */
 
 import { test } from 'node:test'
@@ -72,16 +73,20 @@ test('the human listing names each template', () => {
   for (const t of templates) assert.ok(out.includes(t.id), `${t.id} missing from listing`)
 })
 
-test('⛔ the reserved register path still refuses', () => {
-  // Adding a live subcommand must not turn the reserved one into a no-op.
-  const { code, err } = run(['template', 'register'])
-  assert.equal(code, 1)
-  assert.match(err, /isn't available on the new backend yet/)
+test('a bare `template` lists, exactly as `template list` does', () => {
+  const bare = run(['template'])
+  assert.equal(bare.code, 0)
+  assert.equal(bare.out, run(['template', 'list']).out)
 })
 
-test('a bare `template` still refuses rather than listing', () => {
-  // `list` is opt-in: someone typing `uniweb template` meant the old verb.
-  const { code, err } = run(['template'])
-  assert.equal(code, 1)
-  assert.match(err, /isn't available on the new backend yet/)
+test('⛔ any other subcommand is a usage error, `register` included', () => {
+  // `register` is retired: a site is offered as a template by `template: true`
+  // in its site.yml, so no verb has anything to do.
+  for (const sub of ['register', 'publish', 'lsit']) {
+    const { code, out, err } = run(['template', sub])
+    assert.equal(code, 2, `template ${sub}`)
+    assert.equal(out, '', `template ${sub} wrote to stdout`)
+    assert.match(err, new RegExp(`Unknown subcommand: uniweb template ${sub}`))
+    assert.match(err, /uniweb template list/)
+  }
 })

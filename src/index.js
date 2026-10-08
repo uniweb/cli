@@ -1028,8 +1028,8 @@ async function main() {
 
   // Handle template command
   if (command === 'template') {
-    await template(args.slice(1))
-    return
+    const result = await template(args.slice(1))
+    await exitWhenDrained(result?.exitCode ?? 0)
   }
 
   // Handle create command
@@ -1970,18 +1970,12 @@ ${colors.bright}Usage:${colors.reset}
 
 ${colors.bright}What \`list\` reports:${colors.reset}
   The roster ${colors.bright}this CLI ships with${colors.reset} — a snapshot baked in at publish time,
-  not a live fetch. That is the right question when the next step is resolving
-  one of those names with the same CLI, which is why \`--json\` stamps
-  \`cliVersion\`. A template newer than your CLI will not be listed.
+  not a live fetch. \`create\` downloads these templates from the release the same
+  snapshot names, which is why \`--json\` stamps \`cliVersion\`. A template newer than
+  your CLI is not listed: \`npx uniweb@latest template list\` shows the current roster.
 
   It is the ${colors.bright}official${colors.reset} roster, not the set of resolvable names: an unknown
   name is not fatal, since \`create\` falls through to npm \`@uniweb/template-<name>\`.
-
-${colors.bright}Reserved:${colors.reset}
-  \`uniweb template register\` is not available on the new backend yet. Submitting
-  a site as a cloud template was retired with the legacy backend; when rebuilt, a
-  template is REGISTERED (like a foundation) — \`publish\` is for sites only.
-  Scaffolding FROM a template is unaffected: \`uniweb create --template <name>\`.
 `,
     docs: `
 ${colors.cyan}${colors.bright}uniweb docs${colors.reset} ${colors.dim}— Generate component documentation${colors.reset}
@@ -2094,6 +2088,7 @@ ${colors.bright}Commands:${colors.reset}
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   families           List the standard section families (for meta.js family:)
+  template list      List the official templates (for create --template)
   doctor             Diagnose project configuration issues
   validate           Check your content against your foundation's data schemas
   update             Align workspace deps + AGENTS.md to the running CLI
