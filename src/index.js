@@ -72,6 +72,7 @@ import {
   formatOptions
 } from './utils/interactive.js'
 import { findWorkspaceRoot } from './utils/workspace.js'
+import { exitWhenDrained } from './utils/exit.js'
 
 // Colors for terminal output
 const colors = {
@@ -223,7 +224,7 @@ function delegateToLocal(localCliPath) {
       [localCliPath, ...process.argv.slice(2)],
       { stdio: 'inherit' }
     )
-    child.on('close', (code) => process.exit(code ?? 0))
+    child.on('close', (code) => exitWhenDrained(code ?? 0))
     child.on('error', reject)
   })
 }
@@ -320,7 +321,7 @@ async function importProjectCommand(modulePath) {
       log(`  ${colors.cyan}npm install uniweb ${missing}${colors.reset}`)
     }
 
-    process.exit(1)
+    await exitWhenDrained(1)
   }
 }
 
@@ -651,7 +652,7 @@ async function main() {
   // beside the new one it is ignored, so a script can carry both while CLIs of both ages run it.
   if (process.env.UNIWEB_REGISTER_URL && !process.env.UNIWEB_SERVER) {
     error('UNIWEB_REGISTER_URL is now UNIWEB_SERVER — rename it, and the command goes to the same backend.')
-    process.exit(2)
+    await exitWhenDrained(2)
   }
 
   // Handle --version / -v
@@ -794,14 +795,14 @@ async function main() {
   if (command === 'doctor') {
     const { doctor } = await importProjectCommand('./commands/doctor.js')
     const result = await doctor(args.slice(1))
-    process.exit(result?.errors > 0 ? 1 : 0)
+    await exitWhenDrained(result?.errors > 0 ? 1 : 0)
   }
 
   // Handle validate command (dynamic import — depends on @uniweb/build)
   if (command === 'validate') {
     const { validate } = await importProjectCommand('./commands/validate.js')
     const result = await validate(args.slice(1))
-    process.exit(result?.exitCode ?? 0)
+    await exitWhenDrained(result?.exitCode ?? 0)
   }
 
   // Handle register command (dynamic import — depends on @uniweb/build).
@@ -810,35 +811,35 @@ async function main() {
   if (command === 'register' || command === 'release') {
     const { register } = await importProjectCommand('./commands/register.js')
     const result = await register(args.slice(1))
-    process.exit(result?.exitCode ?? 0)
+    await exitWhenDrained(result?.exitCode ?? 0)
   }
 
   // Handle push command (dynamic import — depends on @uniweb/build)
   if (command === 'push') {
     const { push } = await importProjectCommand('./commands/push.js')
     const result = await push(args.slice(1))
-    process.exit(result?.exitCode ?? 0)
+    await exitWhenDrained(result?.exitCode ?? 0)
   }
 
   // Handle pull command (dynamic import — depends on @uniweb/build)
   if (command === 'pull') {
     const { pull } = await importProjectCommand('./commands/pull.js')
     const result = await pull(args.slice(1))
-    process.exit(result?.exitCode ?? 0)
+    await exitWhenDrained(result?.exitCode ?? 0)
   }
 
   // Handle sync command (refresh + push; both halves imported, never reimplemented)
   if (command === 'sync') {
     const { sync } = await importProjectCommand('./commands/sync.js')
     const result = await sync(args.slice(1))
-    process.exit(result?.exitCode ?? 0)
+    await exitWhenDrained(result?.exitCode ?? 0)
   }
 
   // Handle refresh command (dynamic import — depends on @uniweb/build via pull)
   if (command === 'refresh') {
     const { refresh } = await importProjectCommand('./commands/refresh.js')
     const result = await refresh(args.slice(1))
-    process.exit(result?.exitCode ?? 0)
+    await exitWhenDrained(result?.exitCode ?? 0)
   }
 
   // Handle forget — remove one backend's local records (sync.json, cache, deploy
@@ -847,14 +848,14 @@ async function main() {
   if (command === 'forget') {
     const { forget } = await importProjectCommand('./commands/forget.js')
     const result = await forget(args.slice(1))
-    process.exit(result?.exitCode ?? 0)
+    await exitWhenDrained(result?.exitCode ?? 0)
   }
 
   // Handle status command (dynamic import — offline emit via @uniweb/build)
   if (command === 'status') {
     const { status } = await importProjectCommand('./commands/status.js')
     const result = await status(args.slice(1))
-    process.exit(result?.exitCode ?? 0)
+    await exitWhenDrained(result?.exitCode ?? 0)
   }
 
   // Handle clone command (global — bootstraps a new project from a backend site;
@@ -864,7 +865,7 @@ async function main() {
   // `uniweb pull` after install.)
   if (command === 'clone') {
     const result = await clone(args.slice(1))
-    process.exit(result?.exitCode ?? 0)
+    await exitWhenDrained(result?.exitCode ?? 0)
   }
 
   // Handle update command
@@ -899,7 +900,7 @@ async function main() {
   if (command === 'publish') {
     const { publish } = await importProjectCommand('./commands/publish.js')
     const result = await publish(args.slice(1))
-    process.exit(result?.exitCode ?? 0)
+    await exitWhenDrained(result?.exitCode ?? 0)
   }
 
   // Handle deploy command — third-party hosts only (dynamic import — @uniweb/build)
@@ -946,7 +947,7 @@ async function main() {
     // dropped, the login would go to the default backend.
     if (loginArgs.some((a) => a === '--backend' || a.startsWith('--backend='))) {
       console.error('\x1b[31m✗\x1b[0m `--backend` is now `--server`: uniweb login --server <url>')
-      process.exit(2)
+      await exitWhenDrained(2)
     }
     let apiBase
     try {
@@ -955,7 +956,7 @@ async function main() {
       console.error(
         `\x1b[31m✗\x1b[0m ${err.message} — e.g. uniweb login --server http://localhost:8080`
       )
-      process.exit(2)
+      await exitWhenDrained(2)
     }
     await runRegistryLogin({ apiBase, args: loginArgs })
     return
@@ -971,7 +972,7 @@ async function main() {
       console.error(
         `\x1b[31m✗\x1b[0m \`uniweb logout\` takes no options (got ${stray}) — it logs you out of the backend you are logged in to.`
       )
-      process.exit(2)
+      await exitWhenDrained(2)
     }
     const { clearRegistryAuth } = await import('./utils/registry-auth.js')
     const { loggedInOrigin } = await import('./utils/config.js')
@@ -994,12 +995,9 @@ async function main() {
   if (command === 'site') {
     const { site } = await import('./commands/site.js')
     const result = await site(args.slice(1))
-    // ⛔ EXIT ONLY ONCE STDOUT HAS DRAINED. To a pipe Node writes asynchronously, so an exit
-    // straight after a long list cut it at 8192 bytes — measured 2026-10-07: `site list --json`
-    // of 79 sites reached a reading process as half a JSON document, while the same command
-    // into a file (synchronous) was whole. Pinned by test/site-list-pipe.test.js.
-    await new Promise((resolve) => process.stdout.write('', resolve))
-    process.exit(result?.exitCode ?? 0)
+    // Its long list is where a bare exit was first caught cutting a pipe short — pinned by
+    // test/site-list-pipe.test.js; why every exit waits: utils/exit.js.
+    await exitWhenDrained(result?.exitCode ?? 0)
   }
 
   // Handle org command (new-backend orgs/units — publish-scope management)
@@ -1038,7 +1036,7 @@ async function main() {
   if (command !== 'create') {
     error(`Unknown command: ${command}`)
     showHelp()
-    process.exit(1)
+    await exitWhenDrained(1)
   }
 
   title('Uniweb Project Generator')
@@ -1053,7 +1051,7 @@ async function main() {
     log(
       `  ${colors.cyan}uniweb add foundation --from <template>${colors.reset}\n`
     )
-    process.exit(1)
+    await exitWhenDrained(1)
   }
 
   // Parse arguments
@@ -1081,7 +1079,7 @@ async function main() {
       parseTemplateId(templateType)
     } catch (err) {
       error(`Invalid template: ${err.message}`)
-      process.exit(1)
+      await exitWhenDrained(1)
     }
   }
 
@@ -1127,7 +1125,7 @@ async function main() {
           `Could not derive a valid project name from the current directory ("${dirName}").`
         )
         log(`Re-run with ${colors.cyan}--name=<your-name>${colors.reset}.`)
-        process.exit(1)
+        await exitWhenDrained(1)
       }
       projectName = slug
       if (slug !== dirName) {
@@ -1144,7 +1142,7 @@ async function main() {
   if (nonInteractive && !projectName) {
     error(`Missing project name.\n`)
     log(`Usage: ${prefix} create <project-name> [--template <name>] [--blank]`)
-    process.exit(1)
+    await exitWhenDrained(1)
   }
 
   // Non-interactive: default to starter when no template specified
@@ -1172,7 +1170,7 @@ async function main() {
     {
       onCancel: () => {
         log('\nScaffolding cancelled.')
-        process.exit(0)
+        process.exit(0) // a prompt: a terminal, so nothing to drain — and it must stop here, now
       }
     }
   )
@@ -1181,7 +1179,7 @@ async function main() {
 
   if (!projectName) {
     error('Missing project name')
-    process.exit(1)
+    await exitWhenDrained(1)
   }
 
   // Prompt for template if not specified via --template or --blank
@@ -1197,7 +1195,7 @@ async function main() {
       {
         onCancel: () => {
           log('\nScaffolding cancelled.')
-          process.exit(0)
+          process.exit(0) // a prompt: a terminal, so nothing to drain — and it must stop here, now
         }
       }
     )
@@ -1219,7 +1217,7 @@ async function main() {
 
   if (!inPlace && existsSync(projectDir)) {
     error(`Directory already exists: ${projectName}`)
-    process.exit(1)
+    await exitWhenDrained(1)
   }
 
   if (inPlace) {
@@ -1245,7 +1243,7 @@ async function main() {
       log(
         `Move or remove them, then re-run ${colors.cyan}uniweb create .${colors.reset}.`
       )
-      process.exit(1)
+      await exitWhenDrained(1)
     }
   }
 
@@ -1320,7 +1318,7 @@ async function main() {
       log(
         `  • Try the starter template instead: ${colors.cyan}uniweb create ${projectName} --template starter${colors.reset}`
       )
-      process.exit(1)
+      await exitWhenDrained(1)
     }
   }
 
@@ -2231,7 +2229,7 @@ ${colors.bright}Install:${colors.reset}
 }
 
 // Run CLI
-main().catch((err) => {
+main().catch(async (err) => {
   error(err.message)
-  process.exit(1)
+  await exitWhenDrained(1)
 })
