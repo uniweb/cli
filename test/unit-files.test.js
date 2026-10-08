@@ -48,3 +48,23 @@ test('a page.yml and a missing file keep their path', () => {
 test('site.yml stands for the info unit', () => {
   assert.deepEqual(unitFilesOf(site({}), 'site.yml'), ['site.yml', 'theme.yml', 'head.html'])
 })
+
+// ⛔ Measured 2026-10-08: a layout kept as the default layout's folder — `layout/default/footer.md`, a
+// header numbered from 0 — was looked up beside the unit's own path (`layout/footer.md`), which a pull
+// no longer writes to. A layout unit maps to the file the pull writes it back into.
+test('a layout unit is found where the author keeps it', () => {
+  const dir = site({
+    'layout/default/footer.md': '# Footer\n',
+    'layout/default/header/0-alert.md': '# Alert\n',
+    'layout/default/header/1-header.md': '# Header\n',
+  })
+  assert.deepEqual(unitFilesOf(dir, 'layout/footer.md'), ['layout/default/footer.md'])
+  assert.deepEqual(unitFilesOf(dir, 'layout/default/header/1-alert.md'), ['layout/default/header/0-alert.md'])
+  assert.deepEqual(unitFilesOf(dir, 'layout/default/header/2-header.md'), ['layout/default/header/1-header.md'])
+})
+
+test('control: a layout unit at its own place is itself', () => {
+  const dir = site({ 'layout/header.md': '# Header\n' })
+  assert.deepEqual(unitFilesOf(dir, 'layout/header.md'), ['layout/header.md'])
+  assert.deepEqual(unitFilesOf(dir, 'layout/left.md'), ['layout/left.md'])
+})

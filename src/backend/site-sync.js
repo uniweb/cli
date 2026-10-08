@@ -55,7 +55,8 @@ import {
   backfillLinkUuids,
   LINK_MODEL,
   bankedFileUuids,
-  existingSectionFile
+  existingSectionFile,
+  layoutUnitFile
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -312,9 +313,15 @@ export function unitFilesOf(siteDir, unitPath) {
   } catch {
     /* no or unreadable site.yml — the defaults are right */
   }
-  for (const root of ['pages', 'layout']) {
-    if (!unitPath.startsWith(`${root}/`)) continue
-    const rel = `${paths[root] || root}${unitPath.slice(root.length)}`
+  // A layout unit names its layout and area (`footer.md`, `default/header/1-alert.md`); the author may
+  // keep it as `default/footer.md` or `default/header/0-alert.md`, where a pull writes it back
+  // (`layoutUnitFile`). ⛔ Until 2026-10-08 it was looked up beside the unit's own path only.
+  if (unitPath.startsWith('layout/')) {
+    const base = join(siteDir, paths.layout || 'layout')
+    return [relative(siteDir, layoutUnitFile(base, unitPath.slice('layout/'.length)))]
+  }
+  if (unitPath.startsWith('pages/')) {
+    const rel = `${paths.pages || 'pages'}${unitPath.slice('pages'.length)}`
     if (!rel.endsWith('.md') || existsSync(join(siteDir, rel))) return [rel]
     const id = basename(rel, '.md')
     const found = existingSectionFile(join(siteDir, dirname(rel)), id, id, { child: true })
