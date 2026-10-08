@@ -268,7 +268,7 @@ _Foundation-first_ — You're building a component system. The site is a test ha
 
 ## Growing Your Project
 
-> **Install the CLI globally** with `npm i -g uniweb` for the best experience. You can also use `npx uniweb` or `pnpm uniweb` without a global install.
+> **Install the CLI globally** with `npm i -g uniweb` for the best experience — inside a project it runs the project's own copy. Keep it current: `create` and `clone` start a project on the CLI that runs them, so a global install stops them when a newer release is out. Without a global install, use `npx uniweb@latest create` to start a project and `pnpm uniweb` inside one.
 
 Start simple. Add what you need, when you need it:
 

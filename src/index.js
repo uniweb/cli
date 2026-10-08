@@ -677,9 +677,9 @@ async function main() {
         const { fetchAndNotifyIfNewer, maybeNotifyFromCache } =
           await import('./utils/update-check.js')
         if (process.stdout.isTTY) {
-          await fetchAndNotifyIfNewer(getCliVersion(), { tone: 'soft' })
+          await fetchAndNotifyIfNewer(getCliVersion())
         } else {
-          maybeNotifyFromCache(getCliVersion(), 'soft')
+          maybeNotifyFromCache(getCliVersion())
         }
       } catch {
         /* ignore */
@@ -700,30 +700,36 @@ async function main() {
     // Commands that need @uniweb/build will get a helpful error via importProjectCommand().
   }
 
-  // Start non-blocking update check for global installs.
+  // Update check for global installs.
   //
-  // Two surfaces:
-  //   - showUpdateNotification (soft, trailing): printed at command end for
-  //     any verb. Doesn't interrupt the user's workflow.
-  //   - eager (loud, leading): printed BEFORE staleness-sensitive verbs do
-  //     their work. Today: only `create` (templates ship with the CLI, so
-  //     a stale CLI scaffolds stale starter content; the user needs to know
-  //     before files hit disk). Other verbs are insensitive — `deploy` etc.
-  //     are project-bound (delegated to local node_modules), and the
-  //     local-vs-global mismatch warning in delegateToLocal already covers
-  //     that case.
+  //   - `create` / `clone` STOP when a newer release exists, before anything is
+  //     written: a project starts on the packages and templates of the CLI that
+  //     creates it, and a global install runs these two itself — there is no
+  //     project CLI to delegate to yet (refuseOutdatedProjectStart). Their
+  //     `--help` still prints.
+  //   - every other verb gets a trailing notice (showUpdateNotification): they
+  //     are project-bound (delegated to local node_modules) or do not depend on
+  //     the version, and the local-vs-global mismatch warning in
+  //     delegateToLocal covers the first case.
   let showUpdateNotification = () => {}
   if (global) {
+    let updateCheck = null
     try {
-      const { startUpdateCheck, maybeEagerNotification } =
-        await import('./utils/update-check.js')
-      showUpdateNotification = startUpdateCheck(getCliVersion())
-      if (command === 'create') {
-        maybeEagerNotification(getCliVersion())
-      }
+      updateCheck = await import('./utils/update-check.js')
     } catch {
       // Update check is optional — don't fail if the module is missing
     }
+    const startsProject = command === 'create' || command === 'clone'
+    const asksForHelp = args.slice(1).some((a) => a === '--help' || a === '-h')
+    if (
+      updateCheck &&
+      startsProject &&
+      !asksForHelp &&
+      (await updateCheck.refuseOutdatedProjectStart(getCliVersion(), args))
+    ) {
+      await exitWhenDrained(1)
+    }
+    if (updateCheck) showUpdateNotification = updateCheck.startUpdateCheck(getCliVersion())
   }
 
   // Show help

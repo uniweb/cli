@@ -109,10 +109,12 @@ For anything not in that table, start at the index. For CLI flags, prefer `uniwe
 **Always use the CLI to scaffold — never hand-write `package.json`, `vite.config.js`, `entry.js`, or `index.html`.** The CLI resolves correct versions and structure; hand-written config is the most common way to end up with a project that can't build.
 
 ```bash
-npx uniweb create my-project --template marketing
+npx uniweb@latest create my-project --template marketing
 cd my-project && pnpm install
 uniweb dev
 ```
+
+`@latest` matters: a project starts on the packages and templates of the CLI that creates it, and a bare `npx uniweb` runs a globally installed `uniweb` when there is one, however old.
 
 **Choosing a template.** `--template <name>` gives you a working site plus a foundation you can study and edit. `--template none` gives you the same two packages with no content — the right choice when you're building a foundation from scratch or porting a design. `--blank` gives you an empty workspace and assumes you'll add packages with `uniweb add`; use it only if you already know the framework.
 

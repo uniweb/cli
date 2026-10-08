@@ -57,36 +57,22 @@ function writeState(state) {
 
 /**
  * Print update notification to stderr (doesn't interfere with piped output).
- * `tone` controls the lead-in: 'soft' (default — trailing notice for finished
- * commands) vs 'eager' (leading notice for staleness-sensitive commands like
- * `create`, where the user is about to scaffold files from CLI-bundled
- * templates and a stale CLI means stale starter content).
+ * A trailing notice for a finished command; `create` and `clone` do not get
+ * one, they stop first (refuseOutdatedProjectStart).
  */
-function printNotification(current, latest, tone = 'soft') {
+function printNotification(current, latest) {
   const yellow = '\x1b[33m'
   const cyan = '\x1b[36m'
   const dim = '\x1b[2m'
   const reset = '\x1b[0m'
   const updateCmd = globalCliUpdateCmd(detectGlobalCliPm())
   console.error('')
-  if (tone === 'eager') {
-    console.error(
-      `${yellow}Heads up:${reset} this CLI is ${dim}${current}${reset}; latest is ${cyan}${latest}${reset}.`
-    )
-    console.error(
-      `${dim}Templates ship with the CLI — consider updating first:${reset} ${updateCmd}`
-    )
-    console.error(
-      `${dim}Or run a one-shot fresh:${reset} npx uniweb@latest <command>`
-    )
-  } else {
-    console.error(
-      `${yellow}Update available:${reset} ${dim}${current}${reset} → ${cyan}${latest}${reset}`
-    )
-    console.error(
-      `${dim}Run${reset} ${updateCmd} ${dim}to update the CLI${reset}`
-    )
-  }
+  console.error(
+    `${yellow}Update available:${reset} ${dim}${current}${reset} → ${cyan}${latest}${reset}`
+  )
+  console.error(
+    `${dim}Run${reset} ${updateCmd} ${dim}to update the CLI${reset}`
+  )
 }
 
 /**
@@ -94,28 +80,78 @@ function printNotification(current, latest, tone = 'soft') {
  * version is known. No network fetch — only reads what `startUpdateCheck`
  * has previously cached. Returns true if a notification was printed.
  *
- * Two call sites today, with different tone needs:
- *   - `create` (tone='eager'): loud leading notice — templates ship with
- *     the CLI, the user is about to scaffold files, this matters.
- *   - `--version` / `-v` (tone='soft'): brief trailing notice — the user
- *     was already asking about version, mention staleness while we're
- *     here. Goes to stderr so scripts capturing stdout aren't affected.
+ * For `--version` / `-v` off a terminal: the user was already asking about
+ * the version, so staleness is mentioned while we're here. Goes to stderr so
+ * scripts capturing stdout aren't affected.
  *
  * @param {string} currentVersion
- * @param {'eager'|'soft'} [tone='eager']
  * @returns {boolean} true if a notification was printed
  */
-export function maybeNotifyFromCache(currentVersion, tone = 'eager') {
+export function maybeNotifyFromCache(currentVersion) {
   const state = readState()
   if (!state.latestVersion) return false
   if (compareSemver(state.latestVersion, currentVersion) <= 0) return false
-  printNotification(currentVersion, state.latestVersion, tone)
+  printNotification(currentVersion, state.latestVersion)
   return true
 }
 
-// Old name preserved as alias — `create` calls it without a tone arg
-// and gets the eager default. Keeps that call site unchanged.
-export const maybeEagerNotification = maybeNotifyFromCache
+/**
+ * Whether a release newer than `current` is published. Unknown (`latest` null:
+ * offline, or a slow registry) is not behind.
+ *
+ * @param {string} current
+ * @param {string|null} latest
+ * @returns {boolean}
+ */
+export function isBehind(current, latest) {
+  return Boolean(latest) && compareSemver(latest, current) > 0
+}
+
+/** Arguments as a shell would need them typed again. */
+export function shellJoin(args) {
+  return args
+    .map((a) => (/^[\w@%+=:,./-]+$/.test(a) ? a : `'${String(a).replace(/'/g, `'\\''`)}'`))
+    .join(' ')
+}
+
+/**
+ * Stop `create` or `clone` when a global CLI has been replaced by a newer
+ * release — before anything is written.
+ *
+ * ⭐ A PROJECT STARTS ON THE CLI THAT CREATES IT: its version table pins the
+ * `@uniweb/*` packages, and its official templates come from the release it was
+ * published with. Inside a project a global install only launches the project's
+ * own CLI; outside one, for `create` and `clone`, it does the work itself — so
+ * an outdated one starts the project outdated, and says nothing. `npx uniweb`
+ * with no version runs a global install too, which is how a 0.12 CLI went on
+ * offering the ten templates it knew while sixteen shipped (2026-10-08).
+ *
+ * Any newer release stops it, not only a newer minor: the version table moves
+ * whenever any package does — a patch of the CLI can pin a new breaking line of
+ * one — and the fix is one command either way. Unknown proceeds: this stops a
+ * known mistake, it does not require the network.
+ *
+ * @param {string} current - this CLI's version
+ * @param {string[]} argv - the command and its arguments, repeated in the fix
+ * @returns {Promise<boolean>} true when it refused, the reason printed
+ */
+export async function refuseOutdatedProjectStart(current, argv) {
+  const latest = await getLatestVersion({ maxAgeMs: 60 * 60 * 1000 })
+  if (!isBehind(current, latest)) return false
+  const red = '\x1b[31m'
+  const cyan = '\x1b[36m'
+  const dim = '\x1b[2m'
+  const reset = '\x1b[0m'
+  console.error(`${red}✗${reset} This uniweb is ${current}; the latest release is ${latest}.`)
+  console.error(
+    `  ${dim}A project starts on the packages and templates of the CLI that creates it.${reset}`
+  )
+  console.error(`  Run the latest:      ${cyan}npx uniweb@latest ${shellJoin(argv)}${reset}`)
+  console.error(
+    `  Or update this one:  ${cyan}${globalCliUpdateCmd(detectGlobalCliPm())}${reset}`
+  )
+  return true
+}
 
 /**
  * Resolve the latest published CLI version WITHOUT printing anything.
@@ -188,12 +224,11 @@ export async function getLatestVersion({
  * @param {object} [opts]
  * @param {number} [opts.timeoutMs=1500] Network timeout. Slow / offline
  *   calls return silently — never block the verb for long.
- * @param {'eager'|'soft'} [opts.tone='soft'] Notification copy.
  * @returns {Promise<boolean>} true if a notice was printed.
  */
 export async function fetchAndNotifyIfNewer(
   currentVersion,
-  { timeoutMs = 1500, tone = 'soft' } = {}
+  { timeoutMs = 1500 } = {}
 ) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -216,7 +251,7 @@ export async function fetchAndNotifyIfNewer(
   // Refresh the cache so other code paths see this fresh result.
   writeState({ lastCheck: Date.now(), latestVersion: latest })
   if (compareSemver(latest, currentVersion) <= 0) return false
-  printNotification(currentVersion, latest, tone)
+  printNotification(currentVersion, latest)
   return true
 }
 
