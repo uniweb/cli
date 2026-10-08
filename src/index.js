@@ -555,11 +555,7 @@ async function createFromContentTemplate(
         contentDir.dir,
         fullPath,
         { projectName },
-        {
-          onProgress,
-          onWarning,
-          renames: contentDir.renames
-        }
+        { onProgress, onWarning }
       )
       ensureFoundationName(fullPath, registryName)
     }
@@ -1297,7 +1293,7 @@ async function main() {
       )
 
       // Validate and apply as format 2 content template
-      const metadata = await validateTemplate(resolved.path, {})
+      const metadata = await validateTemplate(resolved.path)
 
       try {
         await createFromContentTemplate(

@@ -1066,7 +1066,7 @@ async function applyFromTemplate(
   })
 
   try {
-    const metadata = await validateTemplate(resolved.path, {})
+    const metadata = await validateTemplate(resolved.path)
 
     // Look in contentDirs for matching package type
     const match =
@@ -1083,10 +1083,7 @@ async function applyFromTemplate(
           projectName,
           versions: getVersionsForTemplates()
         },
-        {
-          onProgress: (msg) => info(`  ${msg}`),
-          renames: match.renames
-        }
+        { onProgress: (msg) => info(`  ${msg}`) }
       )
 
       // Merge template dependencies

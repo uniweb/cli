@@ -155,11 +155,6 @@ export async function scaffoldSite(targetDir, context, options = {}) {
  * @param {string} targetDir - Target directory to overlay onto
  * @param {Object} context - Handlebars context for .hbs files
  * @param {Object} [options] - Processing options
- * @param {Object} [options.renames] - Top-level filename remapping
- *   (e.g. `{ 'foundation.js': 'main.js' }`). Applied only at depth 0
- *   so renames don't accidentally rewrite same-named files in nested
- *   directories. Used to migrate legacy `foundation/foundation.js`
- *   templates onto the new flat `src/main.js` layout.
  */
 export async function applyContent(
   contentDir,
@@ -221,11 +216,8 @@ const INHERITED_STATE = new Set(['sync.json', 'deploy.yml', '.uniweb'])
 /**
  * Recursively copy content files, skipping structural files.
  *
- * `depth` is tracked so the `renames` map (passed via options) only
- * applies at depth 0 — the top of the content directory. Without this
- * guard, a rename like `foundation.js → main.js` would also rewrite a
- * nested `sections/foo/foundation.js` if one existed, which is not the
- * intent.
+ * `depth` is tracked so the project-state names (INHERITED_STATE) are
+ * skipped only at the top of the content directory.
  */
 async function copyContentRecursive(
   sourceDir,
@@ -239,7 +231,6 @@ async function copyContentRecursive(
   await fs.mkdir(targetDir, { recursive: true })
 
   const entries = readdirSync(sourceDir, { withFileTypes: true })
-  const renames = (depth === 0 && options.renames) || null
 
   for (const entry of entries) {
     const sourcePath = join(sourceDir, entry.name)
@@ -258,17 +249,9 @@ async function copyContentRecursive(
       )
     } else {
       // Determine the output filename (strip .hbs extension)
-      let outputName = entry.name.endsWith('.hbs')
+      const outputName = entry.name.endsWith('.hbs')
         ? entry.name.slice(0, -4)
         : entry.name
-
-      // Apply top-level rename (e.g. legacy `foundation.js` → `main.js`)
-      if (
-        renames &&
-        Object.prototype.hasOwnProperty.call(renames, outputName)
-      ) {
-        outputName = renames[outputName]
-      }
 
       // Skip structural files
       if (structuralFiles.has(outputName)) continue
