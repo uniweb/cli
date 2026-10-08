@@ -1668,12 +1668,13 @@ ${colors.dim}Hosts that support PR previews: cloudflare-pages, netlify, vercel.
 GitHub Pages has no preview environment, so it scaffolds a deploy workflow only.${colors.reset}
 
 ${colors.bright}Examples:${colors.reset}
-  uniweb add project docs                              # Create docs/foundation/ + docs/site/
+  uniweb add project docs                              # Create docs/src/ + docs/site/
   uniweb add project docs --from academic              # Co-located pair + academic content
-  uniweb add foundation                                # Create ./foundation/ at root
-  uniweb add foundation ui                             # Create ./foundations/ui/
+  uniweb add foundation                                # Create ./src/ at root
+  uniweb add foundation ui                             # Create ./ui/ — the folder you name
+  uniweb add foundation foundations/ui                 # Create ./foundations/ui/
   uniweb add site                                      # Create ./site/ at root
-  uniweb add site blog --foundation marketing          # Create ./sites/blog/ wired to marketing
+  uniweb add site blog --foundation marketing          # Create ./blog/ wired to marketing
   uniweb add extension effects --site site             # Create ./extensions/effects/
   uniweb add section Hero                              # Create Hero section type
   uniweb add section Hero --foundation ui              # Target specific foundation
@@ -1681,7 +1682,7 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add section Pricing --starter                 # Scaffold Pricing + content that fills it
   uniweb add section Hero --starter --preset split     # Frontmatter it with the 'split' preset
   uniweb add section Hero --starter --json             # The structure + ProseMirror, for a script
-  uniweb add foundation --project docs                 # Create ./docs/foundation/ (co-located)
+  uniweb add foundation --project docs                 # Create ./docs/src/ (co-located)
   uniweb add site --project docs                       # Create ./docs/site/ (co-located)
   uniweb add ci                                        # Pick a host, add a deploy workflow
   uniweb add ci --host github-pages --site marketing   # Pick host + site explicitly
@@ -2213,9 +2214,9 @@ ${colors.bright}Examples:${colors.reset}
   cd my-project
   uniweb add project docs                            # Add docs/src/ + docs/site/
   uniweb add project docs --from academic            # Co-located pair + academic content
-  uniweb add marketing                               # Add marketing/ at root
-  uniweb add site blog --foundation marketing        # Add site/ wired to marketing
-  uniweb add extension effects --site site           # Add effects/ at root
+  uniweb add foundation marketing                    # Add marketing/ at root
+  uniweb add site blog --foundation marketing        # Add blog/ wired to marketing
+  uniweb add extension effects --site site           # Add extensions/effects/
 
   uniweb build
   uniweb build --target src                          # Build src/ package
