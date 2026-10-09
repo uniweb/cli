@@ -6,8 +6,14 @@
  *     was checked only when a caller passed the CLI's version, and none ever
  *     did. An official template now comes from the release its CLI was
  *     published with (resolver.js), so it cannot be newer than that CLI.
- *   - Unwrapping the layout of the v0.7 releases (`foundation/src/foundation.js`).
- *     The official templates are flat, and a CLI only downloads its own release.
+ *   - Unwrapping a package folder that keeps its code under `src/` — the layout of
+ *     the v0.7 releases (`foundation/src/foundation.js`). Such a folder is now
+ *     REFUSED, naming the fix (validateTemplate). ⛔ The unwrap went in 0.88.0
+ *     with a note that the official templates were flat, but its condition was any
+ *     `src/main.js` too, and `extensions/effects/` still relied on it: 0.88.0
+ *     copied that folder nested, and every project made from `extensions` failed
+ *     to build, saying only that it found no section types. The template is flat
+ *     since templates 0.18.6.
  */
 
 import fs from 'node:fs/promises'
@@ -30,7 +36,8 @@ export const ErrorCodes = {
   MISSING_TEMPLATE_JSON: 'MISSING_TEMPLATE_JSON',
   INVALID_TEMPLATE_JSON: 'INVALID_TEMPLATE_JSON',
   MISSING_CONTENT_DIR: 'MISSING_CONTENT_DIR',
-  MISSING_REQUIRED_FIELD: 'MISSING_REQUIRED_FIELD'
+  MISSING_REQUIRED_FIELD: 'MISSING_REQUIRED_FIELD',
+  NESTED_PACKAGE_CODE: 'NESTED_PACKAGE_CODE'
 }
 
 /**
@@ -81,6 +88,23 @@ export async function validateTemplate(templateRoot) {
       ErrorCodes.MISSING_CONTENT_DIR,
       { path: templateRoot }
     )
+  }
+
+  // A foundation or extension folder is copied over the package the CLI
+  // scaffolds, as it is. Code kept under src/ would land beside the scaffold's
+  // own empty sections/, and the project would fail to build saying only that it
+  // found no section types — so it stops here, saying what to move.
+  for (const { type, name, dir } of contentDirs) {
+    if (type !== 'foundation' && type !== 'extension') continue
+    if (['main.js', 'foundation.js'].some((file) => existsSync(path.join(dir, 'src', file)))) {
+      throw new ValidationError(
+        `The template's ${name}/ keeps its code in ${name}/src/, a layout this CLI does not scaffold. ` +
+          `A foundation or extension folder holds main.js, sections/ and styles.css at its root: ` +
+          `move ${name}/src/'s contents up into ${name}/.`,
+        ErrorCodes.NESTED_PACKAGE_CODE,
+        { dir }
+      )
+    }
   }
 
   return {
