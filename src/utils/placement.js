@@ -49,6 +49,20 @@ export const SITE_KIND = {
 }
 
 /**
+ * Extension placement: no defaults — `add extension` always has a name, or a
+ * `--path` naming the folder, so neither a default folder nor the co-located
+ * `--project` form is reached. ⛔ Until 2026-10-08 an extension went to
+ * `extensions/<name>/` whatever was asked, `--path` named the folder itself
+ * rather than the one it goes in, and the workspace glob added was always
+ * `extensions/*` — so `--path elsewhere/fx` made a package pnpm never saw.
+ */
+export const EXTENSION_KIND = {
+  defaultDir: null,
+  defaultPkg: null,
+  projectSub: null
+}
+
+/**
  * Resolve where a foundation or site should be placed, given the user's input.
  *
  * The rule: **the user names a folder, and we create exactly that folder.**

@@ -27,7 +27,8 @@ import {
 import {
   resolvePlacement,
   SITE_KIND,
-  FOUNDATION_KIND
+  FOUNDATION_KIND,
+  EXTENSION_KIND
 } from '../utils/placement.js'
 import {
   readWorkspaceConfig,
@@ -648,17 +649,8 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   let name = opts.name
   const existingNames = await getExistingPackageNames(rootDir)
 
-  // Reject reserved names (format + reserved check only — collisions handled at package name level)
-  if (name) {
-    const valid = validatePackageName(name)
-    if (valid !== true) {
-      error(valid)
-      process.exit(1)
-    }
-  }
-
-  // Interactive name prompt when name not provided
-  if (!name) {
+  // A name is asked for unless one is given, or `--path` names the folder.
+  if (!name && !opts.path) {
     if (isNonInteractive(process.argv)) {
       error(`Missing extension name.\n`)
       log(`Usage: ${getCliPrefix()} add extension <name>`)
@@ -682,23 +674,41 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
     name = response.name
   }
 
+  // ⭐ Placed by the rule `add foundation` follows (utils/placement.js): the folder
+  // you name is the folder created — `effects` → effects/, `extensions/effects` →
+  // extensions/effects/ — and `--path` is the folder it goes in.
+  const placement = resolvePlacement(rootDir, name, opts, EXTENSION_KIND)
+  if (placement.outsideRoot) {
+    error(`--path must name a folder inside the workspace: ${placement.outsideRoot}`)
+    log('')
+    log(`The workspace root is ${colors.bright}${rootDir}${colors.reset}.`)
+    log(`A package outside it cannot be a workspace member.`)
+    process.exit(1)
+  }
+  const { relativePath } = placement
+  // The extension's own name: the last segment of the folder.
+  name = placement.packageName
+
+  // Reject reserved names (format + reserved check only — collisions handled at package name level)
+  const valid = validatePackageName(name)
+  if (valid !== true) {
+    error(valid)
+    process.exit(1)
+  }
+
   // Auto-suffix package name if it collides with an existing package
   const extensionPackageName = existingNames.has(name)
     ? resolveUniqueName(name, '-ext', existingNames)
     : name
 
-  // Determine target
-  let target
-  if (opts.path) {
-    target = opts.path
-  } else {
-    target = `extensions/${name}`
-  }
-
-  const fullPath = join(rootDir, target)
+  const fullPath = join(rootDir, relativePath)
 
   if (existsSync(fullPath)) {
-    error(`Directory already exists: ${target}`)
+    error(
+      `Cannot create extension: ${colors.bright}${relativePath}/${colors.reset} already exists.`
+    )
+    log('')
+    log(`Pick a different name, or pass --path to choose a different folder.`)
     process.exit(1)
   }
 
@@ -728,8 +738,8 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
     ensureFoundationName(fullPath, registryName)
   }
 
-  // Update workspace globs
-  await addWorkspaceGlob(rootDir, 'extensions/*')
+  // Register the folder it is in, as add foundation does
+  await addWorkspaceGlob(rootDir, relativePath)
 
   // Wire extension to site:
   //   - --site <name>: explicit, wire it.
@@ -742,17 +752,22 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   //   - no sites: print a note and exit 0.
   let wiredSite = null
   let unwiredReason = null
-  if (opts.site) {
-    wiredSite = await wireExtensionToSite(rootDir, opts.site, name, target)
+  // A site loads a workspace extension from `/<name>/entry.js`, which the build
+  // finds in `<name>/` or `extensions/<name>/` (wireExtensionToSite). An entry
+  // pointing anywhere else would build with a warning and 404 at runtime, so
+  // none is written.
+  const reachable = relativePath === name || relativePath === `extensions/${name}`
+  if (!reachable) {
+    unwiredReason =
+      `A site loads a workspace extension from /${name}/entry.js, which the build finds in ` +
+      `${name}/ or extensions/${name}/ — not ${relativePath}/. Move the folder to one of those, ` +
+      `or list a URL where the built extension is served under <site>/site.yml::extensions:.`
+  } else if (opts.site) {
+    wiredSite = await wireExtensionToSite(rootDir, opts.site, relativePath)
   } else {
     const sites = await discoverSites(rootDir)
     if (sites.length === 1) {
-      wiredSite = await wireExtensionToSite(
-        rootDir,
-        sites[0].name,
-        name,
-        target
-      )
+      wiredSite = await wireExtensionToSite(rootDir, sites[0].name, relativePath)
     } else if (sites.length > 1) {
       if (isNonInteractive(process.argv)) {
         unwiredReason = `Multiple sites in workspace; extension not wired. Re-run with --site <name>, or edit <site>/site.yml::extensions: manually.`
@@ -779,12 +794,7 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
           }
         )
         if (response.site) {
-          wiredSite = await wireExtensionToSite(
-            rootDir,
-            response.site,
-            name,
-            target
-          )
+          wiredSite = await wireExtensionToSite(rootDir, response.site, relativePath)
         }
       }
     } else {
@@ -796,7 +806,7 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   const sites = await discoverSites(rootDir)
   await updateRootScripts(rootDir, sites, pm)
 
-  let msg = `Created extension '${name}' at ${target}/`
+  let msg = `Created extension '${name}' at ${relativePath}/`
   if (wiredSite) {
     msg += ` → wired to site '${wiredSite}'`
   }
@@ -1117,12 +1127,7 @@ async function applyFromTemplate(
 /**
  * Wire an extension URL to a site's site.yml
  */
-async function wireExtensionToSite(
-  rootDir,
-  siteName,
-  extensionName,
-  extensionPath
-) {
+async function wireExtensionToSite(rootDir, siteName, extensionFolder) {
   // Find the site directory
   const sites = await discoverSites(rootDir)
   const site = sites.find((s) => s.name === siteName)
@@ -1141,8 +1146,16 @@ async function wireExtensionToSite(
     const content = await readFile(siteYmlPath, 'utf-8')
     const config = yaml.load(content) || {}
 
-    // Add extension URL
-    const extensionUrl = `/${extensionPath}/dist/entry.js`
+    // ⭐ The site loads it from its own origin at `/<name>/entry.js`, `<name>`
+    // being the extension's folder: the build finds that extension's build in
+    // `<name>/` or `extensions/<name>/`, copies it into the site's output there,
+    // and prerender imports it from the same place (`@uniweb/build`,
+    // resolveExtensionDist) — the form the `extensions` template declares.
+    // ⛔ Until 2026-10-08 this wrote `/<folder>/dist/entry.js`, which that lookup
+    // reads as an extension named after the folder's FIRST segment —
+    // `/extensions/effects/dist/entry.js` as one named `extensions` — so the
+    // build warned it found no build, and the site 404'd on the file.
+    const extensionUrl = `/${basename(extensionFolder)}/entry.js`
     if (!config.extensions) {
       config.extensions = []
     }

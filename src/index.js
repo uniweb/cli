@@ -1627,7 +1627,7 @@ ${colors.bright}Usage:${colors.reset}
 
 ${colors.bright}Common Options:${colors.reset}
   --from <template>  Apply content from a template after scaffolding
-  --path <dir>       Custom directory for the package
+  --path <dir>       The folder to put the package in
   --non-interactive  Fail with usage info instead of prompting
 
 ${colors.bright}Foundation Options:${colors.reset}
@@ -1675,7 +1675,8 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add foundation foundations/ui                 # Create ./foundations/ui/
   uniweb add site                                      # Create ./site/ at root
   uniweb add site blog --foundation marketing          # Create ./blog/ wired to marketing
-  uniweb add extension effects --site site             # Create ./extensions/effects/
+  uniweb add extension effects --site site             # Create ./effects/ — the folder you name
+  uniweb add extension extensions/effects              # Create ./extensions/effects/
   uniweb add section Hero                              # Create Hero section type
   uniweb add section Hero --foundation ui              # Target specific foundation
   uniweb add section Hero --starter                    # Starter content for an existing Hero
@@ -2216,7 +2217,7 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add project docs --from academic            # Co-located pair + academic content
   uniweb add foundation marketing                    # Add marketing/ at root
   uniweb add site blog --foundation marketing        # Add blog/ wired to marketing
-  uniweb add extension effects --site site           # Add extensions/effects/
+  uniweb add extension effects --site site           # Add effects/
 
   uniweb build
   uniweb build --target src                          # Build src/ package

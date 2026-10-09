@@ -5,11 +5,7 @@
  * and detects collisions with existing workspace packages.
  */
 
-import { readWorkspaceConfig, resolveGlob } from './config.js'
 import { discoverFoundations, discoverSites } from './discover.js'
-import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 
 /**
  * Names that must not be used as package names.
@@ -65,25 +61,12 @@ export async function getExistingPackageNames(rootDir) {
   const foundations = await discoverFoundations(rootDir)
   const sites = await discoverSites(rootDir)
 
+  // An extension is a foundation that declares `extension: true`, so the
+  // discovery above already has it, wherever its folder is. (A second scan of
+  // `extensions/*` stood here until 2026-10-08, when extensions stopped being
+  // placed there by default.)
   for (const f of foundations) names.add(f.name)
   for (const s of sites) names.add(s.name)
-
-  // Extensions (foundations with @uniweb/runtime absent — already captured above)
-  // Also scan extensions/* if it exists
-  const extensionsDir = join(rootDir, 'extensions')
-  if (existsSync(extensionsDir)) {
-    const dirs = await resolveGlob(rootDir, 'extensions/*')
-    for (const dir of dirs) {
-      const pkgPath = join(rootDir, dir, 'package.json')
-      if (!existsSync(pkgPath)) continue
-      try {
-        const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
-        if (pkg.name) names.add(pkg.name)
-      } catch {
-        // skip
-      }
-    }
-  }
 
   return names
 }

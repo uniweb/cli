@@ -960,11 +960,10 @@ async function buildWorkspace(workspaceDir, options = {}) {
   ) {
     error('No foundations, extensions, or sites found in workspace')
     log('')
-    log('Expected structure (matching pnpm-workspace.yaml globs):')
-    log('  foundation/       or  foundations/*/')
-    log('  site/             or  sites/*/')
-    log('  */foundation      +  */site          (co-located)')
-    log('  extensions/*/')
+    log('Packages are the folders pnpm-workspace.yaml lists. Add one with:')
+    log('  uniweb add foundation [folder]    (src/ when none is named)')
+    log('  uniweb add site [folder]          (site/ when none is named)')
+    log('  uniweb add extension <folder>')
     process.exit(1)
   }
 
