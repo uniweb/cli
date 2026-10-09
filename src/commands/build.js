@@ -47,7 +47,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { resolve, join, dirname, basename } from 'node:path'
+import { resolve, join, dirname, basename, relative } from 'node:path'
 import { spawn } from 'node:child_process'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -92,6 +92,10 @@ function error(message) {
 
 function info(message) {
   console.log(`${colors.cyan}→${colors.reset} ${message}`)
+}
+
+function warn(message) {
+  console.log(`${colors.yellow}⚠${colors.reset} ${message}`)
 }
 
 /**
@@ -205,23 +209,28 @@ async function buildFoundation(projectDir, options = {}) {
 
   info('Building foundation...')
 
-  // 1. Discover components
+  // 1. Discover section types
   log('')
-  info('Discovering components...')
+  info('Discovering section types...')
   const components = await discoverComponents(srcDir)
   const componentNames = Object.keys(components)
 
+  // ⭐ A foundation with no section types yet builds — the state
+  // `create --template none` makes on purpose, and one `uniweb dev` and
+  // @uniweb/build's entry generation already accept. ⛔ Until 2026-10-08 this
+  // stopped the build, saying section types belonged in `components/[Name]/`
+  // with a meta.js — where they lived in January — so a fresh `none` project
+  // failed its first build, pointed at the wrong folder.
   if (componentNames.length === 0) {
-    error('No components found with meta.js files')
-    error(
-      `Make sure components are in ${srcDir}/components/[Name]/ with a meta.js file`
+    const sectionsDir = relative(process.cwd(), join(srcDir, 'sections')) || 'sections'
+    warn(`No section types yet: ${sectionsDir}/ is empty.`)
+    log(
+      `  ${colors.dim}Add one: ${colors.reset}uniweb add section Hero${colors.dim} — a PascalCase file or folder there is one.${colors.reset}`
     )
-    process.exit(1)
+  } else {
+    const n = componentNames.length
+    success(`Found ${n} section type${n === 1 ? '' : 's'}: ${componentNames.join(', ')}`)
   }
-
-  success(
-    `Found ${componentNames.length} components: ${componentNames.join(', ')}`
-  )
 
   // 2. Generate entry point
   log('')

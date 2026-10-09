@@ -170,7 +170,7 @@ ${colors.dim}Schema: https://raw.githubusercontent.com/uniweb/cli/main/schemas/p
 const META_REFERENCE = `
 ${colors.cyan}${colors.bright}Component meta.js Reference${colors.reset}
 
-Component metadata in <foundation>/components/[Name]/meta.js (or sections/[Name]/meta.js)
+A section type's metadata, in <foundation>/sections/[Name]/meta.js
 
 ${colors.bright}Identity:${colors.reset}
   ${colors.cyan}title${colors.reset}             Display name in editor
