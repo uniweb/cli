@@ -1,141 +1,66 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-08T17:12:48.725Z",
+  "generatedAt": "2026-10-09T02:20:05.994Z",
   "packages": {
     "@uniweb/api": {
-      "version": "0.7.0",
-      "path": "framework/api",
-      "deps": [
-        "@uniweb/core"
-      ]
+      "version": "0.7.0"
     },
     "@uniweb/build": {
-      "version": "0.80.3",
-      "path": "framework/build",
-      "deps": [
-        "@uniweb/content-reader",
-        "@uniweb/content-writer",
-        "@uniweb/core",
-        "@uniweb/projections",
-        "@uniweb/runtime",
-        "@uniweb/runtime",
-        "@uniweb/schemas",
-        "@uniweb/semantic-parser",
-        "@uniweb/theming"
-      ]
+      "version": "0.80.3"
     },
     "@uniweb/content-reader": {
-      "version": "1.2.8",
-      "path": "framework/content-reader",
-      "deps": []
+      "version": "1.2.8"
     },
     "@uniweb/content-writer": {
-      "version": "0.3.4",
-      "path": "framework/content-writer",
-      "deps": []
+      "version": "0.3.4"
     },
     "@uniweb/core": {
-      "version": "0.38.0",
-      "path": "framework/core",
-      "deps": [
-        "@uniweb/semantic-parser",
-        "@uniweb/theming"
-      ]
+      "version": "0.38.0"
     },
     "@uniweb/frame-bridge": {
-      "version": "0.3.2",
-      "path": "framework/frame-bridge",
-      "deps": []
+      "version": "0.3.2"
     },
     "@uniweb/icons": {
-      "version": "0.4.29",
-      "path": "framework/icons",
-      "deps": [
-        "@uniweb/core"
-      ]
+      "version": "0.4.29"
     },
     "@uniweb/kit": {
-      "version": "0.20.0",
-      "path": "framework/kit",
-      "deps": [
-        "@uniweb/core",
-        "@uniweb/projections",
-        "@uniweb/scene",
-        "@uniweb/schemas",
-        "@uniweb/semantic-parser"
-      ]
+      "version": "0.20.0"
     },
     "@uniweb/loom": {
-      "version": "0.2.5",
-      "path": "framework/loom",
-      "deps": []
+      "version": "0.2.5"
     },
     "@uniweb/press": {
-      "version": "0.4.18",
-      "path": "framework/press",
-      "deps": []
+      "version": "0.4.18"
     },
     "@uniweb/projections": {
-      "version": "0.7.15",
-      "path": "framework/projections",
-      "deps": [
-        "@uniweb/content-writer",
-        "@uniweb/core"
-      ]
+      "version": "0.7.15"
     },
     "@uniweb/runtime": {
-      "version": "0.29.4",
-      "path": "framework/runtime",
-      "deps": [
-        "@uniweb/core",
-        "@uniweb/theming"
-      ]
+      "version": "0.29.4"
     },
     "@uniweb/scene": {
-      "version": "0.1.3",
-      "path": "framework/scene",
-      "deps": []
+      "version": "0.1.3"
     },
     "@uniweb/schemas": {
-      "version": "0.13.0",
-      "path": "framework/schemas",
-      "deps": []
+      "version": "0.13.0"
     },
     "@uniweb/scholar": {
-      "version": "0.2.3",
-      "path": "framework/scholar",
-      "deps": []
+      "version": "0.2.3"
     },
     "@uniweb/semantic-parser": {
-      "version": "1.5.1",
-      "path": "framework/semantic-parser",
-      "deps": []
+      "version": "1.5.1"
     },
     "@uniweb/snapshot": {
-      "version": "0.1.2",
-      "path": "framework/snapshot",
-      "deps": []
+      "version": "0.1.2"
     },
     "@uniweb/templates": {
-      "version": "0.18.4",
-      "path": "framework/templates",
-      "deps": []
+      "version": "0.18.4"
     },
     "@uniweb/theming": {
-      "version": "0.2.0",
-      "path": "framework/theming",
-      "deps": []
+      "version": "0.2.0"
     },
     "@uniweb/unipress": {
-      "version": "0.10.24",
-      "path": "framework/unipress",
-      "deps": [
-        "@uniweb/build",
-        "@uniweb/content-reader",
-        "@uniweb/core",
-        "@uniweb/runtime",
-        "@uniweb/semantic-parser"
-      ]
+      "version": "0.10.24"
     }
   },
   "templates": {
@@ -233,8 +158,8 @@
       ]
     },
     "cv-loom": {
-      "name": "CV (Loom)",
-      "description": "A single-page narrative CV whose prose is written with {placeholder} expressions and instantiated at render time via the foundation content handler and @uniweb/loom. Reference implementation of the handler hook.",
+      "name": "CV (Loom + Press)",
+      "description": "An academic CV whose sections are written with Loom {placeholder} expressions, filled in from a single profile at render time by the foundation's content handler, and downloadable as a branded Word document through Press. Ships with Charles Darwin's CV as sample data.",
       "tags": [
         "cv",
         "loom",
