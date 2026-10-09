@@ -81,27 +81,6 @@ function isFoundation(dir) {
 }
 
 /**
- * Load the foundation's authored declarations file (main.js or legacy
- * foundation.js) and return a minimal summary used by the doctor.
- * Returns null if no declarations file is found.
- */
-function loadFoundationJs(dir) {
-  const srcDir = resolveFoundationSrcPath(dir)
-  for (const name of ['main.js', 'foundation.js']) {
-    const filePath = join(srcDir, name)
-    if (existsSync(filePath)) {
-      try {
-        const content = readFileSync(filePath, 'utf8')
-        return { extension: /extension\s*:\s*true/.test(content) }
-      } catch {
-        return null
-      }
-    }
-  }
-  return null
-}
-
-/**
  * Load a foundation's built schema.json.
  *
  * ⛔ THE PATH IS `dist/meta/schema.json`, and it read `dist/schema.json` from
@@ -1634,21 +1613,12 @@ export async function doctor(args = []) {
     log('')
     info(`Checking extension: ${ext.name}`)
 
-    // Check if it declares extension: true
-    if (!isExtensionPackage(ext.path)) {
-      issues.push({
-        type: 'warn',
-        message: `Extension "${ext.name}" in extensions/ doesn't declare extension: true in foundation.js`
-      })
-      warn(`Missing extension identity`)
-      log(`  ${colors.dim}Add to src/foundation.js:${colors.reset}`)
-      log(`    export default { extension: true }`)
-    } else {
-      success(`Extension identity: extension: true`)
-    }
+    // An extension is a package that declares `extension: true` — that is how it
+    // was told apart from the foundations above, wherever its folder is. (A check
+    // here that it declares it could never fail, and was removed 2026-10-08.)
+    success(`Extension identity: extension: true`)
 
     // Check for vars or layouts
-    const config = loadFoundationJs(ext.path)
     const schema = loadSchemaJson(ext.path)
 
     if (schema?._self?.vars && Object.keys(schema._self.vars).length > 0) {
