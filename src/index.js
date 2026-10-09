@@ -1850,11 +1850,16 @@ ${colors.bright}Options:${colors.reset}
   --token-paste      Force the paste-a-token prompt
 
 In non-interactive mode (no TTY — an agent, a script), pass \`--token <bearer>\` with
-\`--org @org\` or \`--personal\`, or set \`UNIWEB_USERNAME\` + \`UNIWEB_PASSWORD\`, or set
-\`UNIWEB_TOKEN\` (per process, not stored) with \`UNIWEB_WORKSPACE=@org\` or \`personal\`.
+\`--org @org\` or \`--personal\`, or set \`UNIWEB_USERNAME\` + \`UNIWEB_PASSWORD\`.
 A login with organizations that names no workspace signs you in but exits 2;
 \`uniweb login --org @org\` (or \`--personal\`) finishes it without signing in again.
 \`uniweb logout\` logs you out.
+
+${colors.bright}Or skip the login.${colors.reset} With \`UNIWEB_TOKEN\` set — and \`UNIWEB_WORKSPACE=@org\` or
+\`personal\` — every backend command in that process uses the token, ahead of any
+session, and nothing is stored. \`uniweb login\` there only checks the token with the
+backend those commands go to — \`UNIWEB_SERVER\`, else the one you are logged in to,
+else the default — and says who and where they work as.
 `,
     refresh: `
 ${colors.cyan}${colors.bright}uniweb refresh${colors.reset} ${colors.dim}— Catch up with teammates AND app authors${colors.reset}

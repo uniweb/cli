@@ -366,7 +366,7 @@ async function loginViaPassword({ apiBase, nonInteractive }) {
   if (!username || !password) {
     if (nonInteractive) {
       throw new Error(
-        'username/password login needs a terminal — set UNIWEB_USERNAME + UNIWEB_PASSWORD (or UNIWEB_TOKEN).'
+        'username/password login needs a terminal, or UNIWEB_USERNAME + UNIWEB_PASSWORD.'
       )
     }
     const prompts = (await import('prompts')).default
@@ -402,7 +402,7 @@ async function loginViaPassword({ apiBase, nonInteractive }) {
 // Paste a token — verified + identified via /me before it's stored.
 async function loginViaTokenPaste({ apiBase, nonInteractive }) {
   if (nonInteractive) {
-    throw new Error('token paste needs a terminal — set UNIWEB_TOKEN instead.')
+    throw new Error('token paste needs a terminal — pass the token instead: uniweb login --token <bearer>.')
   }
   const prompts = (await import('prompts')).default
   const { token } = await prompts(
@@ -678,7 +678,15 @@ async function workspaceTail(record) {
  *   browser/social (default, once available) · username+password · paste a token.
  * Force a method with --browser / --password / --token-paste (skips the menu).
  * No TTY → no menu; falls back to the non-browser path (env UNIWEB_USERNAME/
- * PASSWORD; UNIWEB_TOKEN is handled earlier by ensureRegistryAuth).
+ * PASSWORD, or `--token <bearer>`).
+ *
+ * ⭐ UNIWEB_TOKEN IS NOT A LOGIN METHOD. It is the one-process bearer each backend
+ * command reads first, ahead of any stored session (ensureRegistryAuth), and it is
+ * never stored — so in a process that has it, login only checks it and says so
+ * (reportTokenProcess). ⛔ This note used to say "UNIWEB_TOKEN is handled earlier by
+ * ensureRegistryAuth", true of the backend commands and not of login, which never
+ * calls it; read as covering login, it put "set UNIWEB_TOKEN" into login's own
+ * refusal — which, with the variable set, refused the same way (measured on 0.88.0).
  *
  * @param {Object} o
  * @param {string} o.apiBase - new-backend origin
@@ -689,7 +697,7 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
   // For THIS backend. It read "the" session and printed `apiBase` beside it, so on a
   // machine logged into another backend it announced "Already logged in … (this origin)"
   // about a session belonging to a different one — and then offered to replace it.
-  const { isNonInteractive } = await import('./interactive.js')
+  const { isNonInteractive, getCliPrefix } = await import('./interactive.js')
   const nonInteractive = isNonInteractive(args)
 
   const key = normOrigin(apiBase)
@@ -701,6 +709,22 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
     args.includes('--browser') ||
     args.includes('--password') ||
     args.includes('--token-paste')
+
+  // A process with UNIWEB_TOKEN is authenticated by it, ahead of any session: a login
+  // that asks for nothing has nothing to do but check it and say so. One that asks for
+  // something — a way of signing in, or a workspace switch — still does it, for the stored
+  // session, after saying that this process does not use that session.
+  const envToken = process.env.UNIWEB_TOKEN
+  if (envToken) {
+    if (!forced && !readOrgFlag(args) && !args.includes('--personal')) {
+      const named = args.some((a) => a === '--server' || a.startsWith('--server='))
+      return reportTokenProcess({ named: named ? key : null, token: envToken })
+    }
+    console.error(
+      `\x1b[2mUNIWEB_TOKEN is set, so this process's backend commands use it (and UNIWEB_WORKSPACE) — not the session or workspace this login stores.\x1b[0m\n`
+    )
+  }
+
   if (existing?.token && !isExpired(existing)) {
     const who =
       existing.username ||
@@ -791,13 +815,21 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
       if (process.env.UNIWEB_USERNAME && process.env.UNIWEB_PASSWORD) {
         method = 'password'
       } else {
+        // Only what works without a terminal: `--password` and `--token-paste` prompt. The
+        // command keeps the backend named, or re-run as printed it would go to the default.
+        const server = args.some((a) => a === '--server' || a.startsWith('--server='))
+          ? ` --server ${key}`
+          : ''
         console.error(
-          '\x1b[31m✗\x1b[0m Cannot log in non-interactively without a method.'
+          '\x1b[31m✗\x1b[0m Without a terminal, a login needs a way to sign in that asks nothing:'
         )
         console.error(
-          '  Set UNIWEB_USERNAME + UNIWEB_PASSWORD, set UNIWEB_TOKEN, or run `uniweb login` in a terminal.'
+          `    ${getCliPrefix()} login${server} --token <bearer>   (with --org @org or --personal)`
         )
-        console.error('  Or force one: --password / --token-paste.')
+        console.error('    UNIWEB_USERNAME + UNIWEB_PASSWORD, set for the login')
+        console.error(
+          '  Or skip the login: with UNIWEB_TOKEN set, every backend command in that process uses it, and nothing is stored.'
+        )
         process.exit(1)
       }
     } else {
@@ -865,4 +897,98 @@ async function finishLogin(record, apiBase, args) {
   }
   console.error(`\x1b[32m✓\x1b[0m Logged in${who} (${apiBase})${await workspaceTail(settled.record)}.`)
   return settled.record
+}
+
+/**
+ * `uniweb login` in a process that has UNIWEB_TOKEN, asking for nothing: there is no login
+ * to do — every backend command here sends the token, ahead of any stored session — so
+ * check it with the backend those commands go to, and say who and where they work as.
+ *
+ * ⭐ CHECKED WHERE IT IS SENT. Those commands go to `getRegistryApiBaseUrl()` — UNIWEB_SERVER,
+ * else the backend logged in to, else the default — while a login goes where `--server`
+ * says. A login naming another backend is refused rather than checked there: a yes from a
+ * backend this process never reaches is a false answer, and the next command would show
+ * it as a 401 from the other one.
+ *
+ * Exits 1 when the token is refused or unreachable, 2 when it is good and its workspace is
+ * not settled (as `finishLogin` does); returns nothing, since nothing is stored.
+ *
+ * @param {object} o
+ * @param {string|null} o.named - the origin `--server` named, or null
+ * @param {string} o.token
+ */
+async function reportTokenProcess({ named, token }) {
+  const { getRegistryApiBaseUrl } = await import('./config.js')
+  const { getCliPrefix } = await import('./interactive.js')
+  const origin = normOrigin(getRegistryApiBaseUrl())
+  if (named && named !== origin) {
+    console.error(
+      `\x1b[31m✗\x1b[0m UNIWEB_TOKEN is set, and this process's backend commands send it to ${origin} — not ${named}.`
+    )
+    console.error(`  To use the token with ${named}: UNIWEB_SERVER=${named}`)
+    console.error(`  To log in to ${named} instead, unset UNIWEB_TOKEN: ${getCliPrefix()} login --server ${named}`)
+    process.exit(1)
+  }
+
+  let account
+  try {
+    account = await fetchMe({ apiBase: origin, token })
+  } catch (err) {
+    console.error(
+      err.status
+        ? `\x1b[31m✗\x1b[0m ${origin} refuses UNIWEB_TOKEN (HTTP ${err.status}).`
+        : `\x1b[31m✗\x1b[0m Could not check UNIWEB_TOKEN with ${origin}: ${err.message}`
+    )
+    process.exit(1)
+  }
+  const who = account?.username || account?.handle || (account?.uuid ? `account ${account.uuid}` : null)
+  console.error(
+    `\x1b[32m✓\x1b[0m No login needed: this process's backend commands use UNIWEB_TOKEN, which ${origin} accepts${who ? ` as \x1b[1m${who}\x1b[0m` : ''}.`
+  )
+  console.error(
+    '\x1b[2m  It comes before any stored session and is never stored. To store a session, name a way to sign in: --password, --browser, --token-paste or --token <bearer>.\x1b[0m'
+  )
+
+  // Their workspace is UNIWEB_WORKSPACE's — never the stored session's — and, with none
+  // named, personal for an account in no organization (resolveWorkspace, workspace.js).
+  const { WORKSPACE_ENV, PERSONAL, parseWorkspaceChoice, headerOf, describeWorkspace } =
+    await import('../backend/workspace.js')
+  const unsettled = (reason, { commandsRefuse }) => {
+    console.error(`\x1b[31m✗\x1b[0m ${reason}`)
+    if (commandsRefuse) {
+      console.error(`\x1b[2m  Until a workspace is named, the commands that work on a site refuse.\x1b[0m`)
+    }
+    process.exit(2)
+  }
+  const raw = process.env[WORKSPACE_ENV]
+  const choice = parseWorkspaceChoice(raw)
+  if (raw && !choice) {
+    unsettled(`${WORKSPACE_ENV}=${JSON.stringify(raw)} names no workspace — give @org, or personal.`, {
+      commandsRefuse: true
+    })
+  }
+  let orgs
+  try {
+    orgs = (await (await import('./registry-orgs.js')).fetchOrgs({ apiBase: origin, token })).orgs
+  } catch (err) {
+    console.error(`\x1b[33m⚠\x1b[0m ${err.message} — the workspace is not checked.`)
+    return
+  }
+  const mine = orgs.map((o) => `@${o.handle}`)
+  if (choice && choice !== PERSONAL && !mine.includes(choice)) {
+    // As a login refuses `--org` for one (chooseWorkspace).
+    unsettled(`${WORKSPACE_ENV}=${raw} is not one of this account's organizations on ${origin}.`, {
+      commandsRefuse: false
+    })
+  }
+  if (!choice && mine.length) {
+    unsettled(
+      `The account belongs to organizations, so no workspace is assumed: set ${WORKSPACE_ENV}=${mine[0]} (or another, or personal).`,
+      { commandsRefuse: true }
+    )
+  }
+  const where = describeWorkspace(headerOf(choice || PERSONAL))
+  console.error(
+    `  They work in \x1b[1m${where}\x1b[0m${choice ? ` (${WORKSPACE_ENV})` : ' — the account belongs to no organization'}.`
+  )
 }
