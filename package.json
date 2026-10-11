@@ -42,8 +42,6 @@
   "dependencies": {
     "@uniweb/content-writer": "workspace:^",
     "@uniweb/core": "workspace:^",
-    "@uniweb/kit": "workspace:^",
-    "@uniweb/runtime": "workspace:^",
     "@uniweb/schemas": "workspace:^",
     "@uniweb/semantic-parser": "workspace:^",
     "handlebars": "^4.7.8",

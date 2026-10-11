@@ -9,26 +9,27 @@
  *
  * ## How versions are resolved
  *
- * 1. Start from the CLI's own `package.json` dependencies. When the CLI
- *    was installed via npm, pnpm has already resolved every `workspace:*`
- *    spec into a concrete version like `^0.9.1`, so this step is
- *    usually enough.
- * 2. For any dep that is still `workspace:*` (i.e. the CLI is running
- *    *from* the pnpm workspace — local dev, sandbox script, tests), fall
- *    back to reading the real `package.json` of each sibling package
- *    under `framework/<name>/` and using `^<that version>`. This is the
- *    path that keeps local sandboxes and templates aligned with whatever
- *    was last bumped in the monorepo.
- * 3. Scan `framework/*` to catch any additional `@uniweb/*` package that
- *    wasn't explicitly listed as a CLI dep (press, loom, scholar, etc.).
- *    New packages get picked up by the scaffolder automatically.
+ * 1. Start from the CLI's own `package.json` dependencies. A published CLI
+ *    carries concrete ranges like `^0.9.1` there — pnpm rewrites each
+ *    `workspace:^` spec at publish.
+ * 2. For any dep that is still a `workspace:` spec (the CLI is running
+ *    *from* a workspace checkout — local dev, sandboxes, tests), read the
+ *    `package.json` of the sibling package under `framework/<name>/` and
+ *    use `^<that version>`: the range a published CLI would carry.
+ * 3. Scan `framework/*` for every other `@uniweb/*` package (press, loom,
+ *    scholar, etc.), so a new package reaches the scaffolder automatically.
+ * 4. A published CLI has no `framework/` beside it: it reads every other
+ *    package's version from its bundled `framework-index.json`, refreshed
+ *    when the CLI is published.
  *
- * The previous implementation shipped a hardcoded fallback table and
- * nothing kept it in sync with reality — see the audit note in
- * `framework/CLAUDE.md` under "Publishing". Every workspace-based scaffold
- * silently pinned against years-old versions. That table is gone. If this
- * function ever fails to resolve a package, it returns `^0.0.0` rather
- * than a stale best-guess, so the breakage is loud.
+ * ⭐ A version is not a reason to depend on a package. Steps 3 and 4 name
+ * every `@uniweb/*` package, so the CLI's `dependencies` list only what its
+ * code loads — each one is installed with every `npx uniweb`.
+ *
+ * The previous implementation shipped a hardcoded fallback table that
+ * nothing kept in sync, so every scaffold silently pinned years-old
+ * versions. That table is gone. A package none of these steps resolves gets
+ * the `{{version}}` helper's `^0.1.0` (templates/processor.js).
  */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -198,16 +199,17 @@ function getFrameworkRoot() {
 
 /**
  * Read the current on-disk version of a specific `@uniweb/*` package by
- * looking up `framework/<last-segment>/package.json`. Returns the version
- * string verbatim (e.g. `0.7.11`), or null if the package isn't present
- * on disk (i.e. the CLI is running from npm, not from the workspace).
+ * looking up `framework/<last-segment>/package.json`, as a caret range
+ * (e.g. `^0.7.11`) — or null if the package isn't on disk (the CLI is
+ * running from npm, not from a workspace checkout).
  *
- * Returns the version *exact*, not as a caret range, to match the shape
- * published-CLI direct deps take after pnpm resolves `workspace:*` at
- * publish time. Both modes converge on identical specs in
- * `getResolvedVersions()`, so `uniweb update` and the scaffolder produce
- * the same `package.json` whether the CLI ran from npm or from this
- * monorepo.
+ * ⭐ A caret, because that is what a published CLI carries: pnpm rewrites
+ * its `workspace:^` deps to `^<version>` at publish. So `uniweb update` and
+ * the scaffolder write the same `package.json` whether the CLI ran from npm
+ * or from a workspace. ⛔ This returned the version exact until 2026-10-11:
+ * right while the deps were `workspace:*`, which pnpm publishes exact, and
+ * wrong once they became `workspace:^` — so a scaffold from a workspace
+ * checkout pinned `0.20.0` where a user's got `^0.20.0`.
  */
 function readWorkspaceVersion(packageName) {
   const root = getFrameworkRoot()
@@ -219,7 +221,7 @@ function readWorkspaceVersion(packageName) {
   try {
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
     if (pkg.name === packageName && pkg.version) {
-      return pkg.version
+      return `^${pkg.version}`
     }
   } catch {}
   return null
@@ -310,8 +312,8 @@ function discoverWorkspacePackages() {
 
 /**
  * Resolve a single version spec to something npm can install. A concrete
- * spec like `^0.9.0` passes through untouched; `workspace:*` is replaced
- * by the on-disk version of the named package; anything still unresolved
+ * spec like `^0.9.0` passes through untouched; a `workspace:` spec becomes
+ * `^<on-disk version>` of the named package; anything still unresolved
  * returns null so the caller can fall back.
  */
 function resolveVersionSpec(spec, packageName) {
@@ -328,8 +330,8 @@ function resolveVersionSpec(spec, packageName) {
  * Priority (highest first):
  *
  *   1. A concrete version spec already in the CLI's own `package.json`
- *      (the state after an npm publish: `workspace:*` is resolved by
- *      pnpm to a real version).
+ *      (the state after an npm publish: pnpm rewrites `workspace:^` to
+ *      `^<version>`), or a `workspace:` spec read as `^<on-disk version>`.
  *   2. Live workspace walk — every `@uniweb/*` package found under
  *      `framework/*` at CLI invocation time. This is the path that
  *      matters for local dev: a freshly-added package becomes
