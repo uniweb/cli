@@ -2782,6 +2782,8 @@ npx uniweb@latest update             # apply: align @uniweb/* deps AND refresh A
 
 **`npx uniweb@latest update` is the command for bringing a project up to date.** It aligns the project's `@uniweb/*` dependencies *and* this AGENTS.md to the version matrix of the CLI that runs it. Deps and documentation move together — that's the whole point of the verb.
 
+**What the version numbers mean.** A patch brings fixes and features; a minor version is where Uniweb puts breaking changes — `update` lists each package that crosses one, so read those before shipping — and a major is kept for something really big. Dependencies are written as tilde ranges (`~0.20.1`), so `pnpm install` and `pnpm update` never cross a minor on their own.
+
 > ### ⛔ WRITE `@latest`. A BARE `uniweb update` IS USUALLY A NO-OP, AND IT SAYS SO CONVINCINGLY
 >
 > `update` reconciles this project against **the matrix of the CLI that runs it** — and in a project,
