@@ -4,9 +4,10 @@
  *
  * Pinned here:
  *
- *   - ⭐ A CLI run from a workspace checkout writes the ranges a published CLI writes:
- *     `^<version>`. pnpm publishes the CLI's `workspace:^` deps as caret ranges, and until
- *     2026-10-11 a workspace run read them as exact versions — a sandbox scaffold pinned
+ *   - ⭐ Every range is a tilde, `~<version>`, from a workspace checkout as from npm: a
+ *     breaking change ships as a minor, in 1.x as in 0.x, and a caret admits a 1.x minor
+ *     (ruled 2026-10-11). pnpm publishes the CLI's `workspace:~` deps as tilde ranges; until
+ *     that day a workspace run read them as exact versions — a sandbox scaffold pinned
  *     `0.20.0` where a user's got `^0.20.0`.
  *   - ⭐ A version is not a reason to depend on a package. Every version a scaffold asks
  *     for is in the bundled framework index, so the CLI's `dependencies` name only what its
@@ -93,18 +94,18 @@ test('every @uniweb/* version a scaffold asks for is in the bundled framework in
   assert.deepEqual(missing, [], `asked for by a scaffold, absent from framework-index.json: ${missing}`)
 })
 
-test('⭐ every version in the table is a caret range — as a published CLI writes it', () => {
+test('⭐ every version in the table is a tilde range — as a published CLI writes it', () => {
   const table = getResolvedVersions()
   assert.ok(table['@uniweb/core'], 'the table names @uniweb/core')
   for (const [name, spec] of Object.entries(table)) {
-    assert.match(spec, /^\^\d+\.\d+\.\d+/, `${name}: ${spec}`)
+    assert.match(spec, /^~\d+\.\d+\.\d+/, `${name}: ${spec}`)
   }
 })
 
-test('from a workspace checkout, a workspace: dependency reads as ^<the sibling\'s version>', (t) => {
+test('from a workspace checkout, a workspace: dependency reads as ~<the sibling\'s version>', (t) => {
   const sibling = join(CLI, '..', 'core', 'package.json')
   if (!existsSync(sibling)) return t.skip('not a workspace checkout')
   assert.match(manifest.dependencies['@uniweb/core'], /^workspace:/, 'the path under test')
   const { version } = JSON.parse(readFileSync(sibling, 'utf8'))
-  assert.equal(getResolvedVersions()['@uniweb/core'], `^${version}`)
+  assert.equal(getResolvedVersions()['@uniweb/core'], `~${version}`)
 })

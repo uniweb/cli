@@ -38,12 +38,14 @@ test('bumpClass names the slot that moved, through a range prefix', () => {
   assert.equal(bumpClass('0.14.1', '0.14.9'), 'patch')
 })
 
-test('⭐ a 0.x minor is breaking; a 1.x minor is not', () => {
-  // The whole asymmetry. npm agrees, which is what makes it more than our own
-  // convention: `^0.14.1` admits 0.14.x and refuses 0.15.0, while `^1.2.4`
-  // admits 1.3.0 — so the range itself already treats the 0.x minor as a wall.
+test('⭐ a minor is breaking — in 1.x as in 0.x', () => {
+  // A breaking change ships as a minor bump at every major [ruled 2026-10-11], and the
+  // tilde ranges a project carries refuse it: `~1.2.4` admits 1.2.x, not 1.3.0.
+  // ⛔ Until then a 1.x minor was "not breaking" here — this would have stopped warning
+  // at the first 1.x release.
   assert.equal(isBreakingBump('^0.14.1', '0.15.0'), true)
-  assert.equal(isBreakingBump('^1.2.4', '1.3.0'), false)
+  assert.equal(isBreakingBump('~1.2.4', '1.3.0'), true)
+  assert.equal(isBreakingBump('^1.2.4', '1.3.0'), true)
 })
 
 test('a major is breaking on either side of 1.0', () => {

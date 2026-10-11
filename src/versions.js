@@ -10,17 +10,23 @@
  * ## How versions are resolved
  *
  * 1. Start from the CLI's own `package.json` dependencies. A published CLI
- *    carries concrete ranges like `^0.9.1` there — pnpm rewrites each
- *    `workspace:^` spec at publish.
+ *    carries concrete ranges like `~0.9.1` there — pnpm rewrites each
+ *    `workspace:~` spec at publish.
  * 2. For any dep that is still a `workspace:` spec (the CLI is running
  *    *from* a workspace checkout — local dev, sandboxes, tests), read the
  *    `package.json` of the sibling package under `framework/<name>/` and
- *    use `^<that version>`: the range a published CLI would carry.
+ *    use `~<that version>`: the range a published CLI would carry.
  * 3. Scan `framework/*` for every other `@uniweb/*` package (press, loom,
  *    scholar, etc.), so a new package reaches the scaffolder automatically.
  * 4. A published CLI has no `framework/` beside it: it reads every other
  *    package's version from its bundled `framework-index.json`, refreshed
  *    when the CLI is published.
+ *
+ * ⭐ EVERY RANGE IS A TILDE. A breaking change ships as a minor bump, in 1.x as in
+ * 0.x *[ruled 2026-10-11]*, and `~1.4.0` admits 1.4.x alone, where `^1.4.0` would
+ * admit 1.5.0. So a project receives fixes and features (patches) by itself, and a
+ * breaking release through `uniweb update`, which says so. Below 1.0 a caret meant
+ * the same, which is why the table wrote one until then.
  *
  * ⭐ A version is not a reason to depend on a package. Steps 3 and 4 name
  * every `@uniweb/*` package, so the CLI's `dependencies` list only what its
@@ -199,17 +205,17 @@ function getFrameworkRoot() {
 
 /**
  * Read the current on-disk version of a specific `@uniweb/*` package by
- * looking up `framework/<last-segment>/package.json`, as a caret range
- * (e.g. `^0.7.11`) — or null if the package isn't on disk (the CLI is
+ * looking up `framework/<last-segment>/package.json`, as a tilde range
+ * (e.g. `~0.7.11`) — or null if the package isn't on disk (the CLI is
  * running from npm, not from a workspace checkout).
  *
- * ⭐ A caret, because that is what a published CLI carries: pnpm rewrites
- * its `workspace:^` deps to `^<version>` at publish. So `uniweb update` and
+ * ⭐ A tilde, because that is what a published CLI carries: pnpm rewrites
+ * its `workspace:~` deps to `~<version>` at publish. So `uniweb update` and
  * the scaffolder write the same `package.json` whether the CLI ran from npm
  * or from a workspace. ⛔ This returned the version exact until 2026-10-11:
  * right while the deps were `workspace:*`, which pnpm publishes exact, and
- * wrong once they became `workspace:^` — so a scaffold from a workspace
- * checkout pinned `0.20.0` where a user's got `^0.20.0`.
+ * wrong once they became a range — a scaffold from a workspace checkout
+ * pinned `0.20.0` where a user's got `^0.20.0`.
  */
 function readWorkspaceVersion(packageName) {
   const root = getFrameworkRoot()
@@ -221,7 +227,7 @@ function readWorkspaceVersion(packageName) {
   try {
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
     if (pkg.name === packageName && pkg.version) {
-      return `^${pkg.version}`
+      return `~${pkg.version}`
     }
   } catch {}
   return null
@@ -260,7 +266,7 @@ export function loadFrameworkIndex() {
 
 /**
  * Pull `@uniweb/*` package versions out of the framework index's
- * `packages` field and format them as caret ranges. Used as the
+ * `packages` field and format them as tilde ranges. Used as the
  * published-CLI fallback source after the CLI's own deps and the live
  * workspace walk both come up empty.
  */
@@ -270,7 +276,7 @@ function readIndexPackages() {
   const result = {}
   for (const [name, entry] of Object.entries(index.packages)) {
     if (entry && entry.version) {
-      result[name] = `^${entry.version}`
+      result[name] = `~${entry.version}`
     }
   }
   return result
@@ -303,7 +309,7 @@ function discoverWorkspacePackages() {
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
       if (pkg.name && pkg.version && pkg.name.startsWith('@uniweb/')) {
-        found[pkg.name] = `^${pkg.version}`
+        found[pkg.name] = `~${pkg.version}`
       }
     } catch {}
   }
@@ -312,8 +318,8 @@ function discoverWorkspacePackages() {
 
 /**
  * Resolve a single version spec to something npm can install. A concrete
- * spec like `^0.9.0` passes through untouched; a `workspace:` spec becomes
- * `^<on-disk version>` of the named package; anything still unresolved
+ * spec like `~0.9.0` passes through untouched; a `workspace:` spec becomes
+ * `~<on-disk version>` of the named package; anything still unresolved
  * returns null so the caller can fall back.
  */
 function resolveVersionSpec(spec, packageName) {
@@ -330,8 +336,8 @@ function resolveVersionSpec(spec, packageName) {
  * Priority (highest first):
  *
  *   1. A concrete version spec already in the CLI's own `package.json`
- *      (the state after an npm publish: pnpm rewrites `workspace:^` to
- *      `^<version>`), or a `workspace:` spec read as `^<on-disk version>`.
+ *      (the state after an npm publish: pnpm rewrites `workspace:~` to
+ *      `~<version>`), or a `workspace:` spec read as `~<on-disk version>`.
  *   2. Live workspace walk — every `@uniweb/*` package found under
  *      `framework/*` at CLI invocation time. This is the path that
  *      matters for local dev: a freshly-added package becomes
@@ -384,10 +390,10 @@ export function getResolvedVersions() {
     if (!result[name]) result[name] = version
   }
 
-  // CLI itself. Caret on the current version — templates referencing
-  // `{{version "uniweb"}}` pick up whatever patch/minor ships in the
-  // same publish cycle as the template.
-  result['uniweb'] = `^${pkg.version}`
+  // CLI itself. Tilde on the current version, like every other entry: a
+  // project takes the CLI's patches by itself, and a minor — breaking —
+  // through `uniweb update`.
+  result['uniweb'] = `~${pkg.version}`
 
   resolvedVersions = result
   return resolvedVersions
@@ -397,7 +403,7 @@ export function getResolvedVersions() {
  * Get a specific package version
  *
  * @param {string} packageName - Package name (e.g., "@uniweb/build")
- * @returns {string} Version spec (e.g., "^0.1.4")
+ * @returns {string} Version spec (e.g., "~0.1.4")
  */
 export function getVersion(packageName) {
   const versions = getResolvedVersions()

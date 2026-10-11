@@ -36,8 +36,8 @@ export function stripVersionRange(spec) {
 /**
  * How far a bump moves, in the terms our versioning actually uses.
  *
- * ⭐ **In 0.x the MINOR slot is the breaking one, and it is the only channel we
- * have.** `scripts/framework/publish.js` derives a package's bump from its own
+ * ⭐ **The MINOR slot is the breaking one — in 1.x as in 0.x** *[ruled
+ * 2026-10-11]*. `scripts/framework/publish.js` derives a package's bump from its own
  * commits: a breaking marker means minor, everything else patch. So
  * `^0.14.1 → ^0.16.0` is two breaking releases and `^0.15.0 → ^0.15.2` is not —
  * and until 2026-09-02 `update` printed both as `behind`, in the same colour,
@@ -64,10 +64,11 @@ export function bumpClass(from, to) {
 /**
  * Is this crossing one a consumer must act on?
  *
- * A major always is. A minor is **when the major is 0**, because that is where
- * our scheme puts breaking changes — and npm agrees, which is the check that
- * makes this more than our own convention: `^0.14.1` admits `0.14.x` and
- * refuses `0.15.0`, so the range itself already treats the slot as a wall.
+ * A major, or a minor — at every major. Our scheme ships a breaking change as a minor
+ * bump, in 1.x as in 0.x *[ruled 2026-10-11]*, and the ranges a project carries (`~`)
+ * treat the minor slot as the wall: `~1.4.0` admits 1.4.x and refuses 1.5.0, as
+ * `^0.14.1` refuses 0.15.0. ⛔ Until then a minor counted only below 1.0, where a caret
+ * refuses it — so this would have stopped warning at the first 1.x minor.
  *
  * @param {string} from
  * @param {string} to
@@ -75,9 +76,7 @@ export function bumpClass(from, to) {
  */
 export function isBreakingBump(from, to) {
   const cls = bumpClass(from, to)
-  if (cls === 'major') return true
-  if (cls !== 'minor') return false
-  return Number(stripVersionRange(to).split('.')[0]) === 0
+  return cls === 'major' || cls === 'minor'
 }
 
 /**

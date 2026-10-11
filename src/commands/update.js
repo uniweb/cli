@@ -260,8 +260,8 @@ export function printSurvey(
       } else if (row.status === 'behind') {
         icon = `${colors.yellow}✗${colors.reset}`
         // ⛔ `behind` alone was the whole message, in one colour, for every
-        // distance. In 0.x the minor slot is where our breaking changes live
-        // (`publish.js` derives it from a breaking marker and nothing else), so
+        // distance. The minor slot is where our breaking changes live, in 1.x as in
+        // 0.x (`publish.js` derives it from a breaking marker and nothing else), so
         // `^0.14.1 → ^0.16.0` is two releases a consumer must act on and
         // `^0.15.0 → ^0.15.2` is not — and the table said the same thing about
         // both. Naming the class is the difference between a list and a signal.
@@ -289,7 +289,7 @@ export function printSurvey(
   // artifact is a log. This block names the packages, so "what did that
   // upgrade cross?" is answerable afterwards from the log alone.
   //
-  // ⚖️ It reports; it does not gate. Crossing a 0.x minor IS the ordinary way
+  // ⚖️ It reports; it does not gate. Crossing a minor IS the ordinary way
   // to take a Uniweb update — gating it would gate nearly every real upgrade
   // and make the verb useless. The decision stays the operator's; what changed
   // is that they can now make it knowingly.
@@ -305,7 +305,7 @@ export function printSurvey(
       log(`     ${colors.red}${name}${colors.reset}  ${r.current} → ${r.target}  ${colors.dim}(${r.bump})${colors.reset}`)
     }
     log(
-      `   ${colors.dim}In 0.x the minor slot is where breaking changes go, so these are releases${colors.reset}`
+      `   ${colors.dim}A minor version is where Uniweb's breaking changes go, so these are releases${colors.reset}`
     )
     log(
       `   ${colors.dim}you may need to act on. Read their changelogs before shipping.${colors.reset}`
