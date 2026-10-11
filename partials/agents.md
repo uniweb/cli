@@ -2580,6 +2580,29 @@ takes them there already signed in. ⛔ **Navigate to it, never `fetch` it**: th
 a redirect carrying a one-time credential no script on the site is to hold. It decides
 what to offer, not what is allowed — on the site the operator acts as a member.
 
+### The links the backend mails
+
+A sign-up's confirmation, a password reset and an invitation to an address with no
+account all arrive as a link to the site's root, a token in the query — `?verify=`,
+`?reset=`, `?offer=` — and the page it lands on finishes the step:
+
+```jsx
+const { step, status, result, error, confirm } = useMailedLink()
+// step: null | 'verify' | 'reset' | 'offer'     status: 'idle' | 'working' | 'done' | 'error'
+```
+
+- `verify` finishes by itself; then the member signs in.
+- `reset` waits for `confirm({ new_password })`, and the hook supplies the token. A
+  password the rule refuses is `error.extensions.reason === 'password_too_short'`, and
+  the same link works again.
+- `offer` waits for a sign-in, then claims by itself. `result` is counts,
+  `{ invitations, grants }`, never names. ⛔ `error.kind === 'absent'` means unknown,
+  revoked or already used, alike: one sentence, no cause.
+
+Render it where the root renders it — a header or a layout is on every page. ⛔ Never
+copy the token anywhere: it is a credential, it stays in the URL until the backend has
+judged it, and then the hook takes it off.
+
 ### A backend on your machine
 
 You do not need a live backend to build against one. In `site.yml`:
@@ -2601,7 +2624,9 @@ supplies on its own origin, so cookies behave exactly as they will in production
 no address of your own for it: under `services:` an address means a backend you run, and
 asks your host to leave its own off. It **enforces** who
 may edit an entry and `append_only`, so a permission you are relying on fails on your
-machine rather than in front of a user. State is in memory; restart to reset.
+machine rather than in front of a user. The mail it would send is printed in the dev
+server's terminal, its link on your site's root — follow it to try your page; seed
+`offers: [{ email }]` to try an invitation. State is in memory; restart to reset.
 
 `uniweb create my-event --template conference` is a worked example of all of this.
 
