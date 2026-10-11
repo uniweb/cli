@@ -2510,8 +2510,8 @@ const sessions = entity?.hydrated?.items.filter((item) => item.section === 'sess
 section's fields (`record.brief.name`, not `record.name`), and a record carries **no
 items**. Read one entity for its items. Each item carries `section`, its section's name
 (the word a write takes), and `id`, which is what the writer takes to update, move or
-remove it. `scope: 'mine'` lists only the viewer's own records. Without it, the operator
-also gets everyone else's.
+remove it. `scope: 'mine'` lists only the viewer's own records; without it, a list also
+holds what was shared with the viewer.
 
 ⭐ **`absent` and an empty `ready` are different answers, and confusing them is the
 mistake to avoid.** `absent` = there is no live source (no `backend` service, or nobody signed
@@ -2543,10 +2543,12 @@ await writer.remove(itemId)
 
 ### ⛔ Permissions are the SERVER'S, and your UI is only a courtesy
 
-Gate your controls on what the viewer may do — `viewer.roles` (the site's operator
-holds `system_admin`), or a record's own `can_edit` from a single-entity read — but
-**never rely on that for safety**. A foundation runs with exactly the viewer's own
-authority, so hiding a button hides a button.
+Gate your controls on what the viewer may do — a record's own `can_edit` from a
+single-entity read — but **never rely on that for safety**. A foundation runs with
+exactly the viewer's own authority, so hiding a button hides a button. ⛔ **Not on
+`viewer.roles`:** a session signed in on a site holds a member's rights — the operator's
+too — so its roles never name an administrator, and a gate on `system_admin` shows the
+operator nothing.
 
 What protects content is the **entry**: a member writes their own entries and not
 another's, and the store enforces it. **Models are open** — anyone signed in may
