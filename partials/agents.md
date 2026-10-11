@@ -2567,6 +2567,19 @@ sections:
 `append_only` holds against the item's own author. That is the difference between a
 permission model and a CSS one.
 
+### The Admin link
+
+```jsx
+const { adminHref } = useSession()
+{adminHref && <a href={adminHref}>Admin</a>}
+```
+
+`adminHref` is set only for a signed-in account the backend's administration admits —
+the operator, and whoever else administers it — and is `null` for everyone else. It
+takes them there already signed in. ⛔ **Navigate to it, never `fetch` it**: the answer is
+a redirect carrying a one-time credential no script on the site is to hold. It decides
+what to offer, not what is allowed — on the site the operator acts as a member.
+
 ### A backend on your machine
 
 You do not need a live backend to build against one. In `site.yml`:
