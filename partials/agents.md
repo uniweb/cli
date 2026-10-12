@@ -2599,11 +2599,26 @@ const { step, status, result, error, confirm } = useMailedLink()
   the same link works again.
 - `offer` waits for a sign-in, then claims by itself. `result` is counts,
   `{ invitations, grants }`, never names. ⛔ `error.kind === 'absent'` means unknown,
-  revoked or already used, alike: one sentence, no cause.
+  revoked or already used, alike: one sentence, no cause. It does not mean "no
+  invitation": a member who confirmed the invited address already holds it.
 
 Render it where the root renders it — a header or a layout is on every page. ⛔ Never
 copy the token anywhere: it is a credential, it stays in the URL until the backend has
 judged it, and then the hook takes it off.
+
+### Invitations
+
+An invitation to join an organization waits for the member's answer, whether it was
+sent to their account or taken up from an `?offer=` link:
+
+```jsx
+const { status, invitations, accept, decline, answering } = useInvitations()
+// invitations: [{ id, unit_uuid, unit_handle, unit_name, invited_by_account_id, created_at }]
+```
+
+Draw it wherever a signed-in member lands, not only after a mailed link — an invitation
+sent to an account comes with no link to follow. `unit_name` may be `null`.
+`accept(id)` and `decline(id)` answer one, and the list reads again.
 
 ### A backend on your machine
 
@@ -2627,8 +2642,10 @@ no address of your own for it: under `services:` an address means a backend you 
 asks your host to leave its own off. It **enforces** who
 may edit an entry and `append_only`, so a permission you are relying on fails on your
 machine rather than in front of a user. The mail it would send is printed in the dev
-server's terminal, its link on your site's root — follow it to try your page; seed
-`offers: [{ email }]` to try an invitation. State is in memory; restart to reset.
+server's terminal, its link on your site's root — follow it to try your page. Seed
+`offers: [{ email, invitations: 1 }]` to try an invitation: mailed to an address no
+account holds, or waiting at once for the seeded account whose address it is. State is
+in memory; restart to reset.
 
 `uniweb create my-event --template conference` is a worked example of all of this.
 
