@@ -2618,7 +2618,9 @@ const { status, invitations, accept, decline, answering } = useInvitations()
 
 Draw it wherever a signed-in member lands, not only after a mailed link — an invitation
 sent to an account comes with no link to follow. `unit_name` may be `null`.
-`accept(id)` and `decline(id)` answer one, and the list reads again.
+`accept(id)` and `decline(id)` answer one, and the list reads again. One that no longer
+waits — answered in another tab, or withdrawn — is refused with `kind: 'rule'` and
+leaves the list; its `detail` is for people, so branch on `kind`.
 
 ### A backend on your machine
 
