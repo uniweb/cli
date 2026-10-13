@@ -37,7 +37,7 @@ export async function scaffoldWorkspace(targetDir, context, options = {}) {
   registerVersions(getVersionsForTemplates())
 
   // Skip pnpm-workspace.yaml for blank workspaces (no packages yet).
-  // The `add` command creates it on demand via addWorkspaceGlob().
+  // The `add` command creates it on demand (registerWorkspacePackage), from this template.
   // Without this, pnpm fails with ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND
   // because an empty packages: [] makes pnpm search parent directories.
   const skip = context.workspaceGlobs?.length ? [] : ['pnpm-workspace.yaml']

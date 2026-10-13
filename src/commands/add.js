@@ -30,15 +30,12 @@ import {
 } from '../utils/scaffold.js'
 import {
   resolvePlacement,
+  projectConflictLines,
   SITE_KIND,
   FOUNDATION_KIND,
   EXTENSION_KIND
 } from '../utils/placement.js'
-import {
-  readWorkspaceConfig,
-  addWorkspaceGlob,
-  updateRootScripts
-} from '../utils/config.js'
+import { registerWorkspacePackage, updateRootScripts } from '../utils/config.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { generateStarter, reportStarter, declarationFor } from './starter.js'
 import {
@@ -364,6 +361,7 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   // both. Format validation runs on the derived package name below, not
   // on the raw input — slashes in the input are intentional path syntax.
   const placement = resolvePlacement(rootDir, name, opts, FOUNDATION_KIND)
+  refuseProjectConflict(placement, 'foundation', name, opts)
   if (placement.outsideRoot) {
     error(`--path must name a folder inside the workspace: ${placement.outsideRoot}`)
     log('')
@@ -474,10 +472,10 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
     ensureFoundationName(fullPath, registryName)
   }
 
-  // Register the package in pnpm-workspace.yaml — by exact path, not by glob.
-  // No glob inference: if the user wants `foundations/*` they can edit the
-  // workspace file themselves. This matches the "no assumptions" rule.
-  await addWorkspaceGlob(rootDir, relativePath)
+  // Register the package by its exact path — unless a pattern the workspace lists
+  // already covers it (`foundations/*`, `*/src`), which leaves the file as it is.
+  // No glob inference: a pattern is the user's to write.
+  await registerWorkspacePackage(rootDir, relativePath)
 
   // Update root scripts
   const sites = await discoverSites(rootDir)
@@ -491,6 +489,18 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
 }
 
 /**
+ * Stop when `--project` came with a name or a `--path` — it names the folder itself,
+ * so the two disagree. Refused, never ignored (`projectConflictLines`).
+ */
+function refuseProjectConflict(placement, kind, name, opts) {
+  if (!placement.projectConflict) return
+  const [first, ...rest] = projectConflictLines(kind, name, opts, `${getCliPrefix()} add ${kind}`)
+  error(first)
+  for (const line of rest) log(line)
+  process.exit(1)
+}
+
+/**
  * Add a site to the workspace
  */
 async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
@@ -499,6 +509,7 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
 
   // Resolve placement first (path + package name); see notes in addFoundation.
   const placement = resolvePlacement(rootDir, name, opts, SITE_KIND)
+  refuseProjectConflict(placement, 'site', name, opts)
   if (placement.outsideRoot) {
     error(`--path must name a folder inside the workspace: ${placement.outsideRoot}`)
     log('')
@@ -612,8 +623,8 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
     await applyFromTemplate(opts.from, 'site', fullPath, projectName)
   }
 
-  // Register the package by exact path. No glob inference.
-  await addWorkspaceGlob(rootDir, relativePath)
+  // Register the package by exact path, unless a listed pattern covers it already.
+  await registerWorkspacePackage(rootDir, relativePath)
 
   // Update root scripts (discover sites after registration — includes the new one)
   const sites = await discoverSites(rootDir)
@@ -682,6 +693,7 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   // you name is the folder created — `effects` → effects/, `extensions/effects` →
   // extensions/effects/ — and `--path` is the folder it goes in.
   const placement = resolvePlacement(rootDir, name, opts, EXTENSION_KIND)
+  refuseProjectConflict(placement, 'extension', name, opts)
   if (placement.outsideRoot) {
     error(`--path must name a folder inside the workspace: ${placement.outsideRoot}`)
     log('')
@@ -743,7 +755,7 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   }
 
   // Register the folder it is in, as add foundation does
-  await addWorkspaceGlob(rootDir, relativePath)
+  await registerWorkspacePackage(rootDir, relativePath)
 
   // Wire extension to site:
   //   - --site <name>: explicit, wire it.
@@ -933,9 +945,10 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
     )
   }
 
-  // Update workspace globs for co-located layout
-  await addWorkspaceGlob(rootDir, '*/src')
-  await addWorkspaceGlob(rootDir, '*/site')
+  // The co-located patterns — each added only if what it lists is not covered yet
+  // (a workspace listing `*/src` and `*/sites/*` keeps its file as it is for `src/`).
+  await registerWorkspacePackage(rootDir, `${name}/src`, { entry: '*/src' })
+  await registerWorkspacePackage(rootDir, `${name}/site`, { entry: '*/site' })
 
   // Update root scripts
   const sites = await discoverSites(rootDir)

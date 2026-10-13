@@ -51,8 +51,7 @@ import yaml from 'js-yaml'
 import { isExtensionPackage } from '@uniweb/build'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import {
-  readWorkspaceConfig,
-  writeWorkspaceConfig,
+  moveWorkspacePackage,
   readRootPackageJson,
   writeRootPackageJson,
   updateRootScripts
@@ -150,31 +149,17 @@ function computeNewFolderPath(rootDir, oldPath, oldName, newName) {
 }
 
 /**
- * Update the workspace manifests when a folder path moves. Both
- * pnpm-workspace.yaml and package.json::workspaces are kept in sync
- * (the multi-PM compatibility invariant). Wildcard entries
- * (`extensions/*`) are left alone — only specific paths get rewritten.
+ * Update the workspace manifests when a folder path moves — in place, through the
+ * one editor of the workspace file (`moveWorkspacePackage`): an entry naming the
+ * old path is renamed, a pattern (`extensions/*`) is left as written, and the new
+ * path is registered if no pattern covers it any more. Both pnpm-workspace.yaml and
+ * package.json::workspaces are kept in sync (the multi-PM compatibility invariant).
+ *
+ * ⛔ Until 2026-10-13 the yaml was rewritten from its `packages` alone, deleting its
+ * comments, `onlyBuiltDependencies` and `allowBuilds`.
  */
-async function updateWorkspaceManifestsForFolderMove(
-  rootDir,
-  oldPath,
-  newPath
-) {
-  const wsConfig = await readWorkspaceConfig(rootDir)
-  const rootPkg = await readRootPackageJson(rootDir)
-  if (wsConfig.packages.includes(oldPath)) {
-    const idx = wsConfig.packages.indexOf(oldPath)
-    wsConfig.packages[idx] = newPath
-    await writeWorkspaceConfig(rootDir, wsConfig)
-  }
-  if (
-    Array.isArray(rootPkg.workspaces) &&
-    rootPkg.workspaces.includes(oldPath)
-  ) {
-    const idx = rootPkg.workspaces.indexOf(oldPath)
-    rootPkg.workspaces[idx] = newPath
-    await writeRootPackageJson(rootDir, rootPkg)
-  }
+async function updateWorkspaceManifestsForFolderMove(rootDir, oldPath, newPath) {
+  await moveWorkspacePackage(rootDir, oldPath, newPath)
 }
 
 /**

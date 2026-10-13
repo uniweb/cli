@@ -66,7 +66,7 @@ import {
   normalizeLanguageList
 } from '@uniweb/core/locale-config'
 import { readSiteConfig } from '@uniweb/build/site'
-import { readWorkspaceConfig, resolveGlob } from '../utils/config.js'
+import { workspacePackages } from '../utils/workspace-packages.js'
 
 // Colors for terminal output
 const colors = {
@@ -859,23 +859,20 @@ async function discoverWorkspacePackages(workspaceDir) {
   const extensions = []
   const sites = []
 
-  const { packages } = await readWorkspaceConfig(workspaceDir)
+  // The workspace's packages as pnpm reads its patterns — each folder once. Named
+  // by their path: in a workspace of projects every foundation's folder is `src`.
+  for (const dir of workspacePackages(workspaceDir)) {
+    const fullPath = join(workspaceDir, dir)
+    const name = dir
 
-  for (const pattern of packages) {
-    const dirs = await resolveGlob(workspaceDir, pattern)
-    for (const dir of dirs) {
-      const fullPath = join(workspaceDir, dir)
-      const name = dir.split('/').pop()
-
-      if (isFoundation(fullPath)) {
-        if (isExtensionDir(fullPath)) {
-          extensions.push({ name, path: fullPath })
-        } else {
-          foundations.push({ name, path: fullPath })
-        }
-      } else if (isSite(fullPath)) {
-        sites.push({ name, path: fullPath })
+    if (isFoundation(fullPath)) {
+      if (isExtensionDir(fullPath)) {
+        extensions.push({ name, path: fullPath })
+      } else {
+        foundations.push({ name, path: fullPath })
       }
+    } else if (isSite(fullPath)) {
+      sites.push({ name, path: fullPath })
     }
   }
 

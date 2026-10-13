@@ -96,6 +96,12 @@ export const EXTENSION_KIND = {
  * @returns {{ relativePath: string, packageName: string }}
  */
 export function resolvePlacement(rootDir, name, opts, kind) {
+  // 0. `--project` names the folder itself (rule 4), so a name or a `--path` beside it
+  //    names a second one: refused, never ignored (`projectConflictLines`).
+  if (opts.project && (name || opts.path)) {
+    return { projectConflict: true, relativePath: null, packageName: null }
+  }
+
   // 1. --path is a PARENT directory. The folder is `<path>/<name>` if a
   //    name was given, or `<path>` itself if not (the path's last segment
   //    is then taken as the package name).
@@ -148,4 +154,53 @@ export function resolvePlacement(rootDir, name, opts, kind) {
     relativePath: kind.defaultDir,
     packageName: kind.defaultPkg
   }
+}
+
+/**
+ * What to say when `--project` came with a name or a `--path` — the first line an
+ * error, the rest the commands that do what was meant.
+ *
+ * `--project <p>` is the co-located shorthand: it places a project's one foundation
+ * at `<p>/src/` and its one site at `<p>/site/`, and names nothing else. A name beside
+ * it asks for a different folder, which naming the folder says plainly.
+ * ⛔ Until 2026-10-13 the name won without a word: `add site fitness --project
+ * memberships` created `fitness/` at the workspace root.
+ *
+ * @param {'foundation'|'site'|'extension'} kind
+ * @param {string|null} name - the name given, if any
+ * @param {{ project: string, path?: string }} opts
+ * @param {string} command - how to run the verb: `uniweb add site`, `uniweb clone <uuid>`
+ * @returns {string[]}
+ */
+export function projectConflictLines(kind, name, opts, command) {
+  const p = opts.project
+  if (!name) {
+    return [
+      `--project and --path both name the folder — use one.`,
+      `  ${command} --project ${p}      ${kind === 'site' ? `${p}/site/` : `${p}/src/`}`,
+      `  ${command} --path ${opts.path}`
+    ]
+  }
+  if (kind === 'extension') {
+    return [
+      `--project places a project's foundation or site; an extension goes in the folder you name.`,
+      `  ${command} ${p}/extensions/${name}`
+    ]
+  }
+  if (kind === 'site') {
+    return [
+      `--project ${p} places the project's one site, at ${p}/site/, and takes no name.`,
+      `For a site named "${name}" in ${p}, name its folder — a project with several sites keeps them in ${p}/sites/:`,
+      `  ${command} ${p}/sites/${name}`,
+      `Or the project's one site:`,
+      `  ${command} --project ${p}`
+    ]
+  }
+  return [
+    `--project ${p} places the project's foundation, at ${p}/src/, and takes no name.`,
+    `For a foundation named "${name}" in ${p}, name its folder:`,
+    `  ${command} ${p}/${name}`,
+    `Or the project's foundation:`,
+    `  ${command} --project ${p}`
+  ]
 }

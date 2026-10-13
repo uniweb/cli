@@ -18,10 +18,16 @@ import { existsSync, readFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import yaml from 'js-yaml'
 import { filterCmd } from './pm.js'
 import { writeJsonPreservingStyleAsync } from './json-file.js'
 import { loggedInOriginOf, readSessionFileSync } from './session-file.js'
+import {
+  WORKSPACE_FILE,
+  readWorkspacePatterns,
+  patternsCover,
+  editWorkspaceFilePackages,
+  renderWorkspaceFile
+} from './workspace-packages.js'
 
 // ── Backend origin ─────────────────────────────────────────────
 
@@ -214,59 +220,88 @@ export const DEFAULT_BACKEND_ORIGIN = 'https://uniweb.app'
 /**
  * Read workspace package globs.
  * Tries pnpm-workspace.yaml first, falls back to package.json workspaces.
+ * The folders they name: `workspacePackages` (./workspace-packages.js).
  * @param {string} rootDir - Workspace root directory
  * @returns {Promise<{packages: string[]}>}
  */
 export async function readWorkspaceConfig(rootDir) {
-  // Try pnpm-workspace.yaml first
-  const configPath = join(rootDir, 'pnpm-workspace.yaml')
-  if (existsSync(configPath)) {
-    const content = await readFile(configPath, 'utf-8')
-    const config = yaml.load(content)
-    return { packages: config?.packages || [] }
-  }
-
-  // Fall back to package.json workspaces
-  const pkg = await readRootPackageJson(rootDir)
-  if (Array.isArray(pkg.workspaces)) {
-    return { packages: pkg.workspaces }
-  }
-
-  return { packages: [] }
+  return { packages: readWorkspacePatterns(rootDir).patterns }
 }
 
 /**
- * Write pnpm-workspace.yaml
+ * Make the folder at `relPath` a workspace package.
+ *
+ * Nothing is written for a folder a pattern already covers — it is a package
+ * already. ⛔ Until 2026-10-13 its own path was added beside the pattern, and
+ * discovery listed it twice. Otherwise `entry` — the folder itself, unless a
+ * pattern is given for it — is added to each manifest that does not cover it:
+ *
+ * - pnpm-workspace.yaml's `packages:` list, edited in place: comments and every
+ *   other key stay as they were. ⛔ Until 2026-10-13 the file was rewritten from
+ *   its `packages` alone, deleting `onlyBuiltDependencies` and `allowBuilds` with
+ *   the comments that explain them. A workspace without the file (a blank one, at
+ *   its first `add`) gets it from the workspace template, as `create` writes it.
+ * - package.json's `workspaces`, which npm and yarn read.
+ *
  * @param {string} rootDir - Workspace root directory
- * @param {{packages: string[]}} config
+ * @param {string} relPath - The package's folder, workspace-relative
+ * @param {{ entry?: string }} [options] - `entry`: a pattern to list for it instead
  */
-export async function writeWorkspaceConfig(rootDir, config) {
-  const configPath = join(rootDir, 'pnpm-workspace.yaml')
-  const content = yaml.dump(config, { flowLevel: -1, quotingType: '"' })
-  await writeFile(configPath, content)
-}
-
-/**
- * Add a glob pattern to pnpm-workspace.yaml if not already present
- * @param {string} rootDir - Workspace root directory
- * @param {string} glob - Glob pattern to add
- */
-export async function addWorkspaceGlob(rootDir, glob) {
-  const config = await readWorkspaceConfig(rootDir)
-  if (!config.packages.includes(glob)) {
-    config.packages.push(glob)
-    await writeWorkspaceConfig(rootDir, config)
+export async function registerWorkspacePackage(rootDir, relPath, { entry = relPath } = {}) {
+  const { source, patterns } = readWorkspacePatterns(rootDir)
+  const ymlPath = join(rootDir, WORKSPACE_FILE)
+  if (!patternsCover(patterns, relPath)) {
+    if (source === WORKSPACE_FILE) {
+      const text = await readFile(ymlPath, 'utf-8')
+      await writeFile(ymlPath, editedWorkspaceFile(text, (list) => [...list, entry], entry))
+    } else {
+      await writeFile(ymlPath, renderWorkspaceFile([...patterns, entry]))
+    }
   }
 
-  // Sync workspaces array in package.json (for npm compatibility)
   const pkg = await readRootPackageJson(rootDir)
-  if (!pkg.workspaces) {
-    pkg.workspaces = []
-  }
-  if (!pkg.workspaces.includes(glob)) {
-    pkg.workspaces.push(glob)
+  const workspaces = Array.isArray(pkg.workspaces) ? pkg.workspaces : []
+  if (!patternsCover(workspaces, relPath)) {
+    pkg.workspaces = [...workspaces, entry]
     await writeRootPackageJson(rootDir, pkg)
   }
+}
+
+/**
+ * A package folder moved from `oldPath` to `newPath`: rename its entry in each
+ * manifest that lists it by path — a pattern is left as written — then register
+ * the new path, in case it has moved out from under the pattern that covered it.
+ *
+ * @param {string} rootDir
+ * @param {string} oldPath
+ * @param {string} newPath
+ */
+export async function moveWorkspacePackage(rootDir, oldPath, newPath) {
+  const { source, patterns } = readWorkspacePatterns(rootDir)
+  if (source === WORKSPACE_FILE && patterns.includes(oldPath)) {
+    const ymlPath = join(rootDir, WORKSPACE_FILE)
+    const text = await readFile(ymlPath, 'utf-8')
+    const rename = (list) => list.map((p) => (p === oldPath ? newPath : p))
+    await writeFile(ymlPath, editedWorkspaceFile(text, rename, newPath))
+  }
+  const pkg = await readRootPackageJson(rootDir)
+  if (Array.isArray(pkg.workspaces) && pkg.workspaces.includes(oldPath)) {
+    pkg.workspaces = pkg.workspaces.map((p) => (p === oldPath ? newPath : p))
+    await writeRootPackageJson(rootDir, pkg)
+  }
+  await registerWorkspacePackage(rootDir, newPath)
+}
+
+/** The edited file, or an error that says what to add by hand — the file is never rewritten. */
+function editedWorkspaceFile(text, edit, entry) {
+  const next = editWorkspaceFilePackages(text, edit)
+  if (next == null) {
+    throw new Error(
+      `Could not edit the packages: list in ${WORKSPACE_FILE} in place, and it is not rewritten ` +
+        `whole. Add "${entry}" to it by hand.`
+    )
+  }
+  return next
 }
 
 /**
@@ -352,66 +387,39 @@ export function computeRootScripts(sites, pm = 'pnpm') {
  */
 export async function updateRootScripts(rootDir, sites, pm = 'pnpm') {
   const pkg = await readRootPackageJson(rootDir)
-  const newScripts = computeRootScripts(sites, pm)
+  const unique = sites.filter((s, i) => sites.findIndex((o) => o.path === s.path) === i)
+  const newScripts = computeRootScripts(unique, pm)
+  const scripts = { ...(pkg.scripts || {}) }
 
   // If we're adding a second site, rename existing dev/preview to dev:{firstName}
-  if (sites.length === 2 && pkg.scripts?.dev) {
-    const firstName = sites[0].name
+  if (unique.length === 2 && scripts.dev) {
+    const firstName = unique[0].name
     // Only rename if the existing dev script references the first site's name
-    if (pkg.scripts.dev.includes(firstName)) {
-      pkg.scripts[`dev:${firstName}`] = pkg.scripts.dev
-      pkg.scripts[`preview:${firstName}`] = pkg.scripts.preview
+    if (scripts.dev.includes(firstName)) {
+      scripts[`dev:${firstName}`] = scripts.dev
+      scripts[`preview:${firstName}`] = scripts.preview
     }
   }
 
-  pkg.scripts = { ...pkg.scripts, ...newScripts }
+  // ⭐ The per-site scripts this CLI writes are regenerated from the sites there are
+  // now, and one it wrote for a site that is gone — renamed, moved, removed — goes.
+  // A script whose command is not one the CLI writes is the user's, and stays.
+  // ⛔ Until 2026-10-13 they were only ever added: after `rename site blog journal`,
+  // `dev:blog` still ran `uniweb dev blog`, a site that no longer existed.
+  for (const [key, value] of Object.entries(scripts)) {
+    if (key in newScripts) continue
+    const m = /^(dev|preview):(.+)$/.exec(key)
+    if (m && cliSiteScripts(m[1], m[2]).includes(value)) delete scripts[key]
+  }
+
+  pkg.scripts = { ...scripts, ...newScripts }
   await writeRootPackageJson(rootDir, pkg)
 }
 
-// Resolve a workspace glob pattern to actual directories
-export async function resolveGlob(rootDir, pattern) {
-  const clean = pattern.replace(/^["']|["']$/g, '')
-
-  if (clean.endsWith('/*')) {
-    // Pattern like "foundations/*" - list subdirectories
-    const baseDir = clean.slice(0, -2)
-    const fullPath = join(rootDir, baseDir)
-    if (!existsSync(fullPath)) return []
-    try {
-      const { readdirSync } = await import('node:fs')
-      const entries = readdirSync(fullPath, { withFileTypes: true })
-      return entries
-        .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
-        .map((e) => join(baseDir, e.name))
-    } catch {
-      return []
-    }
-  }
-
-  if (clean.startsWith('*/')) {
-    // Pattern like "*/foundation" - find subdirs with this child
-    const suffix = clean.slice(2)
-    const { readdirSync } = await import('node:fs')
-    try {
-      const entries = readdirSync(rootDir, { withFileTypes: true })
-      return entries
-        .filter(
-          (e) =>
-            e.isDirectory() &&
-            !e.name.startsWith('.') &&
-            e.name !== 'node_modules'
-        )
-        .filter((e) => existsSync(join(rootDir, e.name, suffix)))
-        .map((e) => join(e.name, suffix))
-    } catch {
-      return []
-    }
-  }
-
-  // Direct path like "foundation" or "site"
-  if (existsSync(join(rootDir, clean))) {
-    return [clean]
-  }
-
-  return []
+/** Every command this CLI has written for the `dev:<site>` / `preview:<site>` script. */
+function cliSiteScripts(kind, site) {
+  return kind === 'dev'
+    ? [`uniweb dev ${site}`, filterCmd('pnpm', site, 'dev'), filterCmd('npm', site, 'dev')]
+    : [filterCmd('pnpm', site, 'preview'), filterCmd('npm', site, 'preview')]
 }
+

@@ -28,6 +28,7 @@ import { writeJsonPreservingStyle } from '../utils/json-file.js'
 import { surveyWorkspaceDeps } from '../utils/dep-survey.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { checkSiteInstall } from '../utils/install-integrity.js'
+import { editWorkspaceFilePackages } from '../utils/workspace-packages.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { DATA_DIR } from '@uniweb/core/data-paths'
 import { FAMILIES, resolveFamily } from '@uniweb/schemas/families'
@@ -1092,7 +1093,7 @@ export async function doctor(args = []) {
 
   // Workspace manifest sync — keep `pnpm-workspace.yaml::packages` and
   // `package.json::workspaces` aligned. The CLI writes both on every
-  // mutation (see addWorkspaceGlob in utils/config.js), but a user who
+  // mutation (see registerWorkspacePackage in utils/config.js), but a user who
   // manually edits one can introduce drift. Drift breaks projects that
   // switch package managers (pnpm-workspace.yaml is pnpm-only;
   // package.json::workspaces is what npm and yarn read).
@@ -1135,21 +1136,28 @@ export async function doctor(args = []) {
       if (onlyInPkg.length)
         log(`    only in package.json::workspaces:    ${onlyInPkg.join(', ')}`)
       if (shouldFix('workspace-manifests-out-of-sync')) {
-        // Canonical resolution: write the union to both manifests.
-        const union = Array.from(
-          new Set([...ymlPackages, ...pkgWorkspaces])
-        ).sort()
-        writeFileSync(
-          ymlPath,
-          yaml.dump({ packages: union }, { flowLevel: -1, quotingType: '"' })
-        )
-        const rootPkgPath = join(workspaceDir, 'package.json')
-        const rootPkgSrc = readFileSync(rootPkgPath, 'utf-8')
-        const rootPkg = JSON.parse(rootPkgSrc)
-        rootPkg.workspaces = union
-        writeJsonPreservingStyle(rootPkgPath, rootPkg, rootPkgSrc)
-        issue.fixed = true
-        fixed(`wrote union [${union.join(', ')}] to both manifests`)
+        // Canonical resolution: each manifest gains what only the other lists. The
+        // yaml is edited in place — its comments and every other key stay.
+        // ⛔ Until 2026-10-13 it was rewritten as `{ packages: union }`, deleting
+        // `onlyBuiltDependencies` and `allowBuilds` with the comments that explain them.
+        const nextYml = editWorkspaceFilePackages(readFileSync(ymlPath, 'utf8'), (list) => [
+          ...list,
+          ...onlyInPkg
+        ])
+        if (nextYml == null) {
+          warn(
+            `Could not edit the packages: list in pnpm-workspace.yaml in place, and it is not rewritten whole. Add ${onlyInPkg.join(', ')} to it by hand.`
+          )
+        } else {
+          writeFileSync(ymlPath, nextYml)
+          const rootPkgPath = join(workspaceDir, 'package.json')
+          const rootPkgSrc = readFileSync(rootPkgPath, 'utf-8')
+          const rootPkg = JSON.parse(rootPkgSrc)
+          rootPkg.workspaces = [...pkgWorkspaces, ...onlyInYml]
+          writeJsonPreservingStyle(rootPkgPath, rootPkg, rootPkgSrc)
+          issue.fixed = true
+          fixed(`both manifests now list [${[...ymlPackages, ...onlyInPkg].join(', ')}]`)
+        }
       } else {
         log(
           `  ${colors.dim}Pick one set of globs and copy it to the other manifest. The two should always match — pnpm reads pnpm-workspace.yaml, npm/yarn read package.json::workspaces.${colors.reset}`

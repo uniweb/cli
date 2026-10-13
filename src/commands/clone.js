@@ -54,9 +54,9 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, resolve, basename, dirname } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { scaffoldWorkspace, scaffoldSite } from '../utils/scaffold.js'
-import { resolvePlacement, SITE_KIND } from '../utils/placement.js'
+import { resolvePlacement, projectConflictLines, SITE_KIND } from '../utils/placement.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
-import { addWorkspaceGlob } from '../utils/config.js'
+import { registerWorkspacePackage } from '../utils/config.js'
 import { detectWorkspacePm, installCmd } from '../utils/pm.js'
 import { BackendClient, describeRequestError, refusalDetail } from '../backend/client.js'
 import { resolveWorkspace } from '../backend/workspace.js'
@@ -298,6 +298,18 @@ export async function clone(args = [], deps = {}) {
       { path: pathFlag, project: projectFlag },
       SITE_KIND
     )
+    // `--project` names the folder itself, so a name or `--path` beside it is refused.
+    if (placement.projectConflict) {
+      const [first, ...rest] = projectConflictLines(
+        'site',
+        target,
+        { path: pathFlag, project: projectFlag },
+        `${getCliPrefix()} clone ${siteUuid}`
+      )
+      error(first)
+      for (const line of rest) note(line)
+      return { exitCode: 1 }
+    }
     if (placement.outsideRoot) {
       error(`--path must name a folder inside the workspace: ${placement.outsideRoot}`)
       note(
@@ -364,7 +376,7 @@ export async function clone(args = [], deps = {}) {
       `Adding site ${colors.bright}${sitePkgName}${colors.reset} to the workspace at ${colors.dim}${placement.relativePath}/${colors.reset} …`
     )
     await scaffoldSite(siteDir, siteContext, { onProgress })
-    await addWorkspaceGlob(existingRoot, placement.relativePath)
+    await registerWorkspacePackage(existingRoot, placement.relativePath)
   }
 
   // 4. Seed the identity this clone was pulled by, under the backend that minted it.

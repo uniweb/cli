@@ -24,7 +24,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { classifyPackage } from '@uniweb/build'
-import { readWorkspaceConfig, resolveGlob } from './config.js'
+import { workspacePackages } from './workspace-packages.js'
 
 /**
  * Discover foundations in the workspace.
@@ -45,30 +45,27 @@ export async function discoverSites(rootDir) {
 }
 
 async function discoverByKind(rootDir, kind) {
-  const { packages } = await readWorkspaceConfig(rootDir)
   const out = []
 
-  for (const pattern of packages) {
-    const dirs = await resolveGlob(rootDir, pattern)
-    for (const dir of dirs) {
-      const fullPath = join(rootDir, dir)
-      if (classifyPackage(fullPath) !== kind) continue
+  // The workspace's packages as pnpm reads its patterns — each folder once.
+  for (const dir of workspacePackages(rootDir)) {
+    const fullPath = join(rootDir, dir)
+    if (classifyPackage(fullPath) !== kind) continue
 
-      // Read package.json for the package name. Synthesize one from
-      // the directory if it's missing or malformed — we still want
-      // the package to surface in pickers.
-      const pkgPath = join(fullPath, 'package.json')
-      let name = dir.split('/').pop()
-      if (existsSync(pkgPath)) {
-        try {
-          const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
-          if (pkg.name) name = pkg.name
-        } catch {
-          // keep directory-derived name
-        }
+    // Read package.json for the package name. Synthesize one from
+    // the directory if it's missing or malformed — we still want
+    // the package to surface in pickers.
+    const pkgPath = join(fullPath, 'package.json')
+    let name = dir.split('/').pop()
+    if (existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
+        if (pkg.name) name = pkg.name
+      } catch {
+        // keep directory-derived name
       }
-      out.push({ name, path: dir })
     }
+    out.push({ name, path: dir })
   }
 
   return out

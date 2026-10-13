@@ -6,10 +6,9 @@
  * Used by commands to auto-detect targets when run from workspace root.
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
-import yaml from 'js-yaml'
+import { workspacePackages } from './workspace-packages.js'
 
 // `classifyPackage` from @uniweb/build is loaded lazily — this module
 // is statically imported by index.js (for `findWorkspaceRoot`), and a
@@ -62,79 +61,19 @@ export function findWorkspaceRoot(startDir = process.cwd()) {
 }
 
 /**
- * Resolve workspace package patterns to actual directories
- * Handles patterns like: "foundation", "site", "foundations/*", "sites/*"
+ * Get workspace packages from pnpm-workspace.yaml or package.json workspaces —
+ * read as pnpm reads them (`workspacePackages`, ./workspace-packages.js).
  *
- * @param {string[]} patterns - Array of patterns from pnpm-workspace.yaml
- * @param {string} workspaceRoot - Workspace root directory
- * @returns {string[]} - Array of existing package directories (relative paths)
- */
-function resolvePatterns(patterns, workspaceRoot) {
-  const packages = []
-
-  for (const pattern of patterns) {
-    // Remove quotes if present
-    const cleanPattern = pattern.replace(/^["']|["']$/g, '')
-
-    if (cleanPattern.endsWith('/*')) {
-      // Glob pattern like "foundations/*" - list subdirectories
-      const baseDir = cleanPattern.slice(0, -2)
-      const fullPath = join(workspaceRoot, baseDir)
-
-      if (existsSync(fullPath)) {
-        try {
-          const entries = readdirSync(fullPath, { withFileTypes: true })
-          for (const entry of entries) {
-            if (entry.isDirectory() && !entry.name.startsWith('.')) {
-              packages.push(join(baseDir, entry.name))
-            }
-          }
-        } catch {
-          // Ignore read errors
-        }
-      }
-    } else {
-      // Direct path like "foundation" or "site"
-      const fullPath = join(workspaceRoot, cleanPattern)
-      if (existsSync(fullPath)) {
-        packages.push(cleanPattern)
-      }
-    }
-  }
-
-  return packages
-}
-
-/**
- * Get workspace packages from pnpm-workspace.yaml or package.json workspaces
+ * ⛔ Until 2026-10-13 this was its own partial reader of the patterns, which saw
+ * `x/*` and plain paths only: `update`, which surveys through it, could not see a
+ * project's `<project>/src` package as `add project` lists it — by a pattern whose
+ * first folder is a star — and reported a stale one as aligned.
+ *
  * @param {string} workspaceRoot
  * @returns {Promise<string[]>} - Array of package directories (relative paths)
  */
 export async function getWorkspacePackages(workspaceRoot) {
-  // Try pnpm-workspace.yaml first
-  const configPath = join(workspaceRoot, 'pnpm-workspace.yaml')
-  if (existsSync(configPath)) {
-    const content = await readFile(configPath, 'utf-8')
-    const config = yaml.load(content)
-    if (config?.packages && Array.isArray(config.packages)) {
-      return resolvePatterns(config.packages, workspaceRoot)
-    }
-  }
-
-  // Fall back to package.json workspaces
-  const pkgPath = join(workspaceRoot, 'package.json')
-  if (existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(await readFile(pkgPath, 'utf-8'))
-      if (Array.isArray(pkg.workspaces)) {
-        return resolvePatterns(pkg.workspaces, workspaceRoot)
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  return []
+  return workspacePackages(workspaceRoot)
 }
 
 /**
