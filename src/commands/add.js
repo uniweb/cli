@@ -1589,7 +1589,7 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
   }
 
   // Read node version from root package.json engines.node if pinned;
-  // otherwise default to 20 (matches the workspace template's >=20.19).
+  // otherwise default to 22, the framework's own floor (>=22.12).
   const rootPkg = JSON.parse(
     await readFile(join(rootDir, 'package.json'), 'utf-8').catch(() => '{}')
   )

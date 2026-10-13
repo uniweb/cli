@@ -34,7 +34,7 @@
     "url": "https://github.com/uniweb/cli/issues"
   },
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22.12"
   },
   "scripts": {
     "test": "node --test 'test/**/*.test.js'"

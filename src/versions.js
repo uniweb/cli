@@ -98,7 +98,7 @@ export const PNPM_VERSION = '11'
  * before Node 22 — pairing it with Node 20 fails at `pnpm install` with
  * `ERR_UNKNOWN_BUILTIN_MODULE` before the build is attempted. That was the
  * default until 2026-07-21, because the CI node major came from the
- * project's `engines.node` and the workspace template declares `>=20.19`.
+ * project's `engines.node` and the workspace template declared `>=20.19`.
  *
  * Verify with `npm view pnpm@<major> engines` when adding an entry.
  */
@@ -153,14 +153,16 @@ export function resolveCiPnpmVersion(rootPkg, installedMajor = null) {
  * @param {string|null|undefined} enginesNode — the project's `engines.node`.
  * @param {'pnpm'|'npm'|'yarn'} packageManager
  * @param {string} [pnpmVersion] — the resolved pnpm major, when pnpm.
- * @param {string} [fallback='20'] — used when engines.node is absent/unparseable.
+ * @param {string} [fallback='22'] — used when engines.node is absent/unparseable:
+ *   the framework's own floor (`>=22.12`), which a scaffolded project inherits
+ *   through its `@uniweb/*` dependencies without declaring one.
  * @returns {string} Node major, as a string for YAML interpolation.
  */
 export function resolveCiNodeVersion(
   enginesNode,
   packageManager,
   pnpmVersion = PNPM_VERSION,
-  fallback = '20'
+  fallback = '22'
 ) {
   const match = enginesNode ? String(enginesNode).match(/(\d+)/) : null
   const declared = match ? Number(match[1]) : Number(fallback)

@@ -6,7 +6,7 @@
  *
  *   1. pnpm 11 + Node 20 → `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`.
  *      pnpm 11 declares engines.node >=22.13; the CI node major came from
- *      the project's engines.node, and the workspace template declares
+ *      the project's engines.node, and the workspace template declared
  *      >=20.19, so every scaffolded pnpm project got an uninstallable
  *      workflow.
  *   2. pnpm 11 refuses dependencies published in the last 24h, and changed
@@ -63,7 +63,8 @@ test('node floor follows the resolved pnpm major', () => {
   assert.equal(resolveCiNodeVersion('>=20.19', 'pnpm', '11'), '22')
   // pnpm 10 runs on Node 18+, so the project's own floor stands.
   assert.equal(resolveCiNodeVersion('>=20.19', 'pnpm', '10'), '20')
-  assert.equal(resolveCiNodeVersion(null, 'pnpm', '10'), '20')
+  // A project that declares no floor gets the framework's (>=22.12).
+  assert.equal(resolveCiNodeVersion(null, 'pnpm', '10'), '22')
 })
 
 test("a project's higher floor is respected, never clamped down", () => {
@@ -74,7 +75,9 @@ test("a project's higher floor is respected, never clamped down", () => {
 test('npm and yarn keep the project floor — no pnpm minimum applies', () => {
   assert.equal(resolveCiNodeVersion('>=20.19', 'npm'), '20')
   assert.equal(resolveCiNodeVersion('>=20.19', 'yarn'), '20')
-  assert.equal(resolveCiNodeVersion(null, 'npm'), '20')
+  // No declared floor: the framework's own, Node 22 — never an EOL Node 20.
+  assert.equal(resolveCiNodeVersion(null, 'npm'), '22')
+  assert.equal(resolveCiNodeVersion(null, 'yarn'), '22')
 })
 
 test('every supported pnpm major declares a node floor', () => {
@@ -110,6 +113,28 @@ test("@uniweb/build's fallback pnpm major agrees with the CLI's", async () => {
     `@uniweb/build falls back to pnpm ${emitted} but the CLI resolves ${PNPM_VERSION} — ` +
       'update FALLBACK_PNPM_VERSION in build/src/hosts/ci-workflow.js to match.'
   )
+})
+
+test("every host adapter's fallback node major agrees with the CLI's", async () => {
+  // Each adapter defaults `nodeVersion` itself, so the CLI's fallback is
+  // copied five times in @uniweb/build. All six moved from '20' to '22'
+  // together when the framework's floor went to Node 22.12 (Node 20 is
+  // end-of-life); this keeps them moving together.
+  const { getAdapter } = await import('@uniweb/build/hosts')
+  for (const host of ['github-pages', 'cloudflare-pages', 'netlify', 'vercel']) {
+    const result = await getAdapter(host).initCi({
+      site: { name: 'acme', path: 'site' },
+      packageManager: 'npm'
+      // nodeVersion deliberately omitted → exercises the fallback
+    })
+    const emitted = result.files[0].content.match(/node-version: '?(\d+)/)?.[1]
+    assert.equal(
+      emitted,
+      resolveCiNodeVersion(null, 'npm'),
+      `${host} falls back to Node ${emitted} but the CLI resolves ` +
+        `${resolveCiNodeVersion(null, 'npm')} — update its nodeVersion default.`
+    )
+  }
 })
 
 /* ---------------------------------------------------------------- *
