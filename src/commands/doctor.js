@@ -15,7 +15,9 @@ import yaml from 'js-yaml'
 import {
   resolveFoundationSrcPath,
   classifyPackage,
-  isExtensionPackage as buildIsExtensionPackage
+  isExtensionPackage as buildIsExtensionPackage,
+  extensionNameOf,
+  findSiteExtension
 } from '@uniweb/build'
 import { loadDeployYml, AGENTS_KEYS } from '@uniweb/build/site'
 import { listAdapters } from '@uniweb/build/hosts'
@@ -1674,37 +1676,31 @@ export async function doctor(args = []) {
     }
   }
 
-  // Validate extension URLs in site.yml
+  // Validate site-relative extension URLs in site.yml — by the rule the build
+  // follows to copy the extension into the site (`findSiteExtension`, from
+  // `@uniweb/build`), so doctor reports what the build will do. ⛔ Until
+  // 2026-10-13 doctor parsed the URL itself and matched any workspace extension
+  // of that name, wherever it was, so it passed a site whose build could not
+  // find its extension.
   for (const site of sites) {
     const siteYml = loadSiteYml(site.path)
     if (!siteYml?.extensions || !Array.isArray(siteYml.extensions)) continue
 
-    for (const extUrl of siteYml.extensions) {
-      if (typeof extUrl !== 'string') continue
+    for (const entry of siteYml.extensions) {
+      const url = typeof entry === 'string' ? entry : entry?.url
+      // Remote URLs and catalog refs are not the site's to serve.
+      const named = extensionNameOf(url)
+      if (!named) continue
 
-      // Skip remote URLs — can't validate those
-      if (extUrl.startsWith('http://') || extUrl.startsWith('https://'))
-        continue
-
-      // Local extension URL: check if it maps to a known extension
-      // URLs like /effects/foundation.js or /extensions/effects/foundation.js
-      const urlParts = extUrl.replace(/^\//, '').split('/')
-      const extName =
-        urlParts.length >= 2 ? urlParts[urlParts.length - 2] : urlParts[0]
-
-      // Check if a matching extension exists and is built
-      const matchingExt = extensions.find(
-        (e) => e.folderName === extName || e.name === extName
-      )
-      if (
-        matchingExt &&
-        !existsSync(join(matchingExt.path, 'dist', 'entry.js'))
-      ) {
-        issues.push({
-          type: 'warn',
-          site: site.name,
-          message: `Extension "${extName}" referenced in site.yml is not built`
-        })
+      const dir = findSiteExtension(named.name, site.path)
+      if (!dir) {
+        const message = `site.yml lists ${url}, and no workspace extension named '${named.name}' is where the site looks: ${named.name}/ or extensions/${named.name}/, in the folder the site is in or a folder above it, up to the workspace root. The build cannot copy it, and the site will 404 on it.`
+        issues.push({ type: 'warn', site: site.name, message })
+        warn(`[${site.name}] ${message}`)
+      } else if (!existsSync(join(dir, 'dist', named.rest))) {
+        const message = `Extension '${named.name}' (${relative(workspaceDir, dir)}/) referenced in site.yml is not built`
+        issues.push({ type: 'warn', site: site.name, message })
+        warn(`[${site.name}] ${message}`)
       }
     }
   }

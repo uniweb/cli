@@ -10,17 +10,23 @@
  * extension named after the folder's first segment — so the site 404'd on it.
  *
  * A site loads a workspace extension from `/<name>/entry.js`, which the build finds
- * in `<name>/` or `extensions/<name>/`: those two are wired, any other folder is
- * not, and the command says why.
+ * in `<name>/` or `extensions/<name>/`, in the folder the site is in or a folder
+ * above it up to the workspace root (`@uniweb/build`, findSiteExtension). What it
+ * finds is wired; anything else is not, and the command says why.
+ *
+ * ⛔ Until 2026-10-13 `add` judged that from the workspace root while the build
+ * looked only beside the site: a site at `sites/main` was wired to
+ * `extensions/effects`, and its build could not find it. `add` asks the build now.
  */
 
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { findSiteExtension } from '@uniweb/build'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const CLI = join(ROOT, 'src/index.js')
@@ -81,5 +87,34 @@ test('--path is the folder it goes in, registered exactly — and not wired, say
   assert.match(read('pnpm-workspace.yaml'), /^ {2}- "?libs\/fx"?$/m)
   assert.doesNotMatch(read('pnpm-workspace.yaml'), /extensions\/\*/)
   assert.doesNotMatch(read('site/site.yml'), /\/fx\//)
-  assert.match(r.out, /builds? finds? .*fx\/ or extensions\/fx\/ — not libs\/fx\//)
+  assert.match(r.out, /the build finds in fx\/ or extensions\/fx\/ .*For site\/ that is not libs\/fx\//)
+})
+
+test('a site in sites/ is wired to a shared extension at the workspace root — the folder its build finds', () => {
+  // `--foundation`: the extensions made above are foundations too, so `add site` asks which.
+  const site = cli(['add', 'site', 'sites/main', '--foundation', 'src'], workspace)
+  assert.equal(site.code, 0, site.out)
+  const r = cli(['add', 'extension', 'extensions/shared', '--site', 'main'], workspace)
+  assert.equal(r.code, 0, r.out)
+  assert.match(read('sites/main/site.yml'), /^ {2}- \/shared\/entry\.js$/m)
+  // What `add` wired is what the build loads — the same rule, asked of the same package.
+  const found = findSiteExtension('shared', join(workspace, 'sites', 'main'))
+  assert.equal(found && realpathSync(found), realpathSync(join(workspace, 'extensions', 'shared')))
+})
+
+test('from a site in sites/, a folder the build does not search is not wired, and the command says where it does', () => {
+  const r = cli(['add', 'extension', 'libs2/far', '--site', 'main'], workspace)
+  assert.equal(r.code, 0, r.out)
+  assert.doesNotMatch(read('sites/main/site.yml'), /\/far\//)
+  assert.match(r.out, /far\/ or extensions\/far\/ .*For sites\/main\/ that is not libs2\/far\//)
+})
+
+test('a nearer extension of the same name is named, and the farther one is not wired', () => {
+  const near = cli(['add', 'extension', 'sites/shadow', '--site', 'main'], workspace)
+  assert.equal(near.code, 0, near.out)
+  assert.match(read('sites/main/site.yml'), /^ {2}- \/shadow\/entry\.js$/m)
+
+  const far = cli(['add', 'extension', 'extensions/shadow', '--site', 'main'], workspace)
+  assert.equal(far.code, 0, far.out)
+  assert.match(far.out, /would load the nearer extension named 'shadow', at sites\/shadow\/ — not extensions\/shadow\//)
 })

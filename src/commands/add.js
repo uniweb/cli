@@ -11,12 +11,16 @@
  *   uniweb add section <name> [--foundation <name>]
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join, relative, basename } from 'node:path'
 import prompts from 'prompts'
 import yaml from 'js-yaml'
-import { resolveFoundationSrcPath, readFoundationName } from '@uniweb/build'
+import {
+  resolveFoundationSrcPath,
+  readFoundationName,
+  findSiteExtension
+} from '@uniweb/build'
 import {
   scaffoldFoundation,
   scaffoldSite,
@@ -750,60 +754,57 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   //     warning so the user/agent knows wiring is pending, and exit 0
   //     (the extension itself is fine).
   //   - no sites: print a note and exit 0.
+  // ⭐ And only when that site can load it (extensionUnreachable): an entry the
+  // build cannot serve would build with a warning and 404 at runtime.
   let wiredSite = null
   let unwiredReason = null
-  // A site loads a workspace extension from `/<name>/entry.js`, which the build
-  // finds in `<name>/` or `extensions/<name>/` (wireExtensionToSite). An entry
-  // pointing anywhere else would build with a warning and 404 at runtime, so
-  // none is written.
-  const reachable = relativePath === name || relativePath === `extensions/${name}`
-  if (!reachable) {
-    unwiredReason =
-      `A site loads a workspace extension from /${name}/entry.js, which the build finds in ` +
-      `${name}/ or extensions/${name}/ — not ${relativePath}/. Move the folder to one of those, ` +
-      `or list a URL where the built extension is served under <site>/site.yml::extensions:.`
-  } else if (opts.site) {
-    wiredSite = await wireExtensionToSite(rootDir, opts.site, relativePath)
-  } else {
-    const sites = await discoverSites(rootDir)
-    if (sites.length === 1) {
-      wiredSite = await wireExtensionToSite(rootDir, sites[0].name, relativePath)
-    } else if (sites.length > 1) {
-      if (isNonInteractive(process.argv)) {
-        unwiredReason = `Multiple sites in workspace; extension not wired. Re-run with --site <name>, or edit <site>/site.yml::extensions: manually.`
-      } else {
-        const sortedSites = [...sites].sort((a, b) =>
-          a.name.localeCompare(b.name)
-        )
-        const response = await prompts(
-          {
-            type: 'select',
-            name: 'site',
-            message: 'Which site is this extension for?',
-            choices: sortedSites.map((s) => ({
-              title: s.name,
-              description: s.path,
-              value: s.name
-            }))
-          },
-          {
-            onCancel: () => {
-              log('\nCancelled.')
-              process.exit(0)
-            }
-          }
-        )
-        if (response.site) {
-          wiredSite = await wireExtensionToSite(rootDir, response.site, relativePath)
-        }
-      }
+  let target = null
+  const sites = await discoverSites(rootDir)
+  if (opts.site) {
+    target = sites.find((s) => s.name === opts.site) || null
+    if (!target) {
+      unwiredReason = `Could not find site '${opts.site}' to wire this extension to. Available: ${sites.map((s) => s.name).join(', ') || 'none'}.`
+    }
+  } else if (sites.length === 1) {
+    target = sites[0]
+  } else if (sites.length > 1) {
+    if (isNonInteractive(process.argv)) {
+      unwiredReason = `Multiple sites in workspace; extension not wired. Re-run with --site <name>, or edit <site>/site.yml::extensions: manually.`
     } else {
-      unwiredReason = `No site in this workspace yet. Wire this extension into a site's site.yml::extensions: once you create one.`
+      const sortedSites = [...sites].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      )
+      const response = await prompts(
+        {
+          type: 'select',
+          name: 'site',
+          message: 'Which site is this extension for?',
+          choices: sortedSites.map((s) => ({
+            title: s.name,
+            description: s.path,
+            value: s.name
+          }))
+        },
+        {
+          onCancel: () => {
+            log('\nCancelled.')
+            process.exit(0)
+          }
+        }
+      )
+      target = sites.find((s) => s.name === response.site) || null
+    }
+  } else {
+    unwiredReason = `No site in this workspace yet. Wire this extension into a site's site.yml::extensions: once you create one.`
+  }
+  if (target) {
+    unwiredReason = extensionUnreachable(rootDir, target, name, fullPath)
+    if (!unwiredReason) {
+      wiredSite = await wireExtensionToSite(rootDir, target.name, relativePath)
     }
   }
 
-  // Update root scripts
-  const sites = await discoverSites(rootDir)
+  // Update root scripts (an extension adds no site, so the list read above stands)
   await updateRootScripts(rootDir, sites, pm)
 
   let msg = `Created extension '${name}' at ${relativePath}/`
@@ -1125,6 +1126,41 @@ async function applyFromTemplate(
 }
 
 /**
+ * Why `site` cannot load the extension just made at `extensionDir` — or null when
+ * it can. A site loads `/<name>/entry.js` from the folder `@uniweb/build` finds for
+ * `<name>` (`findSiteExtension`): `<name>/` or `extensions/<name>/`, in the folder
+ * the site is in or one above it, up to the workspace root. The build, prerender
+ * and the dev server follow that rule, so `add` asks it rather than restating it.
+ *
+ * ⛔ Until 2026-10-13 this was a copy of the rule, judged from the workspace root
+ * while the build looked only in the folder the site is in — so a site at
+ * `sites/main` was wired to `extensions/effects`, and its build could not find it.
+ *
+ * @param {string} rootDir
+ * @param {{ name: string, path: string }} site - `path` relative to `rootDir`
+ * @param {string} name - the extension's folder name: its URL's first segment
+ * @param {string} extensionDir - absolute
+ * @returns {string|null}
+ */
+function extensionUnreachable(rootDir, site, name, extensionDir) {
+  const found = findSiteExtension(name, join(rootDir, site.path))
+  if (found && realpathSync(found) === realpathSync(extensionDir)) return null
+  const here = relative(rootDir, extensionDir)
+  if (found) {
+    return (
+      `Site '${site.name}' would load the nearer extension named '${name}', at ` +
+      `${relative(rootDir, found)}/ — not ${here}/. Rename one of them.`
+    )
+  }
+  return (
+    `A site loads a workspace extension from /${name}/entry.js, which the build finds in ` +
+    `${name}/ or extensions/${name}/ in the folder the site is in or a folder above it, up to ` +
+    `the workspace root. For ${site.path}/ that is not ${here}/: move the folder there, or list a ` +
+    `URL where the built extension is served under ${site.path}/site.yml::extensions:.`
+  )
+}
+
+/**
  * Wire an extension URL to a site's site.yml
  */
 async function wireExtensionToSite(rootDir, siteName, extensionFolder) {
@@ -1147,10 +1183,11 @@ async function wireExtensionToSite(rootDir, siteName, extensionFolder) {
     const config = yaml.load(content) || {}
 
     // ⭐ The site loads it from its own origin at `/<name>/entry.js`, `<name>`
-    // being the extension's folder: the build finds that extension's build in
-    // `<name>/` or `extensions/<name>/`, copies it into the site's output there,
-    // and prerender imports it from the same place (`@uniweb/build`,
-    // resolveExtensionDist) — the form the `extensions` template declares.
+    // being the extension's folder: the build finds that extension by name
+    // (`@uniweb/build`, findSiteExtension — the caller has checked it finds THIS
+    // one), copies its build into the site's output there, and prerender and the
+    // dev server load it from the same place — the form the `extensions`
+    // template declares.
     // ⛔ Until 2026-10-08 this wrote `/<folder>/dist/entry.js`, which that lookup
     // reads as an extension named after the folder's FIRST segment —
     // `/extensions/effects/dist/entry.js` as one named `extensions` — so the
