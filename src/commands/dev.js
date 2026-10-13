@@ -149,6 +149,8 @@ export async function dev(args = []) {
     )
   }
 
+  await ensureSiteExtensionsBuilt(sitePath)
+
   console.error(
     `${DIM}→ ${command}${RESET} ${DIM}(site: ${site.name}, dir: ${sitePath})${RESET}`
   )
@@ -160,6 +162,61 @@ export async function dev(args = []) {
     console.error(`${RED}✗${RESET} Failed to start dev server: ${err.message}`)
     process.exit(1)
   })
+}
+
+/**
+ * Build the site's workspace extensions that are missing or older than their
+ * sources, before its dev server starts — as `uniweb build` builds extensions
+ * before sites. A site loads a workspace extension from its BUILD in dev as in a
+ * built site (the dev server serves its `dist/`), so an unbuilt one is a 404 and a
+ * stale one is the code as it was. Found by the rule the build follows
+ * (`findSiteExtension`, `@uniweb/build`).
+ *
+ * Nothing watches an extension while the server runs: after editing one, run
+ * `uniweb build` and reload. A failed build warns and dev starts anyway — the
+ * site without its extension is still worth looking at.
+ */
+export async function ensureSiteExtensionsBuilt(sitePath) {
+  let build, readSiteConfig, ensureFoundationFresh
+  try {
+    build = await import('@uniweb/build')
+    ;({ readSiteConfig } = await import('@uniweb/build/site'))
+    ;({ ensureFoundationFresh } = await import('./build.js'))
+  } catch {
+    return // Not installed yet — the dev server says so in its own words.
+  }
+  let declared
+  try {
+    declared = readSiteConfig(sitePath)?.extensions
+  } catch {
+    return // An unreadable site.yml is the dev server's to report.
+  }
+  if (!Array.isArray(declared)) return
+
+  const dirs = new Set()
+  for (const entry of declared) {
+    const named = build.extensionNameOf(typeof entry === 'string' ? entry : entry?.url)
+    const dir = named && build.findSiteExtension(named.name, sitePath)
+    if (dir) dirs.add(dir)
+  }
+  const step = process.env.UNIWEB_BUILD_STEP
+  process.env.UNIWEB_BUILD_STEP = 'dev' // a step of `dev`: no "what next" after each build
+  try {
+    for (const dir of dirs) {
+      try {
+        await ensureFoundationFresh(dir, 'extension')
+      } catch (err) {
+        console.error(
+          `${YELLOW}⚠${RESET} Could not build the extension at ${dir}: ${err.message}`
+        )
+        console.error(`  The site will start without it. Fix it, then run \`uniweb build\` and reload.`)
+        console.error('')
+      }
+    }
+  } finally {
+    if (step === undefined) delete process.env.UNIWEB_BUILD_STEP
+    else process.env.UNIWEB_BUILD_STEP = step
+  }
 }
 
 /**
