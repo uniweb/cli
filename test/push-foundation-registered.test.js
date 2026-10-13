@@ -42,7 +42,9 @@ function workspace({ name = '@acme/base', version = '1.4.2' } = {}) {
   mkdirSync(site, { recursive: true })
   mkdirSync(fnd, { recursive: true })
   writeFileSync(join(site, 'site.yml'), 'name: Acme\nfoundation: src\n')
-  writeFileSync(join(fnd, 'package.json'), JSON.stringify({ name, version }))
+  // `main` names the generated entry, as on every scaffolded foundation — what makes
+  // `src/` a foundation to the resolver that finds it by name.
+  writeFileSync(join(fnd, 'package.json'), JSON.stringify({ name, version, main: './_entry.generated.js' }))
   return { ws, site }
 }
 
@@ -153,7 +155,7 @@ function divergedWorkspace() {
   writeFileSync(join(site, 'site.yml'), 'name: Acme\nfoundation: src\n')
   writeFileSync(
     join(fnd, 'package.json'),
-    JSON.stringify({ name: '@acme/base', version: '1.4.2' })
+    JSON.stringify({ name: '@acme/base', version: '1.4.2', main: './_entry.generated.js' })
   )
   // Something for the digest to hash — it will not match the registered one.
   writeFileSync(join(fnd, 'dist', 'entry.js'), 'export default {}\n')
@@ -370,7 +372,10 @@ test('--no-release binds to the RELEASED version, never a bumped-but-unreleased 
   mkdirSync(site, { recursive: true })
   mkdirSync(join(fnd, 'dist'), { recursive: true })
   writeFileSync(join(site, 'site.yml'), 'name: Acme\nfoundation: src\n')
-  writeFileSync(join(fnd, 'package.json'), JSON.stringify({ name: '@acme/base', version: '2.0.0' }))
+  writeFileSync(
+    join(fnd, 'package.json'),
+    JSON.stringify({ name: '@acme/base', version: '2.0.0', main: './_entry.generated.js' })
+  )
   writeFileSync(join(fnd, 'dist', 'entry.js'), 'export default {}\n')
   const cliBin = join(ws, 'fake-cli.js')
   writeFileSync(cliBin, 'process.exit(0)\n')

@@ -49,6 +49,9 @@ function workspace(version) {
     name: '@acme/base',
     version,
     type: 'module',
+    // The generated entry, as on every scaffolded foundation — what makes `src/` a
+    // foundation to the resolver that finds it by name.
+    main: './_entry.generated.js',
     dependencies: { '@uniweb/kit': '^0.9.0' }
   }
   const pkgText = JSON.stringify(pkg, null, 4) + '\n'

@@ -58,7 +58,8 @@ import {
   discoverComponents,
   resolveFoundationSrcPath,
   classifyPackage,
-  isExtensionPackage
+  isExtensionPackage,
+  detectFoundationType
 } from '@uniweb/build'
 import {
   resolveDefaultLocale,
@@ -289,10 +290,11 @@ async function buildFoundation(projectDir, options = {}) {
  *
  * Freshness rule: a built artifact (`dist/entry.js` or the legacy
  * `dist/foundation.js`) exists AND its mtime is >= the newest mtime of
- * any tracked source file. Tracked sources: every file under
- * `<foundation>/src/`, plus root-level `package.json`, `foundation.js`,
- * `meta.js` (the structural files that drive entry generation and
- * schema). Build outputs and node_modules are skipped.
+ * any tracked source file. Tracked sources: every file under the
+ * package's source root (the package itself when flat, `src/` when
+ * nested — `isFoundationSourceNewerThan`), plus root-level `package.json`,
+ * `foundation.js`, `meta.js` (the structural files that drive entry
+ * generation and schema). Build outputs and node_modules are skipped.
  *
  * Both artifact names are accepted because the foundation build emitter
  * was renamed `dist/foundation.js → dist/entry.js` in `@uniweb/build`
@@ -300,7 +302,7 @@ async function buildFoundation(projectDir, options = {}) {
  * the legacy name; we don't want the cascade to keep rebuilding such a
  * foundation forever just because the new name is missing.
  */
-async function ensureFoundationFresh(foundationDir, label = 'foundation') {
+export async function ensureFoundationFresh(foundationDir, label = 'foundation') {
   const distArtifact = findFoundationDistArtifact(foundationDir)
 
   if (!distArtifact) {
@@ -344,17 +346,26 @@ function findFoundationDistArtifact(foundationDir) {
 
 /**
  * Returns true if any tracked foundation source file has an mtime newer
- * than `referenceMtime`. Walks `<foundationDir>/src/` recursively (skipping
- * dotfiles, node_modules, and dist). Also stats the root structural files.
+ * than `referenceMtime`. Walks the package's source root — the folder
+ * `package.json::main` names (`resolveFoundationSrcPath`): the package itself
+ * for a flat package, `src/` for a nested one — recursively, skipping dotfiles,
+ * node_modules, dist and the generated entry. Also stats the root structural
+ * files.
+ *
+ * ⛔ Until 2026-10-13 it walked `<foundationDir>/src/` whatever the layout, and
+ * every package scaffolded since the flat layout keeps its sources at its root —
+ * so an edit to a section never made one stale. Measured: touching a section of
+ * a flat foundation and building its site rebuilt nothing, and prerender rendered
+ * the static HTML with the foundation as last built.
  */
-function isFoundationSourceNewerThan(foundationDir, referenceMtime) {
+export function isFoundationSourceNewerThan(foundationDir, referenceMtime) {
   const rootFiles = ['package.json', 'foundation.js', 'meta.js']
   for (const f of rootFiles) {
     const p = join(foundationDir, f)
     if (existsSync(p) && statSync(p).mtimeMs > referenceMtime) return true
   }
 
-  const srcDir = join(foundationDir, 'src')
+  const srcDir = resolveFoundationSrcPath(foundationDir)
   if (!existsSync(srcDir)) return false
 
   const stack = [srcDir]
@@ -370,6 +381,7 @@ function isFoundationSourceNewerThan(foundationDir, referenceMtime) {
       if (
         e.name === 'node_modules' ||
         e.name === 'dist' ||
+        e.name === '_entry.generated.js' ||
         e.name.startsWith('.')
       )
         continue
@@ -522,75 +534,34 @@ async function generateLocalizedHtml(projectDir, i18nConfig) {
 }
 
 /**
- * Resolve foundation directory based on site config and project structure
+ * The site's local foundation folder — what `site.yml::foundation` names, found by
+ * the build's one resolver (`detectFoundationType`, `@uniweb/build`) — or null
+ * when the foundation is a URL or a catalog ref, or does not resolve.
  *
- * Priority:
- * 1. Read site's package.json to find foundation dependency path (most reliable)
- * 2. Check foundations/{name} for multi-site projects
- * 3. Check ../foundation for single-site projects
- * 4. Check ../{name} as fallback
+ * Best-effort on purpose: the site's own build resolves the same declaration
+ * through the same function and raises the canonical error, so null here only
+ * skips what needs a local foundation — the freshness cascade, prerender's
+ * import, link mode's theme defaults.
+ *
+ * ⛔ Until 2026-10-13 this file held two copies of that resolver, weaker in
+ * different ways: one checked a same-named folder beside the site before the
+ * site's `file:` dep and took any folder, so a site named like its foundation
+ * resolved to itself; the other looked in `foundations/<name>` only when the
+ * site sat in a folder called `sites`, then fell back to `../foundation`
+ * whatever the site declared.
+ *
+ * @param {string} projectDir - the site's folder
+ * @param {object|null} [siteConfig] - its `site.yml`, when already read
+ * @returns {string|null}
  */
 function resolveFoundationDir(projectDir, siteConfig) {
-  const foundationName = siteConfig?.foundation
-
-  // First, try to resolve from site's package.json dependencies
-  // This is the most reliable method as it matches how Vite resolves imports
-  if (foundationName) {
-    const pkgPath = join(projectDir, 'package.json')
-    if (existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-        const deps = { ...pkg.dependencies, ...pkg.devDependencies }
-        const depValue = deps[foundationName]
-
-        // Check for file: protocol (local dependency)
-        if (depValue && depValue.startsWith('file:')) {
-          const relativePath = depValue.slice(5) // Remove 'file:' prefix
-          const resolvedPath = join(projectDir, relativePath)
-          if (existsSync(resolvedPath)) {
-            return resolvedPath
-          }
-        }
-      } catch {
-        // Ignore JSON parse errors, fall through to other methods
-      }
-    }
+  const cfg = siteConfig || readSiteConfig(projectDir)
+  try {
+    const info = detectFoundationType(cfg?.foundation, projectDir)
+    return info.type === 'local' ? info.path : null
+  } catch {
+    return null
   }
-
-  // Check if we're in a multi-site structure (site is under sites/)
-  const parentDir = join(projectDir, '..')
-  const grandParentDir = join(projectDir, '..', '..')
-  const isMultiSite =
-    parentDir.endsWith('/sites') || parentDir.endsWith('\\sites')
-
-  if (isMultiSite && foundationName) {
-    // Multi-site: look for foundations/{name}
-    const multiFoundationDir = join(
-      grandParentDir,
-      'foundations',
-      foundationName
-    )
-    if (existsSync(multiFoundationDir)) {
-      return multiFoundationDir
-    }
-  }
-
-  // Single site: ../foundation
-  const singleFoundationDir = join(projectDir, '..', 'foundation')
-  if (existsSync(singleFoundationDir)) {
-    return singleFoundationDir
-  }
-
-  // Fallback: try to find by foundation name in parent
-  if (foundationName) {
-    const namedFoundationDir = join(parentDir, foundationName)
-    if (existsSync(namedFoundationDir)) {
-      return namedFoundationDir
-    }
-  }
-
-  // Ultimate fallback
-  return singleFoundationDir
 }
 
 /**
@@ -633,10 +604,7 @@ async function buildSiteLink(projectDir, options = {}) {
   // theme variable defaults from `foundation.js::theme.vars`. When the
   // foundation is purely a registry ref (no local sibling), this stays
   // null and theme defaults come from theme.yml only.
-  const foundationDir = await resolveFoundationDirForSite(
-    projectDir,
-    siteConfig
-  ).catch(() => null)
+  const foundationDir = resolveFoundationDir(projectDir, siteConfig)
 
   // Link mode does NOT (re)build the foundation. It reads only the
   // foundation's SOURCE config (foundation.js::theme.vars, passed as
@@ -707,44 +675,6 @@ async function buildSiteLink(projectDir, options = {}) {
   log(
     `${colors.green}${colors.bright}Build complete (link mode)${colors.reset}`
   )
-}
-
-/**
- * Best-effort resolution of the local foundation directory for a site,
- * used by `buildSiteLink` to pass `foundationPath` to the data pipeline.
- *
- * Mirrors a subset of `@uniweb/build`'s `detectFoundationType` semantics:
- * when the site declares `foundation: <name>` and a sibling/file: dep
- * resolves to a local foundation, return its path. When the foundation
- * is a registry ref or URL, return null (data pipeline still works
- * without a local foundation; theme defaults just come from theme.yml).
- */
-async function resolveFoundationDirForSite(siteDir, siteConfig) {
-  const cfg = siteConfig || readSiteConfig(siteDir)
-  const foundation = cfg?.foundation
-  if (!foundation || typeof foundation !== 'string') return null
-  // Registry ref or URL — no local foundation.
-  if (/^@[a-z0-9_-]+\/[a-z0-9_-]+@/.test(foundation)) return null
-  if (foundation.startsWith('http://') || foundation.startsWith('https://'))
-    return null
-
-  // Workspace sibling.
-  const sibling = resolve(siteDir, '..', foundation)
-  if (existsSync(sibling)) return sibling
-
-  // file: dep declared in package.json.
-  try {
-    const pkg = JSON.parse(readFileSync(join(siteDir, 'package.json'), 'utf-8'))
-    const dep = pkg.dependencies?.[foundation]
-    if (typeof dep === 'string' && dep.startsWith('file:')) {
-      const filePath = resolve(siteDir, dep.slice(5))
-      if (existsSync(filePath)) return filePath
-    }
-  } catch {
-    /* no package.json or malformed — fall through */
-  }
-
-  return null
 }
 
 /**
@@ -844,8 +774,10 @@ async function buildSite(projectDir, options = {}) {
       const { prerenderSite } = await import('@uniweb/build/prerender')
 
       const result = await prerenderSite(projectDir, {
+        // `undefined`, not null, when there is none: prerenderSite skips a URL or
+        // catalog foundation before it reads this, and defaults it otherwise.
         foundationDir:
-          foundationDir || resolveFoundationDir(projectDir, siteConfig),
+          foundationDir || resolveFoundationDir(projectDir, siteConfig) || undefined,
         host,
         onProgress: (msg) => log(`  ${colors.dim}${msg}${colors.reset}`)
       })
@@ -1193,10 +1125,7 @@ export async function build(args = []) {
       // to the local foundation when the user runs `uniweb build` from a
       // site dir on a fresh checkout where dist/ doesn't exist yet.
       const resolvedFoundationDir =
-        foundationDir ||
-        (await resolveFoundationDirForSite(projectDir, siteConfig).catch(
-          () => null
-        ))
+        foundationDir || resolveFoundationDir(projectDir, siteConfig)
 
       await buildSite(projectDir, {
         prerender,
