@@ -59,7 +59,8 @@ import {
   detectFoundationType,
   isExtensionUrl,
   readFoundationName,
-  checkFoundationName
+  checkFoundationName,
+  findSiteExtension
 } from '@uniweb/build'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { isNonInteractive } from '../utils/interactive.js'
@@ -127,15 +128,24 @@ export function resolveLocalExtensions(siteDir, siteYml) {
           ? entry
           : null
     if (!decl || isExtensionUrl(decl)) continue
-    let info
+    // Resolved as the primary foundation is — and, where that finds nothing, where
+    // extensions live: the rule the build follows for a site-relative extension
+    // (`findSiteExtension`), which looks in `extensions/<name>/` and in the folders
+    // above the site. It takes a plain name only, so a catalog ref stays not local.
+    // ⛔ Until 2026-10-13 only the first: a site naming the `extensions` template's
+    // own `extensions/effects` — as publish's refusal of `/effects/entry.js`
+    // advises — released nothing and sent an unpinned ref the host cannot serve.
+    let dir = null
     try {
-      info = detectFoundationType(decl, siteDir)
+      const info = detectFoundationType(decl, siteDir)
+      if (info?.type === 'local' && info.path) dir = info.path
     } catch {
-      // Unresolved — the site build surfaces the canonical error; nothing local.
-      continue
+      // Not a foundation's shape — tried as an extension below.
     }
-    if (!info || info.type !== 'local' || !info.path) continue
-    out.push({ decl, dir: info.path, version: readPkgField(info.path, 'version') })
+    dir ??= findSiteExtension(decl, siteDir)
+    // Still nothing: the site build surfaces the canonical error; nothing local.
+    if (!dir) continue
+    out.push({ decl, dir, version: readPkgField(dir, 'version') })
   }
   return out
 }

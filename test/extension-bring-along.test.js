@@ -121,3 +121,41 @@ test('a workspace-local extension IS local, and carries its authored decl as the
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+/**
+ * Where extensions live, too: `<name>/` or `extensions/<name>/`, in the folder the
+ * site is in or one above it up to the workspace root — the rule the build follows
+ * for a site-relative one. ⛔ Until 2026-10-13 a NAME was resolved only as the
+ * primary foundation is, which never looks in `extensions/`: the `extensions`
+ * template's own layout, declared by name as publish's refusal of
+ * `/effects/entry.js` advises, released nothing.
+ */
+test('a named extension in extensions/<name>/ is local — the extensions template layout', () => {
+  const root = tmpSite()
+  try {
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages: []\n')
+    const siteDir = join(root, 'site')
+    mkdirSync(siteDir, { recursive: true })
+    const extDir = join(root, 'extensions', 'effects')
+    mkdirSync(extDir, { recursive: true })
+    writeFileSync(
+      join(extDir, 'package.json'),
+      JSON.stringify({ name: 'effects', version: '0.1.0', main: './_entry.generated.js' })
+    )
+    // CONTROL: nothing named `glow` anywhere — still nothing local.
+    assert.deepEqual(resolveLocalExtensions(siteDir, { extensions: ['glow'] }), [])
+
+    const found = resolveLocalExtensions(siteDir, { extensions: ['effects'] })
+    assert.equal(found.length, 1)
+    assert.equal(found[0].decl, 'effects')
+    assert.equal(found[0].dir, extDir)
+    assert.equal(found[0].version, '0.1.0')
+
+    // And from a site in sites/, the shared one at the workspace root.
+    const nested = join(root, 'sites', 'main')
+    mkdirSync(nested, { recursive: true })
+    assert.equal(resolveLocalExtensions(nested, { extensions: ['effects'] })[0]?.dir, extDir)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
