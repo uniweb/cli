@@ -194,6 +194,7 @@ The rest of this guide explains how Uniweb works. This part is what to do *first
 | `src`, `site` | **single** (the default) | foundation in `src/`, site in `site/` |
 | `foundations/*`, `sites/*` | **segregated** | several sites may share one foundation — a foundation edit hits all of them |
 | `*/src`, `*/site` | **co-located projects** | one self-contained pair per project: `docs/src` + `docs/site` |
+| `*/src`, `*/sites/*` | **projects with several sites** | each project's foundation with its sites: `memberships/src` + `memberships/sites/fitness`, `memberships/sites/society` — a foundation edit hits every site in its project |
 | a package whose `main.js` says `extension: true` — `effects`, `extensions/*` (alongside any of the above) | extensions present | extra section types, runtime-loaded — see step 2 |
 
 Those names are convention; the globs are the truth. Full guide with the wiring for each: `development/project-structures.md`.
