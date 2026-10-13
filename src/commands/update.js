@@ -304,11 +304,13 @@ export function printSurvey(
       const r = breakingRows.find((x) => x.name === name)
       log(`     ${colors.red}${name}${colors.reset}  ${r.current} → ${r.target}  ${colors.dim}(${r.bump})${colors.reset}`)
     }
+    // ⛔ The second line said "Read their changelogs before shipping" until 2026-10-13,
+    // when most packages kept none.
     log(
-      `   ${colors.dim}A minor version is where Uniweb's breaking changes go, so these are releases${colors.reset}`
+      `   ${colors.dim}A minor version is where Uniweb's breaking changes go (a major is rarer still),${colors.reset}`
     )
     log(
-      `   ${colors.dim}you may need to act on. Read their changelogs before shipping.${colors.reset}`
+      `   ${colors.dim}so these are releases you may need to act on: build and check before shipping.${colors.reset}`
     )
   }
   log('')
@@ -374,6 +376,8 @@ export async function update(args = []) {
   const depsOnly = args.includes('--deps-only')
   const skipAgents = args.includes('--no-agents') || depsOnly
   const skipDeps = args.includes('--no-deps') || agentsOnly
+  // The flag that kept the deps step from running — what the AGENTS.md step's hint names.
+  const depsSkippedBy = agentsOnly ? '--agents-only' : skipDeps ? '--no-deps' : null
   const dryRun = args.includes('--dry-run')
   const allowMismatch = args.includes('--allow-mismatch')
   const verbose = args.includes('--verbose')
@@ -636,6 +640,7 @@ export async function update(args = []) {
       hasYes,
       nonInteractive,
       agentsOnly,
+      depsSkippedBy,
       depsEdited,
       installRan,
       installPm
@@ -734,6 +739,7 @@ async function refreshAgents(ctx) {
     hasYes,
     nonInteractive,
     agentsOnly,
+    depsSkippedBy,
     depsEdited,
     installRan,
     installPm
@@ -757,13 +763,21 @@ async function refreshAgents(ctx) {
   // Re-survey: deps may have just been edited+installed, which clears the
   // declared-deps gate.
   const finalSurvey = await surveyWorkspaceDeps(workspaceDir)
-  if (finalSurvey.anyDrift && !allowMismatch) {
+  // ⭐ A dry run moves no deps, so they still lag here whenever the deps step has
+  // something to align — while the run it previews aligns and installs them before
+  // this step. Say what that run would do, rather than that this step would skip.
+  const onceInstalled = finalSurvey.anyDrift && dryRun && !depsSkippedBy
+  if (finalSurvey.anyDrift && !allowMismatch && !onceInstalled) {
     warn('AGENTS.md refresh skipped: workspace deps still lag the CLI.')
     log(
       `${colors.dim}AGENTS.md from v${cliVersion} would document features not in your installed packages.${colors.reset}`
     )
+    // ⛔ This always said "Re-run without --no-deps": wrong under --agents-only, and
+    // when the deps edit was declined or left to a non-interactive run's plan.
     log(
-      `${colors.dim}Re-run without ${colors.reset}${colors.cyan}--no-deps${colors.reset}${colors.dim}, or pass ${colors.reset}${colors.cyan}--allow-mismatch${colors.reset}${colors.dim} to override.${colors.reset}`
+      depsSkippedBy
+        ? `${colors.dim}Re-run without ${colors.reset}${colors.cyan}${depsSkippedBy}${colors.reset}${colors.dim}, or pass ${colors.reset}${colors.cyan}--allow-mismatch${colors.reset}${colors.dim} to override.${colors.reset}`
+        : `${colors.dim}Align the deps first — accept the edit, or re-run with ${colors.reset}${colors.cyan}--yes${colors.reset}${colors.dim} — or pass ${colors.reset}${colors.cyan}--allow-mismatch${colors.reset}${colors.dim} to override.${colors.reset}`
     )
     log('')
     if (agentsOnly) process.exit(1)
@@ -797,7 +811,7 @@ async function refreshAgents(ctx) {
 
   if (dryRun) {
     info(
-      `Dry-run: would ${currentAgentsVersion ? `update AGENTS.md (v${currentAgentsVersion} → v${cliVersion})` : `create AGENTS.md (v${cliVersion})`}${keeping}.`
+      `Dry-run: would ${currentAgentsVersion ? `update AGENTS.md (v${currentAgentsVersion} → v${cliVersion})` : `create AGENTS.md (v${cliVersion})`}${keeping}${onceInstalled ? ', once the deps above are installed' : ''}.`
     )
     return 'skipped'
   }
