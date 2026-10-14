@@ -843,7 +843,9 @@ export class BackendClient {
    * shipped backend-side — collab backend↔framework):
    *   { published: boolean, last_pushed_at?: string, last_published_at?: string, draft_dirty?: boolean }
    * `draft_dirty` = never-published, or the synced draft changed since the last
-   * publish ("pushed but not published").
+   * publish ("pushed but not published"). Since 2026-10-13 it also carries `editors`:
+   * who has the site open in the app right now, and on what — `status --remote` shows
+   * it (`describeEditors`, commands/status.js).
    *
    * ⭐ **The backend also serves a LIVE-SITE record here, and nothing in this CLI reads
    * it yet** (shipped 2026-08-29; documented here so it is not lost twice):

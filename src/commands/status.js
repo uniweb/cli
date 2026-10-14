@@ -7,15 +7,17 @@
  * `uniweb push` runs) — no auth, no backend round-trip.
  *
  * `--remote` adds the backend signals (may prompt for login, like `git fetch`):
- *   - whether the synced draft differs from what's live (publish needed), and
- *   - whether a newer foundation version is registered than the site pins.
+ *   - whether the synced draft differs from what's live (publish needed),
+ *   - whether a newer foundation version is registered than the site pins, and
+ *   - who has the site open in the app right now, and on what (`describeEditors`).
  * Those use ASSUMED endpoints (see kb shipping-verbs-and-freshness.md §6.5); until
  * the backend exposes them, `--remote` degrades silently to the local view.
  *
  * Usage:
  *   uniweb status            Sync identity + unpushed content + foundation ref (local)
  *   uniweb status --remote   Also: whether the backend still holds the site, draft-vs-live,
- *                            and a newer-registered-foundation check
+ *                            a newer-registered-foundation check, and who has it open in
+ *                            the app
  *   uniweb status --json     One JSON line (adds a `remote` object under --remote, whose
  *                            `site_state` is live / gone / unknown — `gone` only on the
  *                            backend's own word that it holds no such site)
@@ -28,7 +30,7 @@ import { join } from 'node:path'
 import yaml from 'js-yaml'
 
 import { resolveSiteDir } from './deploy.js'
-import { probeUnpushed } from '../backend/site-sync.js'
+import { probeUnpushed, readItemUuids, unitFilesOf } from '../backend/site-sync.js'
 import { resolveWorkspace } from '../backend/workspace.js'
 import {
   BackendClient,
@@ -73,6 +75,79 @@ function foundationRef(siteYml) {
   const f = siteYml.foundation
   if (!f) return null
   return typeof f === 'string' ? f : f.ref || null
+}
+
+// What an item that this copy has not synced is called — by its Section on the site.
+const ITEM_KIND = { pages: 'a page', page_sections: 'a section', layout_sections: 'a layout section' }
+
+/**
+ * Who has the site open in the app right now, and on what — the status's `editors`
+ * (backend, since 2026-10-13), as lines a developer can follow up on. Each tab's item is
+ * named by the file it is in this copy, and by its kind and route when this copy has not
+ * synced it (`fileByItemUuid`).
+ *
+ * ⛔ Two ways not to read it. `changed_at` is the item's last change by ANYONE — this
+ * author, another, a push — so it says when the item last changed, never what this
+ * person did. And it is presence, not a lock: nothing refuses or warns a push over it.
+ *
+ * @param {object[]} editors - `[{ person: { uuid, handle, brief }, tabs: [{ page, item }] }]`
+ * @param {object} [opts]
+ * @param {(uuid: string) => string|null} [opts.fileOf] - an item's file in this copy
+ * @param {number} [opts.now] - for "3 min ago"
+ * @returns {{ person: string, tabs: string[] }[]} a tab with nothing open is left out
+ */
+export function describeEditors(editors, { fileOf = () => null, now = Date.now() } = {}) {
+  return editors.map((editor) => ({
+    person: personLabel(editor?.person),
+    tabs: (editor?.tabs || []).map((tab) => tabLabel(tab, fileOf, now)).filter(Boolean)
+  }))
+}
+
+function personLabel(person) {
+  const name = person?.brief?.display_name
+  const handle = person?.handle ? `@${person.handle}` : null
+  if (name && handle) return `${name} (${handle})`
+  return name || handle || `someone (${person?.uuid || 'unnamed'})`
+}
+
+function tabLabel(tab, fileOf, now) {
+  const item = tab?.item
+  if (!item?.uuid) return null
+  const route = tab.page?.route || null
+  const file = fileOf(item.uuid)
+  const what = file
+    ? `${file}${route ? ` (${route})` : ''}`
+    : `${ITEM_KIND[item.section] || 'an item'} not in this copy${route ? ` (${route})` : ''}`
+  const when = sinceLabel(item.changed_at, now)
+  return when ? `${what} · changed ${when}` : what
+}
+
+function sinceLabel(iso, now) {
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return null
+  const min = Math.floor(Math.max(0, now - t) / 60_000)
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min} min ago`
+  const h = Math.floor(min / 60)
+  if (h < 24) return `${h} h ago`
+  const d = Math.floor(h / 24)
+  return `${d} day${d === 1 ? '' : 's'} ago`
+}
+
+/**
+ * An item's file in this copy, from its uuid: `sync.json` keeps each unit's uuid on
+ * `backend` by its path (`items`, banked from every push and pull), and `unitFilesOf`
+ * finds the file the author keeps it in (`1-hero.md` for `hero.md`). Null for an item
+ * this copy has not synced — one added in the app since its last pull.
+ */
+export function fileByItemUuid(siteDir, backend) {
+  const unitOf = new Map(
+    Object.entries(readItemUuids(siteDir, backend)).map(([unit, uuid]) => [String(uuid).toLowerCase(), unit])
+  )
+  return (uuid) => {
+    const unit = unitOf.get(String(uuid).toLowerCase())
+    return unit ? (unitFilesOf(siteDir, unit)[0] ?? unit) : null
+  }
 }
 
 // A versioned registry ref `@org/name@1.2.3` → its scoped name `@org/name` and
@@ -261,6 +336,20 @@ export async function status(args = []) {
         say.info(
           'Synced but not published yet — run `uniweb publish` to go live.'
         )
+      }
+    }
+    // An array is the backend's answer, `[]` included; no key is a backend that does not
+    // say, and then neither do we.
+    if (Array.isArray(site?.editors)) {
+      if (!site.editors.length) {
+        say.dim('Nobody has this site open in the app.')
+      } else {
+        say.info('Open in the app now:')
+        const fileOf = fileByItemUuid(siteDir, probeBackend)
+        for (const { person, tabs } of describeEditors(site.editors, { fileOf })) {
+          console.log(`    ${person}${tabs.length ? '' : ', with nothing open'}`)
+          for (const tab of tabs) console.log(`      ${c.dim}${tab}${c.reset}`)
+        }
       }
     }
     if (
