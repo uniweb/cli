@@ -2525,7 +2525,7 @@ section's fields (`record.brief.name`, not `record.name`), and a record carries 
 items**. Read one entity for its items. Each item carries `section`, its section's name
 (the word a write takes), and `id`, which is what the writer takes to update, move or
 remove it. `scope: 'mine'` lists only the viewer's own records; without it, a list also
-holds what was shared with the viewer.
+holds what was shared with the viewer, and what a role of theirs reaches.
 
 ⭐ **`absent` and an empty `ready` are different answers, and confusing them is the
 mistake to avoid.** `absent` = there is no live source (no `backend` service, or nobody signed
@@ -2560,9 +2560,11 @@ await writer.remove(itemId)
 Gate your controls on what the viewer may do — a record's own `can_edit` from a
 single-entity read — but **never rely on that for safety**. A foundation runs with
 exactly the viewer's own authority, so hiding a button hides a button. ⛔ **Not on
-`viewer.roles`:** a session signed in on a site holds a member's rights — the operator's
-too — so its roles never name an administrator, and a gate on `system_admin` shows the
-operator nothing.
+`viewer.roles` alone:** on a site a session holds its roles as a reader's until it is
+elevated (*Acting as an administrator*, below), so a gate on `system_admin` shows the
+operator nothing until then — and a role never says what the session may do to one
+record. Draw a control that acts through a role from `useElevation().rolesInFull`, and
+let the record answer.
 
 What protects content is the **entry**: a member writes their own entries and not
 another's, and the store enforces it. **Models are open** — anyone signed in may
@@ -2597,6 +2599,28 @@ read that way comes back with `via: 'rbac'`. It is one step, and a backend refus
 to a field entries already fill. `grantable: false` keeps entries from being shared with a
 person or a team; omitted, they can be.
 
+### Acting as an administrator
+
+On a site, an administrator's session reads what their role reaches — the operator reads
+every member's records — and changes nothing through the role until they confirm it is
+them. Their own records they edit, delete and share as always.
+
+```jsx
+const { available, elevated, until, elevate, lower, error } = useElevation()
+// available: the account holds a role that does more than read — offer it only then
+// elevate({ password, code }) — code when the account has a second factor; a refusal is error.kind === 'auth'
+// elevated, until: true while it lasts, and when it ends; lower() ends it early
+```
+
+- It lasts as long as the backend decides; `elevated` turns false by itself at `until`,
+  and elevating again starts the time again. Nothing says whether the account has a
+  second factor, so offer the code field to whoever might.
+- While it lasts `viewer.roles` names the role, and every record read before is read
+  again, so `entity.can_edit` answers for the session as it is now.
+- An account with no password: `elevateWithProvider(provider)` goes to the provider's
+  sign-in and back to the page.
+- It does not open the backend's administration — the Admin link does.
+
 ### The Admin link
 
 ```jsx
@@ -2608,7 +2632,8 @@ const { adminHref } = useSession()
 the operator, and whoever else administers it — and is `null` for everyone else. It
 takes them there already signed in. ⛔ **Navigate to it, never `fetch` it**: the answer is
 a redirect carrying a one-time credential no script on the site is to hold. It decides
-what to offer, not what is allowed — on the site the operator acts as a member.
+what to offer, not what is allowed — on the site the operator acts through their role
+only while elevated.
 
 ### The links the backend mails
 
