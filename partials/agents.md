@@ -540,12 +540,13 @@ Sizing and loading ride on the image: `{width=800 height=600 loading=lazy fit=co
 
 **Separators are forgiving.** `:` works wherever `=` does, and pairs may be separated by whitespace, a comma, or both — `{role=banner width=1200}`, `{role:banner, width:1200}` and `{role:banner,width:1200}` are identical. `=` and spaces are canonical, and that is what gets written back on save. Two rules keep it unambiguous: the separator must **touch** the key (`{note:warning}` is one pair, `{note : warning}` is two flags), and a value containing a **comma** must be quoted (`{style="a, b"}`). A value containing a colon needs no quoting — only the first colon separates, so `{href:https://example.com}` is fine.
 
-Standalone links (alone on a line) become buttons in `content.links[]`. Inline links stay as `<a>` tags inside `content.paragraphs[]`. Multiple links sharing a paragraph are all promoted:
+Standalone links (alone on a line) are promoted to `content.links[]` — usually drawn as buttons, which is the component's choice. Inline links stay as `<a>` tags inside `content.paragraphs[]`. Multiple links sharing a paragraph are all promoted:
 
 ```markdown
 [Primary](/start)              ← standalone → content.links[0]
 [One](/a) [Two](/b)            ← links-only paragraph → both in content.links[]
 Check out [this](/a) link.     ← inline → stays in paragraphs as an <a> tag
+[Go](/start){button}           ← a link with role "button" (also `button:/start`), and a `variant`
 ```
 
 ### Inline text styling
@@ -557,7 +558,7 @@ This is [less important]{muted} context.
 
 `accent` and `callout` (both accent-colored + bold) and `muted` (subtle) are built-in defaults that adapt to context. `--accent` is your brand color unless you declare a separate `colors.accent`, and resolves to the shade you authored — not a darkened one, since accent is decorative emphasis rather than body-size link text. Components receive HTML strings with spans applied: `<span accent="true">faster</span>`.
 
-Sites can adjust these or add named styles in `theme.yml`'s `inline:` section. Overrides merge **property by property**, so declare only what differs (`accent: { font-weight: inherit }` keeps the default color); to drop a default property rather than change it, give it a neutral value (`initial`, `inherit`, `unset`).
+Sites can adjust these or add named styles in `theme.yml`'s `inline:` section — a name is a letter, then letters, digits, `_` or `-`, and never starts with `on` (a handler's prefix, so it is dropped). Overrides merge **property by property**, so declare only what differs (`accent: { font-weight: inherit }` keeps the default color); to drop a default property rather than change it, give it a neutral value (`initial`, `inherit`, `unset`).
 
 > **On a site synced with Uniweb Cloud, the built-in style names round-trip *editable*** — an author who opens a page containing `[Get started]{accent}` gets the editor's own styling control for it, and can change or remove it like any text they styled there.
 >
