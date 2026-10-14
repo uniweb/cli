@@ -2581,6 +2581,22 @@ sections:
 `append_only` holds against the item's own author. That is the difference between a
 permission model and a CSS one.
 
+A schema can also open entries by relationship, and keep them from being shared:
+
+```yaml
+# foundation/schemas/submission.yml
+grantable: false                                     # no entry is shared one at a time
+fields:
+  course: { ref: '@/course', readable_with: edit }   # the course's editors read it
+```
+
+`readable_with` — `read`, `edit` or `admin`, and only on a reference — opens the entry, to
+read and never to change, to whoever holds that level on the entry the reference points to:
+a submission's `course` at `edit` reaches the course's staff and none of its students. A row
+read that way comes back with `via: 'rbac'`. It is one step, and a backend refuses adding it
+to a field entries already fill. `grantable: false` keeps entries from being shared with a
+person or a team; omitted, they can be.
+
 ### The Admin link
 
 ```jsx
