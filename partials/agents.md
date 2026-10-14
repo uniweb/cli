@@ -563,6 +563,12 @@ Sites can adjust these or add named styles in `theme.yml`'s `inline:` section. O
 >
 > **A name the editor doesn't know is preserved exactly, but not editable** — a style you defined yourself in `inline:`, two names on one span, or a `class`/`id` set. Nothing is lost and nothing is approximated: it survives every edit and save untouched, the editor simply offers no control for it. That is a permanent property rather than a gap, because the name set is open by design — you can add styles the editor has no way to know about.
 
+### HTML is not content
+
+Content is markdown. Components decide how it renders, so a tag written in it — `<strong>`, `<span class=…>`, `<div>` — is not markup: it **shows as written**, and the build names the file. Use markdown's own forms instead: `**bold**`, a named style (`[text]{accent}`), a link.
+
+The one exception is `<br/>`, a line break where markdown has no other spelling — inside a heading. For a headline split across lines, the multi-line heading above usually says it better.
+
 ### Fenced code: data blocks vs snippets
 
 Fenced code serves three purposes depending on its info string: `yaml:`/`json:` for data, `md:` for a named kind of prose (see *Concept blocks*), and a bare language for a code sample.
@@ -1071,6 +1077,8 @@ import { H1, H2, H3, P, Span } from '@uniweb/kit'
 <P text={content.paragraphs} className="text-body" />
 <Span text={listItem.paragraphs[0]} className="text-subtle" />
 ```
+
+These strings are safe to render as HTML because the parser builds them from structure and escapes every character of the text. **A string from anywhere else is not** — a field a member wrote, a value an API returned. Render it as text: `{value}` in JSX, or `<PlainText text={value} />`.
 
 Kit provides `H1`–`H6`. These render their own HTML tag — **don't wrap them**: `<H2 text={…} />`, not `<h2><H2 text={…} /></h2>`.
 
@@ -2508,6 +2516,8 @@ const { status, records } = useRecords({ schema: '@/track' })   // summaries: re
 const { entity } = useEntity({ schema: '@/track', uuid: record.uuid })
 const sessions = entity?.hydrated?.items.filter((item) => item.section === 'sessions')
 ```
+
+⛔ **What a member wrote is text.** Render a field as `{record.brief.name}` or `<PlainText text={…} />` — never `<P text>`, `<H1>`–`<H6>` or `SafeHtml`, which render HTML: a member who typed `<img src=x onerror=…>` would run it as whoever views the page. A rich-text field (a ProseMirror document) renders through kit's `Render`, which escapes its text.
 
 ⛔ **A listed record is a summary, not the entity.** `record.brief` holds the brief
 section's fields (`record.brief.name`, not `record.name`), and a record carries **no
