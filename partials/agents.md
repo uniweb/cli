@@ -2515,10 +2515,15 @@ component that never needed one.
 ### Reading
 
 ```jsx
-const { status, records } = useRecords({ schema: '@/track' })   // summaries: record.brief, no items
-const { entity } = useEntity({ schema: '@/track', uuid: record.uuid })
+const { status, records } = useRecords({ schema: '@acme/track' })   // summaries: record.brief, no items
+const { entity } = useEntity({ schema: '@acme/track', uuid: record.uuid })
 const sessions = entity?.hydrated?.items.filter((item) => item.section === 'sessions')
 ```
+
+⛔ **Name a type by its full name, `@scope/name`** — the scope your foundation registered
+under (`@acme/track`). `@/track` is right in `meta.js` and `queries.yml`, where the build and
+`push` qualify it for you, but a `schema` you hand `@uniweb/api` goes to the backend as written,
+and the backend matches the exact name: `@/track` is a `404`.
 
 ⛔ **What a member wrote is text.** Render a field as `{record.brief.name}` or `<PlainText text={…} />` — never `<P text>`, `<H1>`–`<H6>` or `SafeHtml`, which render HTML: a member who typed `<img src=x onerror=…>` would run it as whoever views the page. A rich-text field (a ProseMirror document) renders through kit's `Render`, which escapes its text.
 
@@ -2538,7 +2543,7 @@ for the first tells a visitor their content is gone when it was never requested.
 ### Writing
 
 ```jsx
-const writer = useEntityWriter({ schema: '@/track', uuid: track.uuid })
+const writer = useEntityWriter({ schema: '@acme/track', uuid: track.uuid })
 
 await writer.create({ title: 'Keynote' }, { section: 'sessions', position: 'last' })
 await writer.update(itemId, { ...item.data, room: 'Hall A' })   // whole-data replace
