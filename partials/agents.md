@@ -376,7 +376,7 @@ content = {
   snippets: [],     // Fenced code — [{ language, code }]
   data: {},         // Tagged blocks — ```yaml:tag / ```json:tag give the parsed value,
                     //   ```md:tag gives { items, sequence } (see Concept blocks)
-  tables: [],       // Only when present — [{ rows: [{ cells: [{ children, header, align }] }] }]
+  tables: [],       // Only when present — [{ rows: [{ cells: [{ children, header, align }] }], attrs? }] — attrs: caption, id, placement, from the caption line
   headings: [],     // Only from nested content (quote/list bodies) — a
                     //   section's headline never spills here
   items: [],        // Each has the same flat structure — from headings after body content
@@ -534,7 +534,9 @@ Optional attributes: `{size=20}`, `{color=red}`. Custom SVGs: `![Logo](./logo.sv
 ![alt](./img.jpg){href=/products}       <!-- Clickable media: href + target ride along -->
 ```
 
-Sizing and loading ride on the image: `{width=800 height=600 loading=lazy fit=cover position=center}`. A video adds `{poster=./thumb.jpg autoplay muted loop controls}`; a `{role=pdf}` document adds `{preview=./cover.jpg author=… description=…}` and arrives in `content.documents` — `{ url, name, mime, size?, alt, caption, … }` — declare it in `content:` as `documents`.
+Sizing and loading ride on the image: `{width=800 height=600 loading=lazy fit=cover position=center}`, and its credit as `{author="Jane Doe"}`. A video adds `{poster=./thumb.jpg autoplay muted loop controls}`; a `{role=pdf}` document adds `{preview=./cover.jpg author=… description=…}` and arrives in `content.documents` — `{ url, name, mime, size?, alt, caption, … }` — declare it in `content:` as `documents`.
+
+**Placement — where a block sits in a section rendered in order.** `{placement=left}` (or `right`, `wide`, `full`) on an image or a video; a table takes it on its **caption line**, the paragraph after the table, after a blank line — `: Plans and prices {placement=wide #tbl-plans}`, which also gives the table a caption and a cross-reference id. It is the author's intent, not a size: kit's `<Render>`, `<Prose>` and `<Article>` lay all four out (`data-placement`, styled by `prose-tokens.css`), and any other component ignores it. A section type says which it honours in `meta.js` — `sequence: { label, placement: true }` — and the build warns when a file asks for one its type does not offer.
 
 **Quote values containing spaces:** `{note="Ready to go"}`, not `{note=Ready to go}` — unquoted values end at the first space.
 
@@ -1215,7 +1217,7 @@ export default {
 **`content:` names what the component reads**, each as a label for the author with an optional count (`'Cards [3-6]'`): `title`, `pretitle`, `subtitle`, `paragraphs`, `links`, `lists`, `items`, `media`, `icons`, `documents`, `snippets`, `tables`, `math`, `quotes`, `sequence`.
 
 - **`media` is an image, a video, or an embedded component.** `media: 'Hero media [1]'` takes any of the three; `media: { label, types: ['image'] }` narrows it; `image:`, `videos:` and `insets:` are the same slot narrowed to one type. Read it as `content.media` — the author's order, each item with its `kind` — and render it with `<Visual media={content.media} block={block} />`. Rendering the slot with `<Image>` drops a diagram an author placed there, and kit's `<Media>` is a video player.
-- **`sequence`** says the component renders `content.sequence` — the whole section as written, headline included. `{ label, except: ['table', 'math'] }` names the kinds it leaves out.
+- **`sequence`** says the component renders `content.sequence` — the whole section as written, headline included. `{ label, except: ['table', 'math'] }` names the kinds it leaves out, and `placement` the placements it lays out — `true` for all four (what `<Render>`, `<Prose>` and `<Article>` do), a list (`['wide', 'full']`), or a map per kind (`{ image: ['left', 'right'], table: ['wide'] }`). A visual editor offers an author only those; declare none, and it offers none.
 - **`items: { label, content: { … } }`** says what each entry holds, in the same vocabulary.
 - The build warns on what it can't read, and refuses `visuals:` (declare `media`) and the `content:` element `data` (declare the block's tag in `data:`).
 
