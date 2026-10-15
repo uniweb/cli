@@ -2677,6 +2677,43 @@ sent to an account comes with no link to follow. `unit_name` may be `null`.
 waits — answered in another tab, or withdrawn — is refused with `kind: 'rule'` and
 leaves the list; its `detail` is for people, so branch on `kind`.
 
+### Access to an entry
+
+Whoever administers an entry — its owner, someone given `admin` on it, or a role that
+reaches it while the session is elevated — gives other people `read`, `edit` or `admin` on
+it, and takes it back. An instructor enrolling students in a course is this; name it as
+your solution does ("enrolled", "course staff"):
+
+```jsx
+const { status, grants, grant, revoke, working } = useAccess({ schema: '@/course', uuid: course.uuid })
+// status 'ready' for whoever administers it; 'forbidden' for everyone else — draw nothing
+// grants: [{ account_id, permission, account: { handle, uuid, … }, … }]
+await grant({ handle: 'sam' }, 'read')     // or an account id: a candidate, a grant's account, an owner_id
+await grant([12, 15, 21], 'read')          // many by account id, each on its own: { results }
+await revoke(grants[0])
+```
+
+- ⛔ **Not a grant per entry from your code** — giving access is a person's decision, made
+  through your UI. For "the course's staff read every submission", declare it on the schema
+  (`readable_with`, above) instead of granting each submission as it is created.
+- Giving again replaces: `read` after `edit` lowers it. On a site's backend an entry is
+  given only to the site's members, so an address with no account is refused.
+- An entry given to the viewer lists for them with `via: 'grant'`; they can give it up with
+  `leaveAccess({ schema, uuid })`.
+
+### Where a create lands
+
+Everything a member creates lands at the root of the organization the site's backend is
+founded with — unless the create names one of its units, a department or a course, that the
+viewer is placed in:
+
+```jsx
+const { units } = useUnits()               // [{ unit, id, handle?, name?, parent?, depth, primary }]
+await createEntity({ schema: '@/submission', unit: course.unit, items: [...] })
+```
+
+Landing decides where an entry is, not who may open it.
+
 ### A backend on your machine
 
 You do not need a live backend to build against one. In `site.yml`:
@@ -2701,8 +2738,9 @@ may edit an entry and `append_only`, so a permission you are relying on fails on
 machine rather than in front of a user. The mail it would send is printed in the dev
 server's terminal, its link on your site's root — follow it to try your page. Seed
 `offers: [{ email, invitations: 1 }]` to try an invitation: mailed to an address no
-account holds, or waiting at once for the seeded account whose address it is. State is
-in memory; restart to reset.
+account holds, or waiting at once for the seeded account whose address it is. A seeded
+entity takes `grants: { member: 'read' }`, and `units: [{ handle, parent?, members, floor? }]`
+gives a create somewhere to land. State is in memory; restart to reset.
 
 `uniweb create my-event --template conference` is a worked example of all of this.
 
