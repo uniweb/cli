@@ -17,10 +17,17 @@
  * which is the whole point of a start-of-day command. A version that also pushed
  * would be one you had to think about first, and so one people would stop running.
  *
- * Order is deliberate: git first, then the backend. The three-way merge's common
- * ancestor is the COMMITTED version of each file, so taking teammates' commits
- * first makes that ancestor fresher and the merge more accurate. And if git itself
- * conflicts, refresh stops there — one source of conflict at a time.
+ * Order is deliberate: git first, then the backend. Teammates' commits are then in
+ * the files when the backend's content arrives, and `pull --merge` merges a
+ * teammate's change to a file the last pull wrote just as it merges your own edits:
+ * against the version that pull wrote, found in the repo's history (`pull.js`,
+ * `captureLocalWork`). And if git itself conflicts, refresh stops there — one source
+ * of conflict at a time.
+ *
+ * ⛔ Until 2026-10-16 this said the merge's ancestor was the COMMITTED version of each
+ * file, so taking teammates' commits first made it fresher. That was HEAD — the rule
+ * `pull --merge` dropped on 2026-09-23, because HEAD stops being the version a pull
+ * wrote the moment an edit is committed on top of it.
  *
  * Exits NON-ZERO when a merge left conflicts, the way a conflicted `git merge`
  * does. That is what makes `uniweb refresh && uniweb push` correct by
@@ -91,10 +98,11 @@ function siteContentUuid(siteDir, backend) {
  */
 export async function refresh(args = [], deps = {}) {
   // An unrecognized flag is invisible to a literal scan, so it silently keeps the
-  // default — and for `--backend` the default can be production. This verb never
-  // sent data anywhere, which is why it went unguarded; but it DELEGATES to `pull`,
-  // and a mistyped `--backend` is not forwarded, so the pull runs against whatever
-  // the origin ladder resolves instead of the backend the user named.
+  // default — a mistyped `--no-git` would still pull from the git remote. And this is
+  // the only check refresh's argv gets: the pull it runs is handed `--merge` alone
+  // (below). A backend flag or `--token` is refused here too, naming `uniweb login`
+  // (`utils/flag-guard.js`). *(This explained the check by a mistyped `--backend`
+  // until 2026-10-16; the verb has taken no backend flag since 2026-09-21.)*
   //
   // `sync` validates the UNION of both halves and forwards raw argv, so a legal
   // `uniweb sync --force` would be rejected here. It passes `skipFlagCheck`.

@@ -133,7 +133,10 @@ function flagValue(args, name) {
 
 export async function push(args = [], deps = {}) {
   // An unrecognized flag is invisible to a literal scan, so it silently keeps the
-  // default — including for --backend, where the default can be production.
+  // default — a mistyped `--dry-run` would push for real. A backend flag or `--token`
+  // is refused too, naming `uniweb login` (`utils/flag-guard.js`). *(This named
+  // `--backend` as the example until 2026-10-16; push has taken no backend flag since
+  // 2026-09-21.)*
   //
   // `sync` validates the UNION of its two halves' flags and forwards raw argv, so a
   // legal `uniweb sync --no-git` would be rejected here. It passes `skipFlagCheck`.

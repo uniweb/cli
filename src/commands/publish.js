@@ -8,9 +8,15 @@
  *
  *   1. resolves WHICH site (your location, or the workspace's one site; multiple
  *      → prompt);
- *   2. BRINGS THE FOUNDATION ALONG — if the site's local foundation changed
- *      since its last release, releases the new version first (or asks); a
- *      published registry ref needs nothing (§4, foundation-bring-along.js);
+ *   2. BRINGS THE FOUNDATION ALONG — a local foundation is released when its
+ *      version is not registered yet, and under the next patch (written into its
+ *      package.json) when its code changed since that version was registered;
+ *      unchanged code is not re-released, and a newer registered version stops
+ *      the publish (`--bump`, `--no-release`). It asks only when the backend
+ *      cannot say whether the code changed. A published registry ref needs
+ *      nothing (§4, foundation-bring-along.js). *(This read "releases the new
+ *      version first (or asks)" until 2026-10-16; changed code has been released
+ *      without asking since 2026-09-24.)*
  *   3. SYNCS — builds the site data (link mode), uploads media and the
  *      schema-less data files, and pushes content (the same two-lane sync
  *      `uniweb push` uses);

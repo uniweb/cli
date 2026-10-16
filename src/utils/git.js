@@ -161,17 +161,23 @@ export function uncommittedUnder(dir, relPaths) {
 }
 
 /**
- * A file's committed content — the COMMON ANCESTOR for a three-way merge.
+ * A file's content at HEAD — the ancestor of a three-way merge for a file no pull
+ * wrote. For one a pull wrote, the ancestor is the version it wrote, found in history
+ * by `findCommitted` below: HEAD stops being that version the moment an edit is
+ * committed on top of it.
  *
- * This is the input a merge needs and the backend cannot supply: it keeps no
+ * Either way the ancestor is on this side, which is the point: the backend keeps no
  * per-version item content, and retaining some so it could feed a merge running on
  * the client would put a permanent second write on its hottest table. It doesn't
- * have to. `uniweb pull` writes the backend's content into these files, so the
- * committed version IS the state both sides diverged from — the ancestor was always
- * on this side, in the tool that already knows how to merge.
+ * have to — the tool that already knows how to merge holds the history.
  *
- * @returns {Buffer|null} null when the path isn't in HEAD (a file added locally and
- *   never committed has no ancestor, so there is nothing to merge against).
+ * ⛔ Until 2026-10-16 this called HEAD's content THE common ancestor ("`uniweb pull`
+ * writes the backend's content into these files, so the committed version IS the
+ * state both sides diverged from") — the rule `pull --merge` dropped on 2026-09-23.
+ *
+ * @returns {Buffer|null} null when the path isn't in HEAD — a file added locally and
+ *   never committed has no ancestor; when the backend holds it too, `pull --merge`
+ *   merges the two versions two-way.
  */
 export function showAtHead(dir, relPath) {
   return showAt(dir, 'HEAD', relPath)

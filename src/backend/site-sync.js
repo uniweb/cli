@@ -855,13 +855,18 @@ export function writeSyncCache(siteDir, backend, hashes, applied) {
  * Lives beside the content hashes because it is the same kind of thing — "the
  * backend state this clone last agreed with" — and is already per-entity, which
  * the per-lane `pull-cache.json` (two ETags) is not. Gitignored, per-clone,
- * deletable: losing it means the next push is unconditional, i.e. today's
- * behavior, never a wrong-but-plausible token.
+ * deletable: losing it leaves the next write no base to claim, which a pull
+ * resolves — never a wrong-but-plausible token.
  *
  * Fed from BOTH directions, which is what makes the gate usable: `pull` records
- * the manifest's `extra.version`, and every successful push records the
- * post-write `finalized[].version` the backend returns. Without the push half a
- * second consecutive push would be stale by construction and refused.
+ * each manifest entry's top-level `version` (`readPullVersions`), and every
+ * successful push records the post-write `finalized[].version` the backend returns.
+ * Without the push half a second consecutive push would be stale by construction
+ * and refused.
+ *
+ * ⛔ Until 2026-10-16 this said `pull` records the manifest's `extra.version`. There is
+ * no `extra` on the wire in either direction — the token rides beside `sha256` — and
+ * building against that name disarms the gate without an error.
  */
 export function readBaseVersions(siteDir, backend) {
   return readMap(siteDir, backend, 'baseVersions')

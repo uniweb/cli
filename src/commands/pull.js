@@ -653,8 +653,10 @@ async function confirm(question) {
 }
 
 export async function pull(args = [], deps = {}) {
-  // See utils/flag-guard.js — an unrecognized flag is invisible to a
-  // literal scan, so it silently keeps the default (production, for --backend).
+  // See utils/flag-guard.js — an unrecognized flag is invisible to a literal scan, so
+  // it silently keeps the default: a mistyped `--dry-run` would pull for real, and a
+  // mistyped `--no-delete` would prune. *(This named `--backend` until 2026-10-16;
+  // pull has taken no backend flag since 2026-09-21.)*
   const badFlag = checkFlags('pull', args)
   if (badFlag) {
     error(badFlag.message)
@@ -690,7 +692,7 @@ export async function pull(args = [], deps = {}) {
     if (captured === null) {
       error('Cannot merge: this site is not in a git repository.')
       note(
-        'The common ancestor a merge needs is the committed version of each file.'
+        'The common ancestor a merge needs is in git history: the version of each file your last pull wrote.'
       )
       note(
         'Without a repo there is nothing to merge against — use `uniweb pull --force` to take the backend version.'
