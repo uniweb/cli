@@ -758,6 +758,7 @@ export async function publish(args = []) {
       siteUuid: site.uuid,
       // The plan and every direct PUT name the workspace the rest of the publish did.
       workspace: client.workspace,
+      workspaceSource: client.workspaceSource,
       ball,
       onProgress: (m) => say.dim(`  ${m}`)
     })
@@ -772,6 +773,11 @@ export async function publish(args = []) {
     }
     say.dim(`Record data     : ${r.uploaded.length} file(s) [${r.mode}]`)
   } catch (err) {
+    // The workspace this publish works in, refused — said as itself, as at every other door.
+    if (err instanceof WorkspaceMismatchError) {
+      say.err(err.message)
+      return { exitCode: 1 }
+    }
     // A typed plan refusal gets its own account (quota, or whatever else the
     // backend names); anything else falls through to the raw message. Same
     // treatment the asset plan and the site create already get — this was the

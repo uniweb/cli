@@ -50,6 +50,27 @@ test('live: refused as another workspace\'s — the refusal says where it is', a
   assert.equal(s.workspace, '@acme')
 })
 
+test('live: in no workspace the caller may open (`workspace: null`) — it exists all the same', async () => {
+  const s = await answering(409, {
+    status: 409, title: 'Wrong Workspace', reason: 'wrong_workspace', what: 'site', workspace: null,
+    detail: 'this site is not in a workspace you can open; it cannot be worked on from here'
+  }).siteState(UUID)
+  assert.equal(s.state, 'live')
+  assert.equal(s.workspace, null)
+  assert.match(s.detail, /not in a workspace you can open/)
+})
+
+test('⛔ unknown — never live — when the workspace this request named is refused', async () => {
+  // A 403 on the header says nothing about the site: the request never reached it.
+  const s = await answering(403, {
+    status: 403, title: 'Forbidden', detail: `act_as_unit on ${UUID} not permitted`,
+    op: 'act_as_unit', target: UUID
+  }, { workspace: '@course' }).siteState(UUID)
+  assert.equal(s.state, 'unknown')
+  assert.equal(s.refused, true)
+  assert.match(s.detail, /^@course is not a workspace you can open/)
+})
+
 test('gone: a 404 that names this site', async () => {
   const s = await answering(404, {
     status: 404, title: 'Not Found', detail: `site ${UUID} not found`, kind: 'site', key: UUID

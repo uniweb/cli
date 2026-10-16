@@ -192,12 +192,14 @@ export function workspaceHeader(value) {
  */
 export class WorkspaceMismatchError extends Error {
   /**
-   * @param {{ named: string|null, answer: string|null, source?: string, origin?: string|null }} p -
+   * @param {{ named: string|null, answer: string|null, nowhere?: boolean, source?: string, origin?: string|null, message?: string|null }} p -
    *   the workspace the request named and the one the backend named (`@handle`, a unit's
    *   uuid, null for personal), where the named one came from (`workspace.js`), and the
-   *   backend — a login that switches must name it unless it is the default (`loginCommand`)
+   *   backend — a login that switches must name it unless it is the default (`loginCommand`).
+   *   `nowhere`: the backend named NO workspace the caller may open (`workspace: null`), so
+   *   there is nothing to switch to. `message` replaces the sentence (`WorkspaceRefusedError`).
    */
-  constructor({ named, answer, source = 'login', origin = null }) {
+  constructor({ named, answer, nowhere = false, source = 'login', origin = null, message = null }) {
     const where = (w) =>
       !w ? 'your personal workspace' : w.startsWith('@') ? w : `the unit ${w}`
     // How to work in the site's workspace, said for the way this one was chosen.
@@ -219,12 +221,61 @@ export class WorkspaceMismatchError extends Error {
           ? `To work on it, ${switchTo.env}.`
           : `To work on it: ${login}`
     const why = source === 'flag' ? ' (named on this command)' : source === 'env' ? ' (UNIWEB_WORKSPACE)' : ''
-    super(`This site is in ${where(answer)}, and you are working in ${where(named)}${why}. ${fix}`)
+    super(
+      message ??
+        (nowhere
+          ? `This site is not in a workspace you can open${origin ? ` on ${origin}` : ''}, so it cannot be worked on from here — there is none to switch to.`
+          : `This site is in ${where(answer)}, and you are working in ${where(named)}${why}. ${fix}`)
+    )
     this.name = 'WorkspaceMismatchError'
     this.status = 409
     this.named = named
     this.answer = answer
+    this.nowhere = nowhere
     this.source = source
+  }
+}
+
+/**
+ * The workspace this command named is not one it may open — `403`, `op: "act_as_unit"`.
+ *
+ * ⭐ The header admits exactly the workspaces the account may open: an organization it is a
+ * direct member of, and not an archived one — its own members included [backend, 2026-10-16].
+ * So a login whose workspace was archived after it was chosen hears this on every site
+ * request. ⛔ It is not a refused credential, and "log in again" is the wrong advice for it:
+ * the session is fine, the workspace is not.
+ *
+ * ⭐ Keyed on `op`, never on `title`, which is the `"Forbidden"` every denial shares; and only for
+ * a request that named a workspace, the one kind that can answer it [backend, 2026-10-16].
+ *
+ * A kind of `WorkspaceMismatchError` because every caller treats the two alike — the command
+ * stops and says how to choose — except `siteState`: a refused workspace says nothing about the
+ * site, so it is `unknown` there, never `live`.
+ */
+export class WorkspaceRefusedError extends WorkspaceMismatchError {
+  /**
+   * @param {{ named: string, source?: string, origin?: string|null }} p - the workspace the
+   *   request named (`@handle`, or a unit's uuid), where it came from (`workspace.js`), the backend
+   */
+  constructor({ named, source = 'login', origin = null }) {
+    const where = named.startsWith('@') ? named : `the unit ${named}`
+    const on = origin ? ` on ${origin}` : ''
+    const why = source === 'flag' ? ' (named on this command)' : source === 'env' ? ' (UNIWEB_WORKSPACE)' : ''
+    const fix =
+      source === 'flag'
+        ? 'Name one you can open, or pass --personal.'
+        : source === 'env'
+          ? 'Set UNIWEB_WORKSPACE to one you can open, or to personal.'
+          : `Your login works in it. Choose another: ${loginCommand(origin)} --org @<org> (or --personal) — it does not sign you in again.`
+    super({
+      named,
+      answer: null,
+      source,
+      origin,
+      message: `${where}${why} is not a workspace you can open${on}: you are not a member of it, or it is archived. ${fix}`
+    })
+    this.name = 'WorkspaceRefusedError'
+    this.status = 403
   }
 }
 
@@ -329,6 +380,11 @@ export class BackendClient {
     return this._workspace
   }
 
+  /** Where that workspace came from (`workspace.js`) — so a refusal says how to switch. */
+  get workspaceSource() {
+    return this._workspaceSource
+  }
+
   /**
    * Name the workspace every site request from here on works in (`x-uniweb-workspace`)
    * — the one `resolveWorkspace` answered for this command.
@@ -383,7 +439,9 @@ export class BackendClient {
    * (string → application/json, Buffer/Uint8Array → application/zip). Returns
    * the raw Response so callers branch on status themselves (409 resume,
    * 404 → null, 401/403 messaging, …) — except a `409 wrong_workspace`, thrown as
-   * `WorkspaceMismatchError`: the site is in another workspace than this command's.
+   * `WorkspaceMismatchError`: the site is in another workspace than this command's, or in
+   * none the caller may open; and a `403` refusing the workspace this request named, thrown
+   * as `WorkspaceRefusedError`.
    *
    * @param {string} path - leading-slash path, e.g. '/dev/site/content'
    * @param {object} [opts]
@@ -396,16 +454,43 @@ export class BackendClient {
    */
   async request(path, opts = {}) {
     const res = await this._send(path, opts)
-    if (res?.status !== 409) return res
+    if (res?.status !== 409 && res?.status !== 403) return res
+    const problem =
+      typeof res.clone === 'function' ? await res.clone().json().catch(() => null) : null
+
+    // ⭐ THE WORKSPACE THIS REQUEST NAMED IS NOT ONE THE ACCOUNT MAY OPEN — `403`,
+    // `op: "act_as_unit"`: not a member of it, or it is archived (`WorkspaceRefusedError`).
+    // Only for a request that named one: any other 403 — a credential, a foundation the site
+    // may not take — is the caller's, as before.
+    if (res.status === 403) {
+      if (problem?.op !== 'act_as_unit' || !this._workspace || !namesWorkspace(path)) return res
+      throw new WorkspaceRefusedError({
+        named: this._workspace,
+        source: this._workspaceSource,
+        origin: this.origin
+      })
+    }
 
     // ⭐ THE WORKSPACE A REQUEST NAMES IS CHECKED BY THE BACKEND, NOT HERE. A request whose
     // workspace does not contain the site is refused with `409 wrong_workspace`, naming a
     // workspace the caller CAN open that does — the site's own unit, or a parent. The
     // command works in one workspace, so this stops it (`WorkspaceMismatchError`).
     // ⛔ No handle comparison anywhere: a site in `@acme/labs` is worked on from `@acme`.
-    const problem =
-      typeof res.clone === 'function' ? await res.clone().json().catch(() => null) : null
     if (problem?.reason !== 'wrong_workspace') return res
+    // ⭐ `workspace: null` — NO workspace the caller may open holds the site — is not the
+    // personal workspace, which is the object with both fields null (backend, 2026-10-16). There
+    // is nothing to switch to, so it stops the command whatever workspace it works in.
+    // ⛔ Until 2026-10-16 it was read as personal, and the command said "To work on it: uniweb
+    // login --personal" — false, and following it ended on the same 409.
+    if (problem.workspace === null) {
+      throw new WorkspaceMismatchError({
+        named: this._workspace,
+        answer: null,
+        nowhere: true,
+        source: this._workspaceSource,
+        origin: this.origin
+      })
+    }
     const where = problem.workspace || {}
     // A unit with no handle is named by its uuid, bare — the header takes either.
     const answer = where.handle
@@ -885,23 +970,30 @@ export class BackendClient {
    * the first. Folding `unknown` into `gone` would be worse than no answer.
    *
    *   live     the site's status came back, or the site was refused as belonging to
-   *            another workspace (`409 wrong_workspace` names where it is: it exists)
+   *            another workspace (`409 wrong_workspace` names where it is: it exists) —
+   *            or to none the caller may open (`workspace: null`: it exists too)
    *   gone     a `404` naming this site
-   *   unknown  anything else — no answer, a credential or an id refused, a `404` that
-   *            names something else (a backend too old for the route)
+   *   unknown  anything else — no answer, a credential or an id refused, the workspace
+   *            this request named refused (`refused: true`), a `404` that names something
+   *            else (a backend too old for the route)
    *
    * *Measured 2026-10-06 against a local backend — its wire, its to change:* `200` with
    * the status; `409 wrong_workspace` naming the site's workspace; `404 {kind: "site",
    * key}`; `400` for a malformed id; `401` for a bad bearer.
    *
    * @param {string} uuid
-   * @returns {Promise<{ state: 'live'|'gone'|'unknown', status: number|null, site?: object, workspace?: string|null, detail?: string|null }>}
+   * @returns {Promise<{ state: 'live'|'gone'|'unknown', status: number|null, site?: object, workspace?: string|null, refused?: boolean, detail?: string|null }>}
    */
   async siteState(uuid) {
     let res
     try {
       res = await this.request(`/dev/site/status/${encodeURIComponent(uuid)}`)
     } catch (err) {
+      // The workspace this request named was refused: that says nothing about the site.
+      if (err instanceof WorkspaceRefusedError) {
+        return { state: 'unknown', status: 403, refused: true, detail: err.message }
+      }
+      // In another workspace, or in none the caller may open: either way it exists.
       if (err instanceof WorkspaceMismatchError) {
         return { state: 'live', status: 409, workspace: err.answer, detail: err.message }
       }

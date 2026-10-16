@@ -20,6 +20,7 @@ import {
   BackendClient,
   WORKSPACE_HEADER,
   WorkspaceMismatchError,
+  WorkspaceRefusedError,
   workspaceHandle,
   workspaceHeader,
   namesWorkspace,
@@ -57,6 +58,33 @@ const wrongWorkspace = (handle, unitUuid = handle ? 'UNIT-1' : null) => () =>
       workspace: { unit_uuid: unitUuid, handle }
     }),
     { status: 409, headers: { 'content-type': 'application/problem+json' } }
+  )
+
+/** `409 wrong_workspace` naming NO workspace the caller may open — `workspace: null` (backend, 2026-10-16). */
+const inNoWorkspace = () =>
+  new Response(
+    JSON.stringify({
+      status: 409,
+      title: 'Wrong Workspace',
+      reason: 'wrong_workspace',
+      what: 'site',
+      workspace: null,
+      detail: 'this site is not in a workspace you can open; it cannot be worked on from here'
+    }),
+    { status: 409, headers: { 'content-type': 'application/problem+json' } }
+  )
+
+/** The header's own refusal, as it ships: a generic title, keyed on `op` (backend, 2026-10-16). */
+const actAsUnit = () =>
+  new Response(
+    JSON.stringify({
+      status: 403,
+      title: 'Forbidden',
+      detail: `act_as_unit on ${UNIT} not permitted`,
+      op: 'act_as_unit',
+      target: UNIT
+    }),
+    { status: 403, headers: { 'content-type': 'application/problem+json' } }
   )
 
 // ─── the header ───────────────────────────────────────────────────────────────
@@ -146,6 +174,83 @@ test('a site in the personal workspace, or in a unit with no handle, is said as 
   await assert.rejects(unit.client.request(SITE), new RegExp(`in the unit ${UNIT}.*It has no handle`))
 })
 
+test('⛔ `workspace: null` is NOT the personal workspace — there is none to switch to, from any workspace', async () => {
+  for (const named of ['@acme', null]) {
+    const { client, calls } = recorded(inNoWorkspace)
+    client.setWorkspace(named)
+    await assert.rejects(client.request(SITE), (err) => {
+      assert.ok(err instanceof WorkspaceMismatchError)
+      assert.equal(err.nowhere, true)
+      assert.equal(err.answer, null)
+      assert.match(err.message, /^This site is not in a workspace you can open on http:\/\/backend\.test,/)
+      // Until 2026-10-16 this was "in your personal workspace … --personal": false advice.
+      assert.doesNotMatch(err.message, /personal|--org|To work on it/, String(named))
+      return true
+    })
+    assert.equal(calls.length, 1)
+  }
+})
+
+// ─── the 403: the workspace this request named is not one the account may open ─
+
+test('⛔ a refused workspace (403 act_as_unit) STOPS the command — never "log in again"', async () => {
+  const { client, calls } = recorded(actAsUnit)
+  client.setWorkspace('@course', { source: 'login' })
+  await assert.rejects(client.request(SITE), (err) => {
+    assert.ok(err instanceof WorkspaceRefusedError)
+    assert.ok(err instanceof WorkspaceMismatchError, 'every caller stops on it as on a mismatch')
+    assert.equal(err.status, 403)
+    assert.equal(err.named, '@course')
+    assert.match(
+      err.message,
+      /^@course is not a workspace you can open on http:\/\/backend\.test: you are not a member of it, or it is archived\./
+    )
+    assert.match(err.message, /--org @<org> \(or --personal\) — it does not sign you in again\.$/)
+    assert.doesNotMatch(err.message, /log in again|[Cc]redential/)
+    return true
+  })
+  assert.equal(calls.length, 1)
+})
+
+test('another workspace is chosen the way the refused one was — flag, env, login', async () => {
+  // (A RegExp is matched against `${err.name}: ${err.message}`, hence no `^`.)
+  const cases = [
+    ['flag', /: @course \(named on this command\) is not .*Name one you can open, or pass --personal\.$/],
+    ['env', /: @course \(UNIWEB_WORKSPACE\) is not .*Set UNIWEB_WORKSPACE to one you can open, or to personal\.$/],
+    ['login', /: @course is not .*Your login works in it\. Choose another: uniweb login.* --org @<org>/]
+  ]
+  for (const [source, expected] of cases) {
+    const { client } = recorded(actAsUnit)
+    client.setWorkspace('@course', { source })
+    await assert.rejects(client.request(SITE), expected, source)
+  }
+  // A unit with no handle is named by its uuid.
+  const unit = recorded(actAsUnit)
+  unit.client.setWorkspace(UNIT)
+  await assert.rejects(unit.client.request(SITE), new RegExp(`: the unit ${UNIT} is not a workspace you can open`))
+})
+
+test('any other 403 stays the caller’s — and so does one on a request that named no workspace', async () => {
+  // A request naming none cannot be refused this way (backend, 2026-10-16): nothing to name.
+  const personal = recorded(actAsUnit)
+  personal.client.setWorkspace(null)
+  assert.equal((await personal.client.request(SITE)).status, 403)
+
+  // A route that names no workspace never carried the header.
+  const registry = recorded(actAsUnit)
+  registry.client.setWorkspace('@course')
+  assert.equal((await registry.client.request('/dev/registry/acme/marketing')).status, 403)
+
+  // Another refusal on a site route — a foundation the site may not take.
+  const { client } = recorded(
+    () => new Response(JSON.stringify({ status: 403, reason: 'foundation_not_licensed', package: '@x/y' }), { status: 403 })
+  )
+  client.setWorkspace('@acme')
+  const res = await client.request(SITE)
+  assert.equal(res.status, 403)
+  assert.equal((await res.json()).reason, 'foundation_not_licensed', 'the body is still readable')
+})
+
 test('refused while naming what the backend names: the 409 is returned, not thrown', async () => {
   const { client, calls } = recorded(wrongWorkspace('acme'))
   client.setWorkspace('@acme')
@@ -181,6 +286,8 @@ test('a one-workspace deployment’s plain 409 is surfaced as it is', async () =
 test('a mismatch prints as itself, never as "could not reach the backend"', () => {
   const mismatch = new WorkspaceMismatchError({ named: '@client', answer: '@acme' })
   assert.equal(describeRequestError(mismatch, ORIGIN), mismatch.message)
+  const refused = new WorkspaceRefusedError({ named: '@course', origin: ORIGIN })
+  assert.equal(describeRequestError(refused, ORIGIN), refused.message)
   assert.match(
     describeRequestError(new Error('ECONNREFUSED'), ORIGIN),
     /^Could not reach the backend at http:\/\/backend\.test: ECONNREFUSED$/

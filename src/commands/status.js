@@ -221,6 +221,9 @@ export async function status(args = []) {
           site = siteState.site || null
           // In another workspace: it exists, and the refusal says where — report it.
           if (siteState.status === 409) remoteError = siteState.detail
+        } else if (siteState.refused) {
+          // The workspace this status works in, refused: say so — it is not a fact about the site.
+          remoteError = siteState.detail
         }
       }
       // Foundation freshness: prefer the LOCAL foundation's scoped name (so a
@@ -321,9 +324,9 @@ export async function status(args = []) {
         `To push this as a new site: uniweb forget --server ${probeBackend}, then uniweb push.`
       )
     } else if (siteState?.state === 'unknown') {
-      say.dim(
-        `Could not tell whether the backend holds this site${siteState.detail ? ` (${siteState.detail})` : ''}.`
-      )
+      // A refused workspace is already said above, as itself.
+      const detail = siteState.refused ? null : siteState.detail
+      say.dim(`Could not tell whether the backend holds this site${detail ? ` (${detail})` : ''}.`)
     }
     if (site) {
       if (site.draft_dirty) {

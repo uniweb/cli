@@ -18,6 +18,7 @@ import {
   uploadSiteData,
   describeDataRefusal
 } from '../src/utils/site-data-upload.js'
+import { WorkspaceRefusedError } from '../src/backend/client.js'
 
 const BALL = {
   data: {
@@ -353,6 +354,35 @@ test('a plan refusal carries status + the PARSED problem on the thrown error', a
     assert.equal(err.status, 507)
     assert.equal(err.problem.reason, 'storage_quota_exceeded')
     assert.equal(err.problem.needed_bytes, 5242880)
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})
+
+test('⛔ the workspace the plan named, refused (403 act_as_unit), is said as itself — not as a raw 403', async () => {
+  const realFetch = globalThis.fetch
+  stubPlanFailure(
+    403,
+    JSON.stringify({
+      status: 403,
+      title: 'Forbidden',
+      detail: 'act_as_unit on 019e0000-0000-7000-8000-0000000000c1 not permitted',
+      op: 'act_as_unit',
+      target: '019e0000-0000-7000-8000-0000000000c1'
+    })
+  )
+  try {
+    const err = await uploadSiteData({ ...ARGS, workspace: '@course', workspaceSource: 'flag', ball: BALL }).then(
+      () => null,
+      (e) => e
+    )
+    assert.ok(err instanceof WorkspaceRefusedError)
+    assert.match(err.message, /^@course \(named on this command\) is not a workspace you can open/)
+    // Without a workspace on the plan, a 403 is no refusal of one: the plain error, as before.
+    stubPlanFailure(403, JSON.stringify({ status: 403, title: 'Forbidden', op: 'act_as_unit' }))
+    const plain = await uploadSiteData({ ...ARGS, ball: BALL }).then(() => null, (e) => e)
+    assert.ok(!(plain instanceof WorkspaceRefusedError))
+    assert.equal(plain.status, 403)
   } finally {
     globalThis.fetch = realFetch
   }

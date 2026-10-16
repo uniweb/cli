@@ -51,7 +51,7 @@
  * demonstrated.**
  */
 
-import { WORKSPACE_HEADER } from '../backend/client.js'
+import { WORKSPACE_HEADER, WorkspaceRefusedError } from '../backend/client.js'
 import { createHash } from 'node:crypto'
 import { humanBytes } from './bytes.js'
 import { fetchWithRetry, isTransientStatus } from './fetch-retry.js'
@@ -66,6 +66,8 @@ import { fetchWithRetry, isTransientStatus } from './fetch-retry.js'
  * @param {string|null} [opts.workspace] - the workspace the requests name, `@handle`
  *   (`x-uniweb-workspace`) — on the plan and on every DIRECT PUT, never on a presigned
  *   one, which is self-authorizing and must carry nothing it was not signed with
+ * @param {string} [opts.workspaceSource] - where that workspace came from (`workspace.js`),
+ *   so a refusal of it says how to choose another (`WorkspaceRefusedError`)
  * @param {{ data: Record<string, unknown> }|null} opts.ball - source of the set:
  *   `{ "<relpath under dist/data>": <json> }`, media refs already rewritten
  * @param {(m: string) => void} [opts.onProgress]
@@ -77,6 +79,7 @@ export async function uploadSiteData({
   token,
   siteUuid,
   workspace = null,
+  workspaceSource = 'login',
   ball,
   onProgress = () => {}
 }) {
@@ -166,6 +169,11 @@ export async function uploadSiteData({
       } catch {
         /* not a problem document — prose refusal, or an upstream error page */
       }
+    }
+    // ⭐ The workspace the plan named is not one the account may open — said as every other
+    // site request says it (`WorkspaceRefusedError`, backend/client.js), never as a raw 403.
+    if (planRes.status === 403 && problem?.op === 'act_as_unit' && workspace) {
+      throw new WorkspaceRefusedError({ named: workspace, source: workspaceSource, origin })
     }
     const err = new Error(
       `site data-uploads plan rejected: HTTP ${planRes.status}${body ? ` — ${body.slice(0, 300)}` : ''}`
