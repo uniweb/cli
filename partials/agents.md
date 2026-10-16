@@ -572,6 +572,8 @@ Content is markdown. Components decide how it renders, so a tag written in it �
 
 The one exception is `<br/>`, a line break where markdown has no other spelling — inside a heading. For a headline split across lines, the multi-line heading above usually says it better.
 
+A plain newline inside a paragraph is a space, so wrap prose however you like — re-wrapping a paragraph changes nothing, and pushes nothing. A line break in a paragraph is written on purpose: a backslash (`\`) at the end of the line.
+
 ### Fenced code: data blocks vs snippets
 
 Fenced code serves three purposes depending on its info string: `yaml:`/`json:` for data, `md:` for a named kind of prose (see *Concept blocks*), and a bare language for a code sample.
