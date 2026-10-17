@@ -10,13 +10,18 @@
  * A sync point is one of:
  *   · a commit a PULL made — the backend's content written onto the last sync point's
  *     tree, marked by the trailers below, and merged into the branch, so it is shared;
- *   · the commit a PUSH was made from — what the backend then holds. This copy keeps it
- *     (`backend-cache.json`, `syncPoint`), and the backend can name it on a pull
- *     (`x-uniweb-source`, `backend/client.js`), for every copy that has it.
+ *   · the commit a PUSH was made from — what the backend then holds — or one a push found
+ *     nothing to send from. This copy keeps it (`backend-cache.json`, `syncPoint`), and the
+ *     backend can name it on a pull (`x-uniweb-source`, `backend/client.js`), for every
+ *     copy that has it.
  *
- * ⚖️ Any sync point a history holds is a safe base: both the files and the backend's
- * content descend from it, so neither side's change can read as the other's undoing. The
- * newest one is the precise base — an older one costs conflicts, never content.
+ * ⚖️ THE NEWEST ONE IS THE BASE; an older one is not simply less precise. Both the files and
+ * the backend's content descend from any of them, but between an older one and the
+ * newest, both sides hold the same changes — and where one side then changed a hunk back,
+ * the older base already reads the old text, so the change-back looks like no change and
+ * the merge silently takes the other side. ⛔ Until 2026-10-17 this said "an older one
+ * costs conflicts, never content". So no known base is dropped (`madeOnto`), and the
+ * backend naming its source is a matter of correctness, not only of fewer conflicts.
  *
  * ⛔ Until 2026-10-17 the ancestor was a per-machine list of the files this copy's last pull
  * wrote, by hash, found again in history by content — and HEAD where the list had no
@@ -141,6 +146,15 @@ export function siteTreeIn(repo, rev) {
   }
 }
 
+/** The paths in conflict here, whatever left them — a merge, or a stash put back over one. */
+export function unmergedPaths(repo) {
+  try {
+    return zlist(git(repo.top, ['diff', '--name-only', '-z', '--diff-filter=U']))
+  } catch {
+    return []
+  }
+}
+
 /** Is a merge waiting for its commit here? */
 export function mergeInProgress(repo) {
   try {
@@ -192,17 +206,64 @@ export function historySyncPoint(repo, { origin, siteUuid }) {
   for (const record of out.split('\x1e')) {
     const [sha = '', body = ''] = record.replace(/^\s+/, '').split('\x1f')
     if (!/^[0-9a-f]{40,64}$/.test(sha)) continue
-    const t = trailersOf(body)
-    if (t.origin !== origin || t.siteUuid !== siteUuid || t.path !== repo.path) continue
-    if (siteTreeIn(repo, sha) === t.tree) return sha
+    if (marks(repo, sha, body, { origin, siteUuid })) return sha
   }
   return null
 }
 
+// Does this commit's message mark it a sync point of this site and backend — and does it
+// still hold the site tree its trailer names?
+function marks(repo, sha, body, { origin, siteUuid }) {
+  const t = trailersOf(body)
+  if (t.origin !== origin || t.siteUuid !== siteUuid || t.path !== repo.path) return false
+  return siteTreeIn(repo, sha) === t.tree
+}
+
+/**
+ * The commits a sync point HEAD does not hold still vouches for: the one it was made onto
+ * — its first parent — and that one's, for as long as each is a sync point of this site
+ * HEAD does not hold either.
+ *
+ * ⛔ A merge abandoned (`git merge --abort`) leaves this copy's sync point out of the
+ * history, while the commit it was made onto is still there — and still a state the
+ * backend's content descends from. Until 2026-10-17 it was forgotten with the merge, and
+ * the next pull built on an older sync point, or on none: measured against a real
+ * backend, it conflicted on a section nobody had touched since the commit last pushed from.
+ */
+export function madeOnto(repo, sha, { origin, siteUuid }) {
+  const out = []
+  let at = sha
+  for (let n = 0; n < 16 && isCommit(repo, at) && !isAncestor(repo, at); n++) {
+    let body
+    try {
+      body = gitText(repo.top, ['log', '-1', '--format=%B', at])
+    } catch {
+      break
+    }
+    if (!marks(repo, at, body, { origin, siteUuid })) break
+    let parent = null
+    try {
+      parent = gitText(repo.top, ['rev-parse', '--verify', '-q', `${at}^1`]).trim() || null
+    } catch {
+      // Made onto nothing — a history with no sync point.
+    }
+    if (!parent) break
+    out.push(parent)
+    at = parent
+  }
+  return out
+}
+
 /**
  * The base a pull merges from: the newest of the candidates HEAD descends from. One that
- * descends from all the others is the newest; with none, the most recently committed —
- * any of them is a state both sides descend from, so the choice costs precision at worst.
+ * descends from all the others is the newest; with none, the most recently committed.
+ *
+ * ⚖️ Any of them is a state both sides descend from, but only the newest such state — the
+ * commit the backend's content last came from — merges exactly. An older one costs a
+ * conflict wherever one side changed what the other changed after it, and it silently
+ * undoes a change made after it and then changed BACK on one side: the base already
+ * reads the old text, so the change-back looks like no change at all. ⛔ Until
+ * 2026-10-17 this said an older base "costs precision at worst".
  */
 export function newestBase(repo, candidates) {
   const shas = [...new Set(candidates.filter(Boolean))].filter((s) => isCommit(repo, s) && isAncestor(repo, s))
@@ -471,6 +532,9 @@ function untrackedInTheWay(repo, commit) {
  */
 export function mergeSyncPoint(repo, commit, { message }) {
   if (mergeInProgress(repo)) return { ok: false, reason: 'merge-in-progress' }
+  // Conflicts already here are not this merge's: git would refuse it, and they would read as its own.
+  const unsettled = unmergedPaths(repo)
+  if (unsettled.length) return { ok: false, reason: 'unmerged', paths: unsettled }
   const inTheWay = untrackedInTheWay(repo, commit)
   const blocking = inTheWay.filter((u) => !u.same).map((u) => u.path)
   if (blocking.length) return { ok: false, reason: 'untracked', paths: blocking }
@@ -479,7 +543,13 @@ export function mergeSyncPoint(repo, commit, { message }) {
   for (const u of inTheWay) rmSync(join(repo.top, u.path))
   try {
     git(repo.top, ['merge', '--autostash', '--no-edit', '--no-verify', '--allow-unrelated-histories', '-m', message, commit])
-    return { ok: true, conflicted: [] }
+    // ⛔ THE MERGE IS MADE, AND IT MAY STILL HAVE LEFT CONFLICTS. `--autostash` exits 0 when
+    // the uncommitted work it set aside cannot be put back over what the merge brought: the
+    // files then hold conflict markers, unmerged, and git keeps that work in the stash too.
+    // Until 2026-10-17 that read as a clean merge — a pull that exited 0 over the markers,
+    // so `uniweb pull && uniweb push` would send them.
+    const unstashed = unmergedPaths(repo)
+    return { ok: true, conflicted: unstashed, stashKept: unstashed.length > 0 }
   } catch (err) {
     const conflicted = zlist(git(repo.top, ['diff', '--name-only', '-z', '--diff-filter=U']))
     if (conflicted.length) return { ok: true, conflicted }
@@ -511,23 +581,67 @@ export function takeSyncPoint(repo, commit, { roots, message }) {
   }
 }
 
-/** What the backend changed between two commits, under the site: `[status, path]` pairs. */
-export function changesBetween(repo, from, to) {
+/**
+ * What a pull changed in the files, under the site: `[status, path]` pairs — what the
+ * merge, or the take, moved from `from` (HEAD before it), less what the files already
+ * held as it left them. `files` is the files before it (`snapshotFiles`). `staged` reads a
+ * merge stopped on conflicts from the index; `skip` leaves out the paths in conflict,
+ * which are reported as conflicts.
+ *
+ * ⛔ Until 2026-10-17 a pull listed the backend's content against the base, as "changes
+ * from the backend": a file a push had already written into the files read as one, so
+ * did a person's own edit when there was no base — and `--force` said it "took" a change
+ * where it undid their edit.
+ */
+export function changedInFiles(repo, { from, files, staged = false, skip = [] }) {
+  const scope = ['--', ...(repo.prefix ? [repo.prefix] : [])]
   try {
-    // No base: against the empty tree, in this repository's own hash.
-    const base = from || gitText(repo.top, ['hash-object', '-t', 'tree', '--stdin'], { input: '' }).trim()
-    const out = gitText(repo.top, ['diff', '--name-status', '-z', base, to, '--', ...(repo.prefix ? [repo.prefix] : [])])
-    const parts = out.split('\0').filter(Boolean)
-    const changes = []
+    const parts = zlist(git(repo.top, ['diff', '--name-status', '-z', ...(staged ? ['--cached', from] : [from, 'HEAD']), ...scope]))
+    const moved = []
     for (let i = 0; i < parts.length; ) {
       const status = parts[i++]
       const path = parts[i++]
-      if (/^[RC]/.test(status)) changes.push([status[0], parts[i++]])
-      else changes.push([status, path])
+      moved.push(/^[RC]/.test(status) ? [status[0], parts[i++]] : [status, path])
     }
-    return changes.map(([s, p]) => [s, repo.prefix && p.startsWith(repo.prefix) ? p.slice(repo.prefix.length) : p])
+    // What the files already held as the merge left it is no change to them.
+    const differs = new Set(
+      zlist(git(repo.top, ['diff', '--name-only', '-z', '--no-renames', ...(staged ? ['--cached', files] : [files, 'HEAD']), ...scope]))
+    )
+    return moved
+      .filter(([s, p]) => s !== 'U' && !skip.includes(p) && differs.has(p))
+      .map(([s, p]) => [s, repo.prefix && p.startsWith(repo.prefix) ? p.slice(repo.prefix.length) : p])
   } catch {
     return []
+  }
+}
+
+/**
+ * The files as they are, as a commit to compare against — what is tracked, committed or
+ * not (`git stash create`, which touches neither the files nor any ref); HEAD when nothing
+ * is uncommitted.
+ */
+export function snapshotFiles(repo) {
+  try {
+    return (
+      gitText(repo.top, ['stash', 'create'], {
+        env: { GIT_AUTHOR_NAME: 'uniweb', GIT_AUTHOR_EMAIL: 'sync@uniweb', GIT_COMMITTER_NAME: 'uniweb', GIT_COMMITTER_EMAIL: 'sync@uniweb' }
+      }).trim() || repo.head
+    )
+  } catch {
+    return repo.head
+  }
+}
+
+/**
+ * Does HEAD hold the site's content as the files do — nothing staged, changed or untracked
+ * under the roots? (What the repository ignores is no change.)
+ */
+export function contentCommitted(repo, roots) {
+  try {
+    const full = roots.map((r) => `${repo.prefix}${r}`)
+    return git(repo.top, ['status', '--porcelain', '-z', '--untracked-files=all', '--', ...full]).length === 0
+  } catch {
+    return false
   }
 }
 

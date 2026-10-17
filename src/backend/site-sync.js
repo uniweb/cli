@@ -14,7 +14,8 @@
 import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs'
 import { join, dirname, relative, isAbsolute, basename } from 'node:path'
 import yaml from 'js-yaml'
-import { repoOf, readSyncPoint, writeSyncPoint, isAncestor } from '../utils/sync-point.js'
+import { repoOf, readSyncPoint, writeSyncPoint, isAncestor, contentCommitted } from '../utils/sync-point.js'
+import { siteContentRoots } from '../utils/git.js'
 import { humanBytes } from '../utils/bytes.js'
 import { isAuthoredPreview } from '../utils/preview.js'
 import {
@@ -944,6 +945,26 @@ export function untakenBase(siteDir, backend) {
       'To push over it regardless, re-run with --force (this discards changes made there).'
     ]
   }
+}
+
+/**
+ * A push that finds nothing to send has learned that the backend holds what this commit
+ * sends — so the commit is a sync point, as the one a push is made from is
+ * (`pushSyncPackages`). Kept only where HEAD holds the site's content as the files do: with
+ * a change under the roots not committed, HEAD is not what was compared, and a base the
+ * backend's content does not descend from would read a committed change the backend lacks
+ * as its removal. Returns the commit kept, or null.
+ *
+ * ⛔ Until 2026-10-17 it kept nothing, so a paragraph re-wrapped and committed — which a push
+ * calls "nothing to push", a plain newline being a space — was merged on the next pull from
+ * the commit before it, and conflicted with an author's words typed into it since.
+ */
+export function holdUnchangedPush(siteDir, backend) {
+  const repo = repoOf(siteDir)
+  if (!repo?.head || !readBackendState(siteDir, backend).site?.uuid) return null
+  if (!contentCommitted(repo, [...siteContentRoots(siteDir), 'public'])) return null
+  writeSyncPoint(siteDir, backend, repo.head)
+  return repo.head
 }
 
 /**

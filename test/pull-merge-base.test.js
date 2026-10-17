@@ -21,6 +21,8 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { pull } from '../src/commands/pull.js'
 import { refresh } from '../src/commands/refresh.js'
+import { writeSyncPoint } from '../src/utils/sync-point.js'
+import { holdUnchangedPush } from '../src/backend/site-sync.js'
 
 // The workspace these pulls work in (backend/workspace.js) — a test has no login to choose one.
 process.env.UNIWEB_WORKSPACE = 'personal'
@@ -547,3 +549,147 @@ test('`pull --force` takes the backend version and leaves a sync point a later m
   assert.equal(r.exitCode, 0, r.out)
   assert.match(git(dir, 'log', '--format=%B'), /^Uniweb-Sync: /m)
 })
+
+// ── the base a pull keeps, and what it says ────────────────────────────────
+
+test(
+  '⛔ after a merge is abandoned, the next pull merges from the commit that merge was made onto — not an older sync point',
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const dir = await synced(backend)
+    // The developer re-lays and edits a paragraph and pushes from that commit: the backend
+    // then holds it, in its own layout, and the commit is this copy's sync point.
+    edit(dir, 'pages/home/welcome.md', 'We sell furniture.', 'We sell\nfurniture and lamps.')
+    commitAll(dir, 'lamps')
+    const pushedFrom = git(dir, 'rev-parse', 'HEAD').trim()
+    writeSyncPoint(join(dir, 'site'), ORIGIN, pushedFrom)
+    // Then both change About.
+    backend.state.site = siteDoc([
+      section('welcome', 'S1', WELCOME[0], 'We sell furniture and lamps.'),
+      section('about', 'S2', 'About us, since 1990.')
+    ])
+    edit(dir, 'pages/home/about.md', 'About us.', 'About us, since 1991.')
+    commitAll(dir, 'since 1991')
+
+    const first = await pullIn(dir, backend)
+    assert.equal(first.exitCode, 1, first.out)
+    assert.deepEqual(first.merge.conflicted, ['site/pages/home/about.md'])
+    git(dir, 'merge', '--abort')
+
+    const again = await pullIn(dir, backend)
+    assert.equal(again.exitCode, 1, again.out)
+    assert.deepEqual(again.merge.conflicted, ['site/pages/home/about.md'], `a section nobody changed since the push conflicted:\n${again.out}`)
+    assert.equal(git(dir, 'rev-parse', 'MERGE_HEAD^1').trim(), pushedFrom, 'not made onto the commit last pushed from')
+  }
+)
+
+test(
+  "⛔ a re-wrap a push calls nothing to push merges with an author's words typed into it since",
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const dir = await synced(backend)
+    edit(dir, 'pages/home/welcome.md', 'Welcome to the site.', 'Welcome to\nthe site.')
+    commitAll(dir, 're-wrap')
+    // A push from here sends nothing — a plain newline is a space — and keeps this commit.
+    assert.equal(holdUnchangedPush(join(dir, 'site'), ORIGIN), git(dir, 'rev-parse', 'HEAD').trim())
+    welcomeEdited(backend, 'Welcome to the site. Typed by the author.', WELCOME[1])
+
+    const r = await pullIn(dir, backend)
+    assert.equal(r.exitCode, 0, r.out)
+    assert.match(read(dir, 'pages/home/welcome.md'), /Typed by the author/)
+  }
+)
+
+test(
+  "⛔ with no sync point, your own edit is reported as a conflict — never as a change from the backend — and `--force` says what it replaced",
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const dir = mkdtempSync(join(scratch, 'nobase-say-'))
+    skeleton(dir)
+    assert.equal((await pullIn(dir, backend, ['--force'])).exitCode, 0) // outside git: a checkout
+    git(dir, 'init', '-q')
+    identify(dir)
+    commitAll(dir, 'the site')
+    edit(dir, 'pages/home/welcome.md', 'We sell furniture.', 'We sell furniture and lamps.')
+    commitAll(dir, 'lamps')
+
+    const r = await pullIn(dir, backend)
+    assert.equal(r.exitCode, 1, r.out)
+    assert.deepEqual(r.merge.conflicted, ['site/pages/home/welcome.md'])
+    assert.doesNotMatch(r.out, /Merged \d+ change/, `your own edit read as the backend's:\n${r.out}`)
+    assert.match(r.out, /No commit in this history is one/)
+
+    git(dir, 'merge', '--abort')
+    const f = await pullIn(dir, backend, ['--force'])
+    assert.equal(f.exitCode, 0, f.out)
+    assert.match(f.out, /Took https:\/\/uniweb\.app's version of 1 file\(s\)/)
+    assert.match(f.out, /changed pages\/home\/welcome\.md/)
+    assert.match(f.out, /git diff HEAD\^1 HEAD/)
+    assert.match(git(dir, 'show', 'HEAD^1:site/pages/home/welcome.md'), /and lamps/, 'the replaced version is not where the pull said')
+  }
+)
+
+test('⭐ a pull reports what it changed in the files — not what they already held', { skip: !hasGit }, async () => {
+  const backend = fakeBackend()
+  const dir = await synced(backend)
+  aboutEdited(backend)
+  // What the backend now holds is in the files already, not committed — as a push leaves
+  // the files it writes.
+  edit(dir, 'pages/home/about.md', 'About us.', 'About us, since 1990.')
+  const r = await pullIn(dir, backend)
+  assert.equal(r.exitCode, 0, r.out)
+  assert.deepEqual(r.merge.changed, [], `a file the files already held was reported as a change:\n${r.out}`)
+  assert.match(r.out, /already hold/)
+  // CONTROL — a change the files did not hold is reported.
+  commitAll(dir, 'since 1990')
+  backend.state.site = siteDoc([section('welcome', 'S1', 'Welcome, from the app.', WELCOME[1]), section('about', 'S2', 'About us, since 1990.')])
+  const next = await pullIn(dir, backend)
+  assert.equal(next.exitCode, 0, next.out)
+  assert.deepEqual(next.merge.changed, [['M', 'pages/home/welcome.md']])
+})
+
+test(
+  "⛔ an uncommitted edit the merge cannot be put back over is a conflict — the pull exits 1, and says where the edit is kept",
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const dir = await synced(backend)
+    aboutEdited(backend)
+    edit(dir, 'pages/home/about.md', 'About us.', 'About us, since 1991.') // not committed, on the line the author changed
+    const r = await pullIn(dir, backend)
+    assert.equal(r.exitCode, 1, `markers in the files, and the pull exited 0:\n${r.out}`)
+    assert.deepEqual(r.merge.conflicted, ['site/pages/home/about.md'])
+    assert.match(r.out, /git stash drop/)
+    assert.match(git(dir, 'stash', 'list'), /autostash/)
+    assert.match(read(dir, 'pages/home/about.md'), /<<<<<<< /)
+    // And the next pull does not merge over them.
+    const again = await pullIn(dir, backend)
+    assert.equal(again.exitCode, 1, again.out)
+    assert.match(again.out, /in conflict/)
+  }
+)
+
+test(
+  "⛔ refresh stops when git pull cannot put uncommitted work back — before the backend's content lands on it",
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const { alice, clone } = await team(backend)
+    const bob = clone('bob')
+    assert.equal((await refreshIn(bob, backend)).exitCode, 0)
+    edit(alice, 'pages/home/about.md', 'About us.', 'About us, by Alice.')
+    commitAll(alice, 'about')
+    git(alice, 'push', '-q')
+    edit(bob, 'pages/home/about.md', 'About us.', 'About us, by Bob.') // not committed
+    welcomeEdited(backend, 'Welcome, from the app.', WELCOME[1])
+
+    const r = await refreshIn(bob, backend)
+    assert.equal(r.exitCode, 1, r.out)
+    assert.match(r.out, /git pull left conflicts/)
+    assert.match(r.out, /git stash drop/)
+    assert.doesNotMatch(read(bob, 'pages/home/welcome.md'), /from the app/, 'the backend was merged on top of the markers')
+  }
+)

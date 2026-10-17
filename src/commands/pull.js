@@ -110,13 +110,16 @@ import { siteContentRoots } from '../utils/git.js'
 import {
   repoOf,
   mergeInProgress,
+  unmergedPaths,
   isAncestor,
   historySyncPoint,
+  madeOnto,
   newestBase,
   openStandIn,
   mergeSyncPoint,
   takeSyncPoint,
-  changesBetween,
+  snapshotFiles,
+  changedInFiles,
   readSyncPoint,
   writeSyncPoint
 } from '../utils/sync-point.js'
@@ -574,6 +577,13 @@ export async function pull(args = [], deps = {}) {
       note('Finish it (`git commit`) or abandon it (`git merge --abort`), then pull.')
       return { exitCode: 1 }
     }
+    const unsettled = unmergedPaths(repo)
+    if (unsettled.length) {
+      error(`${unsettled.length} file(s) here are in conflict:`)
+      for (const p of unsettled.slice(0, 12)) note(`  ${p}`)
+      note('Settle them first — `git status` says how — then pull.')
+      return { exitCode: 1 }
+    }
   } else if (!repo && !dryRun && !force) {
     const blocked = await checkWorkingTree(siteDir, args)
     if (blocked) return blocked
@@ -887,6 +897,8 @@ export async function pull(args = [], deps = {}) {
     base = newestBase(repo, [
       historySyncPoint(repo, { origin: client.origin, siteUuid: siteContentUuid }),
       held,
+      // What a sync point the branch no longer holds — a merge abandoned — was made onto.
+      ...madeOnto(repo, held, { origin: client.origin, siteUuid: siteContentUuid }),
       content?.source,
       folderLane?.source
     ])
@@ -1118,7 +1130,8 @@ export async function pull(args = [], deps = {}) {
         // The backend holds what the base holds: nothing to merge.
         writeSyncPoint(siteDir, client.origin, base)
       } else {
-        merge.changed = changesBetween(repo, force || !base ? repo.head : base, made.commit)
+        // The files as they are, to tell what the pull changes in them from what they held.
+        const files = snapshotFiles(repo)
         const result = force
           ? takeSyncPoint(repo, made.commit, { roots, message: takenFrom(client.origin) })
           : mergeSyncPoint(repo, made.commit, { message: mergedFrom(client.origin) })
@@ -1136,12 +1149,24 @@ export async function pull(args = [], deps = {}) {
           } else if (result.reason === 'merge-in-progress') {
             error('A merge is in progress here.')
             note('Finish it (`git commit`) or abandon it (`git merge --abort`), then pull.')
+          } else if (result.reason === 'unmerged') {
+            error(`${result.paths.length} file(s) here are in conflict:`)
+            for (const p of result.paths.slice(0, 12)) note(`  ${p}`)
+            note('Settle them first — `git status` says how — then pull.')
           } else {
             error("Could not merge the backend's content:")
             for (const line of String(result.detail).split('\n').slice(0, 8)) note(`  ${line}`)
           }
         } else {
           merge.conflicted = result.conflicted || []
+          merge.stashKept = Boolean(result.stashKept)
+          merge.noBase = !force && !base
+          merge.changed = changedInFiles(repo, {
+            from: repo.head,
+            files,
+            staged: merge.conflicted.length > 0 && !merge.stashKept,
+            skip: merge.conflicted
+          })
           writeSyncPoint(siteDir, client.origin, made.commit)
         }
       }
@@ -1201,19 +1226,36 @@ export async function pull(args = [], deps = {}) {
   if (notTaken || recordsNotPlaced) info(summary)
   else success(summary)
   if (repo && !notTaken) {
-    if (!projected || !merge.changed.length) {
-      note(`Your files already hold what ${client.origin} has.`)
-    } else {
-      const verb = force ? 'Took' : 'Merged'
-      info(`${verb} ${merge.changed.length} change(s) from ${client.origin}:`)
+    // ⭐ What the pull changed in the files — not the backend's content against the base,
+    // which also lists what the files already held (`changedInFiles`).
+    if (projected && merge.changed.length) {
+      info(
+        force
+          ? `Took ${client.origin}'s version of ${merge.changed.length} file(s):`
+          : `Merged ${merge.changed.length} change(s) from ${client.origin}:`
+      )
       const label = { A: 'added', M: 'changed', D: 'removed', R: 'renamed' }
       for (const [s, p] of merge.changed.slice(0, 12)) note(`  ${label[s] || s} ${p}`)
       if (merge.changed.length > 12) note(`  … and ${merge.changed.length - 12} more`)
+      if (force) note('What they held is in the commit before this one (`git diff HEAD^1 HEAD`), unless it was never committed.')
+    } else if (!merge.conflicted.length) {
+      note(`Your files already hold what ${client.origin} has.`)
     }
     if (merge.conflicted.length) {
       error(`${merge.conflicted.length} file(s) have conflicts to resolve:`)
       for (const f of merge.conflicted) note(`  ${f}`)
-      note('Settle them, then `git commit` to finish the merge — your uncommitted changes come back with it.')
+      if (merge.stashKept) {
+        // The merge is made; what clashed is the uncommitted work put back over it.
+        note('Your uncommitted changes there overlap what the pull brought.')
+        note('Settle the markers, then `git stash drop` — git kept those changes in the stash as well.')
+      } else {
+        if (merge.noBase) {
+          note(`No commit in this history is one ${client.origin}'s content came from, so nothing tells`)
+          note("your changes from the backend's: each file where they differ is a conflict, yours against the backend's.")
+          note('Once this merge is committed, later pulls merge from it.')
+        }
+        note('Settle them, then `git commit` to finish the merge — your uncommitted changes come back with it.')
+      }
     }
   }
   // Unresolved conflicts are a non-zero exit, the way a conflicted `git merge` is.

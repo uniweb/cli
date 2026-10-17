@@ -137,7 +137,7 @@ export async function refresh(args = [], deps = {}) {
     say.info('Pulling from the git remote…')
     const r = pullRemote(siteDir)
     if (!r.ok) {
-      say.err('git pull failed — resolve this before continuing.')
+      say.err(r.conflicts ? 'git pull left conflicts — settle them before continuing.' : 'git pull failed — resolve this before continuing.')
       for (const line of r.message.split('\n').slice(0, 6)) say.dim(line)
       // Deliberately stop. Layering the backend's content on top of an unresolved
       // git state gives the user two independent conflicts at once, and no clear

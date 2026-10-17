@@ -96,6 +96,7 @@ import {
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
   untakenBase,
+  holdUnchangedPush,
   pushSyncPackages
 } from '../backend/site-sync.js'
 import { resolveWorkspace, describeWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
@@ -615,6 +616,9 @@ export async function push(args = [], deps = {}) {
     success(
       `Nothing to push — ${skipped} entit${skipped === 1 ? 'y' : 'ies'} unchanged since the last push.`
     )
+    // ⭐ And so the backend holds what this commit sends: it is where the next pull merges
+    // from (`holdUnchangedPush`). Not for a preview, which keeps nothing.
+    if (!output && !dryRun) holdUnchangedPush(siteDir, client.origin)
     return { exitCode: 0 }
   }
   if (siteContent)

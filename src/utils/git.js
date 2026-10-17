@@ -105,7 +105,7 @@ export function hasRemote(dir) {
  * ⛔ Until 2026-10-17 this was `--ff-only`, which refused once a pull had made a merge
  * commit the remote did not have.
  *
- * @returns {{ ok: boolean, changed: boolean, message: string }}
+ * @returns {{ ok: boolean, conflicts?: boolean, changed: boolean, message: string }}
  */
 export function pullRemote(dir) {
   const before = (() => {
@@ -128,6 +128,23 @@ export function pullRemote(dir) {
         return null
       }
     })()
+    // ⛔ `--autostash` exits 0 when the uncommitted work it set aside cannot be put back over
+    // what the pull brought: the files hold conflict markers and git keeps that work in the
+    // stash as well. That is not a clean pull — refresh must stop before the backend's
+    // content lands on top of it. *(Read as clean until 2026-10-17.)*
+    const unmerged = git(['diff', '--name-only', '--diff-filter=U'], dir).trim()
+    if (unmerged) {
+      return {
+        ok: false,
+        conflicts: true,
+        changed: Boolean(before && after && before !== after),
+        message: [
+          'Your uncommitted changes overlap the commits git pull brought.',
+          'Settle the markers, then `git stash drop` — git kept those changes in the stash as well:',
+          ...unmerged.split('\n').map((p) => `  ${p}`)
+        ].join('\n')
+      }
+    }
     return {
       ok: true,
       changed: Boolean(before && after && before !== after),
