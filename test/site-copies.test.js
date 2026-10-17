@@ -147,6 +147,13 @@ test('after `uniweb forget --all` in the copy, neither side is refused (control)
 
   assert.match((await runVerb(b, push, [], LOGGED_IN_A)).output, HEADLINE, 'refused first')
   assert.equal((await runVerb(b, forget, ['--all'])).exitCode, 0)
+  // The original has taken its site: the versions its push claims as its base. Without
+  // them `untakenBase` refuses it — before the wire, since 2026-10-17.
+  mkdirSync(join(a, '.uniweb'), { recursive: true })
+  writeFileSync(
+    join(a, '.uniweb', 'backend-cache.json'),
+    JSON.stringify({ version: 1, backends: { [A]: { baseVersions: { 'SITE-1': 'V1' } } } })
+  )
 
   // Past the check, each push reaches the wire. The network is stubbed to fail, so a
   // counted request is the proof the check let it through. `--personal` answers the

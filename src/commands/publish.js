@@ -321,6 +321,20 @@ export async function publish(args = []) {
     }
   }
 
+  // ⛔ The gated push publish rides claims a base only while the files hold it
+  // (`untakenBase`) — said before anything reaches the backend, the foundation's release
+  // included. `--force` drops the gate; a dry run does not preview it. ⛔ *Until 2026-10-17
+  // it ran after the bring-along and the build, so a refused publish could release a local
+  // foundation first.*
+  if (!dryRun && !args.includes('--force')) {
+    const untaken = untakenBase(siteDir, client.origin)
+    if (untaken) {
+      say.err(untaken.headline)
+      for (const line of untaken.lines) say.dim(line)
+      return { exitCode: 1 }
+    }
+  }
+
   // ⭐ THE WORKSPACE THIS PUBLISH WORKS IN — the one chosen with the login, unless this
   // command names another (`workspace.js`). Resolved up front: `ensureSiteExists` below
   // creates the site in it, and a site the backend keeps elsewhere is refused.
@@ -623,17 +637,6 @@ export async function publish(args = []) {
       `Dropped the previous site's ${droppedValues.join(' and ')} from site.yml.`
     )
   }
-  // ⛔ The gated push publish rides claims a base only while the files hold it — said here,
-  // before anything is uploaded or created (`untakenBase`). `--force` drops the gate.
-  if (!args.includes('--force')) {
-    const untaken = untakenBase(siteDir, client.origin)
-    if (untaken) {
-      say.err(untaken.headline)
-      for (const line of untaken.lines) say.dim(line)
-      return { exitCode: 1 }
-    }
-  }
-
   // 3b. Make sure the SITE EXISTS before a single byte is uploaded.
   //
   //     Uploaded bytes are metered against an owning entity and reclaimed by

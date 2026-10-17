@@ -210,6 +210,19 @@ export async function push(args = [], deps = {}) {
     }
   }
 
+  // ⛔ A GATED PUSH CLAIMS A BASE ONLY WHILE THE FILES HOLD IT (`untakenBase`) — said before
+  // anything reaches the backend, the foundation's release included. A dry run previews it;
+  // `-o` reaches no backend, and `--force` drops the gate. ⛔ *Until 2026-10-17 it ran after
+  // the bring-along, so a refused push could release a local foundation first.*
+  if (!output && !force) {
+    const untaken = untakenBase(siteDir, client.origin)
+    if (untaken) {
+      error(untaken.headline)
+      for (const line of untaken.lines) note(line)
+      return { exitCode: 1 }
+    }
+  }
+
   // ⚠️ Logged in to a backend where this project has no site, while it has one
   // elsewhere: following the login CREATES a second site. Say so before the owner
   // question, which otherwise arrives with no reason attached. Not for `-o` (nothing is
@@ -335,17 +348,6 @@ export async function push(args = [], deps = {}) {
     const stale = dropSiteBoundValues(siteDir, client.origin)
     if (stale.length) {
       note(`Dropped the previous site's ${stale.join(' and ')} from site.yml.`)
-    }
-  }
-  // ⛔ A GATED PUSH CLAIMS A BASE ONLY WHILE THE FILES HOLD IT (`untakenBase`) — said before
-  // anything is uploaded. A dry run previews it; `-o` reaches no backend, and `--force`
-  // drops the gate.
-  if (!output && !force) {
-    const untaken = untakenBase(siteDir, client.origin)
-    if (untaken) {
-      error(untaken.headline)
-      for (const line of untaken.lines) note(line)
-      return { exitCode: 1 }
     }
   }
   const priorHashes = readSyncCache(siteDir, client.origin)
