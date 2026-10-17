@@ -384,12 +384,23 @@ async function runExtract(siteRoot, config, args) {
  * translation value as inline markdown, so the value channel was lossless the whole
  * time — only the prompt was lossy. Measured 2026-09-18, @uniweb/build 0.44.4.
  *
+ * ⭐ Except where the unit's places disagree on markup (`markupVaries`, written by
+ * `@uniweb/build`'s extraction): one value serves every place, so such a unit starts
+ * with its plain words — which a plain place takes as they are, and a link or a button
+ * takes as its label, keeping its own target. ⛔ Until 2026-10-16 it started with the
+ * markup of whichever place had some, so an untouched file turned a header's heading
+ * into a link. A manifest from an extraction before that has no `markupVaries`, and
+ * seeds as it did.
+ *
  * ⚠️ This fills MISSING keys only. A locale file already seeded from the flat source
  * is not repaired by re-running; use `uniweb i18n generate <locale> --force` against
  * a freshly extracted manifest to get the markup-bearing source back.
+ *
+ * @param {{ source: string, markup?: string, markupVaries?: boolean }} unit - a manifest unit
+ * @returns {string}
  */
-function starterValue(unit) {
-  return unit.markup || unit.source
+export function starterValue(unit) {
+  return unit.markupVaries ? unit.source : unit.markup || unit.source
 }
 
 /**
