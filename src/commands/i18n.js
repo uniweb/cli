@@ -237,6 +237,33 @@ async function loadSiteConfig(siteRoot) {
 }
 
 /**
+ * The site's content as its source says it now — what the free-form commands (`status
+ * --freeform`, `init-freeform`, `update-hash`, `prune --freeform`) judge a translation by,
+ * read as `extract` reads the strings it offers. No build needed.
+ *
+ * ⛔ Not `dist/site-content.json`, which they read until 2026-10-17. A prerendered build that
+ * splits its content rewrites that file without page sections, so `status --freeform`
+ * compared no page translation and counted each one up to date, `update-hash --all-stale`
+ * found nothing stale and `init-freeform` found no section. A build also leaves out `hidden:`
+ * pages, so `prune --freeform` deleted their translations. And the file says what the source
+ * said at the last build.
+ *
+ * @param {string} siteRoot
+ * @returns {Promise<Object>} the collected site content
+ */
+async function collectSourceContent(siteRoot) {
+  const { collectSiteContent } = await import('@uniweb/build/site')
+  // The collector reports progress on stdout; send it to stderr, so `--json` prints JSON alone.
+  const origConsoleLog = console.log
+  console.log = (...a) => process.stderr.write(a.join(' ') + '\n')
+  try {
+    return await collectSiteContent(siteRoot)
+  } finally {
+    console.log = origConsoleLog
+  }
+}
+
+/**
  * Extract command - extract translatable strings from site content
  */
 async function runExtract(siteRoot, config, args) {
@@ -650,15 +677,7 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
   }
 
   try {
-    // Load site content for source hashes
-    const siteContentPath = join(siteRoot, 'dist', 'site-content.json')
-    if (!existsSync(siteContentPath)) {
-      error('Site content not found. Run "uniweb build" first.')
-      process.exit(1)
-    }
-
-    const siteContentRaw = await readFile(siteContentPath, 'utf-8')
-    const siteContent = JSON.parse(siteContentRaw)
+    const siteContent = await collectSourceContent(siteRoot)
 
     const {
       discoverFreeformTranslations,
@@ -667,9 +686,10 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
       getOrphanedTranslations
     } = await import('@uniweb/build/i18n')
 
-    // What the built content says about its free-form translations — every path the
+    // What the site's content says about its free-form translations — every path the
     // renderer reads one from, with its source's hash. The build's own check uses this
-    // index, so the two cannot disagree about which files are orphaned or stale.
+    // index too, so the two judge by one rule; they differ only where the build leaves
+    // content out — a `hidden:` page or section, which the build calls orphaned.
     const { validPaths, sourceHashes, canJudge } = freeformSourceIndex(siteContent)
 
     // Find all locales
@@ -692,15 +712,17 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
       ]
 
       // Check staleness. Orphaned only when the content can judge it — never a record's
-      // translation, nor one for a page whose sections the built content does not carry.
+      // translation, nor one for a page whose sections the content does not carry.
       const stale = await getStaleTranslations(localeDir, sourceHashes)
       const orphaned = (await getOrphanedTranslations(localeDir, validPaths)).filter((o) => canJudge(o.path))
 
-      const upToDate = allPaths.filter(
-        (p) =>
-          !stale.some((s) => s.path === p) &&
-          !orphaned.some((o) => o.path === p)
-      )
+      // ⭐ Up to date only where a source was found to compare with. A translation with none
+      // — a record's, whose record the site content does not hold — is NOT CHECKED, and said
+      // so. ⛔ Until 2026-10-17 it was counted up to date, like every page translation of a
+      // prerendered site while this read the build's split content.
+      const judged = (p) => stale.some((s) => s.path === p) || orphaned.some((o) => o.path === p)
+      const upToDate = allPaths.filter((p) => !judged(p) && sourceHashes[p])
+      const notChecked = allPaths.filter((p) => !judged(p) && !sourceHashes[p])
 
       results[loc] = {
         total: allPaths.length,
@@ -712,7 +734,8 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
         orphaned: orphaned.map((o) => ({
           path: o.path,
           recordedDate: o.recordedDate
-        }))
+        })),
+        notChecked: notChecked.map((path) => ({ path }))
       }
     }
 
@@ -748,8 +771,15 @@ async function runStatusFreeform(siteRoot, config, locale, options = {}) {
         }
       }
 
+      if (info.notChecked.length > 0) {
+        log(`  ${colors.dim}Not checked (no source to compare with):${colors.reset}`)
+        for (const item of info.notChecked) {
+          log(`    ${colors.dim}· ${item.path}${colors.reset}`)
+        }
+      }
+
       log(
-        `  ${colors.dim}Summary: ${info.upToDate} up to date, ${info.stale.length} stale, ${info.orphaned.length} orphaned${colors.reset}`
+        `  ${colors.dim}Summary: ${info.upToDate} up to date, ${info.stale.length} stale, ${info.orphaned.length} orphaned${info.notChecked.length > 0 ? `, ${info.notChecked.length} not checked` : ''}${colors.reset}`
       )
       log('')
     }
@@ -1077,16 +1107,6 @@ async function runInitFreeform(siteRoot, config, args) {
   }
 
   try {
-    // Load site content to get source
-    const siteContentPath = join(siteRoot, 'dist', 'site-content.json')
-    if (!existsSync(siteContentPath)) {
-      error('Site content not found. Run "uniweb build" first.')
-      process.exit(1)
-    }
-
-    const siteContentRaw = await readFile(siteContentPath, 'utf-8')
-    const siteContent = JSON.parse(siteContentRaw)
-
     // Find the source content
     let sourceContent = null
     let sourceHash = null
@@ -1095,6 +1115,7 @@ async function runInitFreeform(siteRoot, config, args) {
       // Find section in pages
       const isPageId = pathType.startsWith('page-ids/')
       const pageIdentifier = pathType.replace(/^(pages|page-ids)\//, '')
+      const siteContent = await collectSourceContent(siteRoot)
 
       for (const page of siteContent.pages || []) {
         const match = isPageId
@@ -1273,15 +1294,7 @@ async function runUpdateHash(siteRoot, config, args) {
   }
 
   try {
-    // Load site content
-    const siteContentPath = join(siteRoot, 'dist', 'site-content.json')
-    if (!existsSync(siteContentPath)) {
-      error('Site content not found. Run "uniweb build" first.')
-      process.exit(1)
-    }
-
-    const siteContentRaw = await readFile(siteContentPath, 'utf-8')
-    const siteContent = JSON.parse(siteContentRaw)
+    const siteContent = await collectSourceContent(siteRoot)
 
     const {
       updateHash,
@@ -1510,15 +1523,7 @@ async function runPrune(siteRoot, config, args) {
   )
 
   try {
-    // Load site content
-    const siteContentPath = join(siteRoot, 'dist', 'site-content.json')
-    if (!existsSync(siteContentPath)) {
-      error('Site content not found. Run "uniweb build" first.')
-      process.exit(1)
-    }
-
-    const siteContentRaw = await readFile(siteContentPath, 'utf-8')
-    const siteContent = JSON.parse(siteContentRaw)
+    const siteContent = await collectSourceContent(siteRoot)
 
     const {
       freeformSourceIndex,
@@ -1530,8 +1535,10 @@ async function runPrune(siteRoot, config, args) {
     // reads one (`freeformSourceIndex`, the build's own index): every path a section's
     // translation is read from — ⛔ until 2026-09-14 only `page-ids/<id>/…` on a page with
     // an `id`, so a route-addressed translation the page rendered was deleted — and only
-    // what the built content can see: never a record's translation (`records/…`), and
-    // never one for a page whose sections the content does not carry.
+    // what the content can see: never a record's translation (`records/…`), and never one
+    // for a page whose sections the content does not carry. The content is the SOURCE's
+    // (`collectSourceContent`), `hidden:` pages included: ⛔ read from a build until
+    // 2026-10-17, which leaves those out, so their translations were deleted.
     const { validPaths, canJudge } = freeformSourceIndex(siteContent)
 
     // Find all locales
