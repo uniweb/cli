@@ -794,6 +794,36 @@ test("⛔ in a repository a push claims the versions it holds only while HEAD's 
   assert.match(why?.lines.join('\n') || '', /not in your history/)
 })
 
+test('a push during a merge still waiting for its commit is told to finish it — not that a merge was abandoned', () => {
+  const dir = tmpSite()
+  bind(dir, 'S1')
+  const g = (...a) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  g('init', '-q')
+  writeFileSync(join(dir, 'page.md'), 'base\n')
+  g('add', '-A')
+  g('commit', '-qm', 'base')
+  // The sync point a pull made, on a side of history the branch has not taken yet.
+  g('checkout', '-qb', 'pulled')
+  writeFileSync(join(dir, 'page.md'), 'theirs\n')
+  g('commit', '-qam', 'the backend content')
+  const pulled = g('rev-parse', 'HEAD').trim()
+  g('checkout', '-q', '-')
+  writeFileSync(join(dir, 'page.md'), 'mine\n')
+  g('commit', '-qam', 'mine')
+  mergeBaseVersions(dir, ORIGIN, { S1: 'V1' })
+  writeSyncPoint(dir, ORIGIN, pulled)
+  assert.throws(() => g('merge', pulled), 'the merge was meant to stop on its conflict')
+  writeFileSync(join(dir, 'page.md'), 'both\n')
+  g('add', 'page.md') // settled, not yet committed
+  const why = untakenBase(dir, ORIGIN)
+  assert.equal(why?.headline, 'Not pushed — a merge is in progress here.')
+  assert.match(why.lines.join('\n'), /git commit/)
+  // CONTROL — committed, the branch holds the sync point and the push may go.
+  g('commit', '-q', '--no-edit')
+  assert.equal(untakenBase(dir, ORIGIN), null)
+})
+
 test('CONTROL — outside a repository a push names no commit and keeps no sync point', async () => {
   const dir = tmpSite()
   mergeBaseVersions(dir, ORIGIN, { S1: 'V0' })

@@ -14,7 +14,15 @@
 import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs'
 import { join, dirname, relative, isAbsolute, basename } from 'node:path'
 import yaml from 'js-yaml'
-import { repoOf, readSyncPoint, writeSyncPoint, isAncestor, contentCommitted } from '../utils/sync-point.js'
+import {
+  repoOf,
+  readSyncPoint,
+  writeSyncPoint,
+  isAncestor,
+  contentCommitted,
+  unmergedPaths,
+  mergeInProgress
+} from '../utils/sync-point.js'
 import { siteContentRoots } from '../utils/git.js'
 import { humanBytes } from '../utils/bytes.js'
 import { isAuthoredPreview } from '../utils/preview.js'
@@ -900,6 +908,31 @@ export function mergeBaseVersions(siteDir, backend, versions) {
 }
 
 /**
+ * ⛔ A PUSH NEVER SENDS A FILE IN CONFLICT. Where git marks a file under the site unmerged — a
+ * merge stopped on it, or uncommitted work a merge could not put back — the file holds markers,
+ * and a push hands them to every author editing the site, then to its visitors once published.
+ * Refused whatever the flags: `--force` overwrites the backend's changes, it never sends
+ * markers. Returns the refusal, or null.
+ *
+ * ⛔ Until 2026-10-17 nothing checked it: a pull whose stash could not be put back exited 0,
+ * and the push after it sent the markers [flows, measured against a real backend, 1.8.0].
+ */
+export function unsettledFiles(siteDir) {
+  const repo = repoOf(siteDir)
+  if (!repo) return null
+  const paths = unmergedPaths(repo).filter((p) => !repo.prefix || p.startsWith(repo.prefix))
+  if (!paths.length) return null
+  return {
+    headline: `Not pushed — ${paths.length} file(s) here are in conflict:`,
+    lines: [
+      ...paths.slice(0, 12).map((p) => `  ${p}`),
+      ...(paths.length > 12 ? [`  … and ${paths.length - 12} more`] : []),
+      'Settle each one and `git add` it, then push.'
+    ]
+  }
+}
+
+/**
  * Why a gated push must not go — or null when it may.
  *
  * ⛔ A PUSH CLAIMS A BASE ONLY WHILE ITS FILES HOLD IT. The versions it sends say "my content
@@ -925,6 +958,13 @@ export function untakenBase(siteDir, backend) {
   if (repo?.head) {
     const point = readSyncPoint(siteDir, backend)
     if (held && point && isAncestor(repo, point)) return null
+    // A pull's merge waiting for its commit is not one abandoned: say which.
+    if (held && point && mergeInProgress(repo)) {
+      return {
+        headline: 'Not pushed — a merge is in progress here.',
+        lines: ['Finish it (`git commit`), then push — or abandon it (`git merge --abort`) and pull again.']
+      }
+    }
     return {
       headline: "Not pushed — your branch does not hold the backend content this copy last took.",
       lines: [

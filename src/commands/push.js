@@ -96,6 +96,7 @@ import {
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
   untakenBase,
+  unsettledFiles,
   holdUnchangedPush,
   pushSyncPackages
 } from '../backend/site-sync.js'
@@ -215,6 +216,13 @@ export async function push(args = [], deps = {}) {
   // anything reaches the backend, the foundation's release included. A dry run previews it;
   // `-o` reaches no backend, and `--force` drops the gate. ⛔ *Until 2026-10-17 it ran after
   // the bring-along, so a refused push could release a local foundation first.*
+  // ⛔ Never a file in conflict — whatever the flags (`unsettledFiles`).
+  const unsettled = unsettledFiles(siteDir)
+  if (unsettled) {
+    error(unsettled.headline)
+    for (const line of unsettled.lines) note(line)
+    return { exitCode: 1 }
+  }
   if (!output && !force) {
     const untaken = untakenBase(siteDir, client.origin)
     if (untaken) {

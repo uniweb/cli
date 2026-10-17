@@ -104,6 +104,7 @@ import {
   refuseUnsendableRecords,
   clearRemoteSyncStateIfUnbound,
   untakenBase,
+  unsettledFiles,
   dropSiteBoundValues,
   pushSyncPackages
 } from '../backend/site-sync.js'
@@ -326,6 +327,13 @@ export async function publish(args = []) {
   // included. `--force` drops the gate; a dry run does not preview it. ⛔ *Until 2026-10-17
   // it ran after the bring-along and the build, so a refused publish could release a local
   // foundation first.*
+  // ⛔ Never a file in conflict — whatever the flags (`unsettledFiles`).
+  const unsettled = unsettledFiles(siteDir)
+  if (unsettled) {
+    say.err(unsettled.headline)
+    for (const line of unsettled.lines) say.dim(line)
+    return { exitCode: 1 }
+  }
   if (!dryRun && !args.includes('--force')) {
     const untaken = untakenBase(siteDir, client.origin)
     if (untaken) {

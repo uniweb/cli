@@ -140,7 +140,7 @@ export function pullRemote(dir) {
         changed: Boolean(before && after && before !== after),
         message: [
           'Your uncommitted changes overlap the commits git pull brought.',
-          'Settle the markers, then `git stash drop` — git kept those changes in the stash as well:',
+          'Settle the markers and `git add` each file, then `git stash drop` — git kept those changes in the stash as well:',
           ...unmerged.split('\n').map((p) => `  ${p}`)
         ].join('\n')
       }

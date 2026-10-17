@@ -1247,14 +1247,14 @@ export async function pull(args = [], deps = {}) {
       if (merge.stashKept) {
         // The merge is made; what clashed is the uncommitted work put back over it.
         note('Your uncommitted changes there overlap what the pull brought.')
-        note('Settle the markers, then `git stash drop` — git kept those changes in the stash as well.')
+        note('Settle the markers and `git add` each file, then `git stash drop` — git kept those changes in the stash as well.')
       } else {
         if (merge.noBase) {
           note(`No commit in this history is one ${client.origin}'s content came from, so nothing tells`)
           note("your changes from the backend's: each file where they differ is a conflict, yours against the backend's.")
           note('Once this merge is committed, later pulls merge from it.')
         }
-        note('Settle them, then `git commit` to finish the merge — your uncommitted changes come back with it.')
+        note('Settle them and `git add` each, then `git commit` to finish the merge — your uncommitted changes come back with it.')
       }
     }
   }
