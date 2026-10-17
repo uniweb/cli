@@ -1870,7 +1870,8 @@ ${colors.bright}Usage:${colors.reset}
 A developer on a synced site has TWO external sources: the git remote (teammates'
 commits) and the backend (content authors' edits in the app). Run only \`git pull\`
 and you miss every app edit; run only \`uniweb pull\` and you miss your teammates.
-This does both — git first, then \`pull --merge\`.
+This does both — git first (merging, never rebasing), then \`uniweb pull\`, which in
+a repository merges the backend's content with yours.
 
 ${colors.bright}READ-ONLY.${colors.reset} It never pushes and cannot ship anything, so it is safe to run
 reflexively. Exits non-zero if a merge leaves conflicts.
@@ -1879,9 +1880,9 @@ ${colors.bright}Options:${colors.reset}
   --no-git           Skip the git remote; backend only
   --no-backend       Skip the backend; git only
 
-\`--force\` and \`--merge\` are NOT accepted here: this verb builds the delegated
-pull's arguments itself, and to pull \`--force\` means "discard my local work".
-Use \`uniweb sync\` when you also mean to share.
+\`--force\` is NOT accepted here: this verb builds the delegated pull's arguments
+itself, and to pull \`--force\` means "discard my local work". Use \`uniweb sync\`
+when you also mean to share.
 `,
     sync: `
 ${colors.cyan}${colors.bright}uniweb sync${colors.reset} ${colors.dim}— Catch up, then share${colors.reset}

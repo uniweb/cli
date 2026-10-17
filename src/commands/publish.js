@@ -103,6 +103,7 @@ import {
   ensureSiteExists,
   refuseUnsendableRecords,
   clearRemoteSyncStateIfUnbound,
+  untakenBase,
   dropSiteBoundValues,
   pushSyncPackages
 } from '../backend/site-sync.js'
@@ -621,6 +622,16 @@ export async function publish(args = []) {
     say.dim(
       `Dropped the previous site's ${droppedValues.join(' and ')} from site.yml.`
     )
+  }
+  // ⛔ The gated push publish rides claims a base only while the files hold it — said here,
+  // before anything is uploaded or created (`untakenBase`). `--force` drops the gate.
+  if (!args.includes('--force')) {
+    const untaken = untakenBase(siteDir, client.origin)
+    if (untaken) {
+      say.err(untaken.headline)
+      for (const line of untaken.lines) say.dim(line)
+      return { exitCode: 1 }
+    }
   }
 
   // 3b. Make sure the SITE EXISTS before a single byte is uploaded.

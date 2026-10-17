@@ -47,12 +47,13 @@ import {
   heldTokens,
   pulledItemVersions,
   describeStaleKeys,
-  mergeBaseVersions
+  mergeBaseVersions,
+  untakenBase
 } from '../src/backend/site-sync.js'
 import { createZip, computeUnitHashes, readZip } from '@uniweb/build/uwx'
-import { createHash } from 'node:crypto'
 import { readSiteIdentity } from '../src/utils/site-identity.js'
-import { readWritten } from '../src/utils/pull-written.js'
+import { readSyncPoint, writeSyncPoint } from '../src/utils/sync-point.js'
+import { execFileSync } from 'node:child_process'
 
 const ORIGIN = 'http://x'
 
@@ -725,39 +726,96 @@ test("⛔ A PUSH THAT KEPT SOMEONE ELSE'S NEW SECTION does not bank the entity t
   assert.match(calls.note.join('\n'), /not in your files yet: pages\/home\/added\.md/)
 })
 
-test("a push records the files the backend holds as sent — the next merge's ancestor — and not one it kept", async () => {
-  // `pull --merge` finds a file's last synced version by the hash in pull-written.json.
-  // Without the push's share of it, the ancestor after a merge-and-push was the pull's
-  // raw output — never committed — and the next merge put both whole files under
-  // markers. A unit the backend kept for someone else is NOT synced, so not recorded.
+test("⭐ a push from a repository sends the commit it was made from, and keeps it as this copy's sync point", async () => {
+  // What the backend then holds descends from that commit: the base the next pull merges
+  // from (`utils/sync-point.js`), here and — once the backend records it — for every copy
+  // whose history holds it.
   const dir = tmpSite()
+  const g = (...a) => execFileSync('git', a, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  g('init', '-q')
+  g('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'base')
+  const head = g('rev-parse', 'HEAD').trim()
   mergeBaseVersions(dir, ORIGIN, { S1: 'V0' })
-  mergeItemBaseVersions(dir, ORIGIN, { 'U-home': 'h0', 'U-cta': 'c0', 'U-pricing': 'p0' })
-  mkdirSync(join(dir, 'pages/home'), { recursive: true })
-  writeFileSync(join(dir, 'pages/home/cta.md'), '# cta, as A holds it\n')
-  writeFileSync(join(dir, 'pages/home/pricing.md'), '# pricing, as A pushed it\n')
-  const sent = siteDoc([held('cta', 'the text A pulled'), held('pricing', 'A edited this')])
-  const written = asStored(siteDoc([held('cta', 'B edited this'), held('pricing', 'A edited this')]))
+  const sent = siteDoc([held('pricing', 'A edited this')])
+  let source = 'unset'
   const client = {
     origin: ORIGIN,
-    updateSiteContent: async () =>
-      ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1', item_versions: {}, document: written }]))
+    updateSiteContent: async (_uuid, _buf, opts) => {
+      source = opts?.source
+      return ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1', item_versions: {}, document: asStored(sent) }]))
+    }
   }
   const { report } = makeReport()
   const res = await pushSyncPackages({
     client,
     siteDir: dir,
     report,
-    pkg: {
-      ...siteOnlyPkg({ siteContentUuid: 'S1' }),
-      siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) }
-    }
+    pkg: { ...siteOnlyPkg({ siteContentUuid: 'S1' }), siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) } }
   })
   assert.equal(res.exitCode, 0)
-  const recorded = readWritten(dir).files
-  const sha = (s) => createHash('sha256').update(s).digest('hex')
-  assert.equal(recorded['pages/home/pricing.md'], sha('# pricing, as A pushed it\n'))
-  assert.equal(recorded['pages/home/cta.md'], undefined)
+  assert.equal(source, head)
+  assert.equal(readSyncPoint(dir, ORIGIN), head)
+})
+
+// ── the push gate: a base claimed only while the files hold it ──────────────
+
+test('⛔ a push to a site the backend has, from a copy holding no versions, is refused — it would go over whatever changed there', () => {
+  // An entry without a token falls back to the `collision` policy, which the client sends as
+  // `force`: a fresh copy's first push used to overwrite the backend unconditionally.
+  const dir = tmpSite()
+  bind(dir, 'S1')
+  const why = untakenBase(dir, ORIGIN)
+  assert.ok(why, 'pushed with no precondition')
+  assert.match(why.headline, /holds no record of the backend content/)
+  mergeBaseVersions(dir, ORIGIN, { S1: 'V1' })
+  assert.equal(untakenBase(dir, ORIGIN), null, 'CONTROL — a copy that took the site pushes')
+})
+
+test('a push that creates the site has nothing to be stale against', () => {
+  const dir = tmpSite()
+  assert.equal(untakenBase(dir, ORIGIN), null)
+})
+
+test("⛔ in a repository a push claims the versions it holds only while HEAD's history holds the commit they describe", () => {
+  const dir = tmpSite()
+  bind(dir, 'S1')
+  const g = (...a) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  g('init', '-q')
+  g('commit', '-q', '--allow-empty', '-m', 'base')
+  mergeBaseVersions(dir, ORIGIN, { S1: 'V1' })
+  assert.match(untakenBase(dir, ORIGIN)?.headline || '', /does not hold the backend content/, 'versions with no commit they describe')
+  writeSyncPoint(dir, ORIGIN, g('rev-parse', 'HEAD').trim())
+  assert.equal(untakenBase(dir, ORIGIN), null, 'CONTROL — the commit is in the history')
+  // A merge abandoned: the versions describe a commit the branch never took.
+  const abandoned = g('commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'the merge nobody committed').trim()
+  writeSyncPoint(dir, ORIGIN, abandoned)
+  const why = untakenBase(dir, ORIGIN)
+  assert.match(why?.lines.join('\n') || '', /not in your history/)
+})
+
+test('CONTROL — outside a repository a push names no commit and keeps no sync point', async () => {
+  const dir = tmpSite()
+  mergeBaseVersions(dir, ORIGIN, { S1: 'V0' })
+  const sent = siteDoc([held('pricing', 'A edited this')])
+  let source = 'unset'
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async (_uuid, _buf, opts) => {
+      source = opts?.source
+      return ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1', item_versions: {}, document: asStored(sent) }]))
+    }
+  }
+  const { report } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    report,
+    pkg: { ...siteOnlyPkg({ siteContentUuid: 'S1' }), siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) } }
+  })
+  assert.equal(res.exitCode, 0)
+  assert.equal(source, null)
+  assert.equal(readSyncPoint(dir, ORIGIN), null)
 })
 
 test('a push that holds everything it was sent banks every token, and says nothing', async () => {

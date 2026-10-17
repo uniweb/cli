@@ -12,34 +12,41 @@
  *     pages/**, layout/**), and
  *   - folder lane  → `recordsToProject` (the folder + record files).
  *
- * Pull is a CHECKOUT, not a merge — the "git-pull-like" it used to claim here was
- * misleading. It reconciles the working tree to the backend: section bodies are
- * rewritten from the fetched document, and pages/sections the backend no longer has
- * are DELETED (toggle off with `--no-delete`). The deletion is guarded so an
- * empty/partial payload never wipes the tree.
+ * ⭐ IN A GIT REPOSITORY, A PULL IS A MERGE — of the backend's content, as a commit, into
+ * the branch. The backend's documents are written onto the BASE: the newest sync point
+ * the history holds, the last state of the site this history shares with the backend
+ * (`utils/sync-point.js`). That happens in a stand-in, never in the working tree, so the
+ * result differs from the base exactly where the backend changed something; it is
+ * committed — a new sync point — and merged with git's own merge, whose merge base is
+ * the base. So what either side added, changed, deleted or renamed is merged as git
+ * merges it: edits to different parts of a file combine silently, only a genuine overlap
+ * gets conflict markers (and a non-zero exit), and a file the base never had — a
+ * teammate's new section, your uncommitted one — is never pruned. Uncommitted work is
+ * stashed for the merge and put back (`--autostash`).
  *
- * Because it overwrites rather than merges, it REFUSES when there is uncommitted
- * work under the directories it owns — that was the one remaining way the CLI could
- * destroy a user's work without them agreeing to it. Commit or stash first, or pass
- * `--force`. Outside a git repository there is nothing to fall back on, so it asks
- * instead (and refuses when it cannot).
+ * ⛔ Until 2026-10-17 a pull here was a checkout that refused over uncommitted work, and
+ * `--merge` three-way merged each file against the version this copy's last pull wrote —
+ * a per-machine record, with HEAD where it had none. Committed work outside it was
+ * lost: a teammate's new section pruned, a committed record edit overwritten, a fresh
+ * clone's committed work reverted (`test/pull-merge-base.test.js`).
  *
- * `--merge` is the third option, and usually the one you want after a refused push:
- * three-way merge local work with what the backend sends, instead of choosing
- * between them. Most "conflicts" are two people editing different paragraphs of one
- * section, which merges silently; only genuine overlaps get conflict markers. The
- * common ancestor is the version the last pull wrote, found in the repo's history —
- * the backend keeps no per-version history and does not need to — so `--merge`
- * requires a repo, and the merge itself is `git merge-file`.
+ * A history with no sync point — a project synced before there were any, or one whose
+ * sync merges were rebased away — merges with no base: a file both sides hold alike
+ * merges without a word, and every difference is a conflict to settle. `--force` takes
+ * the backend's version whole, and leaves a sync point.
+ *
+ * Outside a repository there is nothing to merge against: a pull reconciles the files to
+ * the backend — section bodies rewritten, pages and sections the backend no longer has
+ * DELETED (`--no-delete` keeps them; an empty or partial payload never wipes the tree) —
+ * and asks first, unless nothing there is the author's (`pull-written.js`).
  *
  * `uniweb login && uniweb pull`. Run from a site, or a workspace with one site.
  *
  * Usage:
- *   uniweb pull                          GET both lanes, project to files, prune orphans
- *   uniweb pull --no-records         Pull pages only; skip the folder (records) lane
- *   uniweb pull --no-delete              Project, but keep files with no backend item
- *   uniweb pull --merge                  Three-way merge local changes with the backend's
- *   uniweb pull --force                  Pull over uncommitted local changes (discards them)
+ *   uniweb pull                          GET both lanes; in git merge them, else write them
+ *   uniweb pull --no-records             Pull pages only; skip the folder (records) lane
+ *   uniweb pull --no-delete              Keep files with no backend item
+ *   uniweb pull --force                  Take the backend's version, discarding local changes
  *   uniweb pull --dry-run                Report what it would GET; write nothing
  *
  * The content + folder pull lanes are both keyed by the site's uuid on that backend
@@ -59,13 +66,10 @@ import {
   readFileSync,
   writeFileSync,
   mkdirSync,
-  mkdtempSync,
   rmSync,
   readdirSync,
   statSync
 } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { createHash } from 'node:crypto'
 import { createInterface } from 'node:readline/promises'
 import { join, dirname, relative, resolve } from 'node:path'
 import yaml from 'js-yaml'
@@ -102,18 +106,26 @@ import {
   writeFolderItemUuids
 } from '../backend/site-sync.js'
 import { resolveWorkspace } from '../backend/workspace.js'
+import { siteContentRoots } from '../utils/git.js'
 import {
-  uncommittedUnder,
-  siteContentRoots,
-  showAtHead,
-  findCommitted,
-  mergeFile
-} from '../utils/git.js'
+  repoOf,
+  mergeInProgress,
+  isAncestor,
+  historySyncPoint,
+  newestBase,
+  openStandIn,
+  mergeSyncPoint,
+  takeSyncPoint,
+  changesBetween,
+  readSyncPoint,
+  writeSyncPoint
+} from '../utils/sync-point.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import {
   BackendClient,
   describeRequestError,
   refusalDetail,
+  SOURCE_HEADER,
   WorkspaceMismatchError
 } from '../backend/client.js'
 import { resolveSiteDir as defaultResolveSiteDir } from './deploy.js'
@@ -132,7 +144,8 @@ const colors = {
   green: '\x1b[32m',
   blue: '\x1b[36m'
 }
-const log = console.log
+// Looked up at each call, so a caller that captures the console captures these too.
+const log = (...a) => console.log(...a)
 const success = (m) => log(`${colors.green}✓${colors.reset} ${m}`)
 const error = (m) => console.error(`${colors.red}✗${colors.reset} ${m}`)
 const info = (m) => log(`${colors.blue}→${colors.reset} ${m}`)
@@ -213,10 +226,11 @@ function readYamlUuid(filePath) {
 function pullCachePath(siteDir) {
   return join(siteDir, '.uniweb', 'pull-cache.json')
 }
-// ⛔ VERSION 2 DISOWNS EVERY ETAG A VERSION-1 PULL WROTE. Before 2026-09-23 a
-// `--merge` that kept a local file whole — every one, in the default layout (see
-// `showAt`) — still cached the ETag of content it never took. Every later pull then
-// answered 304 and the file never caught up. Ignoring those once costs one full pull.
+// ⛔ VERSION 2 DISOWNS EVERY ETAG A VERSION-1 PULL WROTE. Before 2026-09-23 a merge that
+// kept a local file whole — every one, in the default layout — still cached the ETag of
+// content it never took. Every later pull then answered 304 and the file never caught up.
+// Ignoring those once costs one full pull. (In a repository an ETag is echoed only while
+// the sync point it was banked with is in the history — see `cacheHolds` below.)
 const PULL_CACHE_VERSION = 2
 function readPullCache(siteDir) {
   try {
@@ -455,191 +469,45 @@ function filesUnder(siteDir, roots) {
 }
 
 /**
- * Refuse a pull that would overwrite unsaved work. Returns a result object to
+ * Outside git, refuse a pull that would overwrite unsaved work. Returns a result object to
  * return from `pull`, or null to proceed.
  *
- * With a repo: uncommitted work under pull's roots blocks, naming the files.
- * Without one: there is nothing standing behind the tree, so ask — and in a
- * non-interactive context refuse rather than assume consent.
+ * Nothing stands behind the tree there, so it asks — and in a non-interactive context
+ * refuses rather than assume consent — unless nothing under pull's roots is the author's:
+ * every file is one a pull, or the clone that made the site, wrote and nothing has changed
+ * since (`pull-written.js`). ⛔ Until 2026-09-26 a fresh clone's own pull, which runs with no
+ * terminal to ask, refused here, and `uniweb clone` could not finish.
  */
 async function checkWorkingTree(siteDir, args) {
   const roots = siteContentRoots(siteDir)
-  let dirty = uncommittedUnder(siteDir, roots)
-
-  if (dirty === null) {
-    // Not a git work tree. Nothing to fall back on if this goes wrong — unless nothing here is the
-    // author's: every file under pull's roots is one a pull, or the clone that made this site, wrote
-    // and nothing has changed since (`pull-written.js`). ⛔ Until 2026-09-26 a fresh clone's own pull,
-    // which runs with no terminal to ask, refused here, and `uniweb clone` could not finish.
-    const written = readWritten(siteDir)
-    if (filesUnder(siteDir, roots).every((f) => isPullOutput(siteDir, f, written))) return null
-    if (isNonInteractive(args)) {
-      error('Refusing to pull: this site is not in a git repository.')
-      note(
-        'Pull rewrites pages, sections and layout from the backend and deletes what it no longer has.'
-      )
-      note(
-        'Without version control there is no way back, and this session cannot ask.'
-      )
-      note(
-        'Re-run with --force to accept that, or put the site under git first.'
-      )
-      return { exitCode: 1 }
-    }
-    const ok = await confirm(
-      `Pull will overwrite ${roots.length} content location(s) and this site is not in git. Continue?`
+  const written = readWritten(siteDir)
+  if (filesUnder(siteDir, roots).every((f) => isPullOutput(siteDir, f, written))) return null
+  if (isNonInteractive(args)) {
+    error('Refusing to pull: this site is not in a git repository.')
+    note(
+      'Pull rewrites pages, sections and layout from the backend and deletes what it no longer has.'
     )
-    if (!ok) {
-      info('Nothing pulled.')
-      return { exitCode: 0 }
-    }
-    return null
+    note(
+      'Without version control there is no way back, and this session cannot ask.'
+    )
+    note(
+      'Re-run with --force to accept that, or put the site under git first — there a pull merges.'
+    )
+    return { exitCode: 1 }
   }
-
-  const written = readWritten(siteDir)
-  dirty = dirty.filter((f) => !isPullOutput(siteDir, f, written))
-  if (!dirty.length) return null
-
-  error(
-    `Refusing to pull: ${dirty.length} uncommitted change(s) under the files pull rewrites.`
+  const ok = await confirm(
+    `Pull will overwrite ${roots.length} content location(s) and this site is not in git. Continue?`
   )
-  for (const f of dirty.slice(0, 12)) note(`  ${f}`)
-  if (dirty.length > 12) note(`  … and ${dirty.length - 12} more`)
-  note(
-    'Pull reconciles the working tree to the backend, so these would be overwritten or deleted.'
-  )
-  note(
-    'Commit or stash them first — then pull, and your work is still in git either way.'
-  )
-  note('To discard them and take the backend version, re-run with --force.')
-  return { exitCode: 1 }
+  if (!ok) {
+    info('Nothing pulled.')
+    return { exitCode: 0 }
+  }
+  return null
 }
 
-// The written-record helpers live in `utils/pull-written.js` so `clone` can share
-// them: clone scaffolds site.yml/theme.yml and then delegates here, and this
-// module cannot be imported from there — it statically imports `@uniweb/build`,
-// which resolves from a project that does not exist yet when clone runs.
-
-/**
- * `--merge`: keep local work instead of refusing, by three-way merging it with what
- * the backend sends.
- *
- * Without this the recovery from a same-section conflict is commit → pull (which
- * overwrites your version) → re-apply by hand → push. Yet most such "conflicts"
- * aren't: two people edited different paragraphs of one section, and a real merge
- * takes both. Only genuine overlaps need a human.
- *
- * Works by capturing local content BEFORE the projection overwrites it, then
- * merging afterwards — so the projector stays a plain writer and needs no hook, and
- * nothing is lost in between because "mine" is already in memory.
- *
- * Requires a repo, and that is not a mandate creeping in: the ancestor is a
- * committed version, and the merge is git's. There is nothing to merge against
- * without one.
- *
- * ⭐ THE ANCESTOR IS THE VERSION THE LAST PULL WROTE — found in history by the hash
- * the pull recorded (`findCommitted`), HEAD's only for a file no pull ever wrote.
- * HEAD stops being that version the moment someone commits an edit on top of it,
- * and a merge against it read their edit as the starting point: the backend's
- * version won whole, reverting the committed edit (measured 2026-09-23 — commit,
- * push refused, `uniweb refresh`, the edit gone from the working tree). The same
- * reason brings in work that is COMMITTED but was never pushed: clean to git, so a
- * dirty scan cannot see it, yet the projection would overwrite it.
- *
- * @returns {Map<string, {content: Buffer, base: Buffer|null}>|null} captured work,
- *   or null when merging isn't possible here (the caller reports and stops).
- */
-function captureLocalWork(siteDir) {
-  const dirty = uncommittedUnder(siteDir, siteContentRoots(siteDir))
-  if (dirty === null) return null
-  const written = readWritten(siteDir)
-  const ancestorOf = (rel) => {
-    const recorded = written.files[rel]
-    return (recorded && findCommitted(siteDir, rel, recorded)) || showAtHead(siteDir, rel)
-  }
-  const out = new Map()
-  for (const rel of dirty) {
-    if (isPullOutput(siteDir, rel, written)) continue // pull's own output, not work
-    try {
-      out.set(rel, { content: readFileSync(join(siteDir, rel)), base: ancestorOf(rel) })
-    } catch {
-      // Locally deleted. Pull will restore the backend's copy, which is the
-      // sensible reading of "I removed this and then asked for their version".
-    }
-  }
-  // Committed work: a file a pull wrote, edited and committed since. Its ancestor is
-  // only ever the version the pull wrote — HEAD is the edit itself — and when that is
-  // not in history there is none, which the merge treats as such.
-  for (const [rel, recorded] of Object.entries(written.files)) {
-    if (out.has(rel) || dirty.includes(rel)) continue
-    let content
-    try {
-      content = readFileSync(join(siteDir, rel))
-    } catch {
-      continue
-    }
-    if (createHash('sha256').update(content).digest('hex') === recorded) continue // untouched
-    out.set(rel, { content, base: findCommitted(siteDir, rel, recorded) })
-  }
-  return out
-}
-
-// Merge captured work back over what the projection just wrote. Returns a report;
-// `unavailable` lists files whose merge could not run at all — they did NOT take the
-// backend's version, so the caller must not record this pull as taken.
-function mergeLocalWork(siteDir, captured) {
-  const clean = []
-  const conflicted = []
-  const kept = []
-  const unavailable = []
-  for (const [rel, { content: mine, base }] of captured) {
-    const abs = join(siteDir, rel)
-    let theirs = null
-    try {
-      theirs = readFileSync(abs)
-    } catch {
-      /* pruned by the pull */
-    }
-
-    if (theirs === null) {
-      // The backend no longer has it, but we changed it. Restoring is the
-      // non-destructive reading; the alternative silently discards local work to
-      // honour a deletion the user never saw.
-      mkdirSync(dirname(abs), { recursive: true })
-      writeFileSync(abs, mine)
-      kept.push(`${rel} (removed upstream, kept yours)`)
-      continue
-    }
-    if (theirs.equals(mine)) continue // both sides agree already
-
-    // ⛔ NO ANCESTOR IS A TWO-WAY MERGE, NOT "KEEP OURS". Both sides hold the file and
-    // no common version is on record — added on both sides, or a pull's version that
-    // was never committed. Keeping ours hid the backend's version entirely, and the
-    // pull then recorded it as taken. An empty ancestor is git's add/add: both
-    // versions, under conflict markers, for a person to settle.
-    const dir = mkdtempSync(join(tmpdir(), 'uniweb-merge-'))
-    try {
-      const basePath = join(dir, 'base')
-      const theirsPath = join(dir, 'theirs')
-      writeFileSync(basePath, base || '')
-      writeFileSync(theirsPath, theirs)
-      writeFileSync(abs, mine) // merge-file rewrites this in place
-      const r = mergeFile(siteDir, abs, basePath, theirsPath)
-      if (!r.merged) {
-        writeFileSync(abs, mine) // merge couldn't run — never leave a half-state
-        kept.push(`${rel} (merge unavailable, kept yours)`)
-        unavailable.push(rel)
-      } else if (r.conflicted) {
-        conflicted.push(rel)
-      } else {
-        clean.push(rel)
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
-  return { clean, conflicted, kept, unavailable }
-}
+// The written-record helpers live in `utils/pull-written.js`: outside git they are how a
+// pull tells its own output from the author's work (`checkWorkingTree`), and that module
+// imports nothing of `@uniweb/build`.
 
 // Minimal yes/no prompt; defaults to no, because the default must not destroy.
 async function confirm(question) {
@@ -651,6 +519,24 @@ async function confirm(question) {
     rl.close()
   }
 }
+
+// Read what a file holds, or null — to put it back if a merge cannot be made.
+function bytesOf(path) {
+  try {
+    return readFileSync(path)
+  } catch {
+    return null
+  }
+}
+function restore(path, bytes) {
+  if (bytes === null) rmSync(path, { force: true })
+  else writeFileSync(path, bytes)
+}
+
+// The sync point's subject line, and the merge's.
+const pulledFrom = (origin) => `The site's content on ${origin}`
+const mergedFrom = (origin) => `Merge the site's content from ${origin}`
+const takenFrom = (origin) => `Take the site's content from ${origin}`
 
 export async function pull(args = [], deps = {}) {
   // See utils/flag-guard.js — an unrecognized flag is invisible to a literal scan, so
@@ -669,37 +555,26 @@ export async function pull(args = [], deps = {}) {
   const noRecords =
     args.includes('--no-records') || args.includes('--content-only')
   const force = args.includes('--force')
-  const mergeMode = args.includes('--merge')
 
   const siteDir = await resolveSiteDir(args, 'pull')
   const fetchAssets = shouldFetchAssets(args, siteDir)
 
-  // Don't overwrite work that isn't saved anywhere. Pull reconciles the working
-  // tree to the backend — it rewrites section bodies from the fetched document and
-  // prunes what the backend doesn't have — so uncommitted work under the
-  // directories it owns is destroyed with no way back. That is the one place the
-  // CLI could still lose a user's work without them agreeing to it.
-  //
-  // Checked coarsely, by root, on purpose: pull rewrites essentially every file
-  // under those roots, so an exact per-file intersection would refuse the same
-  // cases while being able to miss one.
-  // `--merge` keeps local work instead of refusing it: capture what is dirty now,
-  // let the projection write the backend's version, then merge ours back over it.
-  let captured = null
-  let mergeReport = null
-  if (!dryRun && mergeMode) {
-    captured = captureLocalWork(siteDir)
-    if (captured === null) {
-      error('Cannot merge: this site is not in a git repository.')
-      note(
-        'The common ancestor a merge needs is in git history: the version of each file your last pull wrote.'
-      )
-      note(
-        'Without a repo there is nothing to merge against — use `uniweb pull --force` to take the backend version.'
-      )
+  // ⭐ IN A REPOSITORY A PULL MERGES; OUTSIDE ONE IT CHECKS OUT. A merge needs the state both
+  // sides started from, and only a history holds one (`utils/sync-point.js`). Outside git
+  // a pull rewrites the files, so work there that a pull did not write stops it.
+  const repo = repoOf(siteDir)
+  if (repo && !dryRun) {
+    if (!repo.head) {
+      error('This repository has no commits yet, so there is nothing for a pull to merge into.')
+      note('Commit the project, then pull.')
       return { exitCode: 1 }
     }
-  } else if (!dryRun && !force) {
+    if (mergeInProgress(repo)) {
+      error('A merge is in progress here.')
+      note('Finish it (`git commit`) or abandon it (`git merge --abort`), then pull.')
+      return { exitCode: 1 }
+    }
+  } else if (!repo && !dryRun && !force) {
     const blocked = await checkWorkingTree(siteDir, args)
     if (blocked) return blocked
   }
@@ -824,15 +699,19 @@ export async function pull(args = [], deps = {}) {
     }
     try {
       const etag = res.headers?.get?.('etag') ?? null
+      // ⭐ The commit the backend says this content last came from — a push's, which this
+      // history may hold (`utils/sync-point.js`).
+      const source = res.headers?.get?.(SOURCE_HEADER) ?? null
       const buf = Buffer.from(await res.arrayBuffer())
       const docs = readPullDocuments(buf)
       // The staleness tokens this lane carried, so the next push is gated against
-      // the state we took. Banked by the caller once local work is merged back — a
-      // file the merge did not take must not have its token recorded as taken. A 304
-      // carries none, correctly: the tokens we hold are still current.
+      // the state we took. Banked by the caller once the content is taken — a lane the
+      // files did not take must not have its token recorded as taken. A 304 carries
+      // none, correctly: the tokens we hold are still current.
       return {
         docs,
         etag,
+        source,
         versions: readPullVersions(buf),
         itemVersions: readPullItemVersions(buf)
       }
@@ -842,8 +721,8 @@ export async function pull(args = [], deps = {}) {
     }
   }
 
-  // Every file the projection writes, so the next pull can tell its own output
-  // apart from the user's work (see readWritten).
+  // Every file the projection writes — outside git, so the next pull can tell its own
+  // output from the user's work (see readWritten).
   const wrote = []
   const removed = []
   let pages = 0
@@ -856,53 +735,180 @@ export async function pull(args = [], deps = {}) {
 
   // Conditional-pull cache: the last ETag seen per lane (opaque token — cached and
   // echoed verbatim, never recomputed). Lives in the gitignored `.uniweb/`.
+  //
+  // ⛔ In a repository an ETag says "the backend has not moved since the content it came
+  // with" — about the FILES only while that content is in their history. A merge
+  // abandoned, a branch reset: the backend did not move, the files did. So it is echoed
+  // only while the sync point it was banked with is.
   const cache = readPullCache(siteDir)
+  const held = repo ? readSyncPoint(siteDir, client.origin) : null
+  const cacheHolds = !repo || Boolean(held && isAncestor(repo, held))
   let etagContent = cache.content
   let etagFolder = cache.folder
-
-  // ⭐ THE SCOPE THE PULLED RECORDS AND QUERIES WERE QUALIFIED WITH — the pushed site's
-  // FOUNDATION's: the scope of the pinned ref it carries (`info.foundation`), else the
-  // local foundation's name. A push qualifies `@/x` with it, so this is what undoes it,
-  // and a record lands back in `records/article/` rather than `records/acme/article/`.
-  // Resolved once, up front — it may load main.js — and handed to the synchronous
-  // projections, as Models are. ⛔ It was the site owner's org, from sync.json, until
-  // 2026-09-22; a foundation may be registered under any org its author belongs to.
-  let pullScope
-  const scopeFor = async (doc) => {
-    if (pullScope === undefined) {
-      const pinned = doc?.info?.foundation
-      pullScope = await siteSelfScope(siteDir, pinned !== undefined ? { foundation: pinned } : {})
-    }
-    return pullScope
-  }
 
   // ⛔ `--force` IS UNCONDITIONAL. It means "take the backend's version over mine", and
   // an ETag answers a different question — whether the BACKEND moved, never whether
   // the files still hold what it sent. Echoed here, a `git checkout` followed by
   // `pull --force` got a 304 and left the checked-out files in place (2026-09-23).
-  const conditional = !force
+  const conditional = !force && cacheHolds
+
   // Lane 1 — content → config + pages/** + layout/**. The .uwx carries a single
   // entity (the site-content document). A 304 (unchanged) leaves local files as-is.
   const content = await getDocs('content', () =>
     client.pullSiteContent(siteContentUuid, { etag: conditional ? etagContent : undefined })
   )
   if (content?.refused) return { exitCode: 1 }
+  const siteDoc =
+    content && !content.notModified && content.docs
+      ? content.docs.find((d) => d?.info || documentSchema(d)) || content.docs[0] || null
+      : null
+  if (content?.etag) etagContent = content.etag
+
+  // Lane 2 — folder → the folder + record files, keyed by the SAME site-content uuid
+  // (the backend resolves the site's `@uniweb/folder` from it; the framework never
+  // holds a folder uuid). A 304 leaves files as-is.
+  let folderLane = null
+  if (!noRecords) {
+    folderLane = await getDocs('records', () =>
+      client.pullFolder(siteContentUuid, { etag: conditional ? etagFolder : undefined })
+    )
+    if (folderLane?.refused) return { exitCode: 1 }
+    if (folderLane?.etag) etagFolder = folderLane.etag
+  }
+  const folderTaken =
+    folderLane && !folderLane.notModified && folderLane.docs?.length
+      ? splitRecordsPull(folderLane.docs)
+      : null
+  const projected = Boolean(siteDoc) || Boolean(folderTaken)
+
+  // ── What the project itself says, read before anything is written ──────────
+  // The foundation, the Models and the scope come from the project as it is: in a
+  // repository the content is written into a stand-in, where none of them is read.
+
+  // ⛔ Do NOT overwrite a workspace project's `site.yml::foundation`.
+  //
+  // Same principle as restoring authored asset paths, and the same failure it prevents:
+  // a round trip must not mangle what the author wrote. `publish` stamps the RELEASED,
+  // version-pinned ref into `info.foundation` (delivery is version-pinned end to end),
+  // so projecting the stored value back turns `foundation: src` into `@org/x@1.2.3` —
+  // which the build then REFUSES to resolve, leaving the project unable to `build`,
+  // `dev` or `export`. It stays publishable throughout, so nothing surfaces it.
+  //
+  // ⚖️ Only suppressed when the AUTHORED value resolves to a local foundation. A project
+  // from `uniweb clone` has no local foundation on disk, and there the pinned ref is
+  // exactly what site.yml should say — so this is a question about which project shape
+  // we are writing into, not a blanket "never project it".
+  //
+  // Lazily imported: the resolver lives behind `@uniweb/build`'s root, which pulls the
+  // vite chain, and this file deliberately imports only the `uwx` leaf. Reused rather
+  // than reimplemented so "which foundation" cannot drift from what the build itself
+  // resolves.
+  let keepAuthoredFoundation = false
+  let dataModel = null
   // The Models the pulled site's queries name, as the push qualified them — the re-bank
-  // below resolves with them too (see there).
+  // resolves with them too.
   let pulledQueryModels = []
+  if (siteDoc) {
+    pulledQueryModels = (Array.isArray(siteDoc.queries) ? siteDoc.queries : [])
+      .map((q) => q?.schema)
+      .filter((s) => typeof s === 'string' && /^@[^/]+\//.test(s))
+    try {
+      const { resolveLocalFoundation } = await import(
+        '../backend/foundation-bring-along.js'
+      )
+      const authored = yaml.load(readFileSync(siteYmlPath, 'utf8'))
+      keepAuthoredFoundation = Boolean(resolveLocalFoundation(siteDir, authored))
+    } catch {
+      // No site.yml, unreadable, or nothing local — project the stored value, which is
+      // the pre-existing behaviour and right for a fresh clone.
+    }
+    // A foundation named by catalog ref — a clone's: keep its registered version before the
+    // queries are written, since its section types are what type a query named for a data key.
+    if (!keepAuthoredFoundation) {
+      await ensureRegisteredFoundation({ client, siteDir, siteUuid: siteContentUuid, ref: siteDoc?.info?.foundation })
+    }
+    // A translated data block is read back by what its section's type declares it is, as the
+    // push translated it — after the registered foundation above, whose section types say it.
+    dataModel = await dataBlockModels(siteDir)
+  }
+  // ⭐ THE SCOPE THE PULLED RECORDS AND QUERIES WERE QUALIFIED WITH — the pushed site's
+  // FOUNDATION's: the scope of the pinned ref it carries (`info.foundation`), else the
+  // local foundation's name. A push qualifies `@/x` with it, so this is what undoes it,
+  // and a record lands back in `records/article/` rather than `records/acme/article/`.
+  // ⛔ It was the site owner's org, from sync.json, until 2026-09-22; a foundation may be
+  // registered under any org its author belongs to.
+  const pinned = siteDoc?.info?.foundation
+  const pullScope = projected
+    ? await siteSelfScope(siteDir, pinned !== undefined ? { foundation: pinned } : {})
+    : undefined
+  // The record lane's Models, by name — resolved up front, so `recordsToProject` keeps its
+  // synchronous contract. ⛔ NO QUERY CONFIG: a record's home is decided by what it IS —
+  // its data schema (`documentSchema`) names the pool folder — not by any query that
+  // happens to select it.
+  const declByModel = new Map()
+  if (folderTaken) {
+    for (const model of [
+      ...new Set(folderTaken.recordDocs.map((d) => documentSchema(d)).filter(Boolean))
+    ]) {
+      try {
+        declByModel.set(model, await readModel(model))
+      } catch (err) {
+        note(`! could not resolve model ${model}: ${err.message}`)
+      }
+    }
+  }
+  // ⭐ The re-bank resolves with the Models this pull read, and those its queries name — a
+  // query may name a schema no record uses yet. It is offline, and a site whose foundation
+  // is not in the project (a clone's) resolves none of them otherwise: every template clone
+  // said "could not re-bank" until 2026-09-25, and banked nothing.
+  const declarations = new Map(declByModel)
+  for (const model of pulledQueryModels) {
+    if (declarations.has(model)) continue
+    try {
+      declarations.set(model, await readModel(model))
+    } catch {
+      // Unreadable here: the re-bank says so if it needs it.
+    }
+  }
+  const fields = projected ? await deploymentFields({ client, siteDir }) : null
+
+  // ── Where the backend's content is written ──────────────────────────────────
+  // ⭐ In a repository, onto the BASE — the newest sync point HEAD's history holds — in a
+  // stand-in, so the result differs from the base exactly where the backend changed
+  // something. That result is committed, a new sync point, and merged: git's merge, with
+  // the base as its merge base. `--force`, and a history with no sync point, write onto
+  // HEAD instead: the first to take the backend's whole, the second so a file both sides
+  // hold alike merges without a word.
+  const roots = [...siteContentRoots(siteDir), 'public']
+  let base = null
+  let onto = null
+  let standIn = null
+  if (repo && projected) {
+    base = newestBase(repo, [
+      historySyncPoint(repo, { origin: client.origin, siteUuid: siteContentUuid }),
+      held,
+      content?.source,
+      folderLane?.source
+    ])
+    onto = force || !base ? repo.head : base
+    try {
+      standIn = openStandIn(repo, { roots, rev: onto })
+    } catch (err) {
+      error(`Could not merge the site: ${err.message}.`)
+      return { exitCode: 1 }
+    }
+  }
+  const projDir = standIn ? standIn.siteDir : siteDir
+
   // The versions this copy holds after the pull: every site-content item the pulled
-  // document carries (`pulledItemVersions`), banked below once the files have taken it.
+  // document carries (`pulledItemVersions`), banked below once the content is taken.
   let pulledVersions = null
-  if (content && !content.notModified) {
-    const siteDoc =
-      content.docs &&
-      (content.docs.find((d) => d?.info || documentSchema(d)) ||
-        content.docs[0] ||
-        null)
+  // The record documents this pull took — the re-bank pairs their list items with the files.
+  let pulledRecordDocs = []
+  let merge = { conflicted: [], changed: [] }
+  let notTaken = false
+  try {
     if (siteDoc) {
-      pulledQueryModels = (Array.isArray(siteDoc.queries) ? siteDoc.queries : [])
-        .map((q) => q?.schema)
-        .filter((s) => typeof s === 'string' && /^@[^/]+\//.test(s))
       // Re-base the page attribution. The pulled document IS the backend's own
       // representation, so it becomes the remote base directly. We deliberately
       // CLEAR the local base rather than reuse it: our source files were just
@@ -910,15 +916,15 @@ export async function pull(args = [], deps = {}) {
       // byte-identical to it, so the old local base no longer describes anything.
       // The next push re-establishes it; until then our side reports as unknown,
       // which is honest rather than wrong.
-      writeUnitBases(siteDir, client.origin, { remote: computeUnitHashes(siteDoc), local: {} })
+      writeUnitBases(projDir, client.origin, { remote: computeUnitHashes(siteDoc), local: {} })
       pulledVersions = pulledItemVersions(siteDoc, content.itemVersions)
       // Per-item identity for the next push. Without it the backend reads our
       // records as new and re-mints every page and section row.
-      writeItemUuids(siteDir, client.origin, collectUnitUuids(siteDoc))
+      writeItemUuids(projDir, client.origin, collectUnitUuids(siteDoc))
       // The collections section's identity has no file to live in either — same
       // reason, same remedy, keyed by name. A pull is the other route by which a
       // copy can recover it (see readQueryUuids).
-      writeQueryUuids(siteDir, client.origin, collectQueryUuids(siteDoc))
+      writeQueryUuids(projDir, client.origin, collectQueryUuids(siteDoc))
       // Bring the media down BEFORE projecting: a newly-landed asset gains a map
       // entry, and the projection reads that map to put authored paths back. Run
       // after, and this pull's new assets would project as URLs and only restore
@@ -931,7 +937,7 @@ export async function pull(args = [], deps = {}) {
       if (fetchAssets) {
         const dl = await downloadMissingAssets({
           document: siteDoc,
-          siteDir,
+          siteDir: projDir,
           origin: client.origin,
           onProgress: (m) => note(`  ${m}`),
           warn: (m) => note(`! ${m}`)
@@ -945,61 +951,17 @@ export async function pull(args = [], deps = {}) {
           )
         }
       }
-
-      // ⛔ Do NOT overwrite a workspace project's `site.yml::foundation`.
-      //
-      // Same principle as restoring authored asset paths above, and the same
-      // failure it prevents: a round trip must not mangle what the author wrote.
-      // `publish` stamps the RELEASED, version-pinned ref into `info.foundation`
-      // (delivery is version-pinned end to end), so projecting the stored value
-      // back turns `foundation: src` into `@org/x@1.2.3` — which the build then
-      // REFUSES to resolve, leaving the project unable to `build`, `dev` or
-      // `export`. It stays publishable throughout, so nothing surfaces it.
-      //
-      // ⚖️ Only suppressed when the AUTHORED value resolves to a local foundation.
-      // A project from `uniweb clone` has no local foundation on disk, and there
-      // the pinned ref is exactly what site.yml should say — so this is a
-      // question about which project shape we are writing into, not a blanket
-      // "never project it".
-      //
-      // Lazily imported: the resolver lives behind `@uniweb/build`'s root, which
-      // pulls the vite chain, and this file deliberately imports only the `uwx`
-      // leaf. Reused rather than reimplemented so "which foundation" cannot drift
-      // from what the build itself resolves.
-      let keepAuthoredFoundation = false
-      try {
-        const { resolveLocalFoundation } = await import(
-          '../backend/foundation-bring-along.js'
-        )
-        const authored = yaml.load(
-          readFileSync(join(siteDir, 'site.yml'), 'utf8')
-        )
-        keepAuthoredFoundation = Boolean(
-          resolveLocalFoundation(siteDir, authored)
-        )
-      } catch {
-        // No site.yml, unreadable, or nothing local — project the stored value,
-        // which is the pre-existing behaviour and right for a fresh clone.
-      }
-
-      // A foundation named by catalog ref — a clone's: keep its registered version before the
-      // queries are written, since its section types are what type a query named for a data key.
-      if (!keepAuthoredFoundation) {
-        await ensureRegisteredFoundation({ client, siteDir, siteUuid: siteContentUuid, ref: siteDoc?.info?.foundation })
-      }
       const report = siteContentDocumentToProject({
         document: siteDoc,
-        siteRoot: siteDir,
+        siteRoot: projDir,
         // Which backend's asset ids to read back as the author's own paths. Without
         // it a pull leaves every image pointing at a backend route.
         backend: client.origin,
         prune,
         keepAuthoredFoundation,
         // So a query's `@acme/member` comes back as the author's `@/member`.
-        scope: await scopeFor(siteDoc),
-        // A translated data block is read back by what its section's type declares it is, as the
-        // push translated it — after the registered foundation above, whose section types say it.
-        dataModel: await dataBlockModels(siteDir)
+        scope: pullScope,
+        dataModel
       })
       wrote.push(...report.pages, ...report.sections, ...report.layout)
       removed.push(
@@ -1010,56 +972,21 @@ export async function pull(args = [], deps = {}) {
       sections += report.sections.length
       deleted += report.deleted.length
     }
-    if (content.etag) etagContent = content.etag
-  }
 
-  // Lane 2 — folder → the folder + record files, keyed by the SAME site-content uuid
-  // (the backend resolves the site's `@uniweb/folder` from it; the framework never
-  // holds a folder uuid). Models are resolved by name (async) up front, so
-  // recordsToProject keeps its synchronous contract. A 304 leaves files as-is.
-  let folderLane = null
-  // The record documents this pull took — the re-bank below pairs their list items with the
-  // files just written.
-  let pulledRecordDocs = []
-  // The Models this pull read from the backend, by name — the re-bank below resolves with
-  // them, since a clone's foundation is not in the project to resolve them offline.
-  let pulledDeclarations = null
-  if (!noRecords) {
-    const folder = await getDocs('records', () =>
-      client.pullFolder(siteContentUuid, { etag: conditional ? etagFolder : undefined })
-    )
-    folderLane = folder
-    if (folder?.refused) return { exitCode: 1 }
-    if (folder && !folder.notModified && folder.docs?.length) {
-      const { folderDoc, recordDocs } = splitRecordsPull(folder.docs)
+    if (folderTaken) {
+      const { folderDoc, recordDocs } = folderTaken
       pulledRecordDocs = recordDocs
-      const resolveModel = readModel
-      const declByModel = new Map()
-      pulledDeclarations = declByModel
-      for (const model of [
-        ...new Set(recordDocs.map((d) => documentSchema(d)).filter(Boolean))
-      ]) {
-        try {
-          declByModel.set(model, await resolveModel(model))
-        } catch (err) {
-          note(`! could not resolve model ${model}: ${err.message}`)
-        }
-      }
-      // ⛔ NO QUERY CONFIG. A record's home is decided by what it IS — its data
-      // schema (`documentSchema`) names the pool folder — not by any query that happens to select
-      // it. Handed the foundation's scope (`scopeFor`), `recordsToProject` places a
-      // `@/x` model the producer resolved to `@acme/x` back where the author wrote it.
       const report = recordsToProject({
         folderDoc,
         recordDocs,
-        siteRoot: siteDir,
+        siteRoot: projDir,
         opts: {
           // Whose record map to read and extend.
           backend: client.origin,
           resolveDeclaration: (name) => declByModel.get(name) || null,
           // The scope a model's `@/x` was qualified with, so `@acme/article` is placed
-          // back in `records/article/` — see `scopeFor`.
-          scope: await scopeFor(null)
+          // back in `records/article/` — see `pullScope`.
+          scope: pullScope
         }
       })
       // ⭐ THE FOLDER'S PLACEMENT IDENTITY, from the folder this pull took — as a push banks
@@ -1067,16 +994,16 @@ export async function pull(args = [], deps = {}) {
       // had never pushed (every clone) sent its first folder with its placements uuid-less,
       // and the backend refused that push (`identity_required`, section `contents`) —
       // measured on a template clone's first edit.
-      if (folderDoc) writeFolderItemUuids(siteDir, client.origin, collectFolderItemUuids(folderDoc))
+      if (folderDoc) writeFolderItemUuids(projDir, client.origin, collectFolderItemUuids(folderDoc))
       // The folder's organization, `folder.yml` in the records directory — named as
       // the author would write it (`records/folder.yml`, or under `paths.records`).
       if (report.records === 'updated') {
         info(`Wrote ${report.recordsFile}`)
-        wrote.push(resolve(siteDir, report.recordsFile))
+        wrote.push(resolve(projDir, report.recordsFile))
       } else if (report.records === 'removed') {
         // The backend's folder has no sub-folders, and the file holds nothing else.
         info(`Removed ${report.recordsFile} — the folder has no sub-folders`)
-        removed.push(resolve(siteDir, report.recordsFile))
+        removed.push(resolve(projDir, report.recordsFile))
       }
       records += report.placed.length + report.updated.length
       // ⭐ A FILE RECORD'S BYTES (`@uniweb/file`, 2026-09-28): fetched to where `folder.yml` now
@@ -1085,7 +1012,7 @@ export async function pull(args = [], deps = {}) {
       if (report.fileDownloads?.length) {
         const got = await downloadFileRecords({
           downloads: report.fileDownloads,
-          siteDir,
+          siteDir: projDir,
           origin: client.origin,
           onProgress: (m) => note(`  ${m}`),
           warn: (m) => note(`! ${m}`)
@@ -1094,7 +1021,7 @@ export async function pull(args = [], deps = {}) {
         wrote.push(...got.downloaded)
         if (got.failed.length) {
           report.skipped.push(
-            ...got.failed.map((path) => ({ slug: relative(siteDir, path), reason: 'its file could not be fetched' }))
+            ...got.failed.map((path) => ({ slug: relative(projDir, path), reason: 'its file could not be fetched' }))
           )
         }
       }
@@ -1107,7 +1034,7 @@ export async function pull(args = [], deps = {}) {
       // as taken (below), and the exit is non-zero (the end).
       if (report.skipped.length) {
         recordsNotPlaced = describeUnplacedRecords({
-          docs: folder.docs,
+          docs: folderLane.docs,
           taken: report.placed.length + report.updated.length + report.unchanged.length,
           skipped: report.skipped
         })
@@ -1116,108 +1043,122 @@ export async function pull(args = [], deps = {}) {
       }
       for (const w of report.warnings) note(`! ${w}`)
     }
-    if (folder?.etag) etagFolder = folder.etag
-  }
 
-  // ⛔ WHAT THIS PULL WROTE, AND THE HASHES A PUSH DIFFS AGAINST, DESCRIBE THE
-  // BACKEND'S CONTENT — so both are taken over the projection, BEFORE local work is
-  // merged back. Taken after it, as they were until 2026-09-23, they recorded the
-  // merged-in local edits as pull output and as already pushed: the next push said
-  // "Nothing to push", `status` said in sync, and the edit never left this machine —
-  // while a later plain pull would have overwritten it as its own output.
-  //
-  // Config files are rewritten every pull whether or not they changed; include the
-  // ones the projector owns so a pull-then-pull doesn't trip on them either.
-  recordWritten(
-    siteDir,
-    [
-      ...wrote,
-      // The records folder's `folder.yml` is in `wrote` when this pull wrote it.
-      ...['site.yml', 'theme.yml', 'head.html', 'queries.yml'].map((f) =>
-        join(siteDir, f)
+    // Outside git: what this pull wrote, so the next one can tell its own output from the
+    // author's work. Config files are rewritten every pull whether or not they changed;
+    // include the ones the projector owns so a pull-then-pull doesn't trip on them either.
+    if (!repo) {
+      recordWritten(
+        siteDir,
+        [
+          ...wrote,
+          // The records folder's `folder.yml` is in `wrote` when this pull wrote it.
+          ...['site.yml', 'theme.yml', 'head.html', 'queries.yml'].map((f) =>
+            join(siteDir, f)
+          )
+        ],
+        removed
       )
-    ],
-    removed
-  )
+    }
 
-  // ⛔ RE-BANK THE SEND-ONLY-CHANGED HASHES OVER WHAT WE JUST WROTE.
-  //
-  // The projection above is canonical, not byte-identical to what was on disk: it
-  // moves section ordering out of filename prefixes (`1-hero.md` → `hero.md` plus an
-  // explicit `sections:` list) and stamps each section's `id`. Lossless, and a
-  // different document — which is exactly why the `local` unit base is cleared above.
-  //
-  // ⚠️ That same reasoning was never carried to the hashes, so they were left STALE
-  // rather than unknown, and `uniweb status` reported unpushed content immediately
-  // after a pull, permanently. Measured on matinee 2026-08-29: push → pull reported
-  // 1 changed of 8, with nothing edited in between.
-  //
-  // Re-banking rather than clearing, because after a pull the on-disk state IS the
-  // agreed state — it came from the backend, so a push with no edits should send
-  // nothing. Clearing would make it send everything.
-  //
-  // Best-effort: a failure here costs an unnecessary re-send on the next push, never
-  // wrong content, and must not fail a pull whose files are already written.
-  // Nothing projected — both lanes unchanged (304) — leaves the banked state describing the
-  // files as they are, so there is nothing to re-bank. Re-banking anyway only failed, noisily,
-  // where the Models cannot be resolved offline (a clone's).
-  const projected = Boolean(content && !content.notModified) || Boolean(folderLane && !folderLane.notModified)
-  if (!dryRun && projected) {
-    try {
-      // ⭐ With the Models this pull read, and those its queries name — a query may name a
-      // schema no record uses yet. The re-bank is offline, and a site whose foundation is not
-      // in the project (a clone's) resolves none of them otherwise: every template clone
-      // said "could not re-bank" until 2026-09-25, and banked nothing.
-      const declarations = pulledDeclarations || new Map()
-      for (const model of pulledQueryModels) {
-        if (declarations.has(model)) continue
-        try {
-          declarations.set(model, await readModel(model))
-        } catch {
-          // Unreadable here: the re-bank says so if it needs it.
+    // ⛔ RE-BANK THE SEND-ONLY-CHANGED HASHES OVER WHAT THE BACKEND HOLDS.
+    //
+    // The projection is canonical, not byte-identical to what was on disk: it moves
+    // section ordering out of filename prefixes (`1-hero.md` → `hero.md` plus an
+    // explicit `sections:` list) and stamps each section's `id`. Lossless, and a
+    // different document — which is exactly why the `local` unit base is cleared above.
+    //
+    // ⚠️ That same reasoning was never carried to the hashes, so they were left STALE
+    // rather than unknown, and `uniweb status` reported unpushed content immediately
+    // after a pull, permanently. Measured on matinee 2026-08-29: push → pull reported
+    // 1 changed of 8, with nothing edited in between.
+    //
+    // ⭐ Over the backend's content — the stand-in's, in a repository — never over local
+    // work merged into it: a hash banked for an edit says it is already pushed.
+    //
+    // Best-effort: a failure here costs an unnecessary re-send on the next push, never
+    // wrong content, and must not fail a pull whose content is already taken.
+    if (projected) {
+      try {
+        await rebankSyncHashes(projDir, client.origin, {
+          recordDocs: pulledRecordDocs,
+          ...(declarations.size ? { declarations } : {}),
+          fields
+        })
+      } catch (err) {
+        note(`! could not re-bank the sync cache: ${err.message}`)
+        note('  The next push will re-send content that is already current.')
+      }
+    }
+
+    // ── In a repository: commit the backend's content, and merge it ──────────
+    if (standIn) {
+      const syncFile = join(siteDir, 'sync.json')
+      const cacheFile = join(siteDir, '.uniweb', 'backend-cache.json')
+      const before = { sync: bytesOf(syncFile), cache: bytesOf(cacheFile) }
+      // What this copy keeps, taken back from the stand-in: the identity the backend minted
+      // (`sync.json`, before the merge, so a merge's stash carries it) and its caches.
+      const syncNow = bytesOf(join(projDir, 'sync.json'))
+      if (syncNow && !(before.sync && syncNow.equals(before.sync))) writeFileSync(syncFile, syncNow)
+      const cacheNow = bytesOf(join(projDir, '.uniweb', 'backend-cache.json'))
+      if (cacheNow) {
+        mkdirSync(dirname(cacheFile), { recursive: true })
+        writeFileSync(cacheFile, cacheNow)
+      }
+      // ⭐ A history with no sync point gets one even when nothing differs, so the next pull
+      // has a base; so does `--force`.
+      const made = standIn.commit({
+        parent: base,
+        subject: pulledFrom(client.origin),
+        origin: client.origin,
+        siteUuid: siteContentUuid,
+        always: force || !base
+      })
+      standIn.close()
+      standIn = null
+      if (!made.commit) {
+        // The backend holds what the base holds: nothing to merge.
+        writeSyncPoint(siteDir, client.origin, base)
+      } else {
+        merge.changed = changesBetween(repo, force || !base ? repo.head : base, made.commit)
+        const result = force
+          ? takeSyncPoint(repo, made.commit, { roots, message: takenFrom(client.origin) })
+          : mergeSyncPoint(repo, made.commit, { message: mergedFrom(client.origin) })
+        if (!result.ok) {
+          // ⛔ A merge that could not be made took nothing: the files are as they were, and
+          // nothing of this pull is recorded as taken.
+          notTaken = true
+          restore(syncFile, before.sync)
+          restore(cacheFile, before.cache)
+          if (result.reason === 'untracked') {
+            error(`Not merged — the backend's content would overwrite ${result.paths.length} file(s) that are not committed:`)
+            for (const p of result.paths.slice(0, 12)) note(`  ${p}`)
+            if (result.paths.length > 12) note(`  … and ${result.paths.length - 12} more`)
+            note('Commit them, or move them aside, then pull again.')
+          } else if (result.reason === 'merge-in-progress') {
+            error('A merge is in progress here.')
+            note('Finish it (`git commit`) or abandon it (`git merge --abort`), then pull.')
+          } else {
+            error("Could not merge the backend's content:")
+            for (const line of String(result.detail).split('\n').slice(0, 8)) note(`  ${line}`)
+          }
+        } else {
+          merge.conflicted = result.conflicted || []
+          writeSyncPoint(siteDir, client.origin, made.commit)
         }
       }
-      await rebankSyncHashes(siteDir, client.origin, {
-        recordDocs: pulledRecordDocs,
-        ...(declarations.size ? { declarations } : {}),
-        fields: await deploymentFields({ client, siteDir })
-      })
-    } catch (err) {
-      note(`! could not re-bank the sync cache: ${err.message}`)
-      note('  The next push will re-send content that is already current.')
     }
-  }
-
-  // Merge captured local work back over what the projection just wrote. Runs after
-  // BOTH lanes, so a file either lane produced is merged the same way.
-  if (captured && captured.size) {
-    mergeReport = mergeLocalWork(siteDir, captured)
-    const r = mergeReport
-    if (r.clean.length) {
-      info(`Merged your changes into ${r.clean.length} file(s):`)
-      for (const f of r.clean) note(`  ${f}`)
-    }
-    for (const f of r.kept) note(`\u21b7 ${f}`)
-    if (r.conflicted.length) {
-      error(`${r.conflicted.length} file(s) have conflicts to resolve:`)
-      for (const f of r.conflicted) note(`  ${f}`)
-      note('Conflict markers are in place. Resolve them, then commit and push.')
-    }
+  } finally {
+    standIn?.close()
   }
 
   // ⛔ THE TOKENS AND ETAGS SAY "THIS COPY HOLDS THE BACKEND'S VERSION" — so they are
-  // banked only once every file has taken it, merged or in conflict. A token banked
-  // for a file that kept ours makes the next push of it read as "only you changed it"
-  // and overwrite the backend's version; an ETag banked for it makes every later pull
-  // answer 304, so the file never catches up. Measured 2026-09-23, both: a refused
-  // push, `uniweb refresh`, and a push that quietly put back a heading another writer
-  // had replaced. When a merge could not run, nothing of this pull is recorded as
-  // taken, and the next pull fetches it again.
-  const unavailable = mergeReport?.unavailable || []
-  if (unavailable.length) {
-    note("! Not recorded as taken — a merge could not run, so those files keep yours.")
-    note('  Pushing them is refused until a pull merges them; fix git, then `uniweb pull --merge` again.')
-  } else {
+  // banked only once the content is taken: written, merged, or in conflict for a person to
+  // settle. In a repository they describe the sync point recorded above, and a push uses
+  // them only while HEAD holds it (`untakenBase`, backend/site-sync.js). Measured
+  // 2026-09-23, both, when they were banked for content a merge did not take: a push that
+  // quietly put back a heading another writer had replaced, and pulls answered 304 forever.
+  if (!notTaken) {
     for (const lane of [content, folderLane]) {
       if (!lane || lane.notModified || lane.refused) continue
       // Records this pull did not place were not taken, so neither is their lane.
@@ -1246,14 +1187,33 @@ export async function pull(args = [], deps = {}) {
   const summary =
     `Pulled — ${pages} page(s), ${sections} section(s), ${records} record(s)` +
     (deleted ? `, ${deleted} deleted` : '')
-  if (recordsNotPlaced) info(summary)
+  if (notTaken || recordsNotPlaced) info(summary)
   else success(summary)
+  if (repo && !notTaken) {
+    if (!projected || !merge.changed.length) {
+      note(`Your files already hold what ${client.origin} has.`)
+    } else {
+      const verb = force ? 'Took' : 'Merged'
+      info(`${verb} ${merge.changed.length} change(s) from ${client.origin}:`)
+      const label = { A: 'added', M: 'changed', D: 'removed', R: 'renamed' }
+      for (const [s, p] of merge.changed.slice(0, 12)) note(`  ${label[s] || s} ${p}`)
+      if (merge.changed.length > 12) note(`  … and ${merge.changed.length - 12} more`)
+    }
+    if (merge.conflicted.length) {
+      error(`${merge.conflicted.length} file(s) have conflicts to resolve:`)
+      for (const f of merge.conflicted) note(`  ${f}`)
+      note('Settle them, then `git commit` to finish the merge — your uncommitted changes come back with it.')
+    }
+  }
   // Unresolved conflicts are a non-zero exit, the way a conflicted `git merge` is.
   // The pull itself worked; there is work left for a human. This is what makes a
-  // chained `uniweb pull --merge && uniweb push` safe by construction — without it,
-  // the obvious one-liner pushes conflict markers into live content.
+  // chained `uniweb pull && uniweb push` safe by construction — without it, the
+  // obvious one-liner pushes conflict markers into live content.
   // Records it could not place are the same: the pull ran, and what it was sent is not
-  // all in the files — a chained push must not go on as if it were.
-  const conflicts = mergeReport?.conflicted?.length ?? 0
-  return { exitCode: conflicts || recordsNotPlaced ? 1 : 0, merge: mergeReport }
+  // all in the files — a chained push must not go on as if it were. And a merge that
+  // could not be made took nothing.
+  return {
+    exitCode: merge.conflicted.length || recordsNotPlaced || notTaken ? 1 : 0,
+    merge
+  }
 }

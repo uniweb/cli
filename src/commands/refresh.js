@@ -17,17 +17,16 @@
  * which is the whole point of a start-of-day command. A version that also pushed
  * would be one you had to think about first, and so one people would stop running.
  *
- * Order is deliberate: git first, then the backend. Teammates' commits are then in
- * the files when the backend's content arrives, and `pull --merge` merges a
- * teammate's change to a file the last pull wrote just as it merges your own edits:
- * against the version that pull wrote, found in the repo's history (`pull.js`,
- * `captureLocalWork`). And if git itself conflicts, refresh stops there — one source
- * of conflict at a time.
+ * Order is deliberate: git first, then the backend. Teammates' commits — and the sync
+ * points their pulls merged — are then in the history when the backend's content
+ * arrives, so the pull merges against the newest state of the site this history shares
+ * with the backend (`utils/sync-point.js`), and a teammate's change is merged like your
+ * own. And if git itself conflicts, refresh stops there — one source of conflict at a
+ * time.
  *
- * ⛔ Until 2026-10-16 this said the merge's ancestor was the COMMITTED version of each
- * file, so taking teammates' commits first made it fresher. That was HEAD — the rule
- * `pull --merge` dropped on 2026-09-23, because HEAD stops being the version a pull
- * wrote the moment an edit is committed on top of it.
+ * ⛔ Until 2026-10-17 the merge's ancestor was what this copy's last pull wrote, per file,
+ * from a per-machine record — so a teammate's committed work outside that record was
+ * overwritten or pruned, and a fresh clone's was all outside it.
  *
  * Exits NON-ZERO when a merge left conflicts, the way a conflicted `git merge`
  * does. That is what makes `uniweb refresh && uniweb push` correct by
@@ -35,7 +34,7 @@
  * content. If a `sync` verb is ever wanted, it is that chain.
  *
  * Usage:
- *   uniweb refresh                 git pull, then merge the backend's content
+ *   uniweb refresh                 git pull, then pull: merge the backend's content
  *   uniweb refresh --no-git        skip the git remote; backend only
  *   uniweb refresh --no-backend    skip the backend; git only
  *
@@ -99,7 +98,7 @@ function siteContentUuid(siteDir, backend) {
 export async function refresh(args = [], deps = {}) {
   // An unrecognized flag is invisible to a literal scan, so it silently keeps the
   // default — a mistyped `--no-git` would still pull from the git remote. And this is
-  // the only check refresh's argv gets: the pull it runs is handed `--merge` alone
+  // the only check refresh's argv gets: the pull it runs is handed nothing of it
   // (below). A backend flag or `--token` is refused here too, naming `uniweb login`
   // (`utils/flag-guard.js`). *(This explained the check by a mistyped `--backend`
   // until 2026-10-16; the verb has taken no backend flag since 2026-09-21.)*
@@ -164,11 +163,11 @@ export async function refresh(args = [], deps = {}) {
   } else {
     say.info("Merging the backend's content…")
     const pull = deps.pull || (await import('./pull.js')).pull
-    // `--merge` rather than a plain pull: an author editing a different part of the
-    // same section is not a conflict, and should not be presented as one.
-    // Nothing of refresh's own argv is forwarded: the pull goes to the backend you are
-    // logged in to, as refresh does, and authenticates the same way.
-    const res = await pull(['--merge'])
+    // A pull merges: an author editing a different part of the same section is not a
+    // conflict, and is not presented as one. Nothing of refresh's own argv is forwarded:
+    // the pull goes to the backend you are logged in to, as refresh does, and
+    // authenticates the same way.
+    const res = await pull([])
     conflicts = res?.merge?.conflicted?.length ?? 0
     if (res?.exitCode && !conflicts) {
       // Failed for a reason other than conflicts — say so plainly rather than

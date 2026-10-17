@@ -39,6 +39,7 @@
  *   uniweb clone <uuid> --path sites     Place under sites/ (segregated layout)
  *   uniweb clone <uuid> --project docs   Co-located docs/site
  *   uniweb clone <uuid> --no-records Pull pages only; skip records
+ *   uniweb clone <uuid> --no-git     Do not start a git repository for the new project
  *   uniweb clone <uuid> --org @org       Work in @org for this clone, instead of the
  *                                        workspace chosen at `uniweb login`. A site in
  *                                        another workspace stops it.
@@ -51,8 +52,8 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { join, resolve, basename, dirname } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { join, resolve, basename, dirname, relative, sep } from 'node:path'
+import { spawnSync, execFileSync } from 'node:child_process'
 import { scaffoldWorkspace, scaffoldSite } from '../utils/scaffold.js'
 import { resolvePlacement, projectConflictLines, SITE_KIND } from '../utils/placement.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
@@ -63,8 +64,8 @@ import { resolveWorkspace } from '../backend/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 import { extractFoundationRef } from '../utils/site-content-refs.js'
 import { readUwxDocuments } from '../utils/uwx-read.js'
-import { recordWritten } from '../utils/pull-written.js'
 import { checkFlags } from '../utils/flag-guard.js'
+import { repoOf, writeSyncPoint, SYNC_TRAILER, SITE_TRAILER } from '../utils/sync-point.js'
 
 const colors = {
   reset: '\x1b[0m',
@@ -167,6 +168,47 @@ function seedSyncJson(siteDir, origin, uuid) {
   }
   mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, JSON.stringify(doc, null, 2) + '\n')
+}
+
+/**
+ * Start the new project's history at a sync point — the site as the backend has it.
+ *
+ * ⭐ Like `uniweb create`, a clone puts its project under git unless it is already inside a
+ * repository; and its first commit holds the site as the backend has it, marked so a pull
+ * merges from it (`utils/sync-point.js`). Inside a repository the clone's pull already left
+ * one, in the commit that took the site.
+ */
+function startHistory({ projectDir, siteDir, origin, siteUuid }) {
+  const git = (args, input) =>
+    execFileSync('git', args, {
+      cwd: projectDir,
+      encoding: 'utf8',
+      input,
+      stdio: [input == null ? 'ignore' : 'pipe', 'pipe', 'pipe']
+    })
+  try {
+    git(['--version'])
+  } catch {
+    return // no git here: the project works without one, and a pull checks out
+  }
+  if (repoOf(projectDir)) return
+  try {
+    git(['init', '-q'])
+    git(['add', '-A'])
+    const sitePath = relative(projectDir, siteDir).split(sep).join('/')
+    const siteTree = git(sitePath ? ['write-tree', `--prefix=${sitePath}/`] : ['write-tree']).trim()
+    git(
+      ['commit', '-q', '-F', '-'],
+      `Clone the site from ${origin}\n\n${SYNC_TRAILER}: ${origin} ${siteUuid}\n${SITE_TRAILER}: ${sitePath || '.'}:${siteTree}\n`
+    )
+    writeSyncPoint(siteDir, origin, git(['rev-parse', 'HEAD']).trim())
+    success('Git repository initialized, its first commit the site as the backend has it')
+  } catch (err) {
+    note(
+      `! A git repository was started, but its first commit failed${err?.stderr ? `: ${String(err.stderr).trim().split('\n')[0]}` : ''}.`
+    )
+    note('  Commit the project before your first `uniweb pull`, so the pull has something to merge into.')
+  }
 }
 
 // Build the package-manager argv to run the project-local `uniweb pull`.
@@ -411,32 +453,12 @@ export async function clone(args = [], deps = {}) {
     }
   }
 
-  // Tell the delegated pull which files WE wrote, or it refuses on them.
-  //
-  // Pull guards against overwriting uncommitted work under the paths it rewrites,
-  // and `site.yml` / `theme.yml` are exactly those paths — uncommitted here
-  // because clone scaffolded them seconds ago. Without this, clone reliably ends
-  // in "Refusing to pull: 2 uncommitted change(s)" on a project it just created,
-  // where there is no user work to protect. The advice it prints (`--force`) is
-  // both unreachable — clone does not forward that flag — and wrong, since it
-  // means "discard my changes" and the changes are ours.
-  //
-  // ⭐ This exempts them for the RIGHT reason rather than overriding the guard.
-  // `recordWritten` stores a content hash, so a file the user edits between
-  // scaffold and pull no longer matches and the refusal correctly stands. The
-  // guard keeps its teeth; it just stops firing on machine output, which is what
-  // it already does for pull's own writes.
-  //
-  // Recorded AFTER the uuid seeding above — the hash has to be of the final
-  // bytes on disk, not of what the scaffolder first wrote.
-  recordWritten(
-    siteDir,
-    ['site.yml', 'theme.yml', 'head.html', 'queries.yml', join('records', 'folder.yml')]
-      .map((f) => join(siteDir, f))
-      .filter((p) => existsSync(p))
-  )
-
-  const pullExtra = []
+  // ⭐ The delegated pull takes the backend's version whole (`--force`): every file under
+  // what it writes is one this clone scaffolded seconds ago — the site directory is new
+  // (refused above when it is not) — so there is nothing of the author's to protect.
+  // ⛔ Until 2026-10-17 clone recorded its scaffold as pull output instead, so the pull's
+  // guard let it through; a pull inside a repository merges now, and has no such guard.
+  const pullExtra = ['--force']
   if (noRecords) pullExtra.push('--no-records')
   // The workspace this clone was told to work in: the pull is another process, and asks the same
   // question. ⛔ Until 2026-09-26 it was not told, so it used the login's — or, with none chosen,
@@ -461,6 +483,10 @@ export async function clone(args = [], deps = {}) {
       )
       return { exitCode: 1 }
     }
+  }
+
+  if (!deps.skipGit && !args.includes('--no-git')) {
+    startHistory({ projectDir, siteDir, origin: client.origin, siteUuid })
   }
 
   log('')

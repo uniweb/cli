@@ -122,6 +122,18 @@ export const DISCOVERY_DEFAULTS = {}
 export const WORKSPACE_HEADER = 'x-uniweb-workspace'
 
 /**
+ * The header naming where a push's content came from — the commit it was made from — and
+ * where a pull's content last came from, as the backend recorded it.
+ *
+ * ⭐ Opaque to the backend: it stores the value a push sends, with the version that push
+ * produced, and returns it on every pull of that entity. A copy whose history holds that
+ * commit merges from it (`utils/sync-point.js`) — the precise base, for a teammate or a
+ * fresh clone that never saw the push. Absent on a pull, there is simply no such base.
+ */
+export const SOURCE_HEADER = 'x-uniweb-source'
+const sourceHeaders = (source) => (source ? { [SOURCE_HEADER]: source } : {})
+
+/**
  * Whether a request works IN a workspace — a site route, `/dev/site…`.
  *
  * Only those name one. Every `/dev` route accepts the header, but registration reads
@@ -788,29 +800,35 @@ export class BackendClient {
     })
   }
 
-  /** POST /dev/site/content — CREATE a site from its content lane (.uwx zip). */
-  async createSiteContent(buffer) {
+  /**
+   * POST /dev/site/content — CREATE a site from its content lane (.uwx zip). `source`: the
+   * commit the content came from (`SOURCE_HEADER`).
+   */
+  async createSiteContent(buffer, { source } = {}) {
     return this.request('/dev/site/content', {
       method: 'POST',
       body: buffer,
+      headers: sourceHeaders(source),
       query: PUSH_QUERY
     })
   }
 
   /** POST /dev/site/content/push/{uuid} — UPDATE the content lane by site uuid (.uwx zip). */
-  async updateSiteContent(uuid, buffer) {
+  async updateSiteContent(uuid, buffer, { source } = {}) {
     return this.request(`/dev/site/content/push/${encodeURIComponent(uuid)}`, {
       method: 'POST',
       body: buffer,
+      headers: sourceHeaders(source),
       query: PUSH_QUERY
     })
   }
 
   /** POST /dev/site/folder/push/{uuid} — push the folder lane, keyed by the site uuid (.uwx zip). */
-  async pushFolder(uuid, buffer) {
+  async pushFolder(uuid, buffer, { source } = {}) {
     return this.request(`/dev/site/folder/push/${encodeURIComponent(uuid)}`, {
       method: 'POST',
       body: buffer,
+      headers: sourceHeaders(source),
       query: PUSH_QUERY
     })
   }

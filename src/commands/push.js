@@ -95,6 +95,7 @@ import {
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
   dropSiteBoundValues,
+  untakenBase,
   pushSyncPackages
 } from '../backend/site-sync.js'
 import { resolveWorkspace, describeWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
@@ -334,6 +335,17 @@ export async function push(args = [], deps = {}) {
     const stale = dropSiteBoundValues(siteDir, client.origin)
     if (stale.length) {
       note(`Dropped the previous site's ${stale.join(' and ')} from site.yml.`)
+    }
+  }
+  // ⛔ A GATED PUSH CLAIMS A BASE ONLY WHILE THE FILES HOLD IT (`untakenBase`) — said before
+  // anything is uploaded. A dry run previews it; `-o` reaches no backend, and `--force`
+  // drops the gate.
+  if (!output && !force) {
+    const untaken = untakenBase(siteDir, client.origin)
+    if (untaken) {
+      error(untaken.headline)
+      for (const line of untaken.lines) note(line)
+      return { exitCode: 1 }
     }
   }
   const priorHashes = readSyncCache(siteDir, client.origin)

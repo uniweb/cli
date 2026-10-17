@@ -14,8 +14,7 @@
 import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs'
 import { join, dirname, relative, isAbsolute, basename } from 'node:path'
 import yaml from 'js-yaml'
-import { hasUncommittedContent } from '../utils/git.js'
-import { recordWritten } from '../utils/pull-written.js'
+import { repoOf, readSyncPoint, writeSyncPoint, isAncestor } from '../utils/sync-point.js'
 import { humanBytes } from '../utils/bytes.js'
 import { isAuthoredPreview } from '../utils/preview.js'
 import {
@@ -301,10 +300,8 @@ export function pulledItemVersions(doc, itemVersions) {
 // ⭐ A section unit's path names it by its id (`pages/about/about.md`), and the author's
 // file may carry an ordering prefix or a child mark (`1-about.md`, `@about.md`), which a
 // pull writes back into in place. So the unit is looked up as a pull finds it
-// (`existingSectionFile`). ⛔ Until 2026-10-07 the id path was taken as the file: a push
-// recorded no file for a numbered section, and the next `pull --merge` merged against an
-// older version — a false conflict on a line only the other side had changed (measured
-// on the starter's `1-welcome.md`).
+// (`existingSectionFile`). ⛔ Until 2026-10-07 the id path was taken as the file, which
+// names nothing for a numbered section (measured on the starter's `1-welcome.md`).
 export function unitFilesOf(siteDir, unitPath) {
   if (unitPath === 'site.yml') return ['site.yml', 'theme.yml', 'head.html']
   let paths = {}
@@ -328,24 +325,6 @@ export function unitFilesOf(siteDir, unitPath) {
     return [found ? relative(siteDir, found) : rel]
   }
   return []
-}
-
-/**
- * Record, as synced, the files of the units a push left on the backend as we sent them.
- *
- * ⭐ WHAT A PUSH DELIVERED IS THE NEXT MERGE'S ANCESTOR. `pull --merge` finds the
- * version a file last synced at by the hash in `pull-written.json`. A pull records what
- * it wrote; this records what a push delivered — the units `heldTokens` says the
- * backend holds as ours, never one it kept for someone else. Without it, after a merge
- * and a push the ancestor was the pull's raw output, which nobody commits: the next
- * merge found no common version and put both whole files under conflict markers, for
- * edits on different lines (measured 2026-09-23).
- */
-function recordPushedUnits(siteDir, unitPaths) {
-  const files = new Set()
-  for (const p of unitPaths) for (const f of unitFilesOf(siteDir, p)) files.add(f)
-  const present = [...files].map((f) => join(siteDir, f)).filter((abs) => existsSync(abs))
-  if (present.length) recordWritten(siteDir, present)
 }
 
 // Pull the finalized entities out of the restore response. The backend returns
@@ -917,6 +896,54 @@ export function mergeBaseVersions(siteDir, backend, versions) {
   updateSyncCache(siteDir, backend, {
     baseVersions: { ...readBaseVersions(siteDir, backend), ...versions }
   })
+}
+
+/**
+ * Why a gated push must not go — or null when it may.
+ *
+ * ⛔ A PUSH CLAIMS A BASE ONLY WHILE ITS FILES HOLD IT. The versions it sends say "my content
+ * descends from the backend's at these versions". In a repository they describe one commit,
+ * the sync point this copy's last pull merged or its last push was made from
+ * (`utils/sync-point.js`), and they are true of the files only while HEAD's history holds
+ * it: a merge abandoned or a branch reset, and the push would put back what the backend's
+ * newer content replaced.
+ *
+ * ⛔ AND A SITE THE BACKEND HAS, PUSHED WITH NO VERSIONS AT ALL, GOES OVER WHATEVER CHANGED
+ * THERE — an entry without a token falls back to the `collision` policy, which the client
+ * sends as `force`. Until 2026-10-17 that was a fresh clone's first push, or any copy whose
+ * cache was gone.
+ *
+ * A push that creates the site has nothing to be stale against.
+ *
+ * @returns {null | { headline: string, lines: string[] }}
+ */
+export function untakenBase(siteDir, backend) {
+  if (!readBackendState(siteDir, backend).site?.uuid) return null
+  const held = Object.keys(readBaseVersions(siteDir, backend)).length > 0
+  const repo = repoOf(siteDir)
+  if (repo?.head) {
+    const point = readSyncPoint(siteDir, backend)
+    if (held && point && isAncestor(repo, point)) return null
+    return {
+      headline: "Not pushed — your branch does not hold the backend content this copy last took.",
+      lines: [
+        point && held
+          ? 'The pull or push it came from is not in your history — a merge abandoned, or the branch moved.'
+          : 'This copy has not taken the site from this backend yet.',
+        "Run `uniweb pull` to merge the backend's content with yours, then push.",
+        'To push over it regardless, re-run with --force (this discards changes made there).'
+      ]
+    }
+  }
+  if (held) return null
+  return {
+    headline: 'Not pushed — this copy holds no record of the backend content it last took.',
+    lines: [
+      'A push now would go over whatever changed there.',
+      "`uniweb pull` takes the backend's version over your files here, outside git; under git a pull merges instead.",
+      'To push over it regardless, re-run with --force (this discards changes made there).'
+    ]
+  }
 }
 
 /**
@@ -1905,6 +1932,12 @@ export async function pushSyncPackages({
   let finalizedTotal = 0
   // Records sent as drafts that the backend stored enabled — reported at the end.
   let draftsNotKept = []
+  // ⭐ THE COMMIT THIS PUSH IS MADE FROM — sent with each lane, so the backend can name it on
+  // a pull, and kept here as this copy's sync point once a lane lands: what the backend
+  // holds descends from it (`utils/sync-point.js`). ⚖️ Uncommitted edits ride on top of it,
+  // and it stays a safe base for them — both sides hold them, so a merge takes them once.
+  const repo = repoOf(siteDir)
+  const source = repo?.head || null
 
   // POST one lane via the client and parse the JSON response. `doRequest` is a thunk
   // returning the client's Response promise (so the "Pushing …" line prints before the
@@ -2067,22 +2100,14 @@ export async function pushSyncPackages({
         note(
           'Nothing was written — the whole push was refused before any change.'
         )
-        // Say what will actually work from HERE. Anyone hitting this has local
-        // work — it is why they pushed — and if it is uncommitted then `pull`
-        // refuses too, so bare "run pull" advice walks them into a dead end.
-        if (hasUncommittedContent(siteDir)) {
-          // `--merge` is the recovery that keeps both sides: most of these are two
-          // people editing different parts of one section, which merges silently.
-          // Offer it first, and keep the take-theirs route for anyone who wants it.
-          note(
-            "Commit your changes, then `uniweb pull --merge` to combine them with the backend's."
-          )
-          note(
-            '(Plain `uniweb pull` declines while the work is unsaved — it overwrites rather than merges.)'
-          )
+        // Say what will actually work from HERE. Anyone hitting this has local work — it is
+        // why they pushed. In a repository a pull merges it with the backend's, committed or
+        // not; outside one a pull takes the backend's version over the files.
+        if (repo) {
+          note("Run `uniweb pull` to merge the backend's changes with yours, then push again.")
         } else {
           note(
-            'Run `uniweb pull --merge` to combine the changes, or `uniweb pull` to take the backend version.'
+            "Outside git, `uniweb pull` takes the backend's version over your files. Put the site under git and a pull merges instead."
           )
         }
         note(
@@ -2226,10 +2251,12 @@ export async function pushSyncPackages({
       if (f.uuid && f.version) newVersions[f.uuid] = f.version
     }
   }
-  // Both grains land together, at every point the old code banked the entity one.
+  // Both grains land together, at every point the old code banked the entity one — and
+  // with them the commit they describe.
   const mergeHarvested = () => {
     mergeBaseVersions(siteDir, client.origin, newVersions)
     if (heldItemVersions) writeItemBaseVersions(siteDir, client.origin, heldItemVersions)
+    if (source && (Object.keys(newVersions).length || heldItemVersions)) writeSyncPoint(siteDir, client.origin, source)
   }
   // ⛔ The site-content lane banks only the tokens for content this copy holds — the
   // document we sent against the one the backend stored (`heldTokens`, and the two
@@ -2237,7 +2264,6 @@ export async function pushSyncPackages({
   // collected here, to re-base attribution and to say so.
   const sentSiteDoc = siteContent ? entityDocFromUwx(siteContent.buffer) : null
   const notHeld = { kept: [], foreign: [] }
-  const heldUnits = []
   const harvestSiteContent = (finalized) => {
     for (const f of finalized || []) {
       const held = heldTokens({
@@ -2249,7 +2275,6 @@ export async function pushSyncPackages({
       })
       harvest([{ ...f, version: held.version }])
       if (held.itemVersions) heldItemVersions = held.itemVersions
-      heldUnits.push(...held.held)
       notHeld.kept.push(...held.kept)
       notHeld.foreign.push(...held.foreign)
     }
@@ -2331,16 +2356,13 @@ export async function pushSyncPackages({
           'may refuse it. `uniweb pull` re-arms identity if that happens.'
       )
     }
-    // The files of the units the backend now holds as ours are the synced version — the
-    // ancestor the next `pull --merge` merges from.
-    if (heldUnits.length) recordPushedUnits(siteDir, heldUnits)
   }
   if (siteContent) {
     if (siteContentUuid) {
       const finalized = await pushLane(
         'site-content',
         () =>
-          client.updateSiteContent(siteContentUuid, siteContent.buffer),
+          client.updateSiteContent(siteContentUuid, siteContent.buffer, { source }),
         () =>
           explainStaleSiteContent({
             client,
@@ -2361,7 +2383,7 @@ export async function pushSyncPackages({
     } else {
       const payload = await postLane(
         'site-content',
-        () => client.createSiteContent(siteContent.buffer),
+        () => client.createSiteContent(siteContent.buffer, { source }),
         undefined,
         { reportTemplate: true }
       )
@@ -2408,7 +2430,7 @@ export async function pushSyncPackages({
     }
     const finalized = await pushLane(
       'records',
-      () => client.pushFolder(boundSiteUuid, records.buffer),
+      () => client.pushFolder(boundSiteUuid, records.buffer, { source }),
       undefined,
       { boundUuid: boundSiteUuid }
     )
@@ -2498,7 +2520,7 @@ export async function pushSyncPackages({
       ...new Set([...notHeld.kept, ...notHeld.foreign].map((p) => (p === 'site.yml' ? p : unitFilesOf(siteDir, p)[0] || p)))
     ].sort()
     note(`Changed on the backend by someone else, not in your files yet: ${paths.join(', ')}`)
-    note('Take them with `uniweb refresh` (or `uniweb pull --merge`). Until then, pushing leaves them as they are.')
+    note('Take them with `uniweb refresh` (or `uniweb pull`). Until then, pushing leaves them as they are.')
   }
   // ⛔ A DRAFT THE BACKEND STORED ENABLED FAILS THE PUSH, and only here, after every
   // piece of sync state above is banked: the push itself happened, and the next one must

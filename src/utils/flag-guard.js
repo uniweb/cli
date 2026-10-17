@@ -77,7 +77,7 @@ const VERBS = {
     '--no-validate', '--yes', '--no-verify', '--no-release', '--bump', ...VIA_DEPLOY
   ],
   pull: [
-    '--content-only', '--dry-run', '--force', '--merge',
+    '--content-only', '--dry-run', '--force',
     '--no-assets',
     '--no-records', '--no-delete', '--no-prune',
     // via backend/site-sync.js (the owner resolver) and utils/conformance.js
@@ -85,7 +85,7 @@ const VERBS = {
   ],
   clone: [
     '--content-only', '--no-assets', '--no-records', '--path',
-    '--project', '--org', '--personal'
+    '--project', '--org', '--personal', '--no-git'
   ],
   register: [
     '--dry-run', '--json', '--output', '-o',
@@ -113,13 +113,12 @@ const VERBS = {
     '--no-release', '--bump', ...VIA_DEPLOY
   ],
   /**
-   * `refresh` = `git pull`, then a DELEGATED `pull --merge`.
+   * `refresh` = `git pull`, then a DELEGATED `pull`.
    *
-   * It forwards nothing of its own argv to that pull — it builds `['--merge']`
-   * itself. So pull's own flags (`--merge`, `--force`, `--no-delete`, `--no-prune`,
-   * `--content-only`, …) are NOT reachable from a `refresh` argv and
-   * are deliberately absent here. ⚠️ `--force` especially: `refresh` is read-only by
-   * design, and forwarding it would ask pull to DISCARD local work.
+   * It forwards nothing of its own argv to that pull. So pull's own flags (`--force`,
+   * `--no-delete`, `--no-prune`, `--content-only`, …) are NOT reachable from a `refresh`
+   * argv and are deliberately absent here. ⚠️ `--force` especially: `refresh` is
+   * read-only by design, and forwarding it would ask pull to DISCARD local work.
    *
    * The trailing group is inert on this verb but reachable through the
    * `resolveSiteDir` / `probeUnpushed` imports — listed rather than filtered, per
@@ -236,6 +235,19 @@ export function checkFlags(verb, args = []) {
       flag,
       suggestion: '--org',
       message: `\`--as-org\` is retired — use \`--org @org\` (e.g. \`uniweb ${verb} --org @acme\`).`
+    }
+  }
+  // ⭐ `pull --merge` is RETIRED (2026-10-17): in a repository a pull always merges — from the
+  // newest sync point the history holds (`utils/sync-point.js`) — and outside one there is
+  // nothing to merge against.
+  if (flag === '--merge' && verb === 'pull') {
+    return {
+      flag,
+      suggestion: null,
+      message: [
+        '`uniweb pull` has no `--merge`: in a git repository a pull always merges.',
+        '  Run `uniweb pull`. Outside git it takes the backend\'s version, asking first.'
+      ].join('\n')
     }
   }
   const suggestion = didYouMean(flag, all)

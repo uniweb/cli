@@ -12,25 +12,23 @@
  * monorepos/workspaces"), and whole scopes of real projects are versioned by a
  * parent repo rather than being repo roots themselves. So the question is never
  * "is this directory a git root" but "is this path tracked by some repo", which is
- * the question git itself answers. Callers degrade to an explicit confirmation
- * when the answer is no; sync already requires an account, and a second hard
- * dependency for a safety net we can provide anyway is a bad trade.
+ * the question git itself answers. Outside one a pull checks out, asking first; in
+ * one it merges (`utils/sync-point.js`).
  */
 
 import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { readFileSync, realpathSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import yaml from 'js-yaml'
 
 /**
  * The files and directories `uniweb pull` writes into.
  *
- * ONE definition, shared by the guard that blocks a pull and the message that
- * tells someone how to recover from a refused push — a second copy would drift,
- * and a stale list here means either a guard that misses or advice that is wrong.
- * `paths:` can relocate the content roots, so the local site.yml is consulted
- * rather than assuming the defaults.
+ * ONE definition, shared by the guard that stops a pull outside git and the merge a
+ * pull makes in a repository, whose sync points hold exactly these (and `public/`, where
+ * the media land) — a second copy would drift, and a stale list here means a guard that
+ * misses or a merge that drops a file. `paths:` can relocate the content roots, so the
+ * local site.yml is consulted rather than assuming the defaults.
  */
 export function siteContentRoots(siteDir) {
   // ⚠️ `queries.yml` IS AT THE SITE ROOT, and that is why it must be named here.
@@ -62,12 +60,6 @@ export function siteContentRoots(siteDir) {
   return [...roots]
 }
 
-/** Is there uncommitted work where a pull would write? False outside a repo. */
-export function hasUncommittedContent(siteDir) {
-  const dirty = uncommittedUnder(siteDir, siteContentRoots(siteDir))
-  return Array.isArray(dirty) && dirty.length > 0
-}
-
 function git(args, cwd) {
   return execFileSync('git', args, {
     cwd,
@@ -88,196 +80,6 @@ export function isGitRepo(dir) {
   }
 }
 
-/**
- * Uncommitted work under `relPaths`, relative to `dir`.
- *
- * Counts modified, staged, deleted AND untracked files. Untracked matters as much
- * as modified here: a section file that exists only locally is not on the backend,
- * so a pruning pull deletes it — losing work that was never committed anywhere.
- *
- * ⛔ **Returned relative to `dir`, which is NOT what git prints.** `--porcelain`
- * paths are always relative to the REPOSITORY ROOT, whatever directory it runs
- * in, so they only coincide with `dir`-relative when the site *is* the repo root.
- * Both callers do `join(siteDir, rel)` with the result, so the un-normalized form
- * was wrong for every nested layout — a site at `myproject/site/` inside a repo.
- *
- * What that cost, measured 2026-08-12: pull exempts its own previous output from
- * the uncommitted-work guard by looking each dirty path up in a record keyed
- * `dir`-relative (`utils/pull-written.js`). Given `myproject/site/site.yml` the
- * lookup missed, so **pull refused on files pull itself had written** — the exact
- * false alarm that record exists to prevent, and the one its own comment warns
- * teaches people to reach for `--force`. `captureLocalWork` had the same defect
- * one door along: it reads each path back with `join(siteDir, rel)`.
- *
- * The earlier `@returns` said "repo-relative-ish paths as git reports them" while
- * the summary above said "relative to `dir`" — the ambiguity was noticed and left,
- * and both callers had picked the other reading.
- *
- * @returns {string[]|null} paths relative to `dir`, or `null` when this isn't a
- *   git work tree (distinct from `[]`, which means "clean").
- */
-export function uncommittedUnder(dir, relPaths) {
-  if (!isGitRepo(dir)) return null
-  // ⚠️ Both sides must be REAL paths before `relative` can compare them.
-  // `rev-parse --show-toplevel` resolves symlinks; the caller's `dir` usually has
-  // not. On macOS that alone breaks it — `/var` is a symlink to `/private/var`,
-  // so a repo under the temp dir yields a root of `/private/var/…` against a dir
-  // of `/var/…`, and `relative` walks all the way up and back down. The result is
-  // a valid-looking path that matches nothing, i.e. the same silent miss this
-  // normalization exists to fix. Any symlinked checkout does it, not just tmp.
-  let root
-  let base
-  try {
-    root = git(['rev-parse', '--show-toplevel'], dir).trim()
-    base = realpathSync(dir)
-  } catch {
-    return null
-  }
-  try {
-    const out = git(
-      ['status', '--porcelain', '--untracked-files=all', '--', ...relPaths],
-      dir
-    )
-    return (
-      out
-        .split('\n')
-        .filter(Boolean)
-        // porcelain v1: XY<space>path, and a rename is "orig -> new".
-        .map((line) => line.slice(3).trim())
-        .map((p) => (p.includes(' -> ') ? p.split(' -> ')[1] : p))
-        // Porcelain paths are repo-root-relative; callers want them relative to
-        // `dir`. Quoted paths (git quotes names with spaces or non-ASCII when
-        // `core.quotePath` is on) are left alone rather than half-decoded — a
-        // wrong path is worse than an unmatched one here, since an unmatched
-        // path merely stays "dirty" and the guard errs toward refusing.
-        .map((p) => (p.startsWith('"') ? p : relative(base, join(root, p))))
-        .filter(Boolean)
-    )
-  } catch {
-    // A path git doesn't know (e.g. none of the roots exist yet) is not an error
-    // worth failing a pull over.
-    return []
-  }
-}
-
-/**
- * A file's content at HEAD — the ancestor of a three-way merge for a file no pull
- * wrote. For one a pull wrote, the ancestor is the version it wrote, found in history
- * by `findCommitted` below: HEAD stops being that version the moment an edit is
- * committed on top of it.
- *
- * Either way the ancestor is on this side, which is the point: the backend keeps no
- * per-version item content, and retaining some so it could feed a merge running on
- * the client would put a permanent second write on its hottest table. It doesn't
- * have to — the tool that already knows how to merge holds the history.
- *
- * ⛔ Until 2026-10-16 this called HEAD's content THE common ancestor ("`uniweb pull`
- * writes the backend's content into these files, so the committed version IS the
- * state both sides diverged from") — the rule `pull --merge` dropped on 2026-09-23.
- *
- * @returns {Buffer|null} null when the path isn't in HEAD — a file added locally and
- *   never committed has no ancestor; when the backend holds it too, `pull --merge`
- *   merges the two versions two-way.
- */
-export function showAtHead(dir, relPath) {
-  return showAt(dir, 'HEAD', relPath)
-}
-
-/**
- * A file's content at a revision, by a path relative to `dir`.
- *
- * ⛔ THE `./` IS WHAT MAKES THE PATH RELATIVE TO `dir`. In `<rev>:<path>` a bare path
- * is read from the REPOSITORY ROOT, whatever the cwd. With the repo at the project
- * root and the site in `site/` — the default layout — `HEAD:pages/home/hero.md`
- * named nothing, every lookup failed, and `pull --merge` "kept yours" for every file:
- * the backend's changes never merged in, while the pull recorded them as taken
- * (2026-09-23). Every merge test ran with the repo AT the site directory, the one
- * layout where a bare path happens to work.
- *
- * @returns {Buffer|null} null when the path isn't in that revision
- */
-export function showAt(dir, rev, relPath) {
-  try {
-    return execFileSync('git', ['show', `${rev}:./${relPath}`], {
-      cwd: dir,
-      stdio: ['ignore', 'pipe', 'ignore'],
-      maxBuffer: 64 * 1024 * 1024
-    })
-  } catch {
-    return null
-  }
-}
-
-/**
- * The most recent committed version of a file whose content hashes to `sha256` —
- * how the version a pull wrote is found again, as the ancestor of a merge.
- *
- * HEAD is that version only until the user commits an edit on top of it. After that
- * HEAD is THEIR edit, and a merge against it reads their change as the starting
- * point: the backend's version wins whole and the committed edit is reverted in the
- * working tree. The pull recorded the hash of what it wrote (`pull-written.json`),
- * so the version is recoverable from history by content, wherever it was committed.
- *
- * @param {number} [limit] - how many commits touching the file to search
- * @returns {Buffer|null} null when no committed version matches
- */
-export function findCommitted(dir, relPath, sha256, { limit = 50 } = {}) {
-  let revs
-  try {
-    revs = git(['log', `-n${limit}`, '--format=%H', '--', `./${relPath}`], dir)
-      .split('\n')
-      .filter(Boolean)
-  } catch {
-    return null
-  }
-  for (const rev of revs) {
-    const buf = showAt(dir, rev, relPath)
-    if (buf && createHash('sha256').update(buf).digest('hex') === sha256) return buf
-  }
-  return null
-}
-
-/**
- * Three-way merge, in place: `minePath` is rewritten with the merged result.
- *
- * Delegates to `git merge-file`, which is the same machinery git uses for a merge —
- * text that only one side touched is taken silently, and only genuine overlaps get
- * conflict markers. Building our own would be a worse version of a solved problem.
- *
- * @returns {{ merged: boolean, conflicted: boolean }} `merged:false` means the merge
- *   could not be attempted at all, which is different from attempting it and finding
- *   conflicts — the caller must not conflate them.
- */
-export function mergeFile(dir, minePath, basePath, theirsPath, labels = {}) {
-  try {
-    execFileSync(
-      'git',
-      [
-        'merge-file',
-        '-L',
-        labels.mine || 'yours (local)',
-        '-L',
-        labels.base || 'common ancestor',
-        '-L',
-        labels.theirs || 'theirs (backend)',
-        minePath,
-        basePath,
-        theirsPath
-      ],
-      { cwd: dir, stdio: ['ignore', 'ignore', 'ignore'] }
-    )
-    return { merged: true, conflicted: false }
-  } catch (err) {
-    // A positive status is the CONFLICT COUNT and the file still holds a valid
-    // merge with markers. Anything else (git missing, unreadable input) means no
-    // merge happened and the caller must fall back rather than trust the file.
-    if (typeof err?.status === 'number' && err.status > 0 && err.status < 128) {
-      return { merged: true, conflicted: true }
-    }
-    return { merged: false, conflicted: false }
-  }
-}
-
 /** Does this repo have a remote configured to pull from? */
 export function hasRemote(dir) {
   try {
@@ -288,12 +90,17 @@ export function hasRemote(dir) {
 }
 
 /**
- * `git pull --ff-only` — bring in teammates' commits.
+ * `git pull`, merging — bring in teammates' commits.
  *
- * Fast-forward only, deliberately. A refresh should never silently create a merge
- * commit or drop the user into a rebase they didn't ask for; if the branches have
- * genuinely diverged, that is a git problem the user should handle in git, with
- * git's own vocabulary. We report and step back.
+ * ⭐ A MERGE, NOT A REBASE. A pull of the backend's content merges a sync point into the
+ * branch (`utils/sync-point.js`), and a rebase would replay that commit onto another
+ * base — no longer the backend's content, and no longer a base for the next merge. So the
+ * branch is merged with its remote too, whatever `pull.rebase` says, with uncommitted
+ * work stashed and put back (`--autostash`). A conflict is git's, settled with git's
+ * vocabulary; refresh reports it and steps back.
+ *
+ * ⛔ Until 2026-10-17 this was `--ff-only`, which refused once a pull had made a merge
+ * commit the remote did not have.
  *
  * @returns {{ ok: boolean, changed: boolean, message: string }}
  */
@@ -306,7 +113,7 @@ export function pullRemote(dir) {
     }
   })()
   try {
-    const out = execFileSync('git', ['pull', '--ff-only'], {
+    const out = execFileSync('git', ['pull', '--no-rebase', '--no-edit', '--autostash'], {
       cwd: dir,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe']

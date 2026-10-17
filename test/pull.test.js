@@ -35,13 +35,20 @@ import {
   describeUnplacedRecords
 } from '../src/commands/pull.js'
 import { createZip } from '@uniweb/build/uwx'
-import { readWritten, isPullOutput, recordWritten } from '../src/utils/pull-written.js'
-import { readBaseVersions, readItemBaseVersions, readFolderItemUuids, readSyncCache } from '../src/backend/site-sync.js'
+import { recordWritten } from '../src/utils/pull-written.js'
+import { readBaseVersions, readItemBaseVersions, readFolderItemUuids, readSyncCache, probeUnpushed } from '../src/backend/site-sync.js'
+import { writeSyncPoint, readSyncPoint } from '../src/utils/sync-point.js'
 
 // ⭐ These exercise the pull lanes, not the workspace: a command works in the one chosen
 // with the login (backend/workspace.js), and a test has no login to choose one. Named
 // here for the whole file, as a token-logged process would name it.
 process.env.UNIWEB_WORKSPACE = 'personal'
+
+// ⛔ Git, hermetic: no global or system config reaches the repositories here — a developer's
+// `pull.rebase`, hooks or signing key would change what a merge test measures.
+process.env.GIT_CONFIG_GLOBAL = join(mkdtempSync(join(tmpdir(), 'uw-pull-git-')), 'gitconfig')
+writeFileSync(process.env.GIT_CONFIG_GLOBAL, '')
+process.env.GIT_CONFIG_NOSYSTEM = '1'
 
 // The push staleness gate's read half: pull banks each entity's opaque `version`
 // from the manifest so the next push can echo it as `base_version`. This is the
@@ -704,6 +711,9 @@ test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (
       join(dir, '.uniweb/backend-cache.json'),
       JSON.stringify({ backends: { [TEST_ORIGIN]: { hashes: { 'x y': 'BANKED' } } } })
     )
+    // The sync point the ETag was banked with — in the history, so the ETag still says
+    // something true of the files.
+    writeSyncPoint(dir, TEST_ORIGIN, execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim())
     let sentINM
     const res = await pull(['--no-records', '--non-interactive'], {
       resolveSiteDir: async () => dir,
@@ -727,6 +737,41 @@ test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (
     )
     // …and the bank left as it was
     assert.deepEqual(readSyncCache(dir, TEST_ORIGIN), { 'x y': 'BANKED' })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('⛔ in a repository an ETag is not echoed once its sync point has left the history', async () => {
+  // A merge abandoned, a branch reset: the backend did not move, the files did. A 304 would
+  // say they hold what they no longer hold.
+  const dir = tempSite()
+  try {
+    writeFileSync(join(dir, 'site.yml'), "name: Keep\nfoundation: '@a/base'\n")
+    bindSite(dir, 'SITE304')
+    writeFileSync(join(dir, '.gitignore'), '.uniweb\n')
+    execFileSync('git', ['init', '-q'], { cwd: dir, stdio: 'ignore' })
+    execFileSync('git', ['add', '-A'], { cwd: dir, stdio: 'ignore' })
+    execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base'], { cwd: dir, stdio: 'ignore' })
+    mkdirSync(join(dir, '.uniweb'), { recursive: true })
+    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 2, content: '"abc123"' }))
+    // A commit this history does not hold.
+    const gone = execFileSync('git', ['commit-tree', 'HEAD^{tree}', '-m', 'elsewhere'], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' }
+    }).trim()
+    writeSyncPoint(dir, TEST_ORIGIN, gone)
+    let sentINM = 'unset'
+    await pull(['--no-records', '--non-interactive'], {
+      resolveSiteDir: async () => dir,
+      getToken: async () => 'tok',
+      fetch: async (url, opts) => {
+        sentINM = opts?.headers?.['If-None-Match']
+        return jsonRes(null, 404)
+      }
+    })
+    assert.equal(sentINM, undefined)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -841,8 +886,11 @@ test('pull --dry-run is never blocked by the guard — it writes nothing', async
   assert.notEqual(res.exitCode, 1)
 })
 
-// Real git, because the parsing of `git status --porcelain` and the
-// pull-output filtering are exactly the parts a mock would paper over.
+// ── in a repository, a pull merges ──────────────────────────────────────────
+// Real git, because the merge is git's and a mock would paper over exactly the parts
+// that matter: what the base is, and what git does with each side. What reaches a
+// person — a teammate's commits, a fresh clone, an app rename or delete — is pinned in
+// `pull-merge-base.test.js`; these pin the merge itself.
 const hasGit = (() => {
   try {
     execFileSync('git', ['--version'], { stdio: 'ignore' })
@@ -851,6 +899,17 @@ const hasGit = (() => {
     return false
   }
 })()
+
+const commitAll = (cwd, msg) => {
+  execFileSync('git', ['add', '-A'], { cwd, stdio: 'ignore' })
+  if (!execFileSync('git', ['status', '--porcelain'], { cwd, encoding: 'utf8' }).trim()) return
+  execFileSync('git', ['commit', '-qm', msg], { cwd, stdio: 'ignore' })
+}
+function gitInit(cwd) {
+  execFileSync('git', ['init', '-q'], { cwd, stdio: 'ignore' })
+  execFileSync('git', ['config', 'user.name', 't'], { cwd, stdio: 'ignore' })
+  execFileSync('git', ['config', 'user.email', 't@t'], { cwd, stdio: 'ignore' })
+}
 
 function gitSite() {
   const dir = tempSite()
@@ -861,14 +920,8 @@ function gitSite() {
     join(dir, 'pages/home/hero.md'),
     '---\ntype: Hero\n---\n# committed\n'
   )
-  const g = (a) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' })
-  g(['init', '-q'])
-  g(['add', '-A'])
-  execFileSync(
-    'git',
-    ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base'],
-    { cwd: dir, stdio: 'ignore' }
-  )
+  gitInit(dir)
+  commitAll(dir, 'base')
   return dir
 }
 
@@ -885,133 +938,6 @@ test('pull proceeds when the tree is clean', { skip: !hasGit }, async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
-
-test(
-  'pull refuses on an uncommitted edit, and names it',
-  { skip: !hasGit },
-  async () => {
-    const dir = gitSite()
-    try {
-      writeFileSync(
-        join(dir, 'pages/home/hero.md'),
-        '---\ntype: Hero\n---\n# UNSAVED\n'
-      )
-      let fetched = false
-      const res = await pull(['--non-interactive'], {
-        resolveSiteDir: async () => dir,
-        getToken: async () => 'tok',
-        fetch: async () => {
-          fetched = true
-          return jsonRes(null, 404)
-        }
-      })
-      assert.equal(res.exitCode, 1)
-      assert.equal(fetched, false) // refuses before touching the backend
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
-)
-
-test(
-  'pull refuses on an UNTRACKED file — pruning would delete work committed nowhere',
-  { skip: !hasGit },
-  async () => {
-    const dir = gitSite()
-    try {
-      writeFileSync(
-        join(dir, 'pages/home/brand-new.md'),
-        '---\ntype: Section\n---\n# new\n'
-      )
-      const res = await pull(['--non-interactive'], {
-        resolveSiteDir: async () => dir,
-        getToken: async () => 'tok',
-        fetch: async () => jsonRes(null, 404)
-      })
-      assert.equal(res.exitCode, 1)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
-)
-
-test(
-  'pull does not cry wolf over its OWN output',
-  { skip: !hasGit },
-  async () => {
-    // The false alarm that makes a guard useless: pull rewrites the tree, so without
-    // remembering what it wrote the next pull refuses on files the user never touched
-    // — and teaches them to reach for --force, the destructive option.
-    const dir = gitSite()
-    try {
-      mkdirSync(join(dir, '.uniweb'), { recursive: true })
-      const body = '---\ntype: Hero\n---\n# rewritten by pull\n'
-      writeFileSync(join(dir, 'pages/home/hero.md'), body)
-      writeFileSync(
-        join(dir, '.uniweb/pull-written.json'),
-        JSON.stringify({
-          version: 1,
-          files: {
-            'pages/home/hero.md': createHash('sha256')
-              .update(body)
-              .digest('hex')
-          },
-          deleted: []
-        })
-      )
-      const res = await pull(['--non-interactive'], {
-        resolveSiteDir: async () => dir,
-        getToken: async () => 'tok',
-        fetch: async () => jsonRes(null, 404)
-      })
-      assert.notEqual(res.exitCode, 1)
-
-      // …but an edit ON TOP of pull's output is the user's work again.
-      writeFileSync(join(dir, 'pages/home/hero.md'), body + '\nmine\n')
-      const res2 = await pull(['--non-interactive'], {
-        resolveSiteDir: async () => dir,
-        getToken: async () => 'tok',
-        fetch: async () => jsonRes(null, 404)
-      })
-      assert.equal(res2.exitCode, 1)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
-)
-
-test(
-  'a file pull PRUNED is not mistaken for a user deletion',
-  { skip: !hasGit },
-  async () => {
-    const dir = gitSite()
-    try {
-      mkdirSync(join(dir, '.uniweb'), { recursive: true })
-      rmSync(join(dir, 'pages/home/hero.md'))
-      writeFileSync(
-        join(dir, '.uniweb/pull-written.json'),
-        JSON.stringify({
-          version: 1,
-          files: {},
-          deleted: ['pages/home/hero.md']
-        })
-      )
-      const res = await pull(['--non-interactive'], {
-        resolveSiteDir: async () => dir,
-        getToken: async () => 'tok',
-        fetch: async () => jsonRes(null, 404)
-      })
-      assert.notEqual(res.exitCode, 1)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
-)
-
-// ── pull --merge ────────────────────────────────────────────────────────────
-// The merge is entirely client-side: the backend supplies "theirs" via the
-// ordinary pull lane and contributes nothing else. The ancestor is the COMMITTED
-// version of the file, which is why this needs a real repo rather than a mock.
 
 const twoPara = (a, b) => ({
   type: 'doc',
@@ -1048,32 +974,77 @@ const siteDocWith = (content) => ({
   collections: []
 })
 
+// A site whose repo is the site directory, synced: committed, its first pull taking the
+// backend's version (a sync point), committed again.
 async function pulledGitSite(baseContent) {
   const dir = tempSite()
   writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
-    bindSite(dir, 'SITE')
-  const g = (a) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' })
-  g(['init', '-q'])
+  bindSite(dir, 'SITE')
+  gitInit(dir)
   writeFileSync(join(dir, '.gitignore'), '.uniweb\n')
-  // Establish the file the way it really gets established: by pulling it.
-  await pull(['--force'], {
+  commitAll(dir, 'create')
+  const res = await pull(['--force'], {
     resolveSiteDir: async () => dir,
     getToken: async () => 'tok',
     fetch: makeFetch([
       ['/dev/site/content/pull/SITE', siteDocWith(baseContent)]
     ])
   })
-  g(['add', '-A'])
-  execFileSync(
-    'git',
-    ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base'],
-    { cwd: dir, stdio: 'ignore' }
-  )
+  assert.equal(res.exitCode, 0)
+  commitAll(dir, 'pull')
   return dir
 }
 
 test(
-  'pull --merge keeps both sides when they touched different parts of one section',
+  '⭐ an uncommitted edit survives a pull — it is stashed for the merge and put back',
+  { skip: !hasGit },
+  async () => {
+    const dir = await pulledGitSite(twoPara('First paragraph about pricing.', 'Second paragraph about support.'))
+    try {
+      const file = join(dir, 'pages/home/welcome.md')
+      writeFileSync(file, readFileSync(file, 'utf8').replace('about pricing.', 'about pricing, now with tiers.'))
+      const res = await pull(['--non-interactive'], {
+        resolveSiteDir: async () => dir,
+        getToken: async () => 'tok',
+        fetch: makeFetch([
+          ['/dev/site/content/pull/SITE', siteDocWith(twoPara('First paragraph about pricing.', 'Second paragraph about support, now 24/7.'))]
+        ])
+      })
+      assert.equal(res.exitCode, 0)
+      const merged = readFileSync(file, 'utf8')
+      assert.match(merged, /now with tiers/)
+      assert.match(merged, /now 24\/7/)
+      // …and it is still uncommitted: the merge commit holds the backend's change alone.
+      assert.match(execFileSync('git', ['status', '--porcelain'], { cwd: dir, encoding: 'utf8' }), /welcome\.md/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+)
+
+test(
+  '⭐ an untracked section survives a pull — the backend never had it, so nothing prunes it',
+  { skip: !hasGit },
+  async () => {
+    const dir = await pulledGitSite(twoPara('A.', 'B.'))
+    try {
+      const mine = join(dir, 'pages/home/only-mine.md')
+      writeFileSync(mine, '---\ntype: Section\n---\n# only mine\n')
+      const res = await pull([], {
+        resolveSiteDir: async () => dir,
+        getToken: async () => 'tok',
+        fetch: makeFetch([['/dev/site/content/pull/SITE', siteDocWith(twoPara('A.', 'B, changed.'))]])
+      })
+      assert.equal(res.exitCode, 0)
+      assert.equal(readFileSync(mine, 'utf8').includes('only mine'), true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+)
+
+test(
+  'a pull merges both sides when they touched different parts of one section',
   { skip: !hasGit },
   async () => {
     // The case that otherwise forces commit → pull → re-apply by hand. Two people
@@ -1093,8 +1064,9 @@ test(
           'about pricing, now with tiers.'
         )
       )
+      commitAll(dir, 'mine')
 
-      const res = await pull(['--merge'], {
+      const res = await pull([], {
         resolveSiteDir: async () => dir,
         getToken: async () => 'tok',
         fetch: makeFetch([
@@ -1122,7 +1094,7 @@ test(
 )
 
 test(
-  "⭐ pull --merge settles a site.yml change on its own lines — the author's comments stay, no conflict (F12)",
+  "⭐ a pull settles a site.yml change on its own lines — the author's comments stay, no conflict (F12)",
   { skip: !hasGit },
   async () => {
     // ⛔ Until 2026-10-07 the backend's side of site.yml was the file re-dumped without its
@@ -1144,10 +1116,10 @@ test(
     const dir = tempSite()
     writeFileSync(join(dir, 'site.yml'), commented)
     bindSite(dir, 'SITE')
-    const g = (a) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' })
     try {
-      g(['init', '-q'])
+      gitInit(dir)
       writeFileSync(join(dir, '.gitignore'), '.uniweb\n')
+      commitAll(dir, 'create')
       const doc = siteDocWith(twoPara('A.', 'B.'))
       await pull(['--force'], {
         resolveSiteDir: async () => dir,
@@ -1155,12 +1127,11 @@ test(
         fetch: makeFetch([['/dev/site/content/pull/SITE', doc]])
       })
       assert.equal(readFileSync(join(dir, 'site.yml'), 'utf8'), commented, 'a pull that changed nothing rewrote site.yml')
-      g(['add', '-A'])
-      execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base'], { cwd: dir, stdio: 'ignore' })
+      commitAll(dir, 'pull')
 
       // Mine: the developer turns prerender off. Theirs: the owner turned search on in the app.
       writeFileSync(join(dir, 'site.yml'), commented.replace('prerender: true', 'prerender: false'))
-      const res = await pull(['--merge'], {
+      const res = await pull([], {
         resolveSiteDir: async () => dir,
         getToken: async () => 'tok',
         fetch: makeFetch([
@@ -1178,7 +1149,7 @@ test(
 )
 
 test(
-  'pull --merge marks a genuine overlap instead of silently picking a side',
+  'a pull marks a genuine overlap instead of silently picking a side',
   { skip: !hasGit },
   async () => {
     const dir = await pulledGitSite(twoPara('Shared line.', 'Untouched.'))
@@ -1191,8 +1162,9 @@ test(
           'MY version of the line.'
         )
       )
+      commitAll(dir, 'mine')
 
-      await pull(['--merge'], {
+      const res = await pull([], {
         resolveSiteDir: async () => dir,
         getToken: async () => 'tok',
         fetch: makeFetch([
@@ -1202,6 +1174,8 @@ test(
           ]
         ])
       })
+      assert.equal(res.exitCode, 1) // a conflict is work left for a person
+      assert.deepEqual(res.merge.conflicted, ['pages/home/welcome.md'])
 
       const merged = readFileSync(file, 'utf8')
       assert.match(merged, /<<<<<<</)
@@ -1213,96 +1187,65 @@ test(
   }
 )
 
-test(
-  'pull --merge keeps a locally-added file the backend does not have',
-  { skip: !hasGit },
-  async () => {
-    // No committed ancestor, so no three-way merge is defined. Keeping it is the
-    // non-destructive reading; discarding it would lose work to honour a deletion
-    // the user never saw.
-    const dir = await pulledGitSite(twoPara('A.', 'B.'))
-    try {
-      const mine = join(dir, 'pages/home/only-mine.md')
-      writeFileSync(mine, '---\ntype: Section\n---\n# only mine\n')
-      await pull(['--merge'], {
-        resolveSiteDir: async () => dir,
-        getToken: async () => 'tok',
-        fetch: makeFetch([
-          ['/dev/site/content/pull/SITE', siteDocWith(twoPara('A.', 'B.'))]
-        ])
-      })
-      assert.equal(readFileSync(mine, 'utf8').includes('only mine'), true)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
+test('a merge waiting for its commit stops the next pull before it fetches', { skip: !hasGit }, async () => {
+  const dir = await pulledGitSite(twoPara('Shared line.', 'Untouched.'))
+  try {
+    const file = join(dir, 'pages/home/welcome.md')
+    writeFileSync(file, readFileSync(file, 'utf8').replace('Shared line.', 'MY version of the line.'))
+    commitAll(dir, 'mine')
+    const fetch = makeFetch([['/dev/site/content/pull/SITE', siteDocWith(twoPara('THEIR version.', 'Untouched.'))]])
+    assert.equal((await pull([], { resolveSiteDir: async () => dir, getToken: async () => 'tok', fetch })).exitCode, 1)
+    let fetched = false
+    const res = await pull([], {
+      resolveSiteDir: async () => dir,
+      getToken: async () => 'tok',
+      fetch: async (...a) => {
+        fetched = true
+        return fetch(...a)
+      }
+    })
+    assert.equal(res.exitCode, 1)
+    assert.equal(fetched, false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
-)
+})
 
-test(
-  'pull --merge refuses outside a repo rather than pretending',
-  { skip: !hasGit },
-  async () => {
-    const dir = tempSite()
-    writeFileSync(join(dir, 'site.yml'), 'name: S\n')
-  bindSite(dir, 'SITE')
-    try {
-      const res = await pull(['--merge', '--non-interactive'], {
-        resolveSiteDir: async () => dir,
-        getToken: async () => 'tok',
-        fetch: async () => jsonRes(null, 404)
-      })
-      assert.equal(res.exitCode, 1)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }
-)
+// ── in the DEFAULT layout — the repo is the project, the site is `site/` ─────
+// Every merge test above runs with the repo AT the site directory. In the default layout
+// a site-relative path names nothing at the repository's root — the shape a merge here
+// once got wrong for every file (2026-09-23).
 
-// ── pull --merge in the DEFAULT layout — the repo is the project, the site is `site/`
-// Every merge test above runs with the repo AT the site directory, the one layout in
-// which `git show HEAD:<path>` finds a site-relative path. In the default one the
-// lookup named nothing, every file "kept yours", and the pull then recorded the
-// backend's version as taken — so the next push overwrote it (measured 2026-09-23).
-
-const commitAll = (cwd, msg) => {
-  execFileSync('git', ['add', '-A'], { cwd, stdio: 'ignore' })
-  execFileSync(
-    'git',
-    ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', msg],
-    { cwd, stdio: 'ignore' }
-  )
-}
-
-// A project whose repo is its root, with the site pulled into `site/` — committed, or
-// (`commit: false`) left as the pull wrote it.
-async function pulledProject(baseContent, { commit = true } = {}) {
+// A project whose repo is its root, with the site pulled into `site/` and committed.
+async function pulledProject(baseContent) {
   const root = tempSite()
   const dir = join(root, 'site')
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
   bindSite(dir, 'SITE')
-  execFileSync('git', ['init', '-q'], { cwd: root, stdio: 'ignore' })
+  gitInit(root)
   writeFileSync(join(root, '.gitignore'), '.uniweb\n')
   writeFileSync(join(root, 'README.md'), 'project\n')
-  if (!commit) commitAll(root, 'init') // a HEAD that does not hold the site
-  await pull(['--force'], {
+  commitAll(root, 'init')
+  const res = await pull(['--force'], {
     resolveSiteDir: async () => dir,
     getToken: async () => 'tok',
     fetch: makeFetch([['/dev/site/content/pull/SITE', siteDocWith(baseContent)]])
   })
-  if (commit) commitAll(root, 'base')
+  assert.equal(res.exitCode, 0)
+  commitAll(root, 'base')
   return { root, dir }
 }
 
 const mergeAgainst = (dir, content) =>
-  pull(['--merge'], {
+  pull([], {
     resolveSiteDir: async () => dir,
     getToken: async () => 'tok',
     fetch: makeFetch([['/dev/site/content/pull/SITE', siteDocWith(content)]])
   })
 
 test(
-  'pull --merge merges in the default layout — the repo is the project, the site is in site/',
+  'a pull merges in the default layout — the repo is the project, the site is in site/',
   { skip: !hasGit },
   async () => {
     const { root, dir } = await pulledProject(
@@ -1318,7 +1261,7 @@ test(
       assert.equal(res.exitCode, 0)
       const merged = readFileSync(file, 'utf8')
       assert.match(merged, /now with tiers/) // mine survived
-      assert.match(merged, /now 24\/7/) // theirs arrived — it never did in this layout
+      assert.match(merged, /now 24\/7/) // theirs arrived
       assert.ok(!merged.includes('<<<<<<<'))
     } finally {
       rmSync(root, { recursive: true, force: true })
@@ -1327,12 +1270,12 @@ test(
 )
 
 test(
-  'pull --merge keeps a COMMITTED edit that was never pushed — the ancestor is what the pull wrote, not HEAD',
+  'a pull keeps a COMMITTED edit that was never pushed — the base is the sync point, not HEAD',
   { skip: !hasGit },
   async () => {
-    // Commit, push refused, `uniweb refresh`: with HEAD as the ancestor the commit
-    // read as the starting point, the backend's version won whole, and the edit was
-    // reverted in the working tree. A clean tree also hid it from the dirty scan.
+    // Commit, push refused, `uniweb refresh`: with HEAD as the ancestor the commit read
+    // as the starting point, the backend's version won whole, and the edit was reverted
+    // in the working tree.
     const { root, dir } = await pulledProject(
       twoPara('First paragraph about pricing.', 'Second paragraph about support.')
     )
@@ -1355,21 +1298,21 @@ test(
 )
 
 test(
-  'pull --merge with no common version shows BOTH, never ours alone',
+  "after a merge, the merged-in edit is still to push — the bank describes the backend's content, not the merge",
   { skip: !hasGit },
   async () => {
-    // The pull's version was never committed, so there is no ancestor. Keeping ours
-    // hid the backend's change entirely — and recorded it as taken.
-    const { root, dir } = await pulledProject(twoPara('A.', 'B.'), { commit: false })
+    // Banked over the merge, the edit read as already pushed: a push saw nothing to send.
+    const { root, dir } = await pulledProject(
+      twoPara('First paragraph about pricing.', 'Second paragraph about support.')
+    )
     try {
       const file = join(dir, 'pages/home/welcome.md')
-      writeFileSync(file, readFileSync(file, 'utf8').replace('A.', 'A, mine.'))
-      const res = await mergeAgainst(dir, twoPara('A.', 'B, theirs.'))
-      assert.equal(res.exitCode, 1) // a conflict is work left for a person
-      const merged = readFileSync(file, 'utf8')
-      assert.match(merged, /<<<<<<</)
-      assert.match(merged, /A, mine\./)
-      assert.match(merged, /B, theirs\./)
+      writeFileSync(file, readFileSync(file, 'utf8').replace('about pricing.', 'about pricing, now with tiers.'))
+      commitAll(root, 'my edit')
+      const before = readSyncCache(dir, TEST_ORIGIN)
+      await mergeAgainst(dir, twoPara('First paragraph about pricing.', 'Second paragraph about support, now 24/7.'))
+      const probe = await probeUnpushed(dir, { backend: TEST_ORIGIN })
+      assert.ok(probe.changed >= 1, `the merged-in edit reads as pushed (${JSON.stringify(probe)}; banked before: ${JSON.stringify(before)})`)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -1377,28 +1320,54 @@ test(
 )
 
 test(
-  'after a merge, the merged-in edit is still local work — not recorded as the pull\'s output',
+  "a file not under git that the backend's content would overwrite stops the merge — nothing is taken",
   { skip: !hasGit },
   async () => {
-    // Recorded after the merge, the edit read as pull output: a later plain pull
-    // would overwrite it without refusing, and a push saw nothing to send.
-    const { root, dir } = await pulledProject(
-      twoPara('First paragraph about pricing.', 'Second paragraph about support.')
-    )
+    const { root, dir } = await pulledProject(twoPara('A.', 'B.'))
     try {
-      const rel = 'pages/home/welcome.md'
-      const file = join(dir, rel)
-      writeFileSync(file, readFileSync(file, 'utf8').replace('about pricing.', 'about pricing, now with tiers.'))
-      await mergeAgainst(
-        dir,
-        twoPara('First paragraph about pricing.', 'Second paragraph about support, now 24/7.')
-      )
-      assert.equal(isPullOutput(dir, rel, readWritten(dir)), false)
+      // The backend added a section this copy has an uncommitted file of its own for.
+      writeFileSync(join(dir, 'pages/home/extra.md'), '# mine, never committed\n')
+      const before = readSyncPoint(dir, TEST_ORIGIN)
+      const doc = siteDocWith(twoPara('A.', 'B.'))
+      doc.pages[0].page_sections.push({ $id: 'extra', $uuid: 'S9', stable_id: 'extra', type: 'Section', content: twoPara('Theirs.', '.') })
+      const res = await pull([], {
+        resolveSiteDir: async () => dir,
+        getToken: async () => 'tok',
+        fetch: makeFetch([['/dev/site/content/pull/SITE', doc]])
+      })
+      assert.equal(res.exitCode, 1)
+      assert.equal(readFileSync(join(dir, 'pages/home/extra.md'), 'utf8'), '# mine, never committed\n')
+      // …and nothing of this pull is recorded as taken: this copy's sync point is where it was.
+      assert.equal(readSyncPoint(dir, TEST_ORIGIN), before)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
   }
 )
+
+test('⭐ the repository is the site: a pull merges there too', { skip: !hasGit }, async () => {
+  const dir = await pulledGitSite(twoPara('First paragraph about pricing.', 'Second paragraph about support.'))
+  try {
+    mkdirSync(join(dir, 'node_modules', 'kept'), { recursive: true })
+    writeFileSync(join(dir, 'node_modules', 'kept', 'index.js'), 'export default 1\n')
+    const file = join(dir, 'pages/home/welcome.md')
+    writeFileSync(file, readFileSync(file, 'utf8').replace('about pricing.', 'about pricing, now with tiers.'))
+    commitAll(dir, 'mine')
+    const res = await pull([], {
+      resolveSiteDir: async () => dir,
+      getToken: async () => 'tok',
+      fetch: makeFetch([['/dev/site/content/pull/SITE', siteDocWith(twoPara('First paragraph about pricing.', 'Second paragraph about support, now 24/7.'))]])
+    })
+    assert.equal(res.exitCode, 0)
+    const merged = readFileSync(file, 'utf8')
+    assert.match(merged, /now with tiers/)
+    assert.match(merged, /now 24\/7/)
+    // ⛔ The stand-in links to what is not content; closing it removed no file of the project's.
+    assert.equal(readFileSync(join(dir, 'node_modules', 'kept', 'index.js'), 'utf8'), 'export default 1\n')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 
 test('the version tokens a pull carries are banked once its merge is done', async () => {
   // Control for the rule that withholds them when a merge cannot run: the ordinary

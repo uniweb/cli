@@ -36,6 +36,18 @@ function project(backends, { deployYml } = {}) {
   writeFileSync(join(dir, 'site.yml'), "name: T\nfoundation: 'https://example.test/foundation/entry.js'\n")
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 't', dependencies: { uniweb: '*' } }))
   writeFileSync(join(dir, 'sync.json'), JSON.stringify({ version: 1, backends }))
+  // A copy that has taken its site from each of them: the versions a push claims as its
+  // base. Without them a push to a site the backend has is refused (`untakenBase`).
+  mkdirSync(join(dir, '.uniweb'), { recursive: true })
+  writeFileSync(
+    join(dir, '.uniweb', 'backend-cache.json'),
+    JSON.stringify({
+      version: 1,
+      backends: Object.fromEntries(
+        Object.entries(backends).map(([origin, b]) => [origin, { baseVersions: { [b.site.uuid]: 'V1' } }])
+      )
+    })
+  )
   if (deployYml) writeFileSync(join(dir, 'deploy.yml'), deployYml)
   return dir
 }

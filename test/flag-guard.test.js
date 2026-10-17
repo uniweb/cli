@@ -67,13 +67,20 @@ test('the message names the verb and points at its help', () => {
   assert.match(bad.message, /uniweb pull --help/)
 })
 
+test('`pull --merge` is refused by saying what replaced it — in a repository a pull always merges', () => {
+  const bad = checkFlags('pull', ['--merge'])
+  assert.equal(bad.flag, '--merge')
+  assert.match(bad.message, /in a git repository a pull always merges/)
+  assert.match(bad.message, /Run `uniweb pull`/)
+})
+
 // ─── false positives — the expensive failure ──────────────────────────────────
 
 test('a realistic invocation of every guarded verb passes', () => {
   const real = {
     push: ['--org', '@acme', '--yes', '--force'],
     publish: ['--yes', '--no-validate', '--dry-run', '--personal'],
-    pull: ['--merge', '--no-prune', '--content-only'],
+    pull: ['--force', '--no-prune', '--content-only'],
     clone: ['abc-uuid', '--path', './site', '--project', 'p'],
     register: ['--scope', '@acme', '-o', 'out.uwx', '--json'],
     status: ['--remote', '--json'],

@@ -182,10 +182,11 @@ test('refresh never pushes — no push verb is reachable from it', async () => {
   )
 })
 
-test('refresh hands its delegated pull `--merge` and nothing of its own argv', async () => {
+test('refresh hands its delegated pull nothing of its own argv — a pull merges by itself', async () => {
   // The pull goes to the backend you are logged in to, with that session, exactly as
   // refresh does — so there is nothing to forward. (It forwarded `--backend` and
-  // `--token` until both left the backend commands, 2026-09-21.)
+  // `--token` until both left the backend commands, 2026-09-21, and `--merge` until a
+  // pull in a repository always merged, 2026-10-17.)
   const dir = site({ uuid: 'SITE' })
   try {
     let seen = null
@@ -198,7 +199,7 @@ test('refresh hands its delegated pull `--merge` and nothing of its own argv', a
         }
       })
     )
-    assert.deepEqual(seen, ['--merge'])
+    assert.deepEqual(seen, [])
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

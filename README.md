@@ -340,7 +340,7 @@ This is the best path when site content has a life independent of the foundation
 
 ### Hybrid
 
-Markdown in a git repo and content in the Uniweb apps can share the same site. Directional sync is available today: `uniweb push` sends local content to the backend, `uniweb pull` brings the backend's content back to local files, and `uniweb clone` bootstraps a local project from a site that already lives in the backend. Authors edit visually, devs edit in their IDE, both surfaces work on the same content. The advanced two-way-merge experience — conflict resolution, branch isolation, and review flows when both surfaces change the same content concurrently — is still evolving.
+Markdown in a git repo and content in the Uniweb apps can share the same site. `uniweb push` sends local content to the backend, `uniweb pull` brings the backend's content back — in a git repository by merging it into your branch, like `git pull`, so edits made on both surfaces at once are combined and only a genuine overlap is a conflict to settle — and `uniweb clone` bootstraps a local project from a site that already lives in the backend. Authors edit visually, devs edit in their IDE, both surfaces work on the same content. Review flows and branch isolation across the two are still evolving.
 
 ### Commands at a glance
 

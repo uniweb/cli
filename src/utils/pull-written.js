@@ -1,37 +1,24 @@
 /**
- * The record of what a machine wrote into a site project — pull's own output.
- *
- * ⭐ And, since 2026-09-23, what a push delivered: the files of the units the backend
- * now holds as they were sent (`recordPushedUnits`, site-sync.js). Both are "the last
- * version this file synced at", which is what `pull --merge` needs as its ancestor —
- * found again in the repo's history by this hash (`findCommitted`, utils/git.js).
+ * The record of what a pull wrote into a site project — outside git.
  *
  * ## What it is for
  *
- * `uniweb pull` refuses to run when there are uncommitted changes under the files
- * it rewrites, because it reconciles the working tree to the backend and would
- * overwrite them. That guard needs one distinction to be useful: **a file the
- * user edited** versus **a file a previous pull wrote and nobody has touched
- * since**. Without it the guard cries wolf — pull rewrites the tree, so the next
- * pull sees its own output as uncommitted work and refuses, listing files the
- * user never touched. A guard that fires on nothing teaches people to reach for
- * `--force`, which is the destructive option.
+ * Outside git, `uniweb pull` rewrites the files under its roots from the backend, and
+ * nothing stands behind them — so it asks before it does, unless nothing there is the
+ * author's. That needs one distinction: **a file the author edited** versus **a file a
+ * previous pull wrote and nobody has touched since**. Without it the question comes
+ * every time — pull rewrites the tree, so the next pull sees its own output as the
+ * author's — and an unattended pull refuses over files nobody touched, which teaches
+ * people to reach for `--force`, the destructive option.
  *
- * So each write is recorded with a content hash, and a dirty path whose hash
- * still matches is not user work.
+ * So each write is recorded with a content hash, and a path whose hash still matches is
+ * not the author's work.
  *
- * ## Why it lives here rather than in `pull.js`
- *
- * `uniweb clone` has the same claim to make and cannot make it from there.
- * `pull.js` statically imports `@uniweb/build`, which resolves from the
- * *project's* `node_modules` — and `clone` runs before a project exists (see
- * `utils/uwx-read.js` for the same constraint on the `.uwx` reader).
- *
- * Clone scaffolds `site.yml` and `theme.yml` and then delegates to `pull`, so
- * without this the delegated pull sees clone's own scaffolding as uncommitted
- * user work and refuses — on a project created seconds earlier, where there is no
- * user work to protect. Clone records what it wrote; the guard then exempts those
- * files **for the right reason** rather than being overridden.
+ * ⛔ In a repository there is no such record: a pull merges, from a sync point
+ * (`utils/sync-point.js`). Until 2026-10-17 this record was also a merge's ancestor —
+ * the version each file last synced at, found again in the repository by its hash — and
+ * committed work outside it was lost; and `clone` recorded its scaffold here, before a
+ * delegated pull that now takes the backend's version with `--force`.
  *
  * Nothing here imports `@uniweb/build`, and nothing here may start to.
  */

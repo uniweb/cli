@@ -11,9 +11,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import yaml from 'js-yaml'
-import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { repoOf, historySyncPoint, readSyncPoint } from '../src/utils/sync-point.js'
 import {
   clone,
   extractCloneSeeds,
@@ -183,7 +185,55 @@ test('clone forwards the workspace it was told to work in to the delegated pull'
       fetch: async () => uwxRes(siteDoc())
     })
     assert.equal(res.exitCode, 0)
-    assert.deepEqual(pulledArgs, ['--org', '@acme'])
+    // `--force` first: the delegated pull takes the backend's version over a scaffold this
+    // clone wrote seconds ago — there is nothing of the author's under it.
+    assert.deepEqual(pulledArgs, ['--force', '--org', '@acme'])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('⭐ a clone outside git starts its history at a sync point — the site as the backend has it', async () => {
+  const dir = tmpCwd()
+  const prior = { global: process.env.GIT_CONFIG_GLOBAL, nosys: process.env.GIT_CONFIG_NOSYSTEM }
+  process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig')
+  writeFileSync(process.env.GIT_CONFIG_GLOBAL, '[user]\n\tname = t\n\temail = t@t\n')
+  process.env.GIT_CONFIG_NOSYSTEM = '1'
+  try {
+    const res = await clone(['SITE-1', 'solo'], {
+      getToken: async () => 'tok',
+      skipInstall: true,
+      // What the delegated pull leaves: the site's content, written.
+      runPull: async (siteDir) => {
+        mkdirSync(join(siteDir, 'pages', 'home'), { recursive: true })
+        writeFileSync(join(siteDir, 'pages', 'home', 'hello.md'), '# Hello\n')
+      },
+      cwd: dir,
+      fetch: async () => uwxRes(siteDoc())
+    })
+    assert.equal(res.exitCode, 0)
+    const project = join(dir, 'solo')
+    const repo = repoOf(join(project, 'site'))
+    assert.ok(repo?.head, 'the clone is a repository with a first commit')
+    const origin = 'https://uniweb.app'
+    assert.equal(historySyncPoint(repo, { origin, siteUuid: 'SITE-1' }), repo.head, 'its first commit is a sync point')
+    assert.equal(readSyncPoint(join(project, 'site'), origin), repo.head, 'and this copy keeps it as its own')
+    assert.match(execFileSync('git', ['show', '--stat', '--format=', 'HEAD'], { cwd: project, encoding: 'utf8' }), /site\/pages\/home\/hello\.md/)
+  } finally {
+    if (prior.global === undefined) delete process.env.GIT_CONFIG_GLOBAL
+    else process.env.GIT_CONFIG_GLOBAL = prior.global
+    if (prior.nosys === undefined) delete process.env.GIT_CONFIG_NOSYSTEM
+    else process.env.GIT_CONFIG_NOSYSTEM = prior.nosys
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('CONTROL — `--no-git` leaves the clone outside git', async () => {
+  const dir = tmpCwd()
+  try {
+    const res = await clone(['SITE-1', 'solo', '--no-git'], { ...noSpawn, cwd: dir, fetch: async () => uwxRes(siteDoc()) })
+    assert.equal(res.exitCode, 0)
+    assert.equal(existsSync(join(dir, 'solo', '.git')), false)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
