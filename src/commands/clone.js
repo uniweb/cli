@@ -99,6 +99,9 @@ function slugify(s) {
     .replace(/^-+|-+$/g, '')
 }
 
+// The data schema a site's own document names (`$schema`, as the push writes it).
+const SITE_MODEL = '@uniweb/site-content'
+
 // Tolerant single-entity document extraction (mirrors pull.js; duplicated rather
 // than imported because pull.js statically imports @uniweb/build).
 export function extractDocument(payload) {
@@ -308,6 +311,15 @@ export async function clone(args = [], deps = {}) {
     return { exitCode: 1 }
   }
   const { foundationRef, name: siteDisplayName } = extractCloneSeeds(document)
+  // ⛔ An id that names another entity — a record's, say — comes back as that entity. Say
+  // so, rather than ask for a foundation and a name it could never have: only where it
+  // names another data schema AND carries neither, so a site is never turned away.
+  const named = typeof document.$schema === 'string' ? document.$schema : null
+  if (named && named !== SITE_MODEL && !foundationRef && !siteDisplayName) {
+    error(`${siteUuid} is not a site on ${client.origin} — it is a ${named} entity.`)
+    note('`uniweb clone` takes a site\'s id: `uniweb site list` shows each site with its id.')
+    return { exitCode: 1 }
+  }
   if (!foundationRef) {
     note(
       '! The pulled site declares no foundation ref — set `foundation:` in site.yml after clone.'

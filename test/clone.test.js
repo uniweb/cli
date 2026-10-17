@@ -101,6 +101,59 @@ test('clone reports a 404 cleanly', async () => {
   }
 })
 
+// What a verb printed through `console.error` — its errors. Its notes go through the
+// `console.log` it bound when it loaded, which this does not see.
+async function said(fn) {
+  const out = []
+  const { log, error } = console
+  console.log = (...a) => out.push(a.join(' '))
+  console.error = (...a) => out.push(a.join(' '))
+  try {
+    const r = await fn()
+    return { ...r, out: out.join('\n') }
+  } finally {
+    console.log = log
+    console.error = error
+  }
+}
+
+test("⛔ an id that names another entity is not a site — clone says so, and makes nothing", async () => {
+  const dir = tmpCwd()
+  try {
+    // A record's id, given by mistake: the lane answers with that record.
+    const record = { $schema: '@std/person', $uuid: 'R-1', $id: 'bob', person: { name: { en: 'Bob' } } }
+    const res = await said(() =>
+      clone(['R-1'], {
+        ...noSpawn,
+        cwd: dir,
+        fetch: async (url) => (url.includes('/dev/site/content/pull/R-1') ? uwxRes(record) : uwxRes(null, 404))
+      })
+    )
+    assert.equal(res.exitCode, 1, res.out)
+    assert.match(res.out, /R-1 is not a site on .* — it is a @std\/person entity/)
+    // (Errors only: clone binds `console.log` when it loads, so its notes are not captured here.)
+    assert.doesNotMatch(res.out, /Could not derive a project name/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('CONTROL — a site whose document names its data schema is cloned', async () => {
+  const dir = tmpCwd()
+  try {
+    const res = await clone(['SITE-1', 'named'], {
+      ...noSpawn,
+      cwd: dir,
+      fetch: async (url) =>
+        url.includes('/dev/site/content/pull/SITE-1') ? uwxRes({ ...siteDoc(), $schema: '@uniweb/site-content' }) : uwxRes(null, 404)
+    })
+    assert.equal(res.exitCode, 0)
+    assert.ok(existsSync(join(dir, 'named', 'site', 'sync.json')))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('clone scaffolds a ref-only harness and seeds the uuids (new workspace)', async () => {
   const dir = tmpCwd()
   try {
