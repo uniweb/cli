@@ -2517,16 +2517,17 @@ component that never needed one.
 ### Reading
 
 ```jsx
-const { status, records } = useRecords({ schema: '@acme/track' })   // summaries: record.brief, no items
-const { entity } = useEntity({ schema: '@acme/track', uuid: record.uuid })
+const { status, records } = useRecords({ schema: '@/track' })   // summaries: record.brief, no items
+const { entity } = useEntity({ schema: '@/track', uuid: record.uuid })
 const sessions = entity?.hydrated?.items.filter((item) => item.section === 'sessions')
 ```
 
-⛔ **Name a type by its full name, `@scope/name`** — the scope your foundation registered
-under (`@acme/track`). `@/track` is right in `meta.js` and `queries.yml`, where the build and
-`push` qualify it for you, but a `schema` you hand `@uniweb/api` goes to the backend as written,
-and the backend matches the exact name — so the package refuses `@/track` before sending it
-(`kind: 'invalid'`), and its mock refuses a seed that names one.
+⭐ **Name your foundation's own types `@/track`**, as `meta.js` and `queries.yml` do. A built
+foundation sends one in the scope in its name — `@acme/track` for `@acme/marketing`, the name
+`register` stored it under — and `uniweb dev` sends it as written, which is how your mock's
+seed names it. Name any other type in full (`@std/person`). Real-backend testing is a job for a
+built foundation. Outside a Uniweb build nothing knows your scope, so `@/track` is refused
+before anything is sent (`kind: 'invalid'`).
 
 ⛔ **What a member wrote is text.** Render a field as `{record.brief.name}` or `<PlainText text={…} />` — never `<P text>`, `<H1>`–`<H6>` or `SafeHtml`, which render HTML: a member who typed `<img src=x onerror=…>` would run it as whoever views the page. A rich-text field (a ProseMirror document) renders through kit's `Render`, which escapes its text.
 
@@ -2546,7 +2547,7 @@ for the first tells a visitor their content is gone when it was never requested.
 ### Writing
 
 ```jsx
-const writer = useEntityWriter({ schema: '@acme/track', uuid: track.uuid })
+const writer = useEntityWriter({ schema: '@/track', uuid: track.uuid })
 
 await writer.create({ title: 'Keynote' }, { section: 'sessions', position: 'last' })
 await writer.update(itemId, { ...item.data, room: 'Hall A' })   // whole-data replace
@@ -2693,7 +2694,7 @@ it, and takes it back. An instructor enrolling students in a course is this; nam
 your solution does ("enrolled", "course staff"):
 
 ```jsx
-const { status, grants, grant, revoke, working } = useAccess({ schema: '@acme/course', uuid: course.uuid })
+const { status, grants, grant, revoke, working } = useAccess({ schema: '@/course', uuid: course.uuid })
 // status 'ready' for whoever administers it; 'forbidden' for everyone else — draw nothing
 // grants: [{ account_id, permission, account: { handle, uuid, … }, … }]
 await grant({ handle: 'sam' }, 'read')     // or an account id: a candidate, a grant's account, an owner_id
@@ -2717,7 +2718,7 @@ viewer is placed in:
 
 ```jsx
 const { units } = useUnits()               // [{ unit, id, handle?, name?, parent?, depth, primary }]
-await createEntity({ schema: '@acme/submission', unit: course.unit, items: [...] })
+await createEntity({ schema: '@/submission', unit: course.unit, items: [...] })
 ```
 
 Landing decides where an entry is, not who may open it.
@@ -2748,7 +2749,8 @@ server's terminal, its link on your site's root — follow it to try your page. 
 `offers: [{ email, invitations: 1 }]` to try an invitation: mailed to an address no
 account holds, or waiting at once for the seeded account whose address it is. A seeded
 entity takes `grants: { member: 'read' }`, and `units: [{ handle, parent?, members, floor? }]`
-gives a create somewhere to land. State is in memory; restart to reset.
+gives a create somewhere to land. A seed names your own types `@/track`, as `uniweb dev` sends
+them, and any other in full; it matches a name exactly. State is in memory; restart to reset.
 
 `uniweb create my-event --template conference` is a worked example of all of this.
 
