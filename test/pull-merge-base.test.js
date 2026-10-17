@@ -444,6 +444,98 @@ test(
   }
 )
 
+// ── a project inside a repository that is not its own ───────────────────────
+
+// A harness: a repository with a remote, whose `runs/` holds projects it ignores — and a
+// commit on that remote it has not taken, so a `git pull` there would move it.
+function harness() {
+  const root = mkdtempSync(join(scratch, 'h-'))
+  const origin = join(root, 'origin.git')
+  git(root, 'init', '-q', '--bare', origin)
+  const top = join(root, 'harness')
+  git(root, 'clone', '-q', origin, top)
+  identify(top)
+  writeFileSync(join(top, '.gitignore'), 'runs/\n')
+  writeFileSync(join(top, 'README.md'), 'the harness\n')
+  commitAll(top, 'harness')
+  git(top, 'push', '-q', '-u', 'origin', 'HEAD')
+  const other = join(root, 'other')
+  git(root, 'clone', '-q', origin, other)
+  identify(other)
+  writeFileSync(join(other, 'NEWS.md'), 'news\n')
+  commitAll(other, 'news')
+  git(other, 'push', '-q')
+  const project = join(top, 'runs', 'p1')
+  mkdirSync(project, { recursive: true })
+  skeleton(project)
+  return { project, head: () => git(top, 'rev-parse', 'HEAD').trim() }
+}
+
+test(
+  '⛔ a site in a folder its enclosing repository ignores is pulled as outside git — that repository gains no commit, and refresh does not pull it',
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const h = harness()
+    const before = h.head()
+    const first = await pullIn(h.project, backend, ['--force'])
+    assert.equal(first.exitCode, 0, first.out)
+    aboutEdited(backend)
+    const r = await refreshIn(h.project, backend)
+    assert.equal(r.exitCode, 0, r.out)
+    assert.match(read(h.project, 'pages/home/about.md'), /since 1990/)
+    assert.equal(h.head(), before, `the harness moved:\n${r.out}`)
+    assert.match(r.out, /Skipped: git \(not a repository\)/)
+  }
+)
+
+test('CONTROL — the same project as its own repository merges, and the harness around it does not move', { skip: !hasGit }, async () => {
+  const backend = fakeBackend()
+  const h = harness()
+  const before = h.head()
+  git(h.project, 'init', '-q')
+  identify(h.project)
+  commitAll(h.project, 'create')
+  const first = await pullIn(h.project, backend, ['--force'])
+  assert.equal(first.exitCode, 0, first.out)
+  aboutEdited(backend)
+  const r = await refreshIn(h.project, backend)
+  assert.equal(r.exitCode, 0, r.out)
+  assert.match(read(h.project, 'pages/home/about.md'), /since 1990/)
+  assert.match(git(h.project, 'log', '--format=%B'), /^Uniweb-Sync: /m, 'no sync point in its own history')
+  assert.equal(h.head(), before)
+})
+
+test(
+  "⛔ media a pull fetches into a folder the repository ignores reach the working tree where it lacks them — never over a file it has",
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const dir = await synced(backend)
+    writeFileSync(join(dir, '.gitignore'), '.uniweb\nnode_modules\nsite/public/\n')
+    commitAll(dir, 'media stay out of git')
+    mkdirSync(join(dir, 'site', 'public', 'assets'), { recursive: true })
+    writeFileSync(join(dir, 'site', 'public', 'assets', 'aaaa.png'), 'MINE')
+    // An author adds two images in the app; their bytes are served beside the content.
+    const image = (id) => ({ type: 'image', attrs: { src: `/served/${id}.png`, assetId: id, assetExt: 'png' } })
+    backend.state.site = siteDoc([
+      { ...section('welcome', 'S1'), content: { type: 'doc', content: [...WELCOME.map(para), image('aaaa'), image('bbbb')] } },
+      section('about', 'S2', ...ABOUT)
+    ])
+    const saved = globalThis.fetch
+    globalThis.fetch = async () => ({ ok: true, arrayBuffer: async () => new TextEncoder().encode('BYTES').buffer })
+    let r
+    try {
+      r = await refreshIn(dir, backend, ['--no-git'])
+    } finally {
+      globalThis.fetch = saved
+    }
+    assert.equal(r.exitCode, 0, r.out)
+    assert.equal(readFileSync(join(dir, 'site/public/assets/bbbb.png'), 'utf8'), 'BYTES', `the media never arrived:\n${r.out}`)
+    assert.equal(readFileSync(join(dir, 'site/public/assets/aaaa.png'), 'utf8'), 'MINE', 'a file the project has was overwritten')
+  }
+)
+
 test('`pull --force` takes the backend version and leaves a sync point a later merge starts from', { skip: !hasGit }, async () => {
   const backend = fakeBackend()
   const dir = mkdtempSync(join(scratch, 'force-'))

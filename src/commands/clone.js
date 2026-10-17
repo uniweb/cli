@@ -173,10 +173,11 @@ function seedSyncJson(siteDir, origin, uuid) {
 /**
  * Start the new project's history at a sync point — the site as the backend has it.
  *
- * ⭐ Like `uniweb create`, a clone puts its project under git unless it is already inside a
- * repository; and its first commit holds the site as the backend has it, marked so a pull
- * merges from it (`utils/sync-point.js`). Inside a repository the clone's pull already left
- * one, in the commit that took the site.
+ * ⭐ Like `uniweb create`, a clone puts its project under git unless a repository already
+ * holds it — one it is inside, in a folder that repository does not ignore (`repoOf`); and
+ * its first commit holds the site as the backend has it, marked so a pull merges from it
+ * (`utils/sync-point.js`). Inside a repository the clone's pull already left one, in the
+ * commit that took the site.
  */
 function startHistory({ projectDir, siteDir, origin, siteUuid }) {
   const git = (args, input) =>

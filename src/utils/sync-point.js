@@ -69,8 +69,18 @@ export function gitError(err) {
 }
 
 /**
- * The repository a site is in — its top level, the site's path in it, the git
- * directory and HEAD (null on a branch with no commits) — or null outside one.
+ * The repository that holds a site — its top level, the site's path in it, the git
+ * directory and HEAD (null on a branch with no commits) — or null when none does.
+ *
+ * ⭐ HOLDS: the site's folder is inside a work tree, and that repository does not ignore
+ * it. A repository can never hold the history of a folder it ignores — a harness's
+ * scratch projects, a sandbox — so a site there is outside git, as if no repository were
+ * around it. One committed there anyway (`git add -f`) is held: git does not count a
+ * folder with tracked content as ignored.
+ *
+ * ⛔ Until 2026-10-17 any enclosing work tree counted. In a folder it ignores, a pull
+ * failed on git's "paths are ignored", a push recorded that repository's HEAD as its sync
+ * point, and `refresh` ran `git pull` on it.
  */
 export function repoOf(siteDir) {
   let top, prefix, gitDir
@@ -82,6 +92,7 @@ export function repoOf(siteDir) {
     return null
   }
   if (!top) return null
+  if (prefix && ignoredHere(siteDir)) return null
   let head = null
   try {
     head = gitText(top, ['rev-parse', '--verify', '-q', 'HEAD^{commit}']).trim() || null
@@ -89,6 +100,16 @@ export function repoOf(siteDir) {
     head = null
   }
   return { top, prefix, path: prefix ? prefix.replace(/\/$/, '') : '.', gitDir, head }
+}
+
+/** Does the repository around `dir` ignore it? `git check-ignore` exits 0 for yes, 1 for no. */
+function ignoredHere(dir) {
+  try {
+    git(dir, ['check-ignore', '-q', '.'])
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Is `ancestor` in the history of `of` — or `of` itself? */
@@ -210,12 +231,16 @@ export function newestBase(repo, candidates) {
  * ⛔ CLOSE IT. `close()` unlinks every link it made before removing the rest — a recursive
  * remove that followed one would delete the project's own files.
  *
+ * ⚖️ What is written under the roots where the repository ignores it — media in a folder
+ * kept out of git — is in no commit, so no merge brings it. `placeIgnored()` copies it
+ * into the project, where the project lacks it.
+ *
  * @param {object} repo - `repoOf`
  * @param {object} opts
  * @param {string[]} opts.roots - the site's content roots, relative to the site
  * @param {string|null} opts.rev - the commit whose content the roots are filled from;
  *   null for none
- * @returns {{ siteDir: string, commit: Function, close: Function }}
+ * @returns {{ siteDir: string, commit: Function, placeIgnored: Function, close: Function }}
  */
 export function openStandIn(repo, { roots, rev }) {
   for (const r of roots) {
@@ -329,7 +354,7 @@ export function openStandIn(repo, { roots, rev }) {
      * @returns {{ commit: string|null, tree: string, siteTree: string|null }}
      */
     const commit = ({ parent, subject, origin, siteUuid, always = false }) => {
-      const staged = full.filter((f) => present.includes(f) || existsSync(join(root, f)))
+      const staged = held(full.filter((f) => present.includes(f) || existsSync(join(root, f))))
       if (staged.length) at(['add', '-A', '--', ...staged])
       const tree = at(['write-tree']).toString('utf8').trim()
       const before = rev ? gitText(repo.top, ['rev-parse', `${rev}^{tree}`]).trim() : null
@@ -356,7 +381,40 @@ export function openStandIn(repo, { roots, rev }) {
       return { commit: sha, tree, siteTree }
     }
 
-    return { siteDir, commit, close }
+    /**
+     * Copy into the project what the stand-in holds under the roots where the repository
+     * ignores it, wherever the project lacks it. ⛔ Never over a file the project has:
+     * with no history there, nothing tells its version from the author's work.
+     * @returns {string[]} the paths placed, relative to the site
+     */
+    const placeIgnored = () => {
+      const roots = full.filter((f) => existsSync(join(root, f)))
+      if (!roots.length) return []
+      const placed = []
+      for (const p of zlist(at(['ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--', ...roots]))) {
+        const to = join(repo.top, p)
+        if (occupied(to)) continue
+        mkdirSync(dirname(to), { recursive: true })
+        copyFileSync(join(root, p), to)
+        placed.push(sitePrefix && p.startsWith(sitePrefix) ? p.slice(sitePrefix.length) : p)
+      }
+      return placed
+    }
+
+    // The roots git can hold here. ⛔ One the repository ignores whole is not named to
+    // `git add`, which refuses an ignored path; what is written under it is placed instead.
+    const held = (paths) => {
+      if (!paths.length) return paths
+      let ignored = []
+      try {
+        ignored = zlist(at(['check-ignore', '-z', '--stdin'], { input: `${paths.join('\0')}\0` }))
+      } catch (err) {
+        if (err?.status !== 1) throw err // 1: none of them is ignored
+      }
+      return paths.filter((p) => !ignored.includes(p))
+    }
+
+    return { siteDir, commit, placeIgnored, close }
   } catch (err) {
     close()
     throw err
@@ -366,6 +424,15 @@ export function openStandIn(repo, { roots, rev }) {
 // ── merging ─────────────────────────────────────────────────────────────────
 
 const zlist = (buf) => buf.toString('utf8').split('\0').filter(Boolean)
+// Something is at `path` — a dangling link included, which `existsSync` reads as nothing.
+const occupied = (path) => {
+  try {
+    lstatSync(path)
+    return true
+  } catch {
+    return false
+  }
+}
 
 /**
  * Files not under git that the merge would write over: their paths, each with whether the

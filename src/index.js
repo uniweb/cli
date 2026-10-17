@@ -74,6 +74,7 @@ import {
 } from './utils/interactive.js'
 import { findWorkspaceRoot } from './utils/workspace.js'
 import { exitWhenDrained } from './utils/exit.js'
+import { isGitRepo } from './utils/git.js'
 
 // Colors for terminal output
 const colors = {
@@ -1327,17 +1328,10 @@ async function main() {
 
   // Initialize git repository
   if (!noGit) {
-    // Skip git init if already inside a git repo (common for monorepos/workspaces)
-    let insideGitRepo = false
-    try {
-      execSync('git rev-parse --is-inside-work-tree', {
-        cwd: projectDir,
-        stdio: 'ignore'
-      })
-      insideGitRepo = true
-    } catch {
-      // Not inside a git repo — proceed with init
-    }
+    // Skip git init if a repository already holds the project (common for
+    // monorepos/workspaces). ⛔ Not one that ignores its folder: that repository can never
+    // hold its history, so the project gets its own (`isGitRepo`, the one rule).
+    const insideGitRepo = isGitRepo(projectDir)
 
     if (insideGitRepo) {
       log(

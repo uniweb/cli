@@ -73,6 +73,28 @@ test('a commit a pull made is a sync point of its site and backend — and a reb
   assert.equal(historySyncPoint(repoOf(join(dir, 'site')), { origin: ORIGIN, siteUuid: 'SITE' }), sp)
 })
 
+test('⛔ a site in a folder its repository ignores is in no repository — that repository can never hold its history', () => {
+  const top = mkdtempSync(join(scratch, 'harness-'))
+  git(top, 'init', '-q')
+  writeFileSync(join(top, '.gitignore'), 'runs/\n')
+  git(top, 'add', '-A')
+  git(top, 'commit', '-qm', 'harness')
+  const siteIn = (...path) => {
+    const dir = join(top, ...path)
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'site.yml'), 'name: S\n')
+    return dir
+  }
+  const ignored = siteIn('runs', 'p1', 'site')
+  assert.equal(repoOf(ignored), null, 'a pull would commit into the harness, whose `git add` refuses the path')
+  // CONTROL — the same site where the repository does not ignore it is in it.
+  assert.equal(repoOf(siteIn('sites', 'p1', 'site'))?.path, 'sites/p1/site')
+  // And one committed there anyway (`git add -f`) is held: the repository tracks it.
+  git(top, 'add', '-f', 'runs/p1/site/site.yml')
+  git(top, 'commit', '-qm', 'forced')
+  assert.equal(repoOf(ignored)?.path, 'runs/p1/site')
+})
+
 test('the newest base is one that descends from the others — and none HEAD does not hold', () => {
   const { dir, repo } = project()
   const older = repo.head
@@ -122,6 +144,53 @@ test('⛔ a stand-in links what is not content — and closing it removes no fil
   assert.equal(readFileSync(join(dir, 'node_modules', 'pkg', 'index.js'), 'utf8'), 'export default 1\n')
   assert.equal(readFileSync(join(dir, 'site', 'dist', 'built.js'), 'utf8'), 'built\n')
   assert.equal(existsSync(stand.siteDir), false)
+})
+
+test("⛔ what a stand-in holds where the repository ignores it is not committed — it is placed where the project lacks it, never over a file it has", () => {
+  const { dir } = project()
+  writeFileSync(join(dir, '.gitignore'), 'site/public/media/\n')
+  mkdirSync(join(dir, 'site', 'public'), { recursive: true })
+  writeFileSync(join(dir, 'site', 'public', 'robots.txt'), 'User-agent: *\n')
+  git(dir, 'add', '-A')
+  git(dir, 'commit', '-qm', 'media stay out of git')
+  mkdirSync(join(dir, 'site', 'public', 'media'), { recursive: true })
+  writeFileSync(join(dir, 'site', 'public', 'media', 'kept.png'), 'mine')
+  const repo = repoOf(join(dir, 'site'))
+  const stand = openStandIn(repo, { roots: ['pages', 'site.yml', 'public'], rev: repo.head })
+  try {
+    mkdirSync(join(stand.siteDir, 'public', 'media'), { recursive: true })
+    writeFileSync(join(stand.siteDir, 'public', 'media', 'kept.png'), 'theirs')
+    writeFileSync(join(stand.siteDir, 'public', 'media', 'new.png'), 'new')
+    writeFileSync(join(stand.siteDir, 'pages', 'home', 'hero.md'), '# Hero, theirs\n')
+    const made = stand.commit({ parent: repo.head, subject: 'test', origin: ORIGIN, siteUuid: 'SITE' })
+    assert.equal(git(dir, 'show', `${made.commit}:site/pages/home/hero.md`), '# Hero, theirs\n')
+    assert.throws(() => git(dir, 'cat-file', '-e', `${made.commit}:site/public/media/new.png`), 'an ignored file was committed')
+    assert.deepEqual(stand.placeIgnored(), ['public/media/new.png'])
+  } finally {
+    stand.close()
+  }
+  assert.equal(readFileSync(join(dir, 'site', 'public', 'media', 'new.png'), 'utf8'), 'new')
+  assert.equal(readFileSync(join(dir, 'site', 'public', 'media', 'kept.png'), 'utf8'), 'mine', 'a file the project has was overwritten')
+})
+
+test('⛔ a content root the repository ignores whole stops no commit', () => {
+  const { dir } = project()
+  writeFileSync(join(dir, '.gitignore'), 'site/public/\n')
+  git(dir, 'add', '-A')
+  git(dir, 'commit', '-qm', 'public stays out of git')
+  const repo = repoOf(join(dir, 'site'))
+  const stand = openStandIn(repo, { roots: ['pages', 'site.yml', 'public'], rev: repo.head })
+  try {
+    mkdirSync(join(stand.siteDir, 'public', 'assets'), { recursive: true })
+    writeFileSync(join(stand.siteDir, 'public', 'assets', 'a.png'), 'bytes')
+    writeFileSync(join(stand.siteDir, 'pages', 'home', 'hero.md'), '# Hero, theirs\n')
+    const made = stand.commit({ parent: repo.head, subject: 'test', origin: ORIGIN, siteUuid: 'SITE' })
+    assert.ok(made.commit, 'the content beside it was not committed')
+    assert.deepEqual(stand.placeIgnored(), ['public/assets/a.png'])
+  } finally {
+    stand.close()
+  }
+  assert.equal(readFileSync(join(dir, 'site', 'public', 'assets', 'a.png'), 'utf8'), 'bytes')
 })
 
 test('⛔ a content root reached through a link stops the stand-in — a write there would land in the project', () => {

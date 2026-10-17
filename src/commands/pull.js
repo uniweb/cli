@@ -1114,8 +1114,6 @@ export async function pull(args = [], deps = {}) {
         siteUuid: siteContentUuid,
         always: force || !base
       })
-      standIn.close()
-      standIn = null
       if (!made.commit) {
         // The backend holds what the base holds: nothing to merge.
         writeSyncPoint(siteDir, client.origin, base)
@@ -1147,6 +1145,19 @@ export async function pull(args = [], deps = {}) {
           writeSyncPoint(siteDir, client.origin, made.commit)
         }
       }
+      // ⭐ What this pull wrote where the repository ignores it travels in no commit — media
+      // in a folder kept out of git — so it is placed where the files lack it, once the
+      // content is taken. Never over a file they have.
+      if (!notTaken) {
+        const placed = standIn.placeIgnored()
+        if (placed.length) {
+          note(`Placed ${placed.length} file(s) the repository ignores, which no commit carries:`)
+          for (const p of placed.slice(0, 12)) note(`  ${p}`)
+          if (placed.length > 12) note(`  … and ${placed.length - 12} more`)
+        }
+      }
+      standIn.close()
+      standIn = null
     }
   } finally {
     standIn?.close()

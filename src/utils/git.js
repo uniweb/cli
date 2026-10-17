@@ -7,19 +7,25 @@
  * already solves better.
  *
  * DETECTED, NEVER REQUIRED. A project may legitimately have no repo, and — more
- * commonly — may live *inside* a larger one: `uniweb create` already skips
- * `git init` when it finds itself inside a work tree ("common for
- * monorepos/workspaces"), and whole scopes of real projects are versioned by a
- * parent repo rather than being repo roots themselves. So the question is never
- * "is this directory a git root" but "is this path tracked by some repo", which is
- * the question git itself answers. Outside one a pull checks out, asking first; in
- * one it merges (`utils/sync-point.js`).
+ * commonly — may live *inside* a larger one: `uniweb create` skips `git init` when a
+ * repository already holds it ("common for monorepos/workspaces"), and whole scopes of
+ * real projects are versioned by a parent repo rather than being repo roots
+ * themselves. So the question is never "is this directory a git root" but "does a
+ * repository HOLD this path": is it inside a work tree, in a folder that repository
+ * does not ignore. One rule answers it, `repoOf` in `utils/sync-point.js`. Outside
+ * one a pull checks out, asking first; in one it merges.
+ *
+ * ⛔ Until 2026-10-17 this said "is this path tracked by some repo" while the check
+ * was `git rev-parse --is-inside-work-tree` alone. That reads as if a folder the
+ * repository ignores were outside it, and it was not: a harness's ignored scratch
+ * project counted as inside the harness, so `refresh` ran `git pull` on the harness.
  */
 
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
+import { repoOf } from './sync-point.js'
 
 /**
  * The files and directories `uniweb pull` writes into.
@@ -69,15 +75,12 @@ function git(args, cwd) {
 }
 
 /**
- * Is `dir` inside a git work tree? False when git is absent, when the path isn't
- * tracked, or on any error — the caller treats all three the same way.
+ * Does a repository hold `dir` — is it inside a work tree, in a folder that repository
+ * does not ignore (`repoOf`)? False when git is absent, outside any work tree, in an
+ * ignored folder, or on any error — the caller treats them all the same way.
  */
 export function isGitRepo(dir) {
-  try {
-    return git(['rev-parse', '--is-inside-work-tree'], dir).trim() === 'true'
-  } catch {
-    return false
-  }
+  return Boolean(repoOf(dir))
 }
 
 /** Does this repo have a remote configured to pull from? */
