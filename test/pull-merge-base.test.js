@@ -487,7 +487,26 @@ test(
     assert.equal(r.exitCode, 0, r.out)
     assert.match(read(h.project, 'pages/home/about.md'), /since 1990/)
     assert.equal(h.head(), before, `the harness moved:\n${r.out}`)
-    assert.match(r.out, /Skipped: git \(not a repository\)/)
+    assert.match(r.out, /Skipped: git \(the repository around this folder ignores it\)/)
+  }
+)
+
+test(
+  '⛔ there, a pull that cannot ask says the repository around it ignores it — and refresh still says it skipped git',
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const h = harness()
+    assert.equal((await pullIn(h.project, backend, ['--force'])).exitCode, 0)
+    // The author's own work: outside git a pull asks first, and here nothing can ask.
+    edit(h.project, 'pages/home/about.md', 'About us.', 'About us, edited here.')
+    aboutEdited(backend)
+    const r = await refreshIn(h.project, backend)
+    assert.equal(r.exitCode, 1, r.out)
+    assert.match(r.out, /the repository around it ignores, so no repository holds it/)
+    assert.match(r.out, /a repository of its own/)
+    assert.match(r.out, /Skipped: git \(the repository around this folder ignores it\)/, `refresh stopped without saying it skipped git:\n${r.out}`)
+    assert.match(read(h.project, 'pages/home/about.md'), /edited here/)
   }
 )
 

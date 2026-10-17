@@ -111,6 +111,7 @@ import {
   repoOf,
   mergeInProgress,
   unmergedPaths,
+  ignoringRepo,
   isAncestor,
   historySyncPoint,
   madeOnto,
@@ -485,8 +486,15 @@ async function checkWorkingTree(siteDir, args) {
   const roots = siteContentRoots(siteDir)
   const written = readWritten(siteDir)
   if (filesUnder(siteDir, roots).every((f) => isPullOutput(siteDir, f, written))) return null
+  // A folder the repository around it ignores is outside git too — said as such, since a
+  // repository is right there and "not in a repository" is not what the person sees.
+  const ignoredBy = ignoringRepo(siteDir)
   if (isNonInteractive(args)) {
-    error('Refusing to pull: this site is not in a git repository.')
+    error(
+      ignoredBy
+        ? 'Refusing to pull: this site is in a folder the repository around it ignores, so no repository holds it.'
+        : 'Refusing to pull: this site is not in a git repository.'
+    )
     note(
       'Pull rewrites pages, sections and layout from the backend and deletes what it no longer has.'
     )
@@ -494,12 +502,14 @@ async function checkWorkingTree(siteDir, args) {
       'Without version control there is no way back, and this session cannot ask.'
     )
     note(
-      'Re-run with --force to accept that, or put the site under git first — there a pull merges.'
+      ignoredBy
+        ? 'Re-run with --force to accept that, or give the site a repository of its own (`git init`, then commit) — there a pull merges.'
+        : 'Re-run with --force to accept that, or put the site under git first — there a pull merges.'
     )
     return { exitCode: 1 }
   }
   const ok = await confirm(
-    `Pull will overwrite ${roots.length} content location(s) and this site is not in git. Continue?`
+    `Pull will overwrite ${roots.length} content location(s), and no git repository holds this site. Continue?`
   )
   if (!ok) {
     info('Nothing pulled.')

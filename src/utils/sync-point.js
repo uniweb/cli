@@ -107,6 +107,21 @@ export function repoOf(siteDir) {
   return { top, prefix, path: prefix ? prefix.replace(/\/$/, '') : '.', gitDir, head }
 }
 
+/**
+ * The top of the repository around `dir` when that repository ignores it — and so holds none
+ * of it — or null. For what is said to a person: "not in a repository" is not what they see
+ * when one is right there.
+ */
+export function ignoringRepo(dir) {
+  try {
+    const top = gitText(dir, ['rev-parse', '--show-toplevel']).trim()
+    const prefix = gitText(dir, ['rev-parse', '--show-prefix']).trim()
+    return top && prefix && ignoredHere(dir) ? top : null
+  } catch {
+    return null
+  }
+}
+
 /** Does the repository around `dir` ignore it? `git check-ignore` exits 0 for yes, 1 for no. */
 function ignoredHere(dir) {
   try {

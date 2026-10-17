@@ -52,6 +52,7 @@ import {
   pullRemote,
   headProvenance
 } from '../utils/git.js'
+import { ignoringRepo } from '../utils/sync-point.js'
 import { probeUnpushed } from '../backend/site-sync.js'
 import { resolveBackendOrigin } from '../backend/client.js'
 import { readBackendState } from '@uniweb/build/uwx'
@@ -124,13 +125,18 @@ export async function refresh(args = [], deps = {}) {
   // when they are not.
   const consulted = []
   const skipped = []
+  // Said at the end — and before stopping on a failure, which can follow a step skipped.
+  const tell = () => {
+    if (consulted.length) say.dim(`Checked: ${consulted.join(', ')}`)
+    for (const s of skipped) say.dim(`Skipped: ${s}`)
+  }
   let conflicts = 0
 
   // ── 1. the git remote ─────────────────────────────────────────────────────
   if (skipGit) {
     skipped.push('git (--no-git)')
   } else if (!isGitRepo(siteDir)) {
-    skipped.push('git (not a repository)')
+    skipped.push(ignoringRepo(siteDir) ? 'git (the repository around this folder ignores it)' : 'git (not a repository)')
   } else if (!hasRemote(siteDir)) {
     skipped.push('git (no remote configured)')
   } else {
@@ -173,6 +179,7 @@ export async function refresh(args = [], deps = {}) {
       // Failed for a reason other than conflicts — say so plainly rather than
       // reporting a clean refresh over a lane that never ran.
       say.err('Could not merge the backend content.')
+      tell()
       return { exitCode: res.exitCode }
     }
     consulted.push('backend')
@@ -180,8 +187,7 @@ export async function refresh(args = [], deps = {}) {
 
   // ── 3. where that leaves you ──────────────────────────────────────────────
   console.log('')
-  if (consulted.length) say.dim(`Checked: ${consulted.join(', ')}`)
-  for (const s of skipped) say.dim(`Skipped: ${s}`)
+  tell()
 
   const git = headProvenance(siteDir)
   if (git)
