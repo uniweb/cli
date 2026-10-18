@@ -594,6 +594,154 @@ test('heldTokens: an item held before and gone after leaves the set', () => {
   assert.deepEqual(t.itemVersions, { 'U-home': 'h1', 'U-cta': 'c1' })
 })
 
+// ─── what a backend that cleans rich text at write removed ────────────────────
+// The store cleans each write to the vocabulary and answers what it removed beside each
+// finalized document (`cleaned`). A push never writes the returned document over the file,
+// so the file still holds what went: the push says so, beside the file, and counts the
+// section as its own — what the store removed is nobody's edit.
+
+const HREF = '/content/0/content/0/marks/0/attrs/href'
+const sectionWith = (id, marks) => ({
+  type: 'Section',
+  stable_id: id,
+  content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Go', marks }] }] }
+})
+const linkedTo = (href) => [{ type: 'link', attrs: { href } }]
+
+test('heldTokens: a section the backend cleaned to the vocabulary is held, its new version banked', () => {
+  const sent = siteDoc([sectionWith('cta', linkedTo('ftp://example.com/x'))])
+  const written = asStored(siteDoc([sectionWith('cta', [])]))
+  const t = heldTokens({ sent, written, version: 'V1', itemVersions: { 'U-home': 'h1', 'U-cta': 'c1' }, held: { 'U-cta': 'c0' } })
+  // Kept, the section would keep c0 — the version for what was sent — and the next push of
+  // the same file would read as a conflict with an edit nobody made.
+  assert.deepEqual(t.itemVersions, { 'U-home': 'h1', 'U-cta': 'c1' })
+  assert.deepEqual([t.held, t.kept], [['pages/home/cta.md', 'pages/home/page.yml'], []])
+})
+
+test('heldTokens: CONTROL — a section cleaned AND edited by someone else is still theirs', () => {
+  const sent = siteDoc([sectionWith('cta', linkedTo('ftp://example.com/x'))])
+  const written = asStored(siteDoc([held('cta', 'B edited this')]))
+  const t = heldTokens({ sent, written, version: 'V1', itemVersions: { 'U-home': 'h1', 'U-cta': 'c1' }, held: { 'U-cta': 'c0' } })
+  assert.deepEqual(t.kept, ['pages/home/cta.md'])
+  assert.equal(t.itemVersions['U-cta'], 'c0')
+})
+
+test('a push names, beside each file, what the backend removed', async () => {
+  const dir = tmpSite()
+  mkdirSync(join(dir, 'pages', 'home'), { recursive: true })
+  writeFileSync(join(dir, 'pages', 'home', '1-cta.md'), '[Go](ftp://example.com/x)\n')
+  const sent = siteDoc([sectionWith('cta', linkedTo('ftp://example.com/x'))])
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () =>
+      ok(
+        finalized([
+          {
+            index: 0,
+            uuid: 'S1',
+            changed: true,
+            version: 'V1',
+            item_versions: { 'U-home': 'h1', 'U-cta': 'c1' },
+            document: asStored(siteDoc([sectionWith('cta', [])])),
+            cleaned: [{ $uuid: 'U-cta', field: 'data.content', path: HREF, rule: 'url' }]
+          }
+        ])
+      )
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: {
+      ...siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
+      siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) }
+    },
+    report
+  })
+  assert.equal(res.exitCode, 0)
+  // Named by the author's file — `1-cta.md`, not the unit's `cta.md`.
+  assert.ok(
+    calls.note.includes('! pages/home/1-cta.md: a link to `ftp://example.com/x` is never followed — the backend removed it'),
+    calls.note.join('\n')
+  )
+  assert.ok(calls.note.some((m) => /files still hold what the backend removed/.test(m)))
+  assert.ok(!calls.note.some((m) => /by someone else/.test(m)), calls.note.join('\n'))
+  assert.equal(readItemBaseVersions(dir, ORIGIN)['U-cta'], 'c1')
+  rmSync(dir, { recursive: true, force: true })
+})
+
+test('CONTROL — a push the backend removed nothing from says nothing of it', async () => {
+  const dir = tmpSite()
+  const sent = siteDoc([held('cta', 'x')])
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1', document: asStored(sent) }]))
+  }
+  const { report, calls } = makeReport()
+  await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: { ...siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }), siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) } },
+    report
+  })
+  assert.ok(!calls.note.some((m) => /backend removed/.test(m)), calls.note.join('\n'))
+  rmSync(dir, { recursive: true, force: true })
+})
+
+test("a records push names, beside the record's file, what the backend removed", async () => {
+  const dir = tmpSite()
+  mkdirSync(join(dir, 'records', 'article'), { recursive: true })
+  const file = join(dir, 'records', 'article', 'a.yml')
+  writeFileSync(file, "title: A\nbody: '[Go](ftp://example.com/x)'\n")
+  const body = (marks) => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Go', marks }] }] })
+  const entities = [
+    ['entities/folder.json', { $id: 'folder', $schema: '@uniweb/folder' }],
+    ['entities/article/a.json', { $id: 'article/a', $schema: '@a/article', article: { title: 'A', body: body(linkedTo('ftp://example.com/x')) } }]
+  ]
+  const buffer = createZip([
+    {
+      name: 'manifest.json',
+      data: Buffer.from(JSON.stringify({ format: 'uwx/1', entries: entities.map(([f, d]) => ({ kind: 'entity', uuid: d.$id, file: f })) }))
+    },
+    ...entities.map(([name, d]) => ({ name, data: Buffer.from(JSON.stringify(d)) }))
+  ])
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'SITE', changed: true }])),
+    pushFolder: async () =>
+      ok(
+        finalized([
+          { index: 0, uuid: 'FOLDER', changed: true },
+          {
+            index: 1,
+            uuid: 'R1',
+            changed: true,
+            document: { $uuid: 'R1', $schema: '@a/article', article: { $uuid: 'I1', title: 'A', body: body([]) } },
+            cleaned: [{ $uuid: 'I1', field: 'data.body', path: HREF, rule: 'url' }]
+          }
+        ])
+      )
+  }
+  const pkg = siteOnlyPkg({
+    siteContentUuid: 'SITE',
+    records: {
+      buffer,
+      entityCount: 2,
+      models: ['@uniweb/folder', '@a/article'],
+      index: [{ kind: 'folder' }, { id: 'article/a', slug: 'a', model: '@a/article', sourceFile: file, format: 'yaml' }]
+    }
+  })
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, report })
+  assert.equal(res.exitCode, 0)
+  assert.ok(
+    calls.note.includes('! records/article/a.yml: a link to `ftp://example.com/x` is never followed — the backend removed it'),
+    calls.note.join('\n')
+  )
+  rmSync(dir, { recursive: true, force: true })
+})
+
 test("⛔ a push holds the services it stated, and never one added on the site since this copy's pull", async () => {
   // Held, `assistant` would be stated off by the next push — switching off a service
   // nobody here has seen. And the list a copy kept before 2026-10-07 is replaced.

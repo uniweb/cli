@@ -64,7 +64,10 @@ import {
   LINK_MODEL,
   bankedFileUuids,
   existingSectionFile,
-  layoutUnitFile
+  layoutUnitFile,
+  siteContentRemovals,
+  recordRemovals,
+  cleanedRecord
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -82,6 +85,26 @@ function entityDocFromUwx(buf) {
     }
   }
   return null
+}
+
+// Every entity `$`-document of a `.uwx` in the order it was submitted — the manifest's, which is
+// what a push's `finalized[].index` counts in. null where a listed file is missing or unreadable.
+function submittedDocsFromUwx(buf) {
+  if (!buf || buf.length < 2 || buf[0] !== 0x50 || buf[1] !== 0x4b) return []
+  const files = readZip(buf)
+  let entries
+  try {
+    entries = JSON.parse(files.get('manifest.json')?.toString('utf8') ?? '{}').entries
+  } catch {
+    return []
+  }
+  return (Array.isArray(entries) ? entries : []).map((entry) => {
+    try {
+      return JSON.parse(files.get(entry?.file).toString('utf8'))
+    } catch {
+      return null
+    }
+  })
 }
 
 // Every entity `$`-document of a `.uwx` — the folder lane holds the folder and its records.
@@ -223,6 +246,10 @@ function writtenAsSent(sent, written) {
  * (`siteItemsByKey`), and it replaces the one held before:
  *
  *   - an item the backend holds as we sent it → its new version;
+ *   - an item it holds as we sent it once cleaned to the rich-text vocabulary → its new version
+ *     too: what a backend that cleans at write removed is not someone else's content
+ *     (`cleanedRecord`). ⛔ Until 2026-10-18 it was, so a push with a link the store removed
+ *     said the section had changed on the backend, and kept the version for what was sent;
  *   - an item we sent that it kept for someone else → the version we held, for OUR content;
  *   - an item it holds that we did not send → the version we held, if we had seen it, and
  *     none if we had not (a unit of it is `foreign`);
@@ -232,7 +259,7 @@ function writtenAsSent(sent, written) {
  * the backend returned it — harmless only while none of them was ever sent.
  *
  * A service is compared by its switch and its whole `config` (`sameServiceRow`), every
- * other item on the keys we sent (`writtenAsSent`).
+ * other item on the keys we sent (`writtenAsSent`), as sent or as cleaned.
  *
  * With either document missing there is nothing to compare, and with no versions
  * returned (an older backend) nothing to bank: `itemVersions` is null, and the versions
@@ -255,7 +282,8 @@ export function heldTokens({ sent, written, version = null, itemVersions = null,
   const prior = before && typeof before === 'object' ? before : {}
   const ours = siteItemsByKey(sent)
   const theirs = siteItemsByKey(written)
-  const same = (key, a, b) => (key.startsWith('services:') ? sameServiceRow(a, b) : writtenAsSent(a, b))
+  const same = (key, a, b) =>
+    key.startsWith('services:') ? sameServiceRow(a, b) : writtenAsSent(a, b) || writtenAsSent(cleanedRecord(a), b)
   const held = []
   const kept = []
   const foreign = []
@@ -371,7 +399,10 @@ export function extractFinalized(payload) {
         d?.item_versions && typeof d.item_versions === 'object'
           ? d.item_versions
           : null,
-      document: d?.document ?? null
+      document: d?.document ?? null,
+      // What a backend that cleans rich text at write removed from what was sent, each
+      // `{ $uuid, field, path, rule }` — the key absent when nothing was (`uwx/cleaned.js`).
+      ...(Array.isArray(d?.cleaned) && d.cleaned.length ? { cleaned: d.cleaned } : {})
     }))
     .filter((e) => Number.isInteger(e.index) && e.uuid)
 }
@@ -2325,6 +2356,25 @@ export async function pushSyncPackages({
   // collected here, to re-base attribution and to say so.
   const sentSiteDoc = siteContent ? entityDocFromUwx(siteContent.buffer) : null
   const notHeld = { kept: [], foreign: [] }
+  // ⭐ WHAT THE BACKEND REMOVED, beside the file it came from. A backend that cleans each
+  // rich-text write to the vocabulary answers what it took out of each item
+  // (`finalized[].cleaned`). The push never writes the returned document over the file, so the
+  // file still holds it, and only this says so — on every push that sends it again.
+  let toldRemoved = false
+  const reportRemovals = (removals) => {
+    for (const r of removals) note(`! ${r.where}${r.locale ? ` (${r.locale})` : ''}: ${r.says}`)
+    if (removals.length && !toldRemoved) {
+      note('Your files still hold what the backend removed; a pull would write them without it.')
+      toldRemoved = true
+    }
+  }
+  const reportSiteContentRemovals = (finalized) =>
+    reportRemovals(
+      siteContentRemovals({ finalized, sent: sentSiteDoc }).map((r) => ({
+        ...r,
+        where: r.unit ? unitFilesOf(siteDir, r.unit)[0] || r.unit : 'the site'
+      }))
+    )
   const harvestSiteContent = (finalized) => {
     for (const f of finalized || []) {
       const held = heldTokens({
@@ -2438,6 +2488,7 @@ export async function pushSyncPackages({
         return { exitCode: 1, finalizedTotal, wrote }
       }
       harvestSiteContent(finalized)
+      reportSiteContentRemovals(finalized)
       siteFinalizedDoc = finalized[0]?.document || null
       finalizedTotal += finalized.length
       settleSiteContent()
@@ -2472,6 +2523,7 @@ export async function pushSyncPackages({
         wrote.push(`recorded its owner (${createdOrg}) in sync.json`)
       const createdFinalized = extractFinalized(payload)
       harvestSiteContent(createdFinalized)
+      reportSiteContentRemovals(createdFinalized)
       siteFinalizedDoc = createdFinalized?.[0]?.document || null
       finalizedTotal += createdFinalized?.length ?? 1
       settleSiteContent()
@@ -2500,6 +2552,13 @@ export async function pushSyncPackages({
       return { exitCode: 1, finalizedTotal, wrote }
     }
     harvest(finalized)
+    reportRemovals(
+      recordRemovals({ finalized, sent: submittedDocsFromUwx(records.buffer) }).map((r) => {
+        const entry = records.index?.[r.index]
+        const file = entry?.sourceFile
+        return { ...r, where: file ? (isAbsolute(file) ? relative(siteDir, file) : file) : entry?.id || 'a record' }
+      })
+    )
     const bf = backfillEntityUuids({ index: records.index, finalized })
     // ⭐ Record which uuid THIS backend minted for each record, keyed by the record's
     // own id. The file keeps that own id; the next push to this backend sends the
