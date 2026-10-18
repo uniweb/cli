@@ -33,8 +33,6 @@ import prompts from 'prompts'
 // Same pattern as `build` and `docs`.
 import { i18n } from './commands/i18n.js'
 import { inspect } from './commands/inspect.js'
-import { invite } from './commands/invite.js'
-import { handoff } from './commands/handoff.js'
 import { update } from './commands/update.js'
 import { clone } from './commands/clone.js'
 import { template } from './commands/template.js'
@@ -1010,18 +1008,6 @@ async function main() {
     return
   }
 
-  // Handle invite command
-  if (command === 'invite') {
-    await invite(args.slice(1))
-    return
-  }
-
-  // Handle handoff command
-  if (command === 'handoff') {
-    await handoff(args.slice(1))
-    return
-  }
-
   // Handle families command — the standard section families this CLI ships with
   if (command === 'families') {
     const { families } = await import('./commands/families.js')
@@ -1926,18 +1912,6 @@ Record files keep their \`$uuid\`: it is the record's own id, not a backend's.
 
 To duplicate a project:
   cp -r my-site my-site-2 && cd my-site-2 && uniweb forget --all
-`,
-    invite: `
-${colors.cyan}${colors.bright}uniweb invite${colors.reset} ${colors.dim}— (reserved; not available on the new backend yet)${colors.reset}
-
-The foundation client-invite flow was retired with the legacy backend.
-Invite clients to your foundation from the Uniweb app for now.
-`,
-    handoff: `
-${colors.cyan}${colors.bright}uniweb handoff${colors.reset} ${colors.dim}— (reserved; not available on the new backend yet)${colors.reset}
-
-The site-handoff flow was retired with the legacy backend.
-Manage client sites from the Uniweb app for now.
 `,
     families: `
 ${colors.cyan}${colors.bright}uniweb families${colors.reset} ${colors.dim}— The standard section families${colors.reset}

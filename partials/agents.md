@@ -2796,8 +2796,6 @@ uniweb snapshot --compare         # Several looks on one sheet; take one with it
 uniweb <command> --help           # Per-command flags — no side effects. Prefer this over guessing.
 ```
 
-**Three verbs dispatch but are deliberately not listed above.** `invite`, `handoff` and `template` are **reserved names with no implementation** — the flows they named ran against a backend the CLI no longer talks to, and the names are held so a future rebuild doesn't need a breaking change. Running any of them is not useful; their absence from this list is the answer, not an omission to fix.
-
 ### Where a site can live
 
 **There is no lock-in, and no default you're pushed toward.** Four independent paths, and a project can change its mind:

@@ -2,7 +2,7 @@
  * BackendClient — the single front door to the Uniweb backend.
  *
  * Every CLI verb that talks to the backend (register, push, pull, clone, org,
- * login — and, as the consolidation proceeds, publish/deploy/invite/handoff)
+ * login — and, as the consolidation proceeds, publish/deploy)
  * goes through one instance of this client instead of hand-rolling
  * `fetch(… Authorization: Bearer …)` against a per-command default origin. It
  * owns the three things that were previously scattered across a dozen files:
