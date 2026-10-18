@@ -334,7 +334,7 @@ cd src
 uniweb register --scope @your-org
 ```
 
-Real sites built on your foundation are managed in the **Uniweb apps** (web + desktop) — visual editors designed for non-technical authors. They never see git, markdown, yaml, or React. They see *your* components, with live previews and visual controls for the params you defined. The foundation becomes the editor's native vocabulary for that site: you keep creative control of the design system, they get an editor that feels custom-built for them.
+Real sites built on your foundation are managed in the **Uniweb app** — a visual editor designed for non-technical authors. They never see git, markdown, yaml, or React. They see *your* components, with live previews and visual controls for the params you defined. The foundation becomes the editor's native vocabulary for that site: you keep creative control of the design system, they get an editor that feels custom-built for them.
 
 This is the best path when site content has a life independent of the foundation's release cycle — agencies, design studios, multi-client teams, or any project where content authors aren't the same people as the developers.
 

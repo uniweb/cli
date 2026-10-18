@@ -14,9 +14,9 @@
  * foundation — `uniweb dev` with `foundation:` naming a sibling package. There,
  * the site imports `#foundation`, which `build/src/site/config.js` aliases to
  * the foundation's PACKAGE NAME, so Vite resolves it through node_modules. A
- * linked site (registry ref or URL) never takes that path, and neither does the
- * desktop app, unipress, or the edge — they load a built `dist/entry.js`, or
- * read a content folder directly. The check stays silent for all of them
+ * linked site (registry ref or URL) never takes that path, and neither does
+ * unipress or the edge — they load a built `dist/entry.js`, or read a content
+ * folder directly. The check stays silent for all of them
  * because there is no node_modules entry to look at.
  *
  * What goes wrong in that one modality: a `file:` dependency can be satisfied
