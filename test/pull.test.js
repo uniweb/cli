@@ -401,7 +401,7 @@ for (const [label, served] of [
         name: '@acme/article',
         sections: {
           article: { brief: true, fields: { title: { type: 'string' } } },
-          article_body: { fields: { content: { type: 'json', format: 'prosemirror' } } }
+          article_body: { fields: { content: { type: 'json', format: 'richtext' } } }
         }
       }
       const res = await pull(['--force', '--no-records'], {
