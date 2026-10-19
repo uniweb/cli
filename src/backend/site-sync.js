@@ -1071,6 +1071,20 @@ export function uncommittedContent(siteDir, { verb = 'push' } = {}) {
       lines: [`Finish it (\`git commit\`), then ${verb} — or abandon it (\`git merge --abort\`) and pull again.`]
     }
   }
+  // ⭐ A repository with no commit yet is still the one that will hold the site's history —
+  // and holds none of it, so every file is listed as not committed. Said as that, not as
+  // edits. ⛔ Not taken for a folder outside git: its first push would keep nothing to merge
+  // from, and the pull after its first commit would read every difference as a conflict.
+  if (!repo.head) {
+    return {
+      paths,
+      headline: `Not ${done} — this repository has no commit yet, so none of the site's ${paths.length} file(s) is committed.`,
+      lines: [
+        `In a repository a ${verb} sends what you have committed, so a later pull can tell your changes from the backend's.`,
+        `Commit the site, then ${verb} again — or re-run with --commit (and -m "…") to make that first commit.`
+      ]
+    }
+  }
   return {
     paths,
     headline: `Not ${done} — ${paths.length} file(s) of the site are not committed:`,

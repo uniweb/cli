@@ -112,6 +112,23 @@ test('⭐ `--commit -m` commits the site — and nothing else that is staged —
   assert.ok(be.sent.every((s) => s.source === commit), `the push named another commit: ${JSON.stringify(be.sent)}`)
 })
 
+test('a repository with no commit yet is refused and said so — and `--commit` makes the first commit and pushes from it', { timeout: 60_000 }, async () => {
+  const { push } = await import('../src/commands/push.js')
+  const { site, git } = project({ git: false })
+  git('init', '-q') // no commit: every file untracked
+  const refused = await runVerb(site, push, [], backend().opts)
+  assert.equal(refused.exitCode, 1, refused.output)
+  assert.match(refused.output, /Not pushed — this repository has no commit yet/)
+  assert.match(refused.output, /to make that first commit/)
+  assert.equal(refused.requests, 0, refused.urls.join('\n'))
+  const be = backend()
+  const res = await runVerb(site, push, ['--commit', '-m', 'The site'], be.opts)
+  assert.equal(res.exitCode, 0, res.output)
+  const first = git('rev-list', '--max-parents=0', 'HEAD')
+  assert.equal(git('log', '-1', '--format=%s', first), 'The site')
+  assert.ok(be.sent.length > 0 && be.sent.every((s) => s.source === first), JSON.stringify(be.sent))
+})
+
 test('`--commit` on a dry run only says it would', { timeout: 60_000 }, async () => {
   const { push } = await import('../src/commands/push.js')
   const { site, git } = project()
