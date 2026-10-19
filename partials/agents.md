@@ -2566,6 +2566,24 @@ await writer.remove(itemId)
   first; a retry would succeed by overwriting a change nobody looked at. Tell the
   person.
 
+### Translated fields
+
+A `localized` field holds `{ en: '…', fr: '…' }`, or one plain value that is every
+language, and a read answers it in the page's language. ⛔ **Never write that one value
+back as the whole field** — it becomes the value in every language. To edit one:
+
+```jsx
+const { entity } = useEntity({ schema: '@/profile', uuid, languages: 'all' })   // every language, as stored
+await writer.update(item.id, { ...item.data, bio: 'Bonjour' }, { language: 'fr' }) // one language, merged
+```
+
+- **`update` with `{ language }`** merges each translated field you name into the languages
+  the item holds, and keeps a translated field you leave out. On a site with more than one
+  language, an update without it that writes a plain value over a translated field read in
+  the page's language is refused.
+- **`languagesOf`, `inLanguage` and `withLanguage`** read and set one language of a value
+  yourself, its `@` metadata kept.
+
 ### ⛔ Permissions are the SERVER'S, and your UI is only a courtesy
 
 Gate your controls on what the viewer may do — a record's own `can_edit` from a
