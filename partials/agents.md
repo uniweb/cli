@@ -1098,7 +1098,7 @@ import { Section, Prose } from '@uniweb/kit'
 
 `Prose` renders from the parsed sequence — headings, paragraphs, images, snippets, lists — with prose typography. Tagged data blocks are **skipped**; access them via `content.data` for custom rendering. Pass `content` (needs `.sequence`), and `block` too if the content uses insets. Also works as a pure typography wrapper: `<Prose>{children}</Prose>`.
 
-`Article` is an older alternative rendering from `block.rawContent` (raw ProseMirror), including data blocks. Prefer `Prose` for new components.
+`Article` is `Prose` in a semantic `<article>` element — the same rendering, for content that is a self-contained document.
 
 ### The Kit, by use case
 
@@ -1860,7 +1860,7 @@ const page = website.activePage
 | `block.childBlocks` / `block.insets` | Child sections / inline `@Component` references |
 | `block.getInset(refId)` | Lookup an inset by refId |
 | `block.properties` | Raw frontmatter |
-| `block.rawContent` | ProseMirror document — passed internally by `<Article block={block} />` |
+| `block.rawContent` | The section's ProseMirror document, before parsing — what a content handler reads |
 | `block.themeName` | `"light"`, `"medium"`, `"dark"` |
 | `block.stableId` / `block.key` | Stable ID from filename or `id:` / unique key across pages — use as React key |
 | `block.path` | Page route this block belongs to |
