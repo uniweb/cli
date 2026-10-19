@@ -5,9 +5,8 @@
  * `rename`, `add`). A naive `JSON.stringify(obj, null, 2)` reflows the
  * *entire* file whenever the project happened to use tabs or 4-space
  * indentation — turning a one-key version bump into a hundred-line diff
- * (and a needless merge-conflict surface). `framework/CLAUDE.md` calls
- * this out as an anti-pattern for human commits; the tooling shouldn't do
- * it either. These helpers detect the file's existing indentation and
+ * (and a needless merge-conflict surface). That is an anti-pattern in a
+ * human commit, and the tooling shouldn't do it either. These helpers detect the file's existing indentation and
  * trailing-newline convention and preserve both.
  */
 

@@ -1,9 +1,8 @@
 /**
- * TWO BACKENDS, ONE PROJECT — the acceptance test for
- * `kb/framework/plans/backend-scoped-project-state.md`.
+ * TWO BACKENDS, ONE PROJECT — the acceptance test for keeping a project's state per
+ * backend, keyed by origin.
  *
- * ⭐ **Most of this file is expected to FAIL until that plan lands, and is skipped
- * with the step that un-skips it.** It is written first on purpose: every step of
+ * ⭐ **It was written before the migration it tests, on purpose:** every step of
  * the migration threads a backend origin through code that never had one, and a
  * missed thread is SILENT — state lands in the wrong place, or stops being
  * restored, and no existing suite spans the seam to notice.
@@ -26,9 +25,6 @@ import { pushSyncPackages } from '../src/backend/site-sync.js'
 
 const A = 'http://backend-a.test'
 const B = 'http://backend-b.test'
-
-/** The step of §7 that makes each group pass. */
-const NEEDS = (n, what) => ({ skip: `plan §7 step ${n} — ${what}` })
 
 const dirs = []
 process.on('exit', () => {

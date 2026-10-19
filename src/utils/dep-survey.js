@@ -37,7 +37,7 @@ export function stripVersionRange(spec) {
  * How far a bump moves, in the terms our versioning actually uses.
  *
  * ⭐ **The MINOR slot is the breaking one — in 1.x as in 0.x** *[ruled
- * 2026-10-11]*. `scripts/framework/publish.js` derives a package's bump from its own
+ * 2026-10-11]*. The framework's release derives a package's bump from its own
  * commits: a breaking marker means minor, everything else patch. So
  * `^0.14.1 → ^0.16.0` is two breaking releases and `^0.15.0 → ^0.15.2` is not —
  * and until 2026-09-02 `update` printed both as `behind`, in the same colour,

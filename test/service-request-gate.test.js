@@ -6,7 +6,7 @@
  * `@uniweb/build`) and decided per service by the backend; all this step does for them
  * is say what the file asks that will not be sent as written (`announceServices`).
  * ⛔ Until 2026-10-07 this file ran the CLI's own per-service check (`settleServices`),
- * row by row of kb/framework/reference/site-services-request.md §4.
+ * row by row.
  */
 
 import { test } from 'node:test'

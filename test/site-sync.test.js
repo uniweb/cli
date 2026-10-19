@@ -3061,8 +3061,7 @@ test('CONTROL — a copy whose maps name every record it sends reads nothing', a
 // A push carries the author's `template:` intent in `info`; what the backend DID
 // with it comes back as `template` — `designated` · `undesignated`, absent when it
 // did not move (backend, 2026-09-23). ⛔ Absent is "unchanged", never "failed": a
-// designation the backend will not make refuses the whole push, with its own message
-// (kb/framework/reference/template-designation-on-push.md §6).
+// designation the backend will not make refuses the whole push, with its own message.
 
 test('templateOutcome reads the state the backend reported, wherever it rides', () => {
   assert.equal(templateOutcome({ template: 'designated' }), 'designated')

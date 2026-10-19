@@ -89,7 +89,7 @@ function isFoundation(dir) {
  * ⛔ THE PATH IS `dist/meta/schema.json`, and it read `dist/schema.json` from
  * 2026-02-06 until 2026-09-15 — a file the build has never written. So this
  * returned `null` every time, and its one caller (the extension `vars`/layouts
- * warning, which `framework/CLAUDE.md` gotcha #18 says doctor performs) could
+ * warning) could
  * not fire at all.
  *
  * ⭐ THE CLASS IS WORTH MORE THAN THE BUG: a wrong PATH returns empty, it does

@@ -4,8 +4,6 @@
  * ⭐ **`site.yml` holds nothing a backend minted, as of 2026-09-20.** It carried
  * `$uuid`, `$org` and `$backend`; all three moved to
  * `sync.json::backends.<origin>.site`, keyed by the backend that minted them.
- * Spec: `kb/framework/reference/sync-json.md`. Why:
- * `kb/framework/plans/backend-scoped-project-state.md`.
  *
  * ## ⛔ What is GONE, and why nothing replaces it
  *

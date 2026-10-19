@@ -7,8 +7,7 @@
  *   - ⭐ **The services** — `site.yml::services`, a map by service name *[Diego,
  *     2026-10-06]*. A push STATES them — the file's, and off for each held one it no
  *     longer lists — and the backend decides per service from the versions sent
- *     (`statedServices`, `@uniweb/build/uwx`; spec:
- *     kb/framework/reference/site-services-request.md). All this module does for them
+ *     (`statedServices`, `@uniweb/build/uwx`). All this module does for them
  *     is say what the file asks that will not be sent (`announceServices`).
  *   - **The language selection** — `site.yml::publishLanguages` — told apart from the
  *     status quo by a fingerprint banked in `deploy.yml` (`reconcile`, `bankLanguages`).

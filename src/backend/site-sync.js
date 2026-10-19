@@ -245,7 +245,7 @@ function writtenAsSent(sent, written) {
  * every item, not only units. The site-content entity sends every version this copy
  * holds, for items present and items the files dropped (`withBaseVersion`), and the
  * backend deletes only the items a push holds a version for, while the site left them
- * unchanged [Diego: "yes, apply it to pages too"; kb/framework/plans/services-exchange.md].
+ * unchanged [Diego: "yes, apply it to pages too"].
  * A version banked for an item this copy never saw would therefore delete it. The map
  * returned is the WHOLE set this copy now holds, in every Section but `secrets`
  * (`siteItemsByKey`), and it replaces the one held before:
@@ -510,8 +510,6 @@ export function keepModels(siteDir, backend, models) {
 // ⛔ **Keyed by backend ORIGIN.** Every map describes ONE backend: hashes are what we
 // last sent *to it*, base versions are the versions *it* had. Shared across backends
 // they report every entity as changed against the second one.
-//
-// Spec: kb/framework/reference/backend-cache-json.md
 function backendCachePath(siteDir) {
   return join(siteDir, '.uniweb', 'backend-cache.json')
 }
@@ -2100,8 +2098,7 @@ export async function rebankRecordHashes(siteDir, backend, keys) {
  * reply, never inferred from what we sent.
  *
  * The field is `template`, carrying `designated` or `undesignated`, and it is ABSENT
- * when the designation did not move (backend, collab framework↔backend #6, 2026-09-23;
- * kb/framework/reference/template-designation-on-push.md E6).
+ * when the designation did not move (backend, 2026-09-23).
  *
  * ⛔ TWO STATES, NOT THREE — and silence means "unchanged", never "failed". A push that
  * asks to designate where the backend will not is REFUSED WHOLE, and that refusal
