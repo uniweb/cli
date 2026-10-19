@@ -19,13 +19,14 @@
  *     (`@org/name@version`) is refused (`detectFoundationType`).
  *
  *   --link (internal; called by `uniweb publish`)
- *     Data-only pipeline. No vite. Emits `dist/site-content.json` (with full
- *     sections), `dist/<lang>/site-content.json` per non-default locale,
- *     `dist/data/*.json` (queries) and `dist/assets/<media>`. `publish` reads
- *     two things back — the files of the queries that have no data schema,
- *     and the languages to make live — and sends the content over the sync
- *     wire, from source. What it sends carries no JS, so a bundle would be
- *     dead weight.
+ *     Data-only pipeline. No vite, and no media processing. Emits
+ *     `dist/site-content.json` (with full sections),
+ *     `dist/<lang>/site-content.json` per non-default locale and
+ *     `dist/data/*.json` (queries). `publish` reads two things back — the
+ *     files of the queries that have no data schema, and the languages to
+ *     make live — sends the content over the sync wire, from source, and
+ *     uploads media from the site's own files. What it sends carries no JS,
+ *     so a bundle would be dead weight.
  *
  *     ⛔ *Until 2026-10-19 this said a registry ref was loaded by URL, that
  *     --link emitted "ONLY what Uniweb hosting needs", and that "the backend
@@ -577,16 +578,16 @@ function resolveFoundationDir(projectDir, siteConfig) {
  *   dist/site-content.json (full sections inlined)
  *   dist/<lang>/site-content.json per non-default locale
  *   dist/data/<query>.json (+ a file per record, dist/data/<query>/<name>.json)
- *   dist/assets/<media> (processed images, video posters, PDF thumbnails)
  *
  * `publish` reads two things back: the files of the queries that have no data
  * schema, which it uploads, and the languages to make live. The content goes
  * over the sync wire, read from source, and the site's media is uploaded from
  * the site's own files.
  *
- * Does NOT emit HTML, JS, CSS, source maps, _importmap chunks, or
- * static-host extras (sitemap, robots, search-index, _pages/*) — `publish`
- * reads none of them.
+ * Does NOT emit HTML, JS, CSS, source maps, _importmap chunks, processed media
+ * (dist/assets/), or static-host extras (sitemap, robots, search-index,
+ * _pages/*) — `publish` reads none of them. ⛔ *It processed media into
+ * dist/assets/ — WebP copies, video posters, PDF thumbnails — until 2026-10-19.*
  *
  * The `buildLocalizedContent` step is the same call bundle mode makes
  * post-vite, so multi-locale sites get identical per-locale outputs in
@@ -610,30 +611,29 @@ async function buildSiteLink(projectDir, options = {}) {
   const { buildSiteData } = await import('@uniweb/build/site')
   const distDir = join(projectDir, 'dist')
 
-  // Resolve the local foundation path so collectSiteContent can pick up
-  // theme variable defaults from `foundation.js::theme.vars`. When the
-  // foundation is purely a registry ref (no local sibling), this stays
+  // Resolve the local foundation path so collectSiteContent can pick up the
+  // defaults of the theme variables it declares (its `main.js` `vars`). When
+  // the foundation is purely a registry ref (no local sibling), this stays
   // null and theme defaults come from theme.yml only.
   const foundationDir = resolveFoundationDir(projectDir, siteConfig)
 
   // Link mode does NOT (re)build the foundation. It reads only the
-  // foundation's SOURCE config (foundation.js::theme.vars, passed as
-  // foundationPath below) for theme defaults, and ships NO foundation code —
-  // the backend serves the foundation from the registry by the `foundation:`
-  // ref. (Bundle mode is the one that needs a current dist/entry.js — see
-  // buildSite — so the ensureFoundationFresh cascade lives there, not here.)
+  // foundation's SOURCE declarations (passed as foundationPath below) for
+  // theme defaults, and ships NO foundation code — the site names its
+  // foundation by registered version. (Bundle mode is the one that needs a
+  // current dist/entry.js — see buildSite — so the ensureFoundationFresh
+  // cascade lives there, not here.)
 
   await buildSiteData({
     siteRoot: projectDir,
     distDir,
-    foundationPath: foundationDir,
-    assets: siteConfig?.build?.assets || {}
+    foundationPath: foundationDir
   })
   success(`Wrote ${join('dist', 'site-content.json')}`)
 
   // Per-locale variants — same call bundle mode makes post-vite. Both
-  // modes produce identical `dist/<lang>/site-content.json` outputs so
-  // the deploy CLI walks the same path shape regardless of mode.
+  // modes produce identical `dist/<lang>/site-content.json` outputs, and
+  // `publish` reads which languages were built from them.
   const i18nConfig = await loadI18nConfig(projectDir, siteConfig)
   if (i18nConfig && i18nConfig.locales.length > 0) {
     log('')
