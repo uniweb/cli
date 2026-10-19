@@ -190,21 +190,29 @@ export function rendersKitProse(dir) {
   )
 }
 
-/** Does a stylesheet load Tailwind Typography itself? */
+/**
+ * Does a stylesheet load Tailwind Typography itself? A line commented out loads
+ * nothing. ⛔ Until 2026-10-19 one was read as loaded, so the first step of
+ * removing the plugin drew a warning to remove it.
+ */
 export function loadsTypographyPlugin(styles) {
-  return /@plugin\s+["']@tailwindcss\/typography["']/.test(String(styles || ''))
+  const css = String(styles || '').replace(/\/\*[\s\S]*?\*\//g, '')
+  return /@plugin\s+["']@tailwindcss\/typography["']/.test(css)
 }
 
 /**
  * Tailwind Typography's palette modifiers and `prose-invert`, wherever a
- * foundation's source names one in a class list — `dark:prose-invert` included.
- * Comments are skipped, since a comment warning against one names it too.
+ * foundation's source names one in a class list — `dark:prose-invert` included,
+ * and marked important either way (`!prose-invert`, `prose-invert!`). Comments
+ * are skipped, since a comment warning against one names it too. What it reads
+ * is the source's text, so the same word in a sentence a component renders is
+ * read as a class as well.
  *
  * @returns {{ file: string, modifiers: string[] }[]}
  */
 export function inertProseModifiers(dir) {
   const MODIFIER =
-    /(?:^|[\s"'`:])(prose-(?:gray|slate|zinc|neutral|stone|invert|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose))(?=$|[\s"'`])/gm
+    /(?:^|[\s"'`:!])(prose-(?:gray|slate|zinc|neutral|stone|invert|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose))(?=$|[\s"'`!])/gm
   const found = []
   forEachSourceFile(dir, (text, file) => {
     const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')

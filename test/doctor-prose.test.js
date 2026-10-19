@@ -44,6 +44,7 @@ const modifierCases = [
   ['a palette in a class list', "export default () => <div className='prose prose-slate max-w-none'>x</div>", ['prose-slate']],
   ['invert behind a variant', 'export default () => <div className="prose dark:prose-invert lg:prose-base">x</div>', ['prose-invert']],
   ['a color theme', 'export default () => <article className={cn("prose", "prose-blue")} />', ['prose-blue']],
+  ['marked important, before or after', 'export default () => <div className="prose !prose-invert prose-slate!">x</div>', ['prose-invert', 'prose-slate']],
   ['CONTROL — a comment warning against one', '// no palette modifier (`prose-gray` and friends) here\nexport default () => <div className="prose">x</div>', []],
   ['CONTROL — the steps and the variants, which the layer has', 'export default () => <div className="prose prose-lg prose-headings:font-display prose-a:text-link">x</div>', []],
 ]
@@ -65,4 +66,11 @@ test('loadsTypographyPlugin — either quote, and not kit’s own import', () =>
   assert.equal(loadsTypographyPlugin(`@import "tailwindcss";\n@plugin "@tailwindcss/typography";`), true)
   assert.equal(loadsTypographyPlugin(`@plugin '@tailwindcss/typography';`), true)
   assert.equal(loadsTypographyPlugin(`@import "@uniweb/kit/prose-tokens.css";`), false)
+})
+
+test('loadsTypographyPlugin — a line commented out loads nothing', () => {
+  assert.equal(loadsTypographyPlugin(`@import "tailwindcss";\n/* @plugin "@tailwindcss/typography"; */`), false)
+  assert.equal(loadsTypographyPlugin(`/*\n  removed 2026-10-19:\n  @plugin "@tailwindcss/typography";\n*/`), false)
+  // CONTROL — the line itself, after a comment
+  assert.equal(loadsTypographyPlugin(`/* typography */\n@plugin "@tailwindcss/typography";`), true)
 })
