@@ -2026,8 +2026,10 @@ export async function pushSyncPackages({
   let draftsNotKept = []
   // ⭐ THE COMMIT THIS PUSH IS MADE FROM — sent with each lane, so the backend can name it on
   // a pull, and kept here as this copy's sync point once a lane lands: what the backend
-  // holds descends from it (`utils/sync-point.js`). ⚖️ Uncommitted edits ride on top of it,
-  // and it stays a safe base for them — both sides hold them, so a merge takes them once.
+  // holds descends from it (`utils/sync-point.js`). ⚠️ Uncommitted edits ride on top of it,
+  // so it is older than what was sent: a merge takes an edit both sides still hold once, but
+  // one undone here before the next pull reads as no change against it, and the pull puts it
+  // back (measured 2026-10-18; open). ⛔ This said it "stays a safe base for them" until then.
   const repo = repoOf(siteDir)
   const source = repo?.head || null
 
