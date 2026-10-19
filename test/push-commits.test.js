@@ -172,6 +172,8 @@ test("⭐ what a push writes into the files it commits as uniweb's — and that 
   assert.equal(res.exitCode, 0, res.output)
   assert.equal(git('status', '--porcelain'), '', `the push left what it wrote uncommitted:\n${git('status', '--porcelain')}`)
   assert.equal(git('log', '-1', '--format=%an %s'), `uniweb Record what ${A} gave the site`)
+  // Marked, so a pull reads the commit a lane names through it (`recordedAfter`).
+  assert.match(git('log', '-1', '--format=%B'), new RegExp(`^Uniweb-Recorded: ${A} SITE-1$`, 'm'))
   assert.ok(git('show', '--name-only', '--format=', 'HEAD').split('\n').includes('site/sync.json'))
   assert.equal(git('rev-parse', 'HEAD^'), pushedFrom)
   assert.ok(be.sent.every((s) => s.source === pushedFrom), JSON.stringify(be.sent))

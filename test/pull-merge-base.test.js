@@ -381,6 +381,9 @@ test(
     assert.equal(r.exitCode, 1, `a delete against an edit settled itself:\n${r.out}`)
     assert.match(read(dir, 'pages/home/welcome.md'), /and lamps/)
     assert.match(r.out, /welcome\.md/)
+    // Nothing was uncommitted, so nothing is said to come back.
+    assert.match(r.out, /then `git commit` to finish the merge\./)
+    assert.doesNotMatch(r.out, /uncommitted changes come back/)
   }
 )
 
@@ -786,5 +789,66 @@ test(
     assert.equal(r.exitCode, 0, r.out)
     // Merged from that commit, the backend holds what the files do.
     assert.match(r.out, /Your files already hold what https:\/\/uniweb\.app has\./)
+  }
+)
+
+// ── a push that wrote ids back ──────────────────────────────────────────────
+
+// A project synced whose record was pushed for the first time: the push was made from a commit
+// where the record has no `$uuid`, and wrote the one the backend gave it back, in a commit of its
+// own — marked as a 1.13.1 push marks it, or (`marked: false`) as 1.13.0's was.
+async function pushedOnceWithIds(backend, { marked = true } = {}) {
+  const dir = await synced(backend)
+  const rel = 'records/acme/article/hello.md'
+  edit(dir, rel, '$uuid: R1\n', '')
+  commitAll(dir, 'a record, as authored')
+  const pushedFrom = git(dir, 'rev-parse', 'HEAD').trim()
+  edit(dir, rel, 'title: Hello', '$uuid: R1\ntitle: Hello')
+  git(dir, 'add', '-A')
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'uniweb', GIT_AUTHOR_EMAIL: 'sync@uniweb.app', GIT_COMMITTER_NAME: 'uniweb', GIT_COMMITTER_EMAIL: 'sync@uniweb.app' }
+  const msg = `Record what ${ORIGIN} gave the site${marked ? `\n\nUniweb-Recorded: ${ORIGIN} SITE` : ''}`
+  execFileSync('git', ['commit', '-q', '-m', msg], { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  return { dir, pushedFrom, recorded: git(dir, 'rev-parse', 'HEAD').trim() }
+}
+
+test(
+  "⛔ a lane's commit is read through the ids its push wrote back — a change pushed later and taken back stays taken back (A18)",
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend({ records: [HELLO] })
+    const { dir, pushedFrom } = await pushedOnceWithIds(backend)
+    // A later push changes a page only: the content lane names it, the folder lane still the first.
+    edit(dir, 'pages/home/welcome.md', 'We sell furniture.', 'We sell furniture and lamps.')
+    commitAll(dir, 'lamps')
+    welcomeEdited(backend, WELCOME[0], 'We sell furniture and lamps.')
+    backend.state.source = git(dir, 'rev-parse', 'HEAD').trim()
+    backend.state.folderSource = pushedFrom
+    git(dir, 'revert', '--no-edit', 'HEAD') // taken back, not pushed
+    const r = await pullIn(dir, backend)
+    assert.equal(r.exitCode, 0, r.out)
+    assert.doesNotMatch(read(dir, 'pages/home/welcome.md'), /and lamps/, `the change taken back came back:\n${r.out}`)
+  }
+)
+
+test(
+  "⛔ this copy's own base is never dropped — its last push merges exactly, whatever the lanes name",
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend({ records: [HELLO] })
+    // Unmarked, as 1.13.0 wrote it: the lanes cannot be read through it.
+    const { dir, pushedFrom } = await pushedOnceWithIds(backend, { marked: false })
+    edit(dir, 'pages/home/welcome.md', 'We sell furniture.', 'We sell furniture and lamps.')
+    commitAll(dir, 'lamps')
+    const pushed = git(dir, 'rev-parse', 'HEAD').trim()
+    // This copy pushed it: its sync point, and what the content lane names.
+    writeSyncPoint(join(dir, 'site'), ORIGIN, pushed)
+    welcomeEdited(backend, WELCOME[0], 'We sell furniture and lamps.')
+    backend.state.source = pushed
+    backend.state.folderSource = pushedFrom
+    const r = await pullIn(dir, backend)
+    assert.equal(r.exitCode, 0, r.out)
+    assert.match(r.out, /Your files already hold what https:\/\/uniweb\.app has\./)
+    const { readSyncPoint } = await import('../src/utils/sync-point.js')
+    assert.equal(readSyncPoint(join(dir, 'site'), ORIGIN), pushed, 'the pull merged from an older base than its own last push')
   }
 )

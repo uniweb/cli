@@ -23,6 +23,7 @@ import {
   uncommittedPaths,
   commitRoots,
   gitError,
+  RECORDED_TRAILER,
   unmergedPaths,
   mergeInProgress
 } from '../utils/sync-point.js'
@@ -1153,8 +1154,11 @@ export function commitWriteBacks(siteDir, backend, { complete = false } = {}) {
     GIT_COMMITTER_EMAIL: `sync@${host}`
   }
   try {
+    // ⭐ Marked with the backend and the site, so a pull reads the commit a lane names through
+    // it (`recordedAfter`, utils/sync-point.js): the ids written back are what the backend holds.
+    const site = readBackendState(siteDir, backend).site?.uuid
     const made = commitRoots(repo, [...sentRoots(siteDir), SYNC_STORE_FILE], {
-      message: `Record what ${backend} gave the site`,
+      message: `Record what ${backend} gave the site${site ? `\n\n${RECORDED_TRAILER}: ${backend} ${site}` : ''}`,
       identity
     })
     if (made && complete) writeSyncPoint(siteDir, backend, made.commit)

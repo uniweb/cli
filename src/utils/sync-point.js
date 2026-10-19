@@ -53,6 +53,8 @@ import { join, dirname } from 'node:path'
 
 export const SYNC_TRAILER = 'Uniweb-Sync'
 export const SITE_TRAILER = 'Uniweb-Site'
+/** Marks the commit a push makes of what it wrote back: `Uniweb-Recorded: <origin> <site>`. */
+export const RECORDED_TRAILER = 'Uniweb-Recorded'
 
 const MAX_BUFFER = 1024 * 1024 * 1024
 
@@ -280,24 +282,8 @@ export function madeOnto(repo, sha, { origin, siteUuid }) {
  * reads the old text, so the change-back looks like no change at all. ⛔ Until
  * 2026-10-17 this said an older base "costs precision at worst".
  */
-export function newestBase(repo, candidates, { lanes = null, known = [] } = {}) {
-  let shas = [...new Set(candidates.filter(Boolean))].filter((s) => isCommit(repo, s) && isAncestor(repo, s))
-  // ⛔ ONE MERGE TAKES ONE BASE FOR EVERY LANE, and a lane's own source says what that lane
-  // holds. A commit newer than it whose content differs there reads what the lane lacks — a
-  // push of it the backend refused while it took the other lane — as the backend's removal,
-  // and the merge drops it. A lane that names no source is held to the newest of the bases
-  // this copy knows of itself; with none, only those can be the base.
-  if (lanes?.length) {
-    const own = new Set(known.filter(Boolean))
-    const fallback = newestBase(repo, known)
-    shas = shas.filter((s) =>
-      lanes.every(({ source, roots }) => {
-        const ref = source && isCommit(repo, source) && isAncestor(repo, source) ? source : fallback
-        if (!ref) return own.has(s)
-        return s === ref || isAncestor(repo, s, ref) || !differsIn(repo, ref, s, roots)
-      })
-    )
-  }
+export function newestBase(repo, candidates) {
+  const shas = [...new Set(candidates.filter(Boolean))].filter((s) => isCommit(repo, s) && isAncestor(repo, s))
   if (shas.length <= 1) return shas[0] || null
   const newest = shas.find((s) => shas.every((o) => o === s || isAncestor(repo, o, s)))
   if (newest) return newest
@@ -306,6 +292,60 @@ export function newestBase(repo, candidates, { lanes = null, known = [] } = {}) 
   } catch {
     return shas[0]
   }
+}
+
+/**
+ * The base a pull merges from, given the bases this copy knows of itself and what the backend
+ * names for each lane it answered (`x-uniweb-source`).
+ *
+ * ⭐ THIS COPY'S OWN BASES ARE EXACT BY CONSTRUCTION — a pull's commit, the commit a push was
+ * made from once every lane landed, one a push found nothing to send from — and are never
+ * second-guessed here.
+ *
+ * ⛔ ONE MERGE TAKES ONE BASE FOR EVERY LANE, and what the backend names is exact for its own
+ * lane only. A commit one lane names that is newer than another lane's, with that lane's files
+ * different, would read what that lane lacks — a push of it the backend refused while it took the
+ * other — as the backend's removal, and the merge would drop it. So it is not a base. A lane is
+ * held to the commit it names, read through the commit its push made of what it wrote back
+ * (`recordedAfter`), and a lane that names none to the newest base this copy knows.
+ *
+ * ⛔ Until 2026-10-19 (cli 713f62d, uniweb 1.13.0) every candidate was held to that, this copy's
+ * own included, and a lane to the commit it names alone. A first push writes each new record's
+ * `$uuid` back, so the records differed from the commit the folder lane names in every commit after
+ * it, and each was dropped: a pull merged from the site's first push, measured by flows against a
+ * real backend — a reverted change came back (A18), a re-wrap and six pushed edits conflicted.
+ */
+export function baseFor(repo, { known = [], lanes = [], origin, siteUuid }) {
+  const held = (s) => Boolean(s) && isCommit(repo, s) && isAncestor(repo, s)
+  const fallback = newestBase(repo, known)
+  const refs = lanes.map(({ source, roots }) => ({
+    roots,
+    ref: held(source) ? recordedAfter(repo, source, { origin, siteUuid }) || source : fallback
+  }))
+  const named = lanes.flatMap(({ source }) => (held(source) ? [source, recordedAfter(repo, source, { origin, siteUuid })] : []))
+  const taken = named.filter(Boolean).filter((s) =>
+    refs.every(({ ref, roots }) => Boolean(ref) && (s === ref || isAncestor(repo, s, ref) || !differsIn(repo, ref, s, roots)))
+  )
+  return newestBase(repo, [...known, ...taken])
+}
+
+/**
+ * The commit a push made of what it wrote back, after being made from `sha` — its first parent,
+ * marked with the push's backend and site — when HEAD's history holds it; else null.
+ */
+export function recordedAfter(repo, sha, { origin, siteUuid }) {
+  if (!sha || !origin || !siteUuid) return null
+  let out
+  try {
+    out = gitText(repo.top, ['log', '--fixed-strings', `--grep=${RECORDED_TRAILER}: ${origin} ${siteUuid}`, '--format=%H %P', 'HEAD'])
+  } catch {
+    return null
+  }
+  for (const line of out.split('\n')) {
+    const [commit, first] = line.trim().split(' ')
+    if (commit && first && (first === sha || first.startsWith(sha))) return commit
+  }
+  return null
 }
 
 /** Does the content under `roots` differ between two commits? Anything but "no" counts as yes. */

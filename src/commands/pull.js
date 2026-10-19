@@ -115,7 +115,7 @@ import {
   isAncestor,
   historySyncPoint,
   madeOnto,
-  newestBase,
+  baseFor,
   openStandIn,
   mergeSyncPoint,
   takeSyncPoint,
@@ -914,13 +914,15 @@ export async function pull(args = [], deps = {}) {
     ]
     const laneRoots = siteLaneRoots(siteDir)
     const taken = (lane) => lane && !lane.notModified && !lane.refused
-    base = newestBase(repo, [...known, content?.source, folderLane?.source], {
+    base = baseFor(repo, {
       known,
-      // ⛔ Each lane the backend answered holds every base to what it names (`newestBase`).
+      // ⛔ What each lane the backend answered names is a base only where every lane holds it (`baseFor`).
       lanes: [
         ...(taken(content) ? [{ source: content.source, roots: laneRoots.content }] : []),
         ...(taken(folderLane) ? [{ source: folderLane.source, roots: laneRoots.records }] : [])
-      ]
+      ],
+      origin: client.origin,
+      siteUuid: siteContentUuid
     })
     onto = force || !base ? repo.head : base
     try {
@@ -1183,6 +1185,8 @@ export async function pull(args = [], deps = {}) {
         } else {
           merge.conflicted = result.conflicted || []
           merge.stashKept = Boolean(result.stashKept)
+          // Whether anything was set aside for the merge: the files as they were, against HEAD.
+          merge.setAside = files !== repo.head
           merge.noBase = !force && !base
           merge.changed = changedInFiles(repo, {
             from: repo.head,
@@ -1286,7 +1290,9 @@ export async function pull(args = [], deps = {}) {
           note("your changes from the backend's: each file where they differ is a conflict, yours against the backend's.")
           note('Once this merge is committed, later pulls merge from it.')
         }
-        note('Settle them and `git add` each, then `git commit` to finish the merge — your uncommitted changes come back with it.')
+        note(
+          `Settle them and \`git add\` each, then \`git commit\` to finish the merge${merge.setAside ? ' — your uncommitted changes come back with it' : ''}.`
+        )
       }
     }
   }
