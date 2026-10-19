@@ -13,17 +13,23 @@
  *     Full vite + post-vite pipeline. Produces a static-host JS bundle
  *     (`dist/index.html`, `dist/entry.js`, `_importmap/*`, `_pages/*` for
  *     split mode, sitemap/robots/search-index, prerendered HTML when
- *     configured). Foundation is loaded by URL when site.yml's foundation
- *     is a registry ref; statically inlined when it's a workspace-local
- *     ref (the self-contained case).
+ *     configured). The foundation is statically inlined when site.yml names a
+ *     workspace-local one (the self-contained case), and loaded by URL when
+ *     it names a URL, or under VITE_FOUNDATION_MODE=runtime. A catalog ref
+ *     (`@org/name@version`) is refused (`detectFoundationType`).
  *
  *   --link (internal; called by `uniweb publish`)
- *     Data-only pipeline. No vite. Emits ONLY what Uniweb hosting
- *     needs: `dist/site-content.json` (with full sections),
- *     `dist/<lang>/site-content.json` per non-default locale,
- *     `dist/data/*.json` (collections), and `dist/assets/<media>` (images,
- *     fonts, video posters). The backend stitches runtime + foundation per
- *     request — the site's JS bundle would be dead weight.
+ *     Data-only pipeline. No vite. Emits `dist/site-content.json` (with full
+ *     sections), `dist/<lang>/site-content.json` per non-default locale,
+ *     `dist/data/*.json` (queries) and `dist/assets/<media>`. `publish` reads
+ *     two things back — the files of the queries that have no data schema,
+ *     and the languages to make live — and sends the content over the sync
+ *     wire, from source. What it sends carries no JS, so a bundle would be
+ *     dead weight.
+ *
+ *     ⛔ *Until 2026-10-19 this said a registry ref was loaded by URL, that
+ *     --link emitted "ONLY what Uniweb hosting needs", and that "the backend
+ *     stitches runtime + foundation per request".*
  *
  * Bare `uniweb build` for a site defaults to --bundle (the historical
  * behavior). This is mostly useful for inspecting the build output during
@@ -565,32 +571,36 @@ function resolveFoundationDir(projectDir, siteConfig) {
 }
 
 /**
- * Build a site in link mode — data only, no vite.
+ * Build a site in link mode — data only, no vite. `uniweb publish` runs it.
  *
- * Emits exactly what `uniweb publish` ships to Uniweb hosting:
+ * Emits:
  *   dist/site-content.json (full sections inlined)
  *   dist/<lang>/site-content.json per non-default locale
  *   dist/data/<query>.json (+ a file per record, dist/data/<query>/<name>.json)
  *   dist/assets/<media> (processed images, video posters, PDF thumbnails)
  *
+ * `publish` reads two things back: the files of the queries that have no data
+ * schema, which it uploads, and the languages to make live. The content goes
+ * over the sync wire, read from source, and the site's media is uploaded from
+ * the site's own files.
+ *
  * Does NOT emit HTML, JS, CSS, source maps, _importmap chunks, or
- * static-host extras (sitemap, robots, search-index, _pages/*) — none
- * of these are consumed on the link-mode deploy path. The worker
- * generates HTML at request time and re-derives split-content per-page
- * files from the full payload it receives.
+ * static-host extras (sitemap, robots, search-index, _pages/*) — `publish`
+ * reads none of them.
  *
  * The `buildLocalizedContent` step is the same call bundle mode makes
  * post-vite, so multi-locale sites get identical per-locale outputs in
- * either mode. Collection translation (`buildLocalizedRecords`)
- * also runs here so deploy ships translated collection JSONs.
+ * either mode. Record translation (`buildLocalizedRecords`) also runs here,
+ * writing each locale's query files to dist/<lang>/data/.
  *
- * Bug surfaced + fixed by routing deploy through this path: the bundle
- * pipeline's prerender step rewrites `dist/site-content.json` into a
- * lightweight manifest (sections stripped) when split-content is active,
- * and deploy was reading that stripped version, causing the worker to
- * mis-detect split and serve blank pages. Link mode skips prerender
- * entirely; `dist/site-content.json` keeps full sections; the worker
- * splits correctly.
+ * History: when `deploy` uploaded `dist/site-content.json` to a backend, it
+ * read the bundle pipeline's copy, which prerender rewrites into a lightweight
+ * manifest (sections stripped) when split-content is active — and the host
+ * that received it mis-detected split and served blank pages. Routing deploy
+ * through this path, which skips prerender and keeps full sections, fixed it.
+ *
+ * ⛔ *Until 2026-10-19 this said it emitted "exactly what `uniweb publish`
+ * ships to Uniweb hosting", and described what the worker does with it.*
  */
 async function buildSiteLink(projectDir, options = {}) {
   const { siteConfig = null } = options
@@ -1092,12 +1102,10 @@ export async function build(args = []) {
       // For sites, read config to determine prerender default
       const siteConfig = readSiteConfig(projectDir)
 
-      // Link mode: data-only pipeline, no vite. The deployed Uniweb-edge
-      // site never consumes the JS bundle, so we skip producing it.
-      // Worker generates HTML at request time using its own runtime +
-      // the foundation served from the registry. See
-      // `framework/build/src/site/build-site-data.js` for what gets
-      // emitted (and what doesn't).
+      // Link mode: data-only pipeline, no vite — what `publish` sends a
+      // backend carries no JS, so no bundle is built. See `buildSiteLink`
+      // above, and `@uniweb/build`'s `src/site/build-site-data.js`, for what
+      // is emitted (and what isn't).
       if (linkFlag) {
         if (prerenderFlag) {
           error(
