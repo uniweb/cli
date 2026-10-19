@@ -1470,6 +1470,8 @@ ${colors.bright}Options:${colors.reset}
                      bind to, and the app cannot open such a site.
   --bump             When the registry holds a newer version of the foundation
                      than yours, release yours above it instead of stopping
+  --commit           In a git repository, commit the site's content first
+                     (-m <message>) — a publish there sends only what is committed
   --no-save          Do not record this deploy in deploy.yml
   --no-validate      Skip the content-conformance check, which stops a publish
                      whose content does not conform to its data schemas
@@ -2105,6 +2107,8 @@ ${colors.bright}Push Options:${colors.reset}
   --no-release       Send content against the already-released code; release nothing
   --bump             Release above a newer registered foundation version
   --force            Overwrite upstream changes (drop the staleness gate)
+  --commit           In a git repository, commit the site's content first (-m <message>);
+                     a push there sends only what is committed
   --all              Send every record (bypass the changed-only cache)
   --org @org         Work in @org for this push, not your login's workspace
   --personal         Work in your personal workspace for this push
@@ -2115,6 +2119,7 @@ ${colors.bright}Publish Options:${colors.reset}
   --yes              Skip confirmations (CI); never block on a prompt
   --no-release       Ship content against the already-released code; release nothing
   --bump             Release above a newer registered foundation version
+  --commit           In a git repository, commit the site's content first (-m <message>)
   --org @org         Work in @org for this publish, not your login's workspace
   --personal         Work in your personal workspace for this publish
   --no-save          Do not record this deploy in deploy.yml

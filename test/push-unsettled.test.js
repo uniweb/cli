@@ -79,11 +79,18 @@ test('⛔ so does a publish', { timeout: 60_000 }, async () => {
   assert.equal(res.requests, 0, `refused after reaching the backend:\n${res.urls.join('\n')}`)
 })
 
-test('CONTROL — settled and added, the file is no longer in conflict, and the push goes on to the backend', { timeout: 60_000 }, async () => {
+test('CONTROL — settled and the merge committed, the file is no longer in conflict, and the push goes on to the backend', { timeout: 60_000 }, async () => {
   const { push } = await import('../src/commands/push.js')
   const { site, hero, git } = inConflict()
   writeFileSync(hero, '# Hello\n\nWelcome, both.\n')
   git('add', '--', hero)
+  // Settled but not committed, the merge is still in progress — and a push sends what is
+  // committed (`uncommittedContent`).
+  const waiting = await runVerb(site, push, ['--force'], LOGGED_IN_A)
+  assert.doesNotMatch(waiting.output, REFUSED)
+  assert.match(waiting.output, /Not pushed — a merge is in progress here/)
+  assert.equal(waiting.requests, 0, waiting.urls.join('\n'))
+  git('commit', '-q', '--no-edit')
   const res = await runVerb(site, push, ['--force'], LOGGED_IN_A)
   assert.doesNotMatch(res.output, REFUSED)
   assert.ok(res.requests > 0, `nothing reached the backend, so the refusal was never what stopped it:\n${res.output}`)

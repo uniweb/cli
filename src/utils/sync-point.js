@@ -652,13 +652,78 @@ export function snapshotFiles(repo) {
  * under the roots? (What the repository ignores is no change.)
  */
 export function contentCommitted(repo, roots) {
+  return uncommittedPaths(repo, roots)?.length === 0
+}
+
+/**
+ * The files under the roots that HEAD does not hold as they are — staged, changed, deleted
+ * or untracked, and both sides of a rename — relative to the site; null when git cannot
+ * say. What the repository ignores is no change.
+ */
+export function uncommittedPaths(repo, roots) {
+  let parts
   try {
-    const full = roots.map((r) => `${repo.prefix}${r}`)
-    return git(repo.top, ['status', '--porcelain', '-z', '--untracked-files=all', '--', ...full]).length === 0
+    parts = zlist(git(repo.top, ['status', '--porcelain', '-z', '--untracked-files=all', '--', ...roots.map((r) => `${repo.prefix}${r}`)]))
   } catch {
-    return false
+    return null
+  }
+  const out = []
+  for (let i = 0; i < parts.length; i++) {
+    out.push(parts[i].slice(3))
+    if (/[RC]/.test(parts[i].slice(0, 2))) out.push(parts[++i]) // a rename's source follows it
+  }
+  return [...new Set(out.map((p) => siteRelative(repo, p)))]
+}
+
+/**
+ * The files under the roots that differ from what `rev` holds there — changed, deleted, or
+ * new and not ignored — relative to the site.
+ */
+export function filesDifferFrom(repo, rev, roots) {
+  const full = roots.map((r) => `${repo.prefix}${r}`)
+  try {
+    const changed = zlist(git(repo.top, ['diff', '--name-only', '-z', '--no-renames', rev, '--', ...full]))
+    const added = zlist(git(repo.top, ['ls-files', '--others', '--exclude-standard', '-z', '--', ...full]))
+    return [...new Set([...changed, ...added].map((p) => siteRelative(repo, p)))]
+  } catch {
+    return []
   }
 }
+
+/**
+ * Commit what the files hold under the roots — added, changed, deleted or renamed — and
+ * nothing else that is staged. With `identity` it is uniweb's commit, made as a pull's merge
+ * is: no hooks, unsigned. Without it, the person's own, as their `git commit` makes it.
+ *
+ * ⛔ Staged by ROOT, committed by NAME: `git add` refuses a path that is on neither the disk
+ * nor the index — a rename's source — and the commit takes exactly what was staged.
+ *
+ * @returns {{ commit: string, paths: string[] } | null} null when there was nothing to commit
+ */
+export function commitRoots(repo, roots, { message, identity = null }) {
+  const full = roots.map((r) => `${repo.prefix}${r}`)
+  const present = full.filter((p) => existsSync(join(repo.top, p)) || zlist(git(repo.top, ['ls-files', '-z', '--', p])).length)
+  let addable = present
+  if (present.length) {
+    try {
+      const ignored = zlist(git(repo.top, ['check-ignore', '-z', '--stdin'], { input: `${present.join('\0')}\0` }))
+      addable = present.filter((p) => !ignored.includes(p))
+    } catch (err) {
+      if (err?.status !== 1) throw err // 1: none of them is ignored
+    }
+  }
+  if (addable.length) git(repo.top, ['--literal-pathspecs', 'add', '-A', '--', ...addable])
+  const staged = zlist(git(repo.top, ['diff', '--cached', '--name-only', '-z', '--no-renames', '--', ...full]))
+  if (!staged.length) return null
+  git(
+    repo.top,
+    ['--literal-pathspecs', 'commit', '-q', ...(identity ? ['--no-verify', '--no-gpg-sign'] : []), '-m', message, '--pathspec-from-file=-', '--pathspec-file-nul'],
+    { input: `${staged.join('\0')}\0`, ...(identity ? { env: identity } : {}) }
+  )
+  return { commit: gitText(repo.top, ['rev-parse', 'HEAD']).trim(), paths: staged.map((p) => siteRelative(repo, p)) }
+}
+
+const siteRelative = (repo, p) => (repo.prefix && p.startsWith(repo.prefix) ? p.slice(repo.prefix.length) : p)
 
 // ── this copy's own sync point ──────────────────────────────────────────────
 

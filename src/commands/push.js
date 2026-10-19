@@ -37,6 +37,8 @@
  *   uniweb push --foundation <dir>       Use this local foundation for the Model schema
  *   uniweb push --all                    Send every record (bypass the changed-only cache)
  *   uniweb push --force                  Overwrite upstream changes (drop the staleness gate)
+ *   uniweb push --commit [-m <message>]  In a repository, commit the site's content first —
+ *                                        a push there sends only what is committed
  *   uniweb push --no-release             Send content against the foundation already
  *                                        released; release nothing
  *   uniweb push --bump                   Release above a newer registered version
@@ -78,6 +80,7 @@ import { confirm, isNonInteractive } from '../utils/interactive.js'
 import { announceServices, foundationSupports } from '../backend/service-request.js'
 import { guardEmptyRecords } from '../utils/records-guard.js'
 import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
+import { repoOf } from '../utils/sync-point.js'
 import {
   makeModelResolver,
   readSyncCache,
@@ -97,9 +100,12 @@ import {
   dropSiteBoundValues,
   untakenBase,
   unsettledFiles,
+  commitWriteBacks,
+  reportWriteBacks,
   holdUnchangedPush,
   pushSyncPackages
 } from '../backend/site-sync.js'
+import { commitBeforeSending } from '../backend/commit-before-sending.js'
 import { resolveWorkspace, describeWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 
 // Re-exported for downstream importers (pull.js, push.test.js) that read these
@@ -222,6 +228,12 @@ export async function push(args = [], deps = {}) {
     error(unsettled.headline)
     for (const line of unsettled.lines) note(line)
     return { exitCode: 1 }
+  }
+  // ⛔ In a repository a push sends what is committed (`uncommittedContent`), whatever the
+  // flags but `-o`, which sends nothing. `--commit` commits it first; a dry run says it would.
+  if (!output) {
+    const stop = commitBeforeSending(siteDir, args, { verb: 'push', dryRun, say: { success, info, error, note } })
+    if (stop) return stop
   }
   if (!output && !force) {
     const untaken = untakenBase(siteDir, client.origin)
@@ -514,8 +526,10 @@ export async function push(args = [], deps = {}) {
         // carries only the refs its content touched.
         const rec = updateBackendMap(siteDir, client.origin, 'assets', ids, carryServed)
         if (rec.written) {
+          // In a repository the push commits it (`commitWriteBacks`).
           note(
-            `${SYNC_STORE_FILE}: ${rec.added.length} asset(s) added, ${rec.changed.length} changed — commit it`
+            `${SYNC_STORE_FILE}: ${rec.added.length} asset(s) added, ${rec.changed.length} changed` +
+              (repoOf(siteDir) ? '' : ' — commit it')
           )
         }
       } catch (err) {
@@ -626,7 +640,11 @@ export async function push(args = [], deps = {}) {
     )
     // ⭐ And so the backend holds what this commit sends: it is where the next pull merges
     // from (`holdUnchangedPush`). Not for a preview, which keeps nothing.
-    if (!output && !dryRun) holdUnchangedPush(siteDir, client.origin)
+    if (!output && !dryRun) {
+      holdUnchangedPush(siteDir, client.origin)
+      // What it recorded on the way — a media map, an identity recovered — is committed too.
+      reportWriteBacks(commitWriteBacks(siteDir, client.origin), { note })
+    }
     return { exitCode: 0 }
   }
   if (siteContent)
@@ -683,10 +701,16 @@ export async function push(args = [], deps = {}) {
       dim: (s) => `${colors.dim}${s}${colors.reset}`
     }
   })
-  if (result.exitCode !== 0) return { exitCode: result.exitCode }
+  // What the push wrote into the files is committed, whatever became of the lanes.
+  const written = commitWriteBacks(siteDir, client.origin, { complete: result.complete })
+  if (result.exitCode !== 0) {
+    reportWriteBacks(written, { note })
+    return { exitCode: result.exitCode }
+  }
   success(
     `Pushed ${result.finalizedTotal} entit${result.finalizedTotal === 1 ? 'y' : 'ies'}` +
       (result.wrote.length ? ` — ${result.wrote.join(', ')}` : '')
   )
+  reportWriteBacks(written, { note })
   return { exitCode: 0 }
 }

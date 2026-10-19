@@ -51,8 +51,8 @@ async function pushedOnce() {
   git('commit', '-qm', 'create')
   const res = await runVerb(site, push, [], LOGGED_IN_A)
   assert.equal(res.exitCode, 0, res.output)
-  git('add', '-A')
-  git('commit', '-qm', 'the site, recorded') // sync.json, as the push asks
+  // What the push recorded — sync.json — it committed itself (`commitWriteBacks`).
+  assert.equal(git('status', '--porcelain'), '', 'the push left what it wrote uncommitted')
   return { push, site, git }
 }
 
@@ -69,13 +69,16 @@ test('⛔ a push that finds nothing to send keeps the commit it was made from �
   assert.equal(await syncPointOf(site), git('rev-parse', 'HEAD'), 'the commit the backend holds was not kept')
 })
 
-test('CONTROL — with the re-wrap not committed, HEAD is not what was compared, and the sync point stays', { timeout: 60_000 }, async () => {
+test('CONTROL — with the re-wrap not committed, the push stops before it sends, and the sync point stays', { timeout: 60_000 }, async () => {
   const { push, site, git } = await pushedOnce()
   const before = await syncPointOf(site)
   writeFileSync(join(site, 'pages', 'home', 'hero.md'), REWRAPPED)
   const res = await runVerb(site, push, [], LOGGED_IN_A)
-  assert.equal(res.exitCode, 0, res.output)
-  assert.match(res.output, /Nothing to push/)
+  // In a repository a push sends what is committed (`uncommittedContent`) — said before it
+  // can know there is nothing to send. ⛔ Until 2026-10-18 it said "Nothing to push" here.
+  assert.equal(res.exitCode, 1, res.output)
+  assert.match(res.output, /1 file\(s\) of the site are not committed/)
+  assert.equal(res.requests, 0, res.urls.join('\n'))
   assert.equal(await syncPointOf(site), before)
   assert.notEqual(before, null)
   assert.ok(git('status', '--porcelain').includes('hero.md'))

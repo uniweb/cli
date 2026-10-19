@@ -68,6 +68,25 @@ test('sync keeps --force away from the refresh half', async () => {
   assert.ok(pushArgs.includes('--force'))
 })
 
+test('sync keeps --commit and its message away from the refresh half', async () => {
+  // In a repository a push sends what is committed; `--commit` commits it first. The refresh
+  // merges with the work as it is, and a message there could be taken for something else.
+  let refreshArgs = null
+  let pushArgs = null
+  await sync(['--commit', '-m', 'Edit the hero', '--message=again', '--yes'], {
+    refresh: async (a) => {
+      refreshArgs = a
+      return { exitCode: 0 }
+    },
+    push: async (a) => {
+      pushArgs = a
+      return { exitCode: 0 }
+    }
+  })
+  assert.deepEqual(refreshArgs, ['--yes'])
+  assert.deepEqual(pushArgs, ['--commit', '-m', 'Edit the hero', '--message=again', '--yes'])
+})
+
 test('sync reimplements neither half', () => {
   // The deploy/publish lesson: two paths doing nearly the same thing drift until
   // one is quietly wrong. This one must stay a composition.

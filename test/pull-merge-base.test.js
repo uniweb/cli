@@ -712,3 +712,27 @@ test(
     assert.doesNotMatch(read(bob, 'pages/home/welcome.md'), /from the app/, 'the backend was merged on top of the markers')
   }
 )
+
+test(
+  "⛔ a pull that brings nothing says so — and names what the files hold that the backend does not have yet",
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const dir = await synced(backend)
+    edit(dir, 'pages/home/welcome.md', 'We sell furniture.', 'We sell furniture and lamps.')
+    commitAll(dir, 'lamps') // committed here, never pushed
+    const r = await pullIn(dir, backend)
+    assert.equal(r.exitCode, 0, r.out)
+    assert.match(r.out, /Nothing new from https:\/\/uniweb\.app\. 1 file\(s\) here hold changes it does not have yet/)
+    assert.match(r.out, /pages\/home\/welcome\.md/)
+    assert.doesNotMatch(r.out, /already hold/, 'it said the files hold what the backend has')
+  }
+)
+
+test('CONTROL — with nothing changed here either, the files hold what the backend has', { skip: !hasGit }, async () => {
+  const backend = fakeBackend()
+  const dir = await synced(backend)
+  const r = await pullIn(dir, backend)
+  assert.equal(r.exitCode, 0, r.out)
+  assert.match(r.out, /Your files already hold what https:\/\/uniweb\.app has\./)
+})

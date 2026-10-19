@@ -67,14 +67,17 @@ const VERBS = {
     '--no-verify',
     // ship content against the already-released code, releasing nothing — or
     // release above a newer registered version instead of stopping (both bring-along)
-    '--no-release', '--bump', ...VIA_DEPLOY
+    '--no-release', '--bump',
+    // commit the site's content first, with this message (backend/site-sync.js)
+    '--commit', '-m', '--message', ...VIA_DEPLOY
   ],
   publish: [
     '--org', '--dry-run', '--force', '--foundation',
     '--personal',
     // read in utils/conformance.js, backend/site-sync.js, and
     // backend/foundation-bring-along.js — none appear in publish.js
-    '--no-validate', '--yes', '--no-verify', '--no-release', '--bump', ...VIA_DEPLOY
+    '--no-validate', '--yes', '--no-verify', '--no-release', '--bump',
+    '--commit', '-m', '--message', ...VIA_DEPLOY
   ],
   pull: [
     '--content-only', '--dry-run', '--force',

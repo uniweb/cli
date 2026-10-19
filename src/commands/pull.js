@@ -121,6 +121,7 @@ import {
   takeSyncPoint,
   snapshotFiles,
   changedInFiles,
+  filesDifferFrom,
   readSyncPoint,
   writeSyncPoint
 } from '../utils/sync-point.js'
@@ -1136,6 +1137,9 @@ export async function pull(args = [], deps = {}) {
         siteUuid: siteContentUuid,
         always: force || !base
       })
+      // The commit that holds the backend's content as the files would — the base itself when
+      // they hold the same.
+      merge.theirs = made.commit || base
       if (!made.commit) {
         // The backend holds what the base holds: nothing to merge.
         writeSyncPoint(siteDir, client.origin, base)
@@ -1249,7 +1253,16 @@ export async function pull(args = [], deps = {}) {
       if (merge.changed.length > 12) note(`  … and ${merge.changed.length - 12} more`)
       if (force) note('What they held is in the commit before this one (`git diff HEAD^1 HEAD`), unless it was never committed.')
     } else if (!merge.conflicted.length) {
-      note(`Your files already hold what ${client.origin} has.`)
+      // ⛔ Nothing changed in the files is not the files holding what the backend has: what
+      // this copy changed since the base, the backend lacks. Until 2026-10-18 it said they
+      // held it either way — measured over a revert the backend did not have yet.
+      const ahead = merge.theirs ? filesDifferFrom(repo, merge.theirs, roots) : []
+      if (!ahead.length) note(`Your files already hold what ${client.origin} has.`)
+      else {
+        note(`Nothing new from ${client.origin}. ${ahead.length} file(s) here hold changes it does not have yet — \`uniweb push\` sends them:`)
+        for (const p of ahead.slice(0, 12)) note(`  ${p}`)
+        if (ahead.length > 12) note(`  … and ${ahead.length - 12} more`)
+      }
     }
     if (merge.conflicted.length) {
       error(`${merge.conflicted.length} file(s) have conflicts to resolve:`)

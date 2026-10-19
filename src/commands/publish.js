@@ -37,6 +37,9 @@
  *   uniweb publish --dry-run       Resolve everything; POST nothing
  *   uniweb publish --yes           Skip confirmations (CI); never block on a prompt
  *   uniweb publish --force         Overwrite upstream app-side edits (drop the push gate)
+ *   uniweb publish --commit [-m <message>]
+ *                                  In a repository, commit the site's content first — a
+ *                                  publish there sends only what is committed
  *   uniweb publish --org @org      Work in @org for this publish, instead of the
  *   uniweb publish --personal      workspace chosen at `uniweb login` (or your
  *                                  personal workspace). A site it creates is created
@@ -105,9 +108,13 @@ import {
   clearRemoteSyncStateIfUnbound,
   untakenBase,
   unsettledFiles,
+  commitWriteBacks,
+  reportWriteBacks,
   dropSiteBoundValues,
   pushSyncPackages
 } from '../backend/site-sync.js'
+import { repoOf } from '../utils/sync-point.js'
+import { commitBeforeSending } from '../backend/commit-before-sending.js'
 import { resolveWorkspace, describeWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import {
@@ -333,6 +340,16 @@ export async function publish(args = []) {
     say.err(unsettled.headline)
     for (const line of unsettled.lines) say.dim(line)
     return { exitCode: 1 }
+  }
+  // ⛔ In a repository a publish sends what is committed (`uncommittedContent`), whatever the
+  // flags. `--commit` commits it first; a dry run says it would.
+  {
+    const stop = commitBeforeSending(siteDir, args, {
+      verb: 'publish',
+      dryRun,
+      say: { success: say.ok, info: say.info, error: say.err, note: say.dim }
+    })
+    if (stop) return stop
   }
   if (!dryRun && !args.includes('--force')) {
     const untaken = untakenBase(siteDir, client.origin)
@@ -711,7 +728,9 @@ export async function publish(args = []) {
       const rec = updateBackendMap(siteDir, client.origin, 'assets', ids, carryServed)
       if (rec.written) {
         say.dim(
-          `${SYNC_STORE_FILE}   : ${rec.added.length} asset(s) added, ${rec.changed.length} changed — commit it`
+          `${SYNC_STORE_FILE}   : ${rec.added.length} asset(s) added, ${rec.changed.length} changed` +
+            // In a repository the publish commits it (`commitWriteBacks`).
+            (repoOf(siteDir) ? '' : ' — commit it')
         )
       }
       if (ballAssets.length) ball = rewriteSchemalessDataAssets(ball, map)
@@ -955,6 +974,8 @@ export async function publish(args = []) {
     pkg,
     report
   })
+  // What the push wrote into the files is committed, whatever became of the lanes.
+  reportWriteBacks(commitWriteBacks(siteDir, client.origin, { complete: pushResult.complete }), { note: say.dim })
   if (pushResult.exitCode !== 0) return { exitCode: pushResult.exitCode }
   const siteUuid = pushResult.boundSiteUuid
   if (!siteUuid) {

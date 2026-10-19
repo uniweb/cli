@@ -35,6 +35,9 @@
  *   uniweb sync                    refresh, then push
  *   uniweb sync --no-git           skip the git remote half of the refresh
  *   uniweb sync --force            forwarded to push (overwrite upstream changes)
+ *   uniweb sync --commit [-m <msg>]
+ *                                  forwarded to push (commit the site's content first —
+ *                                  in a repository a push sends only what is committed)
  */
 
 import { checkFlags } from '../utils/flag-guard.js'
@@ -73,8 +76,9 @@ export async function sync(args = [], deps = {}) {
 
   // `--force` means "overwrite upstream" and belongs to the push half only. Passing
   // it to the refresh would ask pull to DISCARD the local work this command exists
-  // to send — the same word meaning opposite things on the two halves.
-  const refreshArgs = args.filter((a) => a !== '--force')
+  // to send — the same word meaning opposite things on the two halves. `--commit` and
+  // its message are the push's too: the refresh merges with the work as it is.
+  const refreshArgs = pushOnly(args)
 
   const r = await refresh(refreshArgs, { skipFlagCheck: true })
   if (r?.exitCode) {
@@ -88,6 +92,21 @@ export async function sync(args = [], deps = {}) {
   say.info('Pushing your changes…')
   const p = await push(args, { skipFlagCheck: true })
   return { exitCode: p?.exitCode ?? 0 }
+}
+
+/** The argv without the push half's own flags — `--force`, `--commit`, `-m <message>`. */
+function pushOnly(args) {
+  const out = []
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]
+    if (a === '--force' || a === '--commit' || a.startsWith('-m=') || a.startsWith('--message=')) continue
+    if (a === '-m' || a === '--message') {
+      i++ // its value
+      continue
+    }
+    out.push(a)
+  }
+  return out
 }
 
 export default sync

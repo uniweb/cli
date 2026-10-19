@@ -20,6 +20,9 @@ import {
   writeSyncPoint,
   isAncestor,
   contentCommitted,
+  uncommittedPaths,
+  commitRoots,
+  gitError,
   unmergedPaths,
   mergeInProgress
 } from '../utils/sync-point.js'
@@ -67,7 +70,8 @@ import {
   layoutUnitFile,
   siteContentRemovals,
   recordRemovals,
-  cleanedRecord
+  cleanedRecord,
+  SYNC_STORE_FILE
 } from '@uniweb/build/uwx'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
@@ -1033,9 +1037,117 @@ export function untakenBase(siteDir, backend) {
 export function holdUnchangedPush(siteDir, backend) {
   const repo = repoOf(siteDir)
   if (!repo?.head || !readBackendState(siteDir, backend).site?.uuid) return null
-  if (!contentCommitted(repo, [...siteContentRoots(siteDir), 'public'])) return null
+  if (!contentCommitted(repo, sentRoots(siteDir))) return null
   writeSyncPoint(siteDir, backend, repo.head)
   return repo.head
+}
+
+/** What a push sends from the files: the site's content, and its media (`public/`). */
+export const sentRoots = (siteDir) => [...siteContentRoots(siteDir), 'public']
+
+/**
+ * ⛔ IN A REPOSITORY, A PUSH SENDS WHAT IS COMMITTED. The commit a push is made from is where
+ * the next pull merges from — this copy's, and every copy the backend names it to — so what
+ * the push sends must be what that commit holds. Returns the refusal, or null: outside a
+ * repository nothing is kept to merge from.
+ *
+ * ⛔ Until 2026-10-18 a push sent uncommitted edits on top of HEAD and recorded HEAD. Measured
+ * against a real backend: an edit pushed that way and undone before the next pull came back
+ * with it — exit 0, no conflict, reported as the backend's change. Every such push also had
+ * the next pull commit those edits as the backend's, and conflict with one changed again.
+ */
+export function uncommittedContent(siteDir, { verb = 'push' } = {}) {
+  const repo = repoOf(siteDir)
+  if (!repo) return null
+  const paths = uncommittedPaths(repo, sentRoots(siteDir))
+  if (!paths?.length) return null
+  const done = verb === 'publish' ? 'published' : 'pushed'
+  // A merge waiting for its commit is finished with one, never by committing a part of it.
+  if (mergeInProgress(repo)) {
+    return {
+      paths,
+      merge: true,
+      headline: `Not ${done} — a merge is in progress here.`,
+      lines: [`Finish it (\`git commit\`), then ${verb} — or abandon it (\`git merge --abort\`) and pull again.`]
+    }
+  }
+  return {
+    paths,
+    headline: `Not ${done} — ${paths.length} file(s) of the site are not committed:`,
+    lines: [
+      ...paths.slice(0, 12).map((p) => `  ${p}`),
+      ...(paths.length > 12 ? [`  … and ${paths.length - 12} more`] : []),
+      `In a repository a ${verb} sends what you have committed, so a later pull can tell your changes from the backend's.`,
+      `Commit them, then ${verb} again — or re-run with --commit (and -m "…") to commit them first.`
+    ]
+  }
+}
+
+/** Says what `commitWriteBacks` committed, or that it could not. */
+export function reportWriteBacks(made, { note }) {
+  if (!made) return
+  if (made.error) {
+    note('! Could not commit what the push wrote into your files — commit them yourself:')
+    for (const line of String(made.error).split('\n').slice(0, 4)) note(`  ${line}`)
+    return
+  }
+  note(`Committed what the backend gave the site — ${made.paths.length} file(s), ${made.commit.slice(0, 7)}.`)
+}
+
+/**
+ * `--commit`: the site's content committed as the files hold it — the person's own commit,
+ * of what a push sends and nothing else they have staged.
+ *
+ * @returns {{ commit: string|null, paths?: string[] } | { error: string }}
+ */
+export function commitSiteContent(siteDir, { message }) {
+  const repo = repoOf(siteDir)
+  if (!repo) return { commit: null }
+  if (mergeInProgress(repo)) return { error: 'A merge is in progress here — finish it (`git commit`) first.' }
+  try {
+    return commitRoots(repo, sentRoots(siteDir), { message }) || { commit: null }
+  } catch (err) {
+    return { error: gitError(err) }
+  }
+}
+
+/**
+ * ⭐ A PUSH COMMITS WHAT IT WROTE. It writes what the backend gave it into the site's files —
+ * the ids it minted, into each new record's file and `sync.json` — and in a repository it
+ * commits those writes as uniweb's own, as a pull's merge is. The content was committed
+ * before it was sent, so what changed under the site since is the push's. That commit holds
+ * what the backend now holds, so once every lane landed it is this copy's sync point.
+ *
+ * ⛔ Until 2026-10-18 they were left to the person to commit, and a project pushed once and
+ * not committed after had no `sync.json` in the history its clones got.
+ *
+ * @returns {{ commit: string, paths: string[] } | { error: string } | null}
+ */
+export function commitWriteBacks(siteDir, backend, { complete = false } = {}) {
+  const repo = repoOf(siteDir)
+  if (!repo?.head || mergeInProgress(repo)) return null
+  let host = 'backend'
+  try {
+    host = new URL(backend).host
+  } catch {
+    /* the name only */
+  }
+  const identity = {
+    GIT_AUTHOR_NAME: 'uniweb',
+    GIT_AUTHOR_EMAIL: `sync@${host}`,
+    GIT_COMMITTER_NAME: 'uniweb',
+    GIT_COMMITTER_EMAIL: `sync@${host}`
+  }
+  try {
+    const made = commitRoots(repo, [...sentRoots(siteDir), SYNC_STORE_FILE], {
+      message: `Record what ${backend} gave the site`,
+      identity
+    })
+    if (made && complete) writeSyncPoint(siteDir, backend, made.commit)
+    return made
+  } catch (err) {
+    return { error: gitError(err) }
+  }
 }
 
 /**
@@ -2007,8 +2119,9 @@ const TEMPLATE_SAID = {
  * @param {object} params.pkg - the `emitSyncPackages` result
  *        ({ siteContent, collections, siteContentUuid, hashes })
  * @param {{info,note,error,dim?:Function}} params.report - injected logging
- * @returns {Promise<{ exitCode: number, boundSiteUuid?: string, finalizedTotal: number, wrote: string[] }>}
+ * @returns {Promise<{ exitCode: number, boundSiteUuid?: string, finalizedTotal: number, wrote: string[], complete?: true }>}
  *   exitCode 1 on any lane failure (already reported, cache NOT persisted); 0 on success.
+ *   `complete` once every lane with something to send has landed.
  */
 export async function pushSyncPackages({
   client,
@@ -2026,10 +2139,10 @@ export async function pushSyncPackages({
   let draftsNotKept = []
   // ⭐ THE COMMIT THIS PUSH IS MADE FROM — sent with each lane, so the backend can name it on
   // a pull, and kept here as this copy's sync point once a lane lands: what the backend
-  // holds descends from it (`utils/sync-point.js`). ⚠️ Uncommitted edits ride on top of it,
-  // so it is older than what was sent: a merge takes an edit both sides still hold once, but
-  // one undone here before the next pull reads as no change against it, and the pull puts it
-  // back (measured 2026-10-18; open). ⛔ This said it "stays a safe base for them" until then.
+  // holds descends from it (`utils/sync-point.js`). In a repository it is exactly what is
+  // sent: a push sends only committed content (`uncommittedContent`). ⛔ Until 2026-10-18
+  // uncommitted edits rode on top of it, and this said it "stays a safe base for them" — but
+  // one undone before the next pull read as no change against it, and the pull put it back.
   const repo = repoOf(siteDir)
   const source = repo?.head || null
 
@@ -2658,7 +2771,7 @@ export async function pushSyncPackages({
         shown.join('\n  ') +
         '\n  The backend does not support `draft: true` yet. Once it does, push again with --all.'
     )
-    return { exitCode: 1, boundSiteUuid, finalizedTotal, wrote }
+    return { exitCode: 1, boundSiteUuid, finalizedTotal, wrote, complete: true }
   }
-  return { exitCode: 0, boundSiteUuid, finalizedTotal, wrote }
+  return { exitCode: 0, boundSiteUuid, finalizedTotal, wrote, complete: true }
 }

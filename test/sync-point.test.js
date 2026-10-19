@@ -18,7 +18,9 @@ import {
   newestBase,
   openStandIn,
   mergeSyncPoint,
-  siteTreeIn
+  siteTreeIn,
+  commitRoots,
+  uncommittedPaths
 } from '../src/utils/sync-point.js'
 
 const scratch = mkdtempSync(join(tmpdir(), 'uw-sync-point-'))
@@ -200,4 +202,25 @@ test('⛔ a content root reached through a link stops the stand-in — a write t
   symlinkSync(elsewhere, join(dir, 'site', 'content'), 'junction')
   assert.throws(() => openStandIn(repo, { roots: ['content/pages'], rev: repo.head }), /is a link/)
   assert.throws(() => openStandIn(repo, { roots: ['../outside'], rev: repo.head }), /outside the site/)
+})
+
+test('⭐ committing the roots takes what the files hold there — a rename whole, a new file — and leaves what else is staged staged', () => {
+  const { dir, repo } = project()
+  mkdirSync(join(dir, 'site', 'pages', '[slug]'), { recursive: true })
+  git(dir, 'mv', 'site/pages/home/hero.md', 'site/pages/[slug]/hero.md')
+  writeFileSync(join(dir, 'site', 'pages', 'home', 'new.md'), '# New\n')
+  writeFileSync(join(dir, 'notes.txt'), 'mine\n')
+  git(dir, 'add', 'notes.txt')
+  assert.deepEqual(uncommittedPaths(repo, ['pages', 'head.html']).sort(), ['pages/[slug]/hero.md', 'pages/home/hero.md', 'pages/home/new.md'])
+  const made = commitRoots(repo, ['pages', 'head.html', 'site.yml'], { message: 'roots' })
+  assert.ok(made?.commit, 'nothing was committed')
+  assert.deepEqual(git(dir, 'show', '--name-status', '--format=', '--no-renames', 'HEAD').trim().split('\n').sort(), [
+    'A\tsite/pages/[slug]/hero.md',
+    'A\tsite/pages/home/new.md',
+    'D\tsite/pages/home/hero.md'
+  ])
+  assert.equal(git(dir, 'status', '--porcelain').trim(), 'A  notes.txt')
+  assert.deepEqual(uncommittedPaths(repoOf(join(dir, 'site')), ['pages']), [])
+  // And with nothing left there, nothing to commit.
+  assert.equal(commitRoots(repoOf(join(dir, 'site')), ['pages'], { message: 'again' }), null)
 })
