@@ -1111,13 +1111,13 @@ Names only — for signatures and props, read the package: it's on disk at `node
 **Header/layout:** `useScrolled(threshold)`, `useMobileMenu()`, `useAppearance()`
 **Overlays:** `Overlay` (modals, palettes, drawers, toasts — portals out of the layout, contains focus; read the note below before hand-rolling one)
 **Keyboard:** `useShortcut('mod+k', fn)`, `useShortcuts({…})`, `useShortcutLabel('mod+k')` — `mod` is Cmd on Apple platforms and Ctrl elsewhere, and the label renders per-platform so a hint never shows the wrong key
-**Long-form prose:** `<Prose>` and the container you put `<Render>` output in both use Tailwind Typography's `prose` classes. One line in the foundation's `styles.css` supplies them and points them at the site's theme:
+**Long-form prose:** `<Prose>` and the container you put `<Render>` output in both use kit's `prose` classes. One line in the foundation's `styles.css` supplies the rules, colored by the section's theme:
 
 ```css
-@import "@uniweb/kit/prose-tokens.css";   /* the plugin, wired to theme.yml */
+@import "@uniweb/kit/prose-tokens.css";   /* kit's prose layer, wired to theme.yml */
 ```
 
-Nothing to install — the import brings the plugin with it. **Skip the import and prose is completely unstyled** — lists lose their bullets and numbers, and text its typography — while the markup looks right. The foundation build warns about it, and `uniweb doctor` flags it. Use **one** `prose` container per subtree — the `--tw-prose-*` variables are inherited, so a nested one silently resets them and the outer container goes on looking correct. The section that renders the document is usually the better owner; a layout should supply column width and padding.
+Nothing to install. **Skip the import and prose is completely unstyled** — lists lose their bullets and numbers, and text its typography — while the markup looks right. The foundation build warns about it, and `uniweb doctor` flags it. `size` picks a step (`prose-sm` … `prose-2xl`) of the site's reading size, which `theme.yml` sets under `vars:` — `prose-size`, `prose-leading`, `prose-measure`, `prose-flow`, `prose-h1` … `prose-h4`; spread `proseVars` from `@uniweb/kit/prose-vars` into `main.js`'s `vars` to declare them. A utility class or an element variant (`prose-headings:font-display`, `prose-a:no-underline`) overrides any rule. There are no palette modifiers and no `prose-invert` — the colors are already the theme's, light and dark.
 
 **Documentation shells:** `useHeadings()` (the page's headings + the one being read, derived from content so it prerenders), `website.getBranchHierarchy({ route, for })` (the page tree for one branch). Kit ships no ready-made layout — a layout is your foundation's design; write it in `src/layouts/` and use these for the behaviour.
 **Layout helpers:** `useGridLayout(columns, { gap })`, `useAccordion({ multiple, defaultOpen })`
