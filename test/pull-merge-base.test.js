@@ -388,6 +388,30 @@ test(
 )
 
 test(
+  'CONTROL — uncommitted work the merge set aside is said to come back with the commit that finishes it, and it does',
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const dir = await synced(backend)
+    edit(dir, 'pages/home/about.md', 'About us.', 'About us, since 1991.')
+    commitAll(dir, 'since 1991')
+    edit(dir, 'pages/home/welcome.md', 'We sell furniture.', 'We sell furniture and lamps.') // not committed
+    aboutEdited(backend)
+
+    const r = await pullIn(dir, backend)
+    assert.equal(r.exitCode, 1, r.out)
+    assert.deepEqual(r.merge.conflicted, ['site/pages/home/about.md'])
+    assert.match(r.out, /then `git commit` to finish the merge — your uncommitted changes come back with it\./)
+    assert.doesNotMatch(read(dir, 'pages/home/welcome.md'), /and lamps/, 'not set aside for the merge')
+    git(dir, 'checkout', '--ours', '--', 'site/pages/home/about.md')
+    git(dir, 'add', 'site/pages/home/about.md')
+    git(dir, 'commit', '-q', '--no-edit')
+    assert.match(read(dir, 'pages/home/welcome.md'), /and lamps/, 'the uncommitted edit did not come back')
+    assert.match(git(dir, 'status', '--porcelain'), /^ M site\/pages\/home\/welcome\.md$/m, 'and is not uncommitted still')
+  }
+)
+
+test(
   'a section the app renamed while you edited it keeps your edit, under its new name — one file, not two',
   { skip: !hasGit },
   async () => {
