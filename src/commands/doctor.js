@@ -190,6 +190,30 @@ export function rendersKitProse(dir) {
   )
 }
 
+/** Does a stylesheet load Tailwind Typography itself? */
+export function loadsTypographyPlugin(styles) {
+  return /@plugin\s+["']@tailwindcss\/typography["']/.test(String(styles || ''))
+}
+
+/**
+ * Tailwind Typography's palette modifiers and `prose-invert`, wherever a
+ * foundation's source names one in a class list — `dark:prose-invert` included.
+ * Comments are skipped, since a comment warning against one names it too.
+ *
+ * @returns {{ file: string, modifiers: string[] }[]}
+ */
+export function inertProseModifiers(dir) {
+  const MODIFIER =
+    /(?:^|[\s"'`:])(prose-(?:gray|slate|zinc|neutral|stone|invert|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose))(?=$|[\s"'`])/gm
+  const found = []
+  forEachSourceFile(dir, (text, file) => {
+    const code = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+    const modifiers = [...new Set([...code.matchAll(MODIFIER)].map((m) => m[1]))]
+    if (modifiers.length) found.push({ file, modifiers })
+  })
+  return found
+}
+
 function sourceMatches(dir, pattern) {
   let found = false
   forEachSourceFile(dir, (text) => {
@@ -1200,13 +1224,14 @@ export async function doctor(args = []) {
 
   // Prose without the tokens — a silent, total loss of styling.
   //
-  // `@uniweb/kit/prose-tokens.css` brings Tailwind Typography with it and then
-  // points it at the site's theme.yml. A foundation that writes `prose` (or
-  // renders <Prose>/<Article>, which emit it) and does NOT import that file
-  // gets the class and no rules behind it: correct markup, zero styling, and
-  // nothing reported anywhere. Measured 2026-07-30 on a foundation missing only
-  // the plugin — every paragraph `margin-top: 0px`, no warning from Vite,
-  // Tailwind or the browser.
+  // `@uniweb/kit/prose-tokens.css` is kit's prose layer, which answers to the
+  // site's theme.yml. A foundation that writes `prose` (or renders
+  // <Prose>/<Article>, which emit it) and does NOT import that file gets the
+  // class and no rules behind it: correct markup, zero styling, and nothing
+  // reported anywhere. Measured 2026-07-30 on a foundation missing only the
+  // rules — every paragraph `margin-top: 0px`, no warning from Vite, Tailwind or
+  // the browser. (Then the rules were Tailwind Typography's; kit's own since
+  // 2026-10-19.)
   //
   // kit closes this for anyone who imports the file; this closes it for anyone
   // who does not, which is the case kit cannot reach.
@@ -1237,11 +1262,61 @@ export async function doctor(args = []) {
     })
     warn(`[${id}] ${f.name} ${reason}, with no prose styling behind it`)
     log(
-      `    Tailwind Typography supplies the rules and it is not loaded, so the ` +
+      `    kit's prose layer supplies the rules and it is not imported, so the ` +
       `markup is correct and completely unstyled — silently.`
     )
     log(`    Add to ${f.folderName}/styles.css:`)
     log(`      ${colors.dim}@import "@uniweb/kit/prose-tokens.css";${colors.reset}`)
+  }
+
+  // A modifier kit's prose layer does not have — `prose-slate`, `prose-invert`
+  // and the rest of Tailwind Typography's palettes. Since 2026-10-19 the layer
+  // takes every color from the section's theme tokens, so a class list still
+  // naming one styles nothing and says a design the page does not have.
+  // Only where the foundation imports kit's layer and does not load the plugin
+  // itself — with its own `@plugin`, the modifier still means what it says.
+  for (const f of foundations) {
+    const stylesPath = join(f.path, 'styles.css')
+    if (!existsSync(stylesPath)) continue
+    const styles = readFileSync(stylesPath, 'utf8')
+    if (!styles.includes('@uniweb/kit/prose-tokens.css')) continue
+    if (loadsTypographyPlugin(styles)) {
+      // Both: the plugin's rules sit in a layer above kit's and win, so prose is
+      // the plugin's again — its own greys, and none of the --prose-* variables.
+      const id = 'prose-plugin-alongside'
+      issues.push({
+        id,
+        type: 'warning',
+        foundation: f.name,
+        message: `${f.name} loads Tailwind Typography as well as kit's prose layer`
+      })
+      warn(`[${id}] ${f.name} loads Tailwind Typography as well as kit's prose layer`)
+      log(
+        `    The plugin's rules sit above kit's and win: prose takes the plugin's greys, not the ` +
+        `theme's colors, and the --prose-* variables reach nothing.`
+      )
+      log(`    Remove the @plugin line from ${f.folderName}/styles.css to use kit's layer alone.`)
+      continue
+    }
+
+    const found = inertProseModifiers(f.path)
+    if (found.length === 0) continue
+
+    const id = 'prose-modifier-inert'
+    const names = [...new Set(found.flatMap((x) => x.modifiers))]
+    issues.push({
+      id,
+      type: 'warning',
+      foundation: f.name,
+      message: `${f.name} names ${names.join(', ')}, which kit's prose layer does not have`
+    })
+    warn(`[${id}] ${f.name} names ${names.join(', ')} — they no longer do anything`)
+    for (const { file, modifiers } of found.slice(0, 6)) log(`    ${file}: ${modifiers.join(', ')}`)
+    log(
+      `    Prose takes its colors from the section's theme tokens, so it already follows ` +
+      `theme.yml and the visitor's scheme. Remove these; to change what prose looks like, ` +
+      `set the theme's colors, or the --prose-* variables.`
+    )
   }
 
   // ⛔ SAY WHEN A CHECK DID NOT RUN. Every foundation check below reads the

@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { rendersKitProse } from '../src/commands/doctor.js'
+import { rendersKitProse, inertProseModifiers, loadsTypographyPlugin } from '../src/commands/doctor.js'
 
 function foundationWith(source) {
   const dir = mkdtempSync(join(tmpdir(), 'uniweb-prose-'))
@@ -37,3 +37,32 @@ for (const [name, source, expected] of cases) {
     }
   })
 }
+
+// A modifier kit's prose layer does not have — Tailwind Typography's palettes and `prose-invert`,
+// inert since kit's own layer replaced the plugin (2026-10-19).
+const modifierCases = [
+  ['a palette in a class list', "export default () => <div className='prose prose-slate max-w-none'>x</div>", ['prose-slate']],
+  ['invert behind a variant', 'export default () => <div className="prose dark:prose-invert lg:prose-base">x</div>', ['prose-invert']],
+  ['a color theme', 'export default () => <article className={cn("prose", "prose-blue")} />', ['prose-blue']],
+  ['CONTROL — a comment warning against one', '// no palette modifier (`prose-gray` and friends) here\nexport default () => <div className="prose">x</div>', []],
+  ['CONTROL — the steps and the variants, which the layer has', 'export default () => <div className="prose prose-lg prose-headings:font-display prose-a:text-link">x</div>', []],
+]
+
+for (const [name, source, expected] of modifierCases) {
+  test(`inertProseModifiers — ${name}`, () => {
+    const dir = foundationWith(source)
+    try {
+      const found = inertProseModifiers(dir)
+      assert.deepEqual(found.flatMap((f) => f.modifiers), expected)
+      if (expected.length) assert.equal(found[0].file, join('sections', 'Post', 'index.jsx'))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+}
+
+test('loadsTypographyPlugin — either quote, and not kit’s own import', () => {
+  assert.equal(loadsTypographyPlugin(`@import "tailwindcss";\n@plugin "@tailwindcss/typography";`), true)
+  assert.equal(loadsTypographyPlugin(`@plugin '@tailwindcss/typography';`), true)
+  assert.equal(loadsTypographyPlugin(`@import "@uniweb/kit/prose-tokens.css";`), false)
+})
