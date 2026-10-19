@@ -106,7 +106,7 @@ import {
   writeFolderItemUuids
 } from '../backend/site-sync.js'
 import { resolveWorkspace } from '../backend/workspace.js'
-import { siteContentRoots } from '../utils/git.js'
+import { siteContentRoots, siteLaneRoots } from '../utils/git.js'
 import {
   repoOf,
   mergeInProgress,
@@ -905,14 +905,23 @@ export async function pull(args = [], deps = {}) {
   let onto = null
   let standIn = null
   if (repo && projected) {
-    base = newestBase(repo, [
+    // The bases this copy knows of itself — then what the backend names, per lane.
+    const known = [
       historySyncPoint(repo, { origin: client.origin, siteUuid: siteContentUuid }),
       held,
       // What a sync point the branch no longer holds — a merge abandoned — was made onto.
-      ...madeOnto(repo, held, { origin: client.origin, siteUuid: siteContentUuid }),
-      content?.source,
-      folderLane?.source
-    ])
+      ...madeOnto(repo, held, { origin: client.origin, siteUuid: siteContentUuid })
+    ]
+    const laneRoots = siteLaneRoots(siteDir)
+    const taken = (lane) => lane && !lane.notModified && !lane.refused
+    base = newestBase(repo, [...known, content?.source, folderLane?.source], {
+      known,
+      // ⛔ Each lane the backend answered holds every base to what it names (`newestBase`).
+      lanes: [
+        ...(taken(content) ? [{ source: content.source, roots: laneRoots.content }] : []),
+        ...(taken(folderLane) ? [{ source: folderLane.source, roots: laneRoots.records }] : [])
+      ]
+    })
     onto = force || !base ? repo.head : base
     try {
       standIn = openStandIn(repo, { roots, rev: onto })

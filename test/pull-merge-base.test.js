@@ -128,14 +128,16 @@ const jsonRes = (body, status = 200, headers = {}) => ({
 
 // A backend whose site the test moves between pulls: `state.site`, `state.records` (null:
 // no folder lane), and `state.source` — the commit its content last came from, when it
-// says so.
+// says so; `state.folderSource`, when set, what the folder lane names instead.
 function fakeBackend({ site = baseSite(), records = null } = {}) {
-  const state = { site, records, source: null }
+  const state = { site, records, source: null, folderSource: undefined }
   const fetch = async (url) => {
-    const headers = state.source ? { 'x-uniweb-source': state.source } : {}
+    const named = (sha) => (sha ? { 'x-uniweb-source': sha } : {})
+    const headers = named(state.source)
+    const folderHeaders = named(state.folderSource === undefined ? state.source : state.folderSource)
     if (url.includes('/dev/site/content/pull/SITE')) return jsonRes(state.site, 200, headers)
     if (url.includes('/dev/site/folder/pull/SITE'))
-      return state.records ? jsonRes({ entities: folderDocs(state.records) }, 200, headers) : jsonRes(null, 404)
+      return state.records ? jsonRes({ entities: folderDocs(state.records) }, 200, folderHeaders) : jsonRes(null, 404)
     if (url.includes('/dev/registry/data-schemas/acme/article')) return jsonRes(articleDecl)
     return jsonRes(null, 404)
   }
@@ -736,3 +738,53 @@ test('CONTROL — with nothing changed here either, the files hold what the back
   assert.equal(r.exitCode, 0, r.out)
   assert.match(r.out, /Your files already hold what https:\/\/uniweb\.app has\./)
 })
+
+// ── a push that landed in part ──────────────────────────────────────────────
+
+// A project synced, then a page and a record edited and committed and pushed — the
+// content landed, the backend holds the page edit; the records were refused, an author
+// had changed one. The content lane names the push's commit; the folder lane what it held.
+async function landedInPart({ folderSource }) {
+  const backend = fakeBackend({ records: [HELLO] })
+  const dir = await synced(backend)
+  const before = git(dir, 'rev-parse', 'HEAD').trim()
+  edit(dir, 'records/acme/article/hello.md', 'title: Hello', 'title: Hello, edited')
+  edit(dir, 'pages/home/welcome.md', 'We sell furniture.', 'We sell furniture and lamps.')
+  commitAll(dir, 'edits')
+  welcomeEdited(backend, WELCOME[0], 'We sell furniture and lamps.')
+  backend.state.source = git(dir, 'rev-parse', 'HEAD').trim()
+  backend.state.folderSource = folderSource === 'before' ? before : folderSource
+  return { backend, dir }
+}
+
+test(
+  "⛔ the commit the content lane names is no base for records the backend refused from it — the next pull keeps the record edits",
+  { skip: !hasGit },
+  async () => {
+    for (const folderSource of [null, 'before']) {
+      const { backend, dir } = await landedInPart({ folderSource })
+      const r = await pullIn(dir, backend)
+      assert.equal(r.exitCode, 0, r.out)
+      assert.match(read(dir, 'records/acme/article/hello.md'), /title: Hello, edited/, `folder names ${folderSource}: the record edit was reverted:\n${r.out}`)
+      assert.match(read(dir, 'pages/home/welcome.md'), /and lamps/)
+    }
+  }
+)
+
+test(
+  'CONTROL — with the records the same in both, the commit the content lane names is the base',
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend({ records: [HELLO] })
+    const dir = await synced(backend)
+    edit(dir, 'pages/home/welcome.md', 'We sell furniture.', 'We sell furniture and lamps.')
+    commitAll(dir, 'a page edit')
+    welcomeEdited(backend, WELCOME[0], 'We sell furniture and lamps.')
+    backend.state.source = git(dir, 'rev-parse', 'HEAD').trim()
+    backend.state.folderSource = null
+    const r = await pullIn(dir, backend)
+    assert.equal(r.exitCode, 0, r.out)
+    // Merged from that commit, the backend holds what the files do.
+    assert.match(r.out, /Your files already hold what https:\/\/uniweb\.app has\./)
+  }
+)

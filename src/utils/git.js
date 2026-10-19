@@ -66,6 +66,25 @@ export function siteContentRoots(siteDir) {
   return [...roots]
 }
 
+/**
+ * What each lane of a push carries, as roots: the folder lane the records — their files,
+ * and their translations — and the content lane everything else a pull writes, media
+ * (`public/`) included. ⚠️ `locales` stays whole on the content side, record translations
+ * with it: a root too many there costs a less precise base, never a wrong one.
+ */
+export function siteLaneRoots(siteDir) {
+  let records = 'records'
+  try {
+    records = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))?.paths?.records || 'records'
+  } catch {
+    /* no or unreadable site.yml — the default is right */
+  }
+  return {
+    content: [...siteContentRoots(siteDir), 'public'].filter((r) => r !== records),
+    records: [records, 'locales/records']
+  }
+}
+
 function git(args, cwd) {
   return execFileSync('git', args, {
     cwd,

@@ -905,6 +905,41 @@ test("⭐ a push from a repository sends the commit it was made from, and keeps 
   assert.equal(readSyncPoint(dir, ORIGIN), head)
 })
 
+test("⛔ a push whose content landed and whose records were refused keeps no sync point — the commit describes one lane and not the other", async () => {
+  // As the base, that commit would read the records the backend refused as its removal of
+  // them. Measured: the pull after such a push reverted the record edits, exit 0.
+  const dir = tmpSite()
+  const g = (...a) => execFileSync('git', a, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  g('init', '-q')
+  g('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'base')
+  const before = g('rev-parse', 'HEAD').trim()
+  writeSyncPoint(dir, ORIGIN, before)
+  g('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'edits')
+  mergeBaseVersions(dir, ORIGIN, { S1: 'V0' })
+  const sent = siteDoc([held('pricing', 'A edited this')])
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () =>
+      ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1', item_versions: {}, document: asStored(sent) }])),
+    pushFolder: async () => fail(409, JSON.stringify({ status: 409, title: 'Conflict', detail: 'the folder moved' }))
+  }
+  const { report } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    report,
+    pkg: {
+      ...siteOnlyPkg({ siteContentUuid: 'S1' }),
+      siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) },
+      records: { buffer: Buffer.from('c'), entityCount: 1, models: ['@uniweb/folder'], index: [{ kind: 'folder' }] }
+    }
+  })
+  assert.equal(res.exitCode, 1)
+  assert.equal(res.complete, undefined)
+  assert.equal(readSyncPoint(dir, ORIGIN), before, 'the sync point moved to a commit the backend holds only half of')
+  assert.equal(readBaseVersions(dir, ORIGIN).S1, 'V1', 'the lane that landed is banked')
+})
+
 // ── the push gate: a base claimed only while the files hold it ──────────────
 
 test('⛔ a push to a site the backend has, from a copy holding no versions, is refused — it would go over whatever changed there', () => {

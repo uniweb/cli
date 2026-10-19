@@ -280,8 +280,24 @@ export function madeOnto(repo, sha, { origin, siteUuid }) {
  * reads the old text, so the change-back looks like no change at all. ⛔ Until
  * 2026-10-17 this said an older base "costs precision at worst".
  */
-export function newestBase(repo, candidates) {
-  const shas = [...new Set(candidates.filter(Boolean))].filter((s) => isCommit(repo, s) && isAncestor(repo, s))
+export function newestBase(repo, candidates, { lanes = null, known = [] } = {}) {
+  let shas = [...new Set(candidates.filter(Boolean))].filter((s) => isCommit(repo, s) && isAncestor(repo, s))
+  // ⛔ ONE MERGE TAKES ONE BASE FOR EVERY LANE, and a lane's own source says what that lane
+  // holds. A commit newer than it whose content differs there reads what the lane lacks — a
+  // push of it the backend refused while it took the other lane — as the backend's removal,
+  // and the merge drops it. A lane that names no source is held to the newest of the bases
+  // this copy knows of itself; with none, only those can be the base.
+  if (lanes?.length) {
+    const own = new Set(known.filter(Boolean))
+    const fallback = newestBase(repo, known)
+    shas = shas.filter((s) =>
+      lanes.every(({ source, roots }) => {
+        const ref = source && isCommit(repo, source) && isAncestor(repo, source) ? source : fallback
+        if (!ref) return own.has(s)
+        return s === ref || isAncestor(repo, s, ref) || !differsIn(repo, ref, s, roots)
+      })
+    )
+  }
   if (shas.length <= 1) return shas[0] || null
   const newest = shas.find((s) => shas.every((o) => o === s || isAncestor(repo, o, s)))
   if (newest) return newest
@@ -289,6 +305,16 @@ export function newestBase(repo, candidates) {
     return gitText(repo.top, ['rev-list', '--no-walk', ...shas]).split('\n')[0].trim() || shas[0]
   } catch {
     return shas[0]
+  }
+}
+
+/** Does the content under `roots` differ between two commits? Anything but "no" counts as yes. */
+function differsIn(repo, a, b, roots) {
+  try {
+    git(repo.top, ['diff', '--quiet', a, b, '--', ...roots.map((r) => `${repo.prefix}${r}`)])
+    return false
+  } catch {
+    return true
   }
 }
 

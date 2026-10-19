@@ -2460,10 +2460,14 @@ export async function pushSyncPackages({
   }
   // Both grains land together, at every point the old code banked the entity one — and
   // with them the commit they describe.
-  const mergeHarvested = () => {
+  // ⛔ `point: false` where a lane was refused after another landed: the commit then describes
+  // one lane and not the other, and as the base it would read what the refused lane lacks as
+  // the backend's removal — measured, a pull after a push whose records were refused reverted
+  // the record edits, exit 0. The versions of the lane that landed are still banked.
+  const mergeHarvested = ({ point = true } = {}) => {
     mergeBaseVersions(siteDir, client.origin, newVersions)
     if (heldItemVersions) writeItemBaseVersions(siteDir, client.origin, heldItemVersions)
-    if (source && (Object.keys(newVersions).length || heldItemVersions)) writeSyncPoint(siteDir, client.origin, source)
+    if (point && source && (Object.keys(newVersions).length || heldItemVersions)) writeSyncPoint(siteDir, client.origin, source)
   }
   // ⛔ The site-content lane banks only the tokens for content this copy holds — the
   // document we sent against the one the backend stored (`heldTokens`, and the two
@@ -2663,7 +2667,7 @@ export async function pushSyncPackages({
       { boundUuid: boundSiteUuid }
     )
     if (!finalized) {
-      mergeHarvested()
+      mergeHarvested({ point: false })
       return { exitCode: 1, finalizedTotal, wrote }
     }
     harvest(finalized)
