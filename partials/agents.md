@@ -1173,7 +1173,7 @@ Header.className = 'p-0'
 Header.as = 'header'
 ```
 
-**A header that stays in view is a setting, not a class.** `sticky top-0` on your component's markup does nothing: a sticky element moves only within its parent, and the section's wrapper and the area's are as tall as your header. Declare `sticky: true` in the type's `meta.js` — an author turns it off with `sticky: false` — and the runtime makes sticky the box that can stay in view. A section in the body sticks the same way, and `sticky: { default: true, top: 'var(--header-height)' }` keeps one below the header. A layout of your own that wraps an area in an element makes that element sticky when `page.isSticky('header')`. `uniweb dev` names a sticky element that cannot move in the console.
+**A header that stays in view is a setting, not a class.** `sticky top-0` on your component's markup does nothing: a sticky element moves only within its parent, and the section's wrapper and the area's are as tall as your header. Declare `sticky: true` in the type's `meta.js` — an author turns it off with `sticky: false` — and the runtime makes sticky the box that can stay in view. A section in the body sticks the same way and stays below the stuck header by itself: the runtime measures how far the header reaches and publishes it as `--uw-sticky-top` (a type's `top` overrides it). A child section in kit's `<ChildGrid>` stays in view beside the column it sits next to, and on a phone, at one column, scrolls with the page. A sticky section inside a box with `overflow: hidden` cannot stick — clip with `overflow: clip`. A layout of your own that wraps an area in an element makes that element sticky when `page.isSticky('header')`. `uniweb dev` names a sticky element that cannot move in the console.
 
 ### meta.js
 
@@ -3082,7 +3082,7 @@ Most Uniweb failures are **silent** — the build succeeds and the page is wrong
 
 **A var in frontmatter does nothing** — component vars only apply when declared in that section type's `meta.js` `vars:`. Unknown names are ignored silently.
 
-**A sticky header scrolls away** — it is `sticky top-0` on the component's own markup, which has no room to move. Make the section sticky instead: `sticky: true` in its type's `meta.js`. `uniweb dev` names the element in the console.
+**A sticky header scrolls away** — it is `sticky top-0` on the component's own markup, which has no room to move. Make the section sticky instead: `sticky: true` in its type's `meta.js`. A sticky section that still scrolls away sits in a box with `overflow: hidden` — clip with `overflow: clip`. `uniweb dev` names the element in the console.
 
 Loud failures:
 
