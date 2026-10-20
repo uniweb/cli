@@ -211,10 +211,10 @@ async function findSiteRoot(target) {
 /**
  * Load site configuration
  *
- * Resolves locales from config:
+ * Resolves the locales to translate into from config — every language but the default:
  * - undefined → all available locales (from locales/*.json)
  * - '*' → explicitly all available locales
- * - ['es', 'fr'] → only those specific locales
+ * - ['en', 'es', 'fr'] → those languages
  */
 async function loadSiteConfig(siteRoot) {
   const configPath = join(siteRoot, 'site.yml')
@@ -226,10 +226,15 @@ async function loadSiteConfig(siteRoot) {
 
   // Resolve locales (undefined/'*' → all available, array → specific)
   const { resolveLocales } = await import('@uniweb/build/i18n')
-  const locales = await resolveLocales(config.languages, localesPath)
+  const defaultLocale = resolveDefaultLocale(config)
+  // ⛔ The default language is the source, never a translation. A declared
+  // `languages: [en, es]` lists it, and `status` and `audit` reported "en: No translation
+  // file — 75 strings need translation" until 2026-10-19 (the build skips it the same way,
+  // `buildLocalizedContent`).
+  const locales = (await resolveLocales(config.languages, localesPath)).filter((l) => l !== defaultLocale)
 
   return {
-    defaultLocale: resolveDefaultLocale(config),
+    defaultLocale,
     locales,
     localesDir,
     ...config.i18n
