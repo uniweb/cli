@@ -309,7 +309,7 @@ Paths are relative to the site package you identified in step 1 — `site/` in t
 
 **Change the brand color.** `<site>/theme.yml` → `colors.primary`. One line, and every component follows. Do **not** edit Tailwind color classes in components to change brand color — that is the exact anti-pattern this system removes.
 
-**Change how code blocks look.** `<site>/theme.yml` → `code:`. Name one of Shiki's 65 bundled themes (`code: dracula`), name one per scheme (`code: { light: github-light, dark: github-dark }`), or take a theme and adjust it (`code: { theme: github-dark, background: '#0D0D0D' }`). Hand-picking every syntax colour is possible and is the last thing to reach for.
+**Change how code blocks look.** `<site>/theme.yml` → `code:`. Name one of Shiki's 65 bundled themes (`code: dracula`), name one per scheme (`code: { light: github-light, dark: github-dark }`), or take a theme and adjust it (`code: { theme: github-dark, background: '#0D0D0D' }`). Hand-picking every syntax colour is possible and is the last thing to reach for. A block paints its theme's background and text colour before the highlighter loads when they are known — the default theme's, or the `background` and `foreground` the site declares — so declare both beside a named theme to paint them from the start.
 
 **Change a nav item.** First check how nav is produced. If `<site>/layout/header.md` lists the links (a markdown list, or a `yaml:nav` block), edit it there. If it doesn't, the Header is generating nav from the page hierarchy — change page titles and order in `site.yml` / `page.yml` instead.
 
