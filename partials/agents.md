@@ -1064,7 +1064,7 @@ function MyComponent({ content, params, block }) {
 |---|---|---|
 | `type`, `id`, `hidden` | the section itself — its section type, its id, and a draft (`hidden: true`: left out of a published build, kept by `uniweb dev`) | — |
 | `query`, `fetch` | the section's data | `content.data`, under the keys its `meta.js` `data:` declares |
-| `theme`, `background`, `grid`, `vars` | the section's settings, which framework applies — the color context and the background around your component, the section's theme and your component's CSS variables in the page stylesheet, the child layout | `block`, when the component needs one for its own logic: `useColorContext(block)` for the context (a light vs. dark logo, say), `<SectionBackground block={block} />` to draw the background itself, `<ChildGrid from={block} />` for the grid |
+| `theme`, `background`, `grid`, `vars`, `sticky` | the section's settings, which framework applies — the color context and the background around your component, the section's theme and your component's CSS variables in the page stylesheet, the child layout, and whether the section stays in view as the page scrolls | `block`, when the component needs one for its own logic: `useColorContext(block)` for the context (a light vs. dark logo, say), `<SectionBackground block={block} />` to draw the background itself, `<ChildGrid from={block} />` for the grid, `block.sticky` for whether it sticks |
 | `props` | params written as one map | `params` — its keys are merged in, one by one |
 | `data`, `preset`, `input` | nothing: `data:` is refused (it was `query:`'s old name); `preset:` and `input:` are ignored with a warning | — |
 
@@ -1137,7 +1137,7 @@ Four things you won't discover by reading exports:
 
 > **Kit hooks are SSR-safe by design.** If you hit "document is not defined" during a build, don't add `typeof document` guards — reach for the hook instead (`useAppearance()` for scheme, `useScrolled()` for scroll position).
 
-> **A modal needs `<Overlay>`, not a bigger z-index.** The runtime gives each layout area its own `view-transition-name` so header, rails and body animate independently. That makes each area a stacking context *and* a containing block for `fixed` children — so a dialog rendered from inside your Header is sealed into the header's context and paints *under* the page body no matter what z-index it carries. Raising the number looks like it should work and never does. `<Overlay onClose={close}>…</Overlay>` renders into `document.body`, where the z-index means what you expect.
+> **A modal needs `<Overlay>`, not a bigger z-index.** The runtime gives each layout area its own `view-transition-name` so header, rails and body animate independently, and that makes each area a stacking context: a `fixed` dialog inside one is still placed against the viewport, but whatever z-index it carries, it paints at its area's place in the stack. Areas sit above the body, so a dialog opened from a section paints *under* the header and footer, and one opened from your Header paints under a footer or sidebar on the header's layer that comes after it. Raising the number looks like it should work and never does. `<Overlay onClose={close}>…</Overlay>` renders into `document.body`, where the z-index means what you expect.
 >
 > It also does the part that is easy to skip: a modal overlay **contains focus** — moves focus in, cycles Tab within, marks the rest of the page `inert`, and returns focus to whatever opened it. That is what makes the `role="dialog" aria-modal="true"` on your box true rather than merely asserted; without it a keyboard user Tabs straight out into a page a screen-reader user has been told is unreachable. Plus Escape, the scrim click, the scroll lock, and a dimmed scrim you override with `className` (`bg-transparent` removes it). `modal={false}` for a toast: it escapes the stacking context and nothing else, so the page stays usable. Your dialog's markup stays yours.
 
@@ -1172,6 +1172,8 @@ export default Hero
 Header.className = 'p-0'
 Header.as = 'header'
 ```
+
+**A header that stays in view is a setting, not a class.** `sticky top-0` on your component's markup does nothing: a sticky element moves only within its parent, and the section's wrapper and the area's are as tall as your header. Declare `sticky: true` in the type's `meta.js` — an author turns it off with `sticky: false` — and the runtime makes sticky the box that can stay in view. A section in the body sticks the same way, and `sticky: { default: true, top: 'var(--header-height)' }` keeps one below the header. A layout of your own that wraps an area in an element makes that element sticky when `page.isSticky('header')`. `uniweb dev` names a sticky element that cannot move in the console.
 
 ### meta.js
 
@@ -1781,7 +1783,7 @@ Layouts are full components with their own `params` in `meta.js`, not just struc
 
 **Layout `meta.js`** declares areas and optional scroll behavior: `{ areas: ['header', 'footer', 'left'], scroll: 'self' }`. Area names are arbitrary. `areas` tells an editor what to offer; a page renders the areas its site's `layout/` folder fills. `scroll` controls scroll restoration: unset = runtime manages `window` (default), `'self'` = the layout scrolls itself, or a CSS selector (`'main'`) = runtime manages that element.
 
-Two optional keys tune how areas behave across a navigation. `transitions` renames or opts regions out of per-area view transitions (`{ left: null }`, or `false` for the whole layout). `layers` sets which area paints on top — every area is stacked above the body by default, so a fixed header works without declaring anything, but areas are equal to each other, so a layout whose chrome overlaps says which wins: `layers: { header: 2, left: 1 }`. Both take an object to override per region, or `false` to opt out. **A `z-index` inside an area cannot lift it past another area** — each area is its own stacking context — so reach for `layers` rather than a bigger number, and for `<Overlay>` when a modal needs to escape the area entirely.
+Two optional keys tune how areas behave across a navigation. `transitions` renames or opts regions out of per-area view transitions (`{ left: null }`, or `false` for the whole layout). `layers` sets which area paints on top — every area is stacked above the body by default, so a fixed header works without declaring anything, and a sticky area (one with a `sticky` section) above every area that does not stick, since the page scrolls under it. Otherwise areas are equal to each other, so a layout whose chrome overlaps says which wins: `layers: { header: 2, left: 1 }`, which also ranks a sticky area it names. Both take an object to override per region, or `false` to opt out. **A `z-index` inside an area cannot lift it past another area** — each area is its own stacking context — so reach for `layers` rather than a bigger number, and for `<Overlay>` when a modal needs to escape the area entirely.
 
 **Layout content** lives in `site/layout/` — `header.md`, `footer.md` for the default layout, or a named subdirectory (`site/layout/marketing/`) for named layouts. Named subdirectories are self-contained — no inheritance. Cascade: `page.yml` → `folder.yml` → `site.yml` → foundation `defaultLayout` → `"default"`. The structure alone decides what an entry is: every folder directly under `layout/` is a named layout (its name matched regardless of case and of a trailing `Layout` — `site/layout/docs/` serves the foundation's `DocsLayout`), and an area with several sections is a folder inside a layout's folder — `site/layout/default/header/1-topbar.md` for the default layout. An area has no `page.yml`; its sections render in filename order.
 
@@ -3079,6 +3081,8 @@ Most Uniweb failures are **silent** — the build succeeds and the page is wrong
 **Content lands in the wrong field** — a heading became a `subtitle` when you wanted an item, or the reverse. That's the step rule (one step smaller and adjacent = the next headline line; two steps, a divider, or any body content first = items). Run `uniweb inspect <path>` rather than re-deriving it.
 
 **A var in frontmatter does nothing** — component vars only apply when declared in that section type's `meta.js` `vars:`. Unknown names are ignored silently.
+
+**A sticky header scrolls away** — it is `sticky top-0` on the component's own markup, which has no room to move. Make the section sticky instead: `sticky: true` in its type's `meta.js`. `uniweb dev` names the element in the console.
 
 Loud failures:
 
