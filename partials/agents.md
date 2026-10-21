@@ -2631,6 +2631,18 @@ read that way comes back with `via: 'rbac'`. It is one step, and a backend refus
 to a field entries already fill. `grantable: false` keeps entries from being shared with a
 person or a team; omitted, they can be.
 
+A reference can also carry a purchase. `sold_with: true` — a boolean, and only on a reference
+or a list of them — means a buyer of the entry reads what the field names, through it, and onward
+along those entries' own `sold_with` fields, up to three steps:
+
+```yaml
+# foundation/schemas/course.yml
+fields:
+  lessons: { ref: '@/lesson', many: true, sold_with: true }   # a buyer of the course reads its lessons
+```
+
+An unmarked reference carries nothing, and `false` is the same as leaving it out.
+
 ### Acting as an administrator
 
 On a site, an administrator's session reads what their role reaches — the operator reads
