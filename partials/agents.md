@@ -246,8 +246,9 @@ Each `meta.js` is a catalog entry: `description` (what the type is for), `conten
 #### `family:` — so an editor can draw your section
 
 An editor showing an author a section picker has to know what each section type
-**is**, to pick its illustration and a label it can translate. Two ways to tell
-it, in this order:
+**is**, to pick its illustration, its icon and a label it can translate. The icon
+is the family's — there is no `icon:` to declare. Two ways to tell it, in this
+order:
 
 1. **Name the component for its family.** Run `uniweb families`, and use one of
    those names when it fits — `Hero`, `Footer`, `Pricing`, `FAQ`, `CardGrid`.
@@ -1182,7 +1183,7 @@ export default {
   title: 'Feature Grid',
   description: 'Grid of feature cards with icons',
   family: 'features',       // the standard section type it is — the editor's
-                            // illustration and label (`uniweb families`). Optional;
+                            // illustration, icon and label (`uniweb families`). Optional;
                             // a name like `Features` resolves on its own
   // hidden: true,          // Exclude from export entirely (internal helpers)
   // background: 'self',    // Component renders its own background
