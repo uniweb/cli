@@ -573,9 +573,14 @@ export async function publish(args = []) {
     say.dim(`This publish creates the site in ${describeWorkspace(ws.workspace)} (${SOURCE_LABEL[ws.source]}).`)
   }
 
-  // 2. Build the site data (link mode): dist/site-content.json (+ per-locale),
-  //    dist/data/*, dist/assets/*. Spawn the SAME CLI binary so the inner
-  //    build can't resolve to a different installed version.
+  // 2. Build the site data (link mode): dist/site-content.json (+ per-locale)
+  //    and dist/data/*. No media is processed: 4b uploads it from the site's
+  //    own files. Spawn the SAME CLI binary so the inner build can't resolve to
+  //    a different installed version.
+  //
+  //    ⛔ *This listed `dist/assets/*` until 2026-10-22; the link build has made
+  //    no media copies since 2026-10-19 (`site/build-site-data.js`, "Does NOT
+  //    emit").*
   //
   //    ⛔ NO SEARCH INDEX. This listed `dist/_search/*` until 2026-08-26; the
   //    link lane stopped emitting one on 2026-08-01 (`@uniweb/build`
@@ -619,8 +624,9 @@ export async function publish(args = []) {
     if (!guard.ok) return { exitCode: 1 }
   }
 
-  // 3. Partition collections by schema presence (a first emit reads `schemaless`
-  //    — collections with no data schema, delivered statically via the ball).
+  // 3. Partition the queries by schema presence (a first emit reads `schemaless`
+  //    — the queries with no data schema, whose compiled files 4c uploads; no
+  //    ball carries them since 2026-08-18).
   let probe
   try {
     probe = await emitSyncPackages(siteDir, {
@@ -846,13 +852,14 @@ export async function publish(args = []) {
     siteDir,
     note: (m) => say.dim(m)
   })
-  // Stamp deploy-derived info on the site-content entity: the data-bundle URL,
-  // and the PINNED foundation ref (`@scope/name@version`) from the bring-along.
-  // Delivery is version-pinned end-to-end (the gateway serves a foundation only
-  // by a concrete version — collab framework↔backend), so pinning the
-  // released version on the wire is required when site.yml uses an unversioned
-  // local ref; injectInfo overrides info.foundation. A registry/URL ref → fnd.ref
-  // is null → the site.yml ref is forwarded verbatim (already pinned).
+  // Stamp the PINNED foundation ref (`@scope/name@version`) from the bring-along
+  // on the site-content entity — the one key `injectInfo` carries since the
+  // data-bundle URL went (2026-08-18). Delivery is version-pinned end-to-end (a
+  // foundation is delivered only by a concrete version, agreed with backend and
+  // measured end to end on 2026-06-25), so pinning the released version on the
+  // wire is required when site.yml uses an unversioned local ref; injectInfo
+  // overrides info.foundation. A registry/URL ref → fnd.ref is null → the
+  // site.yml ref is forwarded verbatim (already pinned).
   // ⛔ DO NOT STAMP A FILE MAP INTO `info` HERE. `injectInfo` WINS the merge
   // (`sync-package.js`: `{...siteDoc.info, ...injectInfo}`), so any name stamped
   // here silently replaces what the author's document carries under it, and the
@@ -861,8 +868,8 @@ export async function publish(args = []) {
   // that moved to `settings.fetch`, and the warning holds for any name.
   //
   // A file map needs a name nothing else claims (`static_data` / `data_files`
-  // were proposed) AND a consumer that reads it — neither settled. See
-  // one object per file, no bundle.
+  // were proposed) AND a consumer that reads it — neither settled. Until then
+  // the schema-less data goes as 4c sends it: one object per file, no bundle.
   const injectInfo = {
     ...(fnd.ref ? { foundation: fnd.ref } : {})
   }
