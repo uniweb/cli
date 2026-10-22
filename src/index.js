@@ -1759,7 +1759,9 @@ ${colors.bright}Options:${colors.reset}
                      org's — and write it into the name (refused when the name has another
                      scope). A schemas-only package: publish under @scope; default:
                      package.json uniweb.scope
-  --org @org         Work in @org for this command: a bare name registers under it
+  --org @org         Work in @org for this command: a bare name registers under it —
+                     a sub-org's or project's (@studio:acme): under its organization's,
+                     when you are a member of it
   --personal         Work in your personal workspace: a bare name registers under your
                      personal scope
   --dry-run          Print the .uwx; submit nothing

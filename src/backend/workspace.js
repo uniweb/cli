@@ -92,6 +92,17 @@ export function listedWorkspaces(envelope) {
 }
 
 /**
+ * The top-level organization of a unit named by its child handle — `@studio` for `@studio:acme`,
+ * the part before the colon (backend, 2026-10-22).
+ *
+ * @param {string} handle - `@top:part`
+ * @returns {string} `@top`
+ */
+export function topOfChildHandle(handle) {
+  return `@${String(handle).replace(/^@/, '').split(':')[0]}`
+}
+
+/**
  * The account's own handle, as the header would name it (`@jane`), from the orgs read — or null.
  *
  * ⛔ **An account's handle names no workspace** (backend, 2026-10-22, pinned by its tests). A
@@ -201,22 +212,36 @@ export async function resolveWorkspace({ client, args = [], offline = false }) {
  * decides which SITE a command works on; here it only answers the question a bare name
  * asks the first time it registers.
  *
+ * ⭐ **A unit below an organization — a sub-org, a project — takes its organization's scope**
+ * *[Diego, 2026-10-22]*: its child handle (`@studio:acme`) names no scope (backend, the same day),
+ * and a bare name registered from it defaults to the top-level org's handle, `@studio`, when that
+ * org is among the account's organizations — the orgs read's `orgs`, the scopes. Not otherwise: a
+ * project's guest belongs to the project alone and has only their own scope, and so do the people
+ * of a sub-org whose belonging stops there — which the orgs read cannot tell apart, so membership is
+ * read from `orgs` and nothing else.
+ *
  * Null when the workspace names no scope, and the caller derives one as before
  * (`deriveScope`): none is chosen (you belong to organizations and none is named), the
  * command is a preview, the workspace is a unit without a handle, the workspace is a unit
- * below an organization — a sub-org or a project, whose child handle (`@studio:acme`) names
- * no scope (backend, 2026-10-22) — or the account has no handle (a service account).
+ * below an organization the account is not a member of, or the account has no handle (a
+ * service account).
  *
  * @param {{ workspace?: string|null, source?: string, refused?: boolean }} ws -
  *   `resolveWorkspace`'s answer
  * @param {string|null} accountHandle - the account's own handle (`GET /dev/orgs`), read
  *   only for the personal workspace
+ * @param {Array<{ handle?: string }>} [orgs] - the orgs read's `orgs`, read only for a unit
+ *   below an organization
  * @returns {string|null} `@handle`
  */
-export function scopeOfWorkspace(ws, accountHandle) {
+export function scopeOfWorkspace(ws, accountHandle, orgs = []) {
   if (!ws || ws.refused || ws.source === 'offline') return null
   if (typeof ws.workspace === 'string') {
-    return ws.workspace.startsWith('@') && !ws.workspace.includes(':') ? ws.workspace : null
+    if (!ws.workspace.startsWith('@')) return null
+    if (!ws.workspace.includes(':')) return ws.workspace
+    const top = topOfChildHandle(ws.workspace)
+    const member = (Array.isArray(orgs) ? orgs : []).some((o) => `@${bareHandle(o?.handle)}` === top)
+    return member ? top : null
   }
   const h = bareHandle(accountHandle || '')
   return h && !validateHandle(h) ? `@${h}` : null

@@ -136,16 +136,31 @@ test('no workspace chosen and organizations, no terminal → refused, and nothin
   assert.doesNotMatch(r.printed, /Registering under/)
 })
 
-// A unit below an organization names no scope (backend, 2026-10-22): `@studio:acme/…` is refused
-// as a scope nobody holds. So a bare name is asked for one as when no workspace names any — here
-// with no terminal, refused — and is never written under the child handle.
-test('the login works in a project → no scope from it: said, then asked as before', async () => {
+// ⭐ A UNIT BELOW AN ORGANIZATION TAKES ITS ORGANIZATION'S SCOPE *[Diego, 2026-10-22]*. Its child
+// handle names no scope (backend, the same day: `@studio:acme/…` is refused as a scope nobody holds),
+// so a bare name defaults to the top-level org's — for the org's members, read from `orgs`.
+test('the login works in a project of @studio, a member of @studio → a bare name registers as @studio/…, said', async () => {
   const r = await settle({ session: { workspace: '@studio:acme' }, orgs: [{ handle: 'studio' }] })
+  assert.deepEqual(r.result, { scope: '@studio', source: 'login' })
+  assert.match(r.main, /name: '@studio\/marketing'/)
+  assert.match(r.printed, /Registering under .*@studio.* — the organization of @studio:acme, the workspace you work in \(your login\)/)
+  assert.doesNotMatch(r.main, /studio:acme/, 'never under the child handle')
+})
+
+// A project's guest belongs to the project alone, and has only their own scope.
+test('a project guest — not a member of its organization → their own scope, said; never the org\'s', async () => {
+  const r = await settle({ session: { workspace: '@studio:acme' }, orgs: [] })
+  assert.equal(r.result.scope, '@dev')
+  assert.match(r.main, /name: '@dev\/marketing'/)
+  assert.match(r.printed, /@studio:acme, the workspace you work in, names no scope, and @studio is not among your organizations/)
+  assert.match(r.printed, /Registering under your personal scope/)
+})
+
+test('a guest who belongs to other organizations, no terminal → refused, and nothing is written', async () => {
+  const r = await settle({ session: { workspace: '@studio:acme' }, orgs: [{ handle: 'other' }] })
   assert.equal(r.result, null)
-  assert.match(r.main, /name: 'marketing'/, 'the name is left bare')
-  assert.match(r.printed, /@studio:acme, the workspace you work in, is a unit below an organization, and names no scope/)
+  assert.match(r.main, /name: 'marketing'/)
   assert.match(r.printed, /so no scope is assumed/)
-  assert.doesNotMatch(r.main, /studio:acme/)
 })
 
 test('a scoped name is untouched, and no workspace or org is read for it', async () => {
@@ -172,6 +187,8 @@ test('scopeOfWorkspace — what names a scope and what does not', () => {
   assert.equal(scopeOfWorkspace({ workspace: '0c44a1b2-1111-4222-8333-944455556666', source: 'login' }, 'dev'), null)
   // A unit below an organization — a project, a sub-org — is a workspace and no scope (backend, 2026-10-22).
   assert.equal(scopeOfWorkspace({ workspace: '@studio:acme', source: 'login' }, 'dev'), null)
+  assert.equal(scopeOfWorkspace({ workspace: '@studio:acme', source: 'login' }, 'dev', [{ handle: 'studio' }]), '@studio')
+  assert.equal(scopeOfWorkspace({ workspace: '@studio:acme', source: 'flag' }, 'dev', [{ handle: 'acme' }]), null)
   assert.equal(scopeOfWorkspace({ workspace: null, source: 'login' }, null), null)
   assert.equal(scopeOfWorkspace({ workspace: null, source: 'login' }, 'Not_A_Handle'), null)
 })

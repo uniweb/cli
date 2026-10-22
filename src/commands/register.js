@@ -90,7 +90,7 @@ import {
 } from '../utils/code-upload.js'
 import { deriveScope, publishScope, belongsToScope } from '../utils/registry-orgs.js'
 import { BackendClient } from '../backend/client.js'
-import { resolveWorkspace, scopeOfWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
+import { resolveWorkspace, scopeOfWorkspace, topOfChildHandle, SOURCE_LABEL } from '../backend/workspace.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import {
   findWorkspaceRoot,
@@ -395,23 +395,29 @@ export async function settleFoundationScope(targetDir, { args, isPreview, flagSc
 async function deriveScopeFromLogin(client, args) {
   const token = await client.token()
   const ws = await resolveWorkspace({ client, args })
-  const personal = !ws.refused && ws.source !== 'offline' && ws.workspace === null
-  const accountHandle = personal ? (await client.fetchOrgs()).account_handle : null
-  const fromWorkspace = scopeOfWorkspace(ws, accountHandle)
+  const live = !ws.refused && ws.source !== 'offline'
+  const personal = live && ws.workspace === null
+  // A unit below an organization — a sub-org, a project — names no scope; its organization's is
+  // the default for the organization's members (`scopeOfWorkspace`), read from the same answer.
+  const child = live && typeof ws.workspace === 'string' && ws.workspace.includes(':')
+  const envelope = personal || child ? await client.fetchOrgs() : null
+  const fromWorkspace = scopeOfWorkspace(ws, envelope?.account_handle ?? null, envelope?.orgs)
   if (fromWorkspace) {
     const named = `${colors.bright}${fromWorkspace}${colors.reset}`
     console.error(
       personal
         ? `Registering under your personal scope ${named} — you work in your personal workspace (${SOURCE_LABEL[ws.source]}). For an org: --scope @org.`
-        : `Registering under ${named} — the workspace you work in (${SOURCE_LABEL[ws.source]}). For another scope: --scope @org.`
+        : child
+          ? `Registering under ${named} — the organization of ${ws.workspace}, the workspace you work in (${SOURCE_LABEL[ws.source]}). For another scope: --scope @org.`
+          : `Registering under ${named} — the workspace you work in (${SOURCE_LABEL[ws.source]}). For another scope: --scope @org.`
     )
     return fromWorkspace
   }
-  // A unit below an organization — a sub-org, a project — is a workspace and no scope (backend,
-  // 2026-10-22), so a bare name is asked for one as when no workspace names any.
-  if (typeof ws.workspace === 'string' && ws.workspace.includes(':')) {
+  // Not a member of the unit's organization — a project's guest — so it gives no scope, and a bare
+  // name is asked for one as when no workspace names any.
+  if (child) {
     console.error(
-      `${colors.dim}${ws.workspace}, the workspace you work in, is a unit below an organization, and names no scope.${colors.reset}`
+      `${colors.dim}${ws.workspace}, the workspace you work in, names no scope, and ${topOfChildHandle(ws.workspace)} is not among your organizations.${colors.reset}`
     )
   }
   const sess = await readRegistryAuth(client.origin)
