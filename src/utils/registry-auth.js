@@ -950,8 +950,9 @@ async function reportTokenProcess({ named, token }) {
   )
 
   // Their workspace is UNIWEB_WORKSPACE's — never the stored session's — and, with none
-  // named, personal for an account in no organization (resolveWorkspace, workspace.js).
-  const { WORKSPACE_ENV, PERSONAL, parseWorkspaceChoice, headerOf, describeWorkspace } =
+  // named, personal for an account in no organization or project (resolveWorkspace,
+  // workspace.js). Checked, as a login's `--org` is, against the workspaces the orgs read lists.
+  const { WORKSPACE_ENV, PERSONAL, parseWorkspaceChoice, headerOf, describeWorkspace, listedWorkspaces, noWorkspaceList } =
     await import('../backend/workspace.js')
   const unsettled = (reason, { commandsRefuse }) => {
     console.error(`\x1b[31m✗\x1b[0m ${reason}`)
@@ -967,28 +968,32 @@ async function reportTokenProcess({ named, token }) {
       commandsRefuse: true
     })
   }
-  let orgs
+  let listed
   try {
-    orgs = (await (await import('./registry-orgs.js')).fetchOrgs({ apiBase: origin, token })).orgs
+    listed = listedWorkspaces(await (await import('./registry-orgs.js')).fetchOrgs({ apiBase: origin, token }))
   } catch (err) {
     console.error(`\x1b[33m⚠\x1b[0m ${err.message} — the workspace is not checked.`)
     return
   }
-  const mine = orgs.map((o) => `@${o.handle}`)
+  if (!listed) {
+    console.error(`\x1b[33m⚠\x1b[0m ${noWorkspaceList(origin)}`)
+    return
+  }
+  const mine = listed.map((w) => w.name)
   if (choice && choice !== PERSONAL && !mine.includes(choice)) {
     // As a login refuses `--org` for one (chooseWorkspace).
-    unsettled(`${WORKSPACE_ENV}=${raw} is not one of this account's organizations on ${origin}.`, {
+    unsettled(`${WORKSPACE_ENV}=${raw} is not one of this account's workspaces on ${origin}.`, {
       commandsRefuse: false
     })
   }
   if (!choice && mine.length) {
     unsettled(
-      `The account belongs to organizations, so no workspace is assumed: set ${WORKSPACE_ENV}=${mine[0]} (or another, or personal).`,
+      `The account belongs to organizations or projects, so no workspace is assumed: set ${WORKSPACE_ENV}=${mine[0]} (or another, or personal).`,
       { commandsRefuse: true }
     )
   }
   const where = describeWorkspace(headerOf(choice || PERSONAL))
   console.error(
-    `  They work in \x1b[1m${where}\x1b[0m${choice ? ` (${WORKSPACE_ENV})` : ' — the account belongs to no organization'}.`
+    `  They work in \x1b[1m${where}\x1b[0m${choice ? ` (${WORKSPACE_ENV})` : ' — the account belongs to no organization or project'}.`
   )
 }

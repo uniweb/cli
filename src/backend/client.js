@@ -165,6 +165,11 @@ export function workspaceHandle(value) {
 
 const UNIT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/** Whether `value` is shaped like a unit's uuid — how the header names a unit with no handle. */
+export function isUnitUuid(value) {
+  return typeof value === 'string' && UNIT_UUID.test(value.trim())
+}
+
 /**
  * A workspace as a sentence names it: `@acme`, `the unit <uuid>`, or `your personal
  * workspace` — for null, and for a login's stored `personal`.
@@ -180,8 +185,8 @@ export function describeWorkspace(workspace) {
  *
  * ⚠️ A bare value is taken for a uuid only when it is shaped like one, and our own
  * handle grammar admits uuid-shaped handles (3–39 lowercase letters, digits, hyphens).
- * So a HANDLE reaches this already dressed — `--org` through `workspaceHandle`, a
- * login's choice as stored — and a bare uuid here is a unit.
+ * So a HANDLE reaches this already dressed — `--org` through `namedWorkspace`
+ * (`workspace.js`), a login's choice as stored — and a bare uuid here is a unit.
  *
  * @param {unknown} value
  * @returns {string|null}
@@ -214,20 +219,16 @@ export class WorkspaceMismatchError extends Error {
   constructor({ named, answer, nowhere = false, source = 'login', origin = null, message = null }) {
     const where = (w) =>
       !w ? 'your personal workspace' : w.startsWith('@') ? w : `the unit ${w}`
-    // How to work in the site's workspace, said for the way this one was chosen.
+    // How to work in the site's workspace, said for the way this one was chosen. A unit with
+    // no handle is named by its uuid, as the header names it. ⛔ *Until 2026-10-22 this said
+    // "It has no handle, so the CLI cannot work in it": a login could choose only what the
+    // orgs read listed, and that list left handle-less units out (`workspace.js`).*
     const switchTo = !answer
       ? { flag: 'pass --personal', env: 'set UNIWEB_WORKSPACE=personal' }
-      : answer.startsWith('@')
-        ? { flag: `pass --org ${answer}`, env: `set UNIWEB_WORKSPACE=${answer}` }
-        : null
-    const login = !answer
-      ? `${loginCommand(origin)} --personal`
-      : answer.startsWith('@')
-        ? `${loginCommand(origin)} --org ${answer}`
-        : null
-    const fix = !switchTo
-      ? 'It has no handle, so the CLI cannot work in it.'
-      : source === 'flag'
+      : { flag: `pass --org ${answer}`, env: `set UNIWEB_WORKSPACE=${answer}` }
+    const login = !answer ? `${loginCommand(origin)} --personal` : `${loginCommand(origin)} --org ${answer}`
+    const fix =
+      source === 'flag'
         ? `To work on it, ${switchTo.flag}.`
         : source === 'env'
           ? `To work on it, ${switchTo.env}.`

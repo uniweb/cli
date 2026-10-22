@@ -26,8 +26,20 @@
  *
  *   GET  /dev/orgs → {
  *     account_handle: string|null,     // the caller's account handle
- *     orgs: [{ handle, is_primary }]   // memberships, primary first;
- *   }                                  // handle-less units filtered server-side
+ *     orgs: [{ handle, is_primary }],  // the SCOPES: top-level orgs, primary first;
+ *                                      // handle-less units filtered server-side
+ *     workspaces: [{ unit_uuid, handle, kind, is_primary }]
+ *   }                                  // what `x-uniweb-workspace` admits
+ *
+ * ⭐ TWO LISTS, BECAUSE A WORKSPACE IS NOT A SCOPE (backend, 2026-10-22). `orgs` are the
+ * scopes a foundation registers under — the login's scope picker (`deriveScope`) and the
+ * membership read (`belongsToScope`) stay on it. `workspaces` are where a command may work:
+ * the organizations AND the units below them — a sub-org, a project (`kind: "project"`) —
+ * each under its child handle, `top:part` (`studio:acme`), and a unit with no handle by its
+ * `unit_uuid`. They differ exactly where a workspace is no scope: a child handle names none.
+ * The login's `--org` and its pick read `workspaces` (`backend/workspace.js`). ⛔ *Until
+ * 2026-10-22 both read `orgs`, which listed sub-orgs then; since that day it lists none, so a
+ * login refused a project or a sub-org even when a `409` had just named it.*
  *
  *   POST /dev/orgs { handle } → { handle, uuid, is_primary }
  *
@@ -114,9 +126,13 @@ export function validateHandle(handle) {
 }
 
 /**
- * The picker read: memberships + the caller's account handle + whether the
- * personal org already exists.
- * @returns {Promise<{account_handle: string|null, orgs: Array<{handle: string, is_primary: boolean}>}>}
+ * The orgs read: the caller's account handle, the scopes (`orgs`) and the workspaces.
+ *
+ * `workspaces` is null when the answer carries no list — a backend older than the list
+ * (2026-10-22). The workspace readers refuse then, saying so (`backend/workspace.js`);
+ * they never stand `orgs` in for it, which leaves the units below an org out.
+ *
+ * @returns {Promise<{account_handle: string|null, orgs: Array<{handle: string, is_primary: boolean}>, workspaces: Array<{unit_uuid?: string, handle?: string|null, kind?: string, is_primary?: boolean}>|null}>}
  */
 export async function fetchOrgs({ apiBase, token, fetchImpl = globalThis.fetch }) {
   const res = await fetchImpl(`${apiBase.replace(/\/$/, '')}${ORGS_PATH}`, {
@@ -129,7 +145,8 @@ export async function fetchOrgs({ apiBase, token, fetchImpl = globalThis.fetch }
   const data = await res.json().catch(() => null)
   return {
     account_handle: data?.account_handle ?? null,
-    orgs: Array.isArray(data?.orgs) ? data.orgs : []
+    orgs: Array.isArray(data?.orgs) ? data.orgs : [],
+    workspaces: Array.isArray(data?.workspaces) ? data.workspaces : null
   }
 }
 

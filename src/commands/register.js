@@ -407,6 +407,13 @@ async function deriveScopeFromLogin(client, args) {
     )
     return fromWorkspace
   }
+  // A unit below an organization — a sub-org, a project — is a workspace and no scope (backend,
+  // 2026-10-22), so a bare name is asked for one as when no workspace names any.
+  if (typeof ws.workspace === 'string' && ws.workspace.includes(':')) {
+    console.error(
+      `${colors.dim}${ws.workspace}, the workspace you work in, is a unit below an organization, and names no scope.${colors.reset}`
+    )
+  }
   const sess = await readRegistryAuth(client.origin)
   const derived = await deriveScope({
     apiBase: client.origin,

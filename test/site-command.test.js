@@ -30,7 +30,7 @@ function sitesBackend({ sites = [], onDelete, onUnpublish } = {}) {
     const u = new URL(url)
     const method = init.method || 'GET'
     seen.push({ method, path: u.pathname, query: u.search, workspace: init.headers?.['x-uniweb-workspace'] ?? null })
-    if (u.pathname === '/dev/orgs') return Response.json({ account_handle: 'jane', orgs: [] })
+    if (u.pathname === '/dev/orgs') return Response.json({ account_handle: 'jane', orgs: [], workspaces: [] })
     if (u.pathname === '/dev/site' && method === 'GET') {
       const limit = Number(u.searchParams.get('limit'))
       const offset = Number(u.searchParams.get('offset'))

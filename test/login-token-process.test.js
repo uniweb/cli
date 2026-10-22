@@ -42,7 +42,7 @@ const ENV_KEYS = [
  * Run a login with HOME holding `session` for ORIGIN (or none), no terminal, `env` set,
  * and a backend that accepts the bearer `GOOD` — every request recorded with its bearer.
  */
-async function scene({ session = null, env = {}, orgs = [] } = {}, fn) {
+async function scene({ session = null, env = {}, orgs = [], workspaces = null } = {}, fn) {
   const home = mkdtempSync(join(tmpdir(), 'uw-login-token-'))
   if (session) {
     mkdirSync(join(home, '.uniweb'), { recursive: true })
@@ -69,7 +69,9 @@ async function scene({ session = null, env = {}, orgs = [] } = {}, fn) {
       })
     }
     if (String(url).endsWith('/dev/orgs')) {
-      return new Response(JSON.stringify({ account_handle: 'dev', orgs }), { status: 200 })
+      // Each organization is a workspace too (`workspaces`, what the header admits).
+      const listed = workspaces ?? orgs.map((o) => ({ unit_uuid: null, handle: o.handle, kind: 'org', is_primary: !!o.is_primary }))
+      return new Response(JSON.stringify({ account_handle: 'dev', orgs, workspaces: listed }), { status: 200 })
     }
     return new Response('{}', { status: 404 })
   }
@@ -183,7 +185,7 @@ test('its workspace is UNIWEB_WORKSPACE — and an account in organizations, wit
     () => runRegistryLogin({ apiBase: ORIGIN, args: [] })
   )
   assert.equal(stranger.exitCode, 2)
-  assert.match(stranger.text, /UNIWEB_WORKSPACE=@nope is not one of this account's organizations/)
+  assert.match(stranger.text, /UNIWEB_WORKSPACE=@nope is not one of this account's workspaces/)
 
   const garbled = await scene(
     { env: { UNIWEB_TOKEN: 'GOOD', UNIWEB_SERVER: ORIGIN, UNIWEB_WORKSPACE: '@' } },
@@ -191,6 +193,22 @@ test('its workspace is UNIWEB_WORKSPACE — and an account in organizations, wit
   )
   assert.equal(garbled.exitCode, 2)
   assert.match(garbled.text, /names no workspace/)
+})
+
+test('UNIWEB_WORKSPACE may name a project — a workspace the orgs read lists, though no scope', async () => {
+  const { exitCode, text } = await scene(
+    {
+      env: { UNIWEB_TOKEN: 'GOOD', UNIWEB_SERVER: ORIGIN, UNIWEB_WORKSPACE: '@studio:acme' },
+      orgs: [{ handle: 'studio', is_primary: true }],
+      workspaces: [
+        { unit_uuid: null, handle: 'studio', kind: 'org', is_primary: true },
+        { unit_uuid: null, handle: 'studio:acme', kind: 'project', is_primary: false }
+      ]
+    },
+    () => runRegistryLogin({ apiBase: ORIGIN, args: [] })
+  )
+  assert.equal(exitCode, 0)
+  assert.match(text, /They work in @studio:acme \(UNIWEB_WORKSPACE\)/)
 })
 
 test('a login that names a way to sign in still stores its session — saying this process does not use it', async () => {

@@ -2851,11 +2851,12 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 **Content authors work visually in the Uniweb App.** They compose the same extended markdown and set the same component params you defined, through a visual editor — never touching code, git, or the CLI. They see exactly the section types your foundation offers and exactly the knobs each one exposes, because **every `meta.js` is registered as the foundation's schema** when you publish. Your `meta.js` is the app's UI (see *meta.js* in Part 4).
 
 > ⚠️ **Every push, pull and publish works in ONE workspace — the one chosen at `uniweb login`.**
-> A workspace is your personal one or an organization's. A site a push or publish **creates** is
+> A workspace is your personal one, an organization's, or a sub-organization's or project's in one
+> (`@studio:acme`). A site a push or publish **creates** is
 > created — owned, and its storage billed — there, and there is no CLI command to move it
 > afterwards. A site the backend keeps in **another** workspace stops the command, which says how
-> to switch. With no organization, the login works in your personal workspace; with
-> organizations, the login asks, or you name it:
+> to switch. With no organization or project, the login works in your personal workspace;
+> otherwise the login asks, or you name it:
 >
 > ```bash
 > uniweb login --org @acme      # work in an organization
@@ -2865,7 +2866,7 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 >
 > Already logged in, `uniweb login --org @other` (or `--personal`) switches the workspace on the
 > backend you are logged in to, without logging in again. **Without a
-> terminal — you, an agent — a login with organizations and no workspace named signs you in but
+> terminal — you, an agent — a login with organizations or projects and no workspace named signs you in but
 > exits 2**: `uniweb login --org @acme` (or `--personal`) finishes it without signing in again.
 > Until then every command that works on a site refuses, and so does registering a foundation whose
 > name has no scope. A process logged in with `UNIWEB_TOKEN` names its workspace with

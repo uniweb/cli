@@ -171,7 +171,9 @@ test('a site in the personal workspace, or in a unit with no handle, is said as 
 
   const unit = recorded(wrongWorkspace(null, UNIT))
   unit.client.setWorkspace('@acme')
-  await assert.rejects(unit.client.request(SITE), new RegExp(`in the unit ${UNIT}.*It has no handle`))
+  // A unit with no handle is worked in by its uuid — the login chooses one from the orgs read's
+  // `workspaces`. Until 2026-10-22 this said "It has no handle, so the CLI cannot work in it".
+  await assert.rejects(unit.client.request(SITE), new RegExp(`in the unit ${UNIT}.*uniweb login --server http://backend\\.test --org ${UNIT}`))
 })
 
 test('⛔ `workspace: null` is NOT the personal workspace — there is none to switch to, from any workspace', async () => {

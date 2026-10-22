@@ -20,8 +20,19 @@ import { resolveWorkspace, chooseWorkspace, PERSONAL } from '../src/backend/work
 
 const ORIGIN = 'http://backend.test'
 
+/** A unit's uuid, as the orgs read gives one. */
+const uuid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+
+/**
+ * The orgs read's `workspaces` for `orgs` alone — each organization is a workspace too. A
+ * scene that means the units below one passes its own list; `null` answers with none, as a
+ * backend older than the list does.
+ */
+const workspacesOf = (orgs) =>
+  (orgs || []).map((o, i) => ({ unit_uuid: uuid(i + 1), handle: o.handle, kind: 'org', is_primary: !!o.is_primary }))
+
 /** Run `fn` with HOME holding `session` for ORIGIN (or none), env set, fetch stubbed. */
-async function scene({ session = null, env = {}, orgs = null, account = 'dev', me = true } = {}, fn) {
+async function scene({ session = null, env = {}, orgs = null, workspaces, account = 'dev', me = true } = {}, fn) {
   const home = mkdtempSync(join(tmpdir(), 'uw-ws-'))
   if (session) {
     mkdirSync(join(home, '.uniweb'), { recursive: true })
@@ -51,7 +62,11 @@ async function scene({ session = null, env = {}, orgs = null, account = 'dev', m
   globalThis.fetch = async (url) => {
     requests.push(String(url))
     if (String(url).endsWith('/dev/orgs')) {
-      return new Response(JSON.stringify({ account_handle: account, orgs: orgs || [] }), { status: 200 })
+      const listed = workspaces === undefined ? workspacesOf(orgs) : workspaces
+      return new Response(
+        JSON.stringify({ account_handle: account, orgs: orgs || [], ...(listed === null ? {} : { workspaces: listed }) }),
+        { status: 200 }
+      )
     }
     if (String(url).endsWith('/dev/auth/me') && me) {
       return new Response(JSON.stringify({ account: { uuid: 'u-1', username: account, handle: account } }), { status: 200 })
@@ -147,12 +162,69 @@ test('a login with no organization works in the personal workspace, said not ask
   assert.match(result.note, /no organization/)
 })
 
-test('--org must name an organization you belong to', async () => {
+test('--org must name a workspace you can open', async () => {
   const { result: ok } = await scene({ orgs: ACME }, () => chooseWorkspace({ apiBase: ORIGIN, token: 't', args: ['--org', '@acme'] }))
   assert.equal(ok.choice, '@acme')
   const { result: no } = await scene({ orgs: ACME }, () => chooseWorkspace({ apiBase: ORIGIN, token: 't', args: ['--org', '@beta'] }))
   assert.equal(no.refused, true)
-  assert.match(no.reason, /not a member of @beta/)
+  assert.match(no.reason, /@beta is not a workspace you can open on http:\/\/backend\.test\. Your workspaces: @acme, --personal\./)
+})
+
+// ⭐ A WORKSPACE IS NOT A SCOPE (backend, 2026-10-22): the orgs read's `orgs` are the scopes and
+// leave every unit below an org out; its `workspaces` are what the header admits, a sub-org and a
+// project under their child handles. ⛔ Until then the login checked `orgs`, so it refused a project
+// or a sub-org even when a 409 had just named it.
+const STUDIO = [{ handle: 'studio', is_primary: true }]
+const STUDIO_WORKSPACES = [
+  { unit_uuid: uuid(1), handle: 'studio', kind: 'org', is_primary: true },
+  { unit_uuid: uuid(2), handle: 'studio:acme', kind: 'project', is_primary: false },
+  { unit_uuid: uuid(3), handle: 'studio:labs', kind: 'org', is_primary: false }
+]
+
+test('⭐ --org may name a project or a sub-org — listed as a workspace, though not as a scope', async () => {
+  const at = { orgs: STUDIO, workspaces: STUDIO_WORKSPACES }
+  const { result: project } = await scene(at, () => chooseWorkspace({ apiBase: ORIGIN, token: 't', args: ['--org', '@studio:acme'] }))
+  assert.equal(project.choice, '@studio:acme')
+  const { result: sub } = await scene(at, () => chooseWorkspace({ apiBase: ORIGIN, token: 't', args: ['--org', 'studio:labs'] }))
+  assert.equal(sub.choice, '@studio:labs')
+  // CONTROL — what the list does not name is refused, and the refusal names the list.
+  const { result: no } = await scene(at, () => chooseWorkspace({ apiBase: ORIGIN, token: 't', args: ['--org', '@studio:other'] }))
+  assert.equal(no.refused, true)
+  assert.match(no.reason, /Your workspaces: @studio, @studio:acme, @studio:labs, --personal\./)
+})
+
+test('a unit with no handle is chosen by its uuid — in any case — and worked in by it', async () => {
+  const U = uuid(9)
+  const at = { orgs: [], workspaces: [{ unit_uuid: U, handle: null, kind: 'org', is_primary: false }] }
+  const { result } = await scene(at, () => chooseWorkspace({ apiBase: ORIGIN, token: 't', args: ['--org', U.toUpperCase()] }))
+  assert.equal(result.choice, U)
+  const { result: ws } = await scene({ session: { token: 't', workspace: U } }, () => resolveWorkspace({ client: client() }))
+  assert.deepEqual(ws, { workspace: U, source: 'login' })
+  const { result: flag } = await scene({}, () => resolveWorkspace({ client: client(), args: ['--org', U] }))
+  assert.deepEqual(flag, { workspace: U, source: 'flag' })
+})
+
+test('a project counts as a workspace: with one and no workspace chosen, none is assumed', async () => {
+  const at = { orgs: [], workspaces: [{ unit_uuid: uuid(2), handle: 'studio:acme', kind: 'project', is_primary: false }] }
+  const { result: login } = await scene(at, () => chooseWorkspace({ apiBase: ORIGIN, token: 't' }))
+  assert.equal(login.refused, true)
+  assert.match(login.reason, /--org @studio:acme \(or --personal\)/)
+  const { result: command } = await scene({ ...at, session: { token: 't' } }, () => resolveWorkspace({ client: client() }))
+  assert.equal(command.refused, true)
+  assert.match(command.reason, /organizations or projects, so no workspace is assumed/)
+})
+
+test('⛔ an orgs read with no workspaces list is refused, saying so — never checked against orgs', async () => {
+  const { result: login } = await scene({ orgs: ACME, workspaces: null }, () =>
+    chooseWorkspace({ apiBase: ORIGIN, token: 't', args: ['--org', '@acme'] })
+  )
+  assert.equal(login.refused, true)
+  assert.match(login.reason, /http:\/\/backend\.test lists no workspaces/)
+  const { result: command } = await scene({ orgs: [], workspaces: null, session: { token: 't' } }, () =>
+    resolveWorkspace({ client: client() })
+  )
+  assert.equal(command.refused, true, 'not personal: an absent list is not an empty one')
+  assert.match(command.reason, /lists no workspaces/)
 })
 
 test('organizations and no terminal: refused, naming every workspace you can choose', async () => {
@@ -266,7 +338,7 @@ test('a switch to a workspace you are not a member of leaves the one you work in
   assert.equal(readSession(home).workspace, '@acme')
   assert.match(printed, /working in .*@acme.* — unchanged/)
   assert.doesNotMatch(printed, /no workspace chosen yet/)
-  assert.match(printed, /not a member of @beta/)
+  assert.match(printed, /@beta is not a workspace you can open/)
 })
 
 test('⭐ switching workspace needs no new login — --org on a valid session', async () => {

@@ -23,13 +23,19 @@
  *
  * ⛔ **The personal workspace is named by naming NONE.** `@<your handle>` is your personal
  * SCOPE — a registry namespace for foundations and data schemas — not a workspace.
+ *
+ * ⭐ **A workspace is any unit the backend lets a request name** (backend, 2026-10-22): an
+ * organization, and the units below one — a sub-org, a project — each under its child handle,
+ * `@top:part` (`@studio:acme`); a unit with no handle by its uuid. The login checks and offers
+ * them from the orgs read's `workspaces`, never its `orgs`, which are the SCOPES and leave every
+ * child unit out (`registry-orgs.js`). A child handle names a workspace and no scope.
  */
 
 import { readOrgFlag } from '../utils/args.js'
 import { loginCommand } from '../utils/config.js'
 import { fetchOrgs, bareHandle, validateHandle } from '../utils/registry-orgs.js'
 import { readRegistryAuth } from '../utils/registry-auth.js'
-import { workspaceHandle, describeWorkspace } from './client.js'
+import { workspaceHandle, describeWorkspace, isUnitUuid } from './client.js'
 
 export { describeWorkspace }
 
@@ -40,17 +46,57 @@ export const PERSONAL = 'personal'
 export const WORKSPACE_ENV = 'UNIWEB_WORKSPACE'
 
 /**
- * A workspace choice as it may be written — `@acme`, `acme`, `personal` — or null when
- * the value names none.
+ * A workspace as `--org` names it, in the header's form: a unit's uuid when the value is
+ * written bare and shaped like one — the header's own rule, where the `@` tells the two
+ * apart — else a handle, `@acme` or `@studio:acme`. Null when the value names none.
  *
  * @param {unknown} value
- * @returns {string|null} `@acme`, `PERSONAL`, or null
+ * @returns {string|null}
+ */
+export function namedWorkspace(value) {
+  if (typeof value !== 'string' || !value.trim()) return null
+  const v = value.trim()
+  return isUnitUuid(v) ? v.toLowerCase() : workspaceHandle(v)
+}
+
+/**
+ * A workspace choice as it may be written — `@acme`, `acme`, `@studio:acme`, a unit's uuid,
+ * `personal` — or null when the value names none.
+ *
+ * @param {unknown} value
+ * @returns {string|null} `@acme`, a uuid, `PERSONAL`, or null
  */
 export function parseWorkspaceChoice(value) {
   if (typeof value !== 'string' || !value.trim()) return null
   const v = value.trim()
-  return v === PERSONAL ? PERSONAL : workspaceHandle(v)
+  return v === PERSONAL ? PERSONAL : namedWorkspace(v)
 }
+
+/**
+ * The workspaces the orgs read lists — what the header admits — each by the name a request
+ * gives it: `@handle`, or the unit's uuid when it has none. Null when the answer carries no
+ * list, which a workspace reader refuses (`noWorkspaceList`).
+ *
+ * @param {{ workspaces?: Array<{ unit_uuid?: string, handle?: string|null, kind?: string, is_primary?: boolean }>|null }|null} envelope
+ * @returns {Array<{ name: string, kind: string|null, primary: boolean }>|null}
+ */
+export function listedWorkspaces(envelope) {
+  if (!Array.isArray(envelope?.workspaces)) return null
+  return envelope.workspaces
+    .map((w) => ({
+      name: w?.handle ? workspaceHandle(w.handle) : isUnitUuid(w?.unit_uuid) ? w.unit_uuid.trim().toLowerCase() : null,
+      kind: typeof w?.kind === 'string' ? w.kind : null,
+      primary: w?.is_primary === true
+    }))
+    .filter((w) => w.name)
+}
+
+/**
+ * What a backend whose orgs read lists no workspaces is told. ⛔ The CLI does not check
+ * against `orgs` in its place: that list leaves out every unit below an org.
+ */
+export const noWorkspaceList = (origin) =>
+  `${origin} lists no workspaces, so the CLI cannot check or offer one — that backend is older than this CLI.`
 
 /** A choice in the header's form: `@acme`, or null for the personal workspace. */
 export function headerOf(choice) {
@@ -62,7 +108,7 @@ export const SOURCE_LABEL = {
   flag: 'named on this command',
   env: WORKSPACE_ENV,
   login: 'your login',
-  personal: 'you belong to no organization',
+  personal: 'you belong to no organization or project',
   offline: 'not resolved in a preview'
 }
 
@@ -88,7 +134,7 @@ const choose = (origin) =>
  */
 export async function resolveWorkspace({ client, args = [], offline = false }) {
   const flag = readOrgFlag(args)
-  if (flag) return { workspace: workspaceHandle(flag), source: 'flag' }
+  if (flag) return { workspace: namedWorkspace(flag), source: 'flag' }
   if (args.includes('--personal')) return { workspace: null, source: 'flag' }
 
   const raw = process.env[WORKSPACE_ENV]
@@ -118,11 +164,14 @@ export async function resolveWorkspace({ client, args = [], offline = false }) {
   const now = await fromSession()
   if (now) return { workspace: headerOf(now), source: 'login' }
 
-  const { orgs } = await client.fetchOrgs()
-  if (!orgs.length) return { workspace: null, source: 'personal' }
+  // Personal only when it is the one workspace there is — a project counts as much as an
+  // organization (`listedWorkspaces`).
+  const listed = listedWorkspaces(await client.fetchOrgs())
+  if (!listed) return { refused: true, reason: noWorkspaceList(client.origin) }
+  if (!listed.length) return { workspace: null, source: 'personal' }
   return {
     refused: true,
-    reason: `You belong to organizations, so no workspace is assumed.\n  ${choose(client.origin)}`
+    reason: `You belong to organizations or projects, so no workspace is assumed.\n  ${choose(client.origin)}`
   }
 }
 
@@ -138,8 +187,9 @@ export async function resolveWorkspace({ client, args = [], offline = false }) {
  *
  * Null when the workspace names no scope, and the caller derives one as before
  * (`deriveScope`): none is chosen (you belong to organizations and none is named), the
- * command is a preview, the workspace is a unit without a handle, or the account has no
- * handle (a service account).
+ * command is a preview, the workspace is a unit without a handle, the workspace is a unit
+ * below an organization — a sub-org or a project, whose child handle (`@studio:acme`) names
+ * no scope (backend, 2026-10-22) — or the account has no handle (a service account).
  *
  * @param {{ workspace?: string|null, source?: string, refused?: boolean }} ws -
  *   `resolveWorkspace`'s answer
@@ -149,7 +199,9 @@ export async function resolveWorkspace({ client, args = [], offline = false }) {
  */
 export function scopeOfWorkspace(ws, accountHandle) {
   if (!ws || ws.refused || ws.source === 'offline') return null
-  if (typeof ws.workspace === 'string') return ws.workspace.startsWith('@') ? ws.workspace : null
+  if (typeof ws.workspace === 'string') {
+    return ws.workspace.startsWith('@') && !ws.workspace.includes(':') ? ws.workspace : null
+  }
   const h = bareHandle(accountHandle || '')
   return h && !validateHandle(h) ? `@${h}` : null
 }
@@ -158,42 +210,46 @@ export function scopeOfWorkspace(ws, accountHandle) {
  * The workspace a login works in — asked once, at `uniweb login`, and stored with the
  * session.
  *
- *   `--org @acme`            must be an organization you belong to
+ *   `--org @acme`            must be a workspace the orgs read lists — an organization, or
+ *                            a sub-org or a project under its child handle (`@studio:acme`),
+ *                            or a unit with no handle by its uuid
  *   `--personal`             your personal workspace
- *   neither, no organization your personal workspace — said, not asked
- *   neither, organizations   a pick at a terminal; refused without one
+ *   neither, none listed     your personal workspace — said, not asked
+ *   neither, some listed     a pick at a terminal; refused without one
  *
  * @param {object} p
  * @param {string} p.apiBase
  * @param {string} p.token
  * @param {string[]} [p.args]
  * @returns {Promise<{ choice: string, note?: string } | { refused: true, reason: string }>}
- *   `choice` is `@acme` or `PERSONAL`
+ *   `choice` is `@acme`, a unit's uuid, or `PERSONAL`
  */
 export async function chooseWorkspace({ apiBase, token, args = [] }) {
   const flag = readOrgFlag(args)
   if (!flag && args.includes('--personal')) return { choice: PERSONAL }
 
-  const { orgs } = await fetchOrgs({ apiBase, token })
-  const mine = orgs.map((o) => `@${o.handle}`)
+  const listed = listedWorkspaces(await fetchOrgs({ apiBase, token }))
+  if (!listed) return { refused: true, reason: noWorkspaceList(apiBase) }
+  const mine = listed.map((w) => w.name)
   if (flag) {
-    const h = workspaceHandle(flag)
-    if (!mine.includes(h)) {
+    const named = namedWorkspace(flag)
+    if (!named) return { refused: true, reason: `--org ${flag} names no workspace — give @org, or --personal.` }
+    if (!mine.includes(named)) {
       return {
         refused: true,
         reason:
-          `You are not a member of ${h} on ${apiBase}. ` +
+          `${describeWorkspace(named)} is not a workspace you can open on ${apiBase}. ` +
           (mine.length
             ? `Your workspaces: ${[...mine, `--personal`].join(', ')}.`
-            : 'You belong to no organization — use --personal.')
+            : 'You belong to no organization or project — use --personal.')
       }
     }
-    return { choice: h }
+    return { choice: named }
   }
-  if (!orgs.length) {
+  if (!listed.length) {
     return {
       choice: PERSONAL,
-      note: 'You belong to no organization, so you work in your personal workspace.'
+      note: 'You belong to no organization or project, so you work in your personal workspace.'
     }
   }
 
@@ -207,7 +263,7 @@ export async function chooseWorkspace({ apiBase, token, args = [] }) {
   if (isNonInteractive(args)) {
     return {
       refused: true,
-      reason: `You belong to organizations, so no workspace is assumed. ${howToChoose}`
+      reason: `You belong to organizations or projects, so no workspace is assumed. ${howToChoose}`
     }
   }
   const prompts = (await import('prompts')).default
@@ -218,9 +274,9 @@ export async function chooseWorkspace({ apiBase, token, args = [] }) {
       message: 'Which workspace do you work in?',
       choices: [
         { title: 'Personal — your own sites', value: PERSONAL },
-        ...orgs.map((o) => ({
-          title: `@${o.handle}${o.is_primary ? ' (primary)' : ''}`,
-          value: `@${o.handle}`
+        ...listed.map((w) => ({
+          title: `${describeWorkspace(w.name)}${w.kind === 'project' ? ' — a project' : ''}${w.primary ? ' (primary)' : ''}`,
+          value: w.name
         }))
       ],
       initial: 0

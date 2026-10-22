@@ -1815,16 +1815,17 @@ Without --server: https://uniweb.app (or \$UNIWEB_SERVER). No command talks
 to a backend you are not logged in to — run one before logging in and it asks first.
 
 ${colors.bright}The workspace you work in.${colors.reset} A login works in ONE workspace — your
-personal one, or an organization's — and every push, pull and publish works in it:
-a site it creates is created there, and a site kept in another workspace is refused.
-With no organization it is your personal workspace; with organizations you are asked,
-or name it. Already logged in, \`uniweb login --org @other\` (or \`--personal\`) switches
+personal one, an organization's, or a sub-organization's or project's in one
+(@studio:acme) — and every push, pull and publish works in it: a site it creates is
+created there, and a site kept in another workspace is refused. With no organization
+or project it is your personal workspace; with some you are asked, or name it. Already logged in, \`uniweb login --org @other\` (or \`--personal\`) switches
 the workspace on the backend you are logged in to, without logging in again.
 
 ${colors.bright}Options:${colors.reset}
   --server <url>    The backend to log in to (without it: the default backend — or, for
                      --org / --personal alone, the one you are logged in to)
-  --org @org         Work in @org (an organization you belong to)
+  --org @org         Work in @org — an organization, sub-organization or project you
+                     belong to (@studio:acme); a unit with no handle, by its uuid
   --personal         Work in your personal workspace
   --token <bearer>   Seed + verify a session from a bearer token (non-interactive)
   --browser          Force the browser method
@@ -1833,7 +1834,7 @@ ${colors.bright}Options:${colors.reset}
 
 In non-interactive mode (no TTY — an agent, a script), pass \`--token <bearer>\` with
 \`--org @org\` or \`--personal\`, or set \`UNIWEB_USERNAME\` + \`UNIWEB_PASSWORD\`.
-A login with organizations that names no workspace signs you in but exits 2;
+A login with organizations or projects that names no workspace signs you in but exits 2;
 \`uniweb login --org @org\` (or \`--personal\`) finishes it without signing in again.
 \`uniweb logout\` logs you out.
 

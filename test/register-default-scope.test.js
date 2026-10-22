@@ -64,7 +64,9 @@ async function settle({ session = null, env = {}, orgs = [], account = 'dev', ar
   globalThis.fetch = async (url) => {
     requests.push(String(url))
     if (String(url).endsWith('/dev/orgs')) {
-      return new Response(JSON.stringify({ account_handle: account, orgs }), { status: 200 })
+      // Each organization is a workspace too (`workspaces`, what the header admits).
+      const workspaces = orgs.map((o) => ({ unit_uuid: null, handle: o.handle, kind: 'org', is_primary: !!o.is_primary }))
+      return new Response(JSON.stringify({ account_handle: account, orgs, workspaces }), { status: 200 })
     }
     return new Response('{}', { status: 404 })
   }
@@ -134,6 +136,18 @@ test('no workspace chosen and organizations, no terminal → refused, and nothin
   assert.doesNotMatch(r.printed, /Registering under/)
 })
 
+// A unit below an organization names no scope (backend, 2026-10-22): `@studio:acme/…` is refused
+// as a scope nobody holds. So a bare name is asked for one as when no workspace names any — here
+// with no terminal, refused — and is never written under the child handle.
+test('the login works in a project → no scope from it: said, then asked as before', async () => {
+  const r = await settle({ session: { workspace: '@studio:acme' }, orgs: [{ handle: 'studio' }] })
+  assert.equal(r.result, null)
+  assert.match(r.main, /name: 'marketing'/, 'the name is left bare')
+  assert.match(r.printed, /@studio:acme, the workspace you work in, is a unit below an organization, and names no scope/)
+  assert.match(r.printed, /so no scope is assumed/)
+  assert.doesNotMatch(r.main, /studio:acme/)
+})
+
 test('a scoped name is untouched, and no workspace or org is read for it', async () => {
   const r = await settle({ session: { workspace: '@acme' }, name: '@other/marketing' })
   assert.deepEqual(r.result, { scope: '@other', source: 'main.js' })
@@ -156,6 +170,8 @@ test('scopeOfWorkspace — what names a scope and what does not', () => {
   assert.equal(scopeOfWorkspace({ refused: true, reason: 'x' }, 'dev'), null)
   assert.equal(scopeOfWorkspace({ workspace: null, source: 'offline' }, 'dev'), null)
   assert.equal(scopeOfWorkspace({ workspace: '0c44a1b2-1111-4222-8333-944455556666', source: 'login' }, 'dev'), null)
+  // A unit below an organization — a project, a sub-org — is a workspace and no scope (backend, 2026-10-22).
+  assert.equal(scopeOfWorkspace({ workspace: '@studio:acme', source: 'login' }, 'dev'), null)
   assert.equal(scopeOfWorkspace({ workspace: null, source: 'login' }, null), null)
   assert.equal(scopeOfWorkspace({ workspace: null, source: 'login' }, 'Not_A_Handle'), null)
 })
