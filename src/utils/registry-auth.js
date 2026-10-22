@@ -952,8 +952,16 @@ async function reportTokenProcess({ named, token }) {
   // Their workspace is UNIWEB_WORKSPACE's — never the stored session's — and, with none
   // named, personal for an account in no organization or project (resolveWorkspace,
   // workspace.js). Checked, as a login's `--org` is, against the workspaces the orgs read lists.
-  const { WORKSPACE_ENV, PERSONAL, parseWorkspaceChoice, headerOf, describeWorkspace, listedWorkspaces, noWorkspaceList } =
-    await import('../backend/workspace.js')
+  const {
+    WORKSPACE_ENV,
+    PERSONAL,
+    parseWorkspaceChoice,
+    headerOf,
+    describeWorkspace,
+    listedWorkspaces,
+    noWorkspaceList,
+    ownHandle
+  } = await import('../backend/workspace.js')
   const unsettled = (reason, { commandsRefuse }) => {
     console.error(`\x1b[31m✗\x1b[0m ${reason}`)
     if (commandsRefuse) {
@@ -968,18 +976,27 @@ async function reportTokenProcess({ named, token }) {
       commandsRefuse: true
     })
   }
-  let listed
+  let envelope
   try {
-    listed = listedWorkspaces(await (await import('./registry-orgs.js')).fetchOrgs({ apiBase: origin, token }))
+    envelope = await (await import('./registry-orgs.js')).fetchOrgs({ apiBase: origin, token })
   } catch (err) {
     console.error(`\x1b[33m⚠\x1b[0m ${err.message} — the workspace is not checked.`)
     return
   }
+  const listed = listedWorkspaces(envelope)
   if (!listed) {
     console.error(`\x1b[33m⚠\x1b[0m ${noWorkspaceList(origin)}`)
     return
   }
   const mine = listed.map((w) => w.name)
+  if (choice && choice === ownHandle(envelope)) {
+    // As a login refuses `--org @<own handle>` (chooseWorkspace): a handle names a person or an org,
+    // and only an org is a workspace.
+    unsettled(
+      `${WORKSPACE_ENV}=${raw} names the account's own handle, which names no workspace — its personal workspace is ${WORKSPACE_ENV}=personal.`,
+      { commandsRefuse: false }
+    )
+  }
   if (choice && choice !== PERSONAL && !mine.includes(choice)) {
     // As a login refuses `--org` for one (chooseWorkspace).
     unsettled(`${WORKSPACE_ENV}=${raw} is not one of this account's workspaces on ${origin}.`, {

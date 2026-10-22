@@ -195,6 +195,15 @@ test('its workspace is UNIWEB_WORKSPACE — and an account in organizations, wit
   assert.match(garbled.text, /names no workspace/)
 })
 
+test('UNIWEB_WORKSPACE naming the account\'s own handle is refused, naming its personal workspace (exit 2)', async () => {
+  const { exitCode, text } = await scene(
+    { env: { UNIWEB_TOKEN: 'GOOD', UNIWEB_SERVER: ORIGIN, UNIWEB_WORKSPACE: '@dev' }, orgs: [{ handle: 'acme', is_primary: true }] },
+    () => runRegistryLogin({ apiBase: ORIGIN, args: [] })
+  )
+  assert.equal(exitCode, 2)
+  assert.match(text, /UNIWEB_WORKSPACE=@dev names the account's own handle, which names no workspace — its personal workspace is UNIWEB_WORKSPACE=personal\./)
+})
+
 test('UNIWEB_WORKSPACE may name a project — a workspace the orgs read lists, though no scope', async () => {
   const { exitCode, text } = await scene(
     {

@@ -92,6 +92,22 @@ export function listedWorkspaces(envelope) {
 }
 
 /**
+ * The account's own handle, as the header would name it (`@jane`), from the orgs read — or null.
+ *
+ * ⛔ **An account's handle names no workspace** (backend, 2026-10-22, pinned by its tests). A
+ * handle names a person or an org, and only an org is a workspace: the header answers
+ * `@<account handle>` with `400`, never as the personal workspace, which a request names by
+ * naming none. So `--org @<your handle>` is refused, saying what names your own.
+ */
+export function ownHandle(envelope) {
+  return envelope?.account_handle ? workspaceHandle(envelope.account_handle) : null
+}
+
+/** What naming your own handle as a workspace is told — `--personal`, or `UNIWEB_WORKSPACE=personal`. */
+export const ownHandleNamesNone = (named, personal) =>
+  `${named} is your own handle, which names no workspace — your personal workspace is ${personal}.`
+
+/**
  * What a backend whose orgs read lists no workspaces is told. ⛔ The CLI does not check
  * against `orgs` in its place: that list leaves out every unit below an org.
  */
@@ -228,12 +244,14 @@ export async function chooseWorkspace({ apiBase, token, args = [] }) {
   const flag = readOrgFlag(args)
   if (!flag && args.includes('--personal')) return { choice: PERSONAL }
 
-  const listed = listedWorkspaces(await fetchOrgs({ apiBase, token }))
+  const envelope = await fetchOrgs({ apiBase, token })
+  const listed = listedWorkspaces(envelope)
   if (!listed) return { refused: true, reason: noWorkspaceList(apiBase) }
   const mine = listed.map((w) => w.name)
   if (flag) {
     const named = namedWorkspace(flag)
     if (!named) return { refused: true, reason: `--org ${flag} names no workspace — give @org, or --personal.` }
+    if (named === ownHandle(envelope)) return { refused: true, reason: ownHandleNamesNone(named, '--personal') }
     if (!mine.includes(named)) {
       return {
         refused: true,

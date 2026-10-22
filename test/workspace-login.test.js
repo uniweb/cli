@@ -181,6 +181,16 @@ const STUDIO_WORKSPACES = [
   { unit_uuid: uuid(3), handle: 'studio:labs', kind: 'org', is_primary: false }
 ]
 
+// ⛔ AN ACCOUNT'S HANDLE NAMES NO WORKSPACE (backend, 2026-10-22): the header answers it `400`, never
+// as the personal workspace, which a request names by naming none.
+test('--org @<your own handle> is refused, saying what names your personal workspace', async () => {
+  const { result } = await scene({ orgs: ACME, account: 'dev' }, () =>
+    chooseWorkspace({ apiBase: ORIGIN, token: 't', args: ['--org', '@dev'] })
+  )
+  assert.equal(result.refused, true)
+  assert.equal(result.reason, '@dev is your own handle, which names no workspace — your personal workspace is --personal.')
+})
+
 test('⭐ --org may name a project or a sub-org — listed as a workspace, though not as a scope', async () => {
   const at = { orgs: STUDIO, workspaces: STUDIO_WORKSPACES }
   const { result: project } = await scene(at, () => chooseWorkspace({ apiBase: ORIGIN, token: 't', args: ['--org', '@studio:acme'] }))
