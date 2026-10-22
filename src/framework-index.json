@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-21T16:45:14.911Z",
+  "generatedAt": "2026-10-22T17:15:55.292Z",
   "packages": {
     "@uniweb/api": {
-      "version": "1.6.3"
+      "version": "1.6.4"
     },
     "@uniweb/build": {
       "version": "1.7.4"
@@ -42,7 +42,7 @@
       "version": "1.0.1"
     },
     "@uniweb/schemas": {
-      "version": "1.6.4"
+      "version": "1.6.5"
     },
     "@uniweb/scholar": {
       "version": "1.1.0"
