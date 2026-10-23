@@ -338,8 +338,8 @@ export function describeUnplacedRecords({ docs, taken, skipped }) {
 }
 
 // Read a pull lane's bytes into entity `$`-documents. The backend serves a `.uwx`
-// (our Stored ZIP: `manifest.json` + `entities/<uuid>.json`); the entity files ARE the
-// documents. Falls back to a JSON body (a raw doc, a `{document}`/`{entity}` envelope,
+// (a ZIP of `manifest.json` + `entities/<uuid>.json`, each entry Stored or Deflate —
+// `readZip` reads both); the entity files ARE the documents. Falls back to a JSON body (a raw doc, a `{document}`/`{entity}` envelope,
 // or a list) so the lane survives a future envelope change. Returns an array (possibly
 // empty).
 export function readPullDocuments(buf) {

@@ -21,12 +21,14 @@
  *
  * ## Two things measured on a real payload, both of which would break a naive reader
  *
- * 1. ⛔ **The archive is NOT "stored".** `pull.js` describes the format as *"our
- *    Stored ZIP"*, and that is true of `manifest.json` and false of the entity
- *    files — measured on a live pull: `manifest.json` method 0 (STORED), the
- *    entity JSON method 8 (DEFLATED). A stored-only reader silently yields the
+ * 1. ⛔ **The archive is NOT "stored".** `pull.js` described the format as *"our
+ *    Stored ZIP"* until 2026-10-23, and that is true of `manifest.json` and false of
+ *    the entity files — measured on a live pull: `manifest.json` method 0 (STORED),
+ *    the entity JSON method 8 (DEFLATED). A stored-only reader silently yields the
  *    manifest and drops the document, i.e. it returns success and no entities.
- *    **Both methods are handled below and the tests cover a mixed archive.**
+ *    **Both methods are handled below and the tests cover a mixed archive.** Our own
+ *    writer (`@uniweb/build`'s `createZip`) has Deflated too since that day, so no
+ *    `.uwx` in either direction is Stored-only.
  * 2. The entity payload is the *only* thing wanted; `manifest.json` is skipped, as
  *    every other reader in the tree does.
  *
