@@ -78,6 +78,7 @@ import {
   readBackendState,
   siteContentDocumentToProject,
   dataBlockModels,
+  siteDefaultSectionType,
   recordsToProject,
   siteSelfScope,
   readZip,
@@ -829,6 +830,7 @@ export async function pull(args = [], deps = {}) {
   // resolves.
   let keepAuthoredFoundation = false
   let dataModel = null
+  let sectionType
   // The Models the pulled site's queries name, as the push qualified them — the re-bank
   // resolves with them too.
   let pulledQueryModels = []
@@ -854,6 +856,12 @@ export async function pull(args = [], deps = {}) {
     // A translated data block is read back by what its section's type declares it is, as the
     // push translated it — after the registered foundation above, whose section types say it.
     dataModel = await dataBlockModels(siteDir)
+    // The type a section that names none renders with — what the push filled in, and what a
+    // section's file leaves out again. A clone's foundation is the one the document pins.
+    sectionType = await siteDefaultSectionType(
+      siteDir,
+      keepAuthoredFoundation ? null : { foundation: siteDoc?.info?.foundation }
+    )
   }
   // ⭐ THE SCOPE THE PULLED RECORDS AND QUERIES WERE QUALIFIED WITH — the pushed site's
   // FOUNDATION's: the scope of the pinned ref it carries (`info.foundation`), else the
@@ -998,7 +1006,8 @@ export async function pull(args = [], deps = {}) {
         keepAuthoredFoundation,
         // So a query's `@acme/member` comes back as the author's `@/member`.
         scope: pullScope,
-        dataModel
+        dataModel,
+        sectionType
       })
       wrote.push(...report.pages, ...report.sections, ...report.layout)
       removed.push(
