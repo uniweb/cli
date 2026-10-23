@@ -1858,6 +1858,33 @@ test('a 413 says how large the push was, on the lane that sent it, and quotes no
   assert.doesNotMatch(calls.note.join('\n'), /This push sent/)
 })
 
+test("a package refused for what it inflates to says its uncompressed size, beside the limit the backend's refusal names", async () => {
+  // The backend's package limit counts every entry inflated, summed, and its refusal carries
+  // `reason: package_too_large` with `limit` in bytes (backend, 2026-10-23). The size sent is
+  // the wrong number here: this package Deflates 3 MiB of zeros to a few KiB.
+  const dir = tmpSite()
+  const sent = createZip([
+    { name: 'manifest.json', data: Buffer.from('{"uwx":1}') },
+    { name: 'entities/site.json', data: Buffer.alloc(3 * 1024 * 1024) }
+  ])
+  const refused = {
+    ok: false,
+    status: 413,
+    statusText: 'Payload Too Large',
+    text: async () =>
+      JSON.stringify({ status: 413, title: 'Payload Too Large', detail: 'over the package limit', reason: 'package_too_large', limit: 2 * 1024 * 1024 })
+  }
+  const { report, calls } = makeReport()
+  const pkg = siteOnlyPkg({ siteContentUuid: 'S1' })
+  pkg.siteContent = { ...pkg.siteContent, buffer: sent }
+  const res = await pushSyncPackages({ client: { origin: 'http://x', updateSiteContent: async () => refused }, siteDir: dir, pkg, report })
+  assert.equal(res.exitCode, 1)
+  const notes = calls.note.join('\n')
+  // 3 MiB and the manifest's 9 bytes, every entry counted.
+  assert.match(notes, /This push's content is 3\.0 MiB uncompressed — more than the 2 MiB the backend at http:\/\/x takes in one push\./)
+  assert.doesNotMatch(notes, /This push sent/, 'the size on the wire is not what this limit counts')
+})
+
 // ─── ensureSiteExists ─────────────────────────────────────────────────────────
 // The site must exist before any byte is uploaded: bytes are metered against an
 // owning entity and freed by deleting it, so an upload made before the site

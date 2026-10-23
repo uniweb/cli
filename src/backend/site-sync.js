@@ -92,6 +92,17 @@ function entityDocFromUwx(buf) {
   return null
 }
 
+// What a `.uwx`'s entries inflate to, summed — the quantity a backend's package limit counts.
+// null for anything that is not a readable `.uwx`.
+function inflatedSizeOfUwx(buf) {
+  if (!buf || buf.length < 2 || buf[0] !== 0x50 || buf[1] !== 0x4b) return null
+  try {
+    return [...readZip(buf).values()].reduce((n, data) => n + data.length, 0)
+  } catch {
+    return null
+  }
+}
+
 // Every entity `$`-document of a `.uwx` in the order it was submitted — the manifest's, which is
 // what a push's `finalized[].index` counts in. null where a listed file is missing or unreadable.
 function submittedDocsFromUwx(buf) {
@@ -2169,13 +2180,13 @@ export async function pushSyncPackages({
   // `boundUuid` is set only for the lanes that address an EXISTING site by uuid
   // (content UPDATE, folder push) — never for the CREATE, which has no uuid to be
   // wrong about. It is what lets a 404 be read as "the site this clone is bound to
-  // is gone" rather than "the route is missing". `bytes` is the size of the package the
-  // lane sends, which a refusal for size reports.
+  // is gone" rather than "the route is missing". `sent` is the package the lane sends,
+  // which a refusal for size measures.
   const postLane = async (
     label,
     doRequest,
     explainStale = async () => [],
-    { boundUuid = null, reportTemplate = false, bytes = null } = {}
+    { boundUuid = null, reportTemplate = false, sent = null } = {}
   ) => {
     info(`Pushing ${label} to ${dim(client.origin)} …`)
     let res
@@ -2192,7 +2203,7 @@ export async function pushSyncPackages({
       // Two unrelated conflicts share HTTP 409, so branch on the machine-readable
       // `reason` — never on `detail`, which is prose the backend may reword.
       let problem = null
-      if ((res.status === 409 || res.status === 400 || res.status === 403 || res.status === 422) && body) {
+      if ((res.status === 409 || res.status === 400 || res.status === 403 || res.status === 413 || res.status === 422) && body) {
         try {
           problem = JSON.parse(body)
         } catch {
@@ -2378,14 +2389,24 @@ export async function pushSyncPackages({
         )
         note('Deleting this folder removes only your local copy, either way.')
       } else if (res.status === 413) {
-        // ⭐ How large a request may be is the backend's to set, and it counts a request as
-        // sent. So say what this one weighed — the one number on our side — and quote no limit:
+        // ⭐ TWO LIMITS, ON TWO QUANTITIES, BOTH THE BACKEND'S (backend, 2026-10-23): the
+        // request as sent, and the package as its entries inflate. A package refusal names its
+        // limit (`package_too_large`, `limit` in bytes), so quote it beside what this package
+        // inflates to. A request refusal names none, so say what was sent and quote no limit —
         // a copy of theirs here would be a second constant to drift. The package is already
         // Deflated (`createZip`), so there is no smaller form of it to retry with.
-        const size = humanBytes(bytes)
-        note(
-          `${size ? `This push sent ${size}` : 'This push was too large'} — more than the backend at ${client.origin} accepts in one request.`
-        )
+        if (problem?.reason === 'package_too_large') {
+          const inflated = humanBytes(inflatedSizeOfUwx(sent))
+          const limit = humanBytes(problem.limit)
+          note(
+            `${inflated ? `This push's content is ${inflated} uncompressed` : "This push's content is too large"} — more than the ${limit ? `${limit} ` : ''}the backend at ${client.origin} takes in one push.`
+          )
+        } else {
+          const size = humanBytes(sent?.length)
+          note(
+            `${size ? `This push sent ${size}` : 'This push was too large'} — more than the backend at ${client.origin} accepts in one request.`
+          )
+        }
       } else if (problem?.reason === 'template_records_not_copyable' && Array.isArray(problem.records)) {
         // ⭐ A push asking to designate the site a template is refused whole when a record in its
         // folder cannot be copied into the sites made from it — each named, with a `detail` written
@@ -2625,7 +2646,7 @@ export async function pushSyncPackages({
             localBuffer: siteContent.buffer,
             uuid: siteContentUuid
           }),
-        { boundUuid: siteContentUuid, reportTemplate: true, bytes: siteContent.buffer.length }
+        { boundUuid: siteContentUuid, reportTemplate: true, sent: siteContent.buffer }
       )
       if (!finalized) {
         mergeHarvested()
@@ -2641,7 +2662,7 @@ export async function pushSyncPackages({
         'site-content',
         () => client.createSiteContent(siteContent.buffer, { source }),
         undefined,
-        { reportTemplate: true, bytes: siteContent.buffer.length }
+        { reportTemplate: true, sent: siteContent.buffer }
       )
       if (payload === null) return { exitCode: 1, finalizedTotal, wrote }
       const minted = extractMintedSiteUuid(payload)
@@ -2689,7 +2710,7 @@ export async function pushSyncPackages({
       'records',
       () => client.pushFolder(boundSiteUuid, records.buffer, { source }),
       undefined,
-      { boundUuid: boundSiteUuid, bytes: records.buffer.length }
+      { boundUuid: boundSiteUuid, sent: records.buffer }
     )
     if (!finalized) {
       mergeHarvested({ point: false })
