@@ -2169,12 +2169,13 @@ export async function pushSyncPackages({
   // `boundUuid` is set only for the lanes that address an EXISTING site by uuid
   // (content UPDATE, folder push) — never for the CREATE, which has no uuid to be
   // wrong about. It is what lets a 404 be read as "the site this clone is bound to
-  // is gone" rather than "the route is missing".
+  // is gone" rather than "the route is missing". `bytes` is the size of the package the
+  // lane sends, which a refusal for size reports.
   const postLane = async (
     label,
     doRequest,
     explainStale = async () => [],
-    { boundUuid = null, reportTemplate = false } = {}
+    { boundUuid = null, reportTemplate = false, bytes = null } = {}
   ) => {
     info(`Pushing ${label} to ${dim(client.origin)} …`)
     let res
@@ -2376,6 +2377,15 @@ export async function pushSyncPackages({
           `  deleted there  →  uniweb forget --server ${client.origin}, then push again: it creates a NEW site`
         )
         note('Deleting this folder removes only your local copy, either way.')
+      } else if (res.status === 413) {
+        // ⭐ How large a request may be is the backend's to set, and it counts a request as
+        // sent. So say what this one weighed — the one number on our side — and quote no limit:
+        // a copy of theirs here would be a second constant to drift. The package is already
+        // Deflated (`createZip`), so there is no smaller form of it to retry with.
+        const size = humanBytes(bytes)
+        note(
+          `${size ? `This push sent ${size}` : 'This push was too large'} — more than the backend at ${client.origin} accepts in one request.`
+        )
       } else if (problem?.reason === 'template_records_not_copyable' && Array.isArray(problem.records)) {
         // ⭐ A push asking to designate the site a template is refused whole when a record in its
         // folder cannot be copied into the sites made from it — each named, with a `detail` written
@@ -2615,7 +2625,7 @@ export async function pushSyncPackages({
             localBuffer: siteContent.buffer,
             uuid: siteContentUuid
           }),
-        { boundUuid: siteContentUuid, reportTemplate: true }
+        { boundUuid: siteContentUuid, reportTemplate: true, bytes: siteContent.buffer.length }
       )
       if (!finalized) {
         mergeHarvested()
@@ -2631,7 +2641,7 @@ export async function pushSyncPackages({
         'site-content',
         () => client.createSiteContent(siteContent.buffer, { source }),
         undefined,
-        { reportTemplate: true }
+        { reportTemplate: true, bytes: siteContent.buffer.length }
       )
       if (payload === null) return { exitCode: 1, finalizedTotal, wrote }
       const minted = extractMintedSiteUuid(payload)
@@ -2679,7 +2689,7 @@ export async function pushSyncPackages({
       'records',
       () => client.pushFolder(boundSiteUuid, records.buffer, { source }),
       undefined,
-      { boundUuid: boundSiteUuid }
+      { boundUuid: boundSiteUuid, bytes: records.buffer.length }
     )
     if (!finalized) {
       mergeHarvested({ point: false })

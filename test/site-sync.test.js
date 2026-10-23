@@ -1824,6 +1824,40 @@ test('a 404 on the CREATE lane does NOT claim a site was deleted', async () => {
   assert.ok(!/uniweb forget/.test(notes), notes)
 })
 
+test('a 413 says how large the push was, on the lane that sent it, and quotes no limit of its own', async () => {
+  // The limit is the backend's and counts the request as sent; the one number this side
+  // holds is the package's size. A size-less "Payload Too Large" left nothing to act on.
+  const dir = tmpSite()
+  const tooLarge = (status) => ({
+    ok: false,
+    status,
+    statusText: 'Payload Too Large',
+    text: async () => JSON.stringify({ status, title: 'Payload Too Large' })
+  })
+  const big = Buffer.alloc(3 * 1024 * 1024)
+  const lanes = {
+    update: [{ updateSiteContent: async () => tooLarge(413) }, { siteContentUuid: 'S1' }],
+    create: [{ createSiteContent: async () => tooLarge(413) }, { siteContentUuid: undefined }]
+  }
+  for (const [lane, [methods, extra]] of Object.entries(lanes)) {
+    const { report, calls } = makeReport()
+    const pkg = siteOnlyPkg(extra)
+    pkg.siteContent = { ...pkg.siteContent, buffer: big }
+    const res = await pushSyncPackages({ client: { origin: 'http://x', ...methods }, siteDir: dir, pkg, report })
+    assert.equal(res.exitCode, 1, lane)
+    assert.match(calls.error.join('\n'), /site-content push rejected: HTTP 413/, lane)
+    const notes = calls.note.join('\n')
+    assert.match(notes, /This push sent 3 MiB — more than the backend at http:\/\/x accepts in one request\./, lane)
+    assert.match(notes, /Payload Too Large/, `${lane}: the backend's own answer is still shown`)
+  }
+
+  // CONTROL — another refusal says nothing about size.
+  const { report, calls } = makeReport()
+  const pkg = siteOnlyPkg({ siteContentUuid: 'S1' })
+  await pushSyncPackages({ client: { origin: 'http://x', updateSiteContent: async () => fail(500) }, siteDir: dir, pkg, report })
+  assert.doesNotMatch(calls.note.join('\n'), /This push sent/)
+})
+
 // ─── ensureSiteExists ─────────────────────────────────────────────────────────
 // The site must exist before any byte is uploaded: bytes are metered against an
 // owning entity and freed by deleting it, so an upload made before the site
