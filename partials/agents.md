@@ -131,7 +131,7 @@ my-project/
 └── pnpm-workspace.yaml
 ```
 
-A site is pure content. A foundation is the site's source code — that's why it lives in `src/`. The foundation's `package.json::name` is `src`, symmetric with `site` — a **workspace** name, how the site depends on it. What the foundation **registers as** (`@org/<name>`, the name sites pin) is `name` in its `main.js`, which `uniweb create` sets to the project's name. **`src` and `foundation` are never a foundation's name** — `uniweb register` refuses them, because every project in an org would register the same one.
+A site is pure content. A foundation is the site's source code — that's why it lives in `src/`. The foundation's `package.json::name` is `src`, symmetric with `site` — a **workspace** name, how the site depends on it. What the foundation **registers as** (`@org/<name>`, the name sites pin) is `name` in its `main.js`, which `uniweb create` sets to the project's name. **`src` and `foundation` are never a foundation's name** — `uniweb register` refuses them, because every project in an org would register the same one. **Nor is any name under `@uniweb`**: that scope is the Uniweb framework's own, and `uniweb create`, `uniweb add` and `uniweb register` refuse it.
 
 - **Foundation** (`src/`): React components. Those in `sections/` and `layouts/` are *section types* — selectable by authors via `type:`, or used for layout areas. Everything in `components/` and `utils/` is ordinary React and JS: the developer's workbench, not visible to authors.
 - **Site** (`site/`): markdown content and configuration, plus optional records of structured content and the queries that reach them or an external data source.
