@@ -750,6 +750,9 @@ export async function pull(args = [], deps = {}) {
   let sections = 0
   let records = 0
   let deleted = 0
+  // Pages written in files a pull does not write back — a mount's, a folder-mode folder's `.md`
+  // pages (`@uniweb/build`'s `git-authored.js`). Said, since an app edit to one does not come back.
+  let leftAlone = 0
   // Set when the folder lane carried records this pull did not place — see the ⛔
   // where it is set.
   let recordsNotPlaced = null
@@ -1005,6 +1008,7 @@ export async function pull(args = [], deps = {}) {
       pages += report.pages.length
       sections += report.sections.length
       deleted += report.deleted.length
+      leftAlone += report.leftAlone?.length || 0
     }
 
     if (folderTaken) {
@@ -1252,6 +1256,12 @@ export async function pull(args = [], deps = {}) {
     (deleted ? `, ${deleted} deleted` : '')
   if (notTaken || recordsNotPlaced) info(summary)
   else success(summary)
+  if (leftAlone) {
+    note(
+      `Left as written: ${leftAlone} page(s) whose files a pull does not write — a mounted folder's, or a folder-mode folder's \`.md\` pages. ` +
+        'An edit made to one in the app does not come back here, and the next push sends the file.'
+    )
+  }
   if (repo && !notTaken) {
     // ⭐ What the pull changed in the files — not the backend's content against the base,
     // which also lists what the files already held (`changedInFiles`).
