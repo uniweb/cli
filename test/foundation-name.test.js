@@ -19,9 +19,16 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, realpathSync, rmSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import prompts from 'prompts'
-import { readFoundationName, FORBIDDEN_FOUNDATION_NAMES } from '@uniweb/build'
+import {
+  readFoundationName,
+  FORBIDDEN_FOUNDATION_NAMES,
+  RESERVED_SCOPES as BUILD_RESERVED_SCOPES,
+  checkFoundationName
+} from '@uniweb/build'
 import {
   SCAFFOLD_FOLDER_NAMES,
+  RESERVED_SCOPES,
+  reservedScopeIn,
   normalizeFoundationName,
   suggestFoundationName,
   mainNamesFoundation,
@@ -53,6 +60,27 @@ const nameOf = async (dir) => (await readFoundationName(dir)).name
 test('the folder names the CLI will not write are exactly the ones the build refuses', () => {
   // The one fact this module duplicates, because it cannot import @uniweb/build.
   assert.deepEqual([...SCAFFOLD_FOLDER_NAMES].sort(), [...FORBIDDEN_FOUNDATION_NAMES].sort())
+})
+
+test('the reserved scopes create and add refuse are exactly the build\'s, refused in its words', () => {
+  // Duplicated for the same reason, and pinned the same way — the reason too, so a
+  // project hears one sentence at create and at register.
+  assert.deepEqual([...RESERVED_SCOPES].sort(), [...BUILD_RESERVED_SCOPES].sort())
+  for (const name of ['@uniweb/marketing', '@UniWeb/docs-portal']) {
+    assert.equal(reservedScopeIn(name).problem, checkFoundationName(name), name)
+  }
+})
+
+test('reservedScopeIn names the scope a name asks for, and the name without it', () => {
+  assert.deepEqual(
+    { ...reservedScopeIn('  @uniweb/marketing ') , problem: undefined },
+    { scope: '@uniweb', bare: 'marketing', problem: undefined }
+  )
+  assert.equal(reservedScopeIn('@Uniweb/x').scope, '@uniweb')
+  // CONTROL — no scope, another scope, look-alikes, the scope with no name after it
+  for (const name of ['marketing', '@acme/marketing', '@std/docs', '@uniweb-fans/x', 'uniweb', '@uniweb', '', null]) {
+    assert.equal(reservedScopeIn(name), null, String(name))
+  }
 })
 
 test('normalizeFoundationName makes a name from free text, never a folder name', () => {

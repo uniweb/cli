@@ -76,6 +76,7 @@ import {
   collectStandaloneSchemas,
   readFoundationName,
   checkFoundationName,
+  checkRegistrationScope,
   splitFoundationName
 } from '@uniweb/build'
 import {
@@ -252,7 +253,12 @@ export async function settleFoundationName(targetDir, { args, isPreview }) {
   if (!problem) return true
 
   const where = relative(process.cwd(), read.mainFile) || read.mainFile
-  const suggestion = suggestFoundationName(targetDir)
+  // A name refused for its reserved scope keeps the rest of itself: `@uniweb/marketing`
+  // suggests `marketing`, which registers under the scope of the workspace you work in.
+  const { scope: nameScope, bare } = splitFoundationName(read.name)
+  const suggestion =
+    (nameScope && checkRegistrationScope(nameScope) && !checkFoundationName(bare) ? bare : null) ||
+    suggestFoundationName(targetDir)
   const reason = `${problem[0].toUpperCase()}${problem.slice(1)}.`
 
   // Nobody to ask — a script, a preview (which writes nothing), or --json (whose
@@ -334,6 +340,7 @@ export async function settleFoundationScope(targetDir, { args, isPreview, flagSc
   const { scope: nameScope, bare } = splitFoundationName(read.name)
 
   if (nameScope) {
+    if (refusedReservedScope(nameScope, `${where} names this foundation ${read.name}, under`)) return null
     if (flagScope && flagScope !== nameScope) {
       error(
         `${where} names this foundation ${read.name}, so it registers under ${nameScope} — ` +
@@ -352,6 +359,7 @@ export async function settleFoundationScope(targetDir, { args, isPreview, flagSc
 
   let scope = flagScope
   let source = flagScope ? '--scope' : null
+  if (refusedReservedScope(scope, '--scope names')) return null
   if (!scope) {
     scope = await deriveScopeFromLogin(client, args)
     if (!scope) return null
@@ -392,6 +400,23 @@ export async function settleFoundationScope(targetDir, { args, isPreview, flagSc
  * the scope is derived from your orgs as before (`deriveScope`): your personal scope when
  * you belong to none, else a pick at a terminal, your personal scope without one.
  */
+/**
+ * Refuse a reserved scope wherever it came from, before anything is written or sent —
+ * `@uniweb` names the framework's own packages and a system account on every Uniweb
+ * backend [Diego, 2026-10-23] (`checkRegistrationScope`).
+ *
+ * @param {string|null} scope
+ * @param {string} lead - where the scope came from, said before it: `--scope names`
+ * @returns {boolean} true when refused — the reason printed
+ */
+function refusedReservedScope(scope, lead) {
+  const problem = scope ? checkRegistrationScope(scope) : null
+  if (!problem) return false
+  error(`${lead} ${scope}. ${problem}.`)
+  log(`  ${colors.dim}Register under your own scope or an organization's: --scope @org.${colors.reset}`)
+  return true
+}
+
 async function deriveScopeFromLogin(client, args) {
   const token = await client.token()
   const ws = await resolveWorkspace({ client, args })
@@ -403,6 +428,7 @@ async function deriveScopeFromLogin(client, args) {
   const envelope = personal || child ? await client.fetchOrgs() : null
   const fromWorkspace = scopeOfWorkspace(ws, envelope?.account_handle ?? null, envelope?.orgs)
   if (fromWorkspace) {
+    if (refusedReservedScope(fromWorkspace, 'The workspace you work in is')) return null
     const named = `${colors.bright}${fromWorkspace}${colors.reset}`
     console.error(
       personal
@@ -427,6 +453,7 @@ async function deriveScopeFromLogin(client, args) {
     accountHandle: sess?.handle || null,
     args
   })
+  if (derived && refusedReservedScope(`@${derived}`, 'The scope chosen is')) return null
   return derived ? `@${derived}` : null
 }
 
@@ -648,6 +675,7 @@ async function runRegister(args = []) {
     log(`  ${colors.dim}Pass --scope @org.${colors.reset}`)
     return { exitCode: 2 }
   }
+  if (refusedReservedScope(scope, `${scopeSource} names`)) return { exitCode: 2 }
   const isPreview = !!output || dryRun
 
   // Each path supplies a different schema source: the standalone path discovers

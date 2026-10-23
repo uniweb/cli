@@ -169,6 +169,38 @@ test('⛔ …and so is `foundation`, and main.js naming it src does not help', a
   assert.equal(viaMain.requests, 0, viaMain.output)
 })
 
+// ⛔ The @uniweb scope names the framework's own packages and a system account on every
+// Uniweb backend [Diego, 2026-10-23], so nothing registers under it: a name under it, or
+// a scope naming it, is refused before a build, a login or a request — saying why.
+
+test('⛔ a foundation named under @uniweb is refused before anything is sent, saying why', async () => {
+  const viaPackage = foundation({ name: '@uniweb/marketing' })
+  const viaMain = foundation({ name: 'x' }, { name: '@uniweb/marketing' })
+  for (const dir of [viaPackage, viaMain]) {
+    const run = await register(dir, [])
+    assert.equal(run.exitCode, 2, run.output)
+    assert.equal(run.requests, 0, run.output)
+    assert.match(run.output, /"@uniweb\/marketing" is named under @uniweb, which is reserved/)
+    assert.match(run.output, /the Uniweb framework's own packages and the system account of every Uniweb backend/)
+    // the suggestion keeps the rest of the name, which registers under the workspace's scope
+    assert.match(run.output, /name: 'marketing',/)
+  }
+})
+
+test('⛔ --scope @uniweb is refused before anything is sent, in either spelling', async () => {
+  for (const scope of ['@uniweb', 'uniweb']) {
+    const run = await register(foundation({ name: 'marketing' }), ['--scope', scope])
+    assert.equal(run.exitCode, 2, run.output)
+    assert.equal(run.requests, 0, run.output)
+    assert.match(run.output, /--scope names @uniweb\. @uniweb is reserved/)
+  }
+})
+
+test('CONTROL — a scope that only looks like it registers as usual', async () => {
+  const run = await register(foundation({ name: 'marketing' }), ['--scope', '@uniweb-fans'])
+  assert.deepEqual(run.registered, ['@uniweb-fans/marketing'], run.output)
+})
+
 test('⛔ a --dry-run refuses too — a preview writes nothing, so it cannot ask', async () => {
   const run = await register(foundation({ name: 'src' }), ['--scope', 'std', '--dry-run'])
   assert.equal(run.exitCode, 2, run.output)

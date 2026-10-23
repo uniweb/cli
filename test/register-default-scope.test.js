@@ -97,6 +97,20 @@ test('the login works in @acme → a bare name registers as @acme/…, said', as
   assert.match(r.printed, /Registering under .*@acme.* — the workspace you work in \(your login\)/)
 })
 
+test('⛔ a workspace under the reserved @uniweb gives no scope — refused, saying why, nothing written', async () => {
+  // [Diego, 2026-10-23] @uniweb names the framework's own packages and a system account on
+  // every Uniweb backend; whoever works in it, nothing registers under it.
+  const r = await settle({ session: { workspace: '@uniweb' }, orgs: [{ handle: 'uniweb' }] })
+  assert.equal(r.result, null)
+  assert.match(r.main, /name: 'marketing'/)
+  assert.doesNotMatch(r.main, /@uniweb/)
+  assert.match(r.printed, /The workspace you work in is @uniweb\. @uniweb is reserved/)
+  // …and a name already under it is refused here too, as `register` would before it
+  const named = await settle({ session: { workspace: '@acme' }, orgs: [{ handle: 'acme' }], name: '@uniweb/marketing' })
+  assert.equal(named.result, null)
+  assert.match(named.printed, /names this foundation @uniweb\/marketing, under @uniweb\. @uniweb is reserved/)
+})
+
 test('the login works in the personal workspace → your own handle, though you belong to orgs', async () => {
   const r = await settle({ session: { workspace: 'personal' }, orgs: [{ handle: 'acme' }] })
   assert.equal(r.result.scope, '@dev')

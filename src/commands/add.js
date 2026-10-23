@@ -46,7 +46,8 @@ import {
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import {
   normalizeFoundationName,
-  ensureFoundationName
+  ensureFoundationName,
+  reservedScopeIn
 } from '../utils/foundation-name.js'
 import {
   detectPackageManager,
@@ -303,6 +304,21 @@ export async function add(rawArgs) {
     parsed = parseArgs([response.subcommand, ...args])
   } else {
     parsed = parseArgs(args)
+  }
+
+  // ⛔ A FOUNDATION NAMED UNDER THE RESERVED SCOPE IS REFUSED before anything is placed
+  // [Diego, 2026-10-23]. The name read as `@scope/name` would otherwise be a folder
+  // path, and the foundation named `name` — the scope dropped in silence.
+  const reserved = ['project', 'foundation', 'extension'].includes(parsed.subcommand)
+    ? reservedScopeIn(parsed.name)
+    : null
+  if (reserved) {
+    error(`${reserved.problem}.`)
+    log(
+      `Add it without the scope — ${colors.cyan}${prefix} add ${parsed.subcommand} ${reserved.bare}${colors.reset} — and ` +
+        `${colors.cyan}${prefix} register${colors.reset} gives it the scope of the workspace you work in.`
+    )
+    process.exit(1)
   }
 
   // Read root package.json for project name

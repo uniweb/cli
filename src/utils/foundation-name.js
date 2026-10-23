@@ -2,9 +2,10 @@
  * Giving a foundation its name — `name` in `main.js`'s default export.
  *
  * The rule itself (main.js `name`, else package.json `name`; `src` and `foundation`
- * refused) is `@uniweb/build`'s `foundation-name.js`, shared by the build, `register`
- * and `push`. This module only WRITES the name: the scaffold at `create` / `add`, and
- * `register` when it asks for one.
+ * refused, and so is the `@uniweb` scope) is `@uniweb/build`'s `foundation-name.js`,
+ * shared by the build, `register` and `push`. This module only WRITES the name: the
+ * scaffold at `create` / `add`, and `register` when it asks for one — and refuses, at
+ * `create` / `add`, a name that asks for the reserved scope (`reservedScopeIn`).
  *
  * ⛔ NO `@uniweb/build` IMPORT, AND NO IMPORT OF main.js. `uniweb create` runs before
  * any project exists: `@uniweb/build` is an optional peer that may not be installed,
@@ -20,6 +21,35 @@ import { join, resolve, basename, dirname } from 'node:path'
 // The folders a foundation's code lives in — never a foundation's name
 // (`@uniweb/build`'s FORBIDDEN_FOUNDATION_NAMES; the test keeps them equal).
 export const SCAFFOLD_FOLDER_NAMES = new Set(['src', 'foundation'])
+
+// Scopes no foundation is named under — `@uniweb`, the framework's own (`@uniweb/build`'s
+// RESERVED_SCOPES and its reason, which the test keeps equal).
+export const RESERVED_SCOPES = new Set(['uniweb'])
+
+/**
+ * The reserved scope a name asks for — `@uniweb/marketing` asks for `@uniweb` — with why
+ * it is refused and the name without it. Null when the name asks for no reserved scope.
+ *
+ * `create` and `add` drop any scope from the name they write, so this is for refusing
+ * what was ASKED for, before anything is written: a scope dropped in silence would read
+ * as granted until `register` refused it.
+ *
+ * @param {unknown} raw - a name as typed
+ * @returns {{ scope: string, bare: string, problem: string } | null}
+ */
+export function reservedScopeIn(raw) {
+  const text = String(raw ?? '').trim()
+  const scoped = /^@([^/]+)\/(.+)$/.exec(text)
+  if (!scoped || !RESERVED_SCOPES.has(scoped[1].toLowerCase())) return null
+  const scope = `@${scoped[1].toLowerCase()}`
+  return {
+    scope,
+    bare: scoped[2],
+    problem:
+      `"${text}" is named under ${scope}, which is reserved: it names the Uniweb framework's ` +
+      'own packages and the system account of every Uniweb backend, so nothing registers under it'
+  }
+}
 
 // Written above the name wherever the CLI adds one — the scaffold's main.js
 // template says the same.

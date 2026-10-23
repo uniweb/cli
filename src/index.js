@@ -54,7 +54,8 @@ import {
 } from './utils/scaffold.js'
 import {
   normalizeFoundationName,
-  ensureFoundationName
+  ensureFoundationName,
+  reservedScopeIn
 } from './utils/foundation-name.js'
 import {
   detectPackageManager,
@@ -1168,6 +1169,21 @@ async function main() {
 
   if (!projectName) {
     error('Missing project name')
+    await exitWhenDrained(1)
+  }
+
+  // ⛔ A NAME UNDER THE RESERVED SCOPE IS REFUSED before anything is asked or written
+  // [Diego, 2026-10-23]. The foundation's name is the project's without its scope, so
+  // `@uniweb/marketing` would be dropped to `marketing` in silence — read as granted
+  // until `register` refused it.
+  const reserved = reservedScopeIn(projectName)
+  if (reserved) {
+    error(`${reserved.problem}.`)
+    const again = inPlace ? `create . --name ${reserved.bare}` : `create ${reserved.bare}`
+    log(
+      `Create it without the scope — ${colors.cyan}${prefix} ${again}${colors.reset} — and ` +
+        `${colors.cyan}${prefix} register${colors.reset} gives its foundation the scope of the workspace you work in.`
+    )
     await exitWhenDrained(1)
   }
 
