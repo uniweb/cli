@@ -822,7 +822,7 @@ agents:
 | not declared | no check at all — nothing happens unless you ask for it |
 | your own site's origin | always fine, without listing it — declaring a partner must not take down your own chat box |
 | a request with **no** `Origin` | **allowed** — see below, this is deliberate |
-| matching | exact, per entry; no wildcards |
+| matching | by origin: `https://app.example.com/` is `https://app.example.com`, and a path is ignored; no wildcards. An entry that is not an `http(s)` URL matches nothing |
 
 ⛔ **It is not a spend limit, and it cannot be.** `Origin` is set by the browser and enforced by the browser: anything that is not a browser sends whatever it likes, or nothing at all. So this stops **casual misuse and third-party embedding** — someone dropping your endpoint into their own page — and it does **not** stop anyone determined to run up your bill. Do not size your budget on it.
 
