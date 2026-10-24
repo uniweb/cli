@@ -19,7 +19,7 @@ import {
   extensionNameOf,
   findSiteExtension
 } from '@uniweb/build'
-import { loadDeployYml, AGENTS_KEYS } from '@uniweb/build/site'
+import { loadDeployYml, AGENTS_KEYS, originOf } from '@uniweb/build/site'
 import { listAdapters } from '@uniweb/build/hosts'
 import { RUNTIME_KEYS } from '@uniweb/build/uwx'
 import { getCliVersion } from '../versions.js'
@@ -337,6 +337,11 @@ export function findFormContent(sitePath, siteYml) {
  *
  * `agents: false` turns the capability off in one word and is not an object —
  * flagging its absence of keys would be nonsense.
+ *
+ * ⭐ **An `expectedOrigins` entry that names no origin matches nothing**, and that is silent
+ * too. `app.example.com`, with no scheme, reads as no origin, so a list of only such entries
+ * declines every third-party caller. The entry is read by the rule the host checks by
+ * (`originOf`, `@uniweb/projections`).
  */
 export function checkAgentsBlock({ siteName, siteYml, issues }) {
   const agents = siteYml?.agents
@@ -352,6 +357,8 @@ export function checkAgentsBlock({ siteName, siteYml, issues }) {
     warn(`[${id}] ${siteName}: \`agents:\` is neither a map of options nor \`false\`.`)
     return
   }
+
+  checkExpectedOrigins({ siteName, agents, issues })
 
   const known = new Set(AGENTS_KEYS)
   const unknown = Object.keys(agents).filter((k) => !known.has(k))
@@ -379,6 +386,24 @@ export function checkAgentsBlock({ siteName, siteYml, issues }) {
   log(
     `    ${colors.dim}so an unrecognized key is carried and never acted on. Known: ${AGENTS_KEYS.join(', ')}.${colors.reset}`
   )
+}
+
+/** `agents.expectedOrigins` entries that name no origin, each named. */
+function checkExpectedOrigins({ siteName, agents, issues }) {
+  const declared = agents.expectedOrigins
+  if (declared === undefined || declared === null) return
+  const unreadable = (Array.isArray(declared) ? declared : [declared]).filter((entry) => originOf(entry) === null)
+  if (unreadable.length === 0) return
+  const id = 'agents-origin-unreadable'
+  const shown = unreadable.map((entry) => `'${String(entry)}'`).join(', ')
+  issues.push({
+    id,
+    type: 'warning',
+    site: siteName,
+    message: `site.yml: \`agents.expectedOrigins\` ${unreadable.length === 1 ? 'entry' : 'entries'} ${shown} name${unreadable.length === 1 ? 's' : ''} no origin, so ${unreadable.length === 1 ? 'it matches' : 'they match'} nothing`
+  })
+  warn(`[${id}] ${siteName}: \`agents.expectedOrigins\` ${unreadable.length === 1 ? 'entry' : 'entries'} ${shown} name${unreadable.length === 1 ? 's' : ''} no origin.`)
+  log(`    ${colors.dim}Write each as an http(s) URL with its scheme, e.g. https://app.example.com. An entry that names no origin matches nothing.${colors.reset}`)
 }
 
 /**
