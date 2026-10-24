@@ -520,7 +520,7 @@ Image syntax with a library prefix — **two interchangeable spellings, the same
 ![](lu-house)         dash — short codes only, to stay unambiguous with ordinary paths
 ```
 
-Short codes: `lu` (Lucide), `hi` / `hi2` (Heroicons v1 / v2), `fi` (Feather), `pi` (Phosphor), `tb` (Tabler), `bs` (Bootstrap), `md` (Material), `ai` (Ant Design), `ri` (Remix), `si` (Simple Icons), `io5` (Ionicons), `bi` (Boxicons), `vsc` (VS Code), `wi` (Weather), `gi` (Game), `fa` / `fa6` (Font Awesome 5 / 6). Browse at [react-icons.github.io/react-icons](https://react-icons.github.io/react-icons/).
+Short codes: `lu` (Lucide), `hi` / `hi2` (Heroicons v1 / v2), `fi` (Feather), `pi` (Phosphor), `tb` (Tabler), `bs` (Bootstrap), `md` (Material), `ai` (Ant Design), `ri` (Remix), `si` (Simple Icons), `io5` (Ionicons), `bi` (Boxicons), `vsc` (VS Code), `wi` (Weather), `gi` (Game), `fa` / `fa6` (Font Awesome 5 / 6). Browse at [react-icons.github.io/react-icons](https://react-icons.github.io/react-icons/): an icon's name is its component name without the prefix, in kebab case (`LuBuilding2` → `lu-building2`, `LuGrid2X2` → `lu-grid2-x2`). For Lucide, Heroicons and Feather the family's own spelling works too (`lu-building-2` and `lu-grid-2x2`, as lucide.dev writes them). An icon the build cannot fetch is named in its prerender warning.
 
 Optional attributes: `{size=20}`, `{color=red}`. Custom SVGs: `![Logo](./logo.svg){role=icon}` (or `![Logo](icon:./logo.svg)`) — always available, no library needed.
 
