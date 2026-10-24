@@ -1880,6 +1880,7 @@ website.getPageHierarchy({ nested: false })      // = website.getAllPages()
 
 website.name, website.basePath
 website.hasMultipleLocales(), website.getLocales(), website.getActiveLocale(), website.getLocaleUrl('es')
+website.switchLocale('es')   // a language switch from code (a <select>, a button)
 
 page.title, page.label, page.route, page.description
 page.isHidden(), page.showInHeader(), page.showInFooter()
@@ -3049,6 +3050,8 @@ function LanguageSwitcher() {
 ```
 
 > **Use `<Link reload>` — not a plain `<a>`, and not `window.location.href`.** `getLocaleUrl()` returns a root-relative path that does **not** include the deployment base path, so under a subdirectory deploy (`base: /docs/` in `site.yml`) a raw href sends the visitor outside the site. `<Link reload>` prepends `website.basePath` and forces the full page load a locale switch requires — an SPA `<Link>` won't do, because the other language is a different build.
+>
+> **A `<select>` or a button calls `website.switchLocale(code)`**, never `window.location.href = …`. It makes the same page load, base path included, and inside a host that switches languages itself, such as an editor's preview, where a page load would leave the preview, it hands the switch to the host. A click on a `<Link reload>` to another language is handed over the same way.
 
 Full model: `development/internationalization.md`. Author's view: `authoring/translating.md`.
 
