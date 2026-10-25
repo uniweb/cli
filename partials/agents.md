@@ -721,20 +721,23 @@ end the list with `...`.**
 
 **A local folder for a mounted route should use `folder.yml`, not `page.yml`.** The filename is how you say what the folder holds — `page.yml` for a page built from sections, `folder.yml` for a folder of pages — and for a mount that answer also decides how the mounted tree is read. A `page.yml` stub over a mounted folder of pages says "sections", and top-level markdown in the mounted repo collapses into one page instead of becoming pages of its own. Keep `layout:`, `title:` and SEO in that stub; the mounted repo's own `folder.yml` supplies its ordering and title where the stub is silent.
 
-**SEO & social cards:** set site-wide defaults in `site.yml`; any page overrides per-field in `page.yml` (page wins, site fills gaps). These render into every page's static `<head>` — Open Graph, Twitter Card, canonical, robots — so shares and crawlers see them without running JS. The social `image` is the field most worth setting once at site level.
+**SEO & social cards:** set site-wide defaults in `site.yml`; any page overrides per-field in `page.yml` (page wins, site fills gaps). Each page's static `<head>` carries its own tags — Open Graph, Twitter Card, canonical, robots, and hreflang on a multilingual site — so shares and crawlers see them without running JS. The social `image` is the field most worth setting once at site level; the site's `description` is the home page's alone. These tags are the framework's: a `head.html` tag of the same name is replaced.
 
 ```yaml
 # site.yml
 keywords: [components, react, cms]
 seo:
+  origin: https://acme.com          # where the site is served from — only where no host states it
   image: /og-default.png
   noindex: false                    # true keeps the WHOLE site out of search
 
 # page.yml
 seo:
   image: /og-about.png
-  canonical: https://acme.com/about
+  canonical: https://acme.com/team  # only to name ANOTHER URL — a page is its own canonical by default
 ```
+
+**Where the site lives — every absolute URL is made on it:** a page's canonical and `og:url`, its social image, its sitemap entry, the links in `llms.txt`. It is the site's origin plus its base path, and whoever serves the site states it: the GitHub Pages workflow `uniweb add ci --host=github-pages` writes asks GitHub; Netlify and Vercel state their production URL during the build; on any other static host, set `seo.origin` — a scheme and a host, `https://acme.com`, never with a path (a path is the site's `base:`; `seo.origin: https://user.github.io/repo` is refused). `seo.baseUrl` is retired, and refused. With no address, pages state no canonical, no `sitemap.xml` is written, and `llms.txt` links are root-relative — `uniweb doctor` says when that is so, and how to fix it for your host.
 
 **Localized URLs:** on a multilingual site (`languages:` in site.yml), `slug: { <lang>: <segment> }` gives a page a native URL segment per language; the folder name stays the canonical route. Nested folders compose automatically, and localized URLs flow through navigation, the language switcher, and the sitemap. See Part 5 for the translation workflow.
 
@@ -839,7 +842,7 @@ Server-to-server callers are authenticated by other means, arranged with your ho
 
 ⚠️ Spelling matters and nothing downstream will catch it — the block is forwarded to your host as opaque data, so a typo is carried and simply never acted on. `uniweb doctor` flags unknown keys in `agents:` for exactly this reason; run it before you rely on one.
 
-**Set `seo.baseUrl` if you want absolute links** in the index — without it the links are root-relative, which still works for an agent that arrived via the index. `uniweb doctor` warns when it's unset.
+**The index links absolutely on the site's address** (see *Where the site lives*) — without one the links are root-relative, which still works for an agent that arrived via the index. Each record of a parametric page is listed as a page, with a `.md` of its own.
 
 **What's excluded, and it's deliberate:** `seo.noindex` pages, `hidden` pages, `_`-prefixed drafts, and a parametric page's URL pattern (`/blog/:slug`). An index *describes* pages rather than merely listing them, so an unlinked page would become both discoverable and summarized — which is why these exclusions are load-bearing rather than tidy-up. `noindex` or `hidden` on a **folder** takes the whole branch with it.
 
