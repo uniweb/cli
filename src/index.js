@@ -1544,7 +1544,8 @@ ${colors.bright}Usage:${colors.reset}
 The dev server takes a free port and says where it is: once it listens,
 \`dev\` prints \`Serving <site> at <url>\`. Don't assume a port: another
 project's server may be on the one you would guess. While one is running,
-\`uniweb dev\` points at it rather than starting another.
+\`uniweb dev\` points at it rather than starting another. \`--status\` and
+\`--stop\` know the server \`uniweb dev\` started, not one started with \`vite\`.
 
 Thin wrapper around the package manager's workspace-filtered \`dev\`
 script (\`pnpm --filter <site> dev\` or \`npm -w <site> run dev\`). Picks

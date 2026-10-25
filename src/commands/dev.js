@@ -17,12 +17,12 @@
  *   uniweb dev --stop           Stop the running dev server
  *
  * ⭐ THE DEV SERVER SAYS WHERE IT IS; NOTHING GUESSES. It takes a free port (Vite moves past a
- * busy one), and once it listens it records the address it was given (`@uniweb/build/site`'s
- * `dev-server.js`). `dev` reads that record: it prints the address the moment the server
- * states it, `--status` prints it later, a second `dev` for the site points at the running
- * server rather than starting another on another port, and `--stop` stops it. ⛔ Until
- * 2026-10-25 a caller had to pick a port to know the address, and `--port` was read as the
- * site's name.
+ * busy one), and once it listens, the server `dev` starts — only that one — records the address
+ * it was given (`@uniweb/build/site`'s `dev-server.js`). `dev` reads that record: it prints the
+ * address the moment the server states it, `--status` prints it later, a second `dev` for the
+ * site points at the running server rather than starting another on another port, and `--stop`
+ * asks it to stop, which it does with exit 0. ⛔ Until 2026-10-25 a caller had to pick a port to
+ * know the address, and `--port` was read as the site's name.
  *
  * Resolution order for which site to launch:
  *   1. --site <name> (if passed)
@@ -177,11 +177,11 @@ export async function dev(args = []) {
   }
   const sitePath = join(rootDir, site.path)
 
-  const { runningDevServer, stopDevServer, DEV_PORT_ENV } = await import('@uniweb/build/site')
+  const { runningDevServer, stopDevServer, DEV_PORT_ENV, DEV_RECORD_ENV } = await import('@uniweb/build/site')
   if (wanted.status) {
     const running = await runningDevServer(sitePath)
     if (!running) {
-      console.error(`No dev server is running for ${site.name}.`)
+      console.error(`No dev server started by \`uniweb dev\` is running for ${site.name}.`)
       process.exit(1)
     }
     console.log(running.url)
@@ -189,7 +189,7 @@ export async function dev(args = []) {
   }
   if (wanted.stop) {
     const result = await stopDevServer(sitePath)
-    if (result.none) console.error(`No dev server is running for ${site.name}.`)
+    if (result.none) console.error(`No dev server started by \`uniweb dev\` is running for ${site.name}.`)
     else if (result.stuck) {
       console.error(`${RED}✗${RESET} The dev server for ${site.name} (pid ${result.stuck.pid}) did not stop.`)
       console.error(`  Stop it with: kill -9 ${result.stuck.pid}`)
@@ -234,10 +234,12 @@ export async function dev(args = []) {
     for (const line of asked.refused.slice(1)) console.error(`  ${line}`)
     process.exit(1)
   }
-  let env = process.env
+  // The server this starts keeps the record the next `dev`, `--status` and `--stop` read; one
+  // started any other way keeps none (`dev-server.js`).
+  let env = { ...process.env, [DEV_RECORD_ENV]: '1' }
   if (asked?.preview) {
     const { PREVIEW_ENV, encodePreview } = await import('@uniweb/build/site')
-    env = { ...process.env, [PREVIEW_ENV]: encodePreview(asked.preview) }
+    env = { ...env, [PREVIEW_ENV]: encodePreview(asked.preview) }
     console.error(
       `${DIM}→ Previewing with ${asked.preview.foundation.ref}, served by ${asked.preview.backend}${RESET}`
     )
