@@ -44,10 +44,10 @@
     "@uniweb/core": "workspace:~",
     "@uniweb/schemas": "workspace:~",
     "@uniweb/semantic-parser": "workspace:~",
-    "handlebars": "^4.7.8",
-    "js-yaml": "^4.1.0",
+    "handlebars": "^4.7.10",
+    "js-yaml": "^4.3.2",
     "prompts": "^2.4.2",
-    "tar": "^7.0.0"
+    "tar": "^7.5.21"
   },
   "peerDependencies": {
     "@uniweb/build": "workspace:~",
