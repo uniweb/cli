@@ -19,7 +19,7 @@ import {
   extensionNameOf,
   findSiteExtension
 } from '@uniweb/build'
-import { loadDeployYml, AGENTS_KEYS, originOf } from '@uniweb/build/site'
+import { loadDeployYml, AGENTS_KEYS, originOf, refuseUnreadableAddress } from '@uniweb/build/site'
 import { listAdapters } from '@uniweb/build/hosts'
 import { RUNTIME_KEYS } from '@uniweb/build/uwx'
 import { getCliVersion } from '../versions.js'
@@ -1009,6 +1009,79 @@ export async function checkFormSubmitTarget({ sitePath, siteName, siteYml, issue
   )
 }
 
+/** The host a site's default deploy target names (`deploy.yml`), or null. */
+function defaultDeployHost(deployYml) {
+  const targets = deployYml?.targets || {}
+  const names = Object.keys(targets)
+  const name = deployYml?.default || (names.length === 1 ? names[0] : null)
+  return name ? targets[name]?.host || name : null
+}
+
+/** Hosts that state, at build, where they serve a site — so it needs no `seo.origin` of its own. */
+const ADDRESS_STATING_HOSTS = new Set(['uniweb', 'netlify', 'vercel'])
+
+/**
+ * Where the site lives — what every absolute URL it states is made on: a page's canonical and
+ * `og:url`, its `sitemap.xml`, its agent index's links (`@uniweb/build`'s `site/site-address.js`).
+ * A host may state it: Netlify and Vercel at build, a Uniweb host when it serves the site, GitHub
+ * Pages through the workflow `uniweb add ci` writes. Otherwise `seo.origin` does. ⛔ Until
+ * 2026-10-25 this asked for `seo.baseUrl` — which, once set, gave every page the home page's
+ * canonical — and named only the agent index.
+ */
+export async function checkSiteAddress({ sitePath, siteName, siteYml, workspaceDir, issues }) {
+  try {
+    refuseUnreadableAddress(siteYml, 'site.yml')
+  } catch (err) {
+    const id = 'site-address-config'
+    const message = err.message.replace(/^\[uniweb\] /, '')
+    issues.push({ id, type: 'error', site: siteName, message })
+    error(`[${id}] ${message}`)
+    return
+  }
+  if (siteYml?.seo?.origin) return
+
+  let deployYml = null
+  try {
+    deployYml = await loadDeployYml(sitePath)
+  } catch {
+    // malformed deploy.yml is reported by its own check; treat as absent here
+  }
+  const host = defaultDeployHost(deployYml)
+  if (ADDRESS_STATING_HOSTS.has(host)) return
+
+  const without = 'Without one, no page states a canonical URL, no sitemap.xml is written, and llms.txt links root-relative.'
+  if (host === 'github-pages') {
+    const workflowPath = join(workspaceDir, '.github', 'workflows', 'deploy-github-pages.yml')
+    const workflow = existsSync(workflowPath) ? readFileSync(workflowPath, 'utf8') : null
+    if (workflow?.includes('UNIWEB_ORIGIN')) return
+    if (workflow) {
+      const id = 'site-address-from-github'
+      issues.push({
+        id,
+        type: 'warning',
+        site: siteName,
+        message: "The GitHub Pages workflow does not hand the build the address GitHub serves the site at"
+      })
+      warn(`[${id}] GitHub Pages states where it serves this site, but the workflow predates reading it`)
+      log(`    Regenerate it: ${colors.green}uniweb add ci --host=github-pages --force${colors.reset} — or set ${colors.green}seo.origin${colors.reset} in site.yml`)
+      log(`    ${colors.dim}${without}${colors.reset}`)
+      return
+    }
+  }
+
+  const id = 'site-address-unknown'
+  issues.push({
+    id,
+    type: 'warning',
+    site: siteName,
+    message: 'The site states no address: no canonical URLs, no sitemap.xml, root-relative llms.txt'
+  })
+  warn(`[${id}] Nothing states where this site is served`)
+  log(`    Set ${colors.green}seo.origin${colors.reset} in site.yml — the origin it is served from, e.g. https://example.com`)
+  log(`    ${colors.dim}A host that states it needs none: the GitHub Pages workflow \`uniweb add ci\` writes, Netlify, Vercel.${colors.reset}`)
+  log(`    ${colors.dim}${without}${colors.reset}`)
+}
+
 /** The bare map in `queries.yml`, or `{}` when there is none. */
 function readQueriesYml(sitePath) {
   try {
@@ -1513,30 +1586,7 @@ export async function doctor(args = []) {
       continue
     }
 
-    // The agent index ships by default, but it can only carry absolute links
-    // when the site declares where it lives. Root-relative links still work
-    // for an agent that arrived via the index, so this warns rather than
-    // suppressing the artifact the way sitemap.xml does — a silently absent
-    // index is the exact failure the projections exist to prevent.
-    const agentsConfig = siteYml.agents
-    const indexEnabled = agentsConfig !== false && agentsConfig?.index !== false
-    if (indexEnabled && !siteYml.seo?.baseUrl) {
-      const issue = {
-        id: 'agents-index-relative-links',
-        type: 'warning',
-        site: siteName,
-        message:
-          'llms.txt will use root-relative links because seo.baseUrl is unset'
-      }
-      issues.push(issue)
-      warn(`[agents-index-relative-links] llms.txt links will be root-relative`)
-      log(
-        `    Set ${colors.green}seo.baseUrl${colors.reset} in site.yml so agents get absolute URLs`
-      )
-      log(
-        `    (this also turns on sitemap.xml and robots.txt, which are skipped without it)`
-      )
-    }
+    await checkSiteAddress({ sitePath, siteName, siteYml, workspaceDir, issues })
 
     // `public/<DATA_DIR>/` is the build's output directory and nothing else —
     // `records/` is the only supported way to provide structured data. That makes the mapping a bijection: every entry there should be backed
