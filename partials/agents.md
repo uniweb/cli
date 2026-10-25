@@ -801,6 +801,8 @@ The point is the pair. An agent fetches the index, *reads* what each page is abo
 
 **Large sites also get per-branch indexes.** A branch with at least 5 pages gets its own — `/docs/llms.txt` lists just the docs, titled by that folder. The site index still lists everything; a branch index is an extra entry point, not a replacement, so an agent that starts at `/llms.txt` still reaches any page in two hops.
 
+**Each language gets its own.** A site in several languages has `/fr/llms.txt` beside `/llms.txt`, listing the French pages, record pages included, and linking each at its French address (`/fr/a-propos.md`). Its search index is per language the same way (`/fr/search-index.json`).
+
 ```yaml
 # site.yml — all optional; these are the defaults
 agents:
