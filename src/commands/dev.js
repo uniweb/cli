@@ -12,6 +12,17 @@
  *   uniweb dev                  Start dev server for the (single) site
  *   uniweb dev <site>           Start dev server for a specific site
  *   uniweb dev --site <name>    Same, with explicit flag form
+ *   uniweb dev --port <n>       On that port, or not at all
+ *   uniweb dev --status         Print the running dev server's address
+ *   uniweb dev --stop           Stop the running dev server
+ *
+ * ⭐ THE DEV SERVER SAYS WHERE IT IS; NOTHING GUESSES. It takes a free port (Vite moves past a
+ * busy one), and once it listens it records the address it was given (`@uniweb/build/site`'s
+ * `dev-server.js`). `dev` reads that record: it prints the address the moment the server
+ * states it, `--status` prints it later, a second `dev` for the site points at the running
+ * server rather than starting another on another port, and `--stop` stops it. ⛔ Until
+ * 2026-10-25 a caller had to pick a port to know the address, and `--port` was read as the
+ * site's name.
  *
  * Resolution order for which site to launch:
  *   1. --site <name> (if passed)
@@ -48,6 +59,7 @@ import { readWorkspaceConfig } from '../utils/config.js'
 import { discoverSites } from '../utils/discover.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { readFlagValue } from '../utils/args.js'
+import { checkFlags } from '../utils/flag-guard.js'
 import {
   checkSiteInstall,
   readDeclaredFoundation
@@ -55,12 +67,62 @@ import {
 import { discoverFoundations } from '../utils/discover.js'
 
 const RED = '\x1b[31m'
+const GREEN = '\x1b[32m'
 const YELLOW = '\x1b[33m'
 const DIM = '\x1b[2m'
 const CYAN = '\x1b[36m'
 const RESET = '\x1b[0m'
 
+/** The flags `dev` reads a value after — none of which is ever the site's name. */
+const VALUE_FLAGS = ['--site', '--port', '--org']
+
+/**
+ * What `uniweb dev` was asked: the site, by `--site` or a bare name; the port, if one; and
+ * whether to report on the running server or stop it rather than start one.
+ *
+ * @param {string[]} args
+ * @returns {{ site: string|null, port: number|null, status: boolean, stop: boolean, error?: string }}
+ */
+export function readDevArgs(args) {
+  let positional = null
+  for (let i = 0; i < args.length && positional === null; i++) {
+    if (args[i] === '--') break
+    if (VALUE_FLAGS.includes(args[i])) i++
+    else if (!args[i].startsWith('-')) positional = args[i]
+  }
+  const siteFlag = readFlagValue(args, '--site')
+  const wanted = {
+    site: typeof siteFlag === 'string' ? siteFlag : positional,
+    port: null,
+    status: args.includes('--status'),
+    stop: args.includes('--stop')
+  }
+  const port = readFlagValue(args, '--port')
+  if (port !== undefined) {
+    const n = Number(port)
+    if (port === null || !Number.isInteger(n) || n < 1 || n > 65535) {
+      return { ...wanted, error: '`--port` takes a port number, 1–65535: uniweb dev --port 5199' }
+    }
+    wanted.port = n
+  }
+  if (wanted.status && wanted.stop) {
+    return { ...wanted, error: '`--status` and `--stop` ask for different things; pass one.' }
+  }
+  return wanted
+}
+
 export async function dev(args = []) {
+  const badFlag = checkFlags('dev', args)
+  if (badFlag) {
+    console.error(`${RED}✗${RESET} ${badFlag.message}`)
+    process.exit(2)
+  }
+  const wanted = readDevArgs(args)
+  if (wanted.error) {
+    console.error(`${RED}✗${RESET} ${wanted.error}`)
+    process.exit(2)
+  }
+
   const cwd = process.cwd()
   const rootDir = findWorkspaceRoot(cwd) || cwd
 
@@ -90,10 +152,7 @@ export async function dev(args = []) {
   }
 
   // Pick the site
-  const siteFlag = readFlagValue(args, '--site')
-  const positional = args.find((a) => !a.startsWith('-'))
-  const requested =
-    (typeof siteFlag === 'string' ? siteFlag : null) || positional || null
+  const requested = wanted.site
 
   let site
   if (requested) {
@@ -116,6 +175,42 @@ export async function dev(args = []) {
     console.error(`  Available: ${sites.map((s) => s.name).join(', ')}`)
     console.error('')
   }
+  const sitePath = join(rootDir, site.path)
+
+  const { runningDevServer, stopDevServer, DEV_PORT_ENV } = await import('@uniweb/build/site')
+  if (wanted.status) {
+    const running = await runningDevServer(sitePath)
+    if (!running) {
+      console.error(`No dev server is running for ${site.name}.`)
+      process.exit(1)
+    }
+    console.log(running.url)
+    return
+  }
+  if (wanted.stop) {
+    const result = await stopDevServer(sitePath)
+    if (result.none) console.error(`No dev server is running for ${site.name}.`)
+    else if (result.stuck) {
+      console.error(`${RED}✗${RESET} The dev server for ${site.name} (pid ${result.stuck.pid}) did not stop.`)
+      console.error(`  Stop it with: kill -9 ${result.stuck.pid}`)
+      process.exit(1)
+    } else console.error(`${GREEN}✓${RESET} Stopped the dev server for ${site.name} (${result.stopped.url}).`)
+    return
+  }
+
+  // One dev server per site: a second `dev` points at the running one rather than start another
+  // on the next free port.
+  const running = await runningDevServer(sitePath)
+  if (running) {
+    if (wanted.port !== null && wanted.port !== running.port) {
+      console.error(`${RED}✗${RESET} ${site.name} is already being served at ${running.url}, not on port ${wanted.port}.`)
+      console.error('  Stop it first: uniweb dev --stop')
+      process.exit(1)
+    }
+    console.error(`${GREEN}✓${RESET} ${site.name} is already being served at ${CYAN}${running.url}${RESET} (pid ${running.pid}).`)
+    console.error('  Stop it with: uniweb dev --stop')
+    return
+  }
 
   // A `file:` foundation dependency can be satisfied by a link or by a copy,
   // and a copy is a snapshot: the dev server serves it while builds read the
@@ -127,7 +222,6 @@ export async function dev(args = []) {
   const pm = detectPackageManager()
   const command = filterCmd(pm, site.name, 'dev')
   const [bin, ...rest] = command.split(' ')
-  const sitePath = join(rootDir, site.path)
 
   // ⭐ A SITE WHOSE FOUNDATION IS A CATALOG REF — a clone — is previewed with what the backend
   // it is on says: where that version is served. Asked here, for this dev server alone, and
@@ -148,6 +242,8 @@ export async function dev(args = []) {
       `${DIM}→ Previewing with ${asked.preview.foundation.ref}, served by ${asked.preview.backend}${RESET}`
     )
   }
+  // That port or none: the dev server refuses to move past it (`dev-server.js`).
+  if (wanted.port !== null) env = { ...env, [DEV_PORT_ENV]: String(wanted.port) }
 
   await ensureSiteExtensionsBuilt(sitePath)
 
@@ -156,12 +252,33 @@ export async function dev(args = []) {
   )
   console.error('')
 
+  const startedAt = Date.now()
   const child = spawn(bin, rest, { cwd: rootDir, stdio: 'inherit', env })
   child.on('close', (code) => process.exit(code ?? 0))
   child.on('error', (err) => {
     console.error(`${RED}✗${RESET} Failed to start dev server: ${err.message}`)
     process.exit(1)
   })
+  // A line of help, never a reason for the server to stop.
+  announceWhenListening({ site, sitePath, startedAt, child, runningDevServer }).catch(() => {})
+}
+
+/**
+ * Say where the dev server is once it states it: one line, the same every time, for whoever
+ * started it to read. Waits on the server's own record, written when it listens, so the
+ * address is the one it was given, not one this derived from a port.
+ */
+async function announceWhenListening({ site, sitePath, startedAt, child, runningDevServer }) {
+  let exited = false
+  child.once('close', () => { exited = true })
+  for (const until = Date.now() + 120_000; !exited && Date.now() < until; ) {
+    const running = await runningDevServer(sitePath, { timeout: 1000 })
+    if (running && Date.parse(running.startedAt) >= startedAt) {
+      console.error(`${GREEN}✓${RESET} Serving ${site.name} at ${CYAN}${running.url}${RESET}`)
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
 }
 
 /**

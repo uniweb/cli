@@ -1537,6 +1537,14 @@ ${colors.bright}Usage:${colors.reset}
   uniweb dev                  Start dev server for the (single) site
   uniweb dev <site>           Start dev server for a specific site
   uniweb dev --site <name>    Same, with explicit flag form
+  uniweb dev --port <n>       On that port, or not at all
+  uniweb dev --status         Print the running dev server's address
+  uniweb dev --stop           Stop the running dev server
+
+The dev server takes a free port and says where it is: once it listens,
+\`dev\` prints \`Serving <site> at <url>\`. Don't assume a port: another
+project's server may be on the one you would guess. While one is running,
+\`uniweb dev\` points at it rather than starting another.
 
 Thin wrapper around the package manager's workspace-filtered \`dev\`
 script (\`pnpm --filter <site> dev\` or \`npm -w <site> run dev\`). Picks

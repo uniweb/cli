@@ -87,7 +87,8 @@ test('a realistic invocation of every guarded verb passes', () => {
     forget: ['--server', 'http://localhost:9999'],
     refresh: ['--no-git', '--no-validate'],
     sync: ['--no-git', '--force', '--yes'],
-    site: ['delete', '01a116cf-1a07-79f0-86e1-855d3a95e987', '--yes', '--org', '@acme']
+    site: ['delete', '01a116cf-1a07-79f0-86e1-855d3a95e987', '--yes', '--org', '@acme'],
+    dev: ['docs', '--port', '5199', '--org', '@acme']
   }
   for (const [verb, args] of Object.entries(real)) {
     assert.equal(checkFlags(verb, args), null, `${verb} rejected a valid call`)
@@ -173,7 +174,7 @@ test('--flag=value is checked on the name half', () => {
 })
 
 test('an unguarded verb is left alone', () => {
-  assert.equal(checkFlags('dev', ['--anything']), null)
+  assert.equal(checkFlags('build', ['--anything']), null)
 })
 
 // ─── --org, and the retired --as-org ──────────────────────────────────────────

@@ -130,7 +130,16 @@ const VERBS = {
   refresh: [
     '--no-backend', '--no-git',
     '--org', '--personal', '--dry-run', '--no-validate', '--yes', ...VIA_DEPLOY
-  ]
+  ],
+  /**
+   * `dev` = start a site's dev server, or report on (`--status`) or stop (`--stop`) the
+   * running one, on that port or none (`--port`). It reaches a backend only for a site whose
+   * foundation is a catalog ref, to ask where that version is served, and that asks in the
+   * workspace `--org` / `--personal` name (`backend/site-preview.js` — imported lazily, so
+   * `flag-guard-coverage.test.js`'s walk does not see it). ⛔ Until 2026-10-25 `dev` checked
+   * no flags, and read the value of `--port 5199` as the name of a site.
+   */
+  dev: ['--site', '--port', '--status', '--stop', '--org', '--personal']
 }
 
 /**
