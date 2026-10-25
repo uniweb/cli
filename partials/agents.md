@@ -179,7 +179,7 @@ pnpm preview          # preview the production build
 
 Markdown, `theme.yml`, and component edits hot-reload. New section types are picked up without a restart.
 
-**The dev server says where it is — read it, never assume a port.** `uniweb dev` takes a free port and, once the server listens, prints `Serving <site> at <url>`. The usual port may be another project's server, and reviewing that page reports success on the wrong site. Run `uniweb dev` in the background when you need your shell back: `uniweb dev --status` prints the address later, a second `uniweb dev` points at the running server instead of starting another, and `uniweb dev --stop` stops it when you are done. Pass `--port <n>` only when a port is required: you get that one or an error, never another.
+**The dev server says where it is — read it, never assume a port.** `uniweb dev` takes a free port and, once the server listens, prints `Serving <site> at <url>`. The usual port may be another project's server, and reviewing that page reports success on the wrong site. Run `uniweb dev` in the background when you need your shell back: `uniweb dev --status` prints the address later, a second `uniweb dev` points at the running server instead of starting another, and `uniweb dev --stop` stops it when you are done. They know the server `uniweb dev` started, not one you start with `vite` or `npm run dev` inside the site. Pass `--port <n>` only when a port is required: you get that one or an error, never another.
 
 ---
 
