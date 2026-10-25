@@ -179,6 +179,8 @@ pnpm preview          # preview the production build
 
 Markdown, `theme.yml`, and component edits hot-reload. New section types are picked up without a restart.
 
+**The dev server says where it is — read it, never assume a port.** `uniweb dev` takes a free port and, once the server listens, prints `Serving <site> at <url>`. The usual port may be another project's server, and reviewing that page reports success on the wrong site. Run `uniweb dev` in the background when you need your shell back: `uniweb dev --status` prints the address later, a second `uniweb dev` points at the running server instead of starting another, and `uniweb dev --stop` stops it when you are done. Pass `--port <n>` only when a port is required: you get that one or an error, never another.
+
 ---
 
 ## Part 2 — Working in an existing project
@@ -286,6 +288,8 @@ The architecture exists to keep content and code separate. Your task sits in one
 
 ```bash
 uniweb dev                         # from the workspace root; it picks the site
+uniweb dev --status                # the address it is serving at — read it, never assume a port
+uniweb dev --stop                  # stop it when you are done
 ```
 
 **When you're unsure what shape your markdown produces, don't reason about it — run it.** From the *site* directory (paths resolve against your shell's working directory):
@@ -590,7 +594,7 @@ submitLabel: Send
 ```
 ````
 
-→ `content.data?.form` = `{ fields: [...], submitLabel: "Send" }`, when the component declares `data: { form: … }`. A block under a key the component does not declare stays out of `content.data` (the dev console says so) and is still in `content.sequence`.
+→ `content.data?.form` = `{ fields: [...], submitLabel: "Send" }`, when the component declares `data: { form: … }`. A block under a key the component does not declare stays out of `content.data` (the dev console says so) and is still in `content.sequence`. A block inside an item is that item's (`content.items[n].data`) and needs no declaration.
 
 **Code snippets** — display content with a language for syntax highlighting, collected in `content.snippets` as `[{ language, code }]`. Filter with `content.snippets.filter(s => s.language === 'css')`.
 
@@ -1174,7 +1178,7 @@ Header.className = 'p-0'
 Header.as = 'header'
 ```
 
-**A header that stays in view is a setting, not a class.** `sticky top-0` on your component's markup does nothing: a sticky element moves only within its parent, and the section's wrapper and the area's are as tall as your header. Declare `sticky: true` in the type's `meta.js` — an author turns it off with `sticky: false` — and the runtime makes sticky the box that can stay in view. A section in the body sticks the same way and stays below the stuck header by itself: the runtime measures how far the header reaches and publishes it as `--uw-sticky-top` (a type's `top` overrides it). A link to a section lands below the stuck header too. A child section in kit's `<ChildGrid>` stays in view beside the column it sits next to, and on a phone, at one column, scrolls with the page. A sticky section inside a box with `overflow: hidden` cannot stick — clip with `overflow: clip`. A layout of your own that wraps an area in an element makes that element sticky when `page.isSticky('header')`. `uniweb dev` names a sticky element that cannot move in the console.
+**A header that stays in view is a setting, not a class.** `sticky top-0` on your component's outermost element does nothing: a sticky element moves only within its parent, and the section's wrapper and the area's are as tall as your header. (An element inside your component is different: a form beside a long list sticks within the row the two share, a box you draw.) Declare `sticky: true` in the type's `meta.js` — an author turns it off with `sticky: false` — and the runtime makes sticky the box that can stay in view. A section in the body sticks the same way and stays below the stuck header by itself: the runtime measures how far the header reaches and publishes it as `--uw-sticky-top` (a type's `top` overrides it). A link to a section lands below the stuck header too. A child section in kit's `<ChildGrid>` stays in view beside the column it sits next to, and on a phone, at one column, scrolls with the page. A sticky section inside a box with `overflow: hidden` cannot stick — clip with `overflow: clip`. A layout of your own that wraps an area in an element makes that element sticky when `page.isSticky('header')`. `uniweb dev` names a sticky element that cannot move in the console, once the page's data is in, and says which box holds it.
 
 ### meta.js
 
@@ -2793,7 +2797,8 @@ them, and any other in full; it matches a name exactly. State is in memory; rest
 ## Part 5 — Commands, shipping, and migration
 
 ```bash
-uniweb dev                        # Start dev server (picks the site for you)
+uniweb dev                        # Start dev server (picks the site for you; prints its address)
+uniweb dev --status / --stop      # The running dev server's address / stop it
 pnpm build / pnpm preview         # Build for production / preview the build (SSG + SPA)
 
 uniweb deploy                     # Wizard: pick a destination, then deploy (or set up CI)
@@ -3099,7 +3104,7 @@ Most Uniweb failures are **silent** — the build succeeds and the page is wrong
 
 **A var in frontmatter does nothing** — component vars only apply when declared in that section type's `meta.js` `vars:`. Unknown names are ignored silently.
 
-**A sticky header scrolls away** — it is `sticky top-0` on the component's own markup, which has no room to move. Make the section sticky instead: `sticky: true` in its type's `meta.js`. A sticky section that still scrolls away sits in a box with `overflow: hidden` — clip with `overflow: clip`. `uniweb dev` names the element in the console.
+**A sticky header scrolls away** — it is `sticky top-0` on the component's outermost element, which has no room to move. Make the section sticky instead: `sticky: true` in its type's `meta.js`. A sticky section that still scrolls away sits in a box with `overflow: hidden` — clip with `overflow: clip`. `uniweb dev` names the element in the console.
 
 Loud failures:
 
