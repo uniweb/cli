@@ -660,6 +660,9 @@ background: primary-900                                  # Palette token (bare n
 background:                                              # Object form for more control
   image: { src: /img.jpg, position: center top }
   overlay: { enabled: true, type: dark, opacity: 0.5 }
+
+background:
+  video: { src: /videos/hero.mp4, poster: /images/hero.jpg }   # the poster shows until the video plays
 ```
 
 Components that render their own background declare `background: 'self'` in `meta.js`, and the runtime then draws none; to draw the author's background themselves they render kit's `<SectionBackground block={block} />`.
@@ -1874,7 +1877,7 @@ const page = website.activePage
 | `block.themeName` | `"light"`, `"medium"`, `"dark"` |
 | `block.stableId` / `block.key` | Stable ID from filename or `id:` / unique key across pages — use as React key |
 | `block.path` | Page route this block belongs to |
-| `block.dataLoading` | True while declared data is still resolving |
+| `block.dataLoading` | True while declared data is still resolving — also on a pre-rendered page, for data the browser fetches, so the loading state is what that page first shows |
 | `block.dataError` | `{ <key>: message }` when the fetch filling a declared key FAILED, else `null`. A failed key is `null` in `content.data` — never `[]`, which means "no records" |
 
 ```jsx
