@@ -102,6 +102,26 @@ export function isGitRepo(dir) {
   return Boolean(repoOf(dir))
 }
 
+/**
+ * Would the repository that holds `dir` ignore `path` (relative to `dir`)? True or false —
+ * or null when no repository holds `dir` (`repoOf`) or git cannot say.
+ *
+ * Asked of git, never read from a `.gitignore`: the rule may sit in a parent's file (a
+ * workspace root naming `site/public/data/`), be spelled with or without its slashes, or
+ * come from `.git/info/exclude`, and git reads them all. `--no-index` asks about the rules
+ * alone, so a file committed despite them does not read as unignored, and `path` need not
+ * exist.
+ */
+export function ignoredByRepo(dir, path) {
+  if (!repoOf(dir)) return null
+  try {
+    git(['check-ignore', '-q', '--no-index', path], dir)
+    return true
+  } catch (err) {
+    return err?.status === 1 ? false : null
+  }
+}
+
 /** Does this repo have a remote configured to pull from? */
 export function hasRemote(dir) {
   try {

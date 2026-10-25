@@ -30,6 +30,7 @@ import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { checkSiteInstall } from '../utils/install-integrity.js'
 import { editWorkspaceFilePackages } from '../utils/workspace-packages.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
+import { ignoredByRepo } from '../utils/git.js'
 import { DATA_DIR } from '@uniweb/core/data-paths'
 import { FAMILIES, resolveFamily } from '@uniweb/schemas/families'
 import { suggestFamily } from '@uniweb/schemas/family-aliases'
@@ -1018,7 +1019,7 @@ function readQueriesYml(sitePath) {
   }
 }
 
-function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix, fixed }) {
+export function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix, fixed }) {
   const dataDir = join(sitePath, 'public', DATA_DIR)
   // ⚠️ THE QUERIES, not the pool. `public/<DATA_DIR>/x.json` is a query's
   // MATERIALIZATION — one file per named query — so the bijection is with the
@@ -1074,15 +1075,24 @@ function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix,
 
   // The ignore rule. Checked whether or not the directory exists yet — the
   // point is to have it in place *before* the first build writes there.
+  //
+  // ⭐ ASKED OF GIT when a repository holds the site (`ignoredByRepo`): git reads every
+  // rule, a workspace's root `.gitignore` naming `site/public/data/` among them, and only
+  // it can say whether the build's files would be committed. Outside a repository nothing
+  // is committed yet, and the site's own `.gitignore` is read for the rule `--fix` writes.
+  // ⛔ Until 2026-10-25 that file was read in a repository too, so a rule in the root
+  // `.gitignore` was reported as missing.
   const gitignorePath = join(sitePath, '.gitignore')
   const rule = `public/${DATA_DIR}/`
   const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : null
   const covered =
-    existing !== null &&
-    existing
-      .split('\n')
-      .map((line) => line.trim().replace(/\/$/, ''))
-      .includes(rule.replace(/\/$/, ''))
+    // Any file the build writes there: `x.json` is a query's list.
+    ignoredByRepo(sitePath, `${rule}x.json`) ??
+    (existing !== null &&
+      existing
+        .split('\n')
+        .map((line) => line.trim().replace(/\/$/, ''))
+        .includes(rule.replace(/\/$/, '')))
 
   if (!covered) {
     const id = 'generated-data-not-ignored'
@@ -1092,7 +1102,7 @@ function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, shouldFix,
       site: siteName,
       message: `public/${DATA_DIR}/ is generated but not gitignored`
     })
-    warn(`[${id}] public/${DATA_DIR}/ is build output but not in .gitignore`)
+    warn(`[${id}] public/${DATA_DIR}/ is build output but not gitignored`)
     log(`    Committing it means a diff on every build, and it invites editing what the build overwrites.`)
     if (shouldFix(id)) {
       const body = existing === null ? '' : existing.replace(/\n*$/, '\n')
