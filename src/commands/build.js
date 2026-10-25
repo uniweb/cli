@@ -588,6 +588,9 @@ function resolveFoundationDir(projectDir, siteConfig) {
  * (dist/assets/), or static-host extras (sitemap, robots, search-index,
  * _pages/*) — `publish` reads none of them. ⛔ *It processed media into
  * dist/assets/ — WebP copies, video posters, PDF thumbnails — until 2026-10-19.*
+ * ⚠️ Except each extra language's `dist/<lang>/search-index.json`: the
+ * `buildLocalizedContent` step below writes one on this lane too, and nothing
+ * reads it (measured 2026-10-25).
  *
  * The `buildLocalizedContent` step is the same call bundle mode makes
  * post-vite, so multi-locale sites get identical per-locale outputs in
