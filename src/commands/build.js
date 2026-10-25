@@ -12,8 +12,9 @@
  *   --bundle (internal; called by `uniweb deploy --host` / `uniweb export`)
  *     Full vite + post-vite pipeline. Produces a static-host JS bundle
  *     (`dist/index.html`, `dist/entry.js`, `_importmap/*`, `_pages/*` for
- *     split mode, sitemap/robots/search-index, prerendered HTML when
- *     configured). The foundation is statically inlined when site.yml names a
+ *     split mode, sitemap/robots, each language's search index, llms.txt and
+ *     page markdown, prerendered HTML when configured). The foundation is
+ *     statically inlined when site.yml names a
  *     workspace-local one (the self-contained case), and loaded by URL when
  *     it names a URL, or under VITE_FOUNDATION_MODE=runtime. A catalog ref
  *     (`@org/name@version`) is refused (`detectFoundationType`).
@@ -461,19 +462,38 @@ async function loadI18nConfig(projectDir, siteConfig = null) {
 }
 
 /**
- * Build localized content for all configured locales
+ * Build every configured language but the default: its records, its content, and — on the bundle
+ * lane — its search index, llms.txt and page markdown, in that order (`buildLocalizedSite`).
+ *
+ * ⛔ Until 2026-10-25 each lane ran content, then records, here in two copies, and a language's
+ * search index was written in the content step, before its records were translated.
  */
-async function buildLocalizedContent(projectDir, i18nConfig) {
-  const { buildLocalizedContent } = await import('@uniweb/build/i18n')
-
-  const outputs = await buildLocalizedContent(projectDir, {
-    localesDir: i18nConfig.localesDir,
+async function buildLocalizedSite(projectDir, i18nConfig, { projections = false } = {}) {
+  const { buildLocalizedSite } = await import('@uniweb/build/i18n')
+  return buildLocalizedSite(projectDir, {
     locales: i18nConfig.locales,
+    localesDir: i18nConfig.localesDir,
     outputDir: join(projectDir, 'dist'),
-    fallbackToSource: true
+    projections
   })
+}
 
-  return outputs
+/** What `buildLocalizedSite` wrote, per language. */
+function reportLocalizedSite(built) {
+  const locales = Object.keys(built.content)
+  success(`Generated ${locales.length} locale(s)`)
+  for (const locale of locales) {
+    log(`  ${colors.dim}dist/${locale}/site-content.json${colors.reset}`)
+    const files = built.projections[locale] || []
+    for (const file of files) {
+      if (file.kind === 'search') log(`  ${colors.dim}dist/${file.fileName} (${file.count} entries)${colors.reset}`)
+      if (file.kind === 'index') log(`  ${colors.dim}dist/${file.fileName}${colors.reset}`)
+    }
+    const markdown = files.filter((file) => file.kind === 'markdown').length
+    if (markdown) log(`  ${colors.dim}dist/${locale}/ — ${markdown} page markdown projections${colors.reset}`)
+  }
+  const translated = Object.values(built.records).filter((outputs) => Object.keys(outputs).length > 0).length
+  if (translated > 0) success(`Translated records for ${translated} locale(s)`)
 }
 
 /**
@@ -586,16 +606,16 @@ function resolveFoundationDir(projectDir, siteConfig) {
  *
  * Does NOT emit HTML, JS, CSS, source maps, _importmap chunks, processed media
  * (dist/assets/), or static-host extras (sitemap, robots, search-index,
- * _pages/*) — `publish` reads none of them. ⛔ *It processed media into
- * dist/assets/ — WebP copies, video posters, PDF thumbnails — until 2026-10-19.*
- * ⚠️ Except each extra language's `dist/<lang>/search-index.json`: the
- * `buildLocalizedContent` step below writes one on this lane too, and nothing
- * reads it (measured 2026-10-25).
+ * llms.txt, page markdown, _pages/*), in any language — `publish` reads none
+ * of them. ⛔ *It processed media into dist/assets/ — WebP copies, video
+ * posters, PDF thumbnails — until 2026-10-19, and until 2026-10-25 wrote the
+ * default language's llms.txt and page markdown, and each other language's
+ * search index.*
  *
- * The `buildLocalizedContent` step is the same call bundle mode makes
- * post-vite, so multi-locale sites get identical per-locale outputs in
- * either mode. Record translation (`buildLocalizedRecords`) also runs here,
- * writing each locale's query files to dist/<lang>/data/.
+ * The `buildLocalizedSite` step is the call bundle mode makes post-vite,
+ * without the projections, so multi-locale sites get identical per-locale
+ * outputs in either mode: each language's query files (dist/<lang>/data/),
+ * then its content (dist/<lang>/site-content.json).
  *
  * History: when `deploy` uploaded `dist/site-content.json` to a backend, it
  * read the bundle pipeline's copy, which prerender rewrites into a lightweight
@@ -634,49 +654,16 @@ async function buildSiteLink(projectDir, options = {}) {
   })
   success(`Wrote ${join('dist', 'site-content.json')}`)
 
-  // Per-locale variants — same call bundle mode makes post-vite. Both
-  // modes produce identical `dist/<lang>/site-content.json` outputs, and
-  // `publish` reads which languages were built from them.
+  // Per-locale variants — the call bundle mode makes post-vite, without the
+  // projections: a host derives its own. Both modes produce identical
+  // `dist/<lang>/site-content.json` outputs, and `publish` reads which
+  // languages were built from them.
   const i18nConfig = await loadI18nConfig(projectDir, siteConfig)
   if (i18nConfig && i18nConfig.locales.length > 0) {
     log('')
     info(`Building localized content for: ${i18nConfig.locales.join(', ')}`)
     try {
-      const outputs = await buildLocalizedContent(projectDir, i18nConfig)
-      success(`Generated ${Object.keys(outputs).length} locale(s)`)
-      for (const [locale] of Object.entries(outputs)) {
-        log(`  ${colors.dim}dist/${locale}/site-content.json${colors.reset}`)
-      }
-
-      // Collection translations — optional; don't fail the build if
-      // missing. Bundle mode does the same.
-      try {
-        const { buildLocalizedRecords } = await import('@uniweb/build/i18n')
-        const recordOutputs = await buildLocalizedRecords(projectDir, {
-          locales: i18nConfig.locales,
-          outputDir: distDir,
-          recordLocalesDir: join(
-            projectDir,
-            i18nConfig.localesDir,
-            'records'
-          ),
-          // Free-form record translations live under it — the default was `locales/`
-          // whatever the site said.
-          localesDir: join(projectDir, i18nConfig.localesDir)
-        })
-        const recordCount = Object.values(recordOutputs).reduce(
-          (sum, localeOutputs) => sum + Object.keys(localeOutputs).length,
-          0
-        )
-        if (recordCount > 0) {
-          success(
-            `Translated records for ${Object.keys(recordOutputs).length} locale(s)`
-          )
-        }
-      } catch (err) {
-        if (process.env.UNIWEB_DEBUG)
-          console.error('Record translation:', err.message)
-      }
+      reportLocalizedSite(await buildLocalizedSite(projectDir, i18nConfig))
     } catch (err) {
       error(`i18n build failed: ${err.message}`)
       if (process.env.UNIWEB_DEBUG) console.error(err.stack)
@@ -722,52 +709,14 @@ async function buildSite(projectDir, options = {}) {
     info(`Building localized content for: ${i18nConfig.locales.join(', ')}`)
 
     try {
-      // Generate locale-specific site-content.json
-      const outputs = await buildLocalizedContent(projectDir, i18nConfig)
+      // Each language's records, then its content, then its search index, llms.txt and page
+      // markdown, made from both.
+      const built = await buildLocalizedSite(projectDir, i18nConfig, { projections: true })
 
       // Generate locale-specific index.html files
       await generateLocalizedHtml(projectDir, i18nConfig)
 
-      success(`Generated ${Object.keys(outputs).length} locale(s)`)
-
-      for (const [locale, path] of Object.entries(outputs)) {
-        log(`  ${colors.dim}dist/${locale}/site-content.json${colors.reset}`)
-      }
-
-      // Translate collections if they exist
-      try {
-        const { buildLocalizedRecords } = await import('@uniweb/build/i18n')
-
-        const recordOutputs = await buildLocalizedRecords(projectDir, {
-          locales: i18nConfig.locales,
-          outputDir: join(projectDir, 'dist'),
-          recordLocalesDir: join(
-            projectDir,
-            i18nConfig.localesDir,
-            'records'
-          ),
-          // Free-form record translations live under it — the default was `locales/`
-          // whatever the site said.
-          localesDir: join(projectDir, i18nConfig.localesDir)
-        })
-
-        // Count collections translated
-        const recordCount = Object.values(recordOutputs).reduce(
-          (sum, localeOutputs) => sum + Object.keys(localeOutputs).length,
-          0
-        )
-
-        if (recordCount > 0) {
-          success(
-            `Translated records for ${Object.keys(recordOutputs).length} locale(s)`
-          )
-        }
-      } catch (err) {
-        // Collection translation is optional, don't fail build
-        if (process.env.UNIWEB_DEBUG) {
-          console.error('Record translation:', err.message)
-        }
-      }
+      reportLocalizedSite(built)
     } catch (err) {
       error(`i18n build failed: ${err.message}`)
       if (process.env.UNIWEB_DEBUG) {
