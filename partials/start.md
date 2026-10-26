@@ -81,8 +81,8 @@ npx uniweb login --browser --personal
 ```
 
 This opens their browser. If they're signed in to Uniweb there, it finishes on its own;
-otherwise they sign in, and it waits up to five minutes. Never ask for a password or a
-token.
+otherwise they sign in, or sign up if they're new, and it waits up to five minutes. Never
+ask for a password or a token.
 
 `--personal` puts their sites in their own workspace. If they ask for one of their
 organizations instead, use `--org @<its handle>`.
