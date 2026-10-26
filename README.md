@@ -22,6 +22,10 @@ Edit files in `site/pages/` and `src/sections/` to see changes instantly.
 
 > **pnpm ready** — `pnpm create uniweb` works out of the box. Projects include both `pnpm-workspace.yaml` and npm workspaces.
 
+### With an AI agent
+
+Building a site with an AI coding agent? Ask it to run `npx uniweb@latest start` first. It prints a short guide written for the agent: how to create the project, where its manual is (`AGENTS.md`), how to run it, and how to bring the site into the Uniweb app. The agent runs every command; you only use your browser, to sign in and to pay when the site goes live.
+
 ### Templates
 
 | Template | Description |

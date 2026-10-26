@@ -44,7 +44,7 @@ import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import prompts from 'prompts'
 
-import { findWorkspaceRoot } from '../utils/workspace.js'
+import { findUniwebWorkspace } from '../utils/workspace.js'
 import {
   readAgentsVersion,
   refreshAgentsContent,
@@ -106,28 +106,6 @@ function isGlobalInstall() {
 function isNpxInvocation() {
   const p = (process.argv[1] || '').replace(/\\/g, '/')
   return p.includes('/_npx/')
-}
-
-/**
- * Find a *Uniweb* workspace root from cwd. Stricter than findWorkspaceRoot
- * — also requires that the workspace's root package.json declares uniweb
- * as a dep or devDep. Otherwise we'd write AGENTS.md and edit package.json
- * files in unrelated monorepos.
- */
-function findUniwebWorkspace(cwd) {
-  const workspaceDir = findWorkspaceRoot(cwd)
-  if (!workspaceDir) return null
-  const pkgPath = join(workspaceDir, 'package.json')
-  if (!existsSync(pkgPath)) return null
-  try {
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-    const hasUniwebDep = !!(
-      pkg.devDependencies?.uniweb || pkg.dependencies?.uniweb
-    )
-    return hasUniwebDep ? workspaceDir : null
-  } catch {
-    return null
-  }
 }
 
 /**

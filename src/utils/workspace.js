@@ -61,6 +61,32 @@ export function findWorkspaceRoot(startDir = process.cwd()) {
 }
 
 /**
+ * Find a *Uniweb* workspace root from cwd. Stricter than findWorkspaceRoot
+ * — also requires that the workspace's root package.json declares uniweb
+ * as a dep or devDep. Otherwise `update` would write AGENTS.md and edit
+ * package.json files in unrelated monorepos, and `start` would take one for
+ * a Uniweb project.
+ *
+ * @param {string} [cwd]
+ * @returns {string|null} - Workspace root path or null
+ */
+export function findUniwebWorkspace(cwd = process.cwd()) {
+  const workspaceDir = findWorkspaceRoot(cwd)
+  if (!workspaceDir) return null
+  const pkgPath = join(workspaceDir, 'package.json')
+  if (!existsSync(pkgPath)) return null
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+    const hasUniwebDep = !!(
+      pkg.devDependencies?.uniweb || pkg.dependencies?.uniweb
+    )
+    return hasUniwebDep ? workspaceDir : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Get workspace packages from pnpm-workspace.yaml or package.json workspaces —
  * read as pnpm reads them (`workspacePackages`, ./workspace-packages.js).
  *

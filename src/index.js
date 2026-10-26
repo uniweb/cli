@@ -152,6 +152,8 @@ function getCliVersion() {
 // against *this* CLI's version matrix — when run from a (newer) global
 // install that's the whole point; delegating to the project-local copy
 // would align the project to the version it already has, i.e. a no-op.
+// `start` is here because a project's older CLI may not have it, and its
+// guide describes the CLI that prints it.
 const STANDALONE_COMMANDS = new Set([
   'create',
   'clone',
@@ -161,6 +163,7 @@ const STANDALONE_COMMANDS = new Set([
   '-v',
   'login',
   'logout',
+  'start',
   'update'
 ])
 
@@ -696,6 +699,19 @@ async function main() {
     // Commands that need @uniweb/build will get a helpful error via importProjectCommand().
   }
 
+  // `start` — the guide an AI agent reads first (commands/start.js). Answered before the
+  // update check: it asks nothing, writes nothing and makes no request, and the check can
+  // write a cache and fetch.
+  if (command === 'start') {
+    if (args.slice(1).some((a) => a === '--help' || a === '-h')) {
+      printCommandHelp('start')
+      return
+    }
+    const { start } = await import('./commands/start.js')
+    await start(args.slice(1))
+    return
+  }
+
   // Update check for global installs.
   //
   //   - `create` / `clone` STOP when a newer release exists, before anything is
@@ -1132,6 +1148,9 @@ async function main() {
   if (nonInteractive && !projectName) {
     error(`Missing project name.\n`)
     log(`Usage: ${prefix} create <project-name> [--template <name>] [--blank]`)
+    log(
+      `\nAn AI agent building a site for someone: run ${colors.cyan}npx uniweb@latest start${colors.reset} first — it says how, step by step.`
+    )
     await exitWhenDrained(1)
   }
 
@@ -1389,6 +1408,10 @@ async function main() {
       `  ${colors.cyan}${runCmd(recPm, 'dev')}${colors.reset}   ${colors.dim}# start the dev server${colors.reset}`
     )
   }
+  log('')
+  log(
+    `  ${colors.bright}AGENTS.md${colors.reset} is the project's manual, for you and for AI agents: its Part 0 says where to begin.`
+  )
   if (recPm !== 'pnpm') {
     log('')
     log(
@@ -1529,6 +1552,21 @@ ${colors.bright}Examples:${colors.reset}
   uniweb create .                                # Scaffold into current dir
   uniweb create . --template docs                # In place + a content template
   uniweb create . --name=my-app                  # In place, explicit slug
+`,
+    start: `
+${colors.cyan}${colors.bright}uniweb start${colors.reset} ${colors.dim}— How an AI agent begins a Uniweb site${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  npx uniweb@latest start    Print the guide, in Markdown
+
+A short guide for an AI agent building a website for someone: create a
+project, read its AGENTS.md, run it, sign the person in, and bring the site
+into the Uniweb app. The person only uses their browser, to sign in and to
+pay when the site goes live; the guide has the agent run every command.
+
+Inside a Uniweb project it starts from that project instead of creating one.
+It asks nothing, writes nothing and makes no request, so it is safe to run
+anywhere. To run a site's dev server, use \`uniweb dev\`.
 `,
     dev: `
 ${colors.cyan}${colors.bright}uniweb dev${colors.reset} ${colors.dim}— Start a dev server for a site${colors.reset}
@@ -2075,6 +2113,7 @@ ${colors.bright}Usage:${colors.reset}
   uniweb <command> [options]
 
 ${colors.bright}Commands:${colors.reset}
+  start              How an AI agent begins a site (a guide; changes nothing)
   create [name]      Create a new project
   clone <site-uuid>  Clone a backend site into a local file project
   add <type> [name]  Add a foundation, site, or extension to a project
