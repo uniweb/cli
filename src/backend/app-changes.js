@@ -1,6 +1,12 @@
 /**
  * What changed on the backend since this copy last synced — READ, never taken.
  *
+ * ⚠️ THE SECOND ANSWER. In a repository `uniweb status` asks the pull itself
+ * (`commands/pull.js::probePull`), which names every file a pull would change. This answers
+ * where that cannot — outside git, or with no sync point to merge from — by units and
+ * records, not files: a section's translations, which a pull writes to `locales/*.json`,
+ * travel inside the section here (measured 2026-10-26: 8 units named, 11 files pulled).
+ *
  * `uniweb pull` takes the backend's content; `uniweb status` asks what there is to take.
  * The two must agree on what "changed" means, so this reads the backend as a pull does —
  * the same two lanes, the same conditional GET (`etagsHold`) — and compares the answer

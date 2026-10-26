@@ -16,9 +16,11 @@
  *   dev      the dev server
  *
  * ⛔ READ-ONLY, AND IT NEVER PROMPTS. It signs nobody in — with no session it says how — and
- * writes nothing a later command reads as taken: no ETag, version or hash
- * (`backend/app-changes.js`). Its one write is the user-level npm cache `update` and
- * `--version` keep. A check it could not make is `unknown`, never `ok`.
+ * writes nothing a later command reads as taken: no ETag, version, hash or sync point
+ * (`probePull`, `backend/app-changes.js`). It writes the user-level npm cache `update` and
+ * `--version` keep, and — for a foundation named by catalog ref — the registered version's
+ * section types a pull keeps, which never change. A check it could not make is `unknown`,
+ * never `ok`.
  *
  * ⛔ THE GUARDS ARE THE VERBS' OWN. Where status says a push would be refused, it says so
  * from the function the push calls (`unsettledFiles`, `uncommittedContent`, `untakenBase`),
@@ -56,6 +58,8 @@ import {
 import { describeWorkspace, resolveWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 import { BackendClient, resolveBackendOrigin } from '../backend/client.js'
 import { readAppChanges } from '../backend/app-changes.js'
+import { probePull } from './pull.js'
+import { readOrgFlag } from '../utils/args.js'
 import { readBackendState } from '@uniweb/build/uwx'
 import { resolveLocalFoundation, foundationScopedName } from '../backend/foundation-bring-along.js'
 import { computeFoundationDigest } from '../utils/code-upload.js'
@@ -248,7 +252,7 @@ async function gitChecks(siteDir, { offline, origin }) {
         ? 'The git repository around this folder ignores it, so a pull here takes the backend\'s version over your files, asking first.'
         : 'Not a git repository, so a pull here takes the backend\'s version over your files, asking first.'
     })
-    return { checks, proposals, localFiles: null }
+    return { checks, proposals, localFiles: null, repo: false }
   }
   checks.push({ id: 'git.repo', state: 'ok', summary: `In the git repository at ${repo.top}.`, quiet: true })
 
@@ -334,7 +338,7 @@ async function gitChecks(siteDir, { offline, origin }) {
     if (moved) proposals.push({ step: 'refresh', command: 'npx uniweb refresh', why: "take your teammates' commits" })
     if (counts.ahead) proposals.push({ step: 'gitpush', command: 'git push', why: `share ${count(counts.ahead, 'commit')} with your team`, ask: true })
   }
-  return { checks, proposals, localFiles, uncommitted: Boolean(uncommitted), merging }
+  return { checks, proposals, localFiles, uncommitted: Boolean(uncommitted), merging, repo: Boolean(repo.head) }
 }
 
 /**
@@ -488,9 +492,24 @@ async function appChecks(siteDir, siteYml, { offline, args, git }) {
     summary: `Signed in to ${origin}${session.handle ? ` as @${String(session.handle).replace(/^@/, '')}` : ''}, working in ${describeWorkspace(ws.workspace)} (${SOURCE_LABEL[ws.source] || ws.source}).`
   })
 
+  // ⭐ WHAT CHANGED ON THE BACKEND, AS A PULL WOULD TAKE IT. In a repository, the pull itself,
+  // stopped before it takes anything (`probePull`): the files it would change, translations
+  // and records included. Where it cannot answer — outside git, no sync point to merge from —
+  // the backend's units against this copy's last sync (`backend/app-changes.js`).
+  const readChanges = async () => {
+    if (git.repo) {
+      const org = readOrgFlag(args)
+      const probed = await probePull([...(org ? ['--org', org] : []), ...(args.includes('--personal') ? ['--personal'] : [])], {
+        resolveSiteDir: async () => siteDir,
+        getToken: async () => session.token
+      })
+      if (probed) return { probe: probed }
+    }
+    return readAppChanges({ client, siteDir, siteUuid: uuid })
+  }
   const [state, changes, foundation] = await Promise.all([
     uuid ? client.siteState(uuid) : null,
-    uuid ? readAppChanges({ client, siteDir, siteUuid: uuid }).catch((err) => ({ error: err })) : null,
+    uuid ? readChanges().catch((err) => ({ error: err })) : null,
     foundationCheck(siteDir, siteYml, client).catch(() => null)
   ])
 
@@ -564,11 +583,14 @@ async function appChecks(siteDir, siteYml, { offline, args, git }) {
   return { checks, proposals, backend }
 }
 
+const CHANGE = { A: 'added', M: 'changed', D: 'removed' }
+
 /** `app.changes`: what moved on the backend, and where it meets what moved here. */
 function changeChecks(siteDir, changes, unpushedFiles, proposals) {
   if (changes.error) {
     return [{ id: 'app.changes', state: 'unknown', summary: `Could not read the site from the backend: ${changes.error.message}` }]
   }
+  if (changes.probe) return probedChanges(changes.probe, unpushedFiles, proposals)
   const { content, records } = changes
   const unknown = [content, records].filter((l) => l.state === 'unknown')
   const files = [
@@ -586,7 +608,7 @@ function changeChecks(siteDir, changes, unpushedFiles, proposals) {
     return [
       unknown.length
         ? { id: 'app.changes', state: 'unknown', summary: `Could not tell what changed on the backend: ${unknown.map((l) => l.detail).join('; ')}.` }
-        : { id: 'app.changes', state: 'ok', summary: 'Nothing changed on the backend since this copy last synced.' }
+        : { id: 'app.changes', state: 'ok', summary: 'Nothing changed on the backend since this copy last synced.', detail: { source: 'units' } }
     ]
   }
   // Where the backend's changes meet this copy's: a push of those is refused until a pull
@@ -605,10 +627,45 @@ function changeChecks(siteDir, changes, unpushedFiles, proposals) {
       lines,
       ...(overlap.length ? { blocks: ['push', 'publish'] } : {}),
       detail: {
+        source: 'units',
         content: { state: content.state, changed: content.changed, added: content.added, removed: content.removed, outsideUnits: content.outsideUnits },
         records: { state: records.state, changed: records.changed, added: records.added, removed: records.removed, folder: records.folder },
         ...(overlap.length ? { overlap } : {}),
         ...(unknown.length ? { unknown: unknown.map((l) => l.detail) } : {})
+      }
+    }
+  ]
+}
+
+/**
+ * `app.changes` from the pull's own answer (`probePull`): the files it would change, each
+ * as the pull would write it.
+ */
+function probedChanges({ files: list, recordsNotPlaced }, unpushedFiles, proposals) {
+  if (!list.length) {
+    return [{ id: 'app.changes', state: 'ok', summary: 'Nothing changed on the backend since this copy last synced.', detail: { source: 'pull', files: [] } }]
+  }
+  const paths = list.map(([, p]) => p)
+  const files = list.map(([s, p]) => (s === 'A' ? `${p} (new)` : s === 'D' ? `${p} (removed)` : p))
+  // Where the backend's changes meet this copy's: the pull merges them, and a push of those
+  // before it is refused.
+  const overlap = unpushedFiles?.length ? paths.filter((p) => unpushedFiles.includes(p)) : []
+  const n = list.length
+  proposals.push({ step: 'pull', command: 'npx uniweb pull', why: `take the ${count(n, 'file')} changed on the backend` })
+  return [
+    {
+      id: 'app.changes',
+      state: overlap.length ? 'blocking' : 'attention',
+      summary:
+        `${count(n, 'file')} changed on the backend since this copy last synced — in the app, or pushed from another copy.` +
+        (overlap.length ? ` You changed ${count(overlap.length, 'of those files', 'of those files')} here too.` : ''),
+      files,
+      lines: recordsNotPlaced ? ['Some records could not be placed in files — `npx uniweb pull` says which, and why.'] : [],
+      ...(overlap.length ? { blocks: ['push', 'publish'] } : {}),
+      detail: {
+        source: 'pull',
+        files: list.map(([s, p]) => ({ path: p, change: CHANGE[s] || s })),
+        ...(overlap.length ? { overlap } : {})
       }
     }
   ]

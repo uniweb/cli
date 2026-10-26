@@ -200,23 +200,89 @@ test('a record changed on the backend is named by its folder and slug', { timeou
   assert.deepEqual(changes.lines, ['records changed: article/my-post'])
 })
 
+// ── in a repository: the pull's own answer (`probePull`) ─────────────────────
+
+const para = (text) => ({ type: 'paragraph', content: [{ type: 'text', text }] })
+const section = (id, uuid, text) => ({ $id: id, $uuid: uuid, stable_id: id, type: 'Section', content: { type: 'doc', content: [para(text)] } })
+/** A site-content document as a backend sends it: a home page with a welcome and an about. */
+const realDoc = ({ welcome = 'Welcome to the site.', about = 'About us.' } = {}) => ({
+  $uuid: SITE,
+  $id: 'site-content',
+  $schema: '@uniweb/site-content',
+  info: { name: { en: 'S' }, foundation: '@a/base' },
+  pages: [{ $id: 'home', $uuid: 'P1', slug: 'home', mode: 'page', stable_id: 'home', is_index: true, page_sections: [section('welcome', 'S1', welcome), section('about', 'S2', about)] }],
+  layout_sections: [],
+  extensions: [],
+  collections: []
+})
+
+/** A backend whose site the test moves: the content lane a `.uwx` with its version, no records lane. */
+function movingBackend() {
+  const state = { doc: realDoc(), version: 'v1' }
+  const respond = async (url) => {
+    if (url.includes(`/dev/site/status/${SITE}`)) return json(LIVE)
+    if (url.includes(`/dev/site/content/pull/${SITE}`)) return new Response(uwx([{ doc: state.doc, version: state.version }]), { status: 200 })
+    if (url.includes(`/dev/site/folder/pull/${SITE}`)) return json(null, 404)
+    return undefined
+  }
+  return { state, respond }
+}
+
+/** A project in git, taken from the backend by a real first pull, committed — as a person has one. */
+async function syncedRepo(backend) {
+  const top = tmp('uw-status-git-')
+  const dir = join(top, 'site')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(top, '.gitignore'), '.uniweb\nnode_modules\n')
+  writeFileSync(join(dir, 'site.yml'), "name: S\nfoundation: '@a/base'\n")
+  writeFileSync(join(dir, 'sync.json'), JSON.stringify({ version: 1, backends: { [ORIGIN]: { site: { uuid: SITE } } } }))
+  git(top, ['init', '-q'])
+  git(top, ['config', 'user.email', 'test@example.test'])
+  git(top, ['config', 'user.name', 'Test'])
+  git(top, ['add', '-A'])
+  git(top, ['commit', '-qm', 'create'])
+  const { pull } = await import('../src/commands/pull.js')
+  const run = await runVerb(dir, pull, ['--force'], { session: loggedIn, env: { UNIWEB_WORKSPACE: 'personal' }, respond: backend.respond })
+  assert.equal(run.exitCode, 0, run.output)
+  git(top, ['add', '-A'])
+  if (git(top, ['status', '--porcelain']).trim()) git(top, ['commit', '-qm', 'pull'])
+  return dir
+}
+
 test('⭐ a file changed here and on the backend blocks the push, and the pull comes first', { timeout: 60_000 }, async () => {
-  const dir = project({ repo: true })
-  writeFileSync(join(dir, 'pages/about/1-hero.md'), '# About — edited here\n')
-  const content = uwx([{ doc: siteDoc('# About us'), version: 'v2' }])
-  const doc = docOf(await status(dir, ['--personal', '--json'], { session: loggedIn, respond: answering({ content }) }))
+  const backend = movingBackend()
+  const dir = await syncedRepo(backend)
+  const welcome = git(dir, ['ls-files', 'pages']).split('\n').find((p) => p.endsWith('welcome.md'))
+  assert.ok(welcome, 'control: the first pull wrote the welcome section')
+  writeFileSync(join(dir, welcome), `${readFileSync(join(dir, welcome), 'utf8')}\nEdited here.\n`)
+  backend.state.doc = realDoc({ welcome: 'Welcome — written in the app.' })
+  backend.state.version = 'v2'
+  const doc = docOf(await status(dir, ['--personal', '--json'], { session: loggedIn, respond: backend.respond }))
 
   const changes = checkOf(doc, 'app.changes')
+  assert.equal(changes.detail.source, 'pull', JSON.stringify(changes))
   assert.equal(changes.state, 'blocking', JSON.stringify(changes))
   assert.deepEqual(changes.blocks, ['push', 'publish'])
-  assert.deepEqual(changes.detail.overlap, ['pages/about/1-hero.md'])
-  assert.deepEqual(checkOf(doc, 'app.unpushed').files, ['pages/about/1-hero.md'])
+  assert.deepEqual(changes.detail.overlap, [welcome])
+  assert.deepEqual(checkOf(doc, 'app.unpushed').files, [welcome])
   assert.equal(checkOf(doc, 'git.uncommitted').state, 'attention')
 
   const order = doc.next.map((s) => s.command)
   const push = order.indexOf('npx uniweb push --commit -m "<what you changed>"')
   assert.ok(push > 0, order.join('\n'))
   assert.ok(order.indexOf('npx uniweb pull') < push, order.join('\n'))
+})
+
+test('…and with the change only on the backend, its file is named and nothing blocks', { timeout: 60_000 }, async () => {
+  const backend = movingBackend()
+  const dir = await syncedRepo(backend)
+  backend.state.doc = realDoc({ about: 'About us, since 1990.' })
+  backend.state.version = 'v2'
+  const changes = checkOf(docOf(await status(dir, ['--personal', '--json'], { session: loggedIn, respond: backend.respond })), 'app.changes')
+  assert.equal(changes.state, 'attention', JSON.stringify(changes))
+  assert.equal(changes.files.length, 1)
+  assert.match(changes.files[0], /about\.md$/)
+  assert.deepEqual(changes.detail.files, [{ path: changes.files[0], change: 'changed' }])
 })
 
 test('control: in git with nothing changed, nothing waits to be pushed', { timeout: 60_000 }, async () => {
