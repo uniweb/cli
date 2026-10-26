@@ -5,14 +5,14 @@ import { H1, H2, P, Link, cn } from '@uniweb/kit'
  *
  * A versatile content section that handles headings, text, and links.
  * Uses semantic tokens so it adapts to any theme context automatically.
+ *
+ * No fallbacks needed: the runtime hands every section the full content shape
+ * (empty strings and arrays where the markdown has nothing), and fills each
+ * param from its `default` in meta.js.
  */
 export default function Section({ content, params }) {
-  const { title, pretitle, subtitle, paragraphs = [], links = [], images = [] } = content || {}
-
-  const {
-    align = 'center',
-    width = 'default',
-  } = params || {}
+  const { title, pretitle, subtitle, paragraphs, links, images } = content
+  const { align, width } = params
 
   const alignments = {
     left: 'text-left',
