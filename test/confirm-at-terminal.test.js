@@ -82,6 +82,21 @@ test('CONTROL — no one at the terminal: no prompt, the door printed, nothing p
   assert.ok(h.lines.some((l) => l.includes(DOOR)))
 })
 
+// ⛔ The run with no one at the terminal is often an AI agent working for someone who does not
+// use one, and it passes the line on: a person confirms the charge in their browser.
+test('⛔ no one at the terminal: a charge is confirmed in a browser at its door — never "at a terminal"', async () => {
+  const h = harness()
+  await settleRefusal({ verdict: verdict(), interactive: false, ...h })
+  assert.ok(h.lines.some((l) => l.includes('a person confirms it, in a browser at the address above')))
+  assert.ok(h.lines.some((l) => l.includes('`--yes` never confirms a charge')))
+  assert.ok(!h.lines.some((l) => /terminal/.test(l)), h.lines.join('\n'))
+
+  const noDoor = harness()
+  await settleRefusal({ verdict: verdict({ url: null }), interactive: false, ...noDoor })
+  assert.ok(noDoor.lines.some((l) => l.includes('a person confirms it, in the app')))
+  assert.ok(!noDoor.lines.some((l) => /terminal/.test(l)), noDoor.lines.join('\n'))
+})
+
 test('the question is the backend\'s sentence, verbatim — and Enter cancels', async () => {
   const h = harness({ answers: [undefined] })
   const out = await settleRefusal({ verdict: verdict(), interactive: true, ...h })

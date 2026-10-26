@@ -23,7 +23,7 @@ import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runRegistryLogin } from '../src/utils/registry-auth.js'
+import { runRegistryLogin, ensureRegistryAuth } from '../src/utils/registry-auth.js'
 
 const ORIGIN = 'http://backend.test'
 const OTHER = 'http://other.test'
@@ -117,6 +117,19 @@ test('without a terminal, the refusal names what works — and UNIWEB_TOKEN only
   // Re-run as printed, the command must reach the backend named — not the default.
   const named = await scene({}, () => runRegistryLogin({ apiBase: OTHER, args: ['--server', OTHER] }))
   assert.match(named.text, /uniweb login --server http:\/\/other\.test --token <bearer>/)
+})
+
+// With no one at the terminal, the run is often an AI agent working for someone who signs in
+// in their browser, and it passes these lines on. A browser sign-in asks nothing here.
+test('⛔ without a terminal, the way in is a browser sign-in — never "log in interactively"', async () => {
+  const login = await scene({}, () => runRegistryLogin({ apiBase: ORIGIN, args: [] }))
+  assert.match(login.text, /uniweb login --browser +\(someone signs in, in a browser on this machine\)/)
+
+  const verb = await scene({}, () => ensureRegistryAuth({ apiBase: ORIGIN, command: 'uniweb push', args: [] }))
+  assert.equal(verb.exitCode, 1)
+  assert.match(verb.text, /Run `uniweb login --browser` first — someone signs in, in a browser on this machine — then re-run/)
+  assert.doesNotMatch(verb.text, /interactively first/)
+  assert.deepEqual(verb.requests, [])
 })
 
 test('⭐ with UNIWEB_TOKEN, a login checks it where the commands go, stores nothing, and exits 0', async () => {

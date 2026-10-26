@@ -244,6 +244,28 @@ async function openDoor({ url, say, open }) {
   return { opened }
 }
 
+/**
+ * Where a charge that was not asked is confirmed — at a terminal with `--yes`, or with no one at
+ * the terminal at all.
+ *
+ * ⛔ **UNATTENDED, NEVER "AT A TERMINAL".** The run with no one at the terminal is often an AI agent
+ * working for someone who does not use one, and it passes this line on: the person confirms in
+ * their browser, at the door the refusal printed, or in the app when there is none. *(Until
+ * 2026-10-26 every case said "run `uniweb publish` at a terminal".)* Either way a person confirms
+ * it, which is why the line says that `--yes` cannot.
+ *
+ * @param {{ interactive: boolean, door: boolean }} o - someone is at the terminal; a door was printed
+ * @returns {string}
+ */
+function confirmChargeLine({ interactive, door }) {
+  if (interactive) {
+    return 'This change charges the site\'s card, so only you can confirm it: run `uniweb publish` without `--yes`.'
+  }
+  return door
+    ? 'This change charges the site\'s card, so a person confirms it, in a browser at the address above. `--yes` never confirms a charge.'
+    : 'This change charges the site\'s card, so a person confirms it, in the app. `--yes` never confirms a charge.'
+}
+
 const CONFIRM = 'Confirm and publish'
 const CONTINUE = 'Continue and publish'
 const OPEN = 'Open it in the app'
@@ -275,7 +297,8 @@ const MAX_UNATTENDED = 3
  * "allow it for reductions only, keep charges interactive".]*
  *
  * With no one at the terminal and nothing to answer it, there is no prompt: the refusal is reported as
- * before, its door printed, and the publish fails. A refusal with no `confirm` behaves as it always has.
+ * before, its door printed, and the publish fails — and a charge says where a person confirms it, in a
+ * browser (`confirmChargeLine`). A refusal with no `confirm` behaves as it always has.
  *
  * @param {object} o
  * @param {ReturnType<typeof readPaymentRefusal>} o.verdict - the first refusal
@@ -312,7 +335,7 @@ export async function settleRefusal({ verdict, args = [], say, republish, intera
     } else if (!offer || !interactive || (yes && !reduction)) {
       await reportPaymentRefusal({ verdict: current, args, say, open, interactive: interactive && !yes })
       if (offer && !reduction) {
-        say.dim('This change charges the site\'s card, so only you can confirm it: run `uniweb publish` at a terminal, without `--yes`.')
+        say.dim(confirmChargeLine({ interactive, door: current.kind === 'settle' }))
       } else if (reduction) {
         say.dim('This change only lowers what the site pays: `uniweb publish --yes` continues it without a prompt.')
       }

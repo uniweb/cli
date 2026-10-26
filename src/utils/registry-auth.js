@@ -311,12 +311,15 @@ export async function ensureRegistryAuth({
       `\x1b[31m✗\x1b[0m ${reason} ${command} requires a Uniweb account, and the CLI is non-interactive (CI / no TTY / --non-interactive).`
     )
     console.error('  Options:')
+    // ⛔ Not "run `login` interactively": with no one at the terminal this is often an AI
+    // agent working for someone who does not use one, and it passes the line on. A browser
+    // sign-in asks nothing here. *(It said "interactively" until 2026-10-26.)*
+    console.error(
+      `    • Run \`${prefix} login --browser\` first — someone signs in, in a browser on this machine — then re-run.`
+    )
     console.error(`    • Set UNIWEB_TOKEN to a bearer token.`)
     console.error(
       `    • Set UNIWEB_USERNAME + UNIWEB_PASSWORD to log in non-interactively.`
-    )
-    console.error(
-      `    • Run \`${prefix} login\` interactively first, then re-run.`
     )
     process.exit(1)
   }
@@ -515,7 +518,9 @@ export async function awaitBrowserCallback({
       res.end(
         `<!doctype html><html><body style="font-family:system-ui,sans-serif;text-align:center;padding:60px">` +
           `<h2 style="color:${failed ? '#dc2626' : '#16a34a'}">${failed ? errTitle : okTitle}</h2>` +
-          `<p>You can close this tab and return to your terminal.</p></body></html>`
+          // ⛔ Not "return to your terminal": the person signing in may have none — an AI
+          // agent ran the login for them. *(It said so until 2026-10-26.)*
+          `<p>You can close this tab.</p></body></html>`
       )
       cleanup()
       resolve(failed ? { error: verdict.error } : { value: verdict.value })
@@ -817,11 +822,16 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
       } else {
         // Only what works without a terminal: `--password` and `--token-paste` prompt. The
         // command keeps the backend named, or re-run as printed it would go to the default.
+        // ⭐ `--browser` first: it asks nothing here, and it is the way for an AI agent working
+        // for someone who signs in in their browser. *(It was missing until 2026-10-26.)*
         const server = args.some((a) => a === '--server' || a.startsWith('--server='))
           ? ` --server ${key}`
           : ''
         console.error(
-          '\x1b[31m✗\x1b[0m Without a terminal, a login needs a way to sign in that asks nothing:'
+          '\x1b[31m✗\x1b[0m Without a terminal, a login needs a way to sign in that asks nothing here:'
+        )
+        console.error(
+          `    ${getCliPrefix()} login${server} --browser          (someone signs in, in a browser on this machine)`
         )
         console.error(
           `    ${getCliPrefix()} login${server} --token <bearer>   (with --org @org or --personal)`
