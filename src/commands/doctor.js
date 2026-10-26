@@ -62,11 +62,16 @@ const colors = {
   blue: '\x1b[36m'
 }
 
-const success = (msg) => console.log(`${colors.green}✓${colors.reset} ${msg}`)
-const warn = (msg) => console.log(`${colors.yellow}⚠${colors.reset} ${msg}`)
-const error = (msg) => console.log(`${colors.red}✗${colors.reset} ${msg}`)
-const info = (msg) => console.log(`${colors.blue}→${colors.reset} ${msg}`)
-const log = console.log
+// Where the report goes: the terminal — whatever `console.log` is when a line is printed —
+// or nowhere while another command reads the findings (`doctor(args, { quiet: true })`,
+// `uniweb status`).
+const toConsole = (...args) => console.log(...args)
+let print = toConsole
+const success = (msg) => print(`${colors.green}✓${colors.reset} ${msg}`)
+const warn = (msg) => print(`${colors.yellow}⚠${colors.reset} ${msg}`)
+const error = (msg) => print(`${colors.red}✗${colors.reset} ${msg}`)
+const info = (msg) => print(`${colors.blue}→${colors.reset} ${msg}`)
+const log = (...args) => print(...args)
 
 /**
  * Check if a directory is a site
@@ -1196,7 +1201,24 @@ export function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, sho
 /**
  * Main doctor command
  */
-export async function doctor(args = []) {
+/**
+ * @param {string[]} [args]
+ * @param {{ quiet?: boolean }} [opts] - `quiet`: print nothing, for a command that reads the
+ *   findings (`uniweb status`). Without `--fix` doctor writes nothing, so a quiet run is a
+ *   read.
+ * @returns {Promise<{ issues: object[], errors: number, warnings: number, fixed: number }>}
+ */
+export async function doctor(args = [], { quiet = false } = {}) {
+  const before = print
+  print = quiet ? () => {} : toConsole
+  try {
+    return await runDoctor(args)
+  } finally {
+    print = before
+  }
+}
+
+async function runDoctor(args = []) {
   log('')
   log(`${colors.blue}${colors.bright}Uniweb Doctor${colors.reset}`)
   log(`${colors.dim}Checking project configuration...${colors.reset}`)
@@ -1212,7 +1234,7 @@ export async function doctor(args = []) {
   // the failure the guess was moved here to avoid. Those checks ask for the id.
   const shouldFixExplicitly = (id) => fixFlag === id
   const fixed = (msg) =>
-    console.log(`  ${colors.green}↳ Fixed:${colors.reset} ${msg}`)
+    print(`  ${colors.green}↳ Fixed:${colors.reset} ${msg}`)
 
   const projectDir = resolve(process.cwd())
 
@@ -1225,7 +1247,14 @@ export async function doctor(args = []) {
     log(
       `${colors.dim}Run this command from your project root or a site/foundation directory.${colors.reset}`
     )
-    process.exit(1)
+    // Returned, not exited, so a command reading the findings gets them; the CLI exits 1 on
+    // an error either way.
+    return {
+      issues: [{ id: 'not-a-workspace', type: 'error', message: 'Not in a Uniweb workspace' }],
+      errors: 1,
+      warnings: 0,
+      fixed: 0
+    }
   }
 
   log('')
@@ -2076,6 +2105,7 @@ export async function doctor(args = []) {
     )
     info(`Run: uniweb update`)
     issues.push({
+      id: 'deps-behind-cli',
       type: 'warn',
       message: `${behindDeps.length} @uniweb/* dep declaration(s) behind CLI v${cliVersion}`
     })
@@ -2093,16 +2123,17 @@ export async function doctor(args = []) {
   if (!existsSync(agentsPath)) {
     warn('AGENTS.md not found')
     info(`Run: uniweb update`)
-    issues.push({ type: 'warn', message: 'AGENTS.md not found' })
+    issues.push({ id: 'agents-md-missing', type: 'warn', message: 'AGENTS.md not found' })
   } else if (!agentsVersion) {
     // No stamp — manually created or pre-stamp version
     warn('AGENTS.md has no version stamp (may be outdated)')
     info(`Run: uniweb update`)
-    issues.push({ type: 'warn', message: 'AGENTS.md has no version stamp' })
+    issues.push({ id: 'agents-md-unstamped', type: 'warn', message: 'AGENTS.md has no version stamp' })
   } else if (agentsVersion !== cliVersion) {
     warn(`AGENTS.md is outdated (v${agentsVersion} → v${cliVersion})`)
     info(`Run: uniweb update`)
     issues.push({
+      id: 'agents-md-outdated',
       type: 'warn',
       message: `AGENTS.md outdated (v${agentsVersion} → v${cliVersion})`
     })
