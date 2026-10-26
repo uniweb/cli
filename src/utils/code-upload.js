@@ -120,33 +120,6 @@ export function uploadOrder(files) {
 }
 
 /**
- * The deterministic content digest of a built foundation — the freshness
- * fingerprint `register` records and `publish`/`status` later compare against
- * (shipping-model.md §4.1). It answers one question — "did the foundation change
- * since it was released?" — with NO local state, so it has to be reproducible:
- * the same source, built on any machine, must yield the same digest.
- *
- * Algorithm (§4.1): `sha256` over the newline-joined, SORTED list of the
- * per-file `sha256` (hex) of exactly what `register` ships for a foundation —
- *   - the code-upload set (`collectDistFiles`: entry + chunks + assets, with
- *     `meta/**` and `*.map` already excluded), and
- *   - the schema source (`meta/schema.json`) — NOT uploaded as a file, and not
- *     sent verbatim: register submits its *content* as the foundation-schema
- *     ENTITY in the `.uwx`. It's read here only to fold the schema into the
- *     local freshness fingerprint (so a schema edit shows as "changed").
- * Hashes are SORTED (so the digest is order-independent) and taken over file
- * CONTENTS, not names, so content-hashed chunk filenames don't perturb it.
- * Returns null when there's nothing to hash (no usable dist), so callers skip
- * cleanly rather than fingerprinting emptiness.
- *
- * The result is OPAQUE to the backend — it stores the string and returns it
- * verbatim; the framework owns the algorithm end-to-end and can change it
- * freely (a digest only ever compares against one the same CLI computed).
- *
- * @param {string} distDir - the built `dist/` directory
- * @returns {string|null} `sha256:<hex>` or null when there's nothing to hash
- */
-/**
  * The `@uniweb/runtime` version a built foundation linked against, from
  * `dist/runtime-pin.json`.
  *
@@ -180,6 +153,33 @@ export function readRuntimePin(distDir) {
   }
 }
 
+/**
+ * The deterministic content digest of a built foundation — the freshness
+ * fingerprint `register` records and `publish`/`status` later compare against
+ * (shipping-model.md §4.1). It answers one question — "did the foundation change
+ * since it was released?" — with NO local state, so it has to be reproducible:
+ * the same source, built on any machine, must yield the same digest.
+ *
+ * Algorithm (§4.1): `sha256` over the newline-joined, SORTED list of the
+ * per-file `sha256` (hex) of exactly what `register` ships for a foundation —
+ *   - the code-upload set (`collectDistFiles`: entry + chunks + assets, with
+ *     `meta/**` and `*.map` already excluded), and
+ *   - the schema source (`meta/schema.json`) — NOT uploaded as a file, and not
+ *     sent verbatim: register submits its *content* as the foundation-schema
+ *     ENTITY in the `.uwx`. It's read here only to fold the schema into the
+ *     local freshness fingerprint (so a schema edit shows as "changed").
+ * Hashes are SORTED (so the digest is order-independent) and taken over file
+ * CONTENTS, not names, so content-hashed chunk filenames don't perturb it.
+ * Returns null when there's nothing to hash (no usable dist), so callers skip
+ * cleanly rather than fingerprinting emptiness.
+ *
+ * The result is OPAQUE to the backend — it stores the string and returns it
+ * verbatim; the framework owns the algorithm end-to-end and can change it
+ * freely (a digest only ever compares against one the same CLI computed).
+ *
+ * @param {string} distDir - the built `dist/` directory
+ * @returns {string|null} `sha256:<hex>` or null when there's nothing to hash
+ */
 export function computeFoundationDigest(distDir) {
   const hashes = collectDistFiles(distDir).map((f) => f.sha256)
   // The schema rides in the register `.uwx`, not the code-upload set, so fold
