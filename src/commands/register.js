@@ -386,21 +386,6 @@ export async function settleFoundationScope(targetDir, { args, isPreview, flagSc
 }
 
 /**
- * The scope a bare name registers under when `--scope` names none — as `@handle`, or null
- * when none was chosen.
- *
- * ⭐ THE WORKSPACE THIS COMMAND WORKS IN *[Diego, 2026-10-06]* — an organization's handle,
- * or your own for your personal workspace — said, not asked (`scopeOfWorkspace`). A team
- * working in `@acme` registers `@acme/…`, which any of its members can release.
- * ⛔ Until 2026-10-06 the default was your personal scope wherever you worked, so a team's
- * foundation registered as `@jane/…` — releasable by Jane alone, and fixed only by
- * renaming it into a new foundation.
- *
- * When the workspace names no scope — none is chosen, or it is a unit without a handle —
- * the scope is derived from your orgs as before (`deriveScope`): your personal scope when
- * you belong to none, else a pick at a terminal, your personal scope without one.
- */
-/**
  * Refuse a reserved scope wherever it came from, before anything is written or sent —
  * `@uniweb` names the framework's own packages and a system account on every Uniweb
  * backend [Diego, 2026-10-23] (`checkRegistrationScope`).
@@ -417,6 +402,21 @@ function refusedReservedScope(scope, lead) {
   return true
 }
 
+/**
+ * The scope a bare name registers under when `--scope` names none — as `@handle`, or null
+ * when none was chosen.
+ *
+ * ⭐ THE WORKSPACE THIS COMMAND WORKS IN *[Diego, 2026-10-06]* — an organization's handle,
+ * or your own for your personal workspace — said, not asked (`scopeOfWorkspace`). A team
+ * working in `@acme` registers `@acme/…`, which any of its members can release.
+ * ⛔ Until 2026-10-06 the default was your personal scope wherever you worked, so a team's
+ * foundation registered as `@jane/…` — releasable by Jane alone, and fixed only by
+ * renaming it into a new foundation.
+ *
+ * When the workspace names no scope — none is chosen, or it is a unit without a handle —
+ * the scope is derived from your orgs as before (`deriveScope`): your personal scope when
+ * you belong to none, else a pick at a terminal, your personal scope without one.
+ */
 async function deriveScopeFromLogin(client, args) {
   const token = await client.token()
   const ws = await resolveWorkspace({ client, args })
