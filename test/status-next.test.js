@@ -39,19 +39,20 @@ test('⭐ the order: sign in, settle, take what others did, push, share, go live
   )
 })
 
-// A commit of the project's other files comes after a merge's own commit and before `git pull`,
-// which refuses over an uncommitted change to a file a teammate changed too — and before `git
-// push`, which shares only commits.
-test('a commit of what else changed: after the merge, before taking or sharing commits', () => {
+// A commit of the project's other files needs nothing above it — refresh's `git pull` keeps
+// uncommitted work — and comes before the push, which releases a changed foundation from the
+// files as they are, and before `git push`, which shares only commits.
+test('a commit of what else changed: after taking what others did, before pushing either way', () => {
   const next = planNext([
     step('gitpush', 'git push', 'share', { ask: true }),
+    step('push', 'npx uniweb push', 'push'),
     step('refresh', 'npx uniweb refresh', 'take'),
     step('commit', null, 'commit the 2 other files here', { ask: true }),
     step('merge', 'git commit', 'finish the merge')
   ])
   assert.deepEqual(
     next.map((s) => s.why),
-    ['finish the merge', 'commit the 2 other files here', 'take', 'share']
+    ['finish the merge', 'take', 'commit the 2 other files here', 'push', 'share']
   )
 })
 
