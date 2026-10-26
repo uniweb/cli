@@ -59,7 +59,7 @@ This guide covers what you can't derive by reading code. Everything else is in t
 **Start at the index.** One address, and it's the only documentation URL worth memorizing:
 
 ```
-https://www.uniweb.io/llms.txt
+https://uniweb.io/llms.txt
 ```
 
 It lists every documentation page with a one-line description and a fetchable link. Go there whenever your question isn't answered in this file — and *especially* when you don't know whether a feature exists at all. That's where guessing does the most damage: **a 404 on a path you invented tells you your guess was wrong, not that the feature is missing.** Concluding "the framework doesn't support X" from a failed fetch is a mistake worth actively guarding against; the index answers the existence question directly.
@@ -76,7 +76,7 @@ Same content, greppable, and one network operation instead of many. `grep -ri "q
 
 Documentation paths in this guide are given bare — `development/creating-components.md` — so they resolve three ways: as a key in the index, as a file in a clone, or at `https://raw.githubusercontent.com/uniweb/docs/main/{path}`.
 
-> **Don't confuse the two doc sites.** `www.uniweb.io/docs` is the **developer** documentation — this is the one you want. `docs.uniweb.app` is the *author-facing* app documentation, written for non-technical people using the visual editor; it won't answer framework questions.
+> **Don't confuse the two doc sites.** `uniweb.io/docs` is the **developer** documentation — this is the one you want. `docs.uniweb.app` is the *author-facing* app documentation, written for non-technical people using the visual editor; it won't answer framework questions.
 
 **The table below saves you the round trip** for the tasks that come up most:
 
@@ -3134,7 +3134,7 @@ Loud failures:
 
 ## Documentation index
 
-**Index of every page: https://www.uniweb.io/llms.txt** — start there when you don't know which page you need.
+**Index of every page: https://uniweb.io/llms.txt** — start there when you don't know which page you need.
 
 Source repo (public, cloneable): **https://github.com/uniweb/docs** · any page as raw markdown at `https://raw.githubusercontent.com/uniweb/docs/main/{section}/{page}.md`. See *Documentation* in Part 0 for when to fetch versus clone.
 
