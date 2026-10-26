@@ -32,11 +32,10 @@ index: home
 # mounted directory is a folder of pages. Whatever that stub leaves unset comes
 # from the mounted directory's own folder.yml, so it need only say what differs.
 #
-# ! A `pages/<segment>:` sub-mount is BUILD-ONLY today. `uniweb export` and
-#   `uniweb deploy --host <adapter>` mount it normally, but `uniweb push` /
-#   `uniweb publish` do not read the key, so the mounted pages do not reach a
-#   backend (the CLI warns when it skips them). The whole-directory form
-#   `paths: { pages: <dir> }` IS carried by both. Static hosting: use either.
+# A `pages/<segment>:` mount goes wherever the site goes: builds, `uniweb export`
+# and `uniweb deploy --host <adapter>`, and `uniweb push` / `uniweb publish`,
+# which send the mounted pages as they are on disk — update a mounted repository
+# before you publish. A pull never writes into a mount.
 
 # ─── Structured Content ───────────────────────────────────────────────────────
 # Three things, and they are separate on purpose:
