@@ -12,8 +12,10 @@ import { join } from 'node:path'
 import { detectGlobalCliPm, globalCliUpdateCmd } from './pm.js'
 
 const CHECK_INTERVAL = 24 * 60 * 60 * 1000 // 1 day
-const STATE_DIR = join(homedir(), '.uniweb')
-const STATE_FILE = join(STATE_DIR, 'update-check.json')
+// Found when read, not when this module loads — as `getAuthDir` is — so HOME is the one in
+// effect: a run with its own HOME (a test's) never reads or writes the person's cache.
+const stateDir = () => join(homedir(), '.uniweb')
+const stateFile = () => join(stateDir(), 'update-check.json')
 
 /**
  * Compare two semver strings.
@@ -34,8 +36,8 @@ function compareSemver(a, b) {
  */
 function readState() {
   try {
-    if (existsSync(STATE_FILE)) {
-      return JSON.parse(readFileSync(STATE_FILE, 'utf8'))
+    if (existsSync(stateFile())) {
+      return JSON.parse(readFileSync(stateFile(), 'utf8'))
     }
   } catch {
     /* ignore corrupt cache */
@@ -48,8 +50,8 @@ function readState() {
  */
 function writeState(state) {
   try {
-    if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true })
-    writeFileSync(STATE_FILE, JSON.stringify(state))
+    if (!existsSync(stateDir())) mkdirSync(stateDir(), { recursive: true })
+    writeFileSync(stateFile(), JSON.stringify(state))
   } catch {
     /* ignore write errors */
   }
