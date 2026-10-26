@@ -44,6 +44,7 @@ import {
   resolveUniqueName
 } from '../utils/names.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
+import { repoOf } from '../utils/sync-point.js'
 import {
   normalizeFoundationName,
   ensureFoundationName,
@@ -1479,6 +1480,20 @@ export default function ${name}({ content, params }) {
  * and can plug in later.
  */
 async function addCi(rootDir, opts, pm = 'pnpm') {
+  // ⛔ A PROJECT THAT IS A FOLDER OF A LARGER REPOSITORY gets no workflow: GitHub runs workflows
+  // only from a repository's top, and this writes into the project's own `.github/`, where it
+  // would never run. Refused rather than written, for now [Diego, 2026-10-26: "refuse for now"] —
+  // measured on a repository of client projects, one of which carried a GitHub Pages workflow
+  // from its old repository that had not run since it moved.
+  const repo = repoOf(rootDir)
+  if (repo?.prefix) {
+    error(`Not added: this project is the folder ${repo.path} of the repository at ${repo.top}.`)
+    log(`  GitHub runs workflows only from the top of a repository (${relative(rootDir, join(repo.top, '.github', 'workflows'))}/),`)
+    log(`  so one written in this project's own .github/ would never run.`)
+    log(`  Deploy from a repository of its own, or by hand from here: uniweb deploy --host=<adapter>.`)
+    process.exit(1)
+  }
+
   // Lazy-load the host registry so the CLI doesn't pay this import on
   // every add invocation.
   let getAdapter, listAdapters
