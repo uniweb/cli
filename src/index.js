@@ -1789,8 +1789,9 @@ where, live where, deployed where — and checks:
   app      the session, what changed on the backend since this copy last synced —
            the files a pull would change — what is not pushed, who has the site
            open in the app, the foundation
-  hosting  where the site is live, the other hosts deploy.yml lists (by CI or by
-           hand, and how far behind), and the services the live site has
+  hosting  where the site is live, the other hosts deploy.yml lists (by CI, by hand
+           and how far behind, or never from this copy), workflows GitHub never runs
+           (a project's own .github/), and the services the live site has
   uniweb   whether a newer release is out
   health   doctor's findings
   dev      the dev server

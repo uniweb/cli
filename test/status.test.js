@@ -329,7 +329,10 @@ test('going live is the person\'s to decide', { timeout: 60_000 }, async () => {
 
 test('⭐ the summary says what the site is: synced where, live where, deployed where', { timeout: 60_000 }, async () => {
   const dir = project()
-  writeFileSync(join(dir, 'deploy.yml'), 'default: production\ntargets:\n  production:\n    host: github-pages\n  cloud:\n    host: uniweb\n')
+  writeFileSync(
+    join(dir, 'deploy.yml'),
+    'default: production\ntargets:\n  production:\n    host: github-pages\n  cloud:\n    host: uniweb\ndeploys:\n  production:\n    at: 2026-10-20T00:00:00.000Z\n    host: github-pages\n'
+  )
   const site = { ...LIVE, last_published_url: 'https://t.example/', last_published_at: new Date(Date.now() - 3 * 3600e3).toISOString() }
   const doc = docOf(await status(dir, ['--personal', '--json'], { session: loggedIn, respond: answering({ site }) }))
   assert.equal(doc.summary, 'T — synced with http://backend.test · live on http://backend.test at https://t.example/ · also deployed to GitHub Pages')

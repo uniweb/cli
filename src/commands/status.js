@@ -43,7 +43,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import yaml from 'js-yaml'
 
@@ -712,7 +712,7 @@ function changeChecks(siteDir, changes, unpushedFiles, proposals) {
   if (!moved) {
     return [
       unknown.length
-        ? { id: 'app.changes', state: 'unknown', summary: `Could not tell what changed on the backend: ${unknown.map((l) => l.detail).join('; ')}.` }
+        ? { id: 'app.changes', state: 'unknown', summary: `Could not tell what changed on the backend: ${[...new Set(unknown.map((l) => l.detail))].join('; ')}.` }
         : { id: 'app.changes', state: 'ok', summary: 'Nothing changed on the backend since this copy last synced.', detail: { source: 'units' } }
     ]
   }
@@ -1215,24 +1215,74 @@ async function deployChecks(siteDir) {
       host: t.host,
       title,
       default: name === defaultName,
+      deployed: Boolean(ci || receipt || retired),
       ci: ci ? { file: ci.file, branches: ci.branches } : null,
       last: receipt ? { at: receipt.at ?? null, sha: receipt.git?.sha ?? null, url: receipt.url ?? null } : null,
       behind,
       ...(retired ? { retired: true } : {})
     })
   }
+  // ⭐ A TARGET IS A DESTINATION, NOT A DEPLOY. Only CI or a receipt says the site went there;
+  // a target with neither is named as what it is. ⛔ Until 2026-10-26 every target was "Also
+  // deployed to", and the status opened with it — on a project copied from a repository whose
+  // CI deployed it, after the site had moved to Uniweb Cloud.
+  const deployed = targets.filter((t) => t.deployed)
+  const never = targets.filter((t) => !t.deployed)
+  const parts = []
+  if (deployed.length) parts.push(`Also deployed to ${deployed.map((t) => t.title).join(' and ')}.`)
+  if (never.length) {
+    parts.push(`deploy.yml names ${never.map((t) => t.title).join(' and ')}, never deployed from this copy.`)
+    attention = true
+    lines.push(
+      'A target never deployed from here is a host the site has not gone to yet, or one it left — when it left, remove the target from deploy.yml, and `default:` when it names it.'
+    )
+  }
   return {
     checks: [
       {
         id: 'hosting.deploys',
         state: attention ? 'attention' : 'ok',
-        summary: `Also deployed to ${targets.map((t) => t.title).join(' and ')}.`,
+        summary: parts.join(' '),
         lines,
         detail: { targets }
       }
     ],
     proposals,
     targets
+  }
+}
+
+/**
+ * `hosting.workflows`: GitHub Actions workflows between this site and the top of its
+ * repository — a project's own `.github/workflows` — which GitHub never runs: it runs the
+ * repository's top-level workflows alone, so these are files, not CI.
+ *
+ * ⭐ A project copied into another repository brings its `.github/` along (`uniweb add ci`
+ * writes one). Measured 2026-10-26 on a repository of client projects: a site that had moved to
+ * Uniweb Cloud still carried the GitHub Pages workflow that used to deploy it.
+ */
+function workflowsCheck(siteDir) {
+  const repo = repoOf(siteDir)
+  if (!repo) return null
+  const found = []
+  for (let d = siteDir; d !== repo.top && d.startsWith(repo.top + sep); d = dirname(d)) {
+    const dir = join(d, '.github', 'workflows')
+    let names
+    try {
+      names = readdirSync(dir).filter((n) => /\.ya?ml$/.test(n))
+    } catch {
+      continue
+    }
+    for (const n of names.sort()) found.push(relative(siteDir, join(dir, n)))
+  }
+  if (!found.length) return { id: 'hosting.workflows', state: 'ok', summary: 'No workflow here that GitHub would not run.', quiet: true }
+  const n = found.length
+  return {
+    id: 'hosting.workflows',
+    state: 'attention',
+    summary: `${count(n, 'workflow')} here never ${n === 1 ? 'runs' : 'run'}: GitHub runs workflows only from the top of the repository, ${relative(siteDir, join(repo.top, '.github', 'workflows'))}.`,
+    files: found,
+    lines: ['Most likely left from the repository this project came from. When the site no longer deploys that way, the folder can go — ask the person first.']
   }
 }
 
@@ -1305,7 +1355,8 @@ function summaryLine({ name, synced, live, targets, origin }) {
   const parts = [synced.length ? `synced with ${synced.join(' and ')}` : 'not synced with a backend']
   if (live?.published) parts.push(`live on ${cloudName(origin)}${live.url ? ` at ${live.url}` : ''}`)
   else if (live) parts.push(`not live on ${cloudName(origin)} yet`)
-  if (targets.length) parts.push(`${live?.published ? 'also deployed' : 'deployed'} to ${targets.map((t) => t.title).join(' and ')}`)
+  const deployed = targets.filter((t) => t.deployed)
+  if (deployed.length) parts.push(`${live?.published ? 'also deployed' : 'deployed'} to ${deployed.map((t) => t.title).join(' and ')}`)
   else if (!synced.length) parts.push('not hosted anywhere yet')
   return `${name} — ${parts.join(' · ')}`
 }
@@ -1399,7 +1450,8 @@ async function workspaceOverview(root, { json }) {
     })
     const languages = normalizeLanguageList(yml.languages)
     const parts = [synced.length ? `synced with ${synced.join(' and ')}` : 'not synced']
-    if (targets.length) parts.push(`deployed to ${targets.map((t) => t.title).join(' and ')}`)
+    const deployed = targets.filter((t) => t.deployed)
+    if (deployed.length) parts.push(`deployed to ${deployed.map((t) => t.title).join(' and ')}`)
     parts.push(
       fnd.kind === 'local'
         ? `foundation ${fnd.name}`
@@ -1414,7 +1466,7 @@ async function workspaceOverview(root, { json }) {
       name: s.name,
       summary: `${s.path} — ${parts.join(' · ')}`,
       synced,
-      deploys: targets.map(({ name, host, title, default: isDefault, ci }) => ({ name, host, title, default: isDefault, ci })),
+      deploys: targets.map(({ name, host, title, default: isDefault, deployed: was, ci }) => ({ name, host, title, default: isDefault, deployed: was, ci })),
       foundation: { kind: fnd.kind, name: fnd.name ?? null, path: fnd.path ?? null },
       mounts,
       languages
@@ -1508,7 +1560,18 @@ export async function status(args = []) {
   } finally {
     Object.assign(console, saved)
   }
-  const checks = [...project.checks, ...git.checks, ...app.checks, ...deploys.checks, ...services.checks, ...version.checks, ...health.checks, dev]
+  const workflows = workflowsCheck(siteDir)
+  const checks = [
+    ...project.checks,
+    ...git.checks,
+    ...app.checks,
+    ...deploys.checks,
+    ...(workflows ? [workflows] : []),
+    ...services.checks,
+    ...version.checks,
+    ...health.checks,
+    dev
+  ]
   const next = planNext([...git.proposals, ...app.proposals, ...deploys.proposals, ...services.proposals, ...version.proposals, ...health.proposals])
 
   const root = findWorkspaceRoot(siteDir) || siteDir
