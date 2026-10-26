@@ -1784,7 +1784,8 @@ where, live where, deployed where — and checks:
   project  the workspace's sites and foundations, the foundation this site is built
            with and the other sites it reaches, pages from outside the site's folder,
            the languages
-  git      conflicts, a merge waiting, the site's files not committed, the git remote
+  git      conflicts, a merge waiting, the site's content not committed, the project's
+           other files not committed (an update, the foundation's source), the git remote
   app      the session, what changed on the backend since this copy last synced —
            the files a pull would change — what is not pushed, who has the site
            open in the app, the foundation

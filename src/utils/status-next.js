@@ -6,14 +6,19 @@
  * unavailable recovery step — a push before the pull it needs is refused, and the refusal
  * then sends the reader back up. So the order is one table, not each check's own idea:
  *
- *   sign in → settle conflicts → finish a merge → take what others did (refresh, or pull)
- *   → push → push to git → go live → deploy to another host → update Uniweb → read doctor's findings
+ *   sign in → settle conflicts → finish a merge → commit what else changed → take what others
+ *   did (refresh, or pull) → push → push to git → go live → deploy to another host → update
+ *   Uniweb → read doctor's findings
+ *
+ * A commit comes before taking teammates' commits because `git pull` refuses over an
+ * uncommitted change to a file they changed too, and before a push to git, which shares only
+ * what is committed.
  *
  * Each check proposes steps by name (`step`); this sorts them, folds the ones another step
  * already does, and drops duplicates.
  */
 
-const ORDER = ['login', 'conflicts', 'merge', 'refresh', 'pull', 'push', 'gitpush', 'publish', 'deploy', 'update', 'doctor']
+const ORDER = ['login', 'conflicts', 'merge', 'commit', 'refresh', 'pull', 'push', 'gitpush', 'publish', 'deploy', 'update', 'doctor']
 
 /**
  * @param {Array<{ step: string, command: string|null, why: string, ask?: boolean }>} proposals

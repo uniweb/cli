@@ -7,7 +7,8 @@
  * with the steps to take, in an order that works when followed from the top
  * (`utils/status-next.js`):
  *
- *   git      conflicts, a merge waiting, the site's files not committed, the git remote
+ *   git      conflicts, a merge waiting, the site's content and the project's other files
+ *            not committed, the git remote
  *   app      the session, the site, what changed on the backend since this copy last
  *            synced, what is not pushed, whether the draft is live, who has the site open,
  *            the foundation
@@ -42,8 +43,8 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { basename, join, relative, resolve } from 'node:path'
+import { existsSync, readFileSync, statSync } from 'node:fs'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import yaml from 'js-yaml'
 
 import {
@@ -80,7 +81,7 @@ import { aheadBehind, remoteMoved, upstreamOf } from '../utils/git.js'
 import { getLatestVersion, isBehind } from '../utils/update-check.js'
 import { syncedElsewhere } from '../utils/site-identity.js'
 import { DEFAULT_BACKEND_ORIGIN } from '../utils/config.js'
-import { classifyPackage, findSites, findWorkspaceRoot } from '../utils/workspace.js'
+import { classifyPackage, findSites, findWorkspaceRoot, isWorkspaceRoot } from '../utils/workspace.js'
 import { getCliVersion } from '../versions.js'
 import { planNext } from '../utils/status-next.js'
 
@@ -237,6 +238,63 @@ const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 // ─── the checks ─────────────────────────────────────────────────────────────
 
 /**
+ * The project's files that git holds changes to and that are not the site's content — a
+ * dependency update, the foundation's source, `deploy.yml`, `AGENTS.md` — relative to the
+ * site, as every file list here is. The project is the workspace the site is in, or the site
+ * without one; a folder in it that is a workspace of its own is a project of its own.
+ *
+ * ⭐ A PUSH SENDS ONLY THE CONTENT, SO NOTHING STOPS FOR THESE. A teammate builds what git
+ * holds, and a push or publish releases a changed foundation from the files as they are: left
+ * uncommitted, an update or a foundation change is in this copy only, and in a release no
+ * commit holds. ⛔ Until 2026-10-26 status said "Nothing to do" over an `uniweb update` it
+ * had not seen committed.
+ *
+ * @returns {string[]|null} null when git could not be asked
+ */
+function otherUncommitted(siteDir, repo) {
+  const root = findWorkspaceRoot(siteDir) || siteDir
+  // Only the repository's part of it: a workspace above the repository's top is read from there.
+  const scope = relative(repo.top, root).startsWith('..') ? repo.top : root
+  let out
+  try {
+    out = execFileSync('git', ['status', '--porcelain', '-z', '--untracked-files=normal', '--', scope], {
+      cwd: repo.top,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 64 * 1024 * 1024
+    })
+  } catch {
+    return null
+  }
+  const parts = out.split('\0').filter(Boolean)
+  const paths = []
+  for (let i = 0; i < parts.length; i++) {
+    paths.push(parts[i].slice(3))
+    if (/[RC]/.test(parts[i].slice(0, 2))) paths.push(parts[++i]) // a rename's source follows it
+  }
+  const content = sentRoots(siteDir).map((r) => join(siteDir, r))
+  const isContent = (abs) => content.some((r) => abs === r || abs.startsWith(r + sep))
+  const isDir = (p) => {
+    try {
+      return statSync(p).isDirectory()
+    } catch {
+      return false
+    }
+  }
+  // A folder from the file up to the project's root that is a workspace of its own.
+  const inOwnProject = (abs) => {
+    for (let d = isDir(abs) ? abs : dirname(abs); d !== scope && d.startsWith(scope + sep); d = dirname(d)) {
+      if (isWorkspaceRoot(d)) return true
+    }
+    return false
+  }
+  return [...new Set(paths)]
+    .map((p) => join(repo.top, p.replace(/\/$/, '')))
+    .filter((abs) => !isContent(abs) && !inOwnProject(abs))
+    .map((abs) => relative(siteDir, abs) || '.')
+}
+
+/**
  * Git: conflicts, a merge waiting, what is not committed, and the git remote.
  * @returns {Promise<{ checks: object[], proposals: object[], localFiles: string[]|null }>}
  */
@@ -292,8 +350,30 @@ async function gitChecks(siteDir, { offline, origin }) {
           files: uncommitted.paths,
           blocks: ['push', 'publish']
         }
-      : { id: 'git.uncommitted', state: 'ok', summary: "The site's files are committed." }
+      : { id: 'git.uncommitted', state: 'ok', summary: "The site's content is committed." }
   )
+
+  // What else in the project is not committed — a merge holds it until its commit, and a
+  // repository with no commit yet has said so above.
+  const others = merging || !repo.head ? null : otherUncommitted(siteDir, repo)
+  if (others?.length) {
+    const n = others.length
+    const fnd = resolveLocalFoundation(siteDir, readSiteYml(siteDir))
+    const ofFoundation = fnd && others.some((f) => {
+      const abs = resolve(siteDir, f)
+      return abs === fnd.dir || abs.startsWith(fnd.dir + sep)
+    })
+    checks.push({
+      id: 'git.other',
+      state: 'attention',
+      summary: `${count(n, 'other file')} here ${n === 1 ? 'is' : 'are'} not committed — a push sends only the site's content, and your team builds what git holds.`,
+      files: others,
+      lines: ofFoundation ? ["The foundation's source is among them: the next push or publish releases it from these files, so commit them first."] : []
+    })
+    proposals.push({ step: 'commit', command: null, why: `commit the ${count(n, 'other file')} here: \`git add\` ${n === 1 ? 'it' : 'them'}, then \`git commit -m "<what changed>"\``, ask: true })
+  } else if (others) {
+    checks.push({ id: 'git.other', state: 'ok', summary: 'Nothing else here is uncommitted.', quiet: true })
+  }
 
   // What this copy changed since its last sync, file by file — while its branch holds the
   // sync point that sync recorded.
