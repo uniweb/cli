@@ -33,15 +33,18 @@ You're building a *system* of section types, not individual pages. That's what m
 | Existing project, component task (new section type, restyle) | **Part 2**, then Part 4 |
 | Porting a design from React / Next / a generated site | **Part 1**, then Part 5 → *Migrating* |
 
-### Three commands that replace guessing
+### Four commands that replace guessing
 
 ```bash
+uniweb status                # what changed in the app, in git and in Uniweb — and what to run
 uniweb inspect <path>        # print the parsed content shape of a section or page
 uniweb <command> --help      # exact flags, always current — no side effects
 uniweb doctor                # diagnose project configuration (--fix to repair)
 ```
 
-`uniweb inspect` is the important one. Every parse rule in Part 3 is faster to *confirm* than to re-derive, and re-deriving from memory is where agents go wrong. Don't predict the shape — print it.
+`uniweb inspect` is the important one for content. Every parse rule in Part 3 is faster to *confirm* than to re-derive, and re-deriving from memory is where agents go wrong. Don't predict the shape — print it.
+
+`uniweb status` is the one for a project other people edit. A site in the Uniweb app can change there at any time, teammates push to git, and Uniweb releases often. Run it when you begin, before you push, and after a command refuses: it changes nothing, and ends with the commands to run, in order (`--json` for a script).
 
 ### The four silent failures
 
@@ -188,6 +191,8 @@ Markdown, `theme.yml`, and component edits hot-reload. New section types are pic
 The rest of this guide explains how Uniweb works. This part is what to do *first* when you've been handed a project that already uses it, plus a task.
 
 ### 1. Orient — what kind of workspace is this?
+
+**Run `uniweb status` first.** It says whether the site changed in the app since this copy last synced, whether git or Uniweb has something newer, and what to run about each — before you edit something someone else just changed.
 
 **There is no single layout. Read `pnpm-workspace.yaml` first** — its `packages:` globs name the shape in one glance:
 
@@ -2818,7 +2823,8 @@ uniweb publish                    # Ship to Uniweb hosting, foundation included 
 uniweb add ci --target foundation # Publish a foundation for free at permanent versioned URLs
                                   # (GitHub Pages → foundations/<name>/<version>/entry.js)
 
-uniweb push / pull / clone / status   # Git-style content sync with the Uniweb backend
+uniweb status                         # What changed in the app, in git and in Uniweb — and what to run
+uniweb push / pull / clone            # Git-style content sync with the Uniweb backend
 uniweb refresh / sync                 # Catch up (git + backend, never pushes) / catch up, then push
 uniweb login --org @acme              # The workspace you work in — new sites are created there (see below)
 uniweb register [--scope @scope]      # Register a foundation + its data schemas to the registry
@@ -2896,6 +2902,8 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 - **Git is the reviewed, durable record** — you `pull` content back, read it with `git diff`, and commit.
 - **Authors never push or pull.** For them, content simply updates, whether the change came from another author or from a developer's CLI.
 
+**Working on a site others edit — run `uniweb status` when you begin, before you push, and after any refusal.** It reads the backend without taking anything: what changed there since this copy last synced, file by file; what you hold that it lacks; whether the site is live; who has it open in the app right now, and on which file. Then it lists the commands to run, in an order that works from the top — `uniweb pull` before the push it would otherwise refuse. Three habits go with it: take what changed (`pull`, or `refresh`) before you edit; never `--force` past a refusal; and when someone has a page open in the app, tell the person before you change that page. A step marked *ask the person first* — going live, which may cost money — is theirs to decide.
+
 **Nobody's work is overwritten without asking.** `uniweb push` is refused if the site changed on the backend since your last pull — usually an author editing in the app — and reports what changed; nothing is written. Edits to different sections never collide. **In a git repository `uniweb pull` merges, like `git pull`:** it commits the backend's content (*"The site's content on …"*) and merges that commit into your branch, against the last state of the site your history shares with the backend. Your work, committed or not, and a teammate's arriving through git are kept; a file the backend never had is never deleted; changes to different parts of a file combine silently; and only a genuine overlap leaves conflict markers and a non-zero exit — so `uniweb pull && uniweb push` never ships markers. Settle a conflict as in any merge, then `git commit`; where your uncommitted changes overlap what the pull brought, the markers are theirs — settle them and `git add` each file, then `git stash drop` (git keeps them in the stash too). A push or publish is refused while a file under the site is in conflict. **In a git repository a push sends what you have committed:** with the site's content not committed it is refused before anything is sent, naming the files — commit them, or run `uniweb push --commit -m "…"` (it commits the site's content only, and leaves anything else staged as it is); `publish` and `sync` take `--commit` too. That commit is where the next pull merges from, which is how the pull tells your changes from the backend's. What the push writes back into the files — the ids the backend assigned — it commits itself, as `uniweb`. When the backend has nothing new, a pull says so and lists the files where yours hold changes it lacks. `uniweb refresh` runs `git pull` first, then the same pull. A push is also refused when your branch does not hold what this copy last took from the backend — after `git merge --abort`, or in a fresh clone that has not pulled — so pull, then push. Outside git — which includes a folder the repository around it ignores, such as a scratch directory — `uniweb pull` takes the backend's version over your files, asking first. `--force` is the deliberate overwrite (on `push` it replaces the backend's changes, on `pull` it discards yours); don't use it to get past a refusal. `uniweb sync` is `refresh` then `push`; neither publishes.
 
 **`sync.json` says which site this is, on each backend.** The first push to a backend records what that backend assigned — the site's id and owner, the ids of its records and uploaded files — in `sync.json` beside `site.yml`. In a git repository the push commits it; never edit it. **To make a new site from a copy of a project, run `uniweb forget --all` in the copy before its first push** — the copy carries the original's `sync.json`, so otherwise its push updates the original's site. When two projects in one workspace hold the same site, a push or publish from either is refused until that is done. `uniweb forget --server <url>` removes just one backend's records, such as a scratch server's. A record file's `$uuid` is its own id and stays in both cases. **`push`, `pull` and `publish` go to the backend you are logged in to** — the last `uniweb login --server <url>` — and never to one you are not logged in to. A bare `uniweb login` logs in to https://uniweb.app; for any other backend, name it — logging in is how you switch, and the backend commands take no `--server` of their own. When the project has no site on that backend but has one elsewhere, a push says so before creating a new one.
@@ -2942,11 +2950,14 @@ Either side can publish. Nothing about this changes how you build: the same foun
 ### Staying current
 
 ```bash
+uniweb status              # among its checks: whether a newer Uniweb is out than this project runs
 uniweb -v                  # CLI version — only a global install also says whether a newer one exists
 uniweb doctor              # report drift in this project, changing nothing
 npx uniweb@latest update --dry-run   # preview exactly what update would change
 npx uniweb@latest update             # apply: align @uniweb/* deps AND refresh AGENTS.md
 ```
+
+When `status` names a newer release, take it: `npx uniweb@latest update`, then build and look at the pages. Releases rarely ask anything of a project.
 
 **`npx uniweb@latest update` is the command for bringing a project up to date.** It aligns the project's `@uniweb/*` dependencies *and* this AGENTS.md to the version matrix of the CLI that runs it. Deps and documentation move together — that's the whole point of the verb.
 

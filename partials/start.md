@@ -60,6 +60,19 @@ which parts your task needs.
 
 Uniweb's mistakes are quiet: an unknown section type or param builds fine and renders
 wrong. AGENTS.md says how to check.
+{{#if project}}
+
+## Check what changed
+
+```bash
+npx uniweb status
+```
+
+The site may have been edited in the Uniweb app since this copy last synced, by the
+person or someone they work with, and Uniweb may have a newer release. `status` says so,
+changes nothing, and ends with the commands to run, in order. A step it marks "ask the
+person first" is theirs to decide.
+{{/if}}
 
 ## Install and run
 
@@ -102,6 +115,10 @@ what is committed.
 If the site needs paying for, `publish` prints an address instead of going live. Open
 it for the person, tell them it's where they pay, and run `publish` again once they're
 done.
+
+Once the site is in the app, it can be edited there at any time. Before you change it
+again, and before each push, run `npx uniweb status`: it says what changed in the app
+since your last push or pull, and what to run.
 
 ## More
 

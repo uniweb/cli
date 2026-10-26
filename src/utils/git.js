@@ -21,7 +21,7 @@
  * project counted as inside the harness, so `refresh` ran `git pull` on the harness.
  */
 
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
@@ -196,6 +196,96 @@ export function pullRemote(dir) {
       .trim()
     return { ok: false, changed: false, message: msg || 'git pull failed' }
   }
+}
+
+/**
+ * The branch HEAD is on and the one it tracks — `{ branch, remote, merge, tracking }`
+ * (`main`, `origin`, `refs/heads/main`, `origin/main`) — or null: no branch, or no upstream.
+ */
+export function upstreamOf(dir) {
+  try {
+    const branch = git(['symbolic-ref', '--short', '-q', 'HEAD'], dir).trim()
+    if (!branch) return null
+    const remote = git(['config', '--get', `branch.${branch}.remote`], dir).trim()
+    const merge = git(['config', '--get', `branch.${branch}.merge`], dir).trim()
+    const tracking = git(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], dir).trim()
+    return remote && merge && tracking ? { branch, remote, merge, tracking } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The commits HEAD has that its upstream lacks (`ahead`), and the reverse (`behind`) — as of
+ * the last fetch, which is all a repository knows without asking its remote. Null with no
+ * upstream.
+ */
+export function aheadBehind(dir) {
+  try {
+    const [behind, ahead] = git(['rev-list', '--left-right', '--count', '@{u}...HEAD'], dir)
+      .trim()
+      .split(/\s+/)
+      .map(Number)
+    return Number.isInteger(ahead) && Number.isInteger(behind) ? { ahead, behind } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Does the git remote hold commits HEAD does not — teammates' work since the last fetch?
+ * Asked with `git ls-remote`, which fetches nothing and writes nothing, so a read-only
+ * command can ask it.
+ *
+ * ⛔ IT NEVER PROMPTS. A credential prompt would hang a command run by an agent, so: no
+ * terminal prompt (`GIT_TERMINAL_PROMPT=0`), no credential manager window
+ * (`GCM_INTERACTIVE=never`), ssh in batch mode with a connect timeout — added to the ssh
+ * command the person configured, never instead of it — and the whole call bounded.
+ *
+ * @param {string} dir
+ * @param {{ timeoutMs?: number }} [opts]
+ * @returns {Promise<{ moved: boolean, upstream: object } | null>} null when there is no
+ *   upstream, or the remote did not answer in time
+ */
+export async function remoteMoved(dir, { timeoutMs = 5000 } = {}) {
+  const upstream = upstreamOf(dir)
+  if (!upstream) return null
+  let ssh = process.env.GIT_SSH_COMMAND || ''
+  try {
+    ssh ||= git(['config', '--get', 'core.sshCommand'], dir).trim()
+  } catch {
+    // not configured
+  }
+  const env = {
+    ...process.env,
+    GIT_TERMINAL_PROMPT: '0',
+    GCM_INTERACTIVE: 'never',
+    GIT_SSH_COMMAND: `${ssh || 'ssh'} -o BatchMode=yes -o ConnectTimeout=${Math.ceil(timeoutMs / 1000)}`
+  }
+  let out
+  try {
+    out = await new Promise((resolve, reject) => {
+      execFile('git', ['ls-remote', '--', upstream.remote, upstream.merge], { cwd: dir, env, timeout: timeoutMs, encoding: 'utf8' }, (err, stdout) =>
+        err ? reject(err) : resolve(stdout)
+      )
+    })
+  } catch {
+    return null
+  }
+  const head = String(out)
+    .split('\n')
+    .map((line) => line.split('\t'))
+    .find(([, ref]) => ref === upstream.merge)?.[0]
+  if (!head) return null
+  // A head HEAD already holds — fetched earlier, or HEAD's own — is nothing new.
+  let held = false
+  try {
+    git(['merge-base', '--is-ancestor', head, 'HEAD'], dir)
+    held = true
+  } catch {
+    held = false
+  }
+  return { moved: !held, upstream }
 }
 
 /**

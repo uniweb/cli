@@ -238,13 +238,28 @@ function pullCachePath(siteDir) {
 // Ignoring those once costs one full pull. (In a repository an ETag is echoed only while
 // the sync point it was banked with is in the history — see `cacheHolds` below.)
 const PULL_CACHE_VERSION = 2
-function readPullCache(siteDir) {
+export function readPullCache(siteDir) {
   try {
     const obj = JSON.parse(readFileSync(pullCachePath(siteDir), 'utf8'))
     return obj && typeof obj === 'object' && obj.version >= PULL_CACHE_VERSION ? obj : {}
   } catch {
     return {}
   }
+}
+
+/**
+ * Whether the ETags this copy banked still describe its files — the condition a
+ * conditional GET is sent on. Outside git, always. In a repository, only while HEAD's
+ * history holds the sync point they were banked with: a merge abandoned, a branch reset,
+ * and the backend did not move but the files did.
+ *
+ * One rule for both readers of the lanes — this pull and `uniweb status`, which asks the
+ * same question without taking the answer.
+ */
+export function etagsHold(siteDir, origin, repo = repoOf(siteDir)) {
+  if (!repo) return true
+  const held = readSyncPoint(siteDir, origin)
+  return Boolean(held && isAncestor(repo, held))
 }
 function writePullCache(siteDir, { content, folder }) {
   const p = pullCachePath(siteDir)
@@ -767,7 +782,7 @@ export async function pull(args = [], deps = {}) {
   // only while the sync point it was banked with is.
   const cache = readPullCache(siteDir)
   const held = repo ? readSyncPoint(siteDir, client.origin) : null
-  const cacheHolds = !repo || Boolean(held && isAncestor(repo, held))
+  const cacheHolds = etagsHold(siteDir, client.origin, repo)
   let etagContent = cache.content
   let etagFolder = cache.folder
 

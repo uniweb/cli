@@ -34,7 +34,7 @@
  * no local state, multi-machine-safe. When the site references a published
  * registry ref or a URL there's nothing to bring along. When the backend
  * doesn't expose the stored digest yet, the compare DEGRADES to "ask" (same
- * posture as `status --remote` on a 404).
+ * posture as `uniweb status` on a 404).
  *
  * "Release" here is literally `uniweb register` run in the foundation directory
  * — same build-if-stale → schema submit → code upload → digest the standalone

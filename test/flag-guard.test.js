@@ -83,7 +83,7 @@ test('a realistic invocation of every guarded verb passes', () => {
     pull: ['--force', '--no-prune', '--content-only'],
     clone: ['abc-uuid', '--path', './site', '--project', 'p'],
     register: ['--scope', '@acme', '-o', 'out.uwx', '--json'],
-    status: ['--remote', '--json'],
+    status: ['--offline', '--json'],
     forget: ['--server', 'http://localhost:9999'],
     refresh: ['--no-git', '--no-validate'],
     sync: ['--no-git', '--force', '--yes'],

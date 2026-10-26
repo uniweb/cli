@@ -1,5 +1,5 @@
 /**
- * `uniweb status --remote` says who has the site open in the app right now, and on what.
+ * `uniweb status` says who has the site open in the app right now, and on what.
  *
  * [Diego, 2026-10-13] — "If we know the page and section each person is on, we can show it.
  * We are facilitating collaboration. People can follow up on their own." The site's status
@@ -134,29 +134,39 @@ const answering = (body) => async (url) =>
     ? new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
     : undefined
 
-async function statusRemote(body, args = []) {
+async function statusOf(body, args = []) {
   const { status } = await import('../src/commands/status.js')
-  return runVerb(project(), status, ['--remote', '--personal', ...args], { session: loggedIn, respond: answering(body) })
+  return runVerb(project(), status, ['--personal', ...args], { session: loggedIn, respond: answering(body) })
 }
 
-test('⭐ status --remote lists who has the site open, and where', { timeout: 30_000 }, async () => {
-  const run = await statusRemote(STATUS)
+const checkOf = (run, id) => JSON.parse(run.output.trim().split('\n').pop()).checks.find((c) => c.id === id)
+
+test('⭐ status lists who has the site open, and where', { timeout: 30_000 }, async () => {
+  const run = await statusOf(STATUS)
   const out = plain(run.output)
-  assert.match(out, /Open in the app now:\n {4}@co-status-cf0d2488-1\n {6}layout\/header\.md · changed .+\n {6}pages\/about\/1-hero\.md \(\/about\) · changed /, run.output)
+  assert.match(out, /Open in the app now: @co-status-cf0d2488-1\.\n {6}layout\/header\.md · changed .+\n {6}pages\/about\/1-hero\.md \(\/about\) · changed /, run.output)
+})
+
+test('several people are each named on their tabs', { timeout: 30_000 }, async () => {
+  const ada = { person: { uuid: 'p2', handle: 'ada', brief: null }, tabs: [] }
+  const run = await statusOf({ ...STATUS, editors: [...STATUS.editors, ada] })
+  const out = plain(run.output)
+  assert.match(out, /Open in the app now: @co-status-cf0d2488-1, @ada\./, run.output)
+  assert.match(out, / {6}@co-status-cf0d2488-1: layout\/header\.md · changed /, run.output)
+  assert.match(out, / {6}@ada: nothing open/, run.output)
 })
 
 test('nobody in the app is said; a backend that does not say leaves it out', { timeout: 30_000 }, async () => {
-  const none = await statusRemote({ ...STATUS, editors: [] })
-  assert.match(plain(none.output), /Nobody has this site open in the app\./, none.output)
+  const none = await statusOf({ ...STATUS, editors: [] })
+  assert.match(plain(none.output), /Nobody has the site open in the app\./, none.output)
 
   const { editors, ...older } = STATUS
-  const silent = await statusRemote(older)
-  assert.match(plain(silent.output), /Synced draft has changes not yet live/, 'control: the status was read')
-  assert.doesNotMatch(plain(silent.output), /in the app/)
+  const silent = await statusOf(older, ['--json'])
+  assert.equal(checkOf(silent, 'app.live')?.summary, 'In the app, not live yet.', 'control: the status was read')
+  assert.equal(checkOf(silent, 'app.editors'), undefined)
 })
 
 test('--json carries the backend\'s `editors` as it came', { timeout: 30_000 }, async () => {
-  const run = await statusRemote(STATUS, ['--json'])
-  const doc = JSON.parse(run.output.trim().split('\n').pop())
-  assert.deepEqual(doc.remote.site.editors, STATUS.editors)
+  const run = await statusOf(STATUS, ['--json'])
+  assert.deepEqual(checkOf(run, 'app.editors').detail.editors, STATUS.editors)
 })

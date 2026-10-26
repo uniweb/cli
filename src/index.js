@@ -876,7 +876,7 @@ async function main() {
     await exitWhenDrained(result?.exitCode ?? 0)
   }
 
-  // Handle status command (dynamic import — offline emit via @uniweb/build)
+  // Handle status command (dynamic import — its checks reach @uniweb/build)
   if (command === 'status') {
     const { status } = await importProjectCommand('./commands/status.js')
     const result = await status(args.slice(1))
@@ -1771,6 +1771,38 @@ ${colors.bright}Options:${colors.reset}
 
 Exit code is 1 if errors are found (warnings only → exit 0).
 `,
+    status: `
+${colors.cyan}${colors.bright}uniweb status${colors.reset} ${colors.dim}— What to know before working on a site, and what to run about it${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb status [options]
+
+Run it when you begin, before you push, and after a command refuses. It checks:
+
+  git      conflicts, a merge waiting, the site's files not committed, the git remote
+  app      the session, what changed on the backend since this copy last synced,
+           what is not pushed, whether the site is live, who has it open in the app,
+           the foundation
+  uniweb   whether a newer release is out
+  health   doctor's findings
+  dev      the dev server
+
+and ends with the steps to take, in the order to take them. A step marked
+"ask the person first" is theirs to decide — going live, for one.
+
+It changes nothing and asks nothing: with no session it says how to sign in.
+A check it could not make says so, and is never reported as fine.
+
+${colors.bright}Options:${colors.reset}
+  --offline          Ask nothing beyond this machine — no backend, npm, git remote
+                     or dev server
+  --json             One JSON document: { schema: 1, checks: [...], next: [...] }
+  --org @org         The workspace to ask the backend in, for this command only
+  --personal         Your personal workspace, for this command only
+
+Exit code is 0 whenever a status is produced, 2 for a usage error — read the
+document, not the exit code, for what needs doing.
+`,
     validate: `
 ${colors.cyan}${colors.bright}uniweb validate${colors.reset} ${colors.dim}— Check your content against your foundation's data schemas${colors.reset}
 
@@ -2137,7 +2169,7 @@ ${colors.bright}Commands:${colors.reset}
   pull               Pull a site's content from the backend
   refresh            Catch up with the git remote AND the backend (never pushes)
   sync               Catch up, then push (refresh + push)
-  status             Show a site's sync state (unpushed content, foundation)
+  status             What changed in the app, in git and in Uniweb — and what to run
   forget             Forget a backend, or --all to make a copied project a new one
   site <cmd>         The sites in a workspace: list, unpublish, delete
   inspect <path>     Inspect parsed content shape of a markdown file or folder

@@ -109,11 +109,14 @@ const VERBS = {
    */
   site: ['--json', '--yes', '--org', '--personal'],
   status: [
-    '--json', '--remote', '--dry-run',
+    '--json', '--offline', '--dry-run',
     '--force', '--no-verify', '--no-validate', '--yes', '--org', '--personal',
     // inert here, reachable through the bring-along module status imports for
     // `resolveLocalFoundation` — listed per the over-approximation note above
-    '--no-release', '--bump', ...VIA_DEPLOY
+    '--no-release', '--bump', ...VIA_DEPLOY,
+    // inert here too, reachable through `commands/pull.js`, whose lane readers status uses
+    // to ask what changed on the backend (`backend/app-changes.js`)
+    '--no-assets', '--no-delete', '--no-prune', '--no-records', '--content-only'
   ],
   /**
    * `refresh` = `git pull`, then a DELEGATED `pull`.
@@ -247,6 +250,18 @@ export function checkFlags(verb, args = []) {
       flag,
       suggestion: '--org',
       message: `\`--as-org\` is retired — use \`--org @org\` (e.g. \`uniweb ${verb} --org @acme\`).`
+    }
+  }
+  // ⭐ `status --remote` is RETIRED (2026-10-26): a status asks the backend by default, and
+  // `--offline` keeps it to this machine.
+  if (flag === '--remote' && verb === 'status') {
+    return {
+      flag,
+      suggestion: null,
+      message: [
+        '`uniweb status` has no `--remote`: it asks the backend by default now.',
+        '  Run `uniweb status`, or `uniweb status --offline` to ask nothing beyond this machine.'
+      ].join('\n')
     }
   }
   // ⭐ `pull --merge` is RETIRED (2026-10-17): in a repository a pull always merges — from the

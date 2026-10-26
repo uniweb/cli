@@ -948,7 +948,7 @@ export class BackendClient {
    *   { published: boolean, last_pushed_at?: string, last_published_at?: string, draft_dirty?: boolean }
    * `draft_dirty` = never-published, or the synced draft changed since the last
    * publish ("pushed but not published"). Since 2026-10-13 it also carries `editors`:
-   * who has the site open in the app right now, and on what — `status --remote` shows
+   * who has the site open in the app right now, and on what — `uniweb status` shows
    * it (`describeEditors`, commands/status.js).
    *
    * ⭐ **The backend also serves a LIVE-SITE record here, and nothing in this CLI reads
@@ -974,14 +974,14 @@ export class BackendClient {
    * The path is VERB-FIRST (`status/{uuid}`)
    * to match the lane (`publish/{uuid}`, `content/push/{uuid}`, `folder/pull/{uuid}`),
    * not the `{uuid}/status` the shipping-verbs §8 sketch assumed. null on
-   * 404 (unknown/not-yours) / 401 / any failure — `status --remote` degrades to local.
+   * 404 (unknown/not-yours) / 401 / any failure — `uniweb status` says what it could not tell.
    * @param {string} uuid - the site-content uuid
    * @returns {Promise<object|null>}
    */
   /**
    * Whether the backend holds the site `uuid` names — `live`, `gone` or `unknown`, kept
    * apart — for a script that must decide, before any push, whether a binding still
-   * points at a site (`uniweb status --remote --json`, `remote.site_state`).
+   * points at a site (`uniweb status --json`, its `app.site` check).
    *
    * ⛔ `gone` ONLY ON THE BACKEND'S OWN WORD ABOUT THIS SITE: a `404` whose problem names
    * it — `kind: "site"`, `key: <uuid>`. A push from an unbound copy CREATES a site, so a
