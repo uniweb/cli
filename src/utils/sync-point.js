@@ -382,7 +382,7 @@ function differsIn(repo, a, b, roots) {
  * @param {string[]} opts.roots - the site's content roots, relative to the site
  * @param {string|null} opts.rev - the commit whose content the roots are filled from;
  *   null for none
- * @returns {{ siteDir: string, commit: Function, placeIgnored: Function, close: Function }}
+ * @returns {{ siteDir: string, commit: Function, changes: Function, placeIgnored: Function, close: Function }}
  */
 export function openStandIn(repo, { roots, rev }) {
   for (const r of roots) {
@@ -543,6 +543,24 @@ export function openStandIn(repo, { roots, rev }) {
       return placed
     }
 
+    /**
+     * What is written under the roots that `rev` does not hold so — each `[status, path]`,
+     * status `A`, `M` or `D`, the path relative to the site. Asked of the stand-in's own
+     * index, which holds `rev`: nothing is staged, committed or written to the repository.
+     * What the repository ignores is no change, as for `commit`.
+     * @returns {Array<[string, string]>}
+     */
+    const changes = () => {
+      const roots = full.filter((f) => present.includes(f) || existsSync(join(root, f)))
+      if (!roots.length) return []
+      const site = (p) => (sitePrefix && p.startsWith(sitePrefix) ? p.slice(sitePrefix.length) : p)
+      const out = []
+      const tracked = zlist(at(['diff', '--name-status', '-z', '--no-renames', '--', ...roots]))
+      for (let i = 0; i + 1 < tracked.length; i += 2) out.push([tracked[i], site(tracked[i + 1])])
+      for (const p of zlist(at(['ls-files', '--others', '--exclude-standard', '-z', '--', ...roots]))) out.push(['A', site(p)])
+      return out.sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0))
+    }
+
     // The roots git can hold here. ⛔ One the repository ignores whole is not named to
     // `git add`, which refuses an ignored path; what is written under it is placed instead.
     const held = (paths) => {
@@ -556,7 +574,7 @@ export function openStandIn(repo, { roots, rev }) {
       return paths.filter((p) => !ignored.includes(p))
     }
 
-    return { siteDir, commit, placeIgnored, close }
+    return { siteDir, commit, changes, placeIgnored, close }
   } catch (err) {
     close()
     throw err

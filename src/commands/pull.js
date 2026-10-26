@@ -150,10 +150,12 @@ const colors = {
   green: '\x1b[32m',
   blue: '\x1b[36m'
 }
-// Looked up at each call, so a caller that captures the console captures these too.
-const log = (...a) => console.log(...a)
+// Looked up at each call, so a caller that captures the console captures these too — and
+// silent while a probe runs (`probePull`), which answers by what it returns.
+let quiet = false
+const log = (...a) => quiet || console.log(...a)
 const success = (m) => log(`${colors.green}✓${colors.reset} ${m}`)
-const error = (m) => console.error(`${colors.red}✗${colors.reset} ${m}`)
+const error = (m) => quiet || console.error(`${colors.red}✗${colors.reset} ${m}`)
 const info = (m) => log(`${colors.blue}→${colors.reset} ${m}`)
 const note = (m) => log(`  ${colors.dim}${m}${colors.reset}`)
 
@@ -568,6 +570,34 @@ const pulledFrom = (origin) => `The site's content on ${origin}`
 const mergedFrom = (origin) => `Merge the site's content from ${origin}`
 const takenFrom = (origin) => `Take the site's content from ${origin}`
 
+/**
+ * What a pull would change in the files, and nothing more — for `uniweb status`.
+ *
+ * ⭐ THE PULL ITSELF, STOPPED BEFORE IT TAKES ANYTHING. The same requests, the same base,
+ * the same projection onto it in a stand-in — so status and pull cannot disagree about
+ * which files the backend changed: a section's translations (`locales/*.json`) and a
+ * record's file are named as the pull would write them. It downloads no media, merges
+ * nothing, commits nothing and banks nothing — no ETag, version, hash or sync point —
+ * and prints nothing.
+ *
+ * Null when a probe cannot answer: outside git, where a pull writes into the files; in a
+ * repository with no commit or no sync point to merge from; when a lane failed or the
+ * workspace was refused. The caller then says what it can by other means.
+ *
+ * @param {string[]} [args] - the workspace flags only (`--org`, `--personal`)
+ * @param {object} [deps] - as for `pull`; `getToken` keeps it from ever asking for a login
+ * @returns {Promise<{ files: Array<[string, string]>, recordsNotPlaced: boolean } | null>}
+ *   `files` — `[status, path]`, status `A`, `M` or `D`, the path relative to the site
+ */
+export async function probePull(args = [], deps = {}) {
+  quiet = true
+  try {
+    return (await pull(args, { ...deps, probe: true }))?.probe ?? null
+  } finally {
+    quiet = false
+  }
+}
+
 export async function pull(args = [], deps = {}) {
   // See utils/flag-guard.js — an unrecognized flag is invisible to a literal scan, so
   // it silently keeps the default: a mistyped `--dry-run` would pull for real, and a
@@ -587,13 +617,20 @@ export async function pull(args = [], deps = {}) {
   const force = args.includes('--force')
 
   const siteDir = await resolveSiteDir(args, 'pull')
-  const fetchAssets = shouldFetchAssets(args, siteDir)
+  // ⛔ A probe (`probePull`) fetches no media: it says what changes, and takes nothing.
+  const probe = Boolean(deps.probe)
+  const fetchAssets = !probe && shouldFetchAssets(args, siteDir)
 
   // ⭐ IN A REPOSITORY A PULL MERGES; OUTSIDE ONE IT CHECKS OUT. A merge needs the state both
   // sides started from, and only a history holds one (`utils/sync-point.js`). Outside git
   // a pull rewrites the files, so work there that a pull did not write stops it.
   const repo = repoOf(siteDir)
-  if (repo && !dryRun) {
+  // A probe writes onto a commit in a stand-in, never into the files: with no repository,
+  // or no commit to write onto, it has nothing to say.
+  if (probe && !repo?.head) return { exitCode: 0, probe: null }
+  // …and touching nothing here, it is not stopped by what a merge would be: a conflict or a
+  // merge waiting is the caller's to report.
+  if (repo && !dryRun && !probe) {
     if (!repo.head) {
       error('This repository has no commits yet, so there is nothing for a pull to merge into.')
       note('Commit the project, then pull.')
@@ -631,7 +668,9 @@ export async function pull(args = [], deps = {}) {
     command: 'Pulling'
   })
   // One reader of Models for the whole pull, so a Model is read once whichever lane asks first.
-  const readModel = makeModelResolver({ client, siteDir })
+  // ⛔ A probe keeps none: a Model kept here is what a later offline emit resolves with, and a
+  // probe takes nothing (`probePull`).
+  const readModel = makeModelResolver({ client, siteDir: probe ? null : siteDir })
 
   // ⭐ No scope check any more — and none is needed. This project's identity on
   // `client.origin` is read from that origin's own section of sync.json, so a
@@ -703,6 +742,9 @@ export async function pull(args = [], deps = {}) {
   // body). `doRequest` is a thunk returning the client's Response promise. 404 / any
   // failure → null (the lane is skipped, not fatal) — except a workspace mismatch,
   // `{ refused: true }`, which stops the pull: the other lane would only say it again.
+  // A lane that answered 404 is named in `missing`, so a probe can tell a site with no
+  // records lane from a lane that did not answer.
+  const missing = new Set()
   const getDocs = async (label, doRequest) => {
     info(
       `Pulling ${colors.bright}${label}${colors.reset} from ${colors.dim}${client.origin}${colors.reset} …`
@@ -718,6 +760,7 @@ export async function pull(args = [], deps = {}) {
     }
     if (res.status === 404) {
       note(`${label}: not found (404) — it was deleted, or you lack access.`)
+      missing.add(label)
       return null
     }
     if (res.status === 304) {
@@ -820,6 +863,12 @@ export async function pull(args = [], deps = {}) {
       ? splitRecordsPull(folderLane.docs)
       : null
   const projected = Boolean(siteDoc) || Boolean(folderTaken)
+  if (probe) {
+    // A lane that did not answer is not knowing — a records lane the backend has none of
+    // (404) is no records; both unchanged is nothing to take.
+    if (!content || (!noRecords && !folderLane && !missing.has('records'))) return { exitCode: 1, probe: null }
+    if (!projected) return { exitCode: 0, probe: { files: [], recordsNotPlaced: false } }
+  }
 
   // ── What the project itself says, read before anything is written ──────────
   // The foundation, the Models and the scope come from the project as it is: in a
@@ -950,6 +999,9 @@ export async function pull(args = [], deps = {}) {
       origin: client.origin,
       siteUuid: siteContentUuid
     })
+    // A probe with no base has no way to tell the backend's changes from this copy's: onto
+    // HEAD, every difference would read as the backend's.
+    if (probe && !base) return { exitCode: 0, probe: null }
     onto = force || !base ? repo.head : base
     try {
       standIn = openStandIn(repo, { roots, rev: onto })
@@ -1071,7 +1123,7 @@ export async function pull(args = [], deps = {}) {
       // ⭐ A FILE RECORD'S BYTES (`@uniweb/file`, 2026-09-28): fetched to where `folder.yml` now
       // places each one, as media are fetched. A file that did not arrive is a record not taken —
       // reported, and the pull fails below as it does for any, so the next one fetches it again.
-      if (report.fileDownloads?.length) {
+      if (report.fileDownloads?.length && !probe) {
         const got = await downloadFileRecords({
           downloads: report.fileDownloads,
           siteDir: projDir,
@@ -1104,6 +1156,12 @@ export async function pull(args = [], deps = {}) {
         for (const line of recordsNotPlaced.lines) note(`  ${line}`)
       }
       for (const w of report.warnings) note(`! ${w}`)
+    }
+
+    // ⭐ A PROBE STOPS HERE, the stand-in holding what this pull would take: what differs
+    // from the base is what the backend changed. Nothing is banked; `finally` closes it.
+    if (probe) {
+      return { exitCode: 0, probe: { files: standIn.changes(), recordsNotPlaced: Boolean(recordsNotPlaced) } }
     }
 
     // Outside git: what this pull wrote, so the next one can tell its own output from the
