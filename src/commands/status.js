@@ -641,7 +641,9 @@ async function appChecks(siteDir, siteYml, { offline, args, git }) {
     }
   }
 
-  if (changes) checks.push(...changeChecks(siteDir, changes, unpushedFiles, proposals))
+  // A site kept in another workspace refuses every read of it from this one.
+  const elsewhere = state?.state === 'live' && state.status === 409
+  if (changes) checks.push(...changeChecks(siteDir, changes, unpushedFiles, proposals, { elsewhere }))
 
   const site = state?.site
   if (site) {
@@ -704,8 +706,12 @@ const cloudName = (origin) => (origin === DEFAULT_BACKEND_ORIGIN ? 'Uniweb Cloud
 const CHANGE = { A: 'added', M: 'changed', D: 'removed' }
 
 /** `app.changes`: what moved on the backend, and where it meets what moved here. */
-function changeChecks(siteDir, changes, unpushedFiles, proposals) {
+function changeChecks(siteDir, changes, unpushedFiles, proposals, { elsewhere = false } = {}) {
+  // ⭐ A REFUSAL IS SAID ONCE. `app.site` says where the site is kept and how to work there;
+  // the reads here are refused for that reason. ⛔ Until 2026-10-26 this repeated the refusal.
+  const unread = { id: 'app.changes', state: 'unknown', summary: 'Could not tell what changed on the backend while the site is kept in another workspace.' }
   if (changes.error) {
+    if (elsewhere) return [unread]
     return [{ id: 'app.changes', state: 'unknown', summary: `Could not read the site from the backend: ${changes.error.message}` }]
   }
   if (changes.probe) return probedChanges(changes.probe, unpushedFiles, proposals)
@@ -723,9 +729,12 @@ function changeChecks(siteDir, changes, unpushedFiles, proposals) {
   if (records.folder) lines.push('the records\' sub-folders (folder.yml)')
   const moved = files.length + lines.length
   if (!moved) {
+    if (unknown.length && elsewhere) return [unread]
+    // Each reason without its own full stop: the sentence ends once.
+    const reasons = [...new Set(unknown.map((l) => String(l.detail).replace(/\.+$/, '')))]
     return [
       unknown.length
-        ? { id: 'app.changes', state: 'unknown', summary: `Could not tell what changed on the backend: ${[...new Set(unknown.map((l) => l.detail))].join('; ')}.` }
+        ? { id: 'app.changes', state: 'unknown', summary: `Could not tell what changed on the backend: ${reasons.join('; ')}.` }
         : { id: 'app.changes', state: 'ok', summary: 'Nothing changed on the backend since this copy last synced.', detail: { source: 'units' } }
     ]
   }
