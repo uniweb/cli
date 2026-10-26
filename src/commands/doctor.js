@@ -1928,6 +1928,38 @@ async function runDoctor(args = []) {
     try {
       deployYml = await loadDeployYml(sitePath)
     } catch (err) {
+      // `saveDeploys:` holding a value of the retired `autoSave:` — the key renamed by hand, its
+      // value kept (measured 2026-10-26 on a copied project) — is the retired key's to repair.
+      let kept = null
+      try {
+        const v = yaml.load(readFileSync(deployYmlPath, 'utf8'))?.saveDeploys
+        kept = v === 'lastDeploy' || v === 'off' ? v : null
+      } catch {
+        kept = null
+      }
+      if (kept) {
+        const id = 'deploy-yml-retired-key'
+        const issue = { id, type: 'error', site: siteName, message: `deploy.yml has \`saveDeploys: ${kept}\`, a value of the retired \`autoSave:\`` }
+        issues.push(issue)
+        error(`[${id}] ${siteName}: deploy.yml has \`saveDeploys: ${kept}\` — a value of the retired \`autoSave:\`, where \`saveDeploys\` is true or false.`)
+        log(
+          `    ${colors.dim}${kept === 'off' ? '`autoSave: off` is `saveDeploys: false`.' : '`autoSave: lastDeploy` is what happens anyway — deploys are recorded — so the line goes.'}${colors.reset}`
+        )
+        if (shouldFix(id)) {
+          try {
+            const { retireDeployYmlKeys } = await import('@uniweb/build/site')
+            if (await retireDeployYmlKeys(sitePath)) {
+              issue.fixed = true
+              fixed(`${relative(workspaceDir, deployYmlPath)}: ${kept === 'off' ? 'wrote `saveDeploys: false`' : 'removed `saveDeploys: lastDeploy`'}`)
+            }
+          } catch (fixErr) {
+            warn(`[${id}] could not rewrite ${relative(workspaceDir, deployYmlPath)}: ${fixErr.message}`)
+          }
+        } else {
+          log(`    ${colors.dim}Run \`uniweb doctor --fix ${id}\` to write what it meant, keeping your comments.${colors.reset}`)
+        }
+        continue
+      }
       issues.push({
         id: 'deploy-yml-malformed',
         type: 'error',
@@ -2013,10 +2045,13 @@ async function runDoctor(args = []) {
         if (names.length) lost.push(`the last deploy of ${names.map((n) => `\`${n}\``).join(', ')} is recorded only there, where nothing sees it`)
       }
       if (String(deployYml.autoSave) === 'off') lost.push('`autoSave: off` is ignored, so deploys are recorded')
-      const renamed = { lastDeploy: 'deploys', autoSave: 'saveDeploys' }
-      log(
-        `    ${colors.dim}${retired.map((k) => `\`${k}:\` is \`${renamed[k]}:\``).join(' and ')} now${lost.length ? ` — ${lost.join('; ')}` : ''}.${colors.reset}`
-      )
+      // What each one means now — said by value, not as a rename: "`autoSave:` is `saveDeploys:`"
+      // read as one, and a copy came back holding `saveDeploys: lastDeploy` (2026-10-26).
+      const means = {
+        lastDeploy: '`lastDeploy:` is `deploys:` now',
+        autoSave: '`autoSave:` goes — `autoSave: off` is `saveDeploys: false`, and `autoSave: lastDeploy` is what happens anyway'
+      }
+      log(`    ${colors.dim}${retired.map((k) => means[k]).join('; ')}${lost.length ? ` — ${lost.join('; ')}` : ''}.${colors.reset}`)
       if (shouldFix(id)) {
         try {
           const { retireDeployYmlKeys } = await import('@uniweb/build/site')

@@ -13,7 +13,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { tmp } from './helpers/run-verb.js'
+import { tmp, runVerb } from './helpers/run-verb.js'
 
 const DEPLOY_YML = `# the person's own words
 default: production
@@ -77,6 +77,31 @@ test('⭐ --fix deploy-yml-retired-key moves the record and the switch, keeping 
   assert.doesNotMatch(text, /^(lastDeploy|autoSave):/m)
   assert.match(text, /^saveDeploys: false$/m)
   assert.match(text, /^deploys:\n {2}production:\n {4}at: 2026-05-26/m)
+  assert.equal(retired(await doctorIn(root)), undefined, 'control: a second run finds nothing')
+})
+
+// ⛔ The line said "`autoSave:` is `saveDeploys:` now", which read as a rename: a copied project
+// came back holding `saveDeploys: lastDeploy` (2026-10-26). It now says what each value means.
+test('the old values are said by what they mean, not as a rename', { timeout: 60_000 }, async () => {
+  const { doctor } = await import('../src/commands/doctor.js')
+  const { output } = await runVerb(workspace(), doctor, [], {})
+  assert.match(output, /`lastDeploy:` is `deploys:` now; `autoSave:` goes — `autoSave: off` is `saveDeploys: false`, and `autoSave: lastDeploy` is what happens anyway/)
+  assert.doesNotMatch(output, /`autoSave:` is `saveDeploys:`/)
+})
+
+test('⭐ saveDeploys holding an old autoSave value is named, and --fix writes what it meant', { timeout: 60_000 }, async () => {
+  const root = workspace()
+  writeFileSync(join(root, 'site', 'deploy.yml'), '# mine\ndefault: production\ntargets:\n  production:\n    host: uniweb\nsaveDeploys: lastDeploy\n')
+  const found = await doctorIn(root)
+  const issue = retired(found)
+  assert.equal(issue?.type, 'error', 'a deploy.yml the CLI refuses to read')
+  assert.match(issue.message, /`saveDeploys: lastDeploy`, a value of the retired `autoSave:`/)
+  assert.equal(found.issues.some((i) => i.id === 'deploy-yml-malformed'), false)
+
+  assert.equal(retired(await doctorIn(root, ['--fix', 'deploy-yml-retired-key']))?.fixed, true)
+  const text = readFileSync(join(root, 'site', 'deploy.yml'), 'utf8')
+  assert.doesNotMatch(text, /saveDeploys/)
+  assert.match(text, /# mine/)
   assert.equal(retired(await doctorIn(root)), undefined, 'control: a second run finds nothing')
 })
 
