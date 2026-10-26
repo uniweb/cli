@@ -111,11 +111,12 @@ import {
   commitWriteBacks,
   reportWriteBacks,
   dropSiteBoundValues,
-  pushSyncPackages
+  pushSyncPackages,
+  readSiteWorkspace
 } from '../backend/site-sync.js'
 import { repoOf } from '../utils/sync-point.js'
 import { commitBeforeSending } from '../backend/commit-before-sending.js'
-import { resolveWorkspace, describeWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
+import { resolveWorkspace, describeWorkspace, previewWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import {
   updateBackendMap,
@@ -479,13 +480,15 @@ export async function publish(args = []) {
   }
 
   if (dryRun) {
+    const siteUuid = readBackendState(siteDir, client.origin).site?.uuid
+    const preview = previewWorkspace(ws, siteUuid ? readSiteWorkspace(siteDir, client.origin) : null, 'publish')
     say.info('Dry run — would bring the foundation along, sync, and go live:')
     say.dim(`Backend     : ${client.origin}`)
-    say.dim(
-      `site_uuid   : ${readBackendState(siteDir, client.origin).site?.uuid || '(none — the site is created before anything uploads)'}`
-    )
+    say.dim(`Workspace   : ${preview.workspace}`)
+    say.dim(`site_uuid   : ${siteUuid || '(none — the site is created before anything uploads)'}`)
     const langs = languagesFromSiteYml(siteYml)
     if (langs) say.dim(`Languages   : ${langs.join(', ')}`)
+    if (preview.warning) say.warn(preview.warning)
     await bringFoundationAlong({
       client,
       siteDir,

@@ -103,10 +103,11 @@ import {
   commitWriteBacks,
   reportWriteBacks,
   holdUnchangedPush,
-  pushSyncPackages
+  pushSyncPackages,
+  readSiteWorkspace
 } from '../backend/site-sync.js'
 import { commitBeforeSending } from '../backend/commit-before-sending.js'
-import { resolveWorkspace, describeWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
+import { resolveWorkspace, describeWorkspace, previewWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 
 // Re-exported for downstream importers (pull.js, push.test.js) that read these
 // helpers from this module — their canonical home is now ../backend/site-sync.js.
@@ -685,6 +686,10 @@ export async function push(args = [], deps = {}) {
         `Dry run — would push the folder at ${colors.dim}${client.origin}${colors.reset}`
       )
     }
+    const siteUuid = readBackendState(siteDir, client.origin).site?.uuid
+    const preview = previewWorkspace(ws, siteUuid ? readSiteWorkspace(siteDir, client.origin) : null, 'push')
+    note(`Workspace: ${preview.workspace}`)
+    if (preview.warning) warn(preview.warning)
     return { exitCode: 0 }
   }
 

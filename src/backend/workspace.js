@@ -139,6 +139,44 @@ export const SOURCE_LABEL = {
   offline: 'not resolved in a preview'
 }
 
+/**
+ * What a preview (`--dry-run`) says about the workspace: the one the command would work in,
+ * and a warning when the project's record says its site was created in another.
+ *
+ * ⭐ A preview resolves the workspace offline (`resolveWorkspace`): a flag, `UNIWEB_WORKSPACE`
+ * or the login's choice. With none of those, which one the command settles on takes the
+ * backend, so the preview says what the command does instead of guessing.
+ *
+ * ⚠️ The record says where the site was CREATED (`readSiteWorkspace`), not where the backend
+ * keeps it now. The backend decides, and a site kept outside the workspace stops the command
+ * (`409 wrong_workspace`), so a difference is worded as a warning about the record.
+ *
+ * @param {{ workspace: string|null, source: string }} ws - `resolveWorkspace`'s answer
+ * @param {string|null} createdIn - `readSiteWorkspace` for the project's site on this backend;
+ *   null when it has none, or no workspace is recorded for it
+ * @param {string} verb - `publish`, `push`
+ * @returns {{ workspace: string, warning: string|null }}
+ */
+export function previewWorkspace(ws, createdIn, verb) {
+  if (ws.source === 'offline') {
+    return {
+      workspace:
+        `none chosen at login — the ${verb} works in your personal workspace if you belong to no ` +
+        'organization or project, and otherwise stops and says how to choose one',
+      warning: null
+    }
+  }
+  const differs =
+    typeof createdIn === 'string' && createdIn.toLowerCase() !== String(ws.workspace ?? '').toLowerCase()
+  return {
+    workspace: `${describeWorkspace(ws.workspace)} (${SOURCE_LABEL[ws.source]})`,
+    warning: differs
+      ? `sync.json records this site as created in ${describeWorkspace(createdIn)}. If the backend ` +
+        `still keeps it there, it stops this ${verb}: add --org ${createdIn} to work in it.`
+      : null
+  }
+}
+
 /** How to choose, for a command on `origin` — its login names the backend when it must (`loginCommand`). */
 const choose = (origin) =>
   [
