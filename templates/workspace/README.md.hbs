@@ -1,87 +1,169 @@
 # {{projectName}}
 
-A website built with [Uniweb](https://github.com/uniweb/cli) — a component web platform that separates content from code.
+A website made with [Uniweb](https://uniweb.io): an open-source React framework and a connected
+visual authoring platform.
 
-{{> quick-start}}
+**Developers define the vocabulary. Authors compose with it. Uniweb keeps both sides in sync.**
 
-## Project Structure
+This project and the Uniweb app are two interfaces to the same website. Here, in code and git,
+you build its **foundation**: React components, called section types, and the schemas of its
+structured content. In the app, authors compose pages from those section types and manage records
+through those schemas: visually, with live previews, and with no markdown, YAML or git to learn.
+You build the components. Uniweb builds the authoring experience.
+{{#if cloned}}
 
+This project was cloned from a site in the Uniweb app (`uniweb clone`), so it is already in sync
+with it. Its foundation is a registered one, not a folder of this project.
+{{/if}}
+
+## Quick start
+
+{{#if packages.length}}
+```bash
+pnpm install
+pnpm dev          # prints the address it serves the site at
 ```
-{{projectName}}/
-├── src/                 # Foundation package (the site's source code; pkg name: src)
-│   ├── sections/        # Section types (selectable by content authors)
-│   ├── styles.css       # Tailwind CSS v4 theme
-│   ├── main.js          # Foundation declarations (name, vars, defaultLayout)
-│   └── vite.config.js   # defineFoundationConfig()
-│
-├── site/                # Content (markdown)
-│   ├── pages/           # Content pages
-│   │   └── home/
-│   │       ├── page.yml
-│   │       └── 1-welcome.md
-│   ├── site.yml         # Site configuration (foundation: src)
-│   └── vite.config.js   # defineSiteConfig()
-│
-└── AGENTS.md            # Developer guide (human + AI)
+
+Edit a page or a section type and the page updates as you save. With npm, use `npm install`,
+`npm run dev` and `npx uniweb`.
+{{else}}
+This workspace started empty. Add a foundation and a site, then run them:
+
+```bash
+npx uniweb add project <name>    # a foundation in <name>/src, a site in <name>/site
+pnpm install
+pnpm uniweb dev                  # prints the address it serves the site at
 ```
+{{/if}}
 
-A site is pure content. A foundation is the site's source code — that's why it lives in `src/`.
+## What's here
 
-## Content Authoring
+| Folder | What it holds |
+|---|---|
+{{#each packages}}
+| `{{path}}/` | {{#if foundation}}a foundation: section types in `sections/`, written in React, and any data schemas in `schemas/`{{/if}}{{#if extension}}an extension: more section types, loaded beside a foundation{{/if}}{{#if site}}a site: its pages in `pages/`, with `site.yml` and `theme.yml`{{/if}} |
+{{/each}}
+| `AGENTS.md` | the manual for this project and its version of Uniweb, for you and for AI agents |
 
-Content lives in markdown files under `site/pages/`:
+Each markdown file in a site's `pages/` is one section of a page. Its frontmatter names a
+section type, and the component receives the content already parsed. For example:
 
 ```markdown
 ---
-type: Section
-theme: light
+type: Hero
 ---
 
-# Welcome
+# Build something great
 
-Your content here.
-
-[Call to Action](#)
+Edit this text, not the component.
 ```
 
-{{> adding-pages}}
-
-## Component Development
-
-Section types live in `src/sections/`. Each is a folder with an `index.jsx` and a `meta.js`:
-
 ```jsx
-// src/sections/Hero/index.jsx
+// sections/Hero/index.jsx
 import { H1, P } from '@uniweb/kit'
 
 export default function Hero({ content }) {
-  const { title, paragraphs = [] } = content || {}
-
   return (
-    <div className="max-w-4xl mx-auto px-6">
-      <H1 text={title} className="text-heading text-4xl font-bold" />
-      <P text={paragraphs} className="text-body mt-4" />
+    <div className="mx-auto max-w-4xl px-6">
+      <H1 text={content.title} className="text-4xl font-bold text-heading" />
+      <P text={content.paragraphs} className="mt-4 text-body" />
     </div>
   )
 }
 ```
 
-Components receive parsed content from markdown. Classes like `text-heading` and `text-body` are semantic tokens — the site controls their actual colors through theming, so the same component adapts to any context automatically.
+`text-heading` and `text-body` are theme tokens. A site's `theme.yml` sets their colors, so one
+component works in light and dark sections, and on every site that uses it.
 
-{{> components-docs}}
+## Connect the authoring app
 
-## Building
+Start with a normal project, and connect the app when you want visual authoring:
 
 ```bash
-# Build foundation (generates dist/foundation.js)
-cd foundation && pnpm build
-
-# Build site for production
-cd site && pnpm build
+pnpm uniweb login       # sign in to your Uniweb account
+pnpm uniweb sync        # the first sync brings the site and its foundation into the app
 ```
 
-Deploy `site/dist/` to any static host (Vercel, Netlify, Cloudflare Pages, etc.)
+From then on, the CLI is the bridge between the two workflows:
 
-{{> ai-assistance}}
+| Command | What it does |
+|---|---|
+| `pnpm uniweb push` | sends your section types, schemas and content to the app: a draft, not live |
+| `pnpm uniweb pull` | brings authors' edits into your files, as a git merge |
+| `pnpm uniweb sync` | takes your teammates' commits and the authors' edits, then pushes yours |
+| `pnpm uniweb publish` | pushes, then takes the site live on Uniweb hosting, a paid service |
 
-{{> learn-more}}
+Authors never need to think about synchronization: in the app, their changes appear live. On
+your side, edits to different sections combine, and nothing overwrites an author's edit. When
+the same section changed on both sides, `sync` stops at a git conflict for you to settle. Like
+git, a push sends what you have committed; `--commit` commits the site's content first.
+
+### Structured content, editable without an admin app
+
+A section type declares the data it shows, by schema, in its `meta.js`:
+
+```js
+export default {
+  data: {
+    people: '@std/person',   // a standard schema, from @uniweb/schemas
+    events: '@/event'        // this foundation's own, in schemas/event.yml
+  }
+}
+```
+
+A standard schema needs `@uniweb/schemas` as a dependency of the foundation. In the app, authors
+get forms and records for those schemas. No separate admin application is needed to make the
+data editable.
+
+## Other ways to use it
+
+The framework works on its own, too.
+
+- **Content in files only.** If you manage the content yourself, the site needs no Uniweb account.
+  `pnpm build` makes each site's `dist/`, a static site for any host, and `pnpm uniweb deploy`
+  ships it to GitHub Pages, Cloudflare Pages, Netlify, Vercel or S3 + CloudFront.
+- **Foundations for your clients' sites.** If the sites belong to your clients, who make and edit
+  them in the app, this project is where you build and test the foundation.
+  `pnpm uniweb register` publishes it to Uniweb for their sites.
+
+## Working with AI agents
+
+A Uniweb project gives an agent a system to work within, its section types, schemas and content
+conventions, instead of a blank canvas. What an agent builds here, authors can use in the app
+after the next sync.
+
+[AGENTS.md](./AGENTS.md) is written for developers and AI agents alike. Many coding agents read it
+on their own when they start in this folder; point any other agent at it first.
+`npx uniweb@latest update` moves the project to the latest release of Uniweb, and AGENTS.md with
+it.
+
+Some prompts to try:
+
+**Converting an existing design:**
+```
+I have a landing page design in `homepage.jsx`. Convert it into this Uniweb
+project. Decompose each visual section into a section type in the foundation,
+and extract all text content into markdown files in the site's pages/home/.
+The final page should render identically to the original. See AGENTS.md.
+```
+
+**Adding a section type:**
+```
+Create a Pricing section type with 3-column cards. It should work in light and
+dark sections. Use content.items for the pricing tiers — each item has a title,
+a paragraph (the price), and a link (the call to action).
+```
+
+**Adding a page:**
+```
+Add a /contact page with a hero section and a contact details section. Reuse
+the Hero section type from the homepage.
+```
+
+## Learn more
+
+- [Documentation](https://uniweb.io/docs): guides and reference. For AI agents, its index is
+  https://uniweb.io/llms.txt
+- [Uniweb app](https://uniweb.app): the visual authoring platform
+- `pnpm uniweb <command> --help`: every command's options
+- `pnpm uniweb doctor`: checks the project's configuration

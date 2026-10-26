@@ -350,6 +350,10 @@ async function createFromPackageTemplates(
     {
       projectName,
       workspaceGlobs: ['site', 'src'],
+      packages: [
+        { path: 'src', foundation: true },
+        { path: 'site', site: true }
+      ],
       scripts: {
         dev: 'uniweb dev',
         build: 'uniweb build',
@@ -416,6 +420,7 @@ async function createBlankWorkspace(projectDir, projectName, options = {}) {
     {
       projectName,
       workspaceGlobs: [],
+      packages: [],
       scripts: {
         build: 'uniweb build'
       }
@@ -483,6 +488,8 @@ async function createFromContentTemplate(
     {
       projectName,
       workspaceGlobs,
+      // `type` is foundation, extension or site: the README's table reads it as a flag.
+      packages: placed.map((p) => ({ path: p.relativePath, [p.type]: true })),
       scripts
     },
     { onProgress, onWarning }

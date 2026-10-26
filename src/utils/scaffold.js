@@ -31,6 +31,10 @@ const STARTER_DIR = join(__dirname, '..', '..', 'starter')
  * @param {string} context.projectName - Workspace/project name
  * @param {string[]} context.workspaceGlobs - Workspace glob patterns
  * @param {Object} context.scripts - Root package.json scripts
+ * @param {Array<{ path: string, foundation?: boolean, extension?: boolean, site?: boolean }>} context.packages -
+ *   The packages the project starts with, each by its folder and kind, for the README's
+ *   table. `[]` for a blank workspace, which the README tells how to grow.
+ * @param {boolean} [context.cloned] - The project is a `uniweb clone` of a site in the app
  * @param {Object} [options] - Processing options
  */
 export async function scaffoldWorkspace(targetDir, context, options = {}) {

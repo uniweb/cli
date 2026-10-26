@@ -421,6 +421,8 @@ export async function clone(args = [], deps = {}) {
       {
         projectName: workspaceName,
         workspaceGlobs: ['site'],
+        packages: [{ path: 'site', site: true }],
+        cloned: true,
         scripts: { dev: 'uniweb dev', build: 'uniweb build' }
       },
       { onProgress }
