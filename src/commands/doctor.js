@@ -1993,6 +1993,54 @@ async function runDoctor(args = []) {
       }
     }
 
+    // ⛔ The keys retired on 2026-09-20 read as nothing, without a word: a deploy recorded
+    // under `lastDeploy:` is one `uniweb status` cannot see, and `autoSave: off` is ignored,
+    // so deploys are recorded after all. A renamed key returns empty; it does not fail.
+    const retired = ['lastDeploy', 'autoSave'].filter((k) => deployYml[k] !== undefined)
+    if (retired.length) {
+      const id = 'deploy-yml-retired-key'
+      const issue = {
+        id,
+        type: 'warn',
+        site: siteName,
+        message: `deploy.yml uses ${retired.map((k) => `\`${k}:\``).join(' and ')}, which the CLI no longer reads`
+      }
+      issues.push(issue)
+      warn(`[${id}] ${siteName}: deploy.yml uses ${retired.map((k) => `\`${k}:\``).join(' and ')}, which the CLI no longer reads.`)
+      const lost = []
+      if (deployYml.lastDeploy && typeof deployYml.lastDeploy === 'object') {
+        const names = Object.keys(deployYml.lastDeploy).filter((n) => !deployYml.deploys?.[n])
+        if (names.length) lost.push(`the last deploy of ${names.map((n) => `\`${n}\``).join(', ')} is recorded only there, where nothing sees it`)
+      }
+      if (String(deployYml.autoSave) === 'off') lost.push('`autoSave: off` is ignored, so deploys are recorded')
+      const renamed = { lastDeploy: 'deploys', autoSave: 'saveDeploys' }
+      log(
+        `    ${colors.dim}${retired.map((k) => `\`${k}:\` is \`${renamed[k]}:\``).join(' and ')} now${lost.length ? ` — ${lost.join('; ')}` : ''}.${colors.reset}`
+      )
+      if (shouldFix(id)) {
+        try {
+          const { retireDeployYmlKeys } = await import('@uniweb/build/site')
+          const done = await retireDeployYmlKeys(sitePath)
+          if (done) {
+            issue.fixed = true
+            fixed(
+              `${relative(workspaceDir, deployYmlPath)}: ${[
+                done.moved.length && `moved ${done.moved.join(', ')} to \`deploys:\``,
+                done.saveDeploys === false && 'wrote `saveDeploys: false`',
+                'removed the old keys'
+              ]
+                .filter(Boolean)
+                .join(', ')}`
+            )
+          }
+        } catch (err) {
+          warn(`[${id}] could not rewrite ${relative(workspaceDir, deployYmlPath)}: ${err.message}`)
+        }
+      } else {
+        log(`    ${colors.dim}Run \`uniweb doctor --fix ${id}\` to move them, keeping your comments.${colors.reset}`)
+      }
+    }
+
     // github-pages-specific: if a target has `domain`, `site/public/CNAME`
     // should exist with that value. Vite copies public/ into dist/, and
     // GH Pages reads dist/CNAME on each deploy to keep the custom domain
