@@ -10,8 +10,8 @@
  *   - whether the synced draft differs from what's live (publish needed),
  *   - whether a newer foundation version is registered than the site pins, and
  *   - who has the site open in the app right now, and on what (`describeEditors`).
- * Those use ASSUMED endpoints (see kb shipping-verbs-and-freshness.md §6.5); until
- * the backend exposes them, `--remote` degrades silently to the local view.
+ * A request that fails or is not answered degrades to the local view — it is not
+ * knowing, never an answer.
  *
  * Usage:
  *   uniweb status            Sync identity + unpushed content + foundation ref (local)
