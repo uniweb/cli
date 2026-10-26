@@ -67,7 +67,7 @@ https://uniweb.io/llms.txt
 
 It lists every documentation page with a one-line description and a fetchable link. Go there whenever your question isn't answered in this file — and *especially* when you don't know whether a feature exists at all. That's where guessing does the most damage: **a 404 on a path you invented tells you your guess was wrong, not that the feature is missing.** Concluding "the framework doesn't support X" from a failed fetch is a mistake worth actively guarding against; the index answers the existence question directly.
 
-Then **follow the link the index gives you** rather than constructing one yourself. The index is the source of truth for where pages live, so it stays correct when the site's URL conventions change. Each link it gives is the page as Markdown.
+Then **follow the link the index gives you** rather than constructing one yourself. The index is the source of truth for where pages live, so it stays correct when the site's URL conventions change. Each link it gives is the page as Markdown, and a page's own address returns the same Markdown to a request sent with `Accept: text/markdown`.
 
 **Clone the repo instead** when you expect several lookups, or may lose network access later:
 
