@@ -1777,12 +1777,16 @@ ${colors.cyan}${colors.bright}uniweb status${colors.reset} ${colors.dim}— What
 ${colors.bright}Usage:${colors.reset}
   uniweb status [options]
 
-Run it when you begin, before you push, and after a command refuses. It checks:
+Run it when you begin, when you come back to the project, before you push, publish
+or deploy, and after a command refuses. It opens with what the site is — synced
+where, live where, deployed where — and checks:
 
   git      conflicts, a merge waiting, the site's files not committed, the git remote
-  app      the session, what changed on the backend since this copy last synced,
-           what is not pushed, whether the site is live, who has it open in the app,
-           the foundation
+  app      the session, what changed on the backend since this copy last synced —
+           the files a pull would change — what is not pushed, who has the site
+           open in the app, the foundation
+  hosting  where the site is live, the other hosts deploy.yml lists (by CI or by
+           hand, and how far behind), and the services the live site has
   uniweb   whether a newer release is out
   health   doctor's findings
   dev      the dev server

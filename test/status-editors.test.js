@@ -162,7 +162,7 @@ test('nobody in the app is said; a backend that does not say leaves it out', { t
 
   const { editors, ...older } = STATUS
   const silent = await statusOf(older, ['--json'])
-  assert.equal(checkOf(silent, 'app.live')?.summary, 'In the app, not live yet.', 'control: the status was read')
+  assert.equal(checkOf(silent, 'app.live')?.summary, 'On http://backend.test, not live yet.', 'control: the status was read')
   assert.equal(checkOf(silent, 'app.editors'), undefined)
 })
 

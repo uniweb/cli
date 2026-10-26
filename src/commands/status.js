@@ -41,6 +41,7 @@
  * (`utils/flag-guard.js`).
  */
 
+import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import yaml from 'js-yaml'
@@ -60,7 +61,7 @@ import { BackendClient, resolveBackendOrigin } from '../backend/client.js'
 import { readAppChanges } from '../backend/app-changes.js'
 import { probePull } from './pull.js'
 import { readOrgFlag } from '../utils/args.js'
-import { readBackendState } from '@uniweb/build/uwx'
+import { listSyncedBackends, readBackendState } from '@uniweb/build/uwx'
 import { resolveLocalFoundation, foundationScopedName } from '../backend/foundation-bring-along.js'
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { compareSemverPrecedence } from '../utils/semver-precedence.js'
@@ -551,14 +552,35 @@ async function appChecks(siteDir, siteYml, { offline, args, git }) {
 
   const site = state?.site
   if (site) {
+    // ⭐ WHERE THE SITE IS LIVE IS THE BACKEND'S TO SAY, never deploy.yml's: a receipt is
+    // what this copy published, and a publish from the app or another copy does not move it.
+    // ⛔ `last_published_url` outlives an unpublish (`client.siteStatus`), so it is said as
+    // where the site WAS live when it is not live now — never as where it is.
+    const url = typeof site.last_published_url === 'string' && site.last_published_url ? site.last_published_url : null
+    const when = site.last_published_at ? sinceLabel(site.last_published_at, Date.now()) : null
+    const at = `${url ? ` at ${url}` : ''}${when ? `, published ${when}` : ''}`
+    const detail = {
+      published: Boolean(site.published),
+      url,
+      published_at: site.last_published_at ?? null,
+      draft_dirty: Boolean(site.draft_dirty),
+      foundation: site.last_published_foundation ?? null,
+      runtime: site.last_published_runtime ?? null
+    }
     if (!site.published) {
-      checks.push({ id: 'app.live', state: 'attention', summary: 'In the app, not live yet.' })
+      checks.push({
+        id: 'app.live',
+        state: 'attention',
+        summary: `On ${cloudName(origin)}, not live yet.`,
+        lines: url ? [`It was live at ${url} before.`] : [],
+        detail
+      })
       proposals.push({ step: 'publish', command: 'npx uniweb publish', why: 'take the site live — the person decides, and it may ask for payment', ask: true })
     } else if (site.draft_dirty) {
-      checks.push({ id: 'app.live', state: 'attention', summary: 'Live, with changes in the app that are not live yet.' })
+      checks.push({ id: 'app.live', state: 'attention', summary: `Live on ${cloudName(origin)}${at} — the app holds changes that are not live yet.`, detail })
       proposals.push({ step: 'publish', command: 'npx uniweb publish', why: 'make those changes live — the person decides', ask: true })
     } else {
-      checks.push({ id: 'app.live', state: 'ok', summary: 'Live, with the latest content.' })
+      checks.push({ id: 'app.live', state: 'ok', summary: `Live on ${cloudName(origin)}${at}, with the latest content.`, detail })
     }
     // An array is the backend's answer, `[]` included; no key is a backend that does not
     // say, and then neither do we.
@@ -580,8 +602,11 @@ async function appChecks(siteDir, siteYml, { offline, args, git }) {
     }
   }
   if (foundation) checks.push(foundation)
-  return { checks, proposals, backend }
+  return { checks, proposals, backend, site: site ?? null }
 }
+
+/** The name a backend's hosting goes by: Uniweb Cloud on the default backend, its origin elsewhere. */
+const cloudName = (origin) => (origin === DEFAULT_BACKEND_ORIGIN ? 'Uniweb Cloud' : origin)
 
 const CHANGE = { A: 'added', M: 'changed', D: 'removed' }
 
@@ -779,15 +804,225 @@ async function devCheck(siteDir, { offline }) {
   }
 }
 
+// ─── where the site is hosted ───────────────────────────────────────────────
+
+/** A host adapter's name as people know it (`S3 + CloudFront`), or its id. */
+async function hostTitle(host) {
+  try {
+    const { getAdapter } = await import('@uniweb/build/hosts')
+    return getAdapter(host)?.display?.title || host
+  } catch {
+    return host
+  }
+}
+
+/**
+ * The CI workflow `uniweb add ci` writes for `host`, when it deploys this site: its file,
+ * and the branches whose pushes run it. A workspace with several sites deploys one per
+ * workflow, which names that site's build output.
+ */
+function ciWorkflow(repo, host) {
+  const rel = `.github/workflows/deploy-${host}.yml`
+  let text
+  try {
+    text = readFileSync(join(repo.top, rel), 'utf8')
+  } catch {
+    return null
+  }
+  if (repo.path !== '.' && !text.includes(`${repo.path}/dist`)) return null
+  let branches = []
+  try {
+    const doc = yaml.load(text)
+    branches = (doc?.on ?? doc?.[true])?.push?.branches ?? []
+  } catch {
+    // unreadable: the branches are not known
+  }
+  return { file: rel, branches: Array.isArray(branches) && branches.length ? branches.map(String) : [] }
+}
+
+/** The commits since `sha` that changed the site's files — null when this branch does not hold `sha`. */
+function siteCommitsSince(repo, sha, siteDir) {
+  try {
+    if (!isAncestor(repo, sha)) return null
+    const roots = sentRoots(siteDir).map((r) => `${repo.prefix}${r}`)
+    const out = execFileSync('git', ['rev-list', '--count', `${sha}..HEAD`, '--', ...roots], {
+      cwd: repo.top,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore']
+    })
+    return Number(out.trim())
+  } catch {
+    return null
+  }
+}
+
+/**
+ * `hosting.deploys`: where else the site is deployed — `deploy.yml`'s targets on hosts that
+ * are not a backend — each by CI on every push, or by hand, and how far behind a
+ * hand-deployed one is.
+ *
+ * ⛔ FROM THIS COPY'S FILES ONLY. A host's own state is not asked, and a receipt
+ * (`deploys:`) says what this copy deployed — never what another copy, or a CI run, did.
+ */
+async function deployChecks(siteDir) {
+  let deployYml
+  try {
+    const { loadDeployYml } = await import('@uniweb/build/site')
+    deployYml = await loadDeployYml(siteDir)
+  } catch (err) {
+    return { checks: [{ id: 'hosting.deploys', state: 'unknown', summary: `deploy.yml could not be read: ${err.message}` }], proposals: [], targets: [] }
+  }
+  const all = deployYml?.targets && typeof deployYml.targets === 'object' ? deployYml.targets : {}
+  const names = Object.keys(all)
+  const defaultName = deployYml?.default ?? (names.length === 1 ? names[0] : null)
+  const elsewhere = Object.entries(all).filter(([, t]) => t && typeof t === 'object' && t.host && t.host !== 'uniweb')
+  if (!elsewhere.length) {
+    return { checks: [{ id: 'hosting.deploys', state: 'skipped', summary: 'Deployed to no host but a backend.', quiet: true }], proposals: [], targets: [] }
+  }
+  const repo = repoOf(siteDir)
+  const proposals = []
+  const targets = []
+  const lines = []
+  let attention = false
+  for (const [name, t] of elsewhere) {
+    const title = await hostTitle(t.host)
+    const ci = repo?.head ? ciWorkflow(repo, t.host) : null
+    const receipt = deployYml.deploys?.[name] || null
+    const retired = !receipt && deployYml.lastDeploy?.[name] ? deployYml.lastDeploy[name] : null
+    const behind = receipt?.git?.sha && repo?.head ? siteCommitsSince(repo, receipt.git.sha, siteDir) : null
+    const when = receipt?.at ? sinceLabel(receipt.at, Date.now()) : null
+    let how
+    if (ci) {
+      how = `deployed by CI on every push${ci.branches.length ? ` to ${ci.branches.join(' or ')}` : ''} (${ci.file})`
+    } else if (receipt) {
+      how =
+        `deployed by hand, last ${when ?? 'at an unknown time'}${receipt.url ? ` to ${receipt.url}` : ''}` +
+        (behind > 0 ? ` — the site changed in ${count(behind, 'commit')} since` : behind === 0 ? ', and the site has not changed since' : '')
+      if (behind > 0) {
+        attention = true
+        proposals.push({ step: 'deploy', command: `npx uniweb deploy --target ${name}`, why: `update ${title}, ${count(behind, 'commit')} behind`, ask: true })
+      }
+    } else if (retired) {
+      attention = true
+      how = `its last deploy (${String(retired.at ?? '').slice(0, 10) || 'undated'}) is under \`lastDeploy:\`, which nothing reads — \`npx uniweb doctor --fix deploy-yml-retired-key\` moves it`
+    } else {
+      how = 'never deployed from this copy'
+    }
+    lines.push(`${title} — target \`${name}\`${name === defaultName ? ', the one a bare `uniweb deploy` uses' : ''}: ${how}`)
+    targets.push({
+      name,
+      host: t.host,
+      title,
+      default: name === defaultName,
+      ci: ci ? { file: ci.file, branches: ci.branches } : null,
+      last: receipt ? { at: receipt.at ?? null, sha: receipt.git?.sha ?? null, url: receipt.url ?? null } : null,
+      behind,
+      ...(retired ? { retired: true } : {})
+    })
+  }
+  return {
+    checks: [
+      {
+        id: 'hosting.deploys',
+        state: attention ? 'attention' : 'ok',
+        summary: `Also deployed to ${targets.map((t) => t.title).join(' and ')}.`,
+        lines,
+        detail: { targets }
+      }
+    ],
+    proposals,
+    targets
+  }
+}
+
+const list = (names) => names.map((n) => `\`${n}\``).join(', ')
+
+/**
+ * `app.services`: what `site.yml` asks for, beside what the backend holds — the request it
+ * stored, and what the last publish delivered (`last_published_services`). Comparing the
+ * file with those is how to tell it is stale, by the backend's own contract.
+ *
+ * ⛔ A request is never said as what the site has: what is live is the backend's to say.
+ */
+async function servicesCheck({ siteDir, siteYml, site }) {
+  const { readServicesRequest } = await import('@uniweb/build/uwx')
+  const { foundationSupports, serviceNotes } = await import('../backend/service-request.js')
+  // ⚠️ Two shapes, as the backend sends them (measured 2026-10-26 on uniweb.app): the stored
+  // request is rows (`{ name, enabled? }`), what the last publish delivered is names. A reader
+  // of rows alone reads every live service as none.
+  const on = (entries) =>
+    (Array.isArray(entries) ? entries : [])
+      .map((e) => (typeof e === 'string' ? e : e && typeof e.name === 'string' && e.enabled !== false ? e.name : null))
+      .filter(Boolean)
+  const asks = readServicesRequest(siteYml.services) || []
+  const asked = on(asks)
+  const lines = serviceNotes({ siteYml, supports: await foundationSupports(siteDir, siteYml) })
+  const proposals = []
+  if (!site) {
+    return {
+      checks: [
+        {
+          id: 'app.services',
+          state: lines.length ? 'attention' : 'ok',
+          summary: asked.length ? `site.yml asks for ${list(asked)}.` : 'site.yml asks for no services.',
+          lines,
+          detail: { asked, requested: null, live: null }
+        }
+      ],
+      proposals
+    }
+  }
+  const live = on(site.last_published_services)
+  const requested = on(site.services)
+  const waiting = requested.filter((n) => !live.includes(n))
+  if (waiting.length && site.published) {
+    lines.push(`Requested, not live yet: ${list(waiting)} — publishing makes ${waiting.length === 1 ? 'it' : 'them'} live, and may ask for payment.`)
+    proposals.push({ step: 'publish', command: 'npx uniweb publish', why: 'make those changes live — the person decides', ask: true })
+  }
+  const unsent = asked.filter((n) => !requested.includes(n))
+  if (unsent.length) lines.push(`site.yml asks for ${list(unsent)}, which the backend does not hold yet — the next push sends the request.`)
+  const offHere = asks.filter((a) => a.enabled === false && live.includes(a.name)).map((a) => a.name)
+  if (offHere.length) {
+    lines.push(`site.yml turns off ${list(offHere)}, which the live site has — a request the owner settles; a paid service stays on until its subscription changes.`)
+  }
+  return {
+    checks: [
+      {
+        id: 'app.services',
+        state: lines.length ? 'attention' : 'ok',
+        summary: live.length ? `Services on the live site: ${list(live)}.` : site.published ? 'No services on the live site.' : 'No services live — the site is not.',
+        lines,
+        detail: { asked, requested, live }
+      }
+    ],
+    proposals
+  }
+}
+
+/** What the site is, in one line: where it is synced, and where it is live. */
+function summaryLine({ name, synced, live, targets, origin }) {
+  const parts = [synced.length ? `synced with ${synced.join(' and ')}` : 'not synced with a backend']
+  if (live?.published) parts.push(`live on ${cloudName(origin)}${live.url ? ` at ${live.url}` : ''}`)
+  else if (live) parts.push(`not live on ${cloudName(origin)} yet`)
+  if (targets.length) parts.push(`${live?.published ? 'also deployed' : 'deployed'} to ${targets.map((t) => t.title).join(' and ')}`)
+  else if (!synced.length) parts.push('not hosted anywhere yet')
+  return `${name} — ${parts.join(' · ')}`
+}
+
 // ─── the command ────────────────────────────────────────────────────────────
 
 const GROUPS = [
   ['git', 'Git'],
   ['app', 'App'],
+  ['hosting', 'Hosting'],
   ['uniweb', 'Uniweb'],
   ['health', 'Health'],
   ['dev', 'Dev server']
 ]
+
+// Where a check is shown: where the site is live, and what it serves, are its hosting —
+// `app.live` and `app.services` kept their ids, which the document had before the group.
+const groupOf = (id) => (id === 'app.live' || id === 'app.services' || id.startsWith('hosting.') ? 'hosting' : id.split('.')[0])
 
 const ICON = {
   ok: `${c.green}✓${c.reset}`,
@@ -797,11 +1032,11 @@ const ICON = {
   skipped: `${c.dim}·${c.reset}`
 }
 
-function render({ siteLabel, backend, checks, next }) {
+function render({ summary, backend, checks, next }) {
   const out = ['']
-  out.push(`${c.bold}Status of ${siteLabel}${c.reset}`)
+  out.push(`${c.bold}${summary}${c.reset}`)
   for (const [prefix, title] of GROUPS) {
-    const group = checks.filter((k) => k.id.split('.')[0] === prefix && !(k.quiet && k.state === 'ok'))
+    const group = checks.filter((k) => groupOf(k.id) === prefix && !(k.quiet && (k.state === 'ok' || k.state === 'skipped')))
     if (!group.length) continue
     out.push('')
     out.push(prefix === 'app' ? `${c.bold}${title}${c.reset} ${c.dim}— ${backend.origin}${c.reset}` : `${c.bold}${title}${c.reset}`)
@@ -870,31 +1105,45 @@ export async function status(args = []) {
   // helpers say on the way goes to stderr.
   const saved = { log: console.log, info: console.info, warn: console.warn }
   if (json) console.log = console.info = console.warn = (...a) => console.error(...a)
-  let git, app, version, health, dev
+  let git, app, version, health, dev, deploys, services
   try {
     git = await gitChecks(siteDir, { offline, origin })
-    ;[app, version, health, dev] = await Promise.all([
+    ;[app, version, health, dev, deploys] = await Promise.all([
       appChecks(siteDir, siteYml, { offline, args, git }),
       versionCheck(siteDir, { offline }),
       doctorCheck(siteDir),
-      devCheck(siteDir, { offline })
+      devCheck(siteDir, { offline }),
+      deployChecks(siteDir)
     ])
+    services = await servicesCheck({ siteDir, siteYml, site: app.site })
   } finally {
     Object.assign(console, saved)
   }
-  const checks = [...git.checks, ...app.checks, ...version.checks, ...health.checks, dev]
-  const next = planNext([...git.proposals, ...app.proposals, ...version.proposals, ...health.proposals])
+  const checks = [...git.checks, ...app.checks, ...deploys.checks, ...services.checks, ...version.checks, ...health.checks, dev]
+  const next = planNext([...git.proposals, ...app.proposals, ...deploys.proposals, ...services.proposals, ...version.proposals, ...health.proposals])
 
   const root = findWorkspaceRoot(siteDir) || siteDir
   const site = relative(root, siteDir) || '.'
+  // What the site is, before what to do about it: the backends it is synced with — every one
+  // this copy holds a site on, custom servers included — and where it is live.
+  const synced = listSyncedBackends(siteDir).filter((o) => readBackendState(siteDir, o).site?.uuid)
+  const summary = summaryLine({
+    name: typeof siteYml.name === 'string' && siteYml.name ? siteYml.name : site === '.' ? 'This site' : site,
+    synced,
+    live: checks.find((k) => k.id === 'app.live')?.detail ?? null,
+    targets: deploys.targets,
+    origin: app.backend.origin
+  })
   if (json) {
     console.log(
       JSON.stringify({
         schema: STATUS_SCHEMA,
         uniweb: getCliVersion(),
+        summary,
         site,
         backend: app.backend.origin,
         workspace: app.backend.workspace,
+        synced,
         offline,
         checks: checks.map(({ quiet, id, state, summary, blocks = [], ...rest }) => ({ id, state, summary, blocks, ...rest })),
         next
@@ -902,7 +1151,7 @@ export async function status(args = []) {
     )
     return { exitCode: 0 }
   }
-  console.log(render({ siteLabel: site === '.' ? 'this site' : `${site}/`, backend: app.backend, checks, next }))
+  console.log(render({ summary, backend: app.backend, checks, next }))
   return { exitCode: 0 }
 }
 

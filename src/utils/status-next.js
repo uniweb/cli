@@ -7,13 +7,13 @@
  * then sends the reader back up. So the order is one table, not each check's own idea:
  *
  *   sign in → settle conflicts → finish a merge → take what others did (refresh, or pull)
- *   → push → push to git → go live → update Uniweb → read doctor's findings
+ *   → push → push to git → go live → deploy to another host → update Uniweb → read doctor's findings
  *
  * Each check proposes steps by name (`step`); this sorts them, folds the ones another step
  * already does, and drops duplicates.
  */
 
-const ORDER = ['login', 'conflicts', 'merge', 'refresh', 'pull', 'push', 'gitpush', 'publish', 'update', 'doctor']
+const ORDER = ['login', 'conflicts', 'merge', 'refresh', 'pull', 'push', 'gitpush', 'publish', 'deploy', 'update', 'doctor']
 
 /**
  * @param {Array<{ step: string, command: string|null, why: string, ask?: boolean }>} proposals

@@ -164,27 +164,43 @@ const names = (list) => list.map((n) => `\`${n}\``).join(', ')
  * @param {string[]|null} [p.supports] - from `foundationSupports`; null = unknown
  */
 export function announceServices({ siteYml, say, supports = null }) {
+  for (const note of serviceNotes({ siteYml, supports, warn: (m) => say.warn(m) })) say.warn(note)
+}
+
+/**
+ * Where `site.yml::services` and the foundation disagree — the notes `announceServices`
+ * says, as lines, for a caller that reports them (`uniweb status`).
+ *
+ * @param {object} p
+ * @param {object} p.siteYml - parsed
+ * @param {string[]|null} [p.supports] - from `foundationSupports`; null = unknown
+ * @param {(m: string) => void} [p.warn] - told what the file asks that will not be sent as written
+ * @returns {string[]}
+ */
+export function serviceNotes({ siteYml, supports = null, warn = () => {} }) {
   // An entry the push cannot read stops the package build next, which says what to write
   // (`refuseUnreadableServices`). Nothing to add before it — and what this would say, read
   // past that entry, is wrong: `search: yes` was "site.yml turns on `search`" (F14).
-  if (unreadableServices(siteYml?.services).length) return
-  const asks = readServicesRequest(siteYml?.services, { warn: (m) => say.warn(m) }) || []
-  if (!Array.isArray(supports)) return
+  if (unreadableServices(siteYml?.services).length) return []
+  const asks = readServicesRequest(siteYml?.services, { warn }) || []
+  if (!Array.isArray(supports)) return []
+  const notes = []
   const ignored = new Set(['tracking', 'records'])
   const has = (ask) => ask.enabled !== false || typeof ask.config?.endpoint === 'string'
   const unrendered = asks.filter((a) => has(a) && !ignored.has(a.name) && !supports.includes(a.name)).map((a) => a.name)
   if (unrendered.length) {
-    say.warn(`site.yml turns on ${names(unrendered)}, which your foundation does not say it renders (\`uniweb.supports\`).`)
+    notes.push(`site.yml turns on ${names(unrendered)}, which your foundation does not say it renders (\`uniweb.supports\`).`)
   }
   const mentioned = new Set(asks.map((a) => a.name))
   const unasked = supports.filter((n) => !ignored.has(n) && !mentioned.has(n))
   if (unasked.length) {
-    say.warn(
+    notes.push(
       `Your foundation renders ${names(unasked)}, which site.yml does not ask for — a service is off ` +
         `unless the site asks for it. Add ${unasked.length === 1 ? 'it' : 'them'} under \`services:\`, or set ` +
         `${unasked.length === 1 ? 'it' : 'each'} to \`false\` if that is what you mean.`
     )
   }
+  return notes
 }
 
 /**

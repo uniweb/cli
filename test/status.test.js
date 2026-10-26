@@ -127,7 +127,7 @@ test('the document: schema 1, every check an id, a state, a summary and what it 
   assert.equal(doc.backend, ORIGIN)
   assert.equal(doc.site, '.')
   for (const c of doc.checks) {
-    assert.match(c.id, /^(git|app|uniweb|health|dev)\.[a-z]+$/, c.id)
+    assert.match(c.id, /^(git|app|hosting|uniweb|health|dev)\.[a-z]+$/, c.id)
     assert.ok(['ok', 'attention', 'blocking', 'unknown', 'skipped'].includes(c.state), `${c.id}: ${c.state}`)
     assert.equal(typeof c.summary, 'string')
     assert.ok(Array.isArray(c.blocks), c.id)
@@ -323,4 +323,87 @@ test('going live is the person\'s to decide', { timeout: 60_000 }, async () => {
   const publish = doc.next.find((s) => s.command === 'npx uniweb publish')
   assert.equal(publish?.ask, true, JSON.stringify(doc.next))
   assert.equal(checkOf(doc, 'app.live').state, 'attention')
+})
+
+// ── where the site is hosted ────────────────────────────────────────────────
+
+test('⭐ the summary says what the site is: synced where, live where, deployed where', { timeout: 60_000 }, async () => {
+  const dir = project()
+  writeFileSync(join(dir, 'deploy.yml'), 'default: production\ntargets:\n  production:\n    host: github-pages\n  cloud:\n    host: uniweb\n')
+  const site = { ...LIVE, last_published_url: 'https://t.example/', last_published_at: new Date(Date.now() - 3 * 3600e3).toISOString() }
+  const doc = docOf(await status(dir, ['--personal', '--json'], { session: loggedIn, respond: answering({ site }) }))
+  assert.equal(doc.summary, 'T — synced with http://backend.test · live on http://backend.test at https://t.example/ · also deployed to GitHub Pages')
+  assert.deepEqual(doc.synced, [ORIGIN])
+  const live = checkOf(doc, 'app.live')
+  assert.equal(live.detail.url, 'https://t.example/')
+  assert.equal(live.summary, 'Live on http://backend.test at https://t.example/, published 3 h ago, with the latest content.')
+})
+
+test('a site that is not live says where it was live, never that it is', { timeout: 60_000 }, async () => {
+  const site = { published: false, draft_dirty: true, editors: [], last_published_url: 'https://t.example/' }
+  const doc = docOf(await status(project(), ['--personal', '--json'], { session: loggedIn, respond: answering({ site }) }))
+  const live = checkOf(doc, 'app.live')
+  assert.equal(live.summary, 'On http://backend.test, not live yet.')
+  assert.deepEqual(live.lines, ['It was live at https://t.example/ before.'])
+  assert.match(doc.summary, /not live on http:\/\/backend\.test yet/)
+  assert.doesNotMatch(doc.summary, /t\.example/)
+})
+
+test('⭐ a host deployed by CI says so; one deployed by hand says how far behind it is', { timeout: 60_000 }, async () => {
+  const dir = project({ repo: true })
+  const first = git(dir, ['rev-parse', 'HEAD']).trim()
+  mkdirSync(join(dir, '.github', 'workflows'), { recursive: true })
+  writeFileSync(join(dir, '.github', 'workflows', 'deploy-github-pages.yml'), 'name: Deploy\non:\n  push:\n    branches: [main, master]\njobs: {}\n')
+  writeFileSync(
+    join(dir, 'deploy.yml'),
+    `default: pages\ntargets:\n  pages:\n    host: github-pages\n  bucket:\n    host: s3-cloudfront\ndeploys:\n  bucket:\n    at: 2026-10-20T00:00:00.000Z\n    host: s3-cloudfront\n    git:\n      sha: ${first}\n      dirty: false\n`
+  )
+  writeFileSync(join(dir, 'pages/about/1-hero.md'), '# About — edited\n')
+  git(dir, ['add', '-A'])
+  git(dir, ['commit', '-qm', 'an edit, and the deploy config'])
+
+  const doc = docOf(await status(dir, ['--offline', '--json'], { session: loggedIn }))
+  const deploys = checkOf(doc, 'hosting.deploys')
+  assert.equal(deploys.state, 'attention', JSON.stringify(deploys))
+  const [pages, bucket] = deploys.detail.targets
+  assert.deepEqual(pages.ci, { file: '.github/workflows/deploy-github-pages.yml', branches: ['main', 'master'] })
+  assert.equal(pages.default, true)
+  assert.equal(bucket.behind, 1)
+  assert.match(deploys.lines[0], /^GitHub Pages — target `pages`, the one a bare `uniweb deploy` uses: deployed by CI on every push to main or master/)
+  assert.match(deploys.lines[1], /^S3 \+ CloudFront — target `bucket`: deployed by hand, last .+ — the site changed in 1 commit since$/)
+  assert.equal(doc.next.find((s) => s.command === 'npx uniweb deploy --target bucket')?.ask, true, JSON.stringify(doc.next))
+})
+
+test('a deploy recorded only under the retired `lastDeploy:` is said, with its fix', { timeout: 60_000 }, async () => {
+  const dir = project()
+  writeFileSync(join(dir, 'deploy.yml'), 'default: production\ntargets:\n  production:\n    host: s3-cloudfront\nlastDeploy:\n  production:\n    at: 2026-05-26T18:38:41.635Z\n    host: s3-cloudfront\n')
+  const deploys = checkOf(docOf(await status(dir, ['--offline', '--json'], {})), 'hosting.deploys')
+  assert.equal(deploys.state, 'attention')
+  assert.equal(deploys.detail.targets[0].retired, true)
+  assert.match(deploys.lines[0], /\(2026-05-26\) is under `lastDeploy:`, which nothing reads — `npx uniweb doctor --fix deploy-yml-retired-key` moves it/)
+})
+
+test('control: with no other host, the check is skipped and says so', { timeout: 60_000 }, async () => {
+  const deploys = checkOf(docOf(await status(project(), ['--offline', '--json'], {})), 'hosting.deploys')
+  assert.equal(deploys.state, 'skipped')
+})
+
+test('⭐ services: what the live site has beside the request — in the shapes the backend sends', { timeout: 60_000 }, async () => {
+  // Measured 2026-10-26 on uniweb.app: the stored request is rows, what the last publish
+  // delivered is names. Read as rows alone, every live service read as none.
+  const dir = project()
+  writeFileSync(join(dir, 'site.yml'), "name: T\nfoundation: 'https://example.test/foundation/entry.js'\nservices:\n  submit: true\n  records: true\n  search: false\n")
+  const site = { ...LIVE, services: [{ name: 'submit' }, { name: 'search', enabled: false }], last_published_services: ['submit', 'search'] }
+  const services = checkOf(docOf(await status(dir, ['--personal', '--json'], { session: loggedIn, respond: answering({ site }) })), 'app.services')
+  assert.deepEqual(services.detail, { asked: ['submit', 'records'], requested: ['submit'], live: ['submit', 'search'] })
+  assert.equal(services.summary, 'Services on the live site: `submit`, `search`.')
+  assert.ok(services.lines.some((l) => /^site\.yml asks for `records`, which the backend does not hold yet/.test(l)), services.lines.join('\n'))
+  assert.ok(services.lines.some((l) => /^site\.yml turns off `search`, which the live site has/.test(l)), services.lines.join('\n'))
+})
+
+test('a service requested and not live yet is the next publish, the person deciding', { timeout: 60_000 }, async () => {
+  const site = { ...LIVE, services: [{ name: 'records' }], last_published_services: [] }
+  const doc = docOf(await status(project(), ['--personal', '--json'], { session: loggedIn, respond: answering({ site }) }))
+  assert.ok(checkOf(doc, 'app.services').lines.some((l) => /^Requested, not live yet: `records`/.test(l)))
+  assert.equal(doc.next.find((s) => s.command === 'npx uniweb publish')?.ask, true)
 })
