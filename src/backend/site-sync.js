@@ -1012,6 +1012,8 @@ export function untakenBase(siteDir, backend) {
     }
     return {
       headline: "Not pushed — your branch does not hold the backend content this copy last took.",
+      // Never taken here — a fresh copy, or one brought from another repository — not lost.
+      ...(point && held ? {} : { never: true }),
       lines: [
         point && held
           ? 'The pull or push it came from is not in your history — a merge abandoned, or the branch moved.'
@@ -1978,6 +1980,24 @@ async function comparisonEmit(
     // ⛔ No `org`: a site's `@/x` refs resolve into its FOUNDATION's scope, which the
     // emit reads itself — the same read a push makes, so the hashes compare alike.
   })
+}
+
+/**
+ * What a push would send from the files as they stand, every entity hashed — the same emit
+ * the banked hashes are compared with (`comparisonEmit`) — or null when the files do not emit
+ * (a key the build refuses, say). Two folders whose hashes agree say the same thing to the
+ * backend, however their files are written: a pull with no common history reads that to leave
+ * a file alone (`commands/pull.js`).
+ *
+ * @returns {Promise<Record<string,string>|null>}
+ */
+export async function entityHashes(siteDir, backend = null, { declarations, fields = null } = {}) {
+  try {
+    const pkg = await comparisonEmit(siteDir, { backend, sendAll: true, declarations, fields })
+    return pkg.hashes || {}
+  } catch {
+    return null
+  }
 }
 
 /**

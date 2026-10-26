@@ -13,7 +13,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmp, runVerb } from './helpers/run-verb.js'
 import { computeUnitHashes, createZip } from '@uniweb/build/uwx'
@@ -248,6 +248,34 @@ async function syncedRepo(backend) {
   if (git(top, ['status', '--porcelain']).trim()) git(top, ['commit', '-qm', 'pull'])
   return dir
 }
+
+// A project copied into another repository — its sync points, and its `.uniweb/`, left in the old one.
+// ⛔ Until 2026-10-26 status said "Your branch does not hold the backend content this copy last
+// took", could not say what the first pull would ask (the probe gave up with no base), and proposed
+// a push: every entity counted as unsent with nothing banked.
+test('⭐ a copied project: no shared history, what says something else, and no push before the pull', { timeout: 60_000 }, async () => {
+  const backend = movingBackend()
+  const from = await syncedRepo(backend)
+  const top = tmp('uw-status-moved-')
+  cpSync(join(from, '..'), top, { recursive: true, filter: (src) => !/[/\\]\.(git|uniweb)([/\\]|$)/.test(src) })
+  git(top, ['init', '-q'])
+  git(top, ['config', 'user.email', 'test@example.test'])
+  git(top, ['config', 'user.name', 'Test'])
+  git(top, ['add', '-A'])
+  git(top, ['commit', '-qm', 'the project, copied in'])
+  backend.state.doc = realDoc({ welcome: 'Welcome — written in the app.' })
+  backend.state.version = 'v2'
+
+  const doc = docOf(await status(join(top, 'site'), ['--personal', '--json'], { session: loggedIn, respond: backend.respond }))
+  assert.equal(checkOf(doc, 'app.base').summary, 'This copy has not taken the site from the backend yet: a push waits until a pull has merged its content.')
+  const changes = checkOf(doc, 'app.changes')
+  assert.equal(changes.detail.noBase, true, JSON.stringify(changes))
+  assert.match(changes.summary, /^This copy shares no history with the site's content on the backend — brought from another repository, most likely\. 1 file here says something else/)
+  assert.deepEqual(changes.files.map((f) => f.replace(/^.*\//, '')), ['welcome.md'])
+  assert.equal(checkOf(doc, 'app.unpushed').state, 'unknown')
+  assert.equal(doc.next[0]?.command, 'npx uniweb pull', JSON.stringify(doc.next))
+  assert.equal(doc.next.some((s) => /uniweb push/.test(s.command || '')), false, JSON.stringify(doc.next))
+})
 
 test('⭐ a file changed here and on the backend blocks the push, and the pull comes first', { timeout: 60_000 }, async () => {
   const backend = movingBackend()

@@ -467,7 +467,11 @@ async function appChecks(siteDir, siteYml, { offline, args, git }) {
     checks.push({
       id: 'app.base',
       state: 'blocking',
-      summary: base.headline.replace(/^Not pushed — /, '').replace(/^./, (ch) => ch.toUpperCase()),
+      // ⛔ Not "does not hold what this copy last took" for a copy that took nothing here — a fresh
+      // copy, or a project brought from another repository, whose sync points stayed there.
+      summary: base.never
+        ? 'This copy has not taken the site from the backend yet: a push waits until a pull has merged its content.'
+        : base.headline.replace(/^Not pushed — /, '').replace(/^./, (ch) => ch.toUpperCase()),
       blocks: ['push', 'publish']
     })
     proposals.push({ step: 'pull', command: 'npx uniweb pull', why: "merge the backend's content with yours" })
@@ -502,6 +506,14 @@ async function appChecks(siteDir, siteYml, { offline, args, git }) {
           }
         : { id: 'app.unpushed', state: 'ok', summary: 'Nothing waiting to be pushed.' }
     )
+  } else if (base?.never && git.repo) {
+    // ⛔ A copy that took nothing here has no record of what it last sent, so every entity would
+    // count as unsent — "holds changes" is a guess, and a push step before the pull it needs.
+    checks.push({
+      id: 'app.unpushed',
+      state: 'unknown',
+      summary: "What this copy holds that the backend lacks is known once a pull has merged the site's content here."
+    })
   } else {
     try {
       const probe = await probeUnpushed(siteDir, { backend: origin })
@@ -575,8 +587,9 @@ async function appChecks(siteDir, siteYml, { offline, args, git }) {
 
   // ⭐ WHAT CHANGED ON THE BACKEND, AS A PULL WOULD TAKE IT. In a repository, the pull itself,
   // stopped before it takes anything (`probePull`): the files it would change, translations
-  // and records included. Where it cannot answer — outside git, no sync point to merge from —
-  // the backend's units against this copy's last sync (`backend/app-changes.js`).
+  // and records included — with no sync point in this history, the files that differ, which way
+  // unknown (`noBaseChanges`). Outside git, the backend's units against this copy's last sync
+  // (`backend/app-changes.js`).
   const readChanges = async () => {
     if (git.repo) {
       const org = readOrgFlag(args)
@@ -746,7 +759,8 @@ function changeChecks(siteDir, changes, unpushedFiles, proposals) {
  * `app.changes` from the pull's own answer (`probePull`): the files it would change, each
  * as the pull would write it.
  */
-function probedChanges({ files: list, recordsNotPlaced }, unpushedFiles, proposals) {
+function probedChanges({ files: list, recordsNotPlaced, noBase }, unpushedFiles, proposals) {
+  if (noBase) return noBaseChanges(list, recordsNotPlaced)
   if (!list.length) {
     return [{ id: 'app.changes', state: 'ok', summary: 'Nothing changed on the backend since this copy last synced.', detail: { source: 'pull', files: [] } }]
   }
@@ -772,6 +786,34 @@ function probedChanges({ files: list, recordsNotPlaced }, unpushedFiles, proposa
         files: list.map(([s, p]) => ({ path: p, change: CHANGE[s] || s })),
         ...(overlap.length ? { overlap } : {})
       }
+    }
+  ]
+}
+
+/**
+ * `app.changes` for a copy whose history shares no commit with the site's content — a project
+ * brought into another repository, whose sync points stayed in the old one. What differs is
+ * said, which way unknown: the first pull makes each such file a conflict, yours against the
+ * backend's, and records where the two meet; one that says what the backend holds, written
+ * another way, it leaves alone, and it is not listed (`keepWhatMeansTheSame`, `commands/pull.js`).
+ * The pull itself is `app.base`'s step.
+ */
+function noBaseChanges(list, recordsNotPlaced) {
+  const differ = list.filter(([s]) => s === 'M').map(([, p]) => p)
+  const added = list.filter(([s]) => s === 'A').map(([, p]) => p)
+  const lines = []
+  if (added.length) lines.push(`${count(added.length, 'file')} only the backend has — the pull adds ${added.length === 1 ? 'it' : 'them'}.`)
+  if (recordsNotPlaced) lines.push('Some records could not be placed in files — `npx uniweb pull` says which, and why.')
+  return [
+    {
+      id: 'app.changes',
+      state: 'attention',
+      summary: differ.length
+        ? `This copy shares no history with the site's content on the backend — brought from another repository, most likely. ${count(differ.length, 'file')} here ${differ.length === 1 ? 'says' : 'say'} something else, and the first pull makes ${differ.length === 1 ? 'it a conflict' : 'each a conflict'} to settle, yours against the backend's.`
+        : "This copy shares no history with the site's content on the backend, and its files say what the site holds: the first pull records where they meet, with nothing to settle.",
+      files: differ,
+      lines,
+      detail: { source: 'pull', noBase: true, files: list.map(([s, p]) => ({ path: p, change: CHANGE[s] || s })) }
     }
   ]
 }

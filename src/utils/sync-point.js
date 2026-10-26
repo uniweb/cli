@@ -759,6 +759,15 @@ export function uncommittedPaths(repo, roots) {
   return [...new Set(out.map((p) => siteRelative(repo, p)))]
 }
 
+/** A site file's bytes as `rev` holds it — `path` relative to the site — or null when it holds none. */
+export function fileAt(repo, rev, path) {
+  try {
+    return git(repo.top, ['cat-file', 'blob', `${rev}:${repo.prefix}${path}`])
+  } catch {
+    return null
+  }
+}
+
 /**
  * The files under the roots that differ from what `rev` holds there — changed, deleted, or
  * new and not ignored — relative to the site.

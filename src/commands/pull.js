@@ -97,6 +97,7 @@ import {
   makeModelResolver,
   ensureRegisteredFoundation,
   deploymentFields,
+  entityHashes,
   rebankSyncHashes,
   writeQueryUuids,
   mergeBaseVersions,
@@ -118,6 +119,7 @@ import {
   madeOnto,
   baseFor,
   openStandIn,
+  fileAt,
   mergeSyncPoint,
   takeSyncPoint,
   snapshotFiles,
@@ -565,6 +567,100 @@ function restore(path, bytes) {
   else writeFileSync(path, bytes)
 }
 
+/**
+ * ⭐ WITH NO COMMON HISTORY, A FILE THAT SAYS WHAT THE BACKEND HOLDS IS LEFT AS IT IS.
+ *
+ * A project copied into another repository leaves its sync points in the old history, so its
+ * first pull merges two histories that share nothing: every file the projection rewrites is a
+ * conflict, this copy's against the backend's. The writer already keeps an author's text where it
+ * would write the same document (`project-writer.js`, "an unchanged body keeps the author's own
+ * text"); what it rewrites, this tries once more, two ways. Every hash a push would send, with the
+ * backend's file put in among this copy's (`entityHashes`): where none moves, the two say the
+ * same. And the same asset written two ways, which a push sends as different data
+ * (`sameButAssetForms`). Either way this copy's text goes into the backend's commit, and the merge
+ * has nothing to settle there. A backend file that does not emit at all — a key the build
+ * refuses — says something else, and stays the backend's.
+ *
+ * Measured 2026-10-26 on two sites copied out of their own repositories: six conflicts, three of
+ * them content — a logo added in the app, a key the copy had renamed on both sites — and three
+ * gallery records naming their images by URL where the backend's files name them by path.
+ *
+ * @returns {Promise<string[]>} the files left as this copy writes them
+ */
+async function keepWhatMeansTheSame({ standIn, repo, origin, declarations, fields }) {
+  const dir = standIn.siteDir
+  const ours = new Map()
+  const theirs = new Map()
+  for (const [status, path] of standIn.changes()) {
+    if (status !== 'M') continue
+    const head = fileAt(repo, 'HEAD', path)
+    const now = bytesOf(join(dir, path))
+    if (head && now) {
+      ours.set(path, head)
+      theirs.set(path, now)
+    }
+  }
+  if (!ours.size) return []
+  const opts = { ...(declarations?.size ? { declarations } : {}), fields }
+  const kept = []
+  // What the emits print is a comparison's, not this pull's to say.
+  const said = { warn: console.warn, log: console.log, info: console.info }
+  console.warn = console.log = console.info = () => {}
+  try {
+    // This copy's text everywhere: the files each backend one is tried among.
+    for (const [path, bytes] of ours) writeFileSync(join(dir, path), bytes)
+    const mine = await entityHashes(dir, origin, opts)
+    if (mine) {
+      for (const [path, bytes] of theirs) {
+        writeFileSync(join(dir, path), bytes)
+        const tried = await entityHashes(dir, origin, opts)
+        if ((tried && sameHashes(tried, mine)) || sameButAssetForms(path, ours.get(path), bytes)) kept.push(path)
+        writeFileSync(join(dir, path), ours.get(path))
+      }
+    }
+  } finally {
+    Object.assign(console, said)
+    // The backend's text back wherever it says something else.
+    for (const [path, bytes] of theirs) if (!kept.includes(path)) writeFileSync(join(dir, path), bytes)
+  }
+  return kept
+}
+
+function sameHashes(a, b) {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k])
+}
+
+/**
+ * Two versions of a file that differ only in how they name the same assets: a URL to the
+ * backend's copy (`https://…/assets/<sha256>/base.jpeg`) where the other has the site's own path
+ * (`/assets/<sha256>.jpeg`). A push sends different data from each — a URL, an asset reference —
+ * so the hashes differ, but the asset is one, by its content hash. This copy's text is kept: the
+ * banked hash is its own, so a push leaves the file alone, and the next pull from this base writes
+ * the backend's way (ours unchanged, theirs different). Measured 2026-10-26: three gallery records
+ * an older pull had written with URLs.
+ */
+export function sameButAssetForms(path, a, b) {
+  const asset = (s) => s.replace(/(?:https?:\/\/[^\s"'()]+)?\/assets\/([0-9a-f]{64})(?:\/[^\s"'()]*?)?(?:\.[A-Za-z0-9]+)?(?=[\s"'()]|$)/g, 'asset:$1')
+  const read = (bytes) => {
+    const text = bytes.toString('utf8')
+    if (!/\.ya?ml$/.test(path)) return asset(text)
+    try {
+      return JSON.stringify(sortedDeep(yaml.load(text)), (_, v) => (typeof v === 'string' ? asset(v) : v))
+    } catch {
+      return asset(text)
+    }
+  }
+  const [x, y] = [read(a), read(b)]
+  return x === y && a.toString('utf8') !== b.toString('utf8')
+}
+
+function sortedDeep(v) {
+  if (Array.isArray(v)) return v.map(sortedDeep)
+  if (v && typeof v === 'object' && !(v instanceof Date)) return Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortedDeep(v[k])]))
+  return v
+}
+
 // The sync point's subject line, and the merge's.
 const pulledFrom = (origin) => `The site's content on ${origin}`
 const mergedFrom = (origin) => `Merge the site's content from ${origin}`
@@ -999,9 +1095,9 @@ export async function pull(args = [], deps = {}) {
       origin: client.origin,
       siteUuid: siteContentUuid
     })
-    // A probe with no base has no way to tell the backend's changes from this copy's: onto
-    // HEAD, every difference would read as the backend's.
-    if (probe && !base) return { exitCode: 0, probe: null }
+    // A probe with no base cannot tell the backend's changes from this copy's: onto HEAD, it says
+    // what differs, and which way is the person's to read (`noBase`, below). ⛔ Until 2026-10-26
+    // it said nothing at all, and status could not size a copied project's first pull.
     onto = force || !base ? repo.head : base
     try {
       standIn = openStandIn(repo, { roots, rev: onto })
@@ -1158,10 +1254,20 @@ export async function pull(args = [], deps = {}) {
       for (const w of report.warnings) note(`! ${w}`)
     }
 
+    // ⭐ With no common history, each file that says what the backend holds is left as this copy
+    // writes it (`keepWhatMeansTheSame`): only a difference in content is a conflict.
+    if (standIn && !base && !force) {
+      merge.keptAsWritten = await keepWhatMeansTheSame({ standIn, repo, origin: client.origin, declarations, fields })
+    }
+
     // ⭐ A PROBE STOPS HERE, the stand-in holding what this pull would take: what differs
-    // from the base is what the backend changed. Nothing is banked; `finally` closes it.
+    // from the base is what the backend changed — or, with no base, what differs at all, which
+    // way unknown (`noBase`). Nothing is banked; `finally` closes it.
     if (probe) {
-      return { exitCode: 0, probe: { files: standIn.changes(), recordsNotPlaced: Boolean(recordsNotPlaced) } }
+      return {
+        exitCode: 0,
+        probe: { files: standIn.changes(), recordsNotPlaced: Boolean(recordsNotPlaced), ...(base ? {} : { noBase: true }) }
+      }
     }
 
     // Outside git: what this pull wrote, so the next one can tell its own output from the
@@ -1369,6 +1475,11 @@ export async function pull(args = [], deps = {}) {
         if (ahead.length > 12) note(`  … and ${ahead.length - 12} more`)
       }
     }
+    if (merge.keptAsWritten?.length) {
+      note(`${merge.keptAsWritten.length} file(s) differ from ${client.origin}'s only in how they are written, and are left as they are:`)
+      for (const p of merge.keptAsWritten.slice(0, 12)) note(`  ${repo.prefix}${p}`)
+      if (merge.keptAsWritten.length > 12) note(`  … and ${merge.keptAsWritten.length - 12} more`)
+    }
     if (merge.conflicted.length) {
       error(`${merge.conflicted.length} file(s) have conflicts to resolve:`)
       for (const f of merge.conflicted) note(`  ${f}`)
@@ -1379,7 +1490,7 @@ export async function pull(args = [], deps = {}) {
       } else {
         if (merge.noBase) {
           note(`No commit in this history is one ${client.origin}'s content came from, so nothing tells`)
-          note("your changes from the backend's: each file where they differ is a conflict, yours against the backend's.")
+          note("your changes from the backend's: each file that says something else is a conflict, yours against the backend's.")
           note('Once this merge is committed, later pulls merge from it.')
         }
         note(
