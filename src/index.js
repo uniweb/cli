@@ -1781,6 +1781,9 @@ Run it when you begin, when you come back to the project, before you push, publi
 or deploy, and after a command refuses. It opens with what the site is — synced
 where, live where, deployed where — and checks:
 
+  project  the workspace's sites and foundations, the foundation this site is built
+           with and the other sites it reaches, pages from outside the site's folder,
+           the languages
   git      conflicts, a merge waiting, the site's files not committed, the git remote
   app      the session, what changed on the backend since this copy last synced —
            the files a pull would change — what is not pushed, who has the site
@@ -1791,7 +1794,8 @@ where, live where, deployed where — and checks:
   health   doctor's findings
   dev      the dev server
 
-and ends with the steps to take, in the order to take them. A step marked
+and ends with the steps to take, in the order to take them. At the root of a
+workspace with several sites, it says what each one is. A step marked
 "ask the person first" is theirs to decide — going live, for one.
 
 It changes nothing and asks nothing: with no session it says how to sign in.

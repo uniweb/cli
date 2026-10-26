@@ -43,7 +43,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
+import { basename, join, relative, resolve } from 'node:path'
 import yaml from 'js-yaml'
 
 import {
@@ -790,18 +790,239 @@ async function doctorCheck(siteDir) {
   }
 }
 
-/** `dev.server`: the site's dev server, confirmed by asking it. */
-async function devCheck(siteDir, { offline }) {
-  if (offline) return { id: 'dev.server', state: 'skipped', summary: 'The dev server was not asked (--offline).' }
+/**
+ * `dev.server`: the site's dev server, confirmed by asking it — and the command that starts it
+ * for this site. In a workspace with several, a bare `uniweb dev` starts the first one found
+ * (`commands/dev.js`), which may not be this one.
+ */
+async function devCheck(siteDir, { offline, sites = [] }) {
+  const root = findWorkspaceRoot(siteDir) || siteDir
+  const mine = sites.find((s) => resolve(root, s.path) === resolve(siteDir))
+  const first = sites[0]
+  const command = sites.length > 1 && mine && first !== mine ? `npx uniweb dev ${mine.name}` : 'npx uniweb dev'
+  const note = command === 'npx uniweb dev' ? '' : ` (a bare \`uniweb dev\` starts ${first.name})`
+  if (offline) return { id: 'dev.server', state: 'skipped', summary: `The dev server was not asked (--offline); \`${command}\` starts it${note}.`, detail: { command } }
   try {
     const { runningDevServer } = await import('@uniweb/build/site')
     const running = await runningDevServer(siteDir, { timeout: 1000 })
     return running
-      ? { id: 'dev.server', state: 'ok', summary: `The dev server is running at ${running.url}.`, detail: { url: running.url } }
-      : { id: 'dev.server', state: 'skipped', summary: 'The dev server is not running — `npx uniweb dev` starts it.' }
+      ? { id: 'dev.server', state: 'ok', summary: `The dev server is running at ${running.url}.`, detail: { url: running.url, command } }
+      : { id: 'dev.server', state: 'skipped', summary: `The dev server is not running — \`${command}\` starts it${note}.`, detail: { command } }
   } catch (err) {
-    return { id: 'dev.server', state: 'unknown', summary: `Could not ask the dev server: ${err.message}` }
+    return { id: 'dev.server', state: 'unknown', summary: `Could not ask the dev server: ${err.message}`, detail: { command } }
   }
+}
+
+// ─── the project ────────────────────────────────────────────────────────────
+
+/**
+ * The workspace, as its wiring says: the sites and foundations its globs hold, by the build's
+ * classifier (`utils/discover.js`), and the globs themselves.
+ *
+ * ⛔ NO LAYOUT NAME. "Single", "segregated" and the rest are conventions — the globs and the
+ * wiring are the truth — and a name guessed from folders is wrong where a workspace mixes them.
+ */
+async function workspaceFacts(root) {
+  const [{ discoverSites, discoverFoundations }, { readWorkspaceConfig }, { isExtensionPackage }] = await Promise.all([
+    import('../utils/discover.js'),
+    import('../utils/config.js'),
+    import('@uniweb/build')
+  ])
+  const [sites, packages, config] = await Promise.all([
+    discoverSites(root),
+    discoverFoundations(root),
+    readWorkspaceConfig(root).catch(() => ({ packages: [] }))
+  ])
+  const extension = (f) => {
+    try {
+      return isExtensionPackage(join(root, f.path))
+    } catch {
+      return false
+    }
+  }
+  return {
+    root,
+    patterns: Array.isArray(config.packages) ? config.packages : [],
+    sites,
+    foundations: packages.filter((f) => !extension(f)),
+    extensions: packages.filter(extension)
+  }
+}
+
+function workspaceLine(ws) {
+  const { sites, foundations, extensions, patterns } = ws
+  if (sites.length === 1 && foundations.length === 1 && !extensions.length) {
+    return `One site and one foundation in this workspace: ${sites[0].path}/ and ${foundations[0].path}/.`
+  }
+  const parts = [count(sites.length, 'site'), count(foundations.length, 'foundation')]
+  if (extensions.length) parts.push(count(extensions.length, 'extension'))
+  const from = patterns.length ? `, from ${list(patterns)}` : ''
+  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)} in this workspace${from}.`
+}
+
+/**
+ * A site's foundation, as the build finds it — the one resolver (`detectFoundationType`), so
+ * what status names is what the build would build. A catalog ref, which a build refuses, is
+ * named as one.
+ */
+async function foundationOf(siteDir, siteYml, root) {
+  const declared = siteYml?.foundation
+  if (!declared) return { kind: 'none' }
+  const name = typeof declared === 'string' ? declared : declared.ref || declared.name || declared.url || null
+  const [{ detectFoundationType }, { parseCatalogRef }] = await Promise.all([import('@uniweb/build'), import('@uniweb/build/uwx')])
+  if (parseCatalogRef(name)) return { kind: 'catalog', name, ref: name }
+  try {
+    const found = detectFoundationType(declared, siteDir)
+    if (found.type === 'local') return { kind: 'local', name: found.name, path: relative(root, found.path) || '.', abs: resolve(found.path) }
+    return { kind: 'url', name, url: found.url }
+  } catch (err) {
+    return { kind: 'unresolved', name, error: String(err?.message || err).split('\n')[0] }
+  }
+}
+
+/** A site's extensions, each where it is found: a folder here, the catalog, or a URL. */
+async function extensionsOf(siteDir, siteYml, root) {
+  const declared = Array.isArray(siteYml?.extensions) ? siteYml.extensions : []
+  if (!declared.length) return []
+  const [{ findSiteExtension, extensionNameOf }, { parseCatalogRef }] = await Promise.all([import('@uniweb/build'), import('@uniweb/build/uwx')])
+  return declared.map((entry) => {
+    const value = entry && typeof entry === 'object' ? entry.url || entry.ref || entry.name : entry
+    if (typeof value !== 'string' || !value) return { value: String(value), kind: 'unresolved' }
+    if (parseCatalogRef(value)) return { value, kind: 'catalog' }
+    if (/^https?:\/\//.test(value)) return { value, kind: 'url' }
+    // A site-relative URL names an extension by its first segment; a bare name is that name.
+    const name = value.startsWith('/') ? extensionNameOf(value, siteYml.base)?.name : value
+    const dir = name ? findSiteExtension(name, siteDir) : null
+    return dir ? { value, kind: 'local', name, path: relative(root, dir) || '.' } : { value, kind: 'unresolved', name: name ?? null }
+  })
+}
+
+/**
+ * `project.*`: where this site sits — the workspace's sites and foundations, the foundation it
+ * is built with and what else uses it, its extensions, pages it takes from outside its folder,
+ * and the languages it is written in. All from files: no request.
+ */
+async function projectChecks(siteDir, siteYml) {
+  const inWorkspace = Boolean(findWorkspaceRoot(siteDir))
+  const root = findWorkspaceRoot(siteDir) || siteDir
+  const ws = await workspaceFacts(root)
+  const checks = []
+  checks.push({
+    id: 'project.workspace',
+    state: 'ok',
+    summary: inWorkspace ? workspaceLine(ws) : 'This site is on its own, in no workspace.',
+    detail: { patterns: ws.patterns, sites: ws.sites, foundations: ws.foundations, extensions: ws.extensions }
+  })
+
+  // ⭐ The foundation, and what a change to it reaches: every site that resolves to the same one.
+  const fnd = await foundationOf(siteDir, siteYml, root)
+  const here = resolve(siteDir)
+  const sharedWith = []
+  if (fnd.kind === 'local') {
+    for (const s of ws.sites) {
+      const dir = resolve(root, s.path)
+      if (dir === here) continue
+      const other = await foundationOf(dir, readSiteYml(dir), root)
+      if (other.kind === 'local' && other.abs === fnd.abs) sharedWith.push(s.path)
+    }
+  }
+  const extensions = await extensionsOf(siteDir, siteYml, root)
+  let summary
+  let state = 'ok'
+  if (fnd.kind === 'local') {
+    summary =
+      `Foundation ${fnd.name}, in ${fnd.path}/ — its source is here` +
+      (sharedWith.length
+        ? `, and ${sharedWith.length === 1 ? 'another site uses' : `${sharedWith.length} other sites use`} it too: ${sharedWith.join(', ')} — a change to a section type changes ${sharedWith.length === 1 ? 'it' : 'them'} as well.`
+        : ws.sites.length > 1 ? '; no other site here uses it.' : '.')
+  } else if (fnd.kind === 'catalog') {
+    summary = `Foundation ${fnd.ref}, from the catalog — its source is not in this workspace; work within the section types it offers.`
+  } else if (fnd.kind === 'url') {
+    summary = `Foundation loaded from ${fnd.url} — its source is not in this workspace; work within the section types it offers.`
+  } else if (fnd.kind === 'unresolved') {
+    state = 'attention'
+    summary = `site.yml names the foundation \`${fnd.name}\`, which does not resolve: ${fnd.error}`
+  } else {
+    state = 'attention'
+    summary = 'site.yml names no foundation.'
+  }
+  const extensionLines = extensions.map((e) =>
+    e.kind === 'local'
+      ? `Extension ${e.name}, in ${e.path}/ — its source is here.`
+      : e.kind === 'catalog'
+        ? `Extension ${e.value}, from the catalog — its source is not in this workspace.`
+        : e.kind === 'url'
+          ? `Extension loaded from ${e.value} — its source is not in this workspace.`
+          : `Extension \`${e.value}\` names ${e.name ? `\`${e.name}\`, which no folder here holds` : 'nothing this site can find'}.`
+  )
+  if (extensions.some((e) => e.kind === 'unresolved')) state = 'attention'
+  checks.push({
+    id: 'project.foundation',
+    state,
+    summary,
+    lines: extensionLines,
+    detail: {
+      kind: fnd.kind,
+      name: fnd.name ?? null,
+      path: fnd.path ?? null,
+      url: fnd.url ?? null,
+      editable: fnd.kind === 'local',
+      sharedWith,
+      extensions: extensions.map(({ value, kind, name, path }) => ({ value, kind, name: name ?? null, path: path ?? null }))
+    }
+  })
+
+  // ⭐ Pages from outside the site's folder (`paths:` mounts, by the build's own rule): a pull
+  // never writes them (`uwx/git-authored.js`), and one in its own repository is edited there.
+  const { mountEntriesOf } = await import('@uniweb/build/site')
+  const siteRepo = repoOf(siteDir)?.top ?? null
+  const mounts = mountEntriesOf(siteYml?.paths).map(([segment, dir]) => {
+    const abs = resolve(siteDir, String(dir))
+    const exists = existsSync(abs)
+    const top = exists ? repoOf(abs)?.top ?? null : null
+    const repository = !exists ? null : !top ? 'none' : top === siteRepo ? 'same' : 'other'
+    return { segment, dir: String(dir), exists, repository }
+  })
+  const mountLine = (m) =>
+    !m.exists
+      ? `pages/${m.segment} names ${m.dir}, which does not exist.`
+      : m.repository === 'other'
+        ? `pages/${m.segment} comes from ${m.dir}, its own git repository — edits there are commits in it.`
+        : `pages/${m.segment} comes from ${m.dir}, outside the site's folder.`
+  checks.push(
+    mounts.length
+      ? {
+          id: 'project.mounts',
+          state: mounts.some((m) => !m.exists) ? 'attention' : 'ok',
+          summary: mounts.length === 1 ? mountLine(mounts[0]) : `${count(mounts.length, 'page folder')} come from outside the site's folder.`,
+          lines: [
+            ...(mounts.length === 1 ? [] : mounts.map(mountLine)),
+            'An edit made in the app to those pages does not come back on a pull, and the next push replaces it with the files.'
+          ],
+          detail: { mounts }
+        }
+      : { id: 'project.mounts', state: 'skipped', summary: "All the site's pages are in its own folder.", quiet: true, detail: { mounts: [] } }
+  )
+
+  // The languages, by core's own rules: the one the files are written in, and the rest.
+  const { normalizeLanguageList, resolveDefaultLocale, isWildcardLanguages } = await import('@uniweb/core/locale-config')
+  const source = resolveDefaultLocale(siteYml || {})
+  const wildcard = isWildcardLanguages(siteYml?.languages)
+  const translations = normalizeLanguageList(siteYml?.languages).filter((code) => code !== source && code !== '*')
+  checks.push(
+    translations.length || wildcard
+      ? {
+          id: 'project.languages',
+          state: 'ok',
+          summary:
+            `Written in ${source}, and translated into ${wildcard ? 'every language in locales/' : translations.join(', ')} — ` +
+            `a text you change in ${source} needs translating again.`,
+          lines: ['After a change: build, then `npx uniweb i18n sync`, and `npx uniweb i18n status` lists what is left.'],
+          detail: { source, translations, wildcard }
+        }
+      : { id: 'project.languages', state: 'ok', summary: `One language: ${source}.`, detail: { source, translations: [], wildcard: false } }
+  )
+  return { checks, ws }
 }
 
 // ─── where the site is hosted ───────────────────────────────────────────────
@@ -1012,6 +1233,7 @@ function summaryLine({ name, synced, live, targets, origin }) {
 // ─── the command ────────────────────────────────────────────────────────────
 
 const GROUPS = [
+  ['project', 'Project'],
   ['git', 'Git'],
   ['app', 'App'],
   ['hosting', 'Hosting'],
@@ -1072,6 +1294,97 @@ function render({ summary, backend, checks, next }) {
   return out.join('\n')
 }
 
+/**
+ * At a workspace with several sites: what each one is — synced where, deployed where, built
+ * with which foundation, with pages from where, in how many languages — from its files alone,
+ * and the way to one site's checks. Nothing is asked of a backend: what changed in the app is
+ * a site's question.
+ */
+async function workspaceOverview(root, { json }) {
+  const ws = await workspaceFacts(root)
+  const { mountEntriesOf } = await import('@uniweb/build/site')
+  const { normalizeLanguageList } = await import('@uniweb/core/locale-config')
+  const sites = []
+  for (const s of ws.sites) {
+    const dir = resolve(root, s.path)
+    const yml = readSiteYml(dir)
+    const synced = listSyncedBackends(dir).filter((o) => readBackendState(dir, o).site?.uuid)
+    const { targets } = await deployChecks(dir)
+    const fnd = await foundationOf(dir, yml, root)
+    const siteRepo = repoOf(dir)?.top ?? null
+    const mounts = mountEntriesOf(yml.paths).map(([segment, d]) => {
+      const abs = resolve(dir, String(d))
+      const top = existsSync(abs) ? repoOf(abs)?.top ?? null : null
+      return { segment, dir: String(d), repository: !existsSync(abs) ? null : !top ? 'none' : top === siteRepo ? 'same' : 'other' }
+    })
+    const languages = normalizeLanguageList(yml.languages)
+    const parts = [synced.length ? `synced with ${synced.join(' and ')}` : 'not synced']
+    if (targets.length) parts.push(`deployed to ${targets.map((t) => t.title).join(' and ')}`)
+    parts.push(
+      fnd.kind === 'local'
+        ? `foundation ${fnd.name}`
+        : fnd.kind === 'catalog' || fnd.kind === 'url'
+          ? `foundation ${fnd.name}, not in this workspace`
+          : `foundation ${fnd.name ? `\`${fnd.name}\`, unresolved` : 'not named'}`
+    )
+    for (const m of mounts) parts.push(`pages/${m.segment} from ${m.dir}${m.repository === 'other' ? ', its own repository' : ''}`)
+    if (languages.length > 1) parts.push(`${languages.length} languages`)
+    sites.push({
+      path: s.path,
+      name: s.name,
+      summary: `${s.path} — ${parts.join(' · ')}`,
+      synced,
+      deploys: targets.map(({ name, host, title, default: isDefault, ci }) => ({ name, host, title, default: isDefault, ci })),
+      foundation: { kind: fnd.kind, name: fnd.name ?? null, path: fnd.path ?? null },
+      mounts,
+      languages
+    })
+  }
+  // The repository the workspace is in, as far as this machine knows — no remote is asked.
+  const repo = repoOf(root)
+  let git = null
+  if (repo?.head) {
+    let uncommitted = 0
+    try {
+      uncommitted = execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+        .split('\n')
+        .filter(Boolean).length
+    } catch {
+      uncommitted = 0
+    }
+    git = { uncommitted, ...(aheadBehind(root) || {}), upstream: upstreamOf(root)?.tracking ?? null }
+  }
+  const summary = `${basename(root)} — ${workspaceLine(ws).replace(/\.$/, '')}`
+  const first = ws.sites[0]
+  if (json) {
+    console.log(
+      JSON.stringify({
+        schema: STATUS_SCHEMA,
+        uniweb: getCliVersion(),
+        scope: 'workspace',
+        summary,
+        workspace: { patterns: ws.patterns, sites: ws.sites, foundations: ws.foundations, extensions: ws.extensions },
+        sites,
+        git,
+        checks: [],
+        next: [{ command: null, why: "run `npx uniweb status` in a site's folder for its checks — what changed in the app, in git, and where it is hosted", ask: false }]
+      })
+    )
+    return { exitCode: 0 }
+  }
+  const out = ['', `${c.bold}${summary}${c.reset}`, '']
+  for (const s of sites) out.push(`  ${s.summary}`)
+  if (git) {
+    const said = [git.uncommitted ? `${count(git.uncommitted, 'file')} not committed` : 'all committed']
+    if (git.upstream) said.push(git.ahead || git.behind ? `${git.ahead} ahead of, ${git.behind} behind ${git.upstream} as of the last fetch` : `level with ${git.upstream} as of the last fetch`)
+    out.push('', `${c.dim}Git: ${said.join(' · ')}${c.reset}`)
+  }
+  out.push('', `A bare \`uniweb dev\` starts ${first.name}. For one site's checks — what changed in the app, in git, and where it is hosted — run status in its folder, for example:`)
+  out.push(`  ${c.cyan}cd ${first.path} && npx uniweb status${c.reset}`, '')
+  console.log(out.join('\n'))
+  return { exitCode: 0 }
+}
+
 export async function status(args = []) {
   // See utils/flag-guard.js — an unrecognized flag is invisible to a literal scan.
   // Straight to stderr: this is a usage error, so it must not be mistaken for the
@@ -1086,15 +1399,11 @@ export async function status(args = []) {
 
   const found = await findSite(process.cwd())
   if (!found.siteDir) {
-    const sites = found.several || []
-    if (json) {
-      console.log(JSON.stringify({ schema: STATUS_SCHEMA, error: sites.length ? 'several-sites' : 'no-site', sites }))
-    } else if (sites.length) {
-      console.error(`${c.red}✗${c.reset} Several sites here — run status from the one you mean:`)
-      for (const s of sites) console.error(`  ${c.cyan}cd ${s} && npx uniweb status${c.reset}`)
-    } else {
-      console.error(`${c.red}✗${c.reset} No Uniweb site here. Run status from a site, or a project with one site.`)
-    }
+    // ⭐ A WORKSPACE OF SEVERAL SITES IS ANSWERED, not refused: what each one is, from its
+    // files, and the way to one site's checks.
+    if (found.several?.length) return workspaceOverview(found.root, { json })
+    if (json) console.log(JSON.stringify({ schema: STATUS_SCHEMA, scope: null, error: 'no-site' }))
+    else console.error(`${c.red}✗${c.reset} No Uniweb site here. Run status from a site, or a project with one site.`)
     return { exitCode: 2 }
   }
   const siteDir = found.siteDir
@@ -1105,21 +1414,21 @@ export async function status(args = []) {
   // helpers say on the way goes to stderr.
   const saved = { log: console.log, info: console.info, warn: console.warn }
   if (json) console.log = console.info = console.warn = (...a) => console.error(...a)
-  let git, app, version, health, dev, deploys, services
+  let project, git, app, version, health, dev, deploys, services
   try {
-    git = await gitChecks(siteDir, { offline, origin })
+    ;[project, git] = await Promise.all([projectChecks(siteDir, siteYml), gitChecks(siteDir, { offline, origin })])
     ;[app, version, health, dev, deploys] = await Promise.all([
       appChecks(siteDir, siteYml, { offline, args, git }),
       versionCheck(siteDir, { offline }),
       doctorCheck(siteDir),
-      devCheck(siteDir, { offline }),
+      devCheck(siteDir, { offline, sites: project.ws.sites }),
       deployChecks(siteDir)
     ])
     services = await servicesCheck({ siteDir, siteYml, site: app.site })
   } finally {
     Object.assign(console, saved)
   }
-  const checks = [...git.checks, ...app.checks, ...deploys.checks, ...services.checks, ...version.checks, ...health.checks, dev]
+  const checks = [...project.checks, ...git.checks, ...app.checks, ...deploys.checks, ...services.checks, ...version.checks, ...health.checks, dev]
   const next = planNext([...git.proposals, ...app.proposals, ...deploys.proposals, ...services.proposals, ...version.proposals, ...health.proposals])
 
   const root = findWorkspaceRoot(siteDir) || siteDir
@@ -1139,6 +1448,7 @@ export async function status(args = []) {
       JSON.stringify({
         schema: STATUS_SCHEMA,
         uniweb: getCliVersion(),
+        scope: 'site',
         summary,
         site,
         backend: app.backend.origin,

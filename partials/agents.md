@@ -192,7 +192,7 @@ The rest of this guide explains how Uniweb works. This part is what to do *first
 
 ### 1. Orient — what kind of workspace is this?
 
-**Run `uniweb status` first.** It says whether the site changed in the app since this copy last synced, whether git or Uniweb has something newer, and what to run about each — before you edit something someone else just changed.
+**Run `uniweb status` first.** It says where the site sits and what it is made of — the workspace's sites and foundations, the foundation this site is built with and which other sites a change to it reaches, pages it takes from outside its folder (another repository, sometimes), the languages it is written in — then whether it changed in the app since this copy last synced, whether git or Uniweb has something newer, and what to run about each, before you edit something someone else just changed. Run at the root of a workspace with several sites, it says what each one is. The rest of this step is how to read the same wiring by hand.
 
 **There is no single layout. Read `pnpm-workspace.yaml` first** — its `packages:` globs name the shape in one glance:
 

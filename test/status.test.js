@@ -127,7 +127,7 @@ test('the document: schema 1, every check an id, a state, a summary and what it 
   assert.equal(doc.backend, ORIGIN)
   assert.equal(doc.site, '.')
   for (const c of doc.checks) {
-    assert.match(c.id, /^(git|app|hosting|uniweb|health|dev)\.[a-z]+$/, c.id)
+    assert.match(c.id, /^(project|git|app|hosting|uniweb|health|dev)\.[a-z]+$/, c.id)
     assert.ok(['ok', 'attention', 'blocking', 'unknown', 'skipped'].includes(c.state), `${c.id}: ${c.state}`)
     assert.equal(typeof c.summary, 'string')
     assert.ok(Array.isArray(c.blocks), c.id)
