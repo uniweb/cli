@@ -75,7 +75,7 @@ test('⭐ an update and a foundation change are said, with a commit to make — 
   assert.deepEqual([...other.files].sort(), ['../package.json', '../src/sections/Hero.jsx', 'deploy.yml'])
   assert.deepEqual(other.blocks, [], 'a push neither sends nor waits for them')
   assert.match(other.summary, /^3 other files here are not committed — a push sends only the site's content/)
-  assert.deepEqual(other.lines, ["The foundation's source is among them: the next push or publish releases it from these files, so commit them first."])
+  assert.deepEqual(other.lines, ["The foundation's files are among them: when a push or publish releases it, it is built from these files as they are, so commit them first."])
 
   // The content stays git.uncommitted's, and is not listed twice.
   assert.deepEqual(checkOf(doc, 'git.uncommitted').files, ['pages/home/page.yml'])

@@ -368,7 +368,7 @@ async function gitChecks(siteDir, { offline, origin }) {
       state: 'attention',
       summary: `${count(n, 'other file')} here ${n === 1 ? 'is' : 'are'} not committed — a push sends only the site's content, and your team builds what git holds.`,
       files: others,
-      lines: ofFoundation ? ["The foundation's source is among them: the next push or publish releases it from these files, so commit them first."] : []
+      lines: ofFoundation ? ["The foundation's files are among them: when a push or publish releases it, it is built from these files as they are, so commit them first."] : []
     })
     proposals.push({ step: 'commit', command: null, why: `commit the ${count(n, 'other file')} here: \`git add\` ${n === 1 ? 'it' : 'them'}, then \`git commit -m "<what changed>"\``, ask: true })
   } else if (others) {
