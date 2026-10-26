@@ -2830,7 +2830,7 @@ uniweb rename <foundation|site|extension> <old> <new>   # Rename across the whol
 uniweb i18n extract / init / sync / status / audit      # Translation workflow (build first)
 uniweb i18n init-freeform / update-hash / move / rename / prune --freeform
 
-uniweb -v                         # Installed CLI version — and whether a newer one exists
+uniweb -v                         # CLI version — only a global install also says whether a newer one exists
 uniweb doctor                     # Diagnose project configuration (--fix to auto-repair)
 uniweb validate                   # Check file-based data against declared schemas (fails on a violation; --lax)
 npx uniweb@latest update          # Align @uniweb/* deps + AGENTS.md (--dry-run, --yes)
@@ -2942,7 +2942,7 @@ Either side can publish. Nothing about this changes how you build: the same foun
 ### Staying current
 
 ```bash
-uniweb -v                  # installed CLI version, and whether a newer one is available
+uniweb -v                  # CLI version — only a global install also says whether a newer one exists
 uniweb doctor              # report drift in this project, changing nothing
 npx uniweb@latest update --dry-run   # preview exactly what update would change
 npx uniweb@latest update             # apply: align @uniweb/* deps AND refresh AGENTS.md
