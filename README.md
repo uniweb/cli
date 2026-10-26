@@ -1,24 +1,36 @@
 # uniweb
 
-A component content architecture for React. Build sites where content authors and component developers can't break each other's work—and scale from local files to visual editing without rewrites.
+The CLI for [Uniweb](https://uniweb.io): an open-source React framework and a connected visual authoring platform.
 
-Create well-structured Vite + React projects with file-based routing, localization, and clean content/code separation out of the box.
+**Developers define the vocabulary. Authors compose with it. Uniweb keeps both sides in sync.**
+
+Developers build real React components, schemas and content structures in a normal codebase. Those definitions become the vocabulary authors use in the Uniweb app to create pages, manage content and work with structured data. Your project and the authors' workspace are two interfaces to the same website, and the CLI keeps them in sync, so both sides keep working.
+
+```text
+Traditional:   developer builds → hands off → CMS users edit
+
+Uniweb:        developer project ⇄ Uniweb ⇄ author workspace
+                      ↑                          ↑
+                      └──── both keep working ───┘
+```
 
 ## Quick Start
 
 ```bash
-npm create uniweb
+npx uniweb@latest create my-site
+cd my-site
+pnpm install    # or npm install
+pnpm dev        # or npm run dev — prints the address it serves the site at
 ```
 
-The interactive prompt asks for a project name and template. Pick one, then:
+At a terminal, `create` asks which template to start from (`npm create uniweb` does the same). Edit the pages in `site/pages/` and the section types in `src/sections/`, and the page updates as you save.
+
+Start with a normal project, and connect the authoring app when you want it:
 
 ```bash
-cd my-project
-pnpm install  # or npm install
-pnpm dev      # or npm run dev
+pnpm uniweb login    # sign in to your Uniweb account
+pnpm uniweb sync     # the first sync brings the site and its foundation into the app
 ```
-
-Edit files in `site/pages/` and `src/sections/` to see changes instantly.
 
 > **pnpm ready** — `pnpm create uniweb` works out of the box. Projects include both `pnpm-workspace.yaml` and npm workspaces.
 
@@ -26,47 +38,31 @@ Edit files in `site/pages/` and `src/sections/` to see changes instantly.
 
 Building a site with an AI coding agent? Ask it to run `npx uniweb@latest start` first. It prints a short guide written for the agent: how to create the project, where its manual is (`AGENTS.md`), how to run it, and how to bring the site into the Uniweb app. The agent runs every command; you only use your browser, to sign in and to pay when the site goes live.
 
-### Templates
+## Two Interfaces to One Website
 
-| Template | Description |
+| Developers | Authors |
 | --- | --- |
-| **Starter** | Foundation + site + sample content (default) |
-| **None** | Foundation + site with no content |
-| **Marketing** | Landing page, features, pricing, testimonials |
-| **Docs** | Documentation with sidebar and search |
-| **Academic** | Research site with publications and team |
-| **International** | Multilingual site with i18n and blog |
-| **Dynamic** | Live API data fetching with loading states |
-| **Store** | E-commerce with product grid |
-| **Extensions** | Multi-foundation with visual effects extension |
+| React components | Visual components |
+| Schemas and configuration | Forms and structured records |
+| Vite and local development | Live visual editing |
+| Files and Git | Content and composition |
+| `push` · `pull` · `sync` · `publish` | Changes appear live |
 
-**See them live:** [View all template demos](https://uniweb.github.io/templates/)
+**For developers, it's a normal project.** Section types are React components, content is markdown in the repository, Vite builds it, and git holds the history. You keep your editor, terminal and deployment workflow.
 
-Use `--blank` for an empty workspace (no packages) — grow with `uniweb add`.
+**For authors, it's the Uniweb app.** Your section types become their building blocks: they compose pages from them, set the options each one declares in its `meta.js`, and manage records through your schemas, with live previews. They never see JSX, markdown, YAML or git, and you never build an editing UI. You build the components; Uniweb builds the authoring experience.
 
-**Two starting points.** Either let the CLI create a new directory:
+### The CLI is the bridge
 
-```bash
-pnpm create uniweb my-site --template docs
-```
+| Command | What it does |
+| --- | --- |
+| `uniweb push` | Sends your section types, schemas and content to the app: a draft, not live |
+| `uniweb pull` | Brings authors' edits into your files, as a git merge |
+| `uniweb sync` | Takes your teammates' commits and the authors' edits, then pushes yours |
+| `uniweb publish` | Pushes, then takes the site live on Uniweb hosting (paid) |
+| `uniweb clone <site-uuid>` | Starts a local project from a site made in the app (`uniweb site list` shows its uuid) |
 
-…or scaffold inside an existing directory (e.g., a freshly-cloned GitHub repo):
-
-```bash
-pnpm create uniweb . --template docs
-```
-
-### Local Scripts
-
-Run these from the **project root**:
-
-```bash
-pnpm dev        # Start development server
-pnpm build      # Build foundation + site for production
-pnpm preview    # Preview the production build
-```
-
-The `build` command outputs to `site/dist/`. With pre-rendering enabled (the default for official templates), you get static HTML files ready to deploy anywhere. For the actual deploy step (and the `uniweb deploy` / `uniweb register` commands), see [Deployment](#deployment) below.
+Edits to different sections combine. When the same section changed on both sides, `pull` stops at a git conflict for you to settle, and a push stops rather than overwrite what an author changed (only `--force` goes past it), so neither edit is lost. Like git, a push sends what you have committed; `--commit` commits the site's content first.
 
 ## What You Get
 
@@ -75,7 +71,7 @@ Every project starts as a workspace with two packages:
 - **`site/`** — Content, pages, entry point (package name: `site`)
 - **`src/`** — React components, the site's source code (package name: `src`)
 
-A site is pure content. A foundation is the site's source code — that's why it lives in `src/`. Content authors work in markdown. Component authors work in React. Neither can break the other's work. As your project grows, use `uniweb add` to add more foundations, sites, and extensions.
+A site is pure content. A foundation is the site's source code — that's why it lives in `src/`. Content lives in markdown and component code in React, so neither can break the other. As your project grows, use `uniweb add` to add more foundations, sites, and extensions.
 
 ```
 my-project/
@@ -83,25 +79,26 @@ my-project/
 │   ├── pages/                # File-based routing
 │   │   └── home/
 │   │       ├── page.yml      # Page metadata
-│   │       └── hero.md       # Section content
-│   ├── locales/              # i18n (hash-based translations)
+│   │       └── 1-welcome.md  # A section
+│   ├── site.yml              # Site configuration
+│   ├── theme.yml             # Colors, fonts, appearance
 │   ├── entry.js              # Entry point (~6 lines)
-│   ├── vite.config.js        # 3-line config
+│   ├── vite.config.js        # One-line config
 │   └── public/               # Static assets
 │
-└── src/                      # Foundation package (the site's source)
-    ├── sections/             # Section types (addressable from markdown)
-    │   ├── Hero.jsx          # Bare file → section type (no meta.js needed)
-    │   └── Features/
-    │       ├── meta.js       # Content interface (params, presets)
-    │       └── Features.jsx
-    ├── components/           # Regular React components
-    │   └── Button.jsx
-    ├── main.js               # Package exports (vars, defaultLayout, props)
-    ├── styles.css            # Tailwind v4 + CSS tokens
-    ├── package.json          # name: "src"
-    ├── vite.config.js        # 3-line config
-    └── dist/                 # Built output
+├── src/                      # Foundation package (the site's source)
+│   ├── sections/             # Section types (addressable from markdown)
+│   │   ├── Hero.jsx          # Bare file → section type (no meta.js needed)
+│   │   └── Features/
+│   │       ├── index.jsx
+│   │       └── meta.js       # Content interface (params, presets)
+│   ├── components/           # Regular React components
+│   ├── main.js               # Foundation declarations (name, theme variables, default layout)
+│   ├── styles.css            # Tailwind v4 + CSS tokens
+│   ├── package.json          # name: "src"
+│   └── vite.config.js        # 3-line config
+│
+└── AGENTS.md                 # The project's manual, for developers and AI agents
 ```
 
 **Pages are folders.** Create `pages/about/` with markdown files inside → visit `/about`. That's the whole routing model.
@@ -123,7 +120,7 @@ Build something great.
 [Get Started](#)
 ```
 
-Frontmatter specifies the component type and configuration. The body contains the actual content—headings, paragraphs, links, images—which gets semantically parsed into structured data your component receives.
+Frontmatter names the section type and its configuration — `theme: dark` sets the section's color context. The body contains the actual content—headings, paragraphs, links, images—which gets semantically parsed into structured data your component receives.
 
 ### Beyond Markdown
 
@@ -149,32 +146,34 @@ function TeamCard({ content }) {
 }
 ```
 
-Natural content stays in markdown; structured data goes in tagged blocks (YAML or JSON).
+Natural content stays in markdown; structured data goes in tagged blocks (YAML or JSON). Content that many pages share — people, publications, events — can live as records instead, typed by your foundation's schemas, which is what authors then manage as forms in the app.
 
 ### Components as React
 
 ```jsx
-export default function Hero({ content, params }) {
+import { H1, P, Link } from '@uniweb/kit'
+
+export default function Hero({ content }) {
   const { title, paragraphs, links } = content
 
   return (
-    <section className="py-20 text-center">
-      <h1 className="text-4xl font-bold">{title}</h1>
-      <p className="text-xl text-gray-600">{paragraphs[0]}</p>
+    <div className="py-20 text-center">
+      <H1 text={title} className="text-4xl font-bold text-heading" />
+      <P text={paragraphs[0]} className="mt-4 text-xl text-body" />
       {links[0] && (
-        <a
-          href={links[0].href}
-          className="mt-8 px-6 py-3 bg-blue-600 text-white rounded inline-block"
+        <Link
+          to={links[0].href}
+          className="mt-8 inline-block rounded bg-primary px-6 py-3 text-primary-foreground"
         >
           {links[0].label}
-        </a>
+        </Link>
       )}
-    </section>
+    </div>
   )
 }
 ```
 
-Standard React. Standard Tailwind. The `{ content, params }` interface is only for _section types_ — components that content creators select in markdown frontmatter. Everything else uses regular React props.
+Standard React. Standard Tailwind. Classes like `text-heading` and `bg-primary` are theme tokens, so one component adapts to light and dark sections and to every site's colors; the runtime wraps each section in its `<section>` and paints its background. The `{ content, params }` interface is only for _section types_ — components that content creators select in markdown frontmatter. Everything else uses regular React props.
 
 ### Composition
 
@@ -198,13 +197,48 @@ Authors can also compose layouts from reusable section types using child section
 
 ```
 pages/home/
-├── highlights.md            # type: Grid, columns: 3
+├── page.yml                 # nest: { highlights: [stats, testimonial, demo] }
+├── highlights.md            # type: Grid
 ├── @stats.md                # type: StatCard
 ├── @testimonial.md          # type: Testimonial
 └── @demo.md                 # type: SplitContent (with an embedded @LiveDemo inset)
 ```
 
-Three different section types, arranged in a grid, one with an interactive component inside it — all authored in markdown. The developer builds reusable pieces; the content author composes them. See the [Component Patterns guide](https://github.com/uniweb/docs/blob/main/development/component-patterns.md) for the full composition model.
+Three different section types, arranged in a grid, one with an interactive component inside it — all authored in markdown. An `@` file is a child section, and `nest:` in `page.yml` says whose. The developer builds reusable pieces; the content author composes them. See the [Component Patterns guide](https://github.com/uniweb/docs/blob/main/development/component-patterns.md) for the full composition model.
+
+## Templates
+
+| Template | Description |
+| --- | --- |
+| **Starter** | Foundation + site + sample content (default) |
+| **None** | Foundation + site with no content |
+| **Blank** (`--blank`) | An empty workspace — grow it with `uniweb add` |
+
+**Official templates** — marketing sites, documentation, blogs, academic sites and more — each come with a working foundation and sample content. `uniweb template list` shows the ones your CLI scaffolds, and you can [see them live](https://uniweb.github.io/templates/).
+
+**Two starting points.** Either let the CLI create a new directory:
+
+```bash
+pnpm create uniweb my-site --template docs
+```
+
+…or scaffold inside an existing directory (e.g., a freshly-cloned GitHub repo):
+
+```bash
+pnpm create uniweb . --template docs
+```
+
+### Local Scripts
+
+Run these from the **project root**:
+
+```bash
+pnpm dev        # Start development server
+pnpm build      # Build foundation + site for production
+pnpm preview    # Preview the production build
+```
+
+The `build` command outputs to `site/dist/`. With pre-rendering enabled (the default for official templates), you get static HTML files ready to deploy anywhere.
 
 ## Next Steps
 
@@ -216,17 +250,17 @@ After creating your project:
 
 3. **Learn the configuration** — Run `uniweb docs site` or `uniweb docs page` for quick reference on configuration options.
 
-4. **Create a section type** — Add a file to `src/sections/` (e.g., `Banner.jsx`) and rebuild. Bare files at the root are discovered automatically — no `meta.js` needed. Add `meta.js` when you want to declare params or presets. See the [Component Metadata Reference](https://github.com/uniweb/docs/blob/main/reference/component-metadata.md) for the full schema.
+4. **Create a section type** — `uniweb add section Banner` scaffolds one, or add a file to `src/sections/` (e.g., `Banner.jsx`): the dev server picks it up. Bare files at the root are discovered automatically — no `meta.js` needed. Add `meta.js` when you want to declare params or presets. See the [Component Metadata Reference](https://github.com/uniweb/docs/blob/main/reference/component-metadata.md) for the full schema.
 
-The `meta.js` file defines what content and parameters a component accepts. The runtime uses this metadata to apply defaults and guarantee content structure—no defensive null checks needed in your component code.
+`meta.js` declares what content and parameters a section type accepts. The runtime fills each param from its default there, and hands every section the full content shape, so your components need no defensive null checks.
 
 ### Your First Content Change
 
-Open `site/pages/home/hero.md` and edit the headline:
+Open a section of the home page (in the starter, `site/pages/home/1-welcome.md`) and edit the headline:
 
 ```markdown
 ---
-type: Hero
+type: Section
 ---
 
 # Your New Headline Here
@@ -240,10 +274,10 @@ Save and see the change instantly in your browser.
 
 ### Your First Component Change
 
-Open `src/sections/Hero.jsx`. The component receives parsed content:
+Open the section type that renders it (in the starter, `src/sections/Section/index.jsx`). The component receives parsed content:
 
 ```jsx
-export default function Hero({ content }) {
+export default function Section({ content, params }) {
   const { title, paragraphs, links, images, items } = content
   // Edit the JSX below...
 }
@@ -253,7 +287,7 @@ The parser extracts semantic elements from markdown—`title` from the first hea
 
 ## Foundations Are Portable
 
-The `src/` folder (your project's foundation) ships with your project as a convenience, but a foundation is dynamically loaded — sites reference it by configuration, not by folder proximity.
+The `src/` folder (your project's foundation) ships with your project as a convenience, but sites reference a foundation by configuration, not by folder proximity.
 
 **Two ways to use a foundation:**
 
@@ -262,7 +296,7 @@ The `src/` folder (your project's foundation) ships with your project as a conve
 | **Local folder** | Foundation lives in your workspace | Developing site and components together            |
 | **Runtime link** | Foundation loads from a URL        | Independent release cycles, platform-managed sites |
 
-You can delete the `src/` folder entirely and point your site at a registered foundation. Or develop a foundation locally, then register it for other sites to consume. The site doesn't care where its components come from.
+Develop a foundation locally, then register it for other sites to use. A site can also name a registered foundation instead of a local one — a project made by `uniweb clone` does — and `uniweb dev` runs it, while Uniweb hosting builds and serves it. The site doesn't care where its components come from.
 
 **This enables two development patterns:**
 
@@ -286,10 +320,10 @@ cd my-workspace
 uniweb add project blog
 
 # Add a second foundation at root
-uniweb add foundation DocKit
+uniweb add foundation doc-kit
 
 # Add a site wired to a specific foundation
-uniweb add site docs --foundation DocKit
+uniweb add site docs --foundation doc-kit
 
 # Add an extension (auto-wired to the only site)
 uniweb add extension effects
@@ -304,18 +338,13 @@ pnpm dev     # or npm run dev
 
 The workspace grows organically. `add` handles placement, wires dependencies, updates workspace globs, and generates root scripts. The name you provide becomes both the directory name and the package name. Use `--path` to override default placement, or `--project` for explicit co-located layouts.
 
-## Deployment
+## Other Ways to Ship
 
-A Uniweb project produces two artifacts — a **site** (content) and a **foundation** (code). **Who manages the content** decides what you ship:
+A Uniweb project produces two artifacts — a **site** (content) and a **foundation** (code). Connected to the app, both sides edit one site, as above. The framework also works on its own, and **who manages the content** decides what you ship.
 
-- If you (or your dev team) manage the content, you ship them together — the site and its foundation, bundled or linked.
-- If someone else manages the content, you ship only the foundation. Content authors compose sites in the Uniweb apps; there's no site to deploy from your repo.
+### You manage the content, in files
 
-### Path 1 — You manage the content
-
-You (or your dev team) write the markdown. Deploy site + foundation together.
-
-The shortest path to a live site is free, on GitHub Pages, with a custom domain:
+You (or your dev team) write the markdown. Deploy site + foundation together. The shortest path to a live site is free, on GitHub Pages, with a custom domain:
 
 ```bash
 uniweb create .   # from within a freshly-cloned GitHub repo
@@ -329,7 +358,7 @@ uniweb add ci --host=github-pages
 
 **When to choose Uniweb hosting instead** (paid): when you need dynamic-page prerender at the edge (for collections fetched at runtime, not just at build time), foundation/runtime version propagation without redeploying every site, or edge SSR. If your site's content lives in markdown and updates ship via git, free CI is the right call.
 
-### Path 2 — Someone else manages the content
+### Your clients manage the content, in the app
 
 You're building a foundation for clients, content authors, or any team that won't write markdown. The foundation is your product; the repo's `site/` is a test harness for the code (run `pnpm dev` to preview your components against sample content). You don't deploy a site — you register a foundation:
 
@@ -342,10 +371,6 @@ Real sites built on your foundation are managed in the **Uniweb app** — a visu
 
 This is the best path when site content has a life independent of the foundation's release cycle — agencies, design studios, multi-client teams, or any project where content authors aren't the same people as the developers.
 
-### Hybrid
-
-Markdown in a git repo and content in the Uniweb apps can share the same site. `uniweb push` sends local content to the backend, `uniweb pull` brings the backend's content back — in a git repository by merging it into your branch, like `git pull`, so edits made on both surfaces at once are combined and only a genuine overlap is a conflict to settle — and `uniweb clone` bootstraps a local project from a site that already lives in the backend. Authors edit visually, devs edit in their IDE, both surfaces work on the same content. Review flows and branch isolation across the two are still evolving.
-
 ### Commands at a glance
 
 | Command | What it does |
@@ -353,22 +378,20 @@ Markdown in a git repo and content in the Uniweb apps can share the same site. `
 | `uniweb deploy` | Ask where the site should go, then do it. Remembers the answer in `deploy.yml`. |
 | `uniweb add ci --host=<adapter>` | Scaffold a CI workflow (+ PR previews) so every push deploys. `github-pages`, `cloudflare-pages`, `netlify`, `vercel`. |
 | `uniweb add ci --target foundation` | Publish foundations at permanent versioned GitHub Pages URLs — the free alternative to the catalog. |
-| `uniweb publish` | Go live on Uniweb hosting (paid) — syncs content, brings the site's foundation along, and serves dynamically. The canonical verb for Uniweb hosting. |
+| `uniweb publish` | Go live on Uniweb hosting (paid) — brings the site's foundation along, pushes the content, and serves the site dynamically. The canonical verb for Uniweb hosting. |
 | `uniweb deploy --host=<adapter>` | Ship to a third-party static host in one step — builds `dist/`, uploads, invalidates. Drives that host's own CLI. |
 | `uniweb export` | Produce a self-contained `dist/` for any static host. You upload it yourself. `--host=<adapter>` adds host-specific helper files. |
-| `uniweb register --scope @org` | Register a foundation to the registry (path 2). |
+| `uniweb register --scope @org` | Register a foundation to the registry, for sites managed in the app. |
 | `uniweb build` | Inspect a build locally. For shipping, use `publish` (Uniweb hosting) or `deploy`/`export` (static hosts). |
 | `uniweb update` | Align this project with the CLI you're running: bump `@uniweb/*` deps in every `package.json` to the CLI's matrix (then install), and refresh `AGENTS.md`. Pins to *this* CLI's matrix — run `npx uniweb@latest update` to align to the latest release. Updating the CLI itself is your package manager's job (`npm i -g uniweb@latest`). |
 
 `--host=<adapter>` is the same option across `deploy`, `export`, and `add ci`. Built-in adapters: `github-pages`, `cloudflare-pages`, `netlify`, `vercel`, `s3-cloudfront`, and `generic-static` (an artifact shape for `export`, not a deploy target). Each adapter implements only the operations it supports, and the CLI never offers one it can't perform: `add ci` lists only hosts that can scaffold a workflow, and `deploy`'s picker lists only destinations with a working deploy hook.
 
----
-
-Both paths use the same framework. The difference is who edits content, where it lives, and what gets deployed. For the deeper menu — standalone vs cataloged foundations, S3+CloudFront, manual exports, per-host recipes, foundation propagation — see → **[Deploying](https://github.com/uniweb/docs/blob/main/development/deploying.md)**.
+For the deeper menu — standalone vs cataloged foundations, S3+CloudFront, manual exports, per-host recipes, foundation propagation — see → **[Deploying](https://github.com/uniweb/docs/blob/main/development/deploying.md)**.
 
 ---
 
-## Keeping a Project in Sync
+## Keeping a Project Current
 
 Uniweb projects pin to specific `@uniweb/*` versions in their `package.json` files and ship an `AGENTS.md` stamped with the CLI version that wrote it. As the framework releases, both can drift from what the CLI you're running expects.
 
@@ -399,7 +422,7 @@ yarn global add uniweb@latest # yarn
 
 ## Documentation
 
-Full documentation is available at **[github.com/uniweb/docs](https://github.com/uniweb/docs)**:
+Full documentation is at **[uniweb.io/docs](https://uniweb.io/docs)**, written in the public [uniweb/docs](https://github.com/uniweb/docs) repository:
 
 | Section | Topics |
 | ------- | ------ |
@@ -407,6 +430,8 @@ Full documentation is available at **[github.com/uniweb/docs](https://github.com
 | [Authoring](https://github.com/uniweb/docs/tree/main/authoring) | Writing content, site setup, theming, collections, translations |
 | [Development](https://github.com/uniweb/docs/tree/main/development) | Building foundations, component patterns, data fetching, layouts |
 | [Reference](https://github.com/uniweb/docs/tree/main/reference) | Configuration files, kit API, CLI commands, deployment |
+
+For AI agents, the documentation's index is [uniweb.io/llms.txt](https://uniweb.io/llms.txt).
 
 ### Quick Reference
 
@@ -447,7 +472,6 @@ import { defineFoundationConfig } from '@uniweb/build'
 
 export default defineFoundationConfig({
   // All options are optional - entry is auto-generated
-  fileName: 'foundation', // Output file name
   externals: [], // Additional packages to externalize
   includeDefaultExternals: true, // Include react, @uniweb/core, etc.
   tailwind: true, // Enable Tailwind CSS v4 Vite plugin
@@ -499,21 +523,25 @@ packages:
 
 ## FAQ
 
+**Do I need the Uniweb app?**
+
+No. The framework works on its own: content in markdown, built and deployed like any Vite project, to any static host. Connect the app when people who don't write code need to edit the site — or when you'd rather not build an editing interface for them.
+
+**Is the app a CMS?**
+
+It's where authors work: they compose pages from your section types and manage records through your schemas, with live previews. There's no admin interface or editing UI for you to build, and a site's content isn't locked in it: `uniweb clone` or `uniweb pull` brings it into a project as files in git, kept in sync both ways.
+
 **How is this different from MDX?**
 
 MDX blends markdown and JSX—content authors write code. Uniweb keeps them separate: content stays in markdown, components stay in React. Authors can still embed interactive components (via `![](@Component)` syntax), but they never see JSX. Component updates don't require content changes, and content changes can't break components.
 
-**How is this different from Astro?**
+**How is this different from Astro and other site frameworks?**
 
-Astro is a static site generator. Uniweb is a component content architecture that works with any deployment (static, SSR, or platform-managed). The foundation model means components are portable across sites and ready for integration with visual editors.
-
-**Do I need uniweb.app?**
-
-No. Local markdown files work great for developer-managed sites. The platform adds dynamic content, visual editing, and team collaboration when you need it.
+They build sites from code and content files, and so does Uniweb. Uniweb adds the other interface: a visual authoring app, kept in sync with your project, where your components are the authors' building blocks. The foundation model also makes components portable across sites, with any deployment — static, SSR, or platform-managed.
 
 **Can I use an existing component library?**
 
-Yes. Foundations are standard React. Import any library into your foundation components. The `{ content, params }` interface only applies to section types (components with `meta.js`) — everything else uses regular React props.
+Yes. Foundations are standard React. Import any library into your foundation components. The `{ content, params }` interface only applies to section types (the components authors pick from markdown) — everything else uses regular React props.
 
 **Is this SEO-friendly?**
 
