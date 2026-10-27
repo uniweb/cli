@@ -600,6 +600,19 @@ async function runStatus(siteRoot, config, args) {
     log(`\n${colors.cyan}${scope.records ? 'Record ' : ''}Translation Status${colors.reset}\n`)
   }
 
+  // ⭐ WHAT IS LEFT INCLUDES THE FREE-FORM TRANSLATIONS. A section translated whole goes stale
+  // when its source changes, and the strings counted here never show it. ⛔ Until 2026-10-27
+  // this said 100% over a stale one, and only `--freeform` listed it.
+  let freeform = null
+  if (!scope.records) {
+    try {
+      freeform = await freeformStatus(siteRoot, config, locale)
+    } catch (err) {
+      error(`Status check failed: ${err.message}`)
+      process.exit(1)
+    }
+  }
+
   if (config.locales.length === 0) {
     if (outputJson) {
       log(
@@ -614,6 +627,7 @@ async function runStatus(siteRoot, config, args) {
       log(
         `Create locale files like ${config.localesDir}/es.json to add translations.${colors.reset}`
       )
+      if (freeform) log(freeformSummary(freeform))
     }
     return
   }
@@ -630,7 +644,7 @@ async function runStatus(siteRoot, config, args) {
     })
 
     if (outputJson) {
-      log(JSON.stringify(status, null, 2))
+      log(JSON.stringify(freeform ? { ...status, freeform } : status, null, 2))
       return
     }
 
@@ -646,6 +660,7 @@ async function runStatus(siteRoot, config, args) {
         `Or use: uniweb i18n status${scope.records ? ' --records-only' : ''} --missing --json > missing.json${colors.reset}`
       )
     }
+    if (freeform) log(freeformSummary(freeform))
   } catch (err) {
     error(`Status check failed: ${err.message}`)
     process.exit(1)
@@ -653,101 +668,133 @@ async function runStatus(siteRoot, config, args) {
 }
 
 /**
+ * Each language's free-form translations judged against the site's source: what `status
+ * --freeform` lists, and plain `status` sums up. Null when the site has none.
+ *
+ * @returns {Promise<Object<string, { total: number, upToDate: number, stale: Array,
+ *   orphaned: Array, notChecked: Array }>|null>}
+ */
+async function freeformStatus(siteRoot, config, locale) {
+  const localesPath = join(siteRoot, config.localesDir)
+  const freeformPath = join(localesPath, 'freeform')
+  if (!existsSync(freeformPath)) return null
+
+  const siteContent = await collectSourceContent(siteRoot)
+
+  const {
+    discoverFreeformTranslations,
+    freeformSourceIndex,
+    getStaleTranslations,
+    getOrphanedTranslations
+  } = await import('@uniweb/build/i18n')
+
+  // What the site's content says about its free-form translations — every path the
+  // renderer reads one from, with its source's hash. The build's own check uses this
+  // index too, and confirms an orphan against the source as this does, so the translation
+  // of a `hidden:` page or section is an orphan to neither.
+  const { validPaths, sourceHashes, canJudge } = freeformSourceIndex(siteContent)
+
+  // Find all locales
+  const entries = await readdir(freeformPath, { withFileTypes: true })
+  const locales = entries.filter((e) => e.isDirectory()).map((e) => e.name)
+  const localesToCheck = locale ? [locale] : locales
+
+  const results = {}
+
+  for (const loc of localesToCheck) {
+    const localeDir = join(freeformPath, loc)
+    if (!existsSync(localeDir)) continue
+
+    // Discover translations
+    const discovered = await discoverFreeformTranslations(loc, localesPath)
+    const allPaths = [
+      ...discovered.pages,
+      ...discovered.pageIds,
+      ...discovered.records
+    ]
+
+    // Check staleness. Orphaned only when the content can judge it — never a record's
+    // translation, nor one for a page whose sections the content does not carry.
+    const stale = await getStaleTranslations(localeDir, sourceHashes)
+    const orphaned = (await getOrphanedTranslations(localeDir, validPaths)).filter((o) => canJudge(o.path))
+
+    // ⭐ Up to date only where a source was found to compare with. A translation with none
+    // — a record's, whose record the site content does not hold — is NOT CHECKED, and said
+    // so. ⛔ Until 2026-10-17 it was counted up to date, like every page translation of a
+    // prerendered site while this read the build's split content.
+    const judged = (p) => stale.some((s) => s.path === p) || orphaned.some((o) => o.path === p)
+    const upToDate = allPaths.filter((p) => !judged(p) && sourceHashes[p])
+    const notChecked = allPaths.filter((p) => !judged(p) && !sourceHashes[p])
+
+    results[loc] = {
+      total: allPaths.length,
+      upToDate: upToDate.length,
+      stale: stale.map((s) => ({
+        path: s.path,
+        recordedDate: s.recordedDate
+      })),
+      orphaned: orphaned.map((o) => ({
+        path: o.path,
+        recordedDate: o.recordedDate
+      })),
+      notChecked: notChecked.map((path) => ({ path }))
+    }
+  }
+
+  return results
+}
+
+/** Plain `status`'s lines for the free-form translations: each language's count, and what is left. */
+function freeformSummary(results) {
+  const lines = [`\n${colors.bright}Free-form translations:${colors.reset}`]
+  const list = (items) => items.map((i) => i.path).join(', ')
+  let left = false
+  for (const [loc, info] of Object.entries(results)) {
+    const said = [
+      info.stale.length > 0 && `${info.stale.length} stale: ${list(info.stale)}`,
+      info.orphaned.length > 0 && `${info.orphaned.length} orphaned: ${list(info.orphaned)}`
+    ].filter(Boolean)
+    if (said.length) left = true
+    if (info.notChecked.length > 0) said.push(`${info.notChecked.length} not checked`)
+    const n = `${info.total} ${info.total === 1 ? 'translation' : 'translations'}`
+    lines.push(`  ${loc}: ${n}${said.length ? ` — ${said.join('; ')}` : ', all up to date'}`)
+  }
+  if (left) lines.push(`${colors.dim}Run 'uniweb i18n status --freeform' to see each one, and what to do.${colors.reset}`)
+  return lines.join('\n')
+}
+
+/**
  * Status --freeform mode - show free-form translation status
  */
 async function runStatusFreeform(siteRoot, config, locale, options = {}) {
   const { outputJson = false } = options
-  const localesPath = join(siteRoot, config.localesDir)
-  const freeformPath = join(localesPath, 'freeform')
-
-  if (!existsSync(freeformPath)) {
-    if (outputJson) {
-      log(
-        JSON.stringify(
-          { error: 'No free-form translations found', locales: {} },
-          null,
-          2
-        )
-      )
-    } else {
-      log(
-        `${colors.dim}No free-form translations found in ${config.localesDir}/freeform/.${colors.reset}`
-      )
-    }
-    return
-  }
-
-  if (!outputJson) {
-    log(`\n${colors.cyan}Free-form Translation Status${colors.reset}\n`)
-  }
 
   try {
-    const siteContent = await collectSourceContent(siteRoot)
+    const results = await freeformStatus(siteRoot, config, locale)
 
-    const {
-      discoverFreeformTranslations,
-      freeformSourceIndex,
-      getStaleTranslations,
-      getOrphanedTranslations
-    } = await import('@uniweb/build/i18n')
-
-    // What the site's content says about its free-form translations — every path the
-    // renderer reads one from, with its source's hash. The build's own check uses this
-    // index too, so the two judge by one rule; they differ only where the build leaves
-    // content out — a `hidden:` page or section, which the build calls orphaned.
-    const { validPaths, sourceHashes, canJudge } = freeformSourceIndex(siteContent)
-
-    // Find all locales
-    const entries = await readdir(freeformPath, { withFileTypes: true })
-    const locales = entries.filter((e) => e.isDirectory()).map((e) => e.name)
-    const localesToCheck = locale ? [locale] : locales
-
-    const results = {}
-
-    for (const loc of localesToCheck) {
-      const localeDir = join(freeformPath, loc)
-      if (!existsSync(localeDir)) continue
-
-      // Discover translations
-      const discovered = await discoverFreeformTranslations(loc, localesPath)
-      const allPaths = [
-        ...discovered.pages,
-        ...discovered.pageIds,
-        ...discovered.records
-      ]
-
-      // Check staleness. Orphaned only when the content can judge it — never a record's
-      // translation, nor one for a page whose sections the content does not carry.
-      const stale = await getStaleTranslations(localeDir, sourceHashes)
-      const orphaned = (await getOrphanedTranslations(localeDir, validPaths)).filter((o) => canJudge(o.path))
-
-      // ⭐ Up to date only where a source was found to compare with. A translation with none
-      // — a record's, whose record the site content does not hold — is NOT CHECKED, and said
-      // so. ⛔ Until 2026-10-17 it was counted up to date, like every page translation of a
-      // prerendered site while this read the build's split content.
-      const judged = (p) => stale.some((s) => s.path === p) || orphaned.some((o) => o.path === p)
-      const upToDate = allPaths.filter((p) => !judged(p) && sourceHashes[p])
-      const notChecked = allPaths.filter((p) => !judged(p) && !sourceHashes[p])
-
-      results[loc] = {
-        total: allPaths.length,
-        upToDate: upToDate.length,
-        stale: stale.map((s) => ({
-          path: s.path,
-          recordedDate: s.recordedDate
-        })),
-        orphaned: orphaned.map((o) => ({
-          path: o.path,
-          recordedDate: o.recordedDate
-        })),
-        notChecked: notChecked.map((path) => ({ path }))
+    if (!results) {
+      if (outputJson) {
+        log(
+          JSON.stringify(
+            { error: 'No free-form translations found', locales: {} },
+            null,
+            2
+          )
+        )
+      } else {
+        log(
+          `${colors.dim}No free-form translations found in ${config.localesDir}/freeform/.${colors.reset}`
+        )
       }
+      return
     }
 
     if (outputJson) {
       log(JSON.stringify({ locales: results }, null, 2))
       return
     }
+
+    log(`\n${colors.cyan}Free-form Translation Status${colors.reset}\n`)
 
     // Human-readable output
     for (const [loc, info] of Object.entries(results)) {

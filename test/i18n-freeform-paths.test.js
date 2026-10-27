@@ -198,3 +198,36 @@ test('⭐ init-freeform finds a page’s section on a prerendered site', () =>
     assert.equal(readFileSync(join(root, 'locales/freeform/es/pages/about/intro.md'), 'utf8').trim(), 'Welcome aboard')
     assert.equal(manifestOf(root)['pages/about/intro.md'].hash, computeSourceHash(doc('Welcome aboard')))
   }))
+
+// ⛔ PLAIN `status` COUNTED ONLY THE STRINGS. It said 100% over a free-form translation gone
+// stale, and the hint that sends people to it says it lists what is left (2026-10-27).
+const plain = (out) => out.replace(/\x1b\[[0-9;]*m/g, '')
+
+test('⭐ status sums up the free-form translations: what is stale, what is orphaned', () =>
+  withSite({ storyHash: 'deadbeef' }, (root) => {
+    const { code, out, err } = run(['i18n', 'status', '--target', root])
+    assert.equal(code, 0, err)
+    assert.match(
+      plain(out),
+      /Free-form translations:\n {2}es: 3 translations — 1 stale: pages\/about\/story\.md; 1 orphaned: pages\/about\/gone\.md; 1 not checked\n/
+    )
+    assert.match(plain(out), /Run 'uniweb i18n status --freeform' to see each one/)
+  }))
+
+test('status --json carries them as `freeform`', () =>
+  withSite({ storyHash: 'deadbeef' }, (root) => {
+    const { code, out, err } = run(['i18n', 'status', '--json', '--target', root])
+    assert.equal(code, 0, err)
+    const { freeform } = JSON.parse(out)
+    assert.deepEqual(freeform.es.stale.map((s) => s.path), ['pages/about/story.md'])
+    assert.deepEqual(freeform.es.orphaned.map((o) => o.path), ['pages/about/gone.md'])
+  }))
+
+test('control: a site with no free-form translations says nothing of them', () =>
+  withSite({}, (root) => {
+    rmSync(join(root, 'locales/freeform'), { recursive: true, force: true })
+    const { code, out, err } = run(['i18n', 'status', '--target', root])
+    assert.equal(code, 0, err)
+    assert.doesNotMatch(plain(out), /Free-form/)
+    assert.equal(JSON.parse(run(['i18n', 'status', '--json', '--target', root]).out).freeform, undefined)
+  }))
