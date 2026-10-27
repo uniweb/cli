@@ -63,7 +63,7 @@ test('an older GitHub Pages workflow is named, with the command that regenerates
   const stale = workspace(t, { host: 'github-pages', workflow: "REPO='${{ github.event.repository.name }}'\n" })
   const [issue] = await issuesFor(stale)
   assert.equal(issue.id, 'site-address-from-github')
-  assert.equal(issue.type, 'warning')
+  assert.equal(issue.type, 'warn')
 })
 
 test('with nothing stating it, the site is told what it is missing', async (t) => {

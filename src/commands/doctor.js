@@ -356,7 +356,7 @@ export function checkAgentsBlock({ siteName, siteYml, issues }) {
     const id = 'agents-not-an-object'
     issues.push({
       id,
-      type: 'warning',
+      type: 'warn',
       site: siteName,
       message: `site.yml: \`agents:\` should be a map of options, or \`false\` to turn it off`
     })
@@ -373,7 +373,7 @@ export function checkAgentsBlock({ siteName, siteYml, issues }) {
   const id = 'agents-unknown-key'
   issues.push({
     id,
-    type: 'warning',
+    type: 'warn',
     site: siteName,
     message: `site.yml: \`agents:\` has ${unknown.length === 1 ? 'an unknown key' : 'unknown keys'}: ${unknown.join(', ')}`
   })
@@ -404,7 +404,7 @@ function checkExpectedOrigins({ siteName, agents, issues }) {
   const shown = unreadable.map((entry) => `'${String(entry)}'`).join(', ')
   issues.push({
     id,
-    type: 'warning',
+    type: 'warn',
     site: siteName,
     message: `site.yml: \`agents.expectedOrigins\` ${unreadable.length === 1 ? 'entry' : 'entries'} ${shown} name${unreadable.length === 1 ? 's' : ''} no origin, so ${unreadable.length === 1 ? 'it matches' : 'they match'} nothing`
   })
@@ -554,7 +554,7 @@ export async function checkFoundationSupports({
 
   issues.push({
     id,
-    type: 'warning',
+    type: 'warn',
     foundation: foundationName,
     message: hasDeclaration
       ? `${foundationName} builds against ${list} but does not declare ${missing.length === 1 ? 'it' : 'them'} in uniweb.supports`
@@ -620,7 +620,7 @@ export function checkSectionFamilies({
     const near = suggestFamily(s.unknown, familyIds)
     issues.push({
       id,
-      type: 'warning',
+      type: 'warn',
       foundation: foundationName,
       message: `${s.name} declares family '${s.unknown}', which is not a standard family`,
     })
@@ -664,7 +664,7 @@ export function checkSectionFamilies({
     fixable: writable.length > 0,
   })
 
-  warn(`[${id}] ${folderName}: ${proposals.length} section(s) have no standard family`)
+  info(`[${id}] ${folderName}: ${proposals.length} section(s) have no standard family`)
   const width = Math.max(...proposals.map((p) => p.name.length))
   for (const p of proposals) {
     const { id: hit, via, ambiguous } = p.suggestion
@@ -832,7 +832,7 @@ export function checkUngatedServiceControls({ foundationName, folderName, srcDir
   for (const f of found) {
     issues.push({
       id,
-      type: 'warning',
+      type: 'warn',
       foundation: foundationName,
       message: `${foundationName}/${f.file} calls ${f.hook}() without reading ${f.gate}`,
       details: f,
@@ -855,7 +855,7 @@ export function checkTrackingBlock({ siteName, siteYml, issues }) {
     const id = 'tracking-not-an-object'
     issues.push({
       id,
-      type: 'warning',
+      type: 'warn',
       site: siteName,
       message: `site.yml: \`services.tracking\` should be true, false, an address, or a map of options`
     })
@@ -869,7 +869,7 @@ export function checkTrackingBlock({ siteName, siteYml, issues }) {
     const id = 'tracking-unknown-key'
     issues.push({
       id,
-      type: 'warning',
+      type: 'warn',
       site: siteName,
       message: `site.yml: \`services.tracking\` has ${unknown.length === 1 ? 'an unknown key' : 'unknown keys'}: ${unknown.join(', ')}`
     })
@@ -908,7 +908,7 @@ export function checkTrackingBlock({ siteName, siteYml, issues }) {
       const shown = spelling === '' ? 'an empty value' : `\`${String(value)}\``
       issues.push({
         id,
-        type: 'warning',
+        type: 'warn',
         site: siteName,
         message: `site.yml: \`services.tracking.consent\` is ${shown} — only the exact value \`required\` turns the gate on`
       })
@@ -933,7 +933,7 @@ export function checkTrackingBlock({ siteName, siteYml, issues }) {
       const id = 'tracking-script-without-url'
       issues.push({
         id,
-        type: 'warning',
+        type: 'warn',
         site: siteName,
         message: `site.yml: \`services.tracking.scripts\` has ${bad.length} ${bad.length === 1 ? 'entry' : 'entries'} with no URL`
       })
@@ -999,7 +999,7 @@ export async function checkFormSubmitTarget({ sitePath, siteName, siteYml, issue
   const n = forms.length
   issues.push({
     id,
-    type: 'warning',
+    type: 'warn',
     site: siteName,
     message: `${n} content file${n === 1 ? '' : 's'} declare${n === 1 ? 's' : ''} a form, but no submission destination is configured`
   })
@@ -1063,7 +1063,7 @@ export async function checkSiteAddress({ sitePath, siteName, siteYml, workspaceD
       const id = 'site-address-from-github'
       issues.push({
         id,
-        type: 'warning',
+        type: 'warn',
         site: siteName,
         message: "The GitHub Pages workflow does not hand the build the address GitHub serves the site at"
       })
@@ -1077,7 +1077,7 @@ export async function checkSiteAddress({ sitePath, siteName, siteYml, workspaceD
   const id = 'site-address-unknown'
   issues.push({
     id,
-    type: 'warning',
+    type: 'warn',
     site: siteName,
     message: 'The site states no address: no canonical URLs, no sitemap.xml, root-relative llms.txt'
   })
@@ -1131,7 +1131,7 @@ export function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, sho
       const id = 'orphaned-query-output'
       issues.push({
         id,
-        type: 'warning',
+        type: 'warn',
         site: siteName,
         message: `${orphans.length} entr${orphans.length === 1 ? 'y' : 'ies'} in public/${DATA_DIR}/ with no declared query`
       })
@@ -1176,7 +1176,7 @@ export function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, sho
     const id = 'generated-data-not-ignored'
     issues.push({
       id,
-      type: 'warning',
+      type: 'warn',
       site: siteName,
       message: `public/${DATA_DIR}/ is generated but not gitignored`
     })
@@ -1401,7 +1401,7 @@ async function runDoctor(args = []) {
       : 'uses the `prose` class'
     issues.push({
       id,
-      type: 'warning',
+      type: 'warn',
       foundation: f.name,
       message: `${f.name} ${reason} but does not import prose-tokens.css`
     })
@@ -1431,7 +1431,7 @@ async function runDoctor(args = []) {
       const id = 'prose-plugin-alongside'
       issues.push({
         id,
-        type: 'warning',
+        type: 'warn',
         foundation: f.name,
         message: `${f.name} loads Tailwind Typography as well as kit's prose layer`
       })
@@ -1451,7 +1451,7 @@ async function runDoctor(args = []) {
     const names = [...new Set(found.flatMap((x) => x.modifiers))]
     issues.push({
       id,
-      type: 'warning',
+      type: 'warn',
       foundation: f.name,
       message: `${f.name} names ${names.join(', ')}, which kit's prose layer does not have`
     })

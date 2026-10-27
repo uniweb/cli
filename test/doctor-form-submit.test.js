@@ -110,7 +110,7 @@ test('warns when a form has no destination and no host is in the picture', async
     await checkFormSubmitTarget({ sitePath: dir, siteName: 'site', siteYml: {}, issues })
     assert.equal(issues.length, 1)
     assert.equal(issues[0].id, 'form-without-submit-target')
-    assert.equal(issues[0].type, 'warning')
+    assert.equal(issues[0].type, 'warn')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

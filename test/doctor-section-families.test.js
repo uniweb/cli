@@ -145,7 +145,7 @@ test('a declared family that names nothing known is a warning, with a near miss'
   try {
     const issue = run(dir).issues.find((i) => i.id === 'section-family-unknown')
     assert.ok(issue)
-    assert.equal(issue.type, 'warning')
+    assert.equal(issue.type, 'warn')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
