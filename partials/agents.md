@@ -592,14 +592,14 @@ Fenced code serves three purposes depending on its info string: `yaml:`/`json:` 
 
 ````markdown
 ```yaml:form
-fields:
-  - name: email
-    type: email
-submitLabel: Send
+- name: email
+  type: string
+  format: email
+  label: Email
 ```
 ````
 
-→ `content.data?.form` = `{ fields: [...], submitLabel: "Send" }`, when the component declares `data: { form: … }`. A block under a key the component does not declare stays out of `content.data` (the dev console says so) and is still in `content.sequence`. A block inside an item is that item's (`content.items[n].data`) and needs no declaration.
+→ `content.data?.form` = `[{ name: "email", type: "string", format: "email", label: "Email" }]`, when the component declares `data: { form: … }`. A block under a key the component does not declare stays out of `content.data` (the dev console says so) and is still in `content.sequence`. A block inside an item is that item's (`content.items[n].data`) and needs no declaration.
 
 **Code snippets** — display content with a language for syntax highlighting, collected in `content.snippets` as `[{ language, code }]`. Filter with `content.snippets.filter(s => s.language === 'css')`.
 
