@@ -2089,10 +2089,19 @@ ${colors.bright}Options:${colors.reset}
     i18n: `
 ${colors.cyan}${colors.bright}uniweb i18n${colors.reset} ${colors.dim}— Internationalization workflow${colors.reset}
 
-${colors.bright}Subcommands:${colors.reset}
-  i18n extract       Extract translatable strings to manifest
-  i18n sync          Update manifest with content changes
-  i18n status        Show translation coverage per locale
+${colors.bright}Strings, translated by hash:${colors.reset}
+  i18n extract       Extract translatable strings to the manifest (alias: sync)
+  i18n generate      Start locale files from the manifest (alias: init)
+  i18n status        What is left, per language: strings, and free-form translations
+  i18n audit         Find stale and missing string translations
+
+${colors.bright}Free-form, a whole section translated:${colors.reset}
+  i18n status --freeform                    Each free-form translation, and what to do
+  i18n init-freeform <locale> <path> <id>   Start one from its source section
+  i18n update-hash <locale> --all-stale     Mark reviewed translations current
+  i18n move <old-path> <new-path>           Move translations when pages move
+  i18n rename <path> <old-id> <new-id>      Rename one when its section is renamed
+  i18n prune --freeform                     Remove orphaned translations
 `,
     inspect: `
 ${colors.cyan}${colors.bright}uniweb inspect${colors.reset} ${colors.dim}— Inspect parsed content shape${colors.reset}
