@@ -2074,6 +2074,10 @@ A form gets its destination from the first of these that applies:
 3. **Neither** — there is no destination: render no form, or fall back to contact
    details the site already carries.
 
+In `uniweb dev` the dev server is the host: `submit: true` is answered there, so a form shows and
+can be sent while you work. Each submission is printed in the terminal and kept in the site's
+`.uniweb/dev-submissions/` — read it there to see exactly what an endpoint would receive.
+
 That is the general arrangement, not a forms-only one. A host states everything
 it offers in the served payload's `config.services`, keyed by name, and every service
 resolves by the same rule — the host's offer, then the site's own address, then
