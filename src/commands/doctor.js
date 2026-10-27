@@ -6,6 +6,7 @@ import {
   existsSync,
   readFileSync,
   readdirSync,
+  statSync,
   writeFileSync,
   mkdirSync,
   rmSync
@@ -19,9 +20,17 @@ import {
   extensionNameOf,
   findSiteExtension
 } from '@uniweb/build'
-import { loadDeployYml, AGENTS_KEYS, originOf, refuseUnreadableAddress } from '@uniweb/build/site'
+import {
+  loadDeployYml,
+  AGENTS_KEYS,
+  originOf,
+  refuseUnreadableAddress,
+  collectSiteContent,
+  resolveAssetPath,
+  findPublicFavicon
+} from '@uniweb/build/site'
 import { listAdapters } from '@uniweb/build/hosts'
-import { RUNTIME_KEYS } from '@uniweb/build/uwx'
+import { RUNTIME_KEYS, writeSiteConfig } from '@uniweb/build/uwx'
 import { getCliVersion } from '../versions.js'
 import { readAgentsVersion } from '../utils/agents-stamp.js'
 import { writeJsonPreservingStyle } from '../utils/json-file.js'
@@ -1054,7 +1063,7 @@ export async function checkSiteAddress({ sitePath, siteName, siteYml, workspaceD
   const host = defaultDeployHost(deployYml)
   if (ADDRESS_STATING_HOSTS.has(host)) return
 
-  const without = 'Without one, no page states a canonical URL, no sitemap.xml is written, and llms.txt links root-relative.'
+  const without = 'Without one, no page states a canonical URL, no sitemap.xml is written, and llms.txt links and the image a link preview shows (og:image) are root-relative.'
   if (host === 'github-pages') {
     const workflowPath = join(workspaceDir, '.github', 'workflows', 'deploy-github-pages.yml')
     const workflow = existsSync(workflowPath) ? readFileSync(workflowPath, 'utf8') : null
@@ -1079,12 +1088,223 @@ export async function checkSiteAddress({ sitePath, siteName, siteYml, workspaceD
     id,
     type: 'warn',
     site: siteName,
-    message: 'The site states no address: no canonical URLs, no sitemap.xml, root-relative llms.txt'
+    message: 'The site states no address: no canonical URLs, no sitemap.xml, a root-relative llms.txt and og:image'
   })
   warn(`[${id}] Nothing states where this site is served`)
   log(`    Set ${colors.green}seo.origin${colors.reset} in site.yml — the origin it is served from, e.g. https://example.com`)
   log(`    ${colors.dim}A host that states it needs none: the GitHub Pages workflow \`uniweb add ci\` writes, Netlify, Vercel.${colors.reset}`)
   log(`    ${colors.dim}${without}${colors.reset}`)
+}
+
+// What a link preview draws, from the platforms' own pages, read 2026-10-27. Facebook
+// (developers.facebook.com/docs/sharing/webmasters/images): 1.91:1 shows the whole image, at least
+// 1200×630 for high-resolution screens and 600×315 for a large card, 8 MB at most. LinkedIn
+// (linkedin.com/help/linkedin/answer/a521928): 1.91:1, at least 1200×627, 5 MB at most, and a
+// thumbnail for an image under 401 px wide.
+const CARD = { width: 1200, height: 630, ratio: 1.91 }
+const CARD_LARGE = { width: 600, height: 315 }
+const CARD_MAX_BYTES = 5 * 1024 * 1024
+// The formats link previews draw. SVG is not among them: X's card rules exclude it by name.
+const CARD_FORMATS = new Set(['jpeg', 'png', 'webp', 'gif'])
+// No search engine or preview publishes one length; their snippets commonly end near this.
+const DESCRIPTION_SHOWN = 160
+
+/** A path into the site's own files (`/images/card.jpg`), not an address of its own. */
+const isSitePath = (v) => typeof v === 'string' && v.startsWith('/') && !v.startsWith('//')
+
+/** `/x` → the file under the site's public/ or assets/ that serves it, or null when there is none. */
+function siteFile(sitePath, ref) {
+  const { resolved } = resolveAssetPath(ref, join(sitePath, 'site.yml'), sitePath)
+  return resolved && existsSync(resolved) ? resolved : null
+}
+
+/** Up to `n` items, then how many more. */
+function listSome(items, n = 5) {
+  for (const item of items.slice(0, n)) log(`    • ${item}`)
+  if (items.length > n) log(`    ${colors.dim}…and ${items.length - n} more${colors.reset}`)
+}
+
+/**
+ * What a link to the site shows. A chat, a feed or a search result draws a card from a page's head
+ * tags (`Page#getHeadMeta`): its image — the page's `seo.image`, else the site's — its title and its
+ * description. Nothing fails when they are wrong; a shared link just looks it, and only the source
+ * says why: whether the image is there, its size and format, and the text.
+ *
+ * Read from the build's own collect (`collectSiteContent`), so the pages are the ones the site
+ * publishes — drafts dropped, the home page found by the site's own rule — and a page.yml the build
+ * cannot parse is reported as that, never as a page with no description. A page made from a record
+ * (`[slug]`) takes its image and title from the record, which no file here describes, so it is left
+ * out. An image at an address of its own is left alone: doctor reads files, it fetches nothing.
+ */
+export async function checkLinkPreviews({ sitePath, siteName, issues }) {
+  let content
+  let failure = null
+  // The collect reports its progress on the console; this report is doctor's.
+  const { log: consoleLog, warn: consoleWarn } = console
+  console.log = console.warn = () => {}
+  try {
+    content = await collectSiteContent(sitePath, { dropUnpublished: true, strict: true })
+  } catch (err) {
+    failure = err
+  } finally {
+    console.log = consoleLog
+    console.warn = consoleWarn
+  }
+  if (failure) {
+    const id = 'site-content-unreadable'
+    const [first, ...rest] = String(failure.message)
+      .replace(/^\[content-collector\] /, '')
+      .replaceAll(`${sitePath}/`, '')
+      .split('\n')
+    issues.push({ id, type: 'error', site: siteName, message: first })
+    error(`[${id}] ${first}`)
+    for (const line of rest) if (line.trim()) log(`    ${colors.dim}${line}${colors.reset}`)
+    log(`    ${colors.dim}\`uniweb build\` stops on the same thing. Link previews were not checked.${colors.reset}`)
+    return
+  }
+
+  // A folder with no content of its own only redirects (to its first page), so a link never lands on it.
+  const pages = (content.pages || []).filter((p) => !p.isDynamic && p.hasContent !== false)
+  if (pages.length === 0) return
+  const site = content.config || {}
+  const siteImage = site.seo?.image || null
+
+  // ── The image ──────────────────────────────────────────────────────────────
+  const without = pages.filter((p) => !(p.seo?.image || siteImage))
+  if (without.length > 0) {
+    const id = 'share-image-none'
+    const n = without.length
+    const message = n === pages.length ? 'Links to this site show no image' : `Links to ${n} page${n === 1 ? '' : 's'} show no image`
+    issues.push({ id, type: 'info', site: siteName, message })
+    info(`[${id}] ${message}`)
+    if (without.length < pages.length) listSome(without.map((p) => p.route))
+    log(`    Set ${colors.green}seo.image${colors.reset} in site.yml — every page without one of its own shows it. A ${CARD.width}×${CARD.height} JPEG or PNG fills a card.`)
+  }
+
+  // Each image once, with the pages that show it.
+  const shownBy = new Map()
+  for (const page of pages) {
+    const image = page.seo?.image || siteImage
+    if (!isSitePath(image)) continue
+    if (!shownBy.has(image)) shownBy.set(image, [])
+    shownBy.get(image).push(page.route)
+  }
+  let readImageSize = null
+  for (const [image, routes] of shownBy) {
+    const shownOn = routes.length === pages.length ? 'every page' : routes.length === 1 ? routes[0] : `${routes.length} pages`
+    const file = siteFile(sitePath, image)
+    if (!file) {
+      const id = 'share-image-missing'
+      issues.push({ id, type: 'warn', site: siteName, message: `${image}, the image a link to ${shownOn} shows, is not in public/ or assets/` })
+      warn(`[${id}] ${image} is not in public/ or assets/ — a link to ${shownOn} shows no image`)
+      continue
+    }
+    readImageSize ??= (await import('@uniweb/build/images')).readImageSize
+    const size = await readImageSize(file)
+    const bytes = statSync(file).size
+    if (!size || !CARD_FORMATS.has(size.format)) {
+      const id = 'share-image-format'
+      const what = !size
+        ? 'could not be read as an image'
+        : size.format === 'svg'
+          ? 'is an SVG, which link previews do not draw'
+          : `is ${size.format.toUpperCase()}, which not every link preview draws`
+      issues.push({ id, type: 'warn', site: siteName, message: `${image} ${what}` })
+      warn(`[${id}] ${image}, the image a link to ${shownOn} shows, ${what}`)
+      log(`    Link previews draw a JPEG, PNG, WebP or GIF; a ${CARD.width}×${CARD.height} JPEG or PNG is the safe choice.`)
+      continue
+    }
+    if (bytes > CARD_MAX_BYTES) {
+      const id = 'share-image-heavy'
+      const mb = (bytes / 1024 / 1024).toFixed(1)
+      issues.push({ id, type: 'warn', site: siteName, message: `${image} is ${mb} MB; LinkedIn takes 5 MB at most` })
+      warn(`[${id}] ${image} is ${mb} MB — LinkedIn draws no image over 5 MB`)
+      log(`    A ${CARD.width}×${CARD.height} JPEG is usually well under 1 MB.`)
+    }
+    const { width, height } = size
+    const ratio = width / height
+    const advice =
+      width < CARD_LARGE.width || height < CARD_LARGE.height
+        ? `under ${CARD_LARGE.width}×${CARD_LARGE.height}, previews draw it as a thumbnail, not a full card`
+        : Math.abs(ratio - CARD.ratio) / CARD.ratio > 0.1
+          ? `${ratio.toFixed(2)}:1 — previews crop it to ${CARD.ratio}:1`
+          : width < CARD.width
+            ? `high-resolution screens draw it soft`
+            : null
+    if (advice) {
+      const id = 'share-image-shape'
+      issues.push({ id, type: 'info', site: siteName, message: `${image} is ${width}×${height}: ${advice}` })
+      info(`[${id}] ${image} is ${width}×${height}: ${advice}`)
+      log(`    Link previews draw ${CARD.ratio}:1 — ${CARD.width}×${CARD.height} fills one, whole and sharp.`)
+    }
+  }
+
+  // ── The description ────────────────────────────────────────────────────────
+  // What the page states (`Page#getHeadMeta`): its own, or for the home page the site's. A page
+  // marked `noindex` is left out — it asks search engines not to list it at all.
+  const described = pages
+    .filter((p) => !p.seo?.noindex)
+    .map((p) => ({ route: p.route, text: (p.description || (p.route === '/' ? site.description : '') || '').trim() }))
+  const undescribed = described.filter((p) => !p.text)
+  if (undescribed.length > 0) {
+    const id = 'page-description-none'
+    const n = undescribed.length
+    issues.push({ id, type: 'info', site: siteName, message: `${n} page${n === 1 ? ' states' : 's state'} no description` })
+    info(`[${id}] ${n} page${n === 1 ? ' states' : 's state'} no description — search results and link previews pick their own text, or show none`)
+    listSome(undescribed.map((p) => p.route))
+    log(`    Give each a ${colors.green}description:${colors.reset} in its page.yml — a sentence or two, under ${DESCRIPTION_SHOWN} characters.`)
+  }
+  const long = described.filter((p) => p.text.length > DESCRIPTION_SHOWN)
+  if (long.length > 0) {
+    const id = 'page-description-long'
+    const n = long.length
+    issues.push({ id, type: 'info', site: siteName, message: `${n} description${n === 1 ? ' runs' : 's run'} past ${DESCRIPTION_SHOWN} characters` })
+    info(`[${id}] ${n} description${n === 1 ? ' runs' : 's run'} past ${DESCRIPTION_SHOWN} characters — search results and link previews cut ${n === 1 ? 'it' : 'them'} short`)
+    listSome(long.map((p) => `${p.route} ${colors.dim}(${p.text.length})${colors.reset}`))
+  }
+}
+
+/**
+ * The tab icon. A static build links `site.yml`'s `favicon:`, else the favicon its public folder
+ * holds (`findPublicFavicon`); a Uniweb host's pages link only the one `favicon:` names, and only
+ * that file is uploaded. So a site whose icon is found rather than named has one on a static host
+ * and none on a Uniweb host — every site made from a template that ships `public/favicon.svg`
+ * before 2026-10-27, when the templates started naming it.
+ */
+export async function checkFavicon({ sitePath, siteName, siteYml, issues, shouldFix, fixed: reportFixed }) {
+  const named = typeof siteYml?.favicon === 'string' ? siteYml.favicon.trim() : ''
+  if (named) {
+    if (!isSitePath(named) || siteFile(sitePath, named)) return
+    const id = 'favicon-missing'
+    issues.push({ id, type: 'warn', site: siteName, message: `favicon: ${named} is not in public/ or assets/` })
+    warn(`[${id}] favicon: ${named} is not in public/ or assets/ — every page links an icon that is not there`)
+    return
+  }
+
+  const found = findPublicFavicon(join(sitePath, 'public'))
+  if (!found) return
+  const id = 'favicon-unnamed'
+  const value = `/${found}`
+  const issue = {
+    id,
+    type: 'info',
+    site: siteName,
+    message: `public/${found} is not named in site.yml, so a Uniweb host's pages do not link it`,
+    fixable: true
+  }
+  issues.push(issue)
+  info(`[${id}] public/${found} is not named in site.yml — a static build links it, a Uniweb host's pages do not`)
+  if (shouldFix?.(id)) {
+    try {
+      writeSiteConfig(sitePath, { favicon: value })
+      issue.fixed = true
+      reportFixed?.(`site.yml now names favicon: ${value}`)
+      return
+    } catch (err) {
+      warn(`[${id}] could not write site.yml: ${err.message}`)
+    }
+  }
+  log(`    Add ${colors.green}favicon: ${value}${colors.reset} to site.yml — ${colors.dim}uniweb doctor --fix ${id}${colors.reset}`)
 }
 
 /** The bare map in `queries.yml`, or `{}` when there is none. */
@@ -1616,6 +1836,9 @@ async function runDoctor(args = []) {
     }
 
     await checkSiteAddress({ sitePath, siteName, siteYml, workspaceDir, issues })
+    // What a link to the site shows, and its tab icon.
+    await checkLinkPreviews({ sitePath, siteName, issues })
+    await checkFavicon({ sitePath, siteName, siteYml, issues, shouldFix, fixed })
 
     // Forms need a destination, and having none is only visible on the page.
     await checkFormSubmitTarget({ sitePath, siteName, siteYml, issues })
@@ -2233,10 +2456,16 @@ async function runDoctor(args = []) {
   const errors = issues.filter((i) => i.type === 'error' && !i.fixed)
   const warnings = issues.filter((i) => i.type === 'warn' && !i.fixed)
   const fixedCount = issues.filter((i) => i.fixed).length
+  // Recommendations (→) fail nothing, but the summary should not read as though there were none.
+  const recommendations = issues.filter((i) => i.type === 'info' && !i.fixed).length
+  const recommended = recommendations
+    ? `${colors.dim}${recommendations} recommendation${recommendations === 1 ? '' : 's'} above (→)${colors.reset}`
+    : null
 
   if (errors.length === 0 && warnings.length === 0 && fixedCount === 0) {
     log('')
     log(`${colors.green}${colors.bright}All checks passed!${colors.reset}`)
+    if (recommended) log(recommended)
     log('')
   } else {
     log('')
@@ -2256,6 +2485,7 @@ async function runDoctor(args = []) {
         `${colors.dim}Some issues were not auto-fixable. See the diagnostics above.${colors.reset}`
       )
     }
+    if (recommended) log(recommended)
     log('')
   }
 
