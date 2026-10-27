@@ -1617,6 +1617,11 @@ async function runDoctor(args = []) {
 
     await checkSiteAddress({ sitePath, siteName, siteYml, workspaceDir, issues })
 
+    // Forms need a destination, and having none is only visible on the page.
+    await checkFormSubmitTarget({ sitePath, siteName, siteYml, issues })
+    checkAgentsBlock({ siteName, siteYml, issues })
+    checkTrackingBlock({ siteName, siteYml, issues })
+
     // `public/<DATA_DIR>/` is the build's output directory and nothing else —
     // `records/` is the only supported way to provide structured data. That makes the mapping a bijection: every entry there should be backed
     // by a declared QUERY, so anything else is stale, and identifiable.
@@ -1625,11 +1630,6 @@ async function runDoctor(args = []) {
     // than dist/, so what lands there persists and gets deployed. A collection
     // removed from site.yml leaves its compiled records behind — visible to
     // anyone who knows the URL, listed by nothing.
-    // Forms need a destination, and having none is only visible on the page.
-    await checkFormSubmitTarget({ sitePath, siteName, siteYml, issues })
-    checkAgentsBlock({ siteName, siteYml, issues })
-    checkTrackingBlock({ siteName, siteYml, issues })
-
     checkGeneratedDataDir({
       sitePath,
       siteName,
