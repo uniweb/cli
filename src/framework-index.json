@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-27T18:05:47.140Z",
+  "generatedAt": "2026-10-27T19:36:44.502Z",
   "packages": {
     "@uniweb/api": {
       "version": "1.6.4"
     },
     "@uniweb/build": {
-      "version": "1.10.8"
+      "version": "1.10.9"
     },
     "@uniweb/content-reader": {
       "version": "1.5.7"
@@ -33,10 +33,10 @@
       "version": "1.1.4"
     },
     "@uniweb/projections": {
-      "version": "1.2.4"
+      "version": "1.2.5"
     },
     "@uniweb/runtime": {
-      "version": "1.2.7"
+      "version": "1.2.8"
     },
     "@uniweb/scene": {
       "version": "1.0.1"
