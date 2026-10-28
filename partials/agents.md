@@ -1581,7 +1581,7 @@ fonts:
     - { family: "Fraunces", src: /fonts/fraunces.woff2, weight: "100 900" }
 ```
 
-The build auto-adds preconnect hints for imports, emits `@font-face` + preload for faces, and drops any family no role references.
+The build auto-adds preconnect hints for imports, emits `@font-face` + preload for faces, and drops any family no role references. `uniweb push` uploads each face's file (under `public/`) with the site's media, so self-hosted faces work on a site published with Uniweb too.
 
 > **`serif` and `font-serif` are the same font var** — the `font-` spelling is just the one Tailwind's `font-serif` utility reads. Declare it either way in `main.js`; the site sets it by the bare role name under `fonts:`.
 
