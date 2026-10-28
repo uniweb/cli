@@ -27,6 +27,7 @@ import { join, resolve } from 'node:path'
 
 import { BackendClient, WorkspaceMismatchError, describeWorkspace } from '../backend/client.js'
 import { resolveWorkspace } from '../backend/workspace.js'
+import { liveAddress } from '../backend/live-address.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import { confirm, isNonInteractive } from '../utils/interactive.js'
 import { readSiteIdentity } from '../utils/site-identity.js'
@@ -135,7 +136,7 @@ async function list(args) {
     name: s.name ?? null,
     status: s.deployment?.status ?? null,
     published: s.deployment?.status === 'published',
-    url: s.deployment?.published_url ?? null,
+    url: liveAddress(s.deployment?.visitor_url, s.deployment?.published_url),
     updated_at: s.updated_at ?? null
   }))
   if (json) {
@@ -270,7 +271,7 @@ async function unpublish(args) {
   if (!target) return { exitCode: 2 }
   const site = await findSite(client, target.uuid)
   const label = site?.name ? `“${site.name}” (${target.uuid})` : target.uuid
-  const url = site?.deployment?.published_url
+  const url = liveAddress(site?.deployment?.visitor_url, site?.deployment?.published_url)
   const ok = await confirmed(
     args,
     `Unpublish ${label} on ${client.origin}?${url ? ` Visitors get nothing at ${url} until it is published again.` : ''}`,

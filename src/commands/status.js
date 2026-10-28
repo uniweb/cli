@@ -60,6 +60,7 @@ import {
 import { describeWorkspace, resolveWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 import { BackendClient, resolveBackendOrigin } from '../backend/client.js'
 import { readAppChanges } from '../backend/app-changes.js'
+import { liveAddress } from '../backend/live-address.js'
 import { probePull } from './pull.js'
 import { readOrgFlag } from '../utils/args.js'
 import { listSyncedBackends, readBackendState } from '@uniweb/build/uwx'
@@ -649,9 +650,10 @@ async function appChecks(siteDir, siteYml, { offline, args, git }) {
   if (site) {
     // ⭐ WHERE THE SITE IS LIVE IS THE BACKEND'S TO SAY, never deploy.yml's: a receipt is
     // what this copy published, and a publish from the app or another copy does not move it.
-    // ⛔ `last_published_url` outlives an unpublish (`client.siteStatus`), so it is said as
-    // where the site WAS live when it is not live now — never as where it is.
-    const url = typeof site.last_published_url === 'string' && site.last_published_url ? site.last_published_url : null
+    // It is where visitors go: the custom domain while one is active (`liveAddress`).
+    // ⛔ Both addresses outlive an unpublish (`client.siteStatus`), so the one shown is said
+    // as where the site WAS live when it is not live now — never as where it is.
+    const url = liveAddress(site.visitor_url, site.last_published_url)
     const when = site.last_published_at ? sinceLabel(site.last_published_at, Date.now()) : null
     const at = `${url ? ` at ${url}` : ''}${when ? `, published ${when}` : ''}`
     const detail = {

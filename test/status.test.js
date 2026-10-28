@@ -370,6 +370,17 @@ test('⭐ the summary says what the site is: synced where, live where, deployed 
   assert.equal(live.summary, 'Live on http://backend.test at https://t.example/, published 3 h ago, with the latest content.')
 })
 
+test('⭐ the address it names is where visitors go — the site’s own domain while it has one', { timeout: 60_000 }, async () => {
+  const site = { ...LIVE, visitor_url: 'https://own.example/', last_published_url: 'https://t.example/' }
+  const live = checkOf(docOf(await status(project(), ['--personal', '--json'], { session: loggedIn, respond: answering({ site }) })), 'app.live')
+  assert.equal(live.detail.url, 'https://own.example/')
+  assert.equal(live.summary, 'Live on http://backend.test at https://own.example/, with the latest content.')
+  // A backend that sends no visitor address, or `null`, still has the delivered one said.
+  const told = { ...site, visitor_url: null }
+  const fallback = checkOf(docOf(await status(project(), ['--personal', '--json'], { session: loggedIn, respond: answering({ site: told }) })), 'app.live')
+  assert.equal(fallback.detail.url, 'https://t.example/')
+})
+
 test('a site that is not live says where it was live, never that it is', { timeout: 60_000 }, async () => {
   const site = { published: false, draft_dirty: true, editors: [], last_published_url: 'https://t.example/' }
   const doc = docOf(await status(project(), ['--personal', '--json'], { session: loggedIn, respond: answering({ site }) }))

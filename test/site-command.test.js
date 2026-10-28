@@ -69,6 +69,18 @@ test('`site list --json` reads every page, in the workspace named, and keeps std
   assert.deepEqual(Object.keys(json.sites[0]).sort(), ['name', 'published', 'status', 'updated_at', 'url', 'uuid'])
 })
 
+test('`site list` names where each site’s visitors go — its own domain while it has one', async () => {
+  const { site: verb } = await import('../src/commands/site.js')
+  const own = site(UUID, 'blog', 'published')
+  own.deployment.visitor_url = 'https://blog.example/'
+  const backend = sitesBackend({ sites: [own, site(OTHER, 'docs', 'published')] })
+  const run = await runVerb(tmp('uw-site-'), verb, ['list', '--json', '--org', '@acme'], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 0, run.output)
+  const urls = JSON.parse(run.output.trim()).sites.map((s) => s.url)
+  // The second sends no visitor address, so its delivered one is named.
+  assert.deepEqual(urls, ['https://blog.example/', 'https://docs.example.test/'])
+})
+
 test('`site delete <uuid> --yes` deletes it, in the workspace named', async () => {
   const { site: verb } = await import('../src/commands/site.js')
   const backend = sitesBackend({ sites: [site(UUID, 'blog')] })

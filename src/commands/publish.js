@@ -118,6 +118,7 @@ import { repoOf } from '../utils/sync-point.js'
 import { commitBeforeSending } from '../backend/commit-before-sending.js'
 import { resolveWorkspace, describeWorkspace, previewWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
+import { liveAddress } from '../backend/live-address.js'
 import {
   updateBackendMap,
   readBackendState,
@@ -1064,6 +1065,10 @@ export async function publish(args = []) {
   // prefixed with our own origin; the reply is absolute now, so a path from an
   // older backend is simply shown as one.
   const serveUrl = typeof result.url === 'string' && result.url ? result.url : null
+  // …and where its visitors go, which is what is shown: its custom domain while one is
+  // active (`liveAddress`). The backend reads it on every publish and stores it nowhere, so
+  // deploy.yml keeps the address this publish delivered to.
+  const shownUrl = liveAddress(result.visitor_url, serveUrl)
 
   // 8. Persist deploy.yml memory — a record of what went live (and so a re-run
   //    reuses the resolved target without re-asking). Identity is sync.json's,
@@ -1145,7 +1150,7 @@ export async function publish(args = []) {
     )
     say.dim(`  site.yml lists ${unserved.join(', ')}, and ${unserved.length === 1 ? 'it was' : 'they were'} not published.`)
   }
-  if (serveUrl) console.log(`  ${c.cyan}${serveUrl}${c.reset}`)
+  if (shownUrl) console.log(`  ${c.cyan}${shownUrl}${c.reset}`)
   // ⛔ No site.yml write for where it went live. That is a fact about this deploy,
   // not about the site, and it is recorded where deploy facts live: deploy.yml's
   // `lastDeploy.<target>.url` (step 8 above). site.yml carried it as `$url` ⇄
