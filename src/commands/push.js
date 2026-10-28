@@ -26,7 +26,8 @@
  * `uniweb login && uniweb push`. Run from a site, or a workspace with one site.
  *
  * Usage:
- *   uniweb push                          Build, push both lanes, back-fill $uuid
+ *   uniweb push                          Bring the foundation along, push both lanes,
+ *                                        back-fill $uuid
  *   uniweb push --org @org               Work in @org for this push, instead of the
  *   uniweb push --personal               workspace chosen at `uniweb login` (or your
  *                                        personal workspace). A site this push creates
