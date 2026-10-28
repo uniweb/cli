@@ -733,6 +733,8 @@ end the list with `...`.**
 
 **The tab icon:** `favicon: /favicon.svg` in `site.yml`, a file in `public/`. Name it even when the file is `public/favicon.svg`: a static build finds `public/favicon.{svg,ico,png}` on its own, but a site published with `uniweb publish` links only the favicon `site.yml` names (`uniweb doctor --fix favicon-unnamed` writes the line).
 
+**The home-screen icon:** `touchIcon: /touch-icon.png` in `site.yml` — the icon iOS puts on a home screen, which an SVG favicon never is. Make it a 180×180 PNG in `public/` with no transparency: iOS draws a transparent pixel black. Name it even when the file is `public/apple-touch-icon.png`, which iOS finds on a static host by itself: a site published with `uniweb publish` has only the touch icon `site.yml` names. `uniweb doctor` checks the file.
+
 ```yaml
 # site.yml
 keywords: [components, react, cms]
