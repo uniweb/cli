@@ -111,12 +111,18 @@ test('an image that is not there is a warning naming it', async (t) => {
   assert.match(issues[0].message, /\/images\/gone\.jpg/)
 })
 
-test('an image under assets/ is found as the build finds it', async (t) => {
+// ⛔ `assets/` served a `/x` until 2026-10-28; it is retired, and a build refuses a `/x` only it
+// holds. Doctor says so as the build would, rather than calling the image missing.
+test('an image under assets/ is refused, as the build refuses it', async (t) => {
   const dir = site(t, {
     siteYml: 'name: S\nseo:\n  image: /card.png\n',
     files: { 'assets/card.png': png(1200, 630) }
   })
-  assert.deepEqual(await previews(dir), [])
+  const issues = await previews(dir)
+  assert.deepEqual(ids(issues), ['site-content-unreadable'])
+  assert.equal(issues[0].type, 'error')
+  assert.match(issues[0].message, /names assets\/card\.png/)
+  assert.match(issues[0].message, /into public\//)
 })
 
 test('an SVG is a warning: link previews do not draw one', async (t) => {

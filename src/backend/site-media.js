@@ -5,7 +5,8 @@
  *
  * Input is the site-root asset refs the producer surfaced in
  * `emitSyncPackages().localAssets` (`/images/hero.png`); `resolveAssetPath` finds the
- * file under the site's `public/` (or `assets/`). A ref whose file is missing is
+ * file under the site's `public/`, and refuses one only `assets/` holds, a folder retired
+ * 2026-10-28. A ref whose file is missing is
  * skipped (warned), never a broken serve URL. The serve URL is the backend's canonical
  * `serve_url`, read verbatim — origin-relative forms included; nothing here composes one.
  * Content-addressed like every asset: identical bytes → same id → a re-deploy of

@@ -1112,9 +1112,16 @@ const DESCRIPTION_SHOWN = 160
 /** A path into the site's own files (`/images/card.jpg`), not an address of its own. */
 const isSitePath = (v) => typeof v === 'string' && v.startsWith('/') && !v.startsWith('//')
 
-/** `/x` → the file under the site's public/ or assets/ that serves it, or null when there is none. */
+/** `/x` → the file under the site's public/ that serves it, or null when there is none. */
 function siteFile(sitePath, ref) {
-  const { resolved } = resolveAssetPath(ref, join(sitePath, 'site.yml'), sitePath)
+  let resolved
+  try {
+    ;({ resolved } = resolveAssetPath(ref, join(sitePath, 'site.yml'), sitePath))
+  } catch (err) {
+    // A file in assets/, which no longer serves a `/x` — the build says how to move it.
+    if (err?.code === 'ASSETS_FOLDER_RETIRED') return null
+    throw err
+  }
   return resolved && existsSync(resolved) ? resolved : null
 }
 
@@ -1195,8 +1202,8 @@ export async function checkLinkPreviews({ sitePath, siteName, issues }) {
     const file = siteFile(sitePath, image)
     if (!file) {
       const id = 'share-image-missing'
-      issues.push({ id, type: 'warn', site: siteName, message: `${image}, the image a link to ${shownOn} shows, is not in public/ or assets/` })
-      warn(`[${id}] ${image} is not in public/ or assets/ — a link to ${shownOn} shows no image`)
+      issues.push({ id, type: 'warn', site: siteName, message: `${image}, the image a link to ${shownOn} shows, is not in public/` })
+      warn(`[${id}] ${image} is not in public/ — a link to ${shownOn} shows no image`)
       continue
     }
     readImageSize ??= (await import('@uniweb/build/images')).readImageSize
@@ -1276,8 +1283,8 @@ export async function checkFavicon({ sitePath, siteName, siteYml, issues, should
   if (named) {
     if (!isSitePath(named) || siteFile(sitePath, named)) return
     const id = 'favicon-missing'
-    issues.push({ id, type: 'warn', site: siteName, message: `favicon: ${named} is not in public/ or assets/` })
-    warn(`[${id}] favicon: ${named} is not in public/ or assets/ — every page links an icon that is not there`)
+    issues.push({ id, type: 'warn', site: siteName, message: `favicon: ${named} is not in public/` })
+    warn(`[${id}] favicon: ${named} is not in public/ — every page links an icon that is not there`)
     return
   }
 
@@ -1359,8 +1366,8 @@ export async function checkTouchIcon({ sitePath, siteName, siteYml, issues, shou
   const file = siteFile(sitePath, named)
   if (!file) {
     const id = 'touch-icon-missing'
-    issues.push({ id, type: 'warn', site: siteName, message: `touchIcon: ${named} is not in public/ or assets/` })
-    warn(`[${id}] touchIcon: ${named} is not in public/ or assets/ — every page links an icon that is not there`)
+    issues.push({ id, type: 'warn', site: siteName, message: `touchIcon: ${named} is not in public/` })
+    warn(`[${id}] touchIcon: ${named} is not in public/ — every page links an icon that is not there`)
     return
   }
   const { readImageSize, isImageOpaque } = await import('@uniweb/build/images')
