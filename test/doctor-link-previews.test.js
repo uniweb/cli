@@ -122,7 +122,7 @@ test('an image under assets/ is refused, as the build refuses it', async (t) => 
   assert.deepEqual(ids(issues), ['site-content-unreadable'])
   assert.equal(issues[0].type, 'error')
   assert.match(issues[0].message, /names assets\/card\.png/)
-  assert.match(issues[0].message, /into public\//)
+  assert.match(issues[0].message, /to public\/card\.png/)
 })
 
 test('an SVG is a warning: link previews do not draw one', async (t) => {
