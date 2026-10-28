@@ -1307,6 +1307,92 @@ export async function checkFavicon({ sitePath, siteName, siteYml, issues, should
   log(`    Add ${colors.green}favicon: ${value}${colors.reset} to site.yml — ${colors.dim}uniweb doctor --fix ${id}${colors.reset}`)
 }
 
+// The icon iOS puts on a home screen, from Apple's guidance (the archived Safari Web Content Guide,
+// read 2026-10-27): a PNG — an SVG favicon is not used — 180×180 for the largest iPhone screens,
+// with no transparency, which iOS draws black. A page that links none, iOS asks the site's root for
+// `/apple-touch-icon.png`.
+const TOUCH_ICON_SIZE = 180
+const TOUCH_ICON_FILE = 'apple-touch-icon.png'
+
+/**
+ * The touch icon: `site.yml`'s `touchIcon:`. A static build links the one it names, and a push
+ * sends that file and no other, so a Uniweb host has none the site does not name — not even the
+ * `/apple-touch-icon.png` iOS asks a static host for. A named one is measured: a PNG, square, at
+ * least 180×180, every pixel opaque.
+ */
+export async function checkTouchIcon({ sitePath, siteName, siteYml, issues, shouldFix, fixed: reportFixed }) {
+  const named = typeof siteYml?.touchIcon === 'string' ? siteYml.touchIcon.trim() : ''
+  if (!named) {
+    if (!existsSync(join(sitePath, 'public', TOUCH_ICON_FILE))) {
+      const id = 'touch-icon-none'
+      issues.push({ id, type: 'info', site: siteName, message: 'site.yml names no touch icon, the icon iOS puts on a home screen' })
+      info(`[${id}] site.yml names no touch icon — the icon iOS puts on a home screen and Safari shows on its start page`)
+      log(`    Add a ${TOUCH_ICON_SIZE}×${TOUCH_ICON_SIZE} PNG with no transparency to public/ and name it: ${colors.green}touchIcon: /touch-icon.png${colors.reset}`)
+      return
+    }
+    const id = 'touch-icon-unnamed'
+    const value = `/${TOUCH_ICON_FILE}`
+    const issue = {
+      id,
+      type: 'info',
+      site: siteName,
+      message: `public/${TOUCH_ICON_FILE} is not named in site.yml, so a Uniweb host has no touch icon`,
+      fixable: true
+    }
+    issues.push(issue)
+    info(`[${id}] public/${TOUCH_ICON_FILE} is not named in site.yml — iOS finds it on a static host, but a Uniweb host is never sent it`)
+    if (shouldFix?.(id)) {
+      try {
+        writeSiteConfig(sitePath, { touchIcon: value })
+        issue.fixed = true
+        reportFixed?.(`site.yml now names touchIcon: ${value}`)
+        return
+      } catch (err) {
+        warn(`[${id}] could not write site.yml: ${err.message}`)
+      }
+    }
+    log(`    Add ${colors.green}touchIcon: ${value}${colors.reset} to site.yml — ${colors.dim}uniweb doctor --fix ${id}${colors.reset}`)
+    return
+  }
+
+  if (!isSitePath(named)) return
+  const file = siteFile(sitePath, named)
+  if (!file) {
+    const id = 'touch-icon-missing'
+    issues.push({ id, type: 'warn', site: siteName, message: `touchIcon: ${named} is not in public/ or assets/` })
+    warn(`[${id}] touchIcon: ${named} is not in public/ or assets/ — every page links an icon that is not there`)
+    return
+  }
+  const { readImageSize, isImageOpaque } = await import('@uniweb/build/images')
+  const size = await readImageSize(file)
+  if (!size || size.format !== 'png') {
+    const id = 'touch-icon-format'
+    const what = !size ? 'could not be read as an image' : `is ${size.format.toUpperCase()}, not a PNG`
+    issues.push({ id, type: 'warn', site: siteName, message: `touchIcon: ${named} ${what}` })
+    warn(`[${id}] touchIcon: ${named} ${what} — iOS takes a PNG`)
+    return
+  }
+  if ((await isImageOpaque(file)) === false) {
+    const id = 'touch-icon-transparent'
+    issues.push({ id, type: 'warn', site: siteName, message: `touchIcon: ${named} has transparent pixels, which iOS draws black` })
+    warn(`[${id}] touchIcon: ${named} has transparent pixels — iOS draws them black`)
+    log(`    Give the icon a background of its own.`)
+  }
+  const { width, height } = size
+  const advice =
+    width !== height
+      ? 'not square, as a touch icon is'
+      : width < TOUCH_ICON_SIZE
+        ? `under ${TOUCH_ICON_SIZE}×${TOUCH_ICON_SIZE}, iPhone screens draw it soft`
+        : null
+  if (advice) {
+    const id = 'touch-icon-shape'
+    issues.push({ id, type: 'info', site: siteName, message: `touchIcon: ${named} is ${width}×${height}: ${advice}` })
+    info(`[${id}] touchIcon: ${named} is ${width}×${height}: ${advice}`)
+    log(`    A ${TOUCH_ICON_SIZE}×${TOUCH_ICON_SIZE} PNG is the size iOS asks for.`)
+  }
+}
+
 /** The bare map in `queries.yml`, or `{}` when there is none. */
 function readQueriesYml(sitePath) {
   try {
@@ -1836,9 +1922,10 @@ async function runDoctor(args = []) {
     }
 
     await checkSiteAddress({ sitePath, siteName, siteYml, workspaceDir, issues })
-    // What a link to the site shows, and its tab icon.
+    // What a link to the site shows, its tab icon, and its home-screen icon.
     await checkLinkPreviews({ sitePath, siteName, issues })
     await checkFavicon({ sitePath, siteName, siteYml, issues, shouldFix, fixed })
+    await checkTouchIcon({ sitePath, siteName, siteYml, issues, shouldFix, fixed })
 
     // Forms need a destination, and having none is only visible on the page.
     await checkFormSubmitTarget({ sitePath, siteName, siteYml, issues })

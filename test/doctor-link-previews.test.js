@@ -1,5 +1,5 @@
 /**
- * `uniweb doctor` — what a link to the site shows, and its tab icon.
+ * `uniweb doctor` — what a link to the site shows, its tab icon, and its home-screen icon.
  *
  * A chat, a feed or a search result draws a card from a page's head tags: its image (the page's
  * `seo.image`, else the site's), its title and its description. Nothing fails when they are
@@ -9,6 +9,9 @@
  *
  * The favicon: a static build links the one its public folder holds when site.yml names none; a
  * Uniweb host's pages link only the one site.yml names.
+ *
+ * The touch icon: the PNG iOS puts on a home screen, `site.yml`'s `touchIcon:` — a PNG, square, at
+ * least 180×180, and opaque, since iOS draws a transparent pixel black.
  */
 
 import { test } from 'node:test'
@@ -18,7 +21,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deflateSync, crc32 } from 'node:zlib'
 import yaml from 'js-yaml'
-import { checkLinkPreviews, checkFavicon } from '../src/commands/doctor.js'
+import { checkLinkPreviews, checkFavicon, checkTouchIcon } from '../src/commands/doctor.js'
 
 /** A real PNG of `width`×`height`, black — `pad` bytes of an ancillary chunk make it heavy. */
 function png(width, height, { pad = 0 } = {}) {
@@ -239,4 +242,100 @@ test('a favicon the build finds but site.yml does not name is a recommendation, 
   assert.equal(fixed.issues[0].fixed, true)
   assert.equal(readFileSync(join(dir, 'site.yml'), 'utf8'), '# my site\nname: S\nfavicon: /favicon.svg\n')
   assert.deepEqual((await favicon(dir)).issues, [])
+})
+
+// ── the touch icon ───────────────────────────────────────────────────────────
+
+/** A real PNG of `width`×`height` with an alpha channel, every pixel's alpha `alpha`. */
+function pngWithAlpha(width, height, alpha) {
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4)
+    len.writeUInt32BE(data.length)
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data])
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(crc32(body))
+    return Buffer.concat([len, body, crc])
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  ihdr[8] = 8 // bit depth
+  ihdr[9] = 6 // RGBA
+  const row = Buffer.alloc(width * 4 + 1)
+  for (let x = 0; x < width; x++) row[1 + x * 4 + 3] = alpha
+  const rows = Buffer.concat(Array.from({ length: height }, () => row))
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(rows)),
+    chunk('IEND', Buffer.alloc(0))
+  ])
+}
+
+async function touchIcon(sitePath, { fix = false } = {}) {
+  const issues = []
+  const siteYml = yaml.load(readFileSync(join(sitePath, 'site.yml'), 'utf8'))
+  const fixedLines = []
+  await checkTouchIcon({ sitePath, siteName: 'site', siteYml, issues, shouldFix: () => fix, fixed: (m) => fixedLines.push(m) })
+  return { issues, fixedLines }
+}
+
+const named = 'name: S\ntouchIcon: /touch-icon.png\n'
+
+test('a 180×180 opaque PNG the site holds is fine — an unused alpha channel included', async (t) => {
+  assert.deepEqual((await touchIcon(site(t, { siteYml: named, files: { 'public/touch-icon.png': png(180, 180) } }))).issues, [])
+  assert.deepEqual((await touchIcon(site(t, { siteYml: named, files: { 'public/touch-icon.png': pngWithAlpha(180, 180, 255) } }))).issues, [])
+})
+
+test('no touch icon at all is a recommendation, never a warning', async (t) => {
+  const { issues } = await touchIcon(site(t))
+  assert.deepEqual(ids(issues), ['touch-icon-none'])
+  assert.equal(issues[0].type, 'info')
+})
+
+test('an apple-touch-icon.png site.yml does not name is a recommendation, fixed by naming it', async (t) => {
+  const dir = site(t, { siteYml: '# my site\nname: S\n', files: { 'public/apple-touch-icon.png': png(180, 180) } })
+  const found = await touchIcon(dir)
+  assert.deepEqual(ids(found.issues), ['touch-icon-unnamed'])
+  assert.equal(found.issues[0].type, 'info')
+
+  const fixed = await touchIcon(dir, { fix: true })
+  assert.equal(fixed.issues[0].fixed, true)
+  assert.equal(readFileSync(join(dir, 'site.yml'), 'utf8'), '# my site\nname: S\ntouchIcon: /apple-touch-icon.png\n')
+  assert.deepEqual((await touchIcon(dir)).issues, [])
+})
+
+test('a touch icon site.yml names but the site does not hold is a warning', async (t) => {
+  const { issues } = await touchIcon(site(t, { siteYml: named }))
+  assert.deepEqual(ids(issues), ['touch-icon-missing'])
+  assert.equal(issues[0].type, 'warn')
+})
+
+test('a touch icon that is not a PNG is a warning', async (t) => {
+  const svg = await touchIcon(site(t, { siteYml: named, files: { 'public/touch-icon.png': '<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"></svg>' } }))
+  assert.deepEqual(ids(svg.issues), ['touch-icon-format'])
+  assert.match(svg.issues[0].message, /is SVG, not a PNG/)
+  const junk = await touchIcon(site(t, { siteYml: named, files: { 'public/touch-icon.png': 'not an image' } }))
+  assert.match(junk.issues[0].message, /could not be read as an image/)
+})
+
+test('transparent pixels are a warning: iOS draws them black', async (t) => {
+  const { issues } = await touchIcon(site(t, { siteYml: named, files: { 'public/touch-icon.png': pngWithAlpha(180, 180, 0) } }))
+  assert.deepEqual(ids(issues), ['touch-icon-transparent'])
+  assert.equal(issues[0].type, 'warn')
+})
+
+test('not square, or under 180×180, is a recommendation', async (t) => {
+  const shape = async (w, h) => {
+    const { issues } = await touchIcon(site(t, { siteYml: named, files: { 'public/touch-icon.png': png(w, h) } }))
+    assert.deepEqual(ids(issues), ['touch-icon-shape'], `${w}×${h}`)
+    assert.equal(issues[0].type, 'info')
+    return issues[0].message
+  }
+  assert.match(await shape(200, 150), /200×150: not square/)
+  assert.match(await shape(120, 120), /120×120: under 180×180/)
+})
+
+test('a touch icon at an address of its own is left alone', async (t) => {
+  assert.deepEqual((await touchIcon(site(t, { siteYml: 'name: S\ntouchIcon: https://cdn.example/t.png\n' }))).issues, [])
 })
