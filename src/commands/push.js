@@ -446,6 +446,16 @@ export async function push(args = [], deps = {}) {
     if (!guard.ok) return { exitCode: 1 }
   }
 
+  // The keys this deployment's Sections take (`deploymentFields`) — read before the media probe,
+  // which says which files go up: a key sent only where it is taken can name one (`touch_icon`).
+  // ⛔ Until 2026-10-28 the probe went without them, so a touch icon was sent as the site path it
+  // was written as, and never uploaded.
+  const fields = await deploymentFields({
+    client,
+    siteDir,
+    offline: Boolean(output) || dryRun
+  })
+
   let assetRewrite = null
   let assetIds = null
   if (!output && !dryRun) {
@@ -453,9 +463,10 @@ export async function push(args = [], deps = {}) {
     let refusals = []
     try {
       const probe = await emitSyncPackages(siteDir, {
-      backend: client.origin,
-      // Placement identity for the folder — see writeFolderItemUuids.
-      folderItemUuids: readFolderItemUuids(siteDir, client.origin),
+        backend: client.origin,
+        ...fields,
+        // Placement identity for the folder — see writeFolderItemUuids.
+        folderItemUuids: readFolderItemUuids(siteDir, client.origin),
         ...(foundationDir ? { foundationDir } : {}),
         resolveModel: makeModelResolver({ client, offline: false, siteDir })
       })
@@ -553,11 +564,6 @@ export async function push(args = [], deps = {}) {
     output || dryRun
       ? readItemUuids(siteDir, client.origin)
       : await ensureItemUuids({ client, siteDir, note })
-  const fields = await deploymentFields({
-    client,
-    siteDir,
-    offline: Boolean(output) || dryRun
-  })
   // A foundation named by catalog ref — a clone's: its kept registered version types a query named
   // for a data key (`ensureRegisteredFoundation`). Offline, only what is already kept.
   if (!output && !dryRun) {

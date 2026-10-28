@@ -630,10 +630,16 @@ export async function publish(args = []) {
   // 3. Partition the queries by schema presence (a first emit reads `schemaless`
   //    — the queries with no data schema, whose compiled files 4c uploads; no
   //    ball carries them since 2026-08-18).
+  // ⭐ With the keys this deployment's Sections take (`deploymentFields`), as the push below
+  // is: this emit says which files go up, and a key sent only where it is taken can name one —
+  // `touch_icon` does. ⛔ Until 2026-10-28 it went without them, so a touch icon was sent as the
+  // site path it was written as, and never uploaded.
+  const fields = await deploymentFields({ client, siteDir })
   let probe
   try {
     probe = await emitSyncPackages(siteDir, {
       backend: client.origin,
+      ...fields,
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir, client.origin),
       ...(foundationDir ? { foundationDir } : {}),
@@ -922,7 +928,6 @@ export async function publish(args = []) {
   // edited since this clone last synced, the push is refused rather than
   // overwriting them, and nothing goes live. `--force` drops the precondition.
   const forced = args.includes('--force')
-  const fields = await deploymentFields({ client, siteDir })
   // A foundation named by catalog ref — a clone's: its kept registered version types a query named
   // for a data key (`ensureRegisteredFoundation`).
   await ensureRegisteredFoundation({
