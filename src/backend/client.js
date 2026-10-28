@@ -920,8 +920,9 @@ export class BackendClient {
   /**
    * GET /dev/site — one page of the sites in the workspace the client names
    * (`setWorkspace`; none ⇒ personal): `{ sites: [{ uuid, name?, updated_at,
-   * deployment?: { status, published_url, … } }] }`. A page shorter than `limit` is
-   * the last. `deployment` is absent for a site never published.
+   * deployment?: { status, published_url, visitor_url, … } }] }`. A page shorter than
+   * `limit` is the last. `deployment` is absent for a site never published. `uniweb site`
+   * shows `visitor_url`, else `published_url` (`liveAddress`).
    *
    * @param {{ limit?: number, offset?: number }} [opts]
    * @returns {Promise<Response>}
@@ -951,11 +952,14 @@ export class BackendClient {
    * who has the site open in the app right now, and on what — `uniweb status` shows
    * it (`describeEditors`, commands/status.js).
    *
-   * ⭐ **The backend also serves a LIVE-SITE record here, and nothing in this CLI reads
-   * it yet** (shipped 2026-08-29; documented here so it is not lost twice):
+   * ⭐ **The backend also serves a LIVE-SITE record here** (shipped 2026-08-29), and
+   * `uniweb status` reads part of it: the address it shows (`visitor_url`, else
+   * `last_published_url` — `liveAddress`), and the foundation and runtime its `--json`
+   * detail carries. Nothing reads the rest yet:
    *
    *   last_published_url · last_published_foundation · last_published_extensions
    *   last_published_runtime · last_published_runtime_floor · last_published_runtime_resolution
+   *   visitor_url — where visitors go: the custom domain while one is active (2026-10-28)
    *
    * Three things about it that a reader will otherwise get wrong:
    *
