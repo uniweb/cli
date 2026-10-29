@@ -2879,8 +2879,8 @@ Foundations have their own free path too: `uniweb add ci --target foundation` pu
 **Three facts about a site, and they are independent — `uniweb status` opens with all three:**
 
 - **Synced** — the project has a site on a backend, so authors can edit it in the Uniweb app. `sync.json` names it on each backend: `https://uniweb.app` by default, or a server of your own (`uniweb login --server <url>`).
-- **Published** — that backend serves it live: Uniweb Cloud, on `https://uniweb.app`. A published site is a synced site; a synced site need not be published — it can sit in the app as a draft.
-- **Deployed** — a build of it is on another host, such as GitHub Pages or S3: by CI on every push (`uniweb add ci`), or by hand (`uniweb deploy`). `deploy.yml` lists those hosts, and a bare `uniweb deploy` goes to its default target.
+- **Published** — that backend serves it live: Uniweb Cloud, on `https://uniweb.app`. A published site is a synced site; a synced site need not be published — it can sit in the app as a draft. A publish is recorded in `deploy.yml` too, under a `host: uniweb` target: `deploys.<target>.url` is the address that publish delivered to. Where visitors go now (a custom domain, while one is active) is the backend's answer, and `uniweb status` shows it.
+- **Deployed** — a build of it is on another host, such as GitHub Pages or S3: by CI on every push (`uniweb add ci`), or by hand (`uniweb deploy`). `deploy.yml` lists those hosts beside the one a publish records, and a bare `uniweb deploy` goes to its default target.
 
 A site can be in more than one place — usually while it moves from one host to another. Before you ship, read where it is: `publish` makes a change live on Uniweb Cloud, `git push` on a CI-deployed host, and `uniweb deploy --target <name>` on one deployed by hand — and each of these is the person's to decide. `uniweb status` also lists the services the live site has (`services:` in `site.yml` is the request, never proof of what the site has).
 
