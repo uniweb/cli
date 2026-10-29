@@ -2786,6 +2786,10 @@ await createEntity({ schema: '@/submission', unit: course.unit, items: [...] })
 
 Landing decides where an entry is, not who may open it.
 
+**An entry and its nested items in one create:** give an item `uuid: uuidv7()`, and a later
+item names it as its `parent` — `{ section: 'degrees/thesis', parent: degree, data }`. The
+uuids serve that write alone: no read returns them, and items are read by `id`.
+
 ### A backend on your machine
 
 You do not need a live backend to build against one. In `site.yml`:
