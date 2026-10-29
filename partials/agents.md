@@ -952,7 +952,7 @@ The body — the value of the schema's content field, `body.content`.
 
 A path under a folder is relative to `records/`, naming one file or matching many. A record's entry can instead be `{ path, tags, label }` — what the folder says about the record: a component receives them beside it as `$tags` (in the order written) and `$label`, and a query reads them like any key (`where: { $tags: featured }`); such an entry may sit at the top level, where a bare path is refused. A `label` — a record entry's or a folder's — is one text in the site's language, or one per language (`label: { en: Launch video, fr: Vidéo de lancement }`); `$label` is the page's language, else its base language, else the site's. A folder takes `tags:` too. A query reads one folder with `scope: archive` — the folder and everything inside it. A record sits in one folder; if you want a computed subset, that is a query, not a second placement. Structure is for querying, not for navigation — and `folder.yml` never lists a record at the top level (the build refuses it: every file in `records/` is a record already).
 
-⚠️ **With a backend, `records/` is what `uniweb push` sends** — every record in it. A site with no `records/` at all leaves the backend's records alone; an *empty* `records/` removes them, and the CLI asks before it does. Records pushed to a backend are served once the site is published.
+⚠️ **With a backend, `records/` is what `uniweb push` sends** — every record in it. A site with no `records/` at all leaves the backend's records alone; an *empty* `records/` removes them, and the CLI asks before it does. Records pushed to a backend are served once the site is published: a record with a data schema reaches the published pages only when `services:` asks for `records: true`, and one with none travels as the published site's files.
 
 **`queries.yml` — how content is reached.** A bare map of name → query. A query names a schema and the site's records of that schema are its rows:
 
@@ -2948,8 +2948,9 @@ YAML, not switches — write `true` or `false`. On a site you push or publish it
 its service, `false` asks it to turn its service off, and an address asks it to leave its own off so
 yours answers. **On a site your host publishes, a service is off unless `services:` asks for it** —
 list the ones the site uses (the templates list theirs). `records: true` asks for your records to be
-delivered live to the published pages: a query whose records have a data schema shows nothing there
-without it, and `publish` says so; a static build reads records from files and ignores it. An entry
+delivered live to the published pages. Turn it on before the first publish of a page that shows
+records with a data schema: without it those records never reach the published page, and `publish`
+warns. A static build reads records from files and ignores it. An entry
 says everything about its service: a setting you remove from it is removed on the next push, and
 removing the entry switches the service off. `uniweb push` and `uniweb publish` send each service
 `site.yml` lists; a service the site has that this copy has never seen (turned on in the app since
