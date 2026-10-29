@@ -3081,6 +3081,8 @@ These are **body only — no frontmatter**; params and config still come from th
 
 **Records translate in the same `extract` run**, into their own manifest at `locales/records/manifest.json` — keyed by the RECORD, so a record translated once is found by every query that returns it. A record whose query has a data schema translates exactly the fields the schema says are text — never an enum, a URL, a date, a number, a file, a reference or a `translatable: false` field — which are the fields a push carries in each language; mark a string that is a code or a key `translatable: false` and no translator is asked for it. An excerpt the build derives is re-derived from each language's body.
 
+**A data schema's own labels are not in `locales/`.** The schema's `label`, `plural`, `description` and its sections' and fields' labels are written once, in its `source_locale`; their other languages go in the schema's `i18n`, keyed by path: `i18n: { fr: { model.label: Séance, section.brief.field.title.label: Titre } }`. A section is named by its full path (`contributions/publications`), and a `fields:` schema's one section is `brief`. See `development/data-schemas.md`.
+
 **Component side.** Nothing to do: `content.title` arrives in the active language. The one thing a foundation builds is a switcher.
 
 ```jsx
