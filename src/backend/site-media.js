@@ -50,8 +50,9 @@ export async function uploadSiteMedia(
   const files = []
   const missing = []
   // ⭐ A ref is a site-root media path (`/images/x.png`), resolved under the site — or a file the
-  // caller already located, `{ ref, path, contentType }`: a file record's file and its preview, which
-  // live in the records directory and declare their own type (`@uniweb/file`, 2026-09-28).
+  // caller already located, `{ ref, path, contentType? }`: a file record's file and its preview, which
+  // live in the records directory and declare their own type (`@uniweb/file`, 2026-09-28), and a
+  // section's co-located file, keyed by its path from the site root (`uwx/located-media.js`, 2026-10-28).
   const keys = []
   for (const item of refs) {
     const ref = typeof item === 'string' ? item : item?.ref
