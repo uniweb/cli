@@ -69,10 +69,6 @@ import {
   isExtensionPackage,
   detectFoundationType
 } from '@uniweb/build'
-import {
-  resolveDefaultLocale,
-  normalizeLanguageList
-} from '@uniweb/core/locale-config'
 import { readSiteConfig } from '@uniweb/build/site'
 import { workspacePackages } from '../utils/workspace-packages.js'
 
@@ -424,33 +420,24 @@ async function loadI18nConfig(projectDir, siteConfig = null) {
   const localesDir = config.i18n?.localesDir || 'locales'
   const localesPath = join(projectDir, localesDir)
 
-  // Resolve locales (undefined/'*' → all available, array → specific)
-  const { resolveLocales } = await import('@uniweb/build/i18n')
-  let locales = await resolveLocales(config.languages, localesPath)
-
-  // Publish filter: build outputs are visitor artifacts. With an explicit
-  // `publishLanguages:`, only listed locales get dist/{locale}/ content,
-  // per-locale HTML, hreflang, and translated collections. Draft locales
-  // stay previewable in dev, which doesn't run this path. Intersecting the
-  // DISK-resolved list here also covers wildcard (`languages: '*'`) sites.
-  if (config.publishLanguages != null) {
-    const publishSet = new Set(normalizeLanguageList(config.publishLanguages))
-    const dropped = locales.filter((l) => !publishSet.has(l))
-    locales = locales.filter((l) => publishSet.has(l))
-    if (dropped.length > 0) {
-      info(
-        `Skipping non-publishable locale(s): ${dropped.join(', ')} (not in publishLanguages)`
-      )
-    }
+  // The site's locales (undefined/'*' → all available, array → specific), with
+  // two filters, by the rule the bundle uses to decide whose files to process
+  // (`localesToBuild`):
+  // - Publish: build outputs are visitor artifacts. With an explicit
+  //   `publishLanguages:`, only listed locales get dist/{locale}/ content,
+  //   per-locale HTML, hreflang, and translated collections. Draft locales
+  //   stay previewable in dev, which doesn't run this path. Intersecting the
+  //   DISK-resolved list also covers wildcard (`languages: '*'`) sites.
+  // - ⛔ The default locale is the root tree, not `dist/<default>/`. An explicit
+  //   `languages: [en, fr]` resolves verbatim — default included — so the DECLARED
+  //   form (the one the contract tells authors to use) minted a duplicate copy of
+  //   every page, while the wildcard form did not. Dropping it keeps content,
+  //   per-locale HTML and translated records agreeing on one set.
+  const { localesToBuild } = await import('@uniweb/build/i18n')
+  const { locales, skipped, defaultLocale } = localesToBuild(config, localesPath)
+  if (skipped.length > 0) {
+    info(`Skipping non-publishable locale(s): ${skipped.join(', ')} (not in publishLanguages)`)
   }
-
-  // ⛔ The default locale is the root tree, not `dist/<default>/`. An explicit
-  // `languages: [en, fr]` resolves verbatim — default included — so the DECLARED
-  // form (the one the contract tells authors to use) minted a duplicate copy of
-  // every page, while the wildcard form did not. Dropping it here keeps content,
-  // per-locale HTML and translated records agreeing on one set.
-  const defaultLocale = resolveDefaultLocale(config)
-  locales = locales.filter((l) => l !== defaultLocale)
 
   if (locales.length === 0) return null
 
