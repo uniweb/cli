@@ -1607,8 +1607,8 @@ ${colors.bright}Usage:${colors.reset}
 
 Opens the site in a headless Chrome, captures it, and composes the captures into
 one image: by default ${colors.bright}site/public/preview.webp${colors.reset}, recorded as ${colors.cyan}preview:${colors.reset} in site.yml
-when site.yml has none, or only the app's generated one. A URL or image path you
-wrote is never replaced.
+when site.yml has none, or what it has is not an image address. A URL or image path
+you wrote is never replaced.
 
 A page that scrolls gets the ${colors.bright}split${colors.reset} layout: the first view in a browser window,
 beside a long strip of the page. A page that does not scroll as a page (a docs

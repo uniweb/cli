@@ -17,7 +17,7 @@ import {
   previewDecision,
   previewValueFor
 } from '../src/commands/snapshot.js'
-import { isAuthoredPreview } from '../src/utils/preview.js'
+import { isAuthoredPreview } from '@uniweb/build/uwx'
 
 test('flag values are not mistaken for the site name', () => {
   const { positionals, settings } = parseSnapshotArgs(['--layout', 'split', 'marketing', '--tone=deep'])

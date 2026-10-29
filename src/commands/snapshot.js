@@ -23,8 +23,9 @@
  * A site keeps its chosen look in `site/snapshot.yml` (utils/snapshot-settings.js):
  * the command's defaults for that site, which flags override and `--save` writes.
  *
- * `preview:` is written only when site.yml has none, or holds the app's generated
- * token. An address the author wrote is never replaced.
+ * `preview:` is written only when site.yml has none, or holds something that is no
+ * author's address — the token an older pull wrote there for a card image the app
+ * generated. An address the author wrote is never replaced.
  */
 
 import { spawn } from 'node:child_process'
@@ -33,13 +34,12 @@ import { createRequire } from 'node:module'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import yaml from 'js-yaml'
-import { writeSiteConfig } from '@uniweb/build/uwx'
+import { isAuthoredPreview, writeSiteConfig } from '@uniweb/build/uwx'
 
 import { didYouMean } from '../utils/args.js'
 import { humanBytes } from '../utils/bytes.js'
 import { discoverSites } from '../utils/discover.js'
 import { detectWorkspacePm } from '../utils/pm.js'
-import { isAuthoredPreview } from '../utils/preview.js'
 import {
   SETTINGS_FILE,
   SettingsError,
@@ -447,7 +447,7 @@ export async function snapshot(args = []) {
       if (setPreview()) console.log(`  site.yml: ${CYAN}preview: ${value}${RESET}`)
       break
     case 'replace':
-      if (setPreview()) console.log(`  site.yml: ${CYAN}preview: ${value}${RESET} ${DIM}(replaces the app-generated preview)${RESET}`)
+      if (setPreview()) console.log(`  site.yml: ${CYAN}preview: ${value}${RESET} ${DIM}(replaces ${current}, which is not an image address)${RESET}`)
       break
     case 'unchanged':
       console.log(`  ${DIM}site.yml already has preview: ${value}${RESET}`)

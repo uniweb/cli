@@ -98,7 +98,6 @@ import {
   refuseUnsendableRecords,
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
-  dropSiteBoundValues,
   untakenBase,
   unsettledFiles,
   commitWriteBacks,
@@ -367,10 +366,6 @@ export async function push(args = [], deps = {}) {
       note(
         `Cleared stale sync state from a previous site (${dropped.join(', ')}).`
       )
-    }
-    const stale = dropSiteBoundValues(siteDir, client.origin)
-    if (stale.length) {
-      note(`Dropped the previous site's ${stale.join(' and ')} from site.yml.`)
     }
   }
   const priorHashes = readSyncCache(siteDir, client.origin)

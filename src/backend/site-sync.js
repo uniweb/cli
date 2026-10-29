@@ -29,7 +29,6 @@ import {
 } from '../utils/sync-point.js'
 import { siteContentRoots } from '../utils/git.js'
 import { humanBytes } from '../utils/bytes.js'
-import { isAuthoredPreview } from '../utils/preview.js'
 import {
   describeRequestError,
   describeWorkspace,
@@ -56,7 +55,6 @@ import {
   updateBackendMap,
   clearBackendSections,
   normalizeBackendOrigin,
-  writeSiteConfig,
   harvestRecordItems,
   storedRecordItems,
   reprintRecordItems,
@@ -732,51 +730,6 @@ export function clearRemoteSyncStateIfUnbound(siteDir, backend) {
 
   clearRemoteSyncState(siteDir, backend, current)
   return stale
-}
-
-/**
- * Drop the `site.yml` values that describe ONE PARTICULAR backend site, when this
- * project is bound to none (no `$uuid`) — a brand-new site, or the state our own
- * "clear `$uuid` to re-publish as a new site" recovery puts you in. Today that is
- * one value: `preview` in the APP's form — a timestamp naming the previous site's
- * generated card image, which is keyed by that site's uuid and would dangle on this
- * one.
- *
- * ⛔ An AUTHOR's preview is theirs and stays: a URL, or a path to an image in the
- * project, is as good for the new site as for the old.
- *
- * (`$url`, where the previous site was live, was dropped here too until it was
- * retired on 2026-09-17. A leftover line is inert — nothing reads or sends it.)
- *
- * The site.yml sibling of `clearRemoteSyncStateIfUnbound`, called beside it for the
- * same reason — before the create mints a uuid and makes the project look bound.
- *
- * @param {string} siteDir
- * @returns {string[]} the keys removed
- */
-export function dropSiteBoundValues(siteDir, backend) {
-  const file = join(siteDir, 'site.yml')
-  let y
-  try {
-    y = yaml.load(readFileSync(file, 'utf8'))
-  } catch {
-    return []
-  }
-  // ⛔ "Bound" is a question about THIS backend, answered by sync.json. This read
-  // `site.yml::$uuid` until 2026-09-20 and kept doing so after step 4 moved the key —
-  // so every project read as unbound and every push stripped a bound site's
-  // generated preview. A write, from a stale read, with nothing to notice it.
-  if (!y || typeof y !== 'object') return []
-  if (readBackendState(siteDir, backend).site?.uuid) return []
-  const dropped = []
-  if (
-    y.preview !== undefined &&
-    !isAuthoredPreview(y.preview) &&
-    writeSiteConfig(siteDir, { preview: null }) === 'updated'
-  ) {
-    dropped.push('preview')
-  }
-  return dropped
 }
 
 export function readSyncCache(siteDir, backend) {

@@ -230,17 +230,18 @@ test(
 
 test('⭐ what a real push writes, the real readers find — the writer/reader seam', async () => {
   const dir = tmpSite()
-  writeFileSync(join(dir, 'site.yml'), "name: Acme\nfoundation: '@a/base'\npreview: '2026-09-10T12:34:56Z'\n")
+  writeFileSync(join(dir, 'site.yml'), "name: Acme\nfoundation: '@a/base'\n")
   assert.equal((await pushTo(dir, mockBackend(A, 'SITE-A'))).exitCode, 0)
 
-  const sync = await import('../src/backend/site-sync.js')
-  // The preview drop: a BOUND site keeps its generated preview. The stale reader
-  // thought every site unbound and stripped it on every push.
-  assert.deepEqual(sync.dropSiteBoundValues(dir, A), [], 'a bound site must keep its preview')
-  assert.match(readFileSync(join(dir, 'site.yml'), 'utf8'), /preview:/)
+  // The reader push, pull, publish and status ask where else the project syncs. (This read the
+  // preview drop until 2026-10-29, when the drop was deleted: a push sends no app token to drop.)
+  const { readSiteIdentity, syncedElsewhere } = await import('../src/utils/site-identity.js')
+  assert.equal(readSiteIdentity(dir, A).uuid, 'SITE-A', 'the push bound the project to its site')
+  assert.equal(syncedElsewhere(dir, A), null)
 
   // And on a backend it never synced with, the same site IS unbound — per backend.
-  assert.deepEqual(sync.dropSiteBoundValues(dir, B), ['preview'])
+  assert.equal(readSiteIdentity(dir, B).uuid, null)
+  assert.deepEqual(syncedElsewhere(dir, B), [A])
 })
 
 // ─────────────────────────────────── the control ───────────────────────────────

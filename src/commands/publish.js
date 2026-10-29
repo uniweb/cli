@@ -110,7 +110,6 @@ import {
   unsettledFiles,
   commitWriteBacks,
   reportWriteBacks,
-  dropSiteBoundValues,
   pushSyncPackages,
   readSiteWorkspace
 } from '../backend/site-sync.js'
@@ -670,12 +669,6 @@ export async function publish(args = []) {
   if (droppedState.length) {
     say.dim(
       `Cleared stale sync state from a previous site (${droppedState.join(', ')}).`
-    )
-  }
-  const droppedValues = dropSiteBoundValues(siteDir, client.origin)
-  if (droppedValues.length) {
-    say.dim(
-      `Dropped the previous site's ${droppedValues.join(' and ')} from site.yml.`
     )
   }
   // 3b. Make sure the SITE EXISTS before a single byte is uploaded.
