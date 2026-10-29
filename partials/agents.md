@@ -1155,7 +1155,7 @@ Four things you won't discover by reading exports:
 
 > **Content fields are HTML strings.** Covered above — it's the single most common rendering bug.
 
-> **`<Link>` takes `to` or `href`.** `to="page:about"` resolves a page ID (survives moves), external URLs get `target="_blank"` automatically, and `reload` forces a full page load.
+> **`<Link>` takes `to` or `href`.** `to="page:about"` resolves a page ID (survives moves) or a route, never a folder: the homepage is `page:/`, or `page:home` only when its `page.yml` says `id: home`. External URLs get `target="_blank"` automatically, and `reload` forces a full page load.
 
 > **`cn()` gotcha — a later `text-<size>` silently drops an earlier `leading-*`.** Tailwind's size classes set line height too, so `cn()` treats the size as replacing the leading: `cn('leading-[1.1] text-4xl')` → `text-4xl`. Put the size first, or fold the leading into it (`text-[clamp(2rem,5vw,4rem)]/[1.1]`). Most likely to bite when the size comes from a lookup and the leading sits in a shared base string.
 
