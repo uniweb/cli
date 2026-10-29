@@ -149,3 +149,56 @@ test('both verbs name the backend the count is read under', () => {
     assert.match(call, /backend: client\.origin/, `${verb}.js calls guardEmptyRecords without backend`)
   }
 })
+
+// ⭐ AND THE OTHER SIDE OF THE SAME RULE: a push that states NO folder leaves the backend's as it
+// is. That is right — a directory holding files but no records is not an author emptying it — but
+// an author who has just taken the records out, and kept such files, expects them gone, and the
+// push said nothing (2026-10-29, a gallery's records moving to another schema beside schema-less
+// articles). `noteFolderLeftAlone` says it, where this copy banked placements to lose.
+test('noteFolderLeftAlone: a push that states no folder says the backend keeps its records', async () => {
+  const { noteFolderLeftAlone } = await import('../src/utils/records-guard.js')
+  const dir = site(['articles/a.md'], { '@R1': 'I1', '@R2': 'I2' })
+  try {
+    const notes = []
+    const kept = await noteFolderLeftAlone({ pkg: { sendsFolder: false }, siteDir: dir, backend: ORIGIN, note: (m) => notes.push(m) })
+    assert.equal(kept, 2)
+    const out = notes.join('\n')
+    assert.match(out, /keeps its 2 records/)
+    assert.match(out, /records\/ holds files but no records of a data schema/)
+    assert.match(out, /push once with records\/ there and holding nothing at all/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('noteFolderLeftAlone: says so for a records directory that is not there, too', async () => {
+  const { noteFolderLeftAlone } = await import('../src/utils/records-guard.js')
+  const dir = site(null, { '@R1': 'I1' })
+  try {
+    const notes = []
+    assert.equal(await noteFolderLeftAlone({ pkg: { sendsFolder: false }, siteDir: dir, backend: ORIGIN, note: (m) => notes.push(m) }), 1)
+    assert.match(notes.join('\n'), /keeps its 1 record: .*there is no records\/ here/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('noteFolderLeftAlone: silent when the push states the folder, or nothing is banked', async () => {
+  const { noteFolderLeftAlone } = await import('../src/utils/records-guard.js')
+  const banked = site(['articles/a.md'], { '@R1': 'I1' })
+  const fresh = site(['articles/a.md'])
+  try {
+    const notes = []
+    const note = (m) => notes.push(m)
+    // The folder is stated: the push itself says what it does to it.
+    assert.equal(await noteFolderLeftAlone({ pkg: { sendsFolder: true }, siteDir: banked, backend: ORIGIN, note }), 0)
+    // A package that does not say is not a reason to speak.
+    assert.equal(await noteFolderLeftAlone({ pkg: {}, siteDir: banked, backend: ORIGIN, note }), 0)
+    // Nothing banked: nothing this copy knows the backend to hold.
+    assert.equal(await noteFolderLeftAlone({ pkg: { sendsFolder: false }, siteDir: fresh, backend: ORIGIN, note }), 0)
+    assert.deepEqual(notes, [])
+  } finally {
+    rmSync(banked, { recursive: true, force: true })
+    rmSync(fresh, { recursive: true, force: true })
+  }
+})

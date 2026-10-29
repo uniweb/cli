@@ -86,3 +86,37 @@ export async function guardEmptyRecords({ siteDir, backend, args = [], warn, not
   const yes = await confirm(`Remove ${count} record${count === 1 ? '' : 's'} from the site's folder?`, false)
   return { ok: yes, count }
 }
+
+/**
+ * Say when a push leaves the backend's folder as it is although it holds records.
+ *
+ * A records directory that holds files but no records — data with no schema, say — states no
+ * folder, by design (`sendsFolder` in `@uniweb/build`): that is not an author emptying it. But an
+ * author who has just taken the records out and kept such files expects them gone from the
+ * backend, and the push said nothing (2026-10-29: a gallery's records moving to another schema,
+ * its schema-less articles left beside them). So where this copy holds placements from an earlier
+ * push or pull, say they stay, and how they would go.
+ *
+ * @param {object} params
+ * @param {object} params.pkg - what `emitSyncPackages` returned; `sendsFolder: false` is the case
+ * @param {string} params.siteDir
+ * @param {string} params.backend - whose placements to count
+ * @param {(m: string) => void} params.note - the caller's reporter
+ * @returns {Promise<number>} how many records the backend's folder keeps, as this copy last saw it
+ */
+export async function noteFolderLeftAlone({ pkg, siteDir, backend, note }) {
+  if (pkg?.sendsFolder !== false) return 0
+  const count = countPlacedRecords(readFolderItemUuids(siteDir, backend))
+  if (count === 0) return 0
+  const pool = await readEntityPool(siteDir)
+  const records = count === 1 ? '1 record' : `${count} records`
+  note(
+    `! The site's folder on the backend keeps its ${records}: this push leaves it as it is, because ` +
+      (pool.exists ? `${pool.dir}/ holds files but no records of a data schema.` : `there is no ${pool.dir}/ here.`)
+  )
+  note(
+    `  To remove ${count === 1 ? 'it' : 'them'} from the backend, push once with ${pool.dir}/ there and holding nothing at all ` +
+      `— the push asks first.`
+  )
+  return count
+}

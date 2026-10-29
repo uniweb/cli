@@ -2267,6 +2267,22 @@ export async function pushSyncPackages({
         // which is the case this message now names. Suggesting it there sends the
         // user to re-fetch a map they already have.
         if (problem.detail) note(String(problem.detail))
+        // ⭐ THE SITE'S FOLDER: one placement per record, keyed by the record it references, so
+        // its placements are all new when its records are — every record moved to another data
+        // schema, where a record keeps its type and each becomes a new one. The backend cannot
+        // tell that from identity lost, so it refuses, and the route is an empty folder first.
+        // ⛔ Until 2026-10-29 this said nothing more, and the type-change advice below led here:
+        // thirteen gallery records moving from @std/project to their foundation's own schema.
+        if (label === 'records' && where === 'contents') {
+          note(
+            "That section is the site's folder, one placement per record, and a placement is new when its " +
+              'record is — as when every record has moved to another data schema.'
+          )
+          note(
+            'To replace every record in the folder: push once with the records directory there and holding ' +
+              'nothing at all (the push asks, then removes them), then put the records back and push again.'
+          )
+        }
         return null
       }
       // ⭐ A RECORD KEEPS ITS TYPE. A record file moved to another type's folder keeps its `$uuid`, and
@@ -2278,6 +2294,13 @@ export async function pushSyncPackages({
         note(
           'A record keeps its type. To store it as the new type, make it a new record: delete the ' +
             '`$uuid` line from its file, then push again.'
+        )
+        // ⚠️ Not the whole route when every record of the folder moves at once: each is then new,
+        // and so is every placement, which the folder refuses (`identity_required` above).
+        note(
+          'Moving every record in the folder to a new type? Then the folder refuses that push too: empty it ' +
+            'first — push once with the records directory there and holding nothing at all — then put the ' +
+            'records back without `$uuid` and push again.'
         )
         return null
       }

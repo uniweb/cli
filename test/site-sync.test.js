@@ -1431,7 +1431,51 @@ test('pushSyncPackages: a record that would change its type is explained — kee
   assert.ok(calls.error.some((m) => /would change its type/.test(m)))
   assert.ok(calls.note.some((m) => /stored as @acme\/note/.test(m)), 'the backend\'s naming of the record')
   assert.ok(calls.note.some((m) => /delete the `\$uuid` line/.test(m)), 'what to do')
+  // ⛔ Not the whole route when every record of the folder moves: that advice alone led straight
+  // into the folder's own refusal (2026-10-29).
+  assert.ok(calls.note.some((m) => /Moving every record in the folder to a new type\?.*empty it/.test(m)), 'the whole-folder route')
   rmSync(dir, { recursive: true, force: true })
+})
+
+test('pushSyncPackages: the folder refusing every placement as new is explained — empty it first', async () => {
+  // Every record moved to another data schema is a new record, so every placement in the site's
+  // folder is new, and the backend refuses the folder whole — measured 2026-10-29, thirteen gallery
+  // records moving from @std/project to their foundation's own schema. Its count and section were
+  // said; what to do was not.
+  const { root, site } = talkSite()
+  const { emitSyncPackages } = await import('@uniweb/build/uwx')
+  try {
+    const pkg = await emitSyncPackages(site, { backend: ORIGIN })
+    const problem = {
+      status: 400,
+      title: 'Identity Required',
+      reason: 'identity_required',
+      detail: 'identity required: entity F, section `contents`: …',
+      section_name: 'contents',
+      records_without_uuid: 1,
+      stored_items: 1
+    }
+    const client = {
+      origin: ORIGIN,
+      updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'SITE', changed: true }])),
+      pushFolder: async () => ({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: async () => JSON.stringify(problem),
+        json: async () => problem
+      })
+    }
+    const { report, calls } = makeReport()
+    const res = await pushSyncPackages({ client, siteDir: site, pkg, report })
+    assert.equal(res.exitCode, 1)
+    const out = [...calls.error, ...calls.note].join('\n')
+    assert.match(out, /records push refused — one section carries no item identity \(section contents\)/)
+    assert.match(out, /the site's folder, one placement per record/)
+    assert.match(out, /push once with the records directory there and holding nothing at all/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('pushSyncPackages: the folder lane is keyed by the bound site uuid', async () => {
@@ -1700,6 +1744,8 @@ test('an identity_required 400 is explained, not surfaced as a raw error', async
   assert.match(out, /2 record\(s\), none carrying a `\$uuid`/, 'must give the count that was blank')
   assert.match(out, /2 item\(s\) are already stored/, 'must give what would have been replaced')
   assert.match(out, /Nothing was written/)
+  // The site-content lane's sections are not the folder: no folder route for them.
+  assert.doesNotMatch(out, /site's folder/)
 
   // ⛔ The refusal is PER-SECTION, so the old wording was wrong three ways in the
   // ordinary case: the copy does have identity, no recovery was attempted, and a

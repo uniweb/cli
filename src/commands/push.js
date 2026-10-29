@@ -79,7 +79,7 @@ import {
 } from '../utils/site-identity.js'
 import { confirm, isNonInteractive } from '../utils/interactive.js'
 import { announceServices, foundationSupports } from '../backend/service-request.js'
-import { guardEmptyRecords } from '../utils/records-guard.js'
+import { guardEmptyRecords, noteFolderLeftAlone } from '../utils/records-guard.js'
 import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
 import { repoOf } from '../utils/sync-point.js'
 import {
@@ -627,6 +627,9 @@ export async function push(args = [], deps = {}) {
   const { siteContent, records, siteContentUuid, warnings, skipped } = pkg
   log('')
   for (const w of warnings) note(`! ${w}`)
+  // A folder this push leaves alone while the backend's still holds records — said, since an author
+  // who took the records out expects them gone (`noteFolderLeftAlone`).
+  await noteFolderLeftAlone({ pkg, siteDir, backend: client.origin, note })
   // The same stop for the paths the probe above does not run on — `-o` and
   // `--dry-run` say what a push would do, and a push would stop here.
   if (refuseUnsendableRecords(pkg.refusals, { error, note })) return { exitCode: 1 }
