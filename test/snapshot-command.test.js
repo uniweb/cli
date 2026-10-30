@@ -1,7 +1,7 @@
 /**
  * `uniweb snapshot` — the parts this CLI owns: reading its flags, choosing the
- * site, and deciding what happens to site.yml's `preview:`. Capturing and
- * composing belong to @uniweb/snapshot and are tested there.
+ * site, and deciding what happens to site.yml's `preview:` and `seo.image`. Capturing
+ * and composing belong to @uniweb/snapshot and are tested there.
  */
 
 import { test } from 'node:test'
@@ -10,12 +10,14 @@ import { join } from 'node:path'
 
 import {
   DEFAULT_OUTPUT,
+  SHARE_OUTPUT,
   flagsFor,
   libraryOptions,
   parseSnapshotArgs,
   pickSite,
   previewDecision,
-  previewValueFor
+  previewValueFor,
+  shareImageDecision
 } from '../src/commands/snapshot.js'
 import { isAuthoredPreview } from '@uniweb/build/uwx'
 
@@ -139,4 +141,63 @@ test('the site: named, else the one you are in, else the only one', () => {
   assert.equal(fromRoot.site.name, 'docs')
   assert.equal(fromRoot.ambiguous, true)
   assert.equal(pickSite([sites[1]], root, { cwd: root }).ambiguous, false)
+})
+
+test('--share is a run of its own: its flags are read, and a stylesheet is a path', () => {
+  const { settings, control } = parseSnapshotArgs(
+    ['--share', '--route', '/about', '--size', '1200x630', '--hide', '.chat', '--css', 'card.css', '--out', 'public/card.png', '--no-set-image', '--save'],
+    '/work/site'
+  )
+  assert.equal(control.share, true)
+  assert.equal(control.noSetImage, true)
+  assert.equal(control.save, true)
+  assert.deepEqual(settings, {
+    route: '/about',
+    size: '1200x630',
+    hide: ['.chat'],
+    css: '/work/site/card.css',
+    out: '/work/site/public/card.png'
+  })
+})
+
+test('--share refuses what belongs to a preview image, by name', () => {
+  for (const [flags, expected] of [
+    [['--layout', 'split'], /--layout/],
+    [['--tone', 'deep'], /--tone/],
+    [['--gap', '10'], /--gap/],
+    [['--overlap', '10'], /--overlap/],
+    [['--strip', 'fit'], /--strip/],
+    [['--side', 'left'], /--side/],
+    [['--frame', 'plain'], /--frame/],
+    [['--compare'], /--compare/],
+    [['--no-set-preview'], /--no-set-image/]
+  ]) {
+    assert.throws(() => parseSnapshotArgs(['--share', ...flags]), expected, flags.join(' '))
+  }
+})
+
+test('⛔ a preview image takes neither of the share image\'s flags', () => {
+  assert.throws(() => parseSnapshotArgs(['--css', 'card.css']), /--css/)
+  assert.throws(() => parseSnapshotArgs(['--no-set-image']), /--no-set-image/)
+})
+
+test('⛔ a preview run reads as it did: same flags, same settings, no share', () => {
+  const parsed = parseSnapshotArgs(['--layout', 'device', '--hide', '.chat', '--out', 'x.webp', '--no-set-preview'], '/work')
+  assert.deepEqual(parsed.settings, { layout: 'device', hide: ['.chat'], out: '/work/x.webp' })
+  assert.deepEqual(parsed.control, { noSetPreview: true })
+  assert.equal(DEFAULT_OUTPUT, join('public', 'preview.webp'))
+})
+
+test('the share image lives in public/, so it has a site path', () => {
+  const site = '/work/site'
+  assert.equal(previewValueFor(site, join(site, SHARE_OUTPUT)), '/share-card.png')
+})
+
+test('seo.image is written when absent, and an image the author named is never replaced', () => {
+  assert.equal(shareImageDecision(undefined, '/share-card.png'), 'set')
+  assert.equal(shareImageDecision(null, '/share-card.png'), 'set')
+  assert.equal(shareImageDecision('', '/share-card.png'), 'set')
+  assert.equal(shareImageDecision('/share-card.png', '/share-card.png'), 'unchanged')
+  assert.equal(shareImageDecision('/images/mine.jpg', '/share-card.png'), 'keep')
+  assert.equal(shareImageDecision('https://cdn.example.com/og.png', '/share-card.png'), 'keep')
 })

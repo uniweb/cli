@@ -1604,6 +1604,7 @@ ${colors.cyan}${colors.bright}uniweb snapshot${colors.reset} ${colors.dim}— Co
 ${colors.bright}Usage:${colors.reset}
   uniweb snapshot [<site>] [options]
   uniweb snapshot --compare [options]
+  uniweb snapshot --share [options]
 
 Opens the site in a headless Chrome, captures it, and composes the captures into
 one image: by default ${colors.bright}site/public/preview.webp${colors.reset}, recorded as ${colors.cyan}preview:${colors.reset} in site.yml
@@ -1636,6 +1637,15 @@ ${colors.bright}Choosing and keeping a look:${colors.reset}
   --compare           One capture, several looks on one sheet, each captioned with
                       its flags (site/.uniweb/snapshot/compare.webp)
   --save              Keep this run's flags in site/snapshot.yml, the site's defaults
+
+${colors.bright}A link preview image:${colors.reset}
+  --share             The first view of the page filling a 1200×630 PNG, with no frame:
+                      ${colors.bright}site/public/share-card.png${colors.reset}, recorded as ${colors.cyan}seo.image${colors.reset} when site.yml has none.
+                      Takes --route, --size, --scale, --quality, --out, --hide and --save
+                      (under share: in site/snapshot.yml), and none of the look.
+  --css <file>        With --share: a stylesheet applied before capturing, to arrange the
+                      view for a picture
+  --no-set-image      With --share: write the image without touching site.yml
 
 ${colors.bright}Options:${colors.reset}
   --site <name>       The site (default: the one you are in, or the only one)

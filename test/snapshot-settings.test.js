@@ -13,6 +13,7 @@ import {
   SettingsError,
   mergeSettings,
   readSnapshotSettings,
+  saveShareSettings,
   saveSnapshotSettings
 } from '../src/utils/snapshot-settings.js'
 
@@ -90,6 +91,78 @@ test('--save keeps the file and adds this run over it, in a fixed order, and rea
       side: 'left',
       out: join(dir, 'public', 'og.png')
     })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('⛔ a share: block reaches no preview, and paths in it are resolved against the site', () => {
+  const dir = siteWith('side: left\nshare:\n  route: /about\n  css: card.css\n  out: public/card.png\n  hide: .chat\n')
+  try {
+    const { settings, share } = readSnapshotSettings(dir)
+    assert.deepEqual(settings, { side: 'left' })
+    assert.deepEqual(share, {
+      route: '/about',
+      css: join(dir, 'card.css'),
+      out: join(dir, 'public', 'card.png'),
+      hide: ['.chat']
+    })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a file with no share: block reads as it did', () => {
+  const dir = siteWith('side: left\n')
+  try {
+    assert.equal('share' in readSnapshotSettings(dir), false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a share: block takes a share image\'s settings and no look, with a suggestion', () => {
+  for (const [text, expected] of [
+    ['share:\n  gap: 10\n', /unknown setting `gap`/],
+    ['share:\n  rout: /about\n', /Did you mean `route`/],
+    ['share: yes\n', /should be a list of settings/]
+  ]) {
+    const dir = siteWith(text)
+    try {
+      assert.throws(() => readSnapshotSettings(dir), (err) => err instanceof SettingsError && expected.test(err.message))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+})
+
+test('⭐ saving a preview\'s look keeps the share: block, and saving a share image keeps the look', () => {
+  const dir = siteWith('side: left\nshare:\n  route: /about\n  css: card.css\n')
+  try {
+    saveSnapshotSettings(dir, { gap: 20 })
+    let read = readSnapshotSettings(dir)
+    assert.deepEqual(read.settings, { side: 'left', gap: 20 })
+    assert.deepEqual(read.share, { route: '/about', css: join(dir, 'card.css') })
+
+    const { saved } = saveShareSettings(dir, { hide: ['.chat'], out: join(dir, 'public', 'card.png') })
+    assert.deepEqual(saved, ['hide', 'out'])
+    read = readSnapshotSettings(dir)
+    assert.deepEqual(read.settings, { side: 'left', gap: 20 })
+    assert.deepEqual(read.share, { route: '/about', hide: ['.chat'], css: join(dir, 'card.css'), out: join(dir, 'public', 'card.png') })
+    const text = readFileSync(join(dir, SETTINGS_FILE), 'utf8')
+    assert.match(text, /css: card\.css/)
+    assert.match(text, /out: public\/card\.png/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('saving a share image into a site with no file writes only that block', () => {
+  const dir = siteWith()
+  try {
+    saveShareSettings(dir, { route: '/about' })
+    assert.deepEqual(readSnapshotSettings(dir).settings, {})
+    assert.deepEqual(readSnapshotSettings(dir).share, { route: '/about' })
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

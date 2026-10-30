@@ -1185,7 +1185,7 @@ export async function checkLinkPreviews({ sitePath, siteName, issues }) {
     issues.push({ id, type: 'info', site: siteName, message })
     info(`[${id}] ${message}`)
     if (without.length < pages.length) listSome(without.map((p) => p.route))
-    log(`    Set ${colors.green}seo.image${colors.reset} in site.yml — every page without one of its own shows it. A ${CARD.width}×${CARD.height} JPEG or PNG fills a card.`)
+    log(`    Set ${colors.green}seo.image${colors.reset} in site.yml — every page without one of its own shows it. A ${CARD.width}×${CARD.height} JPEG or PNG fills a card; ${colors.green}uniweb snapshot --share${colors.reset} makes one from the site.`)
   }
 
   // Each image once, with the pages that show it.

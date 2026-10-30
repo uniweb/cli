@@ -2865,6 +2865,7 @@ uniweb inspect <path>             # Show parsed content for a section or page (-
 uniweb snapshot                   # Compose site/public/preview.webp from the site; sets preview: if unset
                                   #   needs `pnpm add -D -w @uniweb/snapshot` and Chrome or Edge
 uniweb snapshot --compare         # Several looks on one sheet; take one with its flags + --save (site/snapshot.yml)
+uniweb snapshot --share           # The first view as a 1200×630 link preview; sets seo.image if unset (--css arranges it)
 
 uniweb <command> --help           # Per-command flags — no side effects. Prefer this over guessing.
 ```

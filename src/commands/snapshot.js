@@ -26,6 +26,11 @@
  * `preview:` is written only when site.yml has none, or holds something that is no
  * author's address — the token an older pull wrote there for a card image the app
  * generated. An address the author wrote is never replaced.
+ *
+ * `uniweb snapshot --share` is the other image: the site's link preview, recorded as
+ * `seo.image`. It is the first view of a page filling a 1200×630 image, with no frame
+ * and no look, and it shares nothing with the preview but finding the site. `--css`
+ * arranges the view for a picture, and its settings are `snapshot.yml`'s `share:` block.
  */
 
 import { spawn } from 'node:child_process'
@@ -45,6 +50,7 @@ import {
   SettingsError,
   mergeSettings,
   readSnapshotSettings,
+  saveShareSettings,
   saveSnapshotSettings
 } from '../utils/snapshot-settings.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
@@ -70,18 +76,20 @@ const SETTING_FLAGS = {
   '--scale': 'scale',
   '--quality': 'quality',
   '--hide': 'hide',
+  '--css': 'css',
   '--out': 'out'
 }
 const NUMBER_SETTINGS = ['gap', 'overlap', 'scale', 'quality']
 /** Flags that choose where the site comes from and what the run does. */
 const CONTROL_VALUE_FLAGS = ['--site', '--url']
-const CONTROL_BOOLEAN_FLAGS = ['--dev', '--no-build', '--no-set-preview', '--compare', '--save']
+const CONTROL_BOOLEAN_FLAGS = ['--dev', '--no-build', '--no-set-preview', '--no-set-image', '--compare', '--save', '--share']
 const GLOBAL_FLAGS = ['--non-interactive', '--help', '-h']
 const ALL_FLAGS = [...Object.keys(SETTING_FLAGS), ...CONTROL_VALUE_FLAGS, ...CONTROL_BOOLEAN_FLAGS, ...GLOBAL_FLAGS]
 const LOOK_SETTINGS = ['gap', 'overlap', 'strip', 'side', 'frame']
 
 export const DEFAULT_OUTPUT = join('public', 'preview.webp')
 export const COMPARE_OUTPUT = join('.uniweb', 'snapshot', 'compare.webp')
+export const SHARE_OUTPUT = join('public', 'share-card.png')
 
 class UsageError extends Error {}
 
@@ -120,7 +128,7 @@ export function parseSnapshotArgs(args = [], cwd = process.cwd()) {
       const key = SETTING_FLAGS[name]
       if (!key) control[camel(name)] = value
       else if (key === 'hide') settings.hide = [...(settings.hide ?? []), value]
-      else if (key === 'out') settings.out = resolve(cwd, value)
+      else if (key === 'out' || key === 'css') settings[key] = resolve(cwd, value)
       else if (NUMBER_SETTINGS.includes(key)) {
         const number = Number(value)
         if (!Number.isFinite(number)) throw new UsageError(`\`${name}\` needs a number.`)
@@ -142,6 +150,17 @@ export function parseSnapshotArgs(args = [], cwd = process.cwd()) {
   }
   if (control.compare && control.save) {
     throw new UsageError('`--save` keeps the look of a snapshot; choose a look from the sheet, then save that.')
+  }
+  if (control.share) {
+    const look = ['layout', 'tone', ...LOOK_SETTINGS].find((key) => settings[key] !== undefined)
+    if (look) throw new UsageError(`\`--share\` fills the image with the first view, so it takes no \`--${look}\`.`)
+    if (control.compare) throw new UsageError('`--compare` shows looks of a preview image, and `--share` has none.')
+    if (control.noSetPreview) {
+      throw new UsageError('`--share` leaves `preview:` alone. To leave `seo.image` alone too, pass `--no-set-image`.')
+    }
+  } else {
+    if (settings.css) throw new UsageError('`--css` arranges a share image; it goes with `--share`.')
+    if (control.noSetImage) throw new UsageError('`--no-set-image` goes with `--share`; a preview image takes `--no-set-preview`.')
   }
   return { settings, control, positionals }
 }
@@ -189,6 +208,16 @@ export function previewDecision(current, next) {
   if (current === undefined || current === null || current === '') return 'set'
   if (current === next) return 'unchanged'
   return isAuthoredPreview(current) ? 'keep' : 'replace'
+}
+
+/**
+ * What to do with site.yml's `seo.image` given the value we would write. An image the
+ * author named is never replaced: unlike `preview:`, nothing but an author writes this.
+ * @returns {'set'|'unchanged'|'keep'}
+ */
+export function shareImageDecision(current, next) {
+  if (current === undefined || current === null || current === '') return 'set'
+  return current === next ? 'unchanged' : 'keep'
 }
 
 /** The site the command applies to: named, else the one containing cwd, else the only one. */
@@ -275,6 +304,124 @@ function fail(message, ...details) {
   process.exit(1)
 }
 
+/** Put the site behind a URL: the one named, its dev server, or its build. */
+async function siteBehindUrl({ control, site, siteDir, cwd, lib }) {
+  try {
+    if (control.url) {
+      return { url: control.url, label: control.url, close: async () => {} }
+    }
+    if (control.dev) {
+      console.error(`${DIM}→ starting the dev server for ${site.name}${RESET}`)
+      const dev = await lib.startDevServer(siteDir)
+      return { url: dev.url, label: `dev server (${dev.url})`, close: dev.close }
+    }
+    if (!control.noBuild) {
+      console.error(`${DIM}→ building ${site.name}${RESET}`)
+      await runBuild(siteDir)
+    }
+    const dist = join(siteDir, 'dist')
+    if (!existsSync(join(dist, 'index.html'))) {
+      fail(`No built site at ${relative(cwd, dist) || dist}.`, 'Run without `--no-build`, or build the site first.')
+    }
+    const server = await lib.serveDirectory(dist, { base: readSiteYml(siteDir).data.base })
+    return { url: server.url, label: 'the built site', close: server.close }
+  } catch (err) {
+    fail(err.message)
+  }
+}
+
+/** `uniweb snapshot --share`: the site's link preview image, recorded as `seo.image`. */
+async function shareSnapshot({ flagSettings, fileShare, control, site, siteDir, rootDir, cwd }) {
+  const { css: cssFile, ...settings } = mergeSettings(fileShare, flagSettings)
+  let options
+  try {
+    options = libraryOptions(settings)
+  } catch (err) {
+    if (!(err instanceof UsageError)) throw err
+    fail(err.message)
+  }
+  options.output ??= join(siteDir, SHARE_OUTPUT)
+
+  let css = ''
+  if (cssFile) {
+    try {
+      css = readFileSync(cssFile, 'utf8')
+    } catch {
+      fail(`Cannot read the stylesheet at ${relative(cwd, cssFile) || cssFile}.`)
+    }
+  }
+
+  const lib = await loadSnapshotPackage([siteDir, rootDir])
+  if (!lib) {
+    fail(
+      '`uniweb snapshot` needs `@uniweb/snapshot`, which is not installed here.',
+      'Add it as a dev dependency of the workspace:',
+      `  ${CYAN}${installHint(rootDir)}${RESET}`
+    )
+  }
+  if (typeof lib.shareCard !== 'function') {
+    fail('The installed `@uniweb/snapshot` predates `--share`.', 'Update it:', `  ${CYAN}${installHint(rootDir)}${RESET}`)
+  }
+  try {
+    lib.normalizeOptions({ ...options, canvas: options.canvas ?? lib.SHARE_CANVAS })
+  } catch (err) {
+    fail(err.message, `Check the flags${Object.keys(fileShare).length ? ` and ${SETTINGS_FILE}` : ''}.`)
+  }
+
+  const source = await siteBehindUrl({ control, site, siteDir, cwd, lib })
+  const onStep = (step) => {
+    if (step !== 'capture') return
+    const page = options.route && options.route !== '/' ? ` · ${options.route}` : ''
+    console.error(`${DIM}→ capturing ${source.label}${page}${RESET}`)
+  }
+
+  let result
+  try {
+    result = await lib.shareCard({ ...options, css, url: source.url, onStep })
+  } catch (err) {
+    await source.close().catch(() => {})
+    fail(err.message)
+  }
+  await source.close()
+
+  const shown = relative(cwd, options.output) || options.output
+  console.log(`${GREEN}✓${RESET} ${shown} ${DIM}(${result.width}×${result.height}, ${humanBytes(result.bytes)} — link preview image)${RESET}`)
+
+  if (control.save) {
+    const { saved } = saveShareSettings(siteDir, flagSettings)
+    const where = relative(cwd, join(siteDir, SETTINGS_FILE))
+    if (saved.length) console.log(`  ${where}: ${CYAN}saved ${saved.join(', ')} under share${RESET}`)
+    else console.log(`  ${DIM}${where}: nothing to save — pass the flags you want to keep.${RESET}`)
+  }
+
+  if (!siteDir || control.noSetImage) return
+
+  const value = previewValueFor(siteDir, options.output)
+  if (!value) {
+    console.log(`  ${DIM}site.yml not changed: the image is outside ${join(site.path, 'public')}/, so it has no site path.${RESET}`)
+    return
+  }
+  const seo = readSiteYml(siteDir).data.seo
+  switch (shareImageDecision(seo?.image, value)) {
+    case 'set':
+      // Edited in place, its comments kept (`writeSiteConfig`) — and not at all when site.yml
+      // does not parse: that is said, and the file left as the author has it.
+      try {
+        writeSiteConfig(siteDir, { seo: { ...(seo && typeof seo === 'object' ? seo : {}), image: value } })
+        console.log(`  site.yml: ${CYAN}seo.image: ${value}${RESET} ${DIM}(every page without its own shows it)${RESET}`)
+      } catch (err) {
+        console.log(`  ${YELLOW}site.yml not changed:${RESET} ${DIM}${err.message}${RESET}`)
+      }
+      break
+    case 'unchanged':
+      console.log(`  ${DIM}site.yml already has seo.image: ${value}${RESET}`)
+      break
+    case 'keep':
+      console.log(`  ${YELLOW}site.yml keeps seo.image: ${seo.image}${RESET} ${DIM}— set it to ${value} to use this image.${RESET}`)
+      break
+  }
+}
+
 export async function snapshot(args = []) {
   const cwd = process.cwd()
   let parsed
@@ -310,13 +457,20 @@ export async function snapshot(args = []) {
   // The site's saved look, under this run's flags. For a comparison, the file's
   // `out` names the preview image, not the sheet.
   let fileSettings = {}
+  let fileShare = {}
   if (siteDir) {
     try {
-      fileSettings = readSnapshotSettings(siteDir).settings
+      const fromFile = readSnapshotSettings(siteDir)
+      fileSettings = fromFile.settings
+      fileShare = fromFile.share ?? {}
     } catch (err) {
       if (!(err instanceof SettingsError)) throw err
       fail(err.message)
     }
+  }
+  if (control.share) {
+    await shareSnapshot({ flagSettings, fileShare, control, site, siteDir, rootDir, cwd })
+    return
   }
   const base = { ...fileSettings }
   if (control.compare) delete base.out
@@ -354,30 +508,7 @@ export async function snapshot(args = []) {
     }
   }
 
-  // Put the site behind a URL.
-  let source
-  try {
-    if (control.url) {
-      source = { url: control.url, label: control.url, close: async () => {} }
-    } else if (control.dev) {
-      console.error(`${DIM}→ starting the dev server for ${site.name}${RESET}`)
-      const dev = await lib.startDevServer(siteDir)
-      source = { url: dev.url, label: `dev server (${dev.url})`, close: dev.close }
-    } else {
-      if (!control.noBuild) {
-        console.error(`${DIM}→ building ${site.name}${RESET}`)
-        await runBuild(siteDir)
-      }
-      const dist = join(siteDir, 'dist')
-      if (!existsSync(join(dist, 'index.html'))) {
-        fail(`No built site at ${relative(cwd, dist) || dist}.`, 'Run without `--no-build`, or build the site first.')
-      }
-      const server = await lib.serveDirectory(dist, { base: readSiteYml(siteDir).data.base })
-      source = { url: server.url, label: 'the built site', close: server.close }
-    }
-  } catch (err) {
-    fail(err.message)
-  }
+  const source = await siteBehindUrl({ control, site, siteDir, cwd, lib })
 
   const onStep = (step) => {
     if (step === 'capture') {
