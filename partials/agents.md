@@ -708,6 +708,8 @@ foundation: '@acme/ui@1.2.0'  # The component system (see Part 2, step 1)
 extensions: ['@acme/fx@0.3.1'] # Secondary foundations — same shapes as foundation:
 ```
 
+**On a site the Uniweb app edits too, a page's `id:` may be a code the app made** (`id: 3f58142d`): the app links a page by it. `uniweb pull` writes such a link as the page's path (`[AI](page:ai)`), and `uniweb push` stores the path by the code again, so the link survives a rename in the app. An id you chose (`id: about`) stays as you wrote it, in links too. Keep the `id:` line the app wrote: it is how a push knows which page a path names.
+
 **The trailing `...` is not decoration — dropping it changes behaviour.** `pages:`
 in `folder.yml` and `site.yml`, and `sections:` in `page.yml`, all read it the same way:
 
