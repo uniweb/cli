@@ -413,9 +413,10 @@ function refusedReservedScope(scope, lead) {
  * foundation registered as `@jane/…` — releasable by Jane alone, and fixed only by
  * renaming it into a new foundation.
  *
- * When the workspace names no scope — none is chosen, or it is a unit without a handle —
- * the scope is derived from your orgs as before (`deriveScope`): your personal scope when
- * you belong to none, else a pick at a terminal, your personal scope without one.
+ * When the workspace names no scope — none is chosen, it is a unit without a handle, or a
+ * unit below an organization you are not a member of — the scope is derived from your orgs
+ * (`deriveScope`): your personal scope when you belong to none, else a pick at a terminal,
+ * and refused without one.
  */
 async function deriveScopeFromLogin(client, args) {
   const token = await client.token()

@@ -201,7 +201,8 @@ export async function createOrg({ apiBase, token, handle }) {
  * ⚠️ The FALLBACK since 2026-10-06: a bare name first takes the workspace the command
  * works in (`register.js::deriveScopeFromLogin`, `workspace.js::scopeOfWorkspace`). This
  * answers only when no workspace is chosen — you belong to orgs and named none — or the
- * one chosen is a unit without a handle.
+ * one chosen names no scope: a unit without a handle, or a unit below an organization you
+ * are not a member of.
  *
  * ⭐ A SCOPE IS A NAMESPACE (2026-09-23): your account's own, `@<handle>`, needs no org.
  *
