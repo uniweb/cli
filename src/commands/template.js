@@ -82,6 +82,9 @@ function listTemplates(args) {
     `  ${colors.dim}uniweb create <project> --template <name>${colors.reset}`
   )
   console.log(
+    `  ${colors.dim}Also built in: starter, one generic section type and two short pages; none, the same project without them.${colors.reset}`
+  )
+  console.log(
     `  ${colors.dim}--json for scripts. This is the roster THIS CLI ships with, not a live fetch.${colors.reset}`
   )
   console.log('')
