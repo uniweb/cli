@@ -95,6 +95,24 @@ test('--template reaches the guide from the command line, in both spellings', as
   assert.ok(r.output.includes('create <name> --template starter'))
 })
 
+test('--template paste says the design has to be taken apart, not only pasted', () => {
+  const guide = flat(startGuide({ cwd: tmp('uw-start-empty-'), template: 'paste' }))
+  assert.ok(guide.includes('create . --template paste'))
+  assert.ok(guide.includes('replace `src/sections/App.jsx` with theirs'))
+  assert.ok(guide.includes('they can edit in the app only what has left the code'))
+  assert.ok(guide.includes('converting-existing.md'))
+  assert.ok(!guide.includes('is a working site'))
+})
+
+test('Git: install it if it is missing, and commit as you go, in every variant', () => {
+  for (const guide of [startGuide({ cwd: tmp('uw-start-empty-') }), startGuide({ cwd: project() })]) {
+    const text = flat(guide)
+    assert.ok(text.includes('Install Git too if `git --version` fails'))
+    assert.ok(text.includes('Commit each time something works'))
+    assert.doesNotMatch(guide, TERMINAL_STEP)
+  }
+})
+
 test('a folder set aside for the site takes the project itself', () => {
   const guide = startGuide({ cwd: tmp('uw-start-empty-') })
   assert.ok(guide.includes('npx uniweb@latest create . --template starter'))

@@ -76,6 +76,7 @@ export function startGuide({ cwd = process.cwd(), template = null } = {}) {
     template: name,
     starter: name === 'starter',
     none: name === 'none',
+    paste: name === 'paste',
     install: installCmd(root ? detectWorkspacePm(root) : 'npm')
   })
 }

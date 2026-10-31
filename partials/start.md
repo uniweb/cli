@@ -28,7 +28,9 @@ prints an address to finish something in a browser, open it for them and say wha
 for.
 
 Uniweb needs Node.js 22.12 or later. If `node --version` shows an older one, install a
-current one yourself.
+current one yourself. Install Git too if `git --version` fails: it keeps the history of
+your work, and it's what lets edits made in the app merge with yours. On a Mac, that
+check can open a window offering the developer tools: tell them to accept it.
 
 ## Work with them
 
@@ -43,6 +45,8 @@ current one yourself.
 - Keep anything they may want to change in markdown or in a param its `meta.js` declares,
   not in a component's code. That is what they can edit in the app.
 - Show them the site on their computer before you ask them to sign in.
+- Commit each time something works, with a message that says what changed, so either of
+  you can go back to it.
 {{#unless project}}
 {{#if nearby}}
 
@@ -87,7 +91,7 @@ cd <name>
 `<name>` is lowercase letters, digits and hyphens. `create .` takes its name from the
 folder, or from `--name <name>`, replaces a `README.md` or `.gitignore` already there, and
 stops if any other file is in its way. `create` asks no questions when it runs without a
-terminal.
+terminal, and starts the project's git repository.
 {{/if}}
 
 {{#if starter}}
@@ -95,6 +99,12 @@ terminal.
 convention, to replace as you build. `--template none` is the same project without them.
 {{else if none}}
 `none` is a project with no section types or pages: you build them all.
+{{else if paste}}
+`paste` runs a React design as it is: replace `src/sections/App.jsx` with theirs, and the
+site shows it. A picture or a web address you rebuild there instead. That is only the
+start, because they can edit in the app only what has left the code. Take it apart as
+[Converting Existing Designs](https://uniweb.io/docs/development/converting-existing.md)
+says: named section types, their text in markdown, its colors in `theme.yml`.
 {{else}}
 `{{template}}` is a working site: its section types are in `src/`, its sample content in
 `site/`. Keep what fits, replace all the sample content with what they asked for, and
