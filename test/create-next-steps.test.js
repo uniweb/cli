@@ -25,7 +25,7 @@ const CLI = join(ROOT, 'src/index.js')
 const CURRENT = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
 
 /** Run the CLI in a fresh cwd, with no terminal. */
-function run(args) {
+function run(args, env = {}) {
   const home = mkdtempSync(join(tmpdir(), 'uniweb-home-'))
   const cwd = mkdtempSync(join(tmpdir(), 'uniweb-cwd-'))
   mkdirSync(join(home, '.uniweb'))
@@ -33,10 +33,10 @@ function run(args) {
     join(home, '.uniweb', 'update-check.json'),
     JSON.stringify({ lastCheck: Date.now(), latestVersion: CURRENT })
   )
-  const r = spawnSync('node', [CLI, ...args], {
+  const r = spawnSync(process.execPath, [CLI, ...args], {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, HOME: home, CI: 'true' }
+    env: { ...process.env, HOME: home, CI: 'true', ...env }
   })
   rmSync(home, { recursive: true, force: true })
   // eslint-disable-next-line no-control-regex
@@ -78,6 +78,25 @@ test('a flag and its value are not a second word', () => {
     assert.doesNotMatch(r.err, /Unexpected argument/, args.join(' '))
     rmSync(r.cwd, { recursive: true, force: true })
   }
+})
+
+test('with no git to run, it says the project has no history, and still creates it', () => {
+  const noGit = mkdtempSync(join(tmpdir(), 'uniweb-no-git-'))
+  const r = run(['create', 'probe', '--template', 'none'], { PATH: noGit })
+  assert.equal(r.code, 0, r.err)
+  assert.match(r.out, /Git is not installed, so this project has no version history/)
+  assert.ok(existsSync(join(r.cwd, 'probe', 'AGENTS.md')))
+  assert.ok(!existsSync(join(r.cwd, 'probe', '.git')))
+  rmSync(r.cwd, { recursive: true, force: true })
+  rmSync(noGit, { recursive: true, force: true })
+
+  // CONTROL — with git, nothing of the kind.
+  const home = mkdtempSync(join(tmpdir(), 'uniweb-git-home-'))
+  const withGit = run(['create', 'probe', '--template', 'none'], { GIT_CONFIG_GLOBAL: join(home, 'none'), GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@example.com' })
+  assert.doesNotMatch(withGit.out, /Git is not installed/)
+  assert.ok(existsSync(join(withGit.cwd, 'probe', '.git')))
+  rmSync(withGit.cwd, { recursive: true, force: true })
+  rmSync(home, { recursive: true, force: true })
 })
 
 test('Next steps name AGENTS.md, which the project has', () => {

@@ -1400,7 +1400,10 @@ async function main() {
           )
         }
       } catch {
-        // git not available — skip silently
+        // ⛔ Said, not skipped: the project works without git, but it has no history to go back
+        // to and a pull cannot merge, and an agent reading this output has no other way to know.
+        log(`  ${colors.yellow}Git is not installed, so this project has no version history.${colors.reset}`)
+        log(`  ${colors.dim}Install it, then run: git init && git add -A && git commit -m "Initial commit"${colors.reset}`)
       }
     }
   }
