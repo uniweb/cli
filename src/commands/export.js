@@ -81,7 +81,9 @@ export async function exportSite(args = []) {
   try {
     execSync(`node ${JSON.stringify(process.argv[1])} ${buildArgs.join(' ')}`, {
       cwd: siteDir,
-      stdio: 'inherit'
+      stdio: 'inherit',
+      // A step of this verb, which says what next itself, below.
+      env: { ...process.env, UNIWEB_BUILD_STEP: 'export' }
     })
   } catch {
     say.err('Build failed. See output above.')

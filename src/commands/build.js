@@ -854,39 +854,47 @@ async function buildWorkspace(workspaceDir, options = {}) {
     process.exit(1)
   }
 
-  // Build foundations first (sites depend on them)
-  for (const foundation of foundations) {
-    log(`${colors.bright}[${foundation.name}]${colors.reset}`)
-    await buildFoundation(foundation.path)
-    log('')
-  }
+  // Each package's build is a step of this one, which says what next once, at its end.
+  const step = process.env.UNIWEB_BUILD_STEP
+  process.env.UNIWEB_BUILD_STEP = 'workspace'
+  try {
+    // Build foundations first (sites depend on them)
+    for (const foundation of foundations) {
+      log(`${colors.bright}[${foundation.name}]${colors.reset}`)
+      await buildFoundation(foundation.path)
+      log('')
+    }
 
-  // Build extensions (they are foundations, but logged distinctly)
-  for (const extension of extensions) {
-    const label = isExtensionDir(extension.path) ? 'extension' : 'foundation'
-    log(
-      `${colors.bright}[${extension.name}]${colors.reset} ${colors.dim}(${label})${colors.reset}`
-    )
-    await buildFoundation(extension.path)
-    log('')
-  }
+    // Build extensions (they are foundations, but logged distinctly)
+    for (const extension of extensions) {
+      const label = isExtensionDir(extension.path) ? 'extension' : 'foundation'
+      log(
+        `${colors.bright}[${extension.name}]${colors.reset} ${colors.dim}(${label})${colors.reset}`
+      )
+      await buildFoundation(extension.path)
+      log('')
+    }
 
-  // Build sites
-  for (const site of sites) {
-    log(`${colors.bright}[${site.name}]${colors.reset}`)
+    // Build sites
+    for (const site of sites) {
+      log(`${colors.bright}[${site.name}]${colors.reset}`)
 
-    const siteConfig = readSiteConfig(site.path)
-    const configPrerender = siteConfig.build?.prerender === true
+      const siteConfig = readSiteConfig(site.path)
+      const configPrerender = siteConfig.build?.prerender === true
 
-    let prerender = configPrerender
-    if (prerenderFlag) prerender = true
-    if (noPrerenderFlag) prerender = false
+      let prerender = configPrerender
+      if (prerenderFlag) prerender = true
+      if (noPrerenderFlag) prerender = false
 
-    // Resolve foundation directory for this site
-    const foundationDir = resolveFoundationDir(site.path, siteConfig)
+      // Resolve foundation directory for this site
+      const foundationDir = resolveFoundationDir(site.path, siteConfig)
 
-    await buildSite(site.path, { prerender, foundationDir, siteConfig, host })
-    log('')
+      await buildSite(site.path, { prerender, foundationDir, siteConfig, host })
+      log('')
+    }
+  } finally {
+    if (step === undefined) delete process.env.UNIWEB_BUILD_STEP
+    else process.env.UNIWEB_BUILD_STEP = step
   }
 
   // Summary
@@ -904,9 +912,11 @@ async function buildWorkspace(workspaceDir, options = {}) {
 }
 
 /**
- * Show next-step hints after workspace build
+ * What next, for someone who ran `uniweb build`: not when the build is a step of something else
+ * (UNIWEB_BUILD_STEP), which says what comes next itself.
  */
 function showNextSteps(hasFoundations, hasSites) {
+  if (process.env.UNIWEB_BUILD_STEP) return
   if (hasFoundations) {
     log('')
     log(`${colors.bright}Share with clients:${colors.reset}`)
