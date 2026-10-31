@@ -53,6 +53,33 @@ test('unattended, with no name: the usage, and `start` for an agent', () => {
   rmSync(r.cwd, { recursive: true, force: true })
 })
 
+test('a second word is refused, naming the flag it lost, and nothing is written', () => {
+  const r = run(['create', 'probe', 'docs'])
+  assert.equal(r.code, 1)
+  assert.match(r.err, /Unexpected argument: docs/)
+  assert.match(r.out, /create probe --template docs/)
+  assert.match(r.out, /npm create uniweb@latest probe -- --template docs/)
+  assert.ok(!existsSync(join(r.cwd, 'probe')), 'it created a project anyway')
+  rmSync(r.cwd, { recursive: true, force: true })
+
+  const here = run(['create', '.', 'docs'])
+  assert.equal(here.code, 1)
+  assert.match(here.err, /Unexpected argument: docs/)
+  rmSync(here.cwd, { recursive: true, force: true })
+})
+
+test('a flag and its value are not a second word', () => {
+  for (const args of [
+    ['create', 'probe', '--template', 'none', '--no-git'],
+    ['create', 'probe', '--no-git', '--template', 'none'],
+    ['create', '--template', 'none', 'probe', '--no-git'].slice(0, 3).concat('--name', 'probe', '--no-git')
+  ]) {
+    const r = run(args)
+    assert.doesNotMatch(r.err, /Unexpected argument/, args.join(' '))
+    rmSync(r.cwd, { recursive: true, force: true })
+  }
+})
+
 test('Next steps name AGENTS.md, which the project has', () => {
   const r = run(['create', 'probe', '--template', 'none', '--no-git'])
   assert.equal(r.code, 0, r.err)

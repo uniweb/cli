@@ -1125,6 +1125,21 @@ async function main() {
 
   const prefix = getCliPrefix()
 
+  // ⛔ A SECOND WORD IS REFUSED, not dropped. It is usually a template that lost its flag:
+  // `npm create uniweb my-site --template docs` keeps `--template` for npm, and an agent that
+  // got the starter instead of the docs template had nothing to tell it so.
+  const words = args
+    .slice(1)
+    .filter((arg, i, all) => !arg.startsWith('-') && !(all[i - 1] ?? '').startsWith('-'))
+  if (words.length > 1) {
+    error(`Unexpected argument: ${words[1]}`)
+    log(`\n${prefix} create takes one name. To start from a template:`)
+    log(`  ${colors.cyan}${prefix} create ${words[0]} --template ${words[1]}${colors.reset}`)
+    log(`Through npm, which keeps flags for itself:`)
+    log(`  ${colors.cyan}npm create uniweb@latest ${words[0]} -- --template ${words[1]}${colors.reset}`)
+    await exitWhenDrained(1)
+  }
+
   // In-place: derive the project name from the cwd basename (slugified),
   // or use --name when provided. Skip the interactive name prompt below.
   if (inPlace) {
