@@ -449,3 +449,61 @@ test('a service requested and not live yet is the next publish, the person decid
   assert.ok(checkOf(doc, 'app.services').lines.some((l) => /^Requested, not live yet: `records`/.test(l)))
   assert.equal(doc.next.find((s) => s.command === 'npx uniweb publish')?.ask, true)
 })
+
+// ── what moved on the backend with no file to show for it ────────────────────
+
+/** A `.uwx` as `uwx` makes one, with a version for each of the document's items. */
+const uwxWithItems = ({ doc, version, items }) =>
+  createZip([
+    { name: 'manifest.json', data: Buffer.from(JSON.stringify({ entries: [{ uuid: doc.$uuid, version, item_versions: items }] })) },
+    { name: `entities/${doc.$uuid}.json`, data: Buffer.from(JSON.stringify(doc)) }
+  ])
+
+function itemBackend() {
+  const state = { doc: realDoc(), version: 'v1', items: { P1: 'i1', S1: 'i1', S2: 'i1' } }
+  const respond = async (url) => {
+    if (url.includes(`/dev/site/status/${SITE}`)) return json(LIVE)
+    if (url.includes(`/dev/site/content/pull/${SITE}`)) return new Response(uwxWithItems(state), { status: 200, headers: { etag: `"${state.version}"` } })
+    if (url.includes(`/dev/site/folder/pull/${SITE}`)) return json(null, 404)
+    return undefined
+  }
+  return { state, respond }
+}
+
+// ⛔ Until 2026-10-31 status said nothing changed there, and the push that followed was refused: the
+// backend held newer versions of pages a mounted folder gave it, which a pull does not write.
+test('⭐ newer versions on the backend and no file to show for them: said, with the pull first', { timeout: 60_000 }, async () => {
+  const backend = itemBackend()
+  const dir = await syncedRepo(backend)
+  backend.state.version = 'v2'
+  backend.state.items = { ...backend.state.items, S2: 'i2' }
+  const doc = docOf(await status(dir, ['--personal', '--json'], { session: loggedIn, respond: backend.respond }))
+  const changes = checkOf(doc, 'app.changes')
+  assert.equal(changes.state, 'attention', JSON.stringify(changes))
+  assert.match(changes.summary, /^The backend moved with no file here to show it/)
+  assert.equal(changes.detail.itemsBehind, 1)
+  assert.equal(doc.next[0]?.command, 'npx uniweb pull', JSON.stringify(doc.next))
+})
+
+test('CONTROL — the versions this copy last saw: nothing changed', { timeout: 60_000 }, async () => {
+  const backend = itemBackend()
+  const dir = await syncedRepo(backend)
+  const changes = checkOf(docOf(await status(dir, ['--personal', '--json'], { session: loggedIn, respond: backend.respond })), 'app.changes')
+  assert.equal(changes.state, 'ok', JSON.stringify(changes))
+})
+
+// ── a site whose folder moved ───────────────────────────────────────────────
+
+test('⭐ a moved site: status says so and proposes the pull, and calls nothing changed that is not', { timeout: 60_000 }, async () => {
+  const backend = movingBackend()
+  const dir = await syncedRepo(backend)
+  const top = join(dir, '..')
+  mkdirSync(join(top, 'web'))
+  git(top, ['mv', 'site', 'web/site'])
+  git(top, ['commit', '-qm', 'one folder per project'])
+  const doc = docOf(await status(join(top, 'web/site'), ['--personal', '--json'], { session: loggedIn, respond: backend.respond }))
+  const changes = checkOf(doc, 'app.changes')
+  assert.match(changes.summary, /^The site's folder moved from site since it last synced, and its files say what the backend holds/, JSON.stringify(changes))
+  assert.equal(doc.next[0]?.command, 'npx uniweb pull', JSON.stringify(doc.next))
+  assert.doesNotMatch(checkOf(doc, 'app.unpushed').summary, /\d+ files? here holds? changes/)
+})

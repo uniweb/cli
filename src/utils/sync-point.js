@@ -272,8 +272,39 @@ export function madeOnto(repo, sha, { origin, siteUuid }) {
 }
 
 /**
- * The base a pull merges from: the newest of the candidates HEAD descends from. One that
- * descends from all the others is the newest; with none, the most recently committed.
+ * Can a pull merge from this commit? HEAD's history holds it, and it holds the site where the
+ * site is now.
+ *
+ * ⛔ A BASE IS READ AT THE SITE'S CURRENT PATH (`openStandIn`), so a commit from before the site's
+ * folder moved reads as an empty site, and every file as new on both sides. Until 2026-10-31 such
+ * a commit was a base like any other: a plain pull after a move gave 98 conflicts and 126 other
+ * changes across four sites that had changed nothing, and a wrong file name beside each section
+ * it could not place. With no base, a pull finds that the files already say what the backend
+ * holds, and records where the site is now.
+ */
+function canBeBase(repo, sha) {
+  return isCommit(repo, sha) && isAncestor(repo, sha) && Boolean(siteTreeIn(repo, sha))
+}
+
+/**
+ * The path this site last synced at, when it is somewhere else now: what the newest sync point
+ * of this site and backend names, or null. For saying why a pull has no base.
+ */
+export function movedFrom(repo, { origin, siteUuid }) {
+  if (!repo?.head) return null
+  try {
+    const body = gitText(repo.top, ['log', '-1', '--fixed-strings', `--grep=${SYNC_TRAILER}: ${origin} ${siteUuid}`, '--format=%B', 'HEAD'])
+    const { path } = trailersOf(body)
+    return path && path !== repo.path ? path : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The base a pull merges from: the newest of the candidates HEAD descends from that can be one
+ * (`canBeBase`). One that descends from all the others is the newest; with none, the most
+ * recently committed.
  *
  * ⚖️ Any of them is a state both sides descend from, but only the newest such state — the
  * commit the backend's content last came from — merges exactly. An older one costs a
@@ -283,7 +314,7 @@ export function madeOnto(repo, sha, { origin, siteUuid }) {
  * 2026-10-17 this said an older base "costs precision at worst".
  */
 export function newestBase(repo, candidates) {
-  const shas = [...new Set(candidates.filter(Boolean))].filter((s) => isCommit(repo, s) && isAncestor(repo, s))
+  const shas = [...new Set(candidates.filter(Boolean))].filter((s) => canBeBase(repo, s))
   if (shas.length <= 1) return shas[0] || null
   const newest = shas.find((s) => shas.every((o) => o === s || isAncestor(repo, o, s)))
   if (newest) return newest
@@ -316,7 +347,7 @@ export function newestBase(repo, candidates) {
  * real backend — a reverted change came back (A18), a re-wrap and six pushed edits conflicted.
  */
 export function baseFor(repo, { known = [], lanes = [], origin, siteUuid }) {
-  const held = (s) => Boolean(s) && isCommit(repo, s) && isAncestor(repo, s)
+  const held = (s) => Boolean(s) && canBeBase(repo, s)
   const fallback = newestBase(repo, known)
   const refs = lanes.map(({ source, roots }) => ({
     roots,
@@ -770,14 +801,14 @@ export function fileAt(repo, rev, path) {
 
 /**
  * The files under the roots that differ from what `rev` holds there — changed, deleted, or
- * new and not ignored — relative to the site.
+ * new and not ignored — relative to the site, one outside it (a mounted folder's) included.
  */
 export function filesDifferFrom(repo, rev, roots) {
-  const full = roots.map((r) => `${repo.prefix}${r}`)
+  const full = roots.map((r) => underTop(repo, r))
   try {
     const changed = zlist(git(repo.top, ['diff', '--name-only', '-z', '--no-renames', rev, '--', ...full]))
     const added = zlist(git(repo.top, ['ls-files', '--others', '--exclude-standard', '-z', '--', ...full]))
-    return [...new Set([...changed, ...added].map((p) => siteRelative(repo, p)))]
+    return [...new Set([...changed, ...added].map((p) => posix.relative(repo.prefix, p)))]
   } catch {
     return []
   }

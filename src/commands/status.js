@@ -44,7 +44,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { basename, dirname, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
 import yaml from 'js-yaml'
 
 import {
@@ -76,6 +76,7 @@ import {
   mergeInProgress,
   readSyncPoint,
   repoOf,
+  siteTreeIn,
   unmergedPaths
 } from '../utils/sync-point.js'
 import { aheadBehind, remoteMoved, upstreamOf } from '../utils/git.js'
@@ -83,6 +84,7 @@ import { getLatestVersion, isBehind } from '../utils/update-check.js'
 import { syncedElsewhere } from '../utils/site-identity.js'
 import { DEFAULT_BACKEND_ORIGIN } from '../utils/config.js'
 import { classifyPackage, findSites, findWorkspaceRoot, isWorkspaceRoot } from '../utils/workspace.js'
+import { siteAround } from '../utils/pick-site.js'
 import { getCliVersion } from '../versions.js'
 import { planNext } from '../utils/status-next.js'
 
@@ -186,14 +188,16 @@ function readSiteYml(siteDir) {
 
 /**
  * The site this status is about — never asked for: a status prompts for nothing. A site
- * folder is its own; a workspace with one site, that one; with several, none, and the
- * caller names them.
+ * folder is its own; the folder you stand in may mean one (`siteAround`); a workspace with
+ * one site, that one; with several, none, and the caller names them.
  */
 async function findSite(cwd) {
   if ((await classifyPackage(cwd)) === 'site') return { siteDir: cwd }
   const root = findWorkspaceRoot(cwd)
   if (!root) return { none: true }
   const sites = await findSites(root)
+  const here = siteAround(sites, root, cwd)
+  if (here) return { siteDir: resolve(root, here) }
   if (sites.length === 1) return { siteDir: resolve(root, sites[0]) }
   return sites.length ? { several: sites, root } : { none: true, root }
 }
@@ -296,6 +300,22 @@ function otherUncommitted(siteDir, repo) {
 }
 
 /**
+ * The folders this site mounts from elsewhere in its repository, relative to the site: a push
+ * sends their pages as they are on disk, so they wait to be pushed like the site's own.
+ *
+ * ⛔ Until 2026-10-31 `status` read the site's own folder alone: it said "nothing waiting" over
+ * four commits of mounted docs, and the push that followed sent them. A mount in a repository of
+ * its own is a submodule's pin here, and reads as changed when the pin moves; one outside this
+ * repository has no commit to compare with, and is left out.
+ */
+async function mountedRoots(siteDir, repo) {
+  const { mountEntriesOf } = await import('@uniweb/build/site')
+  return mountEntriesOf(readSiteYml(siteDir)?.paths)
+    .map(([, dir]) => dir)
+    .filter((dir) => !isAbsolute(dir) && !posix.normalize(`${repo.prefix}${dir}`).startsWith('..'))
+}
+
+/**
  * Git: conflicts, a merge waiting, what is not committed, and the git remote.
  * @returns {Promise<{ checks: object[], proposals: object[], localFiles: string[]|null }>}
  */
@@ -377,10 +397,13 @@ async function gitChecks(siteDir, { offline, origin }) {
   }
 
   // What this copy changed since its last sync, file by file — while its branch holds the
-  // sync point that sync recorded.
+  // sync point that sync recorded, with the site where it is now. ⛔ Compared from before the
+  // site's folder moved, every file read as changed: "124 files hold changes" on a clean site.
   let localFiles = null
   const point = readSyncPoint(siteDir, origin)
-  if (repo.head && point && isAncestor(repo, point)) localFiles = filesDifferFrom(repo, point, sentRoots(siteDir))
+  if (repo.head && point && isAncestor(repo, point) && siteTreeIn(repo, point)) {
+    localFiles = filesDifferFrom(repo, point, [...sentRoots(siteDir), ...(await mountedRoots(siteDir, repo))])
+  }
 
   const upstream = upstreamOf(siteDir)
   if (!upstream) {
@@ -770,8 +793,28 @@ function changeChecks(siteDir, changes, unpushedFiles, proposals, { elsewhere = 
  * `app.changes` from the pull's own answer (`probePull`): the files it would change, each
  * as the pull would write it.
  */
-function probedChanges({ files: list, recordsNotPlaced, noBase }, unpushedFiles, proposals) {
+function probedChanges({ files: list, recordsNotPlaced, noBase, movedFrom, itemsBehind = 0 }, unpushedFiles, proposals) {
+  if (noBase && movedFrom) {
+    if (!proposals.some((p) => p.step === 'pull')) {
+      proposals.push({ step: 'pull', command: 'npx uniweb pull', why: 'record where the site is now' })
+    }
+    return noBaseChanges(list, recordsNotPlaced, movedFrom)
+  }
   if (noBase) return noBaseChanges(list, recordsNotPlaced)
+  // ⛔ Until 2026-10-31 this said nothing changed, and the push that followed was refused: the
+  // backend held newer versions of a mounted folder's pages, which a pull does not write.
+  if (!list.length && itemsBehind) {
+    proposals.push({ step: 'pull', command: 'npx uniweb pull', why: 'record what moved on the backend' })
+    return [
+      {
+        id: 'app.changes',
+        state: 'attention',
+        summary:
+          'The backend moved with no file here to show it: a push from another copy, or pages from a mounted folder. A pull changes no file and records that, and a push before it may be refused.',
+        detail: { source: 'pull', files: [], itemsBehind }
+      }
+    ]
+  }
   if (!list.length) {
     return [{ id: 'app.changes', state: 'ok', summary: 'Nothing changed on the backend since this copy last synced.', detail: { source: 'pull', files: [] } }]
   }
@@ -809,7 +852,7 @@ function probedChanges({ files: list, recordsNotPlaced, noBase }, unpushedFiles,
  * another way, it leaves alone, and it is not listed (`keepWhatMeansTheSame`, `commands/pull.js`).
  * The pull itself is `app.base`'s step.
  */
-function noBaseChanges(list, recordsNotPlaced) {
+function noBaseChanges(list, recordsNotPlaced, movedFrom = null) {
   const differ = list.filter(([s]) => s === 'M').map(([, p]) => p)
   const added = list.filter(([s]) => s === 'A').map(([, p]) => p)
   const lines = []
@@ -819,9 +862,13 @@ function noBaseChanges(list, recordsNotPlaced) {
     {
       id: 'app.changes',
       state: 'attention',
-      summary: differ.length
-        ? `This copy shares no history with the site's content on the backend — brought from another repository, most likely. ${count(differ.length, 'file')} here ${differ.length === 1 ? 'says' : 'say'} something else, and the first pull makes ${differ.length === 1 ? 'it a conflict' : 'each a conflict'} to settle, yours against the backend's.`
-        : "This copy shares no history with the site's content on the backend, and its files say what the site holds: the first pull records where they meet, with nothing to settle.",
+      summary: movedFrom
+        ? differ.length
+          ? `The site's folder moved from ${movedFrom} since it last synced. ${count(differ.length, 'file')} here ${differ.length === 1 ? 'says' : 'say'} something else than the backend, and the next pull makes ${differ.length === 1 ? 'it a conflict' : 'each a conflict'} to settle, yours against the backend's.`
+          : `The site's folder moved from ${movedFrom} since it last synced, and its files say what the backend holds: the next pull records where it is now, with nothing to settle.`
+        : differ.length
+          ? `This copy shares no history with the site's content on the backend — brought from another repository, most likely. ${count(differ.length, 'file')} here ${differ.length === 1 ? 'says' : 'say'} something else, and the first pull makes ${differ.length === 1 ? 'it a conflict' : 'each a conflict'} to settle, yours against the backend's.`
+          : "This copy shares no history with the site's content on the backend, and its files say what the site holds: the first pull records where they meet, with nothing to settle.",
       files: differ,
       lines,
       detail: { source: 'pull', noBase: true, files: list.map(([s, p]) => ({ path: p, change: CHANGE[s] || s })) }

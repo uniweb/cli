@@ -903,3 +903,147 @@ test(
     )
   }
 )
+
+// ── a site whose folder moved ───────────────────────────────────────────────
+
+// Pull from a site that is not at `site/`.
+const pullAt = (dir, path, backend, args = []) =>
+  quiet(() =>
+    pull(args, {
+      resolveSiteDir: async () => join(dir, path),
+      getToken: async () => 'tok',
+      fetch: backend.fetch
+    })
+  )
+
+// `site/` to `web/site/`, its `.uniweb/` going along as a folder rename takes it, and committed.
+function moveSite(dir) {
+  mkdirSync(join(dir, 'web'))
+  git(dir, 'mv', 'site', 'web/site')
+  git(dir, 'commit', '-qm', 'one folder per project')
+}
+
+test(
+  '⭐ after a move a plain pull changes no file and records where the site is now — it read every file as new on both sides',
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const dir = await synced(backend)
+    moveSite(dir)
+    const before = git(dir, 'rev-parse', 'HEAD').trim()
+    const r = await pullAt(dir, 'web/site', backend)
+    assert.equal(r.exitCode, 0, r.out)
+    assert.equal(git(dir, 'diff', '--name-only', '--diff-filter=U').trim(), '', r.out)
+    assert.equal(git(dir, 'diff', '--name-only', before, 'HEAD').trim(), '', `the files moved:\n${r.out}`)
+    assert.equal(git(dir, 'status', '--porcelain').trim(), '')
+    assert.match(git(dir, 'log', '-3', '--format=%B'), /^Uniweb-Site: web\/site:/m, 'no sync point at the new path')
+    assert.match(r.out, /The site's folder moved from site\. This pull records where it is now\./)
+  }
+)
+
+test(
+  '⭐ the pull after that one merges exactly: an app edit arrives, and an edit made here beside it stays',
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const dir = await synced(backend)
+    moveSite(dir)
+    assert.equal((await pullAt(dir, 'web/site', backend)).exitCode, 0)
+    const page = 'web/site/pages/home/welcome.md'
+    writeFileSync(join(dir, page), readFileSync(join(dir, page), 'utf8').replace('We sell furniture.', 'We sell lamps.'))
+    commitAll(dir, 'lamps')
+    aboutEdited(backend)
+    const r = await pullAt(dir, 'web/site', backend)
+    assert.equal(r.exitCode, 0, r.out)
+    assert.match(readFileSync(join(dir, 'web/site/pages/home/about.md'), 'utf8'), /since 1990/)
+    assert.match(readFileSync(join(dir, page), 'utf8'), /We sell lamps\./)
+    assert.equal(existsSync(join(dir, 'site')), false, 'the old folder came back')
+  }
+)
+
+test(
+  "⛔ a real difference across a move is a conflict in that file alone, and nothing is lost — not the old path's whole site",
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const dir = await synced(backend)
+    edit(dir, 'pages/home/about.md', 'About us.', 'About us, edited here.')
+    commitAll(dir, 'mine, never pushed')
+    moveSite(dir)
+    aboutEdited(backend)
+    const r = await pullAt(dir, 'web/site', backend)
+    assert.equal(r.exitCode, 1, r.out)
+    assert.equal(git(dir, 'diff', '--name-only', '--diff-filter=U').trim(), 'web/site/pages/home/about.md', r.out)
+    const conflicted = readFileSync(join(dir, 'web/site/pages/home/about.md'), 'utf8')
+    assert.match(conflicted, /edited here/)
+    assert.match(conflicted, /since 1990/)
+    assert.match(r.out, /No commit in this history holds the site where it is now/)
+  }
+)
+
+test(
+  "⛔ a commit from before the move is no base, whoever names it: this copy's cache, or the backend",
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const dir = await synced(backend)
+    const pushedFrom = git(dir, 'rev-parse', 'HEAD').trim()
+    writeSyncPoint(join(dir, 'site'), ORIGIN, pushedFrom)
+    backend.state.source = pushedFrom
+    moveSite(dir)
+    const before = git(dir, 'rev-parse', 'HEAD').trim()
+    const r = await pullAt(dir, 'web/site', backend)
+    assert.equal(r.exitCode, 0, r.out)
+    assert.equal(git(dir, 'diff', '--name-only', before, 'HEAD').trim(), '', `the files moved:\n${r.out}`)
+  }
+)
+
+test(
+  "⛔ a teammate's own sync point from the old folder, newer than the move's, does not outrank it",
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const { alice, clone } = await team(backend)
+    const bob = clone('bob')
+    assert.equal((await pullIn(bob, backend)).exitCode, 0)
+    // Alice moves and re-links; Bob takes an app edit on the old layout, then merges her work.
+    moveSite(alice)
+    assert.equal((await pullAt(alice, 'web/site', backend)).exitCode, 0)
+    git(alice, 'push', '-q', 'origin', 'HEAD')
+    aboutEdited(backend)
+    assert.equal((await pullIn(bob, backend)).exitCode, 0)
+    git(bob, 'pull', '-q', '--no-rebase', '--no-edit', 'origin', 'HEAD')
+    // What a rename left behind, and what was his to keep.
+    cpSync(join(bob, 'site', '.uniweb'), join(bob, 'web', 'site', '.uniweb'), { recursive: true })
+    rmSync(join(bob, 'site'), { recursive: true, force: true })
+    const before = git(bob, 'rev-parse', 'HEAD').trim()
+    const r = await pullAt(bob, 'web/site', backend)
+    assert.equal(r.exitCode, 0, r.out)
+    assert.equal(git(bob, 'diff', '--name-only', '--diff-filter=U').trim(), '', r.out)
+    assert.equal(git(bob, 'diff', '--name-only', before, 'HEAD').trim(), '', `the files moved:\n${r.out}`)
+    assert.match(readFileSync(join(bob, 'web/site/pages/home/about.md'), 'utf8'), /since 1990/)
+  }
+)
+
+test('a fresh clone of a moved project pulls clean, with no cache of its own', { skip: !hasGit }, async () => {
+  const backend = fakeBackend()
+  const { alice, clone } = await team(backend)
+  moveSite(alice)
+  assert.equal((await pullAt(alice, 'web/site', backend)).exitCode, 0)
+  git(alice, 'push', '-q', 'origin', 'HEAD')
+  const fresh = clone('fresh')
+  const before = git(fresh, 'rev-parse', 'HEAD').trim()
+  const r = await pullAt(fresh, 'web/site', backend)
+  assert.equal(r.exitCode, 0, r.out)
+  assert.equal(git(fresh, 'diff', '--name-only', before, 'HEAD').trim(), '', r.out)
+})
+
+test("⛔ an ETag banked before a move is not echoed: a 304 would leave the site's new path unrecorded", { skip: !hasGit }, async () => {
+  const { etagsHold } = await import('../src/commands/pull.js')
+  const backend = fakeBackend()
+  const dir = await synced(backend)
+  writeSyncPoint(join(dir, 'site'), ORIGIN, git(dir, 'rev-parse', 'HEAD').trim())
+  assert.equal(etagsHold(join(dir, 'site'), ORIGIN), true, 'CONTROL — before the move')
+  moveSite(dir)
+  assert.equal(etagsHold(join(dir, 'web/site'), ORIGIN), false)
+})

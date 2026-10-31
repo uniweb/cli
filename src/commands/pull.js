@@ -107,7 +107,8 @@ import {
   commitWriteBacks,
   reportWriteBacks,
   writeItemUuids,
-  writeFolderItemUuids
+  writeFolderItemUuids,
+  readItemBaseVersions
 } from '../backend/site-sync.js'
 import { resolveWorkspace } from '../backend/workspace.js'
 import { siteContentRoots, siteLaneRoots } from '../utils/git.js'
@@ -118,6 +119,8 @@ import {
   ignoringRepo,
   isAncestor,
   historySyncPoint,
+  movedFrom,
+  siteTreeIn,
   madeOnto,
   baseFor,
   openStandIn,
@@ -260,7 +263,8 @@ export function readPullCache(siteDir) {
  * Whether the ETags this copy banked still describe its files — the condition a
  * conditional GET is sent on. Outside git, always. In a repository, only while HEAD's
  * history holds the sync point they were banked with: a merge abandoned, a branch reset,
- * and the backend did not move but the files did.
+ * and the backend did not move but the files did. And only while that sync point holds the
+ * site where it is now: after a move, a pull that heard 304 would never record the new path.
  *
  * One rule for both readers of the lanes — this pull and `uniweb status`, which asks the
  * same question without taking the answer.
@@ -268,7 +272,7 @@ export function readPullCache(siteDir) {
 export function etagsHold(siteDir, origin, repo = repoOf(siteDir)) {
   if (!repo) return true
   const held = readSyncPoint(siteDir, origin)
-  return Boolean(held && isAncestor(repo, held))
+  return Boolean(held && isAncestor(repo, held) && siteTreeIn(repo, held))
 }
 function writePullCache(siteDir, { content, folder }) {
   const p = pullCachePath(siteDir)
@@ -1080,6 +1084,7 @@ export async function pull(args = [], deps = {}) {
   let base = null
   let onto = null
   let standIn = null
+  let siteMovedFrom = null
   if (repo && projected) {
     // The bases this copy knows of itself — then what the backend names, per lane.
     const known = [
@@ -1104,6 +1109,8 @@ export async function pull(args = [], deps = {}) {
     // what differs, and which way is the person's to read (`noBase`, below). ⛔ Until 2026-10-26
     // it said nothing at all, and status could not size a copied project's first pull.
     onto = force || !base ? repo.head : base
+    // Why there is no base, when it is a move. Read now: the sync point this pull makes names the new path.
+    if (!base) siteMovedFrom = movedFrom(repo, { origin: client.origin, siteUuid: siteContentUuid })
     try {
       standIn = openStandIn(repo, { roots, rev: onto })
     } catch (err) {
@@ -1272,9 +1279,19 @@ export async function pull(args = [], deps = {}) {
     // from the base is what the backend changed — or, with no base, what differs at all, which
     // way unknown (`noBase`). Nothing is banked; `finally` closes it.
     if (probe) {
+      // The items the backend holds at another version than this copy last saw. With no file to
+      // show for them, it is a page a pull does not write (a mounted folder's), or a push from
+      // another copy these files already hold; either way a push from here may be refused.
+      const seen = readItemBaseVersions(siteDir, client.origin)
+      const itemsBehind = Object.entries(content?.itemVersions || {}).filter(([uuid, v]) => seen[uuid] && seen[uuid] !== v).length
       return {
         exitCode: 0,
-        probe: { files: standIn.changes(), recordsNotPlaced: Boolean(recordsNotPlaced), ...(base ? {} : { noBase: true }) }
+        probe: {
+          files: standIn.changes(),
+          itemsBehind,
+          recordsNotPlaced: Boolean(recordsNotPlaced),
+          ...(base ? {} : { noBase: true, movedFrom: siteMovedFrom })
+        }
       }
     }
 
@@ -1389,6 +1406,7 @@ export async function pull(args = [], deps = {}) {
           // Whether anything was set aside for the merge: the files as they were, against HEAD.
           merge.setAside = files !== repo.head
           merge.noBase = !force && !base
+          merge.movedFrom = merge.noBase ? siteMovedFrom : null
           merge.changed = changedInFiles(repo, {
             from: repo.head,
             files,
@@ -1476,6 +1494,7 @@ export async function pull(args = [], deps = {}) {
     note('To use it, add the language in the app (Site ▸ Languages), then pull again.')
   }
   if (repo && !notTaken) {
+    if (merge.movedFrom) note(`The site's folder moved from ${merge.movedFrom}. This pull records where it is now.`)
     // ⭐ What the pull changed in the files — not the backend's content against the base,
     // which also lists what the files already held (`changedInFiles`).
     if (projected && merge.changed.length) {
@@ -1514,7 +1533,11 @@ export async function pull(args = [], deps = {}) {
         note('Settle the markers and `git add` each file, then `git stash drop` — git kept those changes in the stash as well.')
       } else {
         if (merge.noBase) {
-          note(`No commit in this history is one ${client.origin}'s content came from, so nothing tells`)
+          note(
+            merge.movedFrom
+              ? `No commit in this history holds the site where it is now, so nothing tells`
+              : `No commit in this history is one ${client.origin}'s content came from, so nothing tells`
+          )
           note("your changes from the backend's: each file that says something else is a conflict, yours against the backend's.")
           note('Once this merge is committed, later pulls merge from it.')
         }

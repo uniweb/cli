@@ -109,3 +109,69 @@ test('control: with everything committed, nothing is said and nothing is asked',
   assert.equal(doc.next.some((s) => /commit/.test(s.why)), false, JSON.stringify(doc.next))
   assert.doesNotMatch(plain((await status(join(root, 'site'), ['--offline'])).output), /other file/)
 })
+
+// ── what waits to be pushed, in a mounted folder and after a move ───────────
+
+const ORIGIN = 'https://uniweb.app'
+
+/** A site that mounts a folder of its repository, bound to the backend and synced at this commit. */
+function mounting() {
+  const root = tmp('uw-status-mounts-')
+  write(root, {
+    'pnpm-workspace.yaml': 'packages:\n  - site\n',
+    'package.json': JSON.stringify({ name: 'p', private: true, devDependencies: { uniweb: '~1.0.0' } }),
+    '.gitignore': 'node_modules/\ndist/\n.uniweb/\n',
+    'guide/intro/page.yml': 'title: Intro\n',
+    'guide/intro/1-body.md': 'Words.\n',
+    'site/package.json': JSON.stringify({ name: 'site' }),
+    'site/site.yml': 'name: P\npaths:\n  pages/docs: ../guide\n',
+    'site/sync.json': JSON.stringify({ version: 1, backends: { [ORIGIN]: { site: { uuid: 'SITE' } } } }),
+    'site/pages/home/page.yml': 'title: Home\n'
+  })
+  git(root, ['init', '-q'])
+  git(root, ['config', 'user.email', 'test@example.test'])
+  git(root, ['config', 'user.name', 'Test'])
+  git(root, ['add', '-A'])
+  git(root, ['commit', '-qm', 'the project'])
+  writeCache(root, 'site')
+  return root
+}
+
+function writeCache(root, site) {
+  const head = git(root, ['rev-parse', 'HEAD']).trim()
+  write(root, {
+    [`${site}/.uniweb/backend-cache.json`]: JSON.stringify({
+      version: 1,
+      backends: { [ORIGIN]: { syncPoint: head, baseVersions: { SITE: 'v1' } } }
+    })
+  })
+}
+
+test('⭐ a page in a mounted folder waits to be pushed, and is listed from the site', { timeout: 60_000 }, async () => {
+  const root = mounting()
+  write(root, { 'guide/intro/1-body.md': 'Other words.\n', 'site/pages/home/page.yml': 'title: Welcome\n' })
+  git(root, ['add', '-A'])
+  git(root, ['commit', '-qm', 'edits'])
+  const check = checkOf(docOf(await status(join(root, 'site'), ['--offline', '--json'])), 'app.unpushed')
+  assert.equal(check.state, 'attention', JSON.stringify(check))
+  assert.deepEqual([...check.files].sort(), ['../guide/intro/1-body.md', 'pages/home/page.yml'])
+})
+
+test('CONTROL — nothing edited, nothing waiting', { timeout: 60_000 }, async () => {
+  const check = checkOf(docOf(await status(join(mounting(), 'site'), ['--offline', '--json'])), 'app.unpushed')
+  assert.equal(check.state, 'ok', JSON.stringify(check))
+})
+
+test('⛔ after a move, a clean site is not called changed — it read every file as changed from before the move', { timeout: 60_000 }, async () => {
+  const root = mounting()
+  mkdirSync(join(root, 'web'))
+  git(root, ['mv', 'site', 'web/site'])
+  // `../guide` moved one level further away from the site, as a real move would rewrite it.
+  write(root, { 'web/site/site.yml': 'name: P\npaths:\n  pages/docs: ../../guide\n' })
+  write(root, { 'pnpm-workspace.yaml': 'packages:\n  - web/site\n' })
+  git(root, ['add', '-A'])
+  git(root, ['commit', '-qm', 'moved'])
+  const check = checkOf(docOf(await status(join(root, 'web/site'), ['--offline', '--json'])), 'app.unpushed')
+  assert.doesNotMatch(check.summary, /\d+ files? here holds? changes/, JSON.stringify(check))
+  assert.equal(check.files, undefined, JSON.stringify(check))
+})
