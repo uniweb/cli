@@ -73,3 +73,8 @@ test('with nothing stating it, the site is told what it is missing', async (t) =
     assert.match(issue.message, /no canonical URLs, no sitemap\.xml/)
   }
 })
+
+test('a warning once a host is named that does not state it, and a note before any is', async (t) => {
+  assert.equal((await issuesFor(workspace(t)))[0].type, 'info')
+  assert.equal((await issuesFor(workspace(t, { host: 'cloudflare-pages' })))[0].type, 'warn')
+})

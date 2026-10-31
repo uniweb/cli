@@ -561,9 +561,10 @@ export async function checkFoundationSupports({
     }
   }
 
+  // A note, not a warning: nothing is broken (above), and `uniweb status` asks for a read of each warning.
   issues.push({
     id,
-    type: 'warn',
+    type: 'info',
     foundation: foundationName,
     message: hasDeclaration
       ? `${foundationName} builds against ${list} but does not declare ${missing.length === 1 ? 'it' : 'them'} in uniweb.supports`
@@ -572,7 +573,7 @@ export async function checkFoundationSupports({
     fixable: true,
   })
 
-  warn(`[${id}] ${foundationName} builds against ${list}, not in ${folderName}/package.json`)
+  info(`[${id}] ${foundationName} builds against ${list}, not in ${folderName}/package.json`)
   log(`    The build already publishes ${colors.dim}${derived.join(', ')}${colors.reset}, so nothing is missing on the wire.`)
   log(`    Declaring it matters when a service is named by a computed value — the`)
   log(`    build cannot see those, and yours is the only place they can be added.`)
@@ -1083,14 +1084,17 @@ export async function checkSiteAddress({ sitePath, siteName, siteYml, workspaceD
     }
   }
 
+  // ⭐ A warning once a host is named that does not state it. With none named yet the site may well
+  // go to one that does, so it is a note. ⛔ Until 2026-10-30 every new project got the warning,
+  // and an agent told to read it had no address to give but an invented one.
   const id = 'site-address-unknown'
   issues.push({
     id,
-    type: 'warn',
+    type: host ? 'warn' : 'info',
     site: siteName,
     message: 'The site states no address: no canonical URLs, no sitemap.xml, a root-relative llms.txt and og:image'
   })
-  warn(`[${id}] Nothing states where this site is served`)
+  ;(host ? warn : info)(`[${id}] Nothing states where this site is served`)
   log(`    Set ${colors.green}seo.origin${colors.reset} in site.yml — the origin it is served from, e.g. https://example.com`)
   log(`    ${colors.dim}A host that states it needs none: the GitHub Pages workflow \`uniweb add ci\` writes, Netlify, Vercel.${colors.reset}`)
   log(`    ${colors.dim}${without}${colors.reset}`)

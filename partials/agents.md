@@ -43,6 +43,8 @@ uniweb <command> --help      # exact flags, always current — no side effects
 uniweb doctor                # diagnose project configuration (--fix to repair)
 ```
 
+Commands are written `uniweb <command>` throughout this guide. Without a global install, run them in the project as `npx uniweb <command>`.
+
 `uniweb inspect` is the important one for content. Every parse rule in Part 3 is faster to *confirm* than to re-derive, and re-deriving from memory is where agents go wrong. Don't predict the shape — print it.
 
 `uniweb status` is the one for a project other people edit. A site in the Uniweb app can change there at any time, teammates push to git, and Uniweb releases often. Run it when you begin, when you come back to the project, before you push, publish or deploy, and after a command refuses: it changes nothing, opens with what the site is — synced where, live where — and ends with the commands to run, in order (`--json` for a script).

@@ -93,6 +93,7 @@ test('says nothing when the file lists MORE than the build could see', async () 
 test('flags a derived service the file does not declare', async () => {
   const { ids, issues } = await run({ supports: undefined, derived: ['submit'] })
   assert.deepEqual(ids, ['foundation-supports-incomplete'])
+  assert.equal(issues[0].type, 'info', 'nothing is broken, and status asks for a read of every warning')
   assert.deepEqual(issues[0].details.derived, ['submit'])
   assert.equal(issues[0].details.declared, null)
 })
