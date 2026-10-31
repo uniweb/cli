@@ -11,7 +11,7 @@ import {
   mkdirSync,
   rmSync
 } from 'node:fs'
-import { join, resolve, basename, dirname, relative } from 'node:path'
+import { join, resolve, dirname, relative } from 'node:path'
 import yaml from 'js-yaml'
 import {
   resolveFoundationSrcPath,
@@ -800,6 +800,38 @@ const SERVICE_GATES = [
  * using it reads as gated. Both are warnings about a real smell either way, and
  * neither can produce a wrong artifact.
  */
+/**
+ * A site whose package is named for a folder holding other packages. npm reads `-w <x>` as a
+ * package's name and also as a parent folder, so `npm -w marketing run preview` runs the script of
+ * every package in `marketing/`, the foundation first, and its dev server never gives way to the
+ * site's. `uniweb dev` targets the site by folder; a script written by hand does not.
+ */
+export function checkSiteNameIsAFolder({ siteName, sitePath, packagePaths, issues }) {
+  if (!siteName || siteName.includes('/')) return
+  const others = [...new Set(packagePaths)].filter((p) => p !== sitePath && p.startsWith(`${siteName}/`))
+  if (others.length === 0) return
+  const id = 'site-name-is-a-folder'
+  issues.push({ id, type: 'warn', site: siteName, message: `${siteName} is named for a folder holding other packages` })
+  warn(`[${id}] The site package ${siteName} has the name of a folder holding ${others.join(', ')}`)
+  log(`    npm reads \`npm -w ${siteName}\` as every package in ${siteName}/, so a script using it runs theirs too, before the site's.`)
+  log(`    Name the package ${siteName}-site, as \`uniweb add project\` does, and update the scripts that name it.`)
+}
+
+/**
+ * The `@source` lines of a foundation's stylesheet that find nothing (`staleSources`, `@uniweb/build`).
+ * Loaded here, not with this file's imports: a project may hold a build older than this CLI.
+ */
+export async function checkStaleSources({ foundationName, srcDir, issues }) {
+  const { staleSources, staleSourceNote } = await import('@uniweb/build')
+  const stale = staleSources?.(join(srcDir, 'styles.css')) || []
+  if (stale.length === 0) return
+  const id = 'stale-source'
+  issues.push({ id, type: 'warn', foundation: foundationName, message: `${foundationName} has a @source that finds nothing` })
+  warn(`[${id}] ${foundationName} has a @source that finds nothing, so its CSS is missing every class that was only there`)
+  for (const line of stale) log(`    @source "${line.source}"  (${staleSourceNote(line)})`)
+  log(`    Paths are relative to styles.css.`)
+}
+
 /**
  * Source with its comments removed.
  *
@@ -1662,8 +1694,8 @@ async function runDoctor(args = []) {
   const extensions = []
   for (const f of discovered) {
     const fullPath = join(workspaceDir, f.path)
-    const folderName = basename(f.path)
-    const entry = { path: fullPath, name: f.name, folderName }
+    // From the workspace root: in a workspace of projects, every foundation's folder is `src`.
+    const entry = { path: fullPath, name: f.name, folderName: f.path }
     if (buildIsExtensionPackage(fullPath)) {
       extensions.push(entry)
     } else {
@@ -1699,15 +1731,19 @@ async function runDoctor(args = []) {
   // who does not, which is the case kit cannot reach.
   for (const f of foundations) {
     // `f.path` is already absolute (built above with join(workspaceDir, …)).
-    const stylesPath = join(f.path, 'styles.css')
+    // ⛔ The stylesheet is where the foundation's source is. Until 2026-10-31 this read the
+    // package root, so a foundation with `src/` inside its package was never checked.
+    const stylesPath = join(resolveFoundationSrcPath(f.path), 'styles.css')
     if (!existsSync(stylesPath)) continue
 
     const styles = readFileSync(stylesPath, 'utf8')
     if (styles.includes('@uniweb/kit/prose-tokens.css')) continue
+    // Tailwind Typography styles `prose` too, so this prose is not unstyled.
+    if (loadsTypographyPlugin(styles)) continue
 
     // Does anything here actually ask for prose? Either the class in the
     // stylesheet, or kit's components, which render it.
-    const usesProseComponent = rendersKitProse(f.path)
+    const usesProseComponent = rendersKitProse(resolveFoundationSrcPath(f.path))
     const usesProseClass = /(^|[\s"'`])prose(\s|["'`]|$)/m.test(styles)
 
     if (!usesProseClass && !usesProseComponent) continue
@@ -1727,8 +1763,14 @@ async function runDoctor(args = []) {
       `    kit's prose layer supplies the rules and it is not imported, so the ` +
       `markup is correct and completely unstyled — silently.`
     )
-    log(`    Add to ${f.folderName}/styles.css:`)
+    log(`    Add to ${relative(workspaceDir, stylesPath)}:`)
     log(`      ${colors.dim}@import "@uniweb/kit/prose-tokens.css";${colors.reset}`)
+  }
+
+  // A `@source` that finds nothing: the build succeeds and the CSS is short every class that was
+  // only there. The build says so too; here it reaches `uniweb status`.
+  for (const f of foundations) {
+    await checkStaleSources({ foundationName: f.name, srcDir: resolveFoundationSrcPath(f.path), issues })
   }
 
   // A modifier kit's prose layer does not have — `prose-slate`, `prose-invert`
@@ -1738,7 +1780,7 @@ async function runDoctor(args = []) {
   // Only where the foundation imports kit's layer and does not load the plugin
   // itself — with its own `@plugin`, the modifier still means what it says.
   for (const f of foundations) {
-    const stylesPath = join(f.path, 'styles.css')
+    const stylesPath = join(resolveFoundationSrcPath(f.path), 'styles.css')
     if (!existsSync(stylesPath)) continue
     const styles = readFileSync(stylesPath, 'utf8')
     if (!styles.includes('@uniweb/kit/prose-tokens.css')) continue
@@ -1757,11 +1799,11 @@ async function runDoctor(args = []) {
         `    The plugin's rules sit above kit's and win: prose takes the plugin's greys, not the ` +
         `theme's colors, and the --prose-* variables reach nothing.`
       )
-      log(`    Remove the @plugin line from ${f.folderName}/styles.css to use kit's layer alone.`)
+      log(`    Remove the @plugin line from ${relative(workspaceDir, stylesPath)} to use kit's layer alone.`)
       continue
     }
 
-    const found = inertProseModifiers(f.path)
+    const found = inertProseModifiers(resolveFoundationSrcPath(f.path))
     if (found.length === 0) continue
 
     const id = 'prose-modifier-inert'
@@ -1898,6 +1940,12 @@ async function runDoctor(args = []) {
     success(`Found ${sites.length} site(s):`)
     for (const s of sites) {
       log(`    • ${s.name}`)
+      checkSiteNameIsAFolder({
+        siteName: s.name,
+        sitePath: relative(workspaceDir, s.path),
+        packagePaths: [...discovered.map((f) => f.path), ...sites.map((o) => relative(workspaceDir, o.path))],
+        issues
+      })
     }
   }
 
