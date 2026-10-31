@@ -17,9 +17,8 @@ import { isAbsolute, relative, sep } from 'node:path'
 // `pnpm-workspace.yaml` record `/tmp/x`. The two disagree, and the manifests are
 // committed files carrying a path that exists on exactly one machine.
 //
-// Reported by the backend lane 2026-09-18 from a `clone --path <abs>`: the site
-// landed under `company-websites/tmp/claude-502/clonetest/` and both manifests
-// gained the absolute string.
+// Measured 2026-09-18 on a `clone --path <abs>`: the site landed under
+// `<workspace>/tmp/<dir>/clonetest/` and both manifests gained the absolute string.
 //
 // So: accept an absolute path when it names a folder inside the root (people type
 // one, and it is unambiguous), by rewriting it to the root-relative form every
