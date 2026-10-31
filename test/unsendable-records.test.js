@@ -29,7 +29,7 @@ test('refuseUnsendableRecords stops the caller and names every record', () => {
     report
   )
   assert.equal(stop, true)
-  assert.deepEqual(said.error, ['2 records cannot be pushed as written — no content was sent.'])
+  assert.deepEqual(said.error, ['2 items cannot be pushed as written — no content was sent.'])
   assert.equal(said.note.length, 2)
   assert.match(said.note[0], /event\/launch/)
 })

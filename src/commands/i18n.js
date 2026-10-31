@@ -889,6 +889,7 @@ async function runStatusMissing(siteRoot, config, locale, options = {}) {
 
     // Collect missing strings from all requested locales
     const allMissing = []
+    const allOutdated = []
     const byLocale = {}
 
     for (const loc of localesToCheck) {
@@ -897,11 +898,13 @@ async function runStatusMissing(siteRoot, config, locale, options = {}) {
         total: result.total,
         translated: result.valid.length,
         missing: result.missing.length,
+        outdated: result.outdated?.length ?? 0,
         coverage:
           result.total > 0
             ? Math.round((result.valid.length / result.total) * 100)
             : 100
       }
+      for (const entry of result.outdated || []) allOutdated.push({ locale: loc, ...entry })
 
       // Add locale info to each missing entry
       for (const entry of result.missing) {
@@ -916,7 +919,8 @@ async function runStatusMissing(siteRoot, config, locale, options = {}) {
     if (outputJson) {
       const output = {
         locales: byLocale,
-        missing: allMissing
+        missing: allMissing,
+        outdated: allOutdated
       }
       log(JSON.stringify(output, null, 2))
       return
@@ -927,11 +931,21 @@ async function runStatusMissing(siteRoot, config, locale, options = {}) {
 
     // Show summary per locale
     for (const [loc, info] of Object.entries(byLocale)) {
-      log(`${loc}: ${info.missing} missing (${info.coverage}% coverage)`)
+      log(`${loc}: ${info.missing} missing${info.outdated ? `, ${info.outdated} outdated` : ''} (${info.coverage}% coverage)`)
+    }
+
+    // The old translation still shows. Replace the entry with a string once it is reviewed.
+    if (allOutdated.length > 0) {
+      log(`\n${colors.bright}Outdated${colors.reset} ${colors.dim}(its source has changed; the old translation still shows)${colors.reset}`)
+      for (const entry of allOutdated) {
+        log(`  ${entry.locale}  ${entry.source}`)
+        log(`  ${colors.dim}    was: ${entry.was.join(' | ')}${colors.reset}`)
+        log(`  ${colors.dim}    now: ${entry.translation}${colors.reset}`)
+      }
     }
 
     if (allMissing.length === 0) {
-      log(`\n${colors.green}All strings are translated!${colors.reset}`)
+      if (allOutdated.length === 0) log(`\n${colors.green}All strings are translated!${colors.reset}`)
       return
     }
 

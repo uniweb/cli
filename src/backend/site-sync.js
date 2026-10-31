@@ -1729,7 +1729,7 @@ export function refuseUnsendableRecords(refusals, { error, note }) {
   if (!refusals?.length) return false
   const n = refusals.length
   error(
-    `${n === 1 ? 'A record' : `${n} records`} cannot be pushed as written — no content was sent.`
+    `${n === 1 ? 'One item' : `${n} items`} cannot be pushed as written — no content was sent.`
   )
   for (const r of refusals) note(`  ${r}`)
   return true

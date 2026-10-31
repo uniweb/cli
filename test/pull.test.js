@@ -340,6 +340,7 @@ test('a language the site does not list is not written, and the pull says so', a
     assert.ok(!existsSync(join(dir, 'locales/en.json')))
     assert.ok(said.some((m) => /holds text in en, which this site does not list/.test(m)), said.join('\n'))
     assert.ok(said.some((m) => /add the language in the app/.test(m)), said.join('\n'))
+    assert.ok(existsSync(join(dir, 'locales/_kept.json')), 'kept, for the push to send back')
 
     // CONTROL — the site lists it: written, and nothing to say.
     said.length = 0

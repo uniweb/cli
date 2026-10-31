@@ -3078,6 +3078,8 @@ Running `extract` before a build is the usual first mistake — it reads the com
 
 An override key is the page's route and the section's id (`cta` for `2-cta.md`); a page's own title, label, description and keywords are `/pricing:_meta`, and in `locales/records/` a record is named by its manifest context (`std/article/launch`).
 
+**An entry can be flagged `outdated`:** `{ "default": "Acerca de PandaWatch", "outdated": { "/about:hero": "About PandaWatch" } }`. Someone edited the source in the Uniweb app, and the app kept the old translation until it is reviewed, so it still shows, and `uniweb i18n status` lists it. To finish it, replace the entry with the new translation as a plain string; if it is still right, say so in the app (*Still correct*). **`locales/_kept.json`** holds what the app keeps for a section that no file has a place for. A pull writes it and a push sends it back, so commit it and leave it alone.
+
 *Free-form bodies* — when a language needs different structure, different images, or copy rewritten rather than translated. The file replaces one section's content:
 
 ```

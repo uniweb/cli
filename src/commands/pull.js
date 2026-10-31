@@ -1462,14 +1462,15 @@ export async function pull(args = [], deps = {}) {
         'An edit made to one in the app does not come back here, and the next push sends the file.'
     )
   }
-  // ⭐ Said, because a push of those sections removes the text. A translation file would make the
-  // language the site's, and the next publish would ask to serve it (`uwx/source-locale.js`).
+  // ⭐ Said, because the text is not in a translation file: one would make the language the site's,
+  // and the next publish would ask to serve it (`uwx/source-locale.js`). It is kept for the push to
+  // send back (`locales/_kept.json`), since a language removed in the app keeps its translations.
   if (outsideLanguages.length) {
     info(
-      `The app holds text in ${outsideLanguages.join(', ')}, which this site does not list among its languages. ` +
-        'It is not in your files, and your next push of those sections removes it.'
+      `The app holds text in ${outsideLanguages.join(', ')}, which this site does not list among its languages, ` +
+        'so it is not published. It is kept, and your translation files leave it out.'
     )
-    note('To keep it, add the language in the app (the language button in the editor), then pull again.')
+    note('To use it, add the language in the app (Site ▸ Languages), then pull again.')
   }
   if (repo && !notTaken) {
     // ⭐ What the pull changed in the files — not the backend's content against the base,
