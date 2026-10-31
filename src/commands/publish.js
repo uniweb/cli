@@ -126,6 +126,7 @@ import {
 } from '@uniweb/build/uwx'
 import {
   bringFoundationAlong,
+  filesAReleaseWrites,
   bringExtensionsAlong
 } from '../backend/foundation-bring-along.js'
 import {
@@ -515,6 +516,9 @@ export async function publish(args = []) {
     // a pre-flight probe that has been removed — payment-handoff.js.)
     return { exitCode: 0 }
   }
+
+  // What the release may write into local code, for the push to commit with what it writes.
+  const released = await filesAReleaseWrites(siteDir, siteYml)
 
   // 1. Bring the foundation along — release the local foundation if its code
   //    changed (or isn't registered). Never ship a site pointing at stale code.
@@ -986,7 +990,7 @@ export async function publish(args = []) {
     report
   })
   // What the push wrote into the files is committed, whatever became of the lanes.
-  reportWriteBacks(commitWriteBacks(siteDir, client.origin, { complete: pushResult.complete }), { note: say.dim })
+  reportWriteBacks(commitWriteBacks(siteDir, client.origin, { complete: pushResult.complete, released }), { note: say.dim })
   if (pushResult.exitCode !== 0) return { exitCode: pushResult.exitCode }
   const siteUuid = pushResult.boundSiteUuid
   if (!siteUuid) {

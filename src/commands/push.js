@@ -80,7 +80,7 @@ import {
 import { confirm, isNonInteractive } from '../utils/interactive.js'
 import { announceServices, foundationSupports } from '../backend/service-request.js'
 import { guardEmptyRecords, noteFolderLeftAlone } from '../utils/records-guard.js'
-import { bringFoundationAlong } from '../backend/foundation-bring-along.js'
+import { bringFoundationAlong, filesAReleaseWrites } from '../backend/foundation-bring-along.js'
 import { repoOf } from '../utils/sync-point.js'
 import {
   makeModelResolver,
@@ -298,6 +298,8 @@ export async function push(args = [], deps = {}) {
     err: error,
     dim: note
   }
+  // What the release may write into local code, for the push to commit with what it writes.
+  const released = output || dryRun ? [] : await filesAReleaseWrites(siteDir, siteYml)
   let fnd = { ref: null }
   try {
     fnd = await bringFoundationAlong({
@@ -649,7 +651,7 @@ export async function push(args = [], deps = {}) {
     if (!output && !dryRun) {
       holdUnchangedPush(siteDir, client.origin)
       // What it recorded on the way — a media map, an identity recovered — is committed too.
-      reportWriteBacks(commitWriteBacks(siteDir, client.origin), { note })
+      reportWriteBacks(commitWriteBacks(siteDir, client.origin, { released }), { note })
     }
     return { exitCode: 0 }
   }
@@ -712,7 +714,7 @@ export async function push(args = [], deps = {}) {
     }
   })
   // What the push wrote into the files is committed, whatever became of the lanes.
-  const written = commitWriteBacks(siteDir, client.origin, { complete: result.complete })
+  const written = commitWriteBacks(siteDir, client.origin, { complete: result.complete, released })
   if (result.exitCode !== 0) {
     reportWriteBacks(written, { note })
     return { exitCode: result.exitCode }

@@ -1987,6 +1987,139 @@ session, and nothing is stored. \`uniweb login\` there only checks the token wit
 backend those commands go to — \`UNIWEB_SERVER\`, else the one you are logged in to,
 else the default — and says who and where they work as.
 `,
+    push: `
+${colors.cyan}${colors.bright}uniweb push${colors.reset} ${colors.dim}— Send this site's content to the app${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb push [options]
+
+Sends the site's content to the backend you are logged in to, releasing the local
+foundation first if its code changed. The site is not live until \`uniweb publish\`.
+
+In a git repository a push sends what is committed. It is refused, with nothing
+written, if the site changed in the app since your last pull: run \`uniweb pull\` to
+merge those changes with yours, then push again.
+
+${colors.bright}Options:${colors.reset}
+  --commit           In a git repository, commit the site's content first (-m <message>)
+  --dry-run          Report what would be sent; send nothing
+  -o <file>          Write what would be sent to a file; send nothing
+  --all              Send everything, not only what changed
+  --force            Overwrite what changed in the app since your last pull
+  --no-release       Send content against the code already released; release nothing
+  --bump             Release above a newer registered foundation version
+  --foundation <dir> Use this local foundation
+  --no-validate      Skip the content-conformance check, which stops a push
+  --yes              Skip confirmations; never block on a prompt
+  --org @org         Work in @org for this push, instead of the workspace chosen at
+  --personal         \`uniweb login\` (or your personal workspace)
+`,
+    pull: `
+${colors.cyan}${colors.bright}uniweb pull${colors.reset} ${colors.dim}— Bring the site's content from the app into your files${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb pull [options]
+
+In a git repository, merges what changed in the app with your commits, and commits
+the app's side so the next pull can tell the two apart. A section both sides changed
+is left with conflict markers to settle, then \`git add\` and \`git commit\`.
+
+Outside a repository there is nothing to merge against: the files are rewritten to
+what the backend holds, after asking if any of them are yours.
+
+${colors.bright}Options:${colors.reset}
+  --dry-run          Report what it would fetch; write nothing
+  --force            Take the backend's version, discarding local changes
+  --no-records       Pull pages only; skip records
+  --no-assets        Don't download media; the content keeps its URLs
+  --no-delete        Outside a repository, keep files with no backend item
+  --org @org         Work in @org for this pull, instead of the workspace chosen at
+  --personal         \`uniweb login\` (or your personal workspace)
+
+To catch up with your git remote as well, use \`uniweb refresh\`.
+`,
+    clone: `
+${colors.cyan}${colors.bright}uniweb clone${colors.reset} ${colors.dim}— Copy a site from the app into a new local project${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb clone <site-uuid> [name|.] [options]
+
+Makes a project from a site you can reach on the backend you are logged in to, with
+the site's foundation as a pinned reference. It starts a git repository, so the first
+pull and push have something to merge against. Find the uuid with \`uniweb site list\`.
+
+With \`.\`, clones into the current folder. Inside a workspace, adds the site to it.
+
+${colors.bright}Options:${colors.reset}
+  --path <dir>       Place the site under this folder (for example, sites)
+  --project <name>   Place it as a co-located <name>/site
+  --no-records       Pull pages only; skip records
+  --no-assets        Don't download media; the content keeps its URLs
+  --no-git           Don't start a git repository
+  --org @org         Work in @org for this clone, instead of the workspace chosen at
+  --personal         \`uniweb login\` (or your personal workspace)
+`,
+    site: `
+${colors.cyan}${colors.bright}uniweb site${colors.reset} ${colors.dim}— The sites in a workspace${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb site list [--json]
+  uniweb site unpublish [<site-uuid>] [--yes]
+  uniweb site delete [<site-uuid>] [--yes]
+
+${colors.bright}list${colors.reset} gives each site's name, uuid, and whether it is live.
+${colors.bright}unpublish${colors.reset} takes a site offline, and its content stays.
+${colors.bright}delete${colors.reset} removes a site for good. A live site must be unpublished first.
+
+Without a uuid, \`unpublish\` and \`delete\` act on the site this project is synced to.
+Both ask first, and \`--yes\` is the only way past the question: with no terminal and
+no \`--yes\` they refuse. Deleting this project's own site also forgets it here, so the
+next push creates a new one.
+
+${colors.bright}Options:${colors.reset}
+  --json             \`list\`: print JSON
+  --yes              Confirm \`unpublish\` or \`delete\`
+  --org @org         Work in @org, instead of the workspace chosen at \`uniweb login\`
+  --personal         (or your personal workspace)
+`,
+    org: `
+${colors.cyan}${colors.bright}uniweb org${colors.reset} ${colors.dim}— The organizations you belong to${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb org list
+  uniweb org create <handle>
+
+${colors.bright}list${colors.reset} gives your personal scope and the organizations you are a member of.
+${colors.bright}create${colors.reset} makes an organization, with you as a member.
+
+You don't need one to register a foundation: \`@<your handle>\` is your personal scope.
+An organization is for a scope, and sites, that you share.
+`,
+    content: `
+${colors.cyan}${colors.bright}uniweb content${colors.reset} ${colors.dim}— Package a site or foundation as a file${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb content export [<dir>] [options]
+
+Writes the content of a site (a folder with \`site.yml\`), or the schema of a built
+foundation, to one file, with no code in it. To send a site to the app, use
+\`uniweb push\`.
+
+${colors.bright}Options:${colors.reset}
+  -o <file>             Choose the output filename
+  --dry-run             Print a summary; write nothing
+  --no-sidecar          Mint fresh ids each time, for a file submitted once
+  --source-locale <lang> Wrap single-language fields under this language (default: en)
+`,
+    logout: `
+${colors.cyan}${colors.bright}uniweb logout${colors.reset} ${colors.dim}— Log out of the backend you are logged in to${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb logout
+
+Forgets the session on this computer. The next command that needs a backend asks you to
+log in again, and \`uniweb login\` goes to the default backend unless you name another.
+`,
     refresh: `
 ${colors.cyan}${colors.bright}uniweb refresh${colors.reset} ${colors.dim}— Catch up with teammates AND app authors${colors.reset}
 
@@ -2220,6 +2353,7 @@ ${colors.bright}Commands:${colors.reset}
   status             What changed in the app, in git and in Uniweb — and what to run
   forget             Forget a backend, or --all to make a copied project a new one
   site <cmd>         The sites in a workspace: list, unpublish, delete
+  org <cmd>          The organizations you belong to: list, create
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   families           List the standard section families (for meta.js family:)

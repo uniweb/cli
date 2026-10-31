@@ -1120,12 +1120,12 @@ export async function pull(args = [], deps = {}) {
   try {
     if (siteDoc) {
       // Re-base the page attribution. The pulled document IS the backend's own
-      // representation, so it becomes the remote base directly. We deliberately
-      // CLEAR the local base rather than reuse it: our source files were just
-      // rewritten from this document, and what we would emit from them is not
-      // byte-identical to it, so the old local base no longer describes anything.
-      // The next push re-establishes it; until then our side reports as unknown,
-      // which is honest rather than wrong.
+      // representation, so it becomes the remote base directly. We CLEAR the local
+      // base rather than reuse it: our source files were just rewritten from this
+      // document, and what we would emit from them is not byte-identical to it, so
+      // the old local base no longer describes anything. The re-bank below sets it
+      // from what we would emit; if that fails our side reports as unknown, which is
+      // honest rather than wrong.
       writeUnitBases(projDir, client.origin, { remote: computeUnitHashes(siteDoc), local: {} })
       pulledVersions = pulledItemVersions(siteDoc, content.itemVersions)
       // Per-item identity for the next push. Without it the backend reads our
@@ -1312,7 +1312,8 @@ export async function pull(args = [], deps = {}) {
         await rebankSyncHashes(projDir, client.origin, {
           recordDocs: pulledRecordDocs,
           ...(declarations.size ? { declarations } : {}),
-          fields
+          fields,
+          contentTaken: Boolean(siteDoc)
         })
       } catch (err) {
         note(`! could not re-bank the sync cache: ${err.message}`)

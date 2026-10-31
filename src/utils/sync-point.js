@@ -49,7 +49,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, dirname } from 'node:path'
+import { join, dirname, posix } from 'node:path'
 
 export const SYNC_TRAILER = 'Uniweb-Sync'
 export const SITE_TRAILER = 'Uniweb-Site'
@@ -747,7 +747,7 @@ export function contentCommitted(repo, roots) {
 export function uncommittedPaths(repo, roots) {
   let parts
   try {
-    parts = zlist(git(repo.top, ['status', '--porcelain', '-z', '--untracked-files=all', '--', ...roots.map((r) => `${repo.prefix}${r}`)]))
+    parts = zlist(git(repo.top, ['status', '--porcelain', '-z', '--untracked-files=all', '--', ...roots.map((r) => underTop(repo, r))]))
   } catch {
     return null
   }
@@ -794,7 +794,7 @@ export function filesDifferFrom(repo, rev, roots) {
  * @returns {{ commit: string, paths: string[] } | null} null when there was nothing to commit
  */
 export function commitRoots(repo, roots, { message, identity = null }) {
-  const full = roots.map((r) => `${repo.prefix}${r}`)
+  const full = roots.map((r) => underTop(repo, r))
   const present = full.filter((p) => existsSync(join(repo.top, p)) || zlist(git(repo.top, ['ls-files', '-z', '--', p])).length)
   let addable = present
   if (present.length) {
@@ -817,6 +817,9 @@ export function commitRoots(repo, roots, { message, identity = null }) {
 }
 
 const siteRelative = (repo, p) => (repo.prefix && p.startsWith(repo.prefix) ? p.slice(repo.prefix.length) : p)
+
+// A path relative to the site, as the repository names it. `../src/main.js` comes out as `src/main.js`.
+const underTop = (repo, p) => posix.normalize(`${repo.prefix}${p}`)
 
 // ── this copy's own sync point ──────────────────────────────────────────────
 

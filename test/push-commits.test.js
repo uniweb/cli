@@ -180,3 +180,37 @@ test("⭐ what a push writes into the files it commits as uniweb's — and that 
   assert.equal(readSyncPoint(site, A), git('rev-parse', 'HEAD'))
   assert.match(res.output, /Committed what the backend gave the site — 1 file\(s\)/)
 })
+
+// ⛔ Measured 2026-10-30 from a fresh scaffold: the first push wrote the foundation's scope into
+// `main.js`, and left it changed even with `--commit`.
+test('⭐ what a release writes into the foundation is committed with what the push writes', { timeout: 60_000 }, async () => {
+  const { filesAReleaseWrites } = await import('../src/backend/foundation-bring-along.js')
+  const { commitWriteBacks } = await import('../src/backend/site-sync.js')
+  const { ws, site, git } = project()
+  const fnd = join(ws, 'src')
+  mkdirSync(fnd, { recursive: true })
+  writeFileSync(join(fnd, 'package.json'), JSON.stringify({ name: 'src', version: '0.1.0', main: './_entry.generated.js' }))
+  writeFileSync(join(fnd, 'main.js'), "export default { name: 'bakery' }\n")
+  writeFileSync(join(fnd, 'mine.js'), 'export const a = 1\n')
+  git('add', '-A')
+  git('commit', '-qm', 'the foundation')
+  const siteYml = { foundation: 'src' }
+
+  const released = await filesAReleaseWrites(site, siteYml)
+  assert.deepEqual(released, ['../src/main.js', '../src/package.json'])
+
+  // The release writes, and the person has an edit of their own elsewhere.
+  writeFileSync(join(fnd, 'main.js'), "export default { name: '@alice/bakery' }\n")
+  writeFileSync(join(fnd, 'mine.js'), 'export const a = 2\n')
+  writeFileSync(join(site, 'sync.json'), '{}\n')
+  const made = commitWriteBacks(site, A, { released })
+  assert.ok(made.commit, JSON.stringify(made))
+  assert.deepEqual(git('show', '--name-only', '--format=', 'HEAD').split('\n').sort(), ['site/sync.json', 'src/main.js'])
+  assert.equal(git('log', '-1', '--format=%an'), 'uniweb')
+  assert.match(git('status', '--porcelain'), /M src\/mine\.js$/m, "the person's edit stays theirs")
+
+  // CONTROL — a file holding the person's edits before the release is not the release's to commit.
+  writeFileSync(join(fnd, 'main.js'), "export default { name: '@alice/bakery', description: 'mine' }\n")
+  const again = await filesAReleaseWrites(site, siteYml)
+  assert.deepEqual(again, ['../src/package.json'])
+})

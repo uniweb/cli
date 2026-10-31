@@ -52,7 +52,7 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { execFileSync } from 'node:child_process'
 
 import {
@@ -65,6 +65,7 @@ import {
 import { computeFoundationDigest } from '../utils/code-upload.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import { readOrgFlag } from '../utils/args.js'
+import { repoOf, uncommittedPaths } from '../utils/sync-point.js'
 import { belongsToScope } from '../utils/registry-orgs.js'
 import { writeJsonPreservingStyle } from '../utils/json-file.js'
 import {
@@ -148,6 +149,33 @@ export function resolveLocalExtensions(siteDir, siteYml) {
     out.push({ decl, dir, version: readPkgField(dir, 'version') })
   }
   return out
+}
+
+
+/**
+ * ⭐ WHAT A RELEASE WRITES, A PUSH COMMITS (`commitWriteBacks`). Bringing local code along writes
+ * into it: the scope it registered under into its name (`main.js`), the next version into its
+ * `package.json`. These are those files, relative to the site, where git holds them as they
+ * stand. Asked before the release, so a file holding the person's own edits stays theirs to commit.
+ *
+ * ⛔ Until 2026-10-30 they were left out, so a first push, even with `--commit`, left the project
+ * with `main.js` changed. Measured from a fresh scaffold, on every template tried.
+ *
+ * @param {string} siteDir
+ * @param {object} siteYml - parsed site.yml
+ * @returns {Promise<string[]>}
+ */
+export async function filesAReleaseWrites(siteDir, siteYml) {
+  const repo = repoOf(siteDir)
+  if (!repo?.head) return []
+  const local = [resolveLocalFoundation(siteDir, siteYml), ...resolveLocalExtensions(siteDir, siteYml)].filter(Boolean)
+  const files = []
+  for (const { dir } of local) {
+    const main = await readFoundationName(dir).then((r) => r.mainFile, () => null)
+    if (main) files.push(main)
+    files.push(join(dir, 'package.json'))
+  }
+  return files.map((file) => relative(siteDir, file)).filter((file) => uncommittedPaths(repo, [file])?.length === 0)
 }
 
 /**

@@ -1160,7 +1160,7 @@ test('a stale refusal explains WHICH pages diverged, and attributes them', async
   const out = [...calls.error, ...calls.note].join('\n')
   assert.match(out, /forcing DELETES these.*news/)
   assert.match(out, /Changed upstream — forcing discards these.*about/)
-  assert.match(out, /Changed by you — pulling discards these.*home/)
+  assert.match(out, /Changed by you.*home/)
 })
 
 test('the stale explainer degrades to the plain refusal when the remote read fails', async () => {

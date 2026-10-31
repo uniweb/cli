@@ -56,3 +56,19 @@ test('--help runs without optional peers', () => {
   assert.match(r.stdout, /Uniweb CLI/)
   assert.match(r.stdout, /Usage:/)
 })
+
+// ⭐ A verb an agent meets answers `--help` itself. ⛔ Until 2026-10-30 these printed the whole
+// CLI's help, so an agent asking what `push` takes read past the other thirty commands to find out.
+test('each verb that talks to the app has its own --help', () => {
+  for (const verb of ['push', 'pull', 'clone', 'site', 'org', 'content', 'logout']) {
+    const r = spawnSync(process.execPath, [CLI_ENTRY, verb, '--help'], {
+      encoding: 'utf8',
+      env: { ...process.env, CI: 'true' }
+    })
+    assert.equal(r.status, 0, `${verb}: ${r.stderr}`)
+    // eslint-disable-next-line no-control-regex
+    const out = r.stdout.replace(/\x1b\[[0-9;]*m/g, '')
+    assert.match(out, new RegExp(`^uniweb ${verb} — `, 'm'), `${verb}:\n${out}`)
+    assert.doesNotMatch(out, /Global Options:/, `${verb} printed the whole CLI's help`)
+  }
+})

@@ -160,7 +160,8 @@ async function explainStaleSiteContent({ client, siteDir, localBuffer, uuid }) {
     const localDoc = entityDocFromUwx(localBuffer)
     if (!remoteDoc || !localDoc) return []
     return describeSiteDiff(
-      diffSiteUnits(localDoc, remoteDoc, readUnitBases(siteDir, client.origin))
+      diffSiteUnits(localDoc, remoteDoc, readUnitBases(siteDir, client.origin)),
+      { label: (unit) => unitFilesOf(siteDir, unit)[0] ?? unit }
     )
   } catch {
     return []
@@ -1100,9 +1101,14 @@ export function commitSiteContent(siteDir, { message }) {
  * ⛔ Until 2026-10-18 they were left to the person to commit, and a project pushed once and
  * not committed after had no `sync.json` in the history its clones got.
  *
+ * @param {string} siteDir
+ * @param {string} backend
+ * @param {object} [o]
+ * @param {boolean} [o.complete] - every lane landed, so the commit is this copy's sync point
+ * @param {string[]} [o.released] - what the release wrote into local code (`filesAReleaseWrites`)
  * @returns {{ commit: string, paths: string[] } | { error: string } | null}
  */
-export function commitWriteBacks(siteDir, backend, { complete = false } = {}) {
+export function commitWriteBacks(siteDir, backend, { complete = false, released = [] } = {}) {
   const repo = repoOf(siteDir)
   if (!repo?.head || mergeInProgress(repo)) return null
   let host = 'backend'
@@ -1121,7 +1127,7 @@ export function commitWriteBacks(siteDir, backend, { complete = false } = {}) {
     // ⭐ Marked with the backend and the site, so a pull reads the commit a lane names through
     // it (`recordedAfter`, utils/sync-point.js): the ids written back are what the backend holds.
     const site = readBackendState(siteDir, backend).site?.uuid
-    const made = commitRoots(repo, [...sentRoots(siteDir), SYNC_STORE_FILE], {
+    const made = commitRoots(repo, [...sentRoots(siteDir), SYNC_STORE_FILE, ...released], {
       message: `Record what ${backend} gave the site${site ? `\n\n${RECORDED_TRAILER}: ${backend} ${site}` : ''}`,
       identity
     })
@@ -1980,12 +1986,17 @@ export async function entityHashes(siteDir, backend = null, { declarations, fiel
  * @param {Map<string,object>} [opts.declarations] - the Models the pull read, by name — so a
  *        site whose foundation is not in the project (a clone's) can be re-banked offline
  */
-export async function rebankSyncHashes(siteDir, backend = null, { recordDocs, declarations, fields = null } = {}) {
+export async function rebankSyncHashes(siteDir, backend = null, { recordDocs, declarations, fields = null, contentTaken = false } = {}) {
   // ⛔ With the keys this deployment's Sections take, when the caller has them (`deploymentFields`):
   // they shape the document the next push sends (`typed_by_data_key`, `og_title`), so a hash banked
   // without them marks a clone's first push as changed. Until 2026-09-26 a pull banked none.
   const pkg = await comparisonEmit(siteDir, { backend, sendAll: true, declarations, fields })
   writeSyncCache(siteDir, backend, onlyWhatThePullTook(siteDir, backend, pkg, recordDocs), pkg.applied || {})
+  // ⭐ And the local unit base, from what this copy would send for the content the pull took, so a
+  // refusal after a pull can tell this copy's edits from the backend's. ⛔ Until 2026-10-30 a pull
+  // left it empty, and the next refusal said "No record of your last sync" just after one.
+  const sendsNow = contentTaken && pkg.siteContent ? entityDocFromUwx(pkg.siteContent.buffer) : null
+  if (sendsNow) writeUnitBases(siteDir, backend, { local: computeUnitHashes(sendsNow) })
   // ⭐ And the identity of the records' list items, from the documents the pull just took:
   // the files it wrote hold the stored items in stored order, so the emit over them pairs
   // with each document item for item.
