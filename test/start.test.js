@@ -13,7 +13,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runVerb, tmp } from './helpers/run-verb.js'
@@ -64,9 +64,88 @@ test('outside a project: create from starter, read AGENTS.md, sign in in the bro
   assert.doesNotMatch(guide, /\{\{|\}\}/)
 })
 
+test('--template names what the guide creates the project from', () => {
+  const guide = startGuide({ cwd: tmp('uw-start-empty-'), template: 'docs' })
+
+  assert.ok(guide.includes('npx uniweb@latest create . --template docs'))
+  assert.ok(guide.includes('npx uniweb@latest create <name> --template docs'))
+  assert.ok(!guide.includes('--template starter'))
+  assert.ok(flat(guide).includes('`docs` is a working site'))
+  assert.ok(flat(guide).includes('replace all the sample content'))
+
+  const none = startGuide({ cwd: tmp('uw-start-empty-'), template: 'none' })
+  assert.ok(none.includes('create <name> --template none'))
+  assert.ok(flat(none).includes('`none` is a project with no section types or pages'))
+  assert.ok(!flat(none).includes('is a working site'))
+
+  // CONTROL — with no template, the guide stays on starter and names no other.
+  const plain = startGuide({ cwd: tmp('uw-start-empty-') })
+  assert.ok(flat(plain).includes('`starter` has one generic section type'))
+  assert.ok(!flat(plain).includes('is a working site'))
+})
+
+test('--template reaches the guide from the command line, in both spellings', async () => {
+  for (const args of [['--template', 'blog'], ['--template=blog']]) {
+    const r = await runVerb(tmp('uw-start-empty-'), start, args)
+    assert.equal(r.exitCode, 0, r.output)
+    assert.ok(r.output.includes('create <name> --template blog'), args.join(' '))
+  }
+  // A flag with no value is no template named.
+  const r = await runVerb(tmp('uw-start-empty-'), start, ['--template'])
+  assert.ok(r.output.includes('create <name> --template starter'))
+})
+
+test('a folder set aside for the site takes the project itself', () => {
+  const guide = startGuide({ cwd: tmp('uw-start-empty-') })
+  assert.ok(guide.includes('npx uniweb@latest create . --template starter'))
+  assert.ok(flat(guide).includes('In a folder set aside for this site'))
+})
+
+test('a project one level down is named, so a later session does not create another', () => {
+  const parent = tmp('uw-start-parent-')
+  // A folder of the person's own, and one a project would not be found in.
+  mkdirSync(join(parent, 'photos'))
+  mkdirSync(join(parent, 'node_modules'))
+
+  const none = startGuide({ cwd: parent })
+  assert.ok(!none.includes('A project is already here'), 'a plain folder is not a project')
+
+  const shop = project()
+  const one = tmp('uw-start-parent-')
+  renameSync(shop, join(one, 'shop'))
+  const guide = flat(startGuide({ cwd: one }))
+  assert.ok(guide.includes('`shop`, in this folder, is a Uniweb project.'))
+  assert.ok(guide.includes('go there and run `npx uniweb@latest start` again'))
+
+  renameSync(project(), join(one, 'blog'))
+  assert.ok(flat(startGuide({ cwd: one })).includes('`blog`, `shop`, in this folder, are Uniweb projects.'))
+})
+
+test('the guide covers the person as well as the commands', () => {
+  const guide = flat(startGuide({ cwd: tmp('uw-start-empty-') }))
+  assert.ok(guide.includes('Ask only what you can\'t decide, in plain words.'))
+  assert.ok(guide.includes('Show them the site on their computer before you ask them to sign in.'))
+  assert.ok(guide.includes('set `defaultLanguage` in `site.yml`'))
+  assert.ok(guide.includes('not in a component\'s code'))
+  assert.ok(guide.includes('Take it live only when they ask'))
+  assert.ok(guide.includes('https://uniweb.app'))
+  assert.ok(guide.includes('It waits up to five minutes'))
+
+  // A site they already have is brought here rather than created again.
+  assert.ok(guide.includes('npx uniweb@latest site list'))
+  assert.ok(guide.includes('npx uniweb@latest clone <site-uuid> <name>'))
+
+  // CONTROL — a project already says what it is written in, and is not created or cloned.
+  const inside = flat(startGuide({ cwd: project() }))
+  assert.ok(!inside.includes('set `defaultLanguage`'))
+  assert.ok(!inside.includes('clone <site-uuid>'))
+  assert.ok(inside.includes('Show them the site on their computer'))
+})
+
 test('⛔ the person is never sent to a terminal — in any variant', () => {
   const variants = [
     startGuide({ cwd: tmp('uw-start-empty-') }),
+    startGuide({ cwd: tmp('uw-start-empty-'), template: 'docs' }),
     startGuide({ cwd: project() }),
     startGuide({ cwd: project({ agents: false }) })
   ]

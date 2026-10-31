@@ -17,16 +17,38 @@
  *
  * It is answered by the CLI that was invoked, never delegated to a project's own copy
  * (`STANDALONE_COMMANDS`): an older project CLI does not have it.
+ *
+ * ⭐ `--template <name>` names the template the guide creates the project from, so a prompt
+ * for a kind of site can say which one and the first command is still this read-only one.
+ * The name goes into the guide as given: `create`, which the guide tells the agent to run,
+ * is what says when a template does not exist.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Handlebars from 'handlebars'
+import { readFlagValue } from '../utils/args.js'
 import { findUniwebWorkspace, findWorkspaceRoot } from '../utils/workspace.js'
 import { detectWorkspacePm, installCmd } from '../utils/pm.js'
 
 const PARTIAL = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'partials', 'start.md')
+
+/**
+ * The Uniweb projects directly inside `cwd`, by folder name. `create <name>` puts a project
+ * one level below the folder an agent was opened in, and a later session opened in the same
+ * folder has to be told it is there rather than to create another.
+ *
+ * @param {string} cwd
+ * @returns {string[]}
+ */
+function projectsIn(cwd) {
+  return readdirSync(cwd, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules')
+    .map((entry) => entry.name)
+    .filter((name) => findUniwebWorkspace(join(cwd, name)) === join(cwd, name))
+    .sort()
+}
 
 /**
  * The guide, as Markdown, for a command run in `cwd`.
@@ -34,27 +56,35 @@ const PARTIAL = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'parti
  * Outside a project, `otherProject` names a workspace of another kind that holds `cwd`:
  * `create` refuses to make a project inside one, so the guide says to create it elsewhere.
  *
- * @param {{ cwd?: string }} [o]
+ * @param {{ cwd?: string, template?: string|null }} [o] - `template`: what to create the
+ *   project from, `starter` when none is named
  * @returns {string}
  */
-export function startGuide({ cwd = process.cwd() } = {}) {
+export function startGuide({ cwd = process.cwd(), template = null } = {}) {
   const root = findUniwebWorkspace(cwd)
-  const template = Handlebars.compile(readFileSync(PARTIAL, 'utf8'), { noEscape: true })
-  return template({
+  const nearby = root ? [] : projectsIn(cwd)
+  const name = template || 'starter'
+  const guide = Handlebars.compile(readFileSync(PARTIAL, 'utf8'), { noEscape: true })
+  return guide({
     project: !!root,
     root,
     // A project `create` makes has one; one already here may not.
     agents: root ? existsSync(join(root, 'AGENTS.md')) : true,
     otherProject: root ? null : findWorkspaceRoot(cwd),
+    nearby: nearby.map((folder) => `\`${folder}\``).join(', '),
+    oneNearby: nearby.length === 1,
+    template: name,
+    starter: name === 'starter',
+    none: name === 'none',
     install: installCmd(root ? detectWorkspacePm(root) : 'npm')
   })
 }
 
 /**
- * @param {string[]} [args] - none are read
+ * @param {string[]} [args] - `--template <name>`
  * @returns {Promise<{ exitCode: number }>}
  */
 export async function start(args = []) {
-  console.log(startGuide())
+  console.log(startGuide({ template: readFlagValue(args, '--template') }))
   return { exitCode: 0 }
 }

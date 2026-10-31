@@ -1579,7 +1579,8 @@ ${colors.bright}Examples:${colors.reset}
 ${colors.cyan}${colors.bright}uniweb start${colors.reset} ${colors.dim}— How an AI agent begins a Uniweb site${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
-  npx uniweb@latest start    Print the guide, in Markdown
+  npx uniweb@latest start                    Print the guide, in Markdown
+  npx uniweb@latest start --template docs    The guide for a project from that template
 
 A short guide for an AI agent building a website for someone: create a
 project, read its AGENTS.md, run it, sign the person in, and bring the site
