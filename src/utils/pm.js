@@ -122,9 +122,15 @@ export function globalCliUpdateCmd(pm) {
  * @returns {string}
  */
 export function filterCmd(pm, pkg, cmd) {
-  return pm === 'pnpm'
-    ? `pnpm --filter ${pkg} ${cmd}`
-    : `npm -w ${pkg} run ${cmd}`
+  return filterArgs(pm, pkg, cmd).join(' ')
+}
+
+/**
+ * The same command as a program and its arguments, to run rather than to print.
+ * @returns {string[]}
+ */
+export function filterArgs(pm, pkg, cmd) {
+  return pm === 'pnpm' ? ['pnpm', '--filter', pkg, cmd] : ['npm', '-w', pkg, 'run', cmd]
 }
 
 /**

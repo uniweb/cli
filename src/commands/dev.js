@@ -24,16 +24,17 @@
  * asks it to stop, which it does with exit 0. ⛔ Until 2026-10-25 a caller had to pick a port to
  * know the address, and `--port` was read as the site's name.
  *
- * Resolution order for which site to launch:
- *   1. --site <name> (if passed)
- *   2. Positional <site> arg
+ * Resolution order for which site to launch (`utils/pick-site.js`):
+ *   1. --site <name> (if passed), or a positional <site>: a package's name, a
+ *      site's folder, or a project's folder
+ *   2. The site the working directory means: the one you are in, or the one
+ *      in the project folder you are in
  *   3. The single site in the workspace (if exactly one)
  *   4. The first site in the workspace, with a "multiple sites" notice
  *      pointing at --site for explicit selection
  *
- * Multi-site workspaces with no positional / flag will run the first
- * site by default (mirrors the `pnpm dev` shortcut `uniweb create` writes).
- * Use `--site` to pick a different one without editing the root scripts.
+ * From the root of a multi-site workspace, with no positional / flag, it runs
+ * the first site (mirrors the `pnpm dev` shortcut `uniweb create` writes).
  *
  * A site whose foundation is a catalog ref — every clone — has no build of it, and
  * only the backend the site is on can say where that version is served. So `dev`
@@ -45,7 +46,12 @@
  *
  * Implementation: shells out to the package manager that invoked the CLI
  * (detected via npm_config_user_agent), running the workspace-filtered
- * dev command (`pnpm --filter <name> dev` or `npm -w <name> run dev`).
+ * dev command (`pnpm --filter <name> dev` or `npm -w <folder> run dev`).
+ *
+ * ⛔ UNDER NPM, BY THE SITE'S FOLDER. npm reads `-w <x>` as a package's name and also as a parent
+ * folder, every package in it selected. A site named for the folder around it (`marketing`, in
+ * `marketing/site`) then started the foundation beside it first, whose dev server answered 404
+ * and never gave way to the site's. pnpm's `--filter` reads a name as a name.
  * No special handling of vite directly — the site package already owns
  * its dev script, and shelling through pnpm/npm respects whatever the
  * site has configured (Vite plugins, env vars, port overrides, etc.).
@@ -54,7 +60,8 @@
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 
-import { detectPackageManager, filterCmd } from '../utils/pm.js'
+import { detectPackageManager, filterArgs } from '../utils/pm.js'
+import { pickSite } from '../utils/pick-site.js'
 import { readWorkspaceConfig } from '../utils/config.js'
 import { discoverSites } from '../utils/discover.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
@@ -111,6 +118,15 @@ export function readDevArgs(args) {
   return wanted
 }
 
+/**
+ * What starts a site's dev server: under pnpm by its name, and under npm by its folder, since npm
+ * also reads a name as a folder, every package in it selected.
+ * @returns {string[]} the program and its arguments
+ */
+export function devCommand(pm, site) {
+  return filterArgs(pm, pm === 'npm' ? site.path : site.name, 'dev')
+}
+
 export async function dev(args = []) {
   const badFlag = checkFlags('dev', args)
   if (badFlag) {
@@ -154,20 +170,13 @@ export async function dev(args = []) {
   // Pick the site
   const requested = wanted.site
 
-  let site
-  if (requested) {
-    site =
-      sites.find((s) => s.name === requested) ||
-      sites.find((s) => s.path === requested)
-    if (!site) {
-      console.error(`${RED}✗${RESET} Site "${requested}" not found.`)
-      console.error(`  Available: ${sites.map((s) => s.name).join(', ')}`)
-      process.exit(1)
-    }
-  } else if (sites.length === 1) {
-    site = sites[0]
-  } else {
-    site = sites[0]
+  const { site, ambiguous } = pickSite(sites, rootDir, { requested, cwd })
+  if (requested && !site) {
+    console.error(`${RED}✗${RESET} Site "${requested}" not found.`)
+    console.error(`  Available: ${sites.map((s) => s.name).join(', ')}`)
+    process.exit(1)
+  }
+  if (ambiguous) {
     console.error(
       `${YELLOW}⚠${RESET} Multiple sites found; using ${CYAN}${site.name}${RESET}.`
     )
@@ -220,8 +229,8 @@ export async function dev(args = []) {
   await warnOnStaleInstall(rootDir, site)
 
   const pm = detectPackageManager()
-  const command = filterCmd(pm, site.name, 'dev')
-  const [bin, ...rest] = command.split(' ')
+  const [bin, ...rest] = devCommand(pm, site)
+  const command = [bin, ...rest].join(' ')
 
   // ⭐ A SITE WHOSE FOUNDATION IS A CATALOG REF — a clone — is previewed with what the backend
   // it is on says: where that version is served. Asked here, for this dev server alone, and

@@ -14,11 +14,11 @@ import {
   flagsFor,
   libraryOptions,
   parseSnapshotArgs,
-  pickSite,
   previewDecision,
   previewValueFor,
   shareImageDecision
 } from '../src/commands/snapshot.js'
+import { pickSite } from '../src/utils/pick-site.js'
 import { isAuthoredPreview } from '@uniweb/build/uwx'
 
 test('flag values are not mistaken for the site name', () => {

@@ -178,7 +178,7 @@ This is the highest-bandwidth way to learn the framework, and it works with no n
 ### The loop
 
 ```bash
-uniweb dev            # from the workspace root; it picks the site for you
+uniweb dev            # the site you are in; from the workspace root, it picks one for you
 pnpm build            # production build (SSG + SPA)
 pnpm preview          # preview the production build
 ```
@@ -295,7 +295,7 @@ The architecture exists to keep content and code separate. Your task sits in one
 ### 4. The loop
 
 ```bash
-uniweb dev                         # from the workspace root; it picks the site
+uniweb dev                         # the site you are in; from the workspace root, it picks one
 uniweb dev --status                # the address it is serving at — read it, never assume a port
 uniweb dev --stop                  # stop it when you are done
 ```

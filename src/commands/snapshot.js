@@ -54,6 +54,7 @@ import {
   saveSnapshotSettings
 } from '../utils/snapshot-settings.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
+import { pickSite } from '../utils/pick-site.js'
 
 const RED = '\x1b[31m'
 const GREEN = '\x1b[32m'
@@ -218,19 +219,6 @@ export function previewDecision(current, next) {
 export function shareImageDecision(current, next) {
   if (current === undefined || current === null || current === '') return 'set'
   return current === next ? 'unchanged' : 'keep'
-}
-
-/** The site the command applies to: named, else the one containing cwd, else the only one. */
-export function pickSite(sites, rootDir, { requested, cwd }) {
-  if (requested) {
-    return { site: sites.find((s) => s.name === requested || s.path === requested) ?? null }
-  }
-  const containing = sites.find((s) => {
-    const rel = relative(join(rootDir, s.path), cwd)
-    return !rel.startsWith('..') && !isAbsolute(rel)
-  })
-  if (containing) return { site: containing }
-  return { site: sites[0] ?? null, ambiguous: sites.length > 1 }
 }
 
 /** Import `@uniweb/snapshot` from the site, the workspace, or next to this CLI. */

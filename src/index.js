@@ -1598,8 +1598,8 @@ anywhere. To run a site's dev server, use \`uniweb dev\`.
 ${colors.cyan}${colors.bright}uniweb dev${colors.reset} ${colors.dim}— Start a dev server for a site${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
-  uniweb dev                  Start dev server for the (single) site
-  uniweb dev <site>           Start dev server for a specific site
+  uniweb dev                  Start dev server for the site you are in, or the single site
+  uniweb dev <site>           Start dev server for a site: its package name, or its project's folder
   uniweb dev --site <name>    Same, with explicit flag form
   uniweb dev --port <n>       On that port, or not at all
   uniweb dev --status         Print the running dev server's address

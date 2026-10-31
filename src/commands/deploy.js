@@ -69,6 +69,7 @@ import {
   promptSelect
 } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
+import { siteAround } from '../utils/pick-site.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -500,6 +501,8 @@ export async function resolveSiteDir(args, verb = 'deploy') {
   const workspaceRoot = findWorkspaceRoot(cwd)
   if (workspaceRoot) {
     const sites = await findSites(workspaceRoot)
+    const here = siteAround(sites, workspaceRoot, cwd)
+    if (here) return resolve(workspaceRoot, here)
     if (sites.length === 1) return resolve(workspaceRoot, sites[0])
     if (sites.length > 1) {
       if (isNonInteractive(args)) {
