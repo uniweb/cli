@@ -24,3 +24,11 @@ onlyBuiltDependencies:
 allowBuilds:
   esbuild: true
   sharp: true
+
+# The framework's packages move together, and the CLI names the versions a
+# project takes. pnpm 12 holds a release back for its first day by default and
+# writes each one it needs into this file: a project made that day gets part of
+# a release and a change to commit. Your other dependencies keep pnpm's policy.
+minimumReleaseAgeExclude:
+  - "@uniweb/*"
+  - uniweb

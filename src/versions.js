@@ -63,23 +63,27 @@ export const REACT_VERSION = '^19.0.0'
  * Default pnpm major for generated CI, used only when the project does not
  * say which pnpm it uses (see `resolveCiPnpmVersion`).
  *
- * **Tracks the current stable major.** `pnpm@latest` is 11.x, so a developer
- * running `npm i -g pnpm` today gets 11 — and CI should run what they run.
- * Both of pnpm 11's install-time policies are handled:
+ * **Meant to track the stable major, and one behind it since pnpm 12**
+ * (`npm view pnpm dist-tags`, 2026-10-31: latest is 12.16.1). A project installed
+ * with 12 gets 12 by step 2 below, so this applies only with no install to read.
+ * A scaffold installs and builds on 12 (same day); a generated workflow on it has
+ * not been run, which is what moving this waits on. pnpm 11's two install-time
+ * policies are handled:
  *
  *   - Build-script approval. pnpm 11 renamed `onlyBuiltDependencies` (list)
  *     to `allowBuilds` (map) and ignores the old name, so an unprepared
  *     project fails with `ERR_PNPM_IGNORED_BUILDS`. The workspace template
  *     emits both spellings, so scaffolds install on either major.
  *   - Minimum release age. pnpm 11 refuses dependencies published in the
- *     last 24 hours. Installing locally with pnpm 11 auto-collects the
- *     needed `minimumReleaseAgeExclude` entries into `pnpm-workspace.yaml`,
+ *     last 24 hours. The workspace template exempts the framework's own
+ *     packages. For anything else, installing locally with pnpm 11 auto-collects
+ *     the needed `minimumReleaseAgeExclude` entries into `pnpm-workspace.yaml`,
  *     and CI then honours them — verified end to end.
  *
  * **The one combination that breaks is installing locally with pnpm 10 while
- * CI runs 11**: pnpm 10 never writes those exclude entries, so CI rejects any
- * dependency in the lockfile published within the last day — including
- * unrelated transitive ones. A project still on pnpm 10 should say so with
+ * CI runs 11**: pnpm 10 never writes those exclude entries, so CI rejects a
+ * dependency outside the framework in the lockfile published within the last
+ * day, including a transitive one. A project still on pnpm 10 should say so with
  * `"packageManager": "pnpm@10.x.y"`, which `resolveCiPnpmVersion` honours and
  * which pins CI to match. `uniweb add ci` prints the resolved toolchain so
  * that choice is visible rather than silent.

@@ -100,6 +100,15 @@ test('both spellings stay in sync, so neither major is left behind', () => {
   )
 })
 
+test("the framework's own packages are exempt from pnpm's release age, and only those", () => {
+  // pnpm 12 otherwise holds a release back for a day and rewrites this tracked
+  // file on install (measured 12.16.1, 2026-10-31), and CI on a newer pnpm than
+  // the one that made the lockfile rejects the release outright.
+  const doc = yaml.load(renderTemplate())
+  assert.deepEqual([...doc.minimumReleaseAgeExclude].sort(), ['@uniweb/*', 'uniweb'])
+  assert.equal(doc.minimumReleaseAge, undefined, 'the policy itself stays pnpm\'s')
+})
+
 test('the template still declares workspace packages', () => {
   // npm and yarn ignore this file, but pnpm needs the globs — a rewrite
   // that dropped them would break pnpm workspaces silently.
