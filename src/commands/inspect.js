@@ -3,14 +3,14 @@
  *
  * Usage:
  *   uniweb inspect pages/home/hero.md          Single section
- *   uniweb inspect pages/home/                 All sections in a page folder
+ *   uniweb inspect pages/home/                 All sections on a page, in the page's order
  *   uniweb inspect pages/home/hero.md --raw    ProseMirror AST instead of flat shape
  *   uniweb inspect pages/home/ --full          Include empty fields (matches runtime)
  *   uniweb inspect pages/home/ --sequence      Include sequence array
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { resolve, extname, basename } from 'node:path'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { resolve, extname, basename, dirname, join } from 'node:path'
 import yaml from 'js-yaml'
 
 // Colors for terminal output
@@ -303,6 +303,35 @@ function naturalSort(a, b) {
 }
 
 /**
+ * The site a folder is in: the nearest folder above it, or itself, holding a `site.yml`.
+ */
+function findSiteRoot(dir) {
+  for (let at = dir; ; at = dirname(at)) {
+    if (existsSync(join(at, 'site.yml'))) return at
+    if (dirname(at) === at) return null
+  }
+}
+
+/**
+ * A page folder's files as the page has them, by the build's own walk of it (`pageSectionFiles`), and
+ * the files it leaves out. A folder outside a site has no page to ask, so it keeps its name order.
+ */
+async function inPageOrder(target, files) {
+  const siteRoot = findSiteRoot(target)
+  if (!siteRoot) return { files, notOnPage: [] }
+  try {
+    const { pageSectionFiles } = await import('@uniweb/build/content')
+    const onPage = await pageSectionFiles(target, siteRoot)
+    return { files: onPage, notOnPage: files.filter((file) => !onPage.includes(file)) }
+  } catch (err) {
+    console.error(
+      `${colors.yellow}In name order: could not read this page's order (${err.message})${colors.reset}`
+    )
+    return { files, notOnPage: [] }
+  }
+}
+
+/**
  * Main inspect entry point.
  */
 export async function inspect(args) {
@@ -315,7 +344,7 @@ Usage: uniweb inspect <path> [options]
 Inspect the parsed content shape of a markdown file or page folder.
 
 Arguments:
-  <path>        Path to a .md file or a page folder
+  <path>        Path to a .md file, or a page folder: its sections in the page's order
 
 Options:
   --raw         Show ProseMirror AST instead of flat content shape
@@ -350,17 +379,24 @@ Options:
     const result = processFile(content, basename(target), deps, options)
     console.log(JSON.stringify(result, null, 2))
   } else if (stat.isDirectory()) {
-    const files = readdirSync(target)
+    const found = readdirSync(target)
       .filter(
         (f) => extname(f) === '.md' && !f.startsWith('_') && f !== 'README.md'
       )
       .sort(naturalSort)
 
-    if (files.length === 0) {
+    if (found.length === 0) {
       console.error(
         `${colors.yellow}No .md files found in: ${flags.target}${colors.reset}`
       )
       return
+    }
+
+    const { files, notOnPage } = await inPageOrder(target, found)
+    if (notOnPage.length > 0) {
+      console.error(
+        `${colors.dim}Not on this page: ${notOnPage.join(', ')}${colors.reset}`
+      )
     }
 
     const results = files.map((file) => {
