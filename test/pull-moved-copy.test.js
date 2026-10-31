@@ -102,8 +102,7 @@ async function moved(backend) {
   git(from, 'commit', '-qm', 'create')
   const first = await pullIn(from, backend, ['--force'])
   assert.equal(first.exitCode, 0, first.out)
-  git(from, 'add', '-A')
-  git(from, 'commit', '-qm', 'pull')
+  assert.equal(git(from, 'status', '--porcelain').trim(), '', 'the pull committed what it wrote')
 
   const dir = mkdtempSync(join(scratch, 'new-'))
   cpSync(from, dir, { recursive: true, filter: (src) => !/[/\\]\.(git|uniweb)([/\\]|$)/.test(src) })
