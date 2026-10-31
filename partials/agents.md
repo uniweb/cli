@@ -28,6 +28,7 @@ You're building a *system* of section types, not individual pages. That's what m
 
 | Your situation | Start at |
 |---|---|
+| Building a whole site for someone, content and code | **Part 3**, *Section format* through *Page organization*, then **Part 4**, *Where things go* through *Section wrapper*, *meta.js*, *Semantic theming*, *theme.yml*, *Fonts*. Read the rest when the site calls for it: *Records, queries and parametric pages* for a blog, *Forms* for a contact form |
 | New or nearly empty project | **Part 1**, then Part 4 |
 | Existing project, content task (pages, copy, colors, nav) | **Part 2**, then Part 3 |
 | Existing project, component task (new section type, restyle) | **Part 2**, then Part 4 |
