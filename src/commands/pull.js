@@ -243,7 +243,10 @@ function pullCachePath(siteDir) {
 // content it never took. Every later pull then answered 304 and the file never caught up.
 // Ignoring those once costs one full pull. (In a repository an ETag is echoed only while
 // the sync point it was banked with is in the history — see `cacheHolds` below.)
-const PULL_CACHE_VERSION = 2
+// ⛔ VERSION 3 DISOWNS THOSE OF A PULL THAT READ NOTHING OF `@`. Before 2026-10-31 a pull took a
+// translation the app had flagged for current, and kept nothing of `@`. A site that has not moved
+// since would answer 304, and its next push would remove what the app keeps there.
+const PULL_CACHE_VERSION = 3
 export function readPullCache(siteDir) {
   try {
     const obj = JSON.parse(readFileSync(pullCachePath(siteDir), 'utf8'))

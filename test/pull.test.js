@@ -758,7 +758,7 @@ test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (
     mkdirSync(join(dir, '.uniweb'), { recursive: true })
     writeFileSync(
       join(dir, '.uniweb/pull-cache.json'),
-      JSON.stringify({ version: 2, content: '"abc123"' })
+      JSON.stringify({ version: 3, content: '"abc123"' })
     )
     // A banked hash that a re-bank would replace: nothing was projected, so nothing is re-banked.
     writeFileSync(
@@ -808,7 +808,7 @@ test('⛔ in a repository an ETag is not echoed once its sync point has left the
     execFileSync('git', ['add', '-A'], { cwd: dir, stdio: 'ignore' })
     execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base'], { cwd: dir, stdio: 'ignore' })
     mkdirSync(join(dir, '.uniweb'), { recursive: true })
-    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 2, content: '"abc123"' }))
+    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 3, content: '"abc123"' }))
     // A commit this history does not hold.
     const gone = execFileSync('git', ['commit-tree', 'HEAD^{tree}', '-m', 'elsewhere'], {
       cwd: dir,
@@ -840,7 +840,7 @@ test('pull --force is unconditional — it takes the backend version whatever th
     writeFileSync(join(dir, 'site.yml'), "name: Keep\nfoundation: '@a/base'\n")
     bindSite(dir, 'SITE-FORCE')
     mkdirSync(join(dir, '.uniweb'), { recursive: true })
-    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 2, content: '"abc123"' }))
+    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 3, content: '"abc123"' }))
     let sentINM = 'unset'
     await pull(['--no-records', '--force'], {
       resolveSiteDir: async () => dir,
@@ -1474,7 +1474,8 @@ test('an ETag cached by an older pull is not echoed — it may describe content 
     writeFileSync(join(dir, 'site.yml'), "name: Keep\nfoundation: '@a/base'\n")
     bindSite(dir, 'SITE-V1')
     mkdirSync(join(dir, '.uniweb'), { recursive: true })
-    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 1, content: '"stale"' }))
+    // The last version that read nothing of `@`: a site with no change since would answer 304.
+    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 2, content: '"stale"' }))
     let sentINM = 'unset'
     await pull(['--no-records', '--force'], {
       resolveSiteDir: async () => dir,
