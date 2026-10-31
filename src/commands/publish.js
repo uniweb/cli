@@ -109,6 +109,7 @@ import {
   untakenBase,
   unsettledFiles,
   commitWriteBacks,
+  deployRecordAtRest,
   reportWriteBacks,
   pushSyncPackages,
   readSiteWorkspace
@@ -1081,6 +1082,7 @@ export async function publish(args = []) {
       ? siteYml.foundation
       : siteYml.foundation?.ref || null
   const recordedRef = fnd.ref || siteYmlRef
+  const recordAtRest = deployRecordAtRest(siteDir)
   await persistLastDeploy(siteDir, {
     targetName: resolved.targetName,
     // A target this file does not have yet — the first publish anywhere (the whole
@@ -1122,6 +1124,12 @@ export async function publish(args = []) {
       ...(Array.isArray(result.locales) ? { locales: result.locales } : {})
     }
   })
+  // ⭐ The record is committed, as what a push writes is. ⛔ Until 2026-10-30 every publish left
+  // `deploy.yml` changed, so a tree a person had committed was never clean after one.
+  if (recordAtRest && saveDeploys) {
+    const recorded = commitWriteBacks(siteDir, client.origin, { only: ['deploy.yml'] })
+    if (recorded?.error) reportWriteBacks(recorded, { note: say.dim })
+  }
 
   console.log('')
   say.ok(

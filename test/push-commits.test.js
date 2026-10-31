@@ -214,3 +214,23 @@ test('⭐ what a release writes into the foundation is committed with what the p
   const again = await filesAReleaseWrites(site, siteYml)
   assert.deepEqual(again, ['../src/package.json'])
 })
+
+// ⛔ Measured 2026-10-30: every publish left `deploy.yml` changed.
+test('⭐ a publish commits its record, unless the person has edits of their own in it', { timeout: 60_000 }, async () => {
+  const { deployRecordAtRest, commitWriteBacks } = await import('../src/backend/site-sync.js')
+  const { site, git } = project()
+  const file = join(site, 'deploy.yml')
+  writeFileSync(join(site, 'pages', 'home', 'hero.md'), EDITED) // the person's, and not the record's
+
+  assert.equal(deployRecordAtRest(site), true, 'not there yet')
+  writeFileSync(file, 'deploys: {}\n')
+  const made = commitWriteBacks(site, A, { only: ['deploy.yml'] })
+  assert.ok(made.commit, JSON.stringify(made))
+  assert.deepEqual(git('show', '--name-only', '--format=', 'HEAD').split('\n'), ['site/deploy.yml'])
+  assert.equal(git('log', '-1', '--format=%an'), 'uniweb')
+  assert.match(git('status', '--porcelain'), /M site\/pages\/home\/hero\.md/, "the person's edit stays theirs")
+
+  assert.equal(deployRecordAtRest(site), true, 'git holds it as it stands')
+  writeFileSync(file, 'deploys: {}\n# a note of mine\n')
+  assert.equal(deployRecordAtRest(site), false, 'it holds the person\u2019s edit')
+})

@@ -1411,7 +1411,7 @@ export async function pull(args = [], deps = {}) {
       // ⭐ And the identity it wrote, `sync.json`, as a push commits it: one new section in the app
       // changes it. ⛔ Until 2026-10-30 a pull that brought one left the file changed, until the next push.
       if (!notTaken && !merge.conflicted.length) {
-        const recorded = commitWriteBacks(siteDir, client.origin, { identityOnly: true })
+        const recorded = commitWriteBacks(siteDir, client.origin, { only: ['sync.json'] })
         if (recorded?.error) reportWriteBacks(recorded, { note })
       }
     }
