@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-31T13:54:14.240Z",
+  "generatedAt": "2026-10-31T14:53:03.601Z",
   "packages": {
     "@uniweb/api": {
       "version": "1.6.7"
     },
     "@uniweb/build": {
-      "version": "1.13.4"
+      "version": "1.13.5"
     },
     "@uniweb/content-reader": {
       "version": "1.5.7"
