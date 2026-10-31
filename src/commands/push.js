@@ -99,6 +99,7 @@ import {
   ensureSiteExists,
   clearRemoteSyncStateIfUnbound,
   untakenBase,
+  keepTranslationsOfEdits,
   unsettledFiles,
   commitWriteBacks,
   reportWriteBacks,
@@ -622,6 +623,9 @@ export async function push(args = [], deps = {}) {
     const again =
       output || dryRun ? null : await recoverUnbankedIdentity({ client, siteDir, pkg, note })
     if (again) pkg = await emitSyncPackages(siteDir, { ...emitOptions, ...again })
+    if (!output && !dryRun && (await keepTranslationsOfEdits({ client, siteDir, pkg, note }))) {
+      pkg = await emitSyncPackages(siteDir, { ...emitOptions, ...again })
+    }
   } catch (err) {
     error(`Could not build the sync package: ${err.message}`)
     return { exitCode: 2 }

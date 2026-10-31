@@ -70,8 +70,12 @@ import {
   siteContentRemovals,
   recordRemovals,
   cleanedRecord,
+  documentRows,
+  documentSourceLocale,
+  sectionsChangedSince,
   SYNC_STORE_FILE
 } from '@uniweb/build/uwx'
+import { keepEditedTranslations, rowsWantTranslation, formatKeptTranslations } from '@uniweb/build/i18n'
 
 // First entity `$`-document out of a `.uwx` we produced or the backend served.
 // Deliberately NOT pull.js's `readPullDocuments`: that one is tolerant of JSON
@@ -1843,6 +1847,38 @@ export async function recoverUnbankedIdentity({ client, siteDir, pkg, note }) {
     again = { ...again, recordItemUuids: readRecordItemUuids(siteDir, client.origin) }
   }
   return again
+}
+
+/**
+ * ⭐ A SOURCE EDIT IN A FILE KEEPS ITS TRANSLATION UNTIL SOMEONE REVIEWS IT, as one in the app does
+ * (`keepEditedTranslations`), and the package goes again with it. The text it was made from is in the
+ * document the push is about to change: one read, made only when a section this copy changed has a row
+ * with no translation. What it finds goes into the translation files, where the next push reads it and a
+ * person sees it, and `commitWriteBacks` commits it.
+ *
+ * Best-effort: with nothing read, the row falls back to the source as any row with no translation does.
+ *
+ * @returns {Promise<boolean>} whether to build the package again
+ */
+export async function keepTranslationsOfEdits({ client, siteDir, pkg, note }) {
+  const uuid = readBackendState(siteDir, client.origin).site?.uuid
+  const local = uuid && pkg?.siteContent ? entityDocFromUwx(pkg.siteContent.buffer) : null
+  if (!local) return false
+  const sourceLocale = documentSourceLocale(local)
+  const changed = sectionsChangedSince(local, readUnitBases(siteDir, client.origin).local, sourceLocale)
+  const current = documentRows(local, sourceLocale, (record) => changed.has(record))
+  if (!rowsWantTranslation(siteDir, current, { sourceLocale })) return false
+  try {
+    const res = await client.pullSiteContent(uuid)
+    if (!res?.ok) return false
+    const stored = entityDocFromUwx(Buffer.from(await res.arrayBuffer()))
+    if (!stored) return false
+    const said = formatKeptTranslations(keepEditedTranslations(siteDir, documentRows(stored, sourceLocale), current, { sourceLocale }))
+    for (const line of said) note(line)
+    return said.length > 0
+  } catch {
+    return false
+  }
 }
 
 export function readUnitBases(siteDir, backend) {

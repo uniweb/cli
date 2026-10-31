@@ -103,6 +103,7 @@ import {
   deploymentFields,
   ensureRegisteredFoundation,
   recoverUnbankedIdentity,
+  keepTranslationsOfEdits,
   ensureSiteExists,
   refuseUnsendableRecords,
   clearRemoteSyncStateIfUnbound,
@@ -964,6 +965,9 @@ export async function publish(args = []) {
     // Identity the backend holds and this copy lacks — see `uniweb push`.
     const again = await recoverUnbankedIdentity({ client, siteDir, pkg, note: (m) => say.dim(m) })
     if (again) pkg = await emitSyncPackages(siteDir, { ...emitOptions, ...again })
+    if (await keepTranslationsOfEdits({ client, siteDir, pkg, note: (m) => say.dim(m) })) {
+      pkg = await emitSyncPackages(siteDir, { ...emitOptions, ...again })
+    }
   } catch (err) {
     say.err(`Could not build the sync package: ${err.message}`)
     return { exitCode: 1 }
