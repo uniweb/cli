@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-31T15:45:04.675Z",
+  "generatedAt": "2026-10-31T16:46:41.922Z",
   "packages": {
     "@uniweb/api": {
       "version": "1.6.7"
@@ -54,7 +54,7 @@
       "version": "1.1.2"
     },
     "@uniweb/templates": {
-      "version": "1.1.10"
+      "version": "1.1.11"
     },
     "@uniweb/theming": {
       "version": "1.2.1"
