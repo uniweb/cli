@@ -31,9 +31,10 @@ export default function Section({ content, params }) {
     <div className={cn('py-16 px-6', alignments[align])}>
       <div className={cn('mx-auto', widths[width])}>
         {pretitle && (
-          <p className="text-sm font-medium text-link mb-4 uppercase tracking-wide">
-            {pretitle}
-          </p>
+          <P
+            text={pretitle}
+            className="text-sm font-medium text-link mb-4 uppercase tracking-wide"
+          />
         )}
 
         {title && (
