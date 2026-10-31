@@ -31,13 +31,17 @@ import { humanBytes } from '../utils/bytes.js'
  *   `siteUuid` is the owner the uploaded bytes are charged to. Callers create the
  *   site before uploading precisely so this is set — an unowned upload is charged
  *   and cannot be freed, because freeing means deleting the owning entity.
- * @returns {Promise<{ map: Record<string,string>, ids: Record<string,{id:string,ext:string}>, missing: string[], failed: Array<{path:string,status:number,detail?:string}> }>}
+ * @returns {Promise<{ map: Record<string,string>, ids: Record<string,{id:string,ext:string}>, missing: string[], served: string[], failed: Array<{path:string,status:number,detail?:string}> }>}
  *   `map` is ref → serve URL for refs that resolved AND uploaded. The two failure
  *   kinds are reported SEPARATELY because callers must treat them differently:
  *   `missing` is a ref with no file under the site — an authoring mistake, already
  *   broken before us, worth a warning; `failed` is a ref whose bytes we could not
  *   store — a transport or QUOTA refusal, and shipping content that still points at
  *   the local path would publish a broken image while only warning about it.
+ *   ⭐ `served` is neither: an address the backend serves itself, which stays as written.
+ *   A pull writes one where it has no file to put back, as a clone's favicon or a record's
+ *   image on a backend whose addresses are paths of its own origin. ⛔ Until 2026-10-31
+ *   these were warned about as missing files.
  */
 export async function uploadSiteMedia(
   client,
@@ -45,10 +49,11 @@ export async function uploadSiteMedia(
   refs,
   { siteUuid = null, onProgress, warn } = {}
 ) {
-  if (!refs?.length) return { map: {}, ids: {}, missing: [], failed: [] }
+  if (!refs?.length) return { map: {}, ids: {}, missing: [], served: [], failed: [] }
 
   const files = []
   const missing = []
+  const served = []
   // ⭐ A ref is a site-root media path (`/images/x.png`), resolved under the site — or a file the
   // caller already located, `{ ref, path, contentType? }`: a file record's file and its preview, which
   // live in the records directory and declare their own type (`@uniweb/file`, 2026-09-28), and a
@@ -60,6 +65,10 @@ export async function uploadSiteMedia(
     keys.push(ref)
     const resolved = typeof item === 'string' ? resolveAssetPath(ref, siteDir, siteDir).resolved : item.path
     if (!resolved || !existsSync(resolved)) {
+      if (typeof item === 'string' && (await client.servesFile(ref))) {
+        served.push(ref)
+        continue
+      }
       warn?.(`local-media: ${ref} not found under the site (skipped)`)
       missing.push(ref)
       continue
@@ -74,7 +83,7 @@ export async function uploadSiteMedia(
       diskPath: resolved
     })
   }
-  if (!files.length) return { map: {}, ids: {}, missing, failed: [] }
+  if (!files.length) return { map: {}, ids: {}, missing, served, failed: [] }
 
   const result = await client.uploadSiteAssets({ files, siteUuid, onProgress })
   const failed = [...(result.failed || [])]
@@ -123,7 +132,7 @@ export async function uploadSiteMedia(
     }
     map[ref] = entry.serveUrl
   }
-  return { map, ids, missing, failed }
+  return { map, ids, missing, served, failed }
 }
 
 // ─── Asset-plan refusals ──────────────────────────────────────────────────────

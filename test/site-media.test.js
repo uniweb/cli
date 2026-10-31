@@ -10,6 +10,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { servedFingerprint } from '@uniweb/build/uwx'
+import { BackendClient } from '../src/backend/client.js'
 import {
   uploadSiteMedia,
   describeAssetRefusal
@@ -76,6 +77,7 @@ test('uploadSiteMedia skips (and warns) a ref whose file is missing', async () =
   const client = {
     origin: 'http://x',
     discover: async () => ({ assetBase: '/media-root/' }),
+    servesFile: async () => false,
     uploadSiteAssets: async ({ files }) => ({
       failed: [],
       assetsByLocalUrl: Object.fromEntries(
@@ -152,6 +154,7 @@ test('uploadSiteMedia is a no-op for no refs (never touches the lane)', async ()
     map: {},
     ids: {},
     missing: [],
+    served: [],
     failed: []
   })
 })
@@ -350,4 +353,97 @@ test('uploadSiteMedia takes a file already located — `{ ref, path, contentType
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('⭐ an address the backend serves itself is no missing file: no warning, and it stays as written', async () => {
+  const dir = makeSite()
+  const warnings = []
+  const asked = []
+  const client = {
+    origin: 'http://x',
+    servesFile: async (ref) => {
+      asked.push(ref)
+      return ref.startsWith('/static/')
+    },
+    uploadSiteAssets: async () => {
+      throw new Error('nothing here to upload')
+    }
+  }
+  try {
+    const { map, missing, served, failed } = await uploadSiteMedia(
+      client,
+      dir,
+      ['/static/asset/x/base.svg', '/images/typo.png'],
+      { warn: (m) => warnings.push(m) }
+    )
+    assert.deepEqual(asked, ['/static/asset/x/base.svg', '/images/typo.png'])
+    assert.deepEqual(served, ['/static/asset/x/base.svg'])
+    assert.deepEqual(map, {})
+    assert.deepEqual(failed, [])
+    // CONTROL — a path nothing serves is still an authoring mistake, and still said.
+    assert.deepEqual(missing, ['/images/typo.png'])
+    assert.equal(warnings.length, 1)
+    assert.match(warnings[0], /typo\.png not found under the site/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a ref whose file is there is not asked about, nor is a file the caller located', async () => {
+  const dir = makeSite()
+  const client = {
+    origin: 'http://x',
+    servesFile: async () => {
+      throw new Error('should not ask')
+    },
+    uploadSiteAssets: async ({ files }) => ({
+      failed: [],
+      assetsByLocalUrl: Object.fromEntries(files.map((f) => [f.localUrl, { id: 'i', ext: 'png', serveUrl: 'https://cdn/x.png' }]))
+    })
+  }
+  const warnings = []
+  try {
+    const { map, missing, served } = await uploadSiteMedia(
+      client,
+      dir,
+      ['/images/banner.png', { ref: 'pages/x/gone.png', path: join(dir, 'gone.png') }],
+      { warn: (m) => warnings.push(m) }
+    )
+    assert.deepEqual(Object.keys(map), ['/images/banner.png'])
+    assert.deepEqual(served, [])
+    assert.deepEqual(missing, ['pages/x/gone.png'])
+    assert.equal(warnings.length, 1)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('servesFile asks the host, with a HEAD, and only a file counts', async () => {
+  const answering = (status, type) => {
+    const calls = []
+    const client = new BackendClient({
+      origin: 'http://backend.test',
+      token: 'TKN',
+      fetchImpl: async (url, init) => {
+        calls.push([String(url), init?.method])
+        return new Response(null, { status, headers: type ? { 'content-type': type } : {} })
+      }
+    })
+    return { client, calls }
+  }
+  const served = answering(200, 'image/svg+xml')
+  assert.equal(await served.client.servesFile('/static/asset/x/base.svg'), true)
+  assert.deepEqual(served.calls, [['http://backend.test/static/asset/x/base.svg', 'HEAD']])
+  assert.equal(await answering(404, 'application/problem+json').client.servesFile('/x.png'), false)
+  assert.equal(await answering(405, 'application/problem+json').client.servesFile('/x.png'), false)
+  // A page shell answering any path is no file.
+  assert.equal(await answering(200, 'text/html; charset=utf-8').client.servesFile('/x.png'), false)
+  const unreachable = new BackendClient({
+    origin: 'http://backend.test',
+    token: 'TKN',
+    fetchImpl: async () => {
+      throw new TypeError('fetch failed')
+    }
+  })
+  assert.equal(await unreachable.servesFile('/x.png'), false)
 })

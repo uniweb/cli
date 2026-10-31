@@ -717,7 +717,7 @@ export async function publish(args = []) {
   if (mediaRefs.length) {
     say.info('Uploading media…')
     try {
-      const { map, ids, failed } = await uploadSiteMedia(
+      const { map, ids, served, failed } = await uploadSiteMedia(
         client,
         siteDir,
         mediaRefs,
@@ -750,7 +750,7 @@ export async function publish(args = []) {
       }
       if (ballAssets.length) ball = rewriteSchemalessDataAssets(ball, map)
       say.dim(
-        `Media          : ${Object.keys(map).length}/${mediaRefs.length} ref(s) → serve URL`
+        `Media          : ${Object.keys(map).length}/${mediaRefs.length - served.length} ref(s) → serve URL`
       )
     } catch (err) {
       // A typed plan refusal gets its own account (quota, per-file cap, plan caps);

@@ -506,7 +506,7 @@ export async function push(args = [], deps = {}) {
       }
       info('Uploading media…')
       try {
-        const { map, ids, failed } = await uploadSiteMedia(
+        const { map, ids, served, failed } = await uploadSiteMedia(
           client,
           siteDir,
           mediaRefs,
@@ -531,7 +531,7 @@ export async function push(args = [], deps = {}) {
         if (Object.keys(map).length) assetRewrite = map
         if (Object.keys(ids).length) assetIds = ids
         note(
-          `${Object.keys(map).length}/${mediaRefs.length} media ref(s) → serve URL`
+          `${Object.keys(map).length}/${mediaRefs.length - served.length} media ref(s) → serve URL`
         )
         // Record identity in the COMMITTED map. Merge, never replace: this push
         // carries only the refs its content touched.

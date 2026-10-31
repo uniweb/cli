@@ -835,6 +835,22 @@ export class BackendClient {
   }
 
   /**
+   * Whether this backend serves a file at a path of its own origin. The question is put to the host
+   * rather than read from the path's shape, since its routes are its own to lay out.
+   *
+   * @param {string} path - leading-slash path
+   * @returns {Promise<boolean>}
+   */
+  async servesFile(path) {
+    try {
+      const res = await this.request(path, { method: 'HEAD' })
+      return res.ok && !String(res.headers?.get?.('content-type') || '').startsWith('text/html')
+    } catch {
+      return false
+    }
+  }
+
+  /**
    * GET /dev/site/content/pull/{uuid} — the content lane document. Pass the
    * last-seen ETag (opaque) to make it conditional: a match returns 304 (empty body).
    */
