@@ -1619,13 +1619,15 @@ Semantic tokens come from `theme-tokens.css` (populated from `theme.yml`). Use `
 
 These compose with tokens — they adapt per context because they reference token variables — while adding nuance the token set doesn't provide. Use palette shades directly (`var(--primary-300)`, `bg-neutral-200`) for fine-grained control. **The priority: design quality > portability > configurability.** A beautiful foundation for one site is worth more than a generic one that looks flat.
 
-Three lines a ported design will try to bring with it, each of which breaks something:
+Four things a ported design will try to bring with it, each of which breaks something:
 
 > **Don't set `scroll-behavior: smooth` globally.** The runtime owns scrolling: it already smooth-scrolls anchor targets itself (`scrollIntoView({ behavior: 'smooth' })`), so the CSS adds nothing there — but it resets and restores scroll on route changes with the two-argument `scrollTo(x, y)`, which *inherits* the property. Route changes then animate their scroll-to-top, and back-button restoration (which scrolls, checks the position on the next frame, and retries) keeps interrupting its own animation. Scope it to a specific scrollable element if you need it; never to `html` or `body`.
 
 > **Paint a decorative glow with a gradient, not `filter: blur()`.** A `bg-primary-400 blur-[100px]` box is a soft glow, and a browser paints the filter again whenever it captures the page for a view transition. Safari does that on the main thread at device resolution, so on a phone a tap can freeze the page for seconds; a desktop in Chrome shows nothing. A radial mask looks the same and costs a fraction, and the box keeps its colour classes: `mask-image: radial-gradient(closest-side, #000, rgb(0 0 0 / 0.6) 40%, rgb(0 0 0 / 0.09) 80%, transparent)`.
 
 > **Font smoothing is a per-scheme decision, not a reset.** `-webkit-font-smoothing: antialiased` (macOS only) forces grayscale rasterization, which thins strokes. On dark surfaces that usefully counteracts the bloom of light text on near-black; on light surfaces it costs contrast and makes body text spindly. Scope it — `.scheme-dark { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }` — rather than putting it on `html`.
+
+> **Write an entrance animation in CSS, not in JavaScript.** A CSS animation on a prerendered page starts at first paint and carries on when the browser renders over that page, so a hero fades in once. One a component starts when it mounts (a motion library, a `useEffect`) can only start when the page boots. Until then the visitor sees its first frame, which for a fade is nothing, or the finished section, which then animates in. `uniweb dev` does not prerender, so only a built site shows this.
 
 ### Composition: items, child sections, insets
 
