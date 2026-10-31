@@ -1106,9 +1106,11 @@ export function commitSiteContent(siteDir, { message }) {
  * @param {object} [o]
  * @param {boolean} [o.complete] - every lane landed, so the commit is this copy's sync point
  * @param {string[]} [o.released] - what the release wrote into local code (`filesAReleaseWrites`)
+ * @param {boolean} [o.identityOnly] - `sync.json` alone, for a pull: what else differs under the
+ *   site is the person's, not a push's
  * @returns {{ commit: string, paths: string[] } | { error: string } | null}
  */
-export function commitWriteBacks(siteDir, backend, { complete = false, released = [] } = {}) {
+export function commitWriteBacks(siteDir, backend, { complete = false, released = [], identityOnly = false } = {}) {
   const repo = repoOf(siteDir)
   if (!repo?.head || mergeInProgress(repo)) return null
   let host = 'backend'
@@ -1127,7 +1129,7 @@ export function commitWriteBacks(siteDir, backend, { complete = false, released 
     // ⭐ Marked with the backend and the site, so a pull reads the commit a lane names through
     // it (`recordedAfter`, utils/sync-point.js): the ids written back are what the backend holds.
     const site = readBackendState(siteDir, backend).site?.uuid
-    const made = commitRoots(repo, [...sentRoots(siteDir), SYNC_STORE_FILE, ...released], {
+    const made = commitRoots(repo, identityOnly ? [SYNC_STORE_FILE] : [...sentRoots(siteDir), SYNC_STORE_FILE, ...released], {
       message: `Record what ${backend} gave the site${site ? `\n\n${RECORDED_TRAILER}: ${backend} ${site}` : ''}`,
       identity
     })

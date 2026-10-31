@@ -876,3 +876,30 @@ test(
     assert.equal(readSyncPoint(join(dir, 'site'), ORIGIN), pushed, 'the pull merged from an older base than its own last push')
   }
 )
+
+// ⛔ Measured 2026-10-30: a pull that brought a section made in the app left `sync.json` changed
+// until the next push, so `status` asked for a commit nobody had a reason to make.
+test(
+  '⭐ a pull that brings a new section commits the identity it wrote, and leaves the person’s edits alone',
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const { alice } = await team(backend)
+    edit(alice, 'pages/home/welcome.md', 'We sell furniture.', 'We sell furniture and lamps.') // not committed
+    backend.state.site = siteDoc([
+      section('welcome', 'S1', ...WELCOME),
+      section('about', 'S2', ...ABOUT),
+      { $uuid: '01a18ffa-e034-7c22-b231-572f75d1c5d7', type: 'Hero', content: { type: 'doc', content: [para('Made in the app.')] } }
+    ])
+    const r = await refreshIn(alice, backend)
+    assert.equal(r.exitCode, 0, r.out)
+    assert.match(read(alice, 'pages/home/hero.md'), /Made in the app\./)
+    assert.equal(git(alice, 'log', '-1', '--format=%an %s').trim(), `uniweb Record what ${ORIGIN} gave the site`)
+    assert.deepEqual(git(alice, 'show', '--name-only', '--format=', 'HEAD').trim().split('\n'), ['site/sync.json'])
+    assert.deepEqual(
+      git(alice, 'status', '--porcelain').trim().split('\n').map((l) => l.trim()),
+      ['M site/pages/home/welcome.md'],
+      'only the person’s edit is left to commit'
+    )
+  }
+)

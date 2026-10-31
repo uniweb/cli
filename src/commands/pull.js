@@ -104,6 +104,8 @@ import {
   writeItemBaseVersions,
   pulledItemVersions,
   writeUnitBases,
+  commitWriteBacks,
+  reportWriteBacks,
   writeItemUuids,
   writeFolderItemUuids
 } from '../backend/site-sync.js'
@@ -1406,6 +1408,12 @@ export async function pull(args = [], deps = {}) {
       }
       standIn.close()
       standIn = null
+      // ⭐ And the identity it wrote, `sync.json`, as a push commits it: one new section in the app
+      // changes it. ⛔ Until 2026-10-30 a pull that brought one left the file changed, until the next push.
+      if (!notTaken && !merge.conflicted.length) {
+        const recorded = commitWriteBacks(siteDir, client.origin, { identityOnly: true })
+        if (recorded?.error) reportWriteBacks(recorded, { note })
+      }
     }
   } finally {
     standIn?.close()
