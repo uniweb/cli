@@ -299,6 +299,59 @@ test('pull projects the site-content lane (pages + sections + config) from a moc
   }
 })
 
+// ⭐ Measured 2026-10-30 on a site written in Spanish alone: an edit in the app left an `en` document
+// beside the `es` one, and a pull wrote `locales/en.json`, which made English a language of the site.
+test('a language the site does not list is not written, and the pull says so', async () => {
+  const dir = tempSite()
+  const said = []
+  const { log } = console
+  console.log = (...a) => said.push(a.join(' '))
+  try {
+    writeFileSync(join(dir, 'site.yml'), "name: Old\nfoundation: '@a/base'\ndefaultLanguage: es\n")
+    bindSite(dir, 'SITE')
+    const page = (content) => ({
+      $id: 'home',
+      $uuid: 'P1',
+      slug: 'home',
+      mode: 'page',
+      stable_id: 'home',
+      is_index: true,
+      page_sections: [{ $id: 'hero', $uuid: 'S1', stable_id: 'hero', type: 'Hero', content }]
+    })
+    const document = (languages) => ({
+      $uuid: 'SITE',
+      $id: 'site-content',
+      $model: '@uniweb/site-content',
+      info: { name: { es: 'Panadería' }, foundation: '@a/base' },
+      settings: { default_language: 'es', ...languages },
+      pages: [page({ es: docOf('Pan'), en: docOf('Bread') })],
+      layout_sections: [],
+      extensions: [],
+      collections: []
+    })
+    const run = (doc) =>
+      pull(['--force'], {
+        resolveSiteDir: async () => dir,
+        getToken: async () => 'tok',
+        fetch: makeFetch([['/dev/site/content/pull/SITE', doc]])
+      })
+
+    assert.equal((await run(document({}))).exitCode, 0)
+    assert.ok(!existsSync(join(dir, 'locales/en.json')))
+    assert.ok(said.some((m) => /holds text in en, which this site does not list/.test(m)), said.join('\n'))
+    assert.ok(said.some((m) => /add the language in the app/.test(m)), said.join('\n'))
+
+    // CONTROL — the site lists it: written, and nothing to say.
+    said.length = 0
+    assert.equal((await run(document({ languages: ['es', 'en'] }))).exitCode, 0)
+    assert.ok(existsSync(join(dir, 'locales/en.json')))
+    assert.ok(!said.some((m) => /does not list/.test(m)), said.join('\n'))
+  } finally {
+    console.log = log
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('pull fetches the folder lane by the site-content uuid (no query config needed)', async () => {
   const dir = tempSite()
   try {

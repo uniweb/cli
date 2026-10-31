@@ -1115,6 +1115,8 @@ export async function pull(args = [], deps = {}) {
   let pulledRecordDocs = []
   let merge = { conflicted: [], changed: [] }
   let notTaken = false
+  // The languages the backend holds text in that the site does not list: not written (`documentLanguages`).
+  let outsideLanguages = []
   try {
     if (siteDoc) {
       // Re-base the page attribution. The pulled document IS the backend's own
@@ -1181,6 +1183,7 @@ export async function pull(args = [], deps = {}) {
       sections += report.sections.length
       deleted += report.deleted.length
       leftAlone += report.leftAlone?.length || 0
+      outsideLanguages = report.outsideLanguages || []
     }
 
     if (folderTaken) {
@@ -1449,6 +1452,15 @@ export async function pull(args = [], deps = {}) {
       `Left as written: ${leftAlone} page(s) whose files a pull does not write — a mounted folder's, or a folder-mode folder's \`.md\` pages. ` +
         'An edit made to one in the app does not come back here, and the next push sends the file.'
     )
+  }
+  // ⭐ Said, because a push of those sections removes the text. A translation file would make the
+  // language the site's, and the next publish would ask to serve it (`uwx/source-locale.js`).
+  if (outsideLanguages.length) {
+    info(
+      `The app holds text in ${outsideLanguages.join(', ')}, which this site does not list among its languages. ` +
+        'It is not in your files, and your next push of those sections removes it.'
+    )
+    note('To keep it, add the language in the app (the language button in the editor), then pull again.')
   }
   if (repo && !notTaken) {
     // ⭐ What the pull changed in the files — not the backend's content against the base,
