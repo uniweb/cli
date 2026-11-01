@@ -310,6 +310,7 @@ export async function push(args = [], deps = {}) {
       args,
       say,
       confirm,
+      commits: released,
       cliBin: process.argv[1],
       // An offline emit reports what it WOULD do and touches no network; the ref
       // still comes back (read from the foundation's package.json) so the preview

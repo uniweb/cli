@@ -533,6 +533,7 @@ export async function publish(args = []) {
       args,
       say,
       confirm,
+      commits: released,
       cliBin: process.argv[1]
     })
   } catch (err) {
@@ -560,6 +561,7 @@ export async function publish(args = []) {
       args,
       say,
       confirm,
+      commits: released,
       cliBin: process.argv[1]
     })
   } catch (err) {

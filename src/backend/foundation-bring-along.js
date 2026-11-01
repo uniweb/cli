@@ -282,7 +282,8 @@ export async function bringFoundationAlong({
   confirm,
   cliBin,
   dryRun = false,
-  verb = 'publish'
+  verb = 'publish',
+  commits = []
 }) {
   const local = resolveLocalFoundation(siteDir, siteYml)
   if (!local) {
@@ -300,7 +301,8 @@ export async function bringFoundationAlong({
     confirm,
     cliBin,
     dryRun,
-    verb
+    verb,
+    committed: commits.includes(relative(siteDir, join(local.dir, 'package.json')))
   })
 }
 
@@ -312,6 +314,7 @@ export async function bringFoundationAlong({
  * @param {object} o
  * @param {{dir: string, version: string|null}} o.local
  * @param {'foundation'|'extension'} o.kind
+ * @param {boolean} [o.committed] - the push commits this package's package.json (`filesAReleaseWrites`)
  * @returns {Promise<{ released: boolean, proceed: boolean, ref: string|null, bumped?: string }>}
  *   `bumped` is the version written into package.json when changed code was released
  *   under the next version.
@@ -325,7 +328,8 @@ async function bringLocalCodeAlong({
   confirm,
   cliBin,
   dryRun = false,
-  verb = 'publish'
+  verb = 'publish',
+  committed = false
 }) {
   const Kind = kind === 'extension' ? 'Extension ' : 'Foundation'
   const scopedName = await foundationScopedName(local.dir)
@@ -473,7 +477,7 @@ async function bringLocalCodeAlong({
     writePkgVersion(local.dir, bumpTo)
     say.info(`Releasing the ${kind} ${scopedName || kind} as ${bumpTo} — ${why}…`)
     const released = await release()
-    say.dim(`The ${kind}'s package.json now says ${bumpTo} — commit it.`)
+    say.dim(`The ${kind}'s package.json now says ${bumpTo}${committed ? '' : ' — commit it'}.`)
     if (optOut) say.dim('To send content without releasing code, pass `--no-release`.')
     return { released, proceed: true, bumped: bumpTo, ref: await pinnedRef() }
   }
@@ -704,7 +708,8 @@ export async function bringExtensionsAlong({
   say,
   confirm,
   cliBin,
-  dryRun = false
+  dryRun = false,
+  commits = []
 }) {
   const locals = resolveLocalExtensions(siteDir, siteYml)
   const pins = {}
@@ -718,7 +723,8 @@ export async function bringExtensionsAlong({
       say,
       confirm,
       cliBin,
-      dryRun
+      dryRun,
+      committed: commits.includes(relative(siteDir, join(local.dir, 'package.json')))
     })
     // A declined prompt aborts the whole publish, exactly as it does for the
     // primary — a site live against half its code is worse than not shipping.

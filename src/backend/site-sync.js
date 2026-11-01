@@ -383,6 +383,43 @@ export function unitFilesOf(siteDir, unitPath) {
   return []
 }
 
+/** Unit paths → the files the author keeps them in, as a pull writes them back. */
+export function filesOfUnits(siteDir, units) {
+  return units.map((u) => (u === 'site.yml' ? 'site.yml' : unitFilesOf(siteDir, u)[0] ?? u))
+}
+
+// How many files a push names before it says how many more.
+const MOVED_SHOWN = 12
+
+/**
+ * What a site-content push moved, file by file. The lane sends one entity, the site's whole
+ * document, so the backend's `changed` flag counts to 1 however much moved. ⛔ Until 2026-11-01
+ * that was all it said, and a publish of the hero and ten pages read `site-content: 1 changed`.
+ *
+ * @param {string} siteDir
+ * @param {object} sent - the document this push sent
+ * @param {Record<string,string>} base - each unit's hash at the last sync (`readUnitBases().local`)
+ * @returns {string[]} the lines to print
+ */
+export function describeContentMoved(siteDir, sent, base) {
+  // Nothing to compare with, so the backend's word is all there is.
+  if (!Object.keys(base).length) return ['site-content: changed']
+  const hashes = computeUnitHashes(sent)
+  const units = Object.keys(hashes)
+  const files = [
+    ...filesOfUnits(siteDir, units.filter((u) => u in base && base[u] !== hashes[u])),
+    ...filesOfUnits(siteDir, units.filter((u) => !(u in base))).map((f) => `${f} (new)`),
+    ...filesOfUnits(siteDir, Object.keys(base).filter((u) => !(u in hashes))).map((f) => `${f} (removed)`)
+  ].sort()
+  // The document moved and no unit did: what moved is outside the pages (`contentChanges`).
+  if (!files.length) return ["site-content: the site's settings changed — its services, languages or queries"]
+  return [
+    `site-content: ${files.length} file${files.length === 1 ? '' : 's'} changed`,
+    ...files.slice(0, MOVED_SHOWN).map((f) => `  ${f}`),
+    ...(files.length > MOVED_SHOWN ? [`  … and ${files.length - MOVED_SHOWN} more`] : [])
+  ]
+}
+
 // Pull the finalized entities out of the restore response. The backend returns
 // `{ report: { finalized: [ { index, uuid, changed, document }, … ] } }` — each entry
 // carries its position in the SUBMITTED sequence (`index`, the correlation key — `$id`
@@ -2522,8 +2559,12 @@ export async function pushSyncPackages({
       note(JSON.stringify(payload).slice(0, 800))
       return null
     }
-    const summary = changedSummary(finalized)
-    if (summary) note(`${label}: ${summary}`)
+    const moved = opts?.describeMoved && finalized.some((f) => f.changed === true) ? opts.describeMoved() : null
+    if (moved) moved.forEach((line) => note(line))
+    else {
+      const summary = changedSummary(finalized)
+      if (summary) note(`${label}: ${summary}`)
+    }
     return finalized
   }
 
@@ -2705,7 +2746,15 @@ export async function pushSyncPackages({
             localBuffer: siteContent.buffer,
             uuid: siteContentUuid
           }),
-        { boundUuid: siteContentUuid, reportTemplate: true, sent: siteContent.buffer }
+        {
+          boundUuid: siteContentUuid,
+          reportTemplate: true,
+          sent: siteContent.buffer,
+          // Read before `settleSiteContent` moves the bases on to this push.
+          describeMoved: sentSiteDoc
+            ? () => describeContentMoved(siteDir, sentSiteDoc, readUnitBases(siteDir, client.origin).local)
+            : null
+        }
       )
       if (!finalized) {
         mergeHarvested()

@@ -48,6 +48,7 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } fr
 import yaml from 'js-yaml'
 
 import {
+  filesOfUnits,
   probeUnpushed,
   readItemUuids,
   readSiteWorkspace,
@@ -467,11 +468,6 @@ function loginCommand(siteDir, origin, uuid) {
   if (!uuid) return `npx uniweb login --browser${server}`
   const ws = readSiteWorkspace(siteDir, origin)
   return `npx uniweb login --browser${server} ${ws ? `--org ${ws}` : '--personal'}`
-}
-
-/** Unit paths → the files the author keeps them in, as a pull writes them back. */
-function filesOfUnits(siteDir, units) {
-  return units.map((u) => (u === 'site.yml' ? 'site.yml' : unitFilesOf(siteDir, u)[0] ?? u))
 }
 
 /**

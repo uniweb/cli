@@ -32,6 +32,7 @@ import {
   readItemBaseVersions,
   mergeItemBaseVersions,
   writeUnitBases,
+  describeContentMoved,
   readItemUuids,
   probeUnpushed,
   rebankSyncHashes,
@@ -624,6 +625,96 @@ test('heldTokens: CONTROL — a section cleaned AND edited by someone else is st
   const t = heldTokens({ sent, written, version: 'V1', itemVersions: { 'U-home': 'h1', 'U-cta': 'c1' }, held: { 'U-cta': 'c0' } })
   assert.deepEqual(t.kept, ['pages/home/cta.md'])
   assert.equal(t.itemVersions['U-cta'], 'c0')
+})
+
+// ─── what a push says it moved ───────────────────────────────────────────────
+// The lane's one entity is the site's whole document, so the backend's flag counts to 1.
+
+const pageOf = (...sections) => ({
+  info: { name: 'Acme', default_language: 'en' },
+  pages: [
+    {
+      $uuid: 'P',
+      route: '/home',
+      slug: 'home',
+      mode: 'page',
+      stable_id: 'home',
+      page_sections: sections.map(([id, text]) => ({
+        stable_id: id,
+        data: { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] } }
+      }))
+    }
+  ]
+})
+
+test("a push names the files it moved, by the author's own names", async () => {
+  const dir = tmpSite()
+  mkdirSync(join(dir, 'pages', 'home'), { recursive: true })
+  writeFileSync(join(dir, 'pages', 'home', '1-hero.md'), 'Now\n')
+  writeFileSync(join(dir, 'pages', 'home', '2-more.md'), 'Same\n')
+  writeFileSync(join(dir, 'pages', 'home', '3-new.md'), 'New\n')
+  writeUnitBases(dir, ORIGIN, {
+    local: computeUnitHashes(pageOf(['hero', 'Before'], ['more', 'Same'], ['gone', 'Bye']))
+  })
+  const sent = pageOf(['hero', 'Now'], ['more', 'Same'], ['new', 'New'])
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1' }]))
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: { ...siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }), siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) } },
+    report
+  })
+  assert.equal(res.exitCode, 0)
+  const said = calls.note.join('\n')
+  assert.match(said, /site-content: 3 files changed/)
+  assert.match(said, /  pages\/home\/1-hero\.md/)
+  assert.match(said, /  pages\/home\/3-new\.md \(new\)/)
+  assert.match(said, /  pages\/home\/gone\.md \(removed\)/)
+  assert.doesNotMatch(said, /2-more/)
+  assert.doesNotMatch(said, /1 changed/)
+})
+
+test('a push moving more files than it lists says how many more', () => {
+  const dir = tmpSite()
+  const before = pageOf(...Array.from({ length: 15 }, (_, i) => [`s${i}`, 'old']))
+  const after = pageOf(...Array.from({ length: 15 }, (_, i) => [`s${i}`, 'new']))
+  const lines = describeContentMoved(dir, after, computeUnitHashes(before))
+  assert.equal(lines[0], 'site-content: 15 files changed')
+  assert.equal(lines.length, 14)
+  assert.equal(lines[13], '  … and 3 more')
+})
+
+test("a push that moved no file says it was the site's settings", () => {
+  const dir = tmpSite()
+  const doc = pageOf(['hero', 'Same'])
+  assert.deepEqual(describeContentMoved(dir, doc, computeUnitHashes(doc)), [
+    "site-content: the site's settings changed — its services, languages or queries"
+  ])
+})
+
+test('a push with nothing to compare with says only that it changed', () => {
+  assert.deepEqual(describeContentMoved(tmpSite(), pageOf(['hero', 'Now']), {}), ['site-content: changed'])
+})
+
+test("a push the backend wrote nothing for keeps the backend's word", async () => {
+  const dir = tmpSite()
+  writeUnitBases(dir, ORIGIN, { local: computeUnitHashes(pageOf(['hero', 'Before'])) })
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'S1', changed: false, version: 'V1' }]))
+  }
+  const { report, calls } = makeReport()
+  await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: { ...siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }), siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(pageOf(['hero', 'Now'])) } },
+    report
+  })
+  assert.match(calls.note.join('\n'), /site-content: 1 unchanged/)
 })
 
 test('a push names, beside each file, what the backend removed', async () => {

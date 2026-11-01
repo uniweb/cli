@@ -28,7 +28,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 
 import { bringFoundationAlong } from '../src/backend/foundation-bring-along.js'
 import { computeFoundationDigest } from '../src/utils/code-upload.js'
@@ -74,7 +74,7 @@ if (process.argv[2] === 'register') {
 
 const localDigest = (fx) => computeFoundationDigest(join(fx.fnd, 'dist'))
 
-async function run(fx, { args, latest, digest = 'sha256:not-the-local-code' }) {
+async function run(fx, { args, latest, digest = 'sha256:not-the-local-code', commits = [] }) {
   const said = { ok: [], info: [], warn: [], err: [], dim: [] }
   const say = Object.fromEntries(Object.keys(said).map((k) => [k, (m) => said[k].push(m)]))
   let error = null
@@ -90,7 +90,8 @@ async function run(fx, { args, latest, digest = 'sha256:not-the-local-code' }) {
         throw new Error(`must not prompt: ${q}`)
       },
       cliBin: fx.cliBin,
-      verb: 'push'
+      verb: 'push',
+      commits
     })
   } catch (err) {
     error = err
@@ -147,6 +148,21 @@ test(
     const notes = said.dim.join('\n')
     assert.match(notes, /commit it/)
     assert.match(notes, /--no-release/, 'a release nobody asked for names the way out')
+  })
+)
+
+test(
+  "the new version is not the person's to commit where the push commits it",
+  withWorkspace('1.4.2', async (fx) => {
+    const { res, said } = await run(fx, {
+      args: ['--non-interactive'],
+      latest: '1.4.2',
+      commits: [relative(fx.site, join(fx.fnd, 'package.json'))]
+    })
+    assert.equal(res.bumped, '1.4.3')
+    const notes = said.dim.join('\n')
+    assert.match(notes, /package\.json now says 1\.4\.3\./)
+    assert.doesNotMatch(notes, /commit it/)
   })
 )
 
