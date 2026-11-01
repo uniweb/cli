@@ -170,6 +170,13 @@ async function updateWorkspaceManifestsForFolderMove(rootDir, oldPath, newPath) 
  * foundation` / `add site` already grandfather them at scaffold time.
  */
 async function validateRenameName(rootDir, newName) {
+  if (newName.startsWith('@')) {
+    error(`A package name in a workspace has no scope, and ${newName} does.`)
+    log(
+      `What a foundation registers as is ${colors.bright}name${colors.reset} in its main.js, and the scope is part of that: name: '${newName}'`
+    )
+    process.exit(1)
+  }
   if (newName !== 'src' && newName !== 'site') {
     const valid = validatePackageName(newName)
     if (valid !== true) {

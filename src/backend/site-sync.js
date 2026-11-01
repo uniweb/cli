@@ -1142,8 +1142,10 @@ export function commitWriteBacks(siteDir, backend, { complete = false, released 
     // ⭐ Marked with the backend and the site, so a pull reads the commit a lane names through
     // it (`recordedAfter`, utils/sync-point.js): the ids written back are what the backend holds.
     const site = readBackendState(siteDir, backend).site?.uuid
+    // In a repo of several sites, the log says which one moved.
+    const named = repo.prefix ? repo.prefix.replace(/\/$/, '') : 'the site'
     const made = commitRoots(repo, only || [...sentRoots(siteDir), SYNC_STORE_FILE, ...released], {
-      message: `Record what ${backend} gave the site${site ? `\n\n${RECORDED_TRAILER}: ${backend} ${site}` : ''}`,
+      message: `Record what ${backend} gave ${named}${site ? `\n\n${RECORDED_TRAILER}: ${backend} ${site}` : ''}`,
       identity
     })
     if (made && complete) writeSyncPoint(siteDir, backend, made.commit)

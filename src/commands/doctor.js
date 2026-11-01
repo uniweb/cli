@@ -36,6 +36,7 @@ import { readAgentsVersion } from '../utils/agents-stamp.js'
 import { writeJsonPreservingStyle } from '../utils/json-file.js'
 import { surveyWorkspaceDeps } from '../utils/dep-survey.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
+import { siteAround } from '../utils/pick-site.js'
 import { checkSiteInstall } from '../utils/install-integrity.js'
 import { editWorkspaceFilePackages } from '../utils/workspace-packages.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
@@ -1295,7 +1296,7 @@ export async function checkLinkPreviews({ sitePath, siteName, issues }) {
     issues.push({ id, type: 'info', site: siteName, message: `${n} page${n === 1 ? ' states' : 's state'} no description` })
     info(`[${id}] ${n} page${n === 1 ? ' states' : 's state'} no description — search results and link previews pick their own text, or show none`)
     listSome(undescribed.map((p) => p.route))
-    log(`    Give each a ${colors.green}description:${colors.reset} in its page.yml — a sentence or two, under ${DESCRIPTION_SHOWN} characters.`)
+    log(`    Give each a ${colors.green}description:${colors.reset} in its page.yml, or the frontmatter of a page that is one file — a sentence or two, under ${DESCRIPTION_SHOWN} characters.`)
   }
   const long = described.filter((p) => p.text.length > DESCRIPTION_SHOWN)
   if (long.length > 0) {
@@ -1928,10 +1929,18 @@ async function runDoctor(args = []) {
 
   // Discover sites via the canonical workspace globs (same rationale as
   // foundations above: respects whatever layout the user chose).
-  const sites = (await discoverSites(workspaceDir)).map((s) => ({
+  const allSites = (await discoverSites(workspaceDir)).map((s) => ({
     path: join(workspaceDir, s.path),
     name: s.name
   }))
+  // From inside a site, its checks are that site's, as `status` and `dev` read the folder you
+  // stand in. Other sites' findings are there from the workspace root.
+  const here = siteAround(allSites.map((s) => relative(workspaceDir, s.path)), workspaceDir, projectDir)
+  const sites = here ? allSites.filter((s) => relative(workspaceDir, s.path) === here) : allSites
+  if (here && allSites.length > sites.length) {
+    log('')
+    info(`Checking the site you're in. Run this from ${workspaceDir} for all ${allSites.length}.`)
+  }
 
   if (sites.length === 0) {
     warn('No sites found')
@@ -1943,7 +1952,7 @@ async function runDoctor(args = []) {
       checkSiteNameIsAFolder({
         siteName: s.name,
         sitePath: relative(workspaceDir, s.path),
-        packagePaths: [...discovered.map((f) => f.path), ...sites.map((o) => relative(workspaceDir, o.path))],
+        packagePaths: [...discovered.map((f) => f.path), ...allSites.map((o) => relative(workspaceDir, o.path))],
         issues
       })
     }

@@ -894,7 +894,7 @@ test(
     const r = await refreshIn(alice, backend)
     assert.equal(r.exitCode, 0, r.out)
     assert.match(read(alice, 'pages/home/hero.md'), /Made in the app\./)
-    assert.equal(git(alice, 'log', '-1', '--format=%an %s').trim(), `uniweb Record what ${ORIGIN} gave the site`)
+    assert.equal(git(alice, 'log', '-1', '--format=%an %s').trim(), `uniweb Record what ${ORIGIN} gave site`)
     assert.deepEqual(git(alice, 'show', '--name-only', '--format=', 'HEAD').trim().split('\n'), ['site/sync.json'])
     assert.deepEqual(
       git(alice, 'status', '--porcelain').trim().split('\n').map((l) => l.trim()),
