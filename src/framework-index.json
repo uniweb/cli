@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-01T17:22:45.141Z",
+  "generatedAt": "2026-11-01T19:02:17.496Z",
   "packages": {
     "@uniweb/api": {
       "version": "1.6.7"
@@ -18,19 +18,19 @@
       "version": "1.5.2"
     },
     "@uniweb/frame-bridge": {
-      "version": "1.0.2"
+      "version": "1.0.3"
     },
     "@uniweb/icons": {
       "version": "1.0.7"
     },
     "@uniweb/kit": {
-      "version": "1.6.15"
+      "version": "1.6.16"
     },
     "@uniweb/loom": {
       "version": "1.1.2"
     },
     "@uniweb/press": {
-      "version": "1.1.6"
+      "version": "1.2.0"
     },
     "@uniweb/projections": {
       "version": "1.2.9"
@@ -54,13 +54,13 @@
       "version": "1.1.2"
     },
     "@uniweb/templates": {
-      "version": "1.1.14"
+      "version": "1.1.15"
     },
     "@uniweb/theming": {
       "version": "1.2.1"
     },
     "@uniweb/unipress": {
-      "version": "1.1.25"
+      "version": "1.1.26"
     }
   },
   "templates": {
