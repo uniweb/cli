@@ -692,12 +692,136 @@ test("a push that moved no file says it was the site's settings", () => {
   const dir = tmpSite()
   const doc = pageOf(['hero', 'Same'])
   assert.deepEqual(describeContentMoved(dir, doc, computeUnitHashes(doc)), [
-    "site-content: the site's settings changed — its services, languages or queries"
+    "site-content: the site's settings changed, in a file such as site.yml, theme.yml or queries.yml"
   ])
 })
 
 test('a push with nothing to compare with says only that it changed', () => {
   assert.deepEqual(describeContentMoved(tmpSite(), pageOf(['hero', 'Now']), {}), ['site-content: changed'])
+})
+
+// A push sends the delivered document, so a file can be listed with nothing changed in it: each media
+// file is there by a serve address that changes with the file, and the foundation by the version it pins.
+const siteWithFiles = (...names) => {
+  const dir = tmpSite()
+  mkdirSync(join(dir, 'pages', 'home'), { recursive: true })
+  for (const name of names) writeFileSync(join(dir, 'pages', 'home', name), 'Same\n')
+  return dir
+}
+const media = (name) => `https://media.test/${name}`
+const siteDocPinning = (pin, image) => ({
+  ...pageOf(['hero', 'Same']),
+  info: { name: 'Acme', default_language: 'en', foundation: pin },
+  // `seo.image` is written in site.yml, and the document keeps it here: no unit holds it.
+  settings: { seo: { image } }
+})
+
+test('a file listed because of a picture it shows names the picture', () => {
+  const dir = siteWithFiles('1-hero.md', '2-more.md', '3-text.md')
+  const before = pageOf(['hero', media('hero-1')], ['more', media('same')], ['text', `Before ${media('same')}`])
+  const after = pageOf(['hero', media('hero-2')], ['more', media('same')], ['text', `Now ${media('same')}`])
+  assert.deepEqual(
+    describeContentMoved(dir, after, computeUnitHashes(before), {
+      before: {
+        assetRewrite: {
+          'pages/home/hero.webp': media('hero-1'),
+          'pages/home/same.webp': media('same'),
+          '/elsewhere.png': media('elsewhere-1')
+        }
+      },
+      now: {
+        assetRewrite: {
+          'pages/home/hero.webp': media('hero-2'),
+          'pages/home/same.webp': media('same'),
+          '/elsewhere.png': media('elsewhere-2')
+        }
+      }
+    }),
+    // `3-text.md` shows a picture too, one that stayed, so it moved for its own reasons.
+    ['site-content: 2 files changed', '  pages/home/1-hero.md (hero.webp changed)', '  pages/home/3-text.md']
+  )
+})
+
+test('site.yml says what moved it: the foundation it pins, and a picture its settings name', () => {
+  const was = siteDocPinning('@acme/site@0.1.0', media('card-1'))
+  const is = siteDocPinning('@acme/site@0.2.0', media('card-2'))
+  assert.deepEqual(
+    describeContentMoved(tmpSite(), is, computeUnitHashes(was), {
+      before: { assetRewrite: { '/card.png': media('card-1') }, injectInfo: { foundation: '@acme/site@0.1.0' } },
+      now: { assetRewrite: { '/card.png': media('card-2') }, injectInfo: { foundation: '@acme/site@0.2.0' } }
+    }),
+    ['site-content: 1 file changed', '  site.yml (foundation now @acme/site@0.2.0, card.png changed)']
+  )
+})
+
+test('a replaced share card alone is listed under site.yml, though it moves no unit', () => {
+  const was = siteDocPinning('@acme/site@0.1.0', media('card-1'))
+  const is = siteDocPinning('@acme/site@0.1.0', media('card-2'))
+  assert.deepEqual(computeUnitHashes(was), computeUnitHashes(is))
+  assert.deepEqual(
+    describeContentMoved(tmpSite(), is, computeUnitHashes(was), {
+      before: { assetRewrite: { '/card.png': media('card-1') }, injectInfo: { foundation: '@acme/site@0.1.0' } },
+      now: { assetRewrite: { '/card.png': media('card-2') }, injectInfo: { foundation: '@acme/site@0.1.0' } }
+    }),
+    ['site-content: 1 file changed', '  site.yml (card.png changed)']
+  )
+})
+
+test('with no record of the last push, a moved file is listed with no reason given', () => {
+  const was = siteDocPinning('@acme/site@0.1.0', media('card-1'))
+  const is = siteDocPinning('@acme/site@0.2.0', media('card-2'))
+  assert.deepEqual(
+    describeContentMoved(tmpSite(), is, computeUnitHashes(was), {
+      now: { assetRewrite: { '/card.png': media('card-2') }, injectInfo: { foundation: '@acme/site@0.2.0' } }
+    }),
+    ['site-content: 1 file changed', '  site.yml']
+  )
+})
+
+test('a file showing several changed pictures names a few, then says how many more', () => {
+  const dir = siteWithFiles('1-hero.md')
+  const lineFor = (names) =>
+    describeContentMoved(dir, pageOf(['hero', names.map((n) => media(`${n}-2`)).join(' ')]), computeUnitHashes(pageOf(['hero', 'Before'])), {
+      before: { assetRewrite: Object.fromEntries(names.map((n) => [`pages/home/${n}`, media(`${n}-1`)])) },
+      now: { assetRewrite: Object.fromEntries(names.map((n) => [`pages/home/${n}`, media(`${n}-2`)])) }
+    })[1]
+  assert.equal(lineFor(['b.webp', 'a.webp']), '  pages/home/1-hero.md (a.webp and b.webp changed)')
+  assert.equal(lineFor(['c.webp', 'a.webp', 'b.webp']), '  pages/home/1-hero.md (a.webp, b.webp and c.webp changed)')
+  assert.equal(
+    lineFor(['d.webp', 'c.webp', 'a.webp', 'b.webp']),
+    '  pages/home/1-hero.md (a.webp, b.webp and 2 more changed)'
+  )
+})
+
+test('a push compares what it applied with what the last one did, and banks its own after', async () => {
+  const dir = siteWithFiles('1-hero.md', '2-text.md')
+  writeUnitBases(dir, ORIGIN, {
+    local: computeUnitHashes(pageOf(['hero', media('hero-1')], ['text', 'Before']))
+  })
+  writeSyncCache(dir, ORIGIN, {}, { assetRewrite: { 'pages/home/hero.webp': media('hero-1') } })
+  const sent = pageOf(['hero', media('hero-2')], ['text', 'Now'])
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'S1', changed: true, version: 'V1' }]))
+  }
+  const { report, calls } = makeReport()
+  const applied = { assetRewrite: { 'pages/home/hero.webp': media('hero-2') } }
+  const res = await pushSyncPackages({
+    client,
+    siteDir: dir,
+    pkg: {
+      ...siteOnlyPkg({ siteContentUuid: 'S1', hashes: {} }),
+      siteContent: { ...siteOnlyPkg().siteContent, buffer: uwxOf(sent) },
+      applied
+    },
+    report
+  })
+  assert.equal(res.exitCode, 0)
+  assert.deepEqual(readAppliedInjections(dir, ORIGIN), applied)
+  const said = calls.note.join('\n')
+  assert.match(said, /site-content: 2 files changed/)
+  assert.match(said, /  pages\/home\/1-hero\.md \(hero\.webp changed\)/)
+  assert.match(said, /  pages\/home\/2-text\.md$/m)
 })
 
 test("a push the backend wrote nothing for keeps the backend's word", async () => {

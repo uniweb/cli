@@ -45,6 +45,7 @@ import {
   diffSiteUnits,
   describeSiteDiff,
   computeUnitHashes,
+  collectSiteUnits,
   collectUnitUuids,
   collectFolderItemUuids,
   collectQueryUuids,
@@ -390,29 +391,72 @@ export function filesOfUnits(siteDir, units) {
 
 // How many files a push names before it says how many more.
 const MOVED_SHOWN = 12
+// How many changed media files one of those lines names.
+const MEDIA_SHOWN = 3
+
+/** Which of the moved media (ref → address) a part of the document holds, as a phrase, or null. */
+function mediaNamedIn(part, moved) {
+  const text = JSON.stringify(part)
+  const names = Object.entries(moved)
+    .filter(([, address]) => text.includes(address))
+    .map(([ref]) => basename(ref))
+    .sort()
+  if (!names.length) return null
+  if (names.length === 1) return `${names[0]} changed`
+  if (names.length > MEDIA_SHOWN) {
+    return `${names.slice(0, MEDIA_SHOWN - 1).join(', ')} and ${names.length - MEDIA_SHOWN + 1} more changed`
+  }
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1)} changed`
+}
 
 /**
  * What a site-content push moved, file by file. The lane sends one entity, the site's whole
  * document, so the backend's `changed` flag counts to 1 however much moved. ⛔ Until 2026-11-01
  * that was all it said, and a publish of the hero and ten pages read `site-content: 1 changed`.
  *
+ * ⭐ A file can be listed with nothing changed in it, because a push sends the DELIVERED document
+ * (`readAppliedInjections`). A media file's serve address changes with the file, so a replaced
+ * picture moves every unit that shows it, and a released foundation moves `site.yml`, through the
+ * version it pins. Those lines say so, or someone checking git finds no change and no reason.
+ *
  * @param {string} siteDir
  * @param {object} sent - the document this push sent
  * @param {Record<string,string>} base - each unit's hash at the last sync (`readUnitBases().local`)
+ * @param {{ before?: object, now?: object }} [opts] - what the last push and this one applied to
+ *   the document (`readAppliedInjections`, `pkg.applied`)
  * @returns {string[]} the lines to print
  */
-export function describeContentMoved(siteDir, sent, base) {
+export function describeContentMoved(siteDir, sent, base, { before = {}, now = {} } = {}) {
   // Nothing to compare with, so the backend's word is all there is.
   if (!Object.keys(base).length) return ['site-content: changed']
   const hashes = computeUnitHashes(sent)
   const units = Object.keys(hashes)
+  const records = collectSiteUnits(sent)
+  const moved = units.filter((u) => u in base && base[u] !== hashes[u])
+
+  const addressWas = before.assetRewrite || {}
+  const media = Object.fromEntries(
+    Object.entries(now.assetRewrite || {}).filter(([ref, address]) => addressWas[ref] && addressWas[ref] !== address)
+  )
+  const pinWas = before.injectInfo?.foundation
+  const pin = now.injectInfo?.foundation
+  const aboutTheSite = [
+    pinWas && pin && pin !== pinWas ? `foundation now ${pin}` : null,
+    // `settings` is no unit, and what it names is written in site.yml, as `seo.image`.
+    mediaNamedIn([sent.info, sent.settings], media)
+  ].filter(Boolean)
+  if (aboutTheSite.length && !moved.includes('site.yml')) moved.push('site.yml')
+
   const files = [
-    ...filesOfUnits(siteDir, units.filter((u) => u in base && base[u] !== hashes[u])),
+    ...filesOfUnits(siteDir, moved).map((f, i) => {
+      const why = moved[i] === 'site.yml' ? aboutTheSite : [mediaNamedIn(records.get(moved[i]), media)].filter(Boolean)
+      return why.length ? `${f} (${why.join(', ')})` : f
+    }),
     ...filesOfUnits(siteDir, units.filter((u) => !(u in base))).map((f) => `${f} (new)`),
     ...filesOfUnits(siteDir, Object.keys(base).filter((u) => !(u in hashes))).map((f) => `${f} (removed)`)
   ].sort()
   // The document moved and no unit did: what moved is outside the pages (`contentChanges`).
-  if (!files.length) return ["site-content: the site's settings changed — its services, languages or queries"]
+  if (!files.length) return ["site-content: the site's settings changed, in a file such as site.yml, theme.yml or queries.yml"]
   return [
     `site-content: ${files.length} file${files.length === 1 ? '' : 's'} changed`,
     ...files.slice(0, MOVED_SHOWN).map((f) => `  ${f}`),
@@ -2752,7 +2796,12 @@ export async function pushSyncPackages({
           sent: siteContent.buffer,
           // Read before `settleSiteContent` moves the bases on to this push.
           describeMoved: sentSiteDoc
-            ? () => describeContentMoved(siteDir, sentSiteDoc, readUnitBases(siteDir, client.origin).local)
+            ? () =>
+                describeContentMoved(siteDir, sentSiteDoc, readUnitBases(siteDir, client.origin).local, {
+                  // Still the last push's: this one banks its own when it ends.
+                  before: readAppliedInjections(siteDir, client.origin),
+                  now: applied
+                })
             : null
         }
       )
