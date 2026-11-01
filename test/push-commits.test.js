@@ -224,10 +224,11 @@ test('⭐ a publish commits its record, unless the person has edits of their own
 
   assert.equal(deployRecordAtRest(site), true, 'not there yet')
   writeFileSync(file, 'deploys: {}\n')
-  const made = commitWriteBacks(site, A, { only: ['deploy.yml'] })
+  const made = commitWriteBacks(site, A, { only: ['deploy.yml'], published: true })
   assert.ok(made.commit, JSON.stringify(made))
   assert.deepEqual(git('show', '--name-only', '--format=', 'HEAD').split('\n'), ['site/deploy.yml'])
-  assert.equal(git('log', '-1', '--format=%an'), 'uniweb')
+  // Not the subject of the push's own commit just before it: a log tells the two apart.
+  assert.equal(git('log', '-1', '--format=%an %s'), `uniweb Record the publish of site on ${A}`)
   assert.match(git('status', '--porcelain'), /M site\/pages\/home\/hero\.md/, "the person's edit stays theirs")
 
   assert.equal(deployRecordAtRest(site), true, 'git holds it as it stands')

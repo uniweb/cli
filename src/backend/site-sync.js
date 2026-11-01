@@ -1121,9 +1121,11 @@ export function commitSiteContent(siteDir, { message }) {
  * @param {string[]} [o.released] - what the release wrote into local code (`filesAReleaseWrites`)
  * @param {string[]} [o.only] - these files alone, for a pull or a publish's record: what else
  *   differs under the site is the person's, not a push's
+ * @param {boolean} [o.published] - this is a publish's record, the step after its push's write-backs.
+ *   It says so, since a log can't otherwise tell the two commits of one publish apart
  * @returns {{ commit: string, paths: string[] } | { error: string } | null}
  */
-export function commitWriteBacks(siteDir, backend, { complete = false, released = [], only = null } = {}) {
+export function commitWriteBacks(siteDir, backend, { complete = false, released = [], only = null, published = false } = {}) {
   const repo = repoOf(siteDir)
   if (!repo?.head || mergeInProgress(repo)) return null
   let host = 'backend'
@@ -1144,8 +1146,9 @@ export function commitWriteBacks(siteDir, backend, { complete = false, released 
     const site = readBackendState(siteDir, backend).site?.uuid
     // In a repo of several sites, the log says which one moved.
     const named = repo.prefix ? repo.prefix.replace(/\/$/, '') : 'the site'
+    const subject = published ? `Record the publish of ${named} on ${backend}` : `Record what ${backend} gave ${named}`
     const made = commitRoots(repo, only || [...sentRoots(siteDir), SYNC_STORE_FILE, ...released], {
-      message: `Record what ${backend} gave ${named}${site ? `\n\n${RECORDED_TRAILER}: ${backend} ${site}` : ''}`,
+      message: `${subject}${site ? `\n\n${RECORDED_TRAILER}: ${backend} ${site}` : ''}`,
       identity
     })
     if (made && complete) writeSyncPoint(siteDir, backend, made.commit)

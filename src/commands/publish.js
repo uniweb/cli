@@ -1131,7 +1131,7 @@ export async function publish(args = []) {
   // ⭐ The record is committed, as what a push writes is. ⛔ Until 2026-10-30 every publish left
   // `deploy.yml` changed, so a tree a person had committed was never clean after one.
   if (recordAtRest && saveDeploys) {
-    const recorded = commitWriteBacks(siteDir, client.origin, { only: ['deploy.yml'] })
+    const recorded = commitWriteBacks(siteDir, client.origin, { only: ['deploy.yml'], published: true })
     if (recorded?.error) reportWriteBacks(recorded, { note: say.dim })
   }
 
