@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmp, runVerb } from './helpers/run-verb.js'
-import { checkSiteNameIsAFolder, checkStaleSources } from '../src/commands/doctor.js'
+import { checkSiteNameIsAFolder, checkStaleSources, checkUnreadFolders } from '../src/commands/doctor.js'
 
 const named = (siteName, sitePath, packagePaths) => {
   const issues = []
@@ -61,6 +61,24 @@ test('CONTROL — a stylesheet whose @source finds what it names, or names only 
   mkdirSync(join(srcDir, 'node_modules', '@uniweb', 'kit', 'src'), { recursive: true })
   writeFileSync(join(srcDir, 'styles.css'), '@source "./node_modules/@uniweb/kit/src/**/*.jsx";\n@source "./components/**/*.jsx";\n')
   await checkStaleSources({ foundationName: '@acme/app', srcDir, issues })
+  assert.deepEqual(issues, [])
+})
+
+test('⭐ a folder that writes classes no @source reads is named, with the line to add', { timeout: 60_000 }, async () => {
+  const issues = []
+  const srcDir = foundationWith('@import "tailwindcss";\n@source "./sections/**/*.jsx";\n')
+  mkdirSync(join(srcDir, 'components'))
+  writeFileSync(join(srcDir, 'components', 'Card.jsx'), 'export default () => <div className="flex" />\n')
+  await checkUnreadFolders({ foundationName: '@acme/app', srcDir, issues })
+  assert.deepEqual(issues.map((i) => i.id), ['unread-folder'])
+})
+
+test('CONTROL — every folder that writes classes is named', { timeout: 60_000 }, async () => {
+  const issues = []
+  const srcDir = foundationWith('@import "tailwindcss";\n@source "./components/**/*.jsx";\n')
+  mkdirSync(join(srcDir, 'components'))
+  writeFileSync(join(srcDir, 'components', 'Card.jsx'), 'export default () => <div className="flex" />\n')
+  await checkUnreadFolders({ foundationName: '@acme/app', srcDir, issues })
   assert.deepEqual(issues, [])
 })
 
@@ -138,4 +156,15 @@ test('the whole verb says each of them', { timeout: 60_000 }, async () => {
   assert.match(out, /\[site-name-is-a-folder\] The site package one has the name of a folder holding one\/src/)
   assert.match(out, /\[stale-source\] @acme\/one has a @source that finds nothing/)
   assert.match(out, /@source "\.\.\/node_modules\/@uniweb\/kit\/src\/\*\*\/\*\.\{js,jsx\}"\s+\(no \.\.\/node_modules\/@uniweb\/kit\/src\/\)/)
+})
+
+test('the whole verb gives the line a folder needs', { timeout: 60_000 }, async () => {
+  const files = project('one', {
+    css: '@import "tailwindcss";\n@source "./sections/**/*.{js,jsx}";\n',
+    section: 'export default function Post() { return null }\n'
+  })
+  files['one/src/components/Card.jsx'] = 'export default () => <div className="flex" />\n'
+  const out = await doctor(workspace(files))
+  assert.match(out, /\[unread-folder\] @acme\/one writes classes where styles\.css names no @source/)
+  assert.match(out, /@source "\.\/components\/\*\*\/\*\.\{js,jsx\}";/)
 })

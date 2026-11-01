@@ -834,6 +834,22 @@ export async function checkStaleSources({ foundationName, srcDir, issues }) {
 }
 
 /**
+ * Code in a foundation that writes classes no `@source` reads (`unreadFolders`, `@uniweb/build`).
+ * Loaded here for the same reason. A project a template or an older scaffold started keeps its
+ * stylesheet through `uniweb update`, so this is how it hears.
+ */
+export async function checkUnreadFolders({ foundationName, srcDir, issues }) {
+  const { unreadFolders } = await import('@uniweb/build')
+  const unread = unreadFolders?.(join(srcDir, 'styles.css')) || []
+  if (unread.length === 0) return
+  const id = 'unread-folder'
+  issues.push({ id, type: 'warn', foundation: foundationName, message: `${foundationName} writes classes where styles.css names no @source` })
+  warn(`[${id}] ${foundationName} writes classes where styles.css names no @source, so a site build and \`uniweb dev\` miss any class only used there`)
+  log(`    Add to styles.css:`)
+  for (const { line } of unread) log(`      ${line}`)
+}
+
+/**
  * Source with its comments removed.
  *
  * ⚠️ MEASURED, NOT PRECAUTIONARY. The first cut of this check searched the raw
@@ -1772,6 +1788,7 @@ async function runDoctor(args = []) {
   // only there. The build says so too; here it reaches `uniweb status`.
   for (const f of foundations) {
     await checkStaleSources({ foundationName: f.name, srcDir: resolveFoundationSrcPath(f.path), issues })
+    await checkUnreadFolders({ foundationName: f.name, srcDir: resolveFoundationSrcPath(f.path), issues })
   }
 
   // A modifier kit's prose layer does not have — `prose-slate`, `prose-invert`

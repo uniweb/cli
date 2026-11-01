@@ -1613,6 +1613,8 @@ The build auto-adds preconnect hints for imports, emits `@font-face` + preload f
 }
 ```
 
+**Name every folder that writes classes.** The foundation's own build finds them all, but a site build and `uniweb dev` read only what these lines name, so a class in a folder left out is in one CSS and missing from the other. `uniweb dev`, a site build and `uniweb doctor` (`unread-folder`) give the line to add.
+
 Semantic tokens come from `theme-tokens.css` (populated from `theme.yml`). It also tells Tailwind to read kit's source, so kit's own classes reach your CSS wherever your package manager put kit. A foundation that skips the import names kit itself, by where kit is: `./node_modules/@uniweb/kit/src/**` under pnpm, `../node_modules/@uniweb/kit/src/**` under npm. Use `@theme` only for values tokens don't cover. **Custom CSS is expected alongside Tailwind** — shadow systems, border hierarchies, gradients, glassmorphism. Tailwind handles layout; tokens handle context; `styles.css` handles everything else.
 
 **Tokens are a floor, not a ceiling.** They solve context adaptation — the hard problem. A great foundation adds design vocabulary on top:
@@ -3179,7 +3181,7 @@ Loud failures:
 
 **Component not appearing** — verify `meta.js` exists; check for `hidden: true`; rebuild the foundation.
 
-**Styles not applying** — verify `@source` in `styles.css` includes your component paths.
+**Styles not applying** — verify `@source` in `styles.css` includes your component paths; `uniweb doctor` names a folder it misses.
 
 **Prerender warnings about hooks** — components with `useState`/`useEffect` show SSG warnings during build in local symlinked mode. Expected and harmless.
 
