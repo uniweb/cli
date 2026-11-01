@@ -363,7 +363,7 @@ Heading levels set *structure* (pretitle, title, subtitle), not font size — th
 
 **Markdown order ≠ rendering order.** The parser extracts content into a flat structure; the component decides how to arrange it visually. Write markdown in semantic order, not visual order — start with the heading, then add icons, images, and text in any order.
 
-**Placing content *before* the first heading changes the parse:** headings after body content become items, not the section title. This is by design — it's how repeating content groups are created.
+**Placing content *before* the first heading changes the parse:** headings after body content become items, not the section title. This is by design — it's how repeating content groups are created. An icon counts: `![](lu-globe)` above `# Title` leaves `content.title` empty, and the heading in `items[0]`. For an icon that belongs to the title, write it under the heading, where it's still `content.icons[0]`; `uniweb inspect` flags the shape.
 
 ### The parsed object
 
@@ -378,10 +378,11 @@ content = {
   subtitle: '',     // Line(s) one step below the title — each further
                     //   one-step descent is another line (string or string[])
   paragraphs: [],   // Text blocks
-  links: [],        // { href, label, role } — standalone links (not inside lists)
-  images: [],       // { src, alt, role, href }
+  links: [],        // { href, label, role } — the body's links, not those inside lists: standalone ones, and inline ones (no `children`)
+  images: [],       // { url, alt, caption, role, href, target } — `url`, where a video has `src`
   icons: [],        // { library, name, role }
-  videos: [],       // { src, alt, role, poster, href }
+  videos: [],       // { src, alt, caption, role, poster, href, target }
+  media: [],        // Images, videos and insets on their own line, in the order written, each with its `kind`
   documents: [],    // { url, alt, caption, role: 'pdf', preview?, author?, description? } — from {role=pdf}
   insets: [],       // Inline @Component references — { refId }
   lists: [],        // [[{ paragraphs, links, lists, … }]] — each item is an object, not a string
@@ -559,7 +560,7 @@ Sizing and loading ride on the image: `{width=800 height=600 loading=lazy fit=co
 
 **Separators are forgiving.** `:` works wherever `=` does, and pairs may be separated by whitespace, a comma, or both — `{role=banner width=1200}`, `{role:banner, width:1200}` and `{role:banner,width:1200}` are identical. `=` and spaces are canonical, and that is what gets written back on save. Two rules keep it unambiguous: the separator must **touch** the key (`{note:warning}` is one pair, `{note : warning}` is two flags), and a value containing a **comma** must be quoted (`{style="a, b"}`). A value containing a colon needs no quoting — only the first colon separates, so `{href:https://example.com}` is fine.
 
-Standalone links (alone on a line) are promoted to `content.links[]` — usually drawn as buttons, which is the component's choice. Inline links stay as `<a>` tags inside `content.paragraphs[]`. Multiple links sharing a paragraph are all promoted:
+Standalone links (alone on a line) are promoted to `content.links[]` — usually drawn as buttons, which is the component's choice. An inline link stays as an `<a>` tag inside `content.paragraphs[]`, and is listed in `content.links[]` too, without `children`: a section drawing `content.links` as buttons draws it as one unless it keeps only the links with `children`. Multiple links sharing a paragraph are all promoted:
 
 ```markdown
 [Primary](/start)              ← standalone → content.links[0]
@@ -736,7 +737,7 @@ end the list with `...`.**
 
 **Content-less containers:** folders with `page.yml` but no markdown are structural groups (`hasContent: false`). Visiting one auto-redirects to the first descendant with content — this is what supports courses → modules → lessons at any depth.
 
-**A local folder for a mounted route should use `folder.yml`, not `page.yml`.** The filename is how you say what the folder holds — `page.yml` for a page built from sections, `folder.yml` for a folder of pages — and for a mount that answer also decides how the mounted tree is read. A `page.yml` stub over a mounted folder of pages says "sections", and top-level markdown in the mounted repo collapses into one page instead of becoming pages of its own. Keep `layout:`, `title:` and SEO in that stub; the mounted repo's own `folder.yml` supplies its ordering and title where the stub is silent.
+**A local folder for a mounted route says how this site presents it.** Keep `layout:`, `title:` and SEO in a `folder.yml` there; the mounted repo's own `folder.yml` supplies its ordering and title where the stub is silent. A `page.yml` with markdown of its own makes a real page above the mounted pages, a landing page for the branch. A mount is one level under `pages/`, and a subfolder in the local folder isn't read, since the branch's pages come from the mount; the build says so. What a site can't do from outside a repo it mounts: leave a file out, title or order a nested folder, or use a `README.md` as a page. Those are the mounted repo's to do.
 
 **SEO & social cards:** set site-wide defaults in `site.yml`; any page overrides per-field in `page.yml` (page wins, site fills gaps). Each page's static `<head>` carries its own tags — Open Graph, Twitter Card, canonical, robots, and hreflang on a multilingual site — so shares and crawlers see them without running JS. The social `image` is the field most worth setting once at site level — a 1200×630 JPEG or PNG, since link previews draw 1.91:1 and most draw no SVG; the site's `description` is the home page's alone, and each page's own reads best under about 160 characters. These tags are the framework's: a `head.html` tag of the same name is replaced. `uniweb doctor` checks what a link shows: the image is there, in a format previews draw and close to 1200×630, and each page has a description of a length search results show whole.
 
@@ -1123,8 +1124,8 @@ Kit provides `H1`–`H6`. These render their own HTML tag — **don't wrap them*
 ```jsx
 import { Section, Prose } from '@uniweb/kit'
 
-<Section block={block} width="lg" padding="md" />
-<Prose content={content} block={block} />
+<Section block={block} width="lg" padding="md" />   // the whole section, on its own
+<Prose content={content} block={block} />           // or only its prose, in your own markup
 ```
 
 `Prose` renders from the parsed sequence — headings, paragraphs, images, snippets, lists — with prose typography. Tagged data blocks are **skipped**; access them via `content.data` for custom rendering. Pass `content` (needs `.sequence`), and `block` too if the content uses insets. Also works as a pure typography wrapper: `<Prose>{children}</Prose>`.
@@ -1197,11 +1198,11 @@ Hero.as = 'div'                      // changes the wrapper element
 export default Hero
 ```
 
-**Layout components typically need `p-0`** to suppress default padding:
+**A section's wrapper is a bare `<section>`**, with no padding of its own to reset. `className` adds classes to it, and `as` changes its tag. The built-in layout already wraps the header area in `<header>` and the footer area in `<footer>`, so there `Header.as = 'header'` gives a header in a header. Use `as` to say something the layout doesn't:
 
 ```jsx
-Header.className = 'p-0'
-Header.as = 'header'
+Header.className = 'border-b'
+Header.as = 'div'
 ```
 
 **A header that stays in view is a setting, not a class.** `sticky top-0` on your component's outermost element does nothing: a sticky element moves only within its parent, and the section's wrapper and the area's are as tall as your header. (An element inside your component is different: a form beside a long list sticks within the row the two share, a box you draw.) Declare `sticky: true` in the type's `meta.js` — an author turns it off with `sticky: false` — and the runtime makes sticky the box that can stay in view. A section in the body sticks the same way and stays below the stuck header by itself: the runtime measures how far the header reaches and publishes it as `--uw-sticky-top` (a type's `top` overrides it). A link to a section lands below the stuck header too. A child section in kit's `<ChildGrid>` stays in view beside the column it sits next to, and on a phone, at one column, scrolls with the page. A sticky section inside a box with `overflow: hidden` cannot stick — clip with `overflow: clip`. A layout of your own that wraps an area in an element makes that element sticky when `page.isSticky('header')`. `uniweb dev` names a sticky element that cannot move in the console, once the page's data is in, and says which box holds it.
@@ -1556,6 +1557,8 @@ Font families are a **site** setting, under `fonts:` in `theme.yml`. A foundatio
 
 (`code` was previously named `mono`; `fonts.mono` is no longer an alias — rename it.)
 
+A role's face on an element it isn't wired onto, such as a wordmark in the heading face: `font-family: var(--font-heading)`, or a utility of your own with `@theme inline { --font-display: var(--font-heading); }` in `styles.css`, then `font-display`.
+
 Because the site wires families onto real elements, **the norm is that a foundation doesn't set fonts itself** — render semantic markup (`<H1>`, `<P>`, `<code>` from the kit) and the roles apply. Everything else stays Tailwind.
 
 **In a component, weight is yours; family is the site's.** Weight/size/style utilities (`font-bold`, `italic`, `text-xl`) are ordinary design vocabulary. A font-**family** utility is different: `font-sans`/`font-serif` resolve to Tailwind's built-in stacks unless the foundation makes them site-controlled, so a bare `font-serif` silently hardcodes a typeface.
@@ -1603,7 +1606,7 @@ The build auto-adds preconnect hints for imports, emits `@font-face` + preload f
 @import "@uniweb/kit/theme-tokens.css";
 @source "./sections/**/*.{js,jsx}";
 @source "./components/**/*.{js,jsx}";
-@source "../node_modules/@uniweb/kit/src/**/*.jsx";
+@source "./layouts/**/*.{js,jsx}";
 
 @theme {
   --breakpoint-xs: 30rem;
@@ -2984,7 +2987,7 @@ which is `$devBackend:`.
 
 Either side can publish. Nothing about this changes how you build: the same foundation and the same site run under `uniweb dev`, `uniweb export`, or a CI deploy with no account at all.
 
-**Publishing vs registering.** Foundations on Uniweb Cloud live in the catalog as `@org/name@version` — `name` from the foundation's `main.js`. When a foundation powers a single site, **don't run `uniweb register` yourself** — `uniweb publish` from the site directory releases the local foundation to the catalog (when its code changed) and goes live in one step. A registered version is immutable, so when the foundation's code changed under a version already registered, `push` and `publish` release the change under the next version and write it into the foundation's `package.json` — commit that file (`--no-release` sends the content without the code). The version it picks is always the next patch: for a change that is not backwards compatible, set a higher minor or major version in the foundation's `package.json` yourself before you push. They stop when the registry holds a version newer than yours, released from another copy: pull that change first, or pass `--bump` to release yours above it. Register deliberately only when the foundation is a product meant for multiple sites; consuming sites then pin `foundation: '@org/name@1.2.3'`. **The catalog is private and access-segregated, not a public package registry** — people see only the foundations licensed to sites they own or edit. The *site* carries the license, and it rides along with site ownership when a developer hands a site to a client. Don't describe publishing as making a foundation publicly discoverable. Schemas can also be registered on their own from a schemas-only package (`@uniweb/schemas`, any `@org/schemas`, or a bare folder of `schemas/*.{yml,json,js}`) — that's how `@std` schemas are published. Auth via `uniweb login` (`uniweb login --server <url> --token <bearer>` without a terminal) or `UNIWEB_TOKEN`; preview with `--dry-run`.
+**Publishing vs registering.** Foundations on Uniweb Cloud live in the catalog as `@org/name@version` — `name` from the foundation's `main.js`. When a foundation powers a single site, **don't run `uniweb register` yourself** — `uniweb publish` from the site directory releases the local foundation to the catalog (when its code changed) and goes live in one step. A registered version is immutable, so when the foundation's code changed under a version already registered, `push` and `publish` release the change under the next version and write it into the foundation's `package.json`, which they commit in a git repository (`--no-release` sends the content without the code). The version it picks is always the next patch: for a change that is not backwards compatible, set a higher minor or major version in the foundation's `package.json` yourself before you push. They stop when the registry holds a version newer than yours, released from another copy: pull that change first, or pass `--bump` to release yours above it. Register deliberately only when the foundation is a product meant for multiple sites; consuming sites then pin `foundation: '@org/name@1.2.3'`. **The catalog is private and access-segregated, not a public package registry** — people see only the foundations licensed to sites they own or edit. The *site* carries the license, and it rides along with site ownership when a developer hands a site to a client. Don't describe publishing as making a foundation publicly discoverable. Schemas can also be registered on their own from a schemas-only package (`@uniweb/schemas`, any `@org/schemas`, or a bare folder of `schemas/*.{yml,json,js}`) — that's how `@std` schemas are published. Auth via `uniweb login` (`uniweb login --server <url> --token <bearer>` without a terminal) or `UNIWEB_TOKEN`; preview with `--dry-run`.
 
 ### Staying current
 
