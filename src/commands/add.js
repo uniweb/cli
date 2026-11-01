@@ -259,6 +259,7 @@ export async function add(rawArgs) {
           { label: 'site', description: 'Content site' },
           { label: 'extension', description: 'Additional component package' },
           { label: 'section', description: 'Section type in a foundation' },
+          { label: 'version', description: 'Freeze a site\'s docs as an older version' },
           {
             label: 'ci',
             description: 'CI deploy workflow for a host (e.g., GitHub Pages)'
@@ -303,6 +304,11 @@ export async function add(rawArgs) {
             title: 'CI workflow',
             value: 'ci',
             description: 'Deploy workflow for a host (e.g., GitHub Pages)'
+          },
+          {
+            title: 'Version',
+            value: 'version',
+            description: 'Freeze a site\'s docs as an older version'
           }
         ]
       },
