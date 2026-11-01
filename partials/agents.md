@@ -1613,7 +1613,7 @@ The build auto-adds preconnect hints for imports, emits `@font-face` + preload f
 }
 ```
 
-Semantic tokens come from `theme-tokens.css` (populated from `theme.yml`). Use `@theme` only for values tokens don't cover. **Custom CSS is expected alongside Tailwind** — shadow systems, border hierarchies, gradients, glassmorphism. Tailwind handles layout; tokens handle context; `styles.css` handles everything else.
+Semantic tokens come from `theme-tokens.css` (populated from `theme.yml`). It also tells Tailwind to read kit's source, so kit's own classes reach your CSS wherever your package manager put kit. A foundation that skips the import names kit itself, by where kit is: `./node_modules/@uniweb/kit/src/**` under pnpm, `../node_modules/@uniweb/kit/src/**` under npm. Use `@theme` only for values tokens don't cover. **Custom CSS is expected alongside Tailwind** — shadow systems, border hierarchies, gradients, glassmorphism. Tailwind handles layout; tokens handle context; `styles.css` handles everything else.
 
 **Tokens are a floor, not a ceiling.** They solve context adaptation — the hard problem. A great foundation adds design vocabulary on top:
 
