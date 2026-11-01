@@ -80,7 +80,9 @@ async function loadDependencies() {
  * Extract frontmatter and markdown body from a section file.
  * Exact match of content-collector lines 634-639.
  */
-function extractFrontmatter(content) {
+function extractFrontmatter(raw) {
+  // A file saved on Windows: as the build reads it (`parseFrontmatter`, @uniweb/build).
+  const content = raw.replace(/\r\n/g, '\n')
   let frontMatter = {}
   let markdown = content
 
@@ -143,21 +145,27 @@ function guaranteeItemStructure(item) {
     lists: item.lists || [],
     icons: item.icons || [],
     videos: item.videos || [],
+    insets: item.insets || [],
+    media: item.media || [],
+    snippets: item.snippets || [],
     buttons: item.buttons || [],
     data: item.data || {},
     cards: item.cards || [],
     documents: item.documents || [],
     forms: item.forms || [],
     quotes: item.quotes || [],
-    headings: item.headings || []
+    headings: item.headings || [],
+    ...(item.math && item.math.length ? { math: item.math } : {}),
+    ...(item.tables && item.tables.length ? { tables: item.tables } : {})
   }
 }
 
 /**
- * Guarantee content structure exists.
- * Keep in sync with @uniweb/runtime/src/prepare-props.js
+ * Guarantee content structure exists: what a component receives.
+ * A copy of @uniweb/runtime's, which the CLI can't load without React.
+ * _contracts/inspect-shows-what-a-component-receives.test.js fails when they part.
  */
-function guaranteeContentStructure(parsedContent) {
+export function guaranteeContentStructure(parsedContent) {
   const content = parsedContent || {}
 
   return {
@@ -172,6 +180,8 @@ function guaranteeContentStructure(parsedContent) {
     icons: content.icons || [],
     videos: content.videos || [],
     insets: content.insets || [],
+    media: content.media || [],
+    snippets: content.snippets || [],
     buttons: content.buttons || [],
     data: content.data || {},
     cards: content.cards || [],
@@ -179,6 +189,8 @@ function guaranteeContentStructure(parsedContent) {
     forms: content.forms || [],
     quotes: content.quotes || [],
     headings: content.headings || [],
+    ...(content.math && content.math.length ? { math: content.math } : {}),
+    ...(content.tables && content.tables.length ? { tables: content.tables } : {}),
     items: (content.items || []).map(guaranteeItemStructure),
     sequence: content.sequence || [],
     raw: content.raw
