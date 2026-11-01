@@ -388,8 +388,20 @@ export function computeRootScripts(sites, pm = 'pnpm') {
 export async function updateRootScripts(rootDir, sites, pm = 'pnpm') {
   const pkg = await readRootPackageJson(rootDir)
   const unique = sites.filter((s, i) => sites.findIndex((o) => o.path === s.path) === i)
-  const newScripts = computeRootScripts(unique, pm)
   const scripts = { ...(pkg.scripts || {}) }
+
+  // ⭐ `preview` stays on the site it runs. Adding a site is no reason to move it, and
+  // "first" follows the listing, so a new site sorted ahead took the script over. A command the
+  // CLI didn't write is the person's, and only one for a site that's gone is rewritten.
+  const runs = unique.find((s) => cliSiteScripts('preview', s.name).includes(scripts.preview))
+  const newScripts = computeRootScripts(runs ? [runs, ...unique.filter((s) => s !== runs)] : unique, pm)
+  const previewIsCli = /^(pnpm --filter \S+ (run )?preview|npm -w \S+ run preview)$/.test(scripts.preview ?? '')
+  if (scripts.preview && !runs && !previewIsCli) delete newScripts.preview
+  // Nor is a script the workspace already has for a site added again under another name.
+  const held = new Set(Object.values(scripts))
+  for (const [key, command] of Object.entries(newScripts)) {
+    if (!(key in scripts) && held.has(command)) delete newScripts[key]
+  }
 
   // If we're adding a second site, rename existing dev/preview to dev:{firstName}
   if (unique.length === 2 && scripts.dev) {

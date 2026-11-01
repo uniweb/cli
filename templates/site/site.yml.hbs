@@ -1,5 +1,5 @@
 # Site Configuration
-# Full reference: uniweb docs site  |  Schema: schemas/site.schema.json
+# Full reference: https://github.com/uniweb/docs/blob/main/reference/site-configuration.md
 
 name: {{projectName}}
 
@@ -30,10 +30,11 @@ index: home
 #   layout: ./custom-layout         # Custom layout directory
 #   records: ./data                 # Where this site's records live
 #
-# To give a mounted route a layout or a title, add a local folder for it
-# (pages/docs/) holding a folder.yml — folder.yml, not page.yml, because the
-# mounted directory is a folder of pages. Whatever that stub leaves unset comes
-# from the mounted directory's own folder.yml, so it need only say what differs.
+# A mount is one level under pages/. To give a mounted route a layout or a title,
+# add a local folder for it (pages/docs/) holding a folder.yml. Whatever that stub
+# leaves unset comes from the mounted directory's own folder.yml, so it need only say
+# what differs. A page.yml with markdown of its own there makes a real page above the
+# mounted pages. A local subfolder isn't read: its pages would come from the mount.
 #
 # A `pages/<segment>:` mount goes wherever the site goes: builds, `uniweb export`
 # and `uniweb deploy --host <adapter>`, and `uniweb push` / `uniweb publish`,
@@ -69,11 +70,8 @@ index: home
 #   articles:
 #     schema: '@/article'
 #     sort: date desc                    # Sort by frontmatter field
-#
-# fetch:
-#   - url: https://api.example.com/team  # Remote JSON
-#     as: team                           # Access as content.data.team
-#   - path: /data/config.json            # Local file from public/
+#   team:
+#     url: https://api.example.com/team  # Remote JSON instead of your records
 
 # ─── Extensions ────────────────────────────────────────────────────────────────
 # Load additional foundations (section types) via URL.

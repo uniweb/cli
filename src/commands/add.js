@@ -217,7 +217,6 @@ export async function add(rawArgs) {
   const nonInteractive = isNonInteractive(rawArgs)
   const args = stripNonInteractiveFlag(rawArgs)
 
-  const pm = detectPackageManager()
   const prefix = getCliPrefix()
 
   // Find workspace root
@@ -328,6 +327,11 @@ export async function add(rawArgs) {
   )
   const projectName = rootPkg.name || 'my-project'
 
+  // What this workspace installs with is a property of the repo (its lockfile), not of how the
+  // CLI happened to be launched: `npx uniweb add` in a pnpm workspace wrote `npm -w` root scripts
+  // and said `npm install`. The invocation decides only when there's no lockfile to read.
+  const pm = detectWorkspacePm(rootDir) || detectPackageManager()
+
   switch (parsed.subcommand) {
     case 'project':
       await addProject(rootDir, projectName, parsed, pm)
@@ -345,16 +349,7 @@ export async function add(rawArgs) {
       await addSection(rootDir, parsed)
       break
     case 'ci':
-      // The scaffolded workflow must install the way THIS WORKSPACE
-      // installs, which is a property of the repo (its lockfile), not of
-      // how the CLI happened to be launched. `detectPackageManager()`
-      // reads npm_config_user_agent, so `npx uniweb add ci` in a pnpm
-      // workspace produced a workflow running `npm ci` — which fails on
-      // the first CI run, because there is no package-lock.json to
-      // install from. npx is a normal way to run the CLI, so this broke
-      // the common case. Fall back to the invocation only when the repo
-      // has no lockfile to read.
-      await addCi(rootDir, parsed, detectWorkspacePm(rootDir) || pm)
+      await addCi(rootDir, parsed, pm)
       break
     default:
       error(`Unknown subcommand: ${parsed.subcommand}`)
@@ -925,7 +920,7 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
     {
       name: foundationPkgName,
       registryName,
-      projectName,
+      projectName: name,
       isExtension: false
     },
     { onProgress: progressCb }
@@ -937,7 +932,7 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
     join(projectDir, 'site'),
     {
       name: sitePkgName,
-      projectName,
+      projectName: name,
       foundationName: foundationPkgName,
       foundationPath: 'file:../src',
       foundationRef: foundationPkgName
@@ -951,14 +946,14 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
       opts.from,
       'foundation',
       join(projectDir, 'src'),
-      projectName
+      name
     )
     ensureFoundationName(join(projectDir, 'src'), registryName)
     await applyFromTemplate(
       opts.from,
       'site',
       join(projectDir, 'site'),
-      projectName
+      name
     )
   }
 
