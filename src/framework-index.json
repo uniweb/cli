@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-01T03:46:59.682Z",
+  "generatedAt": "2026-11-01T14:58:36.360Z",
   "packages": {
     "@uniweb/api": {
       "version": "1.6.7"
     },
     "@uniweb/build": {
-      "version": "1.13.10"
+      "version": "1.13.11"
     },
     "@uniweb/content-reader": {
       "version": "1.5.8"
@@ -24,7 +24,7 @@
       "version": "1.0.7"
     },
     "@uniweb/kit": {
-      "version": "1.6.13"
+      "version": "1.6.14"
     },
     "@uniweb/loom": {
       "version": "1.1.2"
@@ -54,13 +54,13 @@
       "version": "1.1.2"
     },
     "@uniweb/templates": {
-      "version": "1.1.12"
+      "version": "1.1.13"
     },
     "@uniweb/theming": {
       "version": "1.2.1"
     },
     "@uniweb/unipress": {
-      "version": "1.1.23"
+      "version": "1.1.24"
     }
   },
   "templates": {
