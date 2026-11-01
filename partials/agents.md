@@ -807,6 +807,10 @@ Measured on exactly that shape: **the agent corpus holds every page; the public 
 
 ⇒ **The way to know is to ask, at render:** `isAssistantEnabled()` from `@uniweb/kit` is true only where an agent endpoint is declared. On a site that is *only* knowledge there is no component to ask — so confirm with your host that the agent is enabled for that site before you build an integration against it. If you meant to build an agent endpoint and got silence, this is where to look.
 
+### Older versions of docs
+
+Most docs need one version. When a release is about to stop being the latest and its readers need its docs kept, run `uniweb add version v2` (`--in <folder>`, `--label "2.x"`). It copies the docs to a folder named `v2` beside them, at `/docs/v2/…`, with the copy's links leading to the copy, no page ids in it, and search engines told to leave it out. Keep writing where you were: the pages beside version folders are the latest, and their URLs never change. Don't copy a version folder by hand. A foundation draws versions with kit's `useVersion`: `versions` for a switcher (`version.href` is where each leads from this page, for `<Link>`), `isOlderVersion` and `latestVersion` for a notice, and `hierarchy({ for: 'left' })` for a menu of one version, which is the whole tree on a site with none. See [versioning](https://github.com/uniweb/docs/blob/main/reference/versioning.md).
+
 ### Your site is readable by agents, automatically
 
 Every build emits two things an AI agent can use directly, alongside the HTML. **Free, on by default, nothing to install.**
@@ -1913,9 +1917,9 @@ const page = website.activePage
 
 ```jsx
 // getPageHierarchy(options) →
-//   [{ id, route, navigableRoute, translatedRoute, title, label, description, hasContent, version, children }]
+//   [{ id, route, navigableRoute, translatedRoute, title, label, description, hasContent, children }]
 // Options: for: 'header'|'footer'|<area> (respects hideIn) · nested: true (default)
-//          includeHidden: false · filter: (page) => bool · sort: (a, b) => number
+//          includeHidden: false · under: route · filter: (page) => bool · sort: (a, b) => number
 website.getPageHierarchy({ for: 'header' })      // = website.getHeaderPages()
 website.getPageHierarchy({ nested: false })      // = website.getAllPages()
 

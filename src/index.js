@@ -1705,6 +1705,7 @@ ${colors.bright}Usage:${colors.reset}
   uniweb add extension <name> [options]
   uniweb add section <name> [options]
   uniweb add ci [options]
+  uniweb add version <name> [options]
 
 ${colors.bright}Common Options:${colors.reset}
   --from <template>  Apply content from a template after scaffolding
@@ -1723,6 +1724,10 @@ ${colors.bright}Extension Options:${colors.reset}
 
 ${colors.bright}Section Options:${colors.reset}
   --foundation <n>   Foundation to add section to (prompted if multiple exist)
+  --in <folder>      add version: the folder under pages/ holding the docs (. for all of pages/)
+  --label <text>     add version: what a version switcher calls it
+  --keep-in-search   add version: leave it open to search engines
+  --dry-run          add version: say what would happen, and write nothing
   --starter          Generate starter content from the section's \`content:\`
                      declaration — what an author would begin editing. Works on
                      a section that already exists (nothing is written), and on
@@ -1763,6 +1768,8 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add section Hero --starter                    # Starter content for an existing Hero
   uniweb add section Pricing --starter                 # Scaffold Pricing + content that fills it
   uniweb add section Hero --starter --preset split     # Frontmatter it with the 'split' preset
+  uniweb add version v2                                # Freeze the docs as pages/docs/v2
+  uniweb add version v2 --in manual --label "2.x"      # Another folder, and what a switcher calls it
   uniweb add section Hero --starter --json             # The structure + ProseMirror, for a script
   uniweb add foundation --project docs                 # Create ./docs/src/ (co-located)
   uniweb add site --project docs                       # Create ./docs/site/ (co-located)
@@ -2378,6 +2385,7 @@ ${colors.bright}Add Subcommands:${colors.reset}
   add extension <name>    Add an extension (--from, --site, --path)
   add section <name>      Add a section type to a foundation (--foundation, --starter)
   add ci                  Add a CI workflow so every push deploys (--host, --target)
+  add version             Freeze a site's docs as a version beside them (--in, --label)
 
 ${colors.bright}Global Options:${colors.reset}
   --version, -v        Show version

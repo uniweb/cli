@@ -9,11 +9,12 @@
  *   uniweb add site [name] [--from <template>] [--foundation <name>] [--path <dir>] [--project <name>]
  *   uniweb add extension [name] [--from <template>] [--site <name>] [--path <dir>]
  *   uniweb add section <name> [--foundation <name>]
+ *   uniweb add version <name> [--in <folder>] [--label <text>] [--keep-in-search] [--dry-run] [--site <name>]
  */
 
 import { existsSync, realpathSync } from 'node:fs'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
-import { join, relative, basename } from 'node:path'
+import { join, relative, basename, isAbsolute } from 'node:path'
 import prompts from 'prompts'
 import yaml from 'js-yaml'
 import {
@@ -135,12 +136,17 @@ function parseArgs(args) {
     starter: false,
     preset: null,
     write: null,
-    json: false
+    json: false,
+    // `add version` only.
+    in: null,
+    label: null,
+    keepInSearch: false,
+    dryRun: false
   }
 
   // Booleans (no value) consumed up-front so the value-flag loop below
   // doesn't accidentally swallow the next positional.
-  const BOOLEAN_FLAGS = new Set(['--force', '--no-previews', '--starter', '--json'])
+  const BOOLEAN_FLAGS = new Set(['--force', '--no-previews', '--starter', '--json', '--keep-in-search', '--dry-run'])
 
   // Value flags, mapped to their result key. Both spellings are accepted:
   // `--host github-pages` and `--host=github-pages`.
@@ -162,7 +168,9 @@ function parseArgs(args) {
     '--target': 'target',
     '--project-name': 'projectName',
     '--preset': 'preset',
-    '--write': 'write'
+    '--write': 'write',
+    '--in': 'in',
+    '--label': 'label'
   }
 
   /** Split `--flag=value` into [flag, value]; `--flag` into [flag, null]. */
@@ -204,6 +212,10 @@ function parseArgs(args) {
       result.starter = true
     } else if (flag === '--json') {
       result.json = true
+    } else if (flag === '--keep-in-search') {
+      result.keepInSearch = true
+    } else if (flag === '--dry-run') {
+      result.dryRun = true
     }
   }
 
@@ -351,10 +363,13 @@ export async function add(rawArgs) {
     case 'ci':
       await addCi(rootDir, parsed, pm)
       break
+    case 'version':
+      await addVersionOfDocs(rootDir, parsed)
+      break
     default:
       error(`Unknown subcommand: ${parsed.subcommand}`)
       log(
-        `Valid subcommands: project, foundation, site, extension, section, ci`
+        `Valid subcommands: project, foundation, site, extension, section, ci, version`
       )
       process.exit(1)
   }
@@ -1758,6 +1773,73 @@ async function addCi(rootDir, opts, pm = 'pnpm') {
     for (const line of result.postInstructions) {
       log(line ? `  ${line}` : '')
     }
+  }
+}
+
+/**
+ * `uniweb add version v2`: freeze a site's docs as a version beside them. What it does to the copy
+ * is `@uniweb/build`'s (`site/add-version.js`); here it's only which site, and saying what happened.
+ */
+async function addVersionOfDocs(rootDir, opts) {
+  setAddJsonMode(opts.json)
+  const prefix = getCliPrefix()
+
+  if (!opts.name) {
+    error('Missing the version\'s name.\n')
+    log(`Usage: ${prefix} add version v2 [--in <folder>] [--label "2.x"]`)
+    process.exit(1)
+  }
+
+  const sites = await discoverSites(rootDir)
+  const here = sites.find((site) => {
+    const inSite = relative(join(rootDir, site.path), process.cwd())
+    return !inSite.startsWith('..') && !isAbsolute(inSite)
+  })
+  const site = opts.site ? sites.find((s) => s.name === opts.site) : (here ?? (sites.length === 1 ? sites[0] : null))
+  if (!site) {
+    error(opts.site ? `Could not find site '${opts.site}'.` : 'Multiple sites in this workspace. Say which one.\n')
+    log(formatOptions(sites.map((s) => ({ label: s.name, description: s.path }))))
+    log('')
+    log(`Usage: ${prefix} add version ${opts.name} --site <name>`)
+    process.exit(1)
+  }
+
+  const { addVersion } = await import('@uniweb/build/site')
+  let report
+  try {
+    report = await addVersion(join(rootDir, site.path), {
+      name: opts.name,
+      folder: opts.in ?? undefined,
+      label: opts.label ?? undefined,
+      keepInSearch: opts.keepInSearch,
+      dryRun: opts.dryRun
+    })
+  } catch (err) {
+    error(err.message)
+    process.exit(1)
+  }
+
+  if (opts.json) {
+    console.log(JSON.stringify(report, null, 2))
+    return
+  }
+
+  const pageWord = report.pages === 1 ? 'page' : 'pages'
+  const where = `pages/${report.folder}`
+  success(
+    `${opts.dryRun ? 'Would freeze' : 'Froze'} ${report.pages} ${pageWord} of ${colors.cyan}${where}${colors.reset} as ${colors.cyan}${report.path}${colors.reset}, at ${colors.cyan}${report.route}${colors.reset}`
+  )
+  log(`  ${report.links} ${report.links === 1 ? 'link leads' : 'links lead'} to the copy now. Links in code samples are as written.`)
+  if (report.ids) log(`  ${report.ids} page ${report.ids === 1 ? 'id' : 'ids'} left out of the copy: ids stay with the latest pages.`)
+  log(
+    report.keptOutOfSearch
+      ? `  Kept out of search engines, and in the site's own search. To open it to them, remove \`noindex\` from its page.yml.`
+      : `  Open to search engines, like the rest of the site.`
+  )
+  for (const note of report.notes) log(`  ${note}`)
+  if (!opts.dryRun) {
+    log('')
+    log(`${colors.bright}Next:${colors.reset} keep writing in ${where}, which is still the latest. A foundation shows versions with useVersion.`)
   }
 }
 
