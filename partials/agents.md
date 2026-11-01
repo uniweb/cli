@@ -378,7 +378,7 @@ content = {
   subtitle: '',     // Line(s) one step below the title — each further
                     //   one-step descent is another line (string or string[])
   paragraphs: [],   // Text blocks
-  links: [],        // { href, label, role } — the body's links, not those inside lists: standalone ones, and inline ones (no `children`)
+  links: [],        // { href, label, role } — links on their own line. Not a sentence's, and a list item has its own
   images: [],       // { url, alt, caption, role, href, target } — `url`, where a video has `src`
   icons: [],        // { library, name, role }
   videos: [],       // { src, alt, caption, role, poster, href, target }
@@ -560,7 +560,7 @@ Sizing and loading ride on the image: `{width=800 height=600 loading=lazy fit=co
 
 **Separators are forgiving.** `:` works wherever `=` does, and pairs may be separated by whitespace, a comma, or both — `{role=banner width=1200}`, `{role:banner, width:1200}` and `{role:banner,width:1200}` are identical. `=` and spaces are canonical, and that is what gets written back on save. Two rules keep it unambiguous: the separator must **touch** the key (`{note:warning}` is one pair, `{note : warning}` is two flags), and a value containing a **comma** must be quoted (`{style="a, b"}`). A value containing a colon needs no quoting — only the first colon separates, so `{href:https://example.com}` is fine.
 
-Standalone links (alone on a line) are promoted to `content.links[]` — usually drawn as buttons, which is the component's choice. An inline link stays as an `<a>` tag inside `content.paragraphs[]`, and is listed in `content.links[]` too, without `children`: a section drawing `content.links` as buttons draws it as one unless it keeps only the links with `children`. Multiple links sharing a paragraph are all promoted:
+Standalone links (alone on a line) are promoted to `content.links[]`. How they're drawn is the component's choice. A link inside a sentence stays an `<a>` tag in `content.paragraphs[]`, and isn't in `content.links[]`. Multiple links sharing a paragraph are all promoted:
 
 ```markdown
 [Primary](/start)              ← standalone → content.links[0]
