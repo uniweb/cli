@@ -2333,11 +2333,29 @@ the pages:
 
 - **The framework builds them** (`uniweb export`, `uniweb deploy --host=<adapter>`): the
   vendor's snippet goes in `head.html` next to `site.yml`, and the build adds it to every
-  page's `<head>`.
+  page's `<head>`. A `services.google` entry does nothing here.
 - **Uniweb Cloud builds them** (`uniweb publish`): `head.html` is kept and synced but not
-  applied. The snippet has to run from the foundation's code, so a site whose foundation
-  you can't change can't add one. Say so to the person rather than writing a `head.html`
-  that does nothing.
+  applied. For Google's two, name the ID and the host loads the tag from the next publish,
+  with no code, on any foundation:
+
+  ```yaml
+  services:
+    google:
+      id: G-XXXXXXXXXX     # or GTM-XXXXXXX, or a list of both
+  ```
+
+  The app's site settings edit the same entry, and a pull or a push carries a change across.
+  Leave `services.tracking.scripts` unset beside it: a site's own list replaces what the host
+  states, so Google's tag would not load. `tracking: { enabled: false, consent: required }`
+  beside it holds the tag until a visitor answers, and takes a component using
+  `useTrackingConsent()`, or it never loads.
+
+  Any other such vendor has to run from the foundation's code, so a site whose foundation you
+  can't change can't add one. Say so to the person rather than writing a `head.html` that does
+  nothing.
+
+Either way, tell the person that Google Analytics counts in-app navigation only with the
+browser-history setting on, under Enhanced measurement in their data stream's settings.
 
 **Some events you get for free.** These are reported for you, with no call from
 your foundation and regardless of how it renders:
@@ -3001,7 +3019,8 @@ yours answers. **On a site your host publishes, a service is off unless `service
 list the ones the site uses (the templates list theirs). `records: true` asks for your records to be
 delivered live to the published pages. Turn it on before the first publish of a page that shows
 records with a data schema: without it those records never reach the published page, and `publish`
-warns. A static build reads records from files and ignores it. An entry
+warns. A static build reads records from files and ignores it. `google: { id: G-XXXXXXXXXX }`
+asks the host to load Google's tag, also ignored by a static build (see Tracking). An entry
 says everything about its service: a setting you remove from it is removed on the next push, and
 removing the entry switches the service off. `uniweb push` and `uniweb publish` send each service
 `site.yml` lists; a service the site has that this copy has never seen (turned on in the app since
