@@ -2585,7 +2585,7 @@ export default {
 
 For cases the factory doesn't cover, write handlers directly using `Loom`, `instantiateContent`, and `instantiateRepeated` from `@uniweb/loom`.
 
-> **`instantiateContent` resolves `{placeholders}` in text nodes only** — not in link `href`s or other node/mark attributes. So `[{email}](mailto:{email})` fills the visible label but leaves the `mailto:` URL literal. For dynamic URLs, emit the value as plain text and let the component linkify it, or build the href in the handler yourself.
+> **`instantiateContent` resolves `{placeholders}` in text and in where a link leads**, so `[{email}](mailto:{email})` works. Other attributes stay as written: a value in an image's `src`, say, has to be built in the handler yourself.
 
 **`source` and `where` are ordinary params** that the Loom handler reads — they reach both `block.properties` (for handler access) and `params` (visible to components). Components can ignore them. List them in `meta.js` params with descriptions so the editor and schema recognize them. (Unlike `theme` and `background`, which are the section's own settings and never reach `params` — see the table under *Frontmatter becomes `params`*.)
 <!-- /template:loom -->
@@ -3243,6 +3243,8 @@ Loud failures:
 **Styles not applying** — verify `@source` in `styles.css` includes your component paths; `uniweb doctor` names a folder it misses.
 
 **Prerender warnings about hooks** — components with `useState`/`useEffect` show SSG warnings during build in local symlinked mode. Expected and harmless.
+
+**"3 of 12 pages didn't render"** — the build stopped, exit 1, because a section threw while rendering a page, and `dist/` isn't complete. It names the error, the section type and the pages. Fix the section and build again. A section that only fails here reads something only a browser has; `uniweb dev` won't show that one.
 
 **"document is not defined" during build** — your component touches `document`, `window`, or `localStorage` during render rather than inside `useEffect`. **Don't add `typeof document` guards** — use the kit hook instead: dark mode → `useAppearance()`, scroll detection → `useScrolled()`. Kit hooks are SSR-safe by design.
 
