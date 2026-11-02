@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-01T22:23:59.642Z",
+  "generatedAt": "2026-11-02T00:19:04.917Z",
   "packages": {
     "@uniweb/api": {
       "version": "1.6.8"
@@ -30,7 +30,7 @@
       "version": "1.1.2"
     },
     "@uniweb/press": {
-      "version": "1.2.0"
+      "version": "1.2.1"
     },
     "@uniweb/projections": {
       "version": "1.2.10"
@@ -54,13 +54,13 @@
       "version": "1.1.2"
     },
     "@uniweb/templates": {
-      "version": "1.2.0"
+      "version": "1.2.1"
     },
     "@uniweb/theming": {
       "version": "1.2.1"
     },
     "@uniweb/unipress": {
-      "version": "1.1.28"
+      "version": "1.1.29"
     }
   },
   "templates": {
@@ -198,7 +198,7 @@
     },
     "business-docs": {
       "name": "Business Documents",
-      "description": "A complete business-document site: invoice and SOW records, pages listing them, and a filtered engagement report with XLSX export. Built on @unipress/business-docs and demonstrates the same foundation that ships the unipress invoice template.",
+      "description": "A complete business-document site: invoice and SOW records, pages listing them, and an engagement report, each page downloadable as Word, Excel or a print page. Built on @unipress/business-docs and demonstrates the same foundation that ships the unipress invoice template.",
       "tags": [
         "business-docs",
         "invoice",
