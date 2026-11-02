@@ -450,6 +450,21 @@ test('a service requested and not live yet is the next publish, the person decid
   assert.equal(doc.next.find((s) => s.command === 'npx uniweb publish')?.ask, true)
 })
 
+test('a Google tag is never "not live yet": a publish does not report it, and nothing sells it', { timeout: 60_000 }, async () => {
+  // Measured 2026-11-02 on uniwebapp.com: the tag live, and `last_published_services` naming the
+  // others alone. Read as a service waiting, status asked for a publish after every publish.
+  const site = { ...LIVE, services: [{ name: 'google', config: { id: 'G-X1' } }, { name: 'records' }], last_published_services: ['records'] }
+  const doc = docOf(await status(project(), ['--personal', '--json'], { session: loggedIn, respond: answering({ site }) }))
+  assert.deepEqual(checkOf(doc, 'app.services').lines.filter((l) => /not live yet/.test(l)), [])
+  assert.equal(doc.next.find((s) => s.command === 'npx uniweb publish'), undefined)
+})
+
+test('control: another service beside it still reads as waiting', { timeout: 60_000 }, async () => {
+  const site = { ...LIVE, services: [{ name: 'google', config: { id: 'G-X1' } }, { name: 'records' }], last_published_services: [] }
+  const doc = docOf(await status(project(), ['--personal', '--json'], { session: loggedIn, respond: answering({ site }) }))
+  assert.ok(checkOf(doc, 'app.services').lines.some((l) => /^Requested, not live yet: `records` —/.test(l)))
+})
+
 // ── what moved on the backend with no file to show for it ────────────────────
 
 /** A `.uwx` as `uwx` makes one, with a version for each of the document's items. */

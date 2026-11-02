@@ -1385,6 +1385,14 @@ function workflowsCheck(siteDir) {
 const list = (names) => names.map((n) => `\`${n}\``).join(', ')
 
 /**
+ * Asked for, and never among what a publish reports delivering (`last_published_services`):
+ * a host loads Google's tag, so nothing answers at an address and nothing is sold. By that
+ * comparison it would read "not live yet" for ever, and send an agent back to publish. A row
+ * changed since the last publish still says so, as `draft_dirty`.
+ */
+const NOT_REPORTED_AS_LIVE = new Set(['google'])
+
+/**
  * `app.services`: what `site.yml` asks for, beside what the backend holds — the request it
  * stored, and what the last publish delivered (`last_published_services`). Comparing the
  * file with those is how to tell it is stale, by the backend's own contract.
@@ -1421,7 +1429,7 @@ async function servicesCheck({ siteDir, siteYml, site }) {
   }
   const live = on(site.last_published_services)
   const requested = on(site.services)
-  const waiting = requested.filter((n) => !live.includes(n))
+  const waiting = requested.filter((n) => !live.includes(n) && !NOT_REPORTED_AS_LIVE.has(n))
   if (waiting.length && site.published) {
     lines.push(`Requested, not live yet: ${list(waiting)} — publishing makes ${waiting.length === 1 ? 'it' : 'them'} live, and may ask for payment.`)
     proposals.push({ step: 'publish', command: 'npx uniweb publish', why: 'make those changes live — the person decides', ask: true })
