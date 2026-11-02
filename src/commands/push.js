@@ -348,11 +348,12 @@ export async function push(args = [], deps = {}) {
   // ⛔ DROP STALE REMOTE STATE FIRST — this must precede the hash read below, and it
   // did not until 2026-08-19.
   //
-  // The guard itself is right and its docblock names this exact outcome: on a clone
-  // whose `$uuid` was cleared to re-publish as a new site — WHICH IS OUR OWN
-  // DOCUMENTED RECOVERY — send-only-changed would "skip every entity whose content
-  // had not changed since the OLD site's last push, so the NEW site would come up
-  // missing exactly the content that did not change." It was defeated twice over:
+  // The guard itself is right and its docblock names this exact outcome: on a copy
+  // whose site uuid went without the maps — which our own guidance to clear `$uuid`
+  // led to, until 2026-09-21; `uniweb forget` takes both now — send-only-changed would
+  // "skip every entity whose content had not changed since the OLD site's last push,
+  // so the NEW site would come up missing exactly the content that did not change."
+  // It was defeated twice over:
   //
   //   · it ran AFTER `readSyncCache`, so the emit still diffed against the old
   //     site's hashes even though the file on disk had just been emptied;
@@ -483,7 +484,8 @@ export async function push(args = [], deps = {}) {
     if (mediaRefs.length) {
       // The site has to exist before its bytes do — an upload with no owning
       // entity is charged and cannot be freed, because freeing means deleting the
-      // owner. A no-op once `$uuid` is set, so only a never-synced site pays.
+      // owner. A no-op once `sync.json` holds this backend's site uuid, so only a
+      // never-synced site pays.
       // ⛔ The PINNED ref, not site.yml's. The create is a THIRD writer of this
       // value — the emit below stamps it via `injectInfo`, publish passes it here,
       // and push did neither until 2026-08-19: it sent the authored alias (`src`),

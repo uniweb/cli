@@ -679,10 +679,10 @@ export async function publish(args = []) {
   reportSchemalessQueries(probe.schemaless, say)
   const localAssets = probe.localAssets || []
 
-  // 3a. A clone with no `$uuid` is bound to no backend site, so every cached map
-  //     that describes one is stale — including after the documented "clear
-  //     `$uuid` to re-publish as a new site" recovery. Must run BEFORE the create,
-  //     which mints a uuid and would make the clone look bound.
+  // 3a. A copy with no site uuid for this backend (`sync.json`) is bound to no site
+  //     there, so every cached map that describes one is stale. `uniweb forget` clears
+  //     the maps with the uuid; this catches a uuid gone any other way. Must run BEFORE
+  //     the create, which mints a uuid and would make the copy look bound.
   const droppedState = clearRemoteSyncStateIfUnbound(siteDir, client.origin)
   if (droppedState.length) {
     say.dim(
@@ -697,7 +697,8 @@ export async function publish(args = []) {
   //     so a repeatedly-failing first publish would burn quota with no recovery
   //     short of support. Creating the site first makes the artifact of a failed
   //     publish an EMPTY SITE instead: it costs nothing to keep and the owner can
-  //     clear it. A no-op once `$uuid` is set, so only a first publish pays.
+  //     clear it. A no-op once `sync.json` holds this backend's site uuid, so only
+  //     a first publish pays.
   //
   //     This ordering is load-bearing, not incidental — the asset plan requires an
   //     owner. A test asserts the create precedes the upload.

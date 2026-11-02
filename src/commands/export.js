@@ -6,9 +6,10 @@
  * CloudFront, etc.). Does NOT upload anywhere — `uniweb deploy --host`
  * uploads to a third-party host; `uniweb publish` ships to Uniweb hosting.
  *
- * The `dist/` output bundles the runtime + foundation + content into
- * concatenated packaging, with a vite-built `index.html` + `entry.js` +
- * `assets/`. The user copies it to whatever host they like.
+ * The `dist/` output concatenates the runtime and a local foundation into the
+ * site's JS (a foundation named by URL stays a URL), with the content beside
+ * that JS and never in it: a vite-built `index.html` + `entry.js` + `assets/`.
+ * The user copies it to whatever host they like.
  *
  * Internally this is `uniweb build --bundle` plus user guidance for the
  * upload step. The `--link` / `--bundle` flag pair is internal-only
