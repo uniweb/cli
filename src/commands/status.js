@@ -904,6 +904,17 @@ async function foundationCheck(siteDir, siteYml, client) {
   return { id: 'app.foundation', state: 'ok', summary: `The site pins the latest version of its foundation (${fndVersion}).` }
 }
 
+/**
+ * What moves a project to a newer Uniweb. `--yes` because an agent has no terminal to answer the
+ * prompt, and the docs are why it can't wait: they describe the latest release.
+ */
+const LATEST_UPDATE = {
+  step: 'update',
+  latest: true,
+  command: 'npx uniweb@latest update --yes',
+  why: 'bring the project and its AGENTS.md up to date, since the docs describe the latest release — then build, and look at the pages'
+}
+
 /** `uniweb.version`: a newer Uniweb, named the same way for every release. */
 async function versionCheck(siteDir, { offline }) {
   const runs = projectUniweb(siteDir)
@@ -915,7 +926,7 @@ async function versionCheck(siteDir, { offline }) {
   }
   return {
     checks: [{ id: 'uniweb.version', state: 'attention', summary: `Uniweb ${latest} is out; this project runs ${runs}.`, detail: { runs, latest } }],
-    proposals: [{ step: 'update', latest: true, command: 'npx uniweb@latest update', why: 'bring the project and its AGENTS.md up to date — then build, and look at the pages' }]
+    proposals: [LATEST_UPDATE]
   }
 }
 
@@ -944,7 +955,7 @@ async function doctorCheck(siteDir) {
       const newer = isBehind(projectUniweb(siteDir), getCliVersion())
       proposals.push(
         newer
-          ? { step: 'update', latest: true, command: 'npx uniweb@latest update', why: 'bring the project and its AGENTS.md up to date — then build, and look at the pages' }
+          ? LATEST_UPDATE
           : { step: 'update', command: 'npx uniweb update', why: "align the dependencies and AGENTS.md with this project's Uniweb" }
       )
     }
@@ -1489,7 +1500,7 @@ const ICON = {
   skipped: `${c.dim}·${c.reset}`
 }
 
-function render({ summary, backend, checks, next }) {
+function render({ summary, backend, checks, next, neverShipped }) {
   const out = ['']
   out.push(`${c.bold}${summary}${c.reset}`)
   for (const [prefix, title] of GROUPS) {
@@ -1519,6 +1530,10 @@ function render({ summary, backend, checks, next }) {
         out.push(`  ${i + 1}. ${ask}${s.why}`)
       }
     })
+  }
+  if (neverShipped) {
+    out.push('')
+    out.push(`First time shipping this project? ${c.cyan}npx uniweb guide ship${c.reset}`)
   }
   const unknown = checks.filter((k) => k.state === 'unknown').map((k) => k.id)
   if (unknown.length) {
@@ -1708,7 +1723,9 @@ export async function status(args = []) {
     )
     return { exitCode: 0 }
   }
-  console.log(render({ summary, backend: app.backend, checks, next }))
+  // Nowhere yet: no site on a backend and no deploy on a host.
+  const neverShipped = !synced.length && !deploys.targets.some((t) => t.deployed)
+  console.log(render({ summary, backend: app.backend, checks, next, neverShipped }))
   return { exitCode: 0 }
 }
 

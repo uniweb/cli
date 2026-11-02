@@ -13,7 +13,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmp, runVerb } from './helpers/run-verb.js'
 import { computeUnitHashes, createZip } from '@uniweb/build/uwx'
@@ -325,8 +325,15 @@ test('⭐ a newer Uniweb is named with the one way to take it — and never call
   const run = await status(project(), ['--personal'], { session: loggedIn, respond: answering({ npm: '99.0.0' }) })
   const out = plain(run.output)
   assert.match(out, /Uniweb 99\.0\.0 is out; this project runs /, out)
-  assert.match(out, /npx uniweb@latest update\n\s+bring the project and its AGENTS\.md up to date — then build, and look at the pages/, out)
+  assert.match(out, /npx uniweb@latest update --yes\n\s+bring the project and its AGENTS\.md up to date, since the docs describe the latest release — then build, and look at the pages/, out)
   assert.doesNotMatch(out, /breaking/i)
+})
+
+test('a project that has shipped nowhere is pointed at the guide for it, and a synced one is not', { timeout: 60_000 }, async () => {
+  const nowhere = project()
+  rmSync(join(nowhere, 'sync.json'))
+  assert.match(plain((await status(nowhere, ['--offline'])).output), /First time shipping this project\? npx uniweb guide ship/)
+  assert.doesNotMatch(plain((await status(project(), ['--offline'])).output), /First time shipping/)
 })
 
 test('npm not answering is not knowing, never "the latest"', { timeout: 60_000 }, async () => {

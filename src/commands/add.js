@@ -1451,6 +1451,8 @@ export default function ${name}({ content, params }) {
       `${colors.dim}The dev server will pick it up automatically.${colors.reset}`
     )
   }
+  log('')
+  log(`Before editing it: ${colors.cyan}${getCliPrefix()} guide foundation${colors.reset}`)
 
   if (starterResult) {
     // Regenerate against the declaration just written, so what is printed is
