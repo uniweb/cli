@@ -2334,9 +2334,12 @@ your foundation and regardless of how it renders:
 | `page_view` | every route change, including the first |
 | `outbound_click` | a visitor follows a link off the site — the destination **host** only, never the full URL |
 | `section_view` | a section first becomes half-visible, on pages that ask for it (`trackSections`, below) |
+| `conversion` | a phone or email tap (`name: phone`, `email`), and a link or page the site lists in `services.tracking.conversions`; also a form accepted by a provider of the site's own through `useFormSubmit`, and a sign-up through `@uniweb/api` |
+| `engagement` | a sign-in through `@uniweb/api` (`name: sign_in`) |
 
-⛔ **So don't write your own link-click or scroll-into-view listener for these.**
-A second one double-counts against a collector that already has them.
+⛔ **So don't write your own link-click or scroll-into-view listener for these,**
+and don't report a sign-up, a sign-in or an accepted form that goes through kit or
+`@uniweb/api`. A second report double-counts against a collector that already has them.
 
 Everything else is yours to report:
 
@@ -2355,11 +2358,13 @@ const { track } = useTracker()
 <button onClick={() => track('brochure_download', { file: 'specs.pdf' })}>…</button>
 ```
 
-The event name is yours — there is no list of permitted names. Five are already
-in use, so reach for these rather than inventing a synonym: the three automatic
-ones above — **`page_view`**, **`outbound_click`**, **`section_view`** — plus
-**`video_milestone`**, which kit's `<Media>` reports for any video you render
-through it, and **`read_depth`** from `useReadingDepth()` below. Put the
+The event name is yours — there is no list of permitted names. Seven are already
+in use, so reach for these rather than inventing a synonym: the automatic ones
+above — **`page_view`**, **`outbound_click`**, **`section_view`**, **`conversion`**,
+**`engagement`** — plus **`video_milestone`**, which kit's `<Media>` reports for any
+video you render through it, and **`read_depth`** from `useReadingDepth()` below.
+What your foundation alone can see that a site counts is
+`block.track('conversion', { name: 'quote_requested' })`, with a short name. Put the
 varying part in a **field**, never in the name — four names for one event turn a
 collector's event dimension into a cardinality problem.
 
