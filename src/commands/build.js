@@ -56,7 +56,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { resolve, join, dirname, basename, relative } from 'node:path'
-import { spawn } from 'node:child_process'
+import { runRelayed } from '../utils/closed-reader.js'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 
@@ -143,27 +143,13 @@ function detectProjectType(projectDir) {
 }
 
 /**
- * Run a command and return a promise
+ * Run a command, and throw if it fails
  */
-function runCommand(command, args, cwd) {
-  return new Promise((resolve, reject) => {
-    // No shell: the command is node and a script path, which needs none — and a shell
-    // splits a path with a space in it. (Node warns DEP0190 on args passed with one.)
-    const proc = spawn(command, args, {
-      cwd,
-      stdio: 'inherit'
-    })
-
-    proc.on('close', (code) => {
-      if (code === 0) {
-        resolve()
-      } else {
-        reject(new Error(`Command failed with exit code ${code}`))
-      }
-    })
-
-    proc.on('error', reject)
-  })
+async function runCommand(command, args, cwd) {
+  // No shell: the command is node and a script path, which needs none — and a shell
+  // splits a path with a space in it. (Node warns DEP0190 on args passed with one.)
+  const code = await runRelayed(command, args, { cwd })
+  if (code !== 0) throw new Error(`Command failed with exit code ${code}`)
 }
 
 /**

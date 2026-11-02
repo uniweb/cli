@@ -73,6 +73,7 @@ import {
 } from './utils/interactive.js'
 import { findWorkspaceRoot } from './utils/workspace.js'
 import { exitWhenDrained } from './utils/exit.js'
+import { outliveTheReader } from './utils/closed-reader.js'
 import { isGitRepo } from './utils/git.js'
 
 // Colors for terminal output
@@ -646,6 +647,7 @@ function computeFoundationFilePath(sitePath, foundationPath) {
 }
 
 async function main() {
+  outliveTheReader()
   const rawArgs = process.argv.slice(2)
   const nonInteractive = isNonInteractive(rawArgs)
   const args = stripNonInteractiveFlag(rawArgs)

@@ -18,8 +18,13 @@
  * @returns {Promise<never>}
  */
 export async function exitWhenDrained(code = 0) {
-  await Promise.all([process.stdout, process.stderr].map(drained))
+  await whenDrained()
   process.exit(code)
+}
+
+/** Once everything written so far to stdout and stderr has left this process. */
+export function whenDrained() {
+  return Promise.all([process.stdout, process.stderr].map(drained))
 }
 
 function drained(stream) {
