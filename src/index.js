@@ -721,6 +721,21 @@ async function main() {
     return
   }
 
+  // `guide` — the rest of a project's manual (commands/guide.js). Reached here from a project's
+  // own CLI, or with no project at all; like `start`, it asks nothing and makes no request. Its
+  // output is the file and nothing else, so the exit code is set rather than exited on, which
+  // would cut a long guide short on a pipe.
+  if (command === 'guide') {
+    if (args.slice(1).some((a) => a === '--help' || a === '-h')) {
+      printCommandHelp('guide')
+      return
+    }
+    const { guide } = await import('./commands/guide.js')
+    const { exitCode } = await guide(args.slice(1))
+    process.exitCode = exitCode
+    return
+  }
+
   // Update check for global installs.
   //
   //   - `create` / `clone` STOP when a newer release exists, before anything is
@@ -1437,7 +1452,7 @@ async function main() {
   }
   log('')
   log(
-    `  ${colors.bright}AGENTS.md${colors.reset} is the project's manual, for you and for AI agents: its Part 0 says where to begin.`
+    `  ${colors.bright}AGENTS.md${colors.reset} is the project's manual, for you and for AI agents: read it before you start.`
   )
   if (recPm !== 'pnpm') {
     log('')
@@ -1595,6 +1610,20 @@ pay when the site goes live; the guide has the agent run every command.
 Inside a Uniweb project it starts from that project instead of creating one.
 It asks nothing, writes nothing and makes no request, so it is safe to run
 anywhere. To run a site's dev server, use \`uniweb dev\`.
+`,
+    guide: `
+${colors.cyan}${colors.bright}uniweb guide${colors.reset} ${colors.dim}— The rest of a project's manual, one subject at a time${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb guide                  List the guides
+  uniweb guide <name>           Print a guide, in Markdown
+  uniweb guide <name> <name>    Print several
+  uniweb guide <name> --path    Print where its file is, to read instead
+
+AGENTS.md holds what an agent would otherwise get wrong, and tells it which guide
+to run for a task. The guides ship with the CLI, so in a project they describe the
+version the project pins. They need no network and no project, so
+\`npx uniweb@latest guide start\` works in an empty folder.
 `,
     dev: `
 ${colors.cyan}${colors.bright}uniweb dev${colors.reset} ${colors.dim}— Start a dev server for a site${colors.reset}
@@ -2343,6 +2372,7 @@ ${colors.bright}Usage:${colors.reset}
 
 ${colors.bright}Commands:${colors.reset}
   start              How an AI agent begins a site (a guide; changes nothing)
+  guide [name]       Print a guide to building with Uniweb: content, foundation, theme, …
   create [name]      Create a new project
   clone <site-uuid>  Clone a backend site into a local file project
   add <type> [name]  Add a foundation, site, or extension to a project

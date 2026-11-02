@@ -383,6 +383,7 @@ This is the best path when site content has a life independent of the foundation
 | `uniweb export` | Produce a self-contained `dist/` for any static host. You upload it yourself. `--host=<adapter>` adds host-specific helper files. |
 | `uniweb register --scope @org` | Register a foundation to the registry, for sites managed in the app. |
 | `uniweb build` | Inspect a build locally. For shipping, use `publish` (Uniweb hosting) or `deploy`/`export` (static hosts). |
+| `uniweb guide [name]` | Print a guide to building with Uniweb: `content`, `foundation`, `theme` and more. A project's `AGENTS.md` says which a task needs. |
 | `uniweb update` | Align this project with the CLI you're running: bump `@uniweb/*` deps in every `package.json` to the CLI's matrix (then install), and refresh `AGENTS.md`. Pins to *this* CLI's matrix — run `npx uniweb@latest update` to align to the latest release. Updating the CLI itself is your package manager's job (`npm i -g uniweb@latest`). |
 
 `--host=<adapter>` is the same option across `deploy`, `export`, and `add ci`. Built-in adapters: `github-pages`, `cloudflare-pages`, `netlify`, `vercel`, `s3-cloudfront`, and `generic-static` (an artifact shape for `export`, not a deploy target). Each adapter implements only the operations it supports, and the CLI never offers one it can't perform: `add ci` lists only hosts that can scaffold a workflow, and `deploy`'s picker lists only destinations with a working deploy hook.

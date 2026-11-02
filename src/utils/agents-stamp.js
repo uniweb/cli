@@ -31,13 +31,28 @@ export function readAgentsVersion(filePath) {
 }
 
 /**
- * Generate AGENTS.md content with version stamp
+ * ⭐ THE LAST LINE OF EVERY AGENTS.md, after any project notes. A tool may cut an instruction file
+ * without saying so: Codex stops at `project_doc_max_bytes`, 32 KiB by default, counting every
+ * instruction file it has read, and a person can raise that. So the file doesn't promise to fit
+ * [Diego, 2026-11-02]. It says near its top, inside any cap, that this line ends it, and an agent
+ * that can't see the line reads the rest itself.
+ */
+export const AGENTS_END_LINE = 'End of AGENTS.md'
+
+/** The partial, stamped, with nothing after it. */
+function stampedPartial() {
+  const partialsDir = join(__dirname, '..', '..', 'partials')
+  const agentsContent = readFileSync(join(partialsDir, 'agents.md'), 'utf8')
+  return `<!-- uniweb-agents v${getCliVersion()} -->\n${agentsContent.trimEnd()}`
+}
+
+/**
+ * Generate AGENTS.md content with version stamp: what `create` writes, and what `update` writes
+ * for a project with no notes.
  * @returns {string} Full AGENTS.md content with stamp
  */
 export function generateAgentsContent() {
-  const partialsDir = join(__dirname, '..', '..', 'partials')
-  const agentsContent = readFileSync(join(partialsDir, 'agents.md'), 'utf8')
-  return `<!-- uniweb-agents v${getCliVersion()} -->\n${agentsContent}\n`
+  return `${stampedPartial()}\n\n${AGENTS_END_LINE}\n`
 }
 
 /**
@@ -91,20 +106,19 @@ export function readProjectNotes(text) {
 }
 
 /**
- * AGENTS.md as `update` writes it: this CLI's partial, stamped, and the project-notes blocks of the
- * file it replaces after it.
+ * AGENTS.md as `update` writes it: this CLI's partial, stamped, the project-notes blocks of the
+ * file it replaces after it, and the line that ends the file.
  *
  * @param {string|null} existing - the current AGENTS.md, or null when there is none
  * @returns {{ content: string, kept: number } | { error: string }}
  */
 export function refreshAgentsContent(existing) {
-  const fresh = generateAgentsContent()
-  if (existing == null) return { content: fresh, kept: 0 }
+  if (existing == null) return { content: generateAgentsContent(), kept: 0 }
   const notes = readProjectNotes(existing)
   if (notes.error) return notes
-  if (!notes.blocks.length) return { content: fresh, kept: 0 }
+  if (!notes.blocks.length) return { content: generateAgentsContent(), kept: 0 }
   return {
-    content: `${fresh.replace(/\s+$/, '')}\n\n${notes.blocks.join('\n\n')}\n`,
+    content: `${stampedPartial()}\n\n${notes.blocks.join('\n\n')}\n\n${AGENTS_END_LINE}\n`,
     kept: notes.blocks.length,
   }
 }

@@ -52,7 +52,7 @@ test('outside a project: create from starter, read AGENTS.md, sign in in the bro
   // Only those two: a full template is sample content to remove.
   assert.doesNotMatch(guide, /--blank|marketing|template list/)
   assert.match(guide, /AGENTS\.md, at the project's root, is the manual/)
-  assert.match(guide, /Part 0/)
+  assert.match(guide, /follow its procedure/)
   assert.ok(guide.includes('npm install'))
   assert.ok(guide.includes('npx uniweb dev'))
   assert.ok(guide.includes('npx uniweb login --browser --personal'))

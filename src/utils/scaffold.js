@@ -18,6 +18,7 @@ import {
 } from '../templates/processor.js'
 import { getVersionsForTemplates, getCliVersion } from '../versions.js'
 import { writeJsonPreservingStyleAsync } from './json-file.js'
+import { generateAgentsContent } from './agents-stamp.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const TEMPLATES_DIR = join(__dirname, '..', '..', 'templates')
@@ -46,8 +47,8 @@ export async function scaffoldWorkspace(targetDir, context, options = {}) {
   // because an empty packages: [] makes pnpm search parent directories.
   const skip = context.workspaceGlobs?.length ? [] : ['pnpm-workspace.yaml']
 
-  // Inject CLI version for AGENTS.md stamp
-  context = { ...context, cliVersion: getCliVersion() }
+  // AGENTS.md comes from the one writer `update` uses too, so `create` and `update` can't differ.
+  context = { ...context, cliVersion: getCliVersion(), agentsContent: generateAgentsContent() }
 
   const templatePath = join(TEMPLATES_DIR, 'workspace')
   await copyTemplateDirectory(templatePath, targetDir, context, {

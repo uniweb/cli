@@ -103,7 +103,7 @@ test('Next steps name AGENTS.md, which the project has', () => {
   const r = run(['create', 'probe', '--template', 'none', '--no-git'])
   assert.equal(r.code, 0, r.err)
   const next = r.out.slice(r.out.indexOf('Next steps:'))
-  assert.match(next, /AGENTS\.md is the project's manual, for you and for AI agents: its Part 0 says where to begin/)
+  assert.match(next, /AGENTS\.md is the project's manual, for you and for AI agents: read it before you start/)
   assert.ok(existsSync(join(r.cwd, 'probe', 'AGENTS.md')), 'the manual the steps name is not there')
   rmSync(r.cwd, { recursive: true, force: true })
 })

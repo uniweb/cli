@@ -3,20 +3,21 @@
 
 You're in the Uniweb project at `{{root}}`.
 
-Its pages are markdown files, and how they look and behave comes from its foundation:
-React components that the pages pick by name. The `uniweb` CLI builds and runs the
-project, and brings it into the Uniweb app, where the person you're working with can keep
-editing it visually.
+Its pages are made of sections: structured content written in markdown, and drawn by its
+foundation, React components that each section picks by name. The `uniweb` CLI builds and
+runs the project, and brings it into the Uniweb app, where the person you're working with
+can keep editing it visually.
 
 `uniweb start` only prints this guide; `npx uniweb dev` runs the site. To start a new
 project instead, run `npx uniweb@latest start` in a folder outside this one.
 {{else}}
 # Build a website with Uniweb
 
-You're building a website for the person you're working with. In Uniweb, the pages are
-markdown files, and how they look and behave comes from a foundation: React components
-that the pages pick by name. One project holds both. The `uniweb` CLI builds and runs it,
-and brings it into the Uniweb app, where the person can keep editing it visually.
+You're building a website for the person you're working with. In Uniweb, a page is made of
+sections: structured content written in markdown, and drawn by a foundation, React
+components that each section picks by name. One project holds both. The `uniweb` CLI builds
+and runs it, and brings it into the Uniweb app, where the person can keep editing it
+visually.
 {{/if}}
 
 ## Run everything yourself
@@ -131,12 +132,12 @@ pages, text and theme here, but not its section types.
 
 {{#if agents}}
 AGENTS.md, at the project's root, is the manual for this project and its version of
-Uniweb. It's long, so read its Part 0 before writing code, then the parts it names for
+Uniweb. Read it before writing code, and follow its procedure, which runs the guide for
 your task.
 {{else}}
 This project has no AGENTS.md, the manual for a Uniweb project. Write one with
-`npx uniweb update --agents-only`, then read its Part 0 before writing code, and the parts
-it names for your task.
+`npx uniweb update --agents-only`, then read it before writing code, and follow its
+procedure.
 {{/if}}
 
 Uniweb's mistakes are quiet: an unknown section type or param builds fine and renders

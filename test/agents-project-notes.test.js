@@ -1,8 +1,9 @@
 /**
  * `uniweb update` keeps a project's notes in AGENTS.md: the blocks between a
  * `<!-- project-notes:start -->` line and a `<!-- project-notes:end -->` line,
- * carried verbatim to the end of the regenerated file. Everything else in the
- * file is this CLI's partial, rewritten for each version.
+ * carried verbatim to the end of the regenerated file, above the line that ends
+ * it. Everything else in the file is this CLI's partial, rewritten for each
+ * version.
  *
  * The report behind it (2026-10-01): notes written into AGENTS.md were lost on
  * every version bump, because `update` rewrote the file whole.
@@ -12,6 +13,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  AGENTS_END_LINE,
   generateAgentsContent,
   readProjectNotes,
   refreshAgentsContent,
@@ -20,6 +22,9 @@ import {
 } from '../src/utils/agents-stamp.js'
 
 const OLD_PARTIAL = '<!-- uniweb-agents v0.1.0 -->\n# Old guide\n\nSome rules.\n'
+const END = `\n\n${AGENTS_END_LINE}\n`
+/** The file with no notes, up to the line that ends it. */
+const partialAlone = () => generateAgentsContent().slice(0, -END.length)
 const NOTES = `${PROJECT_NOTES_START}
 ## Our notes
 
@@ -35,8 +40,8 @@ test('a block is kept verbatim, at the end of the new file — wherever it was',
   const existing = `${OLD_PARTIAL}\n${NOTES}\n\n## More of the old guide\n`
   const { content, kept } = refreshAgentsContent(existing)
   assert.equal(kept, 1)
-  assert.ok(content.startsWith(generateAgentsContent().trimEnd()))
-  assert.ok(content.endsWith(`\n\n${NOTES}\n`))
+  assert.ok(content.startsWith(partialAlone()))
+  assert.ok(content.endsWith(`\n\n${NOTES}${END}`))
   assert.ok(!content.includes('More of the old guide'))
 })
 
@@ -44,7 +49,7 @@ test('several blocks are kept, in order', () => {
   const second = `${PROJECT_NOTES_START}\nsecond\n${PROJECT_NOTES_END}`
   const { content, kept } = refreshAgentsContent(`${OLD_PARTIAL}${NOTES}\nOUTSIDE-ANY-BLOCK\n${second}\n`)
   assert.equal(kept, 2)
-  assert.ok(content.endsWith(`${NOTES}\n\n${second}\n`))
+  assert.ok(content.endsWith(`${NOTES}\n\n${second}${END}`))
   assert.ok(!content.includes('OUTSIDE-ANY-BLOCK'))
 })
 
