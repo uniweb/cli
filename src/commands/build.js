@@ -11,9 +11,10 @@
  *
  *   --bundle (internal; called by `uniweb deploy --host` / `uniweb export`)
  *     Full vite + post-vite pipeline. Produces a static-host JS bundle
- *     (`dist/index.html`, `dist/entry.js`, `_importmap/*`, `_pages/*` for
- *     split mode, sitemap/robots, each language's search index, llms.txt and
- *     page markdown, prerendered HTML when configured). The foundation is
+ *     (`dist/index.html`, the JS and CSS in `dist/assets/`, `_importmap/*` when
+ *     a foundation or an extension loads by URL, `_pages/*` for split mode,
+ *     sitemap/robots, each language's search index, llms.txt and page
+ *     markdown, prerendered HTML when configured). The foundation is
  *     statically inlined when site.yml names a
  *     workspace-local one (the self-contained case), and loaded by URL when
  *     it names a URL, or under VITE_FOUNDATION_MODE=runtime. A catalog ref
