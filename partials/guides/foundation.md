@@ -24,6 +24,22 @@ import { Section, Prose, Article } from '@uniweb/kit'
 
 `Prose` renders headings, paragraphs, images, snippets, lists with prose typography. Markdown footnotes (`[^1]` and a `[^1]: the note` paragraph in the same file) become numbered links with the notes listed at the end; a section drawing `content.paragraphs` itself sees them as the text they are. Tagged data blocks are skipped (read them from `content.data`). It also works as a typography wrapper: `<Prose>{children}</Prose>`. `Article` is `Prose` in a semantic `<article>`.
 
+**Drawing an element your own way.** `components` on `Prose`, `Render`, `Article` or `Section` replaces how one element type is drawn, and kit keeps the rest. An entry receives `{ element, block, children }`: a `codeBlock` has `element.text` and `element.attrs.language`, a `dataBlock` (a tagged fence, drawn where the author put it) has `element.tag` and `element.data`, and a `concept_block` has `element.tag` and `children`. To use it across sections, wrap `Prose` once in a component of your own.
+
+```jsx
+import { Prose, Code, Mermaid } from '@uniweb/kit'
+
+function CodeBlock({ element: { text, attrs } }) {
+  return attrs?.language === 'mermaid'
+    ? <Mermaid source={text} />
+    : <Code content={text} language={attrs?.language} />
+}
+
+<Prose content={content} block={block} components={{ codeBlock: CodeBlock }} />
+```
+
+**Diagrams.** `Mermaid` draws a ` ```mermaid ` fence, and only where a foundation passes it one like this: elsewhere the fence stays code. The prerendered page holds the source as code, and the diagram replaces it when it comes near the view, so expect the page to move by the difference in height. Its colors come from the section's tokens. It's an image, drawn by an engine in a sandboxed frame loaded from a CDN, so its nodes can't be clicked, its text can't be selected, and its labels use the system font. A foundation that doesn't import it carries none of it.
+
 **Prose styling.** `<Prose>` and any container you put `<Render>` output in use kit's `prose` classes, supplied by one import in `styles.css`:
 
 ```css
@@ -47,7 +63,7 @@ Skip it and prose is unstyled (lists lose bullets) while the markup looks right;
 **Data fetching:** `useFetched`, `useCacheEntry`, `useWholeRecord`
 **Forms:** `useFormValues`, `valueAt`, `useFormSubmit`, `submitForm`, `resolveSubmitTarget` (services guide)
 **Utilities:** `cn()`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`, `getLocaleLabel(locale)`
-**Other styled:** `Code`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
+**Other styled:** `Code`, `Mermaid`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
 Things you won't discover from exports:
 

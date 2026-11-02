@@ -162,6 +162,8 @@ Three uses by info string: `yaml:`/`json:` data (parsed into `content.data.tag`,
 
 Two tags, not a tag plus a variant: a warning and a note are `md:warning` and `md:note`. The fence takes no params.
 
+A ` ```mermaid ` fence is a snippet that a foundation can draw as a diagram, with kit's `Mermaid` (foundation guide). Where it doesn't, or the diagram has a syntax error, the page shows it as code. Check by looking at the page: the build says nothing either way. ` ```mermaid:flow ` keeps the text at `content.data.flow`, for a section that declares `flow` and draws it.
+
 ### Math
 
 LaTeX compiles to MathML Core at build time — no runtime library. `$x^2$` inline; `$$x^2$$` display (block on its own line, inline display mid-paragraph); a ` ```math ` fence for multi-line; `\$` for a literal dollar. A `$…$` span is math only when no whitespace touches the delimiters *and* the closing `$` isn't followed by a digit — so `$5 and $10` stays prose and `Let $f(x) = 5$ be` is math. Math survives prerender, epub/pagedjs output and the editor. Display math lands in `content.math`, and inline math stays in its paragraph. A foundation that draws equations imports `@uniweb/kit/math-tokens.css` (theme guide).
