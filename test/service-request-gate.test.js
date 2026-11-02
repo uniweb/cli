@@ -96,6 +96,15 @@ test('⛔ a credential is said — it is never sent', () => {
   assert.match(announce({ assistant: { apiKey: 'sk-1' } }), /a credential is never sent/)
 })
 
+test('a Google tag beside a script list of the site\'s own is said: the list replaces it', () => {
+  assert.match(announce({ google: { id: 'G-X1' }, tracking: { scripts: ['https://v.example/t.js'] } }), /Google's tag will not load/)
+  assert.equal(announce({ google: { id: 'G-X1' }, tracking: true }), '')
+})
+
+test('a foundation renders no Google tag, so it is never said to be missing one', () => {
+  assert.equal(announce({ google: { id: 'G-X1' } }, []), '')
+})
+
 // ── the foundation informs, never decides ───────────────────────────────────
 
 test("a foundation that declares nothing says nothing — absent is unknown, not none", () => {

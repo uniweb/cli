@@ -183,9 +183,19 @@ export function serviceNotes({ siteYml, supports = null, warn = () => {} }) {
   // past that entry, is wrong: `search: yes` was "site.yml turns on `search`" (F14).
   if (unreadableServices(siteYml?.services).length) return []
   const asks = readServicesRequest(siteYml?.services, { warn }) || []
-  if (!Array.isArray(supports)) return []
   const notes = []
-  const ignored = new Set(['tracking', 'records'])
+  // A site's own list replaces what its host states, key by key (`readServiceOptions`), and
+  // `services.google` reaches the page as the host's list.
+  if (siteYml?.services?.google && siteYml?.services?.tracking?.scripts) {
+    notes.push(
+      '`services.tracking.scripts` replaces the script your host loads for `services.google`, ' +
+        "so Google's tag will not load. Keep one of them."
+    )
+  }
+  if (!Array.isArray(supports)) return notes
+  // None of these is something a foundation renders: `google` and `tracking` load or report
+  // whatever the foundation is, and `records` is invisible to it.
+  const ignored = new Set(['tracking', 'records', 'google'])
   const has = (ask) => ask.enabled !== false || typeof ask.config?.endpoint === 'string'
   const unrendered = asks.filter((a) => has(a) && !ignored.has(a.name) && !supports.includes(a.name)).map((a) => a.name)
   if (unrendered.length) {
