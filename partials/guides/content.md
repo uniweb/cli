@@ -162,7 +162,7 @@ Three uses by info string: `yaml:`/`json:` data (parsed into `content.data.tag`,
 
 Two tags, not a tag plus a variant: a warning and a note are `md:warning` and `md:note`. The fence takes no params.
 
-A ` ```mermaid ` fence is a snippet that a foundation can draw as a diagram, with kit's `Mermaid` (foundation guide). Where it doesn't, or the diagram has a syntax error, the page shows it as code. Check by looking at the page: the build says nothing either way. ` ```mermaid:flow ` keeps the text at `content.data.flow`, for a section that declares `flow` and draws it.
+A ` ```mermaid ` fence is a snippet that a foundation can draw as a diagram, with kit's `Mermaid` (foundation guide). Where it doesn't, or the diagram has a syntax error, the page shows it as code. Check by looking at the page: the build says nothing either way. ` ```mermaid:flow ` keeps the text at `content.data.flow`, for a section that declares `flow` and draws it. Leave colors out of a diagram and it takes the site's, in light and dark; a `fill` you set stays in both, and a pale one leaves its labels unreadable on a dark page.
 
 ### Math
 
