@@ -164,7 +164,7 @@ Every event carries an opaque `visit` key, generated at page load, in memory onl
 
 ## Assistant
 
-The service name is `assistant`; a host that runs an agent typically serves it at `/_agent`. Never write that path:
+The service name is `assistant`; a host that runs an agent typically serves it at `/_agent/chat`. Never write that path:
 
 ```jsx
 const { url } = resolveService(website, 'assistant')
@@ -172,3 +172,5 @@ if (!url) return null          // no agent on this site — render nothing or a 
 ```
 
 No `url` means the site has no agent — never enabled, or this host runs none. Don't retry it, don't hardcode `/_agent/chat` (on a static host that's a 404 indistinguishable from a broken endpoint), and don't tell the visitor. A live agent that errors mid-conversation is ordinary request failure, handled where you make the request. Knowledge pages that feed an assistant: content guide.
+
+In `site.yml`, `assistant: true` asks the host for its agent, and a map asks with options: `system` holds its instructions, and `model` and `maxTokens` are preferences a host may ignore. A map with no address still asks the host, so the address stays the host's to state.
