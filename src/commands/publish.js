@@ -168,6 +168,16 @@ function readSiteYml(path) {
   }
 }
 
+// The backend's own sentences about a publish, for the person: what it changed (`applied`, a
+// confirmed change or a reduction), then what it did not change and they should know (`notes`),
+// such as something asked for that this deployment does not serve. The publish went through, so
+// nothing else would say so.
+export function publishSentences(result) {
+  return [result?.applied, result?.notes]
+    .flatMap((list) => (Array.isArray(list) ? list : []))
+    .filter((line) => typeof line === 'string' && line)
+}
+
 // Languages from the BUILT site — the authority after a build: `config.languages` where
 // the site declares them (three accepted shapes: 'en', { value, label }, { code, label }),
 // else its default and each language the build produced (`dist/<locale>/site-content.json`).
@@ -1141,11 +1151,7 @@ export async function publish(args = []) {
   say.ok(
     `Published ${c.bold}${siteUuid}${c.reset}${result.status ? ` (${result.status})` : ''}`
   )
-  // What the request changed, in the backend's own sentences — a confirmed change, or a reduction
-  // (`applied`, its §4A). Absent when nothing changed.
-  for (const line of Array.isArray(result.applied) ? result.applied : []) {
-    if (typeof line === 'string' && line) say.info(line)
-  }
+  for (const line of publishSentences(result)) say.info(line)
 
   // ⛔ SAY IT WHEN A LANGUAGE ASKED FOR DID NOT GO OUT.
   //
