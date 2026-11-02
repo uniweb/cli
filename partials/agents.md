@@ -2320,11 +2320,24 @@ product's own shape.
 A site may also name a vendor's own script under `services.tracking.scripts`, which the
 runtime loads once, after consent when a gate is declared, and never in a frame
 or during prerender. That is a **separate path with no connection to the stream
-below** — the vendor measures its own way, and nothing you `track()` reaches it.
-An entry is a URL and nothing else, so a vendor whose install also runs inline
-lines does not work this way: Google Analytics and Google Tag Manager both do. On a
+below** — the vendor measures its own way, and nothing you `track()` reaches it. On a
 site you publish, an entry with no endpoint also asks the host for its collector;
 `enabled: false` beside `scripts` loads the script alone.
+
+⛔ **An entry is a URL and nothing else, so Google Analytics, Google Tag Manager and
+Meta's pixel can't be installed this way.** Each one's install runs inline lines, and
+from a URL alone Google Analytics sends nothing and Tag Manager never gets its
+page-load event. A tag carrying an attribute the vendor reads, like `data-domain` or
+`data-website-id`, has the same problem. What works for these depends on who builds
+the pages:
+
+- **The framework builds them** (`uniweb export`, `uniweb deploy --host=<adapter>`): the
+  vendor's snippet goes in `head.html` next to `site.yml`, and the build adds it to every
+  page's `<head>`.
+- **Uniweb Cloud builds them** (`uniweb publish`): `head.html` is kept and synced but not
+  applied. The snippet has to run from the foundation's code, so a site whose foundation
+  you can't change can't add one. Say so to the person rather than writing a `head.html`
+  that does nothing.
 
 **Some events you get for free.** These are reported for you, with no call from
 your foundation and regardless of how it renders:
@@ -2336,6 +2349,10 @@ your foundation and regardless of how it renders:
 | `section_view` | a section first becomes half-visible, on pages that ask for it (`trackSections`, below) |
 | `conversion` | a phone or email tap (`name: phone`, `email`), and a link or page the site lists in `services.tracking.conversions`; also a form accepted by a provider of the site's own through `useFormSubmit`, and a sign-up through `@uniweb/api` |
 | `engagement` | a sign-in through `@uniweb/api` (`name: sign_in`) |
+
+A `services.tracking.conversions` list is public, since it is in every page's data, so a
+listed link must not carry a token. On a site you publish it also asks the host for its
+collector, as any `tracking` entry with no endpoint does.
 
 ⛔ **So don't write your own link-click or scroll-into-view listener for these,**
 and don't report a sign-up, a sign-in or an accepted form that goes through kit or
