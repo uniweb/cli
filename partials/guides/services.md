@@ -56,6 +56,8 @@ With `provider: endpoint`, `endpoint:` is **required** (no default): `_search` r
 
 **Results have one shape.** Always: `id`, `type` (`page` | `section` | `record`), `route`, `href`, `title`, `pageTitle`, `excerpt`, `snippetHtml`. Provider-optional (`null` when absent): `sectionId`, `anchor`, `description`, `component`, `snippetText`, `matches`, `group`, `item` (a record's fields). Guard optionals (`result.item?.image`). `snippetHtml` is HTML with `<mark>` — render through `SafeHtml`. A failing provider falls back to the local index when one exists, else returns no results with a console warning.
 
+**Follow a result with `<Link to={result.href}>`.** `href` is a route with no language or base path in it, and `Link` adds both. Do the same for Enter by clicking the highlighted link: `window.location.href = result.href` or a bare `navigate(result.href)` sends a French reader to the English page, and the build says nothing. Where no `Link` can go, `resolveHref(href, website)` gives the whole address.
+
 ```jsx
 const { results, isLoading, query, isEnabled } = useSearch(website)   // `query` is a debounced function
 ```
