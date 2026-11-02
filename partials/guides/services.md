@@ -109,7 +109,7 @@ The endpoint must accept the framework's batched `{ "events": [ … ] }` POST (`
 **A `scripts` entry is a URL and nothing else, so these can't be installed that way.** Each one's install runs inline lines; from a URL alone GA sends nothing and Tag Manager never gets its page-load event. A tag carrying an attribute the vendor reads (`data-domain`, `data-website-id`) has the same problem. What works depends on who builds the pages:
 
 - **The framework builds them** (`uniweb export`, `uniweb deploy --host=<adapter>`): the vendor's snippet goes in `head.html` next to `site.yml`, and the build adds it to every page's `<head>`. A `services.google` entry does nothing here.
-- **Uniweb Cloud builds them** (`uniweb publish`): `head.html` is kept and synced but **not applied**. For Google's two, name the ID and the host loads the tag from the next publish, free, with no code, on any foundation:
+- **Uniweb Cloud builds them** (`uniweb publish`, or publishing from the app): `head.html` is kept and synced but **not applied**. For Google's two, name the ID and the host loads the tag from the next publish, free, with no code, on any foundation:
 
   ```yaml
   services:
@@ -117,7 +117,7 @@ The endpoint must accept the framework's batched `{ "events": [ … ] }` POST (`
       id: G-XXXXXXXXXX     # or GTM-XXXXXXX, or a list of both
   ```
 
-  The app's site settings don't offer this yet, so for a site someone edits only in the app, `uniweb clone` it, add the entry and `uniweb publish`. Leave `services.tracking.scripts` unset beside it — a site's own list replaces what the host states, so Google's tag would not load. `tracking: { enabled: false, consent: required }` beside it holds the tag until a visitor answers, and needs a component using `useTrackingConsent()`, or it never loads. Gate that component on the hook's `status`: `isTrackingEnabled()` is false here. Any other such vendor has to run from the foundation's code, so a site whose foundation you can't change can't add one — say so rather than writing a `head.html` that does nothing.
+  Someone who edits only in the app adds it there, with no terminal: the *Google Analytics and Tag Manager* card in the site's Settings, under Features, then a publish. It is this same entry: `uniweb pull` writes what the card holds into `site.yml`, its switch as `enabled: false`. Leave `services.tracking.scripts` unset beside it — a site's own list replaces what the host states, so Google's tag would not load. `tracking: { enabled: false, consent: required }` beside it holds the tag until a visitor answers, and needs a component using `useTrackingConsent()`, or it never loads. Gate that component on the hook's `status`: `isTrackingEnabled()` is false here. Any other such vendor has to run from the foundation's code, so a site whose foundation you can't change can't add one — say so rather than writing a `head.html` that does nothing.
 
 Either way, tell the person to check Realtime from a browser that doesn't block trackers: a visit from Brave, say, never reaches Google, which looks like a failed install. Google Analytics counts each page a visitor moves to through the browser-history setting, under Enhanced measurement in the data stream's settings, which a new stream has on.
 
