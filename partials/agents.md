@@ -2355,7 +2355,9 @@ the pages:
   nothing.
 
 Either way, tell the person that Google Analytics counts in-app navigation only with the
-browser-history setting on, under Enhanced measurement in their data stream's settings.
+browser-history setting on, under Enhanced measurement in their data stream's settings, and
+to check Realtime from a browser that doesn't block trackers: a visit from Brave, say, never
+reaches Google, which looks like a failed install.
 
 **Some events you get for free.** These are reported for you, with no call from
 your foundation and regardless of how it renders:
