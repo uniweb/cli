@@ -2321,6 +2321,10 @@ A site may also name a vendor's own script under `services.tracking.scripts`, wh
 runtime loads once, after consent when a gate is declared, and never in a frame
 or during prerender. That is a **separate path with no connection to the stream
 below** — the vendor measures its own way, and nothing you `track()` reaches it.
+An entry is a URL and nothing else, so a vendor whose install also runs inline
+lines does not work this way: Google Analytics and Google Tag Manager both do. On a
+site you publish, an entry with no endpoint also asks the host for its collector;
+`enabled: false` beside `scripts` loads the script alone.
 
 **Some events you get for free.** These are reported for you, with no call from
 your foundation and regardless of how it renders:
