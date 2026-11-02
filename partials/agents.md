@@ -2359,6 +2359,14 @@ browser-history setting on, under Enhanced measurement in their data stream's se
 to check Realtime from a browser that doesn't block trackers: a visit from Brave, say, never
 reaches Google, which looks like a failed install.
 
+For a Tag Manager container, tell them three more things. Moving between pages doesn't reload
+the document, so a tag on *All Pages* runs only on the page a visit starts on, and a tag meant
+for every page also needs a *History Change* trigger; a Google Analytics tag doesn't. A mistyped
+`GTM-` ID gives no error, since Google answers any well-formed ID with an empty container, so
+check an install with Tag Assistant. And list two IDs only when they send to different places: a
+container sending to the Measurement ID beside it competes with it, so a landing page can count
+twice and the container's own tags can fail to fire.
+
 **Some events you get for free.** These are reported for you, with no call from
 your foundation and regardless of how it renders:
 

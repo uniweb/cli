@@ -692,12 +692,13 @@ async function buildSite(projectDir, options = {}) {
 
       reportLocalizedSite(built)
     } catch (err) {
-      error(`i18n build failed: ${err.message}`)
+      // ⛔ Until 2026-11-02 this said "Continuing without localized content" and the build ended
+      // complete and exit 0, with every page of every other language missing.
+      error(`Couldn't build the site's other languages: ${err.message}`)
       if (process.env.UNIWEB_DEBUG) {
         console.error(err.stack)
       }
-      // Don't fail the build, just warn
-      log(`${colors.yellow}Continuing without localized content${colors.reset}`)
+      process.exit(1)
     }
   }
 
@@ -721,6 +722,11 @@ async function buildSite(projectDir, options = {}) {
       success(
         `Pre-rendered ${result.pages} page${result.pages !== 1 ? 's' : ''} to static HTML`
       )
+      if (result.skipped?.length > 0) {
+        log(
+          `${colors.yellow}${result.skipped.length} page${result.skipped.length !== 1 ? 's' : ''} left to render in the browser: ${result.skipped.join(', ')}${colors.reset}`
+        )
+      }
 
       // Summary
       log('')
