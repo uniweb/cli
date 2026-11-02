@@ -127,7 +127,7 @@ Short codes: `lu` Lucide, `hi`/`hi2` Heroicons v1/v2, `fi` Feather, `pi` Phospho
 ![alt](./img.jpg){href=/products}       clickable media: href + target ride along
 ```
 
-Image attributes: `{width=800 height=600 loading=lazy fit=cover position=center author="Jane Doe"}`. Video: `{poster=./thumb.jpg autoplay muted loop controls}` — name a poster; a static build makes one only when none is named and ffmpeg is installed, and `uniweb publish` sends only a named poster. A `{role=pdf}` document adds `{preview=./cover.jpg author=… description=…}` and arrives as `{ url, name, mime, size?, alt, caption, … }`.
+Image attributes: `{width=800 height=600 loading=lazy fit=cover position=center author="Jane Doe"}`. `width` and `height` hold an image's place on the page while its file loads, so what's under it doesn't jump when it arrives; use the file's own size, and a stylesheet still scales it. A static build fills them in for a local file when you give neither. On a site a backend hosts, write them on an image in the flow. In a PDF, only a width with a unit (`50%`, `10cm`) sizes an image. Video: `{poster=./thumb.jpg autoplay muted loop controls}` — name a poster; a static build makes one only when none is named and ffmpeg is installed, and `uniweb publish` sends only a named poster. A `{role=pdf}` document adds `{preview=./cover.jpg author=… description=…}` and arrives as `{ url, name, mime, size?, alt, caption, … }`.
 
 **Section links:** `page:about#team` → `/about#section-team`; `page:/#features` → a homepage section. The id is the file name without its number (`2-features.md` → `features`) or `id:` in frontmatter.
 

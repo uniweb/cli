@@ -95,7 +95,7 @@ fonts:
   faces: [{ family: "Fraunces", src: /fonts/fraunces.woff2, weight: "100 900" }]
 ```
 
-The build adds preconnect hints, emits `@font-face` + preload, drops unreferenced families; `uniweb push` uploads face files under `public/`. The `code` role owns `--font-code`; Tailwind's `font-mono` reads `--font-mono`, a separate var you declare yourself. A role's face on an element it isn't wired onto — a wordmark in the heading face, say — is `font-family: var(--font-heading)`, or a utility of your own: `@theme inline { --font-display: var(--font-heading); }` in `styles.css`, then `font-display`.
+The build adds preconnect hints, emits `@font-face` + preload, drops unreferenced families; `uniweb push` uploads face files under `public/`. An imported font replaces the fallback when it arrives (`display=swap`, unless the URL says otherwise), which can re-wrap text on a first visit. `display=optional` in the URL keeps the font first drawn for that visit instead, and `faces:` serves the files from the site, preloaded. The `code` role owns `--font-code`; Tailwind's `font-mono` reads `--font-mono`, a separate var you declare yourself. A role's face on an element it isn't wired onto — a wordmark in the heading face, say — is `font-family: var(--font-heading)`, or a utility of your own: `@theme inline { --font-display: var(--font-heading); }` in `styles.css`, then `font-display`.
 
 ## styles.css
 
