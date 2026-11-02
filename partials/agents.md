@@ -2361,11 +2361,16 @@ reaches Google, which looks like a failed install.
 
 For a Tag Manager container, tell them three more things. Moving between pages doesn't reload
 the document, so a tag on *All Pages* runs only on the page a visit starts on, and a tag meant
-for every page also needs a *History Change* trigger; a Google Analytics tag doesn't. A mistyped
-`GTM-` ID gives no error, since Google answers any well-formed ID with an empty container, so
-check an install with Tag Assistant. And list two IDs only when they send to different places: a
-container sending to the Measurement ID beside it competes with it, so a landing page can count
-twice and the container's own tags can fail to fire.
+for every page also needs a *History Change* trigger. A Google Analytics tag and Meta's pixel
+follow those changes themselves, and Google warns that giving a Google Analytics tag the trigger
+as well counts page views twice. A mistyped `GTM-` ID gives no error, since Google answers any
+well-formed ID with an empty container, so check an install with Tag Assistant. And list two IDs
+only when they send to different places: a container sending to the Measurement ID beside it
+competes with it, so a landing page can count twice and the container's own tags can fail to fire.
+
+Foundation code sends a container its own events with
+`(window.dataLayer = window.dataLayer || []).push({ event: 'name' })`, picked up by a *Custom
+Event* trigger. Kit has no hook for this, and `track()` doesn't reach Google.
 
 **Some events you get for free.** These are reported for you, with no call from
 your foundation and regardless of how it renders:
