@@ -2354,23 +2354,19 @@ the pages:
   can't change can't add one. Say so to the person rather than writing a `head.html` that does
   nothing.
 
-Either way, tell the person that Google Analytics counts in-app navigation only with the
-browser-history setting on, under Enhanced measurement in their data stream's settings, and
-to check Realtime from a browser that doesn't block trackers: a visit from Brave, say, never
-reaches Google, which looks like a failed install.
+Either way, tell the person to check Realtime from a browser that doesn't block trackers: a
+visit from Brave, say, never reaches Google, which looks like a failed install. Google Analytics
+counts each page a visitor moves to through the browser-history setting, under Enhanced
+measurement in the data stream's settings, which a new stream has on.
 
-For a Tag Manager container, tell them three more things. Moving between pages doesn't reload
-the document, so a tag on *All Pages* runs only on the page a visit starts on, and a tag meant
-for every page also needs a *History Change* trigger. A Google Analytics tag and Meta's pixel
-follow those changes themselves, and Google warns that giving a Google Analytics tag the trigger
-as well counts page views twice. A mistyped `GTM-` ID gives no error, since Google answers any
-well-formed ID with an empty container, so check an install with Tag Assistant. And list two IDs
-only when they send to different places: a container sending to the Measurement ID beside it
-competes with it, so a landing page can count twice and the container's own tags can fail to fire.
-
-Foundation code sends a container its own events with
-`(window.dataLayer = window.dataLayer || []).push({ event: 'name' })`, picked up by a *Custom
-Event* trigger. Kit has no hook for this, and `track()` doesn't reach Google.
+A Tag Manager container needs nothing more, so don't present what follows as limits; use it if
+it comes up. A tag that doesn't follow page changes on its own, unlike Google Analytics or Meta's
+pixel, uses Tag Manager's *History Change* trigger, as on any site that changes pages without
+reloading. Tag Assistant shows the tags that fired, and Google doesn't report a mistyped ID as an
+error. If a container already sends to a Measurement ID, list only the container, so pages aren't
+counted twice. Foundation code sends a container its own events with
+`(window.dataLayer = window.dataLayer || []).push({ event: 'name' })`; `track()` doesn't reach
+Google.
 
 **Some events you get for free.** These are reported for you, with no call from
 your foundation and regardless of how it renders:
