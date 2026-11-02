@@ -27,7 +27,7 @@
   {
     "name": "services",
     "title": "Services",
-    "description": "add search, forms, tracking, an assistant"
+    "description": "add search, forms, tracking, Google Analytics or Tag Manager, an assistant"
   },
   {
     "name": "backend",

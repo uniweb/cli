@@ -81,7 +81,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | `records/blog/2025/post.md`; one YAML file holding a list | Flat: `records/<schema>/<name>.md`, one record per file; the file name is `$name`. | folder read as a schema, silent |
 | `` `/blog/${slug}` `` | `item.$route` — never compose a URL. | works until a page moves |
 | `page.yml` in a folder of pages | It makes one page, each `.md` a section. `folder.yml` keeps them pages and carries `layout`, `title` and SEO. Over a mount, `page.yml` with markdown of its own is a landing page *above* the mounted pages; a mount is one level under `pages/`, and a local subfolder beside it isn't read. | silent; the build names that subfolder |
-| Paste the gtag / GTM / Meta pixel snippet into a component, `index.html`, or `services.tracking.scripts` | Static build (`export`, `deploy --host`): the snippet in `head.html` beside `site.yml`. Uniweb Cloud (`publish`): `services.google: { id: G-… }` — `head.html` isn't applied there, and `scripts` takes URLs only, so GA sends nothing. | silent — GA reports nothing |
+| Paste the gtag / GTM / Meta pixel snippet into a component, `index.html`, or `services.tracking.scripts` | Uniweb Cloud (`publish`): `services.google: { id: G-… }`, or `GTM-…` for a container, and the host loads Google's tag, free, with no code, on any foundation. `head.html` isn't applied there, and `scripts` takes URLs only. Static build (`export`, `deploy --host`): the snippet in `head.html` beside `site.yml`. More: `uniweb guide services`. | silent — Google reports nothing |
 | Expect `{company}` to resolve | Only under a foundation with `createLoomHandlers`; otherwise it renders literally. | build warns if `site.yml` has `placeholders:` |
 | `hidden: true` on `pages/404/` to keep it out of nav | That makes it a draft. `hideIn: ['*']` controls nav. | silent |
 | Treat `@child.md` / `_draft.md` as names | `@` = child section, placed by `nest:` (with none it renders last; a `sections:` list drops it); `_` = ignored. | build warns, unless `sections:` dropped it |
@@ -323,7 +323,7 @@ Every guide ships with the CLI this project pins, so it describes the version in
 | change colors, fonts, light/dark, tokens, `styles.css` | `uniweb guide theme` |
 | start a project, grow the workspace, learn from a template | `uniweb guide start` |
 | work with records, queries, `[slug]` pages, external APIs, schemas, Loom | `uniweb guide data` |
-| add search, forms, tracking, an assistant | `uniweb guide services` |
+| add search, forms, tracking, Google Analytics or Tag Manager, an assistant | `uniweb guide services` |
 | the site has accounts or member data (`services.backend`, `@uniweb/api`) | `uniweb guide backend` |
 | add a language | `uniweb guide i18n` |
 | publish, deploy, push/pull, register, CI, workspaces, updates | `uniweb guide ship` |
