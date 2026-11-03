@@ -63,12 +63,13 @@ Skip it and prose is unstyled (lists lose bullets) while the markup looks right;
 **Data fetching:** `useFetched`, `useCacheEntry`, `useWholeRecord`
 **Forms:** `useFormValues`, `valueAt`, `useFormSubmit`, `submitForm`, `resolveSubmitTarget` (services guide)
 **Utilities:** `cn()`, `SafeHtml`, `SocialIcon`, `filterSocialLinks(links)`, `getSocialPlatform(url)`, `getLocaleLabel(locale)`
-**Other styled:** `Code`, `Mermaid`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
+**Other styled:** `Code`, `Mermaid`, `Enlargeable`, `Alert`, `Table`, `Details`, `Divider`, `Disclaimer`
 
 Things you won't discover from exports:
 
 - **`<Link>` takes `to` or `href`.** `to="page:about"` resolves a page id (survives moves) or a route, never a folder: the homepage is `page:/`, or `page:home` only when its `page.yml` says `id: home`. External URLs get `target="_blank"`; `reload` forces a full load.
 - **A modal needs `<Overlay>`, not a bigger z-index.** Each layout area has its own `view-transition-name`, which makes it a stacking context; a `fixed` dialog inside one paints at its area's place in the stack, under the header/footer. `<Overlay onClose={close}>` renders into `document.body`, contains focus (moves it in, cycles Tab, marks the rest `inert`, returns it), handles Escape, scrim click, scroll lock; a dimmed scrim you override with `className` (`bg-transparent` removes it). `modal={false}` for a toast. Your dialog markup stays yours.
+- **A reader can open a picture larger.** `components={{ image: EnlargeableImage }}` does it for an image in a page's body, and `Mermaid` does it on its own (`enlarge={false}` turns it off). `<Enlargeable>` goes around a picture a section draws itself. It's offered only when opening shows the picture noticeably larger, and the prerendered page doesn't change.
 - **A word wider than its box breaks**, so a long heading can't pan a phone's page (`overflow-wrap: break-word`, in kit's base). What must stay whole in a narrow box says `whitespace-nowrap`: a big numeral, a figure, a number with its unit. Without it, `10 min` in a tight box comes out as `10 mi / n`.
 - **Kit hooks are SSR-safe.** "document is not defined" → use the hook, don't add guards.
 - **`cn()` drops an earlier `leading-*` when a `text-<size>` follows**, since Tailwind's size classes set line height too: `cn('leading-[1.1] text-4xl')` → `text-4xl`. Put the size first, or fold the leading into it (`text-[clamp(2rem,5vw,4rem)]/[1.1]`).
