@@ -1397,11 +1397,12 @@ const list = (names) => names.map((n) => `\`${n}\``).join(', ')
 
 /**
  * Asked for, and never among what a publish reports delivering (`last_published_services`):
- * a host loads Google's tag, so nothing answers at an address and nothing is sold. By that
- * comparison it would read "not live yet" for ever, and send an agent back to publish. A row
- * changed since the last publish still says so, as `draft_dirty`.
+ * a host loads Google's tag, so nothing answers at an address and nothing is sold; and `x` and
+ * `meta` reach the host in the site's credentials map, which that list never names [backend,
+ * 2026-11-03]. By that comparison each would read "not live yet" for ever, and send an agent back
+ * to publish. A row changed since the last publish still says so, as `draft_dirty`.
  */
-const NOT_REPORTED_AS_LIVE = new Set(['google'])
+const NOT_REPORTED_AS_LIVE = new Set(['google', 'x', 'meta'])
 
 /**
  * `app.services`: what `site.yml` asks for, beside what the backend holds — the request it

@@ -466,6 +466,19 @@ test('a Google tag is never "not live yet": a publish does not report it, and no
   assert.equal(doc.next.find((s) => s.command === 'npx uniweb publish'), undefined)
 })
 
+test('an ad platform\'s row is never "not live yet" either: x and meta reach the host in its credentials map', { timeout: 60_000 }, async () => {
+  // [backend, 2026-11-03] `last_published_services` lists what a publish addressed in the page's
+  // `config.services`; the `x` and `meta` rows travel in the credentials map instead.
+  const site = {
+    ...LIVE,
+    services: [{ name: 'x', config: { pixel: 'qlthw' } }, { name: 'meta', config: { pixel: '123' } }, { name: 'records' }],
+    last_published_services: ['records']
+  }
+  const doc = docOf(await status(project(), ['--personal', '--json'], { session: loggedIn, respond: answering({ site }) }))
+  assert.deepEqual(checkOf(doc, 'app.services').lines.filter((l) => /not live yet/.test(l)), [])
+  assert.equal(doc.next.find((s) => s.command === 'npx uniweb publish'), undefined)
+})
+
 test('control: another service beside it still reads as waiting', { timeout: 60_000 }, async () => {
   const site = { ...LIVE, services: [{ name: 'google', config: { id: 'G-X1' } }, { name: 'records' }], last_published_services: [] }
   const doc = docOf(await status(project(), ['--personal', '--json'], { session: loggedIn, respond: answering({ site }) }))
