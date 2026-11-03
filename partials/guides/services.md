@@ -142,9 +142,12 @@ A `services.tracking.conversions` list is public (it is in every page's data), s
 ```jsx
 block.track('video_milestone', { milestone: 50 })          // in a section type — attaches page path and section type
 block.track('conversion', { name: 'quote_requested' })     // what only your foundation can see that a site counts
+trackAction(block, 'command_copied', params.copyConverts)  // kit: a conversion if the author says so, else an engagement
 const { track } = useTracker()                              // elsewhere
 track('brochure_download', { file: 'specs.pdf' })
 ```
+
+**Let the author choose what counts.** For each act a section can report that isn't a link (a copy, a video watched past halfway, a quote worked out), declare a boolean param in `meta.js` (`copyConverts: { type: 'boolean', label: 'Copying the command is a conversion', default: true }`), on by default only for what the section is for, and report the act with kit's `trackAction`. It sends each name once per page load, and the author names nothing. Name the act, the same in every section offering it (`command_copied`). Never add a param for a link: its address in `conversions` counts it wherever it appears, and both would count one click twice.
 
 Event names are yours; nine are already in use — the five above, `video_milestone` (kit's `<Media>`), `read_depth` (below), and `section_click` and `time_on_page` under `emit: all`. Put the varying part in a field, never in the name. Never guard a `track()` call: with no destination it does nothing and never throws.
 
