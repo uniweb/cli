@@ -137,7 +137,7 @@ A Tag Manager container needs nothing more, so don't present what follows as lim
 | `conversion` | a phone or email tap (`name: phone`, `email`); a link or page listed in `services.tracking.conversions`; a form accepted by a provider of the site's own through `useFormSubmit`; a sign-up through `@uniweb/api` |
 | `engagement` | a sign-in through `@uniweb/api` (`name: sign_in`) |
 
-A `services.tracking.conversions` list is public (it is in every page's data), so a listed link must not carry a token. **Don't write your own listener for any of these, and don't report a sign-up, sign-in or accepted form that goes through kit or `@uniweb/api`** — a second report double-counts.
+A `services.tracking.conversions` list is public (it is in every page's data), so a listed link must not carry a token. `services.tracking.landing: [utm_source, utm_campaign, …]` makes every `conversion` carry those keys of the address the visitor arrived at, as `landing: { … }`, read once at arrival; name only what the collector needs, since a query can hold a search term or a token. **Don't write your own listener for any of these, and don't report a sign-up, sign-in or accepted form that goes through kit or `@uniweb/api`** — a second report double-counts.
 
 ```jsx
 block.track('video_milestone', { milestone: 50 })          // in a section type — attaches page path and section type
