@@ -100,6 +100,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | `<a href="/about">` | `<Link to="page:about">` (an `id:` survives moves) or `<Link href="/about">`. A bare `<a>` still routes but resolves no `page:` and adds no base path or locale. | silent |
 | `window.location.href = '/fr'` to switch language | `<Link reload href={website.getLocaleUrl('fr')}>` or `website.switchLocale('fr')`. | base-path bug |
 | `useEffect(() => fetch(…))` for records | Declare the key in `meta.js data:`; it arrives in `content.data`, prerendered. | prerenders as loading |
+| `<Icon icon="lu-send" />` for an icon your section always shows | Import it (`uniweb guide foundation` § Icon). A name is for an icon content supplies at runtime: markdown, a param, a record's field. | silent; blank until the browser fetches it |
 | A `Button` or `Card` in `sections/` | `components/`. Everything at the root of `sections/` becomes author vocabulary. | appears in the section picker |
 | Helpers that take `{ content, params }` | Ordinary props. That signature is for section types only. | — |
 | One section type per visual variant; or one with a conditional tree inside | A front desk (§1): one `type:`, a `variant` param, workers in `components/` with ordinary props. | author vocabulary bloats; variants invisible to the editor |
