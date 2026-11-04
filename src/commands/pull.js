@@ -71,7 +71,8 @@ import {
   statSync
 } from 'node:fs'
 import { createInterface } from 'node:readline/promises'
-import { join, dirname, relative, resolve } from 'node:path'
+import { join, dirname, relative, resolve, posix } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import yaml from 'js-yaml'
 import { downloadMissingAssets, downloadFileRecords } from '../backend/asset-download.js'
 import {
@@ -127,6 +128,9 @@ import {
   openStandIn,
   fileAt,
   mergeSyncPoint,
+  mergeStopper,
+  nestedBase,
+  recordNestedPins,
   takeSyncPoint,
   snapshotFiles,
   changedInFiles,
@@ -134,7 +138,7 @@ import {
   readSyncPoint,
   writeSyncPoint
 } from '../utils/sync-point.js'
-import { behindLines } from '../utils/mounted-repositories.js'
+import { behindLines, mountedRepositories } from '../utils/mounted-repositories.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import {
   BackendClient,
@@ -504,7 +508,7 @@ function filesUnder(siteDir, roots) {
   return out
 }
 
-// ⭐ P5 — A VERSION IS BANKED FOR WHAT THE FILES TOOK, OR CHOSE NOT TO TAKE. A page held because its file
+// ⭐ A VERSION IS BANKED FOR WHAT THE FILES TOOK, OR CHOSE NOT TO TAKE. A page held because its file
 // cannot say the app's change keeps the version this copy last agreed on, so the per-item gate keeps the
 // backend's copy while the file is unchanged and refuses a push that changed it. One this copy never agreed
 // on keeps the backend's: there is no agreement to hold. A mount's page takes the backend's, so the next
@@ -786,6 +790,24 @@ export async function pull(args = [], deps = {}) {
     error(`${mounts.refused.length === 1 ? 'A mount' : `${mounts.refused.length} mounts`} marked writable cannot be written by a pull:`)
     for (const m of mounts.refused) for (const line of refusedMountLines(m)) note(line)
     return { exitCode: 1 }
+  }
+  // …and a submodule one is in merges too, so it is stopped by what would stop the site's merge.
+  if (repo && !dryRun && !probe) {
+    for (const m of mounts.submodules) {
+      const where = `${m.at}, the submodule pages/${m.segment} is mounted from`
+      if (mergeInProgress(m.repo)) {
+        error(`A merge is in progress in ${where}.`)
+        note('Finish it there (`git commit`) or abandon it (`git merge --abort`), then pull.')
+        return { exitCode: 1 }
+      }
+      const unsettled = unmergedPaths(m.repo)
+      if (unsettled.length) {
+        error(`${unsettled.length} file(s) in ${where} are in conflict:`)
+        for (const p of unsettled.slice(0, 12)) note(`  ${p}`)
+        note('Settle them there first — `git status` says how — then pull.')
+        return { exitCode: 1 }
+      }
+    }
   }
   // ⭐ THE BACKEND YOU ARE LOGGED IN TO is where this goes *[Diego, 2026-09-21]*, for every
   // backend verb (resolveBackendOrigin). Only UNIWEB_SERVER — the automation
@@ -1123,6 +1145,10 @@ export async function pull(args = [], deps = {}) {
   let onto = null
   let standIn = null
   let siteMovedFrom = null
+  // ⭐ Each writable mount in a submodule, merged in the submodule's own history from the commit the
+  // site's base records for it (`nestedBase`). With no base there, it is filled from its checkout and
+  // committed onto nothing, as the site is with none: a file both hold alike merges without a word.
+  let nested = []
   if (repo && projected) {
     // The bases this copy knows of itself — then what the backend names, per lane.
     const known = [
@@ -1149,8 +1175,12 @@ export async function pull(args = [], deps = {}) {
     onto = force || !base ? repo.head : base
     // Why there is no base, when it is a move. Read now: the sync point this pull makes names the new path.
     if (!base) siteMovedFrom = movedFrom(repo, { origin: client.origin, siteUuid: siteContentUuid })
+    nested = mounts.submodules.map((m) => {
+      const own = force || !base ? null : nestedBase(repo, base, { at: m.at, sub: m.repo, roots: [m.root] })
+      return { repo: m.repo, at: m.at, roots: [m.root], segment: m.segment, rev: force ? m.repo.head : own ?? m.repo.head, parent: force ? m.repo.head : own }
+    })
     try {
-      standIn = openStandIn(repo, { roots, rev: onto })
+      standIn = openStandIn(repo, { roots, rev: onto, nested })
     } catch (err) {
       error(`Could not merge the site: ${err.message}.`)
       return { exitCode: 1 }
@@ -1425,9 +1455,43 @@ export async function pull(args = [], deps = {}) {
       } else {
         // The files as they are, to tell what the pull changes in them from what they held.
         const files = snapshotFiles(repo)
-        const result = force
-          ? takeSyncPoint(repo, made.commit, { roots, message: takenFrom(client.origin) })
-          : mergeSyncPoint(repo, made.commit, { message: mergedFrom(client.origin), roots })
+        // ⭐ EVERY REPOSITORY'S MERGE IS CHECKED BEFORE ANY IS MADE — each writable mount's submodule,
+        // then the site's: one that cannot take its merge leaves every other as it was. Then each
+        // submodule's is made, then the site's, whose commit records the one made in each.
+        const subs = (made.nested || [])
+          .filter((n) => n.commit)
+          .map((n) => ({ ...n, segment: nested.find((x) => x.at === n.at)?.segment, before: n.repo.head, files: snapshotFiles(n.repo) }))
+        let result = null
+        if (!force) {
+          for (const n of subs) {
+            const stopped = mergeStopper(n.repo, n.commit)
+            if (stopped) {
+              result = { ...stopped, where: n.at }
+              break
+            }
+          }
+          if (!result) result = mergeStopper(repo, made.commit, { roots })
+        }
+        if (!result) {
+          for (const n of subs) {
+            n.result = force
+              ? takeSyncPoint(n.repo, n.commit, { roots: n.roots, message: 'Take the edits made in the app' })
+              : mergeSyncPoint(n.repo, n.commit, { message: 'Merge the edits made in the app' })
+            if (!n.result.ok) {
+              result = { ...n.result, where: n.at }
+              break
+            }
+          }
+        }
+        if (!result) {
+          result = force
+            ? takeSyncPoint(repo, made.commit, { roots, message: takenFrom(client.origin) })
+            : mergeSyncPoint(repo, made.commit, { message: mergedFrom(client.origin), roots })
+        }
+        // A path in a submodule, as the person reads it: from the site's folder.
+        const fromSite = (p) => posix.relative(repo.path === '.' ? '.' : repo.path, p) || '.'
+        const there = result.where ? ` in ${fromSite(result.where)}, a submodule a writable mount is in` : ''
+        const named = (p) => (result.where ? fromSite(posix.join(result.where, p)) : p)
         if (!result.ok) {
           // ⛔ A merge that could not be made took nothing: the files are as they were, and
           // nothing of this pull is recorded as taken.
@@ -1435,24 +1499,46 @@ export async function pull(args = [], deps = {}) {
           restore(syncFile, before.sync)
           restore(cacheFile, before.cache)
           if (result.reason === 'untracked') {
-            error(`Not merged — the backend's content would overwrite ${result.paths.length} file(s) that are not committed:`)
-            for (const p of result.paths.slice(0, 12)) note(`  ${p}`)
+            error(`Not merged — the backend's content would overwrite ${result.paths.length} file(s)${there} that are not committed:`)
+            for (const p of result.paths.slice(0, 12)) note(`  ${named(p)}`)
             if (result.paths.length > 12) note(`  … and ${result.paths.length - 12} more`)
             note('Commit them, or move them aside, then pull again.')
           } else if (result.reason === 'merge-in-progress') {
-            error('A merge is in progress here.')
+            error(`A merge is in progress${there || ' here'}.`)
             note('Finish it (`git commit`) or abandon it (`git merge --abort`), then pull.')
           } else if (result.reason === 'unmerged') {
-            error(`${result.paths.length} file(s) here are in conflict:`)
-            for (const p of result.paths.slice(0, 12)) note(`  ${p}`)
+            error(`${result.paths.length} file(s)${there || ' here'} are in conflict:`)
+            for (const p of result.paths.slice(0, 12)) note(`  ${named(p)}`)
             note('Settle them first — `git status` says how — then pull.')
           } else {
-            error("Could not merge the backend's content:")
+            error(`Could not merge the backend's content${there}:`)
             for (const line of String(result.detail).split('\n').slice(0, 8)) note(`  ${line}`)
           }
         } else {
           merge.conflicted = result.conflicted || []
           merge.stashKept = Boolean(result.stashKept)
+          // ⭐ Each submodule's merge, recorded as the site's pin (`recordNestedPins`).
+          if (subs.length) {
+            const recorded = recordNestedPins(
+              repo,
+              subs.map((n) => ({ at: n.at, repo: n.repo, conflicted: n.result.conflicted || [] })),
+              { message: (at, head) => `${repo.path}: ${at} at ${head.slice(0, 7)}, with the edits made in the app` }
+            )
+            if (recorded.error) note(`! The site's pin of a submodule is not recorded: ${recorded.error}`)
+            const siteNow = unmergedPaths(repo)
+            if (recorded.concluded && siteNow.length) merge.stashKept = true
+            merge.conflicted = [...siteNow, ...subs.flatMap((n) => (n.result.conflicted || []).map((p) => posix.join(n.at, p)))]
+            merge.nested = subs.map((n) => ({
+              at: n.at,
+              segment: n.segment,
+              files: n.files,
+              before: n.before,
+              repo: n.repo,
+              conflicted: n.result.conflicted || [],
+              stashKept: Boolean(n.result.stashKept),
+              pin: recorded.pins.find((p) => p.at === n.at)
+            }))
+          }
           // Whether anything was set aside for the merge: the files as they were, against HEAD.
           merge.setAside = files !== repo.head
           merge.noBase = !force && !base
@@ -1464,6 +1550,11 @@ export async function pull(args = [], deps = {}) {
             staged: merge.conflicted.length > 0 && !merge.stashKept,
             skip: merge.conflicted
           })
+          // …and what each submodule's merge changed in its folders, from the site's folder.
+          for (const n of merge.nested || []) {
+            const changed = changedInFiles(n.repo, { from: n.before, files: n.files, staged: n.conflicted.length > 0 && !n.stashKept, skip: n.conflicted })
+            merge.changed.push(...changed.map(([st, p]) => [st, fromSite(posix.join(n.at, p))]))
+          }
           writeSyncPoint(siteDir, client.origin, made.commit)
         }
       }
@@ -1610,6 +1701,43 @@ export async function pull(args = [], deps = {}) {
         }
         note(
           `Settle them and \`git add\` each, then \`git commit\` to finish the merge${merge.setAside ? ' — your uncommitted changes come back with it' : ''}.`
+        )
+      }
+    }
+    // ⭐ A SUBMODULE'S NEW COMMITS ARE ITS OWN REPOSITORY'S, which no push of the site sends: its remote
+    // must hold them before the site's remote holds the commit that names them, or a clone of the site
+    // cannot check it out. The pull pushes neither; it says what to push, in that order.
+    if (merge.nested?.length) {
+      const surveyed = await mountedRepositories(siteDir)
+      for (const n of merge.nested) {
+        const dir = posix.relative(repo.path === '.' ? '.' : repo.path, n.at) || '.'
+        // Each command as it runs from here.
+        const abs = join(repo.top, n.at)
+        const rel = relative(process.cwd(), abs) || '.'
+        const here = rel.length <= abs.length ? rel : abs
+        if (n.conflicted.length) {
+          note(`${dir} is a submodule: settle its conflicts and commit there, then record it here (\`git add ${here}\`) and commit.`)
+          continue
+        }
+        const follows = surveyed.find((m) => m.segment === n.segment)?.follows
+        // The branch: its remote's own default when `.gitmodules` names none — what this checkout
+        // recorded of it, so nothing is asked of the remote.
+        let branch = follows?.branch ?? null
+        if (follows && !branch) {
+          try {
+            branch = execFileSync('git', ['symbolic-ref', '--short', '-q', `refs/remotes/${follows.remote}/HEAD`], { cwd: join(repo.top, n.at), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().replace(`${follows.remote}/`, '') || null
+          } catch {
+            branch = null
+          }
+        }
+        const push = !follows
+          ? null
+          : follows.upstream
+            ? `git -C ${here} push`
+            : `git -C ${here} push ${follows.remote} HEAD:${branch ?? '<branch>'}`
+        note(
+          `${dir} is a submodule, and the app's edits are a commit in it, which its remote does not hold yet: push it there before you push this repository` +
+            (push ? ` — \`${push}\`.` : '.')
         )
       }
     }

@@ -83,7 +83,7 @@ test('a mount that is a repository of its own is not among the site\'s roots —
   assert.deepEqual(submoduleMountRoots(site), ['../external/docs'])
 })
 
-test('⭐ P4 — a pull writes a mount the site declares writable only where this copy can merge it', () => {
+test('⭐ a pull writes a mount the site declares writable only where this copy can merge it — a submodule\'s in its own history', () => {
   const { dir, site } = project()
   const docs = mkdtempSync(join(scratch, 'docs-'))
   git(docs, 'init', '-q')
@@ -109,9 +109,11 @@ test('⭐ P4 — a pull writes a mount the site declares writable only where thi
     '',
   ].join('\n'))
 
-  const { writable, refused } = writableMounts(site)
-  assert.deepEqual(writable, ['docs'])
-  assert.deepEqual(refused.map((m) => [m.segment, m.why]), [['guide', 'submodule'], ['beside', 'own'], ['nowhere', 'none']])
+  const { writable, refused, submodules } = writableMounts(site)
+  assert.deepEqual(writable, ['docs', 'guide'])
+  assert.deepEqual(refused.map((m) => [m.segment, m.why]), [['beside', 'own'], ['nowhere', 'none']])
+  // The submodule's path in the site's repository, and the mounted folder's in the submodule.
+  assert.deepEqual(submodules.map(({ segment, at, root }) => ({ segment, at, root })), [{ segment: 'guide', at: 'external/docs', root: 'guide' }])
 })
 
 test('a site in no repository: a writable mount inside its folder is written as its own files are, one outside refused', () => {

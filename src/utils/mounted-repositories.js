@@ -326,14 +326,20 @@ function siteName(siteDir) {
  * uncommitted changes in it, never backwards, and never from a commit the branch does not
  * contain, which is a pin put somewhere else on purpose.
  *
+ * ⭐ `merge`: a mount a pull writes into (`writable: true`) takes its latest as the site takes its own,
+ * by merging, since the pull's commits there are its own work: a checkout that has them and a branch
+ * that moved on have each moved, and the merge of the two is its latest. Never a rebase, which would
+ * replay a pull's commit onto another one while the site's sync point still names it.
+ *
  * @param {string} siteDir
  * @param {object} m - from `mountedRepositories`
+ * @param {{ merge?: boolean }} [opts]
  * @returns {Promise<{ from: string|null, to: string|null, branch: string|null, commits: number|null,
- *   committed: string|null, left: string|null, kind: 'edits'|'no-remote'|'no-answer'|'ahead'|'off-branch'|null,
+ *   committed: string|null, left: string|null, kind: 'edits'|'no-remote'|'no-answer'|'ahead'|'off-branch'|'conflict'|null,
  *   error: string|null }>} `left` says why it stayed where it was, and `kind` names that reason;
  *   `error`, what failed
  */
-export async function takeLatest(siteDir, m) {
+export async function takeLatest(siteDir, m, { merge = false } = {}) {
   const r = { from: m.head, to: m.head, branch: null, commits: null, committed: null, left: null, kind: null, error: null }
   if (m.edits.length) return { ...r, left: `it has ${plural(m.edits.length, 'uncommitted change')}`, kind: 'edits' }
   let cur = m
@@ -370,18 +376,26 @@ export async function takeLatest(siteDir, m) {
     }
     contained = ancestor(cur.top, cur.head, answer.tip)
   }
-  if (contained !== true) return { ...r, left: `${short(cur.head)} is not on ${answer.branch ?? 'its branch'}`, kind: 'off-branch' }
+  if (contained !== true && !merge) return { ...r, left: `${short(cur.head)} is not on ${answer.branch ?? 'its branch'}`, kind: 'off-branch' }
   try {
-    if (cur.follows.upstream) run(cur.top, ['merge', '--ff-only', '--quiet', answer.tip])
+    if (contained !== true) {
+      // Each has moved: the checkout's commits — a pull's among them — merged with the branch's.
+      try {
+        run(cur.top, ['merge', '--no-edit', '--no-verify', '--quiet', '-m', `Merge ${answer.branch ?? 'the latest'} of ${label}`, answer.tip])
+      } catch {
+        return { ...r, left: `its merge with ${answer.branch ?? 'its branch'} of ${label} has conflicts: settle them there and commit, then record it here`, kind: 'conflict' }
+      }
+    } else if (cur.follows.upstream) run(cur.top, ['merge', '--ff-only', '--quiet', answer.tip])
     else run(cur.top, ['checkout', '--quiet', '--detach', answer.tip])
   } catch (err) {
     return { ...r, error: gitError(err, 'git could not move it') }
   }
-  r.to = answer.tip
+  const tip = contained === true ? answer.tip : text(cur.top, ['rev-parse', 'HEAD'])
+  r.to = tip
   const n = Number(text(cur.top, ['rev-list', '--count', `${cur.head}..${answer.tip}`]))
   r.commits = Number.isInteger(n) ? n : null
   if (cur.submodule) {
-    const message = `${siteName(siteDir)}: pages/${cur.segment} from ${cur.submodule.path} at ${short(answer.tip)}, the latest of ${label}`
+    const message = `${siteName(siteDir)}: pages/${cur.segment} from ${cur.submodule.path} at ${short(tip)}, ${contained === true ? 'the latest' : 'merged with the latest'} of ${label}`
     try {
       run(cur.siteTop, ['commit', '-q', '-m', message, '--', cur.submodule.path])
       r.committed = text(cur.siteTop, ['rev-parse', 'HEAD'])

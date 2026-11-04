@@ -64,6 +64,7 @@ import {
 } from '../utils/git.js'
 import { ignoringRepo } from '../utils/sync-point.js'
 import { mountedRepositories, takeLatest, describeTaken } from '../utils/mounted-repositories.js'
+import { writableMounts } from '../utils/site-roots.js'
 import { probeUnpushed } from '../backend/site-sync.js'
 import { resolveBackendOrigin } from '../backend/client.js'
 import { readBackendState } from '@uniweb/build/uwx'
@@ -181,10 +182,12 @@ export async function refresh(args = [], deps = {}) {
     skipped.push(`mounts (${skipGit ? '--no-git' : '--no-mounts'})`)
   } else if (mounts.length) {
     say.info(`Taking the latest of ${mounts.length === 1 ? 'the page folder' : `${mounts.length} page folders`} mounted from ${mounts.length === 1 ? 'another repository' : 'other repositories'}…`)
+    // A mount a pull writes into takes its latest by merging, as the site does (`takeLatest`).
+    const writable = new Set(writableMounts(siteDir).writable)
     for (const m of mounts) {
-      const r = await takeLatest(siteDir, m)
+      const r = await takeLatest(siteDir, m, { merge: writable.has(m.segment) })
       say.dim(describeTaken(m, r))
-      if (r.error || ['edits', 'no-answer', 'off-branch'].includes(r.kind)) mountsLeft.push(m)
+      if (r.error || ['edits', 'no-answer', 'off-branch', 'conflict'].includes(r.kind)) mountsLeft.push(m)
     }
     consulted.push('mounts')
   }

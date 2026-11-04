@@ -373,3 +373,37 @@ test('the flags: --mounts-as-is on what sends, --no-mounts on refresh', () => {
   assert.ok(checkFlags('status', ['--mounts-as-is']))
   assert.ok(checkFlags('pull', ['--mounts-as-is']))
 })
+
+test('⭐ a mount a pull writes into takes its latest by merging, when it and its branch have each moved', { timeout: 60_000 }, async () => {
+  const f = fixture()
+  // A commit in the checkout — a pull's, writing the app's edits — and one on the branch since.
+  write(f.docs, { 'intro/page.yml': 'title: Intro, from the app\n' })
+  commitAll(f.docs, 'Edits made in the app')
+  commitAll(f.repo, 'the pin, with the edits')
+  landDocs(f, 'more/page.yml', 'title: More\n')
+
+  const [m] = await mountedRepositories(f.siteDir)
+  const left = await takeLatest(f.siteDir, m)
+  assert.equal(left.kind, 'off-branch', 'CONTROL — read-only, it is left where it is')
+
+  const r = await takeLatest(f.siteDir, (await mountedRepositories(f.siteDir))[0], { merge: true })
+  assert.equal(r.error, null)
+  assert.equal(r.left, null)
+  // Both: the checkout's commit and the branch's.
+  assert.equal(git(f.docs, 'show', 'HEAD:intro/page.yml'), 'title: Intro, from the app')
+  assert.equal(git(f.docs, 'show', 'HEAD:more/page.yml'), 'title: More')
+  assert.ok(r.committed, 'its new pin is committed here')
+  assert.equal(git(f.repo, 'rev-parse', 'HEAD:external/docs'), git(f.docs, 'rev-parse', 'HEAD'))
+})
+
+test('a merge that conflicts is left for the person to settle there, and said', { timeout: 60_000 }, async () => {
+  const f = fixture()
+  write(f.docs, { 'intro/page.yml': 'title: Intro, from the app\n' })
+  commitAll(f.docs, 'Edits made in the app')
+  commitAll(f.repo, 'the pin, with the edits')
+  landDocs(f, 'intro/page.yml', 'title: Intro, upstream\n')
+
+  const r = await takeLatest(f.siteDir, (await mountedRepositories(f.siteDir))[0], { merge: true })
+  assert.equal(r.kind, 'conflict')
+  assert.match(r.left, /its merge with main of .+ has conflicts: settle them there and commit, then record it here/)
+})

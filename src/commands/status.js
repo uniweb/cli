@@ -1298,7 +1298,9 @@ async function projectChecks(siteDir, siteYml) {
     !m.exists
       ? `pages/${m.segment} names ${m.dir}, which does not exist.`
       : m.repository === 'other'
-        ? `pages/${m.segment} comes from ${m.dir}, its own git repository — edits there are commits in it.`
+        ? m.writable
+          ? `pages/${m.segment} comes from ${m.dir}, its own git repository — a pull writes the app's edits there as commits, which you push there before this repository.`
+          : `pages/${m.segment} comes from ${m.dir}, its own git repository — edits there are commits in it.`
         : m.writable
           ? `pages/${m.segment} comes from ${m.dir}, outside the site's folder — a pull writes the app's edits into it.`
           : `pages/${m.segment} comes from ${m.dir}, outside the site's folder.`

@@ -15,8 +15,8 @@
  * Project-local: it imports `@uniweb/build`, which a global `uniweb` may lack, so nothing the CLI's
  * entry loads statically imports this.
  */
-import { readFileSync } from 'node:fs'
-import { isAbsolute, join, posix, relative, resolve } from 'node:path'
+import { readFileSync, realpathSync } from 'node:fs'
+import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
 import yaml from 'js-yaml'
 import { siteContentRoots } from '@uniweb/build/uwx'
 import { mountDeclarationsOf } from '@uniweb/build/site'
@@ -85,29 +85,42 @@ export function submoduleMountRoots(siteDir) {
 
 /**
  * ⭐ THE MOUNTS A PULL MAY WRITE INTO: each one the site declares
- * `writable: true` that this copy can merge — a folder the site's own repository holds, whose files are
- * among the site's roots, or, for a site in no repository, a folder inside the site's own, which a pull
- * writes as it writes the site's files. Every other one is refused, with why:
- * - `submodule`: a submodule of the site's repository holds it;
+ * `writable: true` that this copy can merge —
+ * - a folder the site's own repository holds, whose files are among the site's roots;
+ * - a folder in a submodule of the site's repository (`submodules`), merged in the submodule's own
+ *   history: git's own pairing of the two, since every commit of the site names the submodule's;
+ * - for a site in no repository, a folder inside the site's own, which a pull writes as it writes the
+ *   site's files.
+ * Every other one is refused, with why:
  * - `own`: a repository of its own that the site's does not record — a clone beside the site;
- * - `none`: no repository holds it, or one ignores it, or it is outside the folder of a site in none.
- * The last two have no history that pairs them with the site's, so no copy of the site — a teammate's,
- * CI's — could find what it last merged from.
+ * - `none`: no repository holds it, or one ignores it, or it is outside the folder of a site in none;
+ * - `unchecked`: a submodule that is not checked out.
+ * The first two have no history that pairs them with the site's, so no copy of the site — a
+ * teammate's, CI's — could find what it last merged from.
  *
  * @param {string} siteDir
- * @returns {{ writable: string[], refused: Array<{ segment: string, path: string, why: 'submodule'|'own'|'none' }> }}
+ * @returns {{ writable: string[], refused: Array<{ segment: string, path: string, why: 'own'|'none'|'unchecked' }>,
+ *   submodules: Array<{ segment: string, at: string, root: string, repo: object }> }} `submodules`: each
+ *   writable mount in one, with the submodule's path from the site repository's top, the mounted
+ *   folder's path in it, and its `repoOf`
  */
 export function writableMounts(siteDir) {
   const repo = repoOf(siteDir)
   const writable = []
   const refused = []
+  const submodules = []
   for (const { segment, path, writable: declared } of mountDeclarationsOf(readSiteYml(siteDir).paths)) {
     if (!declared || typeof path !== 'string' || !path) continue
     const abs = resolve(siteDir, path)
     let why = null
     if (repo) {
-      const held = mountHolding(siteDir, abs).kind
-      if (held !== 'site') why = held
+      const held = mountHolding(siteDir, abs)
+      if (held.kind === 'submodule') {
+        const top = join(repo.top, held.submodule.path)
+        const sub = repoOf(top)
+        if (!sub?.head) why = 'unchecked'
+        else submodules.push({ segment, at: held.submodule.path, root: relative(realOf(top), realOf(abs)).split(sep).join('/') || '.', repo: sub })
+      } else if (held.kind !== 'site') why = held.kind
     } else {
       const rel = relative(siteDir, abs)
       if (!rel || isAbsolute(rel) || rel === '..' || rel.startsWith(`..${posix.sep}`) || rel.startsWith('..\\')) why = 'none'
@@ -115,21 +128,30 @@ export function writableMounts(siteDir) {
     if (why) refused.push({ segment, path, why })
     else writable.push(segment)
   }
-  return { writable, refused }
+  return { writable, refused, submodules }
+}
+
+const realOf = (p) => {
+  try {
+    return realpathSync(p)
+  } catch {
+    return p
+  }
 }
 
 /** What to tell a person about a mount a pull may not write, and what settles it. */
 export function refusedMountLines({ segment, path, why }) {
-  const what =
-    why === 'submodule'
-      ? `a submodule of the site's repository`
-      : why === 'own'
-        ? `a repository of its own, which the site's repository does not record`
-        : `a folder no history of the site's holds`
+  if (why === 'unchecked') {
+    return [
+      `pages/${segment} is mounted from ${path} with \`writable: true\`, but its submodule is not checked out, so a pull has nothing to merge into.`,
+      '  Check it out (`git submodule update --init`), or run `npx uniweb refresh`, then pull.'
+    ]
+  }
+  const what = why === 'own' ? `a repository of its own, which the site's repository does not record` : `a folder no history of the site's holds`
   return [
     `pages/${segment} is mounted from ${path} with \`writable: true\`, but it is ${what}, so a pull cannot merge into it.`,
-    why === 'submodule'
-      ? '  Remove `writable: true` to keep it read-only, and make the change in that repository.'
+    why === 'own'
+      ? "  Make it a submodule of the site's repository, or remove `writable: true` to keep it read-only."
       : "  Make it part of the site's repository (or a folder of the site, outside one), or remove `writable: true` to keep it read-only."
   ]
 }

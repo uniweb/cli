@@ -419,6 +419,35 @@ function differsIn(repo, a, b, roots) {
   }
 }
 
+/**
+ * The commit a writable mount's submodule merges from: the one the site's base records for it, where
+ * the submodule's checkout holds it; else the one that commit was made onto, where the checkout holds
+ * that and the recorded commit changed only the mounted folders — a pull's own commit, which a squash
+ * merge upstream drops and whose parent it keeps; else none, and the merge is of unrelated histories.
+ *
+ * @param {object} repo - the site's `repoOf`
+ * @param {string|null} siteBase - the commit the site merges from
+ * @param {{ at: string, sub: object, roots: string[] }} n - the submodule's path from the site
+ *   repository's top, its `repoOf`, and the mounted folders in it
+ * @returns {string|null}
+ */
+export function nestedBase(repo, siteBase, { at, sub, roots }) {
+  if (!siteBase || !sub?.head) return null
+  const recorded = objectAt(repo, `${siteBase}:${posix.normalize(at)}`)
+  if (!recorded) return null
+  const holds = (sha) => isCommit(sub, sha) && isAncestor(sub, sha)
+  if (holds(recorded)) return recorded
+  if (!isCommit(sub, recorded)) return null
+  const parent = objectAt(sub, `${recorded}^1`)
+  if (!parent || !holds(parent)) return null
+  try {
+    git(sub.top, ['diff', '--quiet', parent, recorded, '--', '.', ...roots.map((r) => `:(exclude)${r}`)])
+    return parent
+  } catch {
+    return null // it changed more than the mounted folders: not a pull's
+  }
+}
+
 // ── the stand-in ────────────────────────────────────────────────────────────
 
 /**
@@ -438,14 +467,23 @@ function differsIn(repo, a, b, roots) {
  * kept out of git — is in no commit, so no merge brings it. `placeIgnored()` copies it
  * into the project, where the project lacks it.
  *
+ * ⭐ A ROOT IN A REPOSITORY OF ITS OWN — a writable mount in a submodule of the site's (`nested`) — is
+ * filled from that repository at its own base, and committed in its own history, as the person who
+ * pulls, with no hooks and no site named: the site's tree holds only the submodule's commit, which
+ * `commit()` sets to the one it made there.
+ *
  * @param {object} repo - `repoOf`
  * @param {object} opts
  * @param {string[]} opts.roots - the site's content roots, relative to the site
  * @param {string|null} opts.rev - the commit whose content the roots are filled from;
  *   null for none
+ * @param {Array<{ repo: object, at: string, roots: string[], rev: string|null, parent: string|null }>} [opts.nested] -
+ *   each submodule a writable mount is in: its `repoOf`, its path from the site repository's top,
+ *   the mounted folders in it (relative to its own top), the commit they are filled from, and the
+ *   one a commit of them is made onto (null: none, an unrelated history)
  * @returns {{ siteDir: string, commit: Function, changes: Function, placeIgnored: Function, close: Function }}
  */
-export function openStandIn(repo, { roots, rev }) {
+export function openStandIn(repo, { roots, rev, nested = [] }) {
   // ⭐ A root is named relative to the site and held by the repository, so one outside the site's
   // folder — a mounted folder elsewhere in the repository — is filled and committed like the rest.
   // One outside the repository is in no commit of it. ⛔ Until 2026-11-04 every root leading out of
@@ -461,6 +499,21 @@ export function openStandIn(repo, { roots, rev }) {
   const env = { GIT_INDEX_FILE: join(indexDir, 'index') }
   const at = (args, opts = {}) =>
     git(repo.top, ['--git-dir', repo.gitDir, '--work-tree', root, ...args], { ...opts, env: { ...env, ...(opts.env || {}) } })
+  // Each submodule's folders, with its own index; its git run against its part of the stand-in.
+  const subs = nested.map((n, i) => {
+    const where = posix.normalize(n.at)
+    if (where === '.' || where === '..' || where.startsWith('../') || where.startsWith('/')) {
+      throw new Error(`the submodule \`${n.at}\` is not inside the site's repository`)
+    }
+    const own = n.roots.map((r) => posix.normalize(r))
+    return { ...n, at: where, roots: own, full: own.map((r) => posix.normalize(`${where}/${r}`)), index: join(indexDir, `nested-${i}`) }
+  })
+  const nestedFull = new Set(subs.flatMap((n) => n.full))
+  const inSub = (n, args, opts = {}) =>
+    git(n.repo.top, ['--git-dir', n.repo.gitDir, '--work-tree', join(root, n.at), ...args], {
+      ...opts,
+      env: { GIT_INDEX_FILE: n.index, ...(opts.env || {}) }
+    })
   const links = []
   const close = () => {
     for (const l of links.reverse()) {
@@ -480,7 +533,9 @@ export function openStandIn(repo, { roots, rev }) {
     const sitePath = sitePrefix.replace(/\/$/, '')
     const inSite = (name) => (sitePath ? `${sitePath}/${name}` : name)
     const mustBeReal = (rel) =>
-      (sitePath && (sitePath === rel || sitePath.startsWith(`${rel}/`))) || full.some((f) => f.startsWith(`${rel}/`))
+      (sitePath && (sitePath === rel || sitePath.startsWith(`${rel}/`))) ||
+      full.some((f) => f.startsWith(`${rel}/`)) ||
+      subs.some((n) => n.at === rel || n.full.some((f) => f.startsWith(`${rel}/`)))
 
     const link = (real, stand, name) => {
       let dir = false
@@ -512,6 +567,9 @@ export function openStandIn(repo, { roots, rev }) {
         const stand = join(standDir, name)
         if (!rel && name === '.git') continue
         if (fullSet.has(r)) continue // filled from `rev`, below
+        // A submodule's own folders are filled from its base, below, and its `.git` is no file of the site's.
+        if (nestedFull.has(r)) continue
+        if (name === '.git' && subs.some((n) => n.at === rel)) continue
         if (r === inSite('.uniweb')) {
           // This copy's own state, for the projection to read and write — taken back by the
           // caller. Not the rename index: it names paths in the working tree, not in `rev`.
@@ -552,21 +610,48 @@ export function openStandIn(repo, { roots, rev }) {
       : []
     if (present.length) at(['checkout', rev, '--', ...present])
 
+    // Each submodule's folders, as its own base has them.
+    for (const n of subs) {
+      mkdirSync(join(root, n.at), { recursive: true })
+      inSub(n, n.rev ? ['read-tree', n.rev] : ['read-tree', '--empty'])
+      n.present = n.rev
+        ? zlist(git(n.repo.top, ['--git-dir', n.repo.gitDir, 'ls-tree', '--name-only', '-z', '--full-tree', n.rev, '--', ...n.roots]))
+        : []
+      if (n.present.length) inSub(n, ['checkout', n.rev, '--', ...n.present])
+    }
+
     const siteDir = sitePath ? join(root, sitePath) : root
 
     /**
      * Commit the roots as the stand-in now holds them, onto `rev`'s tree — or report that
      * they are what `rev` holds (`always` commits them anyway, to mark a history that has
      * no sync point yet).
-     * @returns {{ commit: string|null, tree: string, siteTree: string|null }}
+     * `nested`, for each submodule: the commit made of its folders (null where they are its base's), and
+     * the files it changed there.
+     * @returns {{ commit: string|null, tree: string, siteTree: string|null, nested: Array<{ at: string, repo: object, roots: string[], commit: string|null, files: string[] }> }}
      */
     const commit = ({ parent, subject, origin, siteUuid, always = false }) => {
+      // ⭐ Each submodule's folders first, in its own history: the site's commit records what it made.
+      const made = subs.map((n) => {
+        const staged = heldIn((a, o) => inSub(n, a, o), n.roots.filter((r) => n.present.includes(r) || existsSync(join(root, n.at, r))))
+        if (staged.length) inSub(n, ['add', '-A', '--', ...staged])
+        const tree = inSub(n, ['write-tree']).toString('utf8').trim()
+        const before = n.rev ? gitText(n.repo.top, ['rev-parse', `${n.rev}^{tree}`]).trim() : null
+        if (tree === before) return { at: n.at, repo: n.repo, roots: n.roots, commit: null, files: [] }
+        const files = n.rev ? zlist(inSub(n, ['diff', '--cached', '--name-only', '-z', '--no-renames', n.rev, '--', ...n.roots])) : zlist(inSub(n, ['ls-files', '-z']))
+        // ⭐ As the person who pulls — the repository's own identity, which `commit-tree` reads — with no
+        // hooks, and a message that names the files and no site: the folder may be shared by several.
+        const message = `Edits made in the app\n\n${files.slice(0, 40).map((p) => `- ${p}`).join('\n')}${files.length > 40 ? `\n- … and ${files.length - 40} more` : ''}\n`
+        const sha = gitText(n.repo.top, ['--git-dir', n.repo.gitDir, 'commit-tree', '--no-gpg-sign', tree, ...(n.parent ? ['-p', n.parent] : []), '-F', '-'], { input: message }).trim()
+        at(['update-index', '--add', '--cacheinfo', `160000,${sha},${n.at}`])
+        return { at: n.at, repo: n.repo, roots: n.roots, commit: sha, files }
+      })
       const staged = held(full.filter((f) => present.includes(f) || existsSync(join(root, f))))
       if (staged.length) at(['add', '-A', '--', ...staged])
       const tree = at(['write-tree']).toString('utf8').trim()
       const before = rev ? gitText(repo.top, ['rev-parse', `${rev}^{tree}`]).trim() : null
       const siteTree = siteTreeIn(repo, tree)
-      if (tree === before && !always) return { commit: null, tree, siteTree }
+      if (tree === before && !always) return { commit: null, tree, siteTree, nested: made }
       const host = (() => {
         try {
           return new URL(origin).host
@@ -574,8 +659,9 @@ export function openStandIn(repo, { roots, rev }) {
           return 'backend'
         }
       })()
-      // ⭐ And the tree of each root outside the site's folder (`marks`).
-      const outside = outsideRoots(repo, roots)
+      // ⭐ And the tree of each root outside the site's folder, and the commit of each submodule there (`marks`).
+      const outsideSubs = subs.map((n) => n.at).filter((p) => repo.prefix && !`${p}/`.startsWith(repo.prefix))
+      const outside = [...outsideRoots(repo, roots), ...outsideSubs]
         .map((p) => [p, objectAt(repo, `${tree}:${p}`)])
         .filter(([, t]) => t)
         .map(([p, t]) => `${ROOT_TRAILER}: ${p}:${t}\n`)
@@ -591,7 +677,7 @@ export function openStandIn(repo, { roots, rev }) {
         env: who,
         input: message
       }).trim()
-      return { commit: sha, tree, siteTree }
+      return { commit: sha, tree, siteTree, nested: made }
     }
 
     /**
@@ -601,15 +687,25 @@ export function openStandIn(repo, { roots, rev }) {
      * @returns {string[]} the paths placed, relative to the site
      */
     const placeIgnored = () => {
-      const roots = full.filter((f) => existsSync(join(root, f)))
-      if (!roots.length) return []
       const placed = []
-      for (const p of zlist(at(['ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--', ...roots]))) {
-        const to = join(repo.top, p)
-        if (occupied(to)) continue
+      const place = (from, to, named) => {
+        if (occupied(to)) return
         mkdirSync(dirname(to), { recursive: true })
-        copyFileSync(join(root, p), to)
-        placed.push(siteRelative(repo, p))
+        copyFileSync(from, to)
+        placed.push(named)
+      }
+      const roots = full.filter((f) => existsSync(join(root, f)))
+      if (roots.length) {
+        for (const p of zlist(at(['ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--', ...roots]))) {
+          place(join(root, p), join(repo.top, p), siteRelative(repo, p))
+        }
+      }
+      for (const n of subs) {
+        const own = n.roots.filter((r) => existsSync(join(root, n.at, r)))
+        if (!own.length) continue
+        for (const p of zlist(inSub(n, ['ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--', ...own]))) {
+          place(join(root, n.at, p), join(n.repo.top, p), siteRelative(repo, posix.join(n.at, p)))
+        }
       }
       return placed
     }
@@ -622,28 +718,34 @@ export function openStandIn(repo, { roots, rev }) {
      * @returns {Array<[string, string]>}
      */
     const changes = () => {
-      const roots = full.filter((f) => present.includes(f) || existsSync(join(root, f)))
-      if (!roots.length) return []
       const site = (p) => siteRelative(repo, p)
       const out = []
-      const tracked = zlist(at(['diff', '--name-status', '-z', '--no-renames', '--', ...roots]))
-      for (let i = 0; i + 1 < tracked.length; i += 2) out.push([tracked[i], site(tracked[i + 1])])
-      for (const p of zlist(at(['ls-files', '--others', '--exclude-standard', '-z', '--', ...roots]))) out.push(['A', site(p)])
+      const listed = (run, roots, named) => {
+        if (!roots.length) return
+        const tracked = zlist(run(['diff', '--name-status', '-z', '--no-renames', '--', ...roots]))
+        for (let i = 0; i + 1 < tracked.length; i += 2) out.push([tracked[i], named(tracked[i + 1])])
+        for (const p of zlist(run(['ls-files', '--others', '--exclude-standard', '-z', '--', ...roots]))) out.push(['A', named(p)])
+      }
+      listed(at, full.filter((f) => present.includes(f) || existsSync(join(root, f))), site)
+      for (const n of subs) {
+        listed((a) => inSub(n, a), n.roots.filter((r) => n.present.includes(r) || existsSync(join(root, n.at, r))), (p) => site(posix.join(n.at, p)))
+      }
       return out.sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0))
     }
 
     // The roots git can hold here. ⛔ One the repository ignores whole is not named to
     // `git add`, which refuses an ignored path; what is written under it is placed instead.
-    const held = (paths) => {
+    const heldIn = (run, paths) => {
       if (!paths.length) return paths
       let ignored = []
       try {
-        ignored = zlist(at(['check-ignore', '-z', '--stdin'], { input: `${paths.join('\0')}\0` }))
+        ignored = zlist(run(['check-ignore', '-z', '--stdin'], { input: `${paths.join('\0')}\0` }))
       } catch (err) {
         if (err?.status !== 1) throw err // 1: none of them is ignored
       }
       return paths.filter((p) => !ignored.includes(p))
     }
+    const held = (paths) => heldIn(at, paths)
 
     return { siteDir, commit, changes, placeIgnored, close }
   } catch (err) {
@@ -693,6 +795,21 @@ function untrackedInTheWay(repo, commit, roots = []) {
 }
 
 /**
+ * What would stop a merge of `commit` here, before it is made — `{ ok: false, reason, paths? }` — or
+ * null. A pull asks it of every repository it merges into before it merges into any: one that cannot
+ * take its merge leaves every other as it was.
+ */
+export function mergeStopper(repo, commit, { roots = [] } = {}) {
+  if (mergeInProgress(repo)) return { ok: false, reason: 'merge-in-progress' }
+  // Conflicts already here are not this merge's: git would refuse it, and they would read as its own.
+  const unsettled = unmergedPaths(repo)
+  if (unsettled.length) return { ok: false, reason: 'unmerged', paths: unsettled }
+  const blocking = untrackedInTheWay(repo, commit, roots).filter((u) => !u.same).map((u) => u.path)
+  if (blocking.length) return { ok: false, reason: 'untracked', paths: blocking }
+  return null
+}
+
+/**
  * Merge a sync point into HEAD: git's three-way merge, against git's merge base — the sync
  * point's parent, which HEAD descends from. Uncommitted work is stashed and put back when
  * the merge is done (`--autostash`); a conflict leaves git's own state for a person to
@@ -703,13 +820,9 @@ function untrackedInTheWay(repo, commit, roots = []) {
  * @returns {{ ok: true, conflicted: string[] } | { ok: false, reason: string, paths?: string[] }}
  */
 export function mergeSyncPoint(repo, commit, { message, roots = [] }) {
-  if (mergeInProgress(repo)) return { ok: false, reason: 'merge-in-progress' }
-  // Conflicts already here are not this merge's: git would refuse it, and they would read as its own.
-  const unsettled = unmergedPaths(repo)
-  if (unsettled.length) return { ok: false, reason: 'unmerged', paths: unsettled }
+  const stopped = mergeStopper(repo, commit, { roots })
+  if (stopped) return stopped
   const inTheWay = untrackedInTheWay(repo, commit, roots)
-  const blocking = inTheWay.filter((u) => !u.same).map((u) => u.path)
-  if (blocking.length) return { ok: false, reason: 'untracked', paths: blocking }
   // One that already holds what the merge writes there is made way for — and only once the
   // merge is going ahead, or it would be gone with nothing put back.
   for (const u of inTheWay) rmSync(join(repo.top, u.path))
@@ -727,6 +840,62 @@ export function mergeSyncPoint(repo, commit, { message, roots = [] }) {
     if (conflicted.length) return { ok: true, conflicted }
     return { ok: false, reason: 'git', detail: gitError(err) }
   }
+}
+
+/**
+ * ⭐ RECORD EACH SUBMODULE'S MERGE AS THE SITE'S PIN, once both are merged. The site's sync point
+ * records the commit a pull made in the submodule; the checkout may hold a commit past it — the
+ * merge of that commit with the submodule's own — which is what the site's files now hold:
+ * - where the site's merge left the submodule in conflict, as git does when both sides moved its pin,
+ *   the submodule's merge is the resolution, and the site's merge is made once nothing else conflicts;
+ * - where the site's merge was made, a checkout past the commit it records is committed, on its own.
+ * A submodule whose own merge left conflicts is left to the person, with the site's pin as it is.
+ *
+ * @param {object} repo - the site's `repoOf`
+ * @param {Array<{ at: string, repo: object, conflicted: string[] }>} merged
+ * @param {{ message: (at: string, head: string) => string }} opts
+ * @returns {{ pins: Array<{ at: string, head: string|null, committed: string|null, left: boolean }>, concluded: boolean, error: string|null }}
+ */
+export function recordNestedPins(repo, merged, { message }) {
+  const pins = []
+  let error = null
+  const unmerged = new Set(unmergedPaths(repo))
+  for (const m of merged) {
+    const head = objectAt(m.repo, 'HEAD')
+    if (m.conflicted.length || !head) {
+      pins.push({ at: m.at, head, committed: null, left: true })
+      continue
+    }
+    if (unmerged.has(m.at)) {
+      try {
+        git(repo.top, ['add', '--', m.at])
+      } catch (err) {
+        error = gitError(err)
+      }
+    }
+    pins.push({ at: m.at, head, committed: null, left: false })
+  }
+  let concluded = false
+  if (!error && mergeInProgress(repo) && !unmergedPaths(repo).length && pins.every((p) => !p.left)) {
+    try {
+      git(repo.top, ['commit', '--no-edit', '--no-verify', '-q'])
+      concluded = true
+    } catch (err) {
+      error = gitError(err)
+    }
+  }
+  if (!error && !mergeInProgress(repo)) {
+    for (const p of pins.filter((x) => !x.left)) {
+      if (objectAt(repo, `HEAD:${p.at}`) === p.head) continue
+      try {
+        git(repo.top, ['commit', '-q', '--no-verify', '-m', message(p.at, p.head), '--', p.at])
+        p.committed = objectAt(repo, 'HEAD')
+      } catch (err) {
+        error = gitError(err)
+      }
+    }
+  }
+  return { pins, concluded, error }
 }
 
 /**
