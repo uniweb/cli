@@ -209,7 +209,7 @@ site/pages/home/
     └── 2-features.md
 ```
 
-Decimals insert between (`2.5-x.md`). A page folder's number works the same way: `pages/2-about/` orders second and is `/about`, named `about` in `pages:` and `index:`. Ignored: `README.md`, `_*.md`, `_*/`.
+Decimals insert between (`2.5-x.md`). A page folder's number works the same way: `pages/2-about/` orders second and is `/about`, named `about` in `pages:` and `index:`. A number counts only with a dash after it, or as the whole name (`404`): `3d-printing.md` keeps its name. Ignored: `README.md`, `_*.md`, `_*/`.
 
 ```yaml
 # page.yml
