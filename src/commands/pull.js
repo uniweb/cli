@@ -974,6 +974,8 @@ export async function pull(args = [], deps = {}) {
   // and a mount's, which the folder wins.
   let heldPages = []
   let mountedPages = []
+  // A mount's own route the app renamed or removed, which `site.yml`'s `paths:` now says.
+  let mountRoutes = []
   let mountedMoved = []
   // Set when the folder lane carried records this pull did not place — see the ⛔
   // where it is set.
@@ -1267,6 +1269,7 @@ export async function pull(args = [], deps = {}) {
       leftAlone += report.leftAlone?.length || 0
       heldPages = report.held || []
       mountedPages = report.mountedPages || []
+      mountRoutes = report.mountRoutes || []
       mountedMoved = mountedPagesMoved(mountedPages, pulledVersions, priorVersions)
       outsideLanguages = report.outsideLanguages || []
     }
@@ -1619,6 +1622,16 @@ export async function pull(args = [], deps = {}) {
     (deleted ? `, ${deleted} deleted` : '')
   if (notTaken || recordsNotPlaced) info(summary)
   else success(summary)
+  // ⭐ Said, since it edits `site.yml`: the route is the mount's key there, and its local folder.
+  if (!notTaken) {
+    for (const { from, to } of mountRoutes) {
+      note(
+        to
+          ? `The app renamed /${from}, a mounted route, to /${to}: \`paths:\` in site.yml says pages/${to} now, and its local folder moved with it. The mounted folder is as it was.`
+          : `The app removed /${from}, a mounted route: it is gone from \`paths:\` in site.yml, with its local folder. The mounted folder is as it was.`
+      )
+    }
+  }
   if (leftAlone) {
     note(
       `Left as written: ${leftAlone} page(s) a pull does not write — a mounted folder's, a \`.md\` page given what its file cannot say, or two pages on one route. ` +

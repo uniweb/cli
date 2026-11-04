@@ -211,3 +211,21 @@ test('⛔ a mount marked writable that no history of the site holds stops the pu
   assert.equal(asked, false, 'the backend was asked')
   assert.equal(git(dir, 'rev-parse', 'HEAD').trim(), head)
 })
+
+test("⭐ the mount's own route renamed in the app: site.yml and its local folder follow, merged, and nothing is copied", async () => {
+  const dir = project()
+  const backend = await backendOf(dir)
+  assert.equal((await pullIn(dir, backend)).exitCode, 0)
+  backend.state.site.pages.find((p) => p.$id === 'docs').slug = { en: 'help' }
+
+  const r = await pullIn(dir, backend)
+  assert.equal(r.exitCode, 0, r.out)
+  assert.match(read(dir, 'site/site.yml'), /^ {2}pages\/help:\n {4}path: \.\.\/docs\n {4}writable: true$/m)
+  assert.doesNotMatch(read(dir, 'site/site.yml'), /pages\/docs/)
+  assert.equal(read(dir, 'site/pages/help/folder.yml'), 'title: Docs\nlayout: DocsLayout\n')
+  assert.throws(() => read(dir, 'site/pages/help/intro.md'), 'no copy of a mounted page')
+  assert.equal(read(dir, 'docs/intro.md'), INTRO)
+  assert.match(r.out, /The app renamed \/docs, a mounted route, to \/help/)
+  assert.equal(git(dir, 'status', '--porcelain').trim(), '')
+  assert.equal((await probeUnpushed(join(dir, 'site'), { backend: ORIGIN })).changed, 0)
+})
