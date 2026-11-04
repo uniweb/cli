@@ -78,14 +78,22 @@ Things you won't discover from exports:
 
 ### Icon
 
+**An icon your code draws is imported**, so it is in the page from the first render, with nothing to fetch:
+
 ```jsx
-{content.icons.map((icon, i) => <Icon key={i} {...icon} />)}
-<Icon name="search" />              // Lucide default
-<Icon name="hi2-arrow-right" />     // other library by prefix
-<Icon name="close" />               // built-in, no network: check close menu chevronDown chevronRight externalLink download play …
+import send from '@uniweb/icons/families/lu/send.js'   // a dependency: npm install @uniweb/icons
+<Icon svg={send} size="18" />
 ```
 
-Other props: `svg`, `url`, `size` (default `'24'`), `className`.
+`@uniweb/icons` holds Lucide (`lu`), Heroicons (`hi`, `hi2`) and Feather (`fi`), the same drawings an author's names get, named as the corpus spells them (`building2.js`). For another family, import the SVG as a string from that family's own package. **An icon an author names arrives as a name**, and `<Icon>` fetches it, since a site has no build:
+
+```jsx
+{content.icons.map((icon, i) => <Icon key={i} {...icon} />)}   // the section's markdown
+<Icon icon={record.icon} />                                    // a record's field or a param: `lu-baby`
+<Icon name="close" />   // built-in, no network: check close menu chevronDown chevronRight externalLink download play …
+```
+
+A name written in your code (`<Icon name="search" />`) is fetched the same way: until the browser has it, a prerendered page can show an empty box in its place. Other props: `url`, `size` (default `'24'`), `className`.
 
 ## Section wrapper and sticky
 
