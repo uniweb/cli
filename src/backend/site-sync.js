@@ -1104,6 +1104,11 @@ export const sentRoots = (siteDir) => [...siteContentRoots(siteDir), 'public']
  * the push sends must be what that commit holds. Returns the refusal, or null: outside a
  * repository nothing is kept to merge from.
  *
+ * ⚠️ Not yet for a page folder mounted from elsewhere in the same repository (`paths: {
+ * pages/<segment> }`): `sentRoots` names no mount, so its uncommitted edits go out with the push,
+ * which names HEAD (measured 2026-11-04). A mount that is its own repository is held to its
+ * commits by `mounts-before-sending.js`.
+ *
  * ⛔ Until 2026-10-18 a push sent uncommitted edits on top of HEAD and recorded HEAD. Measured
  * against a real backend: an edit pushed that way and undone before the next pull came back
  * with it — exit 0, no conflict, reported as the backend's change. Every such push also had
