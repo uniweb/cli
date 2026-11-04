@@ -504,6 +504,24 @@ function filesUnder(siteDir, roots) {
   return out
 }
 
+// ⭐ P5 — A VERSION IS BANKED FOR WHAT THE FILES TOOK, OR CHOSE NOT TO TAKE. A page held because its file
+// cannot say the app's change keeps the version this copy last agreed on, so the per-item gate keeps the
+// backend's copy while the file is unchanged and refuses a push that changed it. One this copy never agreed
+// on keeps the backend's: there is no agreement to hold. A mount's page takes the backend's, so the next
+// push puts the folder's back.
+export function agreedVersions(pulled, heldPages, prior) {
+  const out = { ...pulled }
+  for (const { uuids } of heldPages || []) for (const u of uuids || []) if (prior?.[u]) out[u] = prior[u]
+  return out
+}
+
+// The mounted pages the backend holds at another version than this copy last agreed on, by route.
+export function mountedPagesMoved(mountedPages, pulled, prior) {
+  return (mountedPages || [])
+    .filter(({ uuids }) => (uuids || []).some((u) => prior?.[u] && pulled?.[u] && prior[u] !== pulled[u]))
+    .map(({ route }) => route)
+}
+
 /**
  * Outside git, refuse a pull that would overwrite unsaved work. Returns a result object to
  * return from `pull`, or null to proceed.
@@ -920,7 +938,11 @@ export async function pull(args = [], deps = {}) {
   // hold, a route the files give two pages for (`@uniweb/build`'s `page-files.js`). Said, since an app
   // edit to one does not come back; each `.md` page with what it could not hold.
   let leftAlone = 0
-  let cannotHold = []
+  // Its pages by outcome (P5, `@uniweb/build`'s report): held at the version this copy last agreed on,
+  // and a mount's, which the folder wins.
+  let heldPages = []
+  let mountedPages = []
+  let mountedMoved = []
   // Set when the folder lane carried records this pull did not place — see the ⛔
   // where it is set.
   let recordsNotPlaced = null
@@ -934,6 +956,8 @@ export async function pull(args = [], deps = {}) {
   // only while the sync point it was banked with is.
   const cache = readPullCache(siteDir)
   const held = repo ? readSyncPoint(siteDir, client.origin) : null
+  // The versions this copy agreed on before this pull — what a held page keeps (`agreedVersions`).
+  const priorVersions = readItemBaseVersions(siteDir, client.origin)
   const cacheHolds = etagsHold(siteDir, client.origin, repo)
   let etagContent = cache.content
   let etagFolder = cache.folder
@@ -1199,7 +1223,9 @@ export async function pull(args = [], deps = {}) {
       sections += report.sections.length
       deleted += report.deleted.length
       leftAlone += report.leftAlone?.length || 0
-      cannotHold = report.cannotHold || []
+      heldPages = report.held || []
+      mountedPages = report.mountedPages || []
+      mountedMoved = mountedPagesMoved(mountedPages, pulledVersions, priorVersions)
       outsideLanguages = report.outsideLanguages || []
     }
 
@@ -1296,6 +1322,10 @@ export async function pull(args = [], deps = {}) {
         probe: {
           files: standIn.changes(),
           itemsBehind,
+          // By route: the mounted pages the backend moved, which the next push puts back, and the pages
+          // held because their files cannot say what the app made of them.
+          mountedMoved,
+          held: heldPages.map(({ route, what }) => ({ route, what })),
           recordsNotPlaced: Boolean(recordsNotPlaced),
           ...(base ? {} : { noBase: true, movedFrom: siteMovedFrom })
         }
@@ -1342,7 +1372,8 @@ export async function pull(args = [], deps = {}) {
           recordDocs: pulledRecordDocs,
           ...(declarations.size ? { declarations } : {}),
           fields,
-          contentTaken: Boolean(siteDoc)
+          contentTaken: Boolean(siteDoc),
+          contentAgreed: !heldPages.length && !mountedMoved.length
         })
       } catch (err) {
         note(`! could not re-bank the sync cache: ${err.message}`)
@@ -1465,7 +1496,7 @@ export async function pull(args = [], deps = {}) {
     // again, asking the backend to delete it. The folder lane's are not kept — that lane
     // is gated by its entity version. (Both were merged into one map until 2026-10-07.)
     if (pulledVersions && content && !content.notModified && !content.refused) {
-      writeItemBaseVersions(siteDir, client.origin, pulledVersions)
+      writeItemBaseVersions(siteDir, client.origin, agreedVersions(pulledVersions, heldPages, priorVersions))
     }
     // Persist the ETags so the next pull is conditional (304 when unchanged). The
     // folder's is DROPPED when records were not placed, so the next pull fetches
@@ -1489,7 +1520,20 @@ export async function pull(args = [], deps = {}) {
       `Left as written: ${leftAlone} page(s) a pull does not write — a mounted folder's, a \`.md\` page given what its file cannot say, or two pages on one route. ` +
         'An edit made to one in the app does not come back here, and the next push sends the file.'
     )
-    for (const { route, what } of cannotHold) note(`  /${route}: its file cannot hold ${what.join(', ')}`)
+    if (mountedMoved.length) {
+      note(
+        `The backend holds a newer version of ${mountedMoved.length} mounted page(s), changed in the app: the next push puts the folder's back. ` +
+          'To keep a change, make it in the mounted folder, or mark its mount `writable: true` in site.yml.'
+      )
+      for (const route of mountedMoved) note(`  /${route}`)
+    }
+    if (heldPages.length) {
+      note(
+        `Held: ${heldPages.length} page(s) whose files cannot say what the app made of them. The site keeps the app's version and the files keep theirs; ` +
+          'a push leaves it, and one that changes such a page is refused. Undo it in the app, or give the page a folder of its own with a page.yml, and pull again.'
+      )
+      for (const { route, what } of heldPages) note(`  /${route}: ${what.join(', ')}`)
+    }
     // ⭐ A mounted folder's pages are as current as its repository, which no pull moves.
     for (const line of await behindLines(siteDir)) note(line)
   }

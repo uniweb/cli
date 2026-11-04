@@ -904,7 +904,7 @@ function changeChecks(siteDir, changes, unpushedFiles, proposals, { elsewhere = 
  * `app.changes` from the pull's own answer (`probePull`): the files it would change, each
  * as the pull would write it.
  */
-function probedChanges({ files: list, recordsNotPlaced, noBase, movedFrom, itemsBehind = 0 }, unpushedFiles, proposals) {
+function probedChanges({ files: list, recordsNotPlaced, noBase, movedFrom, itemsBehind = 0, mountedMoved = [], held = [] }, unpushedFiles, proposals) {
   if (noBase && movedFrom) {
     if (!proposals.some((p) => p.step === 'pull')) {
       proposals.push({ step: 'pull', command: 'npx uniweb pull', why: 'record where the site is now' })
@@ -914,15 +914,22 @@ function probedChanges({ files: list, recordsNotPlaced, noBase, movedFrom, items
   if (noBase) return noBaseChanges(list, recordsNotPlaced)
   // ⛔ Until 2026-10-31 this said nothing changed, and the push that followed was refused: the
   // backend held newer versions of a mounted folder's pages, which a pull does not write.
-  if (!list.length && itemsBehind) {
+  if (!list.length && (itemsBehind || mountedMoved.length || held.length)) {
     proposals.push({ step: 'pull', command: 'npx uniweb pull', why: 'record what moved on the backend' })
+    // ⭐ Named, page by page, where the pull can say which (`mountedMoved`, `held`): a mounted page the
+    // app changed, which the next push puts back, and a page whose file cannot say what the app made of it.
+    const named = [
+      mountedMoved.length && `${count(mountedMoved.length, 'mounted page')} changed in the app, which the next push puts back: ${mountedMoved.map((r) => `/${r}`).join(', ')}`,
+      held.length && `${count(held.length, 'page')} whose files cannot say what the app made of them, kept on the site as the app has them: ${held.map((h) => `/${h.route}`).join(', ')}`,
+    ].filter(Boolean)
     return [
       {
         id: 'app.changes',
         state: 'attention',
-        summary:
-          'The backend moved with no file here to show it: a push from another copy, or pages from a mounted folder. A pull changes no file and records that, and a push before it may be refused.',
-        detail: { source: 'pull', files: [], itemsBehind }
+        summary: named.length
+          ? `The backend moved with no file here to show it — ${named.join('; ')}. A pull changes no file and records that.`
+          : 'The backend moved with no file here to show it: a push from another copy, or pages from a mounted folder. A pull changes no file and records that, and a push before it may be refused.',
+        detail: { source: 'pull', files: [], itemsBehind, mountedMoved, held }
       }
     ]
   }

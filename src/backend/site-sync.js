@@ -2189,12 +2189,12 @@ export async function entityHashes(siteDir, backend = null, { declarations, fiel
  * @param {Map<string,object>} [opts.declarations] - the Models the pull read, by name — so a
  *        site whose foundation is not in the project (a clone's) can be re-banked offline
  */
-export async function rebankSyncHashes(siteDir, backend = null, { recordDocs, declarations, fields = null, contentTaken = false } = {}) {
+export async function rebankSyncHashes(siteDir, backend = null, { recordDocs, declarations, fields = null, contentTaken = false, contentAgreed = true } = {}) {
   // ⛔ With the keys this deployment's Sections take, when the caller has them (`deploymentFields`):
   // they shape the document the next push sends (`typed_by_data_key`, `og_title`), so a hash banked
   // without them marks a clone's first push as changed. Until 2026-09-26 a pull banked none.
   const pkg = await comparisonEmit(siteDir, { backend, sendAll: true, declarations, fields })
-  writeSyncCache(siteDir, backend, onlyWhatThePullTook(siteDir, backend, pkg, recordDocs), pkg.applied || {})
+  writeSyncCache(siteDir, backend, onlyWhatThePullTook(siteDir, backend, pkg, recordDocs, { contentAgreed }), pkg.applied || {})
   // ⭐ And the local unit base, from what this copy would send for the content the pull took, so a
   // refusal after a pull can tell this copy's edits from the backend's. ⛔ Until 2026-10-30 a pull
   // left it empty, and the next refusal said "No record of your last sync" just after one.
@@ -2233,8 +2233,12 @@ export async function rebankSyncHashes(siteDir, backend = null, { recordDocs, de
  *
  * @param {object[]|undefined} recordDocs - the record documents the pull took
  */
-function onlyWhatThePullTook(siteDir, backend, pkg, recordDocs) {
+function onlyWhatThePullTook(siteDir, backend, pkg, recordDocs, { contentAgreed = true } = {}) {
   const hashes = { ...(pkg.hashes || {}) }
+  // ⭐ A site whose files do not hold some page as the backend does — a mounted page the app changed,
+  // one held because its file cannot say the change — is not agreed: its hash is not banked, so the next
+  // push sends it, the folder winning where it is read-only and the gate keeping a held page's.
+  if (!contentAgreed) for (const key of Object.keys(hashes)) if (key.startsWith('@uniweb/site-content ')) delete hashes[key]
   const prior = readSyncCache(siteDir, backend)
   const keep = (key) => {
     if (Object.hasOwn(prior, key)) hashes[key] = prior[key]
