@@ -1,7 +1,7 @@
 /**
- * ⭐ A WRITABLE MOUNT THE SITE'S REPOSITORY HOLDS.
+ * ⭐ A MOUNT THE SITE'S REPOSITORY HOLDS, AND ONE NO HISTORY OF IT HOLDS.
  *
- * `paths: { pages/docs: { path: ../docs, writable: true } }`, where `docs/` is a folder of the site's
+ * `paths: { pages/docs: ../docs }`, where `docs/` is a folder of the site's
  * own repository outside the site's folder — the way `uniweb-app-docs` sits beside a site. A pull
  * writes the app's edits to its pages into the mounted folder, merged like the site's own files: with
  * a teammate's commit to another paragraph of the same file, and with nothing for the next push to
@@ -19,7 +19,7 @@ import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { siteProjectToDocument, createZip } from '@uniweb/build/uwx'
 import { pull } from '../src/commands/pull.js'
-import { probeUnpushed } from '../src/backend/site-sync.js'
+import { probeUnpushed, readItemBaseVersions } from '../src/backend/site-sync.js'
 
 process.env.UNIWEB_WORKSPACE = 'personal'
 const ORIGIN = 'https://uniweb.app'
@@ -44,7 +44,7 @@ const commitAll = (cwd, msg) => {
 const INTRO = '# Intro\n\nRead this first.\n\nThen the guide.\n'
 
 // A repository holding `site/` and `docs/`, which the site mounts at /docs as `declare` says.
-function project(declare = '\n    path: ../docs\n    writable: true') {
+function project(declare = ' ../docs') {
   const dir = mkdtempSync(join(scratch, 'p-'))
   git(dir, 'init', '-q')
   git(dir, 'config', 'user.name', 't')
@@ -179,35 +179,41 @@ test('⭐ a pull of an app edit alone leaves nothing for the next push to send',
   assert.equal((await probeUnpushed(join(dir, 'site'), { backend: ORIGIN })).changed, 0)
 })
 
-test('CONTROL — the same mount, read-only: the folder keeps its text, and the next push puts it back', async () => {
-  const dir = project(' ../docs')
+test("⭐ a mount no history of the site holds: the app's edit is held — the folder keeps its text, and the copy the version it last agreed on", async () => {
+  const dir = project()
+  const elsewhere = mkdtempSync(join(scratch, 'elsewhere-'))
+  w(elsewhere, 'folder.yml', 'title: Help\n')
+  w(elsewhere, 'intro.md', INTRO)
+  w(dir, 'site/site.yml', `name: S\nfoundation: '@a/base'\nindex: home\npaths:\n  pages/docs: ${elsewhere}\n`)
+  commitAll(dir, 'mount elsewhere')
   const backend = await backendOf(dir)
   assert.equal((await pullIn(dir, backend)).exitCode, 0)
+  const section = pageOf(backend.state.site, 'docs', 'intro').page_sections[0].$uuid
+  const agreed = readItemBaseVersions(join(dir, 'site'), ORIGIN)[section]
+  assert.ok(agreed, 'CONTROL — the first pull agreed on it')
   appEdits(backend, 'Read this first, please.')
 
   const r = await pullIn(dir, backend)
   assert.equal(r.exitCode, 0, r.out)
-  assert.equal(read(dir, 'docs/intro.md'), INTRO)
-  assert.match(r.out, /The backend holds a newer version of 1 mounted page\(s\), changed in the app: the next push puts the folder's back/)
+  assert.equal(readFileSync(join(elsewhere, 'intro.md'), 'utf8'), INTRO)
+  assert.match(r.out, /Held: 1 mounted page\(s\) changed in the app, which their folder cannot take/)
+  assert.match(r.out, /pages\/docs comes from .+, a folder no history of the site's holds, so a pull cannot merge into it/)
   // Named page by page: the one the app changed, not the mount.
   const named = r.out.replace(/\x1B\[[0-9;]*m/g, '').split('\n').map((l) => l.trim()).filter((l) => l.startsWith('/'))
   assert.deepEqual(named, ['/docs/intro'])
-  assert.ok((await probeUnpushed(join(dir, 'site'), { backend: ORIGIN })).changed > 0)
+  // ⭐ So the per-item gate keeps the backend's while the file is unchanged: never the folder's over it.
+  assert.equal(readItemBaseVersions(join(dir, 'site'), ORIGIN)[section], agreed)
 })
 
-test('⛔ a mount marked writable that no history of the site holds stops the pull before it takes anything', async () => {
-  const dir = project()
-  const elsewhere = mkdtempSync(join(scratch, 'elsewhere-'))
-  w(elsewhere, 'intro.md', INTRO)
-  w(dir, 'site/site.yml', `name: S\nfoundation: '@a/base'\nindex: home\npaths:\n  pages/docs:\n    path: ${elsewhere}\n    writable: true\n`)
-  commitAll(dir, 'mount elsewhere')
+test('⛔ a mount written as an object, the form `writable` was set in, stops the pull before it takes anything', async () => {
+  const dir = project('\n    path: ../docs\n    writable: true')
   const head = git(dir, 'rev-parse', 'HEAD').trim()
   let asked = false
   const backend = { fetch: async () => ((asked = true), jsonRes(null, 404)) }
 
   const r = await pullIn(dir, backend)
   assert.equal(r.exitCode, 1)
-  assert.match(r.out, /pages\/docs is mounted from .* with `writable: true`, but it is a folder no history of the site's holds/)
+  assert.match(r.out, /pages\/docs in site\.yml's paths: is an object\. A mount is its folder: `pages\/docs: \.\.\/docs`/)
   assert.equal(asked, false, 'the backend was asked')
   assert.equal(git(dir, 'rev-parse', 'HEAD').trim(), head)
 })
@@ -220,7 +226,7 @@ test("⭐ the mount's own route renamed in the app: site.yml and its local folde
 
   const r = await pullIn(dir, backend)
   assert.equal(r.exitCode, 0, r.out)
-  assert.match(read(dir, 'site/site.yml'), /^ {2}pages\/help:\n {4}path: \.\.\/docs\n {4}writable: true$/m)
+  assert.match(read(dir, 'site/site.yml'), /^ {2}pages\/help: \.\.\/docs$/m)
   assert.doesNotMatch(read(dir, 'site/site.yml'), /pages\/docs/)
   assert.equal(read(dir, 'site/pages/help/folder.yml'), 'title: Docs\nlayout: DocsLayout\n')
   assert.throws(() => read(dir, 'site/pages/help/intro.md'), 'no copy of a mounted page')

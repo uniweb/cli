@@ -13,7 +13,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { sentRoots, laneRoots, siteRoots, submoduleMountRoots, writableMounts } from '../src/utils/site-roots.js'
+import { sentRoots, laneRoots, siteRoots, submoduleMountRoots, writableMounts, refusedMountLines } from '../src/utils/site-roots.js'
 import { uncommittedContent } from '../src/backend/site-sync.js'
 
 const scratch = mkdtempSync(join(tmpdir(), 'uw-site-roots-'))
@@ -83,7 +83,7 @@ test('a mount that is a repository of its own is not among the site\'s roots —
   assert.deepEqual(submoduleMountRoots(site), ['../external/docs'])
 })
 
-test('⭐ a pull writes a mount the site declares writable only where this copy can merge it — a submodule\'s in its own history', () => {
+test('⭐ a pull writes every mount this copy can merge — a submodule\'s in its own history — and holds the app\'s edits to any other', () => {
   const { dir, site } = project()
   const docs = mkdtempSync(join(scratch, 'docs-'))
   git(docs, 'init', '-q')
@@ -96,32 +96,39 @@ test('⭐ a pull writes a mount the site declares writable only where this copy 
   mkdirSync(beside, { recursive: true })
   git(beside, 'init', '-q')
   const nowhere = mkdtempSync(join(scratch, 'nowhere-'))
-  const declare = (path) => `\n    path: ${path}\n    writable: true`
   w(dir, 'site/site.yml', [
     'name: S',
     'foundation: "@acme/base@1.0.0"',
     'paths:',
-    `  pages/docs:${declare('../docs')}`,
-    `  pages/guide:${declare('../external/docs/guide')}`,
-    `  pages/beside:${declare(`../../${beside.split('/').pop()}`)}`,
-    `  pages/nowhere:${declare(nowhere)}`,
-    '  pages/plain: ../docs',
+    '  pages/docs: ../docs',
+    '  pages/guide: ../external/docs/guide',
+    `  pages/beside: ../../${beside.split('/').pop()}`,
+    `  pages/nowhere: ${nowhere}`,
     '',
   ].join('\n'))
 
-  const { writable, refused, submodules } = writableMounts(site)
+  const { writable, held, refused, submodules } = writableMounts(site)
   assert.deepEqual(writable, ['docs', 'guide'])
-  assert.deepEqual(refused.map((m) => [m.segment, m.why]), [['beside', 'own'], ['nowhere', 'none']])
+  assert.deepEqual(held.map((m) => [m.segment, m.why]), [['beside', 'own'], ['nowhere', 'none']])
+  assert.deepEqual(refused, [])
   // The submodule's path in the site's repository, and the mounted folder's in the submodule.
   assert.deepEqual(submodules.map(({ segment, at, root }) => ({ segment, at, root })), [{ segment: 'guide', at: 'external/docs', root: 'guide' }])
 })
 
-test('a site in no repository: a writable mount inside its folder is written as its own files are, one outside refused', () => {
+test('a site in no repository: a mount inside its folder is written as its own files are, one outside held', () => {
   const dir = mkdtempSync(join(scratch, 'no-repo-'))
-  w(dir, 'site/site.yml', 'name: S\npaths:\n  pages/docs:\n    path: ./docs\n    writable: true\n  pages/out:\n    path: ../out\n    writable: true\n')
+  w(dir, 'site/site.yml', 'name: S\npaths:\n  pages/docs: ./docs\n  pages/out: ../out\n')
   w(dir, 'site/docs/intro.md', '# Intro\n')
   w(dir, 'out/intro.md', '# Intro\n')
-  const { writable, refused } = writableMounts(join(dir, 'site'))
+  const { writable, held } = writableMounts(join(dir, 'site'))
   assert.deepEqual(writable, ['docs'])
-  assert.deepEqual(refused.map((m) => [m.segment, m.why]), [['out', 'none']])
+  assert.deepEqual(held.map((m) => [m.segment, m.why]), [['out', 'none']])
+})
+
+test('⛔ a mount written as an object, the form `writable` was set in, is refused, saying what replaced it', () => {
+  const { site } = project('')
+  w(join(site, '..'), 'site/site.yml', 'name: S\npaths:\n  pages/docs:\n    path: ../docs\n    writable: true\n')
+  const { refused } = writableMounts(site)
+  assert.deepEqual(refused, [{ segment: 'docs', path: '../docs' }])
+  assert.match(refusedMountLines(refused[0]).join('\n'), /is an object\. A mount is its folder: `pages\/docs: \.\.\/docs`[\s\S]*`writable` is retired/)
 })

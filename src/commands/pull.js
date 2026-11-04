@@ -113,7 +113,7 @@ import {
   readItemBaseVersions
 } from '../backend/site-sync.js'
 import { resolveWorkspace } from '../backend/workspace.js'
-import { siteRoots, sentRoots, laneRoots, writableMounts, refusedMountLines } from '../utils/site-roots.js'
+import { siteRoots, sentRoots, laneRoots, writableMounts, refusedMountLines, heldMountLines } from '../utils/site-roots.js'
 import {
   repoOf,
   mergeInProgress,
@@ -781,13 +781,13 @@ export async function pull(args = [], deps = {}) {
     const blocked = await checkWorkingTree(siteDir, args)
     if (blocked) return blocked
   }
-  // ⭐ A MOUNT IS WRITTEN WHERE THE SITE SAYS `writable: true` AND THIS COPY CAN MERGE IT
-  // (`writableMounts`). One it cannot stops the pull before anything is asked or taken: left read-only,
-  // the app's edits to it would be undone by the next push, which is what the declaration asks to avoid.
+  // ⭐ A MOUNT IS WRITTEN WHEREVER THIS COPY CAN MERGE IT, and its app edits held where it cannot
+  // (`writableMounts`) — never undone. One written in the retired object form stops the pull before
+  // anything is asked or taken, as it stops the build.
   const mounts = writableMounts(siteDir)
   if (mounts.refused.length) {
     if (probe) return { exitCode: 1, probe: null }
-    error(`${mounts.refused.length === 1 ? 'A mount' : `${mounts.refused.length} mounts`} marked writable cannot be written by a pull:`)
+    error(`${mounts.refused.length === 1 ? 'A mount is' : `${mounts.refused.length} mounts are`} written in a form a pull no longer reads:`)
     for (const m of mounts.refused) for (const line of refusedMountLines(m)) note(line)
     return { exitCode: 1 }
   }
@@ -1603,7 +1603,10 @@ export async function pull(args = [], deps = {}) {
     // again, asking the backend to delete it. The folder lane's are not kept — that lane
     // is gated by its entity version. (Both were merged into one map until 2026-10-07.)
     if (pulledVersions && content && !content.notModified && !content.refused) {
-      writeItemBaseVersions(siteDir, client.origin, agreedVersions(pulledVersions, heldPages, priorVersions))
+      // ⭐ Held where the files cannot take the app's change: a page they cannot say, and each page of a
+      // mount the pull could not write. ⛔ Until 2026-11-04 a mount's took the backend's version, and the
+      // next push put the folder's back over the app's edit.
+      writeItemBaseVersions(siteDir, client.origin, agreedVersions(pulledVersions, [...heldPages, ...mountedPages], priorVersions))
     }
     // Persist the ETags so the next pull is conditional (304 when unchanged). The
     // folder's is DROPPED when records were not placed, so the next pull fetches
@@ -1634,15 +1637,13 @@ export async function pull(args = [], deps = {}) {
   }
   if (leftAlone) {
     note(
-      `Left as written: ${leftAlone} page(s) a pull does not write — a mounted folder's, a \`.md\` page given what its file cannot say, or two pages on one route. ` +
-        'An edit made to one in the app does not come back here, and the next push sends the file.'
+      `Left as written: ${leftAlone} page(s) a pull cannot write — in a mounted folder it cannot merge into, a \`.md\` page given what its file cannot say, or two pages on one route. ` +
+        "An edit made to one in the app is held: kept on the backend, not undone by a push while the page's file is unchanged, and a push that changed it stops."
     )
     if (mountedMoved.length) {
-      note(
-        `The backend holds a newer version of ${mountedMoved.length} mounted page(s), changed in the app: the next push puts the folder's back. ` +
-          'To keep a change, make it in the mounted folder, or mark its mount `writable: true` in site.yml.'
-      )
+      note(`Held: ${mountedMoved.length} mounted page(s) changed in the app, which their folder cannot take:`)
       for (const route of mountedMoved) note(`  /${route}`)
+      for (const m of mounts.held) for (const line of heldMountLines(m)) note(line)
     }
     if (heldPages.length) {
       note(

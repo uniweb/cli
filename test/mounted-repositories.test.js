@@ -396,6 +396,20 @@ test('⭐ a mount a pull writes into takes its latest by merging, when it and it
   assert.equal(git(f.repo, 'rev-parse', 'HEAD:external/docs'), git(f.docs, 'rev-parse', 'HEAD'))
 })
 
+test('⭐ merging or not, a pin another remote branch holds is left where it is: only a checkout\'s own work is merged', { timeout: 60_000 }, async () => {
+  const f = fixture()
+  git(f.author, 'checkout', '-q', '-b', 'side')
+  const side = landDocs(f, 'intro/page.yml', 'title: Side\n', 'side')
+  git(f.docs, 'fetch', '-q', 'origin')
+  git(f.docs, 'checkout', '-q', '--detach', side)
+  commitAll(f.repo, 'pin the side branch')
+  git(f.author, 'checkout', '-q', 'main')
+  landDocs(f)
+  const r = await takeLatest(f.siteDir, (await mountedRepositories(f.siteDir))[0], { merge: true })
+  assert.equal(r.kind, 'off-branch')
+  assert.equal(git(f.docs, 'rev-parse', 'HEAD'), side)
+})
+
 test('a merge that conflicts is left for the person to settle there, and said', { timeout: 60_000 }, async () => {
   const f = fixture()
   write(f.docs, { 'intro/page.yml': 'title: Intro, from the app\n' })

@@ -50,6 +50,11 @@ function remoteCall(cwd, args, timeoutMs) {
 }
 
 /** true, false, or null when git cannot say (a commit it does not hold). */
+// Does a remote branch hold this commit? Then it came from someone's line of work, not this checkout's.
+function onARemoteBranch(cwd, sha) {
+  return Boolean(text(cwd, ['branch', '-r', '--contains', sha]))
+}
+
 function ancestor(cwd, a, b) {
   try {
     run(cwd, ['merge-base', '--is-ancestor', a, b])
@@ -326,10 +331,12 @@ function siteName(siteDir) {
  * uncommitted changes in it, never backwards, and never from a commit the branch does not
  * contain, which is a pin put somewhere else on purpose.
  *
- * ⭐ `merge`: a mount a pull writes into (`writable: true`) takes its latest as the site takes its own,
- * by merging, since the pull's commits there are its own work: a checkout that has them and a branch
- * that moved on have each moved, and the merge of the two is its latest. Never a rebase, which would
- * replay a pull's commit onto another one while the site's sync point still names it.
+ * ⭐ `merge`: a mount a pull writes into (a submodule's, `writableMounts`) takes its latest as the site takes its own,
+ * by merging, where its checkout holds work of its own — commits no remote branch has, a pull's among
+ * them: that checkout and a branch that moved on have each moved, and the merge of the two is its
+ * latest. Never a rebase, which would replay a pull's commit onto another one while the site's sync
+ * point still names it. A checkout another remote branch holds is a pin put there on purpose, and is
+ * left where it is, merge or not.
  *
  * @param {string} siteDir
  * @param {object} m - from `mountedRepositories`
@@ -376,7 +383,9 @@ export async function takeLatest(siteDir, m, { merge = false } = {}) {
     }
     contained = ancestor(cur.top, cur.head, answer.tip)
   }
-  if (contained !== true && !merge) return { ...r, left: `${short(cur.head)} is not on ${answer.branch ?? 'its branch'}`, kind: 'off-branch' }
+  if (contained !== true && (!merge || onARemoteBranch(cur.top, cur.head))) {
+    return { ...r, left: `${short(cur.head)} is not on ${answer.branch ?? 'its branch'}`, kind: 'off-branch' }
+  }
   try {
     if (contained !== true) {
       // Each has moved: the checkout's commits — a pull's among them — merged with the branch's.

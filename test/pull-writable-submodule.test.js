@@ -1,5 +1,5 @@
 /**
- * ⭐ A WRITABLE MOUNT IN A SUBMODULE: `paths: { pages/docs: { path: ../external/docs, writable: true } }`,
+ * ⭐ A MOUNT IN A SUBMODULE: `paths: { pages/docs: ../external/docs }`,
  * where `external/docs` is a submodule of the site's repository with a remote of its own.
  *
  * A pull writes the app's edits to its pages as a commit in the submodule, made as the person who pulls,
@@ -64,7 +64,7 @@ function team() {
   const alice = join(root, 'alice')
   git(root, 'clone', '-q', siteRemote, alice)
   w(alice, '.gitignore', '.uniweb\nnode_modules\n')
-  w(alice, 'site/site.yml', "name: S\nfoundation: '@a/base'\nindex: home\npaths:\n  pages/docs:\n    path: ../external/docs\n    writable: true\n")
+  w(alice, 'site/site.yml', "name: S\nfoundation: '@a/base'\nindex: home\npaths:\n  pages/docs: ../external/docs\n")
   w(alice, 'site/sync.json', JSON.stringify({ version: 1, backends: { [ORIGIN]: { site: { uuid: 'SITE' } } } }, null, 2) + '\n')
   w(alice, 'site/pages/home/page.yml', 'title: Home\n')
   w(alice, 'site/pages/home/hero.md', '# Welcome\n')
