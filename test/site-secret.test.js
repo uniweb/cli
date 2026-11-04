@@ -86,11 +86,11 @@ test('with no terminal to ask in, it refuses — exit 2, nothing sent — and sa
   const { site: verb } = await import('../src/commands/site.js')
   const backend = secretsBackend()
   // `runVerb` sets CI=1, so the command's own prompt has nobody to ask.
-  const run = await runVerb(tmp('uw-secret-'), verb, ['secret', 'x', 'token', UUID], { env: ENV, respond: backend.respond })
+  const run = await runVerb(tmp('uw-secret-'), verb, ['secret', 'x', 'token', UUID, '--org', '@acme'], { env: ENV, respond: backend.respond })
   assert.equal(run.exitCode, 2, run.output)
   assert.equal(backend.writes().length, 0)
   assert.match(run.output, /no terminal here to ask in/)
-  assert.match(run.output, /uniweb site secret x token/)
+  assert.ok(run.output.includes(`uniweb site secret x token ${UUID} --org @acme`), 'the line to run keeps the site and workspace given')
 })
 
 test('a value typed as an argument is refused, never echoed, and nothing is sent', async () => {

@@ -427,7 +427,15 @@ export async function siteSecret(args, { readValue = askSecretValue } = {}) {
     const typed = await readValue(args, `${what} for ${label}`)
     if (typed.refused) {
       say.err('`uniweb site secret` asks for the value, and there is no terminal here to ask in.')
-      say.dim(`A person runs it, in a terminal: uniweb site secret ${service} ${name}`)
+      // The line to run, as this one was given: its site uuid and workspace, never a value.
+      const org = args.indexOf('--org')
+      const again = [
+        'uniweb site secret', service, name,
+        ...(siteArg ? [siteArg] : []),
+        ...(org !== -1 && args[org + 1] ? ['--org', args[org + 1]] : []),
+        ...(args.includes('--personal') ? ['--personal'] : []),
+      ].join(' ')
+      say.dim(`A person runs it, in a terminal: ${again}`)
       return { exitCode: 2 }
     }
     if (!typed.value) {
