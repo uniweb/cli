@@ -112,7 +112,7 @@ import {
   readItemBaseVersions
 } from '../backend/site-sync.js'
 import { resolveWorkspace } from '../backend/workspace.js'
-import { siteContentRoots, siteLaneRoots } from '../utils/git.js'
+import { siteRoots, sentRoots, laneRoots } from '../utils/site-roots.js'
 import {
   repoOf,
   mergeInProgress,
@@ -515,7 +515,7 @@ function filesUnder(siteDir, roots) {
  * terminal to ask, refused here, and `uniweb clone` could not finish.
  */
 async function checkWorkingTree(siteDir, args) {
-  const roots = siteContentRoots(siteDir)
+  const roots = siteRoots(siteDir, { media: false })
   const written = readWritten(siteDir)
   if (filesUnder(siteDir, roots).every((f) => isPullOutput(siteDir, f, written))) return null
   // A folder the repository around it ignores is outside git too — said as such, since a
@@ -1082,7 +1082,7 @@ export async function pull(args = [], deps = {}) {
   // the base as its merge base. `--force`, and a history with no sync point, write onto
   // HEAD instead: the first to take the backend's whole, the second so a file both sides
   // hold alike merges without a word.
-  const roots = [...siteContentRoots(siteDir), 'public']
+  const roots = sentRoots(siteDir)
   let base = null
   let onto = null
   let standIn = null
@@ -1095,14 +1095,14 @@ export async function pull(args = [], deps = {}) {
       // What a sync point the branch no longer holds — a merge abandoned — was made onto.
       ...madeOnto(repo, held, { origin: client.origin, siteUuid: siteContentUuid })
     ]
-    const laneRoots = siteLaneRoots(siteDir)
+    const rootsOfLanes = laneRoots(siteDir)
     const taken = (lane) => lane && !lane.notModified && !lane.refused
     base = baseFor(repo, {
       known,
       // ⛔ What each lane the backend answered names is a base only where every lane holds it (`baseFor`).
       lanes: [
-        ...(taken(content) ? [{ source: content.source, roots: laneRoots.content }] : []),
-        ...(taken(folderLane) ? [{ source: folderLane.source, roots: laneRoots.records }] : [])
+        ...(taken(content) ? [{ source: content.source, roots: rootsOfLanes.content }] : []),
+        ...(taken(folderLane) ? [{ source: folderLane.source, roots: rootsOfLanes.records }] : [])
       ],
       origin: client.origin,
       siteUuid: siteContentUuid

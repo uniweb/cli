@@ -44,7 +44,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
+import { basename, dirname, join, posix, relative, resolve, sep } from 'node:path'
 import yaml from 'js-yaml'
 
 import {
@@ -80,6 +80,7 @@ import {
   siteTreeIn,
   unmergedPaths
 } from '../utils/sync-point.js'
+import { submoduleMountRoots } from '../utils/site-roots.js'
 import { aheadBehind, remoteMoved, upstreamOf } from '../utils/git.js'
 import { mountedRepositories, askRemote, standing, mountName, short } from '../utils/mounted-repositories.js'
 import { getLatestVersion, isBehind } from '../utils/update-check.js'
@@ -304,21 +305,12 @@ function otherUncommitted(siteDir, repo, mountedTops = []) {
     .map((abs) => relative(siteDir, abs) || '.')
 }
 
-/**
- * The folders this site mounts from elsewhere in its repository, relative to the site: a push
- * sends their pages as they are on disk, so they wait to be pushed like the site's own.
- *
- * ⛔ Until 2026-10-31 `status` read the site's own folder alone: it said "nothing waiting" over
- * four commits of mounted docs, and the push that followed sent them. A mount in a repository of
- * its own is a submodule's pin here, and reads as changed when the pin moves; one outside this
- * repository has no commit to compare with, and is left out.
- */
-async function mountedRoots(siteDir, repo) {
-  const { mountEntriesOf } = await import('@uniweb/build/site')
-  return mountEntriesOf(readSiteYml(siteDir)?.paths)
-    .map(([, dir]) => dir)
-    .filter((dir) => !isAbsolute(dir) && !posix.normalize(`${repo.prefix}${dir}`).startsWith('..'))
-}
+// ⭐ What waits to be pushed is read under the roots a push sends from — a mounted folder the site's
+// repository holds among them (`sentRoots`) — and the submodules that hold a mounted folder, whose
+// pin reads as changed when it moves (`submoduleMountRoots`, `utils/site-roots.js`). A mount outside
+// this repository has no commit to compare with, and is left out. ⛔ Until 2026-10-31 `status` read
+// the site's own folder alone: it said "nothing waiting" over four commits of mounted docs, and the
+// push that followed sent them.
 
 /**
  * Git: conflicts, a merge waiting, what is not committed, and the git remote.
@@ -408,7 +400,7 @@ async function gitChecks(siteDir, { offline, origin, mounts = [] }) {
   let localFiles = null
   const point = readSyncPoint(siteDir, origin)
   if (repo.head && point && isAncestor(repo, point) && siteTreeIn(repo, point)) {
-    localFiles = filesDifferFrom(repo, point, [...sentRoots(siteDir), ...(await mountedRoots(siteDir, repo))])
+    localFiles = filesDifferFrom(repo, point, [...sentRoots(siteDir), ...submoduleMountRoots(siteDir)])
   }
 
   const upstream = upstreamOf(siteDir)
@@ -1375,7 +1367,7 @@ function ciWorkflow(repo, host) {
 function siteCommitsSince(repo, sha, siteDir) {
   try {
     if (!isAncestor(repo, sha)) return null
-    const roots = sentRoots(siteDir).map((r) => `${repo.prefix}${r}`)
+    const roots = sentRoots(siteDir).map((r) => posix.normalize(`${repo.prefix}${r}`))
     const out = execFileSync('git', ['rev-list', '--count', `${sha}..HEAD`, '--', ...roots], {
       cwd: repo.top,
       encoding: 'utf8',

@@ -201,7 +201,31 @@ test('⛔ a content root reached through a link stops the stand-in — a write t
   mkdirSync(join(elsewhere, 'pages'), { recursive: true })
   symlinkSync(elsewhere, join(dir, 'site', 'content'), 'junction')
   assert.throws(() => openStandIn(repo, { roots: ['content/pages'], rev: repo.head }), /is a link/)
-  assert.throws(() => openStandIn(repo, { roots: ['../outside'], rev: repo.head }), /outside the site/)
+  // Out of the repository: in no commit of it. (`../outside` is the repository's own `outside/`.)
+  assert.throws(() => openStandIn(repo, { roots: ['../../outside'], rev: repo.head }), /outside the site's repository/)
+})
+
+test('⭐ a root outside the site\'s folder, in its repository, is filled from the base and committed with the rest — a mounted folder', () => {
+  const { dir } = project()
+  mkdirSync(join(dir, 'docs'), { recursive: true })
+  writeFileSync(join(dir, 'docs', 'intro.md'), '# Intro\n')
+  git(dir, 'add', '-A')
+  git(dir, 'commit', '-qm', 'docs')
+  const repo = repoOf(join(dir, 'site'))
+  // The working tree holds an edit the base does not: the stand-in must read the base, not it.
+  writeFileSync(join(dir, 'docs', 'intro.md'), '# Intro, edited here\n')
+  const stand = openStandIn(repo, { roots: ['site.yml', 'pages', '../docs'], rev: repo.head })
+  try {
+    assert.equal(readFileSync(join(stand.siteDir, '..', 'docs', 'intro.md'), 'utf8'), '# Intro\n')
+    writeFileSync(join(stand.siteDir, '..', 'docs', 'intro.md'), '# Intro, from the backend\n')
+    assert.deepEqual(stand.changes(), [['M', '../docs/intro.md']])
+    const made = stand.commit({ parent: repo.head, subject: 'sync', origin: ORIGIN, siteUuid: 'u-1' })
+    assert.equal(git(dir, 'show', `${made.commit}:docs/intro.md`), '# Intro, from the backend\n')
+  } finally {
+    stand.close()
+  }
+  // CONTROL — the working tree's own edit is untouched.
+  assert.equal(readFileSync(join(dir, 'docs', 'intro.md'), 'utf8'), '# Intro, edited here\n')
 })
 
 test('⭐ committing the roots takes what the files hold there — a rename whole, a new file — and leaves what else is staged staged', () => {

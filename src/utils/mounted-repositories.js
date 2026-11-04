@@ -23,7 +23,7 @@
  */
 
 import { execFile, execFileSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import yaml from 'js-yaml'
 import { repoOf } from './sync-point.js'
@@ -120,6 +120,37 @@ function submoduleHolding(siteTop, abs) {
   return null
 }
 
+/**
+ * Which repository holds a mounted folder, as `mountedRepositories` tells them apart:
+ * - `site`: the site's own repository holds its files — they are the site's roots (`utils/site-roots.js`);
+ * - `submodule`: a submodule of the site's repository holds it, `submodule` naming which;
+ * - `own`: a repository the site's does not record — a clone beside the site;
+ * - `none`: no repository holds it, or the site is in none.
+ *
+ * @param {string} siteDir
+ * @param {string} abs - the mounted folder
+ * @returns {{ kind: 'site'|'submodule'|'own'|'none', submodule?: { path: string, recorded: string } }}
+ */
+export function mountHolding(siteDir, abs) {
+  const site = repoOf(siteDir)
+  if (!site) return { kind: 'none' }
+  const sub = site.head ? submoduleHolding(site.top, realOf(abs)) : null
+  if (sub) return { kind: 'submodule', submodule: sub }
+  const own = existsSync(abs) ? repoOf(abs) : null
+  if (!own) return { kind: 'none' }
+  return { kind: own.top === site.top ? 'site' : 'own' }
+}
+
+// git names a repository's top by its real path, and a mount may be reached through a link (a
+// temporary folder on macOS is): compared as written, it would read as outside the repository.
+function realOf(abs) {
+  try {
+    return realpathSync(abs)
+  } catch {
+    return abs // not there: compared as written
+  }
+}
+
 /** The submodule's name in `.gitmodules`, and the branch it is told to follow there. */
 function gitmodulesEntry(siteTop, path) {
   const out = text(siteTop, ['config', '-f', '.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'])
@@ -171,13 +202,14 @@ export async function mountedRepositories(siteDir) {
   const out = []
   for (const [segment, dir] of entries) {
     const abs = resolve(siteDir, String(dir))
-    const sub = site?.head ? submoduleHolding(site.top, abs) : null
+    // ⭐ The one classification `mountHolding` gives — a submodule's mount among them.
+    const sub = site?.head ? submoduleHolding(site.top, realOf(abs)) : null
     const own = existsSync(abs) ? repoOf(abs) : null
     // A submodule never checked out is an empty folder of the site's own repository.
     const top = own && own.top !== site?.top ? own.top : null
     // In the site's own repository, or in none: the site's own git says all there is.
     if (!sub && !top) continue
-    const prefix = slash(relative(top ?? join(site.top, sub.path), abs))
+    const prefix = slash(relative(top ?? join(site.top, sub.path), realOf(abs)))
     const head = top ? text(top, ['rev-parse', 'HEAD']) : null
     let edits = []
     if (top) {

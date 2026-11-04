@@ -382,7 +382,7 @@ export function recordedAfter(repo, sha, { origin, siteUuid }) {
 /** Does the content under `roots` differ between two commits? Anything but "no" counts as yes. */
 function differsIn(repo, a, b, roots) {
   try {
-    git(repo.top, ['diff', '--quiet', a, b, '--', ...roots.map((r) => `${repo.prefix}${r}`)])
+    git(repo.top, ['diff', '--quiet', a, b, '--', ...roots.map((r) => underTop(repo, r))])
     return false
   } catch {
     return true
@@ -416,11 +416,16 @@ function differsIn(repo, a, b, roots) {
  * @returns {{ siteDir: string, commit: Function, changes: Function, placeIgnored: Function, close: Function }}
  */
 export function openStandIn(repo, { roots, rev }) {
-  for (const r of roots) {
-    if (r.split('/').includes('..') || r.startsWith('/')) {
-      throw new Error(`the content root \`${r}\` is outside the site, so a pull cannot merge it`)
+  // ⭐ A root is named relative to the site and held by the repository, so one outside the site's
+  // folder — a mounted folder elsewhere in the repository — is filled and committed like the rest.
+  // One outside the repository is in no commit of it. ⛔ Until 2026-11-04 every root leading out of
+  // the site's folder was refused, so a mount was left out of the merge, linked to the working tree.
+  const full = roots.map((r) => underTop(repo, r))
+  roots.forEach((r, i) => {
+    if (r.startsWith('/') || full[i] === '..' || full[i].startsWith('../')) {
+      throw new Error(`the content root \`${r}\` is outside the site's repository, so a pull cannot merge it`)
     }
-  }
+  })
   const root = mkdtempSync(join(tmpdir(), 'uniweb-stand-in-'))
   const indexDir = mkdtempSync(join(tmpdir(), 'uniweb-stand-in-index-'))
   const env = { GIT_INDEX_FILE: join(indexDir, 'index') }
@@ -441,7 +446,6 @@ export function openStandIn(repo, { roots, rev }) {
 
   try {
     const sitePrefix = repo.prefix // '' or 'site/'
-    const full = roots.map((r) => `${sitePrefix}${r}`)
     const fullSet = new Set(full)
     const sitePath = sitePrefix.replace(/\/$/, '')
     const inSite = (name) => (sitePath ? `${sitePath}/${name}` : name)
@@ -569,7 +573,7 @@ export function openStandIn(repo, { roots, rev }) {
         if (occupied(to)) continue
         mkdirSync(dirname(to), { recursive: true })
         copyFileSync(join(root, p), to)
-        placed.push(sitePrefix && p.startsWith(sitePrefix) ? p.slice(sitePrefix.length) : p)
+        placed.push(siteRelative(repo, p))
       }
       return placed
     }
@@ -584,7 +588,7 @@ export function openStandIn(repo, { roots, rev }) {
     const changes = () => {
       const roots = full.filter((f) => present.includes(f) || existsSync(join(root, f)))
       if (!roots.length) return []
-      const site = (p) => (sitePrefix && p.startsWith(sitePrefix) ? p.slice(sitePrefix.length) : p)
+      const site = (p) => siteRelative(repo, p)
       const out = []
       const tracked = zlist(at(['diff', '--name-status', '-z', '--no-renames', '--', ...roots]))
       for (let i = 0; i + 1 < tracked.length; i += 2) out.push([tracked[i], site(tracked[i + 1])])
@@ -696,7 +700,7 @@ export function mergeSyncPoint(repo, commit, { message }) {
  */
 export function takeSyncPoint(repo, commit, { roots, message }) {
   if (mergeInProgress(repo)) return { ok: false, reason: 'merge-in-progress' }
-  const full = [...roots.map((r) => `${repo.prefix}${r}`)]
+  const full = roots.map((r) => underTop(repo, r))
   try {
     const tracked = zlist(git(repo.top, ['ls-tree', '--name-only', '-z', '--full-tree', 'HEAD', '--', ...full]))
     if (tracked.length) git(repo.top, ['checkout', 'HEAD', '--', ...tracked])
@@ -739,7 +743,7 @@ export function changedInFiles(repo, { from, files, staged = false, skip = [] })
     )
     return moved
       .filter(([s, p]) => s !== 'U' && !skip.includes(p) && differs.has(p))
-      .map(([s, p]) => [s, repo.prefix && p.startsWith(repo.prefix) ? p.slice(repo.prefix.length) : p])
+      .map(([s, p]) => [s, siteRelative(repo, p)])
   } catch {
     return []
   }
@@ -847,7 +851,9 @@ export function commitRoots(repo, roots, { message, identity = null }) {
   return { commit: gitText(repo.top, ['rev-parse', 'HEAD']).trim(), paths: staged.map((p) => siteRelative(repo, p)) }
 }
 
-const siteRelative = (repo, p) => (repo.prefix && p.startsWith(repo.prefix) ? p.slice(repo.prefix.length) : p)
+// A path relative to the site, as git names it from the repository's top: one outside the site's folder
+// comes out as `../docs/intro.md`.
+const siteRelative = (repo, p) => posix.relative(repo.prefix.replace(/\/$/, '') || '.', p) || '.'
 
 // A path relative to the site, as the repository names it. `../src/main.js` comes out as `src/main.js`.
 const underTop = (repo, p) => posix.normalize(`${repo.prefix}${p}`)

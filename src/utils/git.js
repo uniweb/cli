@@ -22,68 +22,11 @@
  */
 
 import { execFile, execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import yaml from 'js-yaml'
 import { repoOf } from './sync-point.js'
 
-/**
- * The files and directories `uniweb pull` writes into.
- *
- * ONE definition, shared by the guard that stops a pull outside git and the merge a
- * pull makes in a repository, whose sync points hold exactly these (and `public/`, where
- * the media land) — a second copy would drift, and a stale list here means a guard that
- * misses or a merge that drops a file. `paths:` can relocate the content roots, so the
- * local site.yml is consulted rather than assuming the defaults.
- */
-export function siteContentRoots(siteDir) {
-  // ⚠️ `queries.yml` IS AT THE SITE ROOT, and that is why it must be named here.
-  // Its predecessor lived at `collections/collections.yml`, so the `collections`
-  // root added below already covered it and the bare `'collections.yml'` entry
-  // that used to sit in this list resolved to a path no site ever had. A
-  // root-level file has no directory entry standing in for it.
-  //
-  // The records folder's `folder.yml` is the reverse case: it lives in the records
-  // directory, which is a root below, so it needs no entry. (It was `records.yml` at
-  // the site root until 2026-09-21, and was listed here then.)
-  const roots = new Set([
-    'site.yml',
-    'theme.yml',
-    'head.html',
-    'queries.yml',
-    'locales'
-  ])
-  let paths = {}
-  try {
-    paths =
-      yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))?.paths || {}
-  } catch {
-    /* no or unreadable site.yml — the defaults are right */
-  }
-  roots.add(paths.pages || 'pages')
-  roots.add(paths.layout || 'layout')
-  roots.add(paths.records || 'records')
-  return [...roots]
-}
-
-/**
- * What each lane of a push carries, as roots: the folder lane the records — their files,
- * and their translations — and the content lane everything else a pull writes, media
- * (`public/`) included. ⚠️ `locales` stays whole on the content side, record translations
- * with it: a root too many there costs a less precise base, never a wrong one.
- */
-export function siteLaneRoots(siteDir) {
-  let records = 'records'
-  try {
-    records = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))?.paths?.records || 'records'
-  } catch {
-    /* no or unreadable site.yml — the default is right */
-  }
-  return {
-    content: [...siteContentRoots(siteDir), 'public'].filter((r) => r !== records),
-    records: [records, 'locales/records']
-  }
-}
+// The roots a pull writes into and a push sends from are the build's to say, mounts included: they
+// moved to `utils/site-roots.js` on 2026-11-04, which may import `@uniweb/build` — this module may not,
+// since the CLI's entry loads it.
 
 function git(args, cwd) {
   return execFileSync('git', args, {

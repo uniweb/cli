@@ -27,7 +27,7 @@ import {
   unmergedPaths,
   mergeInProgress
 } from '../utils/sync-point.js'
-import { siteContentRoots } from '../utils/git.js'
+import { sentRoots } from '../utils/site-roots.js'
 import { humanBytes } from '../utils/bytes.js'
 import {
   describeRequestError,
@@ -1095,8 +1095,9 @@ export function holdUnchangedPush(siteDir, backend) {
   return repo.head
 }
 
-/** What a push sends from the files: the site's content, and its media (`public/`). */
-export const sentRoots = (siteDir) => [...siteContentRoots(siteDir), 'public']
+// What a push sends from the files — the site's content, its media (`public/`) and the mounted folders
+// its repository holds — is `utils/site-roots.js`'s to say; re-exported for the readers that ask here.
+export { sentRoots }
 
 /**
  * ⛔ IN A REPOSITORY, A PUSH SENDS WHAT IS COMMITTED. The commit a push is made from is where
@@ -1104,10 +1105,10 @@ export const sentRoots = (siteDir) => [...siteContentRoots(siteDir), 'public']
  * the push sends must be what that commit holds. Returns the refusal, or null: outside a
  * repository nothing is kept to merge from.
  *
- * ⚠️ Not yet for a page folder mounted from elsewhere in the same repository (`paths: {
- * pages/<segment> }`): `sentRoots` names no mount, so its uncommitted edits go out with the push,
- * which names HEAD (measured 2026-11-04). A mount that is its own repository is held to its
- * commits by `mounts-before-sending.js`.
+ * ⭐ A page folder mounted from elsewhere in the same repository (`paths: { pages/<segment> }`) is
+ * one of `sentRoots`, so it is held to its commits like the site's pages. ⛔ Until 2026-11-04 no
+ * mount was: its uncommitted edits went out with the push, which named HEAD (measured that day).
+ * A mount that is a repository of its own is held to its commits by `mounts-before-sending.js`.
  *
  * ⛔ Until 2026-10-18 a push sent uncommitted edits on top of HEAD and recorded HEAD. Measured
  * against a real backend: an edit pushed that way and undone before the next pull came back
