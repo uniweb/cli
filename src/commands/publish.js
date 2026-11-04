@@ -89,7 +89,7 @@ import {
   describeSyncedElsewhere
 } from '../utils/site-identity.js'
 import { isNonInteractive, confirm } from '../utils/interactive.js'
-import { guardEmptyRecords, noteFolderLeftAlone } from '../utils/records-guard.js'
+import { guardEmptyRecords, noteFolderLeftAlone, noteMovedRecords } from '../utils/records-guard.js'
 import { findSiteCopies, describeSiteCopies } from '../utils/site-copies.js'
 import { headProvenance } from '../utils/git.js'
 import {
@@ -988,6 +988,7 @@ export async function publish(args = []) {
   for (const w of pkg.warnings) say.dim(`! ${w}`)
   // A folder this publish leaves alone while the backend's still holds records — see `uniweb push`.
   await noteFolderLeftAlone({ pkg, siteDir, backend: client.origin, note: (m) => say.dim(m) })
+  noteMovedRecords({ pkg, siteDir, note: (m) => say.dim(m) })
   if (refuseUnsendableRecords(pkg.refusals, { error: say.err, note: say.dim })) {
     return { exitCode: 1 }
   }

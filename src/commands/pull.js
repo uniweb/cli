@@ -108,6 +108,7 @@ import {
   reportWriteBacks,
   writeItemUuids,
   writeFolderItemUuids,
+  writeHeldTypes,
   readItemBaseVersions
 } from '../backend/site-sync.js'
 import { resolveWorkspace } from '../backend/workspace.js'
@@ -1220,6 +1221,8 @@ export async function pull(args = [], deps = {}) {
       // and the backend refused that push (`identity_required`, section `contents`) —
       // measured on a template clone's first edit.
       if (folderDoc) writeFolderItemUuids(projDir, client.origin, collectFolderItemUuids(folderDoc))
+      // …and what each record is held as, so a push can tell a record whose file moved schema.
+      if (folderDoc) writeHeldTypes(projDir, client.origin, folderDoc)
       // The folder's organization, `folder.yml` in the records directory — named as
       // the author would write it (`records/folder.yml`, or under `paths.records`).
       if (report.records === 'updated') {

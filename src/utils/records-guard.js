@@ -19,6 +19,7 @@
 // last saw the folder hold. It needs no network call, and it is the right source:
 // a site that has never pushed has nothing to lose and is never asked.
 
+import { relative } from 'node:path'
 import { readEntityPool } from '@uniweb/build/uwx'
 import { readFolderItemUuids } from '../backend/site-sync.js'
 import { confirm, isNonInteractive, getCliPrefix } from './interactive.js'
@@ -119,4 +120,41 @@ export async function noteFolderLeftAlone({ pkg, siteDir, backend, note }) {
       `— the push asks first.`
   )
   return count
+}
+
+/**
+ * Say which records this push moves to another data schema, and what that does.
+ *
+ * A record whose file now sits under another schema than the one the backend holds it as goes up
+ * as a new record of the new schema, in the folder entry the old one had (`heldTypes`,
+ * `@uniweb/build`). The backend keeps the old record, in no folder, so no site serves it. A field
+ * the file holds as `#ref`, a set secret, arrives unset on the new record [backend, 2026-11-04].
+ *
+ * @param {object} params
+ * @param {object} params.pkg - what `emitSyncPackages` returned
+ * @param {string} params.siteDir
+ * @param {(m: string) => void} params.note - the caller's reporter
+ * @returns {number} how many records move
+ */
+export function noteMovedRecords({ pkg, siteDir, note }) {
+  const moved = (pkg?.records?.index || []).filter((e) => e?.moved)
+  if (!moved.length) return 0
+  const where = (e) => (e.sourceFile ? relative(siteDir, e.sourceFile) : e.id)
+  const one = moved.length === 1
+  note(
+    `↻ ${one ? 'A record moves' : `${moved.length} records move`} to another schema: ${one ? 'it goes' : 'each goes'} ` +
+      `up as a new record, in the place the old one had in the site's folder.`
+  )
+  for (const e of moved) note(`    ${where(e)}: ${e.moved.from} → ${e.moved.to}`)
+  note(`  The backend keeps the old ${one ? 'record' : 'records'}, in no folder, so no site serves ${one ? 'it' : 'them'}.`)
+  for (const e of moved) {
+    const secrets = e.moved.secrets || []
+    if (secrets.length) {
+      note(
+        `  ! ${where(e)}: ${secrets.map((s) => `\`${s}\``).join(', ')} ${secrets.length === 1 ? 'holds a secret' : 'hold secrets'}, ` +
+          'which stay with the old record. Set them again on the new one, in the app.'
+      )
+    }
+  }
+  return moved.length
 }

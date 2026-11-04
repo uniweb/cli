@@ -48,6 +48,7 @@ import {
   collectSiteUnits,
   collectUnitUuids,
   collectFolderItemUuids,
+  collectFolderRecordTypes,
   collectQueryUuids,
   siteItemsByKey,
   sameServiceRow,
@@ -1327,6 +1328,17 @@ export function writeFolderItemUuids(siteDir, backend, map) {
   if (!map || !Object.keys(map).length) return
   updateBackendMap(siteDir, backend, 'folders', map)
 }
+/**
+ * What the backend holds each record as — its uuid → the data schema its folder entry names —
+ * banked wherever placements are, from the same folder document. An entity keeps its schema for
+ * life, so an entry never goes stale. A push reads it to tell a record whose file moved to another
+ * schema (`@uniweb/build`'s `heldTypes`), and sends that record as a new one in the entry it had.
+ */
+export function writeHeldTypes(siteDir, backend, folderDoc) {
+  const map = collectFolderRecordTypes(folderDoc)
+  if (!Object.keys(map).length) return
+  updateBackendMap(siteDir, backend, 'types', map)
+}
 export function writeItemUuids(siteDir, backend, map) {
   if (!map || !Object.keys(map).length) return
   updateBackendMap(siteDir, backend, 'items', map)
@@ -1447,11 +1459,36 @@ export async function recoverRecordsIdentity({ client, siteDir, index, note }) {
     const placements = collectFolderItemUuids(folderDoc)
     const missing = Object.fromEntries(Object.entries(placements).filter(([k]) => !folders[k]))
     writeFolderItemUuids(siteDir, client.origin, missing)
+    writeHeldTypes(siteDir, client.origin, folderDoc)
     const placed = Object.keys(missing).length
     if (matched || placed) {
       note?.(`Recovered the identity of ${matched} record(s) and ${placed} folder placement(s) from the backend.`)
     }
     return matched + placed
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Read what the backend holds each of the site's records as, from its folder, and bank it
+ * (`writeHeldTypes`). Called when a push was refused for a record changing type, which a copy
+ * that had banked the types would have sent as a move. Best-effort, like
+ * `recoverRecordsIdentity`.
+ *
+ * @returns {Promise<number>} how many records' types were learned
+ */
+export async function learnHeldTypes({ client, siteDir }) {
+  const siteUuid = readBackendState(siteDir, client.origin).site?.uuid || null
+  if (!siteUuid) return 0
+  try {
+    const res = await client.pullFolder(siteUuid)
+    if (!res?.ok) return 0
+    const docs = entityDocsFromUwx(Buffer.from(await res.arrayBuffer()))
+    const folderDoc = docs.find((d) => d?.$schema === '@uniweb/folder')
+    if (!folderDoc) return 0
+    writeHeldTypes(siteDir, client.origin, folderDoc)
+    return Object.keys(collectFolderRecordTypes(folderDoc)).length
   } catch {
     return 0
   }
@@ -2411,41 +2448,51 @@ export async function pushSyncPackages({
         // which is the case this message now names. Suggesting it there sends the
         // user to re-fetch a map they already have.
         if (problem.detail) note(String(problem.detail))
-        // ⭐ THE SITE'S FOLDER: one placement per record, keyed by the record it references, so
-        // its placements are all new when its records are — every record moved to another data
-        // schema, where a record keeps its type and each becomes a new one. The backend cannot
-        // tell that from identity lost, so it refuses, and the route is an empty folder first.
-        // ⛔ Until 2026-10-29 this said nothing more, and the type-change advice below led here:
-        // thirteen gallery records moving from @std/project to their foundation's own schema.
+        // ⭐ THE SITE'S FOLDER: one entry per record. A push finds an entry's `$uuid` by the record
+        // it holds, or by its name when no other entry shares it, so an entry is new only when its
+        // record is new to this backend AND its name is new. A record moved to another schema
+        // keeps its entry while its file keeps its `$uuid` (`heldTypes`, `@uniweb/build`).
+        // ⛔ Until 2026-11-04 this said a placement is new when its record is, and sent the author
+        // to an empty folder first, which left the draft with no records. The refusal it answered
+        // (2026-10-29) came from files renamed as they moved, with their `$uuid` lines deleted.
         if (label === 'records' && where === 'contents') {
           note(
-            "That section is the site's folder, one placement per record, and a placement is new when its " +
-              'record is — as when every record has moved to another data schema.'
+            "That section is the site's folder, one entry per record. An entry is found by the record it holds, " +
+              'or by its name, so records whose files lost their `$uuid` lines and were renamed come back as ' +
+              'entries that are all new.'
           )
           note(
-            'To replace every record in the folder: push once with the records directory there and holding ' +
-              'nothing at all (the push asks, then removes them), then put the records back and push again.'
+            "Put back each file's `$uuid` line (git has it), then push again: a record moved to another schema " +
+              'then goes up as a new record, in the place the old one had.'
+          )
+          note(
+            'To replace every record in the folder with new ones instead, push once with the records directory ' +
+              'there and holding nothing at all (the push asks, then removes them), then put the records back.'
           )
         }
         return null
       }
-      // ⭐ A RECORD KEEPS ITS TYPE. A record file moved to another type's folder keeps its `$uuid`, and
-      // the backend refuses it as that type (`type_changed`, naming the record and both types), before
-      // writing anything. Storing it as the new type makes it a new record.
+      // ⭐ A RECORD KEEPS ITS TYPE. The backend refuses, before writing anything, a record sent with
+      // its `$uuid` under another type (`type_changed`). A copy that knows what each record is held
+      // as sends a moved one as a new record in the entry it had (`heldTypes`), so this refusal
+      // means this copy had not banked that, as no copy had before 2026-11-04. Learn it from the
+      // folder, and the next push sends the move.
       if (problem?.reason === 'type_changed') {
         error(`${label} push refused — a stored record would change its type.`)
         if (problem.detail) note(String(problem.detail))
-        note(
-          'A record keeps its type. To store it as the new type, make it a new record: delete the ' +
-            '`$uuid` line from its file, then push again.'
-        )
-        // ⚠️ Not the whole route when every record of the folder moves at once: each is then new,
-        // and so is every placement, which the folder refuses (`identity_required` above).
-        note(
-          'Moving every record in the folder to a new type? Then the folder refuses that push too: empty it ' +
-            'first — push once with the records directory there and holding nothing at all — then put the ' +
-            'records back without `$uuid` and push again.'
-        )
+        const learned = await learnHeldTypes({ client, siteDir })
+        if (learned) {
+          note(
+            `This copy now knows the type the backend holds each of ${learned} record(s) as. Push again: a ` +
+              'record moved to another schema then goes up as a new record, in the place the old one had in ' +
+              "the site's folder, and the backend keeps the old one."
+          )
+        } else {
+          note(
+            'A record keeps its type, so a record moved to another schema goes up as a new one: delete the ' +
+              '`$uuid` line from its file, keep its name for this push, then push again.'
+          )
+        }
         return null
       }
       if (problem?.reason === 'stale_base') {
@@ -2920,6 +2967,7 @@ export async function pushSyncPackages({
       const placements = collectFolderItemUuids(folderDoc)
       if (Object.keys(placements).length)
         writeFolderItemUuids(siteDir, client.origin, placements)
+      writeHeldTypes(siteDir, client.origin, folderDoc)
       // ⭐ A LINK RECORD'S IDENTITY is its folder entry's `$uuid`, banked as a record's is: into
       // its file the first time, then mapped per backend (`link-records.js`, 2026-09-28).
       if (records.links?.length) {

@@ -1623,7 +1623,7 @@ test('pushSyncPackages: a 409 is shown as the backend names it — with no expla
   rmSync(dir, { recursive: true, force: true })
 })
 
-test('pushSyncPackages: a record that would change its type is explained — keep it, or make it a new record', async () => {
+test('pushSyncPackages: a record that would change its type is explained — with nothing to learn from, make it a new record', async () => {
   const dir = tmpSite()
   const client = {
     origin: 'http://x',
@@ -1645,10 +1645,34 @@ test('pushSyncPackages: a record that would change its type is explained — kee
   assert.equal(res.exitCode, 1)
   assert.ok(calls.error.some((m) => /would change its type/.test(m)))
   assert.ok(calls.note.some((m) => /stored as @acme\/note/.test(m)), 'the backend\'s naming of the record')
-  assert.ok(calls.note.some((m) => /delete the `\$uuid` line/.test(m)), 'what to do')
-  // ⛔ Not the whole route when every record of the folder moves: that advice alone led straight
-  // into the folder's own refusal (2026-10-29).
-  assert.ok(calls.note.some((m) => /Moving every record in the folder to a new type\?.*empty it/.test(m)), 'the whole-folder route')
+  // An unbound copy has no folder to learn the types from, so it says what works by hand.
+  assert.ok(calls.note.some((m) => /delete the `\$uuid` line from its file, keep its name for this push/.test(m)), 'what to do')
+  // ⛔ No longer the empty-folder route: a move keeps its entries (`heldTypes`, 2026-11-04).
+  assert.ok(!calls.note.some((m) => /empty it/.test(m)))
+  rmSync(dir, { recursive: true, force: true })
+})
+
+test('⭐ pushSyncPackages: a type refusal learns what each record is held as, so the next push sends the move', async () => {
+  // A copy banked before 2026-11-04 knows no types, so it sent a moved record with its `$uuid`.
+  const dir = tmpSite()
+  bind(dir, 'SITE')
+  let read = null
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () =>
+      fail(409, JSON.stringify({ status: 409, title: 'Type Changed', reason: 'type_changed', detail: 'record T1 is stored as @std/article' })),
+    pullFolder: async (uuid) => {
+      read = uuid
+      return folderLane([STORED_FOLDER, STORED_T1, STORED_T2])
+    }
+  }
+  const { report, calls } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg: siteOnlyPkg({ siteContentUuid: 'SITE', hashes: { x: 'y' } }), report })
+  assert.equal(res.exitCode, 1)
+  assert.equal(read, 'SITE', 'read by the site the copy is bound to')
+  const state = JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends[ORIGIN]
+  assert.deepEqual(state.types, { T1: '@std/article', T2: '@std/article' })
+  assert.ok(calls.note.some((m) => /now knows the type the backend holds each of 2 record\(s\) as\. Push again/.test(m)), calls.note.join('\n'))
   rmSync(dir, { recursive: true, force: true })
 })
 
@@ -1686,8 +1710,10 @@ test('pushSyncPackages: the folder refusing every placement as new is explained 
     assert.equal(res.exitCode, 1)
     const out = [...calls.error, ...calls.note].join('\n')
     assert.match(out, /records push refused — one section carries no item identity \(section contents\)/)
-    assert.match(out, /the site's folder, one placement per record/)
-    assert.match(out, /push once with the records directory there and holding nothing at all/)
+    assert.match(out, /the site's folder, one entry per record/)
+    assert.match(out, /Put back each file's `\$uuid` line \(git has it\)/)
+    // The empty-folder route stays, last, for replacing every record with new ones.
+    assert.match(out, /To replace every record in the folder with new ones instead, push once with the records directory/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -3362,6 +3388,7 @@ test('⭐ a copy that lost its records and folder maps recovers both from one re
   assert.deepEqual(state.records, { U1: 'T1', U2: 'T2' })
   assert.deepEqual(state.folders, { '@T1': 'P1', '@T2': 'P2', designing: 'P1', start: 'P2' })
   assert.deepEqual(state.recordItems, { T1: { 'links[0]': 'L1' }, T2: {} }, 'the list items of the matched records, from the same read')
+  assert.deepEqual(state.types, { T1: '@std/article', T2: '@std/article' }, 'what each placed record is held as, from the same read')
   assert.match(said[0], /Recovered the identity of 2 record\(s\) and 4 folder placement\(s\)/)
 })
 
