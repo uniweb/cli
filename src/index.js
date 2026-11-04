@@ -2104,15 +2104,21 @@ ${colors.bright}Usage:${colors.reset}
   uniweb site list [--json]
   uniweb site unpublish [<site-uuid>] [--yes]
   uniweb site delete [<site-uuid>] [--yes]
+  uniweb site secret <service> <name> [<site-uuid>]
+  uniweb site secret <service> <name> --clear [<site-uuid>] [--yes]
 
 ${colors.bright}list${colors.reset} gives each site's name, uuid, and whether it is live.
 ${colors.bright}unpublish${colors.reset} takes a site offline, and its content stays.
 ${colors.bright}delete${colors.reset} removes a site for good. A live site must be unpublished first.
+${colors.bright}secret${colors.reset} sets a secret one of the site's services uses, such as an ad platform's
+token (\`uniweb site secret x token\`). It asks for the value at a prompt that doesn't
+show it: no argument or file carries one, and with no terminal it refuses. The live
+site has it from its next publish. \`--clear\` removes it.
 
-Without a uuid, \`unpublish\` and \`delete\` act on the site this project is synced to.
-Both ask first, and \`--yes\` is the only way past the question: with no terminal and
-no \`--yes\` they refuse. Deleting this project's own site also forgets it here, so the
-next push creates a new one.
+Without a uuid, \`unpublish\`, \`delete\` and \`secret\` act on the site this project is synced to.
+\`unpublish\`, \`delete\` and \`secret --clear\` ask first, and \`--yes\` is the only way
+past the question: with no terminal and no \`--yes\` they refuse. Deleting this
+project's own site also forgets it here, so the next push creates a new one.
 
 ${colors.bright}Options:${colors.reset}
   --json             \`list\`: print JSON

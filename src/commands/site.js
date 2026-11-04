@@ -4,8 +4,11 @@
  *   uniweb site list [--json]                   each site's name, uuid, and whether it is live
  *   uniweb site unpublish [<site-uuid>] [--yes]  take a site offline; its content stays
  *   uniweb site delete [<site-uuid>] [--yes]     delete a site — final, no restore
+ *   uniweb site secret <service> <name> [<site-uuid>]          set a secret a service uses;
+ *                                                              it asks for the value
+ *   uniweb site secret <service> <name> --clear [<site-uuid>]  clear it
  *
- * Without a uuid, `unpublish` and `delete` act on the site this project is synced to on
+ * Without a uuid, `unpublish`, `delete` and `secret` act on the site this project is synced to on
  * that backend. The workspace is the command's (`--org @x` / `--personal`), else the
  * login's — as for every site request.
  *
@@ -28,6 +31,7 @@ import { join, resolve } from 'node:path'
 import { BackendClient, WorkspaceMismatchError, describeWorkspace } from '../backend/client.js'
 import { resolveWorkspace } from '../backend/workspace.js'
 import { liveAddress } from '../backend/live-address.js'
+import { AD_PLATFORMS } from '../backend/ad-platforms.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import { confirm, isNonInteractive } from '../utils/interactive.js'
 import { readSiteIdentity } from '../utils/site-identity.js'
@@ -57,8 +61,14 @@ const USAGE = [
   '  list [--json]                    The sites in the workspace: name, uuid, whether live',
   '  unpublish [<site-uuid>] [--yes]   Take a site offline (its content stays)',
   '  delete [<site-uuid>] [--yes]      Delete a site — final',
+  '  secret <service> <name> [<site-uuid>]',
+  '                                    Set a secret a service of the site uses (an ad',
+  "                                    platform's token: secret x token). It asks for",
+  '                                    the value, which no argument or file carries',
+  '  secret <service> <name> --clear [<site-uuid>]',
+  '                                    Clear it',
   '',
-  'Without a uuid, unpublish and delete act on the site this project is synced to.',
+  'Without a uuid, unpublish, delete and secret act on the site this project is synced to.',
   'The workspace is --org @x or --personal, else the one chosen at login.'
 ].join('\n')
 
@@ -160,8 +170,8 @@ async function list(args) {
  * The site a write verb acts on: the uuid given, else this project's site on the
  * backend the client goes to. Null, with the reason said, when there is neither.
  */
-async function targetSite(args, client, verb) {
-  const [, given] = positionals(args)
+async function targetSite(args, client, verb, at = 1) {
+  const given = positionals(args)[at]
   if (given) {
     if (!UUID.test(given)) {
       say.err(`\`${given}\` is not a site uuid.`)
@@ -332,6 +342,127 @@ async function remove(args) {
   return { exitCode: 0 }
 }
 
+/**
+ * The secret's value, typed by the person running the command at a prompt that doesn't show it.
+ * `{ refused: true }` when there is nobody to ask; `{ value: '' }` when they typed nothing.
+ */
+async function askSecretValue(args, label) {
+  if (isNonInteractive(args)) return { refused: true }
+  const prompts = (await import('prompts')).default
+  let cancelled = false
+  const { value } = await prompts(
+    { type: 'password', name: 'value', message: `${label}:`, stdout: process.stderr },
+    { onCancel: () => (cancelled = true) }
+  )
+  return { value: cancelled || typeof value !== 'string' ? '' : value }
+}
+
+/** What a `400 invalid_field` said, in words: the body key and why. */
+function invalidField(body) {
+  const why = {
+    required: 'is required',
+    one_of: 'is not one the backend takes',
+    required_when: 'must name the service it is for',
+    renamed_service: 'names a retired service',
+  }
+  return `the ${body.field} ${why[body.reason] || `was refused (${body.reason})`}`
+}
+
+/**
+ * `uniweb site secret <service> <name> [<site-uuid>]` — set a secret one of the site's services
+ * uses, its value typed at a prompt that doesn't show it. `--clear` removes it.
+ *
+ * ⛔ THE VALUE COMES FROM THE PERSON AT A TERMINAL, NEVER FROM AN ARGUMENT, A FILE OR A PIPE. An
+ * argument lands in shell history and in an agent's transcript, a file is a copy left behind, and
+ * a pipe is how an agent would pass one on. So with no terminal the command refuses and says who
+ * runs it. A fourth argument that is not a site uuid may be the value itself, so it is never
+ * echoed.
+ *
+ * ⭐ An ad platform's token is for the host, which sends the site's conversions on with it
+ * (`AD_PLATFORMS`), so for those the request names the host as the secret's reader. For any other
+ * service it names none: the backend keeps the reader a secret already has, and a new one is the
+ * site's own.
+ *
+ * A set or a clear reaches the live site at its next publish, so the command says to publish.
+ *
+ * @param {string[]} args
+ * @param {{ readValue?: (args: string[], label: string) => Promise<{ value?: string, refused?: boolean }> }} [io]
+ */
+export async function siteSecret(args, { readValue = askSecretValue } = {}) {
+  const [, service, name, siteArg, ...extra] = positionals(args)
+  const clear = args.includes('--clear')
+  if (!service || !name) {
+    say.err('Name the service and the secret: uniweb site secret <service> <name>, e.g. uniweb site secret x token')
+    return { exitCode: 2 }
+  }
+  if ((siteArg && !UUID.test(siteArg)) || extra.length) {
+    say.err('`uniweb site secret` takes a service, a name and, optionally, a site uuid — nothing else.')
+    say.dim("A secret's value is never given on the command line: the command asks for it.")
+    say.dim('If what you typed was the value, it is now in your shell history: replace it where it was issued.')
+    return { exitCode: 2 }
+  }
+  const what = `${service}'s ${name}`
+  const conn = await connect(args, clear ? 'Clearing a secret' : 'Setting a secret')
+  if (conn.refused) {
+    say.err(conn.refused)
+    return { exitCode: 2 }
+  }
+  const { client } = conn
+  const target = await targetSite(args, client, `secret ${service} ${name}${clear ? ' --clear' : ''}`, 3)
+  if (!target) return { exitCode: 2 }
+  const listed = await findSite(client, target.uuid)
+  const label = listed?.name ? `“${listed.name}” (${target.uuid})` : target.uuid
+  const forHost = AD_PLATFORMS.has(service)
+
+  let res
+  if (clear) {
+    const ok = await confirmed(
+      args,
+      `Clear ${what} on ${label}, on ${client.origin}? The live site keeps it until its next publish.`,
+      `secret ${service} ${name} --clear`
+    )
+    if (!ok.yes) return { exitCode: ok.exitCode }
+    res = await client.clearSiteSecret(target.uuid, { service, name })
+  } else {
+    const typed = await readValue(args, `${what} for ${label}`)
+    if (typed.refused) {
+      say.err('`uniweb site secret` asks for the value, and there is no terminal here to ask in.')
+      say.dim(`A person runs it, in a terminal: uniweb site secret ${service} ${name}`)
+      return { exitCode: 2 }
+    }
+    if (!typed.value) {
+      say.info('Nothing typed — nothing changed.')
+      return { exitCode: 0 }
+    }
+    res = await client.setSiteSecret(target.uuid, {
+      service,
+      name,
+      ...(forHost ? { consumer: 'hosting' } : {}),
+      value: typed.value,
+    })
+  }
+
+  if (!res.ok) {
+    const body = await res.clone().json().catch(() => null)
+    if (res.status === 400 && body?.reason && body?.field) {
+      say.err(`The backend refused it: ${invalidField(body)}.`)
+    } else if (res.status === 404 && listed) {
+      say.err(`${client.origin} lists this site but answered 404 to its secret — it may run a backend older than this command.`)
+    } else {
+      await sayRefusal(res, { uuid: target.uuid, verb: clear ? 'clear a secret on' : 'set a secret on', origin: client.origin })
+    }
+    return { exitCode: 1 }
+  }
+  const body = await res.json().catch(() => null)
+  if (clear) {
+    say.ok(`Cleared ${what} on ${label}.`)
+  } else {
+    say.ok(`Set ${what} on ${label}${body?.mask ? `: ${body.mask}` : ''}${forHost ? ', for your host to use' : ''}.`)
+  }
+  say.dim('The live site has it from its next publish: uniweb publish')
+  return { exitCode: 0 }
+}
+
 export async function site(args = []) {
   const badFlag = checkFlags('site', args)
   if (badFlag) {
@@ -343,6 +474,7 @@ export async function site(args = []) {
     if (sub === 'list') return await list(args)
     if (sub === 'unpublish') return await unpublish(args)
     if (sub === 'delete') return await remove(args)
+    if (sub === 'secret') return await siteSecret(args)
   } catch (err) {
     say.err(err instanceof WorkspaceMismatchError ? err.message : err?.message || String(err))
     return { exitCode: 1 }

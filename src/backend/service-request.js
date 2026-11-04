@@ -28,6 +28,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { readServicesRequest, unreadableServices } from '@uniweb/build/uwx'
+import { AD_PLATFORMS } from './ad-platforms.js'
 
 /**
  * A stable fingerprint of one declared value, or `null` when the key is absent.
@@ -194,9 +195,9 @@ export function serviceNotes({ siteYml, supports = null, warn = () => {} }) {
   }
   if (!Array.isArray(supports)) return notes
   // None of these is something a foundation renders: `google` and `tracking` load or report
-  // whatever the foundation is, `meta` and `x` hear its conversions from the host, and `records`
+  // whatever the foundation is, an ad platform hears its conversions from the host, and `records`
   // is invisible to it.
-  const ignored = new Set(['tracking', 'records', 'google', 'meta', 'x'])
+  const ignored = new Set(['tracking', 'records', 'google', ...AD_PLATFORMS])
   const has = (ask) => ask.enabled !== false || typeof ask.config?.endpoint === 'string'
   const unrendered = asks.filter((a) => has(a) && !ignored.has(a.name) && !supports.includes(a.name)).map((a) => a.name)
   if (unrendered.length) {

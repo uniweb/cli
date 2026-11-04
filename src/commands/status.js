@@ -88,6 +88,7 @@ import { classifyPackage, findSites, findWorkspaceRoot, isWorkspaceRoot } from '
 import { siteAround } from '../utils/pick-site.js'
 import { getCliVersion } from '../versions.js'
 import { planNext } from '../utils/status-next.js'
+import { AD_PLATFORMS } from '../backend/ad-platforms.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -1402,7 +1403,7 @@ const list = (names) => names.map((n) => `\`${n}\``).join(', ')
  * 2026-11-03]. By that comparison each would read "not live yet" for ever, and send an agent back
  * to publish. A row changed since the last publish still says so, as `draft_dirty`.
  */
-const NOT_REPORTED_AS_LIVE = new Set(['google', 'x', 'meta'])
+const NOT_REPORTED_AS_LIVE = new Set(['google', ...AD_PLATFORMS])
 
 /**
  * `app.services`: what `site.yml` asks for, beside what the backend holds — the request it

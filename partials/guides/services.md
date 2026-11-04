@@ -28,7 +28,7 @@ services:
   google: { id: G-XXXXXXXXXX }                     # Uniweb Cloud loads Google's tag; a static build ignores it (Tracking)
 ```
 
-An entry is `true`, `false`, an address (a string, or `endpoint:` in a map), or a map of options (`records` and `google` take no address); anything else stops the build and the push. `yes`/`no`/`on`/`off` are text in YAML — write `true`/`false`. On a site you push or publish it is also what you ask the host for: `true` asks for its service, `false` turns it off, an address asks the host to leave its own off so yours answers. **A hosted site's services are off unless `services:` asks** — list the ones the site uses. Turn `records: true` on before publishing a page that shows schema records (a static build ignores it; `publish` warns). An entry says everything about its service: removing a setting removes it on the next push; removing the entry switches it off. `push`/`publish` send each service listed; one turned on in the app since your last pull is left alone; one changed on both sides stops the push — `uniweb pull`, then push. `uniweb pull` writes what the site has into `services:`. A change that needs payment is settled in the app (`publish` opens it). Everything in an entry is public except `backend`'s settings; a key or token is set in the app.
+An entry is `true`, `false`, an address (a string, or `endpoint:` in a map), or a map of options (`records` and `google` take no address); anything else stops the build and the push. `yes`/`no`/`on`/`off` are text in YAML — write `true`/`false`. On a site you push or publish it is also what you ask the host for: `true` asks for its service, `false` turns it off, an address asks the host to leave its own off so yours answers. **A hosted site's services are off unless `services:` asks** — list the ones the site uses. Turn `records: true` on before publishing a page that shows schema records (a static build ignores it; `publish` warns). An entry says everything about its service: removing a setting removes it on the next push; removing the entry switches it off. `push`/`publish` send each service listed; one turned on in the app since your last pull is left alone; one changed on both sides stops the push — `uniweb pull`, then push. `uniweb pull` writes what the site has into `services:`. A change that needs payment is settled in the app (`publish` opens it). Everything in an entry is public except `backend`'s settings. A key or token never goes in a file: `uniweb site secret <service> <name>` asks for it at a terminal, and the live site has it from its next publish.
 
 ### Declaring what your foundation supports
 
@@ -120,6 +120,16 @@ The endpoint must accept the framework's batched `{ "events": [ … ] }` POST (`
   ```
 
   Someone who edits only in the app adds it there, with no terminal: the *Google Analytics and Tag Manager* card in the site's Settings, under Features, then a publish. It is this same entry: `uniweb pull` writes what the card holds into `site.yml`, its switch as `enabled: false`. Leave `services.tracking.scripts` unset beside it — a site's own list replaces what the host states, so Google's tag would not load. `tracking: { enabled: false, consent: required }` beside it holds the tag until a visitor answers, and needs a component using `useTrackingConsent()`, or it never loads. Gate that component on the hook's `status`: `isTrackingEnabled()` is false here. Any other such vendor has to run from the foundation's code, so a site whose foundation you can't change can't add one — say so rather than writing a `head.html` that does nothing.
+
+**X and Meta, on Uniweb Cloud, need nothing in a page:** the host sends the site's conversions to the platform from its servers, for a visitor who arrived from one of its ads (`twclid`, `fbclid`). Name the pixel, in quotes, and map each conversion name to the event made for it on the platform:
+
+  ```yaml
+  services:
+    x: { pixel: 'o1abc', events: { signup: 'tw-o1abc-o2def' } }
+    meta: { pixel: '1234567890123456', events: { signup: CompleteRegistration } }
+  ```
+
+  Then the person sets each token with `uniweb site secret x token` (or `meta token`) and publishes. The command asks for the token at a prompt and refuses with no terminal, so an agent never handles it: tell the person to run it. A name with no `events` entry, and any engagement, is never sent; a landing address with `utm_campaign=test` marks a test click, never sent. A site's own `tracking.landing` replaces the host's, so keep `twclid` and `fbclid` in it. A static build leaves these rows out.
 
 Either way, tell the person to check Realtime from a browser that doesn't block trackers: a visit from Brave, say, never reaches Google, which looks like a failed install. Google Analytics counts each page a visitor moves to through the browser-history setting, under Enhanced measurement in the data stream's settings, which a new stream has on.
 

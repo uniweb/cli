@@ -104,10 +104,11 @@ const VERBS = {
    */
   forget: ['--server', '--all'],
   /**
-   * `site list | unpublish | delete` — a workspace's sites. `--yes` confirms a write;
-   * `--json` is `list`'s porcelain; the workspace is `--org` / `--personal`.
+   * `site list | unpublish | delete | secret` — a workspace's sites. `--yes` confirms a write;
+   * `--json` is `list`'s porcelain; `--clear` makes `secret` remove one; the workspace is
+   * `--org` / `--personal`.
    */
-  site: ['--json', '--yes', '--org', '--personal'],
+  site: ['--json', '--yes', '--clear', '--org', '--personal'],
   status: [
     '--json', '--offline', '--dry-run',
     '--force', '--no-verify', '--no-validate', '--yes', '--org', '--personal',

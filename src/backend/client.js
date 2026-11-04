@@ -960,6 +960,39 @@ export class BackendClient {
   }
 
   /**
+   * PUT /dev/site/secrets/{uuid} — set one of a site's secrets, keyed by `(service, name)`:
+   * `{ service?, name, consumer?, value }`. Answers `{ service, name, consumer, set: true, mask }`,
+   * never the value. Only an admin of the site may (`403` for an editor). A value set here
+   * reaches the live site at its next publish. Refused `400 invalid_field` naming the body key.
+   *
+   * @param {string} uuid - the site-content uuid
+   * @param {{ service?: string, name: string, consumer?: string, value: string }} body
+   * @returns {Promise<Response>}
+   */
+  async setSiteSecret(uuid, body) {
+    return this.request(`/dev/site/secrets/${encodeURIComponent(uuid)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /**
+   * DELETE /dev/site/secrets/{uuid} — clear one of a site's secrets: `{ service?, name }`.
+   * Answers `{ service, name, consumer, set: false }`. The live site keeps the old value until
+   * its next publish.
+   *
+   * @param {string} uuid - the site-content uuid
+   * @param {{ service?: string, name: string }} body
+   * @returns {Promise<Response>}
+   */
+  async clearSiteSecret(uuid, body) {
+    return this.request(`/dev/site/secrets/${encodeURIComponent(uuid)}`, {
+      method: 'DELETE',
+      body: JSON.stringify(body)
+    })
+  }
+
+  /**
    * GET /dev/site/status/{uuid} → the site's publish lifecycle (Contract 3,
    * shipped backend-side — collab backend↔framework):
    *   { published: boolean, last_pushed_at?: string, last_published_at?: string, draft_dirty?: boolean }
