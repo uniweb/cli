@@ -73,9 +73,13 @@ fields:
 # schemas/course.yml
 fields:
   lessons: { ref: '@/lesson', many: true, sold_with: true }   # a buyer of the course reads its lessons (up to three steps)
+
+# schemas/inquiry.yml
+fields:
+  email: { type: email, required: true, visitor_fills: true }   # a site's visitor may fill it, with no account
 ```
 
-`readable_with` (`read` | `edit` | `admin`, only on a reference) is one step; a backend refuses adding it to a field entries already fill. `grantable: false` keeps entries from being shared with a person or team. `sold_with` only on a reference; an unmarked one carries nothing.
+`readable_with` (`read` | `edit` | `admin`, only on a reference) is one step; a backend refuses adding it to a field entries already fill. `grantable: false` keeps entries from being shared with a person or team. `sold_with` only on a reference; an unmarked one carries nothing. `visitor_fills: true` marks a field a site's visitor may fill, and a type with one takes visitors' submissions, confirmed by email. Mark it per field, on a top-level section's fields only. The build refuses it on files, on a reference with `readable_with`/`sold_with`, and in a section that leaves a `required` field unmarked.
 
 ## Acting as an administrator
 
