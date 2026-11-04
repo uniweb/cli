@@ -118,6 +118,7 @@ import {
 } from '../backend/site-sync.js'
 import { repoOf } from '../utils/sync-point.js'
 import { commitBeforeSending } from '../backend/commit-before-sending.js'
+import { mountsBeforeSending } from '../backend/mounts-before-sending.js'
 import { resolveWorkspace, describeWorkspace, previewWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
 import { uploadSiteMedia, describeAssetRefusal } from '../backend/site-media.js'
 import { liveAddress } from '../backend/live-address.js'
@@ -356,14 +357,16 @@ export async function publish(args = []) {
     for (const line of unsettled.lines) say.dim(line)
     return { exitCode: 1 }
   }
+  // ⛔ Pages mounted from a repository of their own go only as current: a pull never writes
+  // into one, so the backend's gate cannot keep older ones from replacing newer
+  // (`backend/mounts-before-sending.js`). `--mounts-as-is` sends them as they are.
   // ⛔ In a repository a publish sends what is committed (`uncommittedContent`), whatever the
   // flags. `--commit` commits it first; a dry run says it would.
   {
-    const stop = commitBeforeSending(siteDir, args, {
-      verb: 'publish',
-      dryRun,
-      say: { success: say.ok, info: say.info, error: say.err, note: say.dim }
-    })
+    const said = { success: say.ok, info: say.info, error: say.err, note: say.dim }
+    const mounted = await mountsBeforeSending(siteDir, args, { verb: 'publish', dryRun, say: said })
+    if (mounted) return mounted
+    const stop = commitBeforeSending(siteDir, args, { verb: 'publish', dryRun, say: said })
     if (stop) return stop
   }
   if (!dryRun && !args.includes('--force')) {

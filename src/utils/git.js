@@ -233,14 +233,32 @@ export function aheadBehind(dir) {
 }
 
 /**
- * Does the git remote hold commits HEAD does not — teammates' work since the last fetch?
- * Asked with `git ls-remote`, which fetches nothing and writes nothing, so a read-only
- * command can ask it.
+ * The environment for a git call that asks a remote and must never wait on a person.
  *
  * ⛔ IT NEVER PROMPTS. A credential prompt would hang a command run by an agent, so: no
  * terminal prompt (`GIT_TERMINAL_PROMPT=0`), no credential manager window
  * (`GCM_INTERACTIVE=never`), ssh in batch mode with a connect timeout — added to the ssh
- * command the person configured, never instead of it — and the whole call bounded.
+ * command the person configured, never instead of it. The caller bounds the call itself.
+ */
+export function quietGitEnv(dir, timeoutMs = 5000) {
+  let ssh = process.env.GIT_SSH_COMMAND || ''
+  try {
+    ssh ||= git(['config', '--get', 'core.sshCommand'], dir).trim()
+  } catch {
+    // not configured
+  }
+  return {
+    ...process.env,
+    GIT_TERMINAL_PROMPT: '0',
+    GCM_INTERACTIVE: 'never',
+    GIT_SSH_COMMAND: `${ssh || 'ssh'} -o BatchMode=yes -o ConnectTimeout=${Math.ceil(timeoutMs / 1000)}`
+  }
+}
+
+/**
+ * Does the git remote hold commits HEAD does not — teammates' work since the last fetch?
+ * Asked with `git ls-remote`, which fetches nothing and writes nothing, so a read-only
+ * command can ask it — without a prompt, and bounded (`quietGitEnv`).
  *
  * @param {string} dir
  * @param {{ timeoutMs?: number }} [opts]
@@ -250,18 +268,7 @@ export function aheadBehind(dir) {
 export async function remoteMoved(dir, { timeoutMs = 5000 } = {}) {
   const upstream = upstreamOf(dir)
   if (!upstream) return null
-  let ssh = process.env.GIT_SSH_COMMAND || ''
-  try {
-    ssh ||= git(['config', '--get', 'core.sshCommand'], dir).trim()
-  } catch {
-    // not configured
-  }
-  const env = {
-    ...process.env,
-    GIT_TERMINAL_PROMPT: '0',
-    GCM_INTERACTIVE: 'never',
-    GIT_SSH_COMMAND: `${ssh || 'ssh'} -o BatchMode=yes -o ConnectTimeout=${Math.ceil(timeoutMs / 1000)}`
-  }
+  const env = quietGitEnv(dir, timeoutMs)
   let out
   try {
     out = await new Promise((resolve, reject) => {

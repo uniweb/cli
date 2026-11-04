@@ -1,10 +1,13 @@
 /**
  * uniweb refresh — catch up with everything outside your working copy.
  *
- * A developer on a synced site has TWO independent external sources, and nothing
- * in the tool used to connect them:
+ * A developer on a synced site has independent external sources, and nothing in the
+ * tool used to connect them:
  *
  *   - the git remote — teammates' commits;
+ *   - each repository the site mounts a page folder from (`paths:`) — its own commits,
+ *     which neither of the others brings: a `git pull` leaves a submodule's checkout where
+ *     it was, and a pull never writes into a mount (`utils/mounted-repositories.js`);
  *   - the backend    — content authors' edits, made in the app.
  *
  * Someone who runs only `git pull` silently misses every app edit; someone who
@@ -12,12 +15,18 @@
  * caught out is exactly the one starting their day believing they are current.
  * This is the one command for that: run it in the morning, or before a milestone.
  *
+ * A mount is taken to the tip of the branch it follows, never backwards, never over
+ * uncommitted changes in it, and never from a commit that branch does not contain; a
+ * submodule's new pin is committed on its own, so what a push sends from it is what a
+ * commit records.
+ *
  * READ-ONLY, and that is the load-bearing decision. It never pushes. Because it
  * cannot ship anything, it can be run reflexively without weighing consequences —
  * which is the whole point of a start-of-day command. A version that also pushed
  * would be one you had to think about first, and so one people would stop running.
  *
- * Order is deliberate: git first, then the backend. Teammates' commits — and the sync
+ * Order is deliberate: git first, then the mounts (whose pins that pull may have
+ * moved), then the backend. Teammates' commits — and the sync
  * points their pulls merged — are then in the history when the backend's content
  * arrives, so the pull merges against the newest state of the site this history shares
  * with the backend (`utils/sync-point.js`), and a teammate's change is merged like your
@@ -34,8 +43,9 @@
  * content. If a `sync` verb is ever wanted, it is that chain.
  *
  * Usage:
- *   uniweb refresh                 git pull, then pull: merge the backend's content
- *   uniweb refresh --no-git        skip the git remote; backend only
+ *   uniweb refresh                 git pull, the mounts' latest, then pull: merge the backend's content
+ *   uniweb refresh --no-git        skip every git remote, the mounts' included; backend only
+ *   uniweb refresh --no-mounts     leave the mounted repositories where they are
  *   uniweb refresh --no-backend    skip the backend; git only
  *
  * The backend is the one you are logged in to, as for every backend verb (no flag picks it).
@@ -53,6 +63,7 @@ import {
   headProvenance
 } from '../utils/git.js'
 import { ignoringRepo } from '../utils/sync-point.js'
+import { mountedRepositories, takeLatest, describeTaken } from '../utils/mounted-repositories.js'
 import { probeUnpushed } from '../backend/site-sync.js'
 import { resolveBackendOrigin } from '../backend/client.js'
 import { readBackendState } from '@uniweb/build/uwx'
@@ -114,6 +125,7 @@ export async function refresh(args = [], deps = {}) {
     }
   }
   const skipGit = args.includes('--no-git')
+  const skipMounts = args.includes('--no-mounts')
   const skipBackend = args.includes('--no-backend')
   const resolveSite = deps.resolveSiteDir || resolveSiteDir
   const siteDir = await resolveSite(args, 'refresh')
@@ -158,7 +170,26 @@ export async function refresh(args = [], deps = {}) {
     consulted.push('git')
   }
 
-  // ── 2. the backend ────────────────────────────────────────────────────────
+  // ── 2. the repositories the site mounts page folders from ─────────────────
+  // After the git pull, which may have moved a submodule's pin and left its checkout.
+  // ⭐ A mount that could not be brought to its latest is said at the end too, since "Up to
+  // date" would be wrong. One with no remote, or with commits its remote lacks, is as current
+  // as it can be.
+  const mountsLeft = []
+  const mounts = skipGit || skipMounts ? [] : await mountedRepositories(siteDir)
+  if (skipGit || skipMounts) {
+    skipped.push(`mounts (${skipGit ? '--no-git' : '--no-mounts'})`)
+  } else if (mounts.length) {
+    say.info(`Taking the latest of ${mounts.length === 1 ? 'the page folder' : `${mounts.length} page folders`} mounted from ${mounts.length === 1 ? 'another repository' : 'other repositories'}…`)
+    for (const m of mounts) {
+      const r = await takeLatest(siteDir, m)
+      say.dim(describeTaken(m, r))
+      if (r.error || ['edits', 'no-answer', 'off-branch'].includes(r.kind)) mountsLeft.push(m)
+    }
+    consulted.push('mounts')
+  }
+
+  // ── 3. the backend ────────────────────────────────────────────────────────
   // The backend the delegated pull talks to — the one you are logged in to
   // (resolveBackendOrigin). Everything below asks about THAT one.
   const backend = resolveBackendOrigin()
@@ -185,7 +216,7 @@ export async function refresh(args = [], deps = {}) {
     consulted.push('backend')
   }
 
-  // ── 3. where that leaves you ──────────────────────────────────────────────
+  // ── 4. where that leaves you ──────────────────────────────────────────────
   console.log('')
   tell()
 
@@ -217,6 +248,10 @@ export async function refresh(args = [], deps = {}) {
       `${conflicts} file(s) need you to resolve conflicts before pushing.`
     )
     return { exitCode: 1 }
+  }
+  if (mountsLeft.length) {
+    say.warn(`Up to date, except ${mountsLeft.map((m) => `pages/${m.segment}`).join(', ')}, as said above.`)
+    return { exitCode: 0 }
   }
   say.ok('Up to date.')
   return { exitCode: 0 }

@@ -69,7 +69,9 @@ const VERBS = {
     // release above a newer registered version instead of stopping (both bring-along)
     '--no-release', '--bump',
     // commit the site's content first, with this message (backend/site-sync.js)
-    '--commit', '-m', '--message', ...VIA_DEPLOY
+    '--commit', '-m', '--message',
+    // send the folders mounted from other repositories as they are (backend/mounts-before-sending.js)
+    '--mounts-as-is', ...VIA_DEPLOY
   ],
   publish: [
     '--org', '--dry-run', '--force', '--foundation',
@@ -77,7 +79,7 @@ const VERBS = {
     // read in utils/conformance.js, backend/site-sync.js, and
     // backend/foundation-bring-along.js — none appear in publish.js
     '--no-validate', '--yes', '--no-verify', '--no-release', '--bump',
-    '--commit', '-m', '--message', ...VIA_DEPLOY
+    '--commit', '-m', '--message', '--mounts-as-is', ...VIA_DEPLOY
   ],
   pull: [
     '--content-only', '--dry-run', '--force',
@@ -132,7 +134,7 @@ const VERBS = {
    * the VIA_DEPLOY note above, and required by `flag-guard-coverage.test.js`.
    */
   refresh: [
-    '--no-backend', '--no-git',
+    '--no-backend', '--no-git', '--no-mounts',
     '--org', '--personal', '--dry-run', '--no-validate', '--yes', ...VIA_DEPLOY
   ],
   /**

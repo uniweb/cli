@@ -134,6 +134,7 @@ import {
   readSyncPoint,
   writeSyncPoint
 } from '../utils/sync-point.js'
+import { behindLines } from '../utils/mounted-repositories.js'
 import { isNonInteractive } from '../utils/interactive.js'
 import {
   BackendClient,
@@ -1485,6 +1486,8 @@ export async function pull(args = [], deps = {}) {
       `Left as written: ${leftAlone} page(s) whose files a pull does not write — a mounted folder's, or a folder-mode folder's \`.md\` pages. ` +
         'An edit made to one in the app does not come back here, and the next push sends the file.'
     )
+    // ⭐ A mounted folder's pages are as current as its repository, which no pull moves.
+    for (const line of await behindLines(siteDir)) note(line)
   }
   // ⭐ Said, because the text is not in a translation file: one would make the language the site's,
   // and the next publish would ask to serve it (`uwx/source-locale.js`). It is kept for the push to

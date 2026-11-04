@@ -1553,6 +1553,10 @@ ${colors.bright}Options:${colors.reset}
                      than yours, release yours above it instead of stopping
   --commit           In a git repository, commit the site's content first
                      (-m <message>) — a publish there sends only what is committed
+  --mounts-as-is     Send the page folders mounted from other repositories as they
+                     are. Without it, a publish stops on one that is not current —
+                     behind its remote, or not committed — and \`uniweb refresh\`
+                     takes its latest (interactive, it offers to)
   --no-save          Do not record this deploy in deploy.yml
   --no-validate      Skip the content-conformance check, which stops a publish
                      whose content does not conform to its data schemas
@@ -2041,6 +2045,8 @@ merge those changes with yours, then push again.
 
 ${colors.bright}Options:${colors.reset}
   --commit           In a git repository, commit the site's content first (-m <message>)
+  --mounts-as-is     Send page folders mounted from other repositories as they are,
+                     even when one is behind its remote or not committed
   --dry-run          Report what would be sent; send nothing
   -o <file>          Write what would be sent to a file; send nothing
   --all              Send everything, not only what changed
@@ -2171,17 +2177,21 @@ ${colors.cyan}${colors.bright}uniweb refresh${colors.reset} ${colors.dim}— Cat
 ${colors.bright}Usage:${colors.reset}
   uniweb refresh [options]
 
-A developer on a synced site has TWO external sources: the git remote (teammates'
-commits) and the backend (content authors' edits in the app). Run only \`git pull\`
-and you miss every app edit; run only \`uniweb pull\` and you miss your teammates.
-This does both — git first (merging, never rebasing), then \`uniweb pull\`, which in
-a repository merges the backend's content with yours.
+A developer on a synced site has separate external sources: the git remote
+(teammates' commits), the backend (content authors' edits in the app), and any
+repository the site mounts a page folder from. Run only \`git pull\` and you miss
+every app edit; run only \`uniweb pull\` and you miss your teammates. This does all
+of them — git first (merging, never rebasing), then each mounted repository, taken
+to the latest of the branch it follows (a submodule's new pin committed on its
+own), then \`uniweb pull\`, which in a repository merges the backend's content with
+yours.
 
 ${colors.bright}READ-ONLY.${colors.reset} It never pushes and cannot ship anything, so it is safe to run
 reflexively. Exits non-zero if a merge leaves conflicts.
 
 ${colors.bright}Options:${colors.reset}
-  --no-git           Skip the git remote; backend only
+  --no-git           Skip every git remote, the mounted repositories' too; backend only
+  --no-mounts        Leave the mounted repositories where they are
   --no-backend       Skip the backend; git only
 
 \`--force\` is NOT accepted here: this verb builds the delegated pull's arguments
@@ -2444,6 +2454,7 @@ ${colors.bright}Push Options:${colors.reset}
   --force            Overwrite upstream changes (drop the staleness gate)
   --commit           In a git repository, commit the site's content first (-m <message>);
                      a push there sends only what is committed
+  --mounts-as-is     Send page folders mounted from other repositories as they are
   --all              Send every record (bypass the changed-only cache)
   --org @org         Work in @org for this push, not your login's workspace
   --personal         Work in your personal workspace for this push

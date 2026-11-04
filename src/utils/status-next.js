@@ -27,6 +27,12 @@ const ORDER = ['login', 'conflicts', 'merge', 'refresh', 'pull', 'commit', 'push
  */
 export function planNext(proposals) {
   const steps = [...proposals]
+  // One `refresh` takes the teammates' commits and every mount's latest: one step, its reasons joined.
+  const refreshes = steps.filter((p) => p.step === 'refresh')
+  if (refreshes.length > 1) {
+    refreshes[0].why = refreshes.map((p) => p.why).join(', and ')
+    for (const p of refreshes.slice(1)) steps.splice(steps.indexOf(p), 1)
+  }
   // `refresh` is `git pull`, then the same pull: it takes the app's changes too.
   const refresh = steps.find((p) => p.step === 'refresh')
   const pull = steps.find((p) => p.step === 'pull')

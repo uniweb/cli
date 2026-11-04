@@ -81,6 +81,7 @@ import {
   unmergedPaths
 } from '../utils/sync-point.js'
 import { aheadBehind, remoteMoved, upstreamOf } from '../utils/git.js'
+import { mountedRepositories, askRemote, standing, mountName, short } from '../utils/mounted-repositories.js'
 import { getLatestVersion, isBehind } from '../utils/update-check.js'
 import { syncedElsewhere } from '../utils/site-identity.js'
 import { DEFAULT_BACKEND_ORIGIN } from '../utils/config.js'
@@ -258,7 +259,7 @@ const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
  *
  * @returns {string[]|null} null when git could not be asked
  */
-function otherUncommitted(siteDir, repo) {
+function otherUncommitted(siteDir, repo, mountedTops = []) {
   const root = findWorkspaceRoot(siteDir) || siteDir
   // Only the repository's part of it: a workspace above the repository's top is read from there.
   const scope = relative(repo.top, root).startsWith('..') ? repo.top : root
@@ -297,7 +298,9 @@ function otherUncommitted(siteDir, repo) {
   }
   return [...new Set(paths)]
     .map((p) => join(repo.top, p.replace(/\/$/, '')))
-    .filter((abs) => !isContent(abs) && !inOwnProject(abs))
+    // ⭐ A mounted submodule's own state is `git.mounts`' to say: committing a checkout that is
+    // behind its pin would undo the commit that moved it.
+    .filter((abs) => !isContent(abs) && !inOwnProject(abs) && !mountedTops.some((t) => abs === t || abs.startsWith(t + sep)))
     .map((abs) => relative(siteDir, abs) || '.')
 }
 
@@ -321,7 +324,7 @@ async function mountedRoots(siteDir, repo) {
  * Git: conflicts, a merge waiting, what is not committed, and the git remote.
  * @returns {Promise<{ checks: object[], proposals: object[], localFiles: string[]|null }>}
  */
-async function gitChecks(siteDir, { offline, origin }) {
+async function gitChecks(siteDir, { offline, origin, mounts = [] }) {
   const checks = []
   const proposals = []
   const repo = repoOf(siteDir)
@@ -378,7 +381,8 @@ async function gitChecks(siteDir, { offline, origin }) {
 
   // What else in the project is not committed — a merge holds it until its commit, and a
   // repository with no commit yet has said so above.
-  const others = merging || !repo.head ? null : otherUncommitted(siteDir, repo)
+  const mountedTops = mounts.filter((m) => m.submodule).map((m) => join(m.siteTop, m.submodule.path))
+  const others = merging || !repo.head ? null : otherUncommitted(siteDir, repo, mountedTops)
   if (others?.length) {
     const n = others.length
     const fnd = resolveLocalFoundation(siteDir, readSiteYml(siteDir))
@@ -446,6 +450,124 @@ async function gitChecks(siteDir, { offline, origin }) {
     if (counts.ahead) proposals.push({ step: 'gitpush', command: 'git push', why: `share ${count(counts.ahead, 'commit')} with your team`, ask: true })
   }
   return { checks, proposals, localFiles, uncommitted: Boolean(uncommitted), merging, repo: Boolean(repo.head) }
+}
+
+/**
+ * The page folders this site mounts from a repository of their own, and where each one stands:
+ * a submodule's checkout against the commit this repository records, the changes in it that no
+ * commit holds, and, unless `--offline`, the branch it follows on its remote, asked with
+ * `git ls-remote`, which fetches nothing (`utils/mounted-repositories.js`). A pull never writes
+ * into a mount, so this is where a person hears that one is behind, and a push or publish stops
+ * on one that is not current (`backend/mounts-before-sending.js`).
+ */
+async function mountChecks(mounts, { offline }) {
+  if (!mounts.length) return { checks: [], proposals: [] }
+  const proposals = []
+  const rows = []
+  const lines = []
+  let attention = 0
+  let unknown = 0
+  let blocking = false
+  for (const m of mounts) {
+    const name = mountName(m)
+    const where = m.submodule?.path ?? m.dir
+    const label = m.follows?.label ?? null
+    const recorded = short(m.submodule?.recorded)
+    const said = []
+    let stuck = false // a push stops on it
+    let takes = false // `refresh` takes it
+    let needs = false // anything said but "could not ask"
+    let asked = false
+    if (m.pin === 'missing') {
+      said.push(`${name} is a submodule that is not checked out.`)
+      stuck = takes = needs = true
+    } else if (m.pin === 'behind') {
+      said.push(`${name} is checked out at ${short(m.head)}, behind the ${recorded} this repository records — a \`git pull\` moved it, and the checkout stayed.`)
+      stuck = takes = needs = true
+    } else if (m.pin === 'ahead') {
+      said.push(`${name} is checked out at ${short(m.head)}, ahead of the ${recorded} this repository records.`)
+      stuck = needs = true
+      proposals.push({ step: 'commit', command: null, why: `commit ${where} at ${short(m.head)} here: \`git commit -m "<what changed>" -- ${where}\`, or push with --commit`, ask: true })
+    } else if (m.pin === 'diverged') {
+      said.push(`${name} is checked out at ${short(m.head)}, which is not on the line of the ${recorded} this repository records.`)
+      stuck = needs = true
+    }
+    if (m.edits.length) {
+      said.push(`${name} has ${count(m.edits.length, 'uncommitted change')}, which a push would send as ${m.edits.length === 1 ? 'it is' : 'they are'}.`)
+      stuck = needs = true
+      proposals.push({ step: 'commit', command: null, why: `commit or discard the ${count(m.edits.length, 'change')} in ${where}, whose pages a push sends as they are on disk`, ask: true })
+    }
+    let s = null
+    let branch = m.follows?.branch ?? null
+    if (!offline && m.top && m.follows) {
+      const answer = await askRemote(m)
+      if (!answer) {
+        said.push(`${name}: could not ask ${label} for newer commits — no network, or it needs a sign-in.`)
+        unknown++
+      } else {
+        asked = true
+        branch = answer.branch
+        s = standing(m, answer.tip)
+        const on = branch ? ` on ${branch}` : ''
+        if (s === 'newer' || s === 'unheld') {
+          said.push(`${name}: ${label} has newer commits${on}.`)
+          takes = needs = true
+          // A commit not held here can only be read once fetched; in a whole repository it changes the folder.
+          if (s === 'newer' || !m.prefix) stuck = true
+        } else if (s === 'ahead') {
+          said.push(`${name} has commits ${label} does not — push them there, so the rest of your team can take them.`)
+          needs = true
+          proposals.push({ step: 'gitpush', command: null, why: `push the commits in ${where} to ${label}`, ask: true })
+        } else if (s === 'diverged') {
+          const pinned = m.submodule ? `, or name the branch it follows in .gitmodules (\`submodule.${m.submodule.name ?? m.submodule.path}.branch\`)` : ''
+          said.push(`${name} and ${label}${on} have each moved — bring them together there${pinned}.`)
+          stuck = needs = true
+        }
+      }
+    }
+    if (takes) proposals.push({ step: 'refresh', command: 'npx uniweb refresh', why: `take the latest of ${name}` })
+    if (!said.length) {
+      said.push(
+        !m.follows
+          ? `${name} has no remote, so there is nothing newer to take.`
+          : asked
+            ? `${name} is at the latest of ${label}${branch ? ` (${branch})` : ''}.`
+            : `${name} is at ${short(m.head)}${m.pin === 'same' ? ', the commit this repository records' : ''}; ${label} was not asked (--offline).`
+      )
+    }
+    if (needs) attention++
+    if (stuck) blocking = true
+    lines.push(...said)
+    rows.push({
+      segment: m.segment,
+      dir: m.dir,
+      submodule: m.submodule?.path ?? null,
+      head: m.head,
+      recorded: m.submodule?.recorded ?? null,
+      pin: m.pin,
+      edits: m.edits.length,
+      remote: label,
+      branch,
+      standing: s
+    })
+  }
+  const several = mounts.length > 1
+  const state = attention ? 'attention' : unknown ? 'unknown' : 'ok'
+  return {
+    checks: [
+      {
+        id: 'git.mounts',
+        state,
+        summary: several
+          ? `${count(mounts.length, 'page folder')} come from repositories of their own${attention ? `: ${attention} ${attention === 1 ? 'needs' : 'need'} attention.` : '.'}`
+          : lines[0],
+        lines: several ? lines : lines.slice(1),
+        ...(blocking ? { blocks: ['push', 'publish'] } : {}),
+        detail: { mounts: rows }
+      }
+    ],
+    proposals
+  }
 }
 
 /**
@@ -1667,9 +1789,14 @@ export async function status(args = []) {
   // helpers say on the way goes to stderr.
   const saved = { log: console.log, info: console.info, warn: console.warn }
   if (json) console.log = console.info = console.warn = (...a) => console.error(...a)
-  let project, git, app, version, health, dev, deploys, services
+  let project, git, mounted, app, version, health, dev, deploys, services
   try {
-    ;[project, git] = await Promise.all([projectChecks(siteDir, siteYml), gitChecks(siteDir, { offline, origin })])
+    const mounts = await mountedRepositories(siteDir)
+    ;[project, git, mounted] = await Promise.all([
+      projectChecks(siteDir, siteYml),
+      gitChecks(siteDir, { offline, origin, mounts }),
+      mountChecks(mounts, { offline })
+    ])
     ;[app, version, health, dev, deploys] = await Promise.all([
       appChecks(siteDir, siteYml, { offline, args, git }),
       versionCheck(siteDir, { offline }),
@@ -1685,6 +1812,7 @@ export async function status(args = []) {
   const checks = [
     ...project.checks,
     ...git.checks,
+    ...mounted.checks,
     ...app.checks,
     ...deploys.checks,
     ...(workflows ? [workflows] : []),
@@ -1693,7 +1821,7 @@ export async function status(args = []) {
     ...health.checks,
     dev
   ]
-  const next = planNext([...git.proposals, ...app.proposals, ...deploys.proposals, ...services.proposals, ...version.proposals, ...health.proposals])
+  const next = planNext([...git.proposals, ...mounted.proposals, ...app.proposals, ...deploys.proposals, ...services.proposals, ...version.proposals, ...health.proposals])
 
   const root = findWorkspaceRoot(siteDir) || siteDir
   const site = relative(root, siteDir) || '.'
