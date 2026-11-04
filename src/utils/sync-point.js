@@ -53,6 +53,11 @@ import { join, dirname, posix } from 'node:path'
 
 export const SYNC_TRAILER = 'Uniweb-Sync'
 export const SITE_TRAILER = 'Uniweb-Site'
+/**
+ * Names the tree of each of a site's roots outside its folder — a mounted folder elsewhere in the
+ * repository — in a sync point: `Uniweb-Root: <path>:<tree>`, the path from the repository's top.
+ */
+export const ROOT_TRAILER = 'Uniweb-Root'
 /** Marks the commit a push makes of what it wrote back: `Uniweb-Recorded: <origin> <site>`. */
 export const RECORDED_TRAILER = 'Uniweb-Recorded'
 
@@ -156,11 +161,30 @@ function isCommit(repo, sha) {
 
 /** The tree of the site's directory in a commit or tree, or null. */
 export function siteTreeIn(repo, rev) {
+  return repo.path === '.' ? objectAt(repo, `${rev}^{tree}`) : objectAt(repo, `${rev}:${repo.path}`)
+}
+
+// What `spec` names — a tree, a file's blob — or null.
+function objectAt(repo, spec) {
   try {
-    return gitText(repo.top, ['rev-parse', '--verify', '-q', repo.path === '.' ? `${rev}^{tree}` : `${rev}:${repo.path}`]).trim() || null
+    return gitText(repo.top, ['rev-parse', '--verify', '-q', spec]).trim() || null
   } catch {
     return null
   }
+}
+
+/**
+ * The site's roots outside its folder, each by its path from the repository's top: a mounted folder
+ * elsewhere in the repository (`utils/site-roots.js`). None for a site that is the whole repository.
+ */
+function outsideRoots(repo, roots = []) {
+  if (!repo.prefix) return []
+  return [...new Set(roots.map((r) => underTop(repo, r)))].filter((f) => !`${f}/`.startsWith(repo.prefix))
+}
+
+/** What of the repository a pull merges into, as pathspecs: the site's folder, and each root outside it. */
+function siteScope(repo, roots = []) {
+  return repo.prefix ? [repo.prefix, ...outsideRoots(repo, roots)] : []
 }
 
 /** The paths in conflict here, whatever left them — a merge, or a stash put back over one. */
@@ -195,7 +219,10 @@ function trailersOf(body) {
     if (m) {
       out.path = m[1]
       out.tree = m[2]
+      continue
     }
+    m = line.match(/^Uniweb-Root: (.+):([0-9a-f]{40,64})\s*$/)
+    if (m) (out.roots ||= []).push({ path: m[1], tree: m[2] })
   }
   return out
 }
@@ -229,11 +256,14 @@ export function historySyncPoint(repo, { origin, siteUuid }) {
 }
 
 // Does this commit's message mark it a sync point of this site and backend — and does it
-// still hold the site tree its trailer names?
+// still hold the site tree its trailer names, and the tree of each root outside the site's folder?
+// ⭐ A rebase copies the trailers onto a commit that holds whatever came before it: a teammate's edit
+// to a mounted folder outside the site's, rebased under it, would leave the site's tree as it was, and
+// a base that read as the backend's would hold that edit — which the next pull's merge then undid.
 function marks(repo, sha, body, { origin, siteUuid }) {
   const t = trailersOf(body)
   if (t.origin !== origin || t.siteUuid !== siteUuid || t.path !== repo.path) return false
-  return siteTreeIn(repo, sha) === t.tree
+  return siteTreeIn(repo, sha) === t.tree && (t.roots || []).every((r) => objectAt(repo, `${sha}:${r.path}`) === r.tree)
 }
 
 /**
@@ -544,7 +574,13 @@ export function openStandIn(repo, { roots, rev }) {
           return 'backend'
         }
       })()
-      const message = `${subject}\n\n${SYNC_TRAILER}: ${origin} ${siteUuid}\n${SITE_TRAILER}: ${repo.path}:${siteTree}\n`
+      // ⭐ And the tree of each root outside the site's folder (`marks`).
+      const outside = outsideRoots(repo, roots)
+        .map((p) => [p, objectAt(repo, `${tree}:${p}`)])
+        .filter(([, t]) => t)
+        .map(([p, t]) => `${ROOT_TRAILER}: ${p}:${t}\n`)
+        .join('')
+      const message = `${subject}\n\n${SYNC_TRAILER}: ${origin} ${siteUuid}\n${SITE_TRAILER}: ${repo.path}:${siteTree}\n${outside}`
       const who = {
         GIT_AUTHOR_NAME: 'uniweb',
         GIT_AUTHOR_EMAIL: `sync@${host}`,
@@ -633,8 +669,8 @@ const occupied = (path) => {
  * Files not under git that the merge would write over: their paths, each with whether the
  * file already holds what `commit` has there.
  */
-function untrackedInTheWay(repo, commit) {
-  const added = zlist(git(repo.top, ['diff', '--name-only', '-z', '--diff-filter=A', 'HEAD', commit, '--', ...(repo.prefix ? [repo.prefix] : [])]))
+function untrackedInTheWay(repo, commit, roots = []) {
+  const added = zlist(git(repo.top, ['diff', '--name-only', '-z', '--diff-filter=A', 'HEAD', commit, '--', ...siteScope(repo, roots)]))
   const out = []
   for (const p of added) {
     const abs = join(repo.top, p)
@@ -662,14 +698,16 @@ function untrackedInTheWay(repo, commit) {
  * the merge is done (`--autostash`); a conflict leaves git's own state for a person to
  * settle, as any merge does.
  *
+ * `roots`, the site's roots, so what is in the way is looked for in each one outside its folder too.
+ *
  * @returns {{ ok: true, conflicted: string[] } | { ok: false, reason: string, paths?: string[] }}
  */
-export function mergeSyncPoint(repo, commit, { message }) {
+export function mergeSyncPoint(repo, commit, { message, roots = [] }) {
   if (mergeInProgress(repo)) return { ok: false, reason: 'merge-in-progress' }
   // Conflicts already here are not this merge's: git would refuse it, and they would read as its own.
   const unsettled = unmergedPaths(repo)
   if (unsettled.length) return { ok: false, reason: 'unmerged', paths: unsettled }
-  const inTheWay = untrackedInTheWay(repo, commit)
+  const inTheWay = untrackedInTheWay(repo, commit, roots)
   const blocking = inTheWay.filter((u) => !u.same).map((u) => u.path)
   if (blocking.length) return { ok: false, reason: 'untracked', paths: blocking }
   // One that already holds what the merge writes there is made way for — and only once the
@@ -704,7 +742,7 @@ export function takeSyncPoint(repo, commit, { roots, message }) {
   try {
     const tracked = zlist(git(repo.top, ['ls-tree', '--name-only', '-z', '--full-tree', 'HEAD', '--', ...full]))
     if (tracked.length) git(repo.top, ['checkout', 'HEAD', '--', ...tracked])
-    for (const u of untrackedInTheWay(repo, commit)) rmSync(join(repo.top, u.path))
+    for (const u of untrackedInTheWay(repo, commit, roots)) rmSync(join(repo.top, u.path))
     const tree = gitText(repo.top, ['rev-parse', `${commit}^{tree}`]).trim()
     const merged = gitText(repo.top, ['commit-tree', tree, '-p', 'HEAD', '-p', commit, '-F', '-'], { input: `${message}\n` }).trim()
     git(repo.top, ['read-tree', '-m', '-u', 'HEAD', merged])
@@ -727,8 +765,9 @@ export function takeSyncPoint(repo, commit, { roots, message }) {
  * did a person's own edit when there was no base — and `--force` said it "took" a change
  * where it undid their edit.
  */
-export function changedInFiles(repo, { from, files, staged = false, skip = [] }) {
-  const scope = ['--', ...(repo.prefix ? [repo.prefix] : [])]
+export function changedInFiles(repo, { from, files, staged = false, skip = [], roots = [] }) {
+  // The site's folder, and each of its roots outside it: a mounted folder a pull writes into.
+  const scope = ['--', ...siteScope(repo, roots)]
   try {
     const parts = zlist(git(repo.top, ['diff', '--name-status', '-z', ...(staged ? ['--cached', from] : [from, 'HEAD']), ...scope]))
     const moved = []

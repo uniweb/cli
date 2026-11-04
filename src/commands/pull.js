@@ -112,7 +112,7 @@ import {
   readItemBaseVersions
 } from '../backend/site-sync.js'
 import { resolveWorkspace } from '../backend/workspace.js'
-import { siteRoots, sentRoots, laneRoots } from '../utils/site-roots.js'
+import { siteRoots, sentRoots, laneRoots, writableMounts, refusedMountLines } from '../utils/site-roots.js'
 import {
   repoOf,
   mergeInProgress,
@@ -777,6 +777,16 @@ export async function pull(args = [], deps = {}) {
     const blocked = await checkWorkingTree(siteDir, args)
     if (blocked) return blocked
   }
+  // ⭐ A MOUNT IS WRITTEN WHERE THE SITE SAYS `writable: true` AND THIS COPY CAN MERGE IT
+  // (`writableMounts`). One it cannot stops the pull before anything is asked or taken: left read-only,
+  // the app's edits to it would be undone by the next push, which is what the declaration asks to avoid.
+  const mounts = writableMounts(siteDir)
+  if (mounts.refused.length) {
+    if (probe) return { exitCode: 1, probe: null }
+    error(`${mounts.refused.length === 1 ? 'A mount' : `${mounts.refused.length} mounts`} marked writable cannot be written by a pull:`)
+    for (const m of mounts.refused) for (const line of refusedMountLines(m)) note(line)
+    return { exitCode: 1 }
+  }
   // ⭐ THE BACKEND YOU ARE LOGGED IN TO is where this goes *[Diego, 2026-09-21]*, for every
   // backend verb (resolveBackendOrigin). Only UNIWEB_SERVER — the automation
   // override — outranks it, and nothing talks to a backend the user is not logged in to:
@@ -938,7 +948,7 @@ export async function pull(args = [], deps = {}) {
   // hold, a route the files give two pages for (`@uniweb/build`'s `page-files.js`). Said, since an app
   // edit to one does not come back; each `.md` page with what it could not hold.
   let leftAlone = 0
-  // Its pages by outcome (P5, `@uniweb/build`'s report): held at the version this copy last agreed on,
+  // Its pages by outcome (`@uniweb/build`'s report): held at the version this copy last agreed on,
   // and a mount's, which the folder wins.
   let heldPages = []
   let mountedPages = []
@@ -1212,7 +1222,9 @@ export async function pull(args = [], deps = {}) {
         // So a query's `@acme/member` comes back as the author's `@/member`.
         scope: pullScope,
         dataModel,
-        sectionType
+        sectionType,
+        // The mounts it may write into, each one the site declares writable (above).
+        writableMounts: mounts.writable
       })
       wrote.push(...report.pages, ...report.sections, ...report.layout)
       removed.push(
@@ -1415,7 +1427,7 @@ export async function pull(args = [], deps = {}) {
         const files = snapshotFiles(repo)
         const result = force
           ? takeSyncPoint(repo, made.commit, { roots, message: takenFrom(client.origin) })
-          : mergeSyncPoint(repo, made.commit, { message: mergedFrom(client.origin) })
+          : mergeSyncPoint(repo, made.commit, { message: mergedFrom(client.origin), roots })
         if (!result.ok) {
           // ⛔ A merge that could not be made took nothing: the files are as they were, and
           // nothing of this pull is recorded as taken.
@@ -1448,6 +1460,7 @@ export async function pull(args = [], deps = {}) {
           merge.changed = changedInFiles(repo, {
             from: repo.head,
             files,
+            roots,
             staged: merge.conflicted.length > 0 && !merge.stashKept,
             skip: merge.conflicted
           })

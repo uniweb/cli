@@ -1,5 +1,5 @@
 /**
- * ⭐ A VERSION IS BANKED FOR WHAT THE FILES TOOK, OR CHOSE NOT TO TAKE (P5, `kb` pulling-into-mounted-folders).
+ * ⭐ A VERSION IS BANKED FOR WHAT THE FILES TOOK, OR CHOSE NOT TO TAKE.
  *
  * A pull meets three outcomes for a page: its file took the backend's content; a mount's page, which the
  * folder wins; and a page held because its file cannot say what the app made of it. These pin what the

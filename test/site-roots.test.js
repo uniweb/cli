@@ -13,7 +13,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { sentRoots, laneRoots, siteRoots, submoduleMountRoots } from '../src/utils/site-roots.js'
+import { sentRoots, laneRoots, siteRoots, submoduleMountRoots, writableMounts } from '../src/utils/site-roots.js'
 import { uncommittedContent } from '../src/backend/site-sync.js'
 
 const scratch = mkdtempSync(join(tmpdir(), 'uw-site-roots-'))
@@ -81,4 +81,45 @@ test('a mount that is a repository of its own is not among the site\'s roots —
   assert.ok(!roots.includes('../../beside'))
   // The submodule's own path, whose pin a push commits and `status` reads.
   assert.deepEqual(submoduleMountRoots(site), ['../external/docs'])
+})
+
+test('⭐ P4 — a pull writes a mount the site declares writable only where this copy can merge it', () => {
+  const { dir, site } = project()
+  const docs = mkdtempSync(join(scratch, 'docs-'))
+  git(docs, 'init', '-q')
+  w(docs, 'guide/setup.md', '# Setup\n')
+  git(docs, 'add', '-A')
+  git(docs, 'commit', '-qm', 'docs')
+  git(dir, 'submodule', '-q', 'add', docs, 'external/docs')
+  git(dir, 'commit', '-qm', 'submodule')
+  const beside = join(dir, '..', `beside-${Date.now()}`)
+  mkdirSync(beside, { recursive: true })
+  git(beside, 'init', '-q')
+  const nowhere = mkdtempSync(join(scratch, 'nowhere-'))
+  const declare = (path) => `\n    path: ${path}\n    writable: true`
+  w(dir, 'site/site.yml', [
+    'name: S',
+    'foundation: "@acme/base@1.0.0"',
+    'paths:',
+    `  pages/docs:${declare('../docs')}`,
+    `  pages/guide:${declare('../external/docs/guide')}`,
+    `  pages/beside:${declare(`../../${beside.split('/').pop()}`)}`,
+    `  pages/nowhere:${declare(nowhere)}`,
+    '  pages/plain: ../docs',
+    '',
+  ].join('\n'))
+
+  const { writable, refused } = writableMounts(site)
+  assert.deepEqual(writable, ['docs'])
+  assert.deepEqual(refused.map((m) => [m.segment, m.why]), [['guide', 'submodule'], ['beside', 'own'], ['nowhere', 'none']])
+})
+
+test('a site in no repository: a writable mount inside its folder is written as its own files are, one outside refused', () => {
+  const dir = mkdtempSync(join(scratch, 'no-repo-'))
+  w(dir, 'site/site.yml', 'name: S\npaths:\n  pages/docs:\n    path: ./docs\n    writable: true\n  pages/out:\n    path: ../out\n    writable: true\n')
+  w(dir, 'site/docs/intro.md', '# Intro\n')
+  w(dir, 'out/intro.md', '# Intro\n')
+  const { writable, refused } = writableMounts(join(dir, 'site'))
+  assert.deepEqual(writable, ['docs'])
+  assert.deepEqual(refused.map((m) => [m.segment, m.why]), [['out', 'none']])
 })

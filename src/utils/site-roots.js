@@ -16,9 +16,10 @@
  * entry loads statically imports this.
  */
 import { readFileSync } from 'node:fs'
-import { join, posix } from 'node:path'
+import { isAbsolute, join, posix, relative, resolve } from 'node:path'
 import yaml from 'js-yaml'
 import { siteContentRoots } from '@uniweb/build/uwx'
+import { mountDeclarationsOf } from '@uniweb/build/site'
 import { mountHolding } from './mounted-repositories.js'
 import { repoOf } from './sync-point.js'
 
@@ -80,4 +81,55 @@ export function submoduleMountRoots(siteDir) {
     out.add(posix.relative(repo.prefix.replace(/\/$/, '') || '.', held.submodule.path) || '.')
   }
   return [...out]
+}
+
+/**
+ * ⭐ THE MOUNTS A PULL MAY WRITE INTO: each one the site declares
+ * `writable: true` that this copy can merge — a folder the site's own repository holds, whose files are
+ * among the site's roots, or, for a site in no repository, a folder inside the site's own, which a pull
+ * writes as it writes the site's files. Every other one is refused, with why:
+ * - `submodule`: a submodule of the site's repository holds it;
+ * - `own`: a repository of its own that the site's does not record — a clone beside the site;
+ * - `none`: no repository holds it, or one ignores it, or it is outside the folder of a site in none.
+ * The last two have no history that pairs them with the site's, so no copy of the site — a teammate's,
+ * CI's — could find what it last merged from.
+ *
+ * @param {string} siteDir
+ * @returns {{ writable: string[], refused: Array<{ segment: string, path: string, why: 'submodule'|'own'|'none' }> }}
+ */
+export function writableMounts(siteDir) {
+  const repo = repoOf(siteDir)
+  const writable = []
+  const refused = []
+  for (const { segment, path, writable: declared } of mountDeclarationsOf(readSiteYml(siteDir).paths)) {
+    if (!declared || typeof path !== 'string' || !path) continue
+    const abs = resolve(siteDir, path)
+    let why = null
+    if (repo) {
+      const held = mountHolding(siteDir, abs).kind
+      if (held !== 'site') why = held
+    } else {
+      const rel = relative(siteDir, abs)
+      if (!rel || isAbsolute(rel) || rel === '..' || rel.startsWith(`..${posix.sep}`) || rel.startsWith('..\\')) why = 'none'
+    }
+    if (why) refused.push({ segment, path, why })
+    else writable.push(segment)
+  }
+  return { writable, refused }
+}
+
+/** What to tell a person about a mount a pull may not write, and what settles it. */
+export function refusedMountLines({ segment, path, why }) {
+  const what =
+    why === 'submodule'
+      ? `a submodule of the site's repository`
+      : why === 'own'
+        ? `a repository of its own, which the site's repository does not record`
+        : `a folder no history of the site's holds`
+  return [
+    `pages/${segment} is mounted from ${path} with \`writable: true\`, but it is ${what}, so a pull cannot merge into it.`,
+    why === 'submodule'
+      ? '  Remove `writable: true` to keep it read-only, and make the change in that repository.'
+      : "  Make it part of the site's repository (or a folder of the site, outside one), or remove `writable: true` to keep it read-only."
+  ]
 }

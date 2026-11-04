@@ -89,9 +89,26 @@ test("⭐ a site's foundation, and the other sites a change to it reaches", { ti
 test('⭐ pages from a folder that is its own repository are said, with what that means', { timeout: 60_000 }, async () => {
   const doc = docOf(await status(join(workspace(), 'sites', 'a'), ['--offline', '--json']))
   const mounts = checkOf(doc, 'project.mounts')
-  assert.deepEqual(mounts.detail.mounts, [{ segment: 'docs', dir: '../../external/docs', exists: true, repository: 'other' }])
+  assert.deepEqual(mounts.detail.mounts, [{ segment: 'docs', dir: '../../external/docs', exists: true, repository: 'other', writable: false }])
   assert.equal(mounts.summary, 'pages/docs comes from ../../external/docs, its own git repository — edits there are commits in it.')
   assert.match(mounts.lines.join('\n'), /does not come back on a pull, and the next push replaces it with the files/)
+})
+
+test('⭐ a mount a pull writes into is said, and one marked writable that it cannot merge needs attention', { timeout: 60_000 }, async () => {
+  const root = workspace()
+  mkdirSync(join(root, 'sites', 'b', 'guide'), { recursive: true })
+  writeFileSync(join(root, 'sites', 'b', 'guide', 'intro.md'), '# Intro\n')
+  writeFileSync(join(root, 'sites', 'b', 'site.yml'), 'name: B\nfoundation: shared\npaths:\n  pages/guide:\n    path: ./guide\n    writable: true\n')
+  commit(root, 'a writable mount')
+  const ok = checkOf(docOf(await status(join(root, 'sites', 'b'), ['--offline', '--json'])), 'project.mounts')
+  assert.equal(ok.state, 'ok')
+  assert.equal(ok.summary, "pages/guide comes from ./guide, outside the site's folder — a pull writes the app's edits into it.")
+  assert.deepEqual(ok.lines, [])
+
+  writeFileSync(join(root, 'sites', 'b', 'site.yml'), 'name: B\nfoundation: shared\npaths:\n  pages/guide:\n    path: ../../external/docs\n    writable: true\n')
+  const refused = checkOf(docOf(await status(join(root, 'sites', 'b'), ['--offline', '--json'])), 'project.mounts')
+  assert.equal(refused.state, 'attention')
+  assert.match(refused.lines.join('\n'), /with `writable: true`, but it is a repository of its own, which the site's repository does not record, so a pull cannot merge into it/)
 })
 
 test('a mounted folder that is not there is said', { timeout: 60_000 }, async () => {

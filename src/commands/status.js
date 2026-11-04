@@ -80,7 +80,7 @@ import {
   siteTreeIn,
   unmergedPaths
 } from '../utils/sync-point.js'
-import { submoduleMountRoots } from '../utils/site-roots.js'
+import { submoduleMountRoots, writableMounts, refusedMountLines } from '../utils/site-roots.js'
 import { aheadBehind, remoteMoved, upstreamOf } from '../utils/git.js'
 import { mountedRepositories, askRemote, standing, mountName, short } from '../utils/mounted-repositories.js'
 import { getLatestVersion, isBehind } from '../utils/update-check.js'
@@ -1281,32 +1281,43 @@ async function projectChecks(siteDir, siteYml) {
     }
   })
 
-  // ⭐ Pages from outside the site's folder (`paths:` mounts, by the build's own rule): a pull
-  // never writes them (`uwx/page-files.js`), and one in its own repository is edited there.
+  // ⭐ Pages from outside the site's folder (`paths:` mounts, by the build's own rule): a pull writes
+  // one the site marks `writable: true` where this copy can merge it (`writableMounts`), and no other
+  // (`uwx/page-files.js`); one in its own repository is edited there.
   const { mountEntriesOf } = await import('@uniweb/build/site')
   const siteRepo = repoOf(siteDir)?.top ?? null
+  const { writable, refused } = writableMounts(siteDir)
   const mounts = mountEntriesOf(siteYml?.paths).map(([segment, dir]) => {
     const abs = resolve(siteDir, String(dir))
     const exists = existsSync(abs)
     const top = exists ? repoOf(abs)?.top ?? null : null
     const repository = !exists ? null : !top ? 'none' : top === siteRepo ? 'same' : 'other'
-    return { segment, dir: String(dir), exists, repository }
+    return { segment, dir: String(dir), exists, repository, writable: writable.includes(segment) }
   })
   const mountLine = (m) =>
     !m.exists
       ? `pages/${m.segment} names ${m.dir}, which does not exist.`
       : m.repository === 'other'
         ? `pages/${m.segment} comes from ${m.dir}, its own git repository — edits there are commits in it.`
-        : `pages/${m.segment} comes from ${m.dir}, outside the site's folder.`
+        : m.writable
+          ? `pages/${m.segment} comes from ${m.dir}, outside the site's folder — a pull writes the app's edits into it.`
+          : `pages/${m.segment} comes from ${m.dir}, outside the site's folder.`
+  // The pages an app edit to does not come back to: each mount but a writable one, and one a pull refuses.
+  const readOnly = mounts.filter((m) => !m.writable && !refused.some((r) => r.segment === m.segment))
   checks.push(
     mounts.length
       ? {
           id: 'project.mounts',
-          state: mounts.some((m) => !m.exists) ? 'attention' : 'ok',
+          state: mounts.some((m) => !m.exists) || refused.length ? 'attention' : 'ok',
           summary: mounts.length === 1 ? mountLine(mounts[0]) : `${count(mounts.length, 'page folder')} come from outside the site's folder.`,
           lines: [
             ...(mounts.length === 1 ? [] : mounts.map(mountLine)),
-            'An edit made in the app to those pages does not come back on a pull, and the next push replaces it with the files.'
+            ...refused.flatMap(refusedMountLines),
+            ...(readOnly.length
+              ? [
+                  `An edit made in the app to ${readOnly.length === mounts.length ? 'those pages' : `the pages of ${readOnly.map((m) => `pages/${m.segment}`).join(', ')}`} does not come back on a pull, and the next push replaces it with the files.`
+                ]
+              : [])
           ],
           detail: { mounts }
         }

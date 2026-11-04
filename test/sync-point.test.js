@@ -8,7 +8,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -20,7 +20,9 @@ import {
   mergeSyncPoint,
   siteTreeIn,
   commitRoots,
-  uncommittedPaths
+  uncommittedPaths,
+  changedInFiles,
+  snapshotFiles
 } from '../src/utils/sync-point.js'
 
 const scratch = mkdtempSync(join(tmpdir(), 'uw-sync-point-'))
@@ -226,6 +228,73 @@ test('⭐ a root outside the site\'s folder, in its repository, is filled from t
   }
   // CONTROL — the working tree's own edit is untouched.
   assert.equal(readFileSync(join(dir, 'docs', 'intro.md'), 'utf8'), '# Intro, edited here\n')
+})
+
+// A project whose site mounts `docs/`, a folder of its repository outside the site's, with a sync point
+// that wrote into it, merged.
+function mountedProject() {
+  const { dir } = project()
+  mkdirSync(join(dir, 'docs'), { recursive: true })
+  writeFileSync(join(dir, 'docs', 'intro.md'), '# Intro\n')
+  writeFileSync(join(dir, 'docs', 'use.md'), '# Use\n')
+  git(dir, 'add', '-A')
+  git(dir, 'commit', '-qm', 'docs')
+  const repo = repoOf(join(dir, 'site'))
+  const roots = ['site.yml', 'pages', '../docs']
+  const stand = openStandIn(repo, { roots, rev: repo.head })
+  let sp
+  try {
+    writeFileSync(join(stand.siteDir, '..', 'docs', 'intro.md'), '# Intro, from the backend\n')
+    sp = stand.commit({ parent: repo.head, subject: 'sync', origin: ORIGIN, siteUuid: 'SITE' }).commit
+  } finally {
+    stand.close()
+  }
+  git(dir, 'merge', '-q', '--no-edit', sp)
+  return { dir, sp, roots }
+}
+
+test('⭐ a sync point names the tree of each root outside the site\'s folder — and a copy that changed only it is no sync point', () => {
+  const { dir, sp } = mountedProject()
+  const body = git(dir, 'log', '-1', '--format=%B', sp)
+  const mountTree = git(dir, 'rev-parse', `${sp}:docs`).trim()
+  assert.ok(body.split('\n').includes(`Uniweb-Root: docs:${mountTree}`), body)
+  assert.equal(historySyncPoint(repoOf(join(dir, 'site')), { origin: ORIGIN, siteUuid: 'SITE' }), sp)
+  // The trailers copied onto a commit that holds a teammate's edit to the mounted folder, as a rebase
+  // leaves one: the site's own tree is as the backend's, the mount's is not.
+  writeFileSync(join(dir, 'docs', 'use.md'), '# Use, a teammate\'s edit\n')
+  git(dir, 'add', '-A')
+  git(dir, 'commit', '-q', '-m', body)
+  const copy = git(dir, 'rev-parse', 'HEAD').trim()
+  const r = repoOf(join(dir, 'site'))
+  assert.equal(siteTreeIn(r, copy), siteTreeIn(r, sp), "CONTROL — the site's own tree is the sync point's")
+  assert.equal(historySyncPoint(r, { origin: ORIGIN, siteUuid: 'SITE' }), sp)
+})
+
+test('⭐ a merge reaches each root outside the site\'s folder: a file not under git in its way stops it, and what it changes there is listed', () => {
+  const { dir, roots } = mountedProject()
+  const repo = repoOf(join(dir, 'site'))
+  const stand = openStandIn(repo, { roots, rev: repo.head })
+  let sp
+  try {
+    writeFileSync(join(stand.siteDir, '..', 'docs', 'faq.md'), '# FAQ, from the backend\n')
+    writeFileSync(join(stand.siteDir, '..', 'docs', 'use.md'), '# Use, from the backend\n')
+    sp = stand.commit({ parent: repo.head, subject: 'sync', origin: ORIGIN, siteUuid: 'SITE' }).commit
+  } finally {
+    stand.close()
+  }
+  writeFileSync(join(dir, 'docs', 'faq.md'), '# FAQ, mine, not committed\n')
+  const stopped = mergeSyncPoint(repo, sp, { message: 'merge', roots })
+  assert.equal(stopped.ok, false)
+  assert.deepEqual(stopped.paths, ['docs/faq.md'])
+  assert.equal(readFileSync(join(dir, 'docs', 'faq.md'), 'utf8'), '# FAQ, mine, not committed\n')
+
+  rmSync(join(dir, 'docs', 'faq.md')) // moved aside, as the pull says to
+  const files = snapshotFiles(repo)
+  const merged = mergeSyncPoint(repo, sp, { message: 'merge', roots })
+  assert.equal(merged.ok, true)
+  assert.deepEqual(changedInFiles(repo, { from: repo.head, files, roots }), [['A', '../docs/faq.md'], ['M', '../docs/use.md']])
+  // CONTROL — without the roots, the site's folder alone: nothing it changed is there.
+  assert.deepEqual(changedInFiles(repo, { from: repo.head, files }), [])
 })
 
 test('⭐ committing the roots takes what the files hold there — a rename whole, a new file — and leaves what else is staged staged', () => {
