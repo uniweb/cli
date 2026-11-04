@@ -1178,8 +1178,8 @@ export async function publish(args = []) {
   // `lastDeploy.<target>.url` (step 8 above). site.yml carried it as `$url` ⇄
   // `info.url` from 2026-09-10 until the field was retired on 2026-09-17.
   if (result.deploy_uuid) say.dim(`deploy: ${result.deploy_uuid}`)
-  // ⭐ The records pushes took out of the site's folder, now that the live site no longer has them:
-  // the CLI offers to delete them (ruled 2026-11-04; `utils/retired-records.js`).
+  // ⭐ The records this publish's push took out of the site's folder: the CLI offers to delete them
+  // from the backend (ruled 2026-11-04; `utils/retired-records.js`).
   await settleRetiredRecords({ client, siteDir, args, say })
   return { exitCode: 0 }
 }

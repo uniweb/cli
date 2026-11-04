@@ -14,7 +14,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { writeHeldTypes, retireUnplaced } from '../src/backend/site-sync.js'
-import { noteRetiredRecords, settleRetiredRecords } from '../src/utils/retired-records.js'
+import { settleRetiredRecords } from '../src/utils/retired-records.js'
 
 const ORIGIN = 'http://backend.test'
 const folder = (entries) => ({
@@ -85,16 +85,7 @@ test('a copy that never banked types retires nothing on its first push', () => {
   assert.equal(stateOf(dir).retired, undefined)
 })
 
-test('after a push, the retired records are said, by schema, with what deletes them', () => {
-  const dir = site({ retired: { A: '@std/project', B: '@std/project' } })
-  const lines = []
-  assert.equal(noteRetiredRecords({ siteDir: dir, backend: ORIGIN, note: (m) => lines.push(m) }), 2)
-  assert.match(lines[0], /2 records \(of @std\/project\) taken out of the site's folder stay on the backend/)
-  assert.match(lines[0], /`uniweb publish` offers to delete them once the site is live/)
-  assert.equal(noteRetiredRecords({ siteDir: site(), backend: ORIGIN, note: (m) => lines.push(m) }), 0)
-})
-
-test('⭐ with --yes, a publish deletes them by uuid, keeping what another folder places, and settles the list', async () => {
+test('⭐ with --yes, a push deletes them by uuid, keeping what another folder places, and settles the list', async () => {
   const dir = site({ retired: { A: '@std/project', B: '@std/project', C: '@acme/x' } })
   const { client, sent } = deleting({ deleted: ['A', 'C'], kept: ['B'] })
   const { say, lines } = reporter()
@@ -114,7 +105,7 @@ test('with no terminal and no --yes, nothing is deleted, the list is kept, and i
   assert.equal(sent.length, 0)
   assert.equal(res.asked, false)
   assert.deepEqual(stateOf(dir).retired, { A: '@std/project' })
-  assert.match(lines[0], /publish again with --yes, or from a terminal and answer/)
+  assert.match(lines[0], /push again with --yes, or from a terminal and answer/)
 })
 
 test('at a terminal, it asks with the count; a yes deletes, a no keeps them and does not ask again', async () => {

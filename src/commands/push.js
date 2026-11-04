@@ -80,7 +80,7 @@ import {
 import { confirm, isNonInteractive } from '../utils/interactive.js'
 import { announceServices, foundationSupports } from '../backend/service-request.js'
 import { guardEmptyRecords, noteFolderLeftAlone, noteMovedRecords } from '../utils/records-guard.js'
-import { noteRetiredRecords } from '../utils/retired-records.js'
+import { settleRetiredRecords } from '../utils/retired-records.js'
 import { bringFoundationAlong, filesAReleaseWrites } from '../backend/foundation-bring-along.js'
 import { repoOf } from '../utils/sync-point.js'
 import {
@@ -734,7 +734,8 @@ export async function push(args = [], deps = {}) {
       (result.wrote.length ? ` — ${result.wrote.join(', ')}` : '')
   )
   reportWriteBacks(written, { note })
-  // Records this copy's pushes took out of the folder: `publish` offers to delete them once live.
-  noteRetiredRecords({ siteDir, backend: client.origin, note })
+  // ⭐ The records this push took out of the site's folder are off the live site already (it reads
+  // its folder as it stands): offer to delete them from the backend (ruled 2026-11-04).
+  await settleRetiredRecords({ client, siteDir, args, say: { ok: success, dim: note, warn: note } })
   return { exitCode: 0 }
 }

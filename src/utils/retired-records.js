@@ -7,9 +7,13 @@
  * the cleanup to the app — agents do most of the work through the CLI. The backend's route keeps a
  * record that a folder outside the call still places (another site's), and names it.
  *
- * ⭐ ASKED WHEN THE SITE IS PUBLISHED, ONCE IT IS LIVE. Until then the live site is the one
- * published with the folder that placed them, so a delete right after a push could take records
- * off a page visitors still see. `push` only says they are waiting (`noteRetiredRecords`).
+ * ⭐ ASKED AT THE END OF THE PUSH THAT RETIRED THEM, and of a publish, which pushes. A published
+ * site reads its records from its folder as the folder stands, with no snapshot taken at publish, so
+ * the push has already taken them off the live site [backend, 2026-11-04 —
+ * `backend/docs/delivery-orientation.md`: "Adding a blog post updates the live site with no
+ * republish"]. ⛔ Until then this asked only at publish, "because until then the live site still has
+ * the folder that placed them", which is not how that wire behaves. It also meant a site whose author
+ * pushes its records and never publishes again was never asked.
  *
  * As emptying the folder does, it asks first, and `--yes` is the way past the question. With no
  * terminal and no `--yes`, it keeps them and says how to finish. A person who declines keeps them,
@@ -29,22 +33,7 @@ function describeRetired(retired) {
 }
 
 /**
- * After a push: say which records the backend keeps that this copy's pushes took out of the folder.
- *
- * @returns {number} how many
- */
-export function noteRetiredRecords({ siteDir, backend, note }) {
-  const retired = readBackendState(siteDir, backend).retired || {}
-  if (!Object.keys(retired).length) return 0
-  note(
-    `${describeRetired(retired)} taken out of the site's folder stay on the backend, where no site serves them. ` +
-      '`uniweb publish` offers to delete them once the site is live.'
-  )
-  return Object.keys(retired).length
-}
-
-/**
- * After a publish has gone live: offer to delete the retired records, and delete them on a yes.
+ * After a push, or a publish: offer to delete the retired records, and delete them on a yes.
  *
  * @param {object} params
  * @param {object} params.client - a `BackendClient` on the site's backend, in its workspace
@@ -66,7 +55,7 @@ export async function settleRetiredRecords({ client, siteDir, args = [], say, as
     if (isNonInteractive(args)) {
       say.dim(
         `! ${what} that pushes took out of the site's folder stay on the backend, where no site serves them. ` +
-          'To delete them, publish again with --yes, or from a terminal and answer.'
+          'To delete them, push again with --yes, or from a terminal and answer.'
       )
       return { deleted: 0, kept: uuids.length, asked: false }
     }
@@ -85,7 +74,7 @@ export async function settleRetiredRecords({ client, siteDir, args = [], say, as
   try {
     res = await client.deleteEntities({ uuids, placed: 'keep' })
   } catch (err) {
-    say.warn(`Could not delete them: ${err?.message || err}. They stay on the backend; the next publish asks again.`)
+    say.warn(`Could not delete them: ${err?.message || err}. They stay on the backend; the next push asks again.`)
     return { deleted: 0, kept: uuids.length, asked: true }
   }
   if (res.status === 404) {

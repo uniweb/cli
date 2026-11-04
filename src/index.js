@@ -2032,7 +2032,8 @@ ${colors.bright}Usage:${colors.reset}
   uniweb push [options]
 
 Sends the site's content to the backend you are logged in to, releasing the local
-foundation first if its code changed. The site is not live until \`uniweb publish\`.
+foundation first if its code changed. Its pages go live with \`uniweb publish\`. Its
+records are live at once on a site already published, which reads them from its folder.
 
 In a git repository a push sends what is committed. It is refused, with nothing
 written, if the site changed in the app since your last pull: run \`uniweb pull\` to
