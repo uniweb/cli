@@ -61,6 +61,15 @@ function ancestor(cwd, a, b) {
 
 const holds = (cwd, sha) => text(cwd, ['cat-file', '-e', `${sha}^{commit}`]) !== null
 
+/**
+ * ⛔ A SHALLOW CLONE CANNOT SAY TWO COMMITS ARE UNRELATED. It holds a branch's recent commits cut
+ * off from their past (`shallow = true` in `.gitmodules`, or a CI checkout), so a commit it holds
+ * can look as if it were on no line with the one checked out. Read as "diverged", that sent a
+ * mount that was only behind to be settled by hand. A fetch of the rest settles it
+ * (`takeLatest`); until then it is taken as behind (measured 2026-11-04).
+ */
+const isShallow = (cwd) => text(cwd, ['rev-parse', '--is-shallow-repository']) === 'true'
+
 /** Does the mounted folder read the same at both commits? null when git cannot say. */
 function sameFolder(cwd, a, b, prefix) {
   try {
@@ -187,7 +196,7 @@ export async function mountedRepositories(siteDir) {
       else if (sameFolder(top, head, sub.recorded, prefix)) pin = 'same'
       else if (ancestor(top, head, sub.recorded)) pin = 'behind'
       else if (ancestor(top, sub.recorded, head)) pin = 'ahead'
-      else pin = 'diverged'
+      else pin = isShallow(top) ? 'behind' : 'diverged'
     }
     const remote = top ? remoteOf(top) : null
     const follows = remote
@@ -258,7 +267,7 @@ export function standing(m, tip) {
   if (ancestor(m.top, tip, m.head)) return 'ahead'
   if (sameFolder(m.top, m.head, tip, m.prefix)) return 'current'
   if (ancestor(m.top, m.head, tip)) return 'newer'
-  return 'diverged'
+  return isShallow(m.top) ? 'newer' : 'diverged'
 }
 
 /** Fetch a branch's tip into the mount's repository: objects and a remote-tracking ref, never its checkout. */
@@ -321,7 +330,7 @@ export async function takeLatest(siteDir, m) {
   let contained = ancestor(cur.top, cur.head, answer.tip)
   // ⭐ A shallow clone holds the branch's recent commits cut off from their past, so the branch
   // can look as if it does not contain the checkout. Only that past can say.
-  if (contained !== true && text(cur.top, ['rev-parse', '--is-shallow-repository']) === 'true') {
+  if (contained !== true && isShallow(cur.top)) {
     try {
       await remoteCall(cur.top, ['fetch', '--quiet', '--unshallow', cur.follows.remote], 300_000)
     } catch (err) {

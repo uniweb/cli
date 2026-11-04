@@ -20,7 +20,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmp, runVerb } from './helpers/run-verb.js'
-import { mountedRepositories, takeLatest } from '../src/utils/mounted-repositories.js'
+import { mountedRepositories, takeLatest, standing } from '../src/utils/mounted-repositories.js'
 import { mountsBeforeSending } from '../src/backend/mounts-before-sending.js'
 import { refresh } from '../src/commands/refresh.js'
 import { planNext } from '../src/utils/status-next.js'
@@ -52,9 +52,10 @@ function commitAll(dir, message) {
 /**
  * The docs' remote and an author's clone of it, with the pages at the top, or in `docs/` beside
  * some code; and the site's repository, mounting them as the submodule `external/docs`, or as a
- * clone the site's repository ignores (`clone: true`).
+ * clone the site's repository ignores (`clone: true`). `shallow: true` adds the submodule as a
+ * shallow clone, as `shallow = true` in `.gitmodules` does.
  */
-function fixture({ folder = '', clone = false } = {}) {
+function fixture({ folder = '', clone = false, shallow = false } = {}) {
   const root = tmp('uw-mounts-')
   const remote = join(root, 'docs.git')
   git(root, 'init', '-q', '--bare', '-b', 'main', remote)
@@ -74,6 +75,8 @@ function fixture({ folder = '', clone = false } = {}) {
     ...(clone ? { '.gitignore': 'external/\n' } : {})
   })
   if (clone) git(root, 'clone', '-q', remote, join(repo, 'external', 'docs'))
+  // A shallow clone of a local repository needs it named as a URL: a plain path copies it whole.
+  else if (shallow) git(repo, 'submodule', 'add', '-q', '--depth', '1', `file://${remote}`, 'external/docs')
   else git(repo, 'submodule', 'add', '-q', remote, 'external/docs')
   commitAll(repo, 'the site')
   return { root, remote, author, repo, siteDir: join(repo, 'site'), docs: join(repo, 'external', 'docs'), first }
@@ -245,6 +248,31 @@ test('⭐ a commit that leaves the mounted folder as it was is nothing to take',
   assert.equal((await gate(f, ['--non-interactive'])).stop, null)
   landDocs(f, 'docs/intro/page.yml', 'title: Intro, again\n')
   assert.deepEqual((await gate(f, ['--non-interactive'])).stop, { exitCode: 1 })
+})
+
+test('⭐ a shallow submodule holding its branch tip cut off from its past is behind, not diverged', { timeout: 60_000 }, async () => {
+  // As a fresh clone leaves one: its pin, and the branch's tip with none of the history between.
+  const f = fixture({ shallow: true })
+  landDocs(f)
+  const tip = landDocs(f, 'intro/page.yml', 'title: Third\n')
+  git(f.docs, 'fetch', '-q', '--depth', '1', 'origin', 'main')
+  assert.equal(git(f.docs, 'rev-parse', '--is-shallow-repository'), 'true')
+  const [m] = await mountedRepositories(f.siteDir)
+  assert.equal(standing(m, tip), 'newer')
+
+  const { stop, text } = await gate(f, ['--non-interactive'])
+  assert.deepEqual(stop, { exitCode: 1 })
+  assert.match(text, /has newer commits for it on main\./)
+  assert.match(text, /Take the latest with `npx uniweb refresh`/)
+
+  const doc = docOf(await status(f.siteDir, ['--json']))
+  assert.match(checkOf(doc, 'git.mounts').summary, /has newer commits on main\./)
+  assert.ok(doc.next.some((n) => n.command === 'npx uniweb refresh'))
+
+  const r = await takeLatest(f.siteDir, m)
+  assert.equal(r.error, null)
+  assert.equal(r.to, tip, 'it fetched the history it needed, and moved')
+  assert.equal(r.commits, 2)
 })
 
 test('a remote that does not answer is said, and the folder goes as it is', { timeout: 60_000 }, async () => {
