@@ -916,9 +916,11 @@ export async function pull(args = [], deps = {}) {
   let sections = 0
   let records = 0
   let deleted = 0
-  // Pages written in files a pull does not write back — a mount's, a folder-mode folder's `.md`
-  // pages (`@uniweb/build`'s `git-authored.js`). Said, since an app edit to one does not come back.
+  // The pages a pull does not write — a mount's, a folder-mode `.md` page given what its file cannot
+  // hold, a route the files give two pages for (`@uniweb/build`'s `page-files.js`). Said, since an app
+  // edit to one does not come back; each `.md` page with what it could not hold.
   let leftAlone = 0
+  let cannotHold = []
   // Set when the folder lane carried records this pull did not place — see the ⛔
   // where it is set.
   let recordsNotPlaced = null
@@ -1197,6 +1199,7 @@ export async function pull(args = [], deps = {}) {
       sections += report.sections.length
       deleted += report.deleted.length
       leftAlone += report.leftAlone?.length || 0
+      cannotHold = report.cannotHold || []
       outsideLanguages = report.outsideLanguages || []
     }
 
@@ -1483,9 +1486,10 @@ export async function pull(args = [], deps = {}) {
   else success(summary)
   if (leftAlone) {
     note(
-      `Left as written: ${leftAlone} page(s) whose files a pull does not write — a mounted folder's, or a folder-mode folder's \`.md\` pages. ` +
+      `Left as written: ${leftAlone} page(s) a pull does not write — a mounted folder's, a \`.md\` page given what its file cannot say, or two pages on one route. ` +
         'An edit made to one in the app does not come back here, and the next push sends the file.'
     )
+    for (const { route, what } of cannotHold) note(`  /${route}: its file cannot hold ${what.join(', ')}`)
     // ⭐ A mounted folder's pages are as current as its repository, which no pull moves.
     for (const line of await behindLines(siteDir)) note(line)
   }

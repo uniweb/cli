@@ -1275,7 +1275,7 @@ async function projectChecks(siteDir, siteYml) {
   })
 
   // ⭐ Pages from outside the site's folder (`paths:` mounts, by the build's own rule): a pull
-  // never writes them (`uwx/git-authored.js`), and one in its own repository is edited there.
+  // never writes them (`uwx/page-files.js`), and one in its own repository is edited there.
   const { mountEntriesOf } = await import('@uniweb/build/site')
   const siteRepo = repoOf(siteDir)?.top ?? null
   const mounts = mountEntriesOf(siteYml?.paths).map(([segment, dir]) => {

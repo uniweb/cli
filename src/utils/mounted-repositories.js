@@ -5,7 +5,7 @@
  * build or a push reads that folder as it is on disk. When the folder is its own git repository
  * (a submodule of the site's, or a clone beside it), nothing else keeps it current. A `git pull`
  * of the site moves a submodule's recorded commit and leaves its checkout where it was. A
- * `uniweb pull` never writes into a mount (`uwx/git-authored.js`), so after a teammate pushes
+ * `uniweb pull` never writes into a mount (`uwx/page-files.js`), so after a teammate pushes
  * newer docs, a pull here takes nothing and the next push puts the older ones back. So `status`
  * says where each one stands, `refresh` takes its latest, and a push or publish stops before
  * sending one that is not current (`backend/mounts-before-sending.js`).
