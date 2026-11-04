@@ -115,8 +115,8 @@ export const DISCOVERY_DEFAULTS = {}
  *
  * ⭐ `@<handle>`, the `@` required: a bare value is read as a unit's uuid — the spelling
  * for a workspace with no handle — so the two can never be mistaken for each other.
- * Every `/dev` route accepts it; the client names it on the site routes, the ones that
- * work in a workspace (`namesWorkspace`). ⛔ It replaced `?as_org=` (2026-09-23), which
+ * Every `/dev` route accepts it; the client names it on the routes that work in a workspace,
+ * the site routes and `/dev/entities` (`namesWorkspace`). ⛔ It replaced `?as_org=` (2026-09-23), which
  * only routes that declared it accepted — the rest answered `400`.
  */
 export const WORKSPACE_HEADER = 'x-uniweb-workspace'
@@ -134,7 +134,8 @@ export const SOURCE_HEADER = 'x-uniweb-source'
 const sourceHeaders = (source) => (source ? { [SOURCE_HEADER]: source } : {})
 
 /**
- * Whether a request works IN a workspace — a site route, `/dev/site…`.
+ * Whether a request works IN a workspace — a site route, `/dev/site…`, or `/dev/entities…`,
+ * which acts on entities of the workspace it names (an entity outside it is refused, `409`).
  *
  * Only those name one. Every `/dev` route accepts the header, but registration reads
  * none (the `@scope` in the name decides, membership-gated), `/dev/assets` reads none
@@ -147,7 +148,7 @@ const sourceHeaders = (source) => (source ? { [SOURCE_HEADER]: source } : {})
  * @returns {boolean}
  */
 export function namesWorkspace(path) {
-  return /^\/dev\/site(\/|$)/.test(String(path))
+  return /^\/dev\/(site|entities)(\/|$)/.test(String(path))
 }
 
 /**
@@ -957,6 +958,20 @@ export class BackendClient {
    */
   async deleteSite(uuid) {
     return this.request(`/dev/site/${encodeURIComponent(uuid)}`, { method: 'DELETE' })
+  }
+
+  /**
+   * POST /dev/entities/delete — delete entities by uuid, in the workspace the client names:
+   * `{ uuids, placed?: 'keep' | 'delete', rev_ref_policy?: 'abort' | 'orphan_refs' }`. Answers
+   * `{ deleted, kept }`: with `placed: 'keep'`, the default, an entity a folder outside the call
+   * still places is kept and named in `kept`. A uuid that names no entity is in neither list. One
+   * entity the caller may not administer refuses the whole call (`403`), and nothing is deleted.
+   *
+   * @param {{ uuids: string[], placed?: string, rev_ref_policy?: string }} body
+   * @returns {Promise<Response>}
+   */
+  async deleteEntities(body) {
+    return this.request('/dev/entities/delete', { method: 'POST', body: JSON.stringify(body) })
   }
 
   /**

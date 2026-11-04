@@ -110,6 +110,8 @@ test('site routes name the workspace; registry, assets, auth, orgs and config do
   assert.equal(namesWorkspace('/dev/site'), true)
   assert.equal(namesWorkspace('/dev/site/publish/S'), true)
   assert.equal(namesWorkspace('/dev/site/data-uploads/S'), true)
+  // The entity delete acts on entities of the workspace it names (backend, 2026-11-04).
+  assert.equal(namesWorkspace('/dev/entities/delete'), true)
   for (const p of ['/dev/registry/register', '/dev/assets', '/dev/auth/me', '/dev/orgs', '/dev/config', '/dev/sites'])
     assert.equal(namesWorkspace(p), false, p)
 

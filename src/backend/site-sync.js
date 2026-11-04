@@ -55,6 +55,7 @@ import {
   heldServices,
   readBackendState,
   updateBackendMap,
+  setBackendMap,
   clearBackendSections,
   normalizeBackendOrigin,
   harvestRecordItems,
@@ -1330,14 +1331,40 @@ export function writeFolderItemUuids(siteDir, backend, map) {
 }
 /**
  * What the backend holds each record as — its uuid → the data schema its folder entry names —
- * banked wherever placements are, from the same folder document. An entity keeps its schema for
- * life, so an entry never goes stale. A push reads it to tell a record whose file moved to another
- * schema (`@uniweb/build`'s `heldTypes`), and sends that record as a new one in the entry it had.
+ * banked wherever placements are, from the same folder document. A push reads it to tell a record
+ * whose file moved to another schema (`@uniweb/build`'s `heldTypes`), and sends that record as a
+ * new one in the entry it had.
+ *
+ * ⭐ Written WHOLE, so it names exactly what the folder placed when the backend last handed it back.
+ * That is what tells a push which records it took out of the folder: placed before, not after
+ * (`retireUnplaced`). An entity keeps its schema for life, so the entries never go stale.
+ *
+ * @returns {{ before: Record<string,string>, after: Record<string,string> }}
  */
 export function writeHeldTypes(siteDir, backend, folderDoc) {
-  const map = collectFolderRecordTypes(folderDoc)
-  if (!Object.keys(map).length) return
-  updateBackendMap(siteDir, backend, 'types', map)
+  const after = collectFolderRecordTypes(folderDoc)
+  const { prior } = setBackendMap(siteDir, backend, 'types', after)
+  return { before: prior, after }
+}
+
+/**
+ * Bank the records this push took out of the site's folder — moved to another schema, or their
+ * files deleted — as `retired`, by uuid, from what the folder placed before the push and after it.
+ * The backend keeps them, in no folder, until they are deleted (`utils/retired-records.js`). A
+ * retired record placed again (a move undone) is dropped from the list.
+ *
+ * ⚠️ Nothing is known before a copy first banks its types, so a copy banked before 2026-11-04
+ * retires nothing on its first push after that.
+ *
+ * @returns {string[]} the uuids this push retired
+ */
+export function retireUnplaced(siteDir, backend, { before, after }) {
+  const prior = readBackendState(siteDir, backend).retired || {}
+  const now = Object.fromEntries(Object.entries(prior).filter(([uuid]) => !(uuid in after)))
+  const retired = Object.keys(before).filter((uuid) => !(uuid in after))
+  for (const uuid of retired) now[uuid] = before[uuid]
+  setBackendMap(siteDir, backend, 'retired', now)
+  return retired
 }
 export function writeItemUuids(siteDir, backend, map) {
   if (!map || !Object.keys(map).length) return
@@ -2967,7 +2994,8 @@ export async function pushSyncPackages({
       const placements = collectFolderItemUuids(folderDoc)
       if (Object.keys(placements).length)
         writeFolderItemUuids(siteDir, client.origin, placements)
-      writeHeldTypes(siteDir, client.origin, folderDoc)
+      // What the folder places now, and so which records this push took out of it.
+      retireUnplaced(siteDir, client.origin, writeHeldTypes(siteDir, client.origin, folderDoc))
       // ⭐ A LINK RECORD'S IDENTITY is its folder entry's `$uuid`, banked as a record's is: into
       // its file the first time, then mapped per backend (`link-records.js`, 2026-09-28).
       if (records.links?.length) {

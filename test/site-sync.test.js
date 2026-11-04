@@ -1758,6 +1758,38 @@ test('pushSyncPackages: the folder lane is keyed by the bound site uuid', async 
   rmSync(dir, { recursive: true, force: true })
 })
 
+test('⭐ pushSyncPackages: a push banks what the folder now places, and retires what it no longer does', async () => {
+  // As a push that moved one record to another schema: the folder came back placing NEW where OLD was.
+  const dir = tmpSite()
+  writeFileSync(
+    join(dir, 'sync.json'),
+    JSON.stringify({ version: 1, backends: { 'http://x': { site: { uuid: 'SITE' }, types: { OLD: '@std/project', KEEP: '@std/article' } } } })
+  )
+  const returned = {
+    $schema: '@uniweb/folder',
+    contents: [
+      { kind: 'ref', name: 'launch', entry: { schema: '@acme/project', entity: 'NEW' }, $uuid: 'E1' },
+      { kind: 'ref', name: 'keep', entry: { schema: '@std/article', entity: 'KEEP' }, $uuid: 'E2' }
+    ]
+  }
+  const client = {
+    origin: 'http://x',
+    updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'SITE', changed: true }])),
+    pushFolder: async () => ok(finalized([{ index: 0, uuid: 'FOLDER', changed: true, document: returned }]))
+  }
+  const { report } = makeReport()
+  const pkg = siteOnlyPkg({
+    siteContentUuid: 'SITE',
+    records: { buffer: Buffer.from('c'), entityCount: 1, models: ['@uniweb/folder'], index: [{ kind: 'folder' }] }
+  })
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, report })
+  assert.equal(res.exitCode, 0)
+  const state = JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends['http://x']
+  assert.deepEqual(state.types, { NEW: '@acme/project', KEEP: '@std/article' })
+  assert.deepEqual(state.retired, { OLD: '@std/project' })
+  rmSync(dir, { recursive: true, force: true })
+})
+
 // ⛔ A backend must echo `$disabled: true` on a record it stored disabled. One that
 // predates the key stores the draft ENABLED, and it would be delivered once the site is
 // published. The push fails, after banking its state, so a publish (which stops on
