@@ -85,7 +85,7 @@ import send from '@uniweb/icons/families/lu/send.js'   // a dependency: npm inst
 <Icon svg={send} size="18" />
 ```
 
-`@uniweb/icons` holds Lucide (`lu`), Heroicons (`hi`, `hi2`) and Feather (`fi`), the same drawings an author's names get, named as the corpus spells them (`building2.js`). For another family, import the SVG as a string from that family's own package. **An icon an author names arrives as a name**, and `<Icon>` fetches it, since a site has no build:
+`@uniweb/icons` holds Lucide (`lu`), Heroicons (`hi`, `hi2`) and Feather (`fi`), the same drawings an author's names get, named as the corpus spells them (`building2.js`). For another family, import its SVG as a string, or its component, from that family's own package. **An icon an author names arrives as a name**, and `<Icon>` fetches it, since a site has no build:
 
 ```jsx
 {content.icons.map((icon, i) => <Icon key={i} {...icon} />)}   // the section's markdown
