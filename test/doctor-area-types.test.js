@@ -15,9 +15,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkAreaTypes } from '../src/commands/doctor.js'
 
-function foundation(sections, layouts) {
+function foundation(sections, layouts, self = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'uniweb-area-'))
-  const schema = { _self: { name: 'acme', version: '1.0.0' }, ...(layouts && { _layouts: layouts }) }
+  const schema = { _self: { name: 'acme', version: '1.0.0', ...self }, ...(layouts && { _layouts: layouts }) }
   for (const [name, entry] of Object.entries(sections)) schema[name] = { name, path: `sections/${name}`, ...entry }
   mkdirSync(join(dir, 'dist', 'meta'), { recursive: true })
   writeFileSync(join(dir, 'dist', 'meta', 'schema.json'), JSON.stringify(schema))
@@ -44,12 +44,20 @@ test('⭐ a header and a footer, by name or declared family, are suggested the a
 
 test("where every layout declares its areas and none is the family's, the suggestion is any area", () => {
   const layouts = { Docs: { name: 'Docs', areas: ['top', 'footer'] } }
-  assert.deepEqual(check(foundation({ Header: {}, Footer: {} }, layouts)).suggested, [
+  assert.deepEqual(check(foundation({ Header: {}, Footer: {} }, layouts, { defaultLayout: 'Docs' })).suggested, [
     { type: 'Header', area: true },
     { type: 'Footer', area: 'footer' },
   ])
   // A layout that declares no areas could draw any, so the family's name stands.
-  assert.deepEqual(check(foundation({ Header: {} }, { ...layouts, Plain: { name: 'Plain' } })).suggested, [{ type: 'Header', area: 'header' }])
+  assert.deepEqual(check(foundation({ Header: {} }, { ...layouts, Plain: { name: 'Plain' } }, { defaultLayout: 'Docs' })).suggested, [{ type: 'Header', area: 'header' }])
+})
+
+test('with no default layout, the built-in one draws the header and the footer, so their names stand', () => {
+  const layouts = { Side: { name: 'Side', areas: ['left', 'right'] } }
+  assert.deepEqual(check(foundation({ Header: {}, Footer: {} }, layouts)).suggested, [
+    { type: 'Header', area: 'header' },
+    { type: 'Footer', area: 'footer' },
+  ])
 })
 
 test('a type that says area or section, either way, has decided', () => {

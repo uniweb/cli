@@ -742,7 +742,7 @@ export function checkDefaultSection({ foundationName, folderName, foundationDir,
     const message = `defaultSection names '${named}', which is not a section type of this foundation`
     issues.push({ id, type: 'warn', foundation: foundationName, message, ...(suggestion ? { suggested: suggestion } : {}) })
     warn(`[${id}] ${folderName}: ${message}`)
-    log(`    A section that names no type shows "Component not found" where an author composes it.`)
+    log(`    A section that names no type shows "Component not found" where an author composes it, unless an extension the site adds provides ${named}.`)
     if (proposal) log(`    ${colors.blue}${proposal}${colors.reset}`)
     return { type: null, declared, exists }
   }
@@ -773,9 +773,11 @@ export function checkDefaultSection({ foundationName, folderName, foundationDir,
 export function checkAreaTypes({ foundationName, folderName, foundationDir, issues }) {
   const schema = loadSchemaJson(foundationDir)
   if (!schema) return []
+  // The areas its layouts declare, and with no default layout (`_self.defaultLayout`) the header and the
+  // footer the runtime's built-in layout draws, which a page that names no layout renders with.
   const layouts = Object.values(schema._layouts || {})
   const declared = layouts.length > 0 && layouts.every((layout) => Array.isArray(layout?.areas))
-    ? new Set(layouts.flatMap((layout) => layout.areas))
+    ? new Set([...layouts.flatMap((layout) => layout.areas), ...(schema._self?.defaultLayout ? [] : ['header', 'footer'])])
     : null
   const suggested = Object.entries(schema)
     .filter(([key, entry]) => !key.startsWith('_') && key !== 'dataSchemas' && entry && typeof entry === 'object')
