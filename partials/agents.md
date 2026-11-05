@@ -292,7 +292,7 @@ import { H1, P, Prose, Visual, Icon, Link, ChildBlocks, Overlay, PlainText } fro
 export default {
   title: 'Feature Grid', description: 'Grid of feature cards with icons',
   family: 'features',          // the standard kind it is (`uniweb families`); a name like `Hero` resolves on its own
-  // hidden: true · inset: true · section: true · children: true · background: 'self' · sticky: true
+  // hidden: true · inset: true · area: true · section: true · children: true · background: 'self' · sticky: true
   content: { title: 'Heading', paragraphs: 'Intro [0-1]', media: 'Photo [1]',
              items: { label: 'Cards [3-6]', content: { icon: 'Icon [1]', title: 'Name', paragraphs: 'Text' } } },
   params:  { columns: { type: 'number', default: 3 },

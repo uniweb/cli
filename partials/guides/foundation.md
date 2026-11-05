@@ -226,7 +226,7 @@ Colors, tokens, light and dark, fonts and `styles.css` are in `uniweb guide them
 
 **A data block whose value is a schema** — an author-designed form at `content.data.form` — is the inverse of every other component: declare the key, receive the fields, draw what you're given. You may declare a schema of the *envelope* (`title`, `description`, `fields`) for validation, never of the form's own fields.
 
-**Insets** are full section types: `{ content, params, block }`, alt text → `content.title`, attributes → `params`. `inset: true` in `meta.js`; add `section: true` for a component placed both ways. The hosting section declares a `media` slot and renders `<Visual>`, so one type works whether the author supplies an image, a video or an interactive component. Don't use `hidden: true` on insets — that means "never export".
+**Insets** are full section types: `{ content, params, block }`, alt text → `content.title`, attributes → `params`. `inset: true` in `meta.js`; add `section: true` for a component placed both ways. A component meant for a layout area (a header, a footer, a side panel) says `area: true`, and an editor leaves it out of a page's sections; `section: true` again for both. The hosting section declares a `media` slot and renders `<Visual>`, so one type works whether the author supplies an image, a video or an interactive component. Don't use `hidden: true` on insets — that means "never export".
 
 **Block insets** get their whole body parsed (`title`, `paragraphs`, `items`, `sequence`); render with `<Prose content={content} block={block} />` or read fields. Prefer a child section when the author needs their own type and independent editing; a block inset when the wrapper is presentational and inline.
 
