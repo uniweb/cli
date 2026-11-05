@@ -96,7 +96,20 @@ async function backendOf(siteDir) {
       const manifest = JSON.parse(zip.get('manifest.json').toString('utf8'))
       const site = JSON.parse(zip.get('entities/site-content.json').toString('utf8'))
       sent.push({ site, entry: manifest.entries.find((e) => e.file === 'entities/site-content.json') })
-      return json({ siteContentUuid: 'SITE', report: { finalized: [{ index: 0, uuid: 'SITE', changed: true, version: 'V2' }] } })
+      // What it stores, as a backend returns it: what was sent, and each item it kept that the push left
+      // out, in its place.
+      const written = structuredClone(site)
+      const keep = (mine, theirs) => {
+        theirs.forEach((r, i) => {
+          if (!mine.some((m) => m.$uuid === r.$uuid)) mine.splice(Math.min(i, mine.length), 0, structuredClone(r))
+        })
+        for (const m of mine) {
+          const t = theirs.find((r) => r.$uuid === m.$uuid)
+          if (t?.$children) keep((m.$children ||= []), t.$children)
+        }
+      }
+      keep(written.pages, doc.pages)
+      return json({ siteContentUuid: 'SITE', report: { finalized: [{ index: 0, uuid: 'SITE', changed: true, version: 'V2', item_versions: itemVersions(written), document: written }] } })
     }
     return json(null, 404)
   }
@@ -134,6 +147,8 @@ test('⭐ a fresh copy pulls a held page and leaves it out of its push: the app 
   assert.deepEqual(at(site, 'guide').$children.map(slugOf), ['start'], 'the held page is not sent')
   assert.equal(entry.item_base_versions?.['u-guide/install'], undefined, 'nor a version for it')
   assert.match(pushed.output, /Left out: 1 page\(s\) a pull held/)
+  // …and it is not named as someone else's change for a pull to take, which a pull cannot.
+  assert.doesNotMatch(pushed.output, /Changed on the backend by someone else/)
 })
 
 test('⭐ a held page whose file changed since the pull stops the push, and `--force` sends the file', { timeout: 60_000 }, async () => {

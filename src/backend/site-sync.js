@@ -989,8 +989,17 @@ export function writeItemBaseVersions(siteDir, backend, versions) {
 export function readHeldUnits(siteDir, backend) {
   return readMap(siteDir, backend, 'heldUnits')
 }
-export function writeHeldUnits(siteDir, backend, held) {
-  updateSyncCache(siteDir, backend, { heldUnits: { ...(held || {}) } })
+/**
+ * Record what a pull held: its units as the files keep them (`heldUnits`), and the `$uuid` of every
+ * item it held (`heldItems`), by which a push tells a held page in the backend's document, where the
+ * app may keep it under another path, from a change of someone else's.
+ */
+export function writeHeldUnits(siteDir, backend, held, items = []) {
+  updateSyncCache(siteDir, backend, { heldUnits: { ...(held || {}) }, heldItems: [...new Set(items)].sort() })
+}
+export function readHeldItems(siteDir, backend) {
+  const items = readSyncCacheFile(siteDir, backend).heldItems
+  return Array.isArray(items) ? items : []
 }
 
 /**
@@ -3110,11 +3119,18 @@ export async function pushSyncPackages({
   // (The site-content lane's own state was settled when it landed — `settleSiteContent`.)
   // What the backend holds that this copy doesn't. None of it was overwritten, and no
   // later push will overwrite it — but the files are behind until a pull.
-  if (notHeld.kept.length || notHeld.foreign.length) {
+  // A page a pull held is not one of these: the push left it out and said so (`noteHeldLeftOut`), and a pull
+  // cannot take it, so naming it here asked for a pull that holds it again (measured 2026-11-05).
+  const heldIds = new Set(readHeldItems(siteDir, client.origin))
+  const heldAt = new Set(
+    Object.entries(siteFinalizedDoc ? collectUnitUuids(siteFinalizedDoc) : {})
+      .filter(([, uuid]) => heldIds.has(uuid))
+      .map(([path]) => path)
+  )
+  const othersChanged = [...notHeld.kept, ...notHeld.foreign].filter((p) => !heldAt.has(p))
+  if (othersChanged.length) {
     // Named by the file it is in here, not by its id (`unitFilesOf`).
-    const paths = [
-      ...new Set([...notHeld.kept, ...notHeld.foreign].map((p) => (p === 'site.yml' ? p : unitFilesOf(siteDir, p)[0] || p)))
-    ].sort()
+    const paths = [...new Set(othersChanged.map((p) => (p === 'site.yml' ? p : unitFilesOf(siteDir, p)[0] || p)))].sort()
     note(`Changed on the backend by someone else, not in your files yet: ${paths.join(', ')}`)
     note('Take them with `uniweb refresh` (or `uniweb pull`). Until then, pushing leaves them as they are.')
   }

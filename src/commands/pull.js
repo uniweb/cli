@@ -1296,14 +1296,15 @@ export async function pull(args = [], deps = {}) {
       // say it (`readHeldUnits`). Replaced by each pull that takes the site's content. In the stand-in's
       // cache, which comes back to the site with the others.
       try {
+        const held = leftOutOfPush(heldPages).flatMap((h) => h.uuids || [])
         writeHeldUnits(projDir, client.origin, await heldUnitBaseline(projDir, client.origin, {
-          held: leftOutOfPush(heldPages).flatMap((h) => h.uuids || []),
+          held,
           // Where this copy kept each item before the pull, over where the backend keeps it — the same
           // place for a page the app did not move, and the one a `sync.json` without items still has.
           itemUuids: { ...collectUnitUuids(siteDoc), ...priorItems },
           ...(declarations.size ? { declarations } : {}),
           fields
-        }))
+        }), held)
       } catch (err) {
         // The files did not emit: neither will a push from them, which this pull leaves to say why.
         writeHeldUnits(projDir, client.origin, {})
