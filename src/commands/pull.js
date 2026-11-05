@@ -1637,7 +1637,7 @@ export async function pull(args = [], deps = {}) {
   }
   if (leftAlone) {
     note(
-      `Left as written: ${leftAlone} page(s) a pull cannot write — in a mounted folder it cannot merge into, a \`.md\` page given what its file cannot say, or two pages on one route. ` +
+      `Left as written: ${leftAlone} page(s) a pull cannot write — in a mounted folder it cannot merge into, what a folder of single-section pages cannot hold, or two pages on one route. ` +
         "An edit made to one in the app is held: kept on the backend, not undone by a push while the page's file is unchanged, and a push that changed it stops."
     )
     if (mountedMoved.length) {
@@ -1648,7 +1648,7 @@ export async function pull(args = [], deps = {}) {
     if (heldPages.length) {
       note(
         `Held: ${heldPages.length} page(s) whose files cannot say what the app made of them. The site keeps the app's version and the files keep theirs; ` +
-          'a push leaves it, and one that changes such a page is refused. Undo it in the app, or give the page a folder of its own with a page.yml, and pull again.'
+          'a push leaves it, and one that changes such a page is refused. Undo it in the app, and pull again.'
       )
       for (const { route, what } of heldPages) note(`  /${route}: ${what.join(', ')}`)
     }
