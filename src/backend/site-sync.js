@@ -47,6 +47,7 @@ import {
   computeUnitHashes,
   collectSiteUnits,
   collectUnitUuids,
+  heldUnitsOf,
   collectFolderItemUuids,
   collectFolderRecordTypes,
   collectQueryUuids,
@@ -976,6 +977,69 @@ export function writeItemBaseVersions(siteDir, backend, versions) {
   if (!versions || typeof versions !== 'object') return
   updateSyncCache(siteDir, backend, { itemBaseVersions: { ...versions } })
 }
+/**
+ * ⭐ WHAT A PULL HELD — `{ <unit path>: <hash> }`: each page or section the app changed in a way its
+ * files cannot say, where the files keep it, with what they said there at the pull
+ * (`@uniweb/build`'s `held-units.js`). A push leaves out each whose files still say it, so the backend
+ * keeps the app's version — it deletes only an item a push holds a version for, and a pull banks none
+ * for these (`agreedVersions`) — and stops on one whose files changed since. REPLACED by every pull that
+ * takes the site's content, and empty when it held nothing. Per copy, like every map here: a copy
+ * without it has no base either, and a push refuses it until a pull records both (`untakenBase`).
+ */
+export function readHeldUnits(siteDir, backend) {
+  return readMap(siteDir, backend, 'heldUnits')
+}
+export function writeHeldUnits(siteDir, backend, held) {
+  updateSyncCache(siteDir, backend, { heldUnits: { ...(held || {}) } })
+}
+
+/**
+ * What a pull held, as the files it wrote into keep it (`heldUnitsOf`): each held item's unit, and
+ * every unit below a held page, by path, with the hash the files give it — the files' document before
+ * any media is rewritten, as a push compares it. Found by the identity this copy held BEFORE the pull
+ * (`itemUuids`), so a page the app moved is found where the files still keep it. Offline.
+ *
+ * @param {string} siteDir - the files the pull wrote into: the stand-in, in a repository
+ * @param {string} backend
+ * @param {{ held: Iterable<string>, itemUuids?: object, declarations?: Map, fields?: object }} opts
+ * @returns {Promise<Object<string,string>>}
+ */
+export async function heldUnitBaseline(siteDir, backend, { held = [], itemUuids = {}, declarations = null, fields = null } = {}) {
+  const uuids = [...held]
+  if (!uuids.length) return {}
+  const pkg = await comparisonEmit(siteDir, { backend, sendAll: true, declarations, fields, heldUnits: {}, extra: { unitHashes: true, itemUuids } })
+  return heldUnitsOf({ hashes: pkg.unitHashes || {}, uuids: pkg.unitUuids || {}, held: uuids })
+}
+
+// A held unit's page, by its route: `pages/guide/install/page.yml` and `pages/guide/install/install.md`
+// are both `/guide/install`.
+function heldRoute(path) {
+  const dir = /\/(page|folder)\.yml$/.test(path) ? path.replace(/\/(page|folder)\.yml$/, '') : path.slice(0, path.lastIndexOf('/'))
+  return `/${dir.replace(/^pages\/?/, '')}`
+}
+
+/**
+ * ⭐ A PAGE A PULL HELD WHOSE FILES CHANGED SINCE STOPS A PUSH: the app's version and the file's would
+ * both claim it, and the push cannot keep the one without dropping the other (`heldChanged`,
+ * `@uniweb/build`'s `held-units.js`). Shared by push and publish. Returns whether it stopped.
+ */
+export function refuseChangedHeld(pkg, { error, note }) {
+  const routes = [...new Set((pkg?.heldChanged || []).map(heldRoute))]
+  if (!routes.length) return false
+  error(`${routes.length} page(s) changed in the app in a way their files cannot say, and changed in their files since the pull:`)
+  for (const route of routes) note(`  ${route}`)
+  note('Undo one of the two: the app\'s change, then pull, or the file\'s. `--force` sends the files\' version over the app\'s.')
+  return true
+}
+
+/** The pages a push left out because a pull held them, said — they stay as the app has them. */
+export function noteHeldLeftOut(pkg, { note }) {
+  const routes = [...new Set((pkg?.heldLeftOut || []).map(heldRoute))]
+  if (!routes.length) return
+  note(`Left out: ${routes.length} page(s) a pull held, which stay as the app has them — their files cannot say its change (\`uniweb pull\` names why):`)
+  for (const route of routes) note(`  ${route}`)
+}
+
 export function mergeItemBaseVersions(siteDir, backend, versions) {
   if (!versions || !Object.keys(versions).length) return
   // ⛔ The read names the backend. Without it the read keyed nothing, came back `{}`,
@@ -2114,7 +2178,7 @@ export async function probeUnpushed(siteDir, { backend = null, sendAll = false }
  */
 async function comparisonEmit(
   siteDir,
-  { backend = null, priorHashes = {}, sendAll = false, declarations = null, fields = null } = {}
+  { backend = null, priorHashes = {}, sendAll = false, declarations = null, fields = null, heldUnits = undefined, extra = {} } = {}
 ) {
   const applied = readAppliedInjections(siteDir, backend)
   // ⛔ Per backend: an asset id is minted by one and means nothing to another, so a
@@ -2138,7 +2202,11 @@ async function comparisonEmit(
     // the last push banked.
     ...(fields || {}),
     ...(Object.keys(queryUuids).length ? { queryUuids } : {}),
-    ...(Object.keys(assetIds).length ? { assetIds } : {})
+    ...(Object.keys(assetIds).length ? { assetIds } : {}),
+    // What a pull held stays out of the comparison as it stays out of a push (`readHeldUnits`), so a
+    // hash banked over it compares with the push's.
+    heldUnits: heldUnits === undefined ? readHeldUnits(siteDir, backend) : heldUnits,
+    ...extra
     // ⛔ No `org`: a site's `@/x` refs resolve into its FOUNDATION's scope, which the
     // emit reads itself — the same read a push makes, so the hashes compare alike.
   })

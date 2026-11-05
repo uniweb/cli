@@ -104,6 +104,9 @@ import {
   mergeBaseVersions,
   writeItemBaseVersions,
   pulledItemVersions,
+  readItemUuids,
+  writeHeldUnits,
+  heldUnitBaseline,
   writeUnitBases,
   commitWriteBacks,
   reportWriteBacks,
@@ -508,15 +511,28 @@ function filesUnder(siteDir, roots) {
   return out
 }
 
-// ⭐ A VERSION IS BANKED FOR WHAT THE FILES TOOK, OR CHOSE NOT TO TAKE. A page held because its file
-// cannot say the app's change keeps the version this copy last agreed on, so the per-item gate keeps the
-// backend's copy while the file is unchanged and refuses a push that changed it. One this copy never agreed
-// on keeps the backend's: there is no agreement to hold. A mount's page takes the backend's, so the next
-// push puts the folder's back.
-export function agreedVersions(pulled, heldPages, prior) {
+// ⭐ A VERSION IS BANKED FOR WHAT THE FILES TOOK, OR CHOSE NOT TO TAKE.
+// - A page held because its files cannot say the app's change (`leftOut`) gets NO version: a push leaves
+//   it out while its files still say what they said (`heldUnitBaseline`), and the backend keeps an item a
+//   push holds no version for. ⛔ Until 2026-11-04 it kept the version this copy last agreed on, so a copy
+//   that never agreed on one — a fresh clone, CI — banked the backend's, and its next push sent the file
+//   over the app's edit; and a section the app added there was banked, so that push deleted it.
+// - A page of a mount the pull cannot merge into, or of a route the files give two pages for
+//   (`heldPages`), keeps the version this copy last agreed on, so the per-item gate keeps the backend's
+//   copy while the file is unchanged and refuses a push that changed it. One this copy never agreed on
+//   keeps the backend's: there is no agreement to hold.
+export function agreedVersions(pulled, heldPages, prior, leftOut = []) {
   const out = { ...pulled }
   for (const { uuids } of heldPages || []) for (const u of uuids || []) if (prior?.[u]) out[u] = prior[u]
+  for (const { uuids } of leftOut || []) for (const u of uuids || []) delete out[u]
   return out
+}
+
+// The pages a push leaves out while their files say what they said at the pull: every page the pull held
+// for what its files cannot say. Not a route the files give two pages for, which no push can leave out
+// of the two the files send.
+export function leftOutOfPush(heldPages) {
+  return (heldPages || []).filter(({ what }) => !(what || []).includes('two pages on one route'))
 }
 
 // The mounted pages the backend holds at another version than this copy last agreed on, by route.
@@ -990,8 +1006,11 @@ export async function pull(args = [], deps = {}) {
   // only while the sync point it was banked with is.
   const cache = readPullCache(siteDir)
   const held = repo ? readSyncPoint(siteDir, client.origin) : null
-  // The versions this copy agreed on before this pull — what a held page keeps (`agreedVersions`).
+  // The versions this copy agreed on before this pull — what a mount's held page keeps (`agreedVersions`).
   const priorVersions = readItemBaseVersions(siteDir, client.origin)
+  // …and the identity it held, by the paths its files keep each item at: where a held page is found in
+  // them though the app moved it (`heldUnitBaseline`). Read before the pull replaces it.
+  const priorItems = readItemUuids(siteDir, client.origin)
   const cacheHolds = etagsHold(siteDir, client.origin, repo)
   let etagContent = cache.content
   let etagFolder = cache.folder
@@ -1272,6 +1291,24 @@ export async function pull(args = [], deps = {}) {
       mountRoutes = report.mountRoutes || []
       mountedMoved = mountedPagesMoved(mountedPages, pulledVersions, priorVersions)
       outsideLanguages = report.outsideLanguages || []
+      // ⭐ WHAT IT HELD, AS THE FILES KEEP IT — where each held page is in the files it wrote into, the
+      // stand-in in a repository, and what they say there — for a push to leave out while they still
+      // say it (`readHeldUnits`). Replaced by each pull that takes the site's content. In the stand-in's
+      // cache, which comes back to the site with the others.
+      try {
+        writeHeldUnits(projDir, client.origin, await heldUnitBaseline(projDir, client.origin, {
+          held: leftOutOfPush(heldPages).flatMap((h) => h.uuids || []),
+          // Where this copy kept each item before the pull, over where the backend keeps it — the same
+          // place for a page the app did not move, and the one a `sync.json` without items still has.
+          itemUuids: { ...collectUnitUuids(siteDoc), ...priorItems },
+          ...(declarations.size ? { declarations } : {}),
+          fields
+        }))
+      } catch (err) {
+        // The files did not emit: neither will a push from them, which this pull leaves to say why.
+        writeHeldUnits(projDir, client.origin, {})
+        note(`! could not record the pages this pull held: ${err.message}`)
+      }
     }
 
     if (folderTaken) {
@@ -1606,7 +1643,9 @@ export async function pull(args = [], deps = {}) {
       // ⭐ Held where the files cannot take the app's change: a page they cannot say, and each page of a
       // mount the pull could not write. ⛔ Until 2026-11-04 a mount's took the backend's version, and the
       // next push put the folder's back over the app's edit.
-      writeItemBaseVersions(siteDir, client.origin, agreedVersions(pulledVersions, [...heldPages, ...mountedPages], priorVersions))
+      const leftOut = leftOutOfPush(heldPages)
+      const keptAt = [...heldPages.filter((h) => !leftOut.includes(h)), ...mountedPages]
+      writeItemBaseVersions(siteDir, client.origin, agreedVersions(pulledVersions, keptAt, priorVersions, leftOut))
     }
     // Persist the ETags so the next pull is conditional (304 when unchanged). The
     // folder's is DROPPED when records were not placed, so the next pull fetches

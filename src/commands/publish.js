@@ -98,6 +98,9 @@ import {
   readSyncCache,
   readBaseVersions,
   readItemBaseVersions,
+  readHeldUnits,
+  refuseChangedHeld,
+  noteHeldLeftOut,
   ensureItemUuids,
   readFolderItemUuids,
   readRecordItemUuids,
@@ -665,7 +668,9 @@ export async function publish(args = []) {
       // Placement identity for the folder — see writeFolderItemUuids.
       folderItemUuids: readFolderItemUuids(siteDir, client.origin),
       ...(foundationDir ? { foundationDir } : {}),
-      resolveModel
+      resolveModel,
+      // What a pull held, for a page that changed since to stop the publish before anything goes up.
+      ...(args.includes('--force') ? {} : { heldUnits: readHeldUnits(siteDir, client.origin) })
     })
   } catch (err) {
     say.err(`Could not build the sync package: ${err.message}`)
@@ -676,6 +681,8 @@ export async function publish(args = []) {
   if (refuseUnsendableRecords(probe.refusals, { error: say.err, note: say.dim })) {
     return { exitCode: 1 }
   }
+  // …and so does a page a pull held whose files changed since (`refuseChangedHeld`).
+  if (refuseChangedHeld(probe, { error: say.err, note: say.dim })) return { exitCode: 1 }
   const schemalessNames = (probe.schemaless || []).map((col) => col.name)
   // A product decision the author is usually making unknowingly — say it at warn
   // level, not dim among everything else. See the helper for what the old
@@ -969,7 +976,9 @@ export async function publish(args = []) {
       ? {}
       : {
           baseVersions: readBaseVersions(siteDir, client.origin),
-          itemBaseVersions: readItemBaseVersions(siteDir, client.origin)
+          itemBaseVersions: readItemBaseVersions(siteDir, client.origin),
+          // What a pull held is left out while its files still say it — see `uniweb push`.
+          heldUnits: readHeldUnits(siteDir, client.origin)
         }),
     ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
     ...(Object.keys(ext.pins).length ? { injectExtensions: ext.pins } : {}),
@@ -996,6 +1005,8 @@ export async function publish(args = []) {
   if (refuseUnsendableRecords(pkg.refusals, { error: say.err, note: say.dim })) {
     return { exitCode: 1 }
   }
+  if (refuseChangedHeld(pkg, { error: say.err, note: say.dim })) return { exitCode: 1 }
+  noteHeldLeftOut(pkg, { note: (m) => say.dim(m) })
   // ⭐ `records` is what delivers the records the pages show on the published site — said
   // here, at publish, and never at push: syncing records does not depend on it.
   const notAsked = recordsNotAsked({ siteYml, shown: pkg.recordsShown })

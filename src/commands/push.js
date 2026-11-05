@@ -88,6 +88,9 @@ import {
   readSyncCache,
   readBaseVersions,
   readItemBaseVersions,
+  readHeldUnits,
+  refuseChangedHeld,
+  noteHeldLeftOut,
   readItemUuids,
   readFolderItemUuids,
   readQueryUuids,
@@ -470,6 +473,7 @@ export async function push(args = [], deps = {}) {
   if (!output && !dryRun) {
     let mediaRefs = []
     let refusals = []
+    let held = null
     try {
       const probe = await emitSyncPackages(siteDir, {
         backend: client.origin,
@@ -477,11 +481,14 @@ export async function push(args = [], deps = {}) {
         // Placement identity for the folder — see writeFolderItemUuids.
         folderItemUuids: readFolderItemUuids(siteDir, client.origin),
         ...(foundationDir ? { foundationDir } : {}),
-        resolveModel: makeModelResolver({ client, offline: false, siteDir })
+        resolveModel: makeModelResolver({ client, offline: false, siteDir }),
+        // What a pull held, for a page that changed since to stop the push before anything goes up.
+        ...(force ? {} : { heldUnits: readHeldUnits(siteDir, client.origin) })
       })
       // Site-root media, and each file record's file (`@uniweb/file` — `{ ref, path, contentType }`).
       mediaRefs = [...(probe.localAssets || []), ...(probe.localFiles || [])]
       refusals = probe.refusals || []
+      held = probe
     } catch (err) {
       error(`Could not scan the site for local media: ${err.message}`)
       return { exitCode: 2 }
@@ -489,6 +496,8 @@ export async function push(args = [], deps = {}) {
     // A record the backend would refuse stops the push HERE — before the site is
     // created or a byte uploaded, not merely before the send (`refuseUnsendableRecords`).
     if (refuseUnsendableRecords(refusals, { error, note })) return { exitCode: 1 }
+    // …and so does a page a pull held whose files changed since (`refuseChangedHeld`).
+    if (refuseChangedHeld(held, { error, note })) return { exitCode: 1 }
     if (mediaRefs.length) {
       // The site has to exist before its bytes do — an upload with no owning
       // entity is charged and cannot be freed, because freeing means deleting the
@@ -620,7 +629,10 @@ export async function push(args = [], deps = {}) {
       ? {}
       : {
           baseVersions: readBaseVersions(siteDir, client.origin),
-          itemBaseVersions: readItemBaseVersions(siteDir, client.origin)
+          itemBaseVersions: readItemBaseVersions(siteDir, client.origin),
+          // ⭐ What a pull held is left out while its files still say what they said, so the backend
+          // keeps the app's version (`readHeldUnits`). `--force` sends it with everything else.
+          heldUnits: readHeldUnits(siteDir, client.origin)
         }),
     ...(assetRewrite ? { assetRewrite } : {}),
     ...(assetIds ? { assetIds } : {})
@@ -652,6 +664,8 @@ export async function push(args = [], deps = {}) {
   // The same stop for the paths the probe above does not run on — `-o` and
   // `--dry-run` say what a push would do, and a push would stop here.
   if (refuseUnsendableRecords(pkg.refusals, { error, note })) return { exitCode: 1 }
+  if (refuseChangedHeld(pkg, { error, note })) return { exitCode: 1 }
+  noteHeldLeftOut(pkg, { note })
   // Warn level, not dim: this is the author choosing entities vs static files.
   reportSchemalessQueries(pkg.schemaless, { warn, dim: note })
 
