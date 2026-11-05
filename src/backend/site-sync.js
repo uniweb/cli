@@ -2893,6 +2893,15 @@ export async function pushSyncPackages({
         })
       })
     }
+    // ⭐ WHAT A PULL HELD ENDS WHEN A PUSH SENDS THE FILES' VERSION. A push that left nothing out
+    // (`heldLeftOut`) either held nothing or was forced, and then sent each held page's files over
+    // the app's version: the site holds the files' version now, so nothing is left to keep out of the
+    // next push, and the next pull records afresh what it holds. ⛔ Until 2026-11-05 a forced push left
+    // `heldUnits` as the pull wrote them while banking a version for each page it sent, and the next
+    // plain push left those pages out with their versions: a deletion.
+    if (!(pkg.heldLeftOut || []).length && Object.keys(readHeldUnits(siteDir, client.origin)).length) {
+      writeHeldUnits(siteDir, client.origin, {}, [])
+    }
     // Re-base the page attribution: our emitted document and the backend's post-write
     // copy of it are the two sides' new agreed state.
     const patch = {}

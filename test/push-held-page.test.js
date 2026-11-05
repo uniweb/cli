@@ -173,6 +173,53 @@ test('⭐ a held page whose file changed since the pull stops the push, and `--f
   assert.deepEqual(at(be.sent.at(-1).site, 'guide').$children.map(slugOf), ['install', 'start'])
 })
 
+// ⛔ Until 2026-11-05 a forced push left the hold as the pull wrote it while banking the page's version,
+// and the next plain push left the page out and sent that version: the backend deletes such a page.
+test('⭐ a forced push ends the hold: the next push sends the page as its files have it', { timeout: 60_000 }, async () => {
+  const { pull } = await import('../src/commands/pull.js')
+  const { push } = await import('../src/commands/push.js')
+  const { readHeldUnits } = await import('../src/backend/site-sync.js')
+  const repo = freshClone()
+  const siteDir = join(repo, 'site')
+  const be = await backendOf(siteDir)
+  describe(be.doc)
+  assert.equal((await runVerb(siteDir, pull, [], be.opts)).exitCode, 0)
+
+  const forced = await runVerb(siteDir, push, ['--force'], be.opts)
+  assert.equal(forced.exitCode, 0, forced.output)
+  assert.deepEqual(readHeldUnits(siteDir, A), {}, 'nothing is held once the files\' version is sent')
+
+  w(repo, 'site/pages/guide/start.md', '# Start\n\nBegin here, slowly.\n')
+  commitAll(repo, 'an edit of its own')
+  const pushed = await runVerb(siteDir, push, [], be.opts)
+  assert.equal(pushed.exitCode, 0, pushed.output)
+  assert.deepEqual(at(be.sent.at(-1).site, 'guide').$children.map(slugOf), ['install', 'start'], 'the page is sent')
+  assert.doesNotMatch(pushed.output, /Left out/)
+})
+
+test('⭐ a version this copy holds for a page the push leaves out is not sent: leaving it out keeps it', { timeout: 60_000 }, async () => {
+  const { pull } = await import('../src/commands/pull.js')
+  const { push } = await import('../src/commands/push.js')
+  const { readItemBaseVersions, writeItemBaseVersions, readHeldUnits } = await import('../src/backend/site-sync.js')
+  const repo = freshClone()
+  const siteDir = join(repo, 'site')
+  const be = await backendOf(siteDir)
+  describe(be.doc)
+  assert.equal((await runVerb(siteDir, pull, [], be.opts)).exitCode, 0)
+  // A version for the held page, however this copy came to hold one.
+  writeItemBaseVersions(siteDir, A, { ...readItemBaseVersions(siteDir, A), 'u-guide/install': 'v-held' })
+  assert.ok(Object.keys(readHeldUnits(siteDir, A)).length, 'CONTROL — still held')
+
+  w(repo, 'site/pages/guide/start.md', '# Start\n\nBegin here, slowly.\n')
+  commitAll(repo, 'an edit of its own')
+  const pushed = await runVerb(siteDir, push, [], be.opts)
+  assert.equal(pushed.exitCode, 0, pushed.output)
+  const { site, entry } = be.sent.at(-1)
+  assert.deepEqual(at(site, 'guide').$children.map(slugOf), ['start'], 'the held page is left out')
+  assert.equal(entry.item_base_versions?.['u-guide/install'], undefined, 'and sent no version')
+  assert.ok(entry.item_base_versions?.['u-guide/start'], 'CONTROL — the page sent has its version')
+})
+
 test('a section the app added to a folder of single-section pages is held, and no push deletes it', { timeout: 60_000 }, async () => {
   const { pull } = await import('../src/commands/pull.js')
   const { push } = await import('../src/commands/push.js')
