@@ -753,30 +753,43 @@ export function checkDefaultSection({ foundationName, folderName, foundationDir,
 }
 
 /**
- * The section types an editor would leave out of a page's sections if they said `area: true` — those
- * whose family is `header` or `footer`, declared or by their name — suggested, never applied.
+ * The section types an editor would offer only for their area, and leave out of a page's sections,
+ * if they named it — those whose family is `header` or `footer`, declared or by their name — with
+ * the `area:` each could say: suggested, never applied.
  *
- * `area: true` is a placement, beside `inset` (`describePlacement`, `@uniweb/schemas/component`): a
- * type meant for a layout area, offered where an author fills one and left out of a page's sections.
+ * `area` is a placement, beside `inset` (`describePlacement`, `@uniweb/schemas/component`): a type
+ * meant for the layout areas it names (`area: 'header'`), or for any (`area: true`), offered where an
+ * author fills one and left out of a page's sections. The suggestion names the area the family is
+ * named for, the header's or the footer's, unless every layout of the foundation declares its `areas`
+ * and none is called that; then it is `true`.
  * ⭐ A family is a claim about a type's shape, not about where it goes, so it never places a type on its
  * own: it is only why doctor asks [Diego, 2026-11-05: "maybe a family that makes it predictable that they
  * are layout only components. or some mix of that"]. Only `header` and `footer`: a `toc` or a `pathways`
  * type is as often a page's own section. A type that says `area` or `section` either way has decided.
  *
- * @returns {string[]} the types suggested; [] with no built schema
+ * @returns {Array<{ type: string, area: string|true }>} the types suggested, each with its `area:`;
+ *   [] with no built schema
  */
 export function checkAreaTypes({ foundationName, folderName, foundationDir, issues }) {
   const schema = loadSchemaJson(foundationDir)
   if (!schema) return []
+  const layouts = Object.values(schema._layouts || {})
+  const declared = layouts.length > 0 && layouts.every((layout) => Array.isArray(layout?.areas))
+    ? new Set(layouts.flatMap((layout) => layout.areas))
+    : null
   const suggested = Object.entries(schema)
     .filter(([key, entry]) => !key.startsWith('_') && key !== 'dataSchemas' && entry && typeof entry === 'object')
     .filter(([, entry]) => entry.area === undefined && entry.section === undefined && entry.inset !== true)
-    .filter(([name, entry]) => ['header', 'footer'].includes(resolveFamily({ name, family: entry.family }).id))
-    .map(([name]) => name)
+    .map(([name, entry]) => ({ type: name, family: resolveFamily({ name, family: entry.family }).id }))
+    .filter(({ family }) => family === 'header' || family === 'footer')
+    .map(({ type, family }) => ({ type, area: !declared || declared.has(family) ? family : true }))
   if (suggested.length === 0) return []
-  issues.push({ id: 'section-area-suggested', type: 'info', foundation: foundationName, message: `${suggested.join(', ')} could say area: true`, details: suggested })
-  info(`${folderName}: ${suggested.join(', ')} could say ${colors.blue}area: true${colors.reset} in meta.js`)
-  log(`    ${colors.dim}A type meant only for a layout area (a header, a footer, a side panel) says so, and an editor leaves it out of a page's sections. With section: true beside it, it is offered for both; section: true alone says it is a page's.${colors.reset}`)
+  const spell = ({ area }) => (area === true ? 'area: true' : `area: '${area}'`)
+  const say = (paint) =>
+    suggested.map((s, i) => `${s.type}${i === 0 ? ' could say' : ''} ${paint(spell(s))}`).join(', ')
+  issues.push({ id: 'section-area-suggested', type: 'info', foundation: foundationName, message: say((s) => s), details: suggested })
+  info(`${folderName}: ${say((s) => `${colors.blue}${s}${colors.reset}`)} in meta.js`)
+  log(`    ${colors.dim}A type meant only for a layout area (a header, a footer, a side panel) names it, and an editor offers it there, not among a page's sections; area: true is any area. With section: true beside it, it is offered for both; section: true alone says it is a page's.${colors.reset}`)
   return suggested
 }
 
