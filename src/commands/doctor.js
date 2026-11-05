@@ -693,6 +693,66 @@ export function checkSectionFamilies({
 }
 
 /**
+ * The foundation's default section type — what renders a section that names none — said for every
+ * foundation, as a fact: declared, the fallback, or none [Diego, 2026-11-05: "It can list the default
+ * section type and show if there is none"].
+ *
+ * The rule is core's (`@uniweb/core/section-type`): the foundation's `defaultSection`, else `Section`.
+ * ⭐ `Section` is only a legacy fallback: the name every foundation was once expected to provide. The
+ * runtime ships no component by that name, so where the foundation has no type by it, a section that
+ * names no type shows "Component not found" where an author composes it.
+ *
+ * ⛔ "None" IS NOT A WARNING. Many vocabularies have no natural default (Hero, Features, …), and their
+ * sections each name a type — 32 of 56 workspace foundations, measured 2026-11-05, with no site of theirs
+ * leaving a section without one. Warning there would be noise, and would push an arbitrary default. Only
+ * a declared `defaultSection` that names no type is a mistake, and warned. Here rather than in the build,
+ * which would print it on every build while a developer works [Diego, 2026-11-05].
+ *
+ * The suggestion, for none or a mistake: the type a mistyped name meant, else the foundation's only type
+ * in the `article` or `rich-text` family, declared or by its name (`resolveFamily`). ⚠️ Reads the built
+ * `schema.json`, as `checkSectionFamilies` does, so it says nothing before a build.
+ *
+ * @returns {{ type: string|null, declared: boolean, exists: boolean }|null} null with no built schema
+ */
+export function checkDefaultSection({ foundationName, folderName, foundationDir, issues }) {
+  const schema = loadSchemaJson(foundationDir)
+  if (!schema) return null
+  const types = Object.keys(schema).filter((key) => !key.startsWith('_') && key !== 'dataSchemas' && schema[key] && typeof schema[key] === 'object')
+  if (types.length === 0) return null
+
+  const named = schema._self?.defaultSection
+  const declared = typeof named === 'string' && named !== ''
+  const fallback = declared ? named : 'Section'
+  const exists = types.includes(fallback)
+  if (exists) {
+    info(
+      `${folderName}: default section type ${fallback} ` +
+        (declared ? `${colors.dim}(defaultSection in main.js)${colors.reset}` : `${colors.dim}(the fallback: main.js declares no defaultSection)${colors.reset}`)
+    )
+    if (!declared) log(`    ${colors.dim}Declare defaultSection in main.js to choose it by name.${colors.reset}`)
+    return { type: fallback, declared, exists }
+  }
+
+  const prose = types.filter((name) => ['article', 'rich-text'].includes(resolveFamily({ name, family: schema[name]?.family }).id))
+  const meant = declared ? types.find((name) => name.toLowerCase() === named.toLowerCase()) : null
+  const suggestion = meant || (prose.length === 1 ? prose[0] : null)
+  const proposal = suggestion ? `defaultSection: '${suggestion}' in main.js would make ${suggestion} the default.` : null
+  if (declared) {
+    const id = 'default-section-missing'
+    const message = `defaultSection names '${named}', which is not a section type of this foundation`
+    issues.push({ id, type: 'warn', foundation: foundationName, message, ...(suggestion ? { suggested: suggestion } : {}) })
+    warn(`[${id}] ${folderName}: ${message}`)
+    log(`    A section that names no type shows "Component not found" where an author composes it.`)
+    if (proposal) log(`    ${colors.blue}${proposal}${colors.reset}`)
+    return { type: null, declared, exists }
+  }
+  issues.push({ id: 'default-section-none', type: 'info', foundation: foundationName, message: 'no default section type: each section names its own', ...(suggestion ? { suggested: suggestion } : {}) })
+  info(`${folderName}: no default section type ${colors.dim}(each section names its own; one that names none shows "Component not found")${colors.reset}`)
+  if (proposal) log(`    ${colors.dim}${proposal}${colors.reset}`)
+  return { type: null, declared, exists }
+}
+
+/**
  * Insert `family: '<id>'` as the first key of a meta.js default export.
  *
  * ⛔ REFUSES ANYTHING IT DOES NOT RECOGNIZE. A meta.js is hand-written source,
@@ -1885,6 +1945,13 @@ async function runDoctor(args = []) {
       issues,
       shouldFixExplicitly,
       fixed
+    })
+    // A foundation's own default — not an extension's, whose types join a site's primary foundation.
+    checkDefaultSection({
+      foundationName: f.name,
+      folderName: f.folderName,
+      foundationDir: f.path,
+      issues
     })
     checkRetiredMetaKeys({
       foundationName: f.name,
