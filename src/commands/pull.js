@@ -1275,7 +1275,10 @@ export async function pull(args = [], deps = {}) {
         dataModel,
         sectionType,
         // The mounts it may write into, each one the site declares writable (above).
-        writableMounts: mounts.writable
+        writableMounts: mounts.writable,
+        // Where each page was before this pull, read before its identity merged the pulled document's
+        // in (`writeItemUuids`, above): a page the app moved is found where the files keep it.
+        priorItems
       })
       wrote.push(...report.pages, ...report.sections, ...report.layout)
       removed.push(
