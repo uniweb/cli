@@ -4,7 +4,7 @@ Lane guide — AGENTS.md procedure step 6 loads it before any content is written
 
 ## Sections
 
-**A section with no `type:` renders through the foundation's default section type** — a component named `Section`, unless the foundation's `main.js` sets `defaultSection`. This is what lets a folder of plain markdown with no frontmatter become pages: mounted documentation, an imported wiki. If such content renders blank, the foundation has no `Section` — that, not the markdown, is what to fix.
+**A section with no `type:` renders through the foundation's default section type** — the `defaultSection` its `main.js` sets, else a section type named `Section` where the foundation has one, the fallback for foundations that declare none. This is what lets a folder of plain markdown with no frontmatter become pages: mounted documentation, an imported wiki. If such content shows "Component not found", the foundation has neither: declare `defaultSection` in its `main.js`, naming the type that content should render with. `uniweb doctor` states each foundation's default, and suggests one where a type stands out.
 
 **Content before the first heading changes the parse:** headings after body content become items, not the section title. That's how repeating groups are made. An icon counts: `![](lu-globe)` above `# Title` leaves `content.title` empty and puts the heading in `items[0]`. For an icon that belongs to the title, write it under the heading, where it is still `content.icons[0]`; `uniweb inspect` shows the shape, and warns about an icon above one heading. An image above the title empties it too, with the heading in `content.headings` and no warning.
 
