@@ -100,19 +100,15 @@ The build adds preconnect hints, emits `@font-face` + preload, drops unreference
 ## styles.css
 
 ```css
-@import "tailwindcss";
+@import "tailwindcss" source("./");
 @import "@uniweb/kit/theme-tokens.css";
 @import "@uniweb/kit/prose-tokens.css";
-@source "./sections/**/*.{js,jsx}";
-@source "./components/**/*.{js,jsx}";
-@source "./layouts/**/*.{js,jsx}";
-@source "./utils/**/*.{js,jsx}";
 @theme { --breakpoint-xs: 30rem; }
 ```
 
 Two more imports are opt-in: `@uniweb/kit/math-tokens.css` lays out equations, and `@uniweb/kit/callout-tokens.css` draws concept blocks such as `md:warning`, which are otherwise plain prose.
 
-**Name every folder that writes classes,** or keeps them in a string for code elsewhere to write, such as a map of colours to classes in `utils/`. The foundation's own build finds them all, but a site build and `uniweb dev` read only what these lines name, so a class in a folder left out is in one CSS and missing from the other. `uniweb dev`, a site build and `uniweb doctor` (`unread-folder`) give the line to add. `theme-tokens.css` also tells Tailwind to read kit's source, so kit's own classes reach your CSS wherever your package manager put kit; a foundation that skips that import names kit itself, by where kit is (`./node_modules/@uniweb/kit/src/**` under pnpm, `../node_modules/@uniweb/kit/src/**` under npm).
+**Tailwind reads the whole foundation.** `source("./")` on the import has it read every file under the foundation, in the foundation's own build and in a site's, so a class in any folder reaches both — one kept in a string for code elsewhere to write too, such as a map of colours to classes in `utils/`. A stylesheet that names folders instead (`@source "./sections/**/*.{js,jsx}"`, as older projects do) must name every folder that writes classes: the foundation's own build finds them all, but a site build and `uniweb dev` read only what those lines name, so a class in a folder left out is in one CSS and missing from the other. `uniweb dev`, a site build and `uniweb doctor` (`unread-folder`) name such a folder, and give the `source("./")` line that ends it. `theme-tokens.css` also tells Tailwind to read kit's source, so kit's own classes reach your CSS wherever your package manager put kit; a foundation that skips that import names kit itself, by where kit is (`./node_modules/@uniweb/kit/src/**` under pnpm, `../node_modules/@uniweb/kit/src/**` under npm).
 
 Custom CSS is expected alongside Tailwind — shadow systems, border hierarchies, gradients, glass. Tokens are a floor; add vocabulary that references them so it adapts per context:
 

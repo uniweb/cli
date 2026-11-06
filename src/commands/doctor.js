@@ -948,7 +948,9 @@ export async function checkUnreadFolders({ foundationName, srcDir, issues }) {
   const id = 'unread-folder'
   issues.push({ id, type: 'warn', foundation: foundationName, message: `${foundationName} writes classes where styles.css names no @source` })
   warn(`[${id}] ${foundationName} writes classes where styles.css names no @source, so a site build and \`uniweb dev\` miss any class only used there`)
-  log(`    Add to styles.css:`)
+  log(`    Have Tailwind read the whole foundation, and no folder can be left out — in styles.css:`)
+  log(`      @import "tailwindcss" source("./");`)
+  log(`    Or add:`)
   for (const { line } of unread) log(`      ${line}`)
 }
 

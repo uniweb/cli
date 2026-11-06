@@ -1,7 +1,4 @@
-@import "tailwindcss";
+/* Tailwind reads this whole foundation, in its own build and in a site's, so no folder can be left out. */
+@import "tailwindcss" source("./");
 @import "@uniweb/kit/theme-tokens.css";
 
-@source "./sections/**/*.{js,jsx}";
-@source "./components/**/*.{js,jsx}";
-@source "./layouts/**/*.{js,jsx}";
-@source "./utils/**/*.{js,jsx}";

@@ -126,7 +126,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | `font-serif`, `font-sans` | Tailwind's stack, not the site's — unless the foundation declares it as a `font-*` var in `main.js`. Families are the site's (`theme.yml fonts:`). | silent |
 | `@import url(fonts.googleapis…)` in CSS | `theme.yml fonts.import` / `faces`. | — |
 | `@tailwind base;` | Tailwind v4: `@import "tailwindcss"` plus kit's token imports (theme guide). | silent — most utilities missing |
-| Trust the foundation's own build to prove a class works | A site build and `uniweb dev` read only the folders `@source` names — one line per folder that writes classes (`sections`, `components`, `layouts`, `utils`). | each names a folder you missed, as does `doctor` |
+| Trust the foundation's own build to prove a class works | A site build and `uniweb dev` read what `styles.css` names: the whole foundation with `@import "tailwindcss" source("./")`, as the scaffold writes, else only the folders `@source` lists. | each names a folder a list missed, as does `doctor` |
 | `prose` from `@tailwindcss/typography`, `prose-invert` | `@import "@uniweb/kit/prose-tokens.css"`; no invert — colors are already the theme's. | build warns; unstyled lists |
 | `html { scroll-behavior: smooth }` | Never on `html`/`body`; the runtime owns scrolling. | route transitions misbehave |
 | `filter: blur(80px)` for a glow | Radial gradient + `mask-image`. | Safari jank |
@@ -202,7 +202,7 @@ uniweb <command> --help             # exact flags, no side effects
 | Pages missing from the nav | a strict `pages:` list — add `...` |
 | A color is empty | unquoted `#` in YAML |
 | Literal `{name}` on the page | no Loom content handler |
-| A class works in the foundation's build, not in the site's or `uniweb dev` | its folder has no `@source` line — `uniweb doctor` names it |
+| A class works in the foundation's build, not in the site's or `uniweb dev` | `styles.css` lists folders and not this one — `uniweb doctor` names it; `source("./")` on the Tailwind import reads them all |
 | Sticky header scrolls away | `sticky` class instead of `sticky: true` in `meta.js` |
 | Modal under the header | z-index instead of `<Overlay>` |
 | Entrance animation never plays | JS-started; write it in CSS; `uniweb dev` doesn't prerender |
@@ -265,7 +265,7 @@ src/
 ├── components/   # ordinary React — any props, any library, no meta.js, invisible to authors
 ├── utils/
 ├── main.js       # export default { name, description, defaultLayout, defaultSection, handlers, … } + export const vars
-└── styles.css    # @import "tailwindcss" + kit's theme-tokens.css + prose-tokens.css; one @source per folder with classes
+└── styles.css    # @import "tailwindcss" source("./") + kit's theme-tokens.css + prose-tokens.css
 ```
 
 `uniweb add section Hero` scaffolds `sections/Hero/{index.jsx,meta.js}`. Import shared code as `#components/*`, `#utils/*`.
