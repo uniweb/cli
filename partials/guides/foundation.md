@@ -105,7 +105,9 @@ Header.className = 'border-b'
 Header.as = 'div'
 ```
 
-**Sticky is a setting.** `sticky: true` in the type's `meta.js` (an author turns it off with `sticky: false`); the runtime makes sticky the box that can stay in view. A body section sticks the same way and stays below the stuck header: the runtime publishes the header's reach as `--uw-sticky-top` (a type's `top` overrides: `sticky: { default: true, top: '4rem' }`). Section links land below the stuck header. The reach is the height of the box that sticks, so keep the bar in the flow: a bar made `absolute` or `fixed` leaves that box no height, the variable unset, and section links under the bar. To float the header over a page's opening section, the section slides up under the bar instead: on the page's first section (`block.page.getBodyBlocks()[0] === block`), `margin-top: calc(-1 * var(--uw-sticky-top, <the bar's full height>))`, with its content padded by as much. The fallback holds the first paint, before the browser measures, so give the bar's whole height, borders included. A child in `<ChildGrid>` sticks beside its column, and scrolls with the page at one column. A sticky section inside `overflow: hidden` can't stick — use `overflow: clip`. A layout that wraps an area in its own element makes it sticky when `page.isSticky('header')`. `uniweb dev` names a sticky element that cannot move in the console.
+**Sticky is a setting.** `sticky: true` in the type's `meta.js` (an author turns it off with `sticky: false`); the runtime makes sticky the box that can stay in view. A body section sticks the same way and stays below the stuck header: the runtime publishes the header's reach as `--uw-sticky-top` (a type's `top` overrides: `sticky: { default: true, top: '4rem' }`). Section links land below the stuck header. Keep the bar in the flow: a bar made `absolute` or `fixed` leaves the runtime nothing to measure, and section links land under it.
+
+**A header over the opening section is a setting too.** `underHeader: true` in a type's `meta.js` (a hero whose picture reaches the top of the window; an author turns it off with `underHeader: false`) has the runtime lay the header over that section when it opens a page: the header's box takes no room, the section starts at the top, and the header keeps its height, stuck if it sticks. The section pads its content by `var(--uw-header-height)`, which the runtime gives it: the header type's `height` (`height: 'var(--header-height)'` in its `meta.js`) on the first paint, then what the browser measures. The header reads `block.getNextBlockInfo()?.underHeader` to paint itself see-through, and its box carries `data-uw-header="over"`. A child in `<ChildGrid>` sticks beside its column, and scrolls with the page at one column. A sticky section inside `overflow: hidden` can't stick — use `overflow: clip`. A layout that wraps an area in its own element makes it sticky when `page.isSticky('header')`. `uniweb dev` names a sticky element that cannot move in the console.
 
 ## meta.js in full
 
@@ -123,6 +125,7 @@ export default {
   },
   params: { … }, vars: { … }, data: { … }, presets: { … },
   context: {}, initialState: {},
+  // sticky: true, underHeader: true, height: '4rem', background: 'self', area: 'header' — section settings and placement, below
 }
 ```
 
@@ -322,20 +325,20 @@ function Footer({ content }) {
 
 ## Cross-block communication
 
-A Header adapting to whether the section below supports a translucent overlay: the section that **owns** the capability declares it, the one that **adapts** reads it, via `getNextBlockInfo()` / `getPrevBlockInfo()` / `page.getFirstBodyBlockInfo()`:
+A Header adapting to the section below it, a light logo over a photograph: the section that **owns** a fact declares it, the one that **adapts** reads it, via `getNextBlockInfo()` / `getPrevBlockInfo()` / `page.getFirstBodyBlockInfo()`. (Whether the header lies over that section at all is `underHeader`, above.)
 
 - **`context`** — static, from `meta.js`.
 - **`state`** — dynamic, via `block.useBlockState()`, initial value from `initialState`.
 
 ```js
 // Hero/meta.js
-export default { context: { allowTranslucentTop: true }, initialState: { allowTranslucentTop: true } }
+export default { context: { tone: 'photo' }, initialState: { tone: 'photo' } }
 ```
 
 ```jsx
 const [state, setState] = block.useBlockState(useState)               // Hero
 const info = block.getNextBlockInfo()                                 // Header
-const isFloating = info?.state?.allowTranslucentTop ?? info?.context?.allowTranslucentTop ?? false
+const overPhoto = (info?.state?.tone ?? info?.context?.tone) === 'photo'
 ```
 
 Key names are yours.
