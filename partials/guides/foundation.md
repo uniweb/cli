@@ -71,7 +71,7 @@ Things you won't discover from exports:
 - **A link back to a list is `<Link to="/store" back>`.** A link opens its page at the top, even the page the visitor just left, since the runtime restores a page's scroll only on back and forward. `back` steps back when the step before was that page, so the list returns where they left it, and is an ordinary link otherwise. `useGoBack('/store')` does the same for a button. Keep the list's filter in `usePageState`, which stays with the page, so the view comes back too.
 - **A modal needs `<Overlay>`, not a bigger z-index.** Each layout area's wrapper has its own layer, which makes it a stacking context; a `fixed` dialog inside one paints at its area's place in the stack, under the header/footer. `<Overlay onClose={close}>` renders into `document.body`, contains focus (moves it in, cycles Tab, marks the rest `inert`, returns it), handles Escape, scrim click, scroll lock; a dimmed scrim you override with `className` (`bg-transparent` removes it). `modal={false}` for a toast. Your dialog markup stays yours.
 - **A reader can open a picture larger.** `components={{ image: EnlargeableImage }}` does it for an image in a page's body, and `Mermaid` does it on its own (`enlarge={false}` turns it off). `<Enlargeable>` goes around a picture a section draws itself. It's offered only when opening shows the picture noticeably larger, and the prerendered page doesn't change.
-- **Kit brings no words.** What a reader or a screen reader meets comes from your foundation, so `Media` takes `playLabel`, `Asset` `downloadLabel`, `Disclaimer` `closeLabel` (it has a button at its foot only with one), `Prose` `footnoteBackLabel` and `DataPlaceholder` `label`. Without one it uses what the author wrote, a role or a symbol: a play button with no caption or alt is named `▶`. `<Link>`'s own tooltip is only a social service's name, an address or a number, so a link holding only an icon needs a `title` or `aria-label` from you.
+- **Kit brings no words.** What a reader or a screen reader meets comes from your foundation, so `Media` takes `playLabel`, `Asset` `downloadLabel`, `Disclaimer` `closeLabel` (it has a button at its foot only with one), `Prose` `footnoteBackLabel` and `DataPlaceholder` `label`. Without one it uses what the author wrote, a role or a symbol: a play button with no caption or alt is named `▶`. `<Link>`'s own tooltip is only a social service's name, an address or a number, so a link holding only an icon needs a `title` or `aria-label` from you. Words your own section draws are content: *A section's own words*, below.
 - **A word wider than its box breaks**, so a long heading can't pan a phone's page (`overflow-wrap: break-word`, in kit's base). What must stay whole in a narrow box says `whitespace-nowrap`: a big numeral, a figure, a number with its unit. Without it, `10 min` in a tight box comes out as `10 mi / n`.
 - **Kit hooks are SSR-safe.** "document is not defined" → use the hook, don't add guards.
 - **`cn()` drops an earlier `leading-*` when a `text-<size>` follows**, since Tailwind's size classes set line height too: `cn('leading-[1.1] text-4xl')` → `text-4xl`. Put the size first, or fold the leading into it (`text-[clamp(2rem,5vw,4rem)]/[1.1]`).
@@ -212,6 +212,34 @@ export const vars = {
 Each entry ships its default as a CSS custom property everywhere, in dev and production, bundled or runtime-loaded. A `styles.css` `@theme` block is different: it registers a token so **Tailwind generates utilities** (`@theme { --breakpoint-xs: 30rem }` → `xs:`). A var named after a Tailwind namespace (`radius-*`, `shadow-*`, `spacing`, `font-*`) redefines that scale wherever the utility appears — deliberate when you mean it.
 
 Colors, tokens, light and dark, fonts and `styles.css` are in `uniweb guide theme`.
+
+## A section's own words
+
+The words a section draws itself — a search box's placeholder, an "All" filter, "No results", a menu button's `aria-label` — are content, not params: an author may change them, and a site in several languages translates them with the page. Their home is a tagged data block the type declares with an inline field map. The editor shows its fields, filled in from each `default:`, and `uniweb i18n` and a push translate it like the rest of the page, on a static site and a synced one alike. A param is a choice (a variant, a count) and is never translated.
+
+```js
+// sections/Catalog/labels.js — the type's own words, in the foundation's language
+export default { search: 'Search…', all: 'All', empty: 'No results' }
+
+// sections/Catalog/meta.js
+import LABELS from './labels.js'
+export default {
+  data: { labels: Object.fromEntries(Object.entries(LABELS).map(([key, text]) => [key, { type: 'string', default: text }])) },
+}
+
+// sections/Catalog/index.jsx — what the section wrote, else the type's words
+import LABELS from './labels.js'
+const labels = { ...LABELS, ...content.data.labels }
+```
+
+````markdown
+```yaml:labels
+search: Search solutions…
+empty: No solutions found
+```
+````
+
+The runtime fills no default into a data block (`uniweb guide data`), so the component falls back to the same `labels.js` for a section written without the block. A later release that changes a default changes only the sections that never wrote their own.
 
 ## Composition
 
