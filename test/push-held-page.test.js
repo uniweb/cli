@@ -10,7 +10,7 @@
  * ⛔ Until 2026-11-04 a held page kept the version the copy last agreed on, for the backend's gate to
  * keep the app's. A copy with no such version — a fresh clone, CI, one that lost its `.uniweb/` — banked
  * the backend's on its first pull, and its next push sent the file over the app's edit. A section the
- * app added to a folder of single-section pages was held, and banked, so that push deleted it.
+ * app added to an atomic-parent was held, and banked, so that push deleted it.
  */
 
 import { test } from 'node:test'
@@ -220,7 +220,7 @@ test('⭐ a version this copy holds for a page the push leaves out is not sent: 
   assert.ok(entry.item_base_versions?.['u-guide/start'], 'CONTROL — the page sent has its version')
 })
 
-test('a section the app added to a folder of single-section pages is held, and no push deletes it', { timeout: 60_000 }, async () => {
+test('a section the app added to an atomic-parent is held, and no push deletes it', { timeout: 60_000 }, async () => {
   const { pull } = await import('../src/commands/pull.js')
   const { push } = await import('../src/commands/push.js')
   const { readItemBaseVersions } = await import('../src/backend/site-sync.js')
@@ -232,7 +232,7 @@ test('a section the app added to a folder of single-section pages is held, and n
 
   const pulled = await runVerb(siteDir, pull, [], be.opts)
   assert.equal(pulled.exitCode, 0, pulled.output)
-  assert.match(pulled.output, /\/guide: a section, which a route of single-section pages holds none of/)
+  assert.match(pulled.output, /\/guide: a section, which an atomic-parent holds none of/)
   assert.equal(readItemBaseVersions(siteDir, A)['u-welcome'], undefined)
 
   w(repo, 'site/pages/guide/start.md', '# Start\n\nBegin here, slowly.\n')

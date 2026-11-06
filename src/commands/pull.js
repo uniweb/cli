@@ -1680,7 +1680,7 @@ export async function pull(args = [], deps = {}) {
   }
   if (leftAlone) {
     note(
-      `Left as written: ${leftAlone} page(s) a pull cannot write — in a mounted folder it cannot merge into, what a folder of single-section pages cannot hold, or two pages on one route. ` +
+      `Left as written: ${leftAlone} page(s) a pull cannot write — in a mounted folder it cannot merge into, what an atomic-parent cannot hold, or two pages on one route. ` +
         "An edit made to one in the app is held: kept on the backend, not undone by a push while the page's file is unchanged, and a push that changed it stops."
     )
     if (mountedMoved.length) {
