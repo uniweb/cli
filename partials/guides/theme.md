@@ -56,7 +56,7 @@ colors:
   primary: '#3b82f6'          # your hex at shade 500
   secondary: '#64748b'
   accent: '#8b5cf6'
-  neutral: stone              # named preset: stone, zinc, gray, slate, neutral
+  neutral: stone              # named preset: that Tailwind family's 500, other shades derived
 contexts:
   light: { section: '#fafaf9' }
 appearance: { default: light, allowToggle: true }
@@ -66,7 +66,7 @@ vars: { radius: 0.75rem }
 code: dracula                 # or { light: github-light, dark: github-dark }, or { theme: github-dark, background: '#0D0D0D' }
 ```
 
-Context override keys match token names (`section:` not `bg:`). In light/medium `--primary` uses shade 600, `--link` 600, `--ring` 500; in dark `--primary` 500, `--link` 400. Buttons use 600 for contrast with white text; for brand-exact buttons set `contexts.light.primary: primary-500` and `primary-hover: primary-600`, and test contrast — bright brands at 500 may fail WCAG 4.5:1. A code block paints its theme's background and foreground before the highlighter loads when both are known.
+Every shade is derived from the color you give, a preset's included, so `neutral: slate` is not Tailwind's slate shade for shade: its 900 is lighter and greyer than `slate-900`. To match a design written in Tailwind's palette, give the color as its shades, `{ 50: '#f8fafc', …, 950: '#020617' }`. Context override keys match token names (`section:` not `bg:`). In light/medium `--primary` uses shade 600, `--link` 600, `--ring` 500; in dark `--primary` 500, `--link` 400. Buttons use 600 for contrast with white text; for brand-exact buttons set `contexts.light.primary: primary-500` and `primary-hover: primary-600`, and test contrast — bright brands at 500 may fail WCAG 4.5:1. A code block paints its theme's background and foreground before the highlighter loads when both are known.
 
 ## Fonts
 
