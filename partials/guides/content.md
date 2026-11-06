@@ -205,7 +205,7 @@ background:
 
 An overlay is drawn only with `enabled: true` (the number shorthand, `overlay: 0.5`, sets it).
 
-Components that draw their own declare `background: 'self'` in `meta.js`; they can still render the author's with `<SectionBackground block={block} />`.
+Components that draw their own declare `background: 'self'` in `meta.js`. They then paint everything behind their content, the section's surface color included (`bg-section` where they want it), and can still render the author's background with `<SectionBackground block={block} />`.
 
 ## Pages
 
