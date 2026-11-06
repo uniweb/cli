@@ -380,7 +380,8 @@ export function computeRootScripts(sites, pm = 'pnpm') {
 }
 
 /**
- * Update root scripts after adding a new site
+ * Regenerate the per-site root scripts from the sites there are now — what `rename` needs, since a
+ * script it wrote for the old name runs a site that is gone. `add` adds instead (`addRootScripts`).
  * @param {string} rootDir - Workspace root directory
  * @param {Array<{name: string, path: string}>} sites - All sites (including new one)
  * @param {'pnpm' | 'npm'} [pm='pnpm'] - Package manager
@@ -426,6 +427,54 @@ export async function updateRootScripts(rootDir, sites, pm = 'pnpm') {
 
   pkg.scripts = { ...scripts, ...newScripts }
   await writeRootPackageJson(rootDir, pkg)
+}
+
+/**
+ * Add the root scripts a command's new sites need, and change nothing else — what `uniweb add`
+ * does to the workspace's own scripts.
+ *
+ * A root script is the workspace's. A site added gets its own `dev:<name>` and `preview:<name>`, or
+ * `dev` and `preview` when it is the workspace's first, and a workspace with no `build` gets one.
+ * A script is not added under a name the workspace already uses, nor for a command it already runs
+ * under a name of its own. Nothing there is rewritten, and no script is added for a site that was
+ * there before.
+ *
+ * ⛔ Until 2026-11-06 `add` regenerated every site's scripts (`updateRootScripts`, which `rename`
+ * needs) and laid them over the workspace's: in a workspace of seven projects with scripts named
+ * its own way, adding one wrote a `dev:` and a `preview:` beside each project's under the CLI's
+ * names, and rewrote `preview`. A custom `dev` or `build` was rewritten the same way, by adding a
+ * foundation or an extension too, which add no site.
+ *
+ * @param {string} rootDir - Workspace root directory
+ * @param {Array<{name: string, path: string}>} added - The sites this command added, if any
+ * @param {Array<{name: string, path: string}>} sites - All sites, the added ones included
+ * @param {'pnpm' | 'npm'} [pm='pnpm'] - Package manager (used only for preview)
+ * @returns {Promise<string[]>} the names of the scripts added
+ */
+export async function addRootScripts(rootDir, added, sites, pm = 'pnpm') {
+  const pkg = await readRootPackageJson(rootDir)
+  const scripts = { ...(pkg.scripts || {}) }
+  const isAdded = (site) => added.some((a) => a.path === site.path)
+  const isFirst = !sites.some((site) => !isAdded(site))
+
+  const wanted = { build: 'uniweb build' }
+  added.forEach((site, i) => {
+    if (isFirst && i === 0) {
+      wanted.dev = 'uniweb dev'
+      wanted.preview = filterCmd(pm, site.name, 'preview')
+    } else {
+      wanted[`dev:${site.name}`] = `uniweb dev ${site.name}`
+      wanted[`preview:${site.name}`] = filterCmd(pm, site.name, 'preview')
+    }
+  })
+
+  const held = new Set(Object.values(scripts))
+  const written = Object.keys(wanted).filter((key) => !(key in scripts) && !held.has(wanted[key]))
+  if (!written.length) return []
+  for (const key of written) scripts[key] = wanted[key]
+  pkg.scripts = scripts
+  await writeRootPackageJson(rootDir, pkg)
+  return written
 }
 
 /** Every command this CLI has written for the `dev:<site>` / `preview:<site>` script. */

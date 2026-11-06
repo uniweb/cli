@@ -36,7 +36,7 @@ import {
   FOUNDATION_KIND,
   EXTENSION_KIND
 } from '../utils/placement.js'
-import { registerWorkspacePackage, updateRootScripts } from '../utils/config.js'
+import { registerWorkspacePackage, addRootScripts } from '../utils/config.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { generateStarter, reportStarter, declarationFor } from './starter.js'
 import {
@@ -510,15 +510,20 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   // No glob inference: a pattern is the user's to write.
   await registerWorkspacePackage(rootDir, relativePath)
 
-  // Update root scripts
-  const sites = await discoverSites(rootDir)
-  await updateRootScripts(rootDir, sites, pm)
+  // A foundation adds no site: at most a `build` the workspace lacks.
+  const scriptsAdded = await addRootScripts(rootDir, [], await discoverSites(rootDir), pm)
 
   success(
     `Created foundation ${colors.bright}${packageName}${colors.reset} at ${relativePath}/`
   )
+  reportRootScripts(scriptsAdded)
   log('')
   log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}`)
+}
+
+/** Say which root scripts an `add` wrote, since the root `package.json` is the workspace's. */
+function reportRootScripts(added) {
+  if (added.length) log(`  ${colors.dim}Root package.json: added ${added.join(', ')}${colors.reset}`)
 }
 
 /**
@@ -659,12 +664,11 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
   // Register the package by exact path, unless a listed pattern covers it already.
   await registerWorkspacePackage(rootDir, relativePath)
 
-  // Update root scripts (discover sites after registration — includes the new one)
+  // The new site's scripts, and nothing else (discovered after registration, so it is listed)
   const sites = await discoverSites(rootDir)
-  if (!sites.find((s) => s.path === relativePath)) {
-    sites.push({ name: siteName, path: relativePath })
-  }
-  await updateRootScripts(rootDir, sites, pm)
+  let added = sites.find((s) => s.path === relativePath)
+  if (!added) sites.push((added = { name: siteName, path: relativePath }))
+  const scriptsAdded = await addRootScripts(rootDir, [added], sites, pm)
 
   if (foundation) {
     success(
@@ -675,6 +679,7 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
       `Created site ${colors.bright}${siteName}${colors.reset} at ${relativePath}/`
     )
   }
+  reportRootScripts(scriptsAdded)
   log('')
   log(
     `Next: ${colors.cyan}${installCmd(pm)} && uniweb dev ${siteName}${colors.reset}`
@@ -849,8 +854,8 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
     }
   }
 
-  // Update root scripts (an extension adds no site, so the list read above stands)
-  await updateRootScripts(rootDir, sites, pm)
+  // An extension adds no site, so the list read above stands: at most a `build` the workspace lacks.
+  const scriptsAdded = await addRootScripts(rootDir, [], sites, pm)
 
   let msg = `Created extension '${name}' at ${relativePath}/`
   if (wiredSite) {
@@ -860,6 +865,7 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   if (unwiredReason) {
     log(`  ${colors.yellow}⚠ ${unwiredReason}${colors.reset}`)
   }
+  reportRootScripts(scriptsAdded)
   log('')
   log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}`)
 }
@@ -983,18 +989,18 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
   await registerWorkspacePackage(rootDir, `${name}/src`, { entry: '*/src' })
   await registerWorkspacePackage(rootDir, `${name}/site`, { entry: '*/site' })
 
-  // Update root scripts
+  // The new site's scripts, and nothing else
   const sites = await discoverSites(rootDir)
-  if (!sites.find((s) => s.path === `${name}/site`)) {
-    sites.push({ name: sitePkgName, path: `${name}/site` })
-  }
-  await updateRootScripts(rootDir, sites, pm)
+  let added = sites.find((s) => s.path === `${name}/site`)
+  if (!added) sites.push((added = { name: sitePkgName, path: `${name}/site` }))
+  const scriptsAdded = await addRootScripts(rootDir, [added], sites, pm)
 
   success(`Created project '${name}' at ${name}/`)
   log(
     `  ${colors.dim}Foundation: ${name}/src/ (${foundationPkgName})${colors.reset}`
   )
   log(`  ${colors.dim}Site: ${name}/site/ (${sitePkgName})${colors.reset}`)
+  reportRootScripts(scriptsAdded)
   log('')
   log(
     `Next: ${colors.cyan}${installCmd(pm)} && uniweb dev ${sitePkgName}${colors.reset}`
