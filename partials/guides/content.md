@@ -194,8 +194,16 @@ background:
   image: { src: /img.jpg, position: center top }
   overlay: { enabled: true, type: dark, opacity: 0.5 }
 background:
+  image: /img.jpg
+  overlay:                                               # a fading overlay; every gradient field optional
+    enabled: true
+    opacity: 1                                           # 0.5 when left out, on the gradient too
+    gradient: { angle: 90, start: 'rgba(0,0,0,0.8)', startPosition: 0, end: 'rgba(0,0,0,0)', endPosition: 60 }
+background:
   video: { src: /videos/hero.mp4, poster: /images/hero.jpg }
 ```
+
+An overlay is drawn only with `enabled: true` (the number shorthand, `overlay: 0.5`, sets it).
 
 Components that draw their own declare `background: 'self'` in `meta.js`; they can still render the author's with `<SectionBackground block={block} />`.
 
