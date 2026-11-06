@@ -95,7 +95,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | `<h2><H2 text=… /></h2>` | Kit text components render their own tag. | double tag |
 | `content.items?.map`, `content.title ?? ''` | Never null — strings and arrays, always. | — |
 | `className="sticky top-0"` | `sticky: true` in the type's `meta.js`. | `uniweb dev` names it |
-| A header floated over the hero with `absolute` or `fixed` | `underHeader: true` on the hero's type, `height` on the header's; the bar stays in the flow (foundation guide). | silent — section links land under the bar |
+| A header floated over the hero with `absolute` or `fixed` | `underHeader: true` on the hero's type, `height` and `background: 'self'` on the header's; the bar stays in the flow (foundation guide). | silent — section links land under the bar |
 | `fixed inset-0 z-[9999]` for a modal | `<Overlay>` from kit — layout areas are stacking contexts, no z-index escapes one. | silent — under the header |
 | `typeof window`, `localStorage.theme`, a theme `useEffect` | `useAppearance()`; the scheme is resolved before first paint; kit hooks are SSR-safe. | theme flash |
 | `<a href="/about">` | `<Link to="page:about">` (an `id:` survives moves) or `<Link href="/about">`. A bare `<a>` still routes but resolves no `page:` and adds no base path or locale. | silent |
