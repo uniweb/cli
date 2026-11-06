@@ -106,12 +106,13 @@ The build adds preconnect hints, emits `@font-face` + preload, drops unreference
 @source "./sections/**/*.{js,jsx}";
 @source "./components/**/*.{js,jsx}";
 @source "./layouts/**/*.{js,jsx}";
+@source "./utils/**/*.{js,jsx}";
 @theme { --breakpoint-xs: 30rem; }
 ```
 
 Two more imports are opt-in: `@uniweb/kit/math-tokens.css` lays out equations, and `@uniweb/kit/callout-tokens.css` draws concept blocks such as `md:warning`, which are otherwise plain prose.
 
-**Name every folder that writes classes.** The foundation's own build finds them all, but a site build and `uniweb dev` read only what these lines name, so a class in a folder left out is in one CSS and missing from the other. `uniweb dev`, a site build and `uniweb doctor` (`unread-folder`) give the line to add. `theme-tokens.css` also tells Tailwind to read kit's source, so kit's own classes reach your CSS wherever your package manager put kit; a foundation that skips that import names kit itself, by where kit is (`./node_modules/@uniweb/kit/src/**` under pnpm, `../node_modules/@uniweb/kit/src/**` under npm).
+**Name every folder that writes classes,** or keeps them in a string for code elsewhere to write, such as a map of colours to classes in `utils/`. The foundation's own build finds them all, but a site build and `uniweb dev` read only what these lines name, so a class in a folder left out is in one CSS and missing from the other. `uniweb dev`, a site build and `uniweb doctor` (`unread-folder`) give the line to add. `theme-tokens.css` also tells Tailwind to read kit's source, so kit's own classes reach your CSS wherever your package manager put kit; a foundation that skips that import names kit itself, by where kit is (`./node_modules/@uniweb/kit/src/**` under pnpm, `../node_modules/@uniweb/kit/src/**` under npm).
 
 Custom CSS is expected alongside Tailwind — shadow systems, border hierarchies, gradients, glass. Tokens are a floor; add vocabulary that references them so it adapts per context:
 

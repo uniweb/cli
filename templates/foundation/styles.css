@@ -4,3 +4,4 @@
 @source "./sections/**/*.{js,jsx}";
 @source "./components/**/*.{js,jsx}";
 @source "./layouts/**/*.{js,jsx}";
+@source "./utils/**/*.{js,jsx}";
