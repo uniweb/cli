@@ -1,8 +1,8 @@
 /**
  * ⭐ A PAGE A PULL HELD IS LEFT OUT OF THE NEXT PUSH, IN ANY COPY.
  *
- * The app changed a page in a way its files cannot say — here a description on a folder-mode `.md`
- * page, which the file has no place for — so the pull wrote nothing for it, and the site keeps the
+ * The app changed a page in a way its files cannot say — here a redirect on a folder-mode `.md` page,
+ * which makes a page of no section — so the pull wrote nothing for it, and the site keeps the
  * app's version. A push then sends no version and no record for it while its files still say what they
  * said at the pull, so the backend keeps the app's; it stops when the file changed since; and `--force`
  * sends the file over the app's, as it sends everything.
@@ -117,9 +117,11 @@ async function backendOf(siteDir) {
   return { doc, sent, opts }
 }
 
-// The app's edit: a description on /guide/install, which an `.md` page's file has no place for.
+// The app's edit: a redirect on /guide/install, which an `.md` page's file has no place for — a
+// redirect makes a page of no section. ⛔ Until 2026-11-08 this was a description, which such a file
+// holds since (`@uniweb/build`'s `site/page-settings.js`).
 const describe = (doc) => {
-  at(doc, 'guide', 'install').description = { en: 'Set it up.' }
+  at(doc, 'guide', 'install').redirect = '/guide/start'
 }
 
 test('⭐ a fresh copy pulls a held page and leaves it out of its push: the app keeps its edit', { timeout: 60_000 }, async () => {
@@ -133,7 +135,7 @@ test('⭐ a fresh copy pulls a held page and leaves it out of its push: the app 
 
   const pulled = await runVerb(siteDir, pull, [], be.opts)
   assert.equal(pulled.exitCode, 0, pulled.output)
-  assert.match(pulled.output, /\/guide\/install: description/)
+  assert.match(pulled.output, /\/guide\/install: redirect/)
   const versions = readItemBaseVersions(siteDir, A)
   assert.equal(versions['u-guide/install'], undefined, 'no version for the held page: a push holding none leaves it')
   assert.ok(versions['u-guide/start'], 'CONTROL — its sibling, taken, has one')
