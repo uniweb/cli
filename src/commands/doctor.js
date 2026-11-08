@@ -6,19 +6,21 @@ import {
   existsSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   statSync,
   writeFileSync,
   mkdirSync,
   rmSync
 } from 'node:fs'
-import { join, resolve, dirname, relative } from 'node:path'
+import { join, resolve, dirname, relative, isAbsolute, sep } from 'node:path'
 import yaml from 'js-yaml'
 import {
   resolveFoundationSrcPath,
   classifyPackage,
   isExtensionPackage as buildIsExtensionPackage,
   extensionNameOf,
-  findSiteExtension
+  findSiteExtension,
+  detectFoundationType
 } from '@uniweb/build'
 import {
   loadDeployYml,
@@ -1679,6 +1681,67 @@ export function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, sho
  *   read.
  * @returns {Promise<{ issues: object[], errors: number, warnings: number, fixed: number }>}
  */
+/**
+ * ⭐ WHAT DOCTOR CHECKS IS WHERE YOU STAND, by the rule `dev` and `status` read the folder you stand in
+ * (`pick-site.js::siteAround`): in a site, that site and what it is built from, its foundation and its
+ * extensions; in a foundation with no site around it, that foundation; elsewhere, the whole workspace.
+ * ⛔ Until 2026-11-08 only the sites were narrowed: run in one site, doctor reported on every foundation
+ * in the workspace before the site's own checks, which were hard to find among them.
+ *
+ * @returns {{ site?: object, foundation?: object, sites: object[], foundations: object[], extensions: object[] } | null}
+ *   null for the whole workspace
+ */
+export function doctorFocus({ workspaceDir, projectDir, allSites, foundations, extensions }) {
+  const here = siteAround(allSites.map((s) => relative(workspaceDir, s.path)), workspaceDir, projectDir)
+  if (here) {
+    const site = allSites.find((s) => relative(workspaceDir, s.path) === here)
+    const used = siteBuiltFrom(site.path)
+    const isUsed = (f) => used.has(realOf(f.path))
+    return { site, sites: [site], foundations: foundations.filter(isUsed), extensions: extensions.filter(isUsed) }
+  }
+  const inside = (dir) => {
+    const rel = relative(dir, projectDir)
+    return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+  }
+  const foundation = foundations.find((f) => inside(f.path))
+  const extension = extensions.find((e) => inside(e.path))
+  if (!foundation && !extension) return null
+  return {
+    foundation: foundation || extension,
+    sites: [],
+    foundations: foundation ? [foundation] : [],
+    extensions: extension ? [extension] : []
+  }
+}
+
+// The folders a site is built from, by the build's own rules: its foundation (`detectFoundationType`)
+// and each extension it names, as a site-relative URL or a local name (`findSiteExtension`).
+function siteBuiltFrom(sitePath) {
+  const used = new Set()
+  const siteYml = loadSiteYml(sitePath)
+  try {
+    const found = detectFoundationType(siteYml?.foundation, sitePath)
+    if (found?.type === 'local' && found.path) used.add(realOf(found.path))
+  } catch {
+    // A foundation the build cannot find: the site's own checks name it.
+  }
+  for (const entry of Array.isArray(siteYml?.extensions) ? siteYml.extensions : []) {
+    const url = typeof entry === 'string' ? entry : entry?.url
+    const name = extensionNameOf(url)?.name ?? (typeof url === 'string' && /^[a-z0-9][a-z0-9_-]*$/i.test(url) ? url : null)
+    const dir = name ? findSiteExtension(name, sitePath) : null
+    if (dir) used.add(realOf(dir))
+  }
+  return used
+}
+
+function realOf(path) {
+  try {
+    return realpathSync(path)
+  } catch {
+    return resolve(path)
+  }
+}
+
 export async function doctor(args = [], { quiet = false } = {}) {
   const before = print
   print = quiet ? () => {} : toConsole
@@ -1825,11 +1888,36 @@ async function runDoctor(args = []) {
     }
   }
 
-  if (foundations.length === 0) {
-    warn('No foundations found')
+  // Discover sites via the canonical workspace globs (same rationale as
+  // foundations above: respects whatever layout the user chose).
+  const allSites = (await discoverSites(workspaceDir)).map((s) => ({
+    path: join(workspaceDir, s.path),
+    name: s.name
+  }))
+  // ⭐ What is checked is where you stand (`doctorFocus`): the site you're in and what it is built from,
+  // the foundation you're in, or — from anywhere else — the whole workspace.
+  const focus = doctorFocus({ workspaceDir, projectDir, allSites, foundations, extensions })
+  const checkedFoundations = focus ? focus.foundations : foundations
+  const checkedExtensions = focus ? focus.extensions : extensions
+  const sites = focus ? focus.sites : allSites
+  if (focus) {
+    const builtFrom = [...checkedFoundations, ...checkedExtensions].map((f) => relative(workspaceDir, f.path))
+    log('')
+    info(
+      focus.site
+        ? `Checking the site here, ${relative(workspaceDir, focus.site.path)}` +
+            (builtFrom.length ? `, and what it is built from: ${builtFrom.join(', ')}.` : '.')
+        : `Checking the foundation here, ${relative(workspaceDir, focus.foundation.path)}.`
+    )
+    log(`  ${colors.dim}Run this from ${workspaceDir} for all ${allSites.length} site(s) and ${foundations.length + extensions.length} foundation(s).${colors.reset}`)
+  }
+
+  if (checkedFoundations.length === 0) {
+    // A site whose foundation is a catalog ref has none here, and its own checks name the ref.
+    if (!focus) warn('No foundations found')
   } else {
-    success(`Found ${foundations.length} foundation(s):`)
-    for (const f of foundations) {
+    success(`Found ${checkedFoundations.length} foundation(s):`)
+    for (const f of checkedFoundations) {
       const nameMismatch =
         f.name !== f.folderName
           ? ` ${colors.dim}(folder: ${f.folderName}/)${colors.reset}`
@@ -1851,7 +1939,7 @@ async function runDoctor(args = []) {
   //
   // kit closes this for anyone who imports the file; this closes it for anyone
   // who does not, which is the case kit cannot reach.
-  for (const f of foundations) {
+  for (const f of checkedFoundations) {
     // `f.path` is already absolute (built above with join(workspaceDir, …)).
     // ⛔ The stylesheet is where the foundation's source is. Until 2026-10-31 this read the
     // package root, so a foundation with `src/` inside its package was never checked.
@@ -1891,7 +1979,7 @@ async function runDoctor(args = []) {
 
   // A `@source` that finds nothing: the build succeeds and the CSS is short every class that was
   // only there. The build says so too; here it reaches `uniweb status`.
-  for (const f of foundations) {
+  for (const f of checkedFoundations) {
     await checkStaleSources({ foundationName: f.name, srcDir: resolveFoundationSrcPath(f.path), issues })
     await checkUnreadFolders({ foundationName: f.name, srcDir: resolveFoundationSrcPath(f.path), issues })
   }
@@ -1902,7 +1990,7 @@ async function runDoctor(args = []) {
   // naming one styles nothing and says a design the page does not have.
   // Only where the foundation imports kit's layer and does not load the plugin
   // itself — with its own `@plugin`, the modifier still means what it says.
-  for (const f of foundations) {
+  for (const f of checkedFoundations) {
     const stylesPath = join(resolveFoundationSrcPath(f.path), 'styles.css')
     if (!existsSync(stylesPath)) continue
     const styles = readFileSync(stylesPath, 'utf8')
@@ -1956,7 +2044,7 @@ async function runDoctor(args = []) {
   // That is the same class as the `dist/schema.json` path bug (a check that
   // never fires is indistinguishable from a codebase with nothing to report),
   // so it is named here rather than left to be rediscovered.
-  for (const f of foundations) {
+  for (const f of checkedFoundations) {
     if (!loadSchemaJson(f.path)) {
       info(
         `${f.folderName}: not built, so nothing was checked here ` +
@@ -1967,7 +2055,7 @@ async function runDoctor(args = []) {
   }
 
   // ── uniweb.supports — the services this foundation says it is built against ──
-  for (const f of foundations) {
+  for (const f of checkedFoundations) {
     await checkFoundationSupports({
       foundationName: f.name,
       folderName: f.folderName,
@@ -2016,7 +2104,7 @@ async function runDoctor(args = []) {
   // answer is the union across its primary foundation and its extensions. The
   // regex-era check looked at foundations only, so an extension that drew a
   // search box was never asked about one.
-  for (const e of extensions) {
+  for (const e of checkedExtensions) {
     await checkFoundationSupports({
       foundationName: e.name,
       folderName: e.folderName,
@@ -2056,10 +2144,10 @@ async function runDoctor(args = []) {
     })
   }
 
-  if (extensions.length > 0) {
+  if (checkedExtensions.length > 0) {
     log('')
-    success(`Found ${extensions.length} extension(s):`)
-    for (const e of extensions) {
+    success(`Found ${checkedExtensions.length} extension(s):`)
+    for (const e of checkedExtensions) {
       const nameMismatch =
         e.name !== e.folderName
           ? ` ${colors.dim}(folder: ${e.folderName}/)${colors.reset}`
@@ -2068,23 +2156,10 @@ async function runDoctor(args = []) {
     }
   }
 
-  // Discover sites via the canonical workspace globs (same rationale as
-  // foundations above: respects whatever layout the user chose).
-  const allSites = (await discoverSites(workspaceDir)).map((s) => ({
-    path: join(workspaceDir, s.path),
-    name: s.name
-  }))
-  // From inside a site, its checks are that site's, as `status` and `dev` read the folder you
-  // stand in. Other sites' findings are there from the workspace root.
-  const here = siteAround(allSites.map((s) => relative(workspaceDir, s.path)), workspaceDir, projectDir)
-  const sites = here ? allSites.filter((s) => relative(workspaceDir, s.path) === here) : allSites
-  if (here && allSites.length > sites.length) {
-    log('')
-    info(`Checking the site you're in. Run this from ${workspaceDir} for all ${allSites.length}.`)
-  }
-
+  // The sites checked were chosen with the foundations (`doctorFocus`, above).
   if (sites.length === 0) {
-    warn('No sites found')
+    // In a foundation, its sites are checked from where each one is, or from the workspace root.
+    if (!focus) warn('No sites found')
   } else {
     log('')
     success(`Found ${sites.length} site(s):`)
