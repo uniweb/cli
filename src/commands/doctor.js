@@ -39,6 +39,7 @@ import { writeJsonPreservingStyle } from '../utils/json-file.js'
 import { surveyWorkspaceDeps } from '../utils/dep-survey.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { siteAround } from '../utils/pick-site.js'
+import { workspaceTypesDefinedTwice } from '../utils/workspace-types.js'
 import { checkSiteInstall } from '../utils/install-integrity.js'
 import { editWorkspaceFilePackages } from '../utils/workspace-packages.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
@@ -1714,6 +1715,49 @@ export function doctorFocus({ workspaceDir, projectDir, allSites, foundations, e
   }
 }
 
+/**
+ * ⭐ ONE NAME IN A SCOPE IS ONE TYPE (`workspaceTypesDefinedTwice`): each data schema two packages of
+ * one scope here define — two foundations, or a foundation and the scope's schemas package. A register
+ * of either changes the type for the other's sites, and `uniweb register` refuses one whose definition
+ * differs, so differing copies are a warning and agreeing ones a recommendation: they come apart the
+ * first time one is edited.
+ *
+ * @param {{ workspaceDir: string, checkedDirs: string[]|null, issues: object[] }} ctx - `checkedDirs`,
+ *   the packages checked (`doctorFocus`); null for every one
+ */
+export async function checkTypesDefinedTwice({ workspaceDir, checkedDirs, issues }) {
+  let twice
+  try {
+    twice = await workspaceTypesDefinedTwice(workspaceDir)
+  } catch {
+    return
+  }
+  const checked = (file) => !checkedDirs || checkedDirs.some((dir) => {
+    const rel = relative(realOf(dir), file)
+    return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+  })
+  for (const t of twice.filter((t) => t.files.some(checked))) {
+    const id = 'type-defined-twice'
+    issues.push({
+      id,
+      type: t.differ ? 'warn' : 'info',
+      message: `${t.ref} is defined ${t.files.length} times in the workspace${t.differ ? ', differently' : ''}`,
+      files: t.files.map((f) => relative(workspaceDir, f))
+    })
+    const say = t.differ ? warn : info
+    say(`[${id}] ${t.ref} is defined in ${t.files.length} places${t.differ ? ', and they differ' : ''}`)
+    for (const f of t.files) log(`    ${relative(workspaceDir, f)}`)
+    log(
+      `    A name in a scope is one type, so a register of either changes it for the other's sites` +
+        (t.differ ? ` — \`uniweb register\` refuses this one.` : `, and copies come apart the first time one is edited.`)
+    )
+    log(
+      `    Keep it in one place — the scope's schemas package, or the foundation that owns it — and name it in full ` +
+        `elsewhere (${colors.green}${t.ref}${colors.reset}), with schemas.config.js routing the scope to its folder.`
+    )
+  }
+}
+
 // The folders a site is built from, by the build's own rules: its foundation (`detectFoundationType`)
 // and each extension it names, as a site-relative URL or a local name (`findSiteExtension`).
 function siteBuiltFrom(sitePath) {
@@ -2143,6 +2187,13 @@ async function runDoctor(args = []) {
       issues
     })
   }
+
+  // One name in a scope is one type: each defined by two packages here, among those checked.
+  await checkTypesDefinedTwice({
+    workspaceDir,
+    checkedDirs: focus ? [...checkedFoundations, ...checkedExtensions].map((f) => f.path) : null,
+    issues
+  })
 
   if (checkedExtensions.length > 0) {
     log('')
