@@ -129,6 +129,27 @@ test("a blank workspace's first add writes the file from the template — build 
   assert.ok(doc.allowBuilds && doc.onlyBuiltDependencies)
 })
 
+// ⛔ Until 2026-11-08 `--project` named only the folder: the foundation registered as `shop-src`, its
+// description and the site's name were the workspace's, and the site's scripts went by its package's name.
+test('⭐ --project names the project: the foundation, its description, the site and its scripts', () => {
+  const ws = workspace('--blank')
+  assert.equal(cli(['add', 'project', 'press'], ws).code, 0)
+  assert.equal(cli(['add', 'foundation', '--project', 'shop'], ws).code, 0)
+  const r = cli(['add', 'site', '--project', 'shop', '--foundation', 'shop-src'], ws)
+  assert.equal(r.code, 0, r.out)
+
+  assert.match(read(ws, 'shop/src/main.js'), /name: 'shop',/)
+  assert.equal(json(ws, 'shop/src/package.json').description, 'shop foundation')
+  assert.match(read(ws, 'shop/site/site.yml'), /^name: shop$/m)
+  const scripts = json(ws, 'package.json').scripts
+  assert.equal(scripts['dev:shop'], 'uniweb dev shop-site')
+  assert.equal(scripts['dev:shop-site'], undefined)
+  assert.match(scripts['preview:shop'], /preview$/)
+  // CONTROL — the project made whole is named so too: the workspace's first site, by the bare scripts.
+  assert.equal(scripts.dev, 'uniweb dev')
+  assert.match(read(ws, 'press/src/main.js'), /name: 'press',/)
+})
+
 test('--project with a name is refused, naming the folder form — nothing is created', () => {
   const ws = byType()
   const site = cli(['add', 'site', 'pool', '--project', 'memberships'], ws)

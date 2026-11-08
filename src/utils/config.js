@@ -356,27 +356,62 @@ export function computeRootScripts(sites, pm = 'pnpm') {
     return scripts
   }
 
-  if (sites.length === 1) {
-    scripts.dev = 'uniweb dev'
-    scripts.preview = filterCmd(pm, sites[0].name, 'preview')
-  } else {
-    // First site gets unqualified dev/preview (matches `uniweb dev`'s
-    // default-to-first-site behavior).
-    scripts.dev = 'uniweb dev'
-    scripts.preview = filterCmd(pm, sites[0].name, 'preview')
+  // First site gets unqualified dev/preview (matches `uniweb dev`'s
+  // default-to-first-site behavior).
+  scripts.dev = 'uniweb dev'
+  scripts.preview = previewCommand(pm, sites[0])
 
-    // Subsequent sites get qualified dev:{name}/preview:{name}
-    for (let i = 1; i < sites.length; i++) {
-      scripts[`dev:${sites[i].name}`] = `uniweb dev ${sites[i].name}`
-      scripts[`preview:${sites[i].name}`] = filterCmd(
-        pm,
-        sites[i].name,
-        'preview'
-      )
-    }
+  // Subsequent sites get qualified dev:{name}/preview:{name}, by the name a site's scripts go by
+  // (`siteScriptName`) — its package's where another site's scripts already go by its project's.
+  for (let i = 1; i < sites.length; i++) {
+    const name = [siteScriptName(sites[i]), sites[i].name].find((n) => !(`dev:${n}` in scripts)) ?? sites[i].name
+    scripts[`dev:${name}`] = `uniweb dev ${sites[i].name}`
+    scripts[`preview:${name}`] = previewCommand(pm, sites[i])
   }
 
   return scripts
+}
+
+/**
+ * ⭐ THE NAME A SITE'S ROOT SCRIPTS GO BY: a site that is a project's own — `<project>/site`, the
+ * folder layout `uniweb add project` makes — by its project's, the name a person knows it by
+ * (`dev:marketing`); any other by its package's. The command still names the package, which no other
+ * site can share. ⛔ Until 2026-11-08 every site went by its package's, so a project's scripts were
+ * `dev:marketing-site` where a workspace of projects names them for the project.
+ *
+ * @param {{ name: string, path: string }} site - a site, `path` from the workspace root
+ * @returns {string}
+ */
+export function siteScriptName(site) {
+  const parts = String(site.path || '').split(/[\\/]/).filter(Boolean)
+  return parts.length >= 2 && parts[parts.length - 1] === 'site' ? parts[parts.length - 2] : site.name
+}
+
+/**
+ * The command a site's `preview` script runs: its own `preview`, through the package manager — under
+ * pnpm by its name, and under npm by its folder, since npm also reads a name as a folder and selects
+ * every package in it (`dev.js::devCommand`, the same rule for `dev`). ⛔ Until 2026-11-08 npm's was by
+ * name, so a site named for the folder around it previewed the foundation beside it as well.
+ */
+function previewCommand(pm, site) {
+  return filterCmd(pm, pm === 'npm' ? site.path : site.name, 'preview')
+}
+
+/**
+ * Whether `command` is one this CLI writes into a `dev:` or `preview:` root script, and for which
+ * site — a package's name, or under npm a site's folder. Null for a command the CLI never writes,
+ * which is the person's.
+ *
+ * @param {string} command
+ * @returns {string|null}
+ */
+function cliScriptTarget(command) {
+  if (typeof command !== 'string') return null
+  const m =
+    /^uniweb dev (\S+)$/.exec(command) ||
+    /^pnpm --filter (\S+) (?:run )?(?:dev|preview)$/.exec(command) ||
+    /^npm -w (\S+) run (?:dev|preview)$/.exec(command)
+  return m ? m[1] : null
 }
 
 /**
@@ -394,7 +429,8 @@ export async function updateRootScripts(rootDir, sites, pm = 'pnpm') {
   // ⭐ `preview` stays on the site it runs. Adding a site is no reason to move it, and
   // "first" follows the listing, so a new site sorted ahead took the script over. A command the
   // CLI didn't write is the person's, and only one for a site that's gone is rewritten.
-  const runs = unique.find((s) => cliSiteScripts('preview', s.name).includes(scripts.preview))
+  const isSite = (s, target) => target === s.name || target === s.path
+  const runs = unique.find((s) => isSite(s, cliScriptTarget(scripts.preview)))
   const newScripts = computeRootScripts(runs ? [runs, ...unique.filter((s) => s !== runs)] : unique, pm)
   const previewIsCli = /^(pnpm --filter \S+ (run )?preview|npm -w \S+ run preview)$/.test(scripts.preview ?? '')
   if (scripts.preview && !runs && !previewIsCli) delete newScripts.preview
@@ -416,13 +452,14 @@ export async function updateRootScripts(rootDir, sites, pm = 'pnpm') {
 
   // ⭐ The per-site scripts this CLI writes are regenerated from the sites there are
   // now, and one it wrote for a site that is gone — renamed, moved, removed — goes.
-  // A script whose command is not one the CLI writes is the user's, and stays.
+  // A script whose command is not one the CLI writes is the user's, and stays. Known by its
+  // command, since a project's site goes by the project's name (`siteScriptName`).
   // ⛔ Until 2026-10-13 they were only ever added: after `rename site blog journal`,
   // `dev:blog` still ran `uniweb dev blog`, a site that no longer existed.
   for (const [key, value] of Object.entries(scripts)) {
-    if (key in newScripts) continue
-    const m = /^(dev|preview):(.+)$/.exec(key)
-    if (m && cliSiteScripts(m[1], m[2]).includes(value)) delete scripts[key]
+    if (key in newScripts || !/^(dev|preview):./.test(key)) continue
+    const target = cliScriptTarget(value)
+    if (target && !unique.some((s) => isSite(s, target))) delete scripts[key]
   }
 
   pkg.scripts = { ...scripts, ...newScripts }
@@ -461,10 +498,13 @@ export async function addRootScripts(rootDir, added, sites, pm = 'pnpm') {
   added.forEach((site, i) => {
     if (isFirst && i === 0) {
       wanted.dev = 'uniweb dev'
-      wanted.preview = filterCmd(pm, site.name, 'preview')
+      wanted.preview = previewCommand(pm, site)
     } else {
-      wanted[`dev:${site.name}`] = `uniweb dev ${site.name}`
-      wanted[`preview:${site.name}`] = filterCmd(pm, site.name, 'preview')
+      // By the name its scripts go by (`siteScriptName`), else its package's where that is taken.
+      const free = (n) => !(`dev:${n}` in scripts) && !(`dev:${n}` in wanted)
+      const name = [siteScriptName(site), site.name].find(free) ?? site.name
+      wanted[`dev:${name}`] = `uniweb dev ${site.name}`
+      wanted[`preview:${name}`] = previewCommand(pm, site)
     }
   })
 
@@ -477,10 +517,4 @@ export async function addRootScripts(rootDir, added, sites, pm = 'pnpm') {
   return written
 }
 
-/** Every command this CLI has written for the `dev:<site>` / `preview:<site>` script. */
-function cliSiteScripts(kind, site) {
-  return kind === 'dev'
-    ? [`uniweb dev ${site}`, filterCmd('pnpm', site, 'dev'), filterCmd('npm', site, 'dev')]
-    : [filterCmd('pnpm', site, 'preview'), filterCmd('npm', site, 'preview')]
-}
 

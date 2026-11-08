@@ -343,7 +343,12 @@ export async function add(rawArgs) {
   const rootPkg = JSON.parse(
     await readFile(join(rootDir, 'package.json'), 'utf-8').catch(() => '{}')
   )
-  const projectName = rootPkg.name || 'my-project'
+  // ⭐ The project a package is part of: the one `--project` names — the folder it goes in,
+  // `<project>/src` or `<project>/site` — else the workspace, by its root package's name. ⛔ Until
+  // 2026-11-08 it was always the workspace's, so `add foundation --project shop` in a workspace of
+  // projects described the foundation as "<workspace> foundation", and a site added so was named and
+  // titled for the workspace.
+  const projectName = parsed.project || rootPkg.name || 'my-project'
 
   // What this workspace installs with is a property of the repo (its lockfile), not of how the
   // CLI happened to be launched: `npx uniweb add` in a pnpm workspace wrote `npm -w` root scripts
@@ -407,10 +412,13 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   const fullPath = join(rootDir, relativePath)
 
   // The foundation's own name — what it registers as, written to main.js — is
-  // the name asked for, before any workspace suffix below; with none (`src`),
-  // the project's.
-  const askedName =
-    normalizeFoundationName(packageName) || normalizeFoundationName(projectName)
+  // the name asked for, before any workspace suffix below; with `--project`, the
+  // project's, which its package's `-src` is only the workspace's suffix to; with
+  // none (`src`), the workspace's. ⛔ Until 2026-11-08 `--project shop` named the
+  // foundation `shop-src`.
+  const askedName = opts.project
+    ? normalizeFoundationName(opts.project)
+    : normalizeFoundationName(packageName) || normalizeFoundationName(projectName)
 
   // Validate the derived package name (format + reserved-name check). The
   // auto-derived `src` default is grandfathered in (`src` IS reserved

@@ -36,7 +36,7 @@ describe('updateRootScripts', () => {
   it('writes dev and preview for a first site', async () => {
     const scripts = await scriptsAfter({ build: 'uniweb build' }, [site('alpha')])
     assert.equal(scripts.dev, 'uniweb dev')
-    assert.equal(scripts.preview, 'npm -w alpha run preview')
+    assert.equal(scripts.preview, 'npm -w alpha/site run preview')
   })
 
   it('leaves preview on the site it runs when a site sorted ahead of it arrives', async () => {
@@ -44,8 +44,9 @@ describe('updateRootScripts', () => {
       { dev: 'uniweb dev', preview: 'npm -w beta run preview' },
       [site('alpha'), site('beta')],
     )
-    assert.equal(scripts.preview, 'npm -w beta run preview')
-    assert.equal(scripts['preview:alpha'], 'npm -w alpha run preview')
+    // Still beta's, in the form npm selects one site by: its folder.
+    assert.equal(scripts.preview, 'npm -w beta/site run preview')
+    assert.equal(scripts['preview:alpha'], 'npm -w alpha/site run preview')
     assert.equal(scripts['dev:alpha'], 'uniweb dev alpha')
     assert.equal(scripts['preview:beta'], undefined)
   })
@@ -57,7 +58,18 @@ describe('updateRootScripts', () => {
 
   it('moves a preview that runs a site that is gone', async () => {
     const scripts = await scriptsAfter({ preview: 'npm -w gone run preview' }, [site('alpha')])
-    assert.equal(scripts.preview, 'npm -w alpha run preview')
+    assert.equal(scripts.preview, 'npm -w alpha/site run preview')
+  })
+
+  it('⭐ removes a script for a project whose site is gone, though it goes by the project\'s name', async () => {
+    const scripts = await scriptsAfter(
+      { dev: 'uniweb dev', 'dev:old': 'uniweb dev old-site', 'preview:old': 'npm -w old/site run preview', 'dev:mine': 'uniweb dev old-site --port 9000' },
+      [site('alpha'), { name: 'new-site', path: 'new/site' }],
+    )
+    assert.equal(scripts['dev:old'], undefined)
+    assert.equal(scripts['preview:old'], undefined)
+    assert.equal(scripts['dev:new'], 'uniweb dev new-site')
+    assert.equal(scripts['dev:mine'], 'uniweb dev old-site --port 9000', 'a command the CLI does not write is the person\'s')
   })
 
   it('adds no second script for a command the workspace already has', async () => {
@@ -91,7 +103,7 @@ describe('addRootScripts — what `uniweb add` writes', () => {
     const { written, scripts } = await add({}, [site('alpha')], [site('alpha')], 'npm')
     assert.deepEqual(written, ['build', 'dev', 'preview'])
     assert.equal(scripts.dev, 'uniweb dev')
-    assert.equal(scripts.preview, 'npm -w alpha run preview')
+    assert.equal(scripts.preview, 'npm -w alpha/site run preview')
     assert.equal(scripts.build, 'uniweb build')
   })
 
@@ -131,6 +143,26 @@ describe('addRootScripts — what `uniweb add` writes', () => {
     )
     assert.deepEqual(written, ['build', 'preview:beta-site'])
     assert.equal(scripts['dev:beta-site'], undefined)
+  })
+
+  it('⭐ a project\'s site goes by the project\'s name, as a workspace of projects names its scripts', async () => {
+    const own = { dev: 'uniweb dev', build: 'uniweb build', 'dev:press': 'uniweb dev press-site' }
+    const courses = { name: 'courses-site', path: 'courses/site' }
+    const { written, scripts } = await add(own, [courses], [{ name: 'press-site', path: 'press/site' }, courses])
+    assert.deepEqual(written, ['dev:courses', 'preview:courses'])
+    assert.equal(scripts['dev:courses'], 'uniweb dev courses-site')
+    assert.equal(scripts['preview:courses'], 'pnpm --filter courses-site preview')
+  })
+
+  it("its package's name where the project's is another site's already", async () => {
+    const courses = { name: 'courses-site', path: 'courses/site' }
+    const { written } = await add({ dev: 'uniweb dev', build: 'uniweb build', 'dev:courses': 'uniweb dev other-site' }, [courses], [site('alpha'), courses])
+    assert.deepEqual(written, ['dev:courses-site', 'preview:courses-site'])
+  })
+
+  it('CONTROL — a site that is not a project\'s own goes by its package\'s name', async () => {
+    const { written } = await add({ dev: 'uniweb dev', build: 'uniweb build' }, [{ name: 'blog', path: 'sites/blog' }], [site('alpha'), { name: 'blog', path: 'sites/blog' }])
+    assert.deepEqual(written, ['dev:blog', 'preview:blog'])
   })
 
   it('a foundation or an extension adds no site, so at most a `build` the workspace lacks', async () => {
