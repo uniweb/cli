@@ -161,6 +161,10 @@ export default function Pricing({ content, params }) {
 }
 ```
 
+### Code several foundations share
+
+Code that more than one foundation of a workspace uses lives in a workspace package, not in copies: components are imported as from any package, and Vite bundles them into each foundation. Give the package a stylesheet that reads its own folder, as kit's does — `@source "./**/*.{js,jsx}";` in its `styles.css` — and import it in each foundation's `styles.css` (`@import "@acme/ui/styles.css";`), so Tailwind finds its classes wherever it is installed. A section type the package holds is still each foundation's to offer: a folder in the foundation's `sections/` whose `index.jsx` is `export { default } from '@acme/ui/sections/Banner/index.jsx'`, and whose `meta.js` re-exports the package's the same way. A fix in the package reaches every foundation at its next build and release.
+
 ### The Front Desk pattern
 
 A section type is triage: it reads params, picks a worker, and translates author vocabulary into developer props — and that is all it does. The workers are ordinary components that know nothing about CCA, and they need not share an interface: a `Hero` might hand off to a `SliderHero` (image carousel) or a `ContactHero` (quote form) that want different content and different props. The front desk declares the **union** of what they need, and unused content for a given variant is normal — params change behavior, and that includes not rendering some content. This is what lets an author (or an A/B test) flip `variant:` on a section without touching its markdown.
