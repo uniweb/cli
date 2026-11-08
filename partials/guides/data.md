@@ -136,6 +136,8 @@ data: {
 
 `single`/`whole` are refused over a schema whose root is a list (`@std/nav`, `@std/form`). A `whole` key its source cannot answer whole is `null`. An optional `schemas.config.js` routes a scope to a folder: `export default { '@acme': '../shared/acme-schemas' }` — a routed scope wins, has no package fallback, and `@/`/`@uniweb` are never routable. Worked examples: `development/schemas-in-practice.md`.
 
+**A type several foundations of one scope use is defined once.** A name in a scope is one type, so each foundation's `schemas/member.yml` under `@acme` is a definition of the same `@acme/member`, and a register of either changes it for the other's sites: `register` refuses one that differs from another in the workspace, and `doctor` names copies (`type-defined-twice`). Keep it in the scope's schemas package, or in the one foundation that owns it, and name it in full everywhere else: `data: { members: '@acme/member' }`, `schema: '@acme/member'` in `queries.yml`, and a site's records in `records/acme/member/` (in `records/member/` they're the foundation's own `@/member`, which it no longer defines). Route it with `schemas.config.js`: the scope's folder, or that one type, `'@acme/member': '../hub/src/schemas/member.yml'`.
+
 ```jsx
 function Article({ content, block }) {   // data: { article: { schema: '@std/article', single: true } }
   if (block.dataLoading) return <DataPlaceholder />
