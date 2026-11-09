@@ -101,7 +101,7 @@ my-project/
 └── AGENTS.md                 # The project's manual, for developers and AI agents
 ```
 
-**Pages are folders.** Create `pages/about/` with markdown files inside → visit `/about`. That's the whole routing model.
+**Pages are directories.** Create `pages/about/` with markdown files inside → visit `/about`. That's the whole routing model.
 
 **Batteries included:** File-based routing, pre-rendering, localization, dynamic routes, media processing, search indexing, and more. See [Building with Uniweb](https://github.com/uniweb/docs/blob/main/development/building-with-uniweb.md) for the full list.
 
@@ -244,7 +244,7 @@ The `build` command outputs to `site/dist/`. With pre-rendering enabled (the def
 
 After creating your project:
 
-1. **Explore the structure** — Browse `site/pages/` to see how content is organized. Each page folder contains `page.yml` (metadata) and `.md` files (sections).
+1. **Explore the structure** — Browse `site/pages/` to see how content is organized. Each page's directory contains `page.yml` (metadata) and `.md` files (sections).
 
 2. **Generate component docs** — Run `uniweb docs` to create `COMPONENTS.md` with all available components, their parameters, and presets.
 
@@ -356,7 +356,7 @@ uniweb add ci --host=github-pages
 
 **Other free static hosts.** Cloudflare Pages, Netlify, and Vercel work three ways: `uniweb add ci --host=<adapter>` scaffolds a workflow (and a per-PR preview that comments the URL), connecting the repo through their dashboard lets the host build it with no config at all, or `uniweb deploy --host=<adapter>` uploads from your machine.
 
-**When to choose Uniweb hosting instead** (paid): when you need dynamic-page prerender at the edge (for collections fetched at runtime, not just at build time), foundation/runtime version propagation without redeploying every site, or edge SSR. If your site's content lives in markdown and updates ship via git, free CI is the right call.
+**When to choose Uniweb hosting instead** (paid): when you need pages prerendered over live data (records fetched at runtime, not just at build time), foundation/runtime version propagation without redeploying every site, or edge SSR. If your site's content lives in markdown and updates ship via git, free CI is the right call.
 
 ### Your clients manage the content, in the app
 
