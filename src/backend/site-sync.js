@@ -516,7 +516,8 @@ export function extractFinalized(payload) {
 // envelope the update/folder lanes return (the site entity is submitted alone, so its
 // minted uuid is the first finalized entry). Returns null if none is present.
 export function extractMintedSiteUuid(payload) {
-  // `POST /dev/site` (the empty-site create) answers with the snake_case spelling;
+  // `POST /dev/site` (the empty-site create, which no command makes since 2026-11-09) answered
+  // with the snake_case spelling;
   // the content-lane CREATE has historically used the others. Both are the same
   // identity — the uuid `/dev/site/content/pull/{uuid}` accepts.
   if (typeof payload?.site_content_uuid === 'string')
@@ -721,8 +722,8 @@ const readMap = (siteDir, backend, key) => {
  * The guidance is `uniweb forget --server <url>` now, which removes the uuid and the
  * maps together, so following it no longer leads here.
  *
- * Call this BEFORE `ensureSiteExists`, which mints a uuid and would otherwise make
- * the clone look bound before the check runs.
+ * Call this BEFORE the site is created (`createSiteFromItsContent`), which mints a uuid and
+ * would otherwise make the clone look bound before the check runs.
  */
 /**
  * Drop the five remote-derived maps unconditionally, stamping the site they now
@@ -1687,59 +1688,36 @@ function recordSiteWorkspace(siteDir, backend, owner) {
 }
 
 /**
- * Turn a typed site-create refusal into a sentence, or null to fall through to the
- * generic HTTP line.
+ * A site create refused for space, as a sentence with the numbers — or null for any other problem.
  *
- * ⭐ Why this exists separately from `describeAssetRefusal`. The asset lane grew a
- * typed describer because a raw status dump is useless to the person who has to act
- * on it; the create lane had the same hole and nobody had met it, because until the
- * backend shipped account capacity a create could not be refused for space at all.
- * So this is the same fix on the second door, written before anyone hits it rather
- * than after.
+ * A site costs against its workspace's allowance before any content moves, so a create can be
+ * refused for space with a typed `507` (`storage_quota_exceeded`, account capacity). `POST /dev/site`
+ * did so; the content lane's create, the only one a push makes, did not when measured on a local
+ * uniwebd on 2026-11-09. Said in either case, wherever the backend refuses.
  *
- * ⛔ Branch on `reason`, never on the status. `507` alone cannot be told from any
- * other 507 and carries none of the numbers a user needs, and `detail` is prose the
- * backend may reword.
+ * ⛔ Branch on `reason`, never on the status. `507` alone cannot be told from any other 507 and
+ * carries none of the numbers a user needs, and `detail` is prose the backend may reword.
  *
- * ⚖️ The wording deliberately DIVERGES from the asset lane's on one point. There the
- * allowance belongs to the site's owner, who may not be the person pushing. Here
- * there is no site yet, so the only workspace in play is the one the site would be
- * created in — one named with `--org` included. Saying "the site owner's workspace"
- * would be incoherent for a site that does not exist.
+ * ⚖️ The wording deliberately DIVERGES from the asset lane's on one point. There the allowance
+ * belongs to the site's owner, who may not be the person pushing. Here there is no site yet, so the
+ * only workspace in play is the one the site would be created in — one named with `--org` included.
  *
- * @param {string} body - the raw response body
+ * @param {object|null} p - the parsed problem document
  * @returns {string|null}
  */
-function describeCreateRefusal(body) {
-  if (!body) return null
-  let p
-  try {
-    p = JSON.parse(body)
-  } catch {
-    return null // prose refusal, or an upstream error page
-  }
-  if (!p || typeof p !== 'object' || typeof p.reason !== 'string') return null
-
-  const attach = describeAttachRefusal(p)
-  if (attach) return [attach.headline, ...attach.steps].join('\n  ')
-
-  if (p.reason === 'storage_quota_exceeded') {
-    const parts = []
-    const used = humanBytes(p.used_bytes)
-    const limit = humanBytes(p.limit_bytes)
-    const needed = humanBytes(p.needed_bytes)
-    if (used && limit) parts.push(`${used} of ${limit} used`)
-    if (needed) parts.push(`a new site needs ${needed}`)
-    return (
-      'storage quota reached — the workspace this site would belong to has no room for it' +
-      (parts.length ? ` (${parts.join('; ')})` : '') +
-      '. Quota is returned by deleting a site or entity, not by editing content.'
-    )
-  }
-  // An unrecognised typed reason still beats a status dump: name it, and let the
-  // backend's own prose follow when it sent any.
-  const detail = typeof p.detail === 'string' ? p.detail : ''
-  return `the backend refused the site create (${p.reason})${detail ? ` — ${detail}` : ''}`
+export function describeStorageRefusal(p) {
+  if (!p || typeof p !== 'object' || p.reason !== 'storage_quota_exceeded') return null
+  const parts = []
+  const used = humanBytes(p.used_bytes)
+  const limit = humanBytes(p.limit_bytes)
+  const needed = humanBytes(p.needed_bytes)
+  if (used && limit) parts.push(`${used} of ${limit} used`)
+  if (needed) parts.push(`a new site needs ${needed}`)
+  return (
+    'storage quota reached — the workspace this site would belong to has no room for it' +
+    (parts.length ? ` (${parts.join('; ')})` : '') +
+    '. Quota is returned by deleting a site or entity, not by editing content.'
+  )
 }
 
 /**
@@ -1800,103 +1778,65 @@ export function describeAttachRefusal(problem) {
 }
 
 /**
- * Guarantee the site EXISTS on the backend before anything is uploaded against it.
+ * ⭐ A SITE'S FIRST PUSH CREATES IT FROM ITS CONTENT, before a byte is uploaded against it.
  *
- * Ordering is the point, and it is load-bearing rather than incidental. Uploaded
- * bytes are metered against an owning entity and reclaimed by deleting it, so an
- * upload made before any site exists is charged and can never be freed — there is
- * nothing to delete. Creating the site first turns the artifact of a failed first
- * publish from *unfreeable bytes* into *an empty site*, which costs nothing to
- * keep and can be cleared. (The reverse ordering was justified by a claim that
- * `ensureItemUuids` mints on the backend, which it does not — see push.js.)
+ * The content lane's create (`POST /dev/site/content`) checks the content and creates the site in
+ * one step: measured on a local uniwebd on 2026-11-09, a create it refused (`undeclared_type`) left
+ * the workspace's sites as they were, and this copy recorded nothing. So a first push the backend
+ * refuses leaves no site and no uploaded bytes behind, and the media go up only once the site exists
+ * to own them: uploaded bytes are metered against an owning entity and freed by deleting it.
  *
- * A no-op when the site already has a uuid on this backend (sync.json), so only the
- * first publish of a site pays for it. The uuid is written back immediately, keeping the window in
- * which a crash could strand a site as small as one file write.
+ * ⛔ Until 2026-11-09 a first push with media, and every first publish, made an EMPTY site
+ * (`POST /dev/site`) and uploaded to it before sending any content. A content push refused after
+ * that left the site created and empty, and this copy, holding its uuid and no base, stopped the next
+ * push until `--force` (`untakenBase`).
  *
- * @returns {Promise<{ uuid: string|null, created: boolean, reason?: string }>}
- *   `uuid: null` means the site could not be created; the caller decides whether
- *   that is fatal (it is, for any flow that uploads).
+ * The content goes up naming its media as written, by their local paths, and the records stay
+ * behind: the caller uploads the media against the uuid this returns, then pushes again, which sends
+ * the media's serve URLs and the records. No hash is banked here, so that push compares nothing
+ * against this one and sends every entity as it is then.
+ *
+ * A no-op when this backend already holds the site (`sync.json`).
+ *
+ * @param {object} p
+ * @param {import('./client.js').BackendClient} p.client
+ * @param {string} p.siteDir
+ * @param {() => Promise<object>} p.emit - the sync packages, built as the push sends them but
+ *   without the media's serve URLs
+ * @param {{ info: Function, note: Function, error: Function, dim?: Function }} p.report - as `pushSyncPackages` takes it
+ * @returns {Promise<{ uuid: string|null, created: boolean, refused?: boolean, finalizedTotal: number, wrote: string[] }>}
+ *   `uuid: null`: not created, and already said why; `refused`: the backend refused the content
  */
-export async function ensureSiteExists({
-  client,
-  siteDir,
-  name,
-  foundation,
-  note
-}) {
-  // One read serves both the binding check and the create's defaults, so callers
-  // that have no reason to hold site.yml (push) need not load it just to pass it
-  // back. An explicit argument still wins — publish supplies the PINNED foundation
-  // ref from the bring-along, which site.yml may not carry.
-  let siteYml = {}
-  try {
-    const y = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))
-    if (y && typeof y === 'object') siteYml = y
-  } catch {
-    /* unreadable site.yml — treat as un-synced and let the create decide */
-  }
+export async function createSiteFromItsContent({ client, siteDir, emit, report }) {
   const known = readBackendState(siteDir, client.origin).site?.uuid
-  if (known) {
-    return { uuid: known, created: false, org: readSiteWorkspace(siteDir, client.origin) }
-  }
-
-  // Both are required by the create. Catching it here turns a 400 into a sentence
-  // naming the file and the key — the difference between "fix this line of
-  // site.yml" and reading a status code.
-  const siteName = name ?? siteYml.name
-  const siteFoundation = foundation ?? siteYml.foundation
-  const missing = [!siteName && 'name', !siteFoundation && 'foundation'].filter(
-    Boolean
-  )
-  if (missing.length) {
-    return {
-      uuid: null,
-      created: false,
-      reason: `site.yml is missing ${missing.join(' and ')} — the backend requires ${missing.length > 1 ? 'them' : 'it'} to create a site`
-    }
-  }
-
-  let res
+  if (known) return { uuid: known, created: false, finalizedTotal: 0, wrote: [] }
+  // A site's name is required to create it (`info.name`, a plain string). Said as the line of
+  // site.yml to fix, before a create that would be refused.
+  let name = null
   try {
-    // The owner is the workspace the client names — the command's (`workspace.js`).
-    res = await client.createSite({
-      name: siteName,
-      foundation: siteFoundation
-    })
+    name = yaml.load(readFileSync(join(siteDir, 'site.yml'), 'utf8'))?.name ?? null
+  } catch {
+    /* unreadable site.yml — the emit says why */
+  }
+  if (typeof name !== 'string' || !name.trim()) {
+    report.error('site.yml has no `name:`, which the backend requires to create a site: it is the site’s name in the app.')
+    return { uuid: null, created: false, finalizedTotal: 0, wrote: [] }
+  }
+  let pkg
+  try {
+    pkg = await emit()
   } catch (err) {
-    return { uuid: null, created: false, reason: err.message }
+    report.error(`Could not build the sync package: ${err.message}`)
+    return { uuid: null, created: false, finalizedTotal: 0, wrote: [] }
   }
-  if (!res?.ok) {
-    const body = await res?.text?.().catch(() => '')
-    return {
-      uuid: null,
-      created: false,
-      // 404 here means the backend predates the route, which is a materially
-      // different problem from being refused — say which.
-      reason:
-        res?.status === 404
-          ? 'this backend has no /dev/site route (it predates the empty-site create)'
-          : (describeCreateRefusal(body) ??
-            `HTTP ${res?.status} ${res?.statusText || ''}${body ? ` — ${body.slice(0, 200)}` : ''}`)
-    }
+  report.note('The site is created from its content first; its media go up once the backend has taken it.')
+  const result = await pushSyncPackages({ client, siteDir, pkg: { ...pkg, records: null, hashes: {} }, report })
+  if (result.exitCode !== 0) {
+    if (result.refused) report.note('The backend creates a site only with content it takes, so no site was created.')
+    return { uuid: null, created: false, refused: Boolean(result.refused), finalizedTotal: 0, wrote: [] }
   }
-  const payload = await res.json().catch(() => null)
-  const minted = extractMintedSiteUuid(payload)
-  if (!minted) {
-    return {
-      uuid: null,
-      created: false,
-      reason: 'the create returned no site uuid'
-    }
-  }
-  writeSiteEntityUuid(siteDir, client.origin, minted)
-  // Stamp the cache with the site it now describes, so a push that fails after
-  // this point cannot leave a cache pointing at a different site with no way to
-  // detect it.
-  updateSyncCache(siteDir, client.origin, { siteUuid: minted })
-  const org = await recordAndDescribeOwner({ client, siteDir, payload, note })
-  return { uuid: minted, created: true, org }
+  const uuid = result.boundSiteUuid || readBackendState(siteDir, client.origin).site?.uuid || null
+  return { uuid, created: Boolean(uuid), finalizedTotal: result.finalizedTotal || 0, wrote: result.wrote || [] }
 }
 
 /**
@@ -2444,6 +2384,9 @@ export async function pushSyncPackages({
 
   const wrote = []
   let finalizedTotal = 0
+  // Whether the backend answered a lane with a refusal, rather than the request failing on the way:
+  // a refused create made no site (`createSiteFromItsContent`).
+  let refused = false
   // Records sent as drafts that the backend stored enabled — reported at the end.
   let draftsNotKept = []
   // ⭐ THE COMMIT THIS PUSH IS MADE FROM — sent with each lane, so the backend can name it on
@@ -2482,11 +2425,12 @@ export async function pushSyncPackages({
       return null
     }
     if (!res.ok) {
+      refused = true
       const body = await res.text().catch(() => '')
       // Two unrelated conflicts share HTTP 409, so branch on the machine-readable
       // `reason` — never on `detail`, which is prose the backend may reword.
       let problem = null
-      if ((res.status === 409 || res.status === 400 || res.status === 403 || res.status === 413 || res.status === 422) && body) {
+      if ((res.status === 409 || res.status === 400 || res.status === 403 || res.status === 413 || res.status === 422 || res.status === 507) && body) {
         try {
           problem = JSON.parse(body)
         } catch {
@@ -2500,6 +2444,12 @@ export async function pushSyncPackages({
       if (attach) {
         error(`${label} push refused — ${attach.headline}`)
         for (const step of attach.steps) note(step)
+        return null
+      }
+      // A site the workspace has no room for (`storage_quota_exceeded`) — said with the numbers.
+      const space = describeStorageRefusal(problem)
+      if (space) {
+        error(`${label} push refused — ${space}`)
         return null
       }
       // The package carried no identity for records the backend already stores, so
@@ -2666,7 +2616,8 @@ export async function pushSyncPackages({
         return null
       }
       error(`${label} push rejected: HTTP ${res.status} ${res.statusText}`)
-      if (res.status === 401 || res.status === 403) {
+      // A typed 403 says its own cause (a plan's limit, say), which is not the credentials.
+      if ((res.status === 401 || res.status === 403) && typeof problem?.reason !== 'string') {
         note(
           "Credentials weren't accepted — log in again (`uniweb login --server <url>`), or check UNIWEB_TOKEN."
         )
@@ -2739,6 +2690,16 @@ export async function pushSyncPackages({
         // … push it as a new site", a rule the backend no longer has, and it misled over a refused
         // reference. (`stale_base` and `item_uuid_conflict` have their own explanations, above.)
         note([problem.title, problem.detail].filter(Boolean).join(' — '))
+        return null
+      }
+      // ⭐ A CREATE REFUSED FOR A REASON IT TYPES — a plan's limit, content the backend will not take —
+      // is named, with the backend's own prose, rather than shown as its raw document. The create is the
+      // lane with no site yet (`boundUuid`).
+      if (!boundUuid && typeof problem?.reason === 'string') {
+        note(
+          `The backend refused the site create (${problem.reason})` +
+            (typeof problem.detail === 'string' && problem.detail ? `: ${problem.detail}` : '.')
+        )
         return null
       }
       if (body) note(body.slice(0, 800))
@@ -3006,7 +2967,7 @@ export async function pushSyncPackages({
         undefined,
         { reportTemplate: true, sent: siteContent.buffer }
       )
-      if (payload === null) return { exitCode: 1, finalizedTotal, wrote }
+      if (payload === null) return { exitCode: 1, finalizedTotal, wrote, refused }
       const minted = extractMintedSiteUuid(payload)
       if (!minted) {
         error(
@@ -3019,12 +2980,10 @@ export async function pushSyncPackages({
       updateSyncCache(siteDir, client.origin, { siteUuid: minted })
       boundSiteUuid = minted
       wrote.push('recorded the site in sync.json')
-      // The OTHER create path (a media-less push never reaches `ensureSiteExists`,
-      // which is gated on the site having local media). Both mint a site, so both
-      // owe the same record — recording it in only one place would make the recorded
-      // owner present or absent depending on whether the site happens to have images.
-      // The backend echoes `org`/`hosts_free` top-level here too, beside `report`
-      // and `site` (NOT beside `finalized`, which lives at report.finalized).
+      // The site is created here, by its content, on every first push and publish
+      // (`createSiteFromItsContent`), so its owner is recorded here too. The backend
+      // echoes `org`/`hosts_free` top-level, beside `report` and `site` (NOT beside
+      // `finalized`, which lives at report.finalized).
       const createdOrg = await recordAndDescribeOwner({ client, siteDir, payload, note })
       if (createdOrg)
         wrote.push(`recorded its owner (${createdOrg}) in sync.json`)

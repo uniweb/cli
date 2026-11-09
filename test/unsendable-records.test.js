@@ -52,7 +52,7 @@ test('every command that creates a site refuses unsendable records before creati
   for (const f of readdirSync(cmds).filter((n) => n.endsWith('.js'))) {
     // Line comments stripped: a comment naming the helper must not count as a call.
     const text = readFileSync(join(cmds, f), 'utf8').replace(/\/\/[^\n]*/g, '')
-    const create = text.indexOf('ensureSiteExists(')
+    const create = text.indexOf('createSiteFromItsContent(')
     if (create === -1) continue
     commands++
     const first = text.indexOf('refuseUnsendableRecords(')

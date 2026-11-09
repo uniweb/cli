@@ -487,7 +487,7 @@ test('the plan call carries the owning entity, and omits it when there is none',
 // it produces a perfectly normal, perfectly UNMETERED upload, and nothing here
 // went red.
 //
-// ⭐ Same shape as `every ensureSiteExists caller supplies a foundation ref`: the
+// ⭐ Same shape as `every create of a site carries the pinned foundation ref`: the
 // callee is correct throughout, the defect is a caller nobody enumerated. The
 // backend lane measured exactly this failure on the app's half of the same route
 // — every upload unmetered, both lanes' suites green the whole time (channel
@@ -538,9 +538,9 @@ test('every media upload names the owner it is charged to, after the create', ()
       // The owner has to EXIST before the bytes do: uploaded bytes are metered
       // against an entity and freed by deleting it, so an upload that precedes
       // the create is charged and can never be reclaimed. Both halves must sit
-      // above the call — the create, and the bail that stops us uploading when
-      // it failed.
-      const create = text.lastIndexOf('ensureSiteExists(', at)
+      // above the call — the create (from the site's content, so a refused push
+      // leaves no site behind), and the bail that stops us uploading when it failed.
+      const create = text.lastIndexOf('createSiteFromItsContent(', at)
       const bail = text.lastIndexOf('if (!site.uuid)', at)
       if (create === -1 || bail === -1 || bail < create)
         uncreated.push(`${f} @ ${at}`)

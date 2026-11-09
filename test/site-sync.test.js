@@ -23,7 +23,7 @@ import {
   extractFinalized,
   templateOutcome,
   pushSyncPackages,
-  ensureSiteExists,
+  createSiteFromItsContent,
   clearRemoteSyncStateIfUnbound,
   readBaseVersions,
   readSyncCache,
@@ -2214,57 +2214,116 @@ test("a package refused for what it inflates to says its uncompressed size, besi
   assert.doesNotMatch(notes, /This push sent/, 'the size on the wire is not what this limit counts')
 })
 
-// ─── ensureSiteExists ─────────────────────────────────────────────────────────
-// The site must exist before any byte is uploaded: bytes are metered against an
-// owning entity and freed by deleting it, so an upload made before the site
-// exists is charged with nothing to delete. These pin the contract that makes the
-// ordering safe to rely on.
+// ─── createSiteFromItsContent ─────────────────────────────────────────────────
+// A site's first push creates it from its content, before any byte is uploaded: the backend
+// takes the content or creates nothing (measured 2026-11-09), so a push it refuses leaves no
+// site and no bytes, and the next push is a first push again. These pin what the push and
+// publish rely on.
 
-const okJson = (body) => ({ ok: true, status: 200, json: async () => body })
+const okJson = (body) => ({ ok: true, status: 200, statusText: 'OK', json: async () => body, text: async () => JSON.stringify(body) })
+const minted = (uuid, extra = {}) => okJson({ site_content_uuid: uuid, report: { finalized: [{ index: 0, uuid, changed: true, version: 'V1' }] }, ...extra })
+const createPkg = () => ({
+  siteContent: { buffer: Buffer.from('site'), entityCount: 1, models: ['@uniweb/site-content'], index: [{ kind: 'site' }] },
+  records: { buffer: Buffer.from('records'), entityCount: 1, models: ['@uniweb/folder'], index: [] },
+  hashes: { '@uniweb/site-content site': 'h-site', '@uniweb/folder folder': 'h-folder' },
+  siteContentUuid: undefined
+})
+const said = () => {
+  const lines = []
+  return { lines, report: { info: (m) => lines.push(m), note: (m) => lines.push(m), error: (m) => lines.push(m), dim: (s) => s } }
+}
+const createIn = (dir, client, emit = async () => createPkg()) => {
+  const { lines, report } = said()
+  return createSiteFromItsContent({ client: { origin: ORIGIN, ...client }, siteDir: dir, emit, report }).then((res) => ({ res, out: lines.join('\n') }))
+}
 
-test('ensureSiteExists is a no-op when the site is already bound', async () => {
+test('createSiteFromItsContent is a no-op when the site is already bound', async () => {
   const dir = tmpSite()
   bind(dir, 'EXISTING-1')
+  let emitted = false
   let called = false
-  const client = {
-    origin: ORIGIN,
-    createSite: async () => {
-      called = true
-      return okJson({ site_content_uuid: 'NEW' })
-    }
-  }
-  const res = await ensureSiteExists({ client, siteDir: dir })
-  assert.deepEqual(res, { uuid: 'EXISTING-1', created: false, org: null })
+  const { res } = await createIn(
+    dir,
+    { createSiteContent: async () => ((called = true), minted('NEW')) },
+    async () => ((emitted = true), createPkg())
+  )
+  assert.equal(res.uuid, 'EXISTING-1')
+  assert.equal(res.created, false)
+  assert.equal(emitted, false, 'a bound site builds nothing to create')
   assert.equal(called, false, 'must not mint a second site for a bound clone')
 })
 
-test('ensureSiteExists creates, reads the snake_case uuid, and writes it back at once', async () => {
+test('createSiteFromItsContent creates the site from its content alone, records it at once, and banks no hash', async () => {
   const dir = tmpSite()
-  let sent = null
-  const client = {
-    origin: ORIGIN,
-    workspace: '@acme', // the create names it; the owner rides the client, not the call
-    createSite: async (opts) => {
-      sent = opts
-      return okJson({ site_content_uuid: 'MINTED-9' })
+  const sent = []
+  const { res, out } = await createIn(dir, {
+    workspace: '@acme',
+    createSiteContent: async (buffer) => (sent.push(buffer.toString()), minted('MINTED-9')),
+    pushFolder: async () => {
+      throw new Error('the records wait until the media went up')
     }
-  }
-  const notes = []
-  const res = await ensureSiteExists({
-    client,
-    siteDir: dir,
-    name: 'Acme',
-    foundation: '@a/base@1.2.3',
-    note: (m) => notes.push(m)
   })
-  assert.deepEqual(res, { uuid: 'MINTED-9', created: true, org: '@acme' })
-  assert.deepEqual(sent, {
-    name: 'Acme',
-    foundation: '@a/base@1.2.3'
-  })
-  // Written back immediately — the window where a crash strands a site is one write.
+  assert.equal(res.uuid, 'MINTED-9')
+  assert.equal(res.created, true)
+  assert.deepEqual(sent, ['site'], 'the content lane alone')
+  // Written back at once — the window where a crash strands a site is one write.
   assert.equal(readSiteIdentity(dir, ORIGIN).uuid, 'MINTED-9')
-  assert.ok(notes.some((m) => /Created the site/.test(m)))
+  // ⛔ No hash banked: banking the records' would read them as sent, and the push after the
+  // media would skip them.
+  assert.deepEqual(readSyncCache(dir, ORIGIN), {})
+  assert.match(out, /created from its content first/)
+  // …and the push after it holds a base, so it goes without --force.
+  assert.equal(untakenBase(dir, ORIGIN), null)
+})
+
+test('a create the backend refuses creates nothing here, and the next push is a first push again', async () => {
+  const dir = tmpSite()
+  const { res, out } = await createIn(dir, {
+    createSiteContent: async () => ({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      text: async () => JSON.stringify({ status: 400, title: 'Validation', detail: 'a query of a type no foundation declares', reason: 'invalid_field', rule: 'undeclared_type' })
+    })
+  })
+  assert.equal(res.uuid, null)
+  assert.equal(res.refused, true)
+  assert.match(out, /no site was created/)
+  assert.equal(readSiteIdentity(dir, ORIGIN).uuid, null)
+  // Nothing recorded, so nothing stops the retry (`untakenBase` gates only a recorded site).
+  assert.equal(untakenBase(dir, ORIGIN), null)
+})
+
+test('a create that fails on the way is not said to have created nothing', async () => {
+  const dir = tmpSite()
+  const { res, out } = await createIn(dir, {
+    createSiteContent: async () => {
+      throw new Error('ECONNRESET')
+    }
+  })
+  assert.equal(res.uuid, null)
+  assert.equal(res.refused, false)
+  assert.doesNotMatch(out, /no site was created/, 'a request that never answered proves nothing about the backend')
+})
+
+test('a create that returns no uuid is said, and binds nothing', async () => {
+  const dir = tmpSite()
+  const { res, out } = await createIn(dir, { createSiteContent: async () => okJson({ ok: true }) })
+  assert.equal(res.uuid, null)
+  assert.match(out, /no minted site-content uuid/)
+  assert.equal(readSiteIdentity(dir, ORIGIN).uuid, null)
+})
+
+test('a site.yml with no name is said as the line to fix, before any create', async () => {
+  // `info.name` is required to create a site. Catching it here is the difference between
+  // "fix this line of site.yml" and a refusal.
+  const dir = mkdtempSync(join(tmpdir(), 'site-sync-bare-'))
+  writeFileSync(join(dir, 'site.yml'), 'foundation: "@a/base@1.0.0"\n')
+  let called = false
+  const { res, out } = await createIn(dir, { createSiteContent: async () => ((called = true), minted('X')) })
+  assert.equal(res.uuid, null)
+  assert.match(out, /site\.yml has no `name:`/)
+  assert.equal(called, false, 'must not make a call it knows will be refused')
 })
 
 // ─── the site's org record (sync.json → backends.<origin>.site.org) ──────────
@@ -2274,20 +2333,7 @@ test('ensureSiteExists creates, reads the snake_case uuid, and writes it back at
 
 test('the created site records its org BARE, and reads back with the @', async () => {
   const dir = tmpSite()
-  const client = {
-    origin: ORIGIN,
-    workspace: '@acme',
-    createSite: async () => okJson({ site_content_uuid: 'MINTED-ORG' })
-  }
-  const notes = []
-  const res = await ensureSiteExists({
-    client,
-    siteDir: dir,
-    name: 'Acme',
-    foundation: '@a/base@1.2.3',
-    note: (m) => notes.push(m)
-  })
-
+  const { out } = await createIn(dir, { workspace: '@acme', createSiteContent: async () => minted('MINTED-ORG') })
   // BARE at rest, re-dressed with the `@` on the way out. The old reason was YAML —
   // `@` is a reserved indicator, so `$org: @acme` would not parse — and that hazard
   // is gone with JSON. The convention stays because the WIRE and the CLI both use
@@ -2295,56 +2341,32 @@ test('the created site records its org BARE, and reads back with the @', async (
   const stored = JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8'))
   assert.equal(stored.backends[ORIGIN].site.org, 'acme')
   assert.equal(readSiteWorkspace(dir, ORIGIN), '@acme')
-  assert.equal(res.org, '@acme')
   // "Show what was resolved" — the org is named, not silently recorded.
-  assert.ok(notes.some((m) => m.includes('@acme')))
+  assert.ok(out.includes('@acme'), out)
 })
 
 test('a bare workspace value is accepted and normalized on the way in', async () => {
   const dir = tmpSite()
-  await ensureSiteExists({
-    client: {
-      origin: ORIGIN,
-      workspace: 'acme', // no leading @
-      createSite: async () => okJson({ site_content_uuid: 'M' })
-    },
-    siteDir: dir,
-    name: 'Acme',
-    foundation: '@a/base@1.0.0'
-  })
+  await createIn(dir, { workspace: 'acme', createSiteContent: async () => minted('M') }) // no leading @
   assert.equal(readSiteIdentity(dir, ORIGIN).org, 'acme')
   assert.equal(readSiteWorkspace(dir, ORIGIN), '@acme')
 })
 
 test('a create naming no workspace records NO org when the echo carries none', async () => {
   const dir = tmpSite()
-  const res = await ensureSiteExists({
-    client: { createSite: async () => okJson({ site_content_uuid: 'M2' }) },
-    siteDir: dir,
-    name: 'Acme',
-    foundation: '@a/base@1.0.0'
-  })
+  await createIn(dir, { createSiteContent: async () => minted('M2') })
   // The create response carries no org, so there is nothing true to record.
   // Inventing one would be worse than the gap it fills.
   assert.equal(readSiteIdentity(dir, ORIGIN).org, null)
   assert.equal(readSiteWorkspace(dir), null)
-  assert.equal(res.org, null)
 })
 
 // ─── the create echo — recording what the site IS, not what we asked for ──────
 
 test('the backend echo wins over what we asked for, and null means personal', async () => {
   const dir = tmpSite()
-  await ensureSiteExists({
-    client: {
-      workspace: '@acme', // we asked for an org…
-      createSite: async () => okJson({ site_content_uuid: 'M', org: null }),
-      discover: async () => ({})
-    },
-    siteDir: dir,
-    name: 'Acme',
-    foundation: '@a/base@1.0.0'
-  })
+  // We asked for an org…
+  await createIn(dir, { workspace: '@acme', createSiteContent: async () => minted('M', { org: null }), discover: async () => ({}) })
   // …the backend says the site is personal. `org: null` is an ANSWER, not an
   // absent key, so it must not fall back to the request.
   assert.equal(readSiteIdentity(dir, ORIGIN).org, null)
@@ -2353,17 +2375,7 @@ test('the backend echo wins over what we asked for, and null means personal', as
 
 test('an older backend omitting `org` falls back to what we asked for', async () => {
   const dir = tmpSite()
-  await ensureSiteExists({
-    client: {
-      origin: ORIGIN,
-      workspace: '@acme',
-      createSite: async () => okJson({ site_content_uuid: 'M' }), // no `org` key
-      discover: async () => ({})
-    },
-    siteDir: dir,
-    name: 'Acme',
-    foundation: '@a/base@1.0.0'
-  })
+  await createIn(dir, { workspace: '@acme', createSiteContent: async () => minted('M'), discover: async () => ({}) }) // no `org` key
   assert.equal(readSiteWorkspace(dir, ORIGIN), '@acme')
 })
 
@@ -2380,23 +2392,12 @@ test('the billing line speaks ONLY the reassuring fact, and never predicts a cha
   // was dropped entirely. The backend's typed 402 is the exact, per-site, timely answer.
   const run = async (org, hostsFree) => {
     const dir = tmpSite()
-    const notes = []
     let discovered = false
-    await ensureSiteExists({
-      client: {
-        createSite: async () =>
-          okJson({ site_content_uuid: 'M', org, hosts_free: hostsFree }),
-        discover: async () => {
-          discovered = true
-          return {}
-        }
-      },
-      siteDir: dir,
-      name: 'A',
-      foundation: '@a/b@1.0.0',
-      note: (m) => notes.push(m)
+    const { out } = await createIn(dir, {
+      createSiteContent: async () => minted('M', { org, hosts_free: hostsFree }),
+      discover: async () => ((discovered = true), {})
     })
-    return { out: notes.join('\n'), discovered }
+    return { out, discovered }
   }
 
   // Exempt owner: the one thing the create actually told us, said plainly.
@@ -2429,99 +2430,6 @@ test('readSiteWorkspace returns null for every site that predates the record', (
 
   bind(dir, null, '   ')
   assert.equal(readSiteWorkspace(dir), null, 'a blank handle is not an org')
-})
-
-test('ensureSiteExists distinguishes a backend without the route from a refusal', async () => {
-  const dir = tmpSite()
-  const missing = await ensureSiteExists({
-    client: {
-      createSite: async () => ({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found',
-        text: async () => ''
-      })
-    },
-    siteDir: dir
-  })
-  assert.equal(missing.uuid, null)
-  assert.match(missing.reason, /no \/dev\/site route/)
-
-  const refused = await ensureSiteExists({
-    client: {
-      createSite: async () => ({
-        ok: false,
-        status: 403,
-        statusText: 'Forbidden',
-        text: async () => 'not a member'
-      })
-    },
-    siteDir: dir
-  })
-  assert.equal(refused.uuid, null)
-  assert.match(refused.reason, /HTTP 403/)
-  // A failed create must not leave a half-bound site.yml behind.
-  assert.equal(readSiteIdentity(dir, ORIGIN).uuid, null)
-})
-
-test('ensureSiteExists reports a create that returns no uuid rather than binding null', async () => {
-  const dir = tmpSite()
-  const res = await ensureSiteExists({
-    client: { createSite: async () => okJson({ ok: true }) },
-    siteDir: dir
-  })
-  assert.equal(res.uuid, null)
-  assert.match(res.reason, /no site uuid/)
-})
-
-test('ensureSiteExists falls back to site.yml for name and foundation', async () => {
-  // push has no reason to hold site.yml; one read serves both the binding check
-  // and the create's defaults. An explicit argument still wins — publish passes
-  // the PINNED foundation ref, which site.yml may not carry.
-  const dir = tmpSite() // name: Acme, foundation: '@a/base'
-  let sent = null
-  const client = {
-    origin: ORIGIN,
-    createSite: async (o) => {
-      sent = o
-      return okJson({ site_content_uuid: 'M1' })
-    }
-  }
-  await ensureSiteExists({ client, siteDir: dir })
-  assert.equal(sent.name, 'Acme')
-  assert.equal(sent.foundation, '@a/base')
-
-  const dir2 = tmpSite()
-  await ensureSiteExists({
-    client,
-    siteDir: dir2,
-    foundation: '@a/base@2.0.0'
-  })
-  assert.equal(sent.foundation, '@a/base@2.0.0', 'explicit ref wins')
-})
-
-test('ensureSiteExists names the missing site.yml key instead of letting the create 400', async () => {
-  // `name` and `foundation` are both required by POST /dev/site. Catching it here
-  // is the difference between "fix this line of site.yml" and a status code.
-  const dir = mkdtempSync(join(tmpdir(), 'site-sync-bare-'))
-  writeFileSync(join(dir, 'site.yml'), 'foundation: "@a/base@1.0.0"\n')
-  let called = false
-  const client = {
-    origin: ORIGIN,
-    createSite: async () => {
-      called = true
-      return okJson({ site_content_uuid: 'X' })
-    }
-  }
-  const res = await ensureSiteExists({ client, siteDir: dir })
-  assert.equal(res.uuid, null)
-  assert.match(res.reason, /missing name/)
-  assert.equal(called, false, 'must not make a call it knows will be refused')
-
-  const dir2 = mkdtempSync(join(tmpdir(), 'site-sync-bare2-'))
-  writeFileSync(join(dir2, 'site.yml'), 'name: Acme\n')
-  const res2 = await ensureSiteExists({ client, siteDir: dir2 })
-  assert.match(res2.reason, /missing foundation/)
 })
 
 // ─── clearRemoteSyncStateIfUnbound ───────────────────────────────────────────

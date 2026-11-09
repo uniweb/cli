@@ -253,7 +253,7 @@ export async function uploadSiteData({
  * swallowing).
  *
  * ⭐ The THIRD door, and the last to get one. `/dev/assets` has
- * `describeAssetRefusal`, `POST /dev/site` has `describeCreateRefusal`, and this
+ * `describeAssetRefusal`, a site create has `describeStorageRefusal`, and this
  * lane threw prose with the JSON inlined until 2026-09-01 — which is the failure
  * the other two describers exist to prevent, so leaving it was just an untreated
  * instance of a solved problem.

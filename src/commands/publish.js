@@ -108,7 +108,7 @@ import {
   ensureRegisteredFoundation,
   recoverUnbankedIdentity,
   keepTranslationsOfEdits,
-  ensureSiteExists,
+  createSiteFromItsContent,
   refuseUnsendableRecords,
   clearRemoteSyncStateIfUnbound,
   untakenBase,
@@ -382,8 +382,8 @@ export async function publish(args = []) {
   }
 
   // ⭐ THE WORKSPACE THIS PUBLISH WORKS IN — the one chosen with the login, unless this
-  // command names another (`workspace.js`). Resolved up front: `ensureSiteExists` below
-  // creates the site in it, and a site the backend keeps elsewhere is refused.
+  // command names another (`workspace.js`). Resolved up front: a first publish creates the site
+  // in it (`createSiteFromItsContent`), and a site the backend keeps elsewhere is refused.
   const ws = await resolveWorkspace({ client, args, offline: dryRun })
   if (ws.refused) {
     say.err('This publish works in one workspace, and none is chosen.')
@@ -700,31 +700,89 @@ export async function publish(args = []) {
       `Cleared stale sync state from a previous site (${droppedState.join(', ')}).`
     )
   }
-  // 3b. Make sure the SITE EXISTS before a single byte is uploaded.
+  // publish rides the same gated push as `uniweb push`: if an app author has
+  // edited since this clone last synced, the push is refused rather than
+  // overwriting them, and nothing goes live. `--force` drops the precondition.
+  const forced = args.includes('--force')
+  let assetRewrite = null
+  let assetIds = null
+  // ⭐ THE PACKAGE AS THIS PUBLISH SENDS IT, read from this copy's state when it is built: once to
+  // create the site (3b), and once to push it (5), after the media and the identity the create banked.
+  const emitOptionsNow = async () => ({
+    backend: client.origin,
+    // The keys this deployment's Sections take — see deploymentFields.
+    ...fields,
+    // Placement identity for the folder — see writeFolderItemUuids.
+    folderItemUuids: readFolderItemUuids(siteDir, client.origin),
+    // Identity for the records' list items — see readRecordItemUuids.
+    recordItemUuids: readRecordItemUuids(siteDir, client.origin),
+    ...(foundationDir ? { foundationDir } : {}),
+    resolveModel,
+    priorHashes: readSyncCache(siteDir, client.origin),
+    // Per-item identity, recovered from the backend when this clone has never seen it.
+    // Without it the backend re-mints every page and section row (see readItemUuids).
+    itemUuids: await ensureItemUuids({ client, siteDir, note: (m) => say.dim(m) }),
+    ...(forced
+      ? {}
+      : {
+          baseVersions: readBaseVersions(siteDir, client.origin),
+          itemBaseVersions: readItemBaseVersions(siteDir, client.origin),
+          // What a pull held is left out while its files still say it — see `uniweb push`.
+          heldUnits: readHeldUnits(siteDir, client.origin)
+        }),
+    // Stamp the PINNED foundation ref (`@scope/name@version`) from the bring-along
+    // on the site-content entity — the one key `injectInfo` carries since the
+    // data-bundle URL went (2026-08-18). Delivery is version-pinned end-to-end (a
+    // foundation is delivered only by a concrete version, agreed with backend and
+    // measured end to end on 2026-06-25), so pinning the released version on the
+    // wire is required when site.yml uses an unversioned local ref; injectInfo
+    // overrides info.foundation. A registry/URL ref → fnd.ref is null → the
+    // site.yml ref is forwarded verbatim (already pinned).
+    // ⛔ DO NOT STAMP A FILE MAP INTO `info` HERE. `injectInfo` WINS the merge
+    // (`sync-package.js`: `{...siteDoc.info, ...injectInfo}`), so any name stamped
+    // here silently replaces what the author's document carries under it, and the
+    // store validator accepts it — nothing errors at any layer. This was written
+    // about `info.data`, which carried the site's `fetch:` block until 2026-09-09;
+    // that moved to `settings.fetch`, and the warning holds for any name.
+    //
+    // A file map needs a name nothing else claims (`static_data` / `data_files`
+    // were proposed) AND a consumer that reads it — neither settled. Until then
+    // the schema-less data goes as 4c sends it: one object per file, no bundle.
+    ...(fnd.ref ? { injectInfo: { foundation: fnd.ref } } : {}),
+    ...(Object.keys(ext.pins).length ? { injectExtensions: ext.pins } : {}),
+    ...(assetRewrite ? { assetRewrite } : {}),
+    ...(assetIds ? { assetIds } : {})
+  })
+  const report = {
+    info: (m) => say.info(m),
+    note: (m) => say.dim(m),
+    error: (m) => say.err(m),
+    dim: (x) => `${c.dim}${x}${c.reset}`
+  }
+  // 3b. The site exists before a single byte is uploaded against it, and a first publish
+  //     creates it FROM ITS CONTENT (`createSiteFromItsContent`): the backend takes the content
+  //     or creates nothing, so a publish it refuses leaves no site and no uploaded bytes behind.
+  //     Uploaded bytes are metered against an owning entity and freed by deleting it, so they go
+  //     up only once it exists. A no-op once `sync.json` holds this backend's site uuid.
   //
-  //     Uploaded bytes are metered against an owning entity and reclaimed by
-  //     deleting it. Uploading before the site exists therefore produces bytes
-  //     that are charged and can never be freed — there is nothing to delete —
-  //     so a repeatedly-failing first publish would burn quota with no recovery
-  //     short of support. Creating the site first makes the artifact of a failed
-  //     publish an EMPTY SITE instead: it costs nothing to keep and the owner can
-  //     clear it. A no-op once `sync.json` holds this backend's site uuid, so only
-  //     a first publish pays.
-  //
-  //     This ordering is load-bearing, not incidental — the asset plan requires an
-  //     owner. A test asserts the create precedes the upload.
-  const site = await ensureSiteExists({
+  //     ⛔ Until 2026-11-09 this made an EMPTY site first (`POST /dev/site`). A content push the
+  //     backend refused then left that site behind, empty, and this copy could not push again
+  //     without `--force`. A test asserts the create precedes the upload.
+  const site = await createSiteFromItsContent({
     client,
     siteDir,
-    name: siteYml.name,
-    foundation: fnd.ref || siteYml.foundation,
-    note: (m) => say.dim(m)
+    emit: async () => emitSyncPackages(siteDir, await emitOptionsNow()),
+    report
   })
   if (!site.uuid) {
-    say.err(`Could not create the site on the backend: ${site.reason}`)
-    say.dim('Nothing was uploaded and nothing was charged.')
+    say.dim('No media or record data was uploaded.')
+    reportWriteBacks(commitWriteBacks(siteDir, client.origin, { complete: false, released }), { note: say.dim })
     return { exitCode: 1 }
   }
+  // What a first publish has sent by now, when an upload then fails: said, since it is not nothing.
+  const sentSoFar = () =>
+    site.created &&
+    say.dim('The site was created with its content, which names its media by their local paths until a push uploads them.')
 
   // 4. Gather the schema-less data files BEFORE uploading media, since their
   //    records can carry local media too. (No search index rides here since
@@ -734,8 +792,6 @@ export async function publish(args = []) {
 
   // 4b. Upload ALL local media (entity refs + ball refs) on one asset lane →
   //     the ref→serveUrl map; rewrite the entity content AND the ball with it.
-  let assetRewrite = null
-  let assetIds = null
   // …and each file record's file (`@uniweb/file` — `{ ref, path, contentType }`, already located).
   const mediaRefs = [...new Set([...localAssets, ...ballAssets]), ...(probe.localFiles || [])]
   if (mediaRefs.length) {
@@ -758,6 +814,7 @@ export async function publish(args = []) {
       if (failed.length) {
         say.err(`${failed.length} asset(s) failed to upload — not publishing.`)
         for (const f of failed) say.dim(`  ${f.path} (HTTP ${f.status})`)
+        sentSoFar()
         return { exitCode: 1 }
       }
       if (Object.keys(map).length) assetRewrite = map
@@ -787,6 +844,7 @@ export async function publish(args = []) {
       } else {
         say.err(`Media upload failed: ${err.message}`)
       }
+      sentSoFar()
       return { exitCode: 1 }
     }
   }
@@ -849,6 +907,7 @@ export async function publish(args = []) {
         `${r.failed.length} data file(s) failed to upload — not publishing.`
       )
       for (const f of r.failed) say.dim(`  ${f.path} (HTTP ${f.status})`)
+      sentSoFar()
       return { exitCode: 1 }
     }
     say.dim(`Record data     : ${r.uploaded.length} file(s) [${r.mode}]`)
@@ -856,6 +915,7 @@ export async function publish(args = []) {
     // The workspace this publish works in, refused — said as itself, as at every other door.
     if (err instanceof WorkspaceMismatchError) {
       say.err(err.message)
+      sentSoFar()
       return { exitCode: 1 }
     }
     // A typed plan refusal gets its own account (quota, or whatever else the
@@ -869,6 +929,7 @@ export async function publish(args = []) {
     } else {
       say.err(`Record data upload failed: ${err.message}`)
     }
+    sentSoFar()
     return { exitCode: 1 }
   }
 
@@ -877,35 +938,6 @@ export async function publish(args = []) {
   //    the pinned foundation ref and rewriting local media refs to serve URLs.
   //    (It stamped `info.data_bundle` until 2026-08-18; the ball is gone and
   //    collection data now lands at its serving tail, so nothing records it.)
-  const priorHashes = readSyncCache(siteDir, client.origin)
-  // Per-item identity, recovered from the backend when this clone has never seen it.
-  // Without it the backend re-mints every page and section row (see readItemUuids).
-  const itemUuids = await ensureItemUuids({
-    client,
-    siteDir,
-    note: (m) => say.dim(m)
-  })
-  // Stamp the PINNED foundation ref (`@scope/name@version`) from the bring-along
-  // on the site-content entity — the one key `injectInfo` carries since the
-  // data-bundle URL went (2026-08-18). Delivery is version-pinned end-to-end (a
-  // foundation is delivered only by a concrete version, agreed with backend and
-  // measured end to end on 2026-06-25), so pinning the released version on the
-  // wire is required when site.yml uses an unversioned local ref; injectInfo
-  // overrides info.foundation. A registry/URL ref → fnd.ref is null → the
-  // site.yml ref is forwarded verbatim (already pinned).
-  // ⛔ DO NOT STAMP A FILE MAP INTO `info` HERE. `injectInfo` WINS the merge
-  // (`sync-package.js`: `{...siteDoc.info, ...injectInfo}`), so any name stamped
-  // here silently replaces what the author's document carries under it, and the
-  // store validator accepts it — nothing errors at any layer. This was written
-  // about `info.data`, which carried the site's `fetch:` block until 2026-09-09;
-  // that moved to `settings.fetch`, and the warning holds for any name.
-  //
-  // A file map needs a name nothing else claims (`static_data` / `data_files`
-  // were proposed) AND a consumer that reads it — neither settled. Until then
-  // the schema-less data goes as 4c sends it: one object per file, no bundle.
-  const injectInfo = {
-    ...(fnd.ref ? { foundation: fnd.ref } : {})
-  }
   // ⭐ WHAT THE SITE HAS — read before the push, for the language selection. Only this
   // read sees a decision the owner made in the app since this clone last synced. It
   // reads this backend's site, from sync.json; a never-synced site has none.
@@ -948,10 +980,6 @@ export async function publish(args = []) {
     }
   }
 
-  // publish rides the same gated push as `uniweb push`: if an app author has
-  // edited since this clone last synced, the push is refused rather than
-  // overwriting them, and nothing goes live. `--force` drops the precondition.
-  const forced = args.includes('--force')
   // A foundation named by catalog ref — a clone's: its kept registered version types a query named
   // for a data key (`ensureRegisteredFoundation`).
   await ensureRegisteredFoundation({
@@ -960,31 +988,7 @@ export async function publish(args = []) {
     siteUuid: readBackendState(siteDir, client.origin).site?.uuid,
     ref: siteYml?.foundation
   })
-  const emitOptions = {
-    backend: client.origin,
-    // The keys this deployment's Sections take — see deploymentFields.
-    ...fields,
-    // Placement identity for the folder — see writeFolderItemUuids.
-    folderItemUuids: readFolderItemUuids(siteDir, client.origin),
-    // Identity for the records' list items — see readRecordItemUuids.
-    recordItemUuids: readRecordItemUuids(siteDir, client.origin),
-    ...(foundationDir ? { foundationDir } : {}),
-    resolveModel,
-    priorHashes,
-    itemUuids,
-    ...(forced
-      ? {}
-      : {
-          baseVersions: readBaseVersions(siteDir, client.origin),
-          itemBaseVersions: readItemBaseVersions(siteDir, client.origin),
-          // What a pull held is left out while its files still say it — see `uniweb push`.
-          heldUnits: readHeldUnits(siteDir, client.origin)
-        }),
-    ...(Object.keys(injectInfo).length ? { injectInfo } : {}),
-    ...(Object.keys(ext.pins).length ? { injectExtensions: ext.pins } : {}),
-    ...(assetRewrite ? { assetRewrite } : {}),
-    ...(assetIds ? { assetIds } : {})
-  }
+  const emitOptions = await emitOptionsNow()
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, emitOptions)
@@ -1011,12 +1015,6 @@ export async function publish(args = []) {
   // here, at publish, and never at push: syncing records does not depend on it.
   const notAsked = recordsNotAsked({ siteYml, shown: pkg.recordsShown })
   if (notAsked) say.warn(notAsked)
-  const report = {
-    info: (m) => say.info(m),
-    note: (m) => say.dim(m),
-    error: (m) => say.err(m),
-    dim: (s) => `${c.dim}${s}${c.reset}`
-  }
   const pushResult = await pushSyncPackages({
     client,
     siteDir,

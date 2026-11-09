@@ -100,7 +100,7 @@ import {
   recoverUnbankedIdentity,
   ensureItemUuids,
   refuseUnsendableRecords,
-  ensureSiteExists,
+  createSiteFromItsContent,
   clearRemoteSyncStateIfUnbound,
   untakenBase,
   keepTranslationsOfEdits,
@@ -384,16 +384,7 @@ export async function push(args = [], deps = {}) {
       )
     }
   }
-  const priorHashes = readSyncCache(siteDir, client.origin)
-  // Per-item identity, without which the backend reads every record as new and
-  // recreates every page and section row.
-  //
-  // An offline preview (`-o` / `--dry-run`) still stamps from the CACHE — that is a
-  // local file read, so it stays offline, and it keeps the emitted `.uwx` faithful
-  // to what a real push would send. Only the network RECOVERY is skipped, so a
-  // preview never reaches the backend. (Emitting `{}` here instead would make the
-  // preview quietly unrepresentative, which is the one thing `-o` exists to avoid.)
-  // Local media rides the SAME asset lane `publish` uses, and it rides it FIRST.
+  // Local media rides the SAME asset lane `publish` uses, before the content that names it.
   //
   // Push is the collaboration verb: a teammate opens the site in the visual app
   // right after it. Content that still points at `/images/hero.png` — bytes the
@@ -401,15 +392,14 @@ export async function push(args = [], deps = {}) {
   // push exists to avoid. `publish` uploaded and rewrote; push dropped
   // `localAssets` on the floor.
   //
-  // The upload runs before `ensureItemUuids`, and the reason once recorded here —
-  // "BEFORE `ensureItemUuids`, which mints uuids on the backend, so a refusal
-  // leaves nothing minted" — is FALSE. `ensureItemUuids` mints nothing: it reads a
-  // local map, and if that is empty it reads this backend's site uuid from sync.json
-  // and returns immediately when there is none (the first-push case). Its only backend call is
-  // a GET (`pullSiteContent`); its only write is a local file. So this ordering is
-  // not protecting what that comment claimed, and is under review — an upload is a
-  // durable, metered write, which makes uploading first the thing that leaves bytes
-  // behind when a later step fails.
+  // ⭐ A SITE'S FIRST PUSH IS THE EXCEPTION, and the reason is the same metering. Bytes need an
+  // owner to be freed, and until 2026-11-09 the owner was an empty site made for them, so a
+  // content push the backend refused left that site behind, empty, and this copy unable to push
+  // without `--force`. Now the site is created FROM ITS CONTENT (`createSiteFromItsContent`):
+  // the backend takes the content or creates nothing, the media go up once it has, and the
+  // content goes again with their serve URLs, seconds later, on a site nobody has opened yet.
+  // So a refused first push leaves no site and no bytes. A later push still uploads before
+  // its content, and bytes it sent stay on the site's books if the content is then refused.
   //
   // The probe emit runs WITHOUT `priorHashes`, so it surfaces every local ref
   // rather than only the changed ones. That is not waste — the lane is
@@ -470,6 +460,59 @@ export async function push(args = [], deps = {}) {
 
   let assetRewrite = null
   let assetIds = null
+  const resolveModel = makeModelResolver({ client, offline: Boolean(output) || dryRun, siteDir })
+  // ⭐ THE PACKAGE AS THIS PUSH SENDS IT, read from this copy's state when it is built. A site's
+  // first push builds it twice, to create the site and again once the media went up, and the
+  // identity, bases and hashes the first one banks are what the second one sends.
+  const emitOptionsNow = async () => ({
+    backend: client.origin,
+    // Placement identity for the folder — see writeFolderItemUuids.
+    folderItemUuids: readFolderItemUuids(siteDir, client.origin),
+    // Identity for the `queries` section — see readQueryUuids. Keyed by
+    // name, because a declaration has no file for a path-keyed map to hold.
+    queryUuids: readQueryUuids(siteDir, client.origin),
+    // The keys this deployment's Sections take — see deploymentFields.
+    ...fields,
+    // Identity for the records' list items — see readRecordItemUuids.
+    recordItemUuids: readRecordItemUuids(siteDir, client.origin),
+    ...(foundationDir ? { foundationDir } : {}),
+    resolveModel,
+    priorHashes: readSyncCache(siteDir, client.origin),
+    sendAll,
+    // Per-item identity, without which the backend reads every record as new and recreates
+    // every page and section row. An offline preview (`-o` / `--dry-run`) still stamps from the
+    // CACHE, a local read, so the emitted `.uwx` is faithful to what a push would send; only the
+    // network RECOVERY is skipped. `ensureItemUuids` mints nothing: on a first push, with no site
+    // uuid for this backend, it returns at once.
+    itemUuids: output || dryRun ? readItemUuids(siteDir, client.origin) : await ensureItemUuids({ client, siteDir, note }),
+    // The PINNED foundation ref from the bring-along above, stamped over the
+    // authored `site.yml` string. Delivery is version-pinned end to end, so an
+    // unpinned local name on the wire names code no host can serve. Absent when
+    // the site already references a registry ref or URL — then site.yml's own
+    // value rides verbatim. The create of a site carries it too, since it is this emit.
+    ...(fnd.ref ? { injectInfo: { foundation: fnd.ref } } : {}),
+    // Both grains are dropped together by --force: one flag, one meaning,
+    // no partial-force mode.
+    ...(force
+      ? {}
+      : {
+          baseVersions: readBaseVersions(siteDir, client.origin),
+          itemBaseVersions: readItemBaseVersions(siteDir, client.origin),
+          // ⭐ What a pull held is left out while its files still say what they said, so the backend
+          // keeps the app's version (`readHeldUnits`). `--force` sends it with everything else.
+          heldUnits: readHeldUnits(siteDir, client.origin)
+        }),
+    ...(assetRewrite ? { assetRewrite } : {}),
+    ...(assetIds ? { assetIds } : {})
+  })
+  const report = {
+    info,
+    note,
+    error,
+    dim: (s) => `${colors.dim}${s}${colors.reset}`
+  }
+  // What creating the site sent, when this push created it (`createSiteFromItsContent`).
+  let created = null
   if (!output && !dryRun) {
     let mediaRefs = []
     let refusals = []
@@ -481,7 +524,7 @@ export async function push(args = [], deps = {}) {
         // Placement identity for the folder — see writeFolderItemUuids.
         folderItemUuids: readFolderItemUuids(siteDir, client.origin),
         ...(foundationDir ? { foundationDir } : {}),
-        resolveModel: makeModelResolver({ client, offline: false, siteDir }),
+        resolveModel,
         // What a pull held, for a page that changed since to stop the push before anything goes up.
         ...(force ? {} : { heldUnits: readHeldUnits(siteDir, client.origin) })
       })
@@ -499,31 +542,27 @@ export async function push(args = [], deps = {}) {
     // …and so does a page a pull held whose files changed since (`refuseChangedHeld`).
     if (refuseChangedHeld(held, { error, note })) return { exitCode: 1 }
     if (mediaRefs.length) {
-      // The site has to exist before its bytes do — an upload with no owning
-      // entity is charged and cannot be freed, because freeing means deleting the
-      // owner. A no-op once `sync.json` holds this backend's site uuid, so only a
-      // never-synced site pays.
-      // ⛔ The PINNED ref, not site.yml's. The create is a THIRD writer of this
-      // value — the emit below stamps it via `injectInfo`, publish passes it here,
-      // and push did neither until 2026-08-19: it sent the authored alias (`src`),
-      // which names a foundation no deployment can resolve. A site created that way
-      // keeps the bad ref, and the backend's create guard now refuses it outright
-      // (channel backend↔framework, their measurement).
-      //
-      // ⭐ Same shape as the send-only-changed defect fixed this morning, and missed
-      // for the same reason: the rule was applied at the writers under discussion and
-      // a third caller of the same value was never enumerated.
-      const site = await ensureSiteExists({
+      // The site has to exist before its bytes do — an upload with no owning entity is
+      // charged and cannot be freed, because freeing means deleting the owner. A site's
+      // first push creates it from its content, so a push the backend refuses leaves no site
+      // and no bytes (`createSiteFromItsContent`); a no-op once `sync.json` holds this
+      // backend's site uuid.
+      const site = await createSiteFromItsContent({
         client,
         siteDir,
-        note,
-        ...(fnd.ref ? { foundation: fnd.ref } : {})
+        emit: async () => emitSyncPackages(siteDir, await emitOptionsNow()),
+        report
       })
       if (!site.uuid) {
-        error(`Could not create the site on the backend: ${site.reason}`)
-        note('Nothing was uploaded and nothing was charged.')
+        note('No media was uploaded.')
+        reportWriteBacks(commitWriteBacks(siteDir, client.origin, { complete: false, released }), { note })
         return { exitCode: 1 }
       }
+      if (site.created) created = site
+      // What a first push has sent by now, when the media then fail: said, since it is not nothing.
+      const sentSoFar = () =>
+        site.created &&
+        note('The site was created with its content, which names its media by their local paths until a push uploads them.')
       info('Uploading media…')
       try {
         const { map, ids, served, failed } = await uploadSiteMedia(
@@ -543,9 +582,11 @@ export async function push(args = [], deps = {}) {
         // the uploader, and not worth blocking a push over.
         if (failed.length) {
           error(
-            `${failed.length} asset(s) failed to upload — nothing was pushed.`
+            `${failed.length} asset(s) failed to upload — ${site.created ? 'nothing else was pushed.' : 'nothing was pushed.'}`
           )
           for (const f of failed) note(`  ${f.path} (HTTP ${f.status})`)
+          sentSoFar()
+          reportWriteBacks(commitWriteBacks(siteDir, client.origin, { complete: false, released }), { note })
           return { exitCode: 1 }
         }
         if (Object.keys(map).length) assetRewrite = map
@@ -574,15 +615,13 @@ export async function push(args = [], deps = {}) {
         } else {
           error(`Media upload failed: ${err.message}`)
         }
+        sentSoFar()
+        reportWriteBacks(commitWriteBacks(siteDir, client.origin, { complete: false, released }), { note })
         return { exitCode: 1 }
       }
     }
   }
 
-  const itemUuids =
-    output || dryRun
-      ? readItemUuids(siteDir, client.origin)
-      : await ensureItemUuids({ client, siteDir, note })
   // A foundation named by catalog ref — a clone's: its kept registered version types a query named
   // for a data key (`ensureRegisteredFoundation`). Offline, only what is already kept.
   if (!output && !dryRun) {
@@ -597,46 +636,7 @@ export async function push(args = [], deps = {}) {
   // each held one it no longer lists (`statedServices`) — and the backend decides per
   // service. Said here: what the file asks that will not be sent as written.
   announceServices({ siteYml, say: { warn }, supports: await foundationSupports(siteDir, siteYml) })
-  const emitOptions = {
-    backend: client.origin,
-    // Placement identity for the folder — see writeFolderItemUuids.
-    folderItemUuids: readFolderItemUuids(siteDir, client.origin),
-    // Identity for the `queries` section — see readQueryUuids. Keyed by
-    // name, because a declaration has no file for a path-keyed map to hold.
-    queryUuids: readQueryUuids(siteDir, client.origin),
-    // The keys this deployment's Sections take — see deploymentFields.
-    ...fields,
-    // Identity for the records' list items — see readRecordItemUuids.
-    recordItemUuids: readRecordItemUuids(siteDir, client.origin),
-    ...(foundationDir ? { foundationDir } : {}),
-    resolveModel: makeModelResolver({
-      client,
-      offline: Boolean(output) || dryRun,
-      siteDir
-    }),
-    priorHashes,
-    sendAll,
-    itemUuids,
-    // The PINNED foundation ref from the bring-along above, stamped over the
-    // authored `site.yml` string. Delivery is version-pinned end to end, so an
-    // unpinned local name on the wire names code no host can serve. Absent when
-    // the site already references a registry ref or URL — then site.yml's own
-    // value rides verbatim.
-    ...(fnd.ref ? { injectInfo: { foundation: fnd.ref } } : {}),
-    // Both grains are dropped together by --force: one flag, one meaning,
-    // no partial-force mode.
-    ...(force
-      ? {}
-      : {
-          baseVersions: readBaseVersions(siteDir, client.origin),
-          itemBaseVersions: readItemBaseVersions(siteDir, client.origin),
-          // ⭐ What a pull held is left out while its files still say what they said, so the backend
-          // keeps the app's version (`readHeldUnits`). `--force` sends it with everything else.
-          heldUnits: readHeldUnits(siteDir, client.origin)
-        }),
-    ...(assetRewrite ? { assetRewrite } : {}),
-    ...(assetIds ? { assetIds } : {})
-  }
+  const emitOptions = await emitOptionsNow()
   let pkg
   try {
     pkg = await emitSyncPackages(siteDir, emitOptions)
@@ -733,27 +733,17 @@ export async function push(args = [], deps = {}) {
 
   // Submit both lanes, back-fill the minted uuids, and persist the send-only-changed
   // cache. Shared with `uniweb publish` via ../backend/site-sync.js.
-  const result = await pushSyncPackages({
-    client,
-    siteDir,
-    pkg,
-    report: {
-      info,
-      note,
-      error,
-      dim: (s) => `${colors.dim}${s}${colors.reset}`
-    }
-  })
+  const result = await pushSyncPackages({ client, siteDir, pkg, report })
   // What the push wrote into the files is committed, whatever became of the lanes.
   const written = commitWriteBacks(siteDir, client.origin, { complete: result.complete, released })
   if (result.exitCode !== 0) {
     reportWriteBacks(written, { note })
     return { exitCode: result.exitCode }
   }
-  success(
-    `Pushed ${result.finalizedTotal} entit${result.finalizedTotal === 1 ? 'y' : 'ies'}` +
-      (result.wrote.length ? ` — ${result.wrote.join(', ')}` : '')
-  )
+  // A first push created the site before this, so what that sent counts too.
+  const total = (created?.finalizedTotal || 0) + result.finalizedTotal
+  const wrote = [...(created?.wrote || []), ...result.wrote]
+  success(`Pushed ${total} entit${total === 1 ? 'y' : 'ies'}` + (wrote.length ? ` — ${wrote.join(', ')}` : ''))
   reportWriteBacks(written, { note })
   // ⭐ The records this push took out of the site's folder are off the live site already (it reads
   // its folder as it stands): offer to delete them from the backend (ruled 2026-11-04).

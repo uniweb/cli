@@ -229,27 +229,23 @@ test('CONTROL: an UNVERIFIABLE digest still proceeds non-interactively', async (
   assert.equal(res.refused, undefined)
 })
 
-// ─── every caller of the create must supply the PINNED ref ───────────────────
-// The site-create is a THIRD writer of `info.foundation`: the sync emit stamps it
-// via `injectInfo`, `publish` passes it to `ensureSiteExists`, and `push` did
-// neither until 2026-08-19 — so a site created by `push` was created naming the
-// authored alias (`src`), which no deployment can resolve. The site KEEPS that ref,
-// so it is not self-correcting: only the create writes it.
+// ─── every create of a site carries the PINNED ref ───────────────────────────
+// The create writes the site's `info.foundation`, and the site KEEPS it: only the create
+// writes it, so it is not self-correcting. Until 2026-08-19 `push` created sites naming the
+// authored alias (`src`), which no deployment can resolve, because the create was a separate
+// writer of the value that a caller forgot to give the pinned ref.
 //
-// ⭐ This test is structural on purpose. A unit test of `ensureSiteExists` would have
-// passed throughout — the function honours an explicit argument correctly and always
-// did. The defect was a caller not passing one, which is invisible from inside the
-// callee, and is the same shape as the flag-guard coverage test: a rule applied at
-// the writers under discussion, with a caller nobody enumerated.
-//
-// Found by the backend lane enforcing their create door and watching A1 fail at the
-// create step (channel backend↔framework).
+// Since 2026-11-09 a site is created FROM ITS CONTENT (`createSiteFromItsContent`), so the
+// create carries whatever its emit stamps: each command's create must build its package with
+// the same options builder as its push, and that builder must stamp the pinned ref
+// (`injectInfo`). Structural on purpose: the callee is right on its own, and the defect would
+// be a caller nobody enumerated (found by the backend lane enforcing their create door).
 
 import { readFileSync as readSrc, readdirSync } from 'node:fs'
 import { dirname, join as joinPath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-/** The object-literal argument of a call, by brace balance. */
+/** The text of a call's or literal's braces from `from`, by brace balance. */
 function callArgOf(text, from) {
   const open = text.indexOf('{', from)
   if (open === -1) return ''
@@ -261,18 +257,23 @@ function callArgOf(text, from) {
   return ''
 }
 
-test('every ensureSiteExists caller supplies a foundation ref', () => {
+test('every create of a site carries the pinned foundation ref', () => {
   const cmds = joinPath(dirname(fileURLToPath(import.meta.url)), '../src/commands')
   const offenders = []
   let callsFound = 0
 
   for (const f of readdirSync(cmds).filter((n) => n.endsWith('.js'))) {
-    const text = readSrc(joinPath(cmds, f), 'utf8')
+    // Line comments stripped: a comment naming the builder must not count as using it.
+    const text = readSrc(joinPath(cmds, f), 'utf8').replace(/\/\/[^\n]*/g, '')
     let at = 0
-    while ((at = text.indexOf('ensureSiteExists(', at)) !== -1) {
+    while ((at = text.indexOf('createSiteFromItsContent(', at)) !== -1) {
       callsFound++
-      const arg = callArgOf(text, at)
-      if (!/\bfoundation\b/.test(arg)) offenders.push(`${f} @ ${at}`)
+      // The create's emit is the push's own options builder…
+      if (!/emitOptionsNow\(\)/.test(callArgOf(text, at))) offenders.push(`${f} @ ${at}: its emit is not emitOptionsNow()`)
+      // …and that builder stamps the pinned ref.
+      const builder = text.indexOf('const emitOptionsNow = async () => (')
+      if (builder === -1 || !/injectInfo: \{ foundation: fnd\.ref \}/.test(callArgOf(text, builder)))
+        offenders.push(`${f}: emitOptionsNow does not stamp the pinned ref`)
       at += 1
     }
   }
@@ -281,11 +282,7 @@ test('every ensureSiteExists caller supplies a foundation ref', () => {
   // the failure mode the backend lane hit in their own guard the same day (it matched
   // one `$model` spelling, found nothing, and reported a pass).
   assert.ok(callsFound >= 2, `expected to find the call sites, found ${callsFound}`)
-  assert.deepEqual(
-    offenders,
-    [],
-    'a create that omits the pinned ref names a foundation no deployment can resolve'
-  )
+  assert.deepEqual(offenders, [], 'a create that omits the pinned ref names a foundation no deployment can resolve')
 })
 
 // ─── `--no-release`: ship against what is already released ──────────────────
