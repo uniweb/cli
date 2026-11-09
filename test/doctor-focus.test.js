@@ -1,7 +1,8 @@
 /**
  * ⭐ WHAT `uniweb doctor` CHECKS IS WHERE YOU STAND (`doctorFocus`), by the rule `dev` and `status` read
  * the folder you stand in: in a site, that site and what it is built from — its foundation and its
- * extensions; in a foundation with no site around it, that foundation; elsewhere, the whole workspace.
+ * extensions; in a foundation, the site beside it when that site is built from it, else that
+ * foundation; elsewhere, the whole workspace.
  *
  * ⛔ Until 2026-11-08 only the sites were narrowed. Run in one site of a workspace holding seven
  * foundations, doctor reported on all seven before the site's own two findings.
@@ -14,7 +15,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmp } from './helpers/run-verb.js'
-import { doctorFocus } from '../src/commands/doctor.js'
+import { doctor, doctorFocus } from '../src/commands/doctor.js'
 
 const w = (root, rel, body) => {
   const p = join(root, rel)
@@ -73,6 +74,41 @@ test('in a foundation no site stands beside: that foundation, and no site', () =
   assert.equal(focus.foundation.name, 'ui')
   assert.deepEqual(names(focus.foundations), ['ui'])
   assert.deepEqual(focus.sites, [])
+})
+
+test('⭐ in a foundation the site beside it is not built from: that foundation, and no site', () => {
+  const ws = workspace()
+  w(ws.root, 'shelf/src/package.json', JSON.stringify({ name: 'shelf-src', main: './_entry.generated.js' }))
+  w(ws.root, 'shelf/src/main.js', 'export default {}\n')
+  w(ws.root, 'shelf/site/package.json', JSON.stringify({ name: 'shelf-site' }))
+  w(ws.root, 'shelf/site/site.yml', 'foundation: "@acme/base@1.0.0"\n')
+  ws.allSites.push({ path: join(ws.root, 'shelf/site'), name: 'shelf-site' })
+  ws.foundations.push({ path: join(ws.root, 'shelf/src'), name: 'shelf-src', folderName: 'shelf/src' })
+  const focus = focusAt(ws, 'shelf/src')
+  assert.equal(focus.foundation.name, 'shelf-src')
+  assert.deepEqual(names(focus.foundations), ['shelf-src'])
+  assert.deepEqual(focus.sites, [])
+  // CONTROL — in the site itself, the site
+  assert.equal(focusAt(ws, 'shelf/site').site.name, 'shelf-site')
+})
+
+async function doctorIn(dir) {
+  const cwd = process.cwd()
+  try {
+    process.chdir(dir)
+    return await doctor([], { quiet: true })
+  } finally {
+    process.chdir(cwd)
+  }
+}
+
+test('⭐ in a site that names no extension, no extension of the workspace is checked', async () => {
+  const ws = workspace()
+  const { issues } = await doctorIn(join(ws.root, 'press/site'))
+  assert.deepEqual(issues.filter((i) => /extension/i.test(i.message || '')).map((i) => i.message), [])
+  // CONTROL — the site that names `effects` has it checked, unbuilt as it is
+  const shop = await doctorIn(join(ws.root, 'shop/site'))
+  assert.ok(shop.issues.some((i) => i.message === 'Extension not built: effects'))
 })
 
 test('CONTROL — at the workspace root, the whole workspace', () => {

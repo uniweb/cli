@@ -1685,7 +1685,9 @@ export function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, sho
 /**
  * ⭐ WHAT DOCTOR CHECKS IS WHERE YOU STAND, by the rule `dev` and `status` read the folder you stand in
  * (`pick-site.js::siteAround`): in a site, that site and what it is built from, its foundation and its
- * extensions; in a foundation with no site around it, that foundation; elsewhere, the whole workspace.
+ * extensions; in a foundation, the site beside it when that site is built from it, else that foundation;
+ * elsewhere, the whole workspace. ⛔ Until 2026-11-09 the site beside a foundation was checked whatever
+ * it was built from, so in `shop/src` beside a site on another foundation, nothing checked `shop/src`.
  * ⛔ Until 2026-11-08 only the sites were narrowed: run in one site, doctor reported on every foundation
  * in the workspace before the site's own checks, which were hard to find among them.
  *
@@ -1693,20 +1695,24 @@ export function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, sho
  *   null for the whole workspace
  */
 export function doctorFocus({ workspaceDir, projectDir, allSites, foundations, extensions }) {
-  const here = siteAround(allSites.map((s) => relative(workspaceDir, s.path)), workspaceDir, projectDir)
-  if (here) {
-    const site = allSites.find((s) => relative(workspaceDir, s.path) === here)
-    const used = siteBuiltFrom(site.path)
-    const isUsed = (f) => used.has(realOf(f.path))
-    return { site, sites: [site], foundations: foundations.filter(isUsed), extensions: extensions.filter(isUsed) }
-  }
   const inside = (dir) => {
     const rel = relative(dir, projectDir)
     return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
   }
   const foundation = foundations.find((f) => inside(f.path))
   const extension = extensions.find((e) => inside(e.path))
-  if (!foundation && !extension) return null
+  const standingIn = foundation || extension
+  const here = siteAround(allSites.map((s) => relative(workspaceDir, s.path)), workspaceDir, projectDir)
+  if (here) {
+    const site = allSites.find((s) => relative(workspaceDir, s.path) === here)
+    const used = siteBuiltFrom(site.path)
+    // In a foundation the site beside it isn't built from, you mean the foundation.
+    if (!standingIn || used.has(realOf(standingIn.path))) {
+      const isUsed = (f) => used.has(realOf(f.path))
+      return { site, sites: [site], foundations: foundations.filter(isUsed), extensions: extensions.filter(isUsed) }
+    }
+  }
+  if (!standingIn) return null
   return {
     foundation: foundation || extension,
     sites: [],
@@ -2183,7 +2189,8 @@ async function runDoctor(args = []) {
     })
   }
 
-  // One name in a scope is one type: each defined by two packages here, among those checked.
+  // A data schema two packages here each keep a file for, among those checked: one full name is one
+  // type, so the second file is a copy.
   await checkTypesDefinedTwice({
     workspaceDir,
     checkedDirs: focus ? [...checkedFoundations, ...checkedExtensions].map((f) => f.path) : null,
@@ -2455,8 +2462,8 @@ async function runDoctor(args = []) {
     }
   }
 
-  // Check extensions
-  for (const ext of extensions) {
+  // Check extensions: those `doctorFocus` chose, as with the foundations above.
+  for (const ext of checkedExtensions) {
     log('')
     info(`Checking extension: ${ext.name}`)
 
