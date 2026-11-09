@@ -1753,8 +1753,8 @@ export async function checkTypesDefinedTwice({ workspaceDir, checkedDirs, issues
     info(`[${id}] ${t.ref} is defined in ${t.files.length} places${t.differ ? ', and they differ' : ''}`)
     for (const f of t.files) log(`    ${relative(workspaceDir, f)}`)
     log(
-      `    A registered data schema is usable by any foundation by its full name, so keep one definition and name ` +
-        `it in full in the others (${colors.green}${t.ref}${colors.reset}); schemas.config.js gives a local build its file.`
+      `    Any foundation can use a data schema by its full name, so keep one definition and name it in full in the ` +
+        `others (${colors.green}${t.ref}${colors.reset}): schemas.config.js gives their build its file, with no backend.`
     )
   }
 }
