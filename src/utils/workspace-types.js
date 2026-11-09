@@ -1,8 +1,7 @@
 /**
- * ⭐ ONE NAME IN A SCOPE IS ONE TYPE (`@uniweb/build`'s `typesDefinedTwice`, which says why): the data
- * schema names the workspace's packages of one scope each define — its foundations, extensions and
- * schemas packages — for `uniweb register` to refuse a definition that differs, and `uniweb doctor` to
- * name every one defined twice.
+ * The data schema names two packages of the workspace each define under one scope — its foundations,
+ * extensions and schemas packages — for `uniweb doctor` to recommend one definition, named in full
+ * elsewhere (`@uniweb/build`'s `typesDefinedTwice`, which says why).
  */
 
 import { join } from 'node:path'

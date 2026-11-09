@@ -64,7 +64,6 @@ import {
   readFileSync,
   writeFileSync,
   readdirSync,
-  realpathSync,
   statSync
 } from 'node:fs'
 import { execSync } from 'node:child_process'
@@ -101,20 +100,6 @@ import {
 } from '../utils/workspace.js'
 import { isNonInteractive, getCliPrefix } from '../utils/interactive.js'
 import { checkFlags } from '../utils/flag-guard.js'
-import { workspaceTypesDefinedTwice } from '../utils/workspace-types.js'
-
-// Is `path` inside `dir` (or `dir` itself)? By their real paths, as the type rule reads them.
-const realOf = (p) => {
-  try {
-    return realpathSync(p)
-  } catch {
-    return resolve(p)
-  }
-}
-const isWithin = (dir, path) => {
-  const rel = relative(realOf(dir), realOf(path))
-  return rel === '' || (!rel.startsWith('..') && !rel.startsWith('/'))
-}
 
 const colors = {
   reset: '\x1b[0m',
@@ -618,31 +603,6 @@ export function foundationNeedsBuild(targetDir) {
   return { needs: false }
 }
 
-/**
- * ⭐ ONE NAME IN A SCOPE IS ONE TYPE (`workspaceTypesDefinedTwice`): a definition that differs from
- * another of the same name in this workspace is refused, since a register replaces what the type is for
- * the other package's sites too. Copies that agree register as one, and `uniweb doctor` names them.
- * Says why and returns true when it refuses.
- */
-async function typesRefused(targetDir, kind, scope) {
-  if (!scope) return false
-  const workspaceDir = findWorkspaceRoot(targetDir)
-  if (!workspaceDir) return false
-  const twice = (await workspaceTypesDefinedTwice(workspaceDir, { dir: targetDir, kind, scope }))
-    .filter((t) => t.differ && t.files.some((f) => isWithin(targetDir, f)))
-  if (!twice.length) return false
-  error(`${twice.length === 1 ? 'A data schema this registers is' : `${twice.length} data schemas this registers are`} defined differently elsewhere in the workspace:`)
-  for (const t of twice) {
-    log(`  ${colors.bright}${t.ref}${colors.reset}`)
-    for (const f of t.files) log(`    ${colors.dim}${relative(workspaceDir, f)}${colors.reset}`)
-  }
-  log('')
-  log(`  A name in ${scope} is one type: registering this would change it for the other's sites too.`)
-  log(`  Keep each in one place — the scope's schemas package, or the foundation that owns it — and name it`)
-  log(`  in full elsewhere (${twice[0].ref}), with ${colors.bright}schemas.config.js${colors.reset} routing ${scope} to its folder.`)
-  return true
-}
-
 export async function register(args = []) {
   // See utils/flag-guard.js — an unrecognized flag is invisible to a
   // literal scan, so it silently keeps the default (production, for --backend).
@@ -753,8 +713,6 @@ async function runRegister(args = []) {
     if (!settled) return { exitCode: 2 }
     scope = settled.scope
     scopeSource = settled.source
-    // Before the build: the type rule reads the source, and a refusal needs no build to say.
-    if (await typesRefused(targetDir, 'foundation', scope)) return { exitCode: 2 }
     // Build-if-stale (`foundationNeedsBuild`): a missing or stale dist/ gets
     // (re)built before we read its schema. Preview paths
     // (--dry-run / -o) must not write to dist/, so they require a pre-built
@@ -844,9 +802,6 @@ async function runRegister(args = []) {
   // publishes one foundation without sight of the others. So the producer
   // states its own floor and whoever resolves a whole site does the arithmetic.
   const runtime = standalone ? null : readRuntimePin(join(targetDir, 'dist'))
-
-  // A schemas package's scope is known only now; a foundation's was before its build.
-  if (standalone && (await typesRefused(targetDir, 'schemas', scope))) return { exitCode: 2 }
 
   const exporter = { tool: 'uniweb', version: cliVersion(), instance: 'build' }
   let doc

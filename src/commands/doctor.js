@@ -1716,11 +1716,11 @@ export function doctorFocus({ workspaceDir, projectDir, allSites, foundations, e
 }
 
 /**
- * ⭐ ONE NAME IN A SCOPE IS ONE TYPE (`workspaceTypesDefinedTwice`): each data schema two packages of
- * one scope here define — two foundations, or a foundation and the scope's schemas package. A register
- * of either changes the type for the other's sites, and `uniweb register` refuses one whose definition
- * differs, so differing copies are a warning and agreeing ones a recommendation: they come apart the
- * first time one is edited.
+ * A data schema two packages of the workspace each define under one scope — a copy, where using the
+ * registered type by its full name was enough. Any foundation or site may use any registered data
+ * schema; its scope is a namespace, so that names never collide, and never limits who uses it. So a
+ * copy is a second definition of the one type `@acme/member` names, and the two come apart the first
+ * time one is edited. A recommendation, never a failure: registering either is the registry's to judge.
  *
  * @param {{ workspaceDir: string, checkedDirs: string[]|null, issues: object[] }} ctx - `checkedDirs`,
  *   the packages checked (`doctorFocus`); null for every one
@@ -1740,20 +1740,15 @@ export async function checkTypesDefinedTwice({ workspaceDir, checkedDirs, issues
     const id = 'type-defined-twice'
     issues.push({
       id,
-      type: t.differ ? 'warn' : 'info',
+      type: 'info',
       message: `${t.ref} is defined ${t.files.length} times in the workspace${t.differ ? ', differently' : ''}`,
       files: t.files.map((f) => relative(workspaceDir, f))
     })
-    const say = t.differ ? warn : info
-    say(`[${id}] ${t.ref} is defined in ${t.files.length} places${t.differ ? ', and they differ' : ''}`)
+    info(`[${id}] ${t.ref} is defined in ${t.files.length} places${t.differ ? ', and they differ' : ''}`)
     for (const f of t.files) log(`    ${relative(workspaceDir, f)}`)
     log(
-      `    A name in a scope is one type, so a register of either changes it for the other's sites` +
-        (t.differ ? ` — \`uniweb register\` refuses this one.` : `, and copies come apart the first time one is edited.`)
-    )
-    log(
-      `    Keep it in one place — the scope's schemas package, or the foundation that owns it — and name it in full ` +
-        `elsewhere (${colors.green}${t.ref}${colors.reset}), with schemas.config.js routing the scope to its folder.`
+      `    A registered data schema is usable by any foundation by its full name, so keep one definition and name ` +
+        `it in full in the others (${colors.green}${t.ref}${colors.reset}); schemas.config.js gives a local build its file.`
     )
   }
 }
