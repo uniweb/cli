@@ -32,7 +32,7 @@ import {
   findPublicFavicon
 } from '@uniweb/build/site'
 import { listAdapters } from '@uniweb/build/hosts'
-import { RUNTIME_KEYS, writeSiteConfig } from '@uniweb/build/uwx'
+import { RUNTIME_KEYS, writeSiteConfig, readBlueprint, refuseUnreadableBlueprint, blueprintWarnings, siteDeclaredTypes, siteSelfScope, BLUEPRINT_FILE } from '@uniweb/build/uwx'
 import { getCliVersion } from '../versions.js'
 import { readAgentsVersion } from '../utils/agents-stamp.js'
 import { writeJsonPreservingStyle } from '../utils/json-file.js'
@@ -1257,6 +1257,41 @@ export async function checkSiteAddress({ sitePath, siteName, siteYml, workspaceD
   log(`    ${colors.dim}${without}${colors.reset}`)
 }
 
+/**
+ * `blueprint.yml` — how a backend started from the site begins. What a build and a push would refuse
+ * is an error; a line a backend would leave out — a type none of the site's foundations declares — a
+ * warning, as the push says it; and a blueprint whose types could not be checked here, a note saying
+ * why, since a clean report would otherwise read as checked.
+ */
+export async function checkBlueprint({ sitePath, siteName, siteYml, issues }) {
+  let blueprint
+  try {
+    blueprint = readBlueprint(sitePath)
+    refuseUnreadableBlueprint(blueprint, { siteYml })
+  } catch (err) {
+    const id = 'blueprint-unreadable'
+    const message = err.message.replace(/^\[uniweb\] /, '')
+    issues.push({ id, type: 'error', site: siteName, message })
+    error(`[${id}] ${message}`)
+    return
+  }
+  if (!blueprint) return
+  const scope = await siteSelfScope(sitePath)
+  const declared = await siteDeclaredTypes(sitePath, siteYml, { scope })
+  for (const line of blueprintWarnings(blueprint, { scope, declared })) {
+    const id = 'blueprint-leaves-out'
+    issues.push({ id, type: 'warn', site: siteName, message: line })
+    warn(`[${id}] ${line}`)
+  }
+  const namesTypes = ['access', 'publicQueries'].some((key) => blueprint[key] && Object.keys(blueprint[key]).length)
+  if (namesTypes && !declared.types) {
+    const id = 'blueprint-types-unchecked'
+    const message = `${BLUEPRINT_FILE}: its types were not checked against the site's foundations — ${declared.unread.join('; ')}`
+    issues.push({ id, type: 'info', site: siteName, message })
+    info(`[${id}] ${message}`)
+  }
+}
+
 // What a link preview draws, from the platforms' own pages, read 2026-10-27. Facebook
 // (developers.facebook.com/docs/sharing/webmasters/images): 1.91:1 shows the whole image, at least
 // 1200×630 for high-resolution screens and 600×315 for a large card, 8 MB at most. LinkedIn
@@ -2268,6 +2303,8 @@ async function runDoctor(args = []) {
     await checkFormSubmitTarget({ sitePath, siteName, siteYml, issues })
     checkAgentsBlock({ siteName, siteYml, issues })
     checkTrackingBlock({ siteName, siteYml, issues })
+    // How a backend started from the site begins: what a push would refuse, and what a backend would leave out.
+    await checkBlueprint({ sitePath, siteName, siteYml, issues })
 
     // `public/<DATA_DIR>/` is the build's output directory and nothing else —
     // `records/` is the only supported way to provide structured data. That makes the mapping a bijection: every entry there should be backed

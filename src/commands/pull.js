@@ -1218,6 +1218,8 @@ export async function pull(args = [], deps = {}) {
   let notTaken = false
   // The languages the backend holds text in that the site does not list: not written (`documentLanguages`).
   let outsideLanguages = []
+  // A `blueprint.yml` the pull left as it was, and why (`@uniweb/build/uwx`, `writePulledBlueprint`).
+  let blueprintKept = null
   try {
     if (siteDoc) {
       // Re-base the page attribution. The pulled document IS the backend's own
@@ -1294,6 +1296,7 @@ export async function pull(args = [], deps = {}) {
       mountRoutes = report.mountRoutes || []
       mountedMoved = mountedPagesMoved(mountedPages, pulledVersions, priorVersions)
       outsideLanguages = report.outsideLanguages || []
+      blueprintKept = report.config?.blueprint?.file === 'kept' ? report.config.blueprint.note : null
       // ⭐ WHAT IT HELD, AS THE FILES KEEP IT — where each held page is in the files it wrote into, the
       // stand-in in a repository, and what they say there — for a push to leave out while they still
       // say it (`readHeldUnits`). Replaced by each pull that takes the site's content. In the stand-in's
@@ -1703,6 +1706,8 @@ export async function pull(args = [], deps = {}) {
     // ⭐ A mounted folder's pages are as current as its repository, which no pull moves.
     for (const line of await behindLines(siteDir)) note(line)
   }
+  // ⭐ Said, since the file and the site now differ: the file is the author's, and the next push sends it.
+  if (blueprintKept) note(blueprintKept)
   // ⭐ Said, because the text is not in a translation file: one would make the language the site's,
   // and the next publish would ask to serve it (`uwx/source-locale.js`). It is kept for the push to
   // send back (`locales/_kept.json`), since a language removed in the app keeps its translations.
