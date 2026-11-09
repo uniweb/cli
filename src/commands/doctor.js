@@ -1754,7 +1754,7 @@ export async function checkTypesDefinedTwice({ workspaceDir, checkedDirs, issues
     for (const f of t.files) log(`    ${relative(workspaceDir, f)}`)
     log(
       `    Any foundation can use a data schema by its full name, so keep one definition and name it in full in the ` +
-        `others (${colors.green}${t.ref}${colors.reset}): schemas.config.js gives their build its file, with no backend.`
+        `others (${colors.green}${t.ref}${colors.reset}): in this workspace their build finds its file, with nothing to configure.`
     )
   }
 }
