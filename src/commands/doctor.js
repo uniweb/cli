@@ -1686,7 +1686,7 @@ export function checkGeneratedDataDir({ sitePath, siteName, siteYml, issues, sho
  * ⭐ WHAT DOCTOR CHECKS IS WHERE YOU STAND, by the rule `dev` and `status` read the folder you stand in
  * (`pick-site.js::siteAround`): in a site, that site and what it is built from, its foundation and its
  * extensions; in a foundation, the site beside it when that site is built from it, else that foundation;
- * elsewhere, the whole workspace. ⛔ Until 2026-11-09 the site beside a foundation was checked whatever
+ * elsewhere, the whole workspace. ⛔ Until 2026-11-08 the site beside a foundation was checked whatever
  * it was built from, so in `shop/src` beside a site on another foundation, nothing checked `shop/src`.
  * ⛔ Until 2026-11-08 only the sites were narrowed: run in one site, doctor reported on every foundation
  * in the workspace before the site's own checks, which were hard to find among them.

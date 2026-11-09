@@ -465,7 +465,7 @@ export async function updateRootScripts(rootDir, sites, pm = 'pnpm') {
   // scripts named or run another way now (by its project's name; under npm, by its folder). A script
   // under the person's own name for a command, or whose command the CLI doesn't write, stays.
   // ⛔ Until 2026-10-13 they were only ever added: after `rename site blog journal`, `dev:blog`
-  // still ran `uniweb dev blog`. ⛔ From 2026-11-08 to 2026-11-09 only a gone site's went, so a
+  // still ran `uniweb dev blog`. ⛔ In 1.30.0 and 1.30.1 only a gone site's went, so a
   // renamed project kept its old pair beside the new one.
   for (const [key, value] of Object.entries(scripts)) {
     if (!(key in newScripts) && cliNamed(key, value)) delete scripts[key]
