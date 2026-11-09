@@ -18,7 +18,8 @@ import {
   resolveWorkspacePackages,
   patternsCover,
   editWorkspaceFilePackages,
-  renderWorkspaceFile
+  renderWorkspaceFile,
+  workspacePackages
 } from '../src/utils/workspace-packages.js'
 
 /** A workspace holding a package.json at each of `packages`, and plain folders at `folders`. */
@@ -42,6 +43,15 @@ function inTree(packages, folders, fn) {
 }
 
 // ─── Reading ────────────────────────────────────────────────────────────────
+
+// ⛔ Until 2026-11-08 the file was read with js-yaml's default types, so an unquoted folder named like
+// a date became a Date, and the list, which keeps strings, dropped it without a word.
+test('a folder named like a date is a folder, written unquoted in pnpm-workspace.yaml', () => {
+  inTree(['2025-06-01', 'site'], [], (root) => {
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - 2025-06-01\n  - site\n')
+    assert.deepEqual(workspacePackages(root), ['2025-06-01', 'site'])
+  })
+})
 
 test('a project per type, each with several sites: */src and */sites/*', () => {
   inTree(
