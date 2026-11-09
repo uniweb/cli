@@ -1350,6 +1350,11 @@ export async function pull(args = [], deps = {}) {
         removed.push(resolve(projDir, report.recordsFile))
       }
       records += report.placed.length + report.updated.length
+      // ⭐ Another site's records, mounted (`site.yml::paths`): read where they are, and left as the
+      // owner's files hold them, since a pull of this site writes nothing there.
+      if (report.leftToOwner?.length) {
+        note(`  ${report.leftToOwner.length} record(s) are mounted from another site (site.yml paths:) and left as its files hold them`)
+      }
       // ⭐ A FILE RECORD'S BYTES (`@uniweb/file`, 2026-09-28): fetched to where `folder.yml` now
       // places each one, as media are fetched. A file that did not arrive is a record not taken —
       // reported, and the pull fails below as it does for any, so the next one fetches it again.
@@ -1379,7 +1384,7 @@ export async function pull(args = [], deps = {}) {
       if (report.skipped.length) {
         recordsNotPlaced = describeUnplacedRecords({
           docs: folderLane.docs,
-          taken: report.placed.length + report.updated.length + report.unchanged.length,
+          taken: report.placed.length + report.updated.length + report.unchanged.length + (report.leftToOwner?.length || 0),
           skipped: report.skipped
         })
         error(recordsNotPlaced.headline)
