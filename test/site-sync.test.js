@@ -1760,10 +1760,20 @@ test('pushSyncPackages: the folder lane is keyed by the bound site uuid', async 
 
 test('⭐ pushSyncPackages: a push banks what the folder now places, and retires what it no longer does', async () => {
   // As a push that moved one record to another schema: the folder came back placing NEW where OLD was.
+  // The copy's own records are in its map, as every push and pull leaves them.
   const dir = tmpSite()
   writeFileSync(
     join(dir, 'sync.json'),
-    JSON.stringify({ version: 1, backends: { 'http://x': { site: { uuid: 'SITE' }, types: { OLD: '@std/project', KEEP: '@std/article' } } } })
+    JSON.stringify({
+      version: 1,
+      backends: {
+        'http://x': {
+          site: { uuid: 'SITE' },
+          records: { 'own-old': 'OLD', 'own-keep': 'KEEP' },
+          types: { OLD: '@std/project', KEEP: '@std/article' }
+        }
+      }
+    })
   )
   const returned = {
     $schema: '@uniweb/folder',

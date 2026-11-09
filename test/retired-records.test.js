@@ -60,7 +60,11 @@ async function atATerminal(fn) {
 }
 
 test('⭐ the held types are a snapshot of the folder, and a push retires what it stopped placing', () => {
-  const dir = site({ types: { OLD: '@std/project', KEEP: '@std/article', GONE_LONG_AGO: '@std/x' } })
+  // Every push and pull maps the records it carries, by the record's own id.
+  const dir = site({
+    records: { 'own-old': 'OLD', 'own-keep': 'KEEP', 'own-new': 'NEW' },
+    types: { OLD: '@std/project', KEEP: '@std/article', GONE_LONG_AGO: '@std/x' }
+  })
   // GONE_LONG_AGO is not in the folder before this push either: the snapshot above is stale on
   // purpose, as a copy banked by an older CLI is (types merged).
   const before = writeHeldTypes(dir, ORIGIN, folder([['OLD', '@std/project'], ['KEEP', '@std/article']]))
@@ -77,6 +81,16 @@ test('a retired record placed again is no longer retired', () => {
   const dir = site({ types: { NEW: '@acme/project' }, retired: { OLD: '@std/project' } })
   retireUnplaced(dir, ORIGIN, writeHeldTypes(dir, ORIGIN, folder([['OLD', '@std/project'], ['NEW', '@acme/project']])))
   assert.equal(stateOf(dir).retired, undefined)
+})
+
+test('⭐ a mounted record leaving the folder is its owner\'s to retire, never this copy\'s', () => {
+  // MINE is this site's own record. THEIRS is another site's, placed here by reference through a
+  // mounted records directory (`site.yml::paths`): never sent by this copy, never in its map.
+  const dir = site({ records: { 'own-mine': 'MINE' }, types: { MINE: '@acme/member', THEIRS: '@acme/member' } })
+  // The site stopped mounting the directory, and deleted its own record's file.
+  const after = writeHeldTypes(dir, ORIGIN, folder([]))
+  assert.deepEqual(retireUnplaced(dir, ORIGIN, after), ['MINE'])
+  assert.deepEqual(stateOf(dir).retired, { MINE: '@acme/member' })
 })
 
 test('a copy that never banked types retires nothing on its first push', () => {

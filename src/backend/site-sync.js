@@ -1432,15 +1432,24 @@ export function writeHeldTypes(siteDir, backend, folderDoc) {
  * The backend keeps them, in no folder, until they are deleted (`utils/retired-records.js`). A
  * retired record placed again (a move undone) is dropped from the list.
  *
+ * ⭐ ONLY THIS COPY'S OWN RECORDS. A record of another site's directory, mounted here
+ * (`site.yml::paths`), is placed by reference to the entity its owner's push made. This copy never
+ * sent it, and a pull leaves its file to the owner, so the `records` map, which every push and pull
+ * writes for the records they carry, never holds it. Leaving the folder, it is the owner's to
+ * retire. ⛔ Until 2026-11-08 it was retired here too, and one uuid the caller may not administer
+ * refuses the whole delete before anything is deleted [backend, 2026-11-08].
+ *
  * ⚠️ Nothing is known before a copy first banks its types, so a copy banked before 2026-11-04
  * retires nothing on its first push after that.
  *
  * @returns {string[]} the uuids this push retired
  */
 export function retireUnplaced(siteDir, backend, { before, after }) {
-  const prior = readBackendState(siteDir, backend).retired || {}
+  const state = readBackendState(siteDir, backend)
+  const prior = state.retired || {}
+  const own = new Set(Object.values(state.records || {}))
   const now = Object.fromEntries(Object.entries(prior).filter(([uuid]) => !(uuid in after)))
-  const retired = Object.keys(before).filter((uuid) => !(uuid in after))
+  const retired = Object.keys(before).filter((uuid) => !(uuid in after) && own.has(uuid))
   for (const uuid of retired) now[uuid] = before[uuid]
   setBackendMap(siteDir, backend, 'retired', now)
   return retired
