@@ -546,7 +546,7 @@ function changedSummary(finalized) {
 
 // Resolve a Model NOT defined by the local foundation by reading its declaration (the
 // `@uniweb/data-schema` form) from the backend via the client. Cached per run; HTTP
-// 404 → null (the emitter then says "register it first"). The bearer is acquired lazily
+// 404 → null (the emitter then says to register the foundation that defines it). The bearer is acquired lazily
 // by the client, so a fully-local sync never authenticates.
 //
 // `offline` (set for `-o` / `--dry-run`, and for `status`) never touches the backend — an
@@ -555,11 +555,15 @@ function changedSummary(finalized) {
 // reads, per backend — so a clone, whose foundation is not in the project to declare them, can
 // still compare offline. ⛔ Until 2026-09-26 nothing was kept, and `uniweb status` in a clone
 // could not resolve a Model ("… could not be resolved").
+//
+// The resolver carries `offline`, so the emitter's "could not be resolved" says this run
+// never asked the backend instead of saying the backend has no such Model
+// (`@uniweb/build`'s `uwx/records.js::unresolvedExplicit`).
 export function makeModelResolver({ client, offline = false, siteDir = null, backend = null }) {
   const origin = backend ?? client?.origin ?? null
   const kept = siteDir && origin ? keptModels(siteDir, origin) : {}
   const cache = new Map()
-  return async (modelName) => {
+  const resolve = async (modelName) => {
     if (cache.has(modelName)) return cache.get(modelName)
     let decl
     if (offline) {
@@ -571,6 +575,8 @@ export function makeModelResolver({ client, offline = false, siteDir = null, bac
     cache.set(modelName, decl)
     return decl
   }
+  resolve.offline = Boolean(offline)
+  return resolve
 }
 
 /**

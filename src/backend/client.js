@@ -666,7 +666,7 @@ export class BackendClient {
 
   /**
    * GET /dev/registry/data-schemas/{scope}/{name} — a Model declaration, or
-   * null on 404 (the caller then says "register it first"). Accepts `@scope/name`
+   * null on 404 (the caller then says to register the foundation that defines it). Accepts `@scope/name`
    * and bare `name`.
    * @param {string} modelName
    * @returns {Promise<object|null>}

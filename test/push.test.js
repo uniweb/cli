@@ -66,6 +66,9 @@ test('makeModelResolver offline mode resolves a non-local Model to null without 
     0,
     'an offline resolver must never call client.readDataSchema (no fetch ⇒ no auth)'
   )
+  // Said on the resolver, so the emitter's message says the backend was never asked.
+  assert.equal(resolve.offline, true)
+  assert.equal(makeModelResolver({ client }).offline, false)
 })
 
 test('makeModelResolver online mode reads the declaration from the backend', async () => {
