@@ -72,6 +72,28 @@ describe('updateRootScripts', () => {
     assert.equal(scripts['dev:mine'], 'uniweb dev old-site --port 9000', 'a command the CLI does not write is the person\'s')
   })
 
+  it('⭐ a project\'s site its scripts named by its package\'s name goes by its project\'s, with no pair left behind', async () => {
+    const scripts = await scriptsAfter(
+      { dev: 'uniweb dev', preview: 'npm -w alpha/site run preview', 'dev:shop-site': 'uniweb dev shop-site', 'preview:shop-site': 'npm -w shop-site run preview' },
+      [site('alpha'), { name: 'shop-site', path: 'shop/site' }],
+    )
+    assert.equal(scripts['dev:shop'], 'uniweb dev shop-site')
+    assert.equal(scripts['preview:shop'], 'npm -w shop/site run preview')
+    assert.equal(scripts['dev:shop-site'], undefined)
+    assert.equal(scripts['preview:shop-site'], undefined)
+  })
+
+  it('a site that becomes the only one keeps no pair of its own beside dev and preview', async () => {
+    const scripts = await scriptsAfter(
+      { dev: 'uniweb dev', preview: 'npm -w alpha/site run preview', 'dev:beta': 'uniweb dev beta', 'preview:beta': 'npm -w beta/site run preview' },
+      [site('beta')],
+    )
+    assert.equal(scripts.dev, 'uniweb dev')
+    assert.equal(scripts.preview, 'npm -w beta/site run preview')
+    assert.equal(scripts['dev:beta'], undefined)
+    assert.equal(scripts['preview:beta'], undefined)
+  })
+
   it('adds no second script for a command the workspace already has', async () => {
     const scripts = await scriptsAfter(
       { dev: 'uniweb dev', 'dev:beta': 'uniweb dev beta-site', preview: 'npm -w alpha run preview' },

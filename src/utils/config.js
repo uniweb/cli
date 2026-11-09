@@ -434,8 +434,18 @@ export async function updateRootScripts(rootDir, sites, pm = 'pnpm') {
   const newScripts = computeRootScripts(runs ? [runs, ...unique.filter((s) => s !== runs)] : unique, pm)
   const previewIsCli = /^(pnpm --filter \S+ (run )?preview|npm -w \S+ run preview)$/.test(scripts.preview ?? '')
   if (scripts.preview && !runs && !previewIsCli) delete newScripts.preview
-  // Nor is a script the workspace already has for a site added again under another name.
-  const held = new Set(Object.values(scripts))
+  // A per-site script under a name the CLI gives the site it runs (its package's, its project's), or
+  // one for a site that is gone, is the CLI's own, and regenerated below. One under another name is
+  // the person's, for a command the CLI writes too.
+  const cliNamed = (key, value) => {
+    const m = /^(dev|preview):(.+)$/.exec(key)
+    const target = m && cliScriptTarget(value)
+    if (!target) return false
+    const s = unique.find((o) => isSite(o, target))
+    return !s || m[2] === target || m[2] === s.name || m[2] === siteScriptName(s)
+  }
+  // Nor is a script the workspace already has under a name of the person's added again under another.
+  const held = new Set(Object.entries(scripts).filter(([k, v]) => !cliNamed(k, v)).map(([, v]) => v))
   for (const [key, command] of Object.entries(newScripts)) {
     if (!(key in scripts) && held.has(command)) delete newScripts[key]
   }
@@ -450,16 +460,15 @@ export async function updateRootScripts(rootDir, sites, pm = 'pnpm') {
     }
   }
 
-  // ⭐ The per-site scripts this CLI writes are regenerated from the sites there are
-  // now, and one it wrote for a site that is gone — renamed, moved, removed — goes.
-  // A script whose command is not one the CLI writes is the user's, and stays. Known by its
-  // command, since a project's site goes by the project's name (`siteScriptName`).
-  // ⛔ Until 2026-10-13 they were only ever added: after `rename site blog journal`,
-  // `dev:blog` still ran `uniweb dev blog`, a site that no longer existed.
+  // ⭐ The per-site scripts this CLI writes are regenerated from the sites there are now: one of
+  // its own the regenerated set doesn't hold goes — its site renamed, moved or removed, or the site's
+  // scripts named or run another way now (by its project's name; under npm, by its folder). A script
+  // under the person's own name for a command, or whose command the CLI doesn't write, stays.
+  // ⛔ Until 2026-10-13 they were only ever added: after `rename site blog journal`, `dev:blog`
+  // still ran `uniweb dev blog`. ⛔ From 2026-11-08 to 2026-11-09 only a gone site's went, so a
+  // renamed project kept its old pair beside the new one.
   for (const [key, value] of Object.entries(scripts)) {
-    if (key in newScripts || !/^(dev|preview):./.test(key)) continue
-    const target = cliScriptTarget(value)
-    if (target && !unique.some((s) => isSite(s, target))) delete scripts[key]
+    if (!(key in newScripts) && cliNamed(key, value)) delete scripts[key]
   }
 
   pkg.scripts = { ...scripts, ...newScripts }
