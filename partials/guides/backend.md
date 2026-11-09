@@ -58,7 +58,7 @@ await writer.update(item.id, { ...item.data, bio: 'Bonjour' }, { language: 'fr' 
 
 Gate controls on what the viewer may do — a record's `can_edit` from a single-entity read — but never rely on that for safety: a foundation runs with the viewer's authority, so hiding a button hides a button. Not on `viewer.roles` alone: a session holds its roles as a reader's until elevated, so a gate on `system_admin` shows the operator nothing until then. Draw a role-acting control from `useElevation().rolesInFull` and let the record answer.
 
-What protects content is the **entry**: a member writes their own entries and not another's, enforced by the store. **Models are open** — anyone signed in may create entries of any Model. A schema protects how an item changes and who reads an entry:
+What protects content is the **entry**: a member writes their own entries and not another's, enforced by the store. **Every type starts closed**: the operator adds its entries, and anyone else only where the site's `blueprint.yml` opens it (below). A schema protects how an item changes and who reads an entry:
 
 ```yaml
 # schemas/attendance.yml
@@ -80,6 +80,29 @@ fields:
 ```
 
 `readable_with` (`read` | `edit` | `admin`, only on a reference) is one step; a backend refuses adding it to a field entries already fill. `grantable: false` keeps entries from being shared with a person or team. `sold_with` only on a reference; an unmarked one carries nothing. `visitor_fills: true` marks a field a site's visitor may fill, and a type with one takes visitors' submissions, confirmed by email. Mark it per field, on a top-level section's fields only. The build refuses it on files, on a reference with `readable_with`/`sold_with`, and in a section that leaves a `required` field unmarked.
+
+## Who adds and reads each type: `blueprint.yml`
+
+Beside `site.yml`, in a site whose `services` names `backend`: how a backend started from the site begins.
+
+```yaml
+signup: invite_only          # or open, the default: who may create an account
+teams:                       # founded empty; people join them in the backend's administration
+  sales: { label: Sales }
+access:
+  '@/vehicle':
+    add: [sales]             # who adds entries: open (every signed-in account) · [teams] · [] (the operator alone)
+    all: { sales: edit }     # every entry of the type, not only one's own: <team> or members → read | edit
+  '@/request': { add: open } # each member keeps their own
+publicQueries:               # what visitors who aren't signed in may read
+  '@/vehicle': { whole: true, where: { status: { in: [available, pending] } } }   # whole is required; false = briefs
+```
+
+- **Applied once**, when a backend is started from the site: its own, a clone's of a template, or one started again after it was destroyed. Then the operator changes these in the backend's administration. An edited file is pushed and pulled with the site, and reaches no backend already running.
+- A type not listed stays closed. Name types as `queries.yml` does: `@/vehicle` for the foundation's own, sent in its scope.
+- A build, a push and `uniweb doctor` refuse a malformed file, naming the key; a push refuses whole. A type none of the site's foundations declares only warns: a backend started from the site leaves that line out, and the publish says so. `where`, `sort` and `limit` are the backend's to judge, and one it refuses is left out the same way.
+- A team's `all: edit` reaches the entries once the member confirms it is them (below); a team's `add` and `members: edit` need no confirming. Who is in a team, and roles, are never the file's.
+- A static build carries none of it. A pull writes it back here, never into `site.yml`.
 
 ## Acting as an administrator
 
@@ -152,8 +175,11 @@ $devBackend: ./mock/api.js   # what answers in `uniweb dev`; `$` keys are never 
 
 ```js
 // site/mock/api.js
+import { fileURLToPath } from 'node:url'
 import { createMockBackend } from '@uniweb/api/mock'
-export default createMockBackend({ seed }).fetch
+import { readBlueprint } from '@uniweb/build/blueprint'
+const blueprint = readBlueprint(fileURLToPath(new URL('..', import.meta.url)))   // the site's blueprint.yml
+export default createMockBackend({ seed, blueprint }).fetch
 ```
 
-`uniweb dev` answers the `backend` service with it at an address on its own origin (cookies behave as in production). Write no address of your own: under `services:` an address means a backend you run. The mock **enforces** entry ownership and `append_only`; it doesn't model `readable_with`, `sold_with`, second factors or password rules. Mail it would send prints in the terminal with its link on the site's root. Seed `offers: [{ email, invitations: 1 }]` to try an invitation; a seeded entity takes `grants: { member: 'read' }`; `units: [{ handle, parent?, members, floor? }]` gives a create somewhere to land. The seed names your own types `@/track`. State is in memory; restart to reset. `uniweb create my-event --template conference` is a worked example.
+`uniweb dev` answers the `backend` service with it at an address on its own origin (cookies behave as in production). Write no address of your own: under `services:` an address means a backend you run. The mock begins as a backend started from the site does: every type closed until the blueprint opens it, its `signup`, its teams (a seeded account names its own, `teams: ['sales']`). It **enforces** those, entry ownership and `append_only`; it doesn't model public queries, `readable_with`, `sold_with`, second factors or password rules. Mail it would send prints in the terminal with its link on the site's root. Seed `offers: [{ email, invitations: 1 }]` to try an invitation; a seeded entity takes `grants: { member: 'read' }`; `units: [{ handle, parent?, members, floor? }]` gives a create somewhere to land. The seed names your own types `@/track`. State is in memory; restart to reset. `uniweb create my-event --template conference` is a worked example.

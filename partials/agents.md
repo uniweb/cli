@@ -326,7 +326,7 @@ Every guide ships with the CLI this project pins, so it describes the version in
 | start a project, grow the workspace, learn from a template | `uniweb guide start` |
 | work with records, queries, `[slug]` pages, external APIs, schemas, Loom | `uniweb guide data` |
 | add search, forms, tracking, Google Analytics or Tag Manager, an assistant | `uniweb guide services` |
-| the site has accounts or member data (`services.backend`, `@uniweb/api`) | `uniweb guide backend` |
+| the site has accounts or member data (`services.backend`, `blueprint.yml`, `@uniweb/api`) | `uniweb guide backend` |
 | add a language | `uniweb guide i18n` |
 | publish, deploy, push/pull, register, CI, workspaces, updates | `uniweb guide ship` |
 | port a React / Next / generated design | `uniweb guide migrate` |

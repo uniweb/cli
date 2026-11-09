@@ -108,7 +108,7 @@ When `status` names a newer release, take it: update, restart any running dev se
 | `[dir]` / `[path]` as parametric folder names; a folder inside `[...path]/` | `[slug]`, `[uuid]`, `[<field>]`, `[...path]` |
 | `fonts.mono` | `fonts.code` |
 | `seo.baseUrl`; `seo.defaultImage`; `seo.locales`; `url:`, `trailingSlash:` in `site.yml` | `seo.origin` (scheme + host, no path); `seo.image`; `languages:`; `seo.origin` again |
-| `creatable_by` in a schema | models are open; protect with `append_only`, `readable_with`, `grantable` |
+| `creatable_by` in a schema | who adds a type's entries is `blueprint.yml`'s `access.<type>.add`; a schema protects them with `append_only`, `readable_with`, `grantable` |
 | `uniweb.id`, `uniweb.scope` in a foundation's `package.json` | `name: '@scope/name'` in `main.js` |
 | `main.jsx`, `foundation.js`; JSX in a `.js` component | `main.js` (plain JS); `.jsx` |
 | `visuals:` in `meta.js`; `data` as a `content:` element | a `media:` element in `content:`; declare the tag in `data:` |
