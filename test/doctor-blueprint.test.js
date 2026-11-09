@@ -17,7 +17,7 @@ import { checkBlueprint } from '../src/commands/doctor.js'
 const SITE_YML = { name: 'T', foundation: 'fnd', services: { backend: true } }
 
 /** A site on a local foundation named `@acme/fnd` whose own data schema is `vehicle`. */
-function project(t, blueprint) {
+function project(t, blueprint, { foundationName = '@acme/fnd' } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'uniweb-doctor-blueprint-')))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
   const write = (rel, body) => {
@@ -28,7 +28,7 @@ function project(t, blueprint) {
   write('site/site.yml', 'name: T\nfoundation: fnd\nservices:\n  backend: true\n')
   if (blueprint !== null) write('site/blueprint.yml', blueprint)
   write('fdn/package.json', { name: 'fnd', type: 'module', main: './_entry.generated.js' })
-  write('fdn/main.js', "export default { name: '@acme/fnd' }\n")
+  write('fdn/main.js', `export default { name: '${foundationName}' }\n`)
   write('fdn/schemas/vehicle.yml', 'name: vehicle\nfields:\n  title: { type: string }\n')
   return join(dir, 'site')
 }
@@ -61,6 +61,17 @@ test('⭐ a type none of the foundations declares is a warning, never an error',
   assert.equal(issue.id, 'blueprint-leaves-out')
   assert.equal(issue.type, 'warn')
   assert.match(issue.message, /`access\.@\/vehicel` names a type none of this site's foundations declares/)
+})
+
+test('⭐ …and while the foundation has no scope, as a new project has until its first register', async (t) => {
+  const [issue, ...rest] = await issuesFor(project(t, "access:\n  '@/vehicel': { add: open }\n", { foundationName: 'fnd' }))
+  assert.equal(rest.length, 0)
+  assert.equal(issue.id, 'blueprint-leaves-out')
+  assert.match(issue.message, /`access\.@\/vehicel` names a type none of this site's foundations declares/)
+})
+
+test('CONTROL — with no scope, a declared type is fine', async (t) => {
+  assert.deepEqual(await issuesFor(project(t, "access:\n  '@/vehicle': { add: open }\n", { foundationName: 'fnd' })), [])
 })
 
 test('a cataloged foundation leaves the types unchecked, and doctor says so', async (t) => {
