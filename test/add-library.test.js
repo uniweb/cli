@@ -114,17 +114,28 @@ test('what is refused, and nothing made', () => {
     [['classic'], /A package named classic is in this workspace already, at foundations\/classic\//],
     [['lib5', '--project', 'shop'], /goes in the folder you name/],
     [['lib6', '--foundation', 'nope'], /No foundation named 'nope'/],
-    [['lib7', '--scope', '@uniweb'], /@uniweb is reserved/],
-    [['/tmp/outside-the-workspace'], /must be inside the workspace/],
-    [['../outside'], /must be inside the workspace/]
+    [['lib7', '--scope', '@uniweb'], /@uniweb is reserved/]
   ]
   for (const [args, said] of refusals) {
     const r = cli(['add', 'library', ...args])
     assert.equal(r.code, 1, `${args.join(' ')}: ${r.out}`)
     assert.match(r.out, said)
   }
-  for (const made of ['lib5', 'lib6', 'lib7', 'tmp', '../outside']) assert.ok(!existsSync(join(workspace, made)), made)
-  assert.doesNotMatch(read('pnpm-workspace.yaml'), /outside|lib[5-7]/)
+  for (const made of ['lib5', 'lib6', 'lib7']) assert.ok(!existsSync(join(workspace, made)), made)
+  assert.doesNotMatch(read('pnpm-workspace.yaml'), /lib[5-7]/)
+})
+
+test('⭐ a folder outside the workspace: made there, wired by its path, and not listed in the workspace', () => {
+  const r = cli(['add', 'library', '../acme-shared', '--foundation', 'modern'])
+  assert.equal(r.code, 0, r.out)
+  const lib = join(dirname(workspace), 'acme-shared')
+  assert.ok(existsSync(join(lib, 'package.json')))
+  assert.equal(JSON.parse(readFileSync(join(lib, 'package.json'), 'utf8')).name, 'acme-shared')
+  assert.equal(json('foundations/modern/package.json').dependencies['acme-shared'], 'file:../../../acme-shared')
+  assert.match(read('foundations/modern/styles.css'), /^@import "acme-shared\/styles\.css";$/m)
+  assert.doesNotMatch(read('pnpm-workspace.yaml'), /acme-shared/)
+  assert.ok(!json('package.json').workspaces.some((w) => w.includes('acme-shared')))
+  assert.match(r.out, /\.\.\/acme-shared\/ is outside the workspace/)
 })
 
 test('libraryManifest: private, kit and React as peers, and the scope only when given', () => {

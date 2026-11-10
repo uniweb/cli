@@ -14,6 +14,12 @@
  * package already, made by hand, cloned or kept as a git submodule, this wires it without making
  * anything.
  *
+ * ⭐ A library may be outside the workspace: a folder beside it, another repository say. Foundations
+ * depend on it by path, and the build reads it from that folder whatever copy the package manager
+ * installs (`@uniweb/build`'s `foundation/library-imports.js`). It is no package of the workspace,
+ * so it is not listed in it. ⛔ Until 2026-11-10 an outside folder was refused, since the build
+ * could not resolve what such a library imports.
+ *
  * `--schemas` gives it a `schemas/` folder, whose files are data types its foundations name in full
  * (`@acme/plan`), under the scope in its `package.json` (`uniweb.scope`): `--scope`, or the one the
  * foundations it is wired into share.
@@ -21,7 +27,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { join, relative, sep } from 'node:path'
+import { basename, join, relative, resolve, sep } from 'node:path'
 import prompts from 'prompts'
 import { checkRegistrationScope, classifyPackage, readFoundationName, resolveFoundationSrcPath, splitFoundationName } from '@uniweb/build'
 import { resolvePlacement, LIBRARY_KIND } from '../utils/placement.js'
@@ -294,18 +300,12 @@ export async function addLibrary(rootDir, projectName, opts, pm = 'pnpm') {
   }
 
   const placement = resolvePlacement(rootDir, name, opts, LIBRARY_KIND)
-  if (placement.outsideRoot) {
-    fail(
-      `A library's folder must be inside the workspace: ${placement.outsideRoot}`,
-      '',
-      `A library from another repository goes inside the workspace, as a git submodule or a clone,`,
-      `and \`${prefix} add library <its folder>\` lists it in the workspace and wires it.`
-    )
-  }
-  const { relativePath } = placement
-  const libraryDir = join(rootDir, relativePath)
+  // Outside the workspace: made or wired there, and said by its path from the workspace's root.
+  const outside = !!placement.outsideRoot
+  const libraryDir = outside ? resolve(rootDir, placement.outsideRoot) : join(rootDir, placement.relativePath)
+  const relativePath = outside ? relative(rootDir, libraryDir).split(sep).join('/') : placement.relativePath
 
-  let libraryName = placement.packageName
+  let libraryName = outside ? basename(libraryDir) : placement.packageName
   let created = false
   let scope = null
   if (existsSync(libraryDir)) {
@@ -368,8 +368,9 @@ export async function addLibrary(rootDir, projectName, opts, pm = 'pnpm') {
     await writeFile(join(libraryDir, 'schemas', 'README.md'), SCHEMAS_README(scope))
   }
 
-  // Listed by its path, unless a pattern the workspace lists covers it already.
-  await registerWorkspacePackage(rootDir, relativePath)
+  // Listed by its path, unless a pattern the workspace lists covers it already; one outside the
+  // workspace is no package of it.
+  if (!outside) await registerWorkspacePackage(rootDir, relativePath)
 
   const wired = []
   const already = []
@@ -394,6 +395,12 @@ export async function addLibrary(rootDir, projectName, opts, pm = 'pnpm') {
   if (created) {
     info(`  Export its components from ${relativePath}/index.js, and import them in a foundation: import { PlanCard } from '${libraryName}'`)
     if (scope) info(`  Its data types go in ${relativePath}/schemas/, named ${scope}/<file name>.`)
+  }
+  if (outside) {
+    log(
+      `  ${colors.dim}${relativePath}/ is outside the workspace: each foundation depends on it by its path, and builds read it from there.` +
+        ` \`${prefix} update\` aligns the workspace's packages, not this one's ranges.${colors.reset}`
+    )
   }
   log('')
   log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}`)
