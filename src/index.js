@@ -1435,10 +1435,15 @@ async function main() {
   const recPm = isPnpmAvailable() ? 'pnpm' : pm
 
   if (isBlank) {
+    // ⛔ The install comes first. `add` loads @uniweb/build, which reaches a blank workspace only
+    // with its own install: it is an optional peer of the CLI, so `npx uniweb` and a bare global
+    // install hold none. Until 2026-11-10 these steps put `add project` first, and it stopped with
+    // "Cannot load @uniweb/build, which this command needs" (measured on 1.30.0, 1.31.5, 1.31.6).
     log(`Next steps:\n`)
     if (!inPlace) log(`  ${colors.cyan}cd ${projectName}${colors.reset}`)
+    log(`  ${colors.cyan}${installCmd(recPm)}${colors.reset}   ${colors.dim}# the build tools \`add\` needs${colors.reset}`)
     log(`  ${colors.cyan}${prefix} add project${colors.reset}`)
-    log(`  ${colors.cyan}${installCmd(recPm)}${colors.reset}`)
+    log(`  ${colors.cyan}${installCmd(recPm)}${colors.reset}   ${colors.dim}# links what you added${colors.reset}`)
     log(
       `  ${colors.cyan}${runCmd(recPm, 'dev')}${colors.reset}   ${colors.dim}# start the dev server${colors.reset}`
     )

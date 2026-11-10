@@ -107,3 +107,21 @@ test('Next steps name AGENTS.md, which the project has', () => {
   assert.ok(existsSync(join(r.cwd, 'probe', 'AGENTS.md')), 'the manual the steps name is not there')
   rmSync(r.cwd, { recursive: true, force: true })
 })
+
+/**
+ * A blank workspace's next steps install before `add`: `add` loads @uniweb/build, which only the
+ * workspace's own install brings (an optional peer of the CLI, so `npx uniweb` holds none).
+ * ⛔ Until 2026-11-10 they put `add project` first, which stopped with "Cannot load @uniweb/build,
+ * which this command needs" (measured on 1.30.0, 1.31.5 and 1.31.6 from npm).
+ */
+test('a blank workspace: install, add, install again', () => {
+  const r = run(['create', 'probe', '--blank', '--no-git'])
+  assert.equal(r.code, 0, r.err)
+  const steps = r.out.slice(r.out.indexOf('Next steps:'))
+  const install = steps.search(/\b(?:pnpm|npm) install\b/)
+  const add = steps.search(/\badd project\b/)
+  assert.ok(install > -1 && add > -1, steps)
+  assert.ok(install < add, `install comes after add:\n${steps}`)
+  assert.ok(steps.slice(add).search(/\b(?:pnpm|npm) install\b/) > -1, `no install after add:\n${steps}`)
+  rmSync(r.cwd, { recursive: true, force: true })
+})

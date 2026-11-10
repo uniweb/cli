@@ -30,8 +30,9 @@ Edit a page or a section type and the page updates as you save. With npm, use `n
 This workspace started empty. Add a foundation and a site, then run them:
 
 ```bash
+pnpm install                     # the build tools `uniweb add` needs
 npx uniweb add project <name>    # a foundation in <name>/src, a site in <name>/site
-pnpm install
+pnpm install                     # links what you added
 pnpm uniweb dev                  # prints the address it serves the site at
 ```
 {{/if}}
