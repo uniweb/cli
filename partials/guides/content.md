@@ -288,7 +288,7 @@ Who can read it depends on the host: `uniweb publish` (backend-hosted) carries i
 
 ### Agent-readable output
 
-A static build emits `/llms.txt` (an annotated index of every page) and `/{route}.md` (each page as clean markdown); a host that serves the site derives its own. Descriptions come from `page.yml description:`, then `seo.ogDescription`, then the opening paragraph. A top-level directory with no content of its own and ≥5 pages gets `/docs/llms.txt`; each language gets its own (`/fr/llms.txt`, `/fr/search-index.json`). Excluded deliberately: `seo.noindex`, `hidden`, `_`-prefixed, and a parametric page's URL pattern; `noindex`/`hidden` on a directory with no content of its own takes the branch.
+A static build emits `/llms.txt` (an annotated index of every page) and `/{route}.md` (each page as clean markdown, and, where the build prerenders it, the records each section shows, as JSON after that section); a host that serves the site derives its own. Descriptions come from `page.yml description:`, then `seo.ogDescription`, then the opening paragraph. A top-level directory with no content of its own and ≥5 pages gets `/docs/llms.txt`; each language gets its own (`/fr/llms.txt`, `/fr/search-index.json`). Excluded deliberately: `seo.noindex`, `hidden`, `_`-prefixed, and a parametric page's URL pattern; `noindex`/`hidden` on a directory with no content of its own takes the branch.
 
 ```yaml
 agents:
