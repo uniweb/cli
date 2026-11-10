@@ -161,9 +161,19 @@ export default function Pricing({ content, params }) {
 }
 ```
 
-### Code several foundations share
+### Libraries: code several foundations share
 
-Code that more than one foundation of a workspace uses lives in a workspace package, not in copies: components are imported as from any package, and Vite bundles them into each foundation. Give the package a stylesheet that reads its own directory, as kit's does — `@source "./**/*.{js,jsx}";` in its `styles.css` — and import it in each foundation's `styles.css` (`@import "@acme/ui/styles.css";`), so Tailwind finds its classes wherever it is installed. A section type the package holds is still each foundation's to offer: a directory in the foundation's `sections/` whose `index.jsx` is `export { default } from '@acme/ui/sections/Banner/index.jsx'`, and whose `meta.js` re-exports the package's the same way. A fix in the package reaches every foundation at its next build and release.
+A section type is a front desk; a **library** is the back office several foundations share: workers, hooks, logic and data types, with no section type of its own. Each foundation keeps its own section types, layouts and look, and calls on the same library. Take the first of these that holds what differs between two sites: the site's `theme.yml` (colors, fonts), foundation vars (radius, shadow, density), a param and the workers it picks, and only then a second foundation sharing a library with the first. A foundation is the vocabulary a kind of site is made with, so a second one is for another vocabulary, never for a smaller bundle.
+
+`uniweb add library libraries/ui --foundation classic,modern` makes it and wires each foundation: `"ui": "file:../../libraries/ui"` in its dependencies, and `@import "ui/styles.css";` in its `styles.css`. The library's own stylesheet holds `@source "./**/*.{js,jsx}";`, as kit's does, so Tailwind reads its classes wherever it is installed; without the import they are in no CSS at all, and the build says which line to add. Run it again with another `--foundation` to wire one more. A library is any local package a foundation depends on: one made by hand, cloned or kept as a git submodule inside the workspace works the same, and `uniweb add library <its folder>` wires it.
+
+- Export workers from its `index.js` and import them as from any package: `import { PlanCard } from 'ui'`.
+- A worker takes ordinary props and reads every design decision from foundation vars and theme tokens (`var(--card-radius)`, `bg-card`), never a fixed radius or color. That is what lets one worker look classic in one foundation and modern in another.
+- Import `@uniweb/core` by its bare name only, as kit does: a subpath bundles a second core.
+- A section type the library holds stays each foundation's to offer: a directory in the foundation's `sections/` whose `index.jsx` is `export { default } from 'ui/sections/Banner/index.jsx'`, with a `meta.js` that re-exports the library's the same way. Share one only when both vocabularies offer that type with the same content and params; otherwise each foundation writes its own over the same workers.
+- Data types: `uniweb add library libraries/data --schemas --scope @acme` gives it a `schemas/` folder and its scope (`"uniweb": { "scope": "@acme" }` in its package.json). Foundations name its types in full (`data: { plans: '@acme/plan' }`), with nothing to configure (`uniweb guide data`).
+- Each foundation bundles the library, so a build after a change in the library rebuilds every foundation that uses it. A registered foundation version keeps the library as it was built, as it keeps kit: a fix reaches a hosted site when that site's foundation releases again, which `uniweb publish` from the site does.
+- Keep a library inside the workspace. Outside it, under npm a build cannot resolve what the library's own code imports (kit); under pnpm a `file:` library is a copy that misses new files until a reinstall, and a `link:` one has the site load a copy of the foundation.
 
 ### The Front Desk pattern
 
