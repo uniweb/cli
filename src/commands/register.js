@@ -12,10 +12,16 @@
  * — `register` builds it first. Preview paths (`--dry-run`, `-o`) never write to
  * `dist/`; they require a pre-built foundation.
  *
- * Run from a foundation, or from a schemas-only package — a package that exports
- * schemas (e.g. `@uniweb/schemas`, any `@org/schemas`) or a bare `schemas/*.yml`
- * folder. The schemas-only package is auto-detected and submits its data schemas
- * standalone (foundation-less); same flags, `--scope` names them.
+ * Run from a foundation, or from a schemas-only package — a package holding a
+ * `schemas/*.yml` folder (a library's), or one that exports schemas (e.g.
+ * `@uniweb/schemas`, any `@org/schemas`). The schemas-only package is auto-detected
+ * and submits its data schemas standalone (foundation-less); same flags, `--scope`
+ * names them.
+ *
+ * A foundation's register first registers the types it names that a library
+ * defines, from the library (`backend/library-types.js`): the registry takes a
+ * foundation only once the types it names are registered. So `push` and `publish`,
+ * which release a site's foundation with this command, register them too.
  *
  * Usage:
  *   uniweb register                      Build the .uwx, submit it, then deliver
@@ -94,6 +100,7 @@ import { resolveWorkspace, scopeOfWorkspace, topOfChildHandle, SOURCE_LABEL } fr
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import { newerInput } from '../utils/foundation-freshness.js'
 import { unregisteredLocalTypes } from '../backend/unregistered-types.js'
+import { typesFromLibraries } from '../backend/library-types.js'
 import {
   findWorkspaceRoot,
   findFoundations,
@@ -187,6 +194,152 @@ function readPkgName(dir) {
   } catch {
     return null
   }
+}
+
+// Whether the account is a member of `scope`: true, false, or null when that can't be told. Read to
+// explain a refusal, never to gate one; a 401 is the credential itself, so it asks nothing.
+async function memberOfScope(res, scope, client) {
+  return res.status === 401 ? null : belongsToScope(scope, await client.fetchOrgs().catch(() => null))
+}
+
+/**
+ * Say why the registry refused a submission: a foundation's, a schemas package's, or a library's
+ * registered before its foundation.
+ *
+ * ⭐ NOT A MEMBER OF THE SCOPE IS SAID AS THAT *[Diego, 2026-10-06]*. The registry decides who may
+ * release into a scope — its account, or an org's members — and when the orgs read says you are
+ * neither, that is the refusal to name. ⛔ Until then a 403 here printed "log in again", the wrong
+ * advice for a scope that is not yours.
+ *
+ * @param {object} o
+ * @param {Response} o.res
+ * @param {object|null} o.parsedBody
+ * @param {string} o.rawBody
+ * @param {string} o.scope
+ * @param {boolean|null} o.member - `memberOfScope`
+ * @param {string} o.what - what was refused, for the not-a-member sentence
+ */
+function sayRefused({ res, parsedBody, rawBody, scope, member, what }) {
+  if (member === false) {
+    error(`You can't release ${what}: you're not a member of ${scope}.`)
+    log(
+      `  ${colors.dim}A member of ${scope} can release it. (The registry answered HTTP ${res.status}.)${colors.reset}`
+    )
+  } else {
+    error(
+      `Registry rejected the submission: HTTP ${res.status} ${res.statusText}`
+    )
+  }
+  if (member !== false && (res.status === 401 || res.status === 403)) {
+    log(
+      `  ${colors.dim}The registry didn't accept your credentials — it may use different ones than \`uniweb login\`.${colors.reset}`
+    )
+    log(
+      `  ${colors.dim}Log in again (uniweb login --server <url>), or check UNIWEB_TOKEN — an existing one may be wrong or expired.${colors.reset}`
+    )
+  }
+  // ⭐ **Surface `detail` as a sentence, not as a JSON dump.** The registry
+  // answers with problem+json (RFC 9457), and its `detail` is written for a
+  // human — it carries the actual next step, which for a rejected
+  // re-register is "bump the version". Printing the whole body dimmed put
+  // that sentence inside a blob, at the end of a 500-char truncation, in the
+  // one moment the reader most needs it.
+  //
+  // ⚖️ Keyed on the SHAPE, not on any particular code: a new refusal the CLI
+  // has never seen explains itself the day the backend ships it, with no
+  // release here. That is the property worth having — this branch exists
+  // because a 422 the CLI did not know about arrived exactly that way.
+  if (parsedBody?.detail) {
+    log(`  ${parsedBody.detail}`)
+    const code = parsedBody.code ?? parsedBody.reason
+    if (code) {
+      log(`  ${colors.dim}(${code})${colors.reset}`)
+    }
+  } else if (rawBody) {
+    log(`  ${colors.dim}${rawBody.slice(0, 500)}${colors.reset}`)
+  }
+}
+
+/**
+ * Register the data schemas a library defines, before the foundation that names them
+ * (`backend/library-types.js`): the library's package whole, as `uniweb register` there sends it.
+ *
+ * ⚖️ A library of a scope the account isn't a member of can't be registered from here, and needn't
+ * be once its types are: the foundation is released against them as the registry holds them, which
+ * only that scope's members change. A library made by another org, kept in this workspace, is used
+ * so.
+ *
+ * @param {{ dir: string, scope: string, refs: string[] }} lib - its folder, scope, and the types the
+ *   foundation names from it
+ * @param {object} o
+ * @param {BackendClient} o.client
+ * @param {object} o.exporter - the `.uwx` envelope's exporter
+ * @param {string} o.at - its folder as the person sees it
+ * @returns {Promise<{ names: string[], body: object|null }|null>} the names sent and the registry's
+ *   answer; null when the release stops, which is said already
+ */
+async function registerLibraryTypes(lib, { client, exporter, at }) {
+  let doc
+  try {
+    doc = buildSchemaOnlyPackage({
+      schemas: await collectStandaloneSchemas(lib.dir),
+      scope: lib.scope,
+      exporter
+    })
+  } catch (err) {
+    error(`Could not read the data schemas in ${at}: ${err.message}`)
+    return null
+  }
+  const names = doc.entities.map((e) => e.name)
+  info(`Registering the data schemas in ${at} (${names.join(', ')}) …`)
+  let res
+  try {
+    res = await client.register(JSON.stringify(doc, null, 2))
+  } catch (err) {
+    error(`Could not reach the registry at ${client.origin}: ${err.message}`)
+    return null
+  }
+  const rawBody = await res.text().catch(() => '')
+  let body = null
+  try {
+    body = rawBody ? JSON.parse(rawBody) : null
+  } catch {
+    body = null
+  }
+  if (res.ok) {
+    const answers = Array.isArray(body?.data_schemas) ? body.data_schemas : []
+    if (answers.length === names.length && answers.every((a) => a?.unchanged === true)) {
+      log(`  ${colors.dim}Unchanged: the registry holds them as they are.${colors.reset}`)
+    } else {
+      success(`Registered ${names.length} data schema(s) under ${lib.scope}, from ${at}`)
+    }
+    return { names, body }
+  }
+  const member = await memberOfScope(res, lib.scope, client)
+  if (member === false) {
+    const held = await Promise.all(
+      lib.refs.map((ref) => client.readDataSchema(ref).catch(() => undefined))
+    )
+    if (held.every(Boolean)) {
+      const one = lib.refs.length === 1
+      info(
+        `${lib.refs.join(', ')} ${one ? 'is' : 'are'} registered under ${lib.scope}, whose members change ${one ? 'it' : 'them'}: the foundation is released against ${one ? 'it' : 'them'} as registered.`
+      )
+      return { names: [], body: null }
+    }
+  }
+  sayRefused({
+    res,
+    parsedBody: body,
+    rawBody,
+    scope: lib.scope,
+    member,
+    what: `data schemas under ${lib.scope}`
+  })
+  log(
+    `  ${colors.dim}The foundation was not submitted: the registry takes a foundation only once the types it names are registered.${colors.reset}`
+  )
+  return null
 }
 
 /**
@@ -732,6 +885,18 @@ async function runRegister(args = []) {
     }
   }
 
+  // ⭐ The types it names that a library defines: registered from the library before the
+  // foundation, which the registry refuses while a type it names is missing (`library-types.js`).
+  const fromLibraries = standalone
+    ? []
+    : await typesFromLibraries({
+        named: Object.keys(schema?.dataSchemas || {}),
+        foundationDir: targetDir
+      }).catch(() => [])
+  // Where each is, said from the workspace root, which is where its person is.
+  const workspaceRoot = standalone ? null : findWorkspaceRoot(targetDir) || targetDir
+  const shownAt = (dir) => `${relative(workspaceRoot, dir) || '.'}/`
+
   // A schemas-only package with no scope, on a real submit → the workspace you work in,
   // else derived from your orgs (`deriveScopeFromLogin`), and persisted to package.json.
   // (A foundation's was settled before its build — `settleFoundationScope`.)
@@ -806,6 +971,11 @@ async function runRegister(args = []) {
   log(
     `  ${colors.dim}data schemas ${standalone ? 'registered' : 'defined'}: ${defined.length ? defined.join(', ') : '(none)'}${colors.reset}`
   )
+  for (const lib of fromLibraries) {
+    log(
+      `  ${colors.dim}data schemas from ${shownAt(lib.dir)}: ${lib.refs.join(', ')} — ${isPreview ? 'would be registered' : 'registered'} from there first${colors.reset}`
+    )
+  }
   if (scope)
     log(`  ${colors.dim}scope: ${scope} (${scopeSource})${colors.reset}`)
   if (digest) log(`  ${colors.dim}digest: ${digest}${colors.reset}`)
@@ -849,6 +1019,14 @@ async function runRegister(args = []) {
     )
     return { exitCode: 2 }
   }
+  // The libraries' types first: the registry checks a foundation's types when it takes it.
+  const fromLibrariesSent = []
+  for (const lib of fromLibraries) {
+    const sent = await registerLibraryTypes(lib, { client, exporter, at: shownAt(lib.dir) })
+    if (!sent) return { exitCode: 1 }
+    fromLibrariesSent.push(sent)
+  }
+
   // Submit — the client carries the bearer (UNIWEB_TOKEN › stored
   // session › login), resolved lazily on this first authed call.
   info(`Submitting to ${colors.dim}${client.origin}${colors.reset} …`)
@@ -893,56 +1071,19 @@ async function runRegister(args = []) {
         `${colors.dim}Schema for this version is already registered — resuming code delivery.${colors.reset}`
       )
     } else {
-      // ⭐ NOT A MEMBER OF THE SCOPE IS SAID AS THAT *[Diego, 2026-10-06]*. The registry
-      // decides who may release into a scope — its account, or an org's members — and
-      // when the orgs read says you are neither, that is the refusal to name. ⛔ Until then
-      // a 403 here printed "log in again", the wrong advice for a scope that is not yours.
-      // Read to explain a refusal, never to gate one; a 401 is the credential itself.
-      const member =
-        res.status === 401 ? null : belongsToScope(scope, await client.fetchOrgs().catch(() => null))
-      if (member === false) {
-        const what = standalone
+      const member = await memberOfScope(res, scope, client)
+      sayRefused({
+        res,
+        parsedBody,
+        rawBody,
+        scope,
+        member,
+        what: standalone
           ? `data schemas under ${scope}`
           : doc.entities.find((e) => e.model === '@uniweb/foundation-schema')?.info?.name || `a foundation under ${scope}`
-        error(`You can't release ${what}: you're not a member of ${scope}.`)
-        log(
-          `  ${colors.dim}A member of ${scope} can release it. (The registry answered HTTP ${res.status}.)${colors.reset}`
-        )
-      } else {
-        error(
-          `Registry rejected the submission: HTTP ${res.status} ${res.statusText}`
-        )
-      }
-      if (member !== false && (res.status === 401 || res.status === 403)) {
-        log(
-          `  ${colors.dim}The registry didn't accept your credentials — it may use different ones than \`uniweb login\`.${colors.reset}`
-        )
-        log(
-          `  ${colors.dim}Log in again (uniweb login --server <url>), or check UNIWEB_TOKEN — an existing one may be wrong or expired.${colors.reset}`
-        )
-      }
-      // ⭐ **Surface `detail` as a sentence, not as a JSON dump.** The registry
-      // answers with problem+json (RFC 9457), and its `detail` is written for a
-      // human — it carries the actual next step, which for a rejected
-      // re-register is "bump the version". Printing the whole body dimmed put
-      // that sentence inside a blob, at the end of a 500-char truncation, in the
-      // one moment the reader most needs it.
-      //
-      // ⚖️ Keyed on the SHAPE, not on any particular code: a new refusal the CLI
-      // has never seen explains itself the day the backend ships it, with no
-      // release here. That is the property worth having — this branch exists
-      // because a 422 the CLI did not know about arrived exactly that way.
-      if (parsedBody?.detail) {
-        log(`  ${parsedBody.detail}`)
-        const code = parsedBody.code ?? parsedBody.reason
-        if (code) {
-          log(`  ${colors.dim}(${code})${colors.reset}`)
-        }
-      } else if (rawBody) {
-        log(`  ${colors.dim}${rawBody.slice(0, 500)}${colors.reset}`)
-      }
-      // ⭐ A type it names that a library or another foundation here defines, and the registry
-      // doesn't hold: that package registers it first (`unregistered-types.js`).
+      })
+      // ⭐ A type it names that another foundation here defines, and the registry doesn't hold:
+      // that foundation registers it first (`unregistered-types.js`). A library's were sent above.
       if (!standalone && member !== false) {
         const missing = await unregisteredLocalTypes({
           named: Object.keys(schema?.dataSchemas || {}),
@@ -1100,7 +1241,12 @@ async function runRegister(args = []) {
         parsedBody.data_schemas.forEach(addMint)
       if (parsedBody.foundation_schema) addMint(parsedBody.foundation_schema)
     }
+    for (const sent of fromLibrariesSent) {
+      if (Array.isArray(sent.body?.data_schemas)) sent.body.data_schemas.forEach(addMint)
+    }
     const names = [
+      // A library's types, registered first (and none for one registered by its own scope's members).
+      ...fromLibrariesSent.flatMap((sent) => sent.names),
       ...doc.entities
         .filter((e) => e.model === '@uniweb/data-schema')
         .map((e) => e.name),

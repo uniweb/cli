@@ -1,11 +1,14 @@
 /**
  * ⭐ THE TYPES A FOUNDATION NAMES THAT ANOTHER LOCAL PACKAGE DEFINES, AND THE REGISTRY DOESN'T HOLD.
  * A foundation is released only once the data types it names are registered: the registry refuses
- * one that depends on a Model it doesn't have. A type a library or another foundation of the workspace
- * defines is registered from that package, with `uniweb register` there. Measured 2026-11-10 on a
- * local backend: a site's push released its foundation, which names `@acme/libplan` from a library it
- * bundles, and the registry answered 400, "no such data-schema is registered on this deployment and
- * this package does not publish one"; after `uniweb register` in the library, the push went through.
+ * one that depends on a Model it doesn't have. Measured 2026-11-10 on a local backend: a site's push
+ * released its foundation, which names `@acme/libplan` from a library it bundles, and the registry
+ * answered 400, "no such data-schema is registered on this deployment and this package does not
+ * publish one"; after `uniweb register` in the library, the push went through.
+ *
+ * A library's types `register` now sends before the foundation (`library-types.js`), so what this
+ * names after a refusal is a type ANOTHER FOUNDATION of the workspace defines: that foundation
+ * registers it, with `uniweb register` there.
  */
 
 import { existsSync } from 'node:fs'

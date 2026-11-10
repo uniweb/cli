@@ -37,8 +37,11 @@
  * posture as `uniweb status` on a 404).
  *
  * "Release" here is literally `uniweb register` run in the foundation directory
- * — same build-if-stale → schema submit → code upload → digest the standalone
- * verb does, so there is exactly one foundation-release path.
+ * — same build-if-stale → the types its libraries define → schema submit → code
+ * upload → digest the standalone verb does, so there is exactly one
+ * foundation-release path. A library's types reach the registry this way: a change
+ * to one changes the foundation's built schema, which the digest folds in, so the
+ * foundation is released, and its register sends them first.
  *
  * ⭐ **`push` runs it too, and for a reason publish's framing does not cover.**
  * [Diego, 2026-08-19] — *"A published site can only reference a registered
