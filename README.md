@@ -287,13 +287,13 @@ The parser extracts semantic elements from markdown—`title` from the first hea
 
 ## Foundations Are Portable
 
-The `src/` folder (your project's foundation) ships with your project as a convenience, but sites reference a foundation by configuration, not by folder proximity.
+The `src/` directory (your project's foundation) ships with your project as a convenience, but sites reference a foundation by configuration, not by where its directory is.
 
 **Two ways to use a foundation:**
 
 | Mode             | How it works                       | Best for                                           |
 | ---------------- | ---------------------------------- | -------------------------------------------------- |
-| **Local folder** | Foundation lives in your workspace | Developing site and components together            |
+| **Local directory** | Foundation lives in your workspace | Developing site and components together            |
 | **Runtime link** | Foundation loads from a URL        | Independent release cycles, platform-managed sites |
 
 Develop a foundation locally, then register it for other sites to use. A site can also name a registered foundation instead of a local one — a project made by `uniweb clone` does — and both `uniweb dev` and Uniweb hosting run it. The site doesn't care where its components come from.

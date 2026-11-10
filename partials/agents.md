@@ -38,7 +38,7 @@ The principles to reason from when a table in §2 doesn't cover the case:
 
 - **The foundation provides options; the site configures.** The foundation doesn't know which site it serves; the site doesn't know how the foundation is built.
 - **Components render from content, not context.** Never the URL, the router or the layout; variation comes through params or a different type, chosen by the author.
-- **Configuration cascades** page → folder → site → foundation, like CSS specificity: defaults high, exceptions local.
+- **Configuration cascades** `page.yml` → `folder.yml` → `site.yml` → foundation, like CSS specificity: defaults high, exceptions local.
 - **Metadata declares the interface.** `meta.js` drives defaults, the editor's controls, the schema and the docs.
 - **The site owns the theme.** Foundations declare variables, sites set values, components use tokens.
 
@@ -56,7 +56,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | `npm update` / `pnpm update` the `@uniweb/*` packages; `npx uniweb update` | `npx uniweb@latest update --yes` (`--yes` because there is no terminal to answer the prompt). The packages are a matched set and AGENTS.md updates with them. Without `@latest` it runs the CLI the project already pins and reports "aligned". | `status` and `doctor` name the drift |
 | Assume `localhost:5173`; run `npm run dev` inside the site | `uniweb dev` serves the site you are in (from the workspace root, the first, with a notice); read `Serving <site> at <url>`. `uniweb dev --status` / `--stop` know only that server. | wrong server, silent |
 | Read `foundation:` in `site.yml` as a path | A **package name**. Follow the `file:` dep in the site's `package.json`. `@org/name@1.2.3` means the source is not in this repo. | the build: `did not resolve` |
-| Trust folder names for the workspace layout | `pnpm-workspace.yaml` globs decide (§3.2). | — |
+| Trust directory names for the workspace layout | `pnpm-workspace.yaml` globs decide (§3.2). | — |
 | `main.jsx`; JSX in a `.js` file | `main.js` is plain JS; JSX lives in `.jsx`. | build stops |
 | Guess which section types exist or what a param is called | `ls <foundation>/sections/`, `cat …/<Type>/meta.js`. Every foundation's vocabulary is different; `uniweb docs --from-source` writes it all to `COMPONENTS.md`. | red box / silent |
 | Predict what markdown parses to | `uniweb inspect <file>` prints the shape. | silent (wrong field) |
@@ -77,11 +77,11 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | Strip the content a new `type:` / `variant:` won't render before switching | Nothing to strip (§1): the switch is a one-line trial, and what stays afterwards is the author's call. | content loss |
 | `pages/fr/about.md` for French | `locales/` beside `pages/`; `pages/` holds the default language only. | silent — it becomes a page at `/fr` |
 | `t('key')`, `<Trans>` | Nothing — content arrives translated; each language is its own build. | — |
-| `src/assets/`, `assets/img.png` | `./img.png` beside the page, or `/img.png` in `public/`. There is no assets folder. | build stops, or warns |
+| `src/assets/`, `assets/img.png` | `./img.png` beside the page, or `/img.png` in `public/`. There is no assets directory. | build stops, or warns |
 | `fetch: /api/posts`, `fetch: ./data.json` | `fetch:` names a query from `queries.yml`; a URL belongs on the query (`url:`). | build stops |
-| `records/blog/2025/post.md`; one YAML file holding a list | Flat: `records/<schema>/<name>.md`, one record per file; the file name is `$name`. | folder read as a schema, silent |
+| `records/blog/2025/post.md`; one YAML file holding a list | Flat: `records/<schema>/<name>.md`, one record per file; the file name is `$name`. | a directory read as a schema, silent |
 | `` `/blog/${slug}` `` | `item.$route` — never compose a URL. | works until a page moves |
-| `page.yml` in a folder of pages | It makes one page, each `.md` a section. `folder.yml` keeps them pages and carries `layout`, `title` and SEO. Over a mount, `page.yml` with markdown of its own is a landing page *above* the mounted pages; a mount is one level under `pages/`, and a local subfolder beside it isn't read. | silent; the build names that subfolder |
+| `page.yml` in a directory of pages | It makes one page, each `.md` a section. `folder.yml` keeps them pages and carries `layout`, `title` and SEO. Over a mount, `page.yml` with markdown of its own is a landing page *above* the mounted pages; a mount is one level under `pages/`, and a local subdirectory beside it isn't read. | silent; the build names that subdirectory |
 | Paste the gtag / GTM / Meta pixel snippet into a component, `index.html`, or `services.tracking.scripts` | Uniweb Cloud (`publish`): `services.google: { id: G-… }`, or `GTM-…` for a container, and the host loads Google's tag, free, with no code, on any foundation. `head.html` isn't applied there, and `scripts` takes URLs only. Static build (`export`, `deploy --host`): the snippet in `head.html` beside `site.yml`. More: `uniweb guide services`. | silent — Google reports nothing |
 | Expect `{company}` to resolve | Only under a foundation with `createLoomHandlers`; otherwise it renders literally. | build warns if `site.yml` has `placeholders:` |
 | `hidden: true` on `pages/404/` to keep it out of nav | That makes it a draft. `hideIn: ['*']` controls nav. | silent |
@@ -128,7 +128,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | `font-serif`, `font-sans` | Tailwind's stack, not the site's — unless the foundation declares it as a `font-*` var in `main.js`. Families are the site's (`theme.yml fonts:`). | silent |
 | `@import url(fonts.googleapis…)` in CSS | `theme.yml fonts.import` / `faces`. | — |
 | `@tailwind base;` | Tailwind v4: `@import "tailwindcss"` plus kit's token imports (theme guide). | silent — most utilities missing |
-| Trust the foundation's own build to prove a class works | A site build and `uniweb dev` read what `styles.css` names: the whole foundation with `@import "tailwindcss" source("./")`, as the scaffold writes, else only the folders `@source` lists. | each names a folder a list missed, as does `doctor` |
+| Trust the foundation's own build to prove a class works | A site build and `uniweb dev` read what `styles.css` names: the whole foundation with `@import "tailwindcss" source("./")`, as the scaffold writes, else only the directories `@source` lists. | each names a directory a list missed, as does `doctor` |
 | `prose` from `@tailwindcss/typography`, `prose-invert` | `@import "@uniweb/kit/prose-tokens.css"`; no invert — colors are already the theme's. | build warns; unstyled lists |
 | `html { scroll-behavior: smooth }` | Never on `html`/`body`; the runtime owns scrolling. | route transitions misbehave |
 | `filter: blur(80px)` for a glow | Radial gradient + `mask-image`. | Safari jank |
@@ -150,7 +150,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | `*/src`, `*/sites/*` | projects with sites | each project's foundation with its own sites |
 | plus a package whose `main.js` has `extension: true` | extensions | extra section types, runtime-loaded |
 
-A site is any package with a `site.yml`. `paths:` in `site.yml` can mount another folder or repo into the page tree, so a route's markdown may not live under `pages/`.
+A site is any package with a `site.yml`. `paths:` in `site.yml` can mount another directory or repo into the page tree, so a route's markdown may not live under `pages/`.
 
 **3. Find the foundation by the wiring.** `"docs-src": "file:../src"` in the site's `package.json` → `docs/src/`.
 
@@ -185,7 +185,7 @@ On a content task and tempted to open the foundation: stop — usually a param a
 **7. Work in the lane, and check as you go.**
 
 ```bash
-uniweb inspect pages/home/hero.md   # from the site dir: the parsed shape (--full, --sequence, --raw; a folder = the page)
+uniweb inspect pages/home/hero.md   # from the site dir: the parsed shape (--full, --sequence, --raw; a directory = the page)
 uniweb doctor                       # project configuration (--fix repairs)
 uniweb validate                     # records against declared schemas
 uniweb <command> --help             # exact flags, no side effects
@@ -204,7 +204,7 @@ uniweb <command> --help             # exact flags, no side effects
 | Pages missing from the nav | a strict `pages:` list — add `...` |
 | A color is empty | unquoted `#` in YAML |
 | Literal `{name}` on the page | no Loom content handler |
-| A class works in the foundation's build, not in the site's or `uniweb dev` | `styles.css` lists folders and not this one — `uniweb doctor` names it; `source("./")` on the Tailwind import reads them all |
+| A class works in the foundation's build, not in the site's or `uniweb dev` | `styles.css` lists directories and not this one — `uniweb doctor` names it; `source("./")` on the Tailwind import reads them all |
 | Sticky header scrolls away | `sticky` class instead of `sticky: true` in `meta.js` |
 | Modal under the header | z-index instead of `<Overlay>` |
 | Entrance animation never plays | JS-started; write it in CSS; `uniweb dev` doesn't prerender |
@@ -252,17 +252,17 @@ content = { title, pretitle, subtitle, paragraphs, links, images, icons, videos,
 
 **Backgrounds and theme are frontmatter.** `background:` takes an image, video, gradient, quoted color or palette token, or an object (`image`, `video`, `overlay`); `theme: light | medium | dark`, or a map with token overrides (`section: neutral-100`).
 
-**Pages.** `pages/<name>/` → `/<name>`; a name or `slug:` holding `?`, `#` or `%` stops the build. `page.yml`: `title`, `description`, `id`, `order`, `sections: [a, b, ...]`, `pages: [...]`, `nest`, `redirect`, `slug: { fr: … }`, `hidden` (draft; takes the pages below it), `hideIn` (nav only), `knowledge` (agent-only, never rendered — not a security control), `query` / `fetch`, `seo`, `layout`. `folder.yml` for a folder *of pages*. Numeric prefixes (a number then a dash) order sections, pages and page folders and never reach a URL: `2-about/` is `/about`, and `pages:`/`index:` name it `about`; `2.5-x.md` slots between; `3d-printing` has no number. Config cascades `page.yml → folder.yml → site.yml → foundation`. `layout/header.md`, `footer.md` render on every page — a markdown list is the nav, a standalone link the CTA, `yaml:nav` for richer menus. Child sections: `@child.md` + `nest: { parent: [child] }`.
+**Pages.** `pages/<name>/` → `/<name>`; a name or `slug:` holding `?`, `#` or `%` stops the build. `page.yml`: `title`, `description`, `id`, `order`, `sections: [a, b, ...]`, `pages: [...]`, `nest`, `redirect`, `slug: { fr: … }`, `hidden` (draft; takes the pages below it), `hideIn` (nav only), `knowledge` (agent-only, never rendered — not a security control), `query` / `fetch`, `seo`, `layout`. `folder.yml` for a directory *of pages*. Numeric prefixes (a number then a dash) order section files, page files and page directories and never reach a URL: `2-about/` is `/about`, and `pages:`/`index:` name it `about`; `2.5-x.md` slots between; `3d-printing` has no number. Config cascades `page.yml → folder.yml → site.yml → foundation`. `layout/header.md`, `footer.md` render on every page — a markdown list is the nav, a standalone link the CTA, `yaml:nav` for richer menus. Child sections: `@child.md` + `nest: { parent: [child] }`.
 
 **`site.yml`.** `index`, `pages`, `foundation`, `extensions`, `paths`, `placeholders`, `languages`, `services`, `agents`, `seo` (`origin`: scheme + host, `image`: 1200×630), `favicon`, `touchIcon`. Everything in `site.yml` and `queries.yml` ships to the browser — **never a secret**.
 
-**Records — run `uniweb guide data` before touching them.** `records/<schema>/<name>.md|yml|json|bib` (`records/article/` → `@/article`); `queries.yml` names → `{ schema, where, sort, limit, scope }`; a page or section shows one with `query: name` or `fetch: { query, … }` (narrows, never widens); a `[slug]/` folder inside the query's page gives each record a page.
+**Records — run `uniweb guide data` before touching them.** `records/<schema>/<name>.md|yml|json|bib` (`records/article/` → `@/article`); `queries.yml` names → `{ schema, where, sort, limit, scope }`; a page or section shows one with `query: name` or `fetch: { query, … }` (narrows, never widens); a `[slug]/` directory inside the query's page gives each record a page.
 
 ### Foundation
 
 ```
 src/
-├── sections/     # section types — PascalCase file or folder at the root; a folder when it needs meta.js
+├── sections/     # section types — PascalCase file or directory at the root; a directory when it needs meta.js
 ├── layouts/      # custom layouts, auto-discovered
 ├── components/   # ordinary React — any props, any library, no meta.js, invisible to authors
 ├── utils/

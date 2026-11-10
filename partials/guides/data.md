@@ -9,8 +9,8 @@ A small database, not a page tree. Three things, deliberately separate:
 ```
 site/
 ├── pages/
-├── records/           # the site's records — every file in a schema folder is one
-│   ├── article/       # folder names the data schema
+├── records/           # the site's records — every file in a schema directory is one
+│   ├── article/       # directory names the data schema
 │   ├── person/
 │   └── folder.yml     # optional: sorts records into folders
 ├── queries.yml        # how content is REACHED
@@ -23,9 +23,9 @@ site/
 | `records/std/person/…` | `@std/person` — the shared standard set |
 | `records/acme/project/…` | `@acme/project` — an org's |
 
-Keep folders flat — `records/article/2025/x.md` reads as the `2025` schema of an `article` org. A `_`-prefixed file is not a record.
+Keep directories flat — `records/article/2025/x.md` reads as the `2025` schema of an `article` org. A `_`-prefixed file is not a record.
 
-**Formats:** `.md` (frontmatter fields, body prose; auto-excerpt and first-image extraction), `.yml`/`.yaml` and `.json` (structured, no body), `.bib` (each `@entry{key, …}` is a record named by its cite key, normalized to CSL-JSON, LaTeX accents → Unicode). Mix freely in one folder. **One record per file**; the file name is `$name`, the one name it carries on every site (no `slug` field). Conventional fields: `title`, `date`, `tags`, `image`, `description`, `author`, plus whatever the content needs. Images sit beside the file (`./`). `draft: true` keeps a record off the live site: still a record, previewed by `pnpm dev`, excluded from a production build, kept undelivered on a backend.
+**Formats:** `.md` (frontmatter fields, body prose; auto-excerpt and first-image extraction), `.yml`/`.yaml` and `.json` (structured, no body), `.bib` (each `@entry{key, …}` is a record named by its cite key, normalized to CSL-JSON, LaTeX accents → Unicode). Mix freely in one directory. **One record per file**; the file name is `$name`, the one name it carries on every site (no `slug` field). Conventional fields: `title`, `date`, `tags`, `image`, `description`, `author`, plus whatever the content needs. Images sit beside the file (`./`). `draft: true` keeps a record off the live site: still a record, previewed by `pnpm dev`, excluded from a production build, kept undelivered on a backend.
 
 **Links and files are records too.** `records/uniweb/link/x.yml` holding only `url:` (absolute) is a `@uniweb/link`; any file in `records/uniweb/file/` is a `@uniweb/file` named by its file name. Label and tags go on their `records/folder.yml` entry. Declare `data: { videos: '@uniweb/link' }` → `{ url, $name, $label, $tags }`; `data: { downloads: '@uniweb/file' }` → `{ file: { url, name, mime, size }, $name, $label, $tags }`. Two files of one name with different extensions clash. On a backend a component must declare the type for a query over it to be accepted.
 
@@ -53,7 +53,7 @@ The body — `body.content`.
 
 Paths are relative to `records/`, one file or a glob. An entry can be `{ path, tags, label }` — delivered beside the record as `$tags` (in order) and `$label` (one text or `{ en, fr }`, resolved to the page's language); a query reads them like any key (`where: { $tags: featured }`). `scope: archive` reads the folder and everything inside. A record sits in one folder; a computed subset is a query. The build refuses a top-level bare path (every file is a record already).
 
-**With a backend, `records/` is what `uniweb push` sends.** No `records/` leaves the backend alone; an *empty* `records/` takes them out of the site's folder (the CLI asks). Records with a data schema reach published pages only when `services.records: true`; once the site has been published, a push changes its records on the live site with no republish (pages wait for `uniweb publish`). To move records to another schema, move their files into its folder, renamed or not, and keep each file's `$uuid` line: the push sends each as a new record in the place the old one had. A record taken out of the folder stays on the backend, and the push that took it out offers to delete it (`--yes` deletes without asking).
+**With a backend, `records/` is what `uniweb push` sends.** No `records/` leaves the backend alone; an *empty* `records/` takes them out of the site's folder (the CLI asks). Records with a data schema reach published pages only when `services.records: true`; once the site has been published, a push changes its records on the live site with no republish (pages wait for `uniweb publish`). To move records to another schema, move their files into its directory, renamed or not, and keep each file's `$uuid` line: the push sends each as a new record in the place the old one had. A record taken out of the folder stays on the backend, and the push that took it out offers to delete it (`--yes` deletes without asking).
 
 ## Queries
 
@@ -83,7 +83,7 @@ query: recent                |  type: ArticleTeaser
 
 ### Parametric pages
 
-A `[slug]/` folder inside the page that names the query gives each record its own page:
+A `[slug]/` directory inside the page that names the query gives each record its own page:
 
 ```
 pages/blog/
@@ -98,7 +98,7 @@ pages/blog/
 
 **Link with `item.$route`, never a composed URL.** Every record a query delivers carries `$route` (the URL of the parametric page whose route query is that query), wherever the list appears. No page or no value → no `$route`, never a broken one. `detailPage: page:<id>` on a fetch links to another page instead. `$` marks framework-filled fields; a record's own `route` is untouched.
 
-**The route query** — which query the URL narrows: the `[slug]` page's own `query:`, else its parent's, else `site.yml`'s (top-level `pages/[slug]/` only); if none, the query its sections all declare. The folder name says what the segment matches: `[slug]` the record's name (`$name`) — or the field the route query binds `:slug` to (`where: { slug: :slug }`, how an external API's records get pages); `[uuid]` its `$uuid`; any other `[name]` the record's field of that name (several values → any member matches; non-unique → the build warns). A folder inside `[slug]/` (`[slug]/cv/`) is a parametric page about the same record.
+**The route query** — which query the URL narrows: the `[slug]` page's own `query:`, else its parent's, else `site.yml`'s (top-level `pages/[slug]/` only); if none, the query its sections all declare. The directory name says what the segment matches: `[slug]` the record's name (`$name`) — or the field the route query binds `:slug` to (`where: { slug: :slug }`, how an external API's records get pages); `[uuid]` its `$uuid`; any other `[name]` the record's field of that name (several values → any member matches; non-unique → the build warns). A directory inside `[slug]/` (`[slug]/cv/`) is a parametric page about the same record.
 
 **`current:`** on a section's own `fetch:` chooses how it uses the page's record: `only` (default — the record), `exclude` (the others, "related"), `include` (all, a pager). `fetch: { query: articles, as: related, current: exclude, limit: 3 }`. It follows the query, not the key: a fetch of the route query gets the record unless it says otherwise; a fetch of another query reads `current:` only when written.
 
@@ -134,9 +134,9 @@ data: {
 }
 ```
 
-`single`/`whole` are refused over a schema whose root is a list (`@std/nav`, `@std/form`). A `whole` key its source cannot answer whole is `null`. An optional `schemas.config.js` routes a scope to a folder: `export default { '@acme': '../shared/acme-schemas' }` — a routed scope wins, has no package fallback, and `@/`/`@uniweb` are never routable. Worked examples: `development/schemas-in-practice.md`.
+`single`/`whole` are refused over a schema whose root is a list (`@std/nav`, `@std/form`). A `whole` key its source cannot answer whole is `null`. An optional `schemas.config.js` routes a scope to a directory: `export default { '@acme': '../shared/acme-schemas' }` — a routed scope wins, has no package fallback, and `@/`/`@uniweb` are never routable. Worked examples: `development/schemas-in-practice.md`.
 
-**Any foundation can use a data schema another defines, by its full name** — `data: { members: '@acme/member' }`, `schema: '@acme/member'` in `queries.yml`. No backend is involved, and in a workspace nothing to configure: a local build, `uniweb dev` included, reads the type from the foundation whose name gives the `@acme` scope and whose own `schemas/` defines it. Two packages of the workspace defining it stop the build, naming both. A type outside the workspace comes from `schemas.config.js` (`'@acme/member': '../elsewhere/member.yml'`, or the scope's folder), which wins over the workspace, or an installed `@acme/schemas` package. A scope is a namespace that keeps names from colliding, not a limit on who uses a type. So a type another foundation defines is named, never copied: a copy of its file is a second definition of the same type, which `doctor` points out where the two foundations' names give one scope (`type-defined-twice`). Registering, which only a site with a backend does, names such a type and sends no definition of it. A push also needs one of the site's foundations to declare the type, as a section type's data key or a schema of its own: the backend refuses a query whose type none of them declares, since nothing there would render it. A site can hold another site's records of a type too: `paths: { 'records/acme/member': '../../hub/site/records/acme/member' }` in its `site.yml` reads them as its own, a push adds them by reference rather than as copies once their own site has pushed them, and a pull leaves those files alone. A site's records of it sit in `records/acme/member/`; in `records/member/` they'd be the foundation's own `@/member`.
+**Any foundation can use a data schema another defines, by its full name** — `data: { members: '@acme/member' }`, `schema: '@acme/member'` in `queries.yml`. No backend is involved, and in a workspace nothing to configure: a local build, `uniweb dev` included, reads the type from the foundation whose name gives the `@acme` scope and whose own `schemas/` defines it. Two packages of the workspace defining it stop the build, naming both. A type outside the workspace comes from `schemas.config.js` (`'@acme/member': '../elsewhere/member.yml'`, or the scope's directory), which wins over the workspace, or an installed `@acme/schemas` package. A scope is a namespace that keeps names from colliding, not a limit on who uses a type. So a type another foundation defines is named, never copied: a copy of its file is a second definition of the same type, which `doctor` points out where the two foundations' names give one scope (`type-defined-twice`). Registering, which only a site with a backend does, names such a type and sends no definition of it. A push also needs one of the site's foundations to declare the type, as a section type's data key or a schema of its own: the backend refuses a query whose type none of them declares, since nothing there would render it. A site can hold another site's records of a type too: `paths: { 'records/acme/member': '../../hub/site/records/acme/member' }` in its `site.yml` reads them as its own, a push adds them by reference rather than as copies once their own site has pushed them, and a pull leaves those files alone. A site's records of it sit in `records/acme/member/`; in `records/member/` they'd be the foundation's own `@/member`.
 
 ```jsx
 function Article({ content, block }) {   // data: { article: { schema: '@std/article', single: true } }
@@ -166,7 +166,7 @@ posts:
     url: https://api.example.com/posts/{id}
 ```
 
-Also `method: POST` + `body`, `where`/`sort`/`limit` (over what arrived, after `transform`), `queryable`. Its records have no `$name`, so a `[slug]` page over it binds the URL field in the query's own `where` (`where: { slug: :slug }`). `record:` takes `url`, `method`, `body`, `transform` (`url`/`method` default to the query's; a placeholder named by the folder — `{id}` for `[id]` — is the segment). `schema`, `scope`, `deferred`, `excerpt`, `path` are refused beside `url:`. The visitor's browser fetches it (a `fetch:` with `prerender: true` makes the build fetch instead); it compiles no `/data` file. A site's own schema records are another matter: on a published site they need `services.records: true`.
+Also `method: POST` + `body`, `where`/`sort`/`limit` (over what arrived, after `transform`), `queryable`. Its records have no `$name`, so a `[slug]` page over it binds the URL field in the query's own `where` (`where: { slug: :slug }`). `record:` takes `url`, `method`, `body`, `transform` (`url`/`method` default to the query's; a placeholder named by the directory — `{id}` for `[id]` — is the segment). `schema`, `scope`, `deferred`, `excerpt`, `path` are refused beside `url:`. The visitor's browser fetches it (a `fetch:` with `prerender: true` makes the build fetch instead); it compiles no `/data` file. A site's own schema records are another matter: on a published site they need `services.records: true`.
 
 A backend needing a key, headers, paging or its own wire language is a **transport** — a named `{ resolve, cacheKey? }` exported by the foundation (or an extension), selected by the site per data key:
 

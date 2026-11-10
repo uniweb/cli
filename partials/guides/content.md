@@ -4,7 +4,7 @@ Lane guide — AGENTS.md procedure step 6 loads it before any content is written
 
 ## Sections
 
-**A section with no `type:` renders through the foundation's default section type** — the `defaultSection` its `main.js` sets, else a section type named `Section` where the foundation has one, the fallback for foundations that declare none. This is what lets a folder of plain markdown with no frontmatter become pages: mounted documentation, an imported wiki. If such content shows "Component not found", the foundation has neither: declare `defaultSection` in its `main.js`, naming the type that content should render with. `uniweb doctor` states each foundation's default, and suggests one where a type stands out.
+**A section with no `type:` renders through the foundation's default section type** — the `defaultSection` its `main.js` sets, else a section type named `Section` where the foundation has one, the fallback for foundations that declare none. This is what lets a directory of plain markdown with no frontmatter become pages: mounted documentation, an imported wiki. If such content shows "Component not found", the foundation has neither: declare `defaultSection` in its `main.js`, naming the type that content should render with. `uniweb doctor` states each foundation's default, and suggests one where a type stands out.
 
 **Content before the first heading changes the parse:** headings after body content become items, not the section title. That's how repeating groups are made. An icon counts: `![](lu-globe)` above `# Title` leaves `content.title` empty and puts the heading in `items[0]`. For an icon that belongs to the title, write it under the heading, where it is still `content.icons[0]`; `uniweb inspect` shows the shape, and warns about an icon above one heading. An image above the title empties it too, with the heading in `content.headings` and no warning.
 
@@ -131,7 +131,7 @@ Image attributes: `{width=800 height=600 loading=lazy fit=cover position=center 
 
 **Section links:** `page:about#team` → `/about#section-team`; `page:/#features` → a homepage section. The id is the file name without its number (`2-features.md` → `features`) or `id:` in frontmatter.
 
-**Where media lives.** `./x` is beside the page, `/x` is in `public/`; both reach a static build and a published site. Keep a page's media beside it, and in `public/` what belongs to the whole site: the favicon, fonts. **Only a static host gives a file a fixed address** at the site root. A site published with Uniweb serves a file that something names from an address the upload gives it, and nothing at `/x` — so for a file other sites or scripts fetch by URL, keep it somewhere with its own address and add a page whose `redirect:` goes there. A static build copies `public/` whole and adds its own copy of each file a page names there. `uniweb push` uploads a file beside a page wherever the page is (mounted folders included); a file outside the site and its mounts is not uploaded — put that in `public/`. There is no `assets/` folder for media; a build stops on a `/x` only `assets/` holds.
+**Where media lives.** `./x` is beside the page, `/x` is in `public/`; both reach a static build and a published site. Keep a page's media beside it, and in `public/` what belongs to the whole site: the favicon, fonts. **Only a static host gives a file a fixed address** at the site root. A site published with Uniweb serves a file that something names from an address the upload gives it, and nothing at `/x` — so for a file other sites or scripts fetch by URL, keep it somewhere with its own address and add a page whose `redirect:` goes there. A static build copies `public/` whole and adds its own copy of each file a page names there. `uniweb push` uploads a file beside a page wherever the page is (mounted directories included); a file outside the site and its mounts is not uploaded — put that in `public/`. There is no `assets/` directory for media; a build stops on a `/x` only `assets/` holds.
 
 **Placement** (`{placement=left|right|wide|full}`) on an image or video, or on a table's caption line, which follows the table after a blank line (`: Plans and prices {placement=wide #tbl-plans}`, which also sets caption and id; with no blank line it becomes a row). It's the author's intent, honoured by kit's `<Render>`, `<Prose>` and `<Article>` and ignored by other components; a section type declares which it honours in `meta.js` (`sequence: { placement: true }`) and the build warns on a mismatch.
 
@@ -217,7 +217,7 @@ site/pages/home/
     └── 2-features.md
 ```
 
-Decimals insert between (`2.5-x.md`). A page folder's number works the same way: `pages/2-about/` orders second and is `/about`, named `about` in `pages:` and `index:`. A number counts only with a dash after it, or as the whole name (`404`): `3d-printing.md` keeps its name. Ignored: `README.md`, `_*.md`, `_*/`.
+Decimals insert between (`2.5-x.md`). A page directory's number works the same way: `pages/2-about/` orders second and is `/about`, named `about` in `pages:` and `index:`. A number counts only with a dash after it, or as the whole name (`404`): `3d-printing.md` keeps its name. Ignored: `README.md`, `_*.md`, `_*/`.
 
 ```yaml
 # page.yml
@@ -225,12 +225,12 @@ title: About Us
 id: about                   # stable identity for page: links; the app may write a code (id: 3f58142d) — keep it
 order: 2
 sections: [hero, team, ...]
-pages: [team, history, ...] # child page order when this page has child folders
+pages: [team, history, ...] # child page order when this page has child pages
 redirect: academic          # to a child page (relative/absolute path, or URL)
 slug: { fr: a-propos }      # localized URL segment per language
 layout: marketing
 
-# folder.yml — a folder OF PAGES (page.yml means a page built from sections)
+# folder.yml — a directory OF PAGES (page.yml means a page built from sections)
 title: Getting Started
 pages: [quickstart, app-tour, ...]
 
@@ -245,13 +245,13 @@ extensions: ['@acme/fx@0.3.1']
 
 **Cascade:** `page.yml → folder.yml → site.yml → foundation defaults`. Put `layout: marketing` in a `folder.yml` and every page inherits it; one page can still override.
 
-**A folder of pages holds pages of one section.** Under a `folder.yml`, each page is one `.md` file of one section, and each subfolder is a folder of pages too. The build stops on a subfolder with a `page.yml` of its own, a parametric `[slug]/` included. A page of several sections goes outside the folder. In the app, such a page takes no second section, and a pull holds one made there.
+**A directory of pages holds pages of one section.** Under a `folder.yml`, each page is one `.md` file of one section, and each subdirectory is a directory of pages too. The build stops on a subdirectory with a `page.yml` of its own, a parametric `[slug]/` included. A page of several sections goes outside that directory. In the app, such a page takes no second section, and a pull holds one made there.
 
 **Such a page's frontmatter holds its page's settings**, beside its section's `type:` and params: `title` (else its H1), `description`, `label`, `keywords`, `slug`, `hideIn`, `layout`, `seo`, `knowledge`, `trackSections`, as in a `page.yml`. A section param with one of those names goes under `props:` (`props: { label: … }`); the build warns where the section type declares one. `id:` is the section's id there too, and `hidden:` drafts the page. A pull writes the app's changes to them back into the file.
 
-**Routes:** folders map 1:1 to routes; `pages:` controls order only. The site root is the exception: the first of `pages:` sets `/`, else `index:`, declared in `site.yml` or in the pages directory's own `folder.yml`/`page.yml`, with `site.yml` winning. A folder with `page.yml` but no markdown is a structural group (`hasContent: false`); visiting it redirects to the first descendant with content.
+**Routes:** pages map 1:1 to routes, and under `pages/` every directory is a page; `pages:` controls order only. The site root is the exception: the first of `pages:` sets `/`, else `index:`, declared in `site.yml` or in the pages directory's own `folder.yml`/`page.yml`, with `site.yml` winning. A directory with `page.yml` but no markdown is a page with no sections (`hasContent: false`); visiting it redirects to the first descendant with content.
 
-**Mounted folders:** a local folder for a mounted route says how *this site* presents it. Keep `layout:`, `title:` and SEO in a `folder.yml` there; the mounted repo's own `folder.yml` supplies ordering and title where the stub is silent. A `page.yml` with markdown of its own makes a real page above the mounted pages — a landing page for the branch. A mount is one level under `pages/`, and a subfolder in the local folder isn't read, since the branch's pages come from the mount; the build says so. What a site can't do from outside a repo it mounts: leave a file out, title or order a nested folder, or use a `README.md` as a page — those are the mounted repo's to do. A relative link to a markdown file (`./deploying.md#setup`), which is how docs in a repo link to each other, leads to the page that file became; the build names one that leads nowhere. A mount that is its own repository (a submodule, or a clone beside the site) takes its edits as commits there, and `uniweb refresh` takes its latest; a push or publish stops on one that is behind its remote or holds uncommitted changes, and `--mounts-as-is` sends it as it is. A pull writes an author's app edits into a mounted folder where the site's own repository holds it, or a submodule of it does (a commit there, to push before the site's repository). A folder it cannot merge into — a clone beside the site — keeps its text and the app keeps the author's: the pull and `status` name each such page as held, and a push leaves it alone while its file is unchanged. A mount is its folder, `pages/docs: ../docs`; the object form is refused.
+**Mounted directories:** a local directory for a mounted route says how *this site* presents it. Keep `layout:`, `title:` and SEO in a `folder.yml` there; the mounted repo's own `folder.yml` supplies ordering and title where the stub is silent. A `page.yml` with markdown of its own makes a real page above the mounted pages — a landing page for the branch. A mount is one level under `pages/`, and a subdirectory in the local directory isn't read, since the branch's pages come from the mount; the build says so. What a site can't do from outside a repo it mounts: leave a file out, title or order a nested directory, or use a `README.md` as a page — those are the mounted repo's to do. A relative link to a markdown file (`./deploying.md#setup`), which is how docs in a repo link to each other, leads to the page that file became; the build names one that leads nowhere. A mount that is its own repository (a submodule, or a clone beside the site) takes its edits as commits there, and `uniweb refresh` takes its latest; a push or publish stops on one that is behind its remote or holds uncommitted changes, and `--mounts-as-is` sends it as it is. A pull writes an author's app edits into a mounted directory where the site's own repository holds it, or a submodule of it does (a commit there, to push before the site's repository). A directory it cannot merge into — a clone beside the site — keeps its text and the app keeps the author's: the pull and `status` name each such page as held, and a push leaves it alone while its file is unchanged. A mount is its directory, `pages/docs: ../docs`; the object form is refused.
 
 **Visibility flags:** `hidden: true` is a draft (not published; `uniweb dev` previews it; on a page it takes the pages below with it; on a section it's also kept from the component's params and takes its children with it); `hideIn: ['*']` or `[header]` controls nav placement only; `knowledge: true` is a different audience (below). An authored `pages/404/` needs no flag — `hidden: true` there makes it a draft and the site falls back to the generic 404.
 
@@ -274,11 +274,11 @@ seo:
 
 **Where the site lives:** every absolute URL (canonical, `og:url`, sitemap, `llms.txt` links) is built on the site's origin plus base path. The GitHub Pages workflow asks GitHub; Netlify and Vercel state their URL; on any other static host set `seo.origin`. With no address, pages state no canonical and no `sitemap.xml` is written — `uniweb doctor` says so.
 
-**Localized URLs:** on a multilingual site, `slug: { <lang>: <segment> }` gives a native segment per language; the folder name stays canonical. See the `i18n` guide.
+**Localized URLs:** on a multilingual site, `slug: { <lang>: <segment> }` gives a native segment per language; the directory name stays canonical. See the `i18n` guide.
 
 ### Older versions of docs
 
-Most docs need one version. When a release is about to stop being the latest and its readers need its docs kept, run `uniweb add version v2` (`--in <folder>`, `--label "2.x"`). It copies the docs to a folder named `v2` beside them, at `/docs/v2/…`, with the copy's links leading into the copy, no page ids in it, and search engines told to leave it out. Keep writing where you were: the pages beside version folders are the latest, and their URLs never change. **Don't copy a version folder by hand.** A foundation draws versions with kit's `useVersion` (foundation guide). Reference: `reference/versioning.md`.
+Most docs need one version. When a release is about to stop being the latest and its readers need its docs kept, run `uniweb add version v2` (`--in <folder>`, `--label "2.x"`). It copies the docs to a directory named `v2` beside them, at `/docs/v2/…`, with the copy's links leading into the copy, no page ids in it, and search engines told to leave it out. Keep writing where you were: the pages beside version directories are the latest, and their URLs never change. **Don't copy a version directory by hand.** A foundation draws versions with kit's `useVersion` (foundation guide). Reference: `reference/versioning.md`.
 
 ### Knowledge pages
 
@@ -288,7 +288,7 @@ Who can read it depends on the host: `uniweb publish` (backend-hosted) carries i
 
 ### Agent-readable output
 
-A static build emits `/llms.txt` (an annotated index of every page) and `/{route}.md` (each page as clean markdown); a host that serves the site derives its own. Descriptions come from `page.yml description:`, then `seo.ogDescription`, then the opening paragraph. A top-level folder with no page of its own and ≥5 pages gets `/docs/llms.txt`; each language gets its own (`/fr/llms.txt`, `/fr/search-index.json`). Excluded deliberately: `seo.noindex`, `hidden`, `_`-prefixed, and a parametric page's URL pattern; `noindex`/`hidden` on a folder with no page of its own takes the branch.
+A static build emits `/llms.txt` (an annotated index of every page) and `/{route}.md` (each page as clean markdown); a host that serves the site derives its own. Descriptions come from `page.yml description:`, then `seo.ogDescription`, then the opening paragraph. A top-level directory with no content of its own and ≥5 pages gets `/docs/llms.txt`; each language gets its own (`/fr/llms.txt`, `/fr/search-index.json`). Excluded deliberately: `seo.noindex`, `hidden`, `_`-prefixed, and a parametric page's URL pattern; `noindex`/`hidden` on a directory with no content of its own takes the branch.
 
 ```yaml
 agents:

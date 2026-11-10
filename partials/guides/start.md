@@ -45,7 +45,7 @@ uniweb add section Hero [--foundation ui]          # sections/Hero/{index.jsx,me
 uniweb rename <foundation|site|extension> <old> <new>   # rename across the whole workspace
 ```
 
-The CLI creates exactly the folder you ask for — no silent nesting under `foundations/` or `sites/`. If the target folder exists or another package of the same kind has the name, it stops with a precise error and suggests alternatives; a name held by the other kind gets a suffix (`add site marketing` beside a foundation named `marketing` makes `marketing-site`). `uniweb add section` scaffolds a starter the dev server picks up with no build or install.
+The CLI creates exactly the directory you ask for — no silent nesting under `foundations/` or `sites/`. If the target directory exists or another package of the same kind has the name, it stops with a precise error and suggests alternatives; a name held by the other kind gets a suffix (`add site marketing` beside a foundation named `marketing` makes `marketing-site`). `uniweb add section` scaffolds a starter the dev server picks up with no build or install.
 
 Workspace layouts and their wiring (single, segregated, co-located, projects with several sites): `development/project-structures.md`. The same `@scope/name` shape means different things by position: a `foundation:` value is a catalog ref; a data-schema ref in `meta.js` resolves from an npm package (`@uniweb/schemas`, `@org/schemas`); `@uniweb/kit` in `dependencies` is an ordinary npm package.
 
