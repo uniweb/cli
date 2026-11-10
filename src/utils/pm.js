@@ -161,6 +161,24 @@ export function installCmd(pm) {
 }
 
 /**
+ * The install to run right after a command edited the workspace's package.json files, and the one
+ * to tell someone to run then.
+ *
+ * ⭐ NEVER FROZEN. Wherever `CI` is set (a CI job, and the shell some agents run in) pnpm makes
+ * `install` frozen, and a frozen install refuses the package.json files the command just wrote.
+ * Measured 2026-11-10: `uniweb update --yes` with `CI=1` failed at its install every time, and the
+ * retry it printed failed the same way. npm's `install` is never frozen (`npm ci` is the frozen one).
+ * yarn is left as it is: berry's flag for this (`--no-immutable`) is not one classic yarn has.
+ *
+ * @param {'pnpm' | 'yarn' | 'npm'} pm
+ * @returns {string}
+ */
+export function installAfterEditCmd(pm) {
+  if (pm === 'pnpm') return 'pnpm install --no-frozen-lockfile'
+  return installCmd(pm)
+}
+
+/**
  * Generate a run-script command.
  * @param {'pnpm' | 'npm'} pm
  * @param {string} script - Script name

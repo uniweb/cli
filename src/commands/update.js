@@ -56,6 +56,7 @@ import { isNonInteractive } from '../utils/interactive.js'
 import {
   detectWorkspacePm,
   installCmd,
+  installAfterEditCmd,
   detectGlobalCliPm,
   globalCliUpdateCmd
 } from '../utils/pm.js'
@@ -501,7 +502,7 @@ export async function update(args = []) {
             )
           if (installPm) {
             log(
-              `${colors.dim}Then would run:${colors.reset} ${colors.cyan}${installCmd(installPm)}${colors.reset}`
+              `${colors.dim}Then would run:${colors.reset} ${colors.cyan}${installAfterEditCmd(installPm)}${colors.reset}`
             )
           } else {
             log(
@@ -549,7 +550,8 @@ export async function update(args = []) {
           }
 
           if (installPm) {
-            const cmd = installCmd(installPm)
+            // Never frozen: the package.json files were just edited (`installAfterEditCmd`).
+            const cmd = installAfterEditCmd(installPm)
             let runInstall
             if (hasYes) {
               runInstall = true
@@ -727,7 +729,7 @@ async function refreshAgents(ctx) {
   // package.json. Refreshing the doc here would document features the
   // installed code doesn't have. No override — run the install first.
   if (depsEdited && !installRan) {
-    const cmd = installCmd(installPm || 'pnpm')
+    const cmd = installAfterEditCmd(installPm || 'pnpm')
     warn(
       'AGENTS.md refresh skipped: package.json was updated but not installed.'
     )
@@ -841,11 +843,11 @@ export function printSummary({
     )
     if (installRan) {
       log(
-        `  ${colors.green}✓${colors.reset} ${installCmd(installPm || 'pnpm')} completed`
+        `  ${colors.green}✓${colors.reset} ${installAfterEditCmd(installPm || 'pnpm')} completed`
       )
     } else {
       log(
-        `  ${colors.yellow}⚠${colors.reset} install NOT run — run ${colors.cyan}${installCmd(installPm || 'pnpm')}${colors.reset} to apply`
+        `  ${colors.yellow}⚠${colors.reset} install NOT run — run ${colors.cyan}${installAfterEditCmd(installPm || 'pnpm')}${colors.reset} to apply`
       )
     }
   }
