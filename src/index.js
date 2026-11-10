@@ -1731,13 +1731,14 @@ ${colors.bright}Options:${colors.reset}
     add: `
 ${colors.cyan}${colors.bright}Uniweb Add${colors.reset}
 
-Add projects, foundations, sites, extensions, section types, or CI workflows to your workspace.
+Add projects, foundations, sites, extensions, libraries, section types, or CI workflows to your workspace.
 
 ${colors.bright}Usage:${colors.reset}
   uniweb add project [name] [options]
   uniweb add foundation [name] [options]
   uniweb add site [name] [options]
   uniweb add extension <name> [options]
+  uniweb add library <name> [options]
   uniweb add section <name> [options]
   uniweb add ci [options]
   uniweb add version <name> [options]
@@ -1756,6 +1757,14 @@ ${colors.bright}Site Options:${colors.reset}
 
 ${colors.bright}Extension Options:${colors.reset}
   --site <name>      Site to wire extension URL into
+
+${colors.bright}Library Options:${colors.reset}
+  --foundation <a,b> Foundations that use it: each gets the dependency and the
+                     stylesheet import (the workspace's one foundation if omitted;
+                     run again with another to wire one more)
+  --schemas          A schemas/ folder for the data types its foundations share
+  --scope <@org>     The scope those types are named under (default: the one
+                     the wired foundations share)
 
 ${colors.bright}Section Options:${colors.reset}
   --foundation <n>   Foundation to add section to (prompted if multiple exist)
@@ -1798,6 +1807,9 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add site blog --foundation marketing          # Create ./blog/ wired to marketing
   uniweb add extension effects --site site             # Create ./effects/ — the folder you name
   uniweb add extension extensions/effects              # Create ./extensions/effects/
+  uniweb add library libraries/ui --foundation a,b     # Create ./libraries/ui/, shared by a and b
+  uniweb add library libraries/ui --foundation c       # Wire one more foundation to it
+  uniweb add library shared --schemas --scope @acme    # With data types named @acme/<file>
   uniweb add section Hero                              # Create Hero section type
   uniweb add section Hero --foundation ui              # Target specific foundation
   uniweb add section Hero --starter                    # Starter content for an existing Hero
@@ -2432,6 +2444,7 @@ ${colors.bright}Add Subcommands:${colors.reset}
   add foundation [name]   Add a foundation (--from, --path, --project)
   add site [name]         Add a site (--from, --foundation, --path, --project)
   add extension <name>    Add an extension (--from, --site, --path)
+  add library <name>      Add a library foundations share (--foundation, --schemas)
   add section <name>      Add a section type to a foundation (--foundation, --starter)
   add ci                  Add a CI workflow so every push deploys (--host, --target)
   add version             Freeze a site's docs as a version beside them (--in, --label)

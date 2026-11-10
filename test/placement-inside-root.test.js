@@ -9,10 +9,10 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { resolvePlacement, FOUNDATION_KIND } from '../src/utils/placement.js'
+import { resolvePlacement, FOUNDATION_KIND, LIBRARY_KIND } from '../src/utils/placement.js'
 
 const ROOT = '/ws'
-const at = (name, opts = {}) => resolvePlacement(ROOT, name, opts, FOUNDATION_KIND)
+const at = (name, opts = {}, kind = FOUNDATION_KIND) => resolvePlacement(ROOT, name, opts, kind)
 
 test('⭐ a name that is a path outside the workspace, or climbs out of it, is outside', () => {
   for (const name of ['/tmp/x', '../x', '..', 'foundations/../../x']) {
@@ -34,4 +34,5 @@ test('CONTROL: the forms inside it place as before', () => {
   assert.deepEqual(at('x', { path: 'libs' }), { relativePath: 'libs/x', packageName: 'x' })
   assert.deepEqual(at(null), { relativePath: 'src', packageName: 'src' })
   assert.deepEqual(at(null, { project: 'shop' }), { relativePath: 'shop/src', packageName: 'shop-src' })
+  assert.deepEqual(at('libraries/ui', {}, LIBRARY_KIND), { relativePath: 'libraries/ui', packageName: 'ui' })
 })

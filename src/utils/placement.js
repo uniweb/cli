@@ -77,6 +77,16 @@ export const EXTENSION_KIND = {
 }
 
 /**
+ * Library placement: as an extension's, no defaults. A library always has a name, or a `--path`
+ * naming its folder, and belongs to no one project, so `--project` places none.
+ */
+export const LIBRARY_KIND = {
+  defaultDir: null,
+  defaultPkg: null,
+  projectSub: null
+}
+
+/**
  * Resolve where a foundation or site should be placed, given the user's input.
  *
  * The rule: **the user names a folder, and we create exactly that folder.**

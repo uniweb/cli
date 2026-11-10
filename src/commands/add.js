@@ -1,13 +1,14 @@
 /**
  * Add Command
  *
- * Adds foundations, sites, extensions, section types, or co-located projects to an existing workspace.
+ * Adds foundations, sites, extensions, libraries, section types, or co-located projects to an existing workspace.
  *
  * Usage:
  *   uniweb add project [name] [--from <template>]
  *   uniweb add foundation [name] [--from <template>] [--path <dir>] [--project <name>]
  *   uniweb add site [name] [--from <template>] [--foundation <name>] [--path <dir>] [--project <name>]
  *   uniweb add extension [name] [--from <template>] [--site <name>] [--path <dir>]
+ *   uniweb add library <name> [--foundation <a>,<b>] [--schemas] [--scope <@org>] [--path <dir>]
  *   uniweb add section <name> [--foundation <name>]
  *   uniweb add version <name> [--in <folder>] [--label <text>] [--keep-in-search] [--dry-run] [--site <name>]
  */
@@ -39,6 +40,7 @@ import {
 import { registerWorkspacePackage, addRootScripts } from '../utils/config.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { generateStarter, reportStarter, declarationFor } from './starter.js'
+import { addLibrary } from './add-library.js'
 import {
   validatePackageName,
   getExistingPackageNames,
@@ -141,12 +143,15 @@ function parseArgs(args) {
     in: null,
     label: null,
     keepInSearch: false,
-    dryRun: false
+    dryRun: false,
+    // `add library` only: a `schemas/` folder for data types, and the scope they are named under.
+    schemas: false,
+    scope: null
   }
 
   // Booleans (no value) consumed up-front so the value-flag loop below
   // doesn't accidentally swallow the next positional.
-  const BOOLEAN_FLAGS = new Set(['--force', '--no-previews', '--starter', '--json', '--keep-in-search', '--dry-run'])
+  const BOOLEAN_FLAGS = new Set(['--force', '--no-previews', '--starter', '--json', '--keep-in-search', '--dry-run', '--schemas'])
 
   // Value flags, mapped to their result key. Both spellings are accepted:
   // `--host github-pages` and `--host=github-pages`.
@@ -170,7 +175,8 @@ function parseArgs(args) {
     '--preset': 'preset',
     '--write': 'write',
     '--in': 'in',
-    '--label': 'label'
+    '--label': 'label',
+    '--scope': 'scope'
   }
 
   /** Split `--flag=value` into [flag, value]; `--flag` into [flag, null]. */
@@ -216,6 +222,8 @@ function parseArgs(args) {
       result.keepInSearch = true
     } else if (flag === '--dry-run') {
       result.dryRun = true
+    } else if (flag === '--schemas') {
+      result.schemas = true
     }
   }
 
@@ -258,6 +266,7 @@ export async function add(rawArgs) {
           },
           { label: 'site', description: 'Content site' },
           { label: 'extension', description: 'Additional component package' },
+          { label: 'library', description: 'Components and data types foundations share' },
           { label: 'section', description: 'Section type in a foundation' },
           { label: 'version', description: 'Freeze a site\'s docs as an older version' },
           {
@@ -268,7 +277,7 @@ export async function add(rawArgs) {
       )
       log('')
       log(
-        `Usage: ${prefix} add <project|foundation|site|extension|section|ci> [name]`
+        `Usage: ${prefix} add <project|foundation|site|extension|library|section|ci> [name]`
       )
       process.exit(1)
     }
@@ -294,6 +303,11 @@ export async function add(rawArgs) {
             title: 'Extension',
             value: 'extension',
             description: 'Additional component package'
+          },
+          {
+            title: 'Library',
+            value: 'library',
+            description: 'Components and data types foundations share'
           },
           {
             title: 'Section',
@@ -368,6 +382,9 @@ export async function add(rawArgs) {
     case 'extension':
       await addExtension(rootDir, projectName, parsed, pm)
       break
+    case 'library':
+      await addLibrary(rootDir, projectName, parsed, pm)
+      break
     case 'section':
       await addSection(rootDir, parsed)
       break
@@ -380,7 +397,7 @@ export async function add(rawArgs) {
     default:
       error(`Unknown subcommand: ${parsed.subcommand}`)
       log(
-        `Valid subcommands: project, foundation, site, extension, section, ci, version`
+        `Valid subcommands: project, foundation, site, extension, library, section, ci, version`
       )
       process.exit(1)
   }
