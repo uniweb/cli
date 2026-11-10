@@ -73,6 +73,7 @@ import {
 } from './utils/interactive.js'
 import { findWorkspaceRoot } from './utils/workspace.js'
 import { exitWhenDrained } from './utils/exit.js'
+import { staleFrameworkExport, installedVersion } from './utils/stale-export.js'
 import { outliveTheReader } from './utils/closed-reader.js'
 import { isGitRepo } from './utils/git.js'
 
@@ -256,6 +257,18 @@ async function importProjectCommand(modulePath) {
   try {
     return await import(modulePath)
   } catch (err) {
+    // A @uniweb/* package older than this CLI: an export it needs is not there (`stale-export.js`).
+    const stale = staleFrameworkExport(err)
+    if (stale) {
+      const have = installedVersion(stale.pkg)
+      error(
+        `This uniweb (${getCliVersion()}) needs a newer ${stale.pkg} than the one installed${have ? ` (${have})` : ''}, ` +
+          `which has no \`${stale.name}\`.`
+      )
+      log(`Bring the project's framework packages to the versions this CLI goes with:`)
+      log(`  ${colors.cyan}npx uniweb@latest update --yes${colors.reset}`)
+      await exitWhenDrained(1)
+    }
     if (
       err.code !== 'ERR_MODULE_NOT_FOUND' ||
       !err.message?.includes('@uniweb/')
