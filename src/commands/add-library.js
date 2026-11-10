@@ -81,16 +81,22 @@ export function libraryManifest({ name, projectName, scope = null, versions = ge
   }
 }
 
-const INDEX = (name) => `// What this library shares with the foundations that depend on it. Export each component, hook
+// The two example lines are aligned on the longer, which the library's name decides.
+const INDEX = (name) => {
+  const here = `export { default as PlanCard } from './components/PlanCard.jsx'`
+  const there = `import { PlanCard } from '${name}'`
+  const width = Math.max(here.length, there.length) + 3
+  return `// What this library shares with the foundations that depend on it. Export each component, hook
 // or helper here, and a foundation imports it by the library's name:
 //
-//   export { default as PlanCard } from './components/PlanCard.jsx'   (here)
-//   import { PlanCard } from '${name}'                                  (in a foundation)
+//   ${here.padEnd(width)}(here)
+//   ${there.padEnd(width)}(in a foundation)
 //
 // A component here takes ordinary props, and reads its look from the foundation's vars and the
 // theme's tokens (var(--card-radius), bg-card), so each foundation that uses it keeps its own.
 export {}
 `
+}
 
 // The form kit's own stylesheet uses, which holds wherever a package manager puts the package.
 const STYLES = `/* Tailwind reads this library's files wherever it is installed: each foundation that uses it imports this stylesheet. */
