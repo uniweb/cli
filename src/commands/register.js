@@ -1049,7 +1049,10 @@ async function runRegister(args = []) {
       `  ${colors.dim}Delivery is separate: a foundation that binds ${scope}/<name> resolves it from${colors.reset}`
     )
     log(
-      `  ${colors.dim}disk — an ${scope}/schemas package, or a folder routed in schemas.config.js.${colors.reset}`
+      `  ${colors.dim}disk — a package of its workspace or a library it bundles that defines it, an${colors.reset}`
+    )
+    log(
+      `  ${colors.dim}${scope}/schemas package, or a folder routed in schemas.config.js.${colors.reset}`
     )
   }
 
