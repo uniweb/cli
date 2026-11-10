@@ -10,7 +10,7 @@ The foundation is the React that receives that object, under a runtime that owns
 
 ## 1. Why this is worth doing right
 
-Uniweb is an implementation of **Component Content Architecture (CCA)**: content and components are separate artifacts — different files, packages and maintainers — joined by a thin runtime at build time and in the browser. Full argument: `uniweb.io/docs/architecture/component-content-architecture.md`. What it buys you:
+Uniweb is an implementation of **Component Content Architecture (CCA)**: content and components are separate artifacts — different files, packages and maintainers — joined by a thin runtime wherever a page renders: in a build, on the host and in the browser. Full argument: `uniweb.io/docs/architecture/component-content-architecture.md`. What it buys you:
 
 **You write less.** A section type carries no theme maps, null checks, hardcoded strings, wrapper element, sticky-spacer arithmetic or fetch lifecycle: the runtime does each once, for every section. What remains is rendering logic.
 
@@ -51,6 +51,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | By reflex you'd… | Here | Signal |
 |---|---|---|
 | Write `package.json`, `vite.config.js`, `index.html`, an entry file | `npx uniweb@latest create <name> --template <t>`; `uniweb add site / foundation / section / project / extension`. The CLI owns those files. | build fails far from the cause |
+| Add a build step for the site: a Vite plugin, an npm script, code in `entry.js` | Nothing in the site's build runs on Uniweb hosting: `publish` sends the content, and the host renders it with the runtime and the registered foundation. Put code in the foundation and everything else in content. | silent — right under `uniweb dev` and `export`, missing once published |
 | `npm install` a foundation or theme; `npm install @uniweb/runtime` | A foundation is a workspace `file:` dependency or a catalog ref in `site.yml`, never an npm package. In a foundation the runtime arrives through `@uniweb/build`. Everything else — a carousel, a chart library, a date utility, `@uniweb/api` — you install in the foundation as in any project. | npm 404 / silent version skew |
 | `npm update` / `pnpm update` the `@uniweb/*` packages; `npx uniweb update` | `npx uniweb@latest update --yes` (`--yes` because there is no terminal to answer the prompt). The packages are a matched set and AGENTS.md updates with them. Without `@latest` it runs the CLI the project already pins and reports "aligned". | `status` and `doctor` name the drift |
 | Assume `localhost:5173`; run `npm run dev` inside the site | `uniweb dev` serves the site you are in (from the workspace root, the first, with a notice); read `Serving <site> at <url>`. `uniweb dev --status` / `--stop` know only that server. | wrong server, silent |
@@ -85,6 +86,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | Expect `{company}` to resolve | Only under a foundation with `createLoomHandlers`; otherwise it renders literally. | build warns if `site.yml` has `placeholders:` |
 | `hidden: true` on `pages/404/` to keep it out of nav | That makes it a draft. `hideIn: ['*']` controls nav. | silent |
 | Treat `@child.md` / `_draft.md` as names | `@` = child section, placed by `nest:` (with none it renders last; a `sections:` list drops it); `_` = ignored. | build warns, unless `sections:` dropped it |
+| Treat the files as the only copy of the content; regenerate pages from a script | On a synced site authors edit the same pages in the app, and a pull writes their edits into the files. Take what changed before you edit (`status` names it), and edit the files rather than regenerate them, or your next push replaces the authors' work. | silent after a pull; a push refuses a section changed on both sides |
 
 ### 2.3 Section types and the components behind them
 

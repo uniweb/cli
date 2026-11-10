@@ -296,7 +296,7 @@ The `src/` folder (your project's foundation) ships with your project as a conve
 | **Local folder** | Foundation lives in your workspace | Developing site and components together            |
 | **Runtime link** | Foundation loads from a URL        | Independent release cycles, platform-managed sites |
 
-Develop a foundation locally, then register it for other sites to use. A site can also name a registered foundation instead of a local one — a project made by `uniweb clone` does — and `uniweb dev` runs it, while Uniweb hosting builds and serves it. The site doesn't care where its components come from.
+Develop a foundation locally, then register it for other sites to use. A site can also name a registered foundation instead of a local one — a project made by `uniweb clone` does — and both `uniweb dev` and Uniweb hosting run it. The site doesn't care where its components come from.
 
 **This enables two development patterns:**
 

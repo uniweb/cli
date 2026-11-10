@@ -108,10 +108,10 @@ The endpoint must accept the framework's batched `{ "events": [ … ] }` POST (`
 
 ### Google Analytics, Tag Manager, Meta's pixel
 
-**A `scripts` entry is a URL and nothing else, so these can't be installed that way.** Each one's install runs inline lines; from a URL alone GA sends nothing and Tag Manager never gets its page-load event. A tag carrying an attribute the vendor reads (`data-domain`, `data-website-id`) has the same problem. What works depends on who builds the pages:
+**A `scripts` entry is a URL and nothing else, so these can't be installed that way.** Each one's install runs inline lines; from a URL alone GA sends nothing and Tag Manager never gets its page-load event. A tag carrying an attribute the vendor reads (`data-domain`, `data-website-id`) has the same problem. What works depends on who makes the pages:
 
-- **The framework builds them** (`uniweb export`, `uniweb deploy --host=<adapter>`): the vendor's snippet goes in `head.html` next to `site.yml`, and the build adds it to every page's `<head>`. A `services.google` entry does nothing here.
-- **Uniweb Cloud builds them** (`uniweb publish`, or publishing from the app): `head.html` is kept and synced but **not applied**. For Google's two, name the ID and the host loads the tag from the next publish, free, with no code, on any foundation:
+- **A build makes them** (`uniweb export`, `uniweb deploy --host=<adapter>`): the vendor's snippet goes in `head.html` next to `site.yml`, and the build adds it to every page's `<head>`. A `services.google` entry does nothing here.
+- **Uniweb Cloud serves them, with no build** (`uniweb publish`, or publishing from the app): `head.html` is kept and synced but **not applied**. For Google's two, name the ID and the host loads the tag from the next publish, free, with no code, on any foundation:
 
   ```yaml
   services:
