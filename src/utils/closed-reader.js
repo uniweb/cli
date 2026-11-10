@@ -14,11 +14,16 @@ import { spawn } from 'node:child_process'
 import { fstatSync } from 'node:fs'
 import { whenDrained } from './exit.js'
 
+// What a write says when its reader has gone: EPIPE from a pipe, and from a socket also ENOTCONN or
+// ECONNRESET. ⛔ Until 2026-11-10 only EPIPE was taken for it, and a reader leaving a socket at the
+// wrong moment ended `create` with "Error: write ENOTCONN" (the closed-reader test, once in six runs).
+const READER_GONE = new Set(['EPIPE', 'ENOTCONN', 'ECONNRESET'])
+
 /** For the CLI's own process, once, before it prints. Any other write error stays an error. */
 export function outliveTheReader() {
   for (const stream of [process.stdout, process.stderr]) {
     stream.on('error', (err) => {
-      if (err.code !== 'EPIPE') throw err
+      if (!READER_GONE.has(err.code)) throw err
     })
   }
 }

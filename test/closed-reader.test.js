@@ -127,3 +127,24 @@ test('a write error that is not a closed reader stays an error', () => {
   assert.equal(r.status, 1)
   assert.match(r.stderr, /the disk is full/)
 })
+
+/**
+ * A reader leaving a socket can fail a write with ENOTCONN or ECONNRESET, not only EPIPE.
+ * ⛔ Until 2026-11-10 only EPIPE was taken for it: the `create` test above ended once in six runs
+ * with "Error: write ENOTCONN" thrown from here. Raised directly, so the outcome is not timing's.
+ */
+test('a socket reader gone, ENOTCONN or ECONNRESET, is a reader gone; any other write error stays one', () => {
+  const raise = (code) =>
+    spawnSync(process.execPath, ['--input-type=module', '-e', `import { outliveTheReader } from ${JSON.stringify(READER)}
+      outliveTheReader()
+      process.stdout.emit('error', Object.assign(new Error('write ${code}'), { code: '${code}' }))
+      process.stderr.write('kept going')`], { encoding: 'utf8' })
+  for (const code of ['EPIPE', 'ENOTCONN', 'ECONNRESET']) {
+    const r = raise(code)
+    assert.equal(r.status, 0, `${code}: ${r.stderr}`)
+    assert.match(r.stderr, /kept going/, code)
+  }
+  const other = raise('EIO')
+  assert.notEqual(other.status, 0, 'EIO was swallowed')
+  assert.match(other.stderr, /write EIO/)
+})
