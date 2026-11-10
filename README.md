@@ -364,8 +364,10 @@ You're building a foundation for clients, content authors, or any team that won'
 
 ```bash
 cd src
-uniweb register --scope @your-org
+uniweb register
 ```
+
+It registers under the scope of the Uniweb workspace you logged in to (`uniweb login --org @your-org`); `--scope` names another scope.
 
 Real sites built on your foundation are managed in the **Uniweb app** — a visual editor designed for non-technical authors. They never see git, markdown, yaml, or React. They see *your* components, with live previews and visual controls for the params you defined. The foundation becomes the editor's native vocabulary for that site: you keep creative control of the design system, they get an editor that feels custom-built for them.
 
@@ -381,7 +383,7 @@ This is the best path when site content has a life independent of the foundation
 | `uniweb publish` | Go live on Uniweb hosting (paid) — brings the site's foundation along, pushes the content, and serves the site dynamically. The canonical verb for Uniweb hosting. |
 | `uniweb deploy --host=<adapter>` | Ship to a third-party static host in one step — builds `dist/`, uploads, invalidates. Drives that host's own CLI. |
 | `uniweb export` | Produce a self-contained `dist/` for any static host. You upload it yourself. `--host=<adapter>` adds host-specific helper files. |
-| `uniweb register --scope @org` | Register a foundation to the registry, for sites managed in the app. |
+| `uniweb register` | Register a foundation to the registry, under your Uniweb workspace's scope, for sites managed in the app. |
 | `uniweb build` | Inspect a build locally. For shipping, use `publish` (Uniweb hosting) or `deploy`/`export` (static hosts). |
 | `uniweb guide [name]` | Print a guide to building with Uniweb: `content`, `foundation`, `theme` and more. A project's `AGENTS.md` says which a task needs. |
 | `uniweb update` | Align this project with the CLI you're running: bump `@uniweb/*` deps in every `package.json` to the CLI's matrix (then install), and refresh `AGENTS.md`. Pins to *this* CLI's matrix — run `npx uniweb@latest update` to align to the latest release. Updating the CLI itself is your package manager's job (`npm i -g uniweb@latest`). |
