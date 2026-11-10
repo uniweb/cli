@@ -958,6 +958,23 @@ export async function checkUnreadFolders({ foundationName, srcDir, issues }) {
 }
 
 /**
+ * A library the foundation bundles whose classes no `@source` reads (`unreadLibraries`, `@uniweb/build`):
+ * missing from the foundation's own CSS, which a hosted site loads with it, and from a site build's.
+ * Loaded here for the same reason.
+ */
+export async function checkUnreadLibraries({ foundationName, srcDir, foundationDir, issues }) {
+  const { unreadLibraries } = await import('@uniweb/build')
+  const unread = unreadLibraries?.(join(srcDir, 'styles.css'), foundationDir) || []
+  if (unread.length === 0) return
+  const id = 'unread-library'
+  const named = unread.map(({ name }) => name).join(', ')
+  issues.push({ id, type: 'warn', foundation: foundationName, message: `${foundationName} bundles ${named}, whose classes its styles.css does not read` })
+  warn(`[${id}] ${foundationName} bundles ${named}, whose classes its styles.css does not read, so they are missing from its CSS and from its sites'`)
+  log(`    Add to styles.css:`)
+  for (const { line } of unread) log(`      ${line}`)
+}
+
+/**
  * Source with its comments removed.
  *
  * ⚠️ MEASURED, NOT PRECAUTIONARY. The first cut of this check searched the raw
@@ -2062,6 +2079,7 @@ async function runDoctor(args = []) {
   for (const f of checkedFoundations) {
     await checkStaleSources({ foundationName: f.name, srcDir: resolveFoundationSrcPath(f.path), issues })
     await checkUnreadFolders({ foundationName: f.name, srcDir: resolveFoundationSrcPath(f.path), issues })
+    await checkUnreadLibraries({ foundationName: f.name, srcDir: resolveFoundationSrcPath(f.path), foundationDir: f.path, issues })
   }
 
   // A modifier kit's prose layer does not have — `prose-slate`, `prose-invert`

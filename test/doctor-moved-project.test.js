@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmp, runVerb } from './helpers/run-verb.js'
-import { checkSiteNameIsAFolder, checkStaleSources, checkUnreadFolders } from '../src/commands/doctor.js'
+import { checkSiteNameIsAFolder, checkStaleSources, checkUnreadFolders, checkUnreadLibraries } from '../src/commands/doctor.js'
 
 const named = (siteName, sitePath, packagePaths) => {
   const issues = []
@@ -79,6 +79,36 @@ test('CONTROL — every folder that writes classes is named', { timeout: 60_000 
   mkdirSync(join(srcDir, 'components'))
   writeFileSync(join(srcDir, 'components', 'Card.jsx'), 'export default () => <div className="flex" />\n')
   await checkUnreadFolders({ foundationName: '@acme/app', srcDir, issues })
+  assert.deepEqual(issues, [])
+})
+
+/** A foundation at `<root>/classic` depending on `shared`, a library beside it that writes classes. */
+function foundationWithLibrary(css) {
+  const root = tmp('uw-doctor-library-')
+  for (const [rel, body] of Object.entries({
+    'shared/package.json': JSON.stringify({ name: 'shared' }),
+    'shared/styles.css': '@source "./";\n',
+    'shared/components/PlanCard.jsx': 'export default () => <div className="ring-2 tracking-tight" />\n',
+    'classic/package.json': JSON.stringify({ name: 'classic', main: './_entry.generated.js', dependencies: { shared: 'file:../shared' } }),
+    'classic/styles.css': css
+  })) {
+    mkdirSync(join(root, rel, '..'), { recursive: true })
+    writeFileSync(join(root, rel), body)
+  }
+  return join(root, 'classic')
+}
+
+test('⭐ a library it bundles whose classes no @source reads is named, with the line to add', { timeout: 60_000 }, async () => {
+  const issues = []
+  const dir = foundationWithLibrary('@import "tailwindcss" source("./");\n')
+  await checkUnreadLibraries({ foundationName: '@acme/classic', srcDir: dir, foundationDir: dir, issues })
+  assert.deepEqual(issues.map((i) => i.id), ['unread-library'])
+})
+
+test('CONTROL — a library whose stylesheet the foundation reads', { timeout: 60_000 }, async () => {
+  const issues = []
+  const dir = foundationWithLibrary('@import "tailwindcss" source("./");\n@source "../shared";\n')
+  await checkUnreadLibraries({ foundationName: '@acme/classic', srcDir: dir, foundationDir: dir, issues })
   assert.deepEqual(issues, [])
 })
 
