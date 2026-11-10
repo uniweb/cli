@@ -616,16 +616,31 @@ async function bringLocalCodeAlong({
   })
 }
 
+/**
+ * A step this command runs as a process of its own, which prints why it stops. What a failed one
+ * throws back names only that, never its command line: ⛔ until 2026-11-10 a refused release ended
+ * on "Foundation release failed: Command failed: node /<absolute path>/index.js register
+ * --non-interactive --org @acme", which reads as a command to run.
+ */
+function runStep(argv, options, what) {
+  try {
+    execFileSync('node', argv, options)
+  } catch (err) {
+    if (typeof err?.status !== 'number') throw err
+    throw Object.assign(new Error(`${what} stopped, as it says above`), { status: err.status })
+  }
+}
+
 // Build the foundation so its dist/ can be fingerprinted. Idempotent — the
 // foundation build no-ops when already fresh.
 function buildFoundation(local, cliBin) {
-  execFileSync('node', [cliBin, 'build', '--target', 'foundation'], {
+  runStep([cliBin, 'build', '--target', 'foundation'], {
     cwd: local.dir,
     stdio: 'inherit',
     // A step of this command, so the build skips the next-step hints meant for
     // someone who ran `uniweb build` themselves.
     env: { ...process.env, UNIWEB_BUILD_STEP: '1' }
-  })
+  }, 'its build (`uniweb build`)')
 }
 
 // Release = `uniweb register` in the foundation directory (the one foundation
@@ -636,11 +651,11 @@ function releaseFoundation(local, args, cliBin, say, origin) {
   // ⭐ Pinned to the parent's backend through the environment, so the release lands
   // where the publish goes by construction — not because two processes happen to read
   // the same session file the same way.
-  execFileSync('node', [cliBin, 'register', ...forwardedFlags(args)], {
+  runStep([cliBin, 'register', ...forwardedFlags(args)], {
     cwd: local.dir,
     stdio: 'inherit',
     env: origin ? { ...process.env, UNIWEB_SERVER: origin } : process.env
-  })
+  }, '`uniweb register`')
   console.log('')
   return true
 }
