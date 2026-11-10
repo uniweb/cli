@@ -93,6 +93,7 @@ import { BackendClient } from '../backend/client.js'
 import { resolveWorkspace, scopeOfWorkspace, topOfChildHandle, SOURCE_LABEL } from '../backend/workspace.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import { newerInput } from '../utils/foundation-freshness.js'
+import { unregisteredLocalTypes } from '../backend/unregistered-types.js'
 import {
   findWorkspaceRoot,
   findFoundations,
@@ -939,6 +940,27 @@ async function runRegister(args = []) {
         }
       } else if (rawBody) {
         log(`  ${colors.dim}${rawBody.slice(0, 500)}${colors.reset}`)
+      }
+      // ⭐ A type it names that a library or another foundation here defines, and the registry
+      // doesn't hold: that package registers it first (`unregistered-types.js`).
+      if (!standalone && member !== false) {
+        const missing = await unregisteredLocalTypes({
+          named: Object.keys(schema?.dataSchemas || {}),
+          defined,
+          foundationDir: targetDir,
+          client
+        }).catch(() => [])
+        if (missing.length) {
+          // ⚖️ From the workspace root: `push` and `publish` run this in the foundation's folder,
+          // which is not where their person is.
+          const root = findWorkspaceRoot(targetDir) || targetDir
+          log('')
+          for (const { ref, dir } of missing) {
+            const at = relative(root, dir) || '.'
+            log(`  ${ref} is defined in ${at}/, which has not registered it. Register it there first, from the workspace root:`)
+            log(`    ${colors.blue}cd ${at} && npx uniweb register${colors.reset}`)
+          }
+        }
       }
       return { exitCode: 1 }
     }

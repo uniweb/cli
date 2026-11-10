@@ -562,7 +562,7 @@ export async function publish(args = []) {
     }
     // A scope you are not a member of is said as that, with the ways on (`explainReleaseFailure`).
     say.err(err.notMember ? err.message : `Foundation release failed: ${err.message}`)
-    for (const line of err.notMember ? err.ways : ['Fix the foundation, then re-run `uniweb publish`.']) say.dim(line)
+    for (const line of err.notMember ? err.ways : ['Nothing was sent. Settle what the release said above, then re-run `uniweb publish`.']) say.dim(line)
     return { exitCode: 1 }
   }
 
