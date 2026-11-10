@@ -1828,6 +1828,7 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add library libraries/ui --foundation a,b     # Create ./libraries/ui/, shared by a and b
   uniweb add library libraries/ui --foundation c       # Wire one more foundation to it
   uniweb add library shared --schemas --scope @acme    # With data types named @acme/<file>
+  uniweb add library ../acme-shared --foundation a     # A library beside the workspace, another repo's
   uniweb add section Hero                              # Create Hero section type
   uniweb add section Hero --foundation ui              # Target specific foundation
   uniweb add section Hero --starter                    # Starter content for an existing Hero
