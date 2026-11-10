@@ -43,7 +43,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, join, posix, relative, resolve, sep } from 'node:path'
 import yaml from 'js-yaml'
 
@@ -1170,6 +1170,92 @@ function workspaceLine(ws) {
 }
 
 /**
+ * ⭐ THE LIBRARY `cwd` IS IN, when it is one: a package of the workspace that is neither a site nor a
+ * foundation, and that a foundation or an extension of the workspace bundles (`librariesOf`, the one
+ * rule). With the foundations that bundle it and the sites each serves, which is what a change in it
+ * reaches. Null for anything else, which `status` answers as before.
+ */
+async function libraryAround(cwd) {
+  const root = findWorkspaceRoot(cwd)
+  if (!root) return null
+  let dir = resolve(cwd)
+  while (!existsSync(join(dir, 'package.json')) && dir !== root && dirname(dir) !== dir) dir = dirname(dir)
+  if (dir === resolve(root) || !existsSync(join(dir, 'package.json'))) return null
+  if (await classifyPackage(dir)) return null
+  const { librariesOf } = await import('@uniweb/build')
+  let real = dir
+  try {
+    real = realpathSync(dir)
+  } catch {
+    // as it is
+  }
+  const ws = await workspaceFacts(root)
+  const bundling = [
+    ...ws.foundations.map((f) => ({ ...f, extension: false })),
+    ...ws.extensions.map((f) => ({ ...f, extension: true }))
+  ].filter((f) => librariesOf(resolve(root, f.path)).some((lib) => lib.dir === real))
+  if (!bundling.length) return null
+  let name = basename(dir)
+  try {
+    name = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).name || name
+  } catch {
+    // named for its folder
+  }
+  const foundations = []
+  for (const f of bundling) {
+    const abs = resolve(root, f.path)
+    const sites = []
+    for (const site of ws.sites) {
+      const siteDir = resolve(root, site.path)
+      const yml = readSiteYml(siteDir)
+      if (f.extension) {
+        const exts = await extensionsOf(siteDir, yml, root)
+        if (exts.some((e) => e.kind === 'local' && resolve(root, e.path) === abs)) sites.push(site.path)
+      } else {
+        const fnd = await foundationOf(siteDir, yml, root)
+        if (fnd.kind === 'local' && fnd.abs === abs) sites.push(site.path)
+      }
+    }
+    foundations.push({ name: f.name, path: f.path, extension: f.extension, sites })
+  }
+  return { root, path: relative(root, dir) || '.', name, foundations }
+}
+
+/** `status` in a library: what bundles it, and so what a change in it reaches. */
+function libraryOverview(lib, { json }) {
+  const { path, name, foundations } = lib
+  const kinds = foundations.some((f) => f.extension) ? 'foundations and extensions' : 'foundations'
+  const summary = `${name} — a library in ${path}/, bundled by ${count(foundations.length, foundations.some((f) => f.extension) ? 'package' : 'foundation')}`
+  const sites = [...new Set(foundations.flatMap((f) => f.sites))]
+  const reach =
+    'A change here reaches each of those sites when its foundation next builds, and a hosted site when its foundation releases again (`uniweb publish` from the site).'
+  if (json) {
+    console.log(
+      JSON.stringify({
+        schema: STATUS_SCHEMA,
+        uniweb: getCliVersion(),
+        scope: 'library',
+        summary,
+        library: { name, path },
+        foundations,
+        sites,
+        checks: [],
+        next: []
+      })
+    )
+    return { exitCode: 0 }
+  }
+  const out = ['', `${c.bold}${summary}${c.reset}`, '']
+  for (const f of foundations) {
+    const what = `${f.extension ? 'extension' : 'foundation'} ${f.name} (${f.path}/)`
+    out.push(`  ${what} — ${f.sites.length ? `${f.sites.length === 1 ? 'site' : 'sites'} ${f.sites.join(', ')}` : 'no site in this workspace'}`)
+  }
+  out.push('', sites.length ? reach : `No site in this workspace uses those ${kinds} yet.`, '')
+  console.log(out.join('\n'))
+  return { exitCode: 0 }
+}
+
+/**
  * A site's foundation, as the build finds it — the one resolver (`detectFoundationType`), so
  * what status names is what the build would build. A catalog ref, which a build refuses, is
  * named as one.
@@ -1265,11 +1351,18 @@ async function projectChecks(siteDir, siteYml) {
           : `Extension \`${e.value}\` names ${e.name ? `\`${e.name}\`, which no folder here holds` : 'nothing this site can find'}.`
   )
   if (extensions.some((e) => e.kind === 'unresolved')) state = 'attention'
+  // And the libraries it bundles (`librariesOf`): a change in one reaches this site too.
+  let libraries = []
+  if (fnd.kind === 'local') {
+    const { librariesOf } = await import('@uniweb/build')
+    libraries = librariesOf(fnd.abs).map((lib) => ({ name: lib.name, path: relative(root, lib.dir) || '.' }))
+  }
+  const libraryLines = libraries.map((lib) => `Library ${lib.name}, in ${lib.path}/ — the foundation bundles it, so a change there reaches this site too.`)
   checks.push({
     id: 'project.foundation',
     state,
     summary,
-    lines: extensionLines,
+    lines: [...extensionLines, ...libraryLines],
     detail: {
       kind: fnd.kind,
       name: fnd.name ?? null,
@@ -1277,7 +1370,8 @@ async function projectChecks(siteDir, siteYml) {
       url: fnd.url ?? null,
       editable: fnd.kind === 'local',
       sharedWith,
-      extensions: extensions.map(({ value, kind, name, path }) => ({ value, kind, name: name ?? null, path: path ?? null }))
+      extensions: extensions.map(({ value, kind, name, path }) => ({ value, kind, name: name ?? null, path: path ?? null })),
+      libraries
     }
   })
 
@@ -1771,6 +1865,10 @@ export async function status(args = []) {
   }
   const json = args.includes('--json')
   const offline = args.includes('--offline')
+
+  // In a library, what bundles it: its foundations and their sites.
+  const library = await libraryAround(process.cwd())
+  if (library) return libraryOverview(library, { json })
 
   const found = await findSite(process.cwd())
   if (!found.siteDir) {

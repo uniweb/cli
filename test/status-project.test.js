@@ -183,3 +183,65 @@ test('control: the default project — one site and its foundation — says so, 
   assert.equal(checkOf(doc, 'project.languages').summary, 'One language: en.')
   assert.equal(checkOf(doc, 'dev.server').detail.command, 'npx uniweb dev')
 })
+
+/**
+ * ⭐ `status` in a library: the foundations and extensions that bundle it, and the sites each one
+ * serves, which is what a change in it reaches. A library is any local package a foundation
+ * depends on (`librariesOf`, `@uniweb/build`); a site's status names its foundation's.
+ */
+function withLibrary() {
+  const root = tmp('uw-status-library-')
+  const ui = { ui: 'file:../../libraries/ui' }
+  write(root, {
+    'pnpm-workspace.yaml': 'packages:\n  - foundations/*\n  - extensions/*\n  - libraries/*\n  - sites/*\n',
+    'package.json': JSON.stringify({ name: 'w', private: true }),
+    'libraries/ui/package.json': JSON.stringify({ name: 'ui', private: true, main: './index.js' }),
+    'libraries/ui/components/Card.jsx': 'export default () => null\n',
+    'libraries/loose/package.json': JSON.stringify({ name: 'loose', private: true }),
+    'foundations/shared/package.json': JSON.stringify({ name: 'shared', private: true, main: './_entry.generated.js', dependencies: ui }),
+    'foundations/solo/package.json': foundationPkg('solo'),
+    'extensions/fx/package.json': JSON.stringify({ name: 'fx', private: true, main: './_entry.generated.js', dependencies: ui }),
+    'extensions/fx/main.js': 'export default { extension: true }\n',
+    'sites/a/package.json': JSON.stringify({ name: 'a', dependencies: { shared: 'file:../../foundations/shared' } }),
+    'sites/a/site.yml': 'name: A\nfoundation: shared\n',
+    'sites/a/pages/home/page.yml': 'title: Home\n',
+    'sites/b/package.json': JSON.stringify({ name: 'b', dependencies: { shared: 'file:../../foundations/shared' } }),
+    'sites/b/site.yml': 'name: B\nfoundation: shared\n',
+    'sites/b/pages/home/page.yml': 'title: Home\n',
+    'sites/c/package.json': JSON.stringify({ name: 'c', dependencies: { solo: 'file:../../foundations/solo' } }),
+    'sites/c/site.yml': 'name: C\nfoundation: solo\nextensions:\n  - /fx/entry.js\n',
+    'sites/c/pages/home/page.yml': 'title: Home\n'
+  })
+  return root
+}
+
+test('⭐ in a library: what bundles it, and the sites a change in it reaches', { timeout: 60_000 }, async () => {
+  const root = withLibrary()
+  for (const dir of [join(root, 'libraries', 'ui'), join(root, 'libraries', 'ui', 'components')]) {
+    const doc = docOf(await status(dir, ['--offline', '--json']))
+    assert.equal(doc.scope, 'library')
+    assert.deepEqual(doc.library, { name: 'ui', path: 'libraries/ui' })
+    assert.deepEqual(doc.foundations, [
+      { name: 'shared', path: 'foundations/shared', extension: false, sites: ['sites/a', 'sites/b'] },
+      { name: 'fx', path: 'extensions/fx', extension: true, sites: ['sites/c'] }
+    ])
+    assert.deepEqual(doc.sites, ['sites/a', 'sites/b', 'sites/c'])
+  }
+  const said = plain((await status(join(root, 'libraries', 'ui'), ['--offline'])).output)
+  assert.match(said, /ui — a library in libraries\/ui\/, bundled by 2 packages/)
+  assert.match(said, /extension fx \(extensions\/fx\/\) — site sites\/c/)
+  assert.match(said, /when its foundation releases again/)
+})
+
+test("a site's status names the libraries its foundation bundles", { timeout: 60_000 }, async () => {
+  const fnd = checkOf(docOf(await status(join(withLibrary(), 'sites', 'a'), ['--offline', '--json'])), 'project.foundation')
+  assert.deepEqual(fnd.detail.libraries, [{ name: 'ui', path: 'libraries/ui' }])
+  assert.match(fnd.lines.join('\n'), /Library ui, in libraries\/ui\/ — the foundation bundles it/)
+  const solo = checkOf(docOf(await status(join(withLibrary(), 'sites', 'c'), ['--offline', '--json'])), 'project.foundation')
+  assert.deepEqual(solo.detail.libraries, [])
+})
+
+test('CONTROL: a package no foundation depends on is no library, and status answers as before', { timeout: 60_000 }, async () => {
+  const doc = docOf(await status(join(withLibrary(), 'libraries', 'loose'), ['--offline', '--json']))
+  assert.equal(doc.scope, 'workspace')
+})
