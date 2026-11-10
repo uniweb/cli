@@ -683,6 +683,9 @@ export async function push(args = [], deps = {}) {
       holdUnchangedPush(siteDir, client.origin)
       // What it recorded on the way — a media map, an identity recovered — is committed too.
       reportWriteBacks(commitWriteBacks(siteDir, client.origin, { released }), { note })
+      // ⭐ An earlier push's retired records too, which is what "push again with --yes" is for
+      // (`settleRetiredRecords`). ⛔ Until 2026-11-10 this returned first, and that line did nothing.
+      await settleRetiredRecords({ client, siteDir, args, say: { ok: success, dim: note, warn: note } })
     }
     return { exitCode: 0 }
   }

@@ -107,8 +107,36 @@ test('⭐ with --yes, a push deletes them by uuid, keeping what another folder p
   assert.deepEqual(sent, [{ uuids: ['A', 'B', 'C'], placed: 'keep' }])
   assert.deepEqual(res, { deleted: 2, kept: 1, asked: true })
   assert.ok(lines.includes('ok Deleted 2 records from the backend.'))
-  assert.ok(lines.includes("dim Kept 1 record: another site's folder still places it."))
+  assert.ok(lines.includes("dim Kept 1 record: another site's folder still places it. A later push deletes it once none does."))
   assert.equal(stateOf(dir).retired, undefined, 'every uuid settled')
+  assert.deepEqual(stateOf(dir).deleting, { B: '@std/project' }, 'the kept one is held to delete')
+})
+
+// ⛔ Until 2026-11-10 the kept one was dropped. Once the other site's push stopped placing it (its
+// mount read the owner's files, and the file was gone), it stayed on the backend in no folder, and
+// nothing offered to delete it (measured on the playground).
+test('⭐ a record kept for another site\'s folder is deleted at a later push, once none places it, with no question', async () => {
+  const dir = site({ deleting: { B: '@acme/member' } })
+  const stillPlaced = deleting({ deleted: [], kept: ['B'] })
+  const { say, lines } = reporter()
+  await settleRetiredRecords({ client: stillPlaced.client, siteDir: dir, args: [], say })
+  assert.deepEqual(stillPlaced.sent, [{ uuids: ['B'], placed: 'keep' }], 'asked without a terminal or --yes: the choice was made')
+  assert.deepEqual(stateOf(dir).deleting, { B: '@acme/member' }, 'still placed, so still held')
+  assert.equal(lines.length, 0, 'nothing to say while it waits')
+
+  const placedNoMore = deleting()
+  await settleRetiredRecords({ client: placedNoMore.client, siteDir: dir, args: [], say })
+  assert.deepEqual(placedNoMore.sent, [{ uuids: ['B'], placed: 'keep' }])
+  assert.equal(stateOf(dir).deleting, undefined)
+  assert.ok(lines.includes("ok Deleted 1 record that another site's folder no longer places."))
+})
+
+test('what it says never claims no site serves them: another site\'s folder may still place one', async () => {
+  const dir = site({ retired: { A: '@acme/member' } })
+  const { say, lines } = reporter()
+  await settleRetiredRecords({ client: deleting().client, siteDir: dir, args: [], say })
+  assert.doesNotMatch(lines.join('\n'), /no site serves/)
+  assert.match(lines[0], /1 record \(of @acme\/member\) that pushes took out of the site's folder stays on the backend/)
 })
 
 test('with no terminal and no --yes, nothing is deleted, the list is kept, and it says how to finish', async () => {
