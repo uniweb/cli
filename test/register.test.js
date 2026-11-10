@@ -296,3 +296,30 @@ test('a legacy dist/foundation.js build also needs one', () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+/**
+ * A library the foundation bundles is its source too: any local package it depends on. ⛔ Until
+ * 2026-11-09 `register` walked the foundation's own folder alone, so with only a library's file
+ * changed it answered `{ needs: false }` and would have uploaded the old bundle.
+ */
+test("a file of a library it bundles, newer than dist/entry.js → needs build, naming the library", () => {
+  const { dir, srcFile, pkg, entry } = makeWithSource()
+  const lib = mkdtempSync(join(tmpdir(), 'uw-reg-lib-'))
+  try {
+    writeFileSync(join(lib, 'package.json'), JSON.stringify({ name: '@acme/shared' }))
+    const libFile = join(lib, 'index.js')
+    writeFileSync(libFile, 'export const x = 1\n')
+    writeFileSync(pkg, JSON.stringify({ name: 'src', version: '2.3.1', dependencies: { '@acme/shared': `file:${lib}` } }))
+    for (const f of [pkg, srcFile, libFile, join(lib, 'package.json')]) setMtime(f, BASE)
+    setMtime(entry, BASE + 5)
+    assert.deepEqual(foundationNeedsBuild(dir), { needs: false }) // CONTROL: nothing edited since
+    setMtime(libFile, BASE + 10)
+    assert.deepEqual(foundationNeedsBuild(dir), {
+      needs: true,
+      reason: 'a file of @acme/shared, a library it bundles, is newer than dist/entry.js'
+    })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+    rmSync(lib, { recursive: true, force: true })
+  }
+})

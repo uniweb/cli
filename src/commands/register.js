@@ -8,7 +8,7 @@
  * (`backend/foundation-bring-along.js`).
  *
  * If the foundation's `dist/` is missing or stale — no build, a version bump
- * since it, a source file newer than it, no SSR bundle (`foundationNeedsBuild`)
+ * since it, a source file or a library's newer than it, no SSR bundle (`foundationNeedsBuild`)
  * — `register` builds it first. Preview paths (`--dry-run`, `-o`) never write to
  * `dist/`; they require a pre-built foundation.
  *
@@ -63,7 +63,6 @@ import {
   existsSync,
   readFileSync,
   writeFileSync,
-  readdirSync,
   statSync
 } from 'node:fs'
 import { execSync } from 'node:child_process'
@@ -93,6 +92,7 @@ import { deriveScope, publishScope, belongsToScope } from '../utils/registry-org
 import { BackendClient } from '../backend/client.js'
 import { resolveWorkspace, scopeOfWorkspace, topOfChildHandle, SOURCE_LABEL } from '../backend/workspace.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
+import { newerInput } from '../utils/foundation-freshness.js'
 import {
   findWorkspaceRoot,
   findFoundations,
@@ -458,46 +458,6 @@ async function deriveScopeFromLogin(client, args) {
   return derived ? `@${derived}` : null
 }
 
-// Directories that are never foundation source. `dist` is the output we compare
-// against; the rest are tooling. Dotted entries are skipped wholesale.
-const NON_SOURCE_DIRS = new Set(['dist', 'node_modules'])
-
-/**
- * The newest mtime under `dir`, skipping build output and tooling. `0` when the
- * tree is unreadable — which reads as "no source is newer", i.e. it degrades to
- * the pre-existing behaviour rather than forcing a build on an fs error.
- *
- * @param {string} dir
- * @returns {number} epoch ms
- */
-function newestSourceMtime(dir) {
-  let newest = 0
-  const walk = (d) => {
-    let entries
-    try {
-      entries = readdirSync(d, { withFileTypes: true })
-    } catch {
-      return
-    }
-    for (const e of entries) {
-      if (e.name.startsWith('.') || NON_SOURCE_DIRS.has(e.name)) continue
-      const p = join(d, e.name)
-      if (e.isDirectory()) {
-        walk(p)
-        continue
-      }
-      try {
-        const m = statSync(p).mtimeMs
-        if (m > newest) newest = m
-      } catch {
-        /* unreadable file — ignore */
-      }
-    }
-  }
-  walk(dir)
-  return newest
-}
-
 /**
  * Does the foundation's `dist/` need a (re)build before we can register it?
  *
@@ -509,7 +469,9 @@ function newestSourceMtime(dir) {
  *     so the artifact encodes the OLD version while the register intends the
  *     NEW one (we'd otherwise submit a schema whose version disagrees with the
  *     code we deliver).
- *   - STALE SOURCE: a source file is newer than `dist/entry.js`.
+ *   - STALE SOURCE: a file its build reads is newer than `dist/entry.js`: its own,
+ *     or one of a library it bundles (`newerInput`, the rule `uniweb build`
+ *     follows too).
  *
  * ⛔ **The source signal was missing until 2026-08-16, and its absence shipped the
  * PREVIOUS bundle silently.** Edit a component's rendered output, re-run
@@ -593,9 +555,14 @@ export function foundationNeedsBuild(targetDir) {
     const entryPath = existsSync(join(distDir, 'entry.js'))
       ? join(distDir, 'entry.js')
       : join(distDir, 'foundation.js')
-    const builtAt = statSync(entryPath).mtimeMs
-    if (newestSourceMtime(targetDir) > builtAt)
-      return { needs: true, reason: 'a source file is newer than dist/entry.js' }
+    const newer = newerInput(targetDir, statSync(entryPath).mtimeMs)
+    if (newer)
+      return {
+        needs: true,
+        reason: newer.library
+          ? `a file of ${newer.library}, a library it bundles, is newer than dist/entry.js`
+          : 'a source file is newer than dist/entry.js'
+      }
   } catch {
     // Can't compare — leave the other signals to decide rather than forcing a
     // build on an fs error.

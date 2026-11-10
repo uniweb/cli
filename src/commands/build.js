@@ -55,7 +55,7 @@
  *   --bundle            # Full vite pipeline (third-party / self-contained; deploy --host / export)
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { resolve, join, dirname, basename, relative } from 'node:path'
 import { runRelayed } from '../utils/closed-reader.js'
 import { writeFile, mkdir } from 'node:fs/promises'
@@ -72,6 +72,7 @@ import {
 } from '@uniweb/build'
 import { readSiteConfig } from '@uniweb/build/site'
 import { workspacePackages } from '../utils/workspace-packages.js'
+import { newerInput } from '../utils/foundation-freshness.js'
 
 // Colors for terminal output
 const colors = {
@@ -279,13 +280,10 @@ async function buildFoundation(projectDir, options = {}) {
  * without rebuilding. So calling it inside `buildSite()` does not
  * double-build under `buildWorkspace()`.
  *
- * Freshness rule: a built artifact (`dist/entry.js` or the legacy
- * `dist/foundation.js`) exists AND its mtime is >= the newest mtime of
- * any tracked source file. Tracked sources: every file under the
- * package's source root (the package itself when flat, `src/` when
- * nested — `isFoundationSourceNewerThan`), plus root-level `package.json`,
- * `foundation.js`, `meta.js` (the structural files that drive entry
- * generation and schema). Build outputs and node_modules are skipped.
+ * Freshness: a built artifact (`dist/entry.js` or the legacy `dist/foundation.js`)
+ * exists, and nothing its build reads is newer: the foundation's sources and
+ * those of every library it bundles (`newerInput`, `utils/foundation-freshness.js`,
+ * the rule `register` follows too).
  *
  * Both artifact names are accepted because the foundation build emitter
  * was renamed `dist/foundation.js → dist/entry.js` in `@uniweb/build`
@@ -306,12 +304,13 @@ export async function ensureFoundationFresh(foundationDir, label = 'foundation')
     return { built: true, reason: 'missing' }
   }
 
-  const distMtime = statSync(distArtifact).mtimeMs
-  const stale = isFoundationSourceNewerThan(foundationDir, distMtime)
+  const newer = newerInput(foundationDir, statSync(distArtifact).mtimeMs)
 
-  if (stale) {
+  if (newer) {
     info(
-      `Local ${label} sources changed — rebuilding ${basename(foundationDir)}`
+      newer.library
+        ? `${newer.library}, a library it bundles, changed — rebuilding ${basename(foundationDir)}`
+        : `Local ${label} sources changed — rebuilding ${basename(foundationDir)}`
     )
     log('')
     await buildFoundation(foundationDir)
@@ -333,64 +332,6 @@ function findFoundationDistArtifact(foundationDir) {
     if (existsSync(p)) return p
   }
   return null
-}
-
-/**
- * Returns true if any tracked foundation source file has an mtime newer
- * than `referenceMtime`. Walks the package's source root — the folder
- * `package.json::main` names (`resolveFoundationSrcPath`): the package itself
- * for a flat package, `src/` for a nested one — recursively, skipping dotfiles,
- * node_modules, dist and the generated entry. Also stats the root structural
- * files.
- *
- * ⛔ Until 2026-10-13 it walked `<foundationDir>/src/` whatever the layout, and
- * every package scaffolded since the flat layout keeps its sources at its root —
- * so an edit to a section never made one stale. Measured: touching a section of
- * a flat foundation and building its site rebuilt nothing, and prerender rendered
- * the static HTML with the foundation as last built.
- */
-export function isFoundationSourceNewerThan(foundationDir, referenceMtime) {
-  const rootFiles = ['package.json', 'foundation.js', 'meta.js']
-  for (const f of rootFiles) {
-    const p = join(foundationDir, f)
-    if (existsSync(p) && statSync(p).mtimeMs > referenceMtime) return true
-  }
-
-  const srcDir = resolveFoundationSrcPath(foundationDir)
-  if (!existsSync(srcDir)) return false
-
-  const stack = [srcDir]
-  while (stack.length) {
-    const dir = stack.pop()
-    let entries
-    try {
-      entries = readdirSync(dir, { withFileTypes: true })
-    } catch {
-      continue
-    }
-    for (const e of entries) {
-      if (
-        e.name === 'node_modules' ||
-        e.name === 'dist' ||
-        e.name === '_entry.generated.js' ||
-        e.name.startsWith('.')
-      )
-        continue
-      const full = join(dir, e.name)
-      if (e.isDirectory()) {
-        stack.push(full)
-        continue
-      }
-      if (!e.isFile()) continue
-      try {
-        if (statSync(full).mtimeMs > referenceMtime) return true
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  return false
 }
 
 /**
