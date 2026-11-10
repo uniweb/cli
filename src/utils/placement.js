@@ -1,4 +1,4 @@
-import { isAbsolute, relative, sep } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 
 /**
  * Package placement resolution — shared by `add` and `clone`.
@@ -31,6 +31,21 @@ function normalizeParent(given, rootDir) {
   const rel = relative(rootDir || '', trimmed)
   if (!rel || rel === '..' || rel.startsWith('../')) return { outsideRoot: true, given: trimmed }
   return { relative: rel.split(sep).join('/') }
+}
+
+/**
+ * The folder a package is to be made in, as the root-relative path every consumer expects — or
+ * `outsideRoot` when it is not inside the workspace. ⛔ Until 2026-11-09 only `--path` was
+ * checked, and a name naming a path was taken as written: `add foundation /tmp/x` made
+ * `<workspace>/tmp/x/` while both manifests recorded `/tmp/x` (the split above), and
+ * `add foundation ../x` made a package outside the workspace and listed `../x`.
+ */
+function insideRoot(rootDir, path) {
+  if (!rootDir) return { relativePath: path }
+  const trimmed = String(path).replace(/\/+$/, '')
+  const rel = relative(rootDir, resolve(rootDir, trimmed))
+  if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return { outsideRoot: trimmed, relativePath: null, packageName: null }
+  return { relativePath: rel.split(sep).join('/') }
 }
 
 /** Foundation placement defaults (folder `src/`, package `src`). */
@@ -110,30 +125,29 @@ export function resolvePlacement(rootDir, name, opts, kind) {
     const dir = parent.relative
     if (name) {
       const last = name.split('/').filter(Boolean).pop()
-      return {
-        relativePath: `${dir}/${name}`.replace(/\/+/g, '/'),
-        packageName: last
-      }
+      const at = insideRoot(rootDir, `${dir}/${name}`.replace(/\/+/g, '/'))
+      return at.outsideRoot ? at : { relativePath: at.relativePath, packageName: last }
     }
     const lastSegment = dir.split('/').filter(Boolean).pop() || dir
-    return {
-      relativePath: dir,
-      packageName: lastSegment
-    }
+    const at = insideRoot(rootDir, dir)
+    return at.outsideRoot ? at : { relativePath: at.relativePath, packageName: lastSegment }
   }
 
   // 2. name contains a slash → treat as a path.
   if (name && name.includes('/')) {
-    const relativePath = name.replace(/\/+$/, '')
-    const lastSegment = relativePath.split('/').filter(Boolean).pop()
+    const at = insideRoot(rootDir, name)
+    if (at.outsideRoot) return at
+    const lastSegment = at.relativePath.split('/').filter(Boolean).pop()
     return {
-      relativePath,
+      relativePath: at.relativePath,
       packageName: lastSegment
     }
   }
 
   // 3. Bare name.
   if (name) {
+    const at = insideRoot(rootDir, name)
+    if (at.outsideRoot) return at
     return {
       relativePath: name,
       packageName: name

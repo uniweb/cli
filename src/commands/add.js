@@ -401,7 +401,7 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   const placement = resolvePlacement(rootDir, name, opts, FOUNDATION_KIND)
   refuseProjectConflict(placement, 'foundation', name, opts)
   if (placement.outsideRoot) {
-    error(`--path must name a folder inside the workspace: ${placement.outsideRoot}`)
+    error(`A package's folder must be inside the workspace: ${placement.outsideRoot}`)
     log('')
     log(`The workspace root is ${colors.bright}${rootDir}${colors.reset}.`)
     log(`A package outside it cannot be a workspace member.`)
@@ -557,7 +557,7 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
   const placement = resolvePlacement(rootDir, name, opts, SITE_KIND)
   refuseProjectConflict(placement, 'site', name, opts)
   if (placement.outsideRoot) {
-    error(`--path must name a folder inside the workspace: ${placement.outsideRoot}`)
+    error(`A package's folder must be inside the workspace: ${placement.outsideRoot}`)
     log('')
     log(`The workspace root is ${colors.bright}${rootDir}${colors.reset}.`)
     log(`A package outside it cannot be a workspace member.`)
@@ -741,7 +741,7 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   const placement = resolvePlacement(rootDir, name, opts, EXTENSION_KIND)
   refuseProjectConflict(placement, 'extension', name, opts)
   if (placement.outsideRoot) {
-    error(`--path must name a folder inside the workspace: ${placement.outsideRoot}`)
+    error(`A package's folder must be inside the workspace: ${placement.outsideRoot}`)
     log('')
     log(`The workspace root is ${colors.bright}${rootDir}${colors.reset}.`)
     log(`A package outside it cannot be a workspace member.`)
