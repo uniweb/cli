@@ -12,12 +12,8 @@
  */
 
 import { existsSync } from 'node:fs'
-import { dirname, join, relative, resolve, sep, isAbsolute } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
-const within = (dir, path) => {
-  const rel = relative(resolve(dir), resolve(path))
-  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
-}
 
 /** The package `file` is in: the nearest folder above it with a package.json. */
 function packageDirOf(file) {
@@ -48,7 +44,8 @@ export async function unregisteredLocalTypes({ named, defined, foundationDir, cl
     const files = await workspaceTypeFiles(ref, foundationDir).catch(() => [])
     if (files.length !== 1) continue
     const dir = packageDirOf(files[0])
-    if (!dir || within(foundationDir, dir)) continue
+    // The foundation's own package, not one inside its folder (`library-types.js` reads them the same way).
+    if (!dir || resolve(dir) === resolve(foundationDir)) continue
     const held = await client.readDataSchema(ref).catch(() => undefined)
     if (held === null) out.push({ ref, dir })
   }

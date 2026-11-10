@@ -14,23 +14,30 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, rmSync, symlinkSync, utimesSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readdirSync, realpathSync, renameSync, writeFileSync, rmSync, symlinkSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { newerInput } from '../src/utils/foundation-freshness.js'
 
 const BUILT = Date.now() - 60_000
+const OLD = new Date(BUILT - 60_000)
 
-/** Files under `dir`, all older than the build at `BUILT`. */
+/** Files under `dir`, all older than the build at `BUILT`, and their folders too. */
 function files(dir, entries) {
   for (const [rel, body] of Object.entries(entries)) {
     mkdirSync(join(dir, rel, '..'), { recursive: true })
     writeFileSync(join(dir, rel), body)
-    const old = new Date(BUILT - 60_000)
-    utimesSync(join(dir, rel), old, old)
+    utimesSync(join(dir, rel), OLD, OLD)
   }
+  age(dir, OLD)
   return dir
+}
+
+/** Every folder under `dir`, `dir` included, dated `when`, deepest first; links not followed. */
+function age(dir, when) {
+  for (const e of readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) age(join(dir, e.name), when)
+  utimesSync(dir, when, when)
 }
 
 /** A package whose files are all older than its build. */
@@ -52,6 +59,7 @@ function workspace({ shared: sharedFiles = { 'index.js': '' }, sharedJson = {} }
   })
   mkdirSync(join(classic, 'node_modules', '@acme'), { recursive: true })
   symlinkSync(shared, join(classic, 'node_modules', '@acme', 'shared'), 'dir')
+  age(classic, OLD) // installed before the build
   return { ws, shared, classic }
 }
 
@@ -168,6 +176,7 @@ test('a library outside the workspace counts from the folder its `file:` path na
     files(copy, { 'package.json': JSON.stringify({ name: '@acme/shared' }), 'index.js': '' })
     mkdirSync(join(classic, 'node_modules', '@acme'), { recursive: true })
     symlinkSync(copy, join(classic, 'node_modules', '@acme', 'shared'), 'dir')
+    age(classic, OLD)
     assert.equal(fresh(classic), true)
     touch(join(outside, 'index.js'))
     assert.equal(newerInput(classic, BUILT)?.library, '@acme/shared')
@@ -183,6 +192,7 @@ test('CONTROL: an installed package is not a source, whatever its time', () => {
     files(kit, { 'package.json': '{}', 'src/index.js': '' })
     mkdirSync(join(dir, 'node_modules', '@uniweb'), { recursive: true })
     symlinkSync(kit, join(dir, 'node_modules', '@uniweb', 'kit'), 'dir')
+    age(dir, OLD)
     touch(join(kit, 'src', 'index.js'))
     assert.equal(fresh(dir), true)
     rmSync(join(dirname(dir), `${dir.split('/').pop()}-store`), { recursive: true, force: true })
@@ -190,3 +200,34 @@ test('CONTROL: an installed package is not a source, whatever its time', () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('⭐ a deleted or renamed file makes it stale, as its folder changes', () => {
+  const dir = pkg('./_entry.generated.js', { 'main.js': '', 'sections/Hero.jsx': '', 'sections/Banner.jsx': '' })
+  try {
+    assert.equal(fresh(dir), true)
+    rmSync(join(dir, 'sections', 'Banner.jsx'))
+    assert.equal(newerInput(dir, BUILT)?.file, join(dir, 'sections'))
+    age(dir, OLD)
+    assert.equal(fresh(dir), true)
+    // A rename keeps the file's own time.
+    renameSync(join(dir, 'sections', 'Hero.jsx'), join(dir, 'sections', 'Lead.jsx'))
+    assert.equal(newerInput(dir, BUILT)?.file, join(dir, 'sections'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("a nested package's public/ and its vite.config.* count", () => {
+  const dir = pkg('./src/_entry.generated.js', { 'src/main.js': '', 'public/logo.svg': '', 'vite.config.mjs': '' })
+  try {
+    assert.equal(fresh(dir), true)
+    touch(join(dir, 'public', 'logo.svg'))
+    assert.equal(newerInput(dir, BUILT)?.file, join(dir, 'public', 'logo.svg'))
+    utimesSync(join(dir, 'public', 'logo.svg'), OLD, OLD)
+    touch(join(dir, 'vite.config.mjs'))
+    assert.equal(newerInput(dir, BUILT)?.file, join(dir, 'vite.config.mjs'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+

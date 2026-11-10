@@ -143,6 +143,9 @@ export async function fetchOrgs({ apiBase, token, fetchImpl = globalThis.fetch }
       `Could not list your orgs: HTTP ${res.status} ${res.statusText}`
     )
   const data = await res.json().catch(() => null)
+  // ⛔ An answer that isn't the orgs read is unknown, never "a member of nothing": until 2026-11-10 a
+  // body that didn't parse read as no orgs, and a member's refusal as a non-member's.
+  if (!data || typeof data !== 'object') throw new Error('Could not list your orgs: the answer was not readable')
   return {
     account_handle: data?.account_handle ?? null,
     orgs: Array.isArray(data?.orgs) ? data.orgs : [],

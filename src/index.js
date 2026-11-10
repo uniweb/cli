@@ -74,6 +74,7 @@ import {
 import { findWorkspaceRoot } from './utils/workspace.js'
 import { exitWhenDrained } from './utils/exit.js'
 import { staleFrameworkExport, installedVersion } from './utils/stale-export.js'
+import { getVersion } from './versions.js'
 import { outliveTheReader } from './utils/closed-reader.js'
 import { isGitRepo } from './utils/git.js'
 
@@ -261,9 +262,16 @@ async function importProjectCommand(modulePath) {
     const stale = staleFrameworkExport(err)
     if (stale) {
       const have = installedVersion(stale.pkg)
+      // ⚖️ Older or newer than the one this CLI goes with: said as it is. ⛔ Until 2026-11-10 it
+      // always said "needs a newer", and a project ahead of the CLI was told its package was old.
+      const wanted = getVersion(stale.pkg)
+      const floor = /(\d+)\.(\d+)\.(\d+)/.exec(wanted || '')?.slice(1).map(Number)
+      const at = /(\d+)\.(\d+)\.(\d+)/.exec(have || '')?.slice(1).map(Number)
+      const older = floor && at ? at[0] - floor[0] || at[1] - floor[1] || at[2] - floor[2] : -1
       error(
-        `This uniweb (${getCliVersion()}) needs a newer ${stale.pkg} than the one installed${have ? ` (${have})` : ''}, ` +
-          `which has no \`${stale.name}\`.`
+        older < 0
+          ? `This uniweb (${getCliVersion()}) needs a newer ${stale.pkg} than the one installed${have ? ` (${have})` : ''}, which has no \`${stale.name}\`.`
+          : `This uniweb (${getCliVersion()}) goes with ${stale.pkg} ${wanted}, and the one installed (${have}) has no \`${stale.name}\`.`
       )
       log(`Bring the project's framework packages to the versions this CLI goes with:`)
       log(`  ${colors.cyan}npx uniweb@latest update --yes${colors.reset}`)

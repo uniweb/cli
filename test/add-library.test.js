@@ -125,7 +125,7 @@ test('what is refused, and nothing made', () => {
   assert.doesNotMatch(read('pnpm-workspace.yaml'), /lib[5-7]/)
 })
 
-test('⭐ a folder outside the workspace: made there, wired by its path, and not listed in the workspace', () => {
+test('⭐ a folder outside the workspace: made there, wired by its path, and listed in the workspace by it', () => {
   const r = cli(['add', 'library', '../acme-shared', '--foundation', 'modern'])
   assert.equal(r.code, 0, r.out)
   const lib = join(dirname(workspace), 'acme-shared')
@@ -133,9 +133,46 @@ test('⭐ a folder outside the workspace: made there, wired by its path, and not
   assert.equal(JSON.parse(readFileSync(join(lib, 'package.json'), 'utf8')).name, 'acme-shared')
   assert.equal(json('foundations/modern/package.json').dependencies['acme-shared'], 'file:../../../acme-shared')
   assert.match(read('foundations/modern/styles.css'), /^@import "acme-shared\/styles\.css";$/m)
-  assert.doesNotMatch(read('pnpm-workspace.yaml'), /acme-shared/)
-  assert.ok(!json('package.json').workspaces.some((w) => w.includes('acme-shared')))
-  assert.match(r.out, /\.\.\/acme-shared\/ is outside the workspace/)
+  // Listed, so the package manager links the folder rather than copying it.
+  assert.match(read('pnpm-workspace.yaml'), /^ {2}- ["']?\.\.\/acme-shared["']?$/m)
+  assert.ok(json('package.json').workspaces.includes('../acme-shared'))
+  assert.match(r.out, /\.\.\/acme-shared\/ is outside the workspace's folder, and listed in the workspace/)
+})
+
+test('the workspace itself, or a folder holding it, is refused, and nothing is written', () => {
+  mkdirSync(join(workspace, 'vendor/gauges'), { recursive: true })
+  writeFileSync(join(workspace, 'vendor/gauges/package.json'), JSON.stringify({ name: 'gauges' }))
+  const before = read('foundations/classic/package.json')
+  for (const [args, cwd] of [[['.'], join(workspace, 'vendor/gauges')], [['..'], workspace], [['/'], workspace]]) {
+    const r = cli(['add', 'library', ...args, '--foundation', 'classic'], cwd)
+    assert.equal(r.code, 1, `${args}: ${r.out}`)
+    assert.match(r.out, /never the workspace's own folder or one that holds it/)
+  }
+  assert.equal(read('foundations/classic/package.json'), before)
+})
+
+test('an absolute --path outside the workspace keeps the name: the library is <path>/<name>', () => {
+  const parent = join(dirname(workspace), 'shared-libs')
+  mkdirSync(parent, { recursive: true })
+  const r = cli(['add', 'library', 'gauges2', '--path', parent, '--foundation', 'classic'])
+  assert.equal(r.code, 0, r.out)
+  assert.ok(existsSync(join(parent, 'gauges2', 'package.json')), r.out)
+  assert.equal(json('foundations/classic/package.json').dependencies.gauges2, 'file:../../../shared-libs/gauges2')
+})
+
+test('a package already there whose name another package of the workspace has is refused', () => {
+  mkdirSync(join(workspace, 'vendor/dup'), { recursive: true })
+  writeFileSync(join(workspace, 'vendor/dup/package.json'), JSON.stringify({ name: 'modern' }))
+  const r = cli(['add', 'library', 'vendor/dup', '--foundation', 'classic'])
+  assert.equal(r.code, 1, r.out)
+  assert.match(r.out, /a package of that name is in this workspace already, at foundations\/modern\//)
+  assert.doesNotMatch(read('pnpm-workspace.yaml'), /vendor\/dup/)
+})
+
+test('--schemas again with no --scope takes the scope the library has', () => {
+  const r = cli(['add', 'library', 'libraries/data', '--foundation', 'modern', '--schemas'])
+  assert.equal(r.code, 0, r.out)
+  assert.deepEqual(json('libraries/data/package.json').uniweb, { scope: '@acme' })
 })
 
 test('libraryManifest: private, kit and React as peers, and the scope only when given', () => {
@@ -164,6 +201,13 @@ test("libraryLine: the library's stylesheet when a foundation can import it, els
     writeFileSync(join(lib, 'styles.css'), '@source "./";\n')
     assert.equal(libraryLine({ libraryDir: lib, libraryName: 'ui', stylesDir }), '@import "ui/styles.css";')
     writeFileSync(join(lib, 'package.json'), JSON.stringify({ name: 'ui', exports: { '.': './index.js' } }))
+    assert.equal(libraryLine({ libraryDir: lib, libraryName: 'ui', stylesDir }), '@source "../ui";')
+    // A string `exports` exports "." alone, so the stylesheet can't be imported.
+    writeFileSync(join(lib, 'package.json'), JSON.stringify({ name: 'ui', exports: './index.js' }))
+    assert.equal(libraryLine({ libraryDir: lib, libraryName: 'ui', stylesDir }), '@source "../ui";')
+    // A stylesheet that reads none of the library's files is no way to read them.
+    writeFileSync(join(lib, 'package.json'), JSON.stringify({ name: 'ui' }))
+    writeFileSync(join(lib, 'styles.css'), '.plain { color: red; }\n')
     assert.equal(libraryLine({ libraryDir: lib, libraryName: 'ui', stylesDir }), '@source "../ui";')
   } finally {
     rmSync(dir, { recursive: true, force: true })

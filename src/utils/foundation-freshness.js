@@ -4,13 +4,18 @@
  * they use it (`ensureFoundationFresh`), and `register` before it uploads it
  * (`foundationNeedsBuild`). A build reads:
  *   - the foundation's source root, the folder `package.json::main` names (`resolveFoundationSrcPath`:
- *     the package itself when flat, `src/` when nested), and the files at its root that shape the
- *     build (`package.json`, `vite.config.js`, a legacy `foundation.js` or `meta.js`);
+ *     the package itself when flat, `src/` when nested), and what at its root shapes the build
+ *     (`package.json`, a `vite.config.*`, a legacy `foundation.js` or `meta.js`, and `public/`,
+ *     which Vite copies into `dist/`);
  *   - every library it bundles: any local package it depends on (`librariesOf`, `@uniweb/build`),
  *     wherever it is linked from.
  * Dot-folders, `node_modules`, and what a foundation's build writes into one (`dist/`, the
  * generated entry) are never sources. A library that is not a foundation keeps its `dist/`, which
  * may be what the foundation imports.
+ *
+ * A folder counts as well as its files: adding, removing or renaming a file changes its folder's
+ * time and no file's, so a deleted section type or a renamed component makes the build stale too.
+ * ⛔ Until 2026-11-10 only files counted, and a build kept a section type whose file was gone.
  *
  * Ties count as fresh: a build writes its output after it reads its input, so equal times mean a
  * build in the same millisecond, and on a fresh clone, where whole trees share a time, a tie
@@ -27,17 +32,23 @@ import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { classifyPackage, librariesOf, resolveFoundationSrcPath } from '@uniweb/build'
 
-// The files at a foundation's root that shape its build, when its sources are in `src/`.
-const ROOT_FILES = ['package.json', 'vite.config.js', 'foundation.js', 'meta.js']
+// What at a foundation's root shapes its build, when its sources are in `src/`.
+const ROOT_FILES = ['package.json', 'vite.config.js', 'vite.config.mjs', 'vite.config.cjs', 'vite.config.ts', 'vite.config.mts', 'foundation.js', 'meta.js']
+const ROOT_FOLDERS = ['public']
 
 // What a foundation's build writes into the foundation.
 const BUILD_OUTPUT = new Set(['dist', '_entry.generated.js'])
 
-/** The first file under `dir` newer than `builtAt`, or null. */
+/** The first file or folder under `dir`, `dir` itself included, newer than `builtAt`, or null. */
 function newerUnder(dir, builtAt, { skipOutput }) {
   const stack = [dir]
   while (stack.length) {
     const at = stack.pop()
+    try {
+      if (statSync(at).mtimeMs > builtAt) return at
+    } catch {
+      continue
+    }
     let entries
     try {
       entries = readdirSync(at, { withFileTypes: true })
@@ -79,8 +90,16 @@ export function newerInput(foundationDir, builtAt) {
       // unreadable: not newer
     }
   }
-  const own = newerUnder(resolveFoundationSrcPath(foundationDir), builtAt, { skipOutput: true })
+  const srcDir = resolveFoundationSrcPath(foundationDir)
+  const own = newerUnder(srcDir, builtAt, { skipOutput: true })
   if (own) return { file: own, library: null }
+  if (srcDir !== foundationDir) {
+    for (const f of ROOT_FOLDERS) {
+      const p = join(foundationDir, f)
+      const file = existsSync(p) ? newerUnder(p, builtAt, { skipOutput: false }) : null
+      if (file) return { file, library: null }
+    }
+  }
   for (const { name, dir } of librariesOf(foundationDir)) {
     const file = newerUnder(dir, builtAt, { skipOutput: classifyPackage(dir) === 'foundation' })
     if (file) return { file, library: name }

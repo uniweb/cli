@@ -167,7 +167,10 @@ function readPkgScope(foundationDir) {
     const pkg = JSON.parse(
       readFileSync(join(foundationDir, 'package.json'), 'utf8')
     )
-    return pkg?.uniweb?.scope || null
+    // ⭐ Else the `@org` of a package named `@org/schemas`, as `packageTypeScope` and the build read
+    // it. ⛔ Until 2026-11-10 such a package with no `uniweb.scope` registered under the login's.
+    const named = /^@([^/]+)\/schemas$/.exec(typeof pkg?.name === 'string' ? pkg.name : '')
+    return pkg?.uniweb?.scope || (named ? `@${named[1]}` : null)
   } catch {
     return null
   }
@@ -281,8 +284,12 @@ function sayRefused({ res, parsedBody, rawBody, scope, member, what }) {
 async function registerLibraryTypes(lib, { client, exporter, at }) {
   let doc
   try {
+    // The types the foundation names from it, and no other of its files: those may be another
+    // package's to register, or a copy of one the foundation defines (`library-types.js`).
+    const wanted = new Set(lib.refs.map((ref) => `@/${ref.slice(lib.scope.length + 1)}`))
+    const all = await collectStandaloneSchemas(lib.dir)
     doc = buildSchemaOnlyPackage({
-      schemas: await collectStandaloneSchemas(lib.dir),
+      schemas: Object.fromEntries(Object.entries(all).filter(([key]) => wanted.has(key))),
       scope: lib.scope,
       exporter
     })
@@ -316,7 +323,10 @@ async function registerLibraryTypes(lib, { client, exporter, at }) {
     return { names, body }
   }
   const member = await memberOfScope(res, lib.scope, client)
-  if (member === false) {
+  // ⚖️ Released against what the registry holds only when the refusal is the scope's alone: no
+  // typed reason, which a change records can't take carries (`destructive_republish`), and an orgs
+  // read that says so. ⛔ Until 2026-11-10 any refusal to a non-member went on this way.
+  if (member === false && !(body?.code || body?.reason)) {
     const held = await Promise.all(
       lib.refs.map((ref) => client.readDataSchema(ref).catch(() => undefined))
     )
@@ -340,6 +350,29 @@ async function registerLibraryTypes(lib, { client, exporter, at }) {
     `  ${colors.dim}The foundation was not submitted: the registry takes a foundation only once the types it names are registered.${colors.reset}`
   )
   return null
+}
+
+/**
+ * After a refusal, each type the foundation names that another local package defines and the
+ * registry doesn't hold, with the command that registers it there (`unregistered-types.js`).
+ */
+async function sayWhatToRegisterFirst({ schema, defined, targetDir, client }) {
+  const missing = await unregisteredLocalTypes({
+    named: Object.keys(schema?.dataSchemas || {}),
+    defined,
+    foundationDir: targetDir,
+    client
+  }).catch(() => [])
+  if (!missing.length) return
+  // ⚖️ From the workspace root: `push` and `publish` run this in the foundation's folder, which is
+  // not where their person is.
+  const root = findWorkspaceRoot(targetDir) || targetDir
+  log('')
+  for (const { ref, dir } of missing) {
+    const at = relative(root, dir) || '.'
+    log(`  ${ref} is defined in ${at}/, which has not registered it. Register it there first, from the workspace root:`)
+    log(`    ${colors.blue}cd ${at} && npx uniweb register${colors.reset}`)
+  }
 }
 
 /**
@@ -714,8 +747,8 @@ export function foundationNeedsBuild(targetDir) {
       return {
         needs: true,
         reason: newer.library
-          ? `a file of ${newer.library}, a library it bundles, is newer than dist/entry.js`
-          : 'a source file is newer than dist/entry.js'
+          ? `${newer.library}, a library it bundles, changed since dist/entry.js was built`
+          : 'a source changed since dist/entry.js was built'
       }
   } catch {
     // Can't compare — leave the other signals to decide rather than forcing a
@@ -887,12 +920,20 @@ async function runRegister(args = []) {
 
   // ⭐ The types it names that a library defines: registered from the library before the
   // foundation, which the registry refuses while a type it names is missing (`library-types.js`).
-  const fromLibraries = standalone
-    ? []
-    : await typesFromLibraries({
-        named: Object.keys(schema?.dataSchemas || {}),
-        foundationDir: targetDir
-      }).catch(() => [])
+  let fromLibraries = []
+  if (!standalone) {
+    try {
+      fromLibraries = await typesFromLibraries({ schemas: schema?.dataSchemas || {}, foundationDir: targetDir })
+    } catch (err) {
+      // ⛔ Said, never silent: a build too old to tell which library defines a type registers none,
+      // and the registry then refuses the foundation for it.
+      if (err?.code === 'BUILD_TOO_OLD') {
+        log(
+          `  ${colors.yellow}⚠${colors.reset} This uniweb registers the types a library defines before the foundation, and the installed @uniweb/build is too old to tell which: ${colors.blue}npx uniweb@latest update --yes${colors.reset}`
+        )
+      }
+    }
+  }
   // Where each is, said from the workspace root, which is where its person is.
   const workspaceRoot = standalone ? null : findWorkspaceRoot(targetDir) || targetDir
   const shownAt = (dir) => `${relative(workspaceRoot, dir) || '.'}/`
@@ -1023,7 +1064,10 @@ async function runRegister(args = []) {
   const fromLibrariesSent = []
   for (const lib of fromLibraries) {
     const sent = await registerLibraryTypes(lib, { client, exporter, at: shownAt(lib.dir) })
-    if (!sent) return { exitCode: 1 }
+    if (!sent) {
+      await sayWhatToRegisterFirst({ schema, defined, targetDir, client })
+      return { exitCode: 1 }
+    }
     fromLibrariesSent.push(sent)
   }
 
@@ -1084,25 +1128,7 @@ async function runRegister(args = []) {
       })
       // ⭐ A type it names that another foundation here defines, and the registry doesn't hold:
       // that foundation registers it first (`unregistered-types.js`). A library's were sent above.
-      if (!standalone && member !== false) {
-        const missing = await unregisteredLocalTypes({
-          named: Object.keys(schema?.dataSchemas || {}),
-          defined,
-          foundationDir: targetDir,
-          client
-        }).catch(() => [])
-        if (missing.length) {
-          // ⚖️ From the workspace root: `push` and `publish` run this in the foundation's folder,
-          // which is not where their person is.
-          const root = findWorkspaceRoot(targetDir) || targetDir
-          log('')
-          for (const { ref, dir } of missing) {
-            const at = relative(root, dir) || '.'
-            log(`  ${ref} is defined in ${at}/, which has not registered it. Register it there first, from the workspace root:`)
-            log(`    ${colors.blue}cd ${at} && npx uniweb register${colors.reset}`)
-          }
-        }
-      }
+      if (!standalone && member !== false) await sayWhatToRegisterFirst({ schema, defined, targetDir, client })
       return { exitCode: 1 }
     }
   }

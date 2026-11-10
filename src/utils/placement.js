@@ -42,7 +42,8 @@ function normalizeParent(given, rootDir) {
  */
 function insideRoot(rootDir, path) {
   if (!rootDir) return { relativePath: path }
-  const trimmed = String(path).replace(/\/+$/, '')
+  // Trailing slashes off, but never the whole of `/`, which would be read as no path at all.
+  const trimmed = String(path).replace(/(.)\/+$/, '$1')
   const rel = relative(rootDir, resolve(rootDir, trimmed))
   if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return { outsideRoot: trimmed, relativePath: null, packageName: null }
   return { relativePath: rel.split(sep).join('/') }
@@ -131,7 +132,9 @@ export function resolvePlacement(rootDir, name, opts, kind) {
   //    is then taken as the package name).
   if (opts.path) {
     const parent = normalizeParent(opts.path, rootDir)
-    if (parent.outsideRoot) return { outsideRoot: parent.given, relativePath: null, packageName: null }
+    // ⛔ With the name: `--path /abs/libs ui` is `/abs/libs/ui`, as it is inside the root. Until
+    // 2026-11-10 the name was dropped here, and `add library` wired `/abs/libs` itself.
+    if (parent.outsideRoot) return { outsideRoot: name ? `${parent.given}/${name}`.replace(/\/+/g, '/') : parent.given, relativePath: null, packageName: null }
     const dir = parent.relative
     if (name) {
       const last = name.split('/').filter(Boolean).pop()

@@ -14,7 +14,7 @@
 import { runVerb, tmp } from './helpers/run-verb.js' // before the verb — see the helper
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync, utimesSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, utimesSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 const ORIGIN = 'http://registry.test'
@@ -80,7 +80,7 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), { status
  * Run `register --schema-only` in the foundation. `library(names)` answers the library's submit;
  * `held` is what the registry holds when asked; `orgs` is the account's orgs read.
  */
-async function register({ library, held = [], orgs = { account_handle: 'jane', orgs: [{ handle: 'acme' }] }, args = ['--schema-only'] } = {}) {
+async function register({ library, held = [], orgs = { account_handle: 'jane', orgs: [{ handle: 'acme' }] }, args = ['--schema-only'], setup } = {}) {
   const sent = []
   const respond = async (url, init) => {
     if (url === `${ORIGIN}/dev/registry/register`) {
@@ -99,8 +99,26 @@ async function register({ library, held = [], orgs = { account_handle: 'jane', o
     }
   }
   const { register } = await import('../src/commands/register.js')
-  const run = await runVerb(workspace(), register, args, { env: ENV, respond })
+  const shop = workspace()
+  if (setup) setup(shop, dirname(dirname(shop)))
+  const run = await runVerb(shop, register, args, { env: ENV, respond })
   return { ...run, sent }
+}
+
+/** Write files under `root`. */
+function put(root, files) {
+  for (const [rel, body] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, rel)), { recursive: true })
+    writeFileSync(join(root, rel), body)
+  }
+}
+
+/** Rewrite the built foundation's `dataSchemas`, as a build naming those types would have. */
+function named(shop, dataSchemas) {
+  const path = join(shop, 'dist/meta/schema.json')
+  writeFileSync(path, JSON.stringify({ _self: { name: '@acme/shop', version: '0.1.0' }, dataSchemas }))
+  const future = Date.now() / 1000 + 3600
+  utimesSync(path, future, future)
 }
 
 const registered = (names, unchanged = false) =>
@@ -197,6 +215,108 @@ test('--dry-run says what would be registered first, and asks nothing', async ()
 test('CONTROL: a type the foundation defines, or another foundation does, is not a library\'s', async () => {
   const { typesFromLibraries } = await import('../src/backend/library-types.js')
   const shop = workspace()
-  const found = await typesFromLibraries({ named: ['@/order', '@acme/member', '@acme/plan', '@std/person', '@acme/gone'], foundationDir: shop })
+  const schemas = Object.fromEntries(['@/order', '@acme/member', '@acme/plan', '@std/person', '@acme/gone'].map((ref) => [ref, { fields: {} }]))
+  const found = await typesFromLibraries({ schemas, foundationDir: shop })
   assert.deepEqual(found, [{ dir: join(dirname(dirname(shop)), 'libraries/data'), scope: '@acme', refs: ['@acme/plan'] }])
 })
+
+test('⭐ libraries go in the order their types reference each other: a referenced one first', async () => {
+  const run = await register({
+    library: (names) => registered(names),
+    setup: (shop, root) => {
+      put(root, {
+        'libraries/people/package.json': JSON.stringify({ name: 'people', uniweb: { scope: '@acme' } }),
+        'libraries/people/schemas/person.yml': 'name: person\nfields:\n  name: { type: string }\n'
+      })
+      // The build lists a type before the types it references.
+      named(shop, {
+        '@acme/plan': { name: 'plan', fields: { owner: { type: 'ref', ref: '@acme/person' } } },
+        '@acme/person': { name: 'person', fields: { name: { type: 'string' } } }
+      })
+    }
+  })
+  assert.equal(run.exitCode, 0, run.output)
+  assert.deepEqual(run.sent.map((s) => s.names), [['@acme/person'], ['@acme/plan'], ['@acme/shop']])
+})
+
+test("a library sends the types the foundation names from it, not the rest of its files", async () => {
+  const run = await register({
+    library: (names) => registered(names),
+    setup: (shop, root) => put(root, { 'libraries/data/schemas/order.yml': 'name: order\nfields:\n  amount: { type: number }\n' })
+  })
+  assert.equal(run.exitCode, 0, run.output)
+  assert.deepEqual(run.sent[0], { foundation: false, names: ['@acme/plan'] })
+})
+
+test("a refusal with a reason stops the release, whoever the account is, even with the type held", async () => {
+  const run = await register({
+    library: () => json({ detail: 'data-schema `@acme/plan` cannot be republished: records of it lack `price`.', reason: 'destructive_republish' }, 409),
+    held: ['@acme/plan'],
+    orgs: { account_handle: 'jane', orgs: [] }
+  })
+  assert.equal(run.exitCode, 1, run.output)
+  assert.deepEqual(run.sent.map((s) => s.foundation), [false])
+  assert.match(run.output, /cannot be republished/)
+})
+
+test('CONTROL: an orgs answer that does not parse is unknown, and the refusal stops the release', async () => {
+  const sent = []
+  const respond = async (url, init) => {
+    if (url === `${ORIGIN}/dev/registry/register`) {
+      const doc = JSON.parse(init.body)
+      sent.push(doc.entities.some((e) => e.model === '@uniweb/foundation-schema'))
+      return json({ detail: 'not allowed' }, 400)
+    }
+    if (url === `${ORIGIN}/dev/orgs`) return new Response('<html>a proxy page</html>', { status: 200 })
+    if (/data-schemas/.test(url)) return json({ name: '@acme/plan' })
+  }
+  const { register: run } = await import('../src/commands/register.js')
+  const result = await runVerb(workspace(), run, ['--schema-only'], { env: ENV, respond })
+  assert.equal(result.exitCode, 1, result.output)
+  assert.deepEqual(sent, [false])
+})
+
+test("a type schemas.config.js routes is read from the route, so no library registers it", async () => {
+  const run = await register({
+    library: () => assert.fail('a routed type was sent from the library'),
+    setup: (shop) => put(shop, {
+      'schemas.config.js': "export default { '@acme/plan': './overrides/plan.yml' }\n",
+      'overrides/plan.yml': 'name: plan\nfields:\n  title: { type: string }\n  price: { type: string }\n'
+    })
+  })
+  assert.equal(run.exitCode, 0, run.output)
+  assert.deepEqual(run.sent.map((s) => s.foundation), [true])
+})
+
+test("a library inside the foundation's own folder is a library too", async () => {
+  const run = await register({
+    library: (names) => registered(names),
+    setup: (shop) => {
+      put(shop, {
+        'types/package.json': JSON.stringify({ name: 'types', uniweb: { scope: '@acme' } }),
+        'types/schemas/kind.yml': 'name: kind\nfields:\n  label: { type: string }\n'
+      })
+      const pkg = JSON.parse(readFileSync(join(shop, 'package.json'), 'utf8'))
+      writeFileSync(join(shop, 'package.json'), JSON.stringify({ ...pkg, dependencies: { ...pkg.dependencies, types: 'file:./types' } }))
+      const past = Date.now() / 1000 - 3600
+      utimesSync(join(shop, 'package.json'), past, past)
+      named(shop, { '@acme/kind': { name: 'kind', fields: { label: { type: 'string' } } } })
+    }
+  })
+  assert.equal(run.exitCode, 0, run.output)
+  assert.deepEqual(run.sent[0], { foundation: false, names: ['@acme/kind'] })
+})
+
+test('register in an @org/schemas package with no uniweb.scope names its types under @org', async () => {
+  const dir = tmp('uw-orgschemas-')
+  put(dir, {
+    'package.json': JSON.stringify({ name: '@acme/schemas', type: 'module' }),
+    'schemas/plan.yml': 'name: plan\nfields:\n  title: { type: string }\n'
+  })
+  const { register: run } = await import('../src/commands/register.js')
+  const result = await runVerb(dir, run, ['--dry-run'], { env: ENV })
+  assert.equal(result.exitCode, 0, result.output)
+  assert.match(result.output, /"name": "@acme\/plan"/)
+  assert.match(result.output, /scope: @acme \(package\.json uniweb\.scope\)/)
+})
+

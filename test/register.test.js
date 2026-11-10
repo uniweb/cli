@@ -90,6 +90,10 @@ function makeWithSource() {
   const pkg = join(dir, 'package.json')
   setMtime(pkg, BASE)
   setMtime(srcFile, BASE)
+  // Its folders too: a folder's time is a source's, since adding, removing or renaming a file in it
+  // changes that and no file's.
+  setMtime(join(dir, 'src', 'sections'), BASE)
+  setMtime(join(dir, 'src'), BASE)
   return { dir, srcFile, pkg, entry: join(dir, 'dist', 'entry.js') }
 }
 
@@ -100,7 +104,7 @@ test('a source file NEWER than dist/entry.js → needs build', () => {
     setMtime(srcFile, BASE + 10) // edited after the build
     const r = foundationNeedsBuild(dir)
     assert.equal(r.needs, true)
-    assert.match(r.reason, /source file is newer/)
+    assert.match(r.reason, /a source changed since dist\/entry\.js was built/)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -310,13 +314,13 @@ test("a file of a library it bundles, newer than dist/entry.js → needs build, 
     const libFile = join(lib, 'index.js')
     writeFileSync(libFile, 'export const x = 1\n')
     writeFileSync(pkg, JSON.stringify({ name: 'src', version: '2.3.1', dependencies: { '@acme/shared': `file:${lib}` } }))
-    for (const f of [pkg, srcFile, libFile, join(lib, 'package.json')]) setMtime(f, BASE)
+    for (const f of [pkg, srcFile, libFile, join(lib, 'package.json'), lib]) setMtime(f, BASE)
     setMtime(entry, BASE + 5)
     assert.deepEqual(foundationNeedsBuild(dir), { needs: false }) // CONTROL: nothing edited since
     setMtime(libFile, BASE + 10)
     assert.deepEqual(foundationNeedsBuild(dir), {
       needs: true,
-      reason: 'a file of @acme/shared, a library it bundles, is newer than dist/entry.js'
+      reason: '@acme/shared, a library it bundles, changed since dist/entry.js was built'
     })
   } finally {
     rmSync(dir, { recursive: true, force: true })

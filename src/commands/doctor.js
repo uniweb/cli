@@ -963,8 +963,28 @@ export async function checkUnreadFolders({ foundationName, srcDir, issues }) {
  * Loaded here for the same reason.
  */
 export async function checkUnreadLibraries({ foundationName, srcDir, foundationDir, issues }) {
-  const { unreadLibraries } = await import('@uniweb/build')
-  const unread = unreadLibraries?.(join(srcDir, 'styles.css'), foundationDir) || []
+  const { unreadLibraries, copiedLibraries, copiedLibrariesWarning } = await import('@uniweb/build')
+  // ⛔ A check that throws stops nothing: until 2026-11-10 an unreadable folder in a library ended
+  // doctor here, every later check skipped.
+  let unread = []
+  try {
+    unread = unreadLibraries?.(join(srcDir, 'styles.css'), foundationDir) || []
+  } catch {
+    unread = []
+  }
+  // A library the package manager installed as a copy, which a change to its folder doesn't reach.
+  let copied = []
+  try {
+    copied = copiedLibraries?.(foundationDir) || []
+  } catch {
+    copied = []
+  }
+  if (copied.length) {
+    const id = 'copied-library'
+    const named = copied.map(({ name }) => name).join(', ')
+    issues.push({ id, type: 'warn', foundation: foundationName, message: `${foundationName} bundles ${named}, installed as a copy` })
+    warn(`[${id}] ${copiedLibrariesWarning(copied, findWorkspaceRoot(foundationDir) || undefined).replace(/^\[uniweb\] /, '')}`)
+  }
   if (unread.length === 0) return
   const id = 'unread-library'
   const named = unread.map(({ name }) => name).join(', ')

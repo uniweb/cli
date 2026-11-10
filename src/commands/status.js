@@ -1876,7 +1876,14 @@ export async function status(args = []) {
     // files, and the way to one site's checks.
     if (found.several?.length) return workspaceOverview(found.root, { json })
     if (json) console.log(JSON.stringify({ schema: STATUS_SCHEMA, scope: null, error: 'no-site' }))
-    else console.error(`${c.red}✗${c.reset} No Uniweb site here. Run status from a site, or a project with one site.`)
+    else if (!findWorkspaceRoot(process.cwd()) && existsSync(join(process.cwd(), 'package.json'))) {
+      // A package in no workspace's folder: a library beside the workspace, say, whose workspace
+      // can't be found from here, since it is listed there and points nowhere back.
+      console.error(`${c.red}✗${c.reset} No Uniweb site here, and no workspace above this folder.`)
+      console.error(
+        `  For a library beside a workspace, run status in that workspace: a site's status names the libraries its foundation bundles.`
+      )
+    } else console.error(`${c.red}✗${c.reset} No Uniweb site here. Run status from a site, or a project with one site.`)
     return { exitCode: 2 }
   }
   const siteDir = found.siteDir

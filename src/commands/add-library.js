@@ -14,22 +14,24 @@
  * package already, made by hand, cloned or kept as a git submodule, this wires it without making
  * anything.
  *
- * ⭐ A library may be outside the workspace: a folder beside it, another repository say. Foundations
- * depend on it by path, and the build reads it from that folder whatever copy the package manager
- * installs (`@uniweb/build`'s `foundation/library-imports.js`). It is no package of the workspace,
- * so it is not listed in it. ⛔ Until 2026-11-10 an outside folder was refused, since the build
- * could not resolve what such a library imports.
+ * ⭐ A library may be outside the workspace's folder: a folder beside it, another repository say.
+ * It is listed in the workspace by its path all the same (`../acme-shared`), so the package manager
+ * links it rather than copying it, pnpm installs its dependencies in its folder, and `uniweb update`
+ * moves its ranges with the rest; the build resolves what it imports as its foundations do
+ * (`@uniweb/build`'s `foundation/library-imports.js`). ⛔ Until 2026-11-10 an outside folder was
+ * refused, and for a few hours that day it was wired unlisted, which pnpm installs as a copy that a
+ * change to the folder doesn't reach. Never the workspace's own folder, or one that holds it.
  *
  * `--schemas` gives it a `schemas/` folder, whose files are data types its foundations name in full
  * (`@acme/plan`), under the scope in its `package.json` (`uniweb.scope`): `--scope`, or the one the
  * foundations it is wired into share.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { basename, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import prompts from 'prompts'
-import { checkRegistrationScope, classifyPackage, readFoundationName, resolveFoundationSrcPath, splitFoundationName } from '@uniweb/build'
+import { checkRegistrationScope, classifyPackage, libraryLine as buildLibraryLine, readFoundationName, resolveFoundationSrcPath, splitFoundationName } from '@uniweb/build'
 import { resolvePlacement, LIBRARY_KIND } from '../utils/placement.js'
 import { registerWorkspacePackage } from '../utils/config.js'
 import { discoverFoundations } from '../utils/discover.js'
@@ -87,6 +89,19 @@ export function libraryManifest({ name, projectName, scope = null, versions = ge
   }
 }
 
+/** `path` with links followed, as far as it exists: a folder still to be made keeps its own name. */
+function realOrNearest(path) {
+  const rest = []
+  for (let at = path; ; at = dirname(at)) {
+    try {
+      return join(realpathSync(at), ...rest.reverse())
+    } catch {
+      if (dirname(at) === at) return path
+      rest.push(basename(at))
+    }
+  }
+}
+
 // The two example lines are aligned on the longer, which the library's name decides.
 const INDEX = (name) => {
   const here = `export { default as PlanCard } from './components/PlanCard.jsx'`
@@ -127,18 +142,10 @@ const USES_TAILWIND = /@import\s+["']tailwindcss/
  * @returns {string}
  */
 export function libraryLine({ libraryDir, libraryName, stylesDir }) {
-  let pkg = null
-  try {
-    pkg = JSON.parse(readFileSync(join(libraryDir, 'package.json'), 'utf8'))
-  } catch {
-    // no manifest to refuse the import
-  }
-  const exp = pkg?.exports
-  // ⛔ An `exports` map without the stylesheet refuses the import, in Tailwind and in Node alike.
-  const importable = !exp || typeof exp !== 'object' || Object.keys(exp).some((k) => k === './styles.css' || k === './*')
-  if (existsSync(join(libraryDir, 'styles.css')) && importable) return `@import "${libraryName}/styles.css";`
-  const rel = posix(relative(stylesDir, libraryDir))
-  return `@source "${rel.startsWith('.') ? rel : `./${rel}`}";`
+  // ⭐ The build's one rule, which its stylesheet check names too: the library's stylesheet when it
+  // reads the library's files and the library exports it, else a `@source`. ⛔ Until 2026-11-10 this
+  // kept its own, which imported a stylesheet that read nothing and a string `exports` refused.
+  return buildLibraryLine({ name: libraryName, dir: libraryDir }, stylesDir)
 }
 
 /**
@@ -300,24 +307,49 @@ export async function addLibrary(rootDir, projectName, opts, pm = 'pnpm') {
   }
 
   const placement = resolvePlacement(rootDir, name, opts, LIBRARY_KIND)
-  // Outside the workspace: made or wired there, and said by its path from the workspace's root.
+  // Outside the workspace's folder: made or wired there, and said by its path from the root.
   const outside = !!placement.outsideRoot
-  const libraryDir = outside ? resolve(rootDir, placement.outsideRoot) : join(rootDir, placement.relativePath)
+  // Its real path, so the `file:` path written from each foundation's real folder is the short one
+  // (on macOS `/tmp` and `/var` are links into `/private`).
+  const libraryDir = realOrNearest(outside ? resolve(rootDir, placement.outsideRoot) : join(rootDir, placement.relativePath))
   const relativePath = outside ? relative(rootDir, libraryDir).split(sep).join('/') : placement.relativePath
+  // ⛔ The workspace itself, or a folder holding it, is no library of it: `add library .` from a
+  // package's folder named the root, which then read as a library of everything.
+  const fromLibrary = relative(libraryDir, rootDir)
+  if (fromLibrary === '' || (!fromLibrary.startsWith('..') && !isAbsolute(fromLibrary))) {
+    fail(
+      `A library's folder is a package of the workspace, never the workspace's own folder or one that holds it: ${relativePath || '.'}/`,
+      `Name the library's folder, from the workspace's root:`,
+      `  ${prefix} add library libraries/<name>`
+    )
+  }
 
   let libraryName = outside ? basename(libraryDir) : placement.packageName
   let created = false
   let scope = null
+  let ownScope = null
   if (existsSync(libraryDir)) {
     const kind = classifyPackage(libraryDir)
     if (kind) fail(`${relativePath}/ is a ${kind}, not a library.`)
     if (!existsSync(join(libraryDir, 'package.json'))) {
       fail(`${relativePath}/ exists and holds no package.json, so it is no package to wire.`, `Pick another folder, or give it a package.json.`)
     }
+    let manifest
     try {
-      libraryName = JSON.parse(readFileSync(join(libraryDir, 'package.json'), 'utf8')).name || libraryName
+      manifest = JSON.parse(readFileSync(join(libraryDir, 'package.json'), 'utf8'))
     } catch {
       fail(`${relativePath}/package.json does not parse.`)
+    }
+    libraryName = manifest.name || libraryName
+    ownScope = manifest.uniweb?.scope || null
+    // A package already there keeps its name, which another package of the workspace may have:
+    // listed, the workspace would hold two packages of one name, which npm refuses.
+    const taken = workspacePackageNames(rootDir).get(libraryName)
+    if (taken && resolve(rootDir, taken) !== libraryDir) {
+      fail(
+        `${relativePath}/ holds the package ${colors.bright}${libraryName}${colors.reset}, and a package of that name is in this workspace already, at ${taken}/.`,
+        `A foundation imports a library by its name: rename one of them in its package.json, then run this again.`
+      )
     }
   } else {
     const valid = validatePackageName(libraryName)
@@ -335,7 +367,8 @@ export async function addLibrary(rootDir, projectName, opts, pm = 'pnpm') {
   const { wire, note } = await foundationsToWire(rootDir, opts.foundation, relativePath)
 
   if (opts.schemas || opts.scope) {
-    scope = opts.scope ? `@${String(opts.scope).trim().replace(/^@/, '').replace(/\/.*$/, '')}` : await sharedScope(rootDir, wire)
+    // The scope given, else the one the library has already, else the one its foundations share.
+    scope = opts.scope ? `@${String(opts.scope).trim().replace(/^@/, '').replace(/\/.*$/, '')}` : ownScope || (await sharedScope(rootDir, wire))
     if (!scope || scope === '@') {
       fail(
         `A library's data types are named in full, under its scope (${colors.bright}@acme/plan${colors.reset}), and none is known yet.`,
@@ -368,9 +401,9 @@ export async function addLibrary(rootDir, projectName, opts, pm = 'pnpm') {
     await writeFile(join(libraryDir, 'schemas', 'README.md'), SCHEMAS_README(scope))
   }
 
-  // Listed by its path, unless a pattern the workspace lists covers it already; one outside the
-  // workspace is no package of it.
-  if (!outside) await registerWorkspacePackage(rootDir, relativePath)
+  // Listed by its path, unless a pattern the workspace lists covers it already: one outside the
+  // workspace's folder too, so the package manager links it.
+  await registerWorkspacePackage(rootDir, relativePath)
 
   const wired = []
   const already = []
@@ -398,8 +431,8 @@ export async function addLibrary(rootDir, projectName, opts, pm = 'pnpm') {
   }
   if (outside) {
     log(
-      `  ${colors.dim}${relativePath}/ is outside the workspace: each foundation depends on it by its path, and builds read it from there.` +
-        ` \`${prefix} update\` aligns the workspace's packages, not this one's ranges.${colors.reset}`
+      `  ${colors.dim}${relativePath}/ is outside the workspace's folder, and listed in the workspace by that path, so the package manager links it;` +
+        ` builds resolve what it imports as its foundations do.${colors.reset}`
     )
   }
   log('')
