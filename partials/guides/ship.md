@@ -120,6 +120,7 @@ When `status` names a newer release, take it: update, restart any running dev se
 | `fetcher.baseUrl / headers / envelope / supports / request.*` | a transport under `fetcher.transports` |
 | top-level `search:`, `submit:`, `assistant:`, `tracking:`, `api:`; `services.api`; `$devApi` | `services.<name>`; `services.backend`; `$devBackend` |
 | `published: false` on a record | `draft: true` |
+| a record directory with no data schema; `records/<query>.schema.js` | the foundation's `schemas/<name>.yml` — every record needs one |
 | `slug:` key in a record file; a file holding a list | the file name is the record's name; one record per file |
 | `[dir]` / `[path]` as parametric directory names; a directory inside `[...path]/` | `[slug]`, `[uuid]`, `[<field>]`, `[...path]` |
 | `fonts.mono` | `fonts.code` |

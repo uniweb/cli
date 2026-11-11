@@ -71,7 +71,6 @@ import { updateBackendMap, carryServed, SYNC_STORE_FILE } from '@uniweb/build/uw
 import { BackendClient, BackendUnreachableError } from '../backend/client.js'
 import { resolveSiteDir } from './deploy.js'
 import { refuseIfContentDoesNotConform } from '../utils/conformance.js'
-import { reportSchemalessQueries } from '../utils/schemaless-report.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import {
   syncedElsewhere,
@@ -668,8 +667,6 @@ export async function push(args = [], deps = {}) {
   if (refuseUnsendableRecords(pkg.refusals, { error, note })) return { exitCode: 1 }
   if (refuseChangedHeld(pkg, { error, note })) return { exitCode: 1 }
   noteHeldLeftOut(pkg, { note })
-  // Warn level, not dim: this is the author choosing entities vs static files.
-  reportSchemalessQueries(pkg.schemaless, { warn, dim: note })
 
   const totalEntities =
     (siteContent?.entityCount || 0) + (records?.entityCount || 0)

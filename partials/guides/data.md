@@ -23,6 +23,8 @@ site/
 | `records/std/person/…` | `@std/person` — the shared standard set |
 | `records/acme/project/…` | `@acme/project` — an org's |
 
+**Every record needs its data schema.** `@/article` is the foundation's `schemas/article.yml` (the format: https://uniweb.io/docs/development/data-schemas.md); a directory whose schema nothing defines stops the build and the push, naming the file to write. Keep records of a type registered under another scope in `records/<scope>/<name>/`.
+
 Keep directories flat — `records/article/2025/x.md` reads as the `2025` schema of an `article` org. A `_`-prefixed file is not a record.
 
 **Formats:** `.md` (frontmatter fields, body prose; auto-excerpt and first-image extraction), `.yml`/`.yaml` and `.json` (structured, no body), `.bib` (each `@entry{key, …}` is a record named by its cite key, normalized to CSL-JSON, LaTeX accents → Unicode). Mix freely in one directory. **One record per file**; the file name is `$name`, the one name it carries on every site (no `slug` field). Conventional fields: `title`, `date`, `tags`, `image`, `description`, `author`, plus whatever the content needs. Images sit beside the file (`./`). `draft: true` keeps a record off the live site: still a record, previewed by `pnpm dev`, excluded from a production build, kept undelivered on a backend.
@@ -53,7 +55,7 @@ The body — `body.content`.
 
 Paths are relative to `records/`, one file or a glob. An entry can be `{ path, tags, label }` — delivered beside the record as `$tags` (in order) and `$label` (one text or `{ en, fr }`, resolved to the page's language); a query reads them like any key (`where: { $tags: featured }`). `scope: archive` reads the folder and everything inside. A record sits in one folder; a computed subset is a query. The build refuses a top-level bare path (every file is a record already).
 
-**With a backend, `records/` is what `uniweb push` sends.** No `records/` leaves the backend alone; an *empty* `records/` takes them out of the site's folder (the CLI asks). Records with a data schema reach published pages only when `services.records: true`; once the site has been published, a push changes its records on the live site with no republish (pages wait for `uniweb publish`). To move records to another schema, move their files into its directory, renamed or not, and keep each file's `$uuid` line: the push sends each as a new record in the place the old one had. A record taken out of the folder stays on the backend, and the push that took it out offers to delete it (`--yes` deletes without asking).
+**With a backend, `records/` is what `uniweb push` sends.** No `records/` leaves the backend alone; an *empty* `records/` takes them out of the site's folder (the CLI asks). Records reach published pages only when `services.records: true`; once the site has been published, a push changes its records on the live site with no republish (pages wait for `uniweb publish`). To move records to another schema, move their files into its directory, renamed or not, and keep each file's `$uuid` line: the push sends each as a new record in the place the old one had. A record taken out of the folder stays on the backend, and the push that took it out offers to delete it (`--yes` deletes without asking).
 
 ## Queries
 

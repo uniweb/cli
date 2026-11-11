@@ -378,18 +378,20 @@ async function loadI18nConfig(projectDir, siteConfig = null) {
 
 /**
  * Build every configured language but the default: its records, its content, and — on the bundle
- * lane — its search index, llms.txt and page markdown, in that order (`buildLocalizedSite`).
+ * lane — its search index, llms.txt and page markdown, in that order (`buildLocalizedSite`). The link
+ * lane builds its content alone (`records: false`).
  *
  * ⛔ Until 2026-10-25 each lane ran content, then records, here in two copies, and a language's
  * search index was written in the content step, before its records were translated.
  */
-async function buildLocalizedSite(projectDir, i18nConfig, { projections = false } = {}) {
+async function buildLocalizedSite(projectDir, i18nConfig, { projections = false, records = true } = {}) {
   const { buildLocalizedSite } = await import('@uniweb/build/i18n')
   return buildLocalizedSite(projectDir, {
     locales: i18nConfig.locales,
     localesDir: i18nConfig.localesDir,
     outputDir: join(projectDir, 'dist'),
-    projections
+    projections,
+    records
   })
 }
 
@@ -537,9 +539,10 @@ function resolveFoundationDir(projectDir, siteConfig) {
  * search index.*
  *
  * The `buildLocalizedSite` step is the call bundle mode makes post-vite,
- * without the projections, so multi-locale sites get identical per-locale
- * outputs in either mode: each language's query files (dist/<lang>/data/),
- * then its content (dist/<lang>/site-content.json).
+ * without the projections and the records, so multi-locale sites get identical
+ * per-locale content in either mode (dist/<lang>/site-content.json). A push
+ * sends each record in every language; a host's records service answers its
+ * queries, so this mode compiles no query files (dist/<lang>/data/).
  *
  * History: when `deploy` uploaded `dist/site-content.json` to a backend, it
  * read the bundle pipeline's copy, which prerender rewrites into a lightweight
@@ -587,7 +590,7 @@ async function buildSiteLink(projectDir, options = {}) {
     log('')
     info(`Building localized content for: ${i18nConfig.locales.join(', ')}`)
     try {
-      reportLocalizedSite(await buildLocalizedSite(projectDir, i18nConfig))
+      reportLocalizedSite(await buildLocalizedSite(projectDir, i18nConfig, { records: false }))
     } catch (err) {
       error(`i18n build failed: ${err.message}`)
       if (process.env.UNIWEB_DEBUG) console.error(err.stack)

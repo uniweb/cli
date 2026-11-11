@@ -153,8 +153,9 @@ test('both verbs name the backend the count is read under', () => {
 // ⭐ AND THE OTHER SIDE OF THE SAME RULE: a push that states NO folder leaves the backend's as it
 // is. That is right — a directory holding files but no records is not an author emptying it — but
 // an author who has just taken the records out, and kept such files, expects them gone, and the
-// push said nothing (2026-10-29, a gallery's records moving to another schema beside schema-less
-// articles). `noteFolderLeftAlone` says it, where this copy banked placements to lose.
+// push said nothing (2026-10-29, a gallery's records moving to another schema beside articles with
+// no data schema, which a push refuses since 2026-11-11). `noteFolderLeftAlone` says it, where this
+// copy banked placements to lose.
 test('noteFolderLeftAlone: a push that states no folder says the backend keeps its records', async () => {
   const { noteFolderLeftAlone } = await import('../src/utils/records-guard.js')
   const dir = site(['articles/a.md'], { '@R1': 'I1', '@R2': 'I2' })

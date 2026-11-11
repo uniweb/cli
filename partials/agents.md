@@ -260,7 +260,7 @@ content = { title, pretitle, subtitle, paragraphs, links, images, icons, videos,
 
 **`site.yml`.** `index`, `pages`, `foundation`, `extensions`, `paths`, `placeholders`, `languages`, `services`, `agents`, `seo` (`origin`: scheme + host, `image`: 1200×630), `favicon`, `touchIcon`. Everything in `site.yml` and `queries.yml` ships to the browser — **never a secret**.
 
-**Records — run `uniweb guide data` before touching them.** `records/<schema>/<name>.md|yml|json|bib` (`records/article/` → `@/article`); `queries.yml` names → `{ schema, where, sort, limit, scope }`; a page or section shows one with `query: name` or `fetch: { query, … }` (narrows, never widens); a `[slug]/` directory inside the query's page gives each record a page.
+**Records — run `uniweb guide data` before touching them.** `records/<schema>/<name>.md|yml|json|bib` (`records/article/` → `@/article`, the foundation's `schemas/article.yml`, required); `queries.yml` names → `{ schema, where, sort, limit, scope }`; a page or section shows one with `query: name` or `fetch: { query, … }` (narrows, never widens); a `[slug]/` directory inside the query's page gives each record a page.
 
 ### Foundation
 

@@ -91,12 +91,13 @@ export async function guardEmptyRecords({ siteDir, backend, args = [], warn, not
 /**
  * Say when a push leaves the backend's folder as it is although it holds records.
  *
- * A records directory that holds files but no records — data with no schema, say — states no
- * folder, by design (`sendsFolder` in `@uniweb/build`): that is not an author emptying it. But an
- * author who has just taken the records out and kept such files expects them gone from the
- * backend, and the push said nothing (2026-10-29: a gallery's records moving to another schema,
- * its schema-less articles left beside them). So where this copy holds placements from an earlier
- * push or pull, say they stay, and how they would go.
+ * A records directory that holds files but no records — files the walk does not read as records,
+ * say — states no folder, by design (`sendsFolder` in `@uniweb/build`): that is not an author
+ * emptying it. But an author who has just taken the records out and kept such files expects them
+ * gone from the backend, and the push said nothing (2026-10-29: a gallery's records moving to
+ * another schema, articles with no data schema left beside them, which a push refuses since
+ * 2026-11-11). So where this copy holds placements from an earlier push or pull, say they stay,
+ * and how they would go.
  *
  * @param {object} params
  * @param {object} params.pkg - what `emitSyncPackages` returned; `sendsFolder: false` is the case

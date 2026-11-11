@@ -129,6 +129,6 @@ test('⭐ publish says when the pages show records and `records` is not asked fo
   assert.match(recordsNotAsked({ siteYml: {}, shown: ['articles'] }), /show records from `articles`.*`records: true`/)
   assert.match(recordsNotAsked({ siteYml: { services: { records: false } }, shown: ['articles'] }), /records/)
   assert.equal(recordsNotAsked({ siteYml: { services: { records: true } }, shown: ['articles'] }), null)
-  // No page shows a record with a schema — schema-less sets ship as files: nothing to say.
+  // No page shows records: nothing to say.
   assert.equal(recordsNotAsked({ siteYml: {}, shown: [] }), null)
 })

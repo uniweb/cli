@@ -17,9 +17,8 @@
  *      nothing (§4, foundation-bring-along.js). *(This read "releases the new
  *      version first (or asks)" until 2026-10-16; changed code has been released
  *      without asking since 2026-09-24.)*
- *   3. SYNCS — builds the site data (link mode), uploads media and the
- *      schema-less data files, and pushes content (the same two-lane sync
- *      `uniweb push` uses);
+ *   3. SYNCS — builds the site data (link mode), uploads media, and pushes
+ *      content (the same two-lane sync `uniweb push` uses);
  *   4. GOES LIVE — POST /dev/site/publish/{uuid}. When the backend answers 402
  *      (the site must be paid for first), it opens the settlement URL the
  *      backend hands over, verbatim, and stops; the content is already synced,
@@ -57,10 +56,7 @@ import yaml from 'js-yaml'
 import {
   loadDeployYml,
   resolvePublishTarget,
-  recordLastDeploy,
-  collectSchemalessData,
-  collectSchemalessDataAssets,
-  rewriteSchemalessDataAssets
+  recordLastDeploy
 } from '@uniweb/build/site'
 import { emitSyncPackages } from '@uniweb/build/uwx'
 import {
@@ -142,11 +138,6 @@ import {
   readPaymentRefusal,
   settleRefusal
 } from '../backend/payment-handoff.js'
-import { reportSchemalessQueries } from '../utils/schemaless-report.js'
-import {
-  uploadSiteData,
-  describeDataRefusal
-} from '../utils/site-data-upload.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -654,9 +645,10 @@ export async function publish(args = []) {
     if (!guard.ok) return { exitCode: 1 }
   }
 
-  // 3. Partition the queries by schema presence (a first emit reads `schemaless`
-  //    — the queries with no data schema, whose compiled files 4c uploads; no
-  //    ball carries them since 2026-08-18).
+  // 3. A first emit: what the push will send, and what stops it before anything goes up —
+  //    a record it cannot send, and a folder or query whose data schema resolves to nothing
+  //    (`refusals`): every record has one [Diego, 2026-11-11]. ⛔ Until then such a query was
+  //    "schema-less", and this step partitioned the queries so 4c could upload its compiled files.
   // ⭐ With the keys this deployment's Sections take (`deploymentFields`), as the push below
   // is: this emit says which files go up, and a key sent only where it is taken can name one —
   // `touch_icon` does. ⛔ Until 2026-10-28 it went without them, so a touch icon was sent as the
@@ -685,11 +677,6 @@ export async function publish(args = []) {
   }
   // …and so does a page a pull held whose files changed since (`refuseChangedHeld`).
   if (refuseChangedHeld(probe, { error: say.err, note: say.dim })) return { exitCode: 1 }
-  const schemalessNames = (probe.schemaless || []).map((col) => col.name)
-  // A product decision the author is usually making unknowingly — say it at warn
-  // level, not dim among everything else. See the helper for what the old
-  // message got wrong.
-  reportSchemalessQueries(probe.schemaless, say)
   const localAssets = probe.localAssets || []
 
   // 3a. A copy with no site uuid for this backend (`sync.json`) is bound to no site
@@ -748,8 +735,8 @@ export async function publish(args = []) {
     // that moved to `settings.fetch`, and the warning holds for any name.
     //
     // A file map needs a name nothing else claims (`static_data` / `data_files`
-    // were proposed) AND a consumer that reads it — neither settled. Until then
-    // the schema-less data goes as 4c sends it: one object per file, no bundle.
+    // were proposed) AND a consumer that reads it. Neither was settled, and since
+    // 2026-11-11 no file of compiled data goes up at all: every record does.
     ...(fnd.ref ? { injectInfo: { foundation: fnd.ref } } : {}),
     ...(Object.keys(ext.pins).length ? { injectExtensions: ext.pins } : {}),
     ...(assetRewrite ? { assetRewrite } : {}),
@@ -777,7 +764,7 @@ export async function publish(args = []) {
     report
   })
   if (!site.uuid) {
-    say.dim('No media or record data was uploaded.')
+    say.dim('No media was uploaded.')
     reportWriteBacks(commitWriteBacks(siteDir, client.origin, { complete: false, released }), { note: say.dim })
     return { exitCode: 1 }
   }
@@ -786,16 +773,11 @@ export async function publish(args = []) {
     site.created &&
     say.dim('The site was created with its content, which names its media by their local paths until a push uploads them.')
 
-  // 4. Gather the schema-less data files BEFORE uploading media, since their
-  //    records can carry local media too. (No search index rides here since
-  //    2026-08-01, and nothing is bundled — `build/src/site/schemaless-data.js`.)
-  let ball = await collectSchemalessData(distDir, schemalessNames)
-  const ballAssets = collectSchemalessDataAssets(ball)
-
-  // 4b. Upload ALL local media (entity refs + ball refs) on one asset lane →
-  //     the ref→serveUrl map; rewrite the entity content AND the ball with it.
-  // …and each file record's file (`@uniweb/file` — `{ ref, path, contentType }`, already located).
-  const mediaRefs = [...new Set([...localAssets, ...ballAssets]), ...(probe.localFiles || [])]
+  // 4. Upload ALL local media on one asset lane → the ref→serveUrl map the content is
+  //    rewritten with — and each file record's file (`@uniweb/file` — `{ ref, path,
+  //    contentType }`, already located). ⛔ Until 2026-11-11 the compiled files of a query
+  //    with no data schema were gathered first, for their records' media, and uploaded in 4c.
+  const mediaRefs = [...new Set(localAssets), ...(probe.localFiles || [])]
   if (mediaRefs.length) {
     say.info('Uploading media…')
     try {
@@ -831,7 +813,6 @@ export async function publish(args = []) {
             (repoOf(siteDir) ? '' : ' — commit it')
         )
       }
-      if (ballAssets.length) ball = rewriteSchemalessDataAssets(ball, map)
       say.dim(
         `Media          : ${Object.keys(map).length}/${mediaRefs.length - served.length} ref(s) → serve URL`
       )
@@ -851,95 +832,12 @@ export async function publish(args = []) {
     }
   }
 
-  // 4c. Deliver the schema-less collection data — one object per file.
-  //
-  //     Each `dist/data/**` file is PUT to the target `data-uploads` returns,
-  //     landing at its serving tail. Hosting intercepts `/data/**.json` and
-  //     reads `_data/{tail}` from the site bucket, so the file is served from
-  //     where it lands: **nothing records where anything went**, and no `info`
-  //     field is stamped.
-  //
-  //     ⛔ NO BALL. A CLI sends separates or a ball, never both — presence of a
-  //     ball is the backend's signal for which CLI it is talking to, and
-  //     sending both destroys it along with their ability to know when the
-  //     unwrap can be deleted. Released CLIs keep sending one and their unwrap
-  //     keeps serving them; this one does not.
-  //
-  //     📌 No capability gate, deliberately. A backend predating this lane
-  //     answers 404 and the publish fails — accepted while pre-prod [Diego,
-  //     2026-08-18: "we are pre-prod. I'm not concerned about old cli vs new"].
-  //     A gate was written and removed: it is machinery for a population that
-  //     does not exist, which is the failure this work kept catching in others.
-  //     `client.discover()` is the mechanism if that changes — `DISCOVERY_DEFAULTS`
-  //     makes an absent key non-breaking by construction.
-  //
-  // ⛔ UNCONDITIONAL — `if (ball)` was here until 2026-09-01 and it was the bug.
-  //
-  //     `collectSchemalessData` returns null for an empty set, so a publish that
-  //     carried no schema-less data sent NO PLAN AT ALL. The backend reconciles a
-  //     site's data usage against this manifest, and a request that never arrives
-  //     is not a manifest saying "none" — it is silence, indistinguishable from a
-  //     publish that never happened. So deleting your LAST schema-less collection
-  //     — the exact operation the reconcile exists to make free — was the one
-  //     operation that could not be expressed, and the site kept paying for it
-  //     until the whole site was deleted.
-  //
-  // ⭐ The general shape, worth more than the fix: an EMPTY set and NO set are
-  //    different statements, and an `if (x)` guard collapses them into one. The
-  //    cost is always paid by whoever is downstream trying to tell them apart.
-  //
-  // Both halves agreed in channel backend↔framework (2026-09-01); the
-  // backend's route accepts an empty `files` array as of the same exchange.
-  say.info('Uploading schema-less record data…')
-  try {
-    const r = await uploadSiteData({
-      apiBase: client.origin,
-      token: await client.token(),
-      siteUuid: site.uuid,
-      // The plan and every direct PUT name the workspace the rest of the publish did.
-      workspace: client.workspace,
-      workspaceSource: client.workspaceSource,
-      ball,
-      onProgress: (m) => say.dim(`  ${m}`)
-    })
-    if (r.failed.length) {
-      // A file whose bytes did not land must not be published: the site would
-      // serve a stale copy or 404, and the only trace would be a warning.
-      say.err(
-        `${r.failed.length} data file(s) failed to upload — not publishing.`
-      )
-      for (const f of r.failed) say.dim(`  ${f.path} (HTTP ${f.status})`)
-      sentSoFar()
-      return { exitCode: 1 }
-    }
-    say.dim(`Record data     : ${r.uploaded.length} file(s) [${r.mode}]`)
-  } catch (err) {
-    // The workspace this publish works in, refused — said as itself, as at every other door.
-    if (err instanceof WorkspaceMismatchError) {
-      say.err(err.message)
-      sentSoFar()
-      return { exitCode: 1 }
-    }
-    // A typed plan refusal gets its own account (quota, or whatever else the
-    // backend names); anything else falls through to the raw message. Same
-    // treatment the asset plan and the site create already get — this was the
-    // last door still printing the problem document at the user verbatim.
-    const refusal = describeDataRefusal(err)
-    if (refusal) {
-      say.err(refusal.headline)
-      for (const line of refusal.notes) say.dim(line)
-    } else {
-      say.err(`Record data upload failed: ${err.message}`)
-    }
-    sentSoFar()
-    return { exitCode: 1 }
-  }
-
   // 5. Push the site (content + folder) over the send-only-changed cache —
   //    the SAME two-lane submission `uniweb push` uses — stamping
   //    the pinned foundation ref and rewriting local media refs to serve URLs.
-  //    (It stamped `info.data_bundle` until 2026-08-18; the ball is gone and
-  //    collection data now lands at its serving tail, so nothing records it.)
+  //    (It stamped `info.data_bundle` until 2026-08-18. ⛔ Until 2026-11-11 a step 4c
+  //    sent the compiled files of the queries with no data schema, before this push:
+  //    every record has a data schema since, and goes up with this push.)
   // ⭐ WHAT THE SITE HAS — read before the push, for the language selection. Only this
   // read sees a decision the owner made in the app since this clone last synced. It
   // reads this backend's site, from sync.json; a never-synced site has none.
