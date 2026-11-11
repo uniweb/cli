@@ -19,15 +19,37 @@ site/
 
 | on disk | schema |
 |---|---|
+| `records/std/person/…` | `@std/person` — a standard type |
+| `records/acme/project/…` | `@acme/project` — a type registered under another scope |
 | `records/article/…` | `@/article` — your foundation's own |
-| `records/std/person/…` | `@std/person` — the shared standard set |
-| `records/acme/project/…` | `@acme/project` — an org's |
 
-**Every record needs its data schema.** `@/article` is the foundation's `schemas/article.yml` (the format: https://uniweb.io/docs/development/data-schemas.md); a directory whose schema nothing defines stops the build and the push, naming the file to write. Keep records of a type registered under another scope in `records/<scope>/<name>/`.
+**Every record needs its data schema — and a standard one comes first.** A directory whose schema nothing defines stops the build and the push. Before writing one, take what exists, in this order:
+
+1. **A standard type**, `@std/<name>`, its records in `records/std/<name>/` and its keys `data: { posts: '@std/article' }`. It ships with the framework, so there is nothing to install, and the app knows it: `@std/article` has the app's article editor, which an article type of your own does not get.
+2. **A type registered under another scope** — another foundation's, a library's, another org's — by its full name: records in `records/<scope>/<name>/`, keys `'@acme/member'` (§ *The component side*).
+3. **Your own**, only for a shape none of these has: `schemas/<name>.yml` in the foundation (the format: https://uniweb.io/docs/development/data-schemas.md), records in `records/<name>/`.
+
+| standard type | for | written |
+|---|---|---|
+| `article` | a blog post, news item or documentation page | by section: `brief` (title, excerpt, author, date, updated, image, tags), `body` (the text) |
+| `person` | a person, team member or contact | flat |
+| `event` | a calendar event, conference or webinar | flat |
+| `product` | something a business sells | by section: `brief`, `body` |
+| `service` | a service a business offers | by section: `brief`, `body` |
+| `project` | a portfolio item, case study or project showcase | flat |
+| `testimonial` | what a customer, client or patient said: `quote`, `name`, `context`, `avatar`, `rating`, `date`, `url` | flat |
+| `publication` | an academic paper or research document | flat |
+| `opportunity` | a job posting, grant or call for proposals | flat |
+| `position`, `qualification` | a role someone held; a degree, diploma or certificate | flat |
+| `nav` | a navigation menu or link tree | a list |
+| `form` | a form an author designs | a list of controls |
+| `scene` | a Scene Composition Format document | flat |
+
+Each type's fields, with what each is for: https://github.com/uniweb/schemas/tree/main/src/standard. A record holds only its type's fields: a push refuses one with a field the type lacks, though a static build keeps it. What a site says differently (a topic) goes in a field the type has (`tags`), or the type is not the one.
 
 Keep directories flat — `records/article/2025/x.md` reads as the `2025` schema of an `article` org. A `_`-prefixed file is not a record.
 
-**Formats:** `.md` (frontmatter fields, body prose; auto-excerpt and first-image extraction), `.yml`/`.yaml` and `.json` (structured, no body), `.bib` (each `@entry{key, …}` is a record named by its cite key, normalized to CSL-JSON, LaTeX accents → Unicode). Mix freely in one directory. **One record per file**; the file name is `$name`, the one name it carries on every site (no `slug` field). Conventional fields: `title`, `date`, `tags`, `image`, `description`, `author`, plus whatever the content needs. Images sit beside the file (`./`). `draft: true` keeps a record off the live site: still a record, previewed by `pnpm dev`, excluded from a production build, kept undelivered on a backend.
+**Formats:** `.md` (frontmatter fields, body prose; auto-excerpt and first-image extraction), `.yml`/`.yaml` and `.json` (structured, no body), `.bib` (each `@entry{key, …}` is a record named by its cite key, normalized to CSL-JSON, LaTeX accents → Unicode). Mix freely in one directory. **One record per file**; the file name is `$name`, the one name it carries on every site (no `slug` field). A record's fields are its data schema's. Images sit beside the file (`./`). `draft: true` keeps a record off the live site: still a record, previewed by `pnpm dev`, excluded from a production build, kept undelivered on a backend.
 
 **Links and files are records too.** `records/uniweb/link/x.yml` holding only `url:` (absolute) is a `@uniweb/link`; any file in `records/uniweb/file/` is a `@uniweb/file` named by its file name. Label and tags go on their `records/folder.yml` entry. Declare `data: { videos: '@uniweb/link' }` → `{ url, $name, $label, $tags }`; `data: { downloads: '@uniweb/file' }` → `{ file: { url, name, mime, size }, $name, $label, $tags }`. Two files of one name with different extensions clash. On a backend a component must declare the type for a query over it to be accepted.
 

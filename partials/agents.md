@@ -80,7 +80,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | `t('key')`, `<Trans>` | Nothing — content arrives translated; each language is its own build. | — |
 | `src/assets/`, `assets/img.png` | `./img.png` beside the page, or `/img.png` in `public/`. There is no assets directory. | build stops, or warns |
 | `fetch: /api/posts`, `fetch: ./data.json` | `fetch:` names a query from `queries.yml`; a URL belongs on the query (`url:`). | build stops |
-| `records/blog/2025/post.md`; one YAML file holding a list | Flat: `records/<schema>/<name>.md`, one record per file; the file name is `$name`. | a directory read as a schema, silent |
+| `records/blog/2025/post.md`; one YAML file holding a list; your own schema for posts, people, events | Flat: `records/<schema>/<name>.md`, one record per file, the file name its `$name`. A standard type first: `records/std/article/` is `@std/article`, with the app's own editor (`uniweb guide data` lists 14). | a directory read as a schema, silent |
 | `` `/blog/${slug}` `` | `item.$route` — never compose a URL. | works until a page moves |
 | `page.yml` in a directory of pages | It makes one page, each `.md` a section. `folder.yml` keeps them pages and carries `layout`, `title` and SEO. Over a mount, `page.yml` with markdown of its own is a landing page *above* the mounted pages; a mount is one level under `pages/`, and a local subdirectory beside it isn't read. | silent; the build names that subdirectory |
 | Paste the gtag / GTM / Meta pixel snippet into a component, `index.html`, or `services.tracking.scripts` | Uniweb Cloud (`publish`): `services.google: { id: G-… }`, or `GTM-…` for a container, and the host loads Google's tag, free, with no code, on any foundation. `head.html` isn't applied there, and `scripts` takes URLs only. Static build (`export`, `deploy --host`): the snippet in `head.html` beside `site.yml`. More: `uniweb guide services`. | silent — Google reports nothing |
@@ -260,7 +260,7 @@ content = { title, pretitle, subtitle, paragraphs, links, images, icons, videos,
 
 **`site.yml`.** `index`, `pages`, `foundation`, `extensions`, `paths`, `placeholders`, `languages`, `services`, `agents`, `seo` (`origin`: scheme + host, `image`: 1200×630), `favicon`, `touchIcon`. Everything in `site.yml` and `queries.yml` ships to the browser — **never a secret**.
 
-**Records — run `uniweb guide data` before touching them.** `records/<schema>/<name>.md|yml|json|bib` (`records/article/` → `@/article`, the foundation's `schemas/article.yml`, required); `queries.yml` names → `{ schema, where, sort, limit, scope }`; a page or section shows one with `query: name` or `fetch: { query, … }` (narrows, never widens); a `[slug]/` directory inside the query's page gives each record a page.
+**Records — run `uniweb guide data` before touching them.** `records/<schema>/<name>.md|yml|json|bib`, the schema required (§2.2); `queries.yml` names → `{ schema, where, sort, limit, scope }`; a page or section shows one with `query: name` or `fetch: { query, … }` (narrows, never widens); a `[slug]/` directory inside the query's page gives each record a page.
 
 ### Foundation
 
@@ -337,7 +337,7 @@ Every guide ships with the CLI this project pins, so it describes the version in
 | publish, deploy, push/pull, register, CI, workspaces, updates | `uniweb guide ship` |
 | port a React / Next / generated design | `uniweb guide migrate` |
 
-**The documentation index is `https://uniweb.io/llms.txt`** — every page with a one-line description and a fetchable link. Go there for anything not answered here and especially to learn whether a feature exists; follow its links rather than constructing them. For several lookups: `git clone --depth 1 https://github.com/uniweb/docs .uniweb-docs` (gitignore it) and grep; bare paths above resolve as index keys, files in the clone, or `https://raw.githubusercontent.com/uniweb/docs/main/{path}`. The docs describe the **latest** release: when `uniweb status` says this project is behind, the fix is `npx uniweb@latest update --yes`, not older docs. Syntax the docs no longer show is listed under *Retired forms* in `uniweb guide ship`. `docs.uniweb.app` is for authors in the visual editor and won't answer framework questions.
+**The documentation index is `https://uniweb.io/llms.txt`** — each page, a line on it, and its link. Go there for anything not answered here, above all whether a feature exists, and follow its links rather than build them. For several lookups: `git clone --depth 1 https://github.com/uniweb/docs .uniweb-docs` (gitignore it) and grep; bare paths above resolve as index keys, files in the clone, or `https://raw.githubusercontent.com/uniweb/docs/main/{path}`. The docs describe the **latest** release: when `uniweb status` says this project is behind, the fix is `npx uniweb@latest update --yes`, not older docs. Syntax the docs no longer show is listed under *Retired forms* in `uniweb guide ship`. `docs.uniweb.app` is for authors in the visual editor, not framework questions.
 
 ## 7. Notes about this project
 
