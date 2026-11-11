@@ -16,8 +16,10 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { tmp } from './helpers/run-verb.js'
 import { backendStarted, sendsBlueprint, sentBlueprintNote, blueprintCheck } from '../src/backend/blueprint-reach.js'
 
@@ -26,6 +28,34 @@ const rows = (blueprint) => [{ name: 'google', config: { id: 'G-1' } }, { name: 
 const statusOf = (backend_state, held = BLUEPRINT) => ({ published: true, services: rows(held), backend_state })
 const CHANGED = { ...BLUEPRINT, signup: 'open' }
 const STARTED = /^blueprint\.yml is how a backend started from this site begins, and this site's backend has started: /
+
+test('⛔ over an older @uniweb/build, which has none of the comparison, it loads and says nothing', () => {
+  // The CLI is @uniweb/build's peer, so a project can run it over a build from before `blueprintForWire`,
+  // `liftBlueprint` and `sameBlueprint` were exported. Named, they would stop `push`, `publish` and
+  // `status` from loading at all.
+  const dir = tmp('uw-old-build-')
+  const stub = join(dir, 'uwx.mjs')
+  writeFileSync(stub, `export { BLUEPRINT_FILE, readBlueprint, siteSelfScope } from ${JSON.stringify(import.meta.resolve('@uniweb/build/uwx'))}\n`)
+  const resolver = `export async function resolve(s, c, next) { return s === '@uniweb/build/uwx' ? { url: ${JSON.stringify(pathToFileURL(stub).href)}, shortCircuit: true } : next(s, c) }`
+  writeFileSync(join(dir, 'hook.mjs'), `import { register } from 'node:module'\nregister('data:text/javascript,' + encodeURIComponent(${JSON.stringify(resolver)}))\n`)
+  const run = (code) =>
+    execFileSync(process.execPath, ['--import', pathToFileURL(join(dir, 'hook.mjs')).href, '--input-type=module', '-e', code], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+  const reach = JSON.stringify(new URL('../src/backend/blueprint-reach.js', import.meta.url).href)
+  const said = run(`
+    const m = await import(${reach})
+    const sent = [{ name: 'backend', config: { blueprint: { signup: 'open' } } }]
+    console.log(JSON.stringify([m.sendsBlueprint(sent), m.sentBlueprintNote({ status: { backend_state: 'active', services: [] }, sent }), await m.blueprintCheck({ siteDir: '.', status: { backend_state: 'active' } })]))
+  `)
+  assert.equal(said.trim(), '[false,null,null]')
+  assert.throws(
+    () => run(`import { sameBlueprint } from '@uniweb/build/uwx'`),
+    (err) => /does not provide an export named 'sameBlueprint'/.test(String(err.stderr)),
+    'CONTROL — a named import over the same build stops at load'
+  )
+})
 
 test('the rule: no key says nothing, `null` is not started, any other value is', () => {
   assert.equal(backendStarted(null), null, 'no status read')

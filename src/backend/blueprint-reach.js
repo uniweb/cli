@@ -32,7 +32,15 @@
  * that sends no blueprint says nothing.
  */
 
-import { BLUEPRINT_FILE, blueprintForWire, liftBlueprint, readBlueprint, sameBlueprint, siteSelfScope } from '@uniweb/build/uwx'
+import * as uwx from '@uniweb/build/uwx'
+import { BLUEPRINT_FILE, readBlueprint, siteSelfScope } from '@uniweb/build/uwx'
+
+// ⛔ AN OLDER `@uniweb/build` EXPORTS NONE OF THESE (they came with build `753d745`), and this CLI is its
+// peer, so a project can run it over one. A named import would stop `push`, `publish` and `status` from
+// loading at all, so they are read off the namespace: without them nothing here is said, and the verbs
+// work as they did before.
+const { blueprintForWire, liftBlueprint, sameBlueprint } = uwx
+const COMPARABLE = [blueprintForWire, liftBlueprint, sameBlueprint].every((fn) => typeof fn === 'function')
 
 /**
  * Whether a backend has been started from the site, by its status: `true` or `false`, or `null` when
@@ -62,7 +70,7 @@ const ADMINISTRATION = "What a running backend allows, the site's owner changes 
  * @returns {boolean}
  */
 export function sendsBlueprint(sent) {
-  return Array.isArray(sent) && liftBlueprint(sent).blueprint !== undefined
+  return COMPARABLE && Array.isArray(sent) && liftBlueprint(sent).blueprint !== undefined
 }
 
 /**
@@ -92,7 +100,7 @@ export function sentBlueprintNote({ status, sent }) {
  * @returns {Promise<object|null>}
  */
 export async function blueprintCheck({ siteDir, status }) {
-  if (backendStarted(status) !== true) return null
+  if (!COMPARABLE || backendStarted(status) !== true) return null
   let local
   try {
     const file = readBlueprint(siteDir)
