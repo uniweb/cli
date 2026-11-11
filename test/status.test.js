@@ -450,6 +450,36 @@ test('⭐ services: what the live site has beside the request — in the shapes 
   assert.ok(services.lines.some((l) => /^site\.yml turns off `search`, which the live site has/.test(l)), services.lines.join('\n'))
 })
 
+test("⭐ hosting.blueprint: once the site's backend has started, a change to blueprint.yml doesn't reach it", { timeout: 60_000 }, async () => {
+  // The backend's status carries `backend_state`, `null` until a backend is started from the site, and
+  // the stored request whole, its `backend` row's blueprint included (measured 2026-11-10 locally).
+  const dir = project()
+  writeFileSync(join(dir, 'site.yml'), "name: T\nfoundation: 'https://example.test/foundation/entry.js'\nservices:\n  backend: true\n")
+  writeFileSync(join(dir, 'blueprint.yml'), "signup: invite_only\naccess:\n  '@acme/track': { all: { members: read } }\n")
+  const held = { access: { '@acme/track': { all: { members: 'read' } } }, signup: 'invite_only' }
+  const site = (backend_state, blueprint = held) => ({ ...LIVE, services: [{ name: 'backend', config: { blueprint } }], last_published_services: ['backend'], backend_state })
+  const ask = async (s, args = ['--json']) => status(dir, ['--personal', ...args], { session: loggedIn, respond: answering({ site: s }) })
+
+  const same = checkOf(docOf(await ask(site('active'))), 'hosting.blueprint')
+  assert.equal(same.state, 'ok')
+  assert.equal(same.summary, "blueprint.yml is how a backend started from this site begins, and this site's backend has started: a change to the file doesn't reach it.")
+  assert.deepEqual(same.detail, { backend_state: 'active', differs: false })
+
+  const differs = checkOf(docOf(await ask(site('active', { ...held, signup: 'open' }))), 'hosting.blueprint')
+  assert.equal(differs.state, 'attention')
+  assert.match(differs.summary, /the file here differs from what the site holds, and a push of it doesn't reach that backend\.$/)
+  assert.deepEqual(differs.lines, ["What a running backend allows, the site's owner changes in the backend's administration."])
+
+  // Under Hosting, after the services the live site has.
+  const shown = plain((await ask(site('active'), [])).output)
+  assert.ok(shown.indexOf('a change to the file doesn') > shown.indexOf('Services on the live site: `backend`'), shown)
+  assert.ok(shown.indexOf('Services on the live site') > shown.indexOf('Hosting'), shown)
+
+  assert.equal(checkOf(docOf(await ask(site(null))), 'hosting.blueprint'), undefined, 'none started: the file is how it will begin')
+  const { backend_state, ...older } = site('active')
+  assert.equal(checkOf(docOf(await ask(older)), 'hosting.blueprint'), undefined, 'a backend older than the field says nothing')
+})
+
 test('a service requested and not live yet is the next publish, the person deciding', { timeout: 60_000 }, async () => {
   const site = { ...LIVE, services: [{ name: 'records' }], last_published_services: [] }
   const doc = docOf(await status(project(), ['--personal', '--json'], { session: loggedIn, respond: answering({ site }) }))

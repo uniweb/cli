@@ -62,6 +62,7 @@ import { describeWorkspace, resolveWorkspace, SOURCE_LABEL } from '../backend/wo
 import { BackendClient, resolveBackendOrigin } from '../backend/client.js'
 import { readAppChanges } from '../backend/app-changes.js'
 import { liveAddress } from '../backend/live-address.js'
+import { blueprintCheck } from '../backend/blueprint-reach.js'
 import { probePull } from './pull.js'
 import { readOrgFlag } from '../utils/args.js'
 import { listSyncedBackends, readBackendState } from '@uniweb/build/uwx'
@@ -1627,6 +1628,9 @@ const NOT_REPORTED_AS_LIVE = new Set(['google', ...AD_PLATFORMS])
  * file with those is how to tell it is stale, by the backend's own contract.
  *
  * ⛔ A request is never said as what the site has: what is live is the backend's to say.
+ *
+ * And `hosting.blueprint` after it, for a site whose backend has started: a changed
+ * `blueprint.yml` no longer reaches that backend (`backend/blueprint-reach.js`).
  */
 async function servicesCheck({ siteDir, siteYml, site }) {
   const { readServicesRequest } = await import('@uniweb/build/uwx')
@@ -1669,6 +1673,8 @@ async function servicesCheck({ siteDir, siteYml, site }) {
   if (offHere.length) {
     lines.push(`site.yml turns off ${list(offHere)}, which the live site has — a request the owner settles; a paid service stays on until its subscription changes.`)
   }
+  // `hosting.blueprint`: once the site's backend has started, a changed blueprint.yml no longer reaches it.
+  const blueprint = await blueprintCheck({ siteDir, status: site })
   return {
     checks: [
       {
@@ -1677,7 +1683,8 @@ async function servicesCheck({ siteDir, siteYml, site }) {
         summary: live.length ? `Services on the live site: ${list(live)}.` : site.published ? 'No services on the live site.' : 'No services live — the site is not.',
         lines,
         detail: { asked, requested, live }
-      }
+      },
+      ...(blueprint ? [blueprint] : [])
     ],
     proposals
   }

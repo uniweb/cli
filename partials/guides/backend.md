@@ -98,7 +98,7 @@ publicQueries:               # what visitors who aren't signed in may read
   '@/vehicle': { whole: true, where: { status: { in: [available, pending] } } }   # whole is required; false = briefs
 ```
 
-- **Applied once**, when a backend is started from the site: its own, a clone's of a template, or one started again after it was destroyed. Then the operator changes these in the backend's administration. An edited file is pushed and pulled with the site, and reaches no backend already running.
+- **Applied once**, when a backend is started from the site: its own, a clone's of a template, or one started again after it was destroyed. Then the operator changes these in the backend's administration. An edited file is pushed and pulled with the site, and reaches no backend already running: once the site's has started, a push or publish that sends a change says so, and so does `uniweb status`.
 - A type not listed stays closed. Name types as `queries.yml` does: `@/vehicle` for the foundation's own, sent in its scope.
 - A build, a push and `uniweb doctor` refuse a malformed file, naming the key; a push refuses whole. A type none of the site's foundations declares only warns: a backend started from the site leaves that line out, and the publish says so. `where`, `sort` and `limit` are the backend's to judge, and one it refuses is left out the same way.
 - A team's `all: edit` reaches the entries once the member confirms it is them (below); a team's `add` and `members: edit` need no confirming. Who is in a team, and roles, are never the file's.

@@ -109,8 +109,10 @@ import {
   reportWriteBacks,
   holdUnchangedPush,
   pushSyncPackages,
-  readSiteWorkspace
+  readSiteWorkspace,
+  sentSiteDocument
 } from '../backend/site-sync.js'
+import { sendsBlueprint, sentBlueprintNote } from '../backend/blueprint-reach.js'
 import { commitBeforeSending } from '../backend/commit-before-sending.js'
 import { mountsBeforeSending } from '../backend/mounts-before-sending.js'
 import { resolveWorkspace, describeWorkspace, previewWorkspace, SOURCE_LABEL } from '../backend/workspace.js'
@@ -734,6 +736,16 @@ export async function push(args = [], deps = {}) {
     return { exitCode: 0 }
   }
 
+  // ⭐ A CHANGED BLUEPRINT REACHES NO BACKEND ALREADY STARTED FROM THE SITE: said once the push lands,
+  // judged by the site's status before anything is sent (`backend/blueprint-reach.js`). Asked only
+  // when the push sends a blueprint, to a site the backend holds.
+  const sent = sentSiteDocument(pkg)?.services ?? null
+  const boundUuid = readBackendState(siteDir, client.origin).site?.uuid
+  const blueprintNote =
+    boundUuid && sendsBlueprint(sent)
+      ? sentBlueprintNote({ status: await client.siteStatus(boundUuid).catch(() => null), sent })
+      : null
+
   // Submit both lanes, back-fill the minted uuids, and persist the send-only-changed
   // cache. Shared with `uniweb publish` via ../backend/site-sync.js.
   const result = await pushSyncPackages({ client, siteDir, pkg, report })
@@ -747,6 +759,10 @@ export async function push(args = [], deps = {}) {
   const total = (created?.finalizedTotal || 0) + result.finalizedTotal
   const wrote = [...(created?.wrote || []), ...result.wrote]
   success(`Pushed ${total} entit${total === 1 ? 'y' : 'ies'}` + (wrote.length ? ` — ${wrote.join(', ')}` : ''))
+  if (blueprintNote) {
+    warn(blueprintNote[0])
+    for (const line of blueprintNote.slice(1)) note(line)
+  }
   reportWriteBacks(written, { note })
   // ⭐ The records this push took out of the site's folder are off the live site already (it reads
   // its folder as it stands): offer to delete them from the backend (ruled 2026-11-04).

@@ -98,6 +98,16 @@ function entityDocFromUwx(buf) {
   return null
 }
 
+/**
+ * The site-content document a package sends, or null when its site-content lane sends nothing.
+ *
+ * @param {object} pkg - from `emitSyncPackages`
+ * @returns {object|null}
+ */
+export function sentSiteDocument(pkg) {
+  return pkg?.siteContent ? entityDocFromUwx(pkg.siteContent.buffer) : null
+}
+
 // What a `.uwx`'s entries inflate to, summed — the quantity a backend's package limit counts.
 // null for anything that is not a readable `.uwx`.
 function inflatedSizeOfUwx(buf) {

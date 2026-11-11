@@ -1052,6 +1052,12 @@ export class BackendClient {
    * who has the site open in the app right now, and on what — `uniweb status` shows
    * it (`describeEditors`, commands/status.js).
    *
+   * ⭐ **And the backend started from the site**, `backend_state` (2026-11-09): `null` until
+   * one is started, then its lifecycle state as the backend last saw it. The key is always
+   * there on a backend that knows it, so no key is an older backend, never "none started".
+   * Read with `services`, the stored request whole (each row's `config` included), to say
+   * when a changed `blueprint.yml` no longer reaches that backend (`backend/blueprint-reach.js`).
+   *
    * ⭐ **The backend also serves a LIVE-SITE record here** (shipped 2026-08-29), and
    * `uniweb status` reads part of it: the address it shows (`visitor_url`, else
    * `last_published_url` — `liveAddress`), and the foundation and runtime its `--json`

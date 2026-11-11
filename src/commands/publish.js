@@ -117,8 +117,10 @@ import {
   deployRecordAtRest,
   reportWriteBacks,
   pushSyncPackages,
-  readSiteWorkspace
+  readSiteWorkspace,
+  sentSiteDocument
 } from '../backend/site-sync.js'
+import { sentBlueprintNote } from '../backend/blueprint-reach.js'
 import { repoOf } from '../utils/sync-point.js'
 import { commitBeforeSending } from '../backend/commit-before-sending.js'
 import { mountsBeforeSending } from '../backend/mounts-before-sending.js'
@@ -1015,6 +1017,10 @@ export async function publish(args = []) {
   // here, at publish, and never at push: syncing records does not depend on it.
   const notAsked = recordsNotAsked({ siteYml, shown: pkg.recordsShown })
   if (notAsked) say.warn(notAsked)
+  // ⭐ A CHANGED BLUEPRINT REACHES NO BACKEND ALREADY STARTED FROM THE SITE — judged by the status read
+  // before the push, since this publish's go-live may start the site's first backend with what it
+  // sends (`backend/blueprint-reach.js`).
+  const blueprintNote = sentBlueprintNote({ status, sent: sentSiteDocument(pkg)?.services ?? null })
   const pushResult = await pushSyncPackages({
     client,
     siteDir,
@@ -1024,6 +1030,10 @@ export async function publish(args = []) {
   // What the push wrote into the files is committed, whatever became of the lanes.
   reportWriteBacks(commitWriteBacks(siteDir, client.origin, { complete: pushResult.complete, released }), { note: say.dim })
   if (pushResult.exitCode !== 0) return { exitCode: pushResult.exitCode }
+  if (blueprintNote) {
+    say.warn(blueprintNote[0])
+    for (const line of blueprintNote.slice(1)) say.dim(line)
+  }
   const siteUuid = pushResult.boundSiteUuid
   if (!siteUuid) {
     say.err('Push did not yield a site uuid — cannot go live.')
