@@ -100,7 +100,7 @@ my-project/
 
 **Pages are directories.** Create `pages/about/` with markdown files inside → visit `/about`. That's the whole routing model.
 
-**Batteries included:** File-based routing, pre-rendering, localization, dynamic routes, media processing, search indexing, and more. See [Building with Uniweb](https://github.com/uniweb/docs/blob/main/development/building-with-uniweb.md) for the full list.
+**Batteries included:** file-based routing, prerendering, languages, parametric pages, media processing, search indexing, and pages AI assistants can read: an `llms.txt` index and a Markdown copy of every page, on Uniweb hosting and in every static build. See [Building with Uniweb](https://github.com/uniweb/docs/blob/main/development/building-with-uniweb.md) for the full list.
 
 ### Content as Markdown
 
@@ -130,7 +130,7 @@ role: Lead Architect
 ```
 ````
 
-Access the parsed data via `content.data`:
+Declare the key in the section type's `meta.js` (`data: { 'team-member': {} }`), and the parsed data arrives in `content.data`:
 
 ```jsx
 function TeamCard({ content }) {
@@ -211,7 +211,7 @@ Three different section types, arranged in a grid, one with an interactive compo
 | **None** | Foundation + site with no content |
 | **Blank** (`--blank`) | An empty workspace — grow it with `uniweb add` |
 
-**Official templates** — marketing sites, documentation, blogs, academic sites and more — each come with a working foundation and sample content. `uniweb template list` shows the ones your CLI scaffolds, and you can [see them live](https://uniweb.github.io/templates/).
+**Official templates** — marketing sites, documentation, blogs, academic sites and more — each come with a working foundation and sample content. `uniweb template list` shows the ones your CLI scaffolds, and you can [see them live](https://uniweb.github.io/templates/). With an agent, name one in the prompt's command: `Start with npx uniweb@latest start --template docs`.
 
 **Two starting points.** Either let the CLI create a new directory:
 
@@ -530,7 +530,7 @@ packages:
 
 **Do I need the Uniweb app?**
 
-No. The framework works on its own: content in markdown, built and deployed like any Vite project, to any static host. Connect the app when people who don't write code need to edit the site — or when you'd rather not build an editing interface for them.
+No. The framework works on its own, and `uniweb deploy` puts a site on any static host. On Uniweb hosting, which we recommend, every publish also puts the site in the app, so it's ready whenever you, or anyone you work with, would rather edit visually, with nothing to connect and no editing interface for you to build.
 
 **Is the app a CMS?**
 
@@ -542,7 +542,7 @@ MDX blends markdown and JSX—content authors write code. Uniweb keeps them sepa
 
 **How is this different from Astro and other site frameworks?**
 
-They build sites from code and content files, and so does Uniweb. Uniweb adds the other interface: a visual authoring app, kept in sync with your project, where your components are the authors' building blocks. The foundation model also makes components portable across sites, with any deployment — static, SSR, or platform-managed.
+They build sites from code and content files, and so does Uniweb. What Uniweb adds: it is made for building with an agent, with a manual in every project and commands that check the agent's work; what a site says is kept apart from its code, so it can be edited in a visual app kept in sync with your project, where your section types are the building blocks; and the same project grows from a few pages into a platform, with languages, live records, forms, members and payments, without plugins. The foundation model also makes components portable across sites.
 
 **Can I use an existing component library?**
 
@@ -554,7 +554,7 @@ Yes. Content is pre-embedded in the initial HTML—no fetch waterfalls, no layou
 
 **What about dynamic routes?**
 
-Pages can define data sources that auto-generate subroutes. A `/blog` page can have an index and a `[slug]` template that renders each post.
+Pages can define data sources that auto-generate subroutes. A `/blog` page can list the posts, and a `[slug]` page inside it renders each one.
 
 **Is Uniweb good for documentation sites?**
 
