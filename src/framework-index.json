@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-11T15:48:33.783Z",
+  "generatedAt": "2026-11-11T16:51:43.735Z",
   "packages": {
     "@uniweb/api": {
       "version": "1.7.0"
@@ -24,7 +24,7 @@
       "version": "1.0.8"
     },
     "@uniweb/kit": {
-      "version": "1.7.19"
+      "version": "1.7.20"
     },
     "@uniweb/loom": {
       "version": "1.1.3"
