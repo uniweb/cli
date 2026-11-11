@@ -74,11 +74,15 @@ import {
 import { execSync } from 'node:child_process'
 import { resolve, join, relative } from 'node:path'
 import prompts from 'prompts'
+import { collectNestedRefs } from '@uniweb/schemas/format'
 import { buildRegistryPackage, buildSchemaOnlyPackage } from '@uniweb/build/uwx'
 import {
   classifyPackage,
   isSchemasPackage,
   collectStandaloneSchemas,
+  buildMappingMap,
+  ownMappingFiles,
+  loadMappingFile,
   readFoundationName,
   checkFoundationName,
   checkRegistrationScope,
@@ -264,6 +268,35 @@ function sayRefused({ res, parsedBody, rawBody, scope, member, what }) {
 }
 
 /**
+ * The mappings a foundation carries from a library (`lib.mappings`, in full), read from its
+ * `mappings/`, with each one a `keys_from` names there, keyed `@/<name>` as the library spells them.
+ */
+async function libraryMappingsWanted(lib, own) {
+  if (!(lib.mappings || []).length) return {}
+  const files = new Map(ownMappingFiles(lib.dir).map((m) => [`@/${m.name}`, m.file]))
+  const out = {}
+  const queue = lib.mappings.map(own).filter(Boolean)
+  while (queue.length) {
+    const ref = queue.pop()
+    if (out[ref] || !files.has(ref)) continue
+    out[ref] = await loadMappingFile(files.get(ref))
+    const from = typeof out[ref]?.keys_from === 'string' ? own(out[ref].keys_from) : null
+    if (from) queue.push(from)
+  }
+  return out
+}
+
+/** A mapping's reverse `follow` lines' `model`s, as written. */
+function followModelsOf(decl) {
+  const out = []
+  for (const line of Array.isArray(decl?.follow) ? decl.follow : []) {
+    if (!line || typeof line !== 'object') continue
+    for (const spec of Object.values(line)) if (spec && typeof spec.model === 'string') out.push(spec.model)
+  }
+  return out
+}
+
+/**
  * Register the data schemas a library defines, before the foundation that names them
  * (`backend/library-types.js`): the library's package whole, as `uniweb register` there sends it.
  *
@@ -286,10 +319,31 @@ async function registerLibraryTypes(lib, { client, exporter, at }) {
   try {
     // The types the foundation names from it, and no other of its files: those may be another
     // package's to register, or a copy of one the foundation defines (`library-types.js`).
-    const wanted = new Set(lib.refs.map((ref) => `@/${ref.slice(lib.scope.length + 1)}`))
+    const own = (ref) => (ref.startsWith('@/') ? ref : ref.startsWith(`${lib.scope}/`) ? `@/${ref.slice(lib.scope.length + 1)}` : null)
+    const wanted = new Set(lib.refs.map(own))
     const all = await collectStandaloneSchemas(lib.dir)
+    // ⭐ The mappings it carries from here, each with the ones its `keys_from` names, and the types
+    // of this library they name: a registry takes a mapping only after what it names.
+    const mappings = await libraryMappingsWanted(lib, own)
+    for (const decl of Object.values(mappings)) {
+      for (const ref of [decl.model, ...followModelsOf(decl)]) {
+        const local = typeof ref === 'string' ? own(ref) : null
+        if (local && all[local]) wanted.add(local)
+      }
+    }
+    // …and what those types name, of this library, as the build would have named them.
+    for (const queue = [...wanted]; queue.length; ) {
+      for (const ref of collectNestedRefs(all[queue.pop()] || {})) {
+        const local = own(ref)
+        if (local && all[local] && !wanted.has(local)) {
+          wanted.add(local)
+          queue.push(local)
+        }
+      }
+    }
     doc = buildSchemaOnlyPackage({
       schemas: Object.fromEntries(Object.entries(all).filter(([key]) => wanted.has(key))),
+      mappings,
       scope: lib.scope,
       exporter
     })
@@ -298,7 +352,8 @@ async function registerLibraryTypes(lib, { client, exporter, at }) {
     return null
   }
   const names = doc.entities.map((e) => e.name)
-  info(`Registering the data schemas in ${at} (${names.join(', ')}) …`)
+  const typeNames = doc.entities.filter((e) => e.model === '@uniweb/data-schema').map((e) => e.name)
+  info(`Registering ${(lib.mappings || []).length ? 'the data schemas and mappings' : 'the data schemas'} in ${at} (${names.join(', ')}) …`)
   let res
   try {
     res = await client.register(JSON.stringify(doc, null, 2))
@@ -315,10 +370,13 @@ async function registerLibraryTypes(lib, { client, exporter, at }) {
   }
   if (res.ok) {
     const answers = Array.isArray(body?.data_schemas) ? body.data_schemas : []
-    if (answers.length === names.length && answers.every((a) => a?.unchanged === true)) {
+    if (names.length === typeNames.length && answers.length === names.length && answers.every((a) => a?.unchanged === true)) {
       log(`  ${colors.dim}Unchanged: the registry holds them as they are.${colors.reset}`)
     } else {
-      success(`Registered ${names.length} data schema(s) under ${lib.scope}, from ${at}`)
+      const mappingCount = names.length - typeNames.length
+      success(
+        `Registered ${[typeNames.length && `${typeNames.length} data schema(s)`, mappingCount && `${mappingCount} mapping(s)`].filter(Boolean).join(' and ')} under ${lib.scope}, from ${at}`
+      )
     }
     return { names, body }
   }
@@ -330,10 +388,13 @@ async function registerLibraryTypes(lib, { client, exporter, at }) {
     const held = await Promise.all(
       lib.refs.map((ref) => client.readDataSchema(ref).catch(() => undefined))
     )
+    // A mapping isn't read back here: the foundation's own register is refused, naming the mapping
+    // and its library, when the registry doesn't hold it.
     if (held.every(Boolean)) {
-      const one = lib.refs.length === 1
+      const taken = [...lib.refs, ...(lib.mappings || [])]
+      const one = taken.length === 1
       info(
-        `${lib.refs.join(', ')} ${one ? 'is' : 'are'} registered under ${lib.scope}, whose members change ${one ? 'it' : 'them'}: the foundation is released against ${one ? 'it' : 'them'} as registered.`
+        `${taken.join(', ')} ${one ? 'is' : 'are'} registered under ${lib.scope}, whose members change ${one ? 'it' : 'them'}: the foundation is released against ${one ? 'it' : 'them'} as registered.`
       )
       return { names: [], body: null }
     }
@@ -837,17 +898,20 @@ async function runRegister(args = []) {
   // the package's own schemas; the foundation path reads its built schema.json.
   let schema = null
   let schemas = null
+  let mappings = null
   if (standalone) {
     try {
       schemas = await collectStandaloneSchemas(targetDir)
+      // A library's mappings, beside its types (`mappings/`): registered with them, after them.
+      mappings = await buildMappingMap(targetDir, { ownTypes: Object.keys(schemas || {}), shownIn: 'mappings' })
     } catch (err) {
       error(`Could not read the schemas package: ${err.message}`)
       return { exitCode: 2 }
     }
-    if (!schemas || Object.keys(schemas).length === 0) {
-      error('No data schemas found in this package.')
+    if ((!schemas || Object.keys(schemas).length === 0) && Object.keys(mappings || {}).length === 0) {
+      error('No data schemas or mappings found in this package.')
       log(
-        `  ${colors.dim}Expected a package that exports schemas (getSchema / schemas), or a schemas/ directory of *.yml files.${colors.reset}`
+        `  ${colors.dim}Expected a package that exports schemas (getSchema / schemas), or a schemas/ or mappings/ directory of *.yml files.${colors.reset}`
       )
       return { exitCode: 2 }
     }
@@ -923,7 +987,11 @@ async function runRegister(args = []) {
   let fromLibraries = []
   if (!standalone) {
     try {
-      fromLibraries = await typesFromLibraries({ schemas: schema?.dataSchemas || {}, foundationDir: targetDir })
+      fromLibraries = await typesFromLibraries({
+        schemas: schema?.dataSchemas || {},
+        mappings: schema?._mappings || {},
+        foundationDir: targetDir
+      })
     } catch (err) {
       // ⛔ Said, never silent: a build too old to tell which library defines a type registers none,
       // and the registry then refuses the foundation for it.
@@ -981,7 +1049,7 @@ async function runRegister(args = []) {
   let doc
   try {
     doc = standalone
-      ? buildSchemaOnlyPackage({ schemas, scope, exporter })
+      ? buildSchemaOnlyPackage({ schemas, mappings, scope, exporter })
       : buildRegistryPackage({
           schema,
           foundationDir: targetDir,
@@ -1012,9 +1080,17 @@ async function runRegister(args = []) {
   log(
     `  ${colors.dim}data schemas ${standalone ? 'registered' : 'defined'}: ${defined.length ? defined.join(', ') : '(none)'}${colors.reset}`
   )
+  const definedMappings = doc.entities.filter((e) => e.model === '@uniweb/mapping-schema').map((e) => e.name)
+  if (definedMappings.length) {
+    log(`  ${colors.dim}mappings ${standalone ? 'registered' : 'defined'}: ${definedMappings.join(', ')}${colors.reset}`)
+  }
   for (const lib of fromLibraries) {
+    const taken = [
+      lib.refs.length && `data schemas ${lib.refs.join(', ')}`,
+      (lib.mappings || []).length && `mappings ${lib.mappings.join(', ')}`
+    ].filter(Boolean).join('; ')
     log(
-      `  ${colors.dim}data schemas from ${shownAt(lib.dir)}: ${lib.refs.join(', ')} — ${isPreview ? 'would be registered' : 'registered'} from there first${colors.reset}`
+      `  ${colors.dim}from ${shownAt(lib.dir)}: ${taken} — ${isPreview ? 'would be registered' : 'registered'} from there first${colors.reset}`
     )
   }
   if (scope)
@@ -1141,7 +1217,7 @@ async function runRegister(args = []) {
   if (!alreadyRegistered) {
     success(
       standalone
-        ? `Registered ${defined.length} data schema(s)${scope ? ` under ${scope}` : ''}`
+        ? `Registered ${[defined.length && `${defined.length} data schema(s)`, definedMappings.length && `${definedMappings.length} mapping(s)`].filter(Boolean).join(' and ')}${scope ? ` under ${scope}` : ''}`
         : `Registered ${registeredName}@${schema._self.version}${defined.length ? ` + ${defined.length} data schema(s)` : ''}`
     )
   }

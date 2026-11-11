@@ -20,6 +20,12 @@
  * (`destructive_republish`), and the release stops there. Libraries go in the order their types
  * reference each other, a referenced one first, since the registry refuses a reference to a Model it
  * doesn't hold yet.
+ *
+ * ⭐ A LIBRARY'S MAPPINGS GO THE SAME WAY. A foundation carries one by naming it in its main.js
+ * (`mappings: ['@acme/vehicle-to-meta']`), and names it in its `mappings` refs; the library's call
+ * registers it, after the library's types, with the mappings its `keys_from` names and the library
+ * types it names. The registry records, on the foundation, the version it held of each, and a site
+ * backend installs that version: a library's next one reaches a site with its foundation's next.
  */
 
 import { existsSync, realpathSync } from 'node:fs'
@@ -42,18 +48,23 @@ function packageDirOf(file) {
   }
 }
 
-/** Libraries in an order where one whose types another's reference comes before it; else as found. */
-function referencedFirst(libraries, schemas) {
+/**
+ * Libraries in an order where one whose types another's types or mappings name comes before it;
+ * else as found.
+ */
+function referencedFirst(libraries, schemas, mappings = {}) {
   const holder = new Map()
   for (const lib of libraries) for (const ref of lib.refs) holder.set(ref, lib)
   const before = new Map(libraries.map((lib) => [lib, new Set()]))
+  const after = (lib, target) => {
+    const other = holder.get(target)
+    if (other && other !== lib) before.get(lib).add(other)
+  }
   for (const lib of libraries) {
     for (const ref of lib.refs) {
-      for (const target of collectNestedRefs(schemas[ref] || {})) {
-        const other = holder.get(target)
-        if (other && other !== lib) before.get(lib).add(other)
-      }
+      for (const target of collectNestedRefs(schemas[ref] || {})) after(lib, target)
     }
+    for (const ref of lib.mappings || []) for (const target of typesNamedBy(mappings[ref])) after(lib, target)
   }
   const out = []
   const placed = new Set()
@@ -68,22 +79,37 @@ function referencedFirst(libraries, schemas) {
   return out
 }
 
+/** The types a mapping names, as its `_mappings` entry holds them (in full): its `model` and its `follow` lines'. */
+export function typesNamedBy(mapping) {
+  if (!mapping || typeof mapping !== 'object') return []
+  const out = []
+  if (typeof mapping.model === 'string') out.push(mapping.model)
+  for (const line of Array.isArray(mapping.follow) ? mapping.follow : []) {
+    if (!line || typeof line !== 'object') continue
+    for (const spec of Object.values(line)) if (spec && typeof spec.model === 'string') out.push(spec.model)
+  }
+  return out
+}
+
 /**
- * The libraries that define types the foundation names, each once, with the types it names from
- * each, in the order they register in. A type its own `schemas/` defines (`@/x`), one nothing local
+ * The libraries that define types the foundation names, or mappings it carries, each once, with the
+ * types and mappings it takes from each, in the order they register in. A type its own `schemas/` defines (`@/x`), one nothing local
  * defines, one two packages define (which the build refused) and one `schemas.config.js` routes are
  * left out.
  *
  * @param {object} o
  * @param {Record<string, object>} o.schemas - the foundation's built `dataSchemas`: every type it
  *   names, with its definition
+ * @param {Record<string, object|null>} [o.mappings] - the foundation's built `_mappings`: its own
+ *   (`@/x`) and the library ones its main.js carries (in full)
  * @param {string} o.foundationDir
- * @returns {Promise<Array<{ dir: string, scope: string, refs: string[] }>>}
+ * @returns {Promise<Array<{ dir: string, scope: string, refs: string[], mappings: string[] }>>}
+ *   `mappings`: the library mappings it carries from that library, in full
  * @throws {Error} `code: 'BUILD_TOO_OLD'` when the installed `@uniweb/build` can't tell
  */
-export async function typesFromLibraries({ schemas, foundationDir }) {
+export async function typesFromLibraries({ schemas, mappings, foundationDir }) {
   const build = await import('@uniweb/build')
-  const { workspaceTypeFiles, packageTypeScope, classifyPackage, isSchemasPackage, routedSchema, resolveFoundationSrcPath } = build
+  const { workspaceTypeFiles, workspaceMappingFiles, packageTypeScope, classifyPackage, isSchemasPackage, routedSchema, resolveFoundationSrcPath } = build
   if ([workspaceTypeFiles, packageTypeScope, routedSchema].some((fn) => typeof fn !== 'function')) {
     throw Object.assign(new Error('the installed @uniweb/build cannot tell which library defines a type'), { code: 'BUILD_TOO_OLD' })
   }
@@ -101,8 +127,25 @@ export async function typesFromLibraries({ schemas, foundationDir }) {
     if (classifyPackage(dir) === 'foundation' || !isSchemasPackage(dir)) continue
     const scope = await packageTypeScope(dir, 'schemas')
     if (!scope) continue
-    if (!byDir.has(dir)) byDir.set(dir, { dir, scope, refs: [] })
+    if (!byDir.has(dir)) byDir.set(dir, { dir, scope, refs: [], mappings: [] })
     byDir.get(dir).refs.push(ref)
   }
-  return referencedFirst([...byDir.values()], schemas || {})
+  // ⭐ The library mappings its main.js carries (`mappings: ['@acme/x']`, `_mappings` keys in full),
+  // found by the same rule, and registered in their library's call, after its types. One no package
+  // here defines is left to the registry, which refuses the foundation unless it holds it.
+  if (typeof workspaceMappingFiles === 'function') {
+    for (const ref of Object.keys(mappings || {})) {
+      if (!/^@[^/]+\/./.test(ref) || ref.startsWith('@uniweb/')) continue
+      const files = await workspaceMappingFiles(ref, foundationDir).catch(() => [])
+      if (files.length !== 1) continue
+      const dir = packageDirOf(files[0])
+      if (!dir || real(dir) === own) continue
+      if (classifyPackage(dir) === 'foundation' || !isSchemasPackage(dir)) continue
+      const scope = await packageTypeScope(dir, 'schemas')
+      if (!scope) continue
+      if (!byDir.has(dir)) byDir.set(dir, { dir, scope, refs: [], mappings: [] })
+      byDir.get(dir).mappings.push(ref)
+    }
+  }
+  return referencedFirst([...byDir.values()], schemas || {}, mappings || {})
 }

@@ -82,9 +82,11 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), { status
  */
 async function register({ library, held = [], orgs = { account_handle: 'jane', orgs: [{ handle: 'acme' }] }, args = ['--schema-only'], setup } = {}) {
   const sent = []
+  const docs = []
   const respond = async (url, init) => {
     if (url === `${ORIGIN}/dev/registry/register`) {
       const doc = JSON.parse(init.body)
+      docs.push(doc)
       const names = doc.entities.map((e) => e.name ?? e.info?.name)
       const foundation = doc.entities.some((e) => e.model === '@uniweb/foundation-schema')
       sent.push({ foundation, names })
@@ -102,7 +104,7 @@ async function register({ library, held = [], orgs = { account_handle: 'jane', o
   const shop = workspace()
   if (setup) setup(shop, dirname(dirname(shop)))
   const run = await runVerb(shop, register, args, { env: ENV, respond })
-  return { ...run, sent }
+  return { ...run, sent, docs }
 }
 
 /** Write files under `root`. */
@@ -131,7 +133,7 @@ test('⭐ a type a library defines is registered from the library, before the fo
     { foundation: false, names: ['@acme/plan'] },
     { foundation: true, names: ['@acme/order', '@acme/shop'] }
   ])
-  assert.match(run.output, /data schemas from libraries\/data\/: @acme\/plan — registered from there first/)
+  assert.match(run.output, /from libraries\/data\/: data schemas @acme\/plan — registered from there first/)
   assert.match(run.output, /Registering the data schemas in libraries\/data\/ \(@acme\/plan\)/)
   assert.match(run.output, /Registered 1 data schema\(s\) under @acme, from libraries\/data\//)
 })
@@ -209,7 +211,7 @@ test('--dry-run says what would be registered first, and asks nothing', async ()
   const run = await register({ library: () => assert.fail('submitted'), args: ['--dry-run'] })
   assert.equal(run.exitCode, 0, run.output)
   assert.equal(run.requests, 0)
-  assert.match(run.output, /data schemas from libraries\/data\/: @acme\/plan — would be registered from there first/)
+  assert.match(run.output, /from libraries\/data\/: data schemas @acme\/plan — would be registered from there first/)
 })
 
 test('CONTROL: a type the foundation defines, or another foundation does, is not a library\'s', async () => {
@@ -217,7 +219,7 @@ test('CONTROL: a type the foundation defines, or another foundation does, is not
   const shop = workspace()
   const schemas = Object.fromEntries(['@/order', '@acme/member', '@acme/plan', '@std/person', '@acme/gone'].map((ref) => [ref, { fields: {} }]))
   const found = await typesFromLibraries({ schemas, foundationDir: shop })
-  assert.deepEqual(found, [{ dir: join(dirname(dirname(shop)), 'libraries/data'), scope: '@acme', refs: ['@acme/plan'] }])
+  assert.deepEqual(found, [{ dir: join(dirname(dirname(shop)), 'libraries/data'), scope: '@acme', refs: ['@acme/plan'], mappings: [] }])
 })
 
 test('⭐ libraries go in the order their types reference each other: a referenced one first', async () => {
@@ -320,3 +322,65 @@ test('register in an @org/schemas package with no uniweb.scope names its types u
   assert.match(result.output, /scope: @acme \(package\.json uniweb\.scope\)/)
 })
 
+
+// ⭐ A library's mappings: a foundation carries one by naming it in its main.js (`_mappings` in full),
+// and the library's call registers it, after the library's types — with the mapping its `keys_from`
+// names and the type it translates — before the foundation, which names it in its `mappings` refs.
+test('⭐ a mapping a library defines is registered from the library, with what it names, before the foundation', async () => {
+  const run = await register({
+    library: (names) => registered(names),
+    setup: (shop, root) => {
+      put(root, {
+        'libraries/feeds/package.json': JSON.stringify({ name: 'feeds', uniweb: { scope: '@feeds' } }),
+        'libraries/feeds/schemas/vehicle.yml': 'name: vehicle\nfields:\n  title: { type: string }\n',
+        'libraries/feeds/schemas/unrelated.yml': 'name: unrelated\nfields:\n  x: { type: string }\n',
+        'libraries/feeds/mappings/inventory.yml': "model: '@/vehicle'\ndirection: in\n",
+        'libraries/feeds/mappings/to-meta.yml': "label: Meta catalog\nmodel: '@/vehicle'\ndirection: out\nkeys_from: '@/inventory'\n",
+        'libraries/feeds/mappings/other.yml': "model: '@/vehicle'\n",
+      })
+      const path = join(shop, 'dist/meta/schema.json')
+      writeFileSync(
+        path,
+        JSON.stringify({
+          _self: { name: '@acme/shop', version: '0.1.0' },
+          dataSchemas: { '@/order': { name: 'order', fields: { total: { type: 'number' } } } },
+          _mappings: { '@feeds/to-meta': { label: 'Meta catalog', model: '@feeds/vehicle', direction: 'out', keys_from: '@feeds/inventory' } },
+        })
+      )
+      const future = Date.now() / 1000 + 3600
+      utimesSync(path, future, future)
+    },
+  })
+  assert.equal(run.exitCode, 0, run.output)
+  assert.deepEqual(run.sent, [
+    { foundation: false, names: ['@feeds/vehicle', '@feeds/inventory', '@feeds/to-meta'] },
+    { foundation: true, names: ['@acme/order', '@acme/shop'] },
+  ])
+  const library = run.docs[0].entities
+  assert.deepEqual(library.map((e) => e.model), ['@uniweb/data-schema', '@uniweb/mapping-schema', '@uniweb/mapping-schema'])
+  assert.deepEqual(library[2].rules, { model: '@feeds/vehicle', direction: 'out', keys_from: '@feeds/inventory' })
+  assert.deepEqual(run.docs[1].entities.at(-1).mappings, { refs: [{ name: '@feeds/to-meta' }] })
+  assert.match(run.output, /from libraries\/feeds\/: mappings @feeds\/to-meta — registered from there first/)
+  assert.match(run.output, /Registered 1 data schema\(s\) and 2 mapping\(s\) under @feeds, from libraries\/feeds\//)
+})
+
+test('register in a library of mappings alone registers them, with no foundation', async () => {
+  const root = tmp('uw-libmappings-')
+  put(root, {
+    'package.json': JSON.stringify({ name: 'feeds', uniweb: { scope: '@feeds' } }),
+    'mappings/to-meta.yml': "model: '@std/person'\ndirection: out\n",
+  })
+  const docs = []
+  const respond = async (url, init) => {
+    if (url === `${ORIGIN}/dev/registry/register`) {
+      docs.push(JSON.parse(init.body))
+      return json({ data_schemas: [] })
+    }
+    if (url === `${ORIGIN}/dev/orgs`) return json({ account_handle: 'jane', orgs: [{ handle: 'feeds' }] })
+  }
+  const { register: run } = await import('../src/commands/register.js')
+  const result = await runVerb(root, run, [], { env: ENV, respond })
+  assert.equal(result.exitCode, 0, result.output)
+  assert.deepEqual(docs[0].entities, [{ model: '@uniweb/mapping-schema', name: '@feeds/to-meta', rules: { model: '@std/person', direction: 'out' } }])
+  assert.match(result.output, /Registered 1 mapping\(s\) under @feeds/)
+})
