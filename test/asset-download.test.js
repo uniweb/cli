@@ -114,6 +114,88 @@ test('an asset already on disk is not re-fetched', async () => {
   }
 })
 
+test('⭐ a picture kept beside its page is present there, and restored there', async () => {
+  // The push keys a file beside its markdown by its path from the site root, with no
+  // leading slash. ⛔ Until 2026-11-11 the pull took every key as site-root and wrote
+  // this picture a second time, under public/pages/home/.
+  const dir = site()
+  try {
+    updateBackendMap(dir, ORIGIN, 'assets', { 'pages/home/band.jpg': { id: 'b1', ext: 'jpg' } })
+    mkdirSync(join(dir, 'pages', 'home'), { recursive: true })
+    writeFileSync(join(dir, 'pages', 'home', 'band.jpg'), 'ALREADY')
+    const doc = docWith({ src: SERVE, assetId: 'b1', assetExt: 'jpg' })
+    const held = await downloadMissingAssets({
+      document: doc,
+      siteDir: dir,
+      origin: ORIGIN,
+      fetchImpl: async () => {
+        throw new Error('should not fetch')
+      }
+    })
+    assert.deepEqual(held.present, ['pages/home/band.jpg'])
+    assert.ok(!existsSync(join(dir, 'public', 'pages', 'home', 'band.jpg')))
+
+    rmSync(join(dir, 'pages', 'home', 'band.jpg'))
+    const restored = await downloadMissingAssets({ document: doc, siteDir: dir, origin: ORIGIN, fetchImpl: okFetch() })
+    assert.deepEqual(restored.downloaded, ['pages/home/band.jpg'])
+    assert.equal(readFileSync(join(dir, 'pages', 'home', 'band.jpg'), 'utf8'), 'BYTES')
+    assert.ok(!existsSync(join(dir, 'public', 'pages', 'home', 'band.jpg')))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('⭐ a moved picture is present at its new path, and its old path is not restored', async () => {
+  // A push merges into the map, so the path a file moved from stays beside the one it
+  // moved to, both with the same id. ⛔ Until 2026-11-11 the pull took the LAST path for
+  // an id and fetched the picture again to the old one.
+  const dir = site()
+  try {
+    updateBackendMap(dir, ORIGIN, 'assets', {
+      '/images/band.jpg': { id: 'b1', ext: 'jpg' },
+      'pages/home/band.jpg': { id: 'b1', ext: 'jpg' }
+    })
+    mkdirSync(join(dir, 'public', 'images'), { recursive: true })
+    writeFileSync(join(dir, 'public', 'images', 'band.jpg'), 'ALREADY')
+    const out = await downloadMissingAssets({
+      document: docWith({ src: SERVE, assetId: 'b1', assetExt: 'jpg' }),
+      siteDir: dir,
+      origin: ORIGIN,
+      fetchImpl: async () => {
+        throw new Error('should not fetch')
+      }
+    })
+    assert.deepEqual(out.present, ['/images/band.jpg'])
+    assert.deepEqual(out.downloaded, [])
+    assert.ok(!existsSync(join(dir, 'pages', 'home', 'band.jpg')))
+    assert.ok(!existsSync(join(dir, 'public', 'pages', 'home', 'band.jpg')))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('an id with several paths and no file is restored to the path the content takes', async () => {
+  // `restoreAssetRefs` writes the FIRST path the map holds for an id into the content,
+  // so the bytes go there too, and the content names a file that exists.
+  const dir = site()
+  try {
+    updateBackendMap(dir, ORIGIN, 'assets', {
+      'pages/home/band.jpg': { id: 'b1', ext: 'jpg' },
+      '/images/band.jpg': { id: 'b1', ext: 'jpg' }
+    })
+    const first = Object.keys(readBackendState(dir, ORIGIN).assets)[0]
+    const out = await downloadMissingAssets({
+      document: docWith({ src: SERVE, assetId: 'b1', assetExt: 'jpg' }),
+      siteDir: dir,
+      origin: ORIGIN,
+      fetchImpl: okFetch()
+    })
+    assert.deepEqual(out.downloaded, [first])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('⛔ a failed download WARNS and never throws — the content keeps its URL', async () => {
   const dir = site()
   const warnings = []

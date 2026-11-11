@@ -89,8 +89,15 @@ export function collectAssetRefs(document, map = {}) {
   return [...found.values()]
 }
 
-/** Where a site-root ref lives on disk. `resolveAssetPath` looks in public/ first. */
-const diskPathFor = (siteDir, ref) => join(siteDir, 'public', ref)
+/**
+ * Where a ref lives on disk: where the push read it (`resolveAssetPath`). A site-root
+ * ref (`/images/hero.jpg`) is a file in public/. A ref the push keyed from a file beside
+ * its markdown has no leading slash (`pages/home/band.jpg`, relative to the site root)
+ * and lives there. ⛔ Until 2026-11-11 every ref was taken as site-root, so a pull wrote
+ * a page's own picture a second time under public/pages/…, where nothing names it.
+ */
+const diskPathFor = (siteDir, ref) =>
+  ref.startsWith('/') ? join(siteDir, 'public', ref) : join(siteDir, ref)
 
 /** The generic landing path for an asset this project has never held. */
 export const genericRefFor = (id, ext) => `/assets/${id}${ext ? `.${ext}` : ''}`
@@ -122,18 +129,29 @@ export async function downloadMissingAssets({
   const out = { downloaded: [], present: [], failed: [], skipped: [] }
   if (!refs.length) return out
 
+  // Every path the map holds for an id. A push merges into the map and never prunes it,
+  // so a file moved after it was pushed leaves its old path beside the new one. The asset
+  // is on disk when ANY of its paths holds it, and one that is not goes back to the FIRST
+  // path, the one `restoreAssetRefs` writes into the content. ⛔ Until 2026-11-11 the
+  // LAST path won here and the first there, so a pull fetched a moved picture again, to
+  // a path nothing names.
   const byId = new Map()
-  for (const [ref, v] of Object.entries(map)) if (v?.id) byId.set(v.id, ref)
+  for (const [ref, v] of Object.entries(map)) {
+    if (!v?.id) continue
+    if (!byId.has(v.id)) byId.set(v.id, [])
+    byId.get(v.id).push(ref)
+  }
 
   const learned = {}
 
   for (const { id, ext, url } of refs) {
     const known = byId.get(id)
-    const ref = known || genericRefFor(id, ext)
+    const ref = known ? known[0] : genericRefFor(id, ext)
+    const held = (known || [ref]).find((r) => existsSync(diskPathFor(siteDir, r)))
     const disk = diskPathFor(siteDir, ref)
 
-    if (existsSync(disk)) {
-      out.present.push(ref)
+    if (held) {
+      out.present.push(held)
       // Still record identity for a generic ref we already hold but never mapped.
       if (!known) learned[ref] = { id, ext }
       continue
