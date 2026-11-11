@@ -108,7 +108,7 @@ const openSignup = (repo) => w(repo, 'site/blueprint.yml', BLUEPRINT.replace('in
 test('⭐ a changed blueprint pushed to a site whose backend has started: the push says it reaches no backend', { timeout: 60_000 }, async () => {
   const { output, asked } = await pushAfter('active', openSignup)
   assert.match(output, SAID)
-  assert.match(output, /What a running backend allows, the site's owner changes in the backend's administration\./)
+  assert.match(output, /The site's owner changes a running backend's settings in the backend's administration\./)
   assert.equal(asked.length, 1, 'the status, read once, before the push sent')
 })
 

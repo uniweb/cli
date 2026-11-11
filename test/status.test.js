@@ -468,7 +468,7 @@ test("⭐ hosting.blueprint: once the site's backend has started, a change to bl
   const differs = checkOf(docOf(await ask(site('active', { ...held, signup: 'open' }))), 'hosting.blueprint')
   assert.equal(differs.state, 'attention')
   assert.match(differs.summary, /the file here differs from what the site holds, and a push of it doesn't reach that backend\.$/)
-  assert.deepEqual(differs.lines, ["What a running backend allows, the site's owner changes in the backend's administration."])
+  assert.deepEqual(differs.lines, ["The site's owner changes a running backend's settings in the backend's administration."])
 
   // Under Hosting, after the services the live site has.
   const shown = plain((await ask(site('active'), [])).output)

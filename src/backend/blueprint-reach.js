@@ -59,8 +59,11 @@ const heldBlueprint = (status) => liftBlueprint(status?.services).blueprint
 
 const STARTED = `${BLUEPRINT_FILE} is how a backend started from this site begins, and this site's backend has started`
 
-/** Where the change is made instead — by a person, in a browser. */
-const ADMINISTRATION = "What a running backend allows, the site's owner changes in the backend's administration."
+/**
+ * Where the change is made instead — by a person, in a browser. It names no key: each of the file's,
+ * integrations included, is a setting the site's owner changes there once the backend has started.
+ */
+const ADMINISTRATION = "The site's owner changes a running backend's settings in the backend's administration."
 
 /**
  * Whether a push's `services` rows carry a blueprint, so that `sentBlueprintNote` has something to

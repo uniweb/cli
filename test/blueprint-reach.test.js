@@ -28,6 +28,8 @@ const rows = (blueprint) => [{ name: 'google', config: { id: 'G-1' } }, { name: 
 const statusOf = (backend_state, held = BLUEPRINT) => ({ published: true, services: rows(held), backend_state })
 const CHANGED = { ...BLUEPRINT, signup: 'open' }
 const STARTED = /^blueprint\.yml is how a backend started from this site begins, and this site's backend has started: /
+// Names no key of the file: every one is a setting changed there once the backend has started.
+const ADMINISTRATION = "The site's owner changes a running backend's settings in the backend's administration."
 
 test('⛔ over an older @uniweb/build, which has none of the comparison, it loads and says nothing', () => {
   // The CLI is @uniweb/build's peer, so a project can run it over a build from before `blueprintForWire`,
@@ -72,7 +74,7 @@ test('⭐ a push that sends a changed blueprint to a site whose backend has star
   assert.ok(lines, 'said')
   assert.match(lines[0], STARTED)
   assert.match(lines[0], /the change just sent doesn't reach it\.$/)
-  assert.match(lines[1], /the site's owner changes in the backend's administration/)
+  assert.equal(lines[1], ADMINISTRATION)
 })
 
 test('CONTROL — the same push to a site whose backend has not started says nothing: the file is how it will begin', () => {
@@ -94,6 +96,16 @@ test('a blueprint the site already holds is no change, whatever order its keys c
 
 test('a blueprint sent to a started backend whose site held none is a change too', () => {
   assert.ok(sentBlueprintNote({ status: statusOf('active', null), sent: rows(BLUEPRINT) }))
+})
+
+test('a changed integrations line is a change too: integrations are applied once, as the rest of the file', () => {
+  const feed = { mapping: '@acme/vehicle-to-meta', channel: 'feed', trigger: 'on_fetch' }
+  const held = statusOf('active', { ...BLUEPRINT, integrations: { meta: feed } })
+  const lines = sentBlueprintNote({ status: held, sent: rows({ ...BLUEPRINT, integrations: { meta: { ...feed, enabled: true } } }) })
+  assert.match(lines[0], STARTED)
+  assert.equal(lines[1], ADMINISTRATION)
+  const reordered = { trigger: feed.trigger, channel: feed.channel, mapping: feed.mapping }
+  assert.equal(sentBlueprintNote({ status: held, sent: rows({ ...BLUEPRINT, integrations: { meta: reordered } }) }), null, 'CONTROL — the same line')
 })
 
 test('a push that sends no blueprint, or no site content, says nothing', () => {
@@ -139,7 +151,7 @@ test('⭐ status: a file that says something else than the site holds — attent
   assert.equal(check.state, 'attention')
   assert.match(check.summary, STARTED)
   assert.match(check.summary, /the file here differs from what the site holds, and a push of it doesn't reach that backend\.$/)
-  assert.match(check.lines[0], /the site's owner changes in the backend's administration/)
+  assert.deepEqual(check.lines, [ADMINISTRATION])
   assert.deepEqual(check.detail, { backend_state: 'provisioning', differs: true })
 })
 
