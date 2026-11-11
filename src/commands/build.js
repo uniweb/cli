@@ -413,10 +413,19 @@ function reportLocalizedSite(built) {
 
 /**
  * Generate index.html for each locale with hreflang tags
+ *
+ * ⭐ A LANGUAGE'S SHELL CARRIES ITS CONTENT AS THE DEFAULT ONE'S DOES: written by the one rule every
+ * shell's data is (`@uniweb/core/data-script`), every `<` escaped. The prerender then replaces it
+ * with each page's own, up to its closing tag. ⛔ Until 2026-11-11 this pasted the language's whole
+ * `site-content.json` in, pretty-printed and unescaped, so a `</script>` in any page's text (a
+ * code block showing an analytics tag) closed it early: the prerender's swap stopped there, and every
+ * page of that language kept the rest of the site as text, after a script that threw.
+ *
+ * Exported for its test (`test/localized-shell.test.js`).
  */
-async function generateLocalizedHtml(projectDir, i18nConfig) {
-  const { readFile, writeFile, mkdir, copyFile } =
-    await import('node:fs/promises')
+export async function generateLocalizedHtml(projectDir, i18nConfig) {
+  const { readFile, writeFile, mkdir } = await import('node:fs/promises')
+  const { jsonForScript } = await import('@uniweb/core/data-script')
   const distDir = join(projectDir, 'dist')
   const baseHtmlPath = join(distDir, 'index.html')
 
@@ -439,7 +448,7 @@ async function generateLocalizedHtml(projectDir, i18nConfig) {
 
   // Add hreflang to base HTML (for default locale)
   if (!baseHtml.includes('hreflang')) {
-    baseHtml = baseHtml.replace('</head>', `    ${allHreflangTags}\n  </head>`)
+    baseHtml = baseHtml.replace('</head>', () => `    ${allHreflangTags}\n  </head>`)
     await writeFile(baseHtmlPath, baseHtml)
   }
 
@@ -461,13 +470,13 @@ async function generateLocalizedHtml(projectDir, i18nConfig) {
       localeHtml = localeHtml.replace('<html', `<html lang="${locale}"`)
     }
 
-    // Update script src for locale-specific content if inlined
+    // The language's content in place of the default one's, if the shell carries content. A
+    // replacer function, since `$$` or `$&` in the content is text, not a pattern.
     if (existsSync(localeContentPath)) {
-      const localeContent = await readFile(localeContentPath, 'utf-8')
-      // Replace the inlined content if present
+      const localeContent = JSON.parse(await readFile(localeContentPath, 'utf-8'))
       localeHtml = localeHtml.replace(
         /<script[^>]*id="__SITE_CONTENT__"[^>]*>[\s\S]*?<\/script>/,
-        `<script type="application/json" id="__SITE_CONTENT__">${localeContent}</script>`
+        () => `<script type="application/json" id="__SITE_CONTENT__">${jsonForScript(localeContent)}</script>`
       )
     }
 
