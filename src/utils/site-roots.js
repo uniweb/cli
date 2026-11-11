@@ -21,7 +21,7 @@ import yaml from 'js-yaml'
 import { siteContentRoots } from '@uniweb/build/uwx'
 import { mountEntriesOf } from '@uniweb/build/site'
 import { mountHolding } from './mounted-repositories.js'
-import { repoOf } from './sync-point.js'
+import { fileAt, repoOf } from './sync-point.js'
 
 function readSiteYml(siteDir) {
   try {
@@ -62,6 +62,65 @@ export function laneRoots(siteDir) {
     content: siteRoots(siteDir).filter((r) => r !== records),
     records: [records, 'locales/records'],
   }
+}
+
+/**
+ * ⭐ HOW FAR ABOVE ITS REPOSITORY THE SITE REACHES: the most directories above the repository's top
+ * that one of the site's relative paths climbs, `site.yml`'s `paths:` and its `file:` and `link:`
+ * dependencies, as this copy holds them and as `rev` does. A pull's stand-in mirrors that far up
+ * (`openStandIn`), so a records or pages mount in a repository beside the site's resolves there as in
+ * the project. ⛔ Until 2026-11-10 none did: a records mount there stopped every pull, and `status`,
+ * with "not a directory here", and a pages mount there failed the pull's re-bank, so the next push
+ * sent the whole site again.
+ *
+ * @param {string} siteDir
+ * @param {object|null} repo - `repoOf(siteDir)`
+ * @param {string|null} [rev] - the commit the stand-in is filled from
+ * @returns {number}
+ */
+export function levelsAboveRepository(siteDir, repo, rev = null) {
+  if (!repo) return 0
+  const depth = repo.prefix.split('/').filter(Boolean).length
+  const climbOf = (path) => {
+    const p = typeof path === 'string' ? path.trim() : ''
+    if (!p || isAbsolute(p)) return 0
+    let level = depth
+    let low = depth
+    for (const segment of p.split(/[\\/]+/)) {
+      if (segment === '..') low = Math.min(low, --level)
+      else if (segment && segment !== '.') level++
+    }
+    return Math.max(0, -low)
+  }
+  const parsed = (text, parse) => {
+    try {
+      return text == null ? null : parse(String(text))
+    } catch {
+      return null // unreadable: it names no path
+    }
+  }
+  const here = (name) => {
+    try {
+      return readFileSync(join(siteDir, name), 'utf8')
+    } catch {
+      return null
+    }
+  }
+  const copies = [[here('site.yml'), here('package.json')]]
+  if (rev) copies.push([fileAt(repo, rev, 'site.yml'), fileAt(repo, rev, 'package.json')])
+  const paths = []
+  for (const [siteYml, packageJson] of copies) {
+    for (const value of Object.values(parsed(siteYml, (t) => yaml.load(t))?.paths || {})) {
+      paths.push(typeof value === 'string' ? value : value?.path)
+    }
+    const pkg = parsed(packageJson, (t) => JSON.parse(t))
+    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+      for (const spec of Object.values(pkg?.[field] || {})) {
+        if (typeof spec === 'string' && /^(file|link):/.test(spec)) paths.push(spec.replace(/^(file|link):/, ''))
+      }
+    }
+  }
+  return Math.max(0, ...paths.map(climbOf))
 }
 
 /**

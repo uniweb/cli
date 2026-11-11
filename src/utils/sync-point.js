@@ -42,6 +42,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -49,7 +50,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, dirname, posix } from 'node:path'
+import { join, basename, dirname, posix, sep } from 'node:path'
 
 export const SYNC_TRAILER = 'Uniweb-Sync'
 export const SITE_TRAILER = 'Uniweb-Site'
@@ -460,6 +461,13 @@ export function nestedBase(repo, siteBase, { at, sub, roots }) {
  * site's `sync.json` and `.uniweb/`, which are copies (written there, and taken back by the
  * caller). The stand-in lives outside the project.
  *
+ * ⭐ AND WHAT IS AROUND THE REPOSITORY, `above` directories up: the repository stands that deep,
+ * under directories named as its parents, each holding links to what is beside it there. So a path
+ * leading out of the repository, a records or pages mount in a repository beside it, resolves as in
+ * the project too. With `above` 0 the stand-in is the repository's alone. ⛔ Until 2026-11-10 it
+ * always was: such a path resolved under the temporary folder, which stopped every pull of a site
+ * mounting another repository's records ("not a directory here").
+ *
  * ⛔ CLOSE IT. `close()` unlinks every link it made before removing the rest — a recursive
  * remove that followed one would delete the project's own files.
  *
@@ -481,9 +489,11 @@ export function nestedBase(repo, siteBase, { at, sub, roots }) {
  *   each submodule a writable mount is in: its `repoOf`, its path from the site repository's top,
  *   the mounted folders in it (relative to its own top), the commit they are filled from, and the
  *   one a commit of them is made onto (null: none, an unrelated history)
+ * @param {number} [opts.above] - how many directories above the repository's top to mirror: as far
+ *   as the site's relative paths climb (`levelsAboveRepository`, `utils/site-roots.js`)
  * @returns {{ siteDir: string, commit: Function, changes: Function, placeIgnored: Function, close: Function }}
  */
-export function openStandIn(repo, { roots, rev, nested = [] }) {
+export function openStandIn(repo, { roots, rev, nested = [], above = 0 }) {
   // ⭐ A root is named relative to the site and held by the repository, so one outside the site's
   // folder — a mounted folder elsewhere in the repository — is filled and committed like the rest.
   // One outside the repository is in no commit of it. ⛔ Until 2026-11-04 every root leading out of
@@ -494,7 +504,19 @@ export function openStandIn(repo, { roots, rev, nested = [] }) {
       throw new Error(`the content root \`${r}\` is outside the site's repository, so a pull cannot merge it`)
     }
   })
-  const root = mkdtempSync(join(tmpdir(), 'uniweb-stand-in-'))
+  const base = mkdtempSync(join(tmpdir(), 'uniweb-stand-in-'))
+  // The directories above the repository the stand-in mirrors, nearest first, each with the name of
+  // the one below it on the way down; `base` stands for the farthest, and the repository's own stand-in
+  // is named as it is, under them.
+  const around = []
+  for (let real = repo.top; around.length < above && dirname(real) !== real; real = dirname(real)) {
+    around.push({ dir: dirname(real), child: basename(real) })
+  }
+  let root = base
+  for (let k = around.length - 1; k >= 0; k--) {
+    around[k].stand = root
+    root = join(root, around[k].child)
+  }
   const indexDir = mkdtempSync(join(tmpdir(), 'uniweb-stand-in-index-'))
   const env = { GIT_INDEX_FILE: join(indexDir, 'index') }
   const at = (args, opts = {}) =>
@@ -523,7 +545,7 @@ export function openStandIn(repo, { roots, rev, nested = [] }) {
         /* already gone */
       }
     }
-    rmSync(root, { recursive: true, force: true })
+    rmSync(base, { recursive: true, force: true })
     rmSync(indexDir, { recursive: true, force: true })
   }
 
@@ -595,6 +617,34 @@ export function openStandIn(repo, { roots, rev, nested = [] }) {
           if (!st.isDirectory()) throw new Error(`\`${r}\` is a link, so a pull cannot merge the site in place`)
           mirror(real, stand, r)
         } else link(real, stand, name)
+      }
+    }
+    // What is beside the repository, and beside each directory above it, as far up as `around` goes.
+    const realBase = realpathSync(base)
+    for (const { dir, child, stand } of around) {
+      mkdirSync(stand, { recursive: true })
+      let names = []
+      try {
+        names = readdirSync(dir)
+      } catch {
+        continue // unreadable: nothing resolves through it in the project either
+      }
+      for (const name of names) {
+        if (name === child) continue
+        let target
+        try {
+          target = realpathSync(join(dir, name))
+        } catch {
+          continue
+        }
+        // ⛔ Never the stand-in itself, nor a folder holding it: a link back into it is a loop.
+        if (target === realBase || realBase.startsWith(`${target}${sep}`)) continue
+        try {
+          link(join(dir, name), join(stand, name), name)
+        } catch {
+          // One the system will not link (macOS refuses a protected folder, `TemporaryItems`) is left
+          // out: only a path through it would miss it, as every such path did before.
+        }
       }
     }
     mirror(repo.top, root, '')

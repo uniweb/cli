@@ -116,7 +116,7 @@ import {
   readItemBaseVersions
 } from '../backend/site-sync.js'
 import { resolveWorkspace } from '../backend/workspace.js'
-import { siteRoots, sentRoots, laneRoots, writableMounts, refusedMountLines, heldMountLines } from '../utils/site-roots.js'
+import { siteRoots, sentRoots, laneRoots, writableMounts, refusedMountLines, heldMountLines, levelsAboveRepository } from '../utils/site-roots.js'
 import {
   repoOf,
   mergeInProgress,
@@ -1201,7 +1201,8 @@ export async function pull(args = [], deps = {}) {
       return { repo: m.repo, at: m.at, roots: [m.root], segment: m.segment, rev: force ? m.repo.head : own ?? m.repo.head, parent: force ? m.repo.head : own }
     })
     try {
-      standIn = openStandIn(repo, { roots, rev: onto, nested })
+      // As far above the repository as the site's paths reach, so a mount beside it resolves there too.
+      standIn = openStandIn(repo, { roots, rev: onto, nested, above: levelsAboveRepository(siteDir, repo, onto) })
     } catch (err) {
       error(`Could not merge the site: ${err.message}.`)
       return { exitCode: 1 }

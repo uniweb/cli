@@ -10,7 +10,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import {
   repoOf,
@@ -148,6 +148,37 @@ test('⛔ a stand-in links what is not content — and closing it removes no fil
   assert.equal(readFileSync(join(dir, 'node_modules', 'pkg', 'index.js'), 'utf8'), 'export default 1\n')
   assert.equal(readFileSync(join(dir, 'site', 'dist', 'built.js'), 'utf8'), 'built\n')
   assert.equal(existsSync(stand.siteDir), false)
+})
+
+test('⭐ a path leading out of the repository resolves in the stand-in as in the project, as far up as `above` reaches — and closing it removes nothing there', () => {
+  const { dir, repo } = project()
+  // Another repository beside this one, whose records the site mounts (`paths: records/…: ../../owner-…`).
+  const owner = mkdtempSync(join(scratch, 'owner-'))
+  mkdirSync(join(owner, 'records', 'crew'), { recursive: true })
+  writeFileSync(join(owner, 'records', 'crew', 'ann.yml'), 'name: Ann\n')
+  const beside = `../../${basename(owner)}/records/crew/ann.yml`
+  // CONTROL — the stand-in of the repository alone: the path leads out of it, to nothing.
+  const alone = openStandIn(repo, { roots: ['pages', 'site.yml'], rev: repo.head })
+  assert.equal(existsSync(resolve(alone.siteDir, beside)), false)
+  alone.close()
+
+  const stand = openStandIn(repo, { roots: ['pages', 'site.yml'], rev: repo.head, above: 1 })
+  assert.equal(readFileSync(resolve(stand.siteDir, beside), 'utf8'), 'name: Ann\n')
+  // The stand-in still does its own work: the content is the commit's, and a commit of it is made.
+  writeFileSync(join(dir, 'site', 'pages', 'home', 'hero.md'), '# Hero, uncommitted\n')
+  assert.equal(readFileSync(join(stand.siteDir, 'pages', 'home', 'hero.md'), 'utf8'), '# Hero\n')
+  writeFileSync(join(stand.siteDir, 'pages', 'home', 'hero.md'), '# Hero, from the app\n')
+  const made = stand.commit({ parent: repo.head, subject: 'test', origin: ORIGIN, siteUuid: 'SITE' })
+  assert.equal(git(dir, 'show', `${made.commit}:site/pages/home/hero.md`), '# Hero, from the app\n')
+  stand.close()
+  assert.equal(readFileSync(join(owner, 'records', 'crew', 'ann.yml'), 'utf8'), 'name: Ann\n')
+  assert.equal(existsSync(resolve(stand.siteDir, '..', '..')), false, 'the stand-in is gone, the directories it stood under too')
+
+  // A path that climbs past the repository's parent and comes back down by its name.
+  const twice = openStandIn(repo, { roots: ['pages', 'site.yml'], rev: repo.head, above: 2 })
+  assert.equal(readFileSync(resolve(twice.siteDir, `../../../${basename(scratch)}/${basename(owner)}/records/crew/ann.yml`), 'utf8'), 'name: Ann\n')
+  twice.close()
+  assert.equal(readFileSync(join(owner, 'records', 'crew', 'ann.yml'), 'utf8'), 'name: Ann\n')
 })
 
 test("⛔ what a stand-in holds where the repository ignores it is not committed — it is placed where the project lacks it, never over a file it has", () => {
