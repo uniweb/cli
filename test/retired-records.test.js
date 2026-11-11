@@ -77,6 +77,27 @@ test('⭐ the held types are a snapshot of the folder, and a push retires what i
   assert.ok(before.before.GONE_LONG_AGO, 'the first snapshot replaced the stale map')
 })
 
+test('⭐ a moved record\'s old entity is retired, though the push mapped its id to the new one first', () => {
+  // A move as a push makes it: the record's own id named OLD; the push sends the record anew and
+  // maps the same id to NEW before it reads what the folder stopped placing.
+  const dir = site({ records: { 'own-a': 'OLD' }, types: { OLD: '@acme/article' } })
+  writeHeldTypes(dir, ORIGIN, folder([['OLD', '@acme/article']]))
+  const ownedBefore = Object.values(stateOf(dir).records)
+  const s = stateOf(dir)
+  writeFileSync(join(dir, 'sync.json'), JSON.stringify({ version: 1, backends: { [ORIGIN]: { ...s, records: { 'own-a': 'NEW' } } } }))
+  const after = writeHeldTypes(dir, ORIGIN, folder([['NEW', '@std/article']]))
+  assert.deepEqual(retireUnplaced(dir, ORIGIN, after, { ownedBefore }), ['OLD'])
+  assert.deepEqual(stateOf(dir).retired, { OLD: '@acme/article' })
+})
+
+test('CONTROL — without what the map named before, a move retires nothing (the defect, measured 2026-11-11)', () => {
+  const dir = site({ records: { 'own-a': 'OLD' }, types: { OLD: '@acme/article' } })
+  writeHeldTypes(dir, ORIGIN, folder([['OLD', '@acme/article']]))
+  const s = stateOf(dir)
+  writeFileSync(join(dir, 'sync.json'), JSON.stringify({ version: 1, backends: { [ORIGIN]: { ...s, records: { 'own-a': 'NEW' } } } }))
+  assert.deepEqual(retireUnplaced(dir, ORIGIN, writeHeldTypes(dir, ORIGIN, folder([['NEW', '@std/article']]))), [])
+})
+
 test('a retired record placed again is no longer retired', () => {
   const dir = site({ types: { NEW: '@acme/project' }, retired: { OLD: '@std/project' } })
   retireUnplaced(dir, ORIGIN, writeHeldTypes(dir, ORIGIN, folder([['OLD', '@std/project'], ['NEW', '@acme/project']])))

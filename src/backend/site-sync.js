@@ -1459,12 +1459,19 @@ export function writeHeldTypes(siteDir, backend, folderDoc) {
  * ⚠️ Nothing is known before a copy first banks its types, so a copy banked before 2026-11-04
  * retires nothing on its first push after that.
  *
+ * ⭐ AND A MOVED RECORD'S OLD ENTITY IS THIS COPY'S TOO. A move sends the record anew, and the push
+ * maps its own id to the new uuid before this runs, so the map no longer names the old one: the
+ * caller passes what the map named before the push (`ownedBefore`). ⛔ Until 2026-11-11 it did not,
+ * so no move retired anything, and the old records stayed in no folder with nothing offering to
+ * delete them, though the move's note said a push would (measured on uniweb.io: two moves, twelve).
+ *
+ * @param {{ ownedBefore?: Iterable<string> }} [opts] - the uuids the `records` map named before this push
  * @returns {string[]} the uuids this push retired
  */
-export function retireUnplaced(siteDir, backend, { before, after }) {
+export function retireUnplaced(siteDir, backend, { before, after }, { ownedBefore = [] } = {}) {
   const state = readBackendState(siteDir, backend)
   const prior = state.retired || {}
-  const own = new Set(Object.values(state.records || {}))
+  const own = new Set([...Object.values(state.records || {}), ...ownedBefore])
   const now = Object.fromEntries(Object.entries(prior).filter(([uuid]) => !(uuid in after)))
   const retired = Object.keys(before).filter((uuid) => !(uuid in after) && own.has(uuid))
   for (const uuid of retired) now[uuid] = before[uuid]
@@ -3036,6 +3043,9 @@ export async function pushSyncPackages({
       })
     )
     const bf = backfillEntityUuids({ index: records.index, finalized })
+    // What the map named before this push updates it: a moved record's old entity, which the map
+    // stops naming below, is still this copy's to retire (`retireUnplaced`).
+    const ownedBefore = Object.values(readBackendState(siteDir, client.origin).records || {})
     // ⭐ Record which uuid THIS backend minted for each record, keyed by the record's
     // own id. The file keeps that own id; the next push to this backend sends the
     // mapped uuid, and a push to another backend sends none so that one mints its own.
@@ -3075,7 +3085,7 @@ export async function pushSyncPackages({
       if (Object.keys(placements).length)
         writeFolderItemUuids(siteDir, client.origin, placements)
       // What the folder places now, and so which records this push took out of it.
-      retireUnplaced(siteDir, client.origin, writeHeldTypes(siteDir, client.origin, folderDoc))
+      retireUnplaced(siteDir, client.origin, writeHeldTypes(siteDir, client.origin, folderDoc), { ownedBefore })
       // ⭐ A LINK RECORD'S IDENTITY is its folder entry's `$uuid`, banked as a record's is: into
       // its file the first time, then mapped per backend (`link-records.js`, 2026-09-28).
       if (records.links?.length) {
