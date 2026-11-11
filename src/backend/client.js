@@ -977,45 +977,6 @@ export class BackendClient {
   }
 
   /**
-   * GET /dev/site/status/{uuid} → the site's publish lifecycle (Contract 3,
-   * shipped backend-side — collab backend↔framework):
-   *   { published: boolean, last_pushed_at?: string, last_published_at?: string, draft_dirty?: boolean }
-   * `draft_dirty` = never-published, or the synced draft changed since the last
-   * publish ("pushed but not published"). Since 2026-10-13 it also carries `editors`:
-   * who has the site open in the app right now, and on what — `uniweb status` shows
-   * it (`describeEditors`, commands/status.js).
-   *
-   * ⭐ **The backend also serves a LIVE-SITE record here** (shipped 2026-08-29), and
-   * `uniweb status` reads part of it: the address it shows (`visitor_url`, else
-   * `last_published_url` — `liveAddress`), and the foundation and runtime its `--json`
-   * detail carries. Nothing reads the rest yet:
-   *
-   *   last_published_url · last_published_foundation · last_published_extensions
-   *   last_published_runtime · last_published_runtime_floor · last_published_runtime_resolution
-   *   visitor_url — where visitors go: the custom domain while one is active (2026-10-28)
-   *
-   * Three things about it that a reader will otherwise get wrong:
-   *
-   * ⛔ `runtime_resolution` is `resolved` or `pinned:<reason>` (`operator` / `unknown_floor` /
-   *    `no_foundations`). **A pin is a first-class answer, not a failure** — most sites are pinned
-   *    at any moment, and an "old" runtime still satisfies the site's floor. Never surface
-   *    `pinned:*` as an error state.
-   * ⛔ `extensions` is there because a site's code surface is the primary foundation **plus N
-   *    extensions**; reading the primary alone describes a site nobody has.
-   * ⛔ `last_*` is deliberate on every one. `unpublish` LEAVES the URL populated (the static site
-   *    may still be reachable), so beside `published: bool` a bare `published_url` would read as a
-   *    liveness claim and be wrong exactly when it matters. And **nothing back-fills** — a site
-   *    published before this reports them absent, which means "published before we recorded it",
-   *    never "has no foundation".
-   *
-   * The path is VERB-FIRST (`status/{uuid}`)
-   * to match the lane (`publish/{uuid}`, `content/push/{uuid}`, `folder/pull/{uuid}`),
-   * not the `{uuid}/status` the shipping-verbs §8 sketch assumed. null on
-   * 404 (unknown/not-yours) / 401 / any failure — `uniweb status` says what it could not tell.
-   * @param {string} uuid - the site-content uuid
-   * @returns {Promise<object|null>}
-   */
-  /**
    * Whether the backend holds the site `uuid` names — `live`, `gone` or `unknown`, kept
    * apart — for a script that must decide, before any push, whether a binding still
    * points at a site (`uniweb status --json`, its `app.site` check).
@@ -1083,6 +1044,44 @@ export class BackendClient {
     }
   }
 
+  /**
+   * GET /dev/site/status/{uuid} → the site's publish lifecycle:
+   *   { published: boolean, last_pushed_at?: string, last_published_at?: string, draft_dirty?: boolean }
+   * `draft_dirty` = never-published, or the synced draft changed since the last
+   * publish ("pushed but not published"). Since 2026-10-13 it also carries `editors`:
+   * who has the site open in the app right now, and on what — `uniweb status` shows
+   * it (`describeEditors`, commands/status.js).
+   *
+   * ⭐ **The backend also serves a LIVE-SITE record here** (shipped 2026-08-29), and
+   * `uniweb status` reads part of it: the address it shows (`visitor_url`, else
+   * `last_published_url` — `liveAddress`), and the foundation and runtime its `--json`
+   * detail carries. Nothing reads the rest yet:
+   *
+   *   last_published_url · last_published_foundation · last_published_extensions
+   *   last_published_runtime · last_published_runtime_floor · last_published_runtime_resolution
+   *   visitor_url — where visitors go: the custom domain while one is active (2026-10-28)
+   *
+   * Three things about it that a reader will otherwise get wrong:
+   *
+   * ⛔ `runtime_resolution` is `resolved` or `pinned:<reason>` (`operator` / `unknown_floor` /
+   *    `no_foundations`). **A pin is a first-class answer, not a failure** — most sites are pinned
+   *    at any moment, and an "old" runtime still satisfies the site's floor. Never surface
+   *    `pinned:*` as an error state.
+   * ⛔ `extensions` is there because a site's code surface is the primary foundation **plus N
+   *    extensions**; reading the primary alone describes a site nobody has.
+   * ⛔ `last_*` is deliberate on every one. `unpublish` LEAVES the URL populated (the static site
+   *    may still be reachable), so beside `published: bool` a bare `published_url` would read as a
+   *    liveness claim and be wrong exactly when it matters. And **nothing back-fills** — a site
+   *    published before this reports them absent, which means "published before we recorded it",
+   *    never "has no foundation".
+   *
+   * The path is VERB-FIRST (`status/{uuid}`)
+   * to match the lane (`publish/{uuid}`, `content/push/{uuid}`, `folder/pull/{uuid}`),
+   * not the `{uuid}/status` the shipping-verbs §8 sketch assumed. null on
+   * 404 (unknown/not-yours) / 401 / any failure — `uniweb status` says what it could not tell.
+   * @param {string} uuid - the site-content uuid
+   * @returns {Promise<object|null>}
+   */
   async siteStatus(uuid) {
     try {
       const res = await this.request(
