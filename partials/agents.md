@@ -112,7 +112,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | Copy a worker, hook, section type or data type into a second foundation | A library both depend on: `uniweb add library libraries/ui --foundation a,b`; types named in full (`@acme/plan`). `uniweb guide foundation` § Libraries. | silent: the copies drift; `doctor` names a type defined twice |
 | Copy another site's records into this one, by hand or with a script | Mount that site's folder for the type in `site.yml`: `paths: { records/acme/plan: ../../hub/site/records/acme/plan }`. `uniweb guide data`. | silent: the copies drift |
 | Validate, enumerate or warn on content the component doesn't use; treat `content:` as an exact schema | Take what you expect and don't touch the rest (§1). `content:` declares what the type reads. | — |
-| `params: { theme, background, grid, sticky, query }` | Section settings — read from `block`, never declared. | build warns |
+| `params: { theme, background, grid, sticky, query }` | Section settings — read from `block`, never declared. | foundation build stops, naming it |
 | Write `meta.js` as internal metadata | It is the visual editor's UI and other agents' catalog. Labels for people, defaults for everything, author words for params (`columns`, not `gridCols`). | — |
 | `window.uniweb`, `globalThis.uniweb` | `@uniweb/kit` and `block.*` only. | — |
 | `<P text={member.bio} />` | Member and API text is **text**: `{value}` or `<PlainText>`. Only parser strings are safe HTML. | XSS |
