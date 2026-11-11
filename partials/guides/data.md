@@ -45,7 +45,7 @@ site/
 | `form` | a form an author designs | a list of controls |
 | `scene` | a Scene Composition Format document | flat |
 
-Each type's fields, with what each is for: https://github.com/uniweb/schemas/tree/main/src/standard. A record holds only its type's fields: a push refuses one with a field the type lacks, though a static build keeps it. What a site says differently (a topic) goes in a field the type has (`tags`), or the type is not the one.
+Each type's fields, with what each is for: https://github.com/uniweb/schemas/tree/main/src/standard. A record holds only its type's fields: `uniweb validate` reports one the type lacks and a push refuses it, while a build notes it and still delivers it. What a site says differently (a topic) goes in a field the type has (`tags`), or the type is not the one.
 
 Keep directories flat — `records/article/2025/x.md` reads as the `2025` schema of an `article` org. A `_`-prefixed file is not a record.
 
@@ -176,7 +176,7 @@ function Article({ content, block }) {   // data: { article: { schema: '@std/art
 
 **Component-side fetching** for a search box, "load more", a lazy popover: `useFetched`, `useCacheEntry`, `useWholeRecord` share the framework's cache and dedupe same-key requests. On a prerendered page a hook's first render finds only the page's own data; anything else prerenders as the loading state. Declare a key for whatever a page must show without JavaScript.
 
-**`uniweb validate`** checks every record file against declared schemas (missing required, type/enum/format, nested fields); a violation fails it (`--lax` only reports), and `push`/`publish` refuse the same findings. External queries are reported as deferred. A `ref` must name a record in the project (a uuid is left alone); an `options` value isn't checked against the entity it names.
+**`uniweb validate`** checks every record file against declared schemas (missing required, type/enum/format, nested fields, and what a push cannot carry: a field the schema lacks, a markdown body with no field for it); a violation fails it (`--lax` only reports), and `push`/`publish` refuse the same findings. External queries are reported as deferred. A `ref` must name a record in the project (a uuid is left alone); an `options` value isn't checked against the entity it names.
 
 ## External sources and transports
 
