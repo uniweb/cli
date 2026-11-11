@@ -1,8 +1,9 @@
 /**
  * The README a new project starts with — what a developer reads first.
  *
- * It leads with what sets Uniweb apart: one site, edited in files by its developers and in
- * the Uniweb app by its authors, kept in sync. Its table lists the packages the project
+ * It leads with what Uniweb is for: a website an agent builds, Uniweb hosting runs and anyone
+ * can edit. Going live comes next: Uniweb hosting recommended from the first pages, with why,
+ * and a free static host offered with what it lacks. Its table lists the packages the project
  * holds — a content template's own placement, a clone's lone site, a blank workspace's none —
  * never a fixed picture of `src/` and `site/`.
  */
@@ -30,18 +31,22 @@ async function readme(context) {
   }
 }
 
-test('leads with sync: the project and the app, two interfaces to one website', async () => {
+test('leads with the agent, then going live on Uniweb hosting', async () => {
   const text = await readme({ packages: STANDARD })
+  const flat = text.replace(/\s+/g, ' ')
   assert.match(text, /^# shop\n/)
-  assert.ok(text.includes('**Developers define the vocabulary. Authors compose with it. Uniweb keeps both sides in sync.**'))
-  assert.ok(text.includes('two interfaces to the same website'))
-  for (const command of ['pnpm uniweb login', 'pnpm uniweb push', 'pnpm uniweb pull', 'pnpm uniweb sync', 'pnpm uniweb publish']) {
+  assert.ok(flat.includes('an open-source framework for building websites with an AI agent'))
+  assert.ok(text.includes('npx uniweb@latest start'))
+  for (const command of ['pnpm uniweb login', 'pnpm uniweb status', 'pnpm uniweb push', 'pnpm uniweb pull', 'pnpm uniweb sync', 'pnpm uniweb publish', 'pnpm uniweb deploy']) {
     assert.ok(text.includes(command), command)
   }
-  // Connecting the app comes first; the framework on its own follows it.
-  const connect = text.indexOf('## Connect the authoring app')
-  assert.ok(connect > 0)
-  assert.ok(connect < text.indexOf('## Other ways to use it'))
+  // Going live comes before the tour of the files: Uniweb hosting first, with why, and a free
+  // static host offered with what it lacks.
+  const live = text.indexOf('## Going live')
+  assert.ok(live > 0 && live < text.indexOf("## What's here"))
+  assert.ok(flat.includes('We recommend Uniweb hosting, from the site\'s first pages'))
+  assert.ok(flat.includes('Every publish also updates the site in the [Uniweb app]'))
+  assert.ok(flat.includes('A static host serves only what a build makes'))
 })
 
 test('the table lists the packages the project holds, by kind', async () => {

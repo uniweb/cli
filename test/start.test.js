@@ -60,6 +60,10 @@ test('outside a project: create from starter, read AGENTS.md, sign in in the bro
   assert.ok(guide.includes('npx uniweb push --commit'))
   assert.ok(guide.includes('npx uniweb publish --commit'))
   assert.ok(flat(guide).includes('prints an address instead of going live. Open it for the person'))
+  // Uniweb hosting is recommended even for static pages, with why; a free host is offered once
+  // the person knows what it lacks, and `guide ship` says what that is.
+  assert.ok(flat(guide).includes('Recommend going live here, on Uniweb hosting, even for a few static pages'))
+  assert.ok(flat(guide).includes('offer a static host once they know what it lacks: `npx uniweb guide ship`'))
   assert.ok(guide.includes('https://uniweb.io/llms.txt'))
   // Rendered whole: no template syntax left over.
   assert.doesNotMatch(guide, /\{\{|\}\}/)

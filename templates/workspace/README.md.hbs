@@ -1,22 +1,22 @@
 # {{projectName}}
 
-A website made with [Uniweb](https://uniweb.io): an open-source React framework and a connected
-visual authoring platform.
-
-**Developers define the vocabulary. Authors compose with it. Uniweb keeps both sides in sync.**
-
-This project and the Uniweb app are two interfaces to the same website. Here, in code and git,
-you build its **foundation**: React components, called section types, and the schemas of its
-structured content. In the app, authors compose pages from those section types and manage records
-through those schemas: visually, with live previews, and with no markdown, YAML or git to learn.
-You build the components. Uniweb builds the authoring experience.
+A website made with [Uniweb](https://uniweb.io), an open-source framework for building websites
+with an AI agent. Your agent builds the site, Uniweb hosting runs it, and you and the people you
+work with can edit it in the Uniweb app.
 {{#if cloned}}
 
 This project was cloned from a site in the Uniweb app (`uniweb clone`), so it is already in sync
 with it. Its foundation is a registered one, not a folder of this project.
 {{/if}}
 
-## Quick start
+## Working on it
+
+**With an AI agent.** Open your agent in this directory, ask it to run `npx uniweb@latest start`
+first, then ask for what you want. The guide it prints has your agent check whether the site was
+changed in the Uniweb app before it starts. [AGENTS.md](./AGENTS.md) is the project's manual, for
+your agent and for you.
+
+**By hand:**
 
 {{#if packages.length}}
 ```bash
@@ -36,6 +36,30 @@ pnpm install                     # links what you added
 pnpm uniweb dev                  # prints the address it serves the site at
 ```
 {{/if}}
+
+## Going live
+
+We recommend Uniweb hosting, from the site's first pages:
+
+```bash
+pnpm uniweb login       # sign in to your Uniweb account
+pnpm uniweb publish     # take the site live on Uniweb hosting, a paid service
+```
+
+- **A site of static pages costs the least there**, because each service, live records included,
+  is priced on its own.
+- **The page a visitor arrives on is prerendered at the edge**, close to them.
+- **Every publish also updates the site in the [Uniweb app](https://uniweb.app)**, so you and the
+  people you work with can preview and edit it at any time, without waiting for a developer or
+  an agent.
+- **The site grows there with no changes**: more languages, live records, forms, analytics, a
+  members' area, and payments through your own Stripe account.
+
+`pnpm uniweb deploy` ships the site to a free static host instead: GitHub Pages, Cloudflare Pages,
+Netlify, Vercel or S3 + CloudFront. A static host serves only what a build makes, so edits made in
+the app reach the site through this project and a new build, records change at the next build,
+and forms, analytics, accounts and payments each need a service of your own. The site can move to
+Uniweb hosting at any time with `pnpm uniweb publish`.
 
 ## What's here
 
@@ -76,28 +100,23 @@ export default function Hero({ content }) {
 `text-heading` and `text-body` are theme tokens. A site's `theme.yml` sets their colors, so one
 component works in light and dark sections, and on every site that uses it.
 
-## Connect the authoring app
+## The project and the Uniweb app
 
-Start with a normal project, and connect the app when you want visual authoring:
-
-```bash
-pnpm uniweb login       # sign in to your Uniweb account
-pnpm uniweb sync        # the first sync brings the site and its foundation into the app
-```
-
-From then on, the CLI is the bridge between the two workflows:
+A publish brings the site into the app, and so does a push, which sends it as a draft without
+taking it live. From then on, the CLI keeps the two in step:
 
 | Command | What it does |
 |---|---|
+| `pnpm uniweb status` | says what changed in the app and in git, and what to run |
 | `pnpm uniweb push` | sends your section types, schemas and content to the app: a draft, not live |
-| `pnpm uniweb pull` | brings authors' edits into your files, as a git merge |
-| `pnpm uniweb sync` | takes your teammates' commits and the authors' edits, then pushes yours |
-| `pnpm uniweb publish` | pushes, then takes the site live on Uniweb hosting, a paid service |
+| `pnpm uniweb pull` | brings edits made in the app into your files, as a git merge |
+| `pnpm uniweb sync` | takes your teammates' commits and the app's edits, then pushes yours |
+| `pnpm uniweb publish` | pushes, then takes the site live on Uniweb hosting |
 
-Authors never need to think about synchronization: in the app, their changes appear live. On
-your side, edits to different sections combine, and nothing overwrites an author's edit. When
-the same section changed on both sides, `sync` stops at a git conflict for you to settle. Like
-git, a push sends what you have committed; `--commit` commits the site's content first.
+People editing in the app never deal with synchronization. On your side, edits to different
+sections combine, and nothing overwrites an edit made in the app. When the same section changed
+on both sides, `sync` stops at a git conflict for you to settle. Like git, a push sends what you
+have committed; `--commit` commits the site's content first.
 
 ### Structured content, editable without an admin app
 
@@ -112,34 +131,26 @@ export default {
 }
 ```
 
-A standard schema needs `@uniweb/schemas` as a dependency of the foundation. In the app, authors
+A standard schema needs `@uniweb/schemas` as a dependency of the foundation. In the app, people
 get forms and records for those schemas. No separate admin application is needed to make the
 data editable.
 
-## Other ways to use it
+## Foundations for your clients' sites
 
-The framework works on its own, too.
+If the sites belong to your clients, who make and edit them in the app, this project is where you
+build and test the foundation. `pnpm uniweb register` publishes it to Uniweb for their sites.
 
-- **Content in files only.** If you manage the content yourself, the site needs no Uniweb account.
-  `pnpm build` makes each site's `dist/`, a static site for any host, and `pnpm uniweb deploy`
-  ships it to GitHub Pages, Cloudflare Pages, Netlify, Vercel or S3 + CloudFront.
-- **Foundations for your clients' sites.** If the sites belong to your clients, who make and edit
-  them in the app, this project is where you build and test the foundation.
-  `pnpm uniweb register` publishes it to Uniweb for their sites.
-
-## Working with AI agents
+## Prompts to try
 
 A Uniweb project gives an agent a system to work within, its section types, schemas and content
-conventions, instead of a blank canvas. What an agent builds here, authors can use in the app
-after the next sync.
+conventions, instead of a blank canvas. `npx uniweb guide` prints the rest of the manual, one
+subject at a time, and `npx uniweb@latest update --yes` moves the project to the latest release
+of Uniweb, AGENTS.md with it.
 
-[AGENTS.md](./AGENTS.md) is written for developers and AI agents alike. Many coding agents read it
-on their own when they start in this folder; point any other agent at it first. `npx uniweb guide`
-prints the rest of the manual, one subject at a time.
-`npx uniweb@latest update` moves the project to the latest release of Uniweb, and AGENTS.md with
-it.
-
-Some prompts to try:
+**Adding a language:**
+```
+Add Spanish to the site and translate every page. Keep English as the default.
+```
 
 **Converting an existing design:**
 ```
@@ -166,6 +177,6 @@ the Hero section type from the homepage.
 
 - [Documentation](https://uniweb.io/docs): guides and reference. For AI agents, its index is
   https://uniweb.io/llms.txt
-- [Uniweb app](https://uniweb.app): the visual authoring platform
+- [Uniweb app](https://uniweb.app): the visual editor
 - `pnpm uniweb <command> --help`: every command's options
 - `pnpm uniweb doctor`: checks the project's configuration

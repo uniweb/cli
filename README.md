@@ -1,20 +1,25 @@
 # uniweb
 
-The CLI for [Uniweb](https://uniweb.io): an open-source React framework and a connected visual authoring platform.
+The CLI for [Uniweb](https://uniweb.io), an open-source framework for building websites with an AI agent. Your agent builds the site, Uniweb hosting runs it, and you and the people you work with can edit it in a visual app.
 
-**Developers define the vocabulary. Authors compose with it. Uniweb keeps both sides in sync.**
-
-Developers build real React components, schemas and content structures in a normal codebase. Those definitions become the vocabulary authors use in the Uniweb app to create pages, manage content and work with structured data. Your project and the authors' workspace are two interfaces to the same website, and the CLI keeps them in sync, so both sides keep working.
-
-```text
-Traditional:   developer builds → hands off → CMS users edit
-
-Uniweb:        developer project ⇄ Uniweb ⇄ author workspace
-                      ↑                          ↑
-                      └──── both keep working ───┘
-```
+**Agents build it. Uniweb runs it. Anyone can edit it.**
 
 ## Quick Start
+
+### With an AI agent
+
+Give your agent (Claude Code, Codex, Cursor, or any agent that can run commands) this prompt:
+
+```text
+Build me a website with Uniweb.
+Start with `npx uniweb@latest start`
+
+The site is for: [describe your site]
+```
+
+`uniweb start` prints a guide written for the agent: creating the project, reading its manual (`AGENTS.md`), running it, and taking the site live. The agent runs every command; you use your browser, to sign in and to pay when the site goes live.
+
+### By hand
 
 ```bash
 npx uniweb@latest create my-site
@@ -25,32 +30,24 @@ pnpm dev        # or npm run dev — prints the address it serves the site at
 
 At a terminal, `create` asks which template to start from (`npm create uniweb` does the same). Edit the pages in `site/pages/` and the section types in `src/sections/`, and the page updates as you save.
 
-Start with a normal project, and connect the authoring app when you want it:
-
-```bash
-pnpm uniweb login    # sign in to your Uniweb account
-pnpm uniweb sync     # the first sync brings the site and its foundation into the app
-```
-
 > **pnpm ready** — `pnpm create uniweb` works out of the box. Projects include both `pnpm-workspace.yaml` and npm workspaces.
 
-### With an AI agent
+### Going live
 
-Building a site with an AI coding agent? Ask it to run `npx uniweb@latest start` first. It prints a short guide written for the agent: how to create the project, where its manual is (`AGENTS.md`), how to run it, and how to bring the site into the Uniweb app. The agent runs every command; you only use your browser, to sign in and to pay when the site goes live.
+```bash
+pnpm uniweb login      # sign in to your Uniweb account
+pnpm uniweb publish    # take the site live on Uniweb hosting, and into the Uniweb app
+```
 
-## Two Interfaces to One Website
+We recommend Uniweb hosting from a site's first pages. It is a paid service, and a site of static pages costs the least there, because each service, live records included, is priced on its own. The page a visitor arrives on is prerendered at the edge. Every publish also updates the site in the Uniweb app, so the people you work with can preview and edit it without waiting for you or your agent. And the site grows there with no changes: more languages, live records, forms, analytics, a members' area, and payments through your own Stripe account. A free static host is a choice too: see [On a free static host](#on-a-free-static-host) for what that path leaves out.
 
-| Developers | Authors |
-| --- | --- |
-| React components | Visual components |
-| Schemas and configuration | Forms and structured records |
-| Vite and local development | Live visual editing |
-| Files and Git | Content and composition |
-| `push` · `pull` · `sync` · `publish` | Changes appear live |
+## One Site, Three Ways to Change It
 
-**For developers, it's a normal project.** Section types are React components, content is markdown in the repository, Vite builds it, and git holds the history. You keep your editor, terminal and deployment workflow.
+Ask your agent, open the Uniweb app, or edit the files: all three change the same site.
 
-**For authors, it's the Uniweb app.** Your section types become their building blocks: they compose pages from them, set the options each one declares in its `meta.js`, and manage records through your schemas, with live previews. They never see JSX, markdown, YAML or git, and you never build an editing UI. You build the components; Uniweb builds the authoring experience.
+- **Your agent** works in the project, with its manual (`AGENTS.md`) and commands that check its work: `uniweb inspect` prints what a file parses to, and `uniweb doctor` checks the project.
+- **The Uniweb app** is a visual editor. Your section types become its building blocks: people compose pages from them, set the options each one declares in its `meta.js`, and manage records through your schemas, with live previews. They never see JSX, markdown, YAML or git, and you never build an editing UI.
+- **The files** are a normal project: section types are React components, content is markdown in the repository, Vite builds it, and git holds the history.
 
 ### The CLI is the bridge
 
@@ -340,18 +337,18 @@ The workspace grows organically. `add` handles placement, wires dependencies, up
 
 ## Other Ways to Ship
 
-A Uniweb project produces two artifacts — a **site** (content) and a **foundation** (code). Connected to the app, both sides edit one site, as above. Without authors in the app, **who manages the content** decides what you ship.
+A Uniweb project produces two artifacts — a **site** (content) and a **foundation** (code). `uniweb publish` ships both to Uniweb hosting, the host we recommend ([Going live](#going-live)). There are two other paths.
 
-### You manage the content, in files
+### On a free static host
 
-You (or your dev team) write the markdown, and the site and its foundation ship together. We recommend Uniweb hosting: it is the host with the full set of hosting features — pages prerendered over live data, the Uniweb app for authors whenever you bring them in, and forms, analytics and accounts as the site grows from a few static pages to a complete platform. It is a paid service.
+`uniweb deploy` ships to a standard host such as Cloudflare Pages, Netlify, Vercel, GitHub Pages or S3 + CloudFront, and `uniweb export` builds a `dist/` for any other host. A static host serves what a build makes, so it leaves out what Uniweb hosting does for the site:
 
-```bash
-uniweb login      # one time
-uniweb publish    # brings the foundation along, pushes the content, goes live
-```
+- Edits made in the Uniweb app reach the site only through the project: a pull, a build and a deploy, by you or your agent.
+- Records are compiled into each build, so a change shows at the next build, not live.
+- Forms, visitor statistics, accounts and payments each need an address of your own or a third-party service.
+- Pages are prerendered at build time, with the data the build had.
 
-**On a static host.** `uniweb deploy` ships to a standard host such as Cloudflare Pages, Netlify, Vercel, GitHub Pages or S3 + CloudFront, and `uniweb export` builds a `dist/` for any other host. On GitHub Pages, free, with a custom domain:
+Search works there, from an index the build makes, and the site can move to Uniweb hosting at any time with `uniweb publish`, with no change to the project. On GitHub Pages, free, with a custom domain:
 
 ```bash
 uniweb create .   # from within a freshly-cloned GitHub repo
@@ -434,7 +431,7 @@ Full documentation is at **[uniweb.io/docs](https://uniweb.io/docs)**, written i
 
 | Section | Topics |
 | ------- | ------ |
-| [Getting Started](https://github.com/uniweb/docs/tree/main/getting-started) | Introduction, quickstart, templates |
+| [Getting Started](https://github.com/uniweb/docs/tree/main/getting-started) | What Uniweb is, why Uniweb, quickstart, templates |
 | [Authoring](https://github.com/uniweb/docs/tree/main/authoring) | Writing content, site setup, theming, collections, translations |
 | [Development](https://github.com/uniweb/docs/tree/main/development) | Building foundations, component patterns, data fetching, layouts |
 | [Reference](https://github.com/uniweb/docs/tree/main/reference) | Configuration files, kit API, CLI commands, deployment |
