@@ -81,6 +81,7 @@ import {
   dataBlockModels,
   siteDefaultSectionType,
   recordsToProject,
+  readSiteFoundationDeclarations,
   siteSelfScope,
   readZip,
   computeUnitHashes,
@@ -1265,9 +1266,15 @@ export async function pull(args = [], deps = {}) {
           )
         }
       }
+      // ⭐ WHAT THE SITE'S FOUNDATION DECLARES, read from its source where it is local, as the build
+      // reads it (`readSiteFoundationDeclarations`): a copy whose foundation has not been built — every
+      // fresh clone — still knows which data key types which folder. ⛔ Until 2026-11-11 the pull read a
+      // built `dist/` only, and such a copy wrote a typed folder's records again in their type's folder.
+      const foundationDeclared = await readSiteFoundationDeclarations(projDir)
       const report = siteContentDocumentToProject({
         document: siteDoc,
         siteRoot: projDir,
+        foundation: foundationDeclared,
         // Which backend's asset ids to read back as the author's own paths. Without
         // it a pull leaves every image pointing at a backend route.
         backend: client.origin,
@@ -1332,7 +1339,9 @@ export async function pull(args = [], deps = {}) {
           resolveDeclaration: (name) => declByModel.get(name) || null,
           // The scope a model's `@/x` was qualified with, so `@acme/article` is placed
           // back in `records/article/` — see `pullScope`.
-          scope: pullScope
+          scope: pullScope,
+          // What the foundation declares, read again now the site's content (its `site.yml`) is in.
+          foundation: await readSiteFoundationDeclarations(projDir)
         }
       })
       // ⭐ THE FOLDER'S PLACEMENT IDENTITY, from the folder this pull took — as a push banks
