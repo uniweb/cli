@@ -42,6 +42,7 @@ uniweb add foundation [name|path] [--path parent]  # no name → ./src/, bare na
 uniweb add site [name|path]
 uniweb add extension <name> [--site <name>]        # secondary foundation; wired to the site named, or the only one
 uniweb add section Hero [--foundation ui]          # sections/Hero/{index.jsx,meta.js}
+uniweb add section Banner --library ui             # in a library; each foundation using it offers it
 uniweb rename <foundation|site|extension> <old> <new>   # rename across the whole workspace
 ```
 

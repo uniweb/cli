@@ -109,7 +109,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | A `Button` or `Card` in `sections/` | `components/`. Everything at the root of `sections/` becomes author vocabulary. | appears in the section picker |
 | Helpers that take `{ content, params }` | Ordinary props. That signature is for section types only. | — |
 | One section type per visual variant; or one with a conditional tree inside | A front desk (§1): one `type:`, a `variant` param, workers in `components/` with ordinary props. | author vocabulary bloats; variants invisible to the editor |
-| Copy a worker, hook or data type into a second foundation | A library both depend on: `uniweb add library libraries/ui --foundation a,b`; types named in full (`@acme/plan`). `uniweb guide foundation` § Libraries. | silent: the copies drift; `doctor` names a type defined twice |
+| Copy a worker, hook, section type or data type into a second foundation | A library both depend on: `uniweb add library libraries/ui --foundation a,b`; types named in full (`@acme/plan`). `uniweb guide foundation` § Libraries. | silent: the copies drift; `doctor` names a type defined twice |
 | Copy another site's records into this one, by hand or with a script | Mount that site's folder for the type in `site.yml`: `paths: { records/acme/plan: ../../hub/site/records/acme/plan }`. `uniweb guide data`. | silent: the copies drift |
 | Validate, enumerate or warn on content the component doesn't use; treat `content:` as an exact schema | Take what you expect and don't touch the rest (§1). `content:` declares what the type reads. | — |
 | `params: { theme, background, grid, sticky, query }` | Section settings — read from `block`, never declared. | build warns |

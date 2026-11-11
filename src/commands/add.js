@@ -10,6 +10,7 @@
  *   uniweb add extension [name] [--from <template>] [--site <name>] [--path <dir>]
  *   uniweb add library <name> [--foundation <a>,<b>] [--schemas] [--scope <@org>] [--path <dir>]
  *   uniweb add section <name> [--foundation <name>]
+ *   uniweb add section <name> --library <name> [--foundation <a>,<b>]
  *   uniweb add version <name> [--in <folder>] [--label <text>] [--keep-in-search] [--dry-run] [--site <name>]
  */
 
@@ -39,8 +40,10 @@ import {
 } from '../utils/placement.js'
 import { registerWorkspacePackage, addRootScripts } from '../utils/config.js'
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
-import { generateStarter, reportStarter, declarationFor } from './starter.js'
+import { generateStarter, reportStarter } from './starter.js'
 import { addLibrary } from './add-library.js'
+import { addLibrarySection } from './add-library-section.js'
+import { writeSection } from '../utils/section-files.js'
 import {
   validatePackageName,
   getExistingPackageNames,
@@ -147,7 +150,9 @@ function parseArgs(args) {
     dryRun: false,
     // `add library` only: a `schemas/` folder for data types, and the scope they are named under.
     schemas: false,
-    scope: null
+    scope: null,
+    // `add section` only: the library the section type goes in, which the foundations pass on.
+    library: null
   }
 
   // Booleans (no value) consumed up-front so the value-flag loop below
@@ -177,7 +182,8 @@ function parseArgs(args) {
     '--write': 'write',
     '--in': 'in',
     '--label': 'label',
-    '--scope': 'scope'
+    '--scope': 'scope',
+    '--library': 'library'
   }
 
   /** Split `--flag=value` into [flag, value]; `--flag` into [flag, null]. */
@@ -227,6 +233,9 @@ function parseArgs(args) {
       result.schemas = true
     }
   }
+  // `--library` with no name after it would otherwise read as no flag, and put the section in a
+  // foundation instead.
+  if (result.library === null && args.some((a) => a === '--library' || a === '--library=')) result.library = ''
 
   return result
 }
@@ -1290,10 +1299,14 @@ async function wireExtensionToSite(rootDir, siteName, extensionFolder) {
 }
 
 /**
- * Add a section type to a foundation
+ * Add a section type to a foundation, or with `--library`, to a library its foundations pass it on from
  */
 async function addSection(rootDir, opts) {
   setAddJsonMode(opts.json)
+  if (opts.library === '') {
+    error(`--library takes the library's folder or name: ${getCliPrefix()} add section <Name> --library libraries/ui`)
+    process.exit(1)
+  }
   let name = opts.name
 
   // Interactive name prompt when not provided
@@ -1330,6 +1343,13 @@ async function addSection(rootDir, opts) {
       `Section name must be PascalCase (e.g., Hero, FeatureGrid, CallToAction).`
     )
     process.exit(1)
+  }
+
+  // In a library: the type is the library's, and each foundation passes it on.
+  if (opts.library) {
+    const { sectionDir, starterResult } = await addLibrarySection(rootDir, { ...opts, name })
+    if (opts.starter) await printStarter({ name, sectionDir, opts, scaffolded: !!starterResult })
+    return
   }
 
   // Find the foundation
@@ -1397,17 +1417,7 @@ async function addSection(rootDir, opts) {
   // Nothing is scaffolded and nothing is overwritten on this path.
   if (existsSync(sectionDir)) {
     if (opts.starter) {
-      const { markdown, result } = await generateStarter({
-        name,
-        sectionDir,
-        preset: opts.preset,
-        json: opts.json,
-        write: opts.write,
-      })
-      if (!opts.json) {
-        if (!opts.write) log('\n' + markdown.trimEnd())
-        reportStarter(result, { write: opts.write })
-      }
+      await printStarter({ name, sectionDir, opts, scaffolded: false })
       return
     }
     error(
@@ -1418,57 +1428,7 @@ async function addSection(rootDir, opts) {
   }
 
   // Create section directory and files
-  await mkdir(sectionDir, { recursive: true })
-
-  const componentContent = `import { H2, P, Link, cn } from '@uniweb/kit'
-
-export default function ${name}({ content, params }) {
-  const { title, paragraphs = [], links = [] } = content || {}
-
-  return (
-    <div className="max-w-4xl mx-auto px-6">
-      {title && <H2 text={title} className="text-heading text-3xl font-bold" />}
-      <P text={paragraphs} className="text-body mt-4" />
-      {links.length > 0 && (
-        <div className="mt-6 flex gap-3 flex-wrap">
-          {links.map((link, i) => (
-            <Link key={i} to={link.href} className={cn(
-              'px-5 py-2.5 rounded-lg font-medium transition-colors',
-              i === 0
-                ? 'bg-primary text-primary-foreground hover:bg-primary-hover'
-                : 'bg-secondary text-secondary-foreground hover:bg-secondary-hover'
-            )}>
-              {link.label}
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-`
-
-  // With `--starter`, the scaffold gets a `content:` declaration derived from
-  // the family the name resolves to — so the three pieces agree: a declaration,
-  // a component that reads it, and content that fills it. Without the flag the
-  // stub declares nothing, exactly as before.
-  let starterDeclaration = ''
-  let starterResult = null
-  if (opts.starter) {
-    const preview = await generateStarter({ name, sectionDir: sectionDir })
-    starterResult = preview.result
-    starterDeclaration = await declarationFor(preview.result)
-  }
-
-  const metaContent = `export default {
-  title: '${name}',
-  description: '',${starterDeclaration}
-  params: {},
-}
-`
-
-  await writeFile(join(sectionDir, 'index.jsx'), componentContent)
-  await writeFile(join(sectionDir, 'meta.js'), metaContent)
+  const starterResult = await writeSection({ name, sectionDir, starter: opts.starter })
 
   success(`Created section '${name}' at ${foundation.path}/${relSectionPath}/`)
   log(
@@ -1486,35 +1446,41 @@ export default function ${name}({ content, params }) {
   log('')
   log(`Before editing it: ${colors.cyan}${getCliPrefix()} guide foundation${colors.reset}`)
 
-  if (starterResult) {
-    // Regenerate against the declaration just written, so what is printed is
-    // what this section's own `meta.js` now asks for rather than the family's
-    // guess — the two agree here, and saying it from the file keeps them so.
-    const { markdown, result } = await generateStarter({
-      name,
-      sectionDir,
-      preset: opts.preset,
-      json: opts.json,
-      write: opts.write,
-    })
-    if (!opts.json) {
-      log('')
-      log(`${colors.dim}Starter content for a page section:${colors.reset}`)
-      if (!opts.write) log('\n' + markdown.trimEnd())
-      reportStarter(result, { write: opts.write })
-      // The stub component reads three elements. The declaration above may name
-      // more, because it comes from the family rather than from the stub — say
-      // so, rather than leave a developer wondering why half the content they
-      // were just handed renders as nothing.
-      const stubReads = new Set(['title', 'paragraphs', 'links'])
-      const unread = Object.keys(result.content).filter((slot) => !stubReads.has(slot))
-      if (unread.length) {
-        log(
-          `  ${colors.dim}index.jsx reads title, paragraphs and links — extend it for: ${unread.join(', ')}${colors.reset}`
-        )
-        log('')
-      }
-    }
+  if (starterResult) await printStarter({ name, sectionDir, opts, scaffolded: true })
+}
+
+/**
+ * Print a section type's starter content, from the `meta.js` in `sectionDir`. For a type just
+ * scaffolded (`scaffolded`), it is generated again against the declaration just written, so what is
+ * printed is what the section's own `meta.js` now asks for rather than the family's guess: the two
+ * agree here, and saying it from the file keeps them so.
+ */
+async function printStarter({ name, sectionDir, opts, scaffolded }) {
+  const { markdown, result } = await generateStarter({
+    name,
+    sectionDir,
+    preset: opts.preset,
+    json: opts.json,
+    write: opts.write,
+  })
+  if (opts.json) return
+  if (scaffolded) {
+    log('')
+    log(`${colors.dim}Starter content for a page section:${colors.reset}`)
+  }
+  if (!opts.write) log('\n' + markdown.trimEnd())
+  reportStarter(result, { write: opts.write })
+  if (!scaffolded) return
+  // The stub component reads three elements. The declaration may name more, because it comes from
+  // the family rather than from the stub: say so, rather than leave a developer wondering why half
+  // the content they were just handed renders as nothing.
+  const stubReads = new Set(['title', 'paragraphs', 'links'])
+  const unread = Object.keys(result.content).filter((slot) => !stubReads.has(slot))
+  if (unread.length) {
+    log(
+      `  ${colors.dim}index.jsx reads title, paragraphs and links — extend it for: ${unread.join(', ')}${colors.reset}`
+    )
+    log('')
   }
 }
 

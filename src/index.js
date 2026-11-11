@@ -1791,6 +1791,10 @@ ${colors.bright}Library Options:${colors.reset}
 
 ${colors.bright}Section Options:${colors.reset}
   --foundation <n>   Foundation to add section to (prompted if multiple exist)
+  --library <name>   Put the section type in this library (its folder or package
+                     name), and have each foundation offer it with two lines
+                     that pass it on. With it, --foundation <a,b> names those
+                     foundations (default: the ones that depend on the library)
   --in <folder>      add version: the folder under pages/ holding the docs (. for all of pages/)
   --label <text>     add version: what a version switcher calls it
   --keep-in-search   add version: leave it open to search engines
@@ -1836,6 +1840,8 @@ ${colors.bright}Examples:${colors.reset}
   uniweb add library ../acme-shared --foundation a     # A library beside the workspace, another repo's
   uniweb add section Hero                              # Create Hero section type
   uniweb add section Hero --foundation ui              # Target specific foundation
+  uniweb add section Banner --library ui               # In the library ui, offered by its foundations
+  uniweb add section Banner --library ui --foundation c # Offered by one more foundation
   uniweb add section Hero --starter                    # Starter content for an existing Hero
   uniweb add section Pricing --starter                 # Scaffold Pricing + content that fills it
   uniweb add section Hero --starter --preset split     # Frontmatter it with the 'split' preset
