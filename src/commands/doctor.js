@@ -1320,7 +1320,7 @@ export async function checkBlueprint({ sitePath, siteName, siteYml, issues }) {
     issues.push({ id, type: 'warn', site: siteName, message: line })
     warn(`[${id}] ${line}`)
   }
-  const namesTypes = ['access', 'publicQueries'].some((key) => blueprint[key] && Object.keys(blueprint[key]).length)
+  const namesTypes = ['access', 'publicQueries', 'integrations'].some((key) => blueprint[key] && Object.keys(blueprint[key]).length)
   if (namesTypes && !declared.types) {
     const id = 'blueprint-types-unchecked'
     const message = `${BLUEPRINT_FILE}: its types were not checked against the site's foundations — ${declared.unread.join('; ')}`
