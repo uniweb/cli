@@ -1,27 +1,27 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-11T16:51:43.735Z",
+  "generatedAt": "2026-11-11T18:04:19.533Z",
   "packages": {
     "@uniweb/api": {
       "version": "1.7.0"
     },
     "@uniweb/build": {
-      "version": "1.21.0"
+      "version": "1.22.0"
     },
     "@uniweb/content-reader": {
-      "version": "1.5.9"
+      "version": "1.5.10"
     },
     "@uniweb/content-writer": {
-      "version": "1.3.1"
+      "version": "1.3.2"
     },
     "@uniweb/core": {
       "version": "1.6.12"
     },
     "@uniweb/frame-bridge": {
-      "version": "1.0.3"
+      "version": "1.0.4"
     },
     "@uniweb/icons": {
-      "version": "1.0.8"
+      "version": "1.0.9"
     },
     "@uniweb/kit": {
       "version": "1.7.20"
@@ -36,7 +36,7 @@
       "version": "1.2.17"
     },
     "@uniweb/runtime": {
-      "version": "1.6.0"
+      "version": "1.6.1"
     },
     "@uniweb/scene": {
       "version": "1.0.1"
@@ -48,19 +48,19 @@
       "version": "1.1.2"
     },
     "@uniweb/semantic-parser": {
-      "version": "1.13.3"
+      "version": "1.13.4"
     },
     "@uniweb/snapshot": {
       "version": "1.1.2"
     },
     "@uniweb/templates": {
-      "version": "1.2.14"
+      "version": "1.2.15"
     },
     "@uniweb/theming": {
       "version": "1.3.2"
     },
     "@uniweb/unipress": {
-      "version": "1.1.38"
+      "version": "1.1.39"
     }
   },
   "templates": {
