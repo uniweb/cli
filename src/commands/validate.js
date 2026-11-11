@@ -156,8 +156,10 @@ function printSiteHuman(result) {
       )
     }
     for (const f of g.findings) {
+      // A finding on the record itself (its markdown body, its shape) names no field.
+      const at = f.field ? ` › ${f.field}` : ''
       log(
-        `      ${colors.yellow}•${colors.reset} item ${colors.bright}"${f.item}"${colors.reset} › ${f.field} — ${f.message}`
+        `      ${colors.yellow}•${colors.reset} item ${colors.bright}"${f.item}"${colors.reset}${at} — ${f.message}`
       )
     }
   }
