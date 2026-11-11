@@ -393,7 +393,7 @@ export async function add(rawArgs) {
       await addExtension(rootDir, projectName, parsed, pm)
       break
     case 'library':
-      await addLibrary(rootDir, projectName, parsed, pm)
+      await addLibrary(rootDir, projectName, parsed)
       break
     case 'section':
       await addSection(rootDir, parsed)
@@ -1038,7 +1038,7 @@ async function addProject(rootDir, projectName, opts, pm = 'pnpm') {
   reportRootScripts(scriptsAdded)
   log('')
   log(
-    `Next: ${colors.cyan}${installCmd(pm)} && uniweb dev ${sitePkgName}${colors.reset}`
+    `Next: ${colors.cyan}${installCmd(pmToInstall(rootDir))} && uniweb dev ${sitePkgName}${colors.reset}`
   )
 }
 

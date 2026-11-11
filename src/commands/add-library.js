@@ -38,7 +38,7 @@ import { discoverFoundations } from '../utils/discover.js'
 import { validatePackageName } from '../utils/names.js'
 import { workspacePackages } from '../utils/workspace-packages.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
-import { installCmd } from '../utils/pm.js'
+import { installCmd, pmToInstall } from '../utils/pm.js'
 import { getCliPrefix, isNonInteractive } from '../utils/interactive.js'
 import { getVersionsForTemplates } from '../versions.js'
 
@@ -281,7 +281,7 @@ export async function wireFoundation({ foundationDir, libraryDir, libraryName })
 /**
  * Add a library to the workspace, or wire one that is there.
  */
-export async function addLibrary(rootDir, projectName, opts, pm = 'pnpm') {
+export async function addLibrary(rootDir, projectName, opts) {
   const prefix = getCliPrefix()
   if (opts.project) {
     fail(
@@ -436,5 +436,5 @@ export async function addLibrary(rootDir, projectName, opts, pm = 'pnpm') {
     )
   }
   log('')
-  log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}`)
+  log(`Next: ${colors.cyan}${installCmd(pmToInstall(rootDir))}${colors.reset}`)
 }

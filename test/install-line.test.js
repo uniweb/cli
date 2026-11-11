@@ -79,6 +79,28 @@ for (const [situation, path, line] of [
   })
 }
 
+test('each add that edits the workspace names the same install, by the same rule', () => {
+  // ⛔ Until 2026-11-11 `add library` and `add project` said what ran the CLI (`npm install` from
+  // npx) where `add foundation` before them said `pnpm install`, in the same workspace.
+  const cwd = mkdtempSync(join(tmpdir(), 'uniweb-cwd-'))
+  try {
+    assert.equal(run(['create', 'probe', '--blank', '--no-git'], { path: WITH_PNPM, cwd }).code, 0)
+    const ws = join(cwd, 'probe')
+    for (const args of [
+      ['add', 'foundation', 'foundations/classic'],
+      ['add', 'library', 'libraries/ui', '--foundation', 'classic'],
+      ['add', 'project', 'docs'],
+      ['add', 'section', 'Banner', '--library', 'ui', '--foundation', 'docs-src']
+    ]) {
+      const r = run(args, { path: WITH_PNPM, cwd: ws })
+      assert.equal(r.code, 0, `${args.join(' ')}\n${r.out}${r.err}`)
+      assert.deepEqual(installs(r.out), ['pnpm install'], `${args.join(' ')}\n${r.out}`)
+    }
+  } finally {
+    rmSync(cwd, { recursive: true, force: true })
+  }
+})
+
 test("once a project is installed, its lockfile decides, whatever else is installed", () => {
   const cwd = mkdtempSync(join(tmpdir(), 'uniweb-cwd-'))
   try {
