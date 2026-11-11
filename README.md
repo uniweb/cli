@@ -2,7 +2,7 @@
 
 The CLI for [Uniweb](https://uniweb.io), an open-source framework for building websites with an AI agent. Your agent builds the site, Uniweb hosting runs it, and you and the people you work with can edit it in a visual app.
 
-**Agents build it. Uniweb runs it. Anyone can edit it.**
+**Agents build it. Uniweb runs it. You can edit it too.**
 
 ## Quick Start
 
