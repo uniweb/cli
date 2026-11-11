@@ -210,7 +210,7 @@ since your last push or pull, and what to run.
 
 ## More
 
-- Hosting it somewhere else, with no Uniweb account: `npx uniweb export`, or
-  `npx uniweb deploy --help`
+- Hosting it somewhere else, with no Uniweb account: `npx uniweb deploy` for a standard
+  host such as Cloudflare Pages (`--help` lists them), `npx uniweb export` for any other
 - Documentation index: https://uniweb.io/llms.txt
 - Every command's options: `npx uniweb <command> --help`

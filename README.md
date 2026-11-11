@@ -340,11 +340,18 @@ The workspace grows organically. `add` handles placement, wires dependencies, up
 
 ## Other Ways to Ship
 
-A Uniweb project produces two artifacts — a **site** (content) and a **foundation** (code). Connected to the app, both sides edit one site, as above. The framework also works on its own, and **who manages the content** decides what you ship.
+A Uniweb project produces two artifacts — a **site** (content) and a **foundation** (code). Connected to the app, both sides edit one site, as above. Without authors in the app, **who manages the content** decides what you ship.
 
 ### You manage the content, in files
 
-You (or your dev team) write the markdown. Deploy site + foundation together. The shortest path to a live site is free, on GitHub Pages, with a custom domain:
+You (or your dev team) write the markdown, and the site and its foundation ship together. We recommend Uniweb hosting: it is the host with the full set of hosting features — pages prerendered over live data, the Uniweb app for authors whenever you bring them in, and forms, analytics and accounts as the site grows from a few static pages to a complete platform. It is a paid service.
+
+```bash
+uniweb login      # one time
+uniweb publish    # brings the foundation along, pushes the content, goes live
+```
+
+**On a static host.** `uniweb deploy` ships to a standard host such as Cloudflare Pages, Netlify, Vercel, GitHub Pages or S3 + CloudFront, and `uniweb export` builds a `dist/` for any other host. On GitHub Pages, free, with a custom domain:
 
 ```bash
 uniweb create .   # from within a freshly-cloned GitHub repo
@@ -355,8 +362,6 @@ uniweb add ci --host=github-pages
 `uniweb add ci` scaffolds a GitHub Actions workflow that runs `uniweb build` on each push. Pre-rendering is on by default — static HTML, fast first paint, SEO out of the box. Use `--domain=<domain>` for a custom domain.
 
 **Other free static hosts.** Cloudflare Pages, Netlify, and Vercel work three ways: `uniweb add ci --host=<adapter>` scaffolds a workflow (and a per-PR preview that comments the URL), connecting the repo through their dashboard lets the host build it with no config at all, or `uniweb deploy --host=<adapter>` uploads from your machine.
-
-**When to choose Uniweb hosting instead** (paid): when you need pages prerendered over live data (records fetched at runtime, not just at build time), foundation/runtime version propagation without redeploying every site, or edge SSR. If your site's content lives in markdown and updates ship via git, free CI is the right call.
 
 ### Your clients manage the content, in the app
 
@@ -377,10 +382,10 @@ This is the best path when site content has a life independent of the foundation
 
 | Command | What it does |
 | --- | --- |
+| `uniweb publish` | Go live on Uniweb hosting, the host we recommend (paid) — brings the site's foundation along, pushes the content, and serves the site over live data. The canonical verb for Uniweb hosting. |
 | `uniweb deploy` | Ask where the site should go, then do it. Remembers the answer in `deploy.yml`. |
 | `uniweb add ci --host=<adapter>` | Scaffold a CI workflow (+ PR previews) so every push deploys. `github-pages`, `cloudflare-pages`, `netlify`, `vercel`. |
 | `uniweb add ci --target foundation` | Publish foundations at permanent versioned GitHub Pages URLs — the free alternative to the catalog. |
-| `uniweb publish` | Go live on Uniweb hosting (paid) — brings the site's foundation along, pushes the content, and serves the site dynamically. The canonical verb for Uniweb hosting. |
 | `uniweb deploy --host=<adapter>` | Ship to a third-party static host in one step — builds `dist/`, uploads, invalidates. Drives that host's own CLI. |
 | `uniweb export` | Produce a self-contained `dist/` for any static host. You upload it yourself. `--host=<adapter>` adds host-specific helper files. |
 | `uniweb register` | Register a foundation to the registry, under your Uniweb workspace's scope, for sites managed in the app. |

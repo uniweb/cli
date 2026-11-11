@@ -862,16 +862,16 @@ function showNextSteps(hasFoundations, hasSites) {
     log('')
     log(`${colors.bright}Ship a site:${colors.reset}`)
     log(
-      `  ${colors.bright}uniweb deploy${colors.reset}             Pick a host and ship (asks where, then remembers)`
+      `  ${colors.bright}uniweb publish${colors.reset}            Uniweb Cloud, recommended: live data, visual editing (paid)`
     )
     log(
-      `  ${colors.bright}uniweb add ci --host${colors.reset}=…    Deploy on every push (free hosts; adds PR previews)`
+      `  ${colors.bright}uniweb deploy${colors.reset}             A static host such as Cloudflare Pages (asks where, then remembers)`
     )
     log(
-      `  ${colors.bright}uniweb publish${colors.reset}            Uniweb Cloud (brings the foundation along)`
+      `  ${colors.bright}uniweb add ci --host${colors.reset}=…    Deploy to a static host on every push (adds PR previews)`
     )
     log(
-      `  Or upload ${colors.cyan}dist/${colors.reset} (\`uniweb export\`) to any static host`
+      `  Or upload ${colors.cyan}dist/${colors.reset} (\`uniweb export\`) to any other host`
     )
   }
 }

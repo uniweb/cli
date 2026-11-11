@@ -17,9 +17,11 @@
  *
  * Two synthetic entries round out the menu:
  *   - Uniweb Cloud — not an adapter; it delegates to `uniweb publish`.
- *     Listed after the third-party hosts rather than first: the framework
- *     is backend-optional and standalone-first, so leading a generic
- *     `deploy` with the paid product would read as an upsell.
+ *     Listed first and marked recommended: it is the host with the full
+ *     set of features (pages over live data, the Uniweb app for authors,
+ *     forms and accounts), and the one the docs recommend. Its title says
+ *     it's paid, beside hosts that say they're free, so the person picks
+ *     knowing it; a host deploy.yml remembers still floats above it.
  *   - Somewhere else — delegates to `uniweb export`.
  */
 
@@ -28,9 +30,9 @@ import { isNonInteractive } from './interactive.js'
 
 export const UNIWEB_DESTINATION = {
   value: { kind: 'uniweb' },
-  title: 'Uniweb Cloud · paid, dynamic + visual editing',
+  title: 'Uniweb Cloud · recommended · paid, live data + visual editing',
   description:
-    'Sync + dynamic SSR, visual editing for content authors, foundation propagation. Runs `uniweb publish`.'
+    'The full set of hosting features: pages prerendered over live data, the Uniweb app for your authors, forms and accounts. Runs `uniweb publish`.'
 }
 
 export const EXPORT_DESTINATION = {
@@ -65,7 +67,7 @@ export async function buildDestinationChoices() {
     description: a.display?.summary || ''
   }))
 
-  return [...choices, UNIWEB_DESTINATION, EXPORT_DESTINATION]
+  return [UNIWEB_DESTINATION, ...choices, EXPORT_DESTINATION]
 }
 
 /**

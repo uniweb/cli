@@ -1521,16 +1521,17 @@ and only offers destinations that can actually be acted on. Pick a host and it
 asks whether to set up CI (every push deploys) or upload from this machine now.
 Your answer is remembered in deploy.yml, so later runs go straight there.
 
-Choosing ${colors.bright}Uniweb Cloud${colors.reset} delegates to ${colors.cyan}uniweb publish${colors.reset} (sync + dynamic serving;
-brings the foundation along). Choosing ${colors.bright}Somewhere else${colors.reset} runs ${colors.cyan}uniweb export${colors.reset}.
+${colors.bright}Uniweb Cloud${colors.reset}, the recommended host, comes first and delegates to ${colors.cyan}uniweb publish${colors.reset}
+(pages over live data, visual editing, forms and accounts; brings the foundation
+along). Choosing ${colors.bright}Somewhere else${colors.reset} runs ${colors.cyan}uniweb export${colors.reset}.
 
 ${colors.bright}Hosts:${colors.reset}
+  uniweb              Uniweb Cloud, recommended (delegates to \`uniweb publish\`)
   github-pages        GitHub Pages — CI workflow, or commit dist/ to gh-pages
   cloudflare-pages    Cloudflare Pages — CI workflow + PR previews, or wrangler
   netlify             Netlify — CI workflow + PR previews, or the netlify CLI
   vercel              Vercel — CI workflow + PR previews, or the vercel CLI
   s3-cloudfront       AWS S3 + CloudFront — uploads + invalidates via the aws CLI
-  uniweb              Uniweb Cloud (delegates to \`uniweb publish\`)
 
 ${colors.bright}Options:${colors.reset}
   --host <name>       The host to ship to (no value → the wizard, TTY only)
