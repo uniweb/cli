@@ -184,7 +184,12 @@ export function writableMounts(siteDir) {
       if (holding.kind === 'submodule') {
         const top = join(repo.top, holding.submodule.path)
         const sub = repoOf(top)
-        if (!sub?.head) why = 'unchecked'
+        // ⛔ A submodule never checked out (a clone made without `--recurse-submodules`) is an empty
+        // folder of the site's own repository, and git answers for it with the site's: only a
+        // repository whose top is the submodule's folder is the submodule. Until 2026-11-11 the site's
+        // answer counted, and a pull in such a clone wrote the mounted pages into the top of the site's
+        // repository, committed them, and pinned the submodule to a commit of the site's.
+        if (!sub?.head || realOf(sub.top) !== realOf(top)) why = 'unchecked'
         else submodules.push({ segment, at: holding.submodule.path, root: relative(realOf(top), realOf(abs)).split(sep).join('/') || '.', repo: sub })
       } else if (holding.kind !== 'site') why = holding.kind
     } else {

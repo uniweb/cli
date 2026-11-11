@@ -116,6 +116,37 @@ test('⭐ a pull writes every mount this copy can merge — a submodule\'s in it
   assert.deepEqual(submodules.map(({ segment, at, root }) => ({ segment, at, root })), [{ segment: 'guide', at: 'external/docs', root: 'guide' }])
 })
 
+// ⛔ A SUBMODULE NEVER CHECKED OUT — a clone made without `--recurse-submodules` — is an empty folder
+// of the site's own repository, and git answers for it with the site's. Until 2026-11-11 that answer
+// counted as the submodule's: measured in a fresh clone of a project mounting a submodule's docs, a
+// pull wrote the 82 mounted files into the top of the site's repository, committed them, and pinned
+// the submodule to a commit of the site's.
+test('⛔ a mount in a submodule a clone did not check out is held, never written into the site\'s repository', () => {
+  const { dir } = project()
+  const docs = mkdtempSync(join(scratch, 'docs-'))
+  git(docs, 'init', '-q')
+  w(docs, 'guide/setup.md', '# Setup\n')
+  git(docs, 'add', '-A')
+  git(docs, 'commit', '-qm', 'docs')
+  git(dir, 'submodule', '-q', 'add', docs, 'external/docs')
+  // The submodule's own folder, and a folder inside it.
+  w(dir, 'site/site.yml', 'name: S\nfoundation: "@acme/base@1.0.0"\npaths:\n  pages/docs: ../external/docs\n  pages/guide: ../external/docs/guide\n')
+  git(dir, 'add', '-A')
+  git(dir, 'commit', '-qm', 'submodule')
+  const clone = mkdtempSync(join(scratch, 'clone-'))
+  git(clone, 'clone', '-q', dir, 'copy')
+  const site = join(clone, 'copy', 'site')
+
+  const { writable, held, submodules } = writableMounts(site)
+  assert.deepEqual(writable, [])
+  assert.deepEqual(held.map((m) => [m.segment, m.why]), [['docs', 'unchecked'], ['guide', 'unchecked']])
+  assert.deepEqual(submodules, [])
+
+  // CONTROL — checked out, the same mounts are written, in the submodule's own history.
+  git(join(clone, 'copy'), 'submodule', '-q', 'update', '--init')
+  assert.deepEqual(writableMounts(site).writable, ['docs', 'guide'])
+})
+
 test('a site in no repository: a mount inside its folder is written as its own files are, one outside held', () => {
   const dir = mkdtempSync(join(scratch, 'no-repo-'))
   w(dir, 'site/site.yml', 'name: S\npaths:\n  pages/docs: ./docs\n  pages/out: ../out\n')

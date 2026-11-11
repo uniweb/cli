@@ -24,7 +24,7 @@
 
 import { execFile, execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
-import { join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import yaml from 'js-yaml'
 import { repoOf } from './sync-point.js'
 import { quietGitEnv, upstreamOf } from './git.js'
@@ -148,11 +148,15 @@ export function mountHolding(siteDir, abs) {
 
 // git names a repository's top by its real path, and a mount may be reached through a link (a
 // temporary folder on macOS is): compared as written, it would read as outside the repository.
+// ⭐ A folder that is not there — one inside a submodule no clone checked out — is its nearest
+// folder that is, resolved, and the rest as written. ⛔ Until 2026-11-11 it was compared as written,
+// so a mount inside such a submodule read as a folder no repository holds.
 function realOf(abs) {
   try {
     return realpathSync(abs)
   } catch {
-    return abs // not there: compared as written
+    const parent = dirname(abs)
+    return parent === abs ? abs : join(realOf(parent), basename(abs))
   }
 }
 
