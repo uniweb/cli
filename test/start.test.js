@@ -53,7 +53,8 @@ test('outside a project: create from starter, read AGENTS.md, sign in in the bro
   assert.doesNotMatch(guide, /--blank|marketing|template list/)
   assert.match(guide, /AGENTS\.md, at the project's root, is the manual/)
   assert.match(guide, /follow its procedure/)
-  assert.ok(guide.includes('npm install'))
+  // The install `create` will print: which one is `install-line.test.js`'s to say.
+  assert.match(guide, /\b(?:pnpm|npm) install\b/)
   assert.ok(guide.includes('npx uniweb dev'))
   assert.ok(guide.includes('npx uniweb login --browser --personal'))
   assert.ok(guide.includes('npx uniweb push --commit'))

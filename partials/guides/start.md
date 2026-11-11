@@ -6,7 +6,7 @@ On-demand guide (`uniweb guide start`); AGENTS.md is assumed read.
 
 ```bash
 npx uniweb@latest create my-project --template marketing
-cd my-project && pnpm install
+cd my-project && pnpm install    # npm install where pnpm isn't installed: create prints which
 npx uniweb dev
 ```
 
@@ -55,7 +55,7 @@ When unsure how to implement a pattern — data fetching, i18n, layouts, insets,
 
 ```bash
 uniweb add project marketing --from marketing
-pnpm install
+pnpm install    # or npm install: the line add prints, by the project's lockfile
 ```
 
 That creates `marketing/src/` + `marketing/site/` alongside your project. No need to build or run it. Read `marketing/src/sections/` (components with `meta.js`), `marketing/site/pages/` (real content → component mapping), and `marketing/site/theme.yml` + `site.yml`. It downloads the template, and the install needs the network too; reading it afterwards doesn't. Install several if you like. To run one: `cd marketing/site && pnpm dev`.

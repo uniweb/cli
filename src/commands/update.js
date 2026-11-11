@@ -61,6 +61,7 @@ import {
   detectWorkspacePm,
   installCmd,
   installAfterEditCmd,
+  pmToInstall,
   detectGlobalCliPm,
   globalCliUpdateCmd
 } from '../utils/pm.js'
@@ -545,7 +546,7 @@ export async function update(args = []) {
       }
       if (!existsSync(join(workspaceDir, 'node_modules'))) {
         warn(
-          `No ${colors.bright}node_modules${colors.reset} in the workspace — run ${colors.cyan}${installCmd(installPm || 'pnpm')}${colors.reset} to install.`
+          `No ${colors.bright}node_modules${colors.reset} in the workspace — run ${colors.cyan}${installCmd(installPm || pmToInstall(workspaceDir))}${colors.reset} to install.`
         )
       }
       log('')

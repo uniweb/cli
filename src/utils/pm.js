@@ -161,6 +161,28 @@ export function installCmd(pm) {
 }
 
 /**
+ * The package manager to tell someone to install a workspace with: the one its lockfile names; with
+ * no lockfile yet, pnpm where it is installed (the framework's own), else the one that ran this CLI.
+ *
+ * ⭐ THE ONE RULE FOR EVERY INSTALL LINE a command prints — `start`, `create`, `add`, `rename`,
+ * `update`, and the hint for a workspace that isn't installed — so someone going from one command
+ * to the next is told one thing. ⛔ Until 2026-11-11 each chose its own: `uniweb start` said
+ * `npm install` before a project existed while the `create` it sends you to said `pnpm install`
+ * wherever pnpm is installed (an agent building a site was told both in one session), `rename` said
+ * whatever ran it, so `npx uniweb rename` in a pnpm workspace said `npm install`, and `add` never
+ * said pnpm in a workspace not yet installed.
+ *
+ * It says what to run, not how a command writes a workspace's scripts (`filterArgs`), which each
+ * command decides apart.
+ *
+ * @param {string|null} [workspaceRoot] - the workspace, when there is one
+ * @returns {'pnpm' | 'yarn' | 'npm'}
+ */
+export function pmToInstall(workspaceRoot = null) {
+  return detectWorkspacePm(workspaceRoot) || (isPnpmAvailable() ? 'pnpm' : detectPackageManager())
+}
+
+/**
  * The install to run right after a command edited the workspace's package.json files, and the one
  * to tell someone to run then.
  *

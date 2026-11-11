@@ -58,7 +58,8 @@ import {
   detectWorkspacePm,
   detectInstalledPnpmVersion,
   filterCmd,
-  installCmd
+  installCmd,
+  pmToInstall
 } from '../utils/pm.js'
 import {
   isNonInteractive,
@@ -543,7 +544,7 @@ async function addFoundation(rootDir, projectName, opts, pm = 'pnpm') {
   )
   reportRootScripts(scriptsAdded)
   log('')
-  log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}`)
+  log(`Next: ${colors.cyan}${installCmd(pmToInstall(rootDir))}${colors.reset}`)
 }
 
 /** Say which root scripts an `add` wrote, since the root `package.json` is the workspace's. */
@@ -707,7 +708,7 @@ async function addSite(rootDir, projectName, opts, pm = 'pnpm') {
   reportRootScripts(scriptsAdded)
   log('')
   log(
-    `Next: ${colors.cyan}${installCmd(pm)} && uniweb dev ${siteName}${colors.reset}`
+    `Next: ${colors.cyan}${installCmd(pmToInstall(rootDir))} && uniweb dev ${siteName}${colors.reset}`
   )
   if (!opts.from) {
     log('')
@@ -892,7 +893,7 @@ async function addExtension(rootDir, projectName, opts, pm = 'pnpm') {
   }
   reportRootScripts(scriptsAdded)
   log('')
-  log(`Next: ${colors.cyan}${installCmd(pm)}${colors.reset}`)
+  log(`Next: ${colors.cyan}${installCmd(pmToInstall(rootDir))}${colors.reset}`)
 }
 
 /**

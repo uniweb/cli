@@ -63,7 +63,7 @@ import {
   filterCmd,
   installCmd,
   runCmd,
-  isPnpmAvailable
+  pmToInstall
 } from './utils/pm.js'
 import {
   isNonInteractive,
@@ -317,13 +317,9 @@ async function importProjectCommand(modulePath) {
       )
       log(`  ${colors.cyan}npm install uniweb ${missing}${colors.reset}`)
     } else if (!workspaceInstalled) {
-      // Declared, not on disk. Prefer the workspace's own package manager,
-      // read off its lockfile — but a workspace that has NEVER been installed
-      // has no lockfile to read, so fall back the same way `create` does
-      // rather than to whichever PM happens to be running this process.
-      const pm =
-        detectWorkspacePm(root) ||
-        (isPnpmAvailable() ? 'pnpm' : detectPackageManager())
+      // Declared, not on disk: the install every command names (`pmToInstall`) — the workspace's
+      // lockfile, else what `create` recommended.
+      const pm = pmToInstall(root)
       log(`Uniweb workspace: ${colors.dim}${root}${colors.reset}`)
       log(`Its dependencies are not installed:`)
       log(`  ${colors.cyan}${installCmd(pm)}${colors.reset}`)
@@ -1449,11 +1445,11 @@ async function main() {
   // Success message
   title('Project created successfully!')
 
-  // Recommend pnpm (the framework's package manager) when it's installed,
-  // otherwise fall back to however the user invoked the CLI. The scaffold
-  // supports both — the root package.json declares npm `workspaces` and a
+  // The install every command names (`pmToInstall`): pnpm (the framework's package manager) when it's
+  // installed, otherwise however the user invoked the CLI — what `uniweb start` told them too. The
+  // scaffold supports both: the root package.json declares npm `workspaces` and a
   // pnpm-workspace.yaml ships next to it.
-  const recPm = isPnpmAvailable() ? 'pnpm' : pm
+  const recPm = pmToInstall(projectDir)
 
   if (isBlank) {
     // ⛔ The install comes first. `add` loads @uniweb/build, which reaches a blank workspace only

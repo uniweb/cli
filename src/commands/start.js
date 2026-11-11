@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url'
 import Handlebars from 'handlebars'
 import { readFlagValue } from '../utils/args.js'
 import { findUniwebWorkspace, findWorkspaceRoot } from '../utils/workspace.js'
-import { detectWorkspacePm, installCmd } from '../utils/pm.js'
+import { installCmd, pmToInstall } from '../utils/pm.js'
 
 const PARTIAL = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'partials', 'start.md')
 
@@ -77,7 +77,8 @@ export function startGuide({ cwd = process.cwd(), template = null } = {}) {
     starter: name === 'starter',
     none: name === 'none',
     paste: name === 'paste',
-    install: installCmd(root ? detectWorkspacePm(root) : 'npm')
+    // What `create` will say to run, or the project's own (`pmToInstall`).
+    install: installCmd(pmToInstall(root))
   })
 }
 

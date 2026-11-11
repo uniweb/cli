@@ -59,7 +59,7 @@ import {
 import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import { getExistingPackageNames, validatePackageName } from '../utils/names.js'
-import { detectPackageManager, installCmd } from '../utils/pm.js'
+import { detectPackageManager, installCmd, pmToInstall } from '../utils/pm.js'
 import { getCliPrefix } from '../utils/interactive.js'
 import { replaceInYamlList, setYamlKey } from '@uniweb/build/uwx'
 
@@ -377,7 +377,7 @@ async function renameFoundation(rootDir, oldName, newName, prefix) {
   success(
     `Renamed foundation ${colors.bright}${oldName}${colors.reset} → ${colors.bright}${newName}${colors.reset}`
   )
-  printNextSteps(prefix, pm)
+  printNextSteps(prefix, rootDir)
 }
 
 // ─── Site rename ─────────────────────────────────────────────────
@@ -449,7 +449,7 @@ async function renameSite(rootDir, oldName, newName, prefix) {
   success(
     `Renamed site ${colors.bright}${oldName}${colors.reset} → ${colors.bright}${newName}${colors.reset}`
   )
-  printNextSteps(prefix, pm)
+  printNextSteps(prefix, rootDir)
 }
 
 // ─── Extension rename ────────────────────────────────────────────
@@ -574,20 +574,21 @@ async function renameExtension(rootDir, oldName, newName, prefix) {
   // extension name — the foundation's own scripts handle building).
   // No updateRootScripts needed.
 
-  const pm = detectPackageManager()
   log('')
   success(
     `Renamed extension ${colors.bright}${oldName}${colors.reset} → ${colors.bright}${newName}${colors.reset}`
   )
-  printNextSteps(prefix, pm)
+  printNextSteps(prefix, rootDir)
 }
 
 // ─── Shared output ───────────────────────────────────────────────
 
-function printNextSteps(prefix, pm) {
+// The install every command names (`pmToInstall`): the workspace's own, by its lockfile. ⛔ Until
+// 2026-11-11 this said whatever ran the CLI, so `npx uniweb rename` in a pnpm workspace said `npm install`.
+function printNextSteps(prefix, rootDir) {
   log('')
   log(
-    `Next: ${colors.cyan}${installCmd(pm)}${colors.reset}  ${colors.dim}(refresh symlinks under the new name)${colors.reset}`
+    `Next: ${colors.cyan}${installCmd(pmToInstall(rootDir))}${colors.reset}  ${colors.dim}(refresh symlinks under the new name)${colors.reset}`
   )
   log(
     `      ${colors.cyan}${prefix} doctor${colors.reset}  ${colors.dim}(verify wiring)${colors.reset}`
