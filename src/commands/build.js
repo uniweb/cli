@@ -463,11 +463,11 @@ export async function generateLocalizedHtml(projectDir, i18nConfig) {
     const localeContentPath = join(localeDir, 'site-content.json')
     let localeHtml = baseHtml
 
-    // Update html lang attribute
-    localeHtml = localeHtml.replace(
-      /<html[^>]*lang="[^"]*"/,
-      `<html lang="${locale}"`
-    )
+    // The language this page is in, as `<html lang>`: only its value changes, so the shell's other
+    // attributes (its scheme class, a developer's own) stay. ⛔ Until 2026-11-11 every attribute
+    // written before `lang` went with it, so a language's shell could lose the class that sets its
+    // site's dark look.
+    localeHtml = localeHtml.replace(/(<html\b[^>]*?\slang=")[^"]*"/, (_, start) => `${start}${locale}"`)
     if (!localeHtml.includes('lang=')) {
       localeHtml = localeHtml.replace('<html', `<html lang="${locale}"`)
     }

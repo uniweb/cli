@@ -29,6 +29,28 @@ function embedded(html) {
   return html.slice(start, html.indexOf('</script>', start))
 }
 
+// ⛔ Until 2026-11-11 the rewrite of `lang` took every attribute written before it, so a shell
+// written `<html class="h-full scheme-dark" lang="en">` gave its languages `<html lang="es">`: a dark
+// site's translated pages lost their scheme class, and the developer's own class went with it.
+test("a language's shell changes only the value of lang, and keeps the tag's other attributes", async () => {
+  const projectDir = mkdtempSync(join(tmpdir(), 'uniweb-localized-shell-'))
+  try {
+    const dist = join(projectDir, 'dist')
+    mkdirSync(join(dist, 'es'), { recursive: true })
+    writeFileSync(
+      join(dist, 'index.html'),
+      '<!doctype html><html class="h-full scheme-dark" lang="en" data-x="1"><head><title>T</title></head><body><div id="root"></div></body></html>'
+    )
+
+    await generateLocalizedHtml(projectDir, { locales: ['es'] })
+
+    const html = readFileSync(join(dist, 'es', 'index.html'), 'utf8')
+    assert.match(html, /<html class="h-full scheme-dark" lang="es" data-x="1">/)
+  } finally {
+    rmSync(projectDir, { recursive: true, force: true })
+  }
+})
+
 test("a language's shell embeds its content escaped, and it reads back whole", async () => {
   const projectDir = mkdtempSync(join(tmpdir(), 'uniweb-localized-shell-'))
   try {
