@@ -1047,7 +1047,8 @@ async function runAudit(siteRoot, config, args) {
     const results = []
 
     for (const loc of localesToAudit) {
-      const result = await auditLocale(localesPath, loc)
+      // A page translation for a place in a branch the site doesn't translate is that place's (`auditLocale`).
+      const result = await auditLocale(localesPath, loc, { exclude: scope.records ? null : config.exclude })
       results.push(result)
     }
 
