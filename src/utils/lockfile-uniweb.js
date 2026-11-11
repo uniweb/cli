@@ -8,11 +8,22 @@
  * got it at once. Measured 2026-11-10, twice: semantic-parser 1.13.3 stayed 1.13.2, because core
  * 1.6.12's `~1.13.2` is met by the locked 1.13.2, and runtime 1.5.7 stayed 1.5.6 behind the peer pnpm
  * had installed for a root by itself. Lifted, an existing project's @uniweb packages resolve as a
- * new project's would, and no other package moves.
+ * new project's would.
  *
- * ⛔ pnpm's `update` also writes a newer version into a range a package.json declares (`~1.20.9`
- * becomes `~1.20.10` once 1.20.10 is out). The caller puts those files back as `update` aligned them
- * and installs again, which keeps the newer version, since it meets the range.
+ * ⭐ WITH PNPM IT IS `pnpm dedupe`: it drops each older version the lockfile holds where a newer one
+ * its range allows is installed, which is the case `update` leaves (its install brings the new version
+ * through the packages it aligned, and keeps the old one beside it), and it leaves every other
+ * resolution as it was. ⛔ Until 2026-11-11 (uniweb 1.32.0) it was `pnpm update <names> -r`, which
+ * resolves every dependency of every workspace package again: a local foundation or library a
+ * project takes as `file:`, whose package.json declares a peer its dependent doesn't have, came back
+ * as an installed copy instead of a link, so `uniweb dev` imported the copy and never saw an edit
+ * (the build says the foundation "resolves to two different directories"). Measured that day on six
+ * studio projects and on a library four packages of one workspace take. In those projects `dedupe`
+ * moved @uniweb versions only, but it may drop an older copy of any package the same way.
+ *
+ * ⛔ A package manager may also write a newer version into a range a package.json declares (pnpm's
+ * `update` did: `~1.20.9` became `~1.20.10`). The caller puts those files back as `update` aligned
+ * them and installs again, which keeps the newer version, since it meets the range.
  *
  * yarn is left as it is: classic yarn and berry spell this differently (`yarn upgrade`, `yarn up -R`).
  */
@@ -82,7 +93,8 @@ function sorted(found) {
 
 /**
  * The command that moves each named package, wherever the workspace holds it, to the newest version
- * its range allows. Never `--latest`: a range is the project's promise.
+ * its range allows. Never `--latest`: a range is the project's promise. With pnpm it names none:
+ * `dedupe` reads the lockfile whole (the header says why it is not `update -r`).
  *
  * @param {'pnpm'|'npm'} pm
  * @param {string[]} names
@@ -90,7 +102,7 @@ function sorted(found) {
  */
 export function liftCommand(pm, names) {
   if (!names.length) return null
-  if (pm === 'pnpm') return `pnpm update ${names.join(' ')} -r`
+  if (pm === 'pnpm') return 'pnpm dedupe'
   if (pm === 'npm') return `npm update ${names.join(' ')}`
   return null
 }

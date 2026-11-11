@@ -90,9 +90,11 @@ test('no lockfile, one that does not parse, or yarn: nothing to lift with', () =
   assert.equal(lockedUniwebPackages(workspace({ 'yarn.lock': '# yarn lockfile v1\n' }), 'yarn'), null)
 })
 
-test('the lift names each package, keeps to the ranges, and runs everywhere the workspace holds it', () => {
+// ⛔ pnpm's is `dedupe`, not `update <names> -r`: that resolves every dependency again, and a local
+// `file:` foundation declaring a peer its site lacks came back as a copy `uniweb dev` never refreshed.
+test('the lift keeps to the ranges, everywhere the workspace holds a package, and re-resolves nothing else', () => {
   const names = ['@uniweb/core', '@uniweb/semantic-parser']
-  assert.equal(liftCommand('pnpm', names), 'pnpm update @uniweb/core @uniweb/semantic-parser -r')
+  assert.equal(liftCommand('pnpm', names), 'pnpm dedupe')
   assert.equal(liftCommand('npm', names), 'npm update @uniweb/core @uniweb/semantic-parser')
   for (const pm of ['pnpm', 'npm']) assert.doesNotMatch(liftCommand(pm, names), /--latest|-L\b/)
   assert.equal(liftCommand('yarn', names), null)

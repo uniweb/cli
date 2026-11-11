@@ -171,10 +171,10 @@ export function printStaleCliNotice({
   return true
 }
 
-/** `pnpm update <14 @uniweb packages> -r`: the lift's command, short enough to read in a log. */
+/** `pnpm dedupe` or `npm update <14 @uniweb packages>`: the lift's command, short enough to read in a log. */
 function liftCommandShort(pm, count) {
   const names = `<${count} @uniweb package${count === 1 ? '' : 's'}>`
-  return pm === 'pnpm' ? `pnpm update ${names} -r` : `npm update ${names}`
+  return pm === 'pnpm' ? 'pnpm dedupe' : `npm update ${names}`
 }
 
 /** The workspace's package.json files as they are now: the root's and each workspace package's. */
@@ -225,8 +225,9 @@ async function liftUniwebPackages(workspaceDir, pm) {
     return
   }
 
-  // pnpm writes a newer version into a range a package.json declares. Put the ranges back as this
-  // command aligned them, and install again, which keeps the newer version: it meets the range.
+  // A package manager may write a newer version into a range a package.json declares. Put the ranges
+  // back as this command aligned them, and install again, which keeps the newer version: it meets the
+  // range. (`pnpm dedupe` writes none.)
   const rewritten = manifests.filter(({ path, text }) => readFileSync(path, 'utf8') !== text)
   if (rewritten.length) {
     for (const { path, text } of rewritten) writeFileSync(path, text)
