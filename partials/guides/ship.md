@@ -94,6 +94,7 @@ When `status` names a newer release, take it: update, restart any running dev se
 | Retired | Now |
 |---|---|
 | `data:` in a section's frontmatter (old name for `query:`) | `query:` / `fetch:` |
+| `title:`, `subtitle:` or another content field's name in a section's frontmatter, to set that field | the field in the body (`# Title`, `## Subtitle`, `#> Eyebrow`); the frontmatter key is a param |
 | `route:` on a query | the record's `$route` |
 | `refine: true`, `detail: false` on a fetch | `current: only / exclude / include` |
 | `filter:` on a query or fetch | `where:`, a where-object |

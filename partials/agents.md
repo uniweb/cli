@@ -73,7 +73,7 @@ When a rule in §2 feels like friction, that is the moment you are about to take
 | `<span class>`, `<div>` in markdown | Shown as text. `[text]{accent}`, `**bold**`; a line break is `<br>` or a trailing `\`. | build names the file |
 | Write `pages: [a, b]` or `sections: [a, b]` to set order | Those lists are **strict**: an unlisted page leaves every menu, an unlisted section leaves the page. `[a, b, ...]` means "these first". At the site root the first of `pages:` is `/`, whatever `index:` says. | silent |
 | `primary: #3b82f6` | `'#3b82f6'` — an unquoted `#` starts a YAML comment. | build warns |
-| Expect any frontmatter key to do something, any `type:` name to work | A key reaches `params` and does nothing unless the type reads it (its `meta.js` says which); one named for a content field (`title:`) replaces that field. Only types present in `sections/` work. | silent / red box |
+| Expect any frontmatter key to do something, any `type:` name to work | A key reaches `params` only, and does nothing unless the type reads it (its `meta.js` says which); a `title:` there never sets the section's title, which is its heading. Only types present in `sections/` work. | silent; build and push note a content field's name / red box |
 | Strip the content a new `type:` / `variant:` won't render before switching | Nothing to strip (§1): the switch is a one-line trial, and what stays afterwards is the author's call. | content loss |
 | `pages/fr/about.md` for French | `locales/` beside `pages/`; `pages/` holds the default language only. | silent — it becomes a page at `/fr` |
 | `t('key')`, `<Trans>` | Nothing — content arrives translated; each language is its own build. | — |
@@ -203,7 +203,7 @@ uniweb <command> --help             # exact flags, no side effects
 | Red `Component not found: <Type>` box | `type:` not in `sections/` (or an extension) |
 | A section doesn't render | left out of a strict `sections:` list; `_`-prefixed; a type nested below the root of `sections/` without `meta.js` |
 | A heading landed in the wrong field | the step rule (2.2) — `inspect` |
-| `title` empty | something (an icon, an image, a line of text) sits above the first heading, or a later heading is as large as the first |
+| `title` empty | something (an icon, an image, a line of text) sits above the first heading, or a later heading is as large as the first, or the title is a `title:` in the frontmatter, a param |
 | Pages missing from the nav | a strict `pages:` list — add `...` |
 | A color is empty | unquoted `#` in YAML |
 | Literal `{name}` on the page | no Loom content handler |
