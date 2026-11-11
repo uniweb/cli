@@ -34,7 +34,7 @@ appearance:
   schemes: [light, dark]
 ```
 
-Shorthands: `appearance: light` / `dark` (fixed), `appearance: system`. A site has dark mode when it offers a toggle, defaults to `dark`/`system`, or lists `dark`. Precedence: stored choice > a dark OS > `default:` — the OS can only choose dark, so `default: light` is a fallback, not a guarantee, unless `respectSystemPreference: false`, and `default: dark` stays dark on a light OS.
+Shorthands: `appearance: light` / `dark` (fixed), `appearance: system`. A site has dark mode when it offers a toggle, defaults to `dark`/`system`, or lists `dark`. Precedence: stored choice (only on a site with a switch) > a dark OS > `default:` — the OS can only choose dark, so `default: light` is a fallback, not a guarantee, unless `respectSystemPreference: false`, and `default: dark` stays dark on a light OS. A site with no switch ignores a stored choice: it is another site's on the same address (the key is the origin's).
 
 | Goal | `theme.yml` |
 |---|---|
