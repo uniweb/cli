@@ -5,7 +5,10 @@
  *   1. Align workspace `@uniweb/*` + `uniweb` deps to this CLI's bundled
  *      version matrix (`getResolvedVersions`) — only deps that *lag* the
  *      matrix are touched; deps that are *ahead* are left alone (no
- *      downgrades) — then run `<pm> install`.
+ *      downgrades) — then run `<pm> install`, and move every `@uniweb/*`
+ *      package the lockfile holds to the newest version its range allows,
+ *      the ones the project reaches only through another included
+ *      (`liftUniwebPackages`, `utils/lockfile-uniweb.js`).
  *   2. Refresh AGENTS.md from this CLI's bundled partial.
  *
  * Why those two belong together: AGENTS.md is regenerated from the CLI's
@@ -44,7 +47,8 @@ import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import prompts from 'prompts'
 
-import { findUniwebWorkspace } from '../utils/workspace.js'
+import { findUniwebWorkspace, getWorkspacePackages } from '../utils/workspace.js'
+import { lockedUniwebPackages, liftCommand, liftMoves } from '../utils/lockfile-uniweb.js'
 import {
   readAgentsVersion,
   refreshAgentsContent,
@@ -164,6 +168,91 @@ export function printStaleCliNotice({
   }
   log('')
   return true
+}
+
+/** `pnpm update <14 @uniweb packages> -r`: the lift's command, short enough to read in a log. */
+function liftCommandShort(pm, count) {
+  const names = `<${count} @uniweb package${count === 1 ? '' : 's'}>`
+  return pm === 'pnpm' ? `pnpm update ${names} -r` : `npm update ${names}`
+}
+
+/** The workspace's package.json files as they are now: the root's and each workspace package's. */
+async function workspaceManifests(workspaceDir) {
+  const dirs = ['', ...(await getWorkspacePackages(workspaceDir))]
+  const manifests = []
+  for (const relDir of dirs) {
+    const path = join(relDir ? join(workspaceDir, relDir) : workspaceDir, 'package.json')
+    if (existsSync(path)) manifests.push({ path, text: readFileSync(path, 'utf8') })
+  }
+  return manifests
+}
+
+/**
+ * After the install, move every @uniweb package the lockfile holds to the newest version its range
+ * allows, wherever the workspace holds it, and keep the package.json files as this command aligned
+ * them. `utils/lockfile-uniweb.js` says why: without it, a patch to a package the project reaches
+ * only through another never arrives in an existing project.
+ *
+ * Never fatal. The alignment and its install have happened, so a failure says how to finish.
+ *
+ * @param {string} workspaceDir
+ * @param {'pnpm'|'npm'|'yarn'} pm
+ */
+async function liftUniwebPackages(workspaceDir, pm) {
+  if (pm === 'yarn') {
+    log(
+      `${colors.dim}A package reached only through another stays as yarn locked it: ${colors.reset}${colors.cyan}yarn up -R '@uniweb/*'${colors.reset}${colors.dim} (berry) or ${colors.reset}${colors.cyan}yarn upgrade${colors.reset}${colors.dim} (classic) moves it.${colors.reset}`
+    )
+    log('')
+    return
+  }
+  const before = lockedUniwebPackages(workspaceDir, pm)
+  const names = before ? [...before.keys()] : []
+  const cmd = liftCommand(pm, names)
+  if (!cmd) return
+
+  const manifests = await workspaceManifests(workspaceDir)
+  info(
+    `Moving each @uniweb package the lockfile holds to the newest its range allows: ${colors.cyan}${liftCommandShort(pm, names.length)}${colors.reset}`
+  )
+  const code = await runCommand(cmd, workspaceDir)
+  if (code !== 0) {
+    warn(
+      `That failed (exit ${code}). The aligned versions are installed; to move the rest, run ${colors.cyan}${cmd}${colors.reset}`
+    )
+    log('')
+    return
+  }
+
+  // pnpm writes a newer version into a range a package.json declares. Put the ranges back as this
+  // command aligned them, and install again, which keeps the newer version: it meets the range.
+  const rewritten = manifests.filter(({ path, text }) => readFileSync(path, 'utf8') !== text)
+  if (rewritten.length) {
+    for (const { path, text } of rewritten) writeFileSync(path, text)
+    const resync = installAfterEditCmd(pm)
+    const again = await runCommand(resync, workspaceDir)
+    if (again !== 0) {
+      warn(
+        `Putting the aligned ranges back, ${colors.cyan}${resync}${colors.reset} failed (exit ${again}). Run it again to finish.`
+      )
+      log('')
+      return
+    }
+  }
+
+  const after = lockedUniwebPackages(workspaceDir, pm)
+  const moves = after ? liftMoves(before, after) : []
+  if (!moves.length) {
+    success('Every @uniweb package was already the newest its range allows.')
+  } else {
+    success(
+      `Moved ${moves.length} @uniweb package${moves.length === 1 ? '' : 's'} to the newest ${moves.length === 1 ? 'its range allows' : 'their ranges allow'}:`
+    )
+    for (const { name, from, to } of moves) {
+      log(`  ${name}  ${colors.dim}${from.join(', ') || 'none'} →${colors.reset} ${to.join(', ') || 'none'}`)
+    }
+  }
+  log('')
 }
 
 /** Run a shell command, inheriting stdio. Resolves with the exit code. */
@@ -504,6 +593,12 @@ export async function update(args = []) {
             log(
               `${colors.dim}Then would run:${colors.reset} ${colors.cyan}${installAfterEditCmd(installPm)}${colors.reset}`
             )
+            const held = lockedUniwebPackages(workspaceDir, installPm)
+            if (held?.size && liftCommand(installPm, [...held.keys()])) {
+              log(
+                `${colors.dim}and then:${colors.reset} ${colors.cyan}${liftCommandShort(installPm, held.size)}${colors.reset}${colors.dim}, each @uniweb package the lockfile holds to the newest its range allows${colors.reset}`
+              )
+            }
           } else {
             log(
               `${colors.dim}Then would prompt for an install command (no lockfile detected).${colors.reset}`
@@ -560,6 +655,13 @@ export async function update(args = []) {
               info(
                 `${colors.dim}Non-interactive — run the install yourself:${colors.reset} ${colors.cyan}${cmd}${colors.reset}`
               )
+              const held = lockedUniwebPackages(workspaceDir, installPm)
+              const lift = held?.size ? liftCommand(installPm, [...held.keys()]) : null
+              if (lift) {
+                log(
+                  `${colors.dim}Then, to move each @uniweb package the lockfile holds to the newest its range allows:${colors.reset} ${colors.cyan}${lift}${colors.reset}`
+                )
+              }
               log('')
             } else {
               const { go } = await prompts({
@@ -577,6 +679,7 @@ export async function update(args = []) {
                 installRan = true
                 success('Install complete.')
                 log('')
+                await liftUniwebPackages(workspaceDir, installPm)
               } else {
                 error(
                   `Install failed (exit ${code}). package.json edits are intact.`
