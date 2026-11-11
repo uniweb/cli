@@ -12,6 +12,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { resolve, extname, basename, dirname, join } from 'node:path'
 import yaml from 'js-yaml'
+import { isSectionKey, isSectionParam } from '@uniweb/schemas/section'
 
 // Colors for terminal output
 const colors = {
@@ -105,27 +106,37 @@ function extractFrontmatter(raw) {
 }
 
 /**
- * Split frontmatter into reserved keys and custom params.
- * Exact match of content-collector line 642.
+ * Split a section's frontmatter as the site build does (`@uniweb/build`,
+ * `content-collector.js::processMarkdownFile`), then as core builds the Block: every key but
+ * `SECTION_KEYS` and `fetch` is a param, with `props:` merged in, and of those the section's own
+ * settings (`SECTION_PARAMS` — `theme`, `background`, `grid`, `vars`, `fetch`, `sticky`,
+ * `underHeader`) are lifted onto the Block, so the component never receives them
+ * (`@uniweb/schemas/section`). So `params` is what the component receives, less its `meta.js`
+ * defaults, which need the foundation; `reserved` is every other key written.
+ *
+ * ⛔ Until 2026-11-11 this kept its own list, said to match the build exactly, which had drifted:
+ * `hidden`, `query`, `grid`, `vars`, `sticky` and `underHeader` showed as params, a key under
+ * `props:` showed as none, and `component:` was read as `type:`.
  */
 function splitParams(frontMatter) {
-  const {
-    type,
-    component,
-    preset,
-    input,
-    props,
-    fetch,
-    data,
-    id,
-    background,
-    theme,
-    ...params
-  } = frontMatter
+  const { type, preset, props } = frontMatter
+  const written = {}
+  const reserved = {}
+  for (const [key, value] of Object.entries(frontMatter)) {
+    if (key === 'type' || key === 'preset' || key === 'props') continue
+    if (key === 'fetch' || isSectionKey(key)) reserved[key] = value
+    else written[key] = value
+  }
+  if (props && typeof props === 'object' && !Array.isArray(props)) Object.assign(written, props)
+  const params = {}
+  for (const [key, value] of Object.entries(written)) {
+    if (isSectionParam(key)) reserved[key] = value
+    else params[key] = value
+  }
   return {
-    type: type || component || null,
+    type: type || null,
     preset: preset || null,
-    reserved: { data, id, background, theme, input },
+    reserved,
     params
   }
 }
