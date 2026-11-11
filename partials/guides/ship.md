@@ -95,6 +95,7 @@ When `status` names a newer release, take it: update, restart any running dev se
 |---|---|
 | `data:` in a section's frontmatter (old name for `query:`) | `query:` / `fetch:` |
 | `title:`, `subtitle:` or another content field's name in a section's frontmatter, to set that field | the field in the body (`# Title`, `## Subtitle`, `#> Eyebrow`); the frontmatter key is a param |
+| `content.buttons`, `content.cards`, `content.forms`, `content.alignment` (always empty) | a button is a link with a `role`, in `content.links`; a card is an item; a form is the section type's own, sent with `useSubmit` (`uniweb guide services`); alignment is a param |
 | `route:` on a query | the record's `$route` |
 | `refine: true`, `detail: false` on a fetch | `current: only / exclude / include` |
 | `filter:` on a query or fetch | `where:`, a where-object |
