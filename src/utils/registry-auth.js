@@ -376,8 +376,8 @@ export const SESSION_FOR_ANOTHER_CLIENT = 'session_for_another_client'
  * own message.
  *
  * ⭐ IT NAMES THE FIX: a session the CLI signs in for itself, on the backend that refused
- * (`loginCommand`). ⛔ Until 2026-11-11 the token checks said only "HTTP 401", and a push said
- * nothing at all, since its advice was for a refusal with no reason.
+ * (`loginCommand`). ⛔ Until 2026-11-11 the token checks said only "HTTP 401", and a push gave
+ * only its general "log in again" advice, since it never read a 401's body.
  *
  * @param {object|null|undefined} problem - the refusal's parsed body
  * @param {{ origin: string, fromEnv?: boolean }} o - the backend that refused, and whether the

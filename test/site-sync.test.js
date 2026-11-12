@@ -3517,3 +3517,33 @@ test('pushSyncPackages: a foundation this backend has not registered is said by 
   assert.ok(calls.note.some((m) => /uniweb register/.test(m)))
   rmSync(dir, { recursive: true, force: true })
 })
+
+// ⭐ A push refused because its session was made for the Uniweb app says so and names a sign-in;
+// any other 401 keeps the general advice. ⛔ Until 2026-11-11 a 401's body was never read here, so
+// the first could not be told from the second, and the lines written for it never showed.
+test("⭐ a push refused for a session made for the Uniweb app says so — any other 401 keeps the general advice", async () => {
+  const refusal = { status: 401, title: 'Session For Another Client', detail: 'x', reason: 'session_for_another_client', client: 'cli' }
+  const app = makeReport()
+  await pushSyncPackages({
+    client: { origin: ORIGIN, updateSiteContent: async () => fail(401, JSON.stringify(refusal)) },
+    siteDir: tmpSite(),
+    report: app.report,
+    pkg: siteOnlyPkg({ siteContentUuid: 'S1' })
+  })
+  const said = app.calls.note.join('\n')
+  assert.match(said, /This session was made for the Uniweb app, and http:\/\/x takes only a session the uniweb CLI signed in with\./)
+  assert.match(said, /Sign in from the CLI: .*login.* --browser \(or --password\)\./)
+  assert.doesNotMatch(said, /Credentials weren't accepted/)
+
+  // CONTROL — a 401 with no reason, and one with another reason, keep the general advice.
+  for (const body of ['{}', JSON.stringify({ status: 401, reason: 'session_expired' })]) {
+    const other = makeReport()
+    await pushSyncPackages({
+      client: { origin: ORIGIN, updateSiteContent: async () => fail(401, body) },
+      siteDir: tmpSite(),
+      report: other.report,
+      pkg: siteOnlyPkg({ siteContentUuid: 'S1' })
+    })
+    assert.match(other.calls.note.join('\n'), /Credentials weren't accepted/, body)
+  }
+})

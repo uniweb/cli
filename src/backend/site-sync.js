@@ -2447,8 +2447,10 @@ export async function pushSyncPackages({
       const body = await res.text().catch(() => '')
       // Two unrelated conflicts share HTTP 409, so branch on the machine-readable
       // `reason` — never on `detail`, which is prose the backend may reword.
+      // A 401 is read too, for a session made for another of the backend's clients (below).
+      // ⛔ Until 2026-11-11 it was not, so that refusal could never be told from any other 401.
       let problem = null
-      if ((res.status === 409 || res.status === 400 || res.status === 403 || res.status === 413 || res.status === 422 || res.status === 507) && body) {
+      if ((res.status === 409 || res.status === 400 || res.status === 401 || res.status === 403 || res.status === 413 || res.status === 422 || res.status === 507) && body) {
         try {
           problem = JSON.parse(body)
         } catch {
@@ -2634,15 +2636,16 @@ export async function pushSyncPackages({
         return null
       }
       error(`${label} push rejected: HTTP ${res.status} ${res.statusText}`)
-      // A typed 403 says its own cause (a plan's limit, say), which is not the credentials. A
-      // session made for another of the backend's clients is the credentials, and says so.
+      // A session made for another of the backend's clients says so, and names a sign-in. Any
+      // other 401 is the credentials, as before; a typed 403 says its own cause (a plan's limit,
+      // say), which is not the credentials.
       const anotherClient = await anotherClientsSessionLines(problem, {
         origin: client.origin,
         fromEnv: Boolean(process.env.UNIWEB_TOKEN)
       })
       if (anotherClient) {
         for (const line of anotherClient) note(line)
-      } else if ((res.status === 401 || res.status === 403) && typeof problem?.reason !== 'string') {
+      } else if (res.status === 401 || (res.status === 403 && typeof problem?.reason !== 'string')) {
         note(
           "Credentials weren't accepted — log in again (`uniweb login --server <url>`), or check UNIWEB_TOKEN."
         )

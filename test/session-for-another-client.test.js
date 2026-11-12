@@ -7,9 +7,9 @@
  * did not make (`login --token`, the paste prompt, `UNIWEB_TOKEN`), and a password login from
  * before that binding left the app's kind of session stored.
  *
- * ⛔ Until 2026-11-11 the token checks said only "HTTP 401", a push said nothing past the
- * status, and a bare `uniweb login` answered "Already logged in" for a stored session the
- * backend refused, while every command named that login as the fix. Pinned here:
+ * ⛔ Until 2026-11-11 the token checks said only "HTTP 401", and a bare `uniweb login` answered
+ * "Already logged in" for a stored session the backend refused, while every command named that
+ * login as the fix. (A push is pinned in `site-sync.test.js`.) Pinned here:
  *
  *   - the token checks say whose session it is and name a sign-in on that backend;
  *   - a bare login asks the backend about the stored session, and signs in again on a 401;
