@@ -19,6 +19,7 @@ import { basename } from 'node:path'
 import { resolveAssetPath } from '@uniweb/build/site'
 import { servedFingerprint } from '@uniweb/build/uwx'
 import { prepareImage, isPreparableImage } from '@uniweb/build/images'
+import { prepareVideo, isPreparableVideo } from './prepare-video.js'
 import { contentTypeFor } from '../utils/code-upload.js'
 import { humanBytes } from '../utils/bytes.js'
 
@@ -93,10 +94,10 @@ export async function uploadSiteMedia(
     // images) keeps its format, since a home screen takes a PNG and a link preview a JPEG or PNG, and
     // loses only its location and camera data. ⛔ Until 2026-11-12 those went up as they were, so a
     // phone's photo made a social image kept where it was taken, on its page too.
+    // A video a page plays is prepared too (`prepareVideo`), under the video half of the rule.
     const ext = extOf(resolved)
-    const prepare = !declared && isPreparableImage(ext)
-    const options = { keepFormat: keepFormat.has(ref) }
-    files.push(prepare ? await preparedFile(file, bytes, ext, recorded?.[ref], warn, options) : file)
+    const make = declared ? null : makerFor(ref, resolved, bytes, ext, { keepFormat: keepFormat.has(ref), onProgress })
+    files.push(make ? await preparedFile(file, ext, recorded?.[ref], warn, make) : file)
   }
   if (!files.length) return { map: {}, ids: {}, missing, served, failed: [] }
 
@@ -118,7 +119,7 @@ export async function uploadSiteMedia(
         localUrl: was.localUrl,
         diskPath: was.diskPath
       }
-      again.push(await preparedFile(file, bytes, extOf(was.diskPath), null, warn, { keepFormat: was.keepFormat }))
+      again.push(await preparedFile(file, extOf(was.diskPath), null, warn, was.make))
     }
     const retry = await client.uploadSiteAssets({ files: again, siteUuid, onProgress })
     result = {
@@ -185,8 +186,21 @@ const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const extOf = (path) => (basename(path).match(/\.([^.]+)$/)?.[1] || '').toLowerCase()
 
 /**
- * The plan entry for a picture a page shows, stored as `prepareImage` makes it. Three cases, by what
- * this backend's asset map records for the ref:
+ * How a file is prepared before it is uploaded, or null when it goes up as it is.
+ *
+ * @returns {null | (() => Promise<{ bytes: Buffer, ext: string, unreadable?: boolean, note?: string }>)}
+ */
+function makerFor(ref, path, bytes, ext, { keepFormat, onProgress }) {
+  if (isPreparableImage(ext)) return () => prepareImage(bytes, ext, { keepFormat })
+  if (isPreparableVideo(ext)) {
+    return () => prepareVideo(path, bytes, ext, { onProgress: (m) => onProgress?.(`${ref}: ${m}`) })
+  }
+  return null
+}
+
+/**
+ * The plan entry for a picture or a video a page shows, stored as `make` prepares it. Three cases, by
+ * what this backend's asset map records for the ref:
  *
  * - **Prepared before, from these same bytes** (`source` is their hash): planned by the identity it
  *   recorded, with no bytes, so nothing is prepared again. The backend still holding it, the plan
@@ -197,13 +211,12 @@ const extOf = (path) => (basename(path).match(/\.([^.]+)$/)?.[1] || '').toLowerC
  * - **New or changed:** prepared now.
  *
  * @param {object} file - the plan entry for the file as it is
- * @param {Buffer} bytes - the file
  * @param {string} ext - its extension
  * @param {object|undefined|null} prior - its entry in the asset map
  * @param {(m: string) => void} [warn]
- * @param {{ keepFormat?: boolean }} [options] - a picture other software fetches by its address
+ * @param {() => Promise<{ bytes: Buffer, ext: string, unreadable?: boolean, note?: string }>} make
  */
-async function preparedFile(file, bytes, ext, prior, warn, { keepFormat = false } = {}) {
+async function preparedFile(file, ext, prior, warn, make) {
   const source = file.sha256
   const key = file.path
   if (prior?.source === source && prior.id && prior.ext && Number.isInteger(prior.size)) {
@@ -215,16 +228,15 @@ async function preparedFile(file, bytes, ext, prior, warn, { keepFormat = false 
       size: prior.size,
       sha256: prior.id,
       source,
-      keepFormat,
-      load: async () => (await prepareImage(bytes, ext, { keepFormat })).bytes
+      make,
+      load: async () => (await make()).bytes
     }
   }
   if (prior && !prior.source && prior.id === source) return { ...file, key, source }
 
-  const prepared = await prepareImage(bytes, ext, { keepFormat })
-  if (prepared.unreadable) {
-    warn?.(`local-media: ${file.localUrl} is uploaded as it is: ${unreadable(ext)}`)
-  }
+  const prepared = await make()
+  const note = prepared.note ?? (prepared.unreadable ? `is uploaded as it is: ${unreadable(ext)}` : null)
+  if (note) warn?.(`local-media: ${file.localUrl} ${note}`)
   return {
     ...file,
     key,
@@ -234,7 +246,7 @@ async function preparedFile(file, bytes, ext, prior, warn, { keepFormat = false 
     sha256: sha256(prepared.bytes),
     bytes: prepared.bytes,
     source,
-    keepFormat
+    make
   }
 }
 

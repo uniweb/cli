@@ -66,6 +66,10 @@ const CONTENT_TYPES = {
   webp: 'image/webp',
   avif: 'image/avif',
   ico: 'image/x-icon',
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
   txt: 'text/plain',
   html: 'text/html'
 }
