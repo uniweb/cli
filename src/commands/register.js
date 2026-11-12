@@ -1442,24 +1442,26 @@ async function runRegister(args = []) {
     // shape is tolerated as a fallback. Names from doc.entities are the spine, so
     // the porcelain always reports WHICH names landed even if a field is absent.
     const minted = {}
-    const addMint = (e) => {
+    // A vendor file's id is its `artifact_uuid`; a type's and the foundation's, `payload_model_uuid`.
+    const addMint = (e, idKey = 'payload_model_uuid') => {
       if (!e || typeof e !== 'object') return
       const reg = e.registered ?? e
       if (reg.name)
         minted[reg.name] = {
-          uuid: reg.payload_model_uuid ?? reg.artifact_uuid ?? null,
+          uuid: reg[idKey] ?? null,
           version: reg.version ?? null,
           unchanged: e.unchanged === true
         }
     }
     if (parsedBody && typeof parsedBody === 'object') {
       if (Array.isArray(parsedBody.data_schemas))
-        parsedBody.data_schemas.forEach(addMint)
-      if (Array.isArray(parsedBody.vendors)) parsedBody.vendors.forEach(addMint)
+        parsedBody.data_schemas.forEach((e) => addMint(e))
+      if (Array.isArray(parsedBody.vendors)) parsedBody.vendors.forEach((e) => addMint(e, 'artifact_uuid'))
       if (parsedBody.foundation_schema) addMint(parsedBody.foundation_schema)
     }
     for (const sent of fromLibrariesSent) {
-      if (Array.isArray(sent.body?.data_schemas)) sent.body.data_schemas.forEach(addMint)
+      if (Array.isArray(sent.body?.data_schemas)) sent.body.data_schemas.forEach((e) => addMint(e))
+      if (Array.isArray(sent.body?.vendors)) sent.body.vendors.forEach((e) => addMint(e, 'artifact_uuid'))
     }
     const names = [
       // A library's types, registered first (and none for one registered by its own scope's members).

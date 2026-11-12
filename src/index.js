@@ -2302,7 +2302,7 @@ ${colors.cyan}${colors.bright}uniweb vendor run${colors.reset} ${colors.dim}— 
 
 ${colors.bright}Usage:${colors.reset}
   uniweb vendor run <file>#<function> --input <file.json>
-  uniweb vendor run <file>#<function> < input.json
+  uniweb vendor run <file>#<function> --input - < input.json
   uniweb vendor run <file>#<function> --input <file.json> --json
 
 ${colors.bright}<file>${colors.reset} is named as an integration names it, or by its path:

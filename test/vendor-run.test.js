@@ -54,9 +54,9 @@ test('runs a foundation\'s own file by its name, the input from --input, the ans
   assert.match(r.err, /ms of CPU on this machine|ms on this machine/)
 })
 
-test('takes the input from stdin, and `@/name` as an integration writes it', (t) => {
+test('takes the input from stdin with `--input -`, and `@/name` as an integration writes it', (t) => {
   const root = workspace(t)
-  const r = run(join(root, 'foundations/shop'), ['@/courses#grade'], JSON.stringify({ answers: [1] }))
+  const r = run(join(root, 'foundations/shop'), ['@/courses#grade', '--input', '-'], JSON.stringify({ answers: [1] }))
   assert.equal(r.code, 0, r.err)
   assert.deepEqual(JSON.parse(r.out), { points: 1 })
 })
@@ -90,4 +90,23 @@ test('names what it can\'t find: the file, the function, and a missing input', (
   assert.match(run(shop, ['@lib/other#x', '--input', join(root, 'in.json')]).err, /No package here defines `@lib\/other`/)
   assert.match(run(shop, ['courses', '--input', join(root, 'in.json')]).err, /`<file>#<function>`/)
   assert.match(run(root, ['courses#grade', '--input', join(root, 'in.json')]).err, /not a foundation or a library/)
+})
+
+test('⛔ never reads stdin unasked: without --input it says so at once, even with stdin an open pipe', (t) => {
+  const root = workspace(t)
+  const r = spawnSync(process.execPath, [CLI, 'vendor', 'run', 'courses#grade'], {
+    cwd: join(root, 'foundations/shop'),
+    stdio: ['pipe', 'pipe', 'pipe'],
+    encoding: 'utf8',
+    timeout: 10000,
+  })
+  assert.equal(r.status, 1)
+  assert.match(r.stderr, /--input -/)
+})
+
+test('takes `--input=<file>` too', (t) => {
+  const root = workspace(t)
+  const r = run(join(root, 'foundations/shop'), ['courses#grade', `--input=${join(root, 'in.json')}`])
+  assert.equal(r.code, 0, r.err)
+  assert.deepEqual(JSON.parse(r.out), { points: 3 })
 })

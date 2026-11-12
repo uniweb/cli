@@ -12,13 +12,23 @@
  *
  *   uniweb vendor run courses#grade --input answers.json      a file of this package's vendors/
  *   uniweb vendor run @acme/grading#score --input in.json     a library's, by its full name
- *   uniweb vendor run src/vendors/courses.js#grade < in.json  a path
+ *   uniweb vendor run src/vendors/courses.js#grade --input - < in.json   a path; stdin
  *
  * Exit 0 with the answer on stdout, or 1 with why on stderr. `--json` prints one object, either way.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+// Imported statically, so a project's older @uniweb/build is named as such (`importProjectCommand`).
+import {
+  classifyPackage,
+  isSchemasPackage,
+  resolveFoundationSrcPath,
+  ownVendorFiles,
+  workspaceVendorFiles,
+  runVendorFunction,
+  VENDORS_DIR,
+} from '@uniweb/build'
 
 const colors = {
   reset: '\x1b[0m',
@@ -29,7 +39,7 @@ const colors = {
   green: '\x1b[32m',
 }
 
-const USAGE = 'uniweb vendor run <file>#<function> [--input <file.json>] [--json]'
+const USAGE = 'uniweb vendor run <file>#<function> --input <file.json | -> [--json]'
 
 /**
  * @param {string[]} args
@@ -47,7 +57,8 @@ export async function vendor(args = []) {
 async function run(args) {
   const json = args.includes('--json')
   const inputAt = args.indexOf('--input')
-  const inputPath = inputAt >= 0 ? args[inputAt + 1] : null
+  const inline = args.find((a) => a.startsWith('--input='))
+  const inputPath = inline ? inline.slice('--input='.length) : inputAt >= 0 ? args[inputAt + 1] : null
   const positional = args.filter((a, i) => !a.startsWith('--') && !(inputAt >= 0 && i === inputAt + 1))
   const say = (failure, extra = {}) => {
     if (json) process.stdout.write(JSON.stringify({ ok: false, failure, warnings: [], ...extra }) + '\n')
@@ -58,7 +69,7 @@ async function run(args) {
   if (positional.length !== 1 || !positional[0].includes('#')) {
     return say(`Name the function as \`<file>#<function>\`, as an integration does. ${USAGE}`)
   }
-  if (inputAt >= 0 && !inputPath) return say('`--input` takes a JSON file, or `-` for stdin.')
+  if ((inputAt >= 0 || inline) && (!inputPath || (inputPath.startsWith('--') && inputPath !== '-'))) return say('`--input` takes a JSON file, or `-` for stdin.')
 
   const ref = positional[0]
   const hash = ref.lastIndexOf('#')
@@ -69,17 +80,18 @@ async function run(args) {
   const located = await locate(fileRef)
   if (located.error) return say(located.error)
 
+  // ⛔ stdin only when asked for, with `-`: an agent's or a script's stdin is often a pipe that
+  // never closes, and reading it unasked would wait forever.
   let inputText
-  if (inputPath && inputPath !== '-') {
-    if (!existsSync(inputPath)) return say(`There is no file \`${inputPath}\` to read the input from.`)
-    inputText = readFileSync(inputPath, 'utf8')
-  } else if (inputPath === '-' || !process.stdin.isTTY) {
+  if (!inputPath) {
+    return say('Give the function its input: `--input <file.json>`, or `--input -` to read it from stdin.')
+  } else if (inputPath === '-') {
     inputText = await readStdin()
   } else {
-    return say('Give the function its input: `--input <file.json>`, or pipe the JSON in.')
+    if (!existsSync(inputPath)) return say(`There is no file \`${inputPath}\` to read the input from.`)
+    inputText = readFileSync(inputPath, 'utf8')
   }
 
-  const { runVendorFunction } = await import('@uniweb/build')
   const result = await runVendorFunction({ file: located.file, exportName, inputText })
 
   if (json) {
@@ -111,9 +123,6 @@ async function locate(fileRef) {
     const file = resolve(cwd, fileRef)
     return existsSync(file) ? { file } : { error: `There is no file \`${fileRef}\`.` }
   }
-
-  const build = await import('@uniweb/build')
-  const { classifyPackage, isSchemasPackage, resolveFoundationSrcPath, ownVendorFiles, workspaceVendorFiles, VENDORS_DIR } = build
 
   const own = fileRef.startsWith('@/') ? fileRef.slice(2) : fileRef.startsWith('@') ? null : fileRef
   const isFoundation = classifyPackage(cwd) === 'foundation'
