@@ -223,7 +223,7 @@ async function preparedFile(file, bytes, ext, prior, warn, { keepFormat = false 
 
   const prepared = await prepareImage(bytes, ext, { keepFormat })
   if (prepared.unreadable) {
-    warn?.(`local-media: ${file.localUrl} is uploaded as it is: it can't be converted here, and some browsers can't show it`)
+    warn?.(`local-media: ${file.localUrl} is uploaded as it is: ${unreadable(ext)}`)
   }
   return {
     ...file,
@@ -236,6 +236,16 @@ async function preparedFile(file, bytes, ext, prior, warn, { keepFormat = false 
     source,
     keepFormat
   }
+}
+
+/**
+ * What to tell an author whose picture couldn't be read here, by its format. A BMP is drawn by every
+ * browser, so it only stays as large as it is; a HEIC is drawn by few.
+ */
+function unreadable(ext) {
+  if (ext === 'heic' || ext === 'heif') return "it can't be converted here, and most browsers won't show it. Export it as JPEG."
+  if (ext === 'bmp') return "it can't be made smaller here. Export it as PNG or JPEG for a smaller file."
+  return "it can't be read here, so check that it opens."
 }
 
 /**

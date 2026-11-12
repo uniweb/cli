@@ -259,3 +259,30 @@ test('a picture other software fetches, recorded before, is planned by its ident
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('a picture this machine cannot read goes up as it is, and the note says what to do for its format', async () => {
+  // A BMP sharp's builds don't read, and a HEIC whose pixels they can't decode.
+  const bmp = Buffer.from(
+    '424d3a0000000000000036000000280000000100000001000000010018000000000004000000130b0000130b00000000000000000000ff000000',
+    'hex'
+  )
+  const heic = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypheicmif1heic', 'latin1'), Buffer.alloc(8)])
+  const dir = makeSite({ 'public/images/scan.bmp': bmp, 'public/images/phone.heic': heic })
+  const c = client()
+  const notes = []
+  try {
+    await uploadSiteMedia(c, dir, ['/images/scan.bmp', '/images/phone.heic'], { warn: (m) => notes.push(m) })
+    const byRef = Object.fromEntries(c.calls[0].map((f) => [f.localUrl, f]))
+    assert.equal(byRef['/images/scan.bmp'].path, 'images/scan.bmp')
+    assert.ok(byRef['/images/scan.bmp'].bytes.equals(bmp))
+    assert.equal(byRef['/images/phone.heic'].path, 'images/phone.heic')
+    assert.ok(byRef['/images/phone.heic'].bytes.equals(heic))
+    const said = notes.join('\n')
+    // Every browser draws a BMP: it only stays as large as it is.
+    assert.match(said, /\/images\/scan\.bmp is uploaded as it is: it can't be made smaller here\. Export it as PNG or JPEG/)
+    assert.match(said, /\/images\/phone\.heic is uploaded as it is: it can't be converted here, and most browsers won't show it\. Export it as JPEG\./)
+    assert.doesNotMatch(said, /some browsers/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
