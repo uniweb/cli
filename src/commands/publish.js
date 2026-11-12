@@ -594,10 +594,13 @@ export async function publish(args = []) {
     say.dim(`This publish creates the site in ${describeWorkspace(ws.workspace)} (${SOURCE_LABEL[ws.source]}).`)
   }
 
-  // 2. Build the site data (link mode): dist/site-content.json (+ per-locale)
-  //    and dist/data/*. No media is processed: 4b uploads it from the site's
-  //    own files. Spawn the SAME CLI binary so the inner build can't resolve to
-  //    a different installed version.
+  // 2. Build the site data (link mode): dist/site-content.json (+ per-locale),
+  //    read back only for the languages to make live; the content itself goes
+  //    over the sync wire, built from source. No compiled data files: every
+  //    record has a data schema and a push sends it as an entity
+  //    (`site/build-site-data.js`, "Does NOT emit"). No media is processed:
+  //    step 4 uploads it from the site's own files. Spawn the SAME CLI binary
+  //    so the inner build can't resolve to a different installed version.
   //
   //    ⛔ *This listed `dist/assets/*` until 2026-10-22; the link build has made
   //    no media copies since 2026-10-19 (`site/build-site-data.js`, "Does NOT
