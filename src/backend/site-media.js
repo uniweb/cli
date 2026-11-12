@@ -33,7 +33,8 @@ import { humanBytes } from '../utils/bytes.js'
  *   site before uploading precisely so this is set — an unowned upload is charged
  *   and cannot be freed, because freeing means deleting the owning entity.
  *   `recorded` is this backend's asset map from `sync.json`, which says what each ref was stored as.
- *   `asIs` names the refs uploaded as they are, never prepared: the pictures other software fetches.
+ *   `keepFormat` names the pictures other software fetches by their address, which keep their format
+ *   and lose only their location and camera data (`prepareImage`'s `keepFormat`).
  * @returns {Promise<{ map: Record<string,string>, ids: Record<string,{id:string,ext:string,source?:string,size?:number}>, missing: string[], served: string[], failed: Array<{path:string,status:number,detail?:string}> }>}
  *   `map` is ref → serve URL for refs that resolved AND uploaded. The two failure
  *   kinds are reported SEPARATELY because callers must treat them differently:
@@ -50,7 +51,7 @@ export async function uploadSiteMedia(
   client,
   siteDir,
   refs,
-  { siteUuid = null, onProgress, warn, recorded = {}, asIs = new Set() } = {}
+  { siteUuid = null, onProgress, warn, recorded = {}, keepFormat = new Set() } = {}
 ) {
   if (!refs?.length) return { map: {}, ids: {}, missing: [], served: [], failed: [] }
 
@@ -86,13 +87,16 @@ export async function uploadSiteMedia(
       localUrl: ref, // the rewrite key — the original content ref
       diskPath: resolved
     }
-    // ⭐ A picture a page shows is prepared before it is stored (`prepareImage`). Not a file record's
-    // file, which declares its own type: that is a download, kept as its author gave it. Nor a picture
-    // other software fetches by its address (`asIs`: the favicon, the touch icon, the site's card and
-    // its social images), since a home screen takes a PNG and a link preview a JPEG or PNG.
+    // ⭐ A picture is prepared before it is stored (`prepareImage`). Not a file record's file, which
+    // declares its own type: that is a download, kept as its author gave it. A picture other software
+    // fetches by its address (`keepFormat`: the favicon, the touch icon, the site's card and its social
+    // images) keeps its format, since a home screen takes a PNG and a link preview a JPEG or PNG, and
+    // loses only its location and camera data. ⛔ Until 2026-11-12 those went up as they were, so a
+    // phone's photo made a social image kept where it was taken, on its page too.
     const ext = extOf(resolved)
-    const prepare = !declared && !asIs.has(ref) && isPreparableImage(ext)
-    files.push(prepare ? await preparedFile(file, bytes, ext, recorded?.[ref], warn) : file)
+    const prepare = !declared && isPreparableImage(ext)
+    const options = { keepFormat: keepFormat.has(ref) }
+    files.push(prepare ? await preparedFile(file, bytes, ext, recorded?.[ref], warn, options) : file)
   }
   if (!files.length) return { map: {}, ids: {}, missing, served, failed: [] }
 
@@ -114,7 +118,7 @@ export async function uploadSiteMedia(
         localUrl: was.localUrl,
         diskPath: was.diskPath
       }
-      again.push(await preparedFile(file, bytes, extOf(was.diskPath), null, warn))
+      again.push(await preparedFile(file, bytes, extOf(was.diskPath), null, warn, { keepFormat: was.keepFormat }))
     }
     const retry = await client.uploadSiteAssets({ files: again, siteUuid, onProgress })
     result = {
@@ -197,8 +201,9 @@ const extOf = (path) => (basename(path).match(/\.([^.]+)$/)?.[1] || '').toLowerC
  * @param {string} ext - its extension
  * @param {object|undefined|null} prior - its entry in the asset map
  * @param {(m: string) => void} [warn]
+ * @param {{ keepFormat?: boolean }} [options] - a picture other software fetches by its address
  */
-async function preparedFile(file, bytes, ext, prior, warn) {
+async function preparedFile(file, bytes, ext, prior, warn, { keepFormat = false } = {}) {
   const source = file.sha256
   const key = file.path
   if (prior?.source === source && prior.id && prior.ext && Number.isInteger(prior.size)) {
@@ -210,12 +215,13 @@ async function preparedFile(file, bytes, ext, prior, warn) {
       size: prior.size,
       sha256: prior.id,
       source,
-      load: async () => (await prepareImage(bytes, ext)).bytes
+      keepFormat,
+      load: async () => (await prepareImage(bytes, ext, { keepFormat })).bytes
     }
   }
   if (prior && !prior.source && prior.id === source) return { ...file, key, source }
 
-  const prepared = await prepareImage(bytes, ext)
+  const prepared = await prepareImage(bytes, ext, { keepFormat })
   if (prepared.unreadable) {
     warn?.(`local-media: ${file.localUrl} is uploaded as it is: it can't be converted here, and some browsers can't show it`)
   }
@@ -227,7 +233,8 @@ async function preparedFile(file, bytes, ext, prior, warn) {
     size: prepared.bytes.length,
     sha256: sha256(prepared.bytes),
     bytes: prepared.bytes,
-    source
+    source,
+    keepFormat
   }
 }
 

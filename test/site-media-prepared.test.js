@@ -204,23 +204,57 @@ test('a recorded preparation the backend lost, whose file now prepares to other 
   }
 })
 
-test('⭐ a picture other software fetches (the touch icon, a social image) goes up as it is', async () => {
+/** A PNG with a `tEXt` chunk before its IEND: what a PNG's author tool may write in it. */
+function withText(png, keyword, text) {
+  const iend = png.length - 12
+  const data = Buffer.from(`${keyword}\0${text}`, 'latin1')
+  const length = Buffer.alloc(4)
+  length.writeUInt32BE(data.length)
+  const body = Buffer.concat([Buffer.from('tEXt', 'latin1'), data])
+  const crc = Buffer.alloc(4)
+  crc.writeUInt32BE(crc32(body) >>> 0)
+  return Buffer.concat([png.subarray(0, iend), length, body, crc, png.subarray(iend)])
+}
+
+test('⭐ a picture other software fetches (the touch icon, a social image) keeps its format and loses its private data', async () => {
   const png = noisePng()
-  const dir = makeSite({ 'public/touch-icon.png': png, 'public/images/photo.png': png })
+  const tagged = withText(png, 'Author', 'Somebody')
+  const dir = makeSite({ 'public/touch-icon.png': tagged, 'public/images/photo.png': png })
   const c = client()
   try {
     const { ids } = await uploadSiteMedia(c, dir, ['/touch-icon.png', '/images/photo.png'], {
-      asIs: new Set(['/touch-icon.png'])
+      keepFormat: new Set(['/touch-icon.png'])
     })
     const byRef = Object.fromEntries(c.calls[0].map((f) => [f.localUrl, f]))
-    // A phone takes a PNG for its home screen: the icon's own bytes, under its own name.
-    assert.equal(byRef['/touch-icon.png'].path, 'touch-icon.png')
-    assert.equal(byRef['/touch-icon.png'].content_type, 'image/png')
-    assert.equal(byRef['/touch-icon.png'].sha256, sha(png))
-    assert.equal(byRef['/touch-icon.png'].bytes, undefined)
-    assert.equal(ids['/touch-icon.png'].source, undefined)
+    // A phone takes a PNG for its home screen: a PNG under its own name, its pixels as they were.
+    const icon = byRef['/touch-icon.png']
+    assert.equal(icon.path, 'touch-icon.png')
+    assert.equal(icon.content_type, 'image/png')
+    assert.ok(icon.bytes.equals(png), 'the icon without its tEXt chunk, and nothing else changed')
+    assert.equal(icon.sha256, sha(png))
+    assert.deepEqual({ source: ids['/touch-icon.png'].source, size: ids['/touch-icon.png'].size }, { source: sha(tagged), size: png.length })
     // The same picture drawn on a page is prepared.
     assert.equal(byRef['/images/photo.png'].path, 'images/photo.png.webp')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a picture other software fetches, recorded before, is planned by its identity and remade in its format', async () => {
+  const png = noisePng()
+  const tagged = withText(png, 'Author', 'Somebody')
+  const dir = makeSite({ 'public/touch-icon.png': tagged })
+  const c = client({ present: true })
+  try {
+    await uploadSiteMedia(c, dir, ['/touch-icon.png'], {
+      keepFormat: new Set(['/touch-icon.png']),
+      recorded: { '/touch-icon.png': { id: sha(png), ext: 'png', source: sha(tagged), size: png.length } }
+    })
+    const [planned] = c.calls[0]
+    assert.equal(planned.bytes, undefined)
+    assert.equal(planned.path, 'touch-icon.png')
+    assert.equal(planned.sha256, sha(png))
+    assert.ok((await planned.load()).equals(png))
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

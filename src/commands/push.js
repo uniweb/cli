@@ -579,7 +579,7 @@ export async function push(args = [], deps = {}) {
             warn: (m) => note(`! ${m}`),
             // What each picture was stored as, so an unchanged one is not prepared again.
             recorded: readBackendState(siteDir, client.origin).assets || {},
-            asIs: outsideRefs
+            keepFormat: outsideRefs
           }
         )
         // Bytes that did not land must not be pushed around: the content would go
