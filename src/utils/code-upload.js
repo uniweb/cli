@@ -392,3 +392,74 @@ export async function uploadFoundationCode({
 
   return { mode: plan.mode || 'direct', uploaded, stored, failed, verified, serveBase }
 }
+
+/**
+ * Deliver one vendor file — the phase after its `@uniweb/vendor-schema` artifact registered
+ * (`foundation/vendors.js` in `@uniweb/build`). One call, then at most one PUT:
+ *
+ *   POST {apiBase}/dev/registry/vendor-uploads  { name, sha256, size }
+ *   → { mode, version, present: true }                              already stored: nothing to send
+ *   → { mode, version, present: false, method, url, headers }       PUT the bytes there
+ *
+ * ⭐ ADDRESSED BY ITS `sha256`, NOT A VERSION. The registry finds the registered version of `name`
+ * holding those bytes, so a re-run after a partial upload — when the foundation's own call comes back
+ * `409` with no versions in it — still knows where the file goes. A file no registered version holds
+ * is refused `404`, and one whose `size` disagrees `422`, each with a `detail` sentence naming it.
+ *
+ * The file is sent exactly as on disk: nothing is built, so its bytes are what registered. The PUT is
+ * the one `uploadFoundationCode` makes — retried, `x-uniweb-sha256` on it, a bearer only in `direct`
+ * mode — and a stored version is never overwritten.
+ *
+ * @param {object} opts
+ * @param {string} opts.apiBase
+ * @param {string} opts.token
+ * @param {string} opts.name - `@scope/name`, as registered
+ * @param {string} opts.file - the file on disk
+ * @returns {Promise<{ name: string, version: number|null, uploaded: boolean, mode: string }>}
+ * @throws {Error} with `status`, `detail` and `code` when the call or the PUT is refused
+ */
+export async function uploadVendorFile({ apiBase, token, name, file }) {
+  const bytes = readFileSync(file)
+  const sha256 = createHash('sha256').update(bytes).digest('hex')
+  const origin = apiBase.replace(/\/$/, '')
+  const res = await fetch(`${origin}/dev/registry/vendor-uploads`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name, sha256, size: bytes.length })
+  })
+  if (!res.ok) throw await refusal(res, `vendor-uploads for ${name}`)
+  const target = await res.json()
+  const version = target.version ?? null
+  const mode = target.mode || 'direct'
+  if (target.present === true) return { name, version, uploaded: false, mode }
+  if (!target.url) {
+    throw Object.assign(new Error(`vendor-uploads for ${name}: the reply gave no upload URL`), { status: 0 })
+  }
+  const put = await fetchWithRetry(new URL(target.url, origin), {
+    method: target.method || 'PUT',
+    headers: {
+      ...(target.headers || {}),
+      ...(mode === 'direct' ? { Authorization: `Bearer ${token}` } : {}),
+      'x-uniweb-sha256': sha256
+    },
+    body: bytes
+  }, { timeoutMs: 120_000, retryOnStatus: isTransientStatus })
+  if (!put.ok) throw await refusal(put, `uploading ${name}`)
+  return { name, version, uploaded: true, mode }
+}
+
+/** A refused response as an Error carrying its status and, from problem+json, `detail` and `code`. */
+async function refusal(res, what) {
+  const body = await res.text().catch(() => '')
+  let problem = null
+  try {
+    problem = JSON.parse(body)
+  } catch {
+    problem = null
+  }
+  const detail = typeof problem?.detail === 'string' ? problem.detail : null
+  return Object.assign(
+    new Error(`${what}: HTTP ${res.status}${detail ? ` — ${detail}` : body ? ` — ${body.slice(0, 300)}` : ''}`),
+    { status: res.status, detail, code: typeof problem?.code === 'string' ? problem.code : null }
+  )
+}

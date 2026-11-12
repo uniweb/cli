@@ -102,14 +102,16 @@ export function typesNamedBy(mapping) {
  *   names, with its definition
  * @param {Record<string, object|null>} [o.mappings] - the foundation's built `_mappings`: its own
  *   (`@/x`) and the library ones its main.js carries (in full)
+ * @param {Record<string, object|null>} [o.vendors] - the foundation's built `_vendors`: its own
+ *   (`@/x`) and the library vendor files its main.js carries (in full)
  * @param {string} o.foundationDir
- * @returns {Promise<Array<{ dir: string, scope: string, refs: string[], mappings: string[] }>>}
- *   `mappings`: the library mappings it carries from that library, in full
+ * @returns {Promise<Array<{ dir: string, scope: string, refs: string[], mappings: string[], vendors: string[] }>>}
+ *   `mappings`, `vendors`: the library mappings and vendor files it carries from that library, in full
  * @throws {Error} `code: 'BUILD_TOO_OLD'` when the installed `@uniweb/build` can't tell
  */
-export async function typesFromLibraries({ schemas, mappings, foundationDir }) {
+export async function typesFromLibraries({ schemas, mappings, vendors, foundationDir }) {
   const build = await import('@uniweb/build')
-  const { workspaceTypeFiles, workspaceMappingFiles, packageTypeScope, classifyPackage, isSchemasPackage, routedSchema, resolveFoundationSrcPath } = build
+  const { workspaceTypeFiles, workspaceMappingFiles, workspaceVendorFiles, packageTypeScope, classifyPackage, isSchemasPackage, routedSchema, resolveFoundationSrcPath } = build
   if ([workspaceTypeFiles, packageTypeScope, routedSchema].some((fn) => typeof fn !== 'function')) {
     throw Object.assign(new Error('the installed @uniweb/build cannot tell which library defines a type'), { code: 'BUILD_TOO_OLD' })
   }
@@ -127,7 +129,7 @@ export async function typesFromLibraries({ schemas, mappings, foundationDir }) {
     if (classifyPackage(dir) === 'foundation' || !isSchemasPackage(dir)) continue
     const scope = await packageTypeScope(dir, 'schemas')
     if (!scope) continue
-    if (!byDir.has(dir)) byDir.set(dir, { dir, scope, refs: [], mappings: [] })
+    if (!byDir.has(dir)) byDir.set(dir, { dir, scope, refs: [], mappings: [], vendors: [] })
     byDir.get(dir).refs.push(ref)
   }
   // ⭐ The library mappings its main.js carries (`mappings: ['@acme/x']`, `_mappings` keys in full),
@@ -143,8 +145,24 @@ export async function typesFromLibraries({ schemas, mappings, foundationDir }) {
       if (classifyPackage(dir) === 'foundation' || !isSchemasPackage(dir)) continue
       const scope = await packageTypeScope(dir, 'schemas')
       if (!scope) continue
-      if (!byDir.has(dir)) byDir.set(dir, { dir, scope, refs: [], mappings: [] })
+      if (!byDir.has(dir)) byDir.set(dir, { dir, scope, refs: [], mappings: [], vendors: [] })
       byDir.get(dir).mappings.push(ref)
+    }
+  }
+  // ⭐ And the library vendor files its main.js carries (`vendors: ['@lib/x']`, `_vendors` keys in
+  // full), found and registered the same way; their library's call is followed by their upload.
+  if (typeof workspaceVendorFiles === 'function') {
+    for (const ref of Object.keys(vendors || {})) {
+      if (!/^@[^/]+\/./.test(ref) || ref.startsWith('@uniweb/')) continue
+      const files = await workspaceVendorFiles(ref, foundationDir).catch(() => [])
+      if (files.length !== 1) continue
+      const dir = packageDirOf(files[0])
+      if (!dir || real(dir) === own) continue
+      if (classifyPackage(dir) === 'foundation' || !isSchemasPackage(dir)) continue
+      const scope = await packageTypeScope(dir, 'schemas')
+      if (!scope) continue
+      if (!byDir.has(dir)) byDir.set(dir, { dir, scope, refs: [], mappings: [], vendors: [] })
+      byDir.get(dir).vendors.push(ref)
     }
   }
   return referencedFirst([...byDir.values()], schemas || {}, mappings || {})

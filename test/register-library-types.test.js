@@ -219,7 +219,7 @@ test('CONTROL: a type the foundation defines, or another foundation does, is not
   const shop = workspace()
   const schemas = Object.fromEntries(['@/order', '@acme/member', '@acme/plan', '@std/person', '@acme/gone'].map((ref) => [ref, { fields: {} }]))
   const found = await typesFromLibraries({ schemas, foundationDir: shop })
-  assert.deepEqual(found, [{ dir: join(dirname(dirname(shop)), 'libraries/data'), scope: '@acme', refs: ['@acme/plan'], mappings: [] }])
+  assert.deepEqual(found, [{ dir: join(dirname(dirname(shop)), 'libraries/data'), scope: '@acme', refs: ['@acme/plan'], mappings: [], vendors: [] }])
 })
 
 test('⭐ libraries go in the order their types reference each other: a referenced one first', async () => {

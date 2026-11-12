@@ -83,6 +83,10 @@ import {
   buildMappingMap,
   ownMappingFiles,
   loadMappingFile,
+  ownVendorFiles,
+  readVendorFile,
+  vendorFileDigest,
+  resolveFoundationSrcPath,
   readFoundationName,
   checkFoundationName,
   checkRegistrationScope,
@@ -286,6 +290,68 @@ async function libraryMappingsWanted(lib, own) {
   return out
 }
 
+/**
+ * The vendor files a package defines in `dir`'s `vendors/` (`foundation/vendors.js`), keyed `@/<name>`
+ * as `buildRegistryPackage` and `buildSchemaOnlyPackage` take them: each one's exports, the `sha256`
+ * and `size` of its bytes as on disk, and its file. Read at register, so what registers is what goes
+ * up after.
+ *
+ * @param {string} dir - a library's root, or a foundation's source root
+ * @param {object} [o]
+ * @param {Set<string>|null} [o.only] - the `@/x` to keep (a library's, the ones a foundation carries)
+ * @param {string} [o.shownIn] - the folder as its errors name it
+ * @throws {Error} naming a file that cannot be registered (the build refuses it first)
+ */
+async function vendorFilesIn(dir, { only = null, shownIn = 'vendors' } = {}) {
+  const out = {}
+  const found = []
+  for (const { name, file } of ownVendorFiles(dir)) {
+    const ref = `@/${name}`
+    if (only && !only.has(ref)) continue
+    const { exports, problems } = await readVendorFile(file)
+    if (problems.length) found.push(...problems.map((p) => `${shownIn}/${name}.js ${p}`))
+    else out[ref] = { exports, ...vendorFileDigest(file), file }
+  }
+  if (found.length) throw new Error(found.join('\n  '))
+  return out
+}
+
+/**
+ * Upload each vendor file a call just registered, by its bytes' sha256 (`vendor-uploads`): after the
+ * call that registered it, and before the foundation that names it is taken, where the order allows.
+ * A file the registry already stores is not sent again.
+ *
+ * @param {object[]} entities - the call's `@uniweb/vendor-schema` artifacts, names in full
+ * @param {Object<string, { file: string }>} files - `@/<name>` → its file (`vendorFilesIn`)
+ * @param {object} o
+ * @param {BackendClient} o.client
+ * @returns {Promise<boolean>} false when one could not be delivered, which is said already
+ */
+async function uploadVendorFiles(entities, files, { client }) {
+  const vendors = entities.filter((e) => e.model === '@uniweb/vendor-schema')
+  if (!vendors.length) return true
+  info(`Delivering ${vendors.length} vendor file(s) …`)
+  for (const entity of vendors) {
+    const file = files[`@/${entity.name.slice(entity.name.indexOf('/') + 1)}`]?.file
+    if (!file) continue
+    try {
+      const { version, uploaded } = await client.uploadVendorFile({ name: entity.name, file })
+      log(`  ${colors.dim}${entity.name}${version != null ? `@${version}` : ''} (${uploaded ? `${entity.size} bytes` : 'already stored'})${colors.reset}`)
+    } catch (err) {
+      if (err.status >= 400 && err.status < 500 && err.detail) {
+        error(`Vendor file refused: HTTP ${err.status}`)
+        log(`  ${err.detail}`)
+        if (err.code) log(`  ${colors.dim}(${err.code})${colors.reset}`)
+      } else {
+        error(`Could not deliver the vendor file ${entity.name}: ${err.message}`)
+        log(`  ${colors.dim}It is registered, and a site that calls it waits for it: re-run \`uniweb register\` to deliver it.${colors.reset}`)
+      }
+      return false
+    }
+  }
+  return true
+}
+
 /** A mapping's reverse `follow` lines' `model`s, as written. */
 function followModelsOf(decl) {
   const out = []
@@ -311,11 +377,13 @@ function followModelsOf(decl) {
  * @param {BackendClient} o.client
  * @param {object} o.exporter - the `.uwx` envelope's exporter
  * @param {string} o.at - its folder as the person sees it
+ * @param {boolean} [o.upload] - whether to upload its vendor files after the call (not on --schema-only)
  * @returns {Promise<{ names: string[], body: object|null }|null>} the names sent and the registry's
  *   answer; null when the release stops, which is said already
  */
-async function registerLibraryTypes(lib, { client, exporter, at }) {
+async function registerLibraryTypes(lib, { client, exporter, at, upload = true }) {
   let doc
+  let vendorFiles = {}
   try {
     // The types the foundation names from it, and no other of its files: those may be another
     // package's to register, or a copy of one the foundation defines (`library-types.js`).
@@ -341,9 +409,14 @@ async function registerLibraryTypes(lib, { client, exporter, at }) {
         }
       }
     }
+    // ⭐ The vendor files it carries from here, as on disk: registered in this call, uploaded after it.
+    vendorFiles = (lib.vendors || []).length
+      ? await vendorFilesIn(lib.dir, { only: new Set(lib.vendors.map(own).filter(Boolean)) })
+      : {}
     doc = buildSchemaOnlyPackage({
       schemas: Object.fromEntries(Object.entries(all).filter(([key]) => wanted.has(key))),
       mappings,
+      vendors: vendorFiles,
       scope: lib.scope,
       exporter
     })
@@ -353,7 +426,9 @@ async function registerLibraryTypes(lib, { client, exporter, at }) {
   }
   const names = doc.entities.map((e) => e.name)
   const typeNames = doc.entities.filter((e) => e.model === '@uniweb/data-schema').map((e) => e.name)
-  info(`Registering ${(lib.mappings || []).length ? 'the data schemas and mappings' : 'the data schemas'} in ${at} (${names.join(', ')}) …`)
+  const vendorNames = doc.entities.filter((e) => e.model === '@uniweb/vendor-schema').map((e) => e.name)
+  const kinds = ['the data schemas', (lib.mappings || []).length && 'mappings', vendorNames.length && 'vendor files'].filter(Boolean)
+  info(`Registering ${kinds.length > 1 ? `${kinds.slice(0, -1).join(', ')} and ${kinds.at(-1)}` : kinds[0]} in ${at} (${names.join(', ')}) …`)
   let res
   try {
     res = await client.register(JSON.stringify(doc, null, 2))
@@ -373,11 +448,13 @@ async function registerLibraryTypes(lib, { client, exporter, at }) {
     if (names.length === typeNames.length && answers.length === names.length && answers.every((a) => a?.unchanged === true)) {
       log(`  ${colors.dim}Unchanged: the registry holds them as they are.${colors.reset}`)
     } else {
-      const mappingCount = names.length - typeNames.length
+      const mappingCount = names.length - typeNames.length - vendorNames.length
       success(
-        `Registered ${[typeNames.length && `${typeNames.length} data schema(s)`, mappingCount && `${mappingCount} mapping(s)`].filter(Boolean).join(' and ')} under ${lib.scope}, from ${at}`
+        `Registered ${[typeNames.length && `${typeNames.length} data schema(s)`, mappingCount && `${mappingCount} mapping(s)`, vendorNames.length && `${vendorNames.length} vendor file(s)`].filter(Boolean).join(' and ')} under ${lib.scope}, from ${at}`
       )
     }
+    // Its vendor files' bytes, before the foundation that names them is taken (not on --schema-only).
+    if (upload && !(await uploadVendorFiles(doc.entities, vendorFiles, { client }))) return null
     return { names, body }
   }
   const member = await memberOfScope(res, lib.scope, client)
@@ -388,10 +465,10 @@ async function registerLibraryTypes(lib, { client, exporter, at }) {
     const held = await Promise.all(
       lib.refs.map((ref) => client.readDataSchema(ref).catch(() => undefined))
     )
-    // A mapping isn't read back here: the foundation's own register is refused, naming the mapping
-    // and its library, when the registry doesn't hold it.
+    // A mapping or a vendor file isn't read back here: the foundation's own register is refused,
+    // naming it and its library, when the registry doesn't hold it.
     if (held.every(Boolean)) {
-      const taken = [...lib.refs, ...(lib.mappings || [])]
+      const taken = [...lib.refs, ...(lib.mappings || []), ...(lib.vendors || [])]
       const one = taken.length === 1
       info(
         `${taken.join(', ')} ${one ? 'is' : 'are'} registered under ${lib.scope}, whose members change ${one ? 'it' : 'them'}: the foundation is released against ${one ? 'it' : 'them'} as registered.`
@@ -899,19 +976,24 @@ async function runRegister(args = []) {
   let schema = null
   let schemas = null
   let mappings = null
+  // `@/<name>` → { exports, sha256, size, file }: the vendor files this package defines, read from
+  // disk here, registered in its call and uploaded after it.
+  let vendorFiles = {}
   if (standalone) {
     try {
       schemas = await collectStandaloneSchemas(targetDir)
       // A library's mappings, beside its types (`mappings/`): registered with them, after them.
       mappings = await buildMappingMap(targetDir, { ownTypes: Object.keys(schemas || {}), shownIn: 'mappings' })
+      // And its vendor files (`vendors/`), after those.
+      vendorFiles = await vendorFilesIn(targetDir)
     } catch (err) {
       error(`Could not read the schemas package: ${err.message}`)
       return { exitCode: 2 }
     }
-    if ((!schemas || Object.keys(schemas).length === 0) && Object.keys(mappings || {}).length === 0) {
-      error('No data schemas or mappings found in this package.')
+    if ((!schemas || Object.keys(schemas).length === 0) && Object.keys(mappings || {}).length === 0 && Object.keys(vendorFiles).length === 0) {
+      error('No data schemas, mappings or vendor files found in this package.')
       log(
-        `  ${colors.dim}Expected a package that exports schemas (getSchema / schemas), or a schemas/ or mappings/ directory of *.yml files.${colors.reset}`
+        `  ${colors.dim}Expected a package that exports schemas (getSchema / schemas), or a schemas/ or mappings/ directory of *.yml files, or a vendors/ directory of *.js files.${colors.reset}`
       )
       return { exitCode: 2 }
     }
@@ -980,6 +1062,17 @@ async function runRegister(args = []) {
       error(`Could not read ${schemaPath}: ${err.message}`)
       return { exitCode: 2 }
     }
+    // Its own vendor files (`src/vendors/`), read from disk as they will go up: the build listed
+    // them in `_vendors`, and the bytes' sha256 and size are taken now.
+    const own = Object.keys(schema._vendors || {}).filter((ref) => ref.startsWith('@/'))
+    if (own.length) {
+      try {
+        vendorFiles = await vendorFilesIn(resolveFoundationSrcPath(targetDir), { only: new Set(own), shownIn: 'src/vendors' })
+      } catch (err) {
+        error(`Could not read the foundation's vendor files: ${err.message}`)
+        return { exitCode: 2 }
+      }
+    }
   }
 
   // ⭐ The types it names that a library defines: registered from the library before the
@@ -990,6 +1083,7 @@ async function runRegister(args = []) {
       fromLibraries = await typesFromLibraries({
         schemas: schema?.dataSchemas || {},
         mappings: schema?._mappings || {},
+        vendors: schema?._vendors || {},
         foundationDir: targetDir
       })
     } catch (err) {
@@ -1049,14 +1143,15 @@ async function runRegister(args = []) {
   let doc
   try {
     doc = standalone
-      ? buildSchemaOnlyPackage({ schemas, mappings, scope, exporter })
+      ? buildSchemaOnlyPackage({ schemas, mappings, vendors: vendorFiles, scope, exporter })
       : buildRegistryPackage({
           schema,
           foundationDir: targetDir,
           scope,
           exporter,
           digest,
-          runtime
+          runtime,
+          vendors: vendorFiles
         })
   } catch (err) {
     error(`Could not assemble the .uwx: ${err.message}`)
@@ -1084,10 +1179,15 @@ async function runRegister(args = []) {
   if (definedMappings.length) {
     log(`  ${colors.dim}mappings ${standalone ? 'registered' : 'defined'}: ${definedMappings.join(', ')}${colors.reset}`)
   }
+  const definedVendors = doc.entities.filter((e) => e.model === '@uniweb/vendor-schema').map((e) => e.name)
+  if (definedVendors.length) {
+    log(`  ${colors.dim}vendor files ${standalone ? 'registered' : 'defined'}: ${definedVendors.join(', ')}${colors.reset}`)
+  }
   for (const lib of fromLibraries) {
     const taken = [
       lib.refs.length && `data schemas ${lib.refs.join(', ')}`,
-      (lib.mappings || []).length && `mappings ${lib.mappings.join(', ')}`
+      (lib.mappings || []).length && `mappings ${lib.mappings.join(', ')}`,
+      (lib.vendors || []).length && `vendor files ${lib.vendors.join(', ')}`
     ].filter(Boolean).join('; ')
     log(
       `  ${colors.dim}from ${shownAt(lib.dir)}: ${taken} — ${isPreview ? 'would be registered' : 'registered'} from there first${colors.reset}`
@@ -1109,6 +1209,13 @@ async function runRegister(args = []) {
     log(json)
     log('')
     info(`Dry run — would submit to ${client.origin}`)
+    if (definedVendors.length && !args.includes('--schema-only')) {
+      log('')
+      info(`Would then deliver ${definedVendors.length} vendor file(s), as written:`)
+      for (const e of doc.entities.filter((x) => x.model === '@uniweb/vendor-schema')) {
+        log(`  ${colors.dim}${e.name}  ${e.size} bytes  sha256 ${e.sha256}${colors.reset}`)
+      }
+    }
     if (!standalone && !args.includes('--schema-only')) {
       const distFiles = collectDistFiles(join(targetDir, 'dist'))
       log('')
@@ -1139,7 +1246,7 @@ async function runRegister(args = []) {
   // The libraries' types first: the registry checks a foundation's types when it takes it.
   const fromLibrariesSent = []
   for (const lib of fromLibraries) {
-    const sent = await registerLibraryTypes(lib, { client, exporter, at: shownAt(lib.dir) })
+    const sent = await registerLibraryTypes(lib, { client, exporter, at: shownAt(lib.dir), upload: !args.includes('--schema-only') })
     if (!sent) {
       await sayWhatToRegisterFirst({ schema, defined, targetDir, client })
       return { exitCode: 1 }
@@ -1217,9 +1324,16 @@ async function runRegister(args = []) {
   if (!alreadyRegistered) {
     success(
       standalone
-        ? `Registered ${[defined.length && `${defined.length} data schema(s)`, definedMappings.length && `${definedMappings.length} mapping(s)`].filter(Boolean).join(' and ')}${scope ? ` under ${scope}` : ''}`
+        ? `Registered ${[defined.length && `${defined.length} data schema(s)`, definedMappings.length && `${definedMappings.length} mapping(s)`, definedVendors.length && `${definedVendors.length} vendor file(s)`].filter(Boolean).join(' and ')}${scope ? ` under ${scope}` : ''}`
         : `Registered ${registeredName}@${schema._self.version}${defined.length ? ` + ${defined.length} data schema(s)` : ''}`
     )
+  }
+
+  // ⭐ The vendor files this call registered: their bytes go up now, addressed by sha256, so a
+  // re-run after the foundation's 409 (no versions in it) still delivers them. --schema-only
+  // skips them as it skips the code.
+  if (!args.includes('--schema-only')) {
+    if (!(await uploadVendorFiles(doc.entities, vendorFiles, { client }))) return { exitCode: 1 }
   }
 
   // Phase 2 — deliver the foundation's code (plan → PUT-per-file, entry
@@ -1333,7 +1447,7 @@ async function runRegister(args = []) {
       const reg = e.registered ?? e
       if (reg.name)
         minted[reg.name] = {
-          uuid: reg.payload_model_uuid ?? null,
+          uuid: reg.payload_model_uuid ?? reg.artifact_uuid ?? null,
           version: reg.version ?? null,
           unchanged: e.unchanged === true
         }
@@ -1341,6 +1455,7 @@ async function runRegister(args = []) {
     if (parsedBody && typeof parsedBody === 'object') {
       if (Array.isArray(parsedBody.data_schemas))
         parsedBody.data_schemas.forEach(addMint)
+      if (Array.isArray(parsedBody.vendors)) parsedBody.vendors.forEach(addMint)
       if (parsedBody.foundation_schema) addMint(parsedBody.foundation_schema)
     }
     for (const sent of fromLibrariesSent) {
@@ -1350,7 +1465,7 @@ async function runRegister(args = []) {
       // A library's types, registered first (and none for one registered by its own scope's members).
       ...fromLibrariesSent.flatMap((sent) => sent.names),
       ...doc.entities
-        .filter((e) => e.model === '@uniweb/data-schema')
+        .filter((e) => e.model === '@uniweb/data-schema' || e.model === '@uniweb/vendor-schema')
         .map((e) => e.name),
       // The foundation-schema entity carries its `@scope/name` under `info`, not a
       // top-level `name` (that's the foundation-schema shape).

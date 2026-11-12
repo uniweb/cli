@@ -40,7 +40,7 @@ import {
   fetchOrgs as fetchOrgsImpl,
   createOrg as createOrgImpl
 } from '../utils/registry-orgs.js'
-import { uploadFoundationCode } from '../utils/code-upload.js'
+import { uploadFoundationCode, uploadVendorFile } from '../utils/code-upload.js'
 import { uploadSiteAssets } from '../utils/asset-upload.js'
 
 /**
@@ -658,6 +658,19 @@ export class BackendClient {
    */
   async uploadFoundationCode(opts) {
     return uploadFoundationCode({
+      apiBase: this.origin,
+      token: await this.token(),
+      ...opts
+    })
+  }
+
+  /**
+   * Deliver one registered vendor file, addressed by its bytes' sha256 (`vendor-uploads`).
+   * Thin pass-through to utils/code-upload.js with this client's origin + token.
+   * @param {object} opts - { name, file }
+   */
+  async uploadVendorFile(opts) {
+    return uploadVendorFile({
       apiBase: this.origin,
       token: await this.token(),
       ...opts
