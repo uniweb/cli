@@ -2036,7 +2036,8 @@ Authenticates with a backend and stores its session in
 logs you out of the first (once the new login succeeds). The backend you are
 logged in to is where the backend commands go (push, pull, publish, status,
 register, clone) — so this is how you switch. Already logged in to it, login
-does nothing; add --password, --browser, --token-paste or --token to log in again.
+does nothing, unless that backend no longer accepts the session: then it signs in
+again. Add --password, --browser, --token-paste or --token to log in again anyway.
 
 Without --server: https://uniweb.app (or \$UNIWEB_SERVER). No command talks
 to a backend you are not logged in to — run one before logging in and it asks first.

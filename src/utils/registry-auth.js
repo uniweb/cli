@@ -356,10 +356,48 @@ export async function fetchMe({ apiBase, token }) {
       `token check failed: HTTP ${res.status} ${res.statusText}`
     )
     e.status = res.status
+    // The refusal's body, so a caller can say why: a session made for another of the
+    // backend's clients (`anotherClientsSessionLines`) is not a wrong or expired token.
+    e.problem = await res.json().catch(() => null)
     throw e
   }
   const data = await res.json().catch(() => null)
   return data?.account || null
+}
+
+/** The reason a backend gives when a session was made for another of its clients. */
+export const SESSION_FOR_ANOTHER_CLIENT = 'session_for_another_client'
+
+/**
+ * What to say when a backend refuses a session because it was made for another of its
+ * clients. Its problem body says `reason: "session_for_another_client"`, and `client` names
+ * whose session the route takes: here a session made for the Uniweb app, sent to a route that
+ * takes only the CLI's (`client: "cli"`). Null for any other refusal, so a caller keeps its
+ * own message.
+ *
+ * ⭐ IT NAMES THE FIX: a session the CLI signs in for itself, on the backend that refused
+ * (`loginCommand`). ⛔ Until 2026-11-11 the token checks said only "HTTP 401", and a push said
+ * nothing at all, since its advice was for a refusal with no reason.
+ *
+ * @param {object|null|undefined} problem - the refusal's parsed body
+ * @param {{ origin: string, fromEnv?: boolean }} o - the backend that refused, and whether the
+ *   session came from UNIWEB_TOKEN
+ * @returns {Promise<string[]|null>}
+ */
+export async function anotherClientsSessionLines(problem, { origin, fromEnv = false } = {}) {
+  if (problem?.reason !== SESSION_FOR_ANOTHER_CLIENT || problem?.client !== 'cli') return null
+  const { loginCommand } = await import('./config.js')
+  const { getCliPrefix } = await import('./interactive.js')
+  const login = loginCommand(origin, getCliPrefix())
+  return fromEnv
+    ? [
+        `UNIWEB_TOKEN holds a session made for the Uniweb app, and ${origin} takes only a session the uniweb CLI signed in with.`,
+        `Set UNIWEB_TOKEN to a CLI session, or unset it and sign in: ${login} --browser (or --password).`
+      ]
+    : [
+        `This session was made for the Uniweb app, and ${origin} takes only a session the uniweb CLI signed in with.`,
+        `Sign in from the CLI: ${login} --browser (or --password).`
+      ]
 }
 
 // Username/password — prompts unless UNIWEB_USERNAME/PASSWORD are set.
@@ -423,7 +461,15 @@ async function loginViaTokenPaste({ apiBase, nonInteractive }) {
     }
   )
   if (!token) process.exit(1)
-  const account = await fetchMe({ apiBase, token }) // throws if the token is invalid
+  let account
+  try {
+    account = await fetchMe({ apiBase, token })
+  } catch (err) {
+    // Said as the `--token` check says it (`anotherClientsSessionLines`); any other refusal as before.
+    const lines = await anotherClientsSessionLines(err.problem, { origin: normOrigin(apiBase) })
+    if (lines) throw new Error(lines.join('\n  '))
+    throw err
+  }
   const record = { token, origin: normOrigin(apiBase) }
   if (account?.uuid) record.uuid = account.uuid
   if (account?.username) record.username = account.username
@@ -730,7 +776,22 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
     )
   }
 
-  if (existing?.token && !isExpired(existing)) {
+  // ⭐ A STORED SESSION THE BACKEND REFUSES IS NOT A LOGIN. A login that names no way of signing
+  // in keeps the session it finds, so it asks the backend first (`/dev/auth/me`) and signs in
+  // again on a 401: a session revoked, or one made for the Uniweb app, which a backend refuses on
+  // the CLI's routes since 2026-11-11. ⛔ Until then such a session got "Already logged in" here,
+  // while every command answered 401 and named this command as the fix. Any other answer (no
+  // network, a 5xx) keeps the session, as before: it says nothing about the session.
+  let refused = null
+  if (existing?.token && !isExpired(existing) && !forced) {
+    try {
+      await fetchMe({ apiBase, token: existing.token })
+    } catch (err) {
+      if (err.status === 401) refused = err
+    }
+  }
+
+  if (existing?.token && !isExpired(existing) && !refused) {
     const who =
       existing.username ||
       existing.handle ||
@@ -776,6 +837,13 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
     console.error(
       `Already logged in${who ? ` as \x1b[1m${who}\x1b[0m` : ''} (${key}) — logging in again replaces that session.\n`
     )
+  } else if (refused) {
+    const why = await anotherClientsSessionLines(refused.problem, { origin: key })
+    console.error(
+      `\x1b[33m!\x1b[0m ${key} refuses the session stored for it${why ? '' : ` (HTTP ${refused.status})`} — signing in again.`
+    )
+    if (why) console.error(`\x1b[2m  ${why[0]}\x1b[0m`)
+    console.error('')
   } else if (current && current !== key) {
     // ⭐ ONE SESSION AT A TIME *[Diego, 2026-09-21]*: logging in here logs you out of there
     // — when this login succeeds (writeRegistryAuth replaces the file), so cancelling or
@@ -794,9 +862,13 @@ export async function runRegistryLogin({ apiBase, args = [] } = {}) {
     try {
       account = await fetchMe({ apiBase, token: tokenFlag })
     } catch (err) {
-      console.error(
-        `\x1b[31m✗\x1b[0m Token rejected by ${apiBase}: ${err.message}`
-      )
+      const lines = await anotherClientsSessionLines(err.problem, { origin: normOrigin(apiBase) })
+      if (lines) {
+        console.error(`\x1b[31m✗\x1b[0m ${normOrigin(apiBase)} refuses this token.`)
+        for (const line of lines) console.error(`  ${line}`)
+      } else {
+        console.error(`\x1b[31m✗\x1b[0m Token rejected by ${apiBase}: ${err.message}`)
+      }
       process.exit(1)
     }
     const record = { token: tokenFlag, origin: normOrigin(apiBase) }
@@ -949,6 +1021,9 @@ async function reportTokenProcess({ named, token }) {
         ? `\x1b[31m✗\x1b[0m ${origin} refuses UNIWEB_TOKEN (HTTP ${err.status}).`
         : `\x1b[31m✗\x1b[0m Could not check UNIWEB_TOKEN with ${origin}: ${err.message}`
     )
+    for (const line of (await anotherClientsSessionLines(err.problem, { origin, fromEnv: true })) || []) {
+      console.error(`  ${line}`)
+    }
     process.exit(1)
   }
   const who = account?.username || account?.handle || (account?.uuid ? `account ${account.uuid}` : null)

@@ -29,6 +29,7 @@ import {
 } from '../utils/sync-point.js'
 import { sentRoots } from '../utils/site-roots.js'
 import { humanBytes } from '../utils/bytes.js'
+import { anotherClientsSessionLines } from '../utils/registry-auth.js'
 import {
   describeRequestError,
   describeWorkspace,
@@ -2633,8 +2634,15 @@ export async function pushSyncPackages({
         return null
       }
       error(`${label} push rejected: HTTP ${res.status} ${res.statusText}`)
-      // A typed 403 says its own cause (a plan's limit, say), which is not the credentials.
-      if ((res.status === 401 || res.status === 403) && typeof problem?.reason !== 'string') {
+      // A typed 403 says its own cause (a plan's limit, say), which is not the credentials. A
+      // session made for another of the backend's clients is the credentials, and says so.
+      const anotherClient = await anotherClientsSessionLines(problem, {
+        origin: client.origin,
+        fromEnv: Boolean(process.env.UNIWEB_TOKEN)
+      })
+      if (anotherClient) {
+        for (const line of anotherClient) note(line)
+      } else if ((res.status === 401 || res.status === 403) && typeof problem?.reason !== 'string') {
         note(
           "Credentials weren't accepted — log in again (`uniweb login --server <url>`), or check UNIWEB_TOKEN."
         )
