@@ -1066,10 +1066,10 @@ async function main() {
     return
   }
 
-  // Handle vendor command — run a vendor function locally (dynamic import — depends on @uniweb/build)
-  if (command === 'vendor') {
-    const { vendor } = await importProjectCommand('./commands/vendor.js')
-    const result = await vendor(args.slice(1))
+  // Handle compute command — run a compute function locally (dynamic import — depends on @uniweb/build)
+  if (command === 'compute') {
+    const { compute } = await importProjectCommand('./commands/compute.js')
+    const result = await compute(args.slice(1))
     await exitWhenDrained(result?.exitCode ?? 0)
   }
 
@@ -2297,18 +2297,18 @@ Record files keep their \`$uuid\`: it is the record's own id, not a backend's.
 To duplicate a project:
   cp -r my-site my-site-2 && cd my-site-2 && uniweb forget --all
 `,
-    vendor: `
-${colors.cyan}${colors.bright}uniweb vendor run${colors.reset} ${colors.dim}— Run a vendor function on this machine, under the rules it runs by${colors.reset}
+    compute: `
+${colors.cyan}${colors.bright}uniweb compute run${colors.reset} ${colors.dim}— Run a compute function on this machine, under the rules it runs by${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
-  uniweb vendor run <file>#<function> --input <file.json>
-  uniweb vendor run <file>#<function> --input - < input.json
-  uniweb vendor run <file>#<function> --input <file.json> --json
+  uniweb compute run <file>#<function> --input <file.json>
+  uniweb compute run <file>#<function> --input - < input.json
+  uniweb compute run <file>#<function> --input <file.json> --json
 
 ${colors.bright}<file>${colors.reset} is named as an integration names it, or by its path:
-  courses                     src/vendors/courses.js in a foundation, vendors/courses.js in a library
+  courses                     src/compute/courses.js in a foundation, compute/courses.js in a library
   @acme/grading               a library's file, found in the workspace
-  src/vendors/courses.js      a path
+  src/compute/courses.js      a path
 
 ${colors.bright}What it enforces:${colors.reset}
   The web's globals and not Node's (no process, Buffer, require), no network
@@ -2490,7 +2490,7 @@ ${colors.bright}Commands:${colors.reset}
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
   families           List the standard section families (for meta.js family:)
-  vendor run <f#fn>  Run a vendor function locally, under the rules it runs by
+  compute run <f#fn> Run a compute function locally, under the rules it runs by
   template list      List the official templates (for create --template)
   doctor             Diagnose project configuration issues
   validate           Check your content against your foundation's data schemas

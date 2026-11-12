@@ -1,5 +1,5 @@
 /**
- * Vendor files at `register`: one `@uniweb/vendor-schema` artifact per file, in the call of the
+ * Compute files at `register`: one `@uniweb/vendor-schema` artifact per file, in the call of the
  * package that defines it, then its bytes, addressed by their sha256 (`vendor-uploads`). A library's
  * go up after the library's call and before the foundation that names them; a foundation's own after
  * its call, and again on a re-run that its 409 answers.
@@ -32,29 +32,29 @@ function put(root, files) {
   }
 }
 
-/** A workspace: the built foundation `@acme/shop` with its own `vendors/courses.js`, carrying `@lib/grading` from a library. */
+/** A workspace: the built foundation `@acme/shop` with its own `compute/courses.js`, carrying `@lib/grading` from a library. */
 function workspace() {
-  const root = tmp('uw-vendors-')
+  const root = tmp('uw-compute-')
   put(root, {
     'pnpm-workspace.yaml': 'packages:\n  - foundations/*\n  - libraries/*\n',
     'package.json': JSON.stringify({ name: 'w', private: true }),
     'libraries/grading/package.json': JSON.stringify({ name: 'grading', uniweb: { scope: '@lib' } }),
-    'libraries/grading/vendors/grading.js': SCORE,
-    'libraries/grading/vendors/unused.js': 'export function x() { return {} }\n',
+    'libraries/grading/compute/grading.js': SCORE,
+    'libraries/grading/compute/unused.js': 'export function x() { return {} }\n',
     'foundations/shop/package.json': JSON.stringify({ name: 'shop', type: 'module', version: '0.1.0', main: '_entry.generated.js' }),
-    'foundations/shop/main.js': "export default { name: '@acme/shop', vendors: ['@lib/grading'] }\n",
-    'foundations/shop/vendors/courses.js': GRADER,
+    'foundations/shop/main.js': "export default { name: '@acme/shop', compute: ['@lib/grading'] }\n",
+    'foundations/shop/compute/courses.js': GRADER,
     'foundations/shop/dist/entry.js': 'export default {}\n',
     'foundations/shop/dist/entry-ssr.js': 'export default {}\n',
     'foundations/shop/dist/meta/schema.json': JSON.stringify({
       _self: { name: '@acme/shop', version: '0.1.0' },
-      _vendors: { '@/courses': { exports: ['eligible', 'grade'] }, '@lib/grading': { exports: ['score'] } },
+      _compute: { '@/courses': { exports: ['eligible', 'grade'] }, '@lib/grading': { exports: ['score'] } },
     }),
   })
   const shop = join(root, 'foundations/shop')
   const past = Date.now() / 1000 - 3600
-  for (const f of ['package.json', 'main.js', 'vendors/courses.js']) utimesSync(join(shop, f), past, past)
-  for (const f of ['package.json', 'vendors/grading.js', 'vendors/unused.js']) utimesSync(join(root, 'libraries/grading', f), past, past)
+  for (const f of ['package.json', 'main.js', 'compute/courses.js']) utimesSync(join(shop, f), past, past)
+  for (const f of ['package.json', 'compute/grading.js', 'compute/unused.js']) utimesSync(join(root, 'libraries/grading', f), past, past)
   const future = Date.now() / 1000 + 3600
   for (const f of ['entry.js', 'entry-ssr.js', 'meta/schema.json']) utimesSync(join(shop, 'dist', f), future, future)
   return shop
@@ -121,8 +121,8 @@ test('⭐ a foundation: the library\'s file registered and uploaded first, then 
   assert.equal(calls[5].headers['x-uniweb-sha256'], sha(GRADER))
   assert.equal(calls[5].headers['content-type'], 'text/javascript')
   assert.equal(calls[5].headers.Authorization, undefined)
-  assert.match(run.output, /from libraries\/grading\/: vendor files @lib\/grading — registered from there first/)
-  assert.match(run.output, /vendor files defined: @acme\/courses/)
+  assert.match(run.output, /from libraries\/grading\/: compute files @lib\/grading — registered from there first/)
+  assert.match(run.output, /compute files defined: @acme\/courses/)
 })
 
 test('a file the registry already stores is not sent again', async () => {
@@ -162,7 +162,7 @@ test('a refused upload stops the release in the registry\'s words', async () => 
   })
   const run = await runVerb(workspace(), register, [], { env: ENV, respond })
   assert.equal(run.exitCode, 1)
-  assert.match(run.output, /Vendor file refused: HTTP 404/)
+  assert.match(run.output, /Compute file refused: HTTP 404/)
   assert.match(run.output, /no registered version of `@lib\/grading` holds sha256/)
   assert.equal(calls.some((c) => c.call === 'register' && c.doc.entities.some((e) => e.model === '@uniweb/foundation-schema')), false)
 })
@@ -175,16 +175,16 @@ test('--schema-only registers the files and uploads nothing', async () => {
   assert.deepEqual(order(calls), ['register library', 'register foundation'])
 })
 
-test('register in a library of vendor files alone registers and uploads them, with no foundation', async () => {
-  const root = tmp('uw-libvendors-')
+test('register in a library of compute files alone registers and uploads them, with no foundation', async () => {
+  const root = tmp('uw-libcompute-')
   put(root, {
     'package.json': JSON.stringify({ name: 'grading', uniweb: { scope: '@lib' } }),
-    'vendors/grading.js': SCORE,
+    'compute/grading.js': SCORE,
   })
   const { register } = await import('../src/commands/register.js')
   const { calls, respond } = registry()
   const run = await runVerb(root, register, [], { env: ENV, respond })
   assert.equal(run.exitCode, 0, run.output)
   assert.deepEqual(order(calls), ['register library', 'upload @lib/grading', 'put'])
-  assert.match(run.output, /Registered 1 vendor file\(s\) under @lib/)
+  assert.match(run.output, /Registered 1 compute file\(s\) under @lib/)
 })

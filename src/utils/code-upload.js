@@ -394,8 +394,8 @@ export async function uploadFoundationCode({
 }
 
 /**
- * Deliver one vendor file — the phase after its `@uniweb/vendor-schema` artifact registered
- * (`foundation/vendors.js` in `@uniweb/build`). One call, then at most one PUT:
+ * Deliver one compute file — the phase after its `@uniweb/vendor-schema` artifact registered
+ * (`foundation/compute.js` in `@uniweb/build`). One call, then at most one PUT:
  *
  *   POST {apiBase}/dev/registry/vendor-uploads  { name, sha256, size }
  *   → { mode, version, present: true }                              already stored: nothing to send

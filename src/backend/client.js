@@ -665,7 +665,7 @@ export class BackendClient {
   }
 
   /**
-   * Deliver one registered vendor file, addressed by its bytes' sha256 (`vendor-uploads`).
+   * Deliver one registered compute file, addressed by its bytes' sha256 (`vendor-uploads`).
    * Thin pass-through to utils/code-upload.js with this client's origin + token.
    * @param {object} opts - { name, file }
    */

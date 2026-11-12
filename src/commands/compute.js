@@ -1,8 +1,8 @@
 /**
- * `uniweb vendor run <file>#<function>` — run one vendor function on this machine, under the rules
+ * `uniweb compute run <file>#<function>` — run one compute function on this machine, under the rules
  * it runs by on the platform: the web's globals and not Node's, no network, frozen built-in
  * prototypes, a JSON object in and a JSON object out, each within its size, and a short time per
- * call. The run itself is `@uniweb/build`'s `runVendorFunction`.
+ * call. The run itself is `@uniweb/build`'s `runComputeFunction`.
  *
  * ⭐ WHY A VERB, when a test can import the file: a test runs it in Node, which allows everything
  * those rules take away, and where it runs its console output is discarded. So a function that
@@ -10,9 +10,9 @@
  *
  * The file is named as an integration names it, or by its path:
  *
- *   uniweb vendor run courses#grade --input answers.json      a file of this package's vendors/
- *   uniweb vendor run @acme/grading#score --input in.json     a library's, by its full name
- *   uniweb vendor run src/vendors/courses.js#grade --input - < in.json   a path; stdin
+ *   uniweb compute run courses#grade --input answers.json      a file of this package's compute/
+ *   uniweb compute run @acme/grading#score --input in.json     a library's, by its full name
+ *   uniweb compute run src/compute/courses.js#grade --input - < in.json   a path; stdin
  *
  * Exit 0 with the answer on stdout, or 1 with why on stderr. `--json` prints one object, either way.
  */
@@ -24,10 +24,10 @@ import {
   classifyPackage,
   isSchemasPackage,
   resolveFoundationSrcPath,
-  ownVendorFiles,
-  workspaceVendorFiles,
-  runVendorFunction,
-  VENDORS_DIR,
+  ownComputeFiles,
+  workspaceComputeFiles,
+  runComputeFunction,
+  COMPUTE_DIR,
 } from '@uniweb/build'
 
 const colors = {
@@ -39,13 +39,13 @@ const colors = {
   green: '\x1b[32m',
 }
 
-const USAGE = 'uniweb vendor run <file>#<function> --input <file.json | -> [--json]'
+const USAGE = 'uniweb compute run <file>#<function> --input <file.json | -> [--json]'
 
 /**
  * @param {string[]} args
  * @returns {Promise<{ exitCode: number }>}
  */
-export async function vendor(args = []) {
+export async function compute(args = []) {
   const [sub, ...rest] = args
   if (sub !== 'run') {
     fail(sub ? `\`uniweb vendor ${sub}\` is not a command. ${USAGE}` : USAGE)
@@ -92,7 +92,7 @@ async function run(args) {
     inputText = readFileSync(inputPath, 'utf8')
   }
 
-  const result = await runVendorFunction({ file: located.file, exportName, inputText })
+  const result = await runComputeFunction({ file: located.file, exportName, inputText })
 
   if (json) {
     process.stdout.write(JSON.stringify(result) + '\n')
@@ -114,7 +114,7 @@ async function run(args) {
 }
 
 /**
- * The vendor file `fileRef` names: a path (holding a `/` or ending `.js`), a full name
+ * The compute file `fileRef` names: a path (holding a `/` or ending `.js`), a full name
  * `@scope/name` found in the workspace, or a name of this package's own (`name` or `@/name`).
  */
 async function locate(fileRef) {
@@ -130,16 +130,16 @@ async function locate(fileRef) {
 
   if (own !== null) {
     if (!isFoundation && !isSchemasPackage(cwd)) {
-      return { error: `\`${fileRef}\` is a vendor file of this package, and this is not a foundation or a library. Run it from one, or give the file's path.` }
+      return { error: `\`${fileRef}\` is a compute file of this package, and this is not a foundation or a library. Run it from one, or give the file's path.` }
     }
-    const found = ownVendorFiles(srcDir).find((v) => v.name === own)
+    const found = ownComputeFiles(srcDir).find((v) => v.name === own)
     if (found) return { file: found.file }
-    const shown = isFoundation ? `src/${VENDORS_DIR}` : VENDORS_DIR
+    const shown = isFoundation ? `src/${COMPUTE_DIR}` : COMPUTE_DIR
     const tried = join(shown, `${own}.js`)
-    return { error: `There is no vendor file \`${own}\`: \`${tried}\` isn't there${own.startsWith('_') ? ', and a name starting with `_` is left out' : ''}.` }
+    return { error: `There is no compute file \`${own}\`: \`${tried}\` isn't there${own.startsWith('_') ? ', and a name starting with `_` is left out' : ''}.` }
   }
 
-  const files = await workspaceVendorFiles(fileRef, srcDir)
+  const files = await workspaceComputeFiles(fileRef, srcDir)
   if (files.length === 1) return { file: files[0] }
   if (files.length > 1) return { error: `\`${fileRef}\` is defined by ${files.length} packages: ${files.join(', ')}.` }
   return { error: `No package here defines \`${fileRef}\`. Run it from the library that defines it, or give the file's path.` }
