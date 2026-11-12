@@ -18,6 +18,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import { resolveAssetPath } from '@uniweb/build/site'
 import { servedFingerprint } from '@uniweb/build/uwx'
+import { prepareImage, isPreparableImage } from '@uniweb/build/images'
 import { contentTypeFor } from '../utils/code-upload.js'
 import { humanBytes } from '../utils/bytes.js'
 
@@ -27,11 +28,13 @@ import { humanBytes } from '../utils/bytes.js'
  * @param {string} siteDir - the site root (site-root refs resolve under public/)
  * @param {Array<string|{ ref: string, path: string, contentType?: string }>} refs - site-root local
  *        asset refs (`/images/x.png`), or files already located (a file record's)
- * @param {{ siteUuid?: string|null, onProgress?: (m: string) => void, warn?: (m: string) => void }} [opts]
+ * @param {{ siteUuid?: string|null, onProgress?: (m: string) => void, warn?: (m: string) => void, recorded?: Record<string, object> }} [opts]
  *   `siteUuid` is the owner the uploaded bytes are charged to. Callers create the
  *   site before uploading precisely so this is set — an unowned upload is charged
  *   and cannot be freed, because freeing means deleting the owning entity.
- * @returns {Promise<{ map: Record<string,string>, ids: Record<string,{id:string,ext:string}>, missing: string[], served: string[], failed: Array<{path:string,status:number,detail?:string}> }>}
+ *   `recorded` is this backend's asset map from `sync.json`, which says what each ref was stored as.
+ *   `asIs` names the refs uploaded as they are, never prepared: the pictures other software fetches.
+ * @returns {Promise<{ map: Record<string,string>, ids: Record<string,{id:string,ext:string,source?:string,size?:number}>, missing: string[], served: string[], failed: Array<{path:string,status:number,detail?:string}> }>}
  *   `map` is ref → serve URL for refs that resolved AND uploaded. The two failure
  *   kinds are reported SEPARATELY because callers must treat them differently:
  *   `missing` is a ref with no file under the site — an authoring mistake, already
@@ -47,7 +50,7 @@ export async function uploadSiteMedia(
   client,
   siteDir,
   refs,
-  { siteUuid = null, onProgress, warn } = {}
+  { siteUuid = null, onProgress, warn, recorded = {}, asIs = new Set() } = {}
 ) {
   if (!refs?.length) return { map: {}, ids: {}, missing: [], served: [], failed: [] }
 
@@ -74,18 +77,53 @@ export async function uploadSiteMedia(
       continue
     }
     const bytes = readFileSync(resolved)
-    files.push({
+    const declared = typeof item === 'object' ? item.contentType : null
+    const file = {
       path: ref.replace(/^\/+/, ''), // bookkeeping key into the plan (must be unique)
-      content_type: (typeof item === 'object' && item.contentType) || contentTypeFor(basename(resolved)),
+      content_type: declared || contentTypeFor(basename(resolved)),
       size: bytes.length,
-      sha256: createHash('sha256').update(bytes).digest('hex'),
+      sha256: sha256(bytes),
       localUrl: ref, // the rewrite key — the original content ref
       diskPath: resolved
-    })
+    }
+    // ⭐ A picture a page shows is prepared before it is stored (`prepareImage`). Not a file record's
+    // file, which declares its own type: that is a download, kept as its author gave it. Nor a picture
+    // other software fetches by its address (`asIs`: the favicon, the touch icon, the site's card and
+    // its social images), since a home screen takes a PNG and a link preview a JPEG or PNG.
+    const ext = extOf(resolved)
+    const prepare = !declared && !asIs.has(ref) && isPreparableImage(ext)
+    files.push(prepare ? await preparedFile(file, bytes, ext, recorded?.[ref], warn) : file)
   }
   if (!files.length) return { map: {}, ids: {}, missing, served, failed: [] }
 
-  const result = await client.uploadSiteAssets({ files, siteUuid, onProgress })
+  let result = await client.uploadSiteAssets({ files, siteUuid, onProgress })
+  // A recorded preparation the backend no longer holds, whose file now prepares to other bytes
+  // (the rule changed since): prepared anew, and planned again.
+  const stale = (result.failed || []).filter((f) => f.stale)
+  if (stale.length) {
+    const again = []
+    for (const f of stale) {
+      const was = files.find((x) => x.path === f.path)
+      if (!was) continue
+      const bytes = readFileSync(was.diskPath)
+      const file = {
+        path: was.key,
+        content_type: contentTypeFor(basename(was.diskPath)),
+        size: bytes.length,
+        sha256: sha256(bytes),
+        localUrl: was.localUrl,
+        diskPath: was.diskPath
+      }
+      again.push(await preparedFile(file, bytes, extOf(was.diskPath), null, warn))
+    }
+    const retry = await client.uploadSiteAssets({ files: again, siteUuid, onProgress })
+    result = {
+      ...result,
+      failed: [...result.failed.filter((f) => !f.stale), ...(retry.failed || [])],
+      assetsByLocalUrl: { ...result.assetsByLocalUrl, ...retry.assetsByLocalUrl }
+    }
+    for (const f of again) files[files.findIndex((x) => x.localUrl === f.localUrl)] = f
+  }
   const failed = [...(result.failed || [])]
   for (const f of failed)
     warn?.(`local-media: upload failed for ${f.path} (HTTP ${f.status})`)
@@ -104,10 +142,14 @@ export async function uploadSiteMedia(
     // id beside it (`info.preview`, `seo.image`, a section param); the header of
     // `@uniweb/build`'s asset-map.js says why a hash and not the URL.
     if (entry.id) {
+      // A prepared picture also records the file it was made from and its stored size, so the next
+      // push reuses it rather than preparing the file again (`preparedFile`).
+      const sent = files.find((f) => f.localUrl === ref)
       ids[ref] = {
         id: entry.id,
         ext: entry.ext || '',
-        ...(entry.serveUrl ? { served: servedFingerprint(entry.serveUrl) } : {})
+        ...(entry.serveUrl ? { served: servedFingerprint(entry.serveUrl) } : {}),
+        ...(sent?.source ? { source: sent.source, size: sent.size } : {})
       }
     }
     // The backend's canonical serve URL, READ — never composed. An entry without
@@ -133,6 +175,69 @@ export async function uploadSiteMedia(
     map[ref] = entry.serveUrl
   }
   return { map, ids, missing, served, failed }
+}
+
+const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
+const extOf = (path) => (basename(path).match(/\.([^.]+)$/)?.[1] || '').toLowerCase()
+
+/**
+ * The plan entry for a picture a page shows, stored as `prepareImage` makes it. Three cases, by what
+ * this backend's asset map records for the ref:
+ *
+ * - **Prepared before, from these same bytes** (`source` is their hash): planned by the identity it
+ *   recorded, with no bytes, so nothing is prepared again. The backend still holding it, the plan
+ *   says so and nothing moves. If it doesn't, `load` prepares the file again. So a change to the
+ *   rule never prepares, uploads or charges an unchanged picture again, and its pages don't change.
+ * - **Stored as it is, before pictures were prepared** (no `source`, and the id is these bytes'
+ *   hash, the asset plan's content address): left as it is, and its source recorded.
+ * - **New or changed:** prepared now.
+ *
+ * @param {object} file - the plan entry for the file as it is
+ * @param {Buffer} bytes - the file
+ * @param {string} ext - its extension
+ * @param {object|undefined|null} prior - its entry in the asset map
+ * @param {(m: string) => void} [warn]
+ */
+async function preparedFile(file, bytes, ext, prior, warn) {
+  const source = file.sha256
+  const key = file.path
+  if (prior?.source === source && prior.id && prior.ext && Number.isInteger(prior.size)) {
+    return {
+      ...file,
+      key,
+      path: storedPath(key, ext, prior.ext),
+      content_type: contentTypeFor(`x.${prior.ext}`),
+      size: prior.size,
+      sha256: prior.id,
+      source,
+      load: async () => (await prepareImage(bytes, ext)).bytes
+    }
+  }
+  if (prior && !prior.source && prior.id === source) return { ...file, key, source }
+
+  const prepared = await prepareImage(bytes, ext)
+  if (prepared.unreadable) {
+    warn?.(`local-media: ${file.localUrl} is uploaded as it is: it can't be converted here, and some browsers can't show it`)
+  }
+  return {
+    ...file,
+    key,
+    path: storedPath(key, ext, prepared.ext),
+    content_type: contentTypeFor(`x.${prepared.ext}`),
+    size: prepared.bytes.length,
+    sha256: sha256(prepared.bytes),
+    bytes: prepared.bytes,
+    source
+  }
+}
+
+/**
+ * The plan's key for a prepared file. The backend types an upload by its extension, so a picture
+ * stored as a WebP goes by one ending in `.webp`: its own key with the extension added, which keeps
+ * it apart from every other file's.
+ */
+function storedPath(key, ext, storedExt) {
+  return storedExt === ext ? key : `${key}.${storedExt}`
 }
 
 // ─── Asset-plan refusals ──────────────────────────────────────────────────────

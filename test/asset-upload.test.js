@@ -562,3 +562,50 @@ test('every media upload names the owner it is charged to, after the create', ()
     'the site create (and its bail) must precede the upload'
   )
 })
+
+test('a file planned by a recorded identity is made again with `load` when the backend lacks it, and is stale when it makes other bytes', async () => {
+  const same = Buffer.from('PREPARED')
+  const files = [
+    // Recorded as these bytes, which `load` makes again: PUT.
+    { path: 'images/a.png.webp', content_type: 'image/webp', size: same.length, sha256: sha(same), localUrl: '/images/a.png', load: async () => same },
+    // Recorded as other bytes than `load` now makes (the rule changed): not PUT, reported stale.
+    { path: 'images/b.png.webp', content_type: 'image/webp', size: 5, sha256: sha('OTHER'), localUrl: '/images/b.png', load: async () => Buffer.from('NEWER') }
+  ]
+  const puts = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (url, opts = {}) => {
+    if (String(url).endsWith('/dev/assets')) {
+      const body = JSON.parse(opts.body)
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          mode: 'direct',
+          uploads: body.files.map((f) => ({
+            path: f.path,
+            id: f.sha256,
+            ext: 'webp',
+            serve_url: `/media/${f.sha256}/base.webp`,
+            method: 'PUT',
+            url: `/dev/assets/blob/${f.sha256}`,
+            headers: {}
+          }))
+        })
+      }
+    }
+    puts.push(Buffer.from(opts.body).toString())
+    return { ok: true, status: 200, text: async () => '' }
+  }
+  try {
+    const result = await uploadSiteAssets({ apiBase: 'http://localhost:8080', token: 't', files })
+    assert.deepEqual(puts, ['PREPARED'])
+    assert.ok(result.assetsByLocalUrl['/images/a.png'])
+    assert.equal(result.assetsByLocalUrl['/images/b.png'], undefined)
+    assert.deepEqual(
+      result.failed.map(({ path, stale }) => ({ path, stale })),
+      [{ path: 'images/b.png.webp', stale: true }]
+    )
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})

@@ -8,6 +8,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { servedFingerprint } from '@uniweb/build/uwx'
 import { BackendClient } from '../src/backend/client.js'
@@ -59,11 +60,15 @@ test('uploadSiteMedia resolves site-root refs under public/, uploads, returns re
     // ⭐ identity for assets.json, with a FINGERPRINT of that URL — never the URL —
     // so a pull can recognize a bare-string reference (`info.preview`, `seo.image`)
     // that has no room for an id beside it
+    // A picture also records the file it was stored from and its stored size, so the next push
+    // need not prepare it again. This one is no image sharp can decode, so it went up as it is.
     assert.deepEqual(ids, {
       '/images/banner.png': {
         id: 'SHA1',
         ext: 'png',
-        served: servedFingerprint('/media-root/dist/SHA1/base.png')
+        served: servedFingerprint('/media-root/dist/SHA1/base.png'),
+        source: createHash('sha256').update('PNGDATA').digest('hex'),
+        size: 7
       }
     })
   } finally {
@@ -412,7 +417,7 @@ test('a ref whose file is there is not asked about, nor is a file the caller loc
     assert.deepEqual(Object.keys(map), ['/images/banner.png'])
     assert.deepEqual(served, [])
     assert.deepEqual(missing, ['pages/x/gone.png'])
-    assert.equal(warnings.length, 1)
+    assert.equal(warnings.filter((w) => w.includes('not found')).length, 1)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

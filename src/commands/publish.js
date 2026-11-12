@@ -791,7 +791,11 @@ export async function publish(args = []) {
         {
           siteUuid: site.uuid,
           onProgress: (m) => say.dim(`  ${m}`),
-          warn: (m) => say.dim(`! ${m}`)
+          warn: (m) => say.dim(`! ${m}`),
+          // What each picture was stored as, so an unchanged one is not prepared again.
+          recorded: readBackendState(siteDir, client.origin).assets || {},
+          // The pictures other software fetches (favicon, touch icon, card, social images): as they are.
+          asIs: new Set(probe.outsideAssets || [])
         }
       )
       // A ref whose bytes did not land must NOT be published: the content would go

@@ -516,6 +516,8 @@ export async function push(args = [], deps = {}) {
   let created = null
   if (!output && !dryRun) {
     let mediaRefs = []
+    // The pictures other software fetches (favicon, touch icon, card, social images): uploaded as they are.
+    let outsideRefs = new Set()
     let refusals = []
     let held = null
     try {
@@ -531,6 +533,7 @@ export async function push(args = [], deps = {}) {
       })
       // Site-root media, and each file record's file (`@uniweb/file` — `{ ref, path, contentType }`).
       mediaRefs = [...(probe.localAssets || []), ...(probe.localFiles || [])]
+      outsideRefs = new Set(probe.outsideAssets || [])
       refusals = probe.refusals || []
       held = probe
     } catch (err) {
@@ -573,7 +576,10 @@ export async function push(args = [], deps = {}) {
           {
             siteUuid: site.uuid,
             onProgress: (m) => note(`  ${m}`),
-            warn: (m) => note(`! ${m}`)
+            warn: (m) => note(`! ${m}`),
+            // What each picture was stored as, so an unchanged one is not prepared again.
+            recorded: readBackendState(siteDir, client.origin).assets || {},
+            asIs: outsideRefs
           }
         )
         // Bytes that did not land must not be pushed around: the content would go

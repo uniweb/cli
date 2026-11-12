@@ -206,6 +206,20 @@ export async function uploadSiteAssets({
       continue
     }
 
+    // The bytes to send: held, read from the file, or made again. A file a push prepared before
+    // is planned by the identity it recorded, with no bytes; when the backend no longer holds them,
+    // `load` prepares the file again, which must give the recorded bytes. Bytes that differ (the
+    // rule changed since) are `stale`, for the caller to plan as a new preparation.
+    let body = src.bytes
+    if (!body && typeof src.load === 'function') {
+      body = await src.load()
+      if (createHash('sha256').update(body).digest('hex') !== src.sha256) {
+        failed.push({ path: src.path, status: 0, detail: 'prepares to other bytes than recorded', stale: true })
+        continue
+      }
+    }
+    if (!body) body = readFileSync(src.diskPath)
+
     const headers = { ...(up.headers || {}), 'x-uniweb-sha256': src.sha256 }
     // Direct-mode PUTs are authed requests to the backend; presigned URLs are
     // self-signed, so a foreign auth header can break the SigV4 target. This is
@@ -228,7 +242,7 @@ export async function uploadSiteAssets({
       putRes = await fetchWithRetry(new URL(up.url, origin), {
         method: up.method || 'PUT',
         headers,
-        body: src.bytes ?? readFileSync(src.diskPath)
+        body
       }, { timeoutMs: 120_000, retryOnStatus: isTransientStatus })
     } catch (err) {
       failed.push({ path: src.path, status: 0, detail: err.message })
