@@ -217,6 +217,21 @@ test('a record changed on the backend is named by the file the pull writes it to
   assert.ok(paths(probed.files).some((p) => p.startsWith('records/')), JSON.stringify(probed.files))
 })
 
+test('⭐ a record the app removed is named before the pull, as the removal the pull then makes', { skip: !hasGit }, async () => {
+  const hello = { name: 'hello', uuid: 'R1', title: 'Hello', body: 'First words.\n' }
+  const bye = { name: 'bye', uuid: 'R2', title: 'Goodbye', body: 'Last words.\n' }
+  const backend = fakeBackend({ records: [hello, bye] })
+  const dir = await synced(backend)
+  backend.state.records = [hello]
+
+  const probed = await probeIn(dir, backend)
+  assert.ok(probed, 'the probe answered')
+  assert.ok(probed.files.some(([s, p]) => s === 'D' && /records\/.*bye\.md$/.test(p)), JSON.stringify(probed.files))
+  const pulled = await pullIn(dir, backend)
+  assert.equal(pulled.exitCode, 0, pulled.out)
+  assert.deepEqual(paths(probed.files), pulled.merge.changed.map(([, p]) => p))
+})
+
 test('outside git there is nothing to write onto: the probe does not answer', async () => {
   const backend = fakeBackend()
   const dir = mkdtempSync(join(scratch, 'plain-'))

@@ -36,8 +36,8 @@
  * the backend's version whole, and leaves a sync point.
  *
  * Outside a repository there is nothing to merge against: a pull reconciles the files to
- * the backend — section bodies rewritten, pages and sections the backend no longer has
- * DELETED (`--no-delete` keeps them; an empty or partial payload never wipes the tree) —
+ * the backend — section bodies rewritten, pages, sections and records the backend no longer
+ * has DELETED (`--no-delete` keeps them; an empty or partial payload never wipes the tree) —
  * and asks first, unless nothing there is the author's (`pull-written.js`).
  *
  * `uniweb login && uniweb pull`. Run from a site, or a workspace with one site.
@@ -1008,6 +1008,8 @@ export async function pull(args = [], deps = {}) {
   let sections = 0
   let records = 0
   let deleted = 0
+  // The records the app removed, which this pull removes from the files (`recordsToProject`'s `prune`).
+  let recordsRemoved = []
   // The pages a pull does not write — a mount's, a folder-mode `.md` page given what its file cannot
   // hold, a route the files give two pages for (`@uniweb/build`'s `page-files.js`). Said, since an app
   // edit to one does not come back; each `.md` page with what it could not hold.
@@ -1368,9 +1370,15 @@ export async function pull(args = [], deps = {}) {
           // back in `records/article/` — see `pullScope`.
           scope: pullScope,
           // What the foundation declares, read again now the site's content (its `site.yml`) is in.
-          foundation: await readSiteFoundationDeclarations(projDir)
+          foundation: await readSiteFoundationDeclarations(projDir),
+          // ⭐ A record the app removed is removed here, as a page is: onto the stand-in in a
+          // repository, where git merges it, and where this pull's outside-git consent says so.
+          // `--no-delete` keeps its file, as it keeps a page's.
+          prune
         }
       })
+      recordsRemoved = (report.removed || []).map((p) => relative(projDir, p).split(sep).join('/'))
+      removed.push(...(report.removed || []))
       // ⭐ THE FOLDER'S PLACEMENT IDENTITY, from the folder this pull took — as a push banks
       // it from the folder it sent. ⛔ Only a push banked it until 2026-09-25, so a copy that
       // had never pushed (every clone) sent its first folder with its placements uuid-less,
@@ -1710,9 +1718,14 @@ export async function pull(args = [], deps = {}) {
 
   const summary =
     `Pulled — ${pages} page(s), ${sections} section(s), ${records} record(s)` +
-    (deleted ? `, ${deleted} deleted` : '')
+    (deleted ? `, ${deleted} deleted` : '') +
+    (recordsRemoved.length ? `, ${recordsRemoved.length} record(s) removed in the app` : '')
   if (notTaken || recordsNotPlaced) info(summary)
   else success(summary)
+  // ⭐ Each record the app removed, by its file: one a person meant to keep is brought back by restoring
+  // the file and pushing it, when it goes up as a new record.
+  for (const p of recordsRemoved.slice(0, 12)) note(`  removed in the app: ${p}`)
+  if (recordsRemoved.length > 12) note(`  … and ${recordsRemoved.length - 12} more`)
   // ⭐ Said, since it edits `site.yml`: the route is the mount's key there, and its local folder.
   if (!notTaken) {
     for (const { from, to } of mountRoutes) {

@@ -22,7 +22,7 @@ import { execFileSync } from 'node:child_process'
 import { pull } from '../src/commands/pull.js'
 import { refresh } from '../src/commands/refresh.js'
 import { writeSyncPoint } from '../src/utils/sync-point.js'
-import { holdUnchangedPush } from '../src/backend/site-sync.js'
+import { holdUnchangedPush, readSyncCache } from '../src/backend/site-sync.js'
 
 // The workspace these pulls work in (backend/workspace.js) — a test has no login to choose one.
 process.env.UNIWEB_WORKSPACE = 'personal'
@@ -862,6 +862,77 @@ test(
     assert.doesNotMatch(r.out, /Your files already hold what https:\/\/uniweb\.app has\./, r.out)
   }
 )
+
+// ── a record the app removed ────────────────────────────────────────────────
+
+const BYE = { name: 'bye', uuid: 'R2', title: 'Goodbye', body: 'Last words.\n' }
+const recordFile = (dir, name) => join(dir, 'site', 'records', 'acme', 'article', `${name}.md`)
+const mappedRecords = (dir) => JSON.parse(readFileSync(join(dir, 'site', 'sync.json'), 'utf8')).backends[ORIGIN].records || {}
+
+test('⭐ a record the app removed is removed from the files by the merge, and named', { skip: !hasGit }, async () => {
+  const backend = fakeBackend({ records: [HELLO, BYE] })
+  const dir = await synced(backend)
+  assert.ok(existsSync(recordFile(dir, 'bye')), 'control: the first pull wrote it')
+  assert.ok(Object.values(mappedRecords(dir)).includes('R2'), 'control: and mapped it to the entity it is')
+  backend.state.records = [HELLO]
+  const r = await pullIn(dir, backend)
+  assert.equal(r.exitCode, 0, r.out)
+  assert.equal(existsSync(recordFile(dir, 'bye')), false, `the record the app removed is still here:\n${r.out}`)
+  assert.ok(existsSync(recordFile(dir, 'hello')))
+  assert.match(r.out, /1 record\(s\) removed in the app/, r.out)
+  assert.match(r.out, /removed in the app: records\/acme\/article\/bye\.md/, r.out)
+  // Its mapping is gone too, and so is the hash a push would skip it by: the file restored goes up as
+  // a new record.
+  assert.equal(Object.values(mappedRecords(dir)).includes('R2'), false, JSON.stringify(mappedRecords(dir)))
+  const hashed = Object.keys(readSyncCache(join(dir, 'site'), ORIGIN))
+  assert.ok(hashed.some((k) => /\/hello$/.test(k)), `control: the record kept is banked: ${hashed}`)
+  assert.equal(hashed.some((k) => /\/bye$/.test(k)), false, `${hashed}`)
+})
+
+test('a record the app removed and this copy changed stops the merge, kept as the copy has it', { skip: !hasGit }, async () => {
+  const backend = fakeBackend({ records: [HELLO, BYE] })
+  const dir = await synced(backend)
+  edit(dir, 'records/acme/article/bye.md', 'title: Goodbye', 'title: Goodbye, edited')
+  commitAll(dir, 'an edit to bye')
+  backend.state.records = [HELLO]
+  const r = await pullIn(dir, backend)
+  assert.equal(r.exitCode, 1, r.out)
+  assert.match(r.out, /conflicts to resolve[\s\S]*bye\.md/, r.out)
+  assert.match(readFileSync(recordFile(dir, 'bye'), 'utf8'), /Goodbye, edited/)
+})
+
+test('CONTROL — a record added here and never pushed is left alone, whatever the backend holds', { skip: !hasGit }, async () => {
+  const backend = fakeBackend({ records: [HELLO] })
+  const dir = await synced(backend)
+  writeFileSync(recordFile(dir, 'draft'), '---\ntitle: A draft\n---\n\nNot sent yet.\n')
+  commitAll(dir, 'a new record')
+  aboutEdited(backend)
+  const r = await pullIn(dir, backend)
+  assert.equal(r.exitCode, 0, r.out)
+  assert.ok(existsSync(recordFile(dir, 'draft')), r.out)
+  assert.doesNotMatch(r.out, /removed in the app/)
+})
+
+test('--no-delete keeps the file of a record the app removed, as it keeps a page', { skip: !hasGit }, async () => {
+  const backend = fakeBackend({ records: [HELLO, BYE] })
+  const dir = await synced(backend)
+  backend.state.records = [HELLO]
+  const r = await pullIn(dir, backend, ['--no-delete'])
+  assert.equal(r.exitCode, 0, r.out)
+  assert.ok(existsSync(recordFile(dir, 'bye')), r.out)
+  assert.doesNotMatch(r.out, /removed in the app/)
+})
+
+test('⛔ a folder answered with no record removes none of them, and says so', { skip: !hasGit }, async () => {
+  const backend = fakeBackend({ records: [HELLO, BYE] })
+  const dir = await synced(backend)
+  backend.state.records = []
+  const r = await pullIn(dir, backend)
+  assert.ok(existsSync(recordFile(dir, 'hello')), r.out)
+  assert.ok(existsSync(recordFile(dir, 'bye')), r.out)
+  assert.doesNotMatch(r.out, /record\(s\) removed in the app|removed in the app: /)
+  assert.match(r.out, /holds no records, so this pull removed none of the 2/, r.out)
+})
 
 // ── one section, one file ───────────────────────────────────────────────────
 
