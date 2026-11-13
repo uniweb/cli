@@ -260,7 +260,10 @@ function pullCachePath(siteDir) {
 // ⛔ VERSION 3 DISOWNS THOSE OF A PULL THAT READ NOTHING OF `@`. Before 2026-10-31 a pull took a
 // translation the app had flagged for current, and kept nothing of `@`. A site that has not moved
 // since would answer 304, and its next push would remove what the app keeps there.
-const PULL_CACHE_VERSION = 3
+// ⛔ VERSION 4 DISOWNS THOSE OF A PULL THAT KEPT A REMOVED RECORD'S FILE. Before 2026-11-13 a pull took
+// a folder without a record this copy had pushed, and left the record's file and its mapping. A folder
+// that has not moved since would answer 304, and the file would never go (`recordsToProject`'s `prune`).
+const PULL_CACHE_VERSION = 4
 export function readPullCache(siteDir) {
   try {
     const obj = JSON.parse(readFileSync(pullCachePath(siteDir), 'utf8'))

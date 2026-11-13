@@ -758,7 +758,7 @@ test('pull echoes the cached ETag in If-None-Match and treats 304 as unchanged (
     mkdirSync(join(dir, '.uniweb'), { recursive: true })
     writeFileSync(
       join(dir, '.uniweb/pull-cache.json'),
-      JSON.stringify({ version: 3, content: '"abc123"' })
+      JSON.stringify({ version: 4, content: '"abc123"' })
     )
     // A banked hash that a re-bank would replace: nothing was projected, so nothing is re-banked.
     writeFileSync(
@@ -808,7 +808,7 @@ test('⛔ in a repository an ETag is not echoed once its sync point has left the
     execFileSync('git', ['add', '-A'], { cwd: dir, stdio: 'ignore' })
     execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base'], { cwd: dir, stdio: 'ignore' })
     mkdirSync(join(dir, '.uniweb'), { recursive: true })
-    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 3, content: '"abc123"' }))
+    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 4, content: '"abc123"' }))
     // A commit this history does not hold.
     const gone = execFileSync('git', ['commit-tree', 'HEAD^{tree}', '-m', 'elsewhere'], {
       cwd: dir,
@@ -840,7 +840,7 @@ test('pull --force is unconditional — it takes the backend version whatever th
     writeFileSync(join(dir, 'site.yml'), "name: Keep\nfoundation: '@a/base'\n")
     bindSite(dir, 'SITE-FORCE')
     mkdirSync(join(dir, '.uniweb'), { recursive: true })
-    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 3, content: '"abc123"' }))
+    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 4, content: '"abc123"' }))
     let sentINM = 'unset'
     await pull(['--no-records', '--force'], {
       resolveSiteDir: async () => dir,
@@ -1468,24 +1468,36 @@ test('the version tokens a pull carries are banked once its merge is done', asyn
   }
 })
 
-test('an ETag cached by an older pull is not echoed — it may describe content never taken', async () => {
+test('⛔ an ETag an older pull cached is not echoed — it may describe files that pull never caught up', async () => {
+  // A version-3 pull took a folder without a record this copy had pushed and left the record's file: a
+  // folder that has not moved since would answer 304, and the file would never go. In a repository, with
+  // the sync point the ETag was banked with in the history, so only the cache's version decides.
   const dir = tempSite()
   try {
     writeFileSync(join(dir, 'site.yml'), "name: Keep\nfoundation: '@a/base'\n")
-    bindSite(dir, 'SITE-V1')
+    bindSite(dir, 'SITE-V3')
+    writeFileSync(join(dir, '.gitignore'), '.uniweb\n')
+    execFileSync('git', ['init', '-q'], { cwd: dir, stdio: 'ignore' })
+    execFileSync('git', ['add', '-A'], { cwd: dir, stdio: 'ignore' })
+    execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'base'], { cwd: dir, stdio: 'ignore' })
     mkdirSync(join(dir, '.uniweb'), { recursive: true })
-    // The last version that read nothing of `@`: a site with no change since would answer 304.
-    writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version: 2, content: '"stale"' }))
-    let sentINM = 'unset'
-    await pull(['--no-records', '--force'], {
-      resolveSiteDir: async () => dir,
-      getToken: async () => 'tok',
-      fetch: async (url, opts) => {
-        sentINM = opts?.headers?.['If-None-Match']
-        return jsonRes(null, 404)
-      }
-    })
-    assert.equal(sentINM, undefined)
+    writeSyncPoint(dir, TEST_ORIGIN, execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim())
+    const echoed = async (version) => {
+      writeFileSync(join(dir, '.uniweb/pull-cache.json'), JSON.stringify({ version, content: '"abc123"' }))
+      let sentINM = 'unset'
+      await pull(['--no-records', '--non-interactive'], {
+        resolveSiteDir: async () => dir,
+        getToken: async () => 'tok',
+        fetch: async (url, opts) => {
+          sentINM = opts?.headers?.['If-None-Match']
+          return { ok: false, status: 304, statusText: 'Not Modified', headers: { get: () => '"abc123"' } }
+        }
+      })
+      return sentINM
+    }
+    assert.equal(await echoed(4), '"abc123"', 'control: the current version is echoed')
+    assert.equal(await echoed(3), undefined)
+    assert.equal(await echoed(2), undefined)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
