@@ -71,7 +71,7 @@ import {
   statSync
 } from 'node:fs'
 import { createInterface } from 'node:readline/promises'
-import { join, dirname, relative, resolve, posix } from 'node:path'
+import { join, dirname, relative, resolve, posix, sep } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import yaml from 'js-yaml'
 import { downloadMissingAssets, downloadFileRecords } from '../backend/asset-download.js'
@@ -117,7 +117,8 @@ import {
   readItemBaseVersions
 } from '../backend/site-sync.js'
 import { resolveWorkspace } from '../backend/workspace.js'
-import { siteRoots, sentRoots, laneRoots, unsentPaths, writableMounts, refusedMountLines, heldMountLines, levelsAboveRepository } from '../utils/site-roots.js'
+import { siteRoots, sentRoots, laneRoots, unsentPaths, pageRoots, writableMounts, refusedMountLines, heldMountLines, levelsAboveRepository } from '../utils/site-roots.js'
+import { sectionFilesNamedTwice, describeSectionsNamedTwice } from '@uniweb/build/site'
 import {
   repoOf,
   mergeInProgress,
@@ -381,6 +382,30 @@ export function describeUnplacedRecords({ docs, taken, skipped }) {
 // `readZip` reads both); the entity files ARE the documents. Falls back to a JSON body (a raw doc, a `{document}`/`{entity}` envelope,
 // or a list) so the lane survives a future envelope change. Returns an array (possibly
 // empty).
+/**
+ * Each page directory of the site that holds a section in more than one file, said as the build says
+ * it (`sectionFilesNamedTwice`, `@uniweb/build/site`).
+ *
+ * @param {string} siteDir
+ * @returns {string[]}
+ */
+function sectionsNamedTwiceIn(siteDir) {
+  const found = []
+  const walk = (dir) => {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    const twice = sectionFilesNamedTwice(entries.filter((e) => e.isFile()).map((e) => e.name))
+    if (twice.length) found.push(describeSectionsNamedTwice(relative(siteDir, dir).split(sep).join('/') || '.', twice))
+    for (const e of entries) if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules') walk(join(dir, e.name))
+  }
+  for (const root of pageRoots(siteDir)) walk(join(siteDir, root))
+  return found
+}
+
 export function readPullDocuments(buf) {
   // `.uwx` ZIP — the local-file signature is "PK\x03\x04".
   if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) {
@@ -1761,6 +1786,14 @@ export async function pull(args = [], deps = {}) {
       for (const p of merge.keptAsWritten.slice(0, 12)) note(`  ${repo.prefix}${p}`)
       if (merge.keptAsWritten.length > 12) note(`  … and ${merge.keptAsWritten.length - 12} more`)
     }
+    // ⛔ ONE SECTION, ONE FILE. Each side adding a section under its own name — `1-lost.md` here, the
+    // backend's `lost.md` — merges without a conflict, and the page would show it twice (2026-11-12).
+    merge.namedTwice = sectionsNamedTwiceIn(siteDir)
+    if (merge.namedTwice.length) {
+      error(`${merge.namedTwice.length} page(s) hold a section in two files, which the merge left side by side:`)
+      for (const line of merge.namedTwice) note(`  ${line}`)
+      note('A number orders a section and never names it, so each pair is one section. Keep one file of each, then `git commit`.')
+    }
     if (merge.conflicted.length) {
       error(`${merge.conflicted.length} file(s) have conflicts to resolve:`)
       for (const f of merge.conflicted) note(`  ${f}`)
@@ -1829,7 +1862,7 @@ export async function pull(args = [], deps = {}) {
   // all in the files — a chained push must not go on as if it were. And a merge that
   // could not be made took nothing.
   return {
-    exitCode: merge.conflicted.length || recordsNotPlaced || notTaken ? 1 : 0,
+    exitCode: merge.conflicted.length || merge.namedTwice?.length || recordsNotPlaced || notTaken ? 1 : 0,
     merge
   }
 }

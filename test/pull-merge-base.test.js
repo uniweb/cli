@@ -863,6 +863,34 @@ test(
   }
 )
 
+// ── one section, one file ───────────────────────────────────────────────────
+
+test(
+  '⭐ a section each side added under its own name is named after the merge, and stops a chained push',
+  { skip: !hasGit },
+  async () => {
+    const backend = fakeBackend()
+    const dir = await synced(backend)
+    // Added here, numbered as its author orders it; and in the app, where it comes back by its name.
+    writeFileSync(join(dir, 'site', 'pages', 'home', '3-news.md'), 'Fresh news.\n')
+    commitAll(dir, 'news, added here')
+    backend.state.site = siteDoc([section('welcome', 'S1', ...WELCOME), section('about', 'S2', ...ABOUT), section('news', 'S3', 'Fresh news.')])
+    const r = await pullIn(dir, backend)
+    assert.ok(existsSync(join(dir, 'site', 'pages', 'home', 'news.md')), `control: the merge left both files:\n${r.out}`)
+    assert.equal(r.exitCode, 1, r.out)
+    assert.match(r.out, /1 page\(s\) hold a section in two files[\s\S]*pages\/home holds the section "news" in 2 files: 3-news\.md, news\.md/, r.out)
+  }
+)
+
+test('CONTROL — a section only the app added comes in, and nothing is said', { skip: !hasGit }, async () => {
+  const backend = fakeBackend()
+  const dir = await synced(backend)
+  backend.state.site = siteDoc([section('welcome', 'S1', ...WELCOME), section('about', 'S2', ...ABOUT), section('news', 'S3', 'Fresh news.')])
+  const r = await pullIn(dir, backend)
+  assert.equal(r.exitCode, 0, r.out)
+  assert.doesNotMatch(r.out, /hold a section in two files/)
+})
+
 // ── a push that wrote ids back ──────────────────────────────────────────────
 
 // A project synced whose record was pushed for the first time: the push was made from a commit

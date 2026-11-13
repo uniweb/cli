@@ -50,6 +50,13 @@ export function siteRoots(siteDir, { media = true } = {}) {
 /** What a push sends from the files: the site's roots, its media among them. */
 export const sentRoots = (siteDir) => siteRoots(siteDir)
 
+/** The directories a site's pages are read from: its pages root, and each mount its repository holds. */
+export function pageRoots(siteDir) {
+  return rootsOf(siteDir)
+    .filter((r) => r.kind === 'pages' || (r.kind === 'mount' && mountHolding(siteDir, r.abs).kind === 'site'))
+    .map((r) => r.path)
+}
+
 /**
  * What each lane of a push carries, as roots: the folder lane the records — their files, and their
  * translations — and the content lane everything else a pull writes, media (`public/`) and the
