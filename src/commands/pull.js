@@ -87,7 +87,6 @@ import {
   computeUnitHashes,
   collectUnitUuids,
   collectQueryUuids,
-  collectFolderItemUuids,
   documentSchema
 } from '@uniweb/build/uwx'
 import {
@@ -112,7 +111,7 @@ import {
   commitWriteBacks,
   reportWriteBacks,
   writeItemUuids,
-  writeFolderItemUuids,
+  writeFolderPlacements,
   writeHeldTypes,
   readItemBaseVersions
 } from '../backend/site-sync.js'
@@ -261,8 +260,10 @@ function pullCachePath(siteDir) {
 // translation the app had flagged for current, and kept nothing of `@`. A site that has not moved
 // since would answer 304, and its next push would remove what the app keeps there.
 // ⛔ VERSION 4 DISOWNS THOSE OF A PULL THAT KEPT A REMOVED RECORD'S FILE. Before 2026-11-13 a pull took
-// a folder without a record this copy had pushed, and left the record's file and its mapping. A folder
-// that has not moved since would answer 304, and the file would never go (`recordsToProject`'s `prune`).
+// a folder without a record this copy had pushed, and left the record's file and its mapping, and the
+// `$uuid` of the entry the app removed, which the next push stamped back on. A folder that has not
+// moved since would answer 304, and neither would ever go (`recordsToProject`'s `prune`,
+// `writeFolderPlacements`).
 const PULL_CACHE_VERSION = 4
 export function readPullCache(siteDir) {
   try {
@@ -1387,7 +1388,8 @@ export async function pull(args = [], deps = {}) {
       // had never pushed (every clone) sent its first folder with its placements uuid-less,
       // and the backend refused that push (`identity_required`, section `contents`) —
       // measured on a template clone's first edit.
-      if (folderDoc) writeFolderItemUuids(projDir, client.origin, collectFolderItemUuids(folderDoc))
+      // Whole, so an entry the app removed leaves with it (`writeFolderPlacements`).
+      if (folderDoc) writeFolderPlacements(projDir, client.origin, folderDoc)
       // …and what each record is held as, so a push can tell a record whose file moved schema.
       if (folderDoc) writeHeldTypes(projDir, client.origin, folderDoc)
       // The folder's organization, `folder.yml` in the records directory — named as

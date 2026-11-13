@@ -1422,9 +1422,23 @@ export function writeQueryUuids(siteDir, backend, map) {
   if (!map || !Object.keys(map).length) return
   updateBackendMap(siteDir, backend, 'queries', map)
 }
+// Placements a recovery found missing, beside the ones this copy holds (`recoverRecordsIdentity`).
 export function writeFolderItemUuids(siteDir, backend, map) {
   if (!map || !Object.keys(map).length) return
   updateBackendMap(siteDir, backend, 'folders', map)
+}
+/**
+ * The placements of a folder the backend handed back — a pull's, or the one a push stored — written
+ * WHOLE, as its record types are (`writeHeldTypes`), so they name exactly the entries it holds.
+ *
+ * ⛔ Until 2026-11-13 each answer was merged into the ones before, so an entry the app removed kept its
+ * `$uuid` here, and the next push stamped it on the record's entry again, which the backend re-created:
+ * a record an author had removed from the site in the app came back with a teammate's push from a copy
+ * that still held its file (measured on a site, 2026-11-10). A removed entry's `$uuid` leaves with it
+ * now, so a record whose file is brought back goes up in an entry of its own.
+ */
+export function writeFolderPlacements(siteDir, backend, folderDoc) {
+  setBackendMap(siteDir, backend, 'folders', collectFolderItemUuids(folderDoc))
 }
 /**
  * What the backend holds each record as — its uuid → the data schema its folder entry names —
@@ -3092,9 +3106,7 @@ export async function pushSyncPackages({
     // live manor 2026-08-27; the identities were on the wire all along.
     const folderDoc = finalized.find((f) => f?.document?.contents)?.document
     if (folderDoc) {
-      const placements = collectFolderItemUuids(folderDoc)
-      if (Object.keys(placements).length)
-        writeFolderItemUuids(siteDir, client.origin, placements)
+      writeFolderPlacements(siteDir, client.origin, folderDoc)
       // What the folder places now, and so which records this push took out of it.
       retireUnplaced(siteDir, client.origin, writeHeldTypes(siteDir, client.origin, folderDoc), { ownedBefore })
       // ⭐ A LINK RECORD'S IDENTITY is its folder entry's `$uuid`, banked as a record's is: into

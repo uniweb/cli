@@ -1890,6 +1890,42 @@ test('a link record takes the uuid the backend gives its folder entry, into its 
   rmSync(dir, { recursive: true, force: true })
 })
 
+// ⭐ THE PLACEMENTS ARE THE FOLDER THE BACKEND STORED, WHOLE (`writeFolderPlacements`). An entry gone
+// from it, one the app removed, leaves the map with it: kept, the next push stamped its `$uuid` on a
+// record's entry again, and the backend re-created the entry (measured on a site, 2026-11-10).
+test('⭐ a push banks the placements of the folder it stored, whole: an entry gone from it leaves the map', async () => {
+  const dir = tmpSite()
+  bind(dir, 'SITE')
+  const store = JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8'))
+  store.backends[ORIGIN].folders = { '@T1': 'P1', designing: 'P1', '@T9': 'P9', removed: 'P9' }
+  writeFileSync(join(dir, 'sync.json'), JSON.stringify(store))
+  const client = {
+    origin: ORIGIN,
+    updateSiteContent: async () => ok(finalized([{ index: 0, uuid: 'SITE', changed: true }])),
+    pushFolder: async () =>
+      ok(
+        finalized([
+          {
+            index: 0,
+            uuid: 'FOLDER',
+            changed: true,
+            document: { contents: [{ kind: 'ref', name: 'designing', entry: { schema: '@std/article', entity: 'T1' }, $uuid: 'P1' }] }
+          }
+        ])
+      )
+  }
+  const pkg = siteOnlyPkg({
+    siteContentUuid: 'SITE',
+    records: { buffer: Buffer.from('c'), entityCount: 1, models: ['@uniweb/folder'], index: [{ kind: 'folder' }] }
+  })
+  const { report } = makeReport()
+  const res = await pushSyncPackages({ client, siteDir: dir, pkg, report })
+  assert.equal(res.exitCode, 0)
+  const state = JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8')).backends[ORIGIN]
+  assert.deepEqual(state.folders, { '@T1': 'P1', designing: 'P1' })
+  rmSync(dir, { recursive: true, force: true })
+})
+
 // ⭐ A FILE RECORD'S IDENTITY is its folder entry's `$uuid`, banked by the file's path — a file
 // cannot carry it (`@uniweb/file`, 2026-09-28).
 test('a file record’s entry uuid is banked by the file’s path', async () => {

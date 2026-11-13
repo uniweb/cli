@@ -868,12 +868,14 @@ test(
 const BYE = { name: 'bye', uuid: 'R2', title: 'Goodbye', body: 'Last words.\n' }
 const recordFile = (dir, name) => join(dir, 'site', 'records', 'acme', 'article', `${name}.md`)
 const mappedRecords = (dir) => JSON.parse(readFileSync(join(dir, 'site', 'sync.json'), 'utf8')).backends[ORIGIN].records || {}
+const placements = (dir) => JSON.parse(readFileSync(join(dir, 'site', 'sync.json'), 'utf8')).backends[ORIGIN].folders || {}
 
 test('⭐ a record the app removed is removed from the files by the merge, and named', { skip: !hasGit }, async () => {
   const backend = fakeBackend({ records: [HELLO, BYE] })
   const dir = await synced(backend)
   assert.ok(existsSync(recordFile(dir, 'bye')), 'control: the first pull wrote it')
   assert.ok(Object.values(mappedRecords(dir)).includes('R2'), 'control: and mapped it to the entity it is')
+  assert.ok(Object.values(placements(dir)).includes('PL-R2'), 'control: and kept its folder entry')
   backend.state.records = [HELLO]
   const r = await pullIn(dir, backend)
   assert.equal(r.exitCode, 0, r.out)
@@ -887,6 +889,10 @@ test('⭐ a record the app removed is removed from the files by the merge, and n
   const hashed = Object.keys(readSyncCache(join(dir, 'site'), ORIGIN))
   assert.ok(hashed.some((k) => /\/hello$/.test(k)), `control: the record kept is banked: ${hashed}`)
   assert.equal(hashed.some((k) => /\/bye$/.test(k)), false, `${hashed}`)
+  // …and so is the folder entry the app removed, which a push would stamp on it again, and the backend
+  // re-create: the record restored goes up in an entry of its own.
+  assert.equal(Object.values(placements(dir)).includes('PL-R2'), false, JSON.stringify(placements(dir)))
+  assert.ok(Object.values(placements(dir)).includes('PL-R1'), JSON.stringify(placements(dir)))
 })
 
 test('a record the app removed and this copy changed stops the merge, kept as the copy has it', { skip: !hasGit }, async () => {
