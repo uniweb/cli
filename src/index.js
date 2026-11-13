@@ -1568,6 +1568,9 @@ package.json it writes), syncs content, settles payment when go-live needs it
 (a browser handoff), and goes live. A published-registry foundation needs no
 release; an already-paid site opens no browser.
 
+Its pictures and videos are made ready as \`uniweb push\` makes them: a video is
+made smaller only with ffmpeg installed, with libx264 (\`uniweb doctor\` says).
+
 For a third-party host use \`uniweb deploy --host=<name>\`; to register a
 FOUNDATION on its own use \`uniweb register\` (alias \`uniweb release\`).
 
@@ -2092,6 +2095,10 @@ records are live at once on a site already published, which reads them from its 
 In a git repository a push sends what is committed. It is refused, with nothing
 written, if the site changed in the app since your last pull: run \`uniweb pull\` to
 merge those changes with yours, then push again.
+
+Pictures and videos are made ready before they go up, without their location. A
+video is made smaller only with ffmpeg installed, with libx264: \`uniweb doctor\`
+says whether this machine has it.
 
 ${colors.bright}Options:${colors.reset}
   --commit           In a git repository, commit the site's content first (-m <message>)

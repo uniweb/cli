@@ -41,6 +41,7 @@ import { discoverFoundations, discoverSites } from '../utils/discover.js'
 import { siteAround } from '../utils/pick-site.js'
 import { workspaceTypesDefinedTwice } from '../utils/workspace-types.js'
 import { checkSiteInstall } from '../utils/install-integrity.js'
+import { findVideoTools } from '../backend/prepare-video.js'
 import { editWorkspaceFilePackages } from '../utils/workspace-packages.js'
 import { findWorkspaceRoot } from '../utils/workspace.js'
 import { ignoredByRepo } from '../utils/git.js'
@@ -1364,6 +1365,54 @@ function listSome(items, n = 5) {
   if (items.length > n) log(`    ${colors.dim}…and ${items.length - n} more${colors.reset}`)
 }
 
+/** A site's local video references: `/x.mp4`, `./x.mov` and the like, in its pages, layout and records. */
+function localVideoRefs(sitePath) {
+  const refs = new Set()
+  const ref = /(?:\]\(|:\s*['"]?|\s)(\.{0,2}\/(?!\/)[^\s)'"\]]+\.(?:mp4|m4v|mov|webm))\b/gi
+  const walk = (dir) => {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (/\.(md|ya?ml|json)$/.test(entry.name)) {
+        for (const match of readFileSync(path, 'utf8').matchAll(ref)) refs.add(match[1])
+      }
+    }
+  }
+  for (const dir of ['pages', 'layout', 'records']) walk(join(sitePath, dir))
+  return [...refs]
+}
+
+/**
+ * Whether a push can make the site's videos smaller. `uniweb push` and `uniweb publish` prepare a
+ * video a page plays with this machine's `ffmpeg`, when it has `libx264`; with none, a video goes up
+ * as it is, without its location. Said only where the site has videos, and only when there is no
+ * such `ffmpeg`: the CLI ships no encoder [Diego, 2026-11-12: "Clearly we are not going to ship
+ * ffmpeg inside the CLI. That's out of the question. The cli help or `doctor` command can suggest
+ * installing it, and it can check if it's already available and use it."].
+ *
+ * @param {{ sitePath: string, siteName: string, issues: object[], tools?: object|null }} options
+ *   `tools`: what `findVideoTools` found, for a test to say
+ */
+export async function checkVideoTools({ sitePath, siteName, issues, tools }) {
+  const videos = localVideoRefs(sitePath)
+  if (videos.length === 0) return
+  const found = tools === undefined ? await findVideoTools() : tools
+  if (found) return
+  const id = 'video-encoder-none'
+  const n = videos.length
+  const message = `A push uploads this site's ${n === 1 ? 'video' : `${n} videos`} as ${n === 1 ? 'it is' : 'they are'}: this machine has no ffmpeg with libx264`
+  issues.push({ id, type: 'info', site: siteName, message })
+  info(`[${id}] ${message}`)
+  log(`    Install ffmpeg (on a Mac: ${colors.green}brew install ffmpeg${colors.reset}), and a push makes a new or changed video smaller before it goes up: H.264 at most 1920 on its long edge, about 5 Mbps at 1080p. A video already stored stays as it is.`)
+}
+
 /**
  * What a link to the site shows. A chat, a feed or a search result draws a card from a page's head
  * tags (`Page#getHeadMeta`): its image — the page's `seo.image`, else the site's — its title and its
@@ -2336,6 +2385,8 @@ async function runDoctor(args = []) {
     await checkLinkPreviews({ sitePath, siteName, issues })
     await checkFavicon({ sitePath, siteName, siteYml, issues, shouldFix, fixed })
     await checkTouchIcon({ sitePath, siteName, siteYml, issues, shouldFix, fixed })
+    // Whether a push can make its videos smaller.
+    await checkVideoTools({ sitePath, siteName, issues })
 
     // Forms need a destination, and having none is only visible on the page.
     await checkFormSubmitTarget({ sitePath, siteName, siteYml, issues })
