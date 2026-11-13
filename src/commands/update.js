@@ -48,7 +48,7 @@ import { spawn } from 'node:child_process'
 import prompts from 'prompts'
 
 import { findUniwebWorkspace, getWorkspacePackages } from '../utils/workspace.js'
-import { lockedUniwebPackages, liftCommand, liftMoves } from '../utils/lockfile-uniweb.js'
+import { lockedUniwebPackages, liftCommand, liftMoves, installBehindLockfile } from '../utils/lockfile-uniweb.js'
 import {
   readAgentsVersion,
   refreshAgentsContent,
@@ -255,6 +255,48 @@ async function liftUniwebPackages(workspaceDir, pm) {
     }
   }
   log('')
+}
+
+/**
+ * Bring node_modules to what the lockfile holds, when the declared versions are aligned and the
+ * install is not: say which packages differ, then install as the rest of this command does, `--yes`
+ * running it, a run with no terminal printing it, and otherwise asking.
+ *
+ * @returns {Promise<boolean>} whether the install ran and succeeded
+ */
+async function installToTheLockfile({ behind, installPm, workspaceDir, hasYes, nonInteractive, dryRun }) {
+  const cmd = installCmd(installPm)
+  warn("What node_modules holds isn't what the lockfile holds:")
+  for (const { name, locked, installed } of behind.slice(0, 8)) {
+    log(`  ${name}  ${installed.join(', ') || 'not installed'} → ${locked.join(', ') || 'not in the lockfile'}`)
+  }
+  if (behind.length > 8) log(`  … and ${behind.length - 8} more`)
+  log(`${colors.dim}A pull that brings a teammate's update moves the lockfile and leaves node_modules as it was.${colors.reset}`)
+  if (dryRun) {
+    log(`${colors.dim}Dry-run: would run${colors.reset} ${colors.cyan}${cmd}${colors.reset}`)
+    return false
+  }
+  let go = hasYes
+  if (!go && nonInteractive) {
+    info(`${colors.dim}Non-interactive — run the install yourself:${colors.reset} ${colors.cyan}${cmd}${colors.reset}`)
+    return false
+  }
+  if (!go) {
+    const answer = await prompts({ type: 'confirm', name: 'go', message: `Run \`${cmd}\` now?`, initial: true })
+    go = !!answer.go
+  }
+  if (!go) {
+    log(`${colors.dim}Skipped install; run${colors.reset} ${colors.cyan}${cmd}${colors.reset} ${colors.dim}to bring node_modules to the lockfile.${colors.reset}`)
+    return false
+  }
+  const code = await runCommand(cmd, workspaceDir)
+  if (code !== 0) {
+    error(`Install failed (exit ${code}).`)
+    log(`${colors.dim}To retry:${colors.reset} ${colors.cyan}${cmd}${colors.reset}`)
+    process.exit(code)
+  }
+  success('Install complete: node_modules holds what the lockfile does.')
+  return true
 }
 
 /** Run a shell command, inheriting stdio. Resolves with the exit code. */
@@ -549,6 +591,16 @@ export async function update(args = []) {
         warn(
           `No ${colors.bright}node_modules${colors.reset} in the workspace — run ${colors.cyan}${installCmd(installPm || pmToInstall(workspaceDir))}${colors.reset} to install.`
         )
+      } else {
+        // ⭐ ALIGNED IS WHAT THE PROJECT DECLARES; WHAT IS INSTALLED CAN BE OTHER. A `git pull` that
+        // brings a teammate's update moves package.json and the lockfile and leaves node_modules, so
+        // the project goes on running the CLI it had (`installBehindLockfile`). ⛔ Until 2026-11-13 this
+        // said "aligned" and installed nothing: a teammate told to pull and run `update` kept the old
+        // CLI, and its pull and push went on behaving as the old ones did.
+        const behind = installPm ? installBehindLockfile(workspaceDir, installPm) : null
+        if (behind?.length) {
+          installRan = await installToTheLockfile({ behind, installPm, workspaceDir, hasYes, nonInteractive, dryRun })
+        }
       }
       log('')
     } else {

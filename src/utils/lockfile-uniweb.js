@@ -48,41 +48,76 @@ const isUniwebPackage = (name) => typeof name === 'string' && name.startsWith('@
 export function lockedUniwebPackages(workspaceDir, pm) {
   const file = LOCKFILES[pm]
   if (!file) return null
-  const path = join(workspaceDir, file)
+  return readPackages(join(workspaceDir, file), pm, isUniwebPackage)
+}
+
+// What a package manager records of its last install, inside node_modules: pnpm a copy of the
+// lockfile it installed from, npm its hidden lockfile. Each reads as the lockfile does.
+const INSTALLED = { pnpm: 'node_modules/.pnpm/lock.yaml', npm: 'node_modules/.package-lock.json' }
+
+// The framework's packages: the CLI (`uniweb`) and each `@uniweb/*`.
+const isFrameworkPackage = (name) => name === 'uniweb' || isUniwebPackage(name)
+
+/**
+ * The framework's packages whose versions in the lockfile are not the ones the last install put in
+ * node_modules, as the package manager records that install.
+ *
+ * ⭐ A `git pull` that brings a teammate's `uniweb update` moves package.json and the lockfile, and
+ * leaves node_modules as it was, so the project goes on running the CLI and the packages it had.
+ * `update` then finds the declared versions aligned, and it has to install all the same.
+ *
+ * @param {string} workspaceDir
+ * @param {'pnpm'|'npm'|'yarn'|null} pm
+ * @returns {Array<{ name: string, locked: string[], installed: string[] }>|null} each package that
+ *   differs; [] when they agree; null when either side can't be read (nothing installed yet, yarn)
+ */
+export function installBehindLockfile(workspaceDir, pm) {
+  const file = LOCKFILES[pm]
+  if (!file || !INSTALLED[pm]) return null
+  const locked = readPackages(join(workspaceDir, file), pm, isFrameworkPackage)
+  const installed = readPackages(join(workspaceDir, INSTALLED[pm]), pm, isFrameworkPackage)
+  if (!locked || !installed) return null
+  return [...new Set([...locked.keys(), ...installed.keys()])]
+    .sort()
+    .map((name) => ({ name, locked: locked.get(name) || [], installed: installed.get(name) || [] }))
+    .filter(({ locked, installed }) => locked.join() !== installed.join())
+}
+
+function readPackages(path, pm, keep) {
   if (!existsSync(path)) return null
   try {
     const text = readFileSync(path, 'utf8')
-    return pm === 'pnpm' ? fromPnpmLock(yaml.load(text)) : fromNpmLock(JSON.parse(text))
+    return pm === 'pnpm' ? fromPnpmLock(yaml.load(text), keep) : fromNpmLock(JSON.parse(text), keep)
   } catch {
     return null
   }
 }
 
 /** `packages:` keys: `'@uniweb/core@1.6.12'` (v9), `/@uniweb/core@1.6.12(react@19.0.0)` (v6). */
-function fromPnpmLock(lock) {
+function fromPnpmLock(lock, keep) {
   const found = new Map()
   for (const key of Object.keys(lock?.packages || {})) {
     const id = key.replace(/^\//, '').replace(/\(.*$/, '')
     const at = id.lastIndexOf('@')
     if (at <= 0) continue
-    add(found, id.slice(0, at), id.slice(at + 1))
+    add(found, id.slice(0, at), id.slice(at + 1), keep)
   }
   return sorted(found)
 }
 
 /** `packages:` keys: `node_modules/@uniweb/core`, `node_modules/x/node_modules/@uniweb/core`. */
-function fromNpmLock(lock) {
+function fromNpmLock(lock, keep) {
   const found = new Map()
   for (const [key, entry] of Object.entries(lock?.packages || {})) {
     const at = key.lastIndexOf('node_modules/')
     if (at < 0 || entry?.link || !entry?.version) continue
-    add(found, key.slice(at + 'node_modules/'.length), entry.version)
+    add(found, key.slice(at + 'node_modules/'.length), entry.version, keep)
   }
   return sorted(found)
 }
 
-function add(found, name, version) {
-  if (!isUniwebPackage(name) || !version) return
+function add(found, name, version, keep) {
+  if (!keep(name) || !version) return
   if (!found.has(name)) found.set(name, new Set())
   found.get(name).add(version)
 }
