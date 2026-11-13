@@ -85,7 +85,7 @@ export function laneRoots(siteDir) {
  * ⛔ Until 2026-11-13 they counted. A teammate's commit that only refreshed
  * `locales/records/manifest.json` read as a records change, so the next pull merged from an older sync
  * point than the one the backend named, and their own published work came back as the app's: three
- * conflicts and a section twice (Sublime Hair Studio, measured 2026-11-12).
+ * conflicts and a section twice (measured on a site's pull, 2026-11-12).
  *
  * @param {string} siteDir
  * @returns {string[]}
