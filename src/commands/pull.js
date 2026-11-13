@@ -86,7 +86,6 @@ import {
   readZip,
   computeUnitHashes,
   collectUnitUuids,
-  collectQueryUuids,
   documentSchema
 } from '@uniweb/build/uwx'
 import {
@@ -100,7 +99,7 @@ import {
   deploymentFields,
   entityHashes,
   rebankSyncHashes,
-  writeQueryUuids,
+  writeQueryUuidsFrom,
   mergeBaseVersions,
   writeItemBaseVersions,
   pulledItemVersions,
@@ -110,7 +109,7 @@ import {
   writeUnitBases,
   commitWriteBacks,
   reportWriteBacks,
-  writeItemUuids,
+  writeItemUuidsFrom,
   writeFolderPlacements,
   writeHeldTypes,
   readItemBaseVersions
@@ -1268,11 +1267,12 @@ export async function pull(args = [], deps = {}) {
       pulledVersions = pulledItemVersions(siteDoc, content.itemVersions)
       // Per-item identity for the next push. Without it the backend reads our
       // records as new and re-mints every page and section row.
-      writeItemUuids(projDir, client.origin, collectUnitUuids(siteDoc))
+      // A unit the document no longer holds, removed in the app, leaves with its uuid.
+      writeItemUuidsFrom(projDir, client.origin, siteDoc)
       // The collections section's identity has no file to live in either — same
       // reason, same remedy, keyed by name. A pull is the other route by which a
       // copy can recover it (see readQueryUuids).
-      writeQueryUuids(projDir, client.origin, collectQueryUuids(siteDoc))
+      writeQueryUuidsFrom(projDir, client.origin, siteDoc)
       // Bring the media down BEFORE projecting: a newly-landed asset gains a map
       // entry, and the projection reads that map to put authored paths back. Run
       // after, and this pull's new assets would project as URLs and only restore
@@ -1320,7 +1320,7 @@ export async function pull(args = [], deps = {}) {
         // The mounts it may write into, each one the site declares writable (above).
         writableMounts: mounts.writable,
         // Where each page was before this pull, read before its identity merged the pulled document's
-        // in (`writeItemUuids`, above): a page the app moved is found where the files keep it.
+        // in (`writeItemUuidsFrom`, above): a page the app moved is found where the files keep it.
         priorItems
       })
       wrote.push(...report.pages, ...report.sections, ...report.layout)
@@ -1530,6 +1530,11 @@ export async function pull(args = [], deps = {}) {
       const syncFile = join(siteDir, 'sync.json')
       const cacheFile = join(siteDir, '.uniweb', 'backend-cache.json')
       const before = { sync: bytesOf(syncFile), cache: bytesOf(cacheFile) }
+      // The files as the person left them, before this pull writes anything back: whether a merge
+      // sets work of theirs aside. ⛔ Until 2026-11-13 it was judged after the write-back below, so a
+      // pull that changed `sync.json` (a page added or removed in the app) said "your uncommitted
+      // changes come back" to someone who had none.
+      const asTheyLeftThem = snapshotFiles(repo)
       // What this copy keeps, taken back from the stand-in: the identity the backend minted
       // (`sync.json`, before the merge, so a merge's stash carries it) and its caches.
       const syncNow = bytesOf(join(projDir, 'sync.json'))
@@ -1641,8 +1646,9 @@ export async function pull(args = [], deps = {}) {
               pin: recorded.pins.find((p) => p.at === n.at)
             }))
           }
-          // Whether anything was set aside for the merge: the files as they were, against HEAD.
-          merge.setAside = files !== repo.head
+          // Whether work of the person's was set aside for the merge: the files as they left them,
+          // against HEAD. The identity this pull wrote back is its own, and comes back with the rest.
+          merge.setAside = asTheyLeftThem !== repo.head
           merge.noBase = !force && !base
           merge.movedFrom = merge.noBase ? siteMovedFrom : null
           merge.changed = changedInFiles(repo, {

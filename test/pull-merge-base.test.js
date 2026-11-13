@@ -863,6 +863,22 @@ test(
   }
 )
 
+// ── a section the app removed ───────────────────────────────────────────────
+
+const itemIds = (dir) => JSON.parse(readFileSync(join(dir, 'site', 'sync.json'), 'utf8')).backends[ORIGIN].items || {}
+
+test('⭐ a section the app removed leaves with its file and its uuid, so a new one at its path is new', { skip: !hasGit }, async () => {
+  const backend = fakeBackend()
+  const dir = await synced(backend)
+  assert.ok(Object.values(itemIds(dir)).includes('S1'), `control: the first pull banked the section's uuid: ${JSON.stringify(itemIds(dir))}`)
+  backend.state.site = siteDoc([section('about', 'S2', ...ABOUT)])
+  const r = await pullIn(dir, backend)
+  assert.equal(r.exitCode, 0, r.out)
+  assert.equal(existsSync(join(dir, 'site', 'pages', 'home', 'welcome.md')), false, r.out)
+  assert.equal(Object.values(itemIds(dir)).includes('S1'), false, JSON.stringify(itemIds(dir)))
+  assert.ok(Object.values(itemIds(dir)).includes('S2'), JSON.stringify(itemIds(dir)))
+})
+
 // ── a record the app removed ────────────────────────────────────────────────
 
 const BYE = { name: 'bye', uuid: 'R2', title: 'Goodbye', body: 'Last words.\n' }

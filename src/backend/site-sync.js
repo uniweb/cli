@@ -1422,6 +1422,18 @@ export function writeQueryUuids(siteDir, backend, map) {
   if (!map || !Object.keys(map).length) return
   updateBackendMap(siteDir, backend, 'queries', map)
 }
+/**
+ * The query declarations' identity, by name, from a document the backend handed back (a pull's site
+ * content, or the one a push stored): written WHOLE, so a query removed in the app leaves with its
+ * `$uuid`. A document that carries no `queries` at all leaves the map as it is.
+ *
+ * ⛔ Until 2026-11-13 it was merged, so a query removed in the app kept its `$uuid`, and a new one of the
+ * same name took it on the next push: the failure `writeFolderPlacements` describes for a folder entry.
+ */
+export function writeQueryUuidsFrom(siteDir, backend, doc) {
+  if (!Array.isArray(doc?.queries)) return
+  setBackendMap(siteDir, backend, 'queries', collectQueryUuids(doc))
+}
 // Placements a recovery found missing, beside the ones this copy holds (`recoverRecordsIdentity`).
 export function writeFolderItemUuids(siteDir, backend, map) {
   if (!map || !Object.keys(map).length) return
@@ -1496,6 +1508,24 @@ export function retireUnplaced(siteDir, backend, { before, after }, { ownedBefor
 export function writeItemUuids(siteDir, backend, map) {
   if (!map || !Object.keys(map).length) return
   updateBackendMap(siteDir, backend, 'items', map)
+}
+/**
+ * The units' identity from a document the backend handed back (a pull's site content, or the one a push
+ * stored), with the paths banked before for a unit it still holds: a page the app moved keeps, beside
+ * its new path, the one its files have, which a push of that page needs while a pull holds it. A unit the
+ * document no longer holds leaves with its `$uuid`.
+ *
+ * ⛔ Until 2026-11-13 each document was merged into the map, so a page or section removed in the app kept
+ * its `$uuid` under its path, and a new one made at that path took it on the next push: the failure
+ * `writeFolderPlacements` describes for a folder entry, where the backend re-created the removed row
+ * under the old id. A document with no units leaves the map as it is.
+ */
+export function writeItemUuidsFrom(siteDir, backend, doc) {
+  const now = collectUnitUuids(doc)
+  if (!Object.keys(now).length) return
+  const held = new Set(Object.values(now))
+  const kept = Object.entries(readItemUuids(siteDir, backend)).filter(([, uuid]) => held.has(uuid))
+  setBackendMap(siteDir, backend, 'items', { ...Object.fromEntries(kept), ...now })
 }
 
 /**
@@ -2897,8 +2927,7 @@ export async function pushSyncPackages({
     // unique. Without it every push after the first re-sends the whole `collections`
     // section uuid-less and is refused.
     if (siteFinalizedDoc) {
-      const recordIds = collectQueryUuids(siteFinalizedDoc)
-      if (Object.keys(recordIds).length) writeQueryUuids(siteDir, client.origin, recordIds)
+      writeQueryUuidsFrom(siteDir, client.origin, siteFinalizedDoc)
       // ⭐ THE SERVICES THIS COPY NOW HOLDS, `{ name: $uuid }`: those the push stated and
       // those held before, as the site returned them (`heldServices`). A service added on
       // the site since this copy's last pull is left out — held, the next push would state
@@ -2941,9 +2970,10 @@ export async function pushSyncPackages({
     if (Object.keys(patch).length) writeUnitBases(siteDir, client.origin, patch)
     // The backend's post-write document carries `$uuid` per item at every nesting
     // level, so the push that just landed also re-arms identity for the next one.
-    // Replaced wholesale: an item that no longer exists must not keep a uuid that
-    // would re-target something else.
-    if (theirs) writeItemUuids(siteDir, client.origin, collectUnitUuids(theirs))
+    // An item that no longer exists must not keep a uuid that would re-target something
+    // else, so a unit the document no longer holds leaves the map (`writeItemUuidsFrom`).
+    // ⛔ This said "replaced wholesale" while the write merged, and those uuids stayed.
+    if (theirs) writeItemUuidsFrom(siteDir, client.origin, theirs)
     else {
       // ⛔ BANKING IS BEST-EFFORT AND ITS FAILURE USED TO BE SILENT — say it here,
       // because the cost lands two commands away and names something else.

@@ -49,9 +49,11 @@ import {
   pulledItemVersions,
   describeStaleKeys,
   mergeBaseVersions,
-  untakenBase
+  untakenBase,
+  writeItemUuidsFrom,
+  writeQueryUuidsFrom
 } from '../src/backend/site-sync.js'
-import { createZip, computeUnitHashes, readZip } from '@uniweb/build/uwx'
+import { createZip, computeUnitHashes, readZip, collectUnitUuids } from '@uniweb/build/uwx'
 import { readSiteIdentity } from '../src/utils/site-identity.js'
 import { readSyncPoint, writeSyncPoint } from '../src/utils/sync-point.js'
 import { execFileSync } from 'node:child_process'
@@ -3582,4 +3584,62 @@ test("⭐ a push refused for a session made for the Uniweb app says so — any o
     })
     assert.match(other.calls.note.join('\n'), /Credentials weren't accepted/, body)
   }
+})
+
+// ─── identity the backend no longer holds leaves the maps ────────────────────
+// A page, a section or a query removed in the app kept its `$uuid` in this copy's maps, and a new one
+// made at the same path or under the same name took it on the next push (the failure a folder entry
+// had, measured on a site, 2026-11-10). `writeItemUuidsFrom` and `writeQueryUuidsFrom` keep only what
+// the document the backend handed back holds.
+
+const unitDoc = (pages) => ({
+  $uuid: 'SITE',
+  $schema: '@uniweb/site-content',
+  info: { name: { en: 'S' }, foundation: '@a/base' },
+  pages: pages.map(([slug, uuid, sections]) => ({
+    $id: slug,
+    $uuid: uuid,
+    slug,
+    mode: 'page',
+    stable_id: slug,
+    ...(slug === 'home' ? { is_index: true } : {}),
+    page_sections: sections.map(([id, sUuid]) => ({ $id: id, $uuid: sUuid, stable_id: id, type: 'Section', content: { type: 'doc', content: [] } }))
+  })),
+  layout_sections: []
+})
+const seedMap = (dir, section, map) => {
+  const store = JSON.parse(readFileSync(join(dir, 'sync.json'), 'utf8'))
+  store.backends[ORIGIN][section] = map
+  writeFileSync(join(dir, 'sync.json'), JSON.stringify(store))
+}
+
+test('⭐ a unit the backend no longer holds leaves the item map; a path banked for one it holds stays', () => {
+  const dir = tmpSite()
+  bind(dir, 'SITE')
+  const doc = unitDoc([['home', 'P1', [['welcome', 'S1']]], ['about', 'P2', [['team', 'S2']]]])
+  const now = collectUnitUuids(doc)
+  assert.ok(Object.values(now).includes('P2') && Object.values(now).includes('S2'), JSON.stringify(now))
+  // Banked before: the same units, a page the app moved still known by the path its files have, and a
+  // section the app removed.
+  seedMap(dir, 'items', { ...now, 'pages/2-about/page.yml': 'P2', 'pages/home/gone.md': 'S9' })
+  writeItemUuidsFrom(dir, ORIGIN, doc)
+  const items = readItemUuids(dir, ORIGIN)
+  assert.equal(Object.values(items).includes('S9'), false, JSON.stringify(items))
+  assert.equal(items['pages/2-about/page.yml'], 'P2', 'the path its files keep a held page at stays')
+  for (const [path, uuid] of Object.entries(now)) assert.equal(items[path], uuid)
+  // CONTROL: a document with no units says nothing about them, and leaves the map as it is.
+  writeItemUuidsFrom(dir, ORIGIN, { $uuid: 'SITE', pages: [] })
+  assert.deepEqual(readItemUuids(dir, ORIGIN), items)
+  rmSync(dir, { recursive: true, force: true })
+})
+
+test('⭐ the query map is the document\'s queries, whole; a document without them leaves it as it is', () => {
+  const dir = tmpSite()
+  bind(dir, 'SITE')
+  seedMap(dir, 'queries', { articles: 'Q1', gone: 'Q9' })
+  writeQueryUuidsFrom(dir, ORIGIN, { queries: [{ name: 'articles', $uuid: 'Q1' }, { name: 'people', $uuid: 'Q2' }] })
+  assert.deepEqual(readQueryUuids(dir, ORIGIN), { articles: 'Q1', people: 'Q2' })
+  writeQueryUuidsFrom(dir, ORIGIN, { pages: [] })
+  assert.deepEqual(readQueryUuids(dir, ORIGIN), { articles: 'Q1', people: 'Q2' })
+  rmSync(dir, { recursive: true, force: true })
 })
