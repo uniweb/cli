@@ -53,15 +53,38 @@ export const sentRoots = (siteDir) => siteRoots(siteDir)
 /**
  * What each lane of a push carries, as roots: the folder lane the records — their files, and their
  * translations — and the content lane everything else a pull writes, media (`public/`) and the
- * mounts the site's repository holds included. ⚠️ `locales` stays whole on the content side, record
- * translations with it: a root too many there costs a less precise base, never a wrong one.
+ * mounts the site's repository holds included. `locales` stays whole on the content side, record
+ * translations with it. ⛔ A root too many there is NOT harmless: a pull's base is a lane's commit only
+ * where every lane's roots hold the same in both, so a root too many takes an older base, and an older
+ * base can merge a person's own pushed work back as the app's, or drop a change they took back
+ * (`utils/sync-point.js`). So compare these with `unsentPaths` left out.
  */
 export function laneRoots(siteDir) {
-  const records = rootsOf(siteDir).find((r) => r.kind === 'records').path
+  const roots = rootsOf(siteDir)
+  const records = roots.find((r) => r.kind === 'records').path
+  const translations = roots.find((r) => r.kind === 'translations').path
   return {
     content: siteRoots(siteDir).filter((r) => r !== records),
-    records: [records, 'locales/records'],
+    records: [records, `${translations}/records`],
   }
+}
+
+/**
+ * The files under the site's roots that a push never sends — its translation tools' own, such as the
+ * list `i18n extract` refreshes (`unsentTranslationFiles`, `@uniweb/build`) — as paths from the site,
+ * `*` for one directory. Left out wherever a copy is compared with what the backend holds: the base a
+ * pull merges from, what `uniweb status` says waits to be pushed, and what a pull says it kept.
+ *
+ * ⛔ Until 2026-11-13 they counted. A teammate's commit that only refreshed
+ * `locales/records/manifest.json` read as a records change, so the next pull merged from an older sync
+ * point than the one the backend named, and their own published work came back as the app's: three
+ * conflicts and a section twice (Sublime Hair Studio, measured 2026-11-12).
+ *
+ * @param {string} siteDir
+ * @returns {string[]}
+ */
+export function unsentPaths(siteDir) {
+  return rootsOf(siteDir).flatMap((r) => r.unsent || [])
 }
 
 /**

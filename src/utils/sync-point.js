@@ -365,7 +365,8 @@ export function newestBase(repo, candidates) {
  * second-guessed here.
  *
  * ⛔ ONE MERGE TAKES ONE BASE FOR EVERY LANE, and what the backend names is exact for its own
- * lane only. A commit one lane names that is newer than another lane's, with that lane's files
+ * lane only. Lanes are compared by what a push sends: `unsent` (`utils/site-roots.js::unsentPaths`)
+ * names the files it never does, a translation tool's list among them. A commit one lane names that is newer than another lane's, with that lane's files
  * different, would read what that lane lacks — a push of it the backend refused while it took the
  * other — as the backend's removal, and the merge would drop it. So it is not a base. A lane is
  * held to the commit it names, read through the commit its push made of what it wrote back
@@ -377,7 +378,7 @@ export function newestBase(repo, candidates) {
  * it, and each was dropped: a pull merged from the site's first push, measured by flows against a
  * real backend — a reverted change came back (A18), a re-wrap and six pushed edits conflicted.
  */
-export function baseFor(repo, { known = [], lanes = [], origin, siteUuid }) {
+export function baseFor(repo, { known = [], lanes = [], origin, siteUuid, unsent = [] }) {
   const held = (s) => Boolean(s) && canBeBase(repo, s)
   const fallback = newestBase(repo, known)
   const refs = lanes.map(({ source, roots }) => ({
@@ -386,7 +387,7 @@ export function baseFor(repo, { known = [], lanes = [], origin, siteUuid }) {
   }))
   const named = lanes.flatMap(({ source }) => (held(source) ? [source, recordedAfter(repo, source, { origin, siteUuid })] : []))
   const taken = named.filter(Boolean).filter((s) =>
-    refs.every(({ ref, roots }) => Boolean(ref) && (s === ref || isAncestor(repo, s, ref) || !differsIn(repo, ref, s, roots)))
+    refs.every(({ ref, roots }) => Boolean(ref) && (s === ref || isAncestor(repo, s, ref) || !differsIn(repo, ref, s, roots, unsent)))
   )
   return newestBase(repo, [...known, ...taken])
 }
@@ -410,10 +411,18 @@ export function recordedAfter(repo, sha, { origin, siteUuid }) {
   return null
 }
 
+/**
+ * The pathspecs for the roots, from the repository's top, with the files a push never sends left out
+ * (`unsent`, paths from the site, `*` for one directory).
+ */
+function pathspecs(repo, roots, unsent = []) {
+  return [...roots.map((r) => underTop(repo, r)), ...unsent.map((u) => `:(exclude,glob)${underTop(repo, u)}`)]
+}
+
 /** Does the content under `roots` differ between two commits? Anything but "no" counts as yes. */
-function differsIn(repo, a, b, roots) {
+function differsIn(repo, a, b, roots, unsent = []) {
   try {
-    git(repo.top, ['diff', '--quiet', a, b, '--', ...roots.map((r) => underTop(repo, r))])
+    git(repo.top, ['diff', '--quiet', a, b, '--', ...pathspecs(repo, roots, unsent)])
     return false
   } catch {
     return true
@@ -1063,10 +1072,11 @@ export function fileAt(repo, rev, path) {
 
 /**
  * The files under the roots that differ from what `rev` holds there — changed, deleted, or
- * new and not ignored — relative to the site, one outside it (a mounted folder's) included.
+ * new and not ignored — relative to the site, one outside it (a mounted folder's) included. `unsent`:
+ * files a push never sends (`unsentPaths`), which no backend can lack.
  */
-export function filesDifferFrom(repo, rev, roots) {
-  const full = roots.map((r) => underTop(repo, r))
+export function filesDifferFrom(repo, rev, roots, unsent = []) {
+  const full = pathspecs(repo, roots, unsent)
   try {
     const changed = zlist(git(repo.top, ['diff', '--name-only', '-z', '--no-renames', rev, '--', ...full]))
     const added = zlist(git(repo.top, ['ls-files', '--others', '--exclude-standard', '-z', '--', ...full]))

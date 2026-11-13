@@ -321,6 +321,25 @@ test('control: in git with nothing changed, nothing waits to be pushed', { timeo
   assert.ok(!doc.next.some((s) => s.command?.startsWith('npx uniweb push')))
 })
 
+test("⭐ a translation tool's list, refreshed and committed, is nothing the backend lacks — a translation is", { timeout: 60_000 }, async () => {
+  const backend = movingBackend()
+  const dir = await syncedRepo(backend)
+  for (const list of ['locales/manifest.json', 'locales/records/manifest.json']) {
+    mkdirSync(join(dir, list, '..'), { recursive: true })
+    writeFileSync(join(dir, list), '{ "version": "1.0", "units": { "a1b2c3d4": { "source": "Hello" } } }\n')
+  }
+  git(dir, ['add', '-A'])
+  git(dir, ['commit', '-q', '-m', 'refresh the translation lists'])
+  let unpushed = checkOf(docOf(await status(dir, ['--personal', '--json'], { session: loggedIn, respond: backend.respond })), 'app.unpushed')
+  assert.equal(unpushed.state, 'ok', JSON.stringify(unpushed))
+  // CONTROL: a translation beside them is something the backend lacks.
+  writeFileSync(join(dir, 'locales', 'es.json'), '{ "a1b2c3d4": "Hola" }\n')
+  git(dir, ['add', '-A'])
+  git(dir, ['commit', '-q', '-m', 'a translation'])
+  unpushed = checkOf(docOf(await status(dir, ['--personal', '--json'], { session: loggedIn, respond: backend.respond })), 'app.unpushed')
+  assert.deepEqual(unpushed.files, ['locales/es.json'], JSON.stringify(unpushed))
+})
+
 test('⭐ a newer Uniweb is named with the one way to take it — and never called breaking', { timeout: 60_000 }, async () => {
   const run = await status(project(), ['--personal'], { session: loggedIn, respond: answering({ npm: '99.0.0' }) })
   const out = plain(run.output)

@@ -81,7 +81,7 @@ import {
   siteTreeIn,
   unmergedPaths
 } from '../utils/sync-point.js'
-import { submoduleMountRoots, writableMounts, refusedMountLines, heldMountLines } from '../utils/site-roots.js'
+import { submoduleMountRoots, writableMounts, refusedMountLines, heldMountLines, unsentPaths } from '../utils/site-roots.js'
 import { aheadBehind, remoteMoved, upstreamOf } from '../utils/git.js'
 import { mountedRepositories, askRemote, standing, mountName, short } from '../utils/mounted-repositories.js'
 import { getLatestVersion, isBehind } from '../utils/update-check.js'
@@ -401,7 +401,9 @@ async function gitChecks(siteDir, { offline, origin, mounts = [] }) {
   let localFiles = null
   const point = readSyncPoint(siteDir, origin)
   if (repo.head && point && isAncestor(repo, point) && siteTreeIn(repo, point)) {
-    localFiles = filesDifferFrom(repo, point, [...sentRoots(siteDir), ...submoduleMountRoots(siteDir)])
+    // ⛔ Not the files a push never sends, which no backend can lack: a refreshed translation list was
+    // counted among "changes the backend does not have yet" until 2026-11-13.
+    localFiles = filesDifferFrom(repo, point, [...sentRoots(siteDir), ...submoduleMountRoots(siteDir)], unsentPaths(siteDir))
   }
 
   const upstream = upstreamOf(siteDir)

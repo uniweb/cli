@@ -816,6 +816,53 @@ test(
   }
 )
 
+// ── a commit that changed only a translation tool's list ─────────────────────
+
+// A project synced and pushed (the folder lane names that push), then its translation list refreshed
+// (what `i18n extract` writes, and a push never sends) and a page edited, wrapped as its author wraps
+// it, and pushed — the content lane names that. The backend holds the page as it writes it, on one line.
+async function listRefreshedThenPushed({ change = 'locales/records/manifest.json' } = {}) {
+  const backend = fakeBackend({ records: [HELLO] })
+  const dir = await synced(backend)
+  const folderPush = git(dir, 'rev-parse', 'HEAD').trim()
+  mkdirSync(join(dir, 'site', 'locales', 'records'), { recursive: true })
+  writeFileSync(join(dir, 'site', change), '{ "version": "1.0", "units": { "a1b2c3d4": { "source": "Hello" } } }\n')
+  commitAll(dir, 'refresh the translation list')
+  edit(dir, 'pages/home/welcome.md', 'We sell furniture.', 'We sell furniture\nand lamps.')
+  commitAll(dir, 'a page edit')
+  welcomeEdited(backend, WELCOME[0], 'We sell furniture and lamps.')
+  backend.state.source = git(dir, 'rev-parse', 'HEAD').trim()
+  backend.state.folderSource = folderPush
+  return { backend, dir }
+}
+
+test(
+  "⭐ a commit that changed only a translation tool's list holds what the backend does — the content lane's commit is still the base",
+  { skip: !hasGit },
+  async () => {
+    for (const list of ['locales/records/manifest.json', 'locales/manifest.json']) {
+      const { backend, dir } = await listRefreshedThenPushed({ change: list })
+      const r = await pullIn(dir, backend)
+      assert.equal(r.exitCode, 0, `${list}: ${r.out}`)
+      // Merged from the commit the backend named, the person's own pushed edit is no change of the app's:
+      // nothing to merge, and the page keeps the author's writing.
+      assert.match(r.out, /Your files already hold what https:\/\/uniweb\.app has\./, `${list}: ${r.out}`)
+      assert.match(read(dir, 'pages/home/welcome.md'), /We sell furniture\nand lamps\./)
+    }
+  }
+)
+
+test(
+  'CONTROL — a record translation changed in that commit is a records change: the content lane names no base for it',
+  { skip: !hasGit },
+  async () => {
+    const { backend, dir } = await listRefreshedThenPushed({ change: 'locales/records/es.json' })
+    const r = await pullIn(dir, backend)
+    // An older base: the backend's one-line writing and the author's wrapping meet as a conflict.
+    assert.doesNotMatch(r.out, /Your files already hold what https:\/\/uniweb\.app has\./, r.out)
+  }
+)
+
 // ── a push that wrote ids back ──────────────────────────────────────────────
 
 // A project synced whose record was pushed for the first time: the push was made from a commit

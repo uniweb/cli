@@ -117,7 +117,7 @@ import {
   readItemBaseVersions
 } from '../backend/site-sync.js'
 import { resolveWorkspace } from '../backend/workspace.js'
-import { siteRoots, sentRoots, laneRoots, writableMounts, refusedMountLines, heldMountLines, levelsAboveRepository } from '../utils/site-roots.js'
+import { siteRoots, sentRoots, laneRoots, unsentPaths, writableMounts, refusedMountLines, heldMountLines, levelsAboveRepository } from '../utils/site-roots.js'
 import {
   repoOf,
   mergeInProgress,
@@ -1189,7 +1189,9 @@ export async function pull(args = [], deps = {}) {
         ...(taken(folderLane) ? [{ source: folderLane.source, roots: rootsOfLanes.records }] : [])
       ],
       origin: client.origin,
-      siteUuid: siteContentUuid
+      siteUuid: siteContentUuid,
+      // Files a push never sends: a commit that changed only those holds what the backend does.
+      unsent: unsentPaths(siteDir)
     })
     // A probe with no base cannot tell the backend's changes from this copy's: onto HEAD, it says
     // what differs, and which way is the person's to read (`noBase`, below). ⛔ Until 2026-10-26
@@ -1746,7 +1748,7 @@ export async function pull(args = [], deps = {}) {
       // ⛔ Nothing changed in the files is not the files holding what the backend has: what
       // this copy changed since the base, the backend lacks. Until 2026-10-18 it said they
       // held it either way — measured over a revert the backend did not have yet.
-      const ahead = merge.theirs ? filesDifferFrom(repo, merge.theirs, roots) : []
+      const ahead = merge.theirs ? filesDifferFrom(repo, merge.theirs, roots, unsentPaths(siteDir)) : []
       if (!ahead.length) note(`Your files already hold what ${client.origin} has.`)
       else {
         note(`Nothing new from ${client.origin}. ${ahead.length} file(s) here hold changes it does not have yet — \`uniweb push\` sends them:`)
