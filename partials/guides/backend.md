@@ -43,6 +43,16 @@ await writer.remove(itemId)
 - Ordering is the server's; never compute an order number.
 - `writer.conflict` is reported, not retried — a retry would overwrite a change nobody looked at. Tell the person.
 
+## Rich text a member writes
+
+```jsx
+import { useRichTextEditor, RichTextContent } from '@uniweb/api/rich-text'   // TipTap 3.x, an optional peer: install it, load the editor lazily
+const editor = useRichTextEditor({ value, onChange })                         // onChange(doc): each change as a backend stores it
+<RichTextContent editor={editor} />                                           // your toolbar: editor.chain().focus().toggleBold().run()
+```
+
+Its document model is the stored vocabulary: it edits what TipTap's kit does, with a divider for the rule and no underline, and keeps everything else a stored text holds. Don't configure TipTap yourself for a rich-text field: what it makes beyond the vocabulary is left out when saved, which the mock prints.
+
 ## Translated fields
 
 A `localized` field holds `{ en: '…', fr: '…' }` or one plain value for every language; a read answers in the page's language. Never write that one value back as the whole field — it becomes every language's value.
