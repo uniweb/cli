@@ -143,7 +143,7 @@ const { signIn, completeChallenge, resendVerification } = useSignIn()   // usern
 const code = useEmailSignIn()            // where options.email_code: request({ email }) → confirm(code); one door for new and returning members
 ```
 
-Draw each way only where `options` states it. The backend answers an emailed code's request alike for every address, and the confirming code makes the account of an address that has none. Every refusal names `error.extensions.reason` with the values a message needs (`password_too_short` and `min_length`, `email_code_wrong` and `tries_left`, `email_code_throttled` and `retry_after_seconds`, …): `ACCOUNT_REASON` in `@uniweb/api/wire` lists them. The words are the foundation's, from content.
+Draw each way only where `options` states it. After a provider, `useSignIn().returned` says what came back (`signed-in`, `link`, `error` with its `reason`); after signing in, go to `signInReturnPath()` — the `?next=` path, never another site — or your default. `useFeedback().send({ message, kind, rating })` sends a member's feedback to the site's administrators. The backend answers an emailed code's request alike for every address, and the confirming code makes the account of an address that has none. Every refusal names `error.extensions.reason` with the values a message needs (`password_too_short` and `min_length`, `email_code_wrong` and `tries_left`, `email_code_throttled` and `retry_after_seconds`, …): `ACCOUNT_REASON` in `@uniweb/api/wire` lists them. The words are the foundation's, from content.
 
 ## Acting as an administrator
 
