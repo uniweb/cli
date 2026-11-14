@@ -56,7 +56,7 @@ await writer.update(item.id, { ...item.data, bio: 'Bonjour' }, { language: 'fr' 
 
 ## Permissions are the server's; your UI is a courtesy
 
-Gate controls on what the viewer may do — a record's `can_edit` from a single-entity read — but never rely on that for safety: a foundation runs with the viewer's authority, so hiding a button hides a button. Not on `viewer.roles` alone: a session holds its roles as a reader's until elevated, so a gate on `system_admin` shows the operator nothing until then. Draw a role-acting control from `useElevation().rolesInFull` and let the record answer.
+Gate controls on what the viewer may do — `mayDo(entry, 'edit' | 'delete' | 'share')` on a record or a list row, `useMayCreate({ schemas })` for a type, each `'now'`, `'once-elevated'` (confirm it is them first, then act), `'no'` or `null` (not told: offer it) — but never rely on that for safety: a foundation runs with the viewer's authority, so hiding a button hides a button. Not on `viewer.roles` alone: a session holds its roles as a reader's until elevated, so a gate on `system_admin` shows the operator nothing until then. Draw a role-acting control from `useElevation().rolesInFull` and let the record answer.
 
 What protects content is the **entry**: a member writes their own entries and not another's, enforced by the store. **Every type starts closed**: the operator adds its entries, and anyone else only where the site's `blueprint.yml` opens it (below). A schema protects how an item changes and who reads an entry:
 
