@@ -135,6 +135,16 @@ const { notifications, markRead, dismiss, markAllRead } = useNotifications()   /
 
 Each row is as the backend sends it (`kind`, `payload`, `read_at`, …). For `kind: 'entity_shared'`, `payload` is `{ entity_uuid, entity_model, permission, actor_handle }`. The kinds grow: draw those you know, pass over the rest. There is no push: poll the count, and read the list when it is opened.
 
+## Signing in and up
+
+```jsx
+const { options } = useSignInOptions()   // providers, signup, email_sign_in; password: { min_length } and email_code: { length, lifetime_minutes }, each present only while offered
+const { signIn, completeChallenge, resendVerification } = useSignIn()   // username, @handle or address
+const code = useEmailSignIn()            // where options.email_code: request({ email }) → confirm(code); one door for new and returning members
+```
+
+Draw each way only where `options` states it. The backend answers an emailed code's request alike for every address, and the confirming code makes the account of an address that has none. Every refusal names `error.extensions.reason` with the values a message needs (`password_too_short` and `min_length`, `email_code_wrong` and `tries_left`, `email_code_throttled` and `retry_after_seconds`, …): `ACCOUNT_REASON` in `@uniweb/api/wire` lists them. The words are the foundation's, from content.
+
 ## Acting as an administrator
 
 An administrator's session reads what their role reaches and changes nothing through the role until they confirm it is them; their own records they edit as always.
@@ -144,6 +154,7 @@ const { available, elevated, until, elevate, lower, error } = useElevation()
 // available: the account holds a role that does more than read — offer it only then
 // elevate({ password, code }) — code when the account has a second factor; refusal: error.kind === 'auth'
 // elevated turns false at `until`; lower() ends early; elevateWithProvider(provider) for a passwordless account
+// ways: { password, emailCode } — an account made by an emailed code: requestCode(), then elevateWithCode({ code })
 ```
 
 While elevated, `viewer.roles` names the role and every record read before is read again. Nothing says whether the account has a second factor — offer the code field. It does not open the backend's administration — the Admin link does:
@@ -157,14 +168,14 @@ const { adminHref } = useSession()
 
 ## Mailed links, invitations, access, units
 
-**Mailed links** (sign-up confirmation `?verify=`, password reset `?reset=`, invitation `?offer=`) arrive at the site's root; the landing page finishes the step:
+**Mailed links** (sign-up confirmation `?verify=`, password reset `?reset=`, invitation `?offer=`, an emailed code's sign-in `?signin=`) arrive at the site's root; the landing page finishes the step:
 
 ```jsx
 const { step, status, result, error, confirm } = useMailedLink()
-// step: null | 'verify' | 'reset' | 'offer'   status: 'idle' | 'working' | 'done' | 'error'
+// step: null | 'verify' | 'reset' | 'offer' | 'signin'   status: 'idle' | 'working' | 'done' | 'error'
 ```
 
-`verify` finishes by itself. `reset` waits for `confirm({ new_password })` (`error.extensions.reason === 'password_too_short'`; the link works again). `offer` waits for a sign-in then claims; `result` is counts `{ invitations, grants }`; `error.kind === 'absent'` means unknown, revoked or used, alike — one sentence, no cause. Render it where the root renders (a header or layout). Never copy the token anywhere.
+`verify` finishes by itself. `reset` waits for `confirm({ new_password })` (`error.extensions.reason === 'password_too_short'`; the link works again). `offer` waits for a sign-in then claims; `result` is counts `{ invitations, grants }`; `error.kind === 'absent'` means unknown, revoked or used, alike — one sentence, no cause. `signin` waits for a click: `confirm()` signs in — never on load, which a mail scanner's prefetch would spend. Render it where the root renders (a header or layout). Never copy the token anywhere.
 
 **Invitations** wait for the member's answer, mailed link or not:
 
