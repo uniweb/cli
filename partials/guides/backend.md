@@ -107,6 +107,34 @@ integrations:                # by a mapping the foundation declares in src/mappi
 - A team's `all: edit` reaches the entries once the member confirms it is them (below); a team's `add` and `members: edit` need no confirming. Who is in a team, and roles, are never the file's.
 - A static build carries none of it. A pull writes it back here, never into `site.yml`.
 
+## Your admin area, and the admin app
+
+A site with a backend is a solution: public pages, a members' area for each role, and an **admin area** for the people who run it — its staff, its instructors. You build the admin area: section types of your foundation, branded, in the solution's own words, with what follows. The **admin app** is the backend's own administration, the same for every site: the payment account, the teams and who is in them, roles, an integration's address and keys, the store's offerings and coupons. Never rebuild those; link to it (`adminHref`, below). The docs' Building a Solution page walks the whole path.
+
+## Selling
+
+```jsx
+import { useStore, offeringState, useEntitlements, useHolders } from '@uniweb/api'
+const { status, store, offerings, checkout, checking } = useStore({ entity: course.uuid })   // 'none': the site sells nothing
+offeringState(offering, store)   // 'owned' · 'take' (a free one-off) · 'not-ready' (payments not connected) · 'buy'
+await checkout(offering)         // sends the buyer to pay; a free one-off is held at once: { url: null, held: true }
+```
+
+- The owner sets the offerings, and connects their own Stripe account, in the admin app. `price` is in the currency's smallest unit. Nobody signed in → `absent`: a visitor reads prices from the store's catalog through a public query the owner opens.
+- After paying, the buyer lands on `successUrl` (this page by default). The purchase is written when the payment's notice arrives, so the page there calls `refresh()` until the offering reads `owned`.
+- A purchase lets the buyer read the record, and through it what its `sold_with` references point to: `useEntity({ schema: '@/lesson', uuid, via: course.uuid })`.
+- `useEntitlements()` — what the viewer holds, for "My courses". `useHolders({ schema, uuid })` — who holds a record, for a roster: its owner's or an `admin`'s to read, `forbidden` for anyone else, so draw nothing.
+- Why a checkout was refused: `error.extensions.reason` — `payments_not_ready`, `coupon_not_applicable` (with `cause`), `not_for_sale`.
+
+## The inbox
+
+```jsx
+const { unread } = useNotifications({ every: 60_000, list: false })              // a badge, polled lightly
+const { notifications, markRead, dismiss, markAllRead } = useNotifications()   // the rows, when opened
+```
+
+Each row is as the backend sends it (`kind`, `payload`, `read_at`, …). For `kind: 'entity_shared'`, `payload` is `{ entity_uuid, entity_model, permission, actor_handle }`. The kinds grow: draw those you know, pass over the rest. There is no push: poll the count, and read the list when it is opened.
+
 ## Acting as an administrator
 
 An administrator's session reads what their role reaches and changes nothing through the role until they confirm it is them; their own records they edit as always.
@@ -185,4 +213,4 @@ const blueprint = readBlueprint(fileURLToPath(new URL('..', import.meta.url)))  
 export default createMockBackend({ seed, blueprint }).fetch
 ```
 
-`uniweb dev` answers the `backend` service with it at an address on its own origin (cookies behave as in production). Write no address of your own: under `services:` an address means a backend you run. The mock begins as a backend started from the site does: every type closed until the blueprint opens it, its `signup`, its teams (a seeded account names its own, `teams: ['sales']`). It **enforces** those, entry ownership and `append_only`; it doesn't model public queries, `readable_with`, `sold_with`, second factors or password rules. Mail it would send prints in the terminal with its link on the site's root. Seed `offers: [{ email, invitations: 1 }]` to try an invitation; a seeded entity takes `grants: { member: 'read' }`; `units: [{ handle, parent?, members, floor? }]` gives a create somewhere to land. The seed names your own types `@/track`. State is in memory; restart to reset. `uniweb create my-event --template conference` is a worked example.
+`uniweb dev` answers the `backend` service with it at an address on its own origin (cookies behave as in production). Write no address of your own: under `services:` an address means a backend you run. The mock begins as a backend started from the site does: every type closed until the blueprint opens it, its `signup`, its teams (a seeded account names its own, `teams: ['sales']`). It **enforces** those, entry ownership and `append_only`, and lets a buyer read through what they hold to what its `sold_with` references point to; it doesn't model public queries, `readable_with`, second factors or password rules. Mail it would send prints in the terminal with its link on the site's root. Seed `offers: [{ email, invitations: 1 }]` to try an invitation; a seeded entity takes `grants: { member: 'read' }`; `units: [{ handle, parent?, members, floor? }]` gives a create somewhere to land. `store: { info, offerings: [{ entry: <a seeded uuid>, price }] }`, `coupons`, `entitlements: [{ username, entity }]` and `notifications: [{ to, from?, payload }]` try selling and the inbox: a priced checkout opens a payment page of the mock's own, which takes no payment, and giving someone access adds a row to their inbox. The seed names your own types `@/track`. State is in memory; restart to reset. `uniweb create my-event --template conference` is a worked example.
