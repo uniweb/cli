@@ -214,6 +214,8 @@ const { units } = useUnits()   // [{ unit, id, handle?, name?, parent?, depth, p
 await createEntity({ schema: '@/submission', unit: course.unit, items: [...] })
 ```
 
+**A unit's staff**, for its administrator on an elevated session (`absent` before): `useUnitStaff({ unit })` lists the roles and `give({ account, role })` / `take(…)` them (`content_reader`, `content_editor`, `unit_admin` — the last only to someone placed in the unit, with a second factor), and `archive()` / `restore()` the unit, whose content then reads and changes for no one (`unit_archived`). `useUnitEntryGrants({ unit, schema })` gives a type's entries there to `{ account }`, `{ team }` or `{ members: true }`.
+
 Nested items in one create: give an item `uuid: uuidv7()` and a later item names it as `parent` (`{ section: 'degrees/thesis', parent: degree, data }`); those uuids serve the write alone.
 
 ## A backend on your machine
