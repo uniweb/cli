@@ -120,7 +120,7 @@ offeringState(offering, store)   // 'owned' · 'take' (a free one-off) · 'not-r
 await checkout(offering)         // sends the buyer to pay; a free one-off is held at once: { url: null, held: true }
 ```
 
-- The owner sets the offerings, and connects their own Stripe account, in the admin app. `price` is in the currency's smallest unit. Nobody signed in → `absent`: a visitor reads prices from the store's catalog through a public query the owner opens.
+- The owner sets the offerings, and connects their own Stripe account, in the admin app. `price` is in the currency's smallest unit. Nobody signed in → `absent`: the store is a signed-in member's to read.
 - After paying, the buyer lands on `successUrl` (this page by default). The purchase is written when the payment's notice arrives, so the page there calls `refresh()` until the offering reads `owned`.
 - A purchase lets the buyer read the record, and through it what its `sold_with` references point to: `useEntity({ schema: '@/lesson', uuid, via: course.uuid })`.
 - `useEntitlements()` — what the viewer holds, for "My courses". `useHolders({ schema, uuid })` — who holds a record, for a roster: its owner's or an `admin`'s to read, `forbidden` for anyone else, so draw nothing.
