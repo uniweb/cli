@@ -9,7 +9,7 @@ import { readDevArgs } from '../src/commands/dev.js'
 import { checkFlags } from '../src/utils/flag-guard.js'
 
 test('`--port 5199` is a port, not a site named 5199', () => {
-  assert.deepEqual(readDevArgs(['--port', '5199']), { site: null, port: 5199, status: false, stop: false })
+  assert.deepEqual(readDevArgs(['--port', '5199']), { site: null, port: 5199, status: false, stop: false, published: false })
   assert.equal(readDevArgs(['--port=5199']).port, 5199)
 })
 

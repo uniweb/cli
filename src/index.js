@@ -1672,6 +1672,12 @@ ${colors.bright}Usage:${colors.reset}
   uniweb dev --port <n>       On that port, or not at all
   uniweb dev --status         Print the running dev server's address
   uniweb dev --stop           Stop the running dev server
+  uniweb dev --published      This copy, against the services of the site as published
+
+\`--published\` serves your foundation and pages, with live reload, against
+the services of the site as you published it to the backend you are logged
+in to: members sign in to its real backend, and pages show the records its
+visitors see. Without it, \`$devBackend\` and your record files answer.
 
 The dev server takes a free port and says where it is: once it listens,
 \`dev\` prints \`Serving <site> at <url>\`. Don't assume a port: another

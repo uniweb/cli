@@ -15,6 +15,15 @@
  *   uniweb dev --port <n>       On that port, or not at all
  *   uniweb dev --status         Print the running dev server's address
  *   uniweb dev --stop           Stop the running dev server
+ *   uniweb dev --published      This copy, against the services of the site as published
+ *
+ * ⭐ `--published` SERVES THE WORKING COPY AGAINST THE SITE AS PUBLISHED. Its foundation and pages
+ * are this copy's, with live reload; its services — its own backend, its records, its forms — are
+ * the published site's, read from the page the host serves and forwarded by the dev server, so a
+ * member signs in to the real site backend and a page shows the records a visitor sees, the
+ * entries its public queries open included (`backend/site-published.js`). A flag, not a key in
+ * `site.yml`, because it needs a published site, and a committed key would make every copy's
+ * `uniweb dev` need one.
  *
  * ⭐ THE DEV SERVER SAYS WHERE IT IS; NOTHING GUESSES. It takes a free port (Vite moves past a
  * busy one), and once it listens, the server `dev` starts — only that one — records the address
@@ -88,7 +97,7 @@ const VALUE_FLAGS = ['--site', '--port', '--org']
  * whether to report on the running server or stop it rather than start one.
  *
  * @param {string[]} args
- * @returns {{ site: string|null, port: number|null, status: boolean, stop: boolean, error?: string }}
+ * @returns {{ site: string|null, port: number|null, status: boolean, stop: boolean, published: boolean, error?: string }}
  */
 export function readDevArgs(args) {
   let positional = null
@@ -102,7 +111,8 @@ export function readDevArgs(args) {
     site: typeof siteFlag === 'string' ? siteFlag : positional,
     port: null,
     status: args.includes('--status'),
-    stop: args.includes('--stop')
+    stop: args.includes('--stop'),
+    published: args.includes('--published')
   }
   const port = readFlagValue(args, '--port')
   if (port !== undefined) {
@@ -114,6 +124,9 @@ export function readDevArgs(args) {
   }
   if (wanted.status && wanted.stop) {
     return { ...wanted, error: '`--status` and `--stop` ask for different things; pass one.' }
+  }
+  if (wanted.published && (wanted.status || wanted.stop)) {
+    return { ...wanted, error: '`--published` starts a dev server, and `--status` and `--stop` ask about the running one; pass one.' }
   }
   return wanted
 }
@@ -217,7 +230,11 @@ export async function dev(args = []) {
       process.exit(1)
     }
     console.error(`${GREEN}✓${RESET} ${site.name} is already being served at ${CYAN}${running.url}${RESET} (pid ${running.pid}).`)
-    console.error('  Stop it with: uniweb dev --stop')
+    console.error(
+      wanted.published
+        ? '  To serve it with --published instead, stop it first: uniweb dev --stop'
+        : '  Stop it with: uniweb dev --stop'
+    )
     return
   }
 
@@ -252,6 +269,28 @@ export async function dev(args = []) {
     console.error(
       `${DIM}→ Previewing with ${asked.preview.foundation.ref}, served by ${asked.preview.backend}${RESET}`
     )
+  }
+  // ⭐ `--published`: the services of the site as published, read from the page its host serves,
+  // for this dev server alone (`backend/site-published.js`).
+  if (wanted.published) {
+    const { readSitePublished, isOnThisMachine } = await import('../backend/site-published.js')
+    const got = await readSitePublished({ siteDir: sitePath, args })
+    if (got.refused) {
+      console.error(`${RED}✗${RESET} ${got.refused[0]}`)
+      for (const line of got.refused.slice(1)) console.error(`  ${line}`)
+      process.exit(1)
+    }
+    const { PUBLISHED_ENV, encodePublished } = await import('@uniweb/build/site')
+    env = { ...env, [PUBLISHED_ENV]: encodePublished(got.published) }
+    const names = Object.keys(got.published.services)
+    console.error(
+      `${DIM}→ This copy, against the site as published at ${got.published.site}: ${names.join(', ') || 'no services'}${RESET}`
+    )
+    if (!isOnThisMachine(got.published.site)) {
+      console.error(
+        `${YELLOW}⚠${RESET} That site is not on this machine, so what you do here reads and changes its real data.`
+      )
+    }
   }
   // That port or none: the dev server refuses to move past it (`dev-server.js`).
   if (wanted.port !== null) env = { ...env, [DEV_PORT_ENV]: String(wanted.port) }

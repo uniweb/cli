@@ -145,7 +145,7 @@ const VERBS = {
    * `flag-guard-coverage.test.js`'s walk does not see it). ⛔ Until 2026-10-25 `dev` checked
    * no flags, and read the value of `--port 5199` as the name of a site.
    */
-  dev: ['--site', '--port', '--status', '--stop', '--org', '--personal'],
+  dev: ['--site', '--port', '--status', '--stop', '--published', '--org', '--personal'],
   // Prints a file: a flag it doesn't know is a typo, not a backend it might reach.
   guide: ['--path']
 }
