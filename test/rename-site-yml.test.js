@@ -133,15 +133,31 @@ test('a foundation value written as a block scalar is edited in place too', asyn
 test('a foundation value it cannot edit in place stops the rename before anything moves', async () => {
   const root = await workspace()
   try {
-    // Through an alias: an edit in place cannot keep what the anchor says elsewhere.
-    const aliased = SITE_YML.replace('foundation: src   # the local one', 'local: &local src\nfoundation: *local')
-    await writeFile(path.join(root, 'site', 'site.yml'), aliased)
+    // Through a merge key in the file's own map, which the editor does not edit in place.
+    const merged = SITE_YML.replace('foundation: src   # the local one', '<<: { foundation: src }')
+    await writeFile(path.join(root, 'site', 'site.yml'), merged)
     const run = rename(root, 'foundation', 'src', 'research-profile')
     assert.equal(run.status, 1)
     assert.match(run.stderr.replace(/\x1b\[[0-9;]*m/g, ''), /Cannot rename: site\/site\.yml/)
-    assert.equal(await readFile(path.join(root, 'site', 'site.yml'), 'utf8'), aliased)
+    assert.equal(await readFile(path.join(root, 'site', 'site.yml'), 'utf8'), merged)
     assert.ok(existsSync(path.join(root, 'src', 'package.json')), 'the foundation folder moved')
     assert.ok(!existsSync(path.join(root, 'research-profile')))
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('⭐ a foundation named through an alias is renamed where it is named, and the anchor stays (refused until 2026-11-16)', async () => {
+  const root = await workspace()
+  try {
+    const aliased = SITE_YML.replace('foundation: src   # the local one', 'local: &local src\nfoundation: *local')
+    await writeFile(path.join(root, 'site', 'site.yml'), aliased)
+    const run = rename(root, 'foundation', 'src', 'research-profile')
+    assert.equal(run.status, 0, run.stderr)
+    assert.equal(
+      await readFile(path.join(root, 'site', 'site.yml'), 'utf8'),
+      aliased.replace('foundation: *local', 'foundation: research-profile')
+    )
   } finally {
     await rm(root, { recursive: true, force: true })
   }

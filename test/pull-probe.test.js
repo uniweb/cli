@@ -241,3 +241,30 @@ test('outside git there is nothing to write onto: the probe does not answer', as
   assert.equal(await probeIn(dir, backend), null)
   assert.equal(backend.state.requests.length, 0)
 })
+
+// ⛔ Measured 2026-11-16 on a site: `uniweb pull --dry-run` said only "would pull content", and the pull
+// rewrote its whole `site.yml` to change one key. A dry run is the probe now, said out loud.
+test('⭐ a dry run names each file the pull would change, and in site.yml the keys, and takes nothing', { skip: !hasGit }, async () => {
+  const backend = fakeBackend()
+  const dir = await synced(backend)
+  backend.state.site = { ...site({ welcome: ['Welcome — written in the app.'] }), info: { ...site().info, favicon: 'https://example.com/mark.svg' } }
+  const before = snapshot(dir)
+
+  const probed = await probeIn(dir, backend)
+  assert.deepEqual(probed?.keys, { 'site.yml': ['favicon'] })
+
+  const dry = await pullIn(dir, backend, ['--dry-run'])
+  assert.equal(dry.exitCode, 0, dry.out)
+  const out = dry.out.replace(/\x1b\[[0-9;]*m/g, '')
+  assert.match(out, /Dry run — a pull from https:\/\/uniweb\.app would change 2 files:/, out)
+  assert.match(out, /site\.yml — favicon/, out)
+  assert.match(out, /pages\/.*welcome.*\.md/, out)
+  assert.deepEqual(snapshot(dir), before)
+})
+
+test('a dry run with nothing to take says so', { skip: !hasGit }, async () => {
+  const backend = fakeBackend()
+  const dir = await synced(backend)
+  const dry = await pullIn(dir, backend, ['--dry-run'])
+  assert.match(dry.out.replace(/\x1b\[[0-9;]*m/g, ''), /would change no file/, dry.out)
+})

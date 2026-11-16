@@ -47,7 +47,8 @@
  *   uniweb pull --no-records             Pull pages only; skip the folder (records) lane
  *   uniweb pull --no-delete              Keep files with no backend item
  *   uniweb pull --force                  Take the backend's version, discarding local changes
- *   uniweb pull --dry-run                Report what it would GET; write nothing
+ *   uniweb pull --dry-run                In git, name each file it would change (a YAML file's keys
+ *                                        too); write nothing
  *
  * The content + folder pull lanes are both keyed by the site's uuid on that backend
  *   (sync.json).
@@ -772,6 +773,63 @@ export async function probePull(args = [], deps = {}) {
   }
 }
 
+/**
+ * In each YAML file a pull would change (`M`, in the site), the keys whose values it changes, read as
+ * values: a key in a map the pull changes is named by its path (`services.search`), to three levels,
+ * and a list as a whole. A file whose values are all the same is named with none.
+ *
+ * @param {Array<[string, string]>} files - the stand-in's `changes()`
+ * @param {{ repo: object, rev: string, siteDir: string }} at - the commit the stand-in holds, and its site
+ * @returns {Record<string, string[]>} path → the keys, for each file that has any
+ */
+function yamlKeysChanged(files, { repo, rev, siteDir }) {
+  const out = {}
+  for (const [status, path] of files) {
+    if (status !== 'M' || !/\.ya?ml$/i.test(path) || path.startsWith('..')) continue
+    try {
+      const was = yaml.load(fileAt(repo, rev, path)?.toString('utf8') ?? '') ?? {}
+      const now = yaml.load(readFileSync(join(siteDir, path), 'utf8')) ?? {}
+      const keys = changedKeys(was, now)
+      if (keys.length) out[path] = keys
+    } catch {
+      // A file that does not read is named with no keys.
+    }
+  }
+  return out
+}
+
+function changedKeys(was, now, at = '', depth = 0) {
+  const plainMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+  if (!plainMap(was) || !plainMap(now)) return JSON.stringify(was) === JSON.stringify(now) ? [] : [at || '(the whole file)']
+  const out = []
+  for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
+    const a = was[key]
+    const b = now[key]
+    if (JSON.stringify(sortedDeep(a)) === JSON.stringify(sortedDeep(b))) continue
+    const path = at ? `${at}.${key}` : key
+    if (depth < 2 && plainMap(a) && plainMap(b)) out.push(...changedKeys(a, b, path, depth + 1))
+    else out.push(path)
+  }
+  return out
+}
+
+/** A dry run's account of the pull it stands for (`probePull`). */
+function printPreview({ files, keys = {}, noBase, recordsNotPlaced, itemsBehind = 0, mountedMoved = [], held = [] }, origin) {
+  const from = `${colors.dim}${origin}${colors.reset}`
+  if (!files.length) {
+    info(`Dry run — a pull from ${from} would change no file.`)
+    if (itemsBehind || mountedMoved.length || held.length) note('The backend moved with no file here to show it; the pull would record that (`uniweb status` says what moved).')
+    return
+  }
+  info(`Dry run — a pull from ${from} would change ${files.length === 1 ? '1 file' : `${files.length} files`}:`)
+  for (const [status, path] of files) {
+    const what = status === 'A' ? ' (new)' : status === 'D' ? ' (removed)' : ''
+    note(`${path}${what}${keys[path] ? ` — ${keys[path].join(', ')}` : ''}`)
+  }
+  if (noBase) note('This copy has no sync point with the site, so these are the files that differ, either way.')
+  if (recordsNotPlaced) note('Some records could not be placed in files; the pull says which, and why.')
+}
+
 export async function pull(args = [], deps = {}) {
   // See utils/flag-guard.js — an unrecognized flag is invisible to a literal scan, so
   // it silently keeps the default: a mistyped `--dry-run` would pull for real, and a
@@ -920,6 +978,15 @@ export async function pull(args = [], deps = {}) {
   }
 
   if (dryRun) {
+    // ⭐ IN A REPOSITORY A DRY RUN IS THE PULL ITSELF, STOPPED BEFORE IT TAKES ANYTHING (`probePull`), as
+    // `uniweb status` asks it: each file it would change, and in a YAML file the keys. ⛔ Until 2026-11-16
+    // it said only "would pull content", and a pull that rewrote a whole `site.yml` to change its favicon
+    // gave no sign of it beforehand (measured on a site, 2026-11-16).
+    const preview = repo?.head && !probe ? await probePull(args.filter((a) => a !== '--dry-run'), deps) : null
+    if (preview) {
+      printPreview(preview, client.origin)
+      return { exitCode: 0 }
+    }
     info(
       `Dry run — would pull content from ${colors.dim}${client.origin}${colors.reset}`
     )
@@ -1461,10 +1528,13 @@ export async function pull(args = [], deps = {}) {
       // another copy these files already hold; either way a push from here may be refused.
       const seen = readItemBaseVersions(siteDir, client.origin)
       const itemsBehind = Object.entries(content?.itemVersions || {}).filter(([uuid, v]) => seen[uuid] && seen[uuid] !== v).length
+      const files = standIn.changes()
       return {
         exitCode: 0,
         probe: {
-          files: standIn.changes(),
+          files,
+          // In a YAML file the pull would change, the keys whose values it changes (`changedKeys`).
+          keys: yamlKeysChanged(files, { repo, rev: onto, siteDir: standIn.siteDir }),
           itemsBehind,
           // By route: the mounted pages the backend moved, which the next push puts back, and the pages
           // held because their files cannot say what the app made of them.
