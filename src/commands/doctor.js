@@ -538,9 +538,8 @@ export async function checkFoundationSupports({
   } catch {
     return // unreadable or malformed build output — not this check's to report
   }
-  // Absent means the build saw a computed name with nothing declared, so it
-  // reported UNKNOWN rather than a partial set (it publishes only a complete
-  // one) and named what it found itself. There is no list here to compare.
+  // Absent means the build derived nothing and saw a computed name, so it
+  // reported UNKNOWN. There is no gap to name.
   if (!Array.isArray(derived) || derived.length === 0) return
 
   const declared = pkg?.uniweb?.supports
