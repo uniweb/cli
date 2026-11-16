@@ -36,7 +36,13 @@ An entry is `true`, `false`, an address (a string, or `endpoint:` in a map), or 
 { "uniweb": { "supports": ["search", "submit"] } }
 ```
 
-A service only does something if the foundation renders against it, and a host can't otherwise know. The build derives the set from what the bundle reaches (`resolveService(website, 'search')`, `isSearchEnabled()`), so an undeclared foundation still publishes an accurate set; what you write is a supplement (union), and only needed for a service reached through a computed name (`resolveService(website, name)` — the build warns). `[]` means none, proven by the build; absent means unknown. Never list `tracking`: the runtime reports for every foundation, so the build drops the name with a warning. `uniweb doctor` compares declared with found.
+A service only does something if the foundation renders against it, and a host can't otherwise know. The build derives the set from what the bundle reaches (`resolveService(website, 'search')`, `isSearchEnabled()`), so an undeclared foundation still publishes an accurate set; what you write is a supplement (union), and only needed for a service reached through a computed name (`resolveService(website, name)` — the build warns). A published set is complete: when the build meets a computed name and you declared nothing, it publishes no set (unknown) rather than a partial one, and says what to list. `[]` means none, proven by the build; absent means unknown.
+
+```json
+{ "uniweb": { "requires": ["backend"] } }
+```
+
+`requires` names the services the foundation cannot work without — sign-in and purchases for a course site, say — as opposed to ones it uses when they are on. The build cannot tell the two apart, so only you can declare it; each name joins `supports`, and the build warns if no code reaches it. Uniweb hosting keeps a required service on for every site using the foundation, so its owner is never offered a switch that breaks the site. A required service can still be missing for a moment (while it starts for a new site, say), so a section that calls it shows its own "not available yet" state rather than failing. Never list `tracking`: the runtime reports for every foundation, so the build drops the name with a warning. `uniweb doctor` compares declared with found.
 
 ## Search
 
