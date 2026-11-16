@@ -108,7 +108,7 @@ import { resolveWorkspace, scopeOfWorkspace, topOfChildHandle, SOURCE_LABEL } fr
 import { writeJsonPreservingStyleAsync } from '../utils/json-file.js'
 import { newerInput } from '../utils/foundation-freshness.js'
 import { unregisteredLocalTypes } from '../backend/unregistered-types.js'
-import { typesFromLibraries } from '../backend/library-types.js'
+import { typesFromLibraries, typesNamedBy } from '../backend/library-types.js'
 import {
   findWorkspaceRoot,
   findFoundations,
@@ -352,16 +352,6 @@ async function uploadVendorFiles(entities, files, { client }) {
   return true
 }
 
-/** A mapping's reverse `follow` lines' `model`s, as written. */
-function followModelsOf(decl) {
-  const out = []
-  for (const line of Array.isArray(decl?.follow) ? decl.follow : []) {
-    if (!line || typeof line !== 'object') continue
-    for (const spec of Object.values(line)) if (spec && typeof spec.model === 'string') out.push(spec.model)
-  }
-  return out
-}
-
 /**
  * Register the data schemas a library defines, before the foundation that names them
  * (`backend/library-types.js`): the library's package whole, as `uniweb register` there sends it.
@@ -394,7 +384,7 @@ async function registerLibraryTypes(lib, { client, exporter, at, upload = true }
     // of this library they name: a registry takes a mapping only after what it names.
     const mappings = await libraryMappingsWanted(lib, own)
     for (const decl of Object.values(mappings)) {
-      for (const ref of [decl.model, ...followModelsOf(decl)]) {
+      for (const ref of typesNamedBy(decl)) {
         const local = typeof ref === 'string' ? own(ref) : null
         if (local && all[local]) wanted.add(local)
       }

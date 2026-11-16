@@ -79,15 +79,23 @@ function referencedFirst(libraries, schemas, mappings = {}) {
   return out
 }
 
-/** The types a mapping names, as its `_mappings` entry holds them (in full): its `model` and its `follow` lines'. */
+/**
+ * The types a mapping names, as its `_mappings` entry holds them (in full) or as written: its `model`
+ * and its `follow` lines', and the same in each of a `set`'s `parts`.
+ */
 export function typesNamedBy(mapping) {
   if (!mapping || typeof mapping !== 'object') return []
   const out = []
-  if (typeof mapping.model === 'string') out.push(mapping.model)
-  for (const line of Array.isArray(mapping.follow) ? mapping.follow : []) {
-    if (!line || typeof line !== 'object') continue
-    for (const spec of Object.values(line)) if (spec && typeof spec.model === 'string') out.push(spec.model)
+  const rulesOf = (rules) => {
+    if (!rules || typeof rules !== 'object') return
+    if (typeof rules.model === 'string') out.push(rules.model)
+    for (const line of Array.isArray(rules.follow) ? rules.follow : []) {
+      if (!line || typeof line !== 'object') continue
+      for (const spec of Object.values(line)) if (spec && typeof spec.model === 'string') out.push(spec.model)
+    }
   }
+  rulesOf(mapping)
+  for (const part of Array.isArray(mapping.parts) ? mapping.parts : []) rulesOf(part)
   return out
 }
 
