@@ -134,8 +134,10 @@ export const SOURCE_HEADER = 'x-uniweb-source'
 const sourceHeaders = (source) => (source ? { [SOURCE_HEADER]: source } : {})
 
 /**
- * Whether a request works IN a workspace — a site route, `/dev/site…`, or `/dev/entities…`,
- * which acts on entities of the workspace it names (an entity outside it is refused, `409`).
+ * Whether a request works IN a workspace — a site route, `/dev/site…`; `/dev/entities…`,
+ * which acts on entities of the workspace it names (an entity outside it is refused, `409`);
+ * or `/dev/connections…`, the network connections the caller reaches in the workspace it
+ * names, where a consent started is recorded too.
  *
  * Only those name one. Every `/dev` route accepts the header, but registration reads
  * none (the `@scope` in the name decides, membership-gated), `/dev/assets` reads none
@@ -148,7 +150,7 @@ const sourceHeaders = (source) => (source ? { [SOURCE_HEADER]: source } : {})
  * @returns {boolean}
  */
 export function namesWorkspace(path) {
-  return /^\/dev\/(site|entities)(\/|$)/.test(String(path))
+  return /^\/dev\/(site|entities|connections)(\/|$)/.test(String(path))
 }
 
 /**
@@ -594,10 +596,11 @@ export class BackendClient {
    * is not read either — the login path is a hardcoded constant
    * (`utils/registry-auth.js`). What is actually consumed is the key lists under
    * `siteContent` — `queryFields`, `pageFields`, `settingsFields`, the keys the deployment's
-   * Sections declare (`site-sync.js::deploymentFields`) — which is policy, never an address. Do not
-   * add a reader for the rest: each one would be a second place a backend's layout is
-   * pinned. (This named `delivery.siteSubscriptionRequired` until 2026-09-26; that leaf
-   * went 2026-08-30.)
+   * Sections declare (`site-sync.js::deploymentFields`) — and `promote.networks`, the networks
+   * Promote can connect on this deployment (`commands/promote.js`). Both are policy, never an
+   * address. Do not add a reader for the rest: each one would be a second place a backend's
+   * layout is pinned. (This named `delivery.siteSubscriptionRequired` until 2026-09-26; that
+   * leaf went 2026-08-30.)
    *
    * @returns {Promise<object>}
    */
@@ -987,6 +990,98 @@ export class BackendClient {
       method: 'DELETE',
       body: JSON.stringify(body)
     })
+  }
+
+  // ── Promote ─────────────────────────────────────────────────────────────────
+  //
+  // The site's Promote, as the backend holds it: the networks it goes out through, its
+  // getting-found steps, its posts and its campaigns. The CLI is a second client of it,
+  // beside the app, and keeps no copy: each command reads fresh, and a write names the
+  // version of each item it read, so a change made since is refused, never written over.
+
+  /**
+   * GET /dev/site/promotion/{site} — `{ promotion: { uuid, items } }`, each item
+   * `{ uuid, section, parent?, data, updated_at }` with `section` the path from the root
+   * (`posts`, `posts/delivery`, …), or `{ promotion: null }` before the site first uses it.
+   *
+   * @param {string} siteUuid - the site-content uuid
+   * @param {{ locale?: string }} [opts]
+   * @returns {Promise<Response>}
+   */
+  async readPromotion(siteUuid, { locale } = {}) {
+    return this.request(`/dev/site/promotion/${encodeURIComponent(siteUuid)}`, { query: { locale } })
+  }
+
+  /**
+   * POST /dev/site/promotion/{site}/items — write the owner's fields, as one transaction:
+   * `create` (`section`, `parent?`, `uuid?`, `data`, `position?`), `update` (`uuid`, `data`,
+   * `if_unmodified_since?`) and `delete` (`uuid`, `if_unmodified_since?`). An update
+   * replaces the item's data. Answers `{ uuid, results: [{ uuid, updated_at }] }` in op
+   * order; one stale op refuses the whole batch `409`.
+   *
+   * @param {string} siteUuid
+   * @param {object[]} batch
+   * @returns {Promise<Response>}
+   */
+  async writePromotionItems(siteUuid, batch) {
+    return this.request(`/dev/site/promotion/${encodeURIComponent(siteUuid)}/items`, {
+      method: 'POST',
+      body: JSON.stringify({ batch })
+    })
+  }
+
+  /**
+   * POST /dev/site/promotion/{site}/steps/{step}/check — check one getting-found step, named
+   * by its item's uuid. Answers `{ reading }`: `state`, `checked_at`, `found`, `detail?`,
+   * `address?`. A step the backend cannot check is `400`.
+   *
+   * @param {string} siteUuid
+   * @param {string} stepUuid
+   * @returns {Promise<Response>}
+   */
+  async checkPromotionStep(siteUuid, stepUuid) {
+    return this.request(
+      `/dev/site/promotion/${encodeURIComponent(siteUuid)}/steps/${encodeURIComponent(stepUuid)}/check`,
+      { method: 'POST' }
+    )
+  }
+
+  /**
+   * GET /dev/site/promotion/{site}/campaigns/{campaign}/spend — `{ spend: [{ via, day, amount,
+   * currency, read_at }] }`, as the backend last read it from each network. A day absent is
+   * unknown, never zero.
+   *
+   * @param {string} siteUuid
+   * @param {string} campaignUuid
+   * @returns {Promise<Response>}
+   */
+  async campaignSpend(siteUuid, campaignUuid) {
+    return this.request(
+      `/dev/site/promotion/${encodeURIComponent(siteUuid)}/campaigns/${encodeURIComponent(campaignUuid)}/spend`
+    )
+  }
+
+  /**
+   * GET /dev/connections — `{ connections: [{ uuid, owner?, unit?, card }] }`: the network
+   * connections the caller reaches in the workspace the request names. A card holds the
+   * account's `network`, `name`, `handle`, `state`, never a token.
+   *
+   * @returns {Promise<Response>}
+   */
+  async listConnections() {
+    return this.request('/dev/connections')
+  }
+
+  /**
+   * POST /dev/connections/consent — `{ network, return_to? }` → `{ address }`, the network's
+   * consent page. The browser that finishes it must be signed in to the app as the same
+   * person; it comes back to `return_to`, an app page, or to the app's own origin.
+   *
+   * @param {{ network: string, return_to?: string }} body
+   * @returns {Promise<Response>}
+   */
+  async startConnectionConsent(body) {
+    return this.request('/dev/connections/consent', { method: 'POST', body: JSON.stringify(body) })
   }
 
   /**

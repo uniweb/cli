@@ -111,6 +111,12 @@ const VERBS = {
    * `--org` / `--personal`.
    */
   site: ['--json', '--yes', '--clear', '--org', '--personal'],
+  /**
+   * `promote status | check | connect` — a site's Promote. `--json` is status's and check's
+   * porcelain; `--site` names a site this project isn't synced to; the workspace is `--org` /
+   * `--personal`.
+   */
+  promote: ['--json', '--site', '--org', '--personal'],
   status: [
     '--json', '--offline', '--dry-run',
     '--force', '--no-verify', '--no-validate', '--yes', '--org', '--personal',

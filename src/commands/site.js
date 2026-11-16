@@ -95,7 +95,7 @@ function positionals(args) {
  * workspace's only site. ⛔ Never a stop: outside a project — or from an install without
  * `@uniweb/build`, which finding a workspace's sites may load — there is simply none.
  */
-async function projectSiteDir() {
+export async function projectSiteDir() {
   try {
     const cwd = process.cwd()
     if (existsSync(join(cwd, 'site.yml'))) return { dir: cwd }

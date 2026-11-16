@@ -111,6 +111,10 @@ test('site routes name the workspace; registry, assets, auth, orgs and config do
   assert.equal(namesWorkspace('/dev/site/publish/S'), true)
   // The entity delete acts on entities of the workspace it names (backend, 2026-11-04).
   assert.equal(namesWorkspace('/dev/entities/delete'), true)
+  // The connections a caller reaches are those of the workspace named, and a consent is
+  // recorded in it.
+  assert.equal(namesWorkspace('/dev/connections'), true)
+  assert.equal(namesWorkspace('/dev/connections/consent'), true)
   for (const p of ['/dev/registry/register', '/dev/assets', '/dev/auth/me', '/dev/orgs', '/dev/config', '/dev/sites'])
     assert.equal(namesWorkspace(p), false, p)
 

@@ -1059,6 +1059,14 @@ async function main() {
     await exitWhenDrained(result?.exitCode ?? 0)
   }
 
+  // Handle promote command — a site's Promote: getting found, networks, posts, campaigns.
+  // Runs anywhere: inside a project it acts on the site the project is synced to.
+  if (command === 'promote') {
+    const { promote } = await import('./commands/promote.js')
+    const result = await promote(args.slice(1))
+    await exitWhenDrained(result?.exitCode ?? 0)
+  }
+
   // Handle org command (new-backend orgs/units — publish-scope management)
   if (command === 'org') {
     const { org } = await import('./commands/org.js')
@@ -2499,6 +2507,7 @@ ${colors.bright}Commands:${colors.reset}
   status             What changed in the app, in git and in Uniweb — and what to run
   forget             Forget a backend, or --all to make a copied project a new one
   site <cmd>         The sites in a workspace: list, unpublish, delete
+  promote <cmd>      A site's Promote: status, check a step, connect an account
   org <cmd>          The organizations you belong to: list, create
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation

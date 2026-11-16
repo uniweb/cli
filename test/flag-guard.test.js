@@ -88,6 +88,7 @@ test('a realistic invocation of every guarded verb passes', () => {
     refresh: ['--no-git', '--no-validate'],
     sync: ['--no-git', '--force', '--yes'],
     site: ['delete', '01a116cf-1a07-79f0-86e1-855d3a95e987', '--yes', '--org', '@acme'],
+    promote: ['status', '--json', '--site', '01a116cf-1a07-79f0-86e1-855d3a95e987', '--org', '@acme'],
     dev: ['docs', '--port', '5199', '--org', '@acme'],
     guide: ['content', '--path']
   }
