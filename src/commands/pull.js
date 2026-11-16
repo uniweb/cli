@@ -48,7 +48,7 @@
  *   uniweb pull --no-delete              Keep files with no backend item
  *   uniweb pull --force                  Take the backend's version, discarding local changes
  *   uniweb pull --dry-run                In git, name each file it would change (a YAML file's keys
- *                                        too); write nothing
+ *                                        too, and whether this copy changed it too); write nothing
  *
  * The content + folder pull lanes are both keyed by the site's uuid on that backend
  *   (sync.json).
@@ -168,11 +168,13 @@ const colors = {
   blue: '\x1b[36m'
 }
 // Looked up at each call, so a caller that captures the console captures these too — and
-// silent while a probe runs (`probePull`), which answers by what it returns.
+// silent while a probe runs (`probePull`), which answers by what it returns. What it would
+// have said went wrong is kept (`quietErrors`), so a dry run whose probe stopped can say why.
 let quiet = false
+let quietErrors = []
 const log = (...a) => quiet || console.log(...a)
 const success = (m) => log(`${colors.green}✓${colors.reset} ${m}`)
-const error = (m) => quiet || console.error(`${colors.red}✗${colors.reset} ${m}`)
+const error = (m) => (quiet ? quietErrors.push(m) : console.error(`${colors.red}✗${colors.reset} ${m}`))
 const info = (m) => log(`${colors.blue}→${colors.reset} ${m}`)
 const note = (m) => log(`  ${colors.dim}${m}${colors.reset}`)
 
@@ -765,11 +767,19 @@ const takenFrom = (origin) => `Take the site's content from ${origin}`
  *   `files` — `[status, path]`, status `A`, `M` or `D`, the path relative to the site
  */
 export async function probePull(args = [], deps = {}) {
+  return (await probeWithReason(args, deps)).probe
+}
+
+/** `probePull`, and when it does not answer, the last thing the pull would have said went wrong. */
+async function probeWithReason(args, deps) {
   quiet = true
+  quietErrors = []
   try {
-    return (await pull(args, { ...deps, probe: true }))?.probe ?? null
+    const probe = (await pull(args, { ...deps, probe: true }))?.probe ?? null
+    return { probe, reason: probe ? null : quietErrors.at(-1) ?? null }
   } finally {
     quiet = false
+    quietErrors = []
   }
 }
 
@@ -798,6 +808,21 @@ function yamlKeysChanged(files, { repo, rev, siteDir }) {
   return out
 }
 
+/**
+ * Of the files a pull would change, those this copy's commits changed too since `rev`, the sync point
+ * the pull merges from: the pull merges each with the backend's, where a dry run could not show the result.
+ * A file outside the site (a mounted folder's, `..`) is left out, as `yamlKeysChanged` leaves it.
+ *
+ * @param {object} repo
+ * @param {string} rev - the sync point
+ * @param {Array<[string, string]>} files - the stand-in's `changes()`
+ * @returns {string[]} their paths, relative to the site
+ */
+function changedSince(repo, rev, files) {
+  const same = (a, b) => (a === null || b === null ? a === b : a.equals(b))
+  return files.filter(([, path]) => !path.startsWith('..') && !same(fileAt(repo, rev, path), fileAt(repo, repo.head, path))).map(([, path]) => path)
+}
+
 function changedKeys(was, now, at = '', depth = 0) {
   const plainMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
   if (!plainMap(was) || !plainMap(now)) return JSON.stringify(was) === JSON.stringify(now) ? [] : [at || '(the whole file)']
@@ -814,7 +839,7 @@ function changedKeys(was, now, at = '', depth = 0) {
 }
 
 /** A dry run's account of the pull it stands for (`probePull`). */
-function printPreview({ files, keys = {}, noBase, recordsNotPlaced, itemsBehind = 0, mountedMoved = [], held = [] }, origin) {
+function printPreview({ files, keys = {}, changedHereToo = [], noBase, recordsNotPlaced, itemsBehind = 0, mountedMoved = [], held = [] }, origin) {
   const from = `${colors.dim}${origin}${colors.reset}`
   if (!files.length) {
     info(`Dry run — a pull from ${from} would change no file.`)
@@ -822,10 +847,12 @@ function printPreview({ files, keys = {}, noBase, recordsNotPlaced, itemsBehind 
     return
   }
   info(`Dry run — a pull from ${from} would change ${files.length === 1 ? '1 file' : `${files.length} files`}:`)
+  const both = new Set(changedHereToo)
   for (const [status, path] of files) {
     const what = status === 'A' ? ' (new)' : status === 'D' ? ' (removed)' : ''
-    note(`${path}${what}${keys[path] ? ` — ${keys[path].join(', ')}` : ''}`)
+    note(`${path}${what}${keys[path] ? ` — ${keys[path].join(', ')}` : ''}${both.has(path) ? ' (changed here too: the pull merges the two)' : ''}`)
   }
+  if (both.size) note('A file changed in both places is merged, and the pull stops on any part changed both ways, for you to settle.')
   if (noBase) note('This copy has no sync point with the site, so these are the files that differ, either way.')
   if (recordsNotPlaced) note('Some records could not be placed in files; the pull says which, and why.')
 }
@@ -889,8 +916,8 @@ export async function pull(args = [], deps = {}) {
   // anything is asked or taken, as it stops the build.
   const mounts = writableMounts(siteDir)
   if (mounts.refused.length) {
-    if (probe) return { exitCode: 1, probe: null }
     error(`${mounts.refused.length === 1 ? 'A mount is' : `${mounts.refused.length} mounts are`} written in a form a pull no longer reads:`)
+    if (probe) return { exitCode: 1, probe: null }
     for (const m of mounts.refused) for (const line of refusedMountLines(m)) note(line)
     return { exitCode: 1 }
   }
@@ -982,10 +1009,18 @@ export async function pull(args = [], deps = {}) {
     // `uniweb status` asks it: each file it would change, and in a YAML file the keys. ⛔ Until 2026-11-16
     // it said only "would pull content", and a pull that rewrote a whole `site.yml` to change its favicon
     // gave no sign of it beforehand (measured on a site, 2026-11-16).
-    const preview = repo?.head && !probe ? await probePull(args.filter((a) => a !== '--dry-run'), deps) : null
-    if (preview) {
-      printPreview(preview, client.origin)
-      return { exitCode: 0 }
+    if (repo?.head && !probe) {
+      const { probe: preview, reason } = await probeWithReason(args.filter((a) => a !== '--dry-run'), deps)
+      if (preview) {
+        printPreview(preview, client.origin)
+        return { exitCode: 0 }
+      }
+      // ⛔ Not the lines below, which say only what a pull fetches: a preview that stopped is no
+      // answer, and until 2026-11-16 "would pull content" stood in for one (a clone whose videos
+      // git could not fetch, measured that day).
+      error(`Dry run — could not tell what a pull from ${client.origin} would change, so nothing was pulled.`)
+      if (reason) for (const line of String(reason).split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 12)) note(line)
+      return { exitCode: 1 }
     }
     info(
       `Dry run — would pull content from ${colors.dim}${client.origin}${colors.reset}`
@@ -1150,7 +1185,11 @@ export async function pull(args = [], deps = {}) {
   if (probe) {
     // A lane that did not answer is not knowing — a records lane the backend has none of
     // (404) is no records; both unchanged is nothing to take.
-    if (!content || (!noRecords && !folderLane && !missing.has('records'))) return { exitCode: 1, probe: null }
+    if (!content || (!noRecords && !folderLane && !missing.has('records'))) {
+      // A lane that failed said why (`getDocs`); a site the backend answers 404 for only noted it.
+      if (missing.has('content')) error(`${client.origin} has no such site — it was deleted there, or you lack access.`)
+      return { exitCode: 1, probe: null }
+    }
     if (!projected) return { exitCode: 0, probe: { files: [], recordsNotPlaced: false } }
   }
 
@@ -1535,6 +1574,10 @@ export async function pull(args = [], deps = {}) {
           files,
           // In a YAML file the pull would change, the keys whose values it changes (`changedKeys`).
           keys: yamlKeysChanged(files, { repo, rev: onto, siteDir: standIn.siteDir }),
+          // Of those, the files this copy changed too since the sync point: the pull merges the two, and
+          // stops on a part changed both ways. ⛔ Until 2026-11-16 a dry run named such a file as one the
+          // pull "would change", and the pull then stopped on it (measured that day on a site's copy).
+          changedHereToo: base ? changedSince(repo, onto, files) : [],
           itemsBehind,
           // By route: the mounted pages the backend moved, which the next push puts back, and the pages
           // held because their files cannot say what the app made of them.

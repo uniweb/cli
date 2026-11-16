@@ -2144,8 +2144,9 @@ Outside a repository there is nothing to merge against: the files are rewritten 
 what the backend holds, after asking if any of them are yours.
 
 ${colors.bright}Options:${colors.reset}
-  --dry-run          Name each file it would change, and in a YAML file the keys;
-                     write nothing (outside a repository: what it would fetch)
+  --dry-run          Name each file it would change, and in a YAML file the keys, and
+                     mark those changed here too, which it merges; write nothing
+                     (outside a repository: what it would fetch)
   --force            Take the backend's version, discarding local changes
   --no-records       Pull pages only; skip records
   --no-assets        Don't download media; the content keeps its URLs

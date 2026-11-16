@@ -97,10 +97,10 @@ const jsonRes = (body, status = 200) => ({
 
 /** A backend whose site the test moves: `state.site`, `state.records` (null: no folder lane). */
 function fakeBackend({ records = null } = {}) {
-  const state = { site: site(), records, requests: [] }
+  const state = { site: site(), records, requests: [], contentStatus: 200 }
   const fetch = async (url, init) => {
     state.requests.push({ url, method: init?.method || 'GET' })
-    if (url.includes('/dev/site/content/pull/SITE')) return jsonRes(state.site)
+    if (url.includes('/dev/site/content/pull/SITE')) return state.contentStatus === 200 ? jsonRes(state.site) : jsonRes(null, state.contentStatus)
     if (url.includes('/dev/site/folder/pull/SITE')) return state.records ? jsonRes({ entities: folderDocs(state.records) }) : jsonRes(null, 404)
     if (url.includes('/dev/registry/data-schemas/acme/article')) return jsonRes(articleDecl)
     return jsonRes(null, 404)
@@ -267,4 +267,55 @@ test('a dry run with nothing to take says so', { skip: !hasGit }, async () => {
   const dir = await synced(backend)
   const dry = await pullIn(dir, backend, ['--dry-run'])
   assert.match(dry.out.replace(/\x1b\[[0-9;]*m/g, ''), /would change no file/, dry.out)
+})
+
+// ⛔ Measured 2026-11-16 on a site's copy whose videos git could not fetch: the preview stopped, and the
+// dry run said "would pull content", the line it gives outside a repository, as if that were its answer.
+test('⭐ a dry run whose preview stops says so, and why, and takes nothing', { skip: !hasGit }, async () => {
+  const backend = fakeBackend()
+  const dir = await synced(backend)
+  backend.state.contentStatus = 500
+  const before = snapshot(dir)
+
+  const dry = await pullIn(dir, backend, ['--dry-run'])
+  const out = dry.out.replace(/\x1b\[[0-9;]*m/g, '')
+  assert.equal(dry.exitCode, 1, out)
+  assert.match(out, /Dry run — could not tell what a pull from https:\/\/uniweb\.app would change, so nothing was pulled\./, out)
+  assert.match(out, /content pull failed: HTTP 500/, out)
+  assert.doesNotMatch(out, /would pull content/, out)
+  assert.deepEqual(snapshot(dir), before)
+})
+
+test('a dry run for a site the backend no longer has says that', { skip: !hasGit }, async () => {
+  const backend = fakeBackend()
+  const dir = await synced(backend)
+  backend.state.contentStatus = 404
+  const dry = await pullIn(dir, backend, ['--dry-run'])
+  const out = dry.out.replace(/\x1b\[[0-9;]*m/g, '')
+  assert.equal(dry.exitCode, 1, out)
+  assert.match(out, /https:\/\/uniweb\.app has no such site — it was deleted there, or you lack access\./, out)
+})
+
+// ⛔ Measured 2026-11-16 on a site's copy: a dry run said a pull "would change" two files this copy had
+// changed too, and the pull then stopped on both for the person to settle.
+test('⭐ a dry run marks a file this copy changed too: the pull merges the two', { skip: !hasGit }, async () => {
+  const backend = fakeBackend()
+  const dir = await synced(backend)
+  const welcome = git(dir, 'ls-files', 'site/pages').split('\n').find((p) => p.endsWith('welcome.md'))
+  assert.ok(welcome, 'control: the first pull wrote the welcome section')
+  writeFileSync(join(dir, welcome), readFileSync(join(dir, welcome), 'utf8').replace('Welcome to the site.', 'Welcome, from the files.'))
+  git(dir, 'commit', '-qam', 'welcome, edited here')
+  backend.state.site = site({ welcome: ['Welcome — written in the app.'], about: ['About us, since 1990.'] })
+
+  const probed = await probeIn(dir, backend)
+  assert.equal(probed?.files.length, 2, JSON.stringify(probed?.files))
+  assert.deepEqual(probed.changedHereToo, [welcome.replace(/^site\//, '')])
+
+  const out = (await pullIn(dir, backend, ['--dry-run'])).out.replace(/\x1b\[[0-9;]*m/g, '')
+  assert.match(out, /welcome[^\n]*\.md \(changed here too: the pull merges the two\)/, out)
+  assert.doesNotMatch(out, /about[^\n]*\.md \(changed here too/, out)
+
+  // …and the pull does stop on it.
+  const pulled = await pullIn(dir, backend)
+  assert.ok(pulled.merge?.conflicted?.some(([, p]) => p.endsWith('welcome.md')) || /conflict/i.test(pulled.out), pulled.out)
 })
