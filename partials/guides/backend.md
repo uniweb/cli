@@ -218,6 +218,8 @@ await createEntity({ schema: '@/submission', unit: course.unit, items: [...] })
 
 Nested items in one create: give an item `uuid: uuidv7()` and a later item names it as `parent` (`{ section: 'degrees/thesis', parent: degree, data }`); those uuids serve the write alone.
 
+**Sent twice, made once:** give a create the new entry's own `uuid`, made once when the person starts adding it (`const [uuid] = useState(uuidv7)`), and a second click or a retry answers with the entry the first one made. Without it, each call makes an entry.
+
 ## A backend on your machine
 
 ```yaml
