@@ -98,7 +98,9 @@ import {
   deliveryOf,
   indexPromotion,
   reasonWords,
-  shortIds
+  shortIds,
+  stateCounts,
+  whyNot
 } from '../backend/promote-drafts.js'
 
 const c = {
@@ -928,16 +930,14 @@ async function promoteChecks(client, uuid, res, { now = Date.now() } = {}) {
       .filter((p) => p.delivery?.status === 'scheduled' && Date.parse(p.item.data?.send_at) <= weekAhead)
       .sort((a, b) => Date.parse(a.item.data?.send_at) - Date.parse(b.item.data?.send_at))
     const network = (p) => index.byUuid.get(p.item.data?.via)?.data?.network ?? 'its network'
-    const tally = ['draft', 'scheduled', 'published']
-      .map((state) => [state, posts.filter((p) => (p.delivery?.status ?? 'draft') === state).length])
-      .filter(([, n]) => n)
-      .map(([state, n]) => `${n} ${state}`)
+    // Every state the posts are in, a network's review included, so no post goes uncounted.
+    const tally = stateCounts(posts.map((p) => p.delivery?.status)).map(([state, n]) => `${n} ${state}`)
     checks.push({
       id: 'promote.posts',
       state: failed.length ? 'attention' : 'ok',
-      summary: `Posts: ${[...(failed.length ? [`${failed.length} failed`] : []), ...tally].join(' · ')}.`,
+      summary: `Posts: ${tally.join(' · ')}.`,
       lines: [
-        ...failed.map((p) => `${ids.get(p.item.uuid)} failed on ${network(p)}: ${reasonWords(p.delivery.reason)}${p.delivery.detail ? ` — ${p.delivery.detail}` : ''}`),
+        ...failed.map((p) => `${ids.get(p.item.uuid)} ${p.delivery.status} on ${network(p)}: ${whyNot(p.delivery) ?? 'no reason given'}`),
         ...soon.map((p) => `${ids.get(p.item.uuid)} goes out on ${network(p)} at ${p.item.data.send_at}`)
       ],
       detail: {

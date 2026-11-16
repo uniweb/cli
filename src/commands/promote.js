@@ -54,6 +54,7 @@ import {
   fileWithIdentity,
   findItem,
   formatOf,
+  heldPictures,
   idMatches,
   indexPromotion,
   isAddress,
@@ -70,9 +71,11 @@ import {
   shortIds,
   sitePages,
   splitFrontmatter,
+  stateCounts,
   versionOf,
   viaResolver,
-  wentOut
+  wentOut,
+  whyNot
 } from '../backend/promote-drafts.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import { confirm, isNonInteractive } from '../utils/interactive.js'
@@ -110,7 +113,8 @@ const USAGE = [
   '  show <id>               One post or campaign, as a draft holds it',
   '  delete <id>             Delete a post, a campaign, an ad group or an ad',
   '  send <post>             Post it now, or at its send_at; --at <time> sets the time,',
-  '                          --now sends it now whatever its time',
+  '                          --now sends it now whatever its time. Given its file, it writes',
+  '                          the file first, so what goes out is what the file says',
   '  unschedule <post>       A scheduled post a draft again, its time kept',
   '  start <campaign>        Start it in its ad accounts — it says what it will spend and',
   '                          asks; --yes answers for you',
@@ -231,7 +235,11 @@ async function sayRefusal(res, { site, origin, what, index = null, notFound = nu
 /** A 404 on reading a site's Promote: no such site there, or a backend without these routes. */
 const notOffered = (origin, site) => `${origin} has no site ${site}, or does not offer Promote to this CLI yet.`
 
-/** The networks the deployment offers to connect, as tokens; null when it does not say. */
+/**
+ * The networks the deployment offers to connect, as tokens. None when `/dev/config` names none,
+ * since the backend leaves `promote.networks` out while it offers none; null when `/dev/config`
+ * could not be read, so nothing is known.
+ */
 async function offeredNetworks(client) {
   const config = await client.discover().catch(() => null)
   const list = config?.promote?.networks
@@ -456,7 +464,8 @@ function printNetworks(networks, connections) {
 }
 
 function printPosts(posts) {
-  const count = (state) => posts.filter((p) => p.state === state).length
+  const counts = new Map(stateCounts(posts.map((p) => p.state)))
+  const count = (state) => counts.get(state) ?? 0
   const scheduled = posts
     .filter((p) => p.state === 'scheduled')
     .map((p) => p.send_at)
@@ -467,14 +476,18 @@ function printPosts(posts) {
     `${count('scheduled')} scheduled${scheduled[0] ? ` (next ${scheduled[0]})` : ''}`,
     `${count('published')} published`
   ]
-  if (count('failed')) parts.push(`${c.red}${count('failed')} failed${c.reset}`)
+  // Every other state the posts are in, counted: one in the network's review, and what didn't go out.
+  for (const [state, n] of counts) {
+    if (state === 'draft' || state === 'scheduled' || state === 'published') continue
+    parts.push(state === 'failed' || state === 'refused' ? `${c.red}${n} ${state}${c.reset}` : `${n} ${state}`)
+  }
   console.log(`  ${c.bold}Posts${c.reset}          ${parts.join(' · ')}`)
-  // What can still be acted on, each by its id: a draft, a scheduled post, one that failed.
+  // What can still be acted on, each by its id: a draft, a scheduled post, one that didn't go out.
   for (const p of posts.filter((x) => x.state !== 'published' && x.state !== 'review')) {
     const first = String(p.parts?.[0]?.text ?? '').replace(/\s+/g, ' ').trim()
     const words = first ? `“${first.length > 40 ? `${first.slice(0, 39)}…` : first}”` : '(no words yet)'
     const when = p.state === 'scheduled' && p.send_at ? ` ${p.send_at}` : ''
-    const why = p.state === 'failed' && p.delivery?.reason ? ` — ${reasonWords(p.delivery.reason)}` : ''
+    const why = (p.state === 'failed' || p.state === 'refused') && whyNot(p.delivery) ? ` — ${whyNot(p.delivery)}` : ''
     console.log(`${' '.repeat(17)}${c.cyan}${p.short ?? p.uuid}${c.reset} ${p.state}${when} ${words}${why}`)
   }
 }
@@ -818,6 +831,9 @@ const sameInstant = (a, b) => typeof a === 'string' && typeof b === 'string' && 
 /** An amount as money reads: `10.00` for the `10` YAML reads `10.00` as; a string as written. */
 const money = (v) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(2) : String(v))
 
+/** Whether a value is an amount of money: a number, or the decimal text of one. */
+const isAmount = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v))
+
 /** Amounts summed in cents, kept as the decimal text a network reads: `15.00`; null when none is given. */
 function sumAmounts(values) {
   let cents = 0
@@ -903,10 +919,11 @@ function translateDraft(draft, { index, pages, connections }) {
       if (a.fields.via !== undefined && a.fields.via !== null) {
         const raw = a.fields.via
         const want = typeof raw === 'object' ? raw : { network: raw }
+        // A stored account's connection reads back as an entity reference, one made in this write as its uuid.
         const matches = accounts.filter((n) =>
           typeof raw === 'string' && idMatches(n.uuid, raw)
             ? true
-            : n.data?.network === want.network && (!want.connection || idMatches(n.data?.connection, String(want.connection)))
+            : n.data?.network === want.network && (!want.connection || idMatches(connectionOf(n.data?.connection).uuid, String(want.connection)))
         )
         if (matches.length === 1) ad.fields.via = matches[0].uuid
         else if (!matches.length) errors.push(`${where} goes through ${typeof raw === 'string' ? raw : want.network}, and the campaign does not run there — add it to the campaign's \`via\`.`)
@@ -923,21 +940,25 @@ function translateDraft(draft, { index, pages, connections }) {
 
 /**
  * Upload the pictures a draft names as files, each as one of the site's own and kept in its
- * format, as the app uploads a post's picture. An address is kept as written.
+ * format, as the app uploads a post's picture. An address is kept as written: an `https:` one, or
+ * one the site's Promote holds already, as a read gives it back (`held`).
  *
+ * @param {Set<string>} held - `heldPictures` of the promotion as read
  * @returns {Promise<{ map: Map<string,string> } | { error: string }>} picture as written → its address
  */
-async function uploadPictures(client, site, pictures, dir) {
+async function uploadPictures(client, site, pictures, dir, held) {
   const map = new Map()
   const located = []
   const used = new Set()
   for (const p of pictures) {
-    if (isAddress(p)) continue
+    if (isAddress(p) || held.has(p)) continue
     const path = isAbsolute(p) ? p : resolve(dir, p)
     if (!existsSync(path) || !statSync(path).isFile()) {
-      // An address on the backend's own origin, as a read gives one back, is kept.
-      if (p.startsWith('/')) continue
-      return { error: `No picture ${p} (looked for ${path}).` }
+      return {
+        error: path === p
+          ? `No picture ${p}: there is no such file, and the site's Promote holds no picture at that address. A picture is a file, or an address starting https://.`
+          : `No picture ${p} (looked for ${path}).`
+      }
     }
     // The name the upload is planned under: the file's own, never where it sits on this machine.
     let name = basename(path)
@@ -987,29 +1008,15 @@ function indexAfterWrite(index, ops, results) {
 }
 
 /**
- * `uniweb promote post <file>` and `campaign <file>` — make a draft, or update the one the file
- * names, and write its ids and versions back into the file.
+ * Write a draft as `post` and `campaign` write one: checked against the promotion as read, its
+ * names put in the backend's terms, its pictures uploaded, then written in one batch, and the
+ * file it came from given its ids and versions. `send` writes a file this way before it sends it,
+ * so what goes out is what the file says.
+ *
+ * @returns {Promise<object>} what the write left — `after`, the promotion once written — or
+ *   `{ exitCode }` once it has said why nothing was written
  */
-async function writeDraft(args, kind) {
-  const json = args.includes('--json')
-  const input = readInput(args, kind)
-  if (input.error) {
-    say.err(input.error)
-    return { exitCode: 2 }
-  }
-  const format = formatOf(input.file, input.text)
-  const parsed = parseDraft(input.text, { format, kind })
-  if (parsed.error) {
-    say.err(parsed.error)
-    return { exitCode: 2 }
-  }
-  const draft = parsed.draft
-
-  const at = await begin(args, kind === 'post' ? 'Writing a post' : 'Writing a campaign', kind)
-  if (!at.client) return at
-  const { client, site } = at
-  const index = await readIndex(client, site)
-  if (!index) return { exitCode: 1 }
+async function writeParsed({ client, site, index, input, format, draft, kind }) {
   const problems = checkDraft(index, draft)
   if (problems.length) {
     for (const p of problems) say.err(p)
@@ -1022,7 +1029,7 @@ async function writeDraft(args, kind) {
     for (const e of translated.errors) say.err(e)
     return { exitCode: 2 }
   }
-  const pictures = await uploadPictures(client, site, picturesOf(draft), input.dir)
+  const pictures = await uploadPictures(client, site, picturesOf(draft), input.dir, heldPictures(index))
   if (pictures.error) {
     say.err(pictures.error)
     return { exitCode: 1 }
@@ -1053,11 +1060,41 @@ async function writeDraft(args, kind) {
   if (input.file) {
     const next = fileWithIdentity(input.text, { format, kind }, { uuid: plan.uuid, groups: plan.groups }, version)
     if (!next) fileNote = `Could not write the ids into ${input.shown} — its next run would make another draft. Add \`id: ${plan.uuid}\` and \`version: ${version(plan.uuid)}\` to it.`
-    else if (next.text !== input.text) {
+    else if (next.text !== readFileSync(input.file, 'utf8')) {
       writeFileSync(input.file, next.text)
       if (next.whole) fileNote = `Wrote ${input.shown} again whole, with its ids: its layout could not be kept.`
     }
   }
+  return { after, plan, ops, pages, connections, wasScheduled, version, fileNote }
+}
+
+/**
+ * `uniweb promote post <file>` and `campaign <file>` — make a draft, or update the one the file
+ * names, and write its ids and versions back into the file.
+ */
+async function writeDraft(args, kind) {
+  const json = args.includes('--json')
+  const input = readInput(args, kind)
+  if (input.error) {
+    say.err(input.error)
+    return { exitCode: 2 }
+  }
+  const format = formatOf(input.file, input.text)
+  const parsed = parseDraft(input.text, { format, kind })
+  if (parsed.error) {
+    say.err(parsed.error)
+    return { exitCode: 2 }
+  }
+  const draft = parsed.draft
+
+  const at = await begin(args, kind === 'post' ? 'Writing a post' : 'Writing a campaign', kind)
+  if (!at.client) return at
+  const { client, site } = at
+  const index = await readIndex(client, site)
+  if (!index) return { exitCode: 1 }
+  const wrote = await writeParsed({ client, site, index, input, format, draft, kind })
+  if (!wrote.after) return wrote
+  const { after, plan, ops, pages, connections, wasScheduled, version, fileNote } = wrote
 
   const ids = shortIds(after.items.map((i) => i.uuid))
   const item = after.byUuid.get(plan.uuid)
@@ -1270,6 +1307,10 @@ function sayDelivery(index, post, delivery, id) {
  * ⭐ A POST WITH A TIME GOES OUT AT ITS TIME. Its `send_at` is the draft's own field, so `send`
  * schedules a post that holds one and posts one that holds none; `--at` sets the time first, and
  * `--now` posts it now whatever its time.
+ *
+ * ⭐ GIVEN ITS FILE, WHAT GOES OUT IS WHAT THE FILE SAYS. `send <file>` writes the file's draft
+ * first, as `post` does: an edit not written yet is written, and a copy the app changed since is
+ * refused, with nothing sent. `send <id>` sends the post as the backend holds it.
  */
 async function send(args) {
   const json = args.includes('--json')
@@ -1293,29 +1334,72 @@ async function send(args) {
     say.err(`\`--at ${time}\` has passed: give a time ahead, or send it now with --now.`)
     return { exitCode: 2 }
   }
+  const file = draftFile(arg)
+  const parsed = file ? parseDraft(file.text, { format: file.format, kind: 'post' }) : null
+  if (parsed?.error) {
+    say.err(parsed.error)
+    return { exitCode: 2 }
+  }
   const at = await begin(args, 'Sending a post', `send ${arg}`)
   if (!at.client) return at
   const { client, site } = at
-  const index = await readIndex(client, site)
+  let index = await readIndex(client, site)
   if (!index) return { exitCode: 1 }
-  const post = pick(index, arg, ['post'])
-  if (!post) return { exitCode: 2 }
-  const id = shortIds(index.items.map((i) => i.uuid)).get(post.uuid)
-  const before = deliveryOf(index, post)
+  // The post as the backend holds it: the one the file names (none yet for a new file), or the id's.
+  let post = file ? (parsed.draft.id ? (index.byUuid.get(parsed.draft.id) ?? null) : null) : pick(index, arg, ['post'])
+  if (!file && !post) return { exitCode: 2 }
+  let id = post ? shortIds(index.items.map((i) => i.uuid)).get(post.uuid) : arg
+  let before = post ? deliveryOf(index, post) : null
+  let writes = 0
   const out = (delivery, exitCode) => {
-    if (json) console.log(JSON.stringify({ backend: client.origin, site, id: post.uuid, short: id, delivery }))
+    if (json) console.log(JSON.stringify({ backend: client.origin, site, id: post.uuid, short: id, writes, delivery }))
     return { exitCode }
   }
-  if (wentOut(before)) {
+  if (post && wentOut(before)) {
     if (!json) say.warn(`Post ${id} went out already${before.network_url ? `: ${before.network_url}` : ''}. A new post is a new draft.`)
     return out(before, 0)
   }
 
-  const when = now ? null : atGiven ? time : (post.data?.send_at ?? null)
+  // The time it goes out at: --at's, else the file's own send_at where it names one, else the post's.
+  const held = parsed && parsed.draft.fields.send_at !== undefined ? parsed.draft.fields.send_at : (post?.data?.send_at ?? null)
+  const when = now ? null : atGiven ? time : held
   if (when && !atGiven && Date.parse(when) <= Date.now()) {
     say.err(`Post ${id} holds send_at ${when}, which has passed: send it now with --now, or at another time with --at <time>.`)
     return { exitCode: 2 }
   }
+  // Scheduled before this command, so a write that makes it a draft again is said if sending is refused.
+  const scheduledFor = before?.status === 'scheduled' ? (post.data?.send_at ?? null) : null
+
+  if (file) {
+    // `--at` moves the file's own send_at, so the one write carries it and the file keeps saying it.
+    let text = file.text
+    if (atGiven && !sameInstant(held, time)) {
+      text = fileWithFields(file.text, file.format, { send_at: time })
+      if (!text) {
+        say.err(`Could not set the time in ${arg}: give it \`send_at: ${time}\`, then send it.`)
+        return { exitCode: 2 }
+      }
+    }
+    const draft = text === file.text ? parsed.draft : parseDraft(text, { format: file.format, kind: 'post' }).draft
+    const wrote = await writeParsed({
+      client,
+      site,
+      index,
+      input: { file: file.path, shown: arg, text, dir: dirname(file.path) },
+      format: file.format,
+      draft,
+      kind: 'post'
+    })
+    if (!wrote.after) return wrote
+    if (wrote.fileNote && !json) say.warn(wrote.fileNote)
+    writes = wrote.ops.length
+    index = wrote.after
+    post = index.byUuid.get(wrote.plan.uuid)
+    id = shortIds(index.items.map((i) => i.uuid)).get(post.uuid)
+    before = deliveryOf(index, post)
+    if (writes && text === file.text && !json) say.info(`Wrote what ${arg} says to post ${id} first: it differed from the post as stored.`)
+  }
+
   let res
   let moved = false
   if (when) {
@@ -1334,6 +1418,7 @@ async function send(args) {
       }
       post.data = { ...post.data, send_at: when }
       moved = true
+      writes++
     }
     res = await client.postAction(site, post.uuid, 'schedule')
   } else {
@@ -1341,18 +1426,15 @@ async function send(args) {
   }
   if (!res.ok) {
     await sayRefusal(res, { site, origin: client.origin, what: 'send posts', index })
+    // What this command wrote stays written, so say what the post is now.
+    if (scheduledFor && writes) {
+      say.warn(`Post ${id} was scheduled for ${scheduledFor}, and writing to it made it a draft again${moved || (when && !sameInstant(scheduledFor, when)) ? `, its time now ${when}` : ''}: it is not scheduled now.`)
+    } else if (moved) {
+      say.warn(`Post ${id}'s time is ${when} now, and it is not scheduled.`)
+    }
     return { exitCode: 1 }
   }
   const delivery = (await res.json().catch(() => null))?.delivery ?? null
-  // A file the post was drafted in keeps its new time and version, so its next run is not stale.
-  const file = moved ? draftFile(arg) : null
-  if (file) {
-    const after = await readIndex(client, site).catch(() => null)
-    const item = after?.byUuid.get(post.uuid)
-    const next = item ? fileWithFields(file.text, file.format, { send_at: when, version: versionOf(after, item) }) : null
-    if (next) writeFileSync(file.path, next)
-    else if (!json) say.warn(`Could not write its new time into ${arg}: run \`uniweb promote show ${id} > ${arg}\` before you edit it again.`)
-  }
   if (json) return out(delivery, delivery?.status === 'failed' || delivery?.status === 'refused' ? 1 : 0)
   return { exitCode: sayDelivery(index, post, delivery, id) }
 }
@@ -1394,6 +1476,10 @@ async function unschedule(args) {
  * What starting (or resuming) a campaign in these ad accounts will spend, as far as the draft
  * says: its dates, and per account the ad groups whose ads run there, with their daily budgets
  * and the most that comes to. The currency is the account's, which the network knows.
+ *
+ * ⭐ A MOST IS SAID ONLY WHEN EVERY AD GROUP STATES ITS DAILY BUDGET. One without leaves what it
+ * spends to the network, so the summary names it rather than add up the others as if it were the
+ * whole: that total is the one number the person agrees to.
  */
 function spendSummary(index, campaign, accounts, { connections, pages }) {
   const starts = campaign.data?.starts ?? null
@@ -1409,13 +1495,15 @@ function spendSummary(index, campaign, accounts, { connections, pages }) {
         .children('campaigns/ad_groups', campaign.uuid)
         .map((g) => ({ g, ads: index.children('campaigns/ad_groups/ads', g.uuid).filter((a) => a.data?.via === via) }))
         .filter((x) => x.ads.length)
-      const daily = sumAmounts(groups.map((x) => x.g.data?.daily_budget))
+      const unbudgeted = groups.filter((x) => !isAmount(x.g.data?.daily_budget)).map((x) => x.g.data?.name ?? null)
+      const daily = unbudgeted.length ? null : sumAmounts(groups.map((x) => x.g.data?.daily_budget))
       const total = daily !== null && Number.isFinite(days) && days > 0 ? (Math.round(Number(daily) * 100) * days / 100).toFixed(2) : null
       return {
         via,
         account: accountName(index, via, connections),
         groups: groups.map((x) => ({ name: x.g.data?.name ?? null, daily_budget: x.g.data?.daily_budget ?? null, ads: x.ads.length })),
         daily,
+        unbudgeted,
         upTo: total,
         pages: [...new Set(groups.flatMap((x) => x.ads.map((a) => pageRoute(a.data?.page, pages) ?? '(no page)')))]
       }
@@ -1433,8 +1521,12 @@ function printSummary(summary, act) {
       console.log(`  ${a.account}: no ad runs there yet`)
       continue
     }
-    const budgets = a.groups.map((g) => (g.daily_budget == null ? 'no daily budget' : money(g.daily_budget))).join(' + ')
-    console.log(`  ${a.account}: ${a.groups.length} ad group${a.groups.length === 1 ? '' : 's'}, ${budgets} a day in the account's currency${a.upTo ? ` — up to ${a.upTo}` : summary.ends ? '' : ', until paused'}`)
+    const budgets = a.groups.map((g) => (isAmount(g.daily_budget) ? money(g.daily_budget) : 'no daily budget')).join(' + ')
+    console.log(`  ${a.account}: ${a.groups.length} ad group${a.groups.length === 1 ? '' : 's'}, ${budgets} a day in the account's currency${a.upTo ? ` — up to ${a.upTo}` : a.unbudgeted.length || summary.ends ? '' : ', until paused'}`)
+    if (a.unbudgeted.length) {
+      const named = a.unbudgeted.map((n) => (n ? `“${n}”` : 'one unnamed')).join(', ')
+      console.log(`    ${c.yellow}No most can be said: ad group ${named} states no daily budget, so the network decides what ${a.unbudgeted.length === 1 ? 'it spends' : 'they spend'}. Give ${a.unbudgeted.length === 1 ? 'it' : 'each'} a daily_budget to bound it.${c.reset}`)
+    }
     const ads = a.groups.reduce((n, g) => n + g.ads, 0)
     console.log(`    ${ads} ad${ads === 1 ? '' : 's'}, linking to ${a.pages.join(', ')}`)
   }

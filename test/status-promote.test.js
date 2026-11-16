@@ -121,3 +121,21 @@ test('a site that never used Promote, or a backend without it, adds nothing; a f
   const failed = await statusWith({ promotionStatus: 500 })
   assert.equal(failed.check('promote.site')?.state, 'unknown')
 })
+
+test('status counts a post in the network\'s review, and says why one was refused', { timeout: 30_000 }, async () => {
+  const promotion = {
+    uuid: 'p0',
+    items: [
+      item('01a1-0000-0000-0000-00000000aa01', 'networks', { network: 'x', use: 'posts', connection: { model: 'm', entity: 'k1', brief: { name: 'Maple Bakery', state: 'connected' } } }),
+      item('01a1-0000-0000-0000-00000000ee01', 'posts', { via: '01a1-0000-0000-0000-00000000aa01' }),
+      item('01a1-0000-0000-0000-00000000ee02', 'posts/delivery', { status: 'review' }, '01a1-0000-0000-0000-00000000ee01'),
+      item('01a1-0000-0000-0000-00000000ee03', 'posts', { via: '01a1-0000-0000-0000-00000000aa01' }),
+      item('01a1-0000-0000-0000-00000000ee04', 'posts/delivery', { status: 'refused', reason: 'network_refused', detail: 'against its rules' }, '01a1-0000-0000-0000-00000000ee03')
+    ]
+  }
+  const { check } = await statusWith({ promotion })
+  const posts = check('promote.posts')
+  assert.equal(posts.state, 'attention')
+  assert.equal(posts.summary, 'Posts: 1 refused · 1 review.')
+  assert.ok(posts.lines.some((l) => /refused on x: the network refused it — against its rules/.test(l)), posts.lines.join('\n'))
+})

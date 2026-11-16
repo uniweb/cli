@@ -194,6 +194,32 @@ export function reasonWords(code) {
 /** A network's review of an ad, in words: `in_review` → `in review`. */
 export const reviewWords = (code) => String(code).replace(/_/g, ' ')
 
+/** Why a post or an ad did not go out, in words: its reason, then the network's own words; null when it gave neither. */
+export function whyNot(delivery) {
+  const said = [delivery?.reason ? reasonWords(delivery.reason) : null, delivery?.detail || null].filter(Boolean)
+  return said.length ? said.join(' — ') : null
+}
+
+/**
+ * A post's states as its delivery's `status` holds them, in the order a person reads them, what
+ * needs looking at first. A post with no delivery is a draft.
+ */
+export const POST_STATES = ['failed', 'refused', 'draft', 'scheduled', 'review', 'published']
+
+/**
+ * Posts counted by state, every state present: the known ones in `POST_STATES`'s order, then any
+ * other as the backend gave it, so a state the CLI has no word for yet is still counted.
+ *
+ * @param {Array<string|null|undefined>} states - each post's, empty for a draft
+ * @returns {Array<[string, number]>}
+ */
+export function stateCounts(states) {
+  const counts = new Map()
+  for (const s of states) counts.set(s || 'draft', (counts.get(s || 'draft') ?? 0) + 1)
+  const order = [...POST_STATES.filter((s) => counts.has(s)), ...[...counts.keys()].filter((s) => !POST_STATES.includes(s))]
+  return order.map((s) => [s, counts.get(s)])
+}
+
 // ── The input ──────────────────────────────────────────────────────────────────────
 
 const FRONT = /^---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/
@@ -407,6 +433,20 @@ export function picturesOf(draft) {
 /** Whether a picture is an address already, kept as written, rather than a file to upload. */
 export function isAddress(picture) {
   return /^https?:\/\//i.test(picture)
+}
+
+/**
+ * The pictures the site's Promote holds, as a read gives them back, each an address on the
+ * backend's own origin: what a draft may name again as written, though it is neither a file here
+ * nor an `https:` address. Any other path is a file, and one that isn't there is refused.
+ */
+export function heldPictures(index) {
+  const held = new Set()
+  for (const i of index.items) {
+    if (i.section !== 'posts/parts' && i.section !== 'campaigns/ad_groups/ads/parts') continue
+    for (const p of Array.isArray(i.data?.pictures) ? i.data.pictures : []) if (typeof p === 'string') held.add(p)
+  }
+  return held
 }
 
 // ── Pages, by their routes on the site as pushed ───────────────────────────────────

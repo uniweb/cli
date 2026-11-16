@@ -64,6 +64,8 @@ const CONNECTIONS = [
 function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC, now = () => Date.now() } = {}) {
   let clock = 0
   const store = items.map((i) => ({ ...i }))
+  // A post's door to refuse, by act: `{ status, body }`, as the backend refuses one it may not do.
+  const refuse = {}
   const stamp = () => `2026-11-16T08:${String(Math.floor(clock / 60)).padStart(2, '0')}:${String(clock++ % 60).padStart(2, '0')}.000Z`
   const seen = []
   const remove = (uuid) => {
@@ -135,6 +137,7 @@ function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC
       const [, uuid, act] = postAct
       const post = store.find((i) => i.uuid === uuid && i.section === 'posts')
       if (!post) return Response.json({ reason: 'not_found' }, { status: 404 })
+      if (refuse[act]) return Response.json(refuse[act].body ?? {}, { status: refuse[act].status })
       if (act === 'publish') {
         const refused = store.some((p) => p.section === 'posts/parts' && p.parent === uuid && /#refuse/.test(p.data?.text ?? ''))
         setChild('posts/delivery', uuid, refused
@@ -167,6 +170,7 @@ function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC
     respond,
     store,
     seen,
+    refuse,
     at: (method, path) => seen.filter((r) => r.method === method && r.path === path),
     writes: () => seen.filter((r) => r.method === 'POST' && r.path === `${PROMO}/items`)
   }
@@ -604,4 +608,116 @@ test('send --at from a file writes the new time and version into it, so its next
   const again = await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
   assert.equal(again.exitCode, 0, again.output)
   assert.match(again.output, /Nothing to change/)
+})
+
+// ── what an independent review found ───────────────────────────────────────────────
+
+test('send <file> sends what the file says: an edit not written yet is written first', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'p.md'), '---\nvia: x\n---\nFirst words.\n')
+  await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  writeFileSync(join(dir, 'p.md'), readFileSync(join(dir, 'p.md'), 'utf8').replace('First words.', 'Fixed words.'))
+  const run = await runVerb(dir, await verb(), ['send', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 0, run.output)
+  assert.match(run.output, /Wrote what p\.md says to post \w+ first/)
+  const post = backend.store.find((i) => i.section === 'posts')
+  const part = backend.store.find((i) => i.section === 'posts/parts' && i.parent === post.uuid)
+  assert.equal(part.data.text, 'Fixed words.', 'what went out is what the file says')
+  const posts = backend.seen.filter((r) => r.method === 'POST').map((r) => r.path)
+  assert.ok(posts.lastIndexOf(`${PROMO}/items`) < posts.indexOf(`${PROMO}/posts/${post.uuid}/publish`), 'written, then sent')
+})
+
+test('send <file> refuses a copy the app changed since, sends nothing, and leaves the file as it was', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'p.md'), '---\nvia: x\nsend_at: 2099-11-24T09:00:00Z\n---\nFirst words.\n')
+  await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  // The person edits the post's words in the app.
+  const part = backend.store.find((i) => i.section === 'posts/parts')
+  Object.assign(part, { data: { text: 'The person\'s words.' }, updated_at: '2026-11-16T09:00:00.000Z' })
+  const before = readFileSync(join(dir, 'p.md'), 'utf8')
+  const run = await runVerb(dir, await verb(), ['send', 'p.md', '--at', '2099-12-01T10:00:00Z', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 1, run.output)
+  assert.match(run.output, /changed since your copy.*uniweb promote show/)
+  assert.equal(backend.seen.filter((r) => /\/(publish|schedule)$/.test(r.path)).length, 0, 'nothing sent')
+  assert.equal(backend.writes().length, 1, 'nothing written over the person\'s words')
+  assert.equal(readFileSync(join(dir, 'p.md'), 'utf8'), before, 'the file keeps its version, so its stale copy stays refused')
+})
+
+test('a new time written, then scheduling refused: it says the post is a draft now, and the file keeps up', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'p.md'), '---\nvia: x\nsend_at: 2099-11-24T09:00:00Z\n---\nSoon.\n')
+  await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  await runVerb(dir, await verb(), ['send', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  backend.refuse.schedule = { status: 403, body: { op: 'admin' } }
+  const run = await runVerb(dir, await verb(), ['send', 'p.md', '--at', '2099-12-01T10:00:00Z', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 1, run.output)
+  assert.match(run.output, /Only an admin of the site may send posts/)
+  assert.match(run.output, /was scheduled for 2099-11-24T09:00:00Z, and writing to it made it a draft again, its time now 2099-12-01T10:00:00Z: it is not scheduled now/)
+  const post = backend.store.find((i) => i.section === 'posts')
+  assert.equal(backend.store.find((i) => i.section === 'posts/delivery' && i.parent === post.uuid), undefined, 'a draft')
+  // The file says what the backend holds, so its next run is not refused as stale.
+  delete backend.refuse.schedule
+  const again = await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(again.exitCode, 0, again.output)
+  assert.match(again.output, /Nothing to change/)
+})
+
+test('an ad names its account by network and connection, as a read gives the connection back', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'holiday.yml'), CAMPAIGN_YML)
+  await runVerb(dir, await verb(), ['campaign', 'holiday.yml', '--site', SITE], { env: ENV, respond: backend.respond })
+  const network = backend.store.find((i) => i.section === 'networks')
+  assert.equal(typeof network.data.connection, 'object', 'stored, it reads back as an entity reference')
+  const { default: yaml } = await import('js-yaml')
+  const draft = yaml.load(readFileSync(join(dir, 'holiday.yml'), 'utf8'))
+  draft.ad_groups[1].ads[0].via = { network: 'facebook', connection: CONN_META.slice(-4) }
+  writeFileSync(join(dir, 'holiday.yml'), yaml.dump(draft))
+  const run = await runVerb(dir, await verb(), ['campaign', 'holiday.yml', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 0, run.output)
+  assert.doesNotMatch(run.output, /does not run there/)
+  const ad = backend.store.filter((i) => i.section === 'campaigns/ad_groups/ads')[1]
+  assert.equal(ad.data.via, network.uuid)
+})
+
+test('a picture that is no file and no address the site holds is refused; one show printed is kept', async () => {
+  const held = '/site-pictures/abc123/tray.png'
+  const NET = '01a16c00-0000-7000-8000-000000000001'
+  const POST = '01a16c00-0000-7000-8000-000000000002'
+  const stamp = '2026-11-16T07:00:00.000Z'
+  const backend = statefulBackend({ items: [
+    { uuid: NET, section: 'networks', data: { network: 'x', use: 'posts', connection: CONN_X }, updated_at: stamp },
+    { uuid: POST, section: 'posts', data: { via: NET, language: 'en' }, updated_at: stamp },
+    { uuid: '01a16c00-0000-7000-8000-000000000003', section: 'posts/parts', parent: POST, data: { text: 'With a picture.', pictures: [held] }, updated_at: stamp }
+  ] })
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'gone.md'), '---\nvia: x\n---\nA picture moved away.\n\n![](/Users/nobody/Desktop/tray.jpg)\n')
+  const gone = await runVerb(dir, await verb(), ['post', 'gone.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(gone.exitCode, 1, gone.output)
+  assert.match(gone.output, /No picture \/Users\/nobody\/Desktop\/tray\.jpg: there is no such file, and the site's Promote holds no picture at that address/)
+  assert.equal(backend.writes().length, 0, 'nothing written')
+  // What show printed names the site's own address, and written back it changes nothing.
+  const shown = await runVerb(dir, await verb(), ['show', POST, '--site', SITE], { env: ENV, respond: backend.respond })
+  const text = shown.output.slice(shown.output.indexOf('---\nid:'))
+  assert.ok(text.includes(`![](${held})`), text)
+  writeFileSync(join(dir, 'shown.md'), text)
+  const again = await runVerb(dir, await verb(), ['post', 'shown.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(again.exitCode, 0, again.output)
+  assert.match(again.output, /Nothing to change/)
+})
+
+test('start states no most when an ad group has no daily budget, and names the group', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'holiday.yml'), CAMPAIGN_YML.replace('    daily_budget: 5.00\n', ''))
+  await runVerb(dir, await verb(), ['campaign', 'holiday.yml', '--site', SITE], { env: ENV, respond: backend.respond })
+  const run = await runVerb(dir, await verb(), ['start', 'Holiday', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 2, run.output)
+  assert.match(run.output, /10\.00 \+ no daily budget a day in the account's currency/)
+  assert.doesNotMatch(run.output, /up to/, 'no total that leaves a group out')
+  assert.match(run.output, /No most can be said: ad group “Cakes” states no daily budget/)
+  assert.equal(backend.seen.filter((r) => r.path.endsWith('/start')).length, 0)
 })

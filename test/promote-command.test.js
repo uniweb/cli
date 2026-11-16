@@ -254,3 +254,22 @@ test('check <route> says when the site reports nothing for a network to hear, an
   assert.equal(missing.exitCode, 1, missing.output)
   assert.match(missing.output, /no page \/winter/)
 })
+
+test('status counts every state a post is in, and says why one did not go out', async () => {
+  const promotion = {
+    uuid: 'p0',
+    items: [
+      ...PROMOTION.items,
+      item('d4', 'posts', { via: 'n1', language: 'en', page: 'pg1' }),
+      item('d4a', 'posts/parts', { text: 'Too bold' }, 'd4'),
+      item('d4d', 'posts/delivery', { status: 'refused', reason: 'network_refused', detail: 'against its rules' }, 'd4'),
+      item('d5', 'posts', { via: 'n1', language: 'en', page: 'pg1' }),
+      item('d5d', 'posts/delivery', { status: 'review' }, 'd5')
+    ]
+  }
+  const backend = promoteBackend({ promotion })
+  const run = await runVerb(tmp('uw-promote-'), await verb(), ['status', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 0, run.output)
+  assert.match(run.output, /1 draft · 1 scheduled \(next 2026-11-24T14:00:00Z\) · 1 published · (\x1b\[31m)?1 refused(\x1b\[0m)? · 1 review/)
+  assert.match(run.output, /refused “Too bold” — the network refused it — against its rules/)
+})

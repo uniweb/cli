@@ -50,9 +50,10 @@ uniweb promote send holiday.md         # now, or at its send_at; --at <time> set
 uniweb promote unschedule holiday.md   # a draft again, its time kept
 ```
 
+- **`send` given the file writes it first,** as `post` does, so what goes out is what the file says. If the app changed the post since, it is refused and nothing goes out. `send <id>` sends the post as stored.
 - **`via`** names a network, and the post goes out through the site's account there. The first time, the CLI chooses it from your one account on that network. With several, give `via: { network: x, connection: <id> }`; the refusal lists them.
 - **`page`** is a page of the site as pushed, so push a new page first. The live site must serve it in the post's language, or the send fails: publish first.
-- **A picture** given as a file is uploaded as one of the site's own, in its format. An address is kept as written.
+- **A picture** given as a file is uploaded as one of the site's own, in its format. An `https:` address is kept as written, and so is one `show` printed.
 - **The words go out as written**, as plain text: Markdown formatting shows as typed.
 - YAML and JSON work too: `text` and `pictures` for one part, or `parts: [{ text, pictures }]`.
 
@@ -86,6 +87,7 @@ uniweb promote resume holiday --yes
 
 - **An ad runs in one of its campaign's accounts.** Name it with the ad's own `via`, or leave it out when the campaign has only one.
 - **`start` and `resume` say what they will spend before they spend it:** the dates, each account's daily budgets and the most they come to, and the pages. At a terminal they ask. Without one they refuse unless given `--yes`, so show your person that summary and pass `--yes` only after they agree. The network bills the owner's ad account.
+- **An ad group with no `daily_budget` leaves its spend to the network,** so the summary states no most for that account. Give each ad group one.
 - **Once a campaign starts in an account, what runs there is fixed.** An edit to it is refused, and nothing changes. Add another ad account to its `via`, or draft a new campaign.
 
 ## Drafts stay right
@@ -134,7 +136,7 @@ A campaign with `goal: conversions` optimizes for what its network hears back. T
 | `post <file>` · `campaign <file>` | a draft, made or updated; `-` reads stdin |
 | `show <id>` | one post or campaign as its file holds it; its state goes to stderr |
 | `delete <id>` | a post, a campaign, an ad group or an ad |
-| `send <post> [--at <time> \| --now]` | post it now, or at its time |
+| `send <post> [--at <time> \| --now]` | post it now, or at its time; a file is written first |
 | `unschedule <post>` | a scheduled post a draft again |
 | `start <campaign>` · `resume <campaign>` | spend, after saying what; `--yes` answers |
 | `pause <campaign>` | wherever it runs |
