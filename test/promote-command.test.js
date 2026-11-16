@@ -276,8 +276,11 @@ test('status counts every state a post is in, and says why one did not go out', 
   assert.match(run.output, /refused “Too bold” — the network refused it — against its rules/)
 })
 
+// As the backend refuses a viewer's read (measured on a local backend, 2026-11-16): it names the site it refused.
+const VIEWER_REFUSED = { status: 403, title: 'Forbidden', detail: `edit on entity ${SITE} not permitted`, op: 'edit', target: `entity ${SITE}` }
+
 test('someone who can only view the site is told Promote takes edit, and who gives it', async () => {
-  const backend = promoteBackend({ readRefused: { status: 403, body: { op: 'edit' } } })
+  const backend = promoteBackend({ readRefused: { status: 403, body: VIEWER_REFUSED } })
   const run = await runVerb(tmp('uw-promote-'), await verb(), ['status', '--site', SITE], { env: ENV, respond: backend.respond })
   assert.equal(run.exitCode, 1, run.output)
   assert.match(run.output, /Promote is for those who can edit the site, and you can only view it/)

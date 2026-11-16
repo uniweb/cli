@@ -213,10 +213,11 @@ async function sayRefusal(res, { site, origin, what, index = null, notFound = nu
     say.err(`${REASONS.feature_not_subscribed}.`)
   } else if (res.status === 403 && body?.op === 'admin') {
     say.err(`Only an admin of the site may ${what}. What is written stays, for one of them to do it.`)
-  } else if (res.status === 403 && body?.op === 'edit' && body?.target) {
-    say.err(`The account it goes out through is not shared with you for that. Use one you can use, or ask whoever connected it to share it.`)
   } else if (res.status === 403 && forbidden) {
     say.err(forbidden)
+  } else if (res.status === 403 && body?.op === 'edit' && body?.target && !String(body.target).includes(site)) {
+    // A refusal names what it refused (`target`): the site itself, or the account a post or a campaign goes out through.
+    say.err(`The account it goes out through is not shared with you for that. Use one you can use, or ask whoever connected it to share it.`)
   } else if (res.status === 403) {
     say.err(`You may not ${what} on this site${body?.op ? ` (it takes ${body.op})` : ''}.`)
   } else if (res.status === 404) {

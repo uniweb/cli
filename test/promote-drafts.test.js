@@ -721,3 +721,20 @@ test('start states no most when an ad group has no daily budget, and names the g
   assert.match(run.output, /No most can be said: ad group “Cakes” states no daily budget/)
   assert.equal(backend.seen.filter((r) => r.path.endsWith('/start')).length, 0)
 })
+
+test('a send refused for the account it goes out through says so; one refused for the site does not', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'p.md'), '---\nvia: x\n---\nHello.\n')
+  await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  // A refusal names what it refused: here the connection, not the site.
+  backend.refuse.publish = { status: 403, body: { status: 403, op: 'edit', target: `entity ${CONN_X}` } }
+  const account = await runVerb(dir, await verb(), ['send', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(account.exitCode, 1, account.output)
+  assert.match(account.output, /The account it goes out through is not shared with you/)
+  backend.refuse.publish = { status: 403, body: { status: 403, op: 'edit', target: `entity ${SITE}` } }
+  const site = await runVerb(dir, await verb(), ['send', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(site.exitCode, 1, site.output)
+  assert.doesNotMatch(site.output, /account it goes out through/)
+  assert.match(site.output, /You may not send posts on this site \(it takes edit\)/)
+})
