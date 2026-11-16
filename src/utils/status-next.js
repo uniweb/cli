@@ -8,7 +8,7 @@
  *
  *   sign in → settle conflicts → finish a merge → take what others did (refresh, or pull)
  *   → commit what else changed → push → push to git → go live → deploy to another host
- *   → update Uniweb → read doctor's findings
+ *   → update Uniweb → read doctor's findings → what Promote needs of the person
  *
  * A commit of the project's other files needs nothing above it — refresh's `git pull` keeps
  * uncommitted work (`--autostash`, `utils/git.js::pullRemote`) — and comes before the push,
@@ -19,7 +19,7 @@
  * already does, and drops duplicates.
  */
 
-const ORDER = ['login', 'conflicts', 'merge', 'refresh', 'pull', 'commit', 'push', 'gitpush', 'publish', 'deploy', 'update', 'doctor']
+const ORDER = ['login', 'conflicts', 'merge', 'refresh', 'pull', 'commit', 'push', 'gitpush', 'publish', 'deploy', 'update', 'doctor', 'promote']
 
 /**
  * @param {Array<{ step: string, command: string|null, why: string, ask?: boolean }>} proposals

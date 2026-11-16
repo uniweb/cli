@@ -92,6 +92,14 @@ import { siteAround } from '../utils/pick-site.js'
 import { getCliVersion } from '../versions.js'
 import { planNext } from '../utils/status-next.js'
 import { AD_PLATFORMS } from '../backend/ad-platforms.js'
+import {
+  campaignDeliveries,
+  connectionOf,
+  deliveryOf,
+  indexPromotion,
+  reasonWords,
+  shortIds
+} from '../backend/promote-drafts.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -739,10 +747,11 @@ async function appChecks(siteDir, siteYml, { offline, args, git }) {
     }
     return readAppChanges({ client, siteDir, siteUuid: uuid })
   }
-  const [state, changes, foundation] = await Promise.all([
+  const [state, changes, foundation, promotion] = await Promise.all([
     uuid ? client.siteState(uuid) : null,
     uuid ? readChanges().catch((err) => ({ error: err })) : null,
-    foundationCheck(siteDir, siteYml, client).catch(() => null)
+    foundationCheck(siteDir, siteYml, client).catch(() => null),
+    uuid ? client.readPromotion(uuid).catch(() => null) : null
   ])
 
   if (state) {
@@ -836,7 +845,164 @@ async function appChecks(siteDir, siteYml, { offline, args, git }) {
     }
   }
   if (foundation) checks.push(foundation)
+  if (site && !elsewhere) {
+    const promote = await promoteChecks(client, uuid, promotion)
+    checks.push(...promote.checks)
+    proposals.push(...promote.proposals)
+  }
   return { checks, proposals, backend, site: site ?? null }
+}
+
+/**
+ * `promote.*` — the site's Promote, once the site has used it: what only the person can do (an
+ * account to reconnect or hand on, Promote to turn on where its ads were paused), the steps that
+ * get it found, the posts that failed and the ones going out this week, and what each running
+ * campaign spent. `uniweb promote status` says the rest.
+ *
+ * Nothing is said for a backend that has no Promote, or a site that never used it; a read that
+ * failed otherwise is `unknown`.
+ *
+ * @param {object} client
+ * @param {string} uuid - the site
+ * @param {Response|null} res - the promotion read, made beside the site's other reads
+ */
+async function promoteChecks(client, uuid, res, { now = Date.now() } = {}) {
+  if (!res || res.status === 404) return { checks: [], proposals: [] }
+  if (!res.ok) {
+    return { checks: [{ id: 'promote.site', state: 'unknown', summary: `Could not read the site's Promote: HTTP ${res.status}.` }], proposals: [] }
+  }
+  const promotion = (await res.json().catch(() => null))?.promotion ?? null
+  if (!promotion) return { checks: [], proposals: [] }
+  const index = indexPromotion(promotion)
+  const ids = shortIds(index.items.map((i) => i.uuid))
+  const checks = []
+  const proposals = []
+
+  // ── Getting found: each step's reading ──
+  const steps = index.top('getting_found').filter((s) => s.data?.skipped !== true)
+  if (steps.length) {
+    const reading = (s) => index.child('getting_found/reading', s.uuid)?.data ?? null
+    const todo = steps.filter((s) => reading(s)?.state !== 'done')
+    checks.push({
+      id: 'promote.found',
+      state: todo.length ? 'attention' : 'ok',
+      summary: todo.length
+        ? `Getting found: ${todo.map((s) => `${s.data?.step} ${{ todo: 'to do' }[reading(s)?.state] ?? reading(s)?.state ?? 'not checked'}`).join(', ')}.`
+        : `Getting found: ${steps.map((s) => s.data?.step).join(', ')} done.`,
+      lines: todo.length ? ['`npx uniweb promote check <step>` checks one again.'] : [],
+      detail: { steps: steps.map((s) => ({ step: s.data?.step ?? null, reading: reading(s) })) }
+    })
+  }
+
+  // ── The accounts it goes out through: the person's to reconnect or hand on ──
+  const accounts = index.top('networks').map((n) => ({ network: n.data?.network, use: n.data?.use, ...connectionOf(n.data?.connection) }))
+  const stuck = accounts.filter((a) => a.state === 'needs_reconnect' || a.state === 'stopped')
+  if (accounts.length) {
+    checks.push({
+      id: 'promote.accounts',
+      state: stuck.length ? 'attention' : 'ok',
+      summary: stuck.length
+        ? `${count(stuck.length, 'account')} the site goes out through ${stuck.length === 1 ? 'needs' : 'need'} its person.`
+        : `Goes out through ${accounts.map((a) => `${a.network} (${a.use})`).join(', ')}.`,
+      lines: stuck.map((a) => `${a.network} “${a.name ?? a.handle ?? a.uuid}”: ${a.state === 'stopped' ? 'stopped — its person left; an admin hands it on' : 'needs reconnecting'}`),
+      detail: { accounts }
+    })
+    for (const a of stuck) {
+      proposals.push({
+        step: 'promote',
+        command: null,
+        why: a.state === 'stopped'
+          ? `the ${a.network} account “${a.name ?? a.handle ?? a.uuid}” stopped when its person left: an admin of the workspace hands it on, in the app`
+          : `the ${a.network} account “${a.name ?? a.handle ?? a.uuid}” needs reconnecting: its person does it, in the app`,
+        ask: true
+      })
+    }
+  }
+
+  // ── Posts: what failed, and what goes out this week ──
+  const posts = index.top('posts').map((p) => ({ item: p, delivery: deliveryOf(index, p) }))
+  if (posts.length) {
+    const weekAhead = now + 7 * 86400000
+    const failed = posts.filter((p) => p.delivery?.status === 'failed' || p.delivery?.status === 'refused')
+    const soon = posts
+      .filter((p) => p.delivery?.status === 'scheduled' && Date.parse(p.item.data?.send_at) <= weekAhead)
+      .sort((a, b) => Date.parse(a.item.data?.send_at) - Date.parse(b.item.data?.send_at))
+    const network = (p) => index.byUuid.get(p.item.data?.via)?.data?.network ?? 'its network'
+    const tally = ['draft', 'scheduled', 'published']
+      .map((state) => [state, posts.filter((p) => (p.delivery?.status ?? 'draft') === state).length])
+      .filter(([, n]) => n)
+      .map(([state, n]) => `${n} ${state}`)
+    checks.push({
+      id: 'promote.posts',
+      state: failed.length ? 'attention' : 'ok',
+      summary: `Posts: ${[...(failed.length ? [`${failed.length} failed`] : []), ...tally].join(' · ')}.`,
+      lines: [
+        ...failed.map((p) => `${ids.get(p.item.uuid)} failed on ${network(p)}: ${reasonWords(p.delivery.reason)}${p.delivery.detail ? ` — ${p.delivery.detail}` : ''}`),
+        ...soon.map((p) => `${ids.get(p.item.uuid)} goes out on ${network(p)} at ${p.item.data.send_at}`)
+      ],
+      detail: {
+        failed: failed.map((p) => ({ id: p.item.uuid, reason: p.delivery.reason ?? null })),
+        scheduled: soon.map((p) => ({ id: p.item.uuid, send_at: p.item.data.send_at }))
+      }
+    })
+    if (failed.some((p) => p.delivery?.reason === 'promote_off')) {
+      proposals.push({ step: 'promote', command: null, why: 'a scheduled post failed because the site has no Promote: it comes with the site\'s Analytics, which the person turns on in the app', ask: true })
+    }
+  }
+
+  // ── Campaigns: what runs, and what it spent ──
+  const campaigns = index.top('campaigns').map((x) => ({ item: x, deliveries: campaignDeliveries(index, x) }))
+  if (campaigns.length) {
+    const running = campaigns.filter((x) => x.deliveries.some((d) => d.status === 'active'))
+    const spent = await Promise.all(
+      running.map(async (x) => {
+        const r = await client.campaignSpend(uuid, x.item.uuid).catch(() => null)
+        return r?.ok ? ((await r.json().catch(() => null))?.spend ?? null) : null
+      })
+    )
+    const offPaused = campaigns.some((x) => x.deliveries.some((d) => d.status === 'paused' && d.reason === 'promote_off'))
+    const attention = campaigns.filter((x) => x.deliveries.some((d) => d.status === 'attention'))
+    const lines = running.map((x, i) => `“${x.item.data?.name ?? ids.get(x.item.uuid)}” running — ${spendWords(spent[i])}`)
+    for (const x of attention) {
+      for (const d of x.deliveries.filter((d) => d.status === 'attention')) {
+        lines.push(`“${x.item.data?.name ?? ids.get(x.item.uuid)}” waits in an ad account: ${reasonWords(d.reason)}${d.detail ? ` — ${d.detail}` : ''}`)
+      }
+    }
+    if (offPaused) lines.push('Its ads were paused because the site has no Promote.')
+    checks.push({
+      id: 'promote.campaigns',
+      state: attention.length || offPaused ? 'attention' : 'ok',
+      summary: `Campaigns: ${running.length} running, ${campaigns.length - running.length} not.`,
+      lines,
+      detail: {
+        running: running.map((x, i) => ({ id: x.item.uuid, name: x.item.data?.name ?? null, spend: spent[i] }))
+      }
+    })
+    if (offPaused) {
+      proposals.push({ step: 'promote', command: null, why: 'the site\'s ads were paused because it has no Promote: it comes with the site\'s Analytics, which the person turns on in the app', ask: true })
+    }
+  }
+  return { checks, proposals }
+}
+
+/**
+ * What a campaign spent, from the days the network last reported: the latest day and the one
+ * before it, each per currency. A day not reported is unknown, never zero.
+ */
+function spendWords(rows) {
+  if (!Array.isArray(rows) || !rows.length) return 'no spend reported yet'
+  const days = [...new Set(rows.map((r) => r.day).filter(Boolean))].sort()
+  const on = (day) => {
+    const cents = {}
+    for (const r of rows.filter((x) => x.day === day)) {
+      const n = Math.round(Number(r.amount) * 100)
+      if (r.currency && Number.isFinite(n)) cents[r.currency] = (cents[r.currency] ?? 0) + n
+    }
+    return Object.entries(cents).map(([cur, n]) => `${(n / 100).toFixed(2)} ${cur}`).join(' + ') || 'unknown'
+  }
+  const last = days[days.length - 1]
+  const before = days[days.length - 2]
+  return before ? `${on(before)} on ${before}, ${on(last)} on ${last} so far` : `${on(last)} on ${last}`
 }
 
 /** The name a backend's hosting goes by: Uniweb Cloud on the default backend, its origin elsewhere. */
@@ -1710,6 +1876,7 @@ const GROUPS = [
   ['git', 'Git'],
   ['app', 'App'],
   ['hosting', 'Hosting'],
+  ['promote', 'Promote'],
   ['uniweb', 'Uniweb'],
   ['health', 'Health'],
   ['dev', 'Dev server']

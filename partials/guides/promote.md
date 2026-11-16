@@ -14,7 +14,7 @@ uniweb promote status          # getting found, accounts, posts and campaigns by
 uniweb promote status --json   # the same, to read
 ```
 
-Run it first. Its *Ask the person first* lines are theirs alone. It names the networks this backend can connect: claim no other.
+Run it first. Its *Ask the person first* lines are theirs alone. It names the networks this backend can connect: claim no other. `uniweb status` carries the short form for a site that uses Promote: what needs the person, a post that failed, the posts going out this week, and each running campaign's spend.
 
 ## Getting found
 

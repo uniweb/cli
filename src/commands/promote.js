@@ -46,6 +46,9 @@ import {
   campaignOf,
   campaignShape,
   checkDraft,
+  REASONS,
+  reasonWords,
+  reviewWords,
   deliveryOf,
   fileWithFields,
   fileWithIdentity,
@@ -188,35 +191,6 @@ async function targetSite(args, client, verb) {
   }
   return uuid
 }
-
-/**
- * A reason the backend gave — a delivery's, or a refusal's — in words. One the CLI has no words
- * for yet is shown as it is, so a reason can ship before the CLI has a sentence for it; `--json`
- * gives the codes.
- */
-const REASONS = {
-  no_network: 'the account it goes out through is no longer chosen for the site',
-  no_connection: 'no account is connected for it',
-  site_not_published: 'the site is not published yet — publish it first',
-  no_page: 'it links to no page of the site',
-  page_gone: 'the page it links to was removed from the site',
-  page_not_published: 'the page it links to is not published in its language yet — publish the site again',
-  connection_stopped: 'its account stopped: whoever connected it left the workspace, and an admin hands it on, in the app',
-  connection_gone: 'its account was disconnected',
-  connection_needs_reconnect: 'its account needs reconnecting, by its person, in the app',
-  connection_not_permitted: 'whoever scheduled it may no longer post through its account',
-  network_not_offered: 'this backend does not offer that network',
-  network_refused: 'the network refused it',
-  promote_off: 'the site has no Promote: it comes with the site\'s Analytics, which the person turns on in the app',
-  feature_not_subscribed: 'Promote comes with the site\'s Analytics, which this site does not have yet. The person turns it on in the app'
-}
-
-export function reasonWords(code) {
-  return REASONS[code] ?? code
-}
-
-/** A network's review of an ad, in words: `in_review` → `in review`. */
-const reviewWords = (code) => String(code).replace(/_/g, ' ')
 
 /**
  * What the backend said about a refused request, in words, and its own beside them.
