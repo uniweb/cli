@@ -1,12 +1,12 @@
 /**
  * `uniweb promote status | check | connect` — a site's Promote, read and checked as a second
- * client of the backend, beside the app.
+ * client of the backend, beside the app. Drafts and going out: `promote-drafts.test.js`.
  *
  * The backend's half is its own, and these tests answer its routes as it says they answer:
  * `GET /dev/site/promotion/{site}` gives `{ promotion: { uuid, items } }` (each item `{ uuid,
  * section, parent?, data, updated_at }`) or `{ promotion: null }`; `POST …/items` writes a batch
- * and answers `{ uuid, results: [{ uuid, updated_at }] }`; `POST …/steps/{step}/check` answers
- * `{ reading }`, or `400` for a step it cannot check; `GET …/campaigns/{c}/spend` gives `{ spend }`;
+ * and answers `{ uuid, results: [{ uuid, updated_at }] }`; `POST …/steps/{step}/check`, the step
+ * named by its token, answers `{ reading }`, or `400` for a step it cannot check; `GET …/campaigns/{c}/spend` gives `{ spend }`;
  * `GET /dev/connections` lists the caller's connections; `POST /dev/connections/consent` answers
  * `{ address }`; `GET /dev/config` carries `promote.networks`, absent while there is none.
  */
@@ -134,34 +134,31 @@ test('status on a site that has not used Promote says so, and what can be connec
   assert.match(run.output, /no network yet, on this deployment/)
 })
 
-test('check checks the step by its item, and shows the reading', async () => {
-  const backend = promoteBackend()
+test('check names the step, and makes no item: the backend keeps one per step', async () => {
+  const backend = promoteBackend({ promotion: null })
   const run = await runVerb(tmp('uw-promote-'), await verb(), ['check', 'sitemap', '--site', SITE], { env: ENV, respond: backend.respond })
   assert.equal(run.exitCode, 0, run.output)
-  assert.equal(backend.at('POST', `${PROMO}/steps/s1/check`).length, 1)
-  assert.equal(backend.at('POST', `${PROMO}/items`).length, 0, 'the step had its item; nothing made')
+  assert.equal(backend.at('POST', `${PROMO}/steps/sitemap/check`).length, 1)
+  assert.equal(backend.at('POST', `${PROMO}/items`).length, 0, 'the check finds or makes its item itself')
+  assert.equal(backend.at('GET', PROMO).length, 0, 'and needs no read first')
   assert.match(run.output, /sitemap: done .*https:\/\/maple\.test\/sitemap\.xml/)
 })
 
-test('check makes the step’s item when the site has none, then checks it', async () => {
-  const backend = promoteBackend({ promotion: null })
+test('check --json gives the reading as the backend answered it', async () => {
+  const backend = promoteBackend()
   const run = await runVerb(tmp('uw-promote-'), await verb(), ['check', 'sitemap', '--site', SITE, '--json'], { env: ENV, respond: backend.respond })
   assert.equal(run.exitCode, 0, run.output)
-  const writes = backend.at('POST', `${PROMO}/items`)
-  assert.deepEqual(writes[0].body, { batch: [{ kind: 'create', section: 'getting_found', data: { step: 'sitemap' } }] })
-  assert.equal(backend.at('POST', `${PROMO}/steps/new0/check`).length, 1)
-  assert.equal(JSON.parse(run.output.trim().split('\n').pop()).reading.state, 'done')
+  const out = JSON.parse(run.output.trim().split('\n').pop())
+  assert.equal(out.step, 'sitemap')
+  assert.equal(out.reading.state, 'done')
 })
 
-test('a step the backend cannot check leaves nothing behind: the item made for it is deleted again', async () => {
-  const backend = promoteBackend({ promotion: null, onCheck: () => new Response('{"reason":"not_checkable"}', { status: 400 }) })
+test('a step the backend cannot check is said, and nothing is written', async () => {
+  const backend = promoteBackend({ onCheck: () => new Response('{"reason":"not_checkable"}', { status: 400 }) })
   const run = await runVerb(tmp('uw-promote-'), await verb(), ['check', 'search_console', '--site', SITE], { env: ENV, respond: backend.respond })
   assert.equal(run.exitCode, 1, run.output)
-  const writes = backend.at('POST', `${PROMO}/items`)
-  assert.equal(writes.length, 2)
-  assert.equal(writes[1].body.batch[0].kind, 'delete')
-  assert.equal(writes[1].body.batch[0].uuid, 'new0')
-  assert.equal(writes[1].body.batch[0].if_unmodified_since, '2026-11-16T07:00:00Z')
+  assert.equal(backend.at('POST', `${PROMO}/steps/search_console/check`).length, 1)
+  assert.equal(backend.at('POST', `${PROMO}/items`).length, 0)
   assert.match(run.output, /cannot check `search_console` yet/)
 })
 

@@ -1032,16 +1032,54 @@ export class BackendClient {
 
   /**
    * POST /dev/site/promotion/{site}/steps/{step}/check — check one getting-found step, named
-   * by its item's uuid. Answers `{ reading }`: `state`, `checked_at`, `found`, `detail?`,
-   * `address?`. A step the backend cannot check is `400`.
+   * by the step itself (`sitemap`). The backend finds the step's item, or makes it on its first
+   * check. Answers `{ reading }`: `state`, `checked_at`, `found`, `detail?`, `address?`. A step
+   * the backend cannot check is `400`, with nothing made.
    *
    * @param {string} siteUuid
-   * @param {string} stepUuid
+   * @param {string} step - the step's token
    * @returns {Promise<Response>}
    */
-  async checkPromotionStep(siteUuid, stepUuid) {
+  async checkPromotionStep(siteUuid, step) {
     return this.request(
-      `/dev/site/promotion/${encodeURIComponent(siteUuid)}/steps/${encodeURIComponent(stepUuid)}/check`,
+      `/dev/site/promotion/${encodeURIComponent(siteUuid)}/steps/${encodeURIComponent(step)}/check`,
+      { method: 'POST' }
+    )
+  }
+
+  /**
+   * POST /dev/site/promotion/{site}/posts/{post}/{act} — a post's doors: `publish` (now),
+   * `schedule` (at its `send_at`) and `unschedule` (a draft again, its `send_at` kept). Each
+   * answers `{ delivery }`; `unschedule`'s is `null` once a draft. Publishing and scheduling
+   * take `admin` on the site and `edit` on the account it goes out through; unscheduling takes
+   * `edit` on the site.
+   *
+   * @param {string} siteUuid
+   * @param {string} postUuid
+   * @param {'publish'|'schedule'|'unschedule'} act
+   * @returns {Promise<Response>}
+   */
+  async postAction(siteUuid, postUuid, act) {
+    return this.request(
+      `/dev/site/promotion/${encodeURIComponent(siteUuid)}/posts/${encodeURIComponent(postUuid)}/${act}`,
+      { method: 'POST' }
+    )
+  }
+
+  /**
+   * POST /dev/site/promotion/{site}/campaigns/{campaign}/{act} — `start` (in each ad account
+   * of its `via` it doesn't run in yet), `pause` and `resume`, wherever it runs. Each answers
+   * `{ deliveries }`, one per ad account. Starting and resuming spend in the owner's ad
+   * accounts: they take `admin` on the site and `edit` on each account; pausing takes `admin`.
+   *
+   * @param {string} siteUuid
+   * @param {string} campaignUuid
+   * @param {'start'|'pause'|'resume'} act
+   * @returns {Promise<Response>}
+   */
+  async campaignAction(siteUuid, campaignUuid, act) {
+    return this.request(
+      `/dev/site/promotion/${encodeURIComponent(siteUuid)}/campaigns/${encodeURIComponent(campaignUuid)}/${act}`,
       { method: 'POST' }
     )
   }

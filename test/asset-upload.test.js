@@ -531,6 +531,9 @@ test('every media upload names the owner it is charged to, after the create', ()
 
   for (const f of readdirSync(cmds).filter((n) => n.endsWith('.js'))) {
     const text = readSrc(joinPath(cmds, f), 'utf8')
+    // A command that makes the site it uploads for. One that never makes a site uploads for one it
+    // has read (`uniweb promote`'s pictures), whose owner exists already.
+    const makesTheSite = text.includes('createSiteFromItsContent(')
     let at = 0
     while ((at = text.indexOf('uploadSiteMedia(', at)) !== -1) {
       callsFound++
@@ -542,7 +545,7 @@ test('every media upload names the owner it is charged to, after the create', ()
       // leaves no site behind), and the bail that stops us uploading when it failed.
       const create = text.lastIndexOf('createSiteFromItsContent(', at)
       const bail = text.lastIndexOf('if (!site.uuid)', at)
-      if (create === -1 || bail === -1 || bail < create)
+      if (makesTheSite && (create === -1 || bail === -1 || bail < create))
         uncreated.push(`${f} @ ${at}`)
       at += 1
     }

@@ -45,6 +45,11 @@
     "description": "publish, deploy, push/pull, register, CI, workspaces, updates"
   },
   {
+    "name": "promote",
+    "title": "Promoting a site",
+    "description": "get the site found, post or advertise for it, read what that brought"
+  },
+  {
     "name": "migrate",
     "title": "Migrating",
     "description": "port a React / Next / generated design"

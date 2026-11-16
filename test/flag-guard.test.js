@@ -99,6 +99,11 @@ test('a realistic invocation of every guarded verb passes', () => {
   assert.equal(checkFlags('forget', ['--all']), null, 'forget rejected --all')
   // `site list` is the other form people script.
   assert.equal(checkFlags('site', ['list', '--json', '--personal']), null, 'site rejected list --json')
+  // `promote`'s going out: a post's time, and the answer `start` and `resume` take.
+  assert.equal(checkFlags('promote', ['send', '7f3c', '--at', '2026-11-24T09:00-05:00']), null, 'promote rejected send --at')
+  assert.equal(checkFlags('promote', ['send', '7f3c', '--now', '--json']), null, 'promote rejected send --now')
+  assert.equal(checkFlags('promote', ['start', 'Holiday', '--yes', '--org', '@acme']), null, 'promote rejected start --yes')
+  assert.equal(checkFlags('promote', ['post', '-']), null, 'promote rejected a draft from stdin')
   // The name claims EVERY guarded verb; make it a claim the test can keep. A verb
   // added to VERB_FLAGS without a case here would otherwise pass by absence.
   assert.deepEqual(

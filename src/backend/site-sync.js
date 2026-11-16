@@ -86,7 +86,8 @@ import { keepEditedTranslations, rowsWantTranslation, formatKeptTranslations } f
 // Deliberately NOT pull.js's `readPullDocuments`: that one is tolerant of JSON
 // envelopes for a lane whose shape may change, and importing it here would be a
 // cycle (pull.js already imports this module). Both lanes here are always ZIPs.
-function entityDocFromUwx(buf) {
+// `uniweb promote` reads the site's pages from it, as pushed.
+export function entityDocFromUwx(buf) {
   if (!buf || buf.length < 2 || buf[0] !== 0x50 || buf[1] !== 0x4b) return null
   for (const [name, data] of readZip(buf)) {
     if (name === 'manifest.json' || !name.endsWith('.json')) continue

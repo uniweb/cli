@@ -322,7 +322,7 @@ Where a value lives: a **param** when JS branches on it; a **component var** (`m
 
 ## 6. Guides
 
-Every guide ships with the CLI this project pins, so it describes the version in front of you. Step 6 runs `content` or `foundation` before any writing; you will know when you need the rest. `uniweb guide` alone lists them.
+Every guide ships with the CLI this project pins, so it describes the version in front of you. `uniweb guide` alone lists them.
 
 | When you… | Run |
 |---|---|
@@ -335,6 +335,7 @@ Every guide ships with the CLI this project pins, so it describes the version in
 | the site has accounts or member data (`services.backend`, `blueprint.yml`, `@uniweb/api`) | `uniweb guide backend` |
 | add a language | `uniweb guide i18n` |
 | publish, deploy, push/pull, register, CI, workspaces, updates | `uniweb guide ship` |
+| get the site found, post or advertise for it | `uniweb guide promote` |
 | port a React / Next / generated design | `uniweb guide migrate` |
 
 **The documentation index is `https://uniweb.io/llms.txt`** — each page, a line on it, and its link. Go there for anything not answered here, above all whether a feature exists, and follow its links rather than build them. For several lookups: `git clone --depth 1 https://github.com/uniweb/docs .uniweb-docs` (gitignore it) and grep; bare paths above resolve as index keys, files in the clone, or `https://raw.githubusercontent.com/uniweb/docs/main/{path}`. The docs describe the **latest** release: when `uniweb status` says this project is behind, the fix is `npx uniweb@latest update --yes`, not older docs. Syntax the docs no longer show is listed under *Retired forms* in `uniweb guide ship`. `docs.uniweb.app` is for authors in the visual editor, not framework questions.

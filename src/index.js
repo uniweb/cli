@@ -2507,7 +2507,7 @@ ${colors.bright}Commands:${colors.reset}
   status             What changed in the app, in git and in Uniweb — and what to run
   forget             Forget a backend, or --all to make a copied project a new one
   site <cmd>         The sites in a workspace: list, unpublish, delete
-  promote <cmd>      A site's Promote: status, check a step, connect an account
+  promote <cmd>      A site's Promote: its posts and ads, getting found, and the accounts
   org <cmd>          The organizations you belong to: list, create
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
