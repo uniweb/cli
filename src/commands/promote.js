@@ -203,7 +203,7 @@ async function targetSite(args, client, verb) {
  * @param {{ site: string, origin: string, what: string, index?: object }} ctx - `what` completes
  *   "You may not …"; `index` names a campaign a refusal names by uuid
  */
-async function sayRefusal(res, { site, origin, what, index = null, notFound = null }) {
+async function sayRefusal(res, { site, origin, what, index = null, notFound = null, forbidden = null }) {
   const body = await res.clone().json().catch(() => null)
   const reason = typeof body?.reason === 'string' ? body.reason : null
   const own = [reason, body?.detail ?? body?.message ?? body?.title].filter((x) => typeof x === 'string' && x).join(': ')
@@ -215,6 +215,8 @@ async function sayRefusal(res, { site, origin, what, index = null, notFound = nu
     say.err(`Only an admin of the site may ${what}. What is written stays, for one of them to do it.`)
   } else if (res.status === 403 && body?.op === 'edit' && body?.target) {
     say.err(`The account it goes out through is not shared with you for that. Use one you can use, or ask whoever connected it to share it.`)
+  } else if (res.status === 403 && forbidden) {
+    say.err(forbidden)
   } else if (res.status === 403) {
     say.err(`You may not ${what} on this site${body?.op ? ` (it takes ${body.op})` : ''}.`)
   } else if (res.status === 404) {
@@ -234,6 +236,9 @@ async function sayRefusal(res, { site, origin, what, index = null, notFound = nu
 
 /** A 404 on reading a site's Promote: no such site there, or a backend without these routes. */
 const notOffered = (origin, site) => `${origin} has no site ${site}, or does not offer Promote to this CLI yet.`
+
+/** A 403 on reading it: the site is shared with you to view, and Promote takes edit. */
+const VIEW_ONLY = 'Promote is for those who can edit the site, and you can only view it: an owner or admin of the site can give you edit, in the app.'
 
 /**
  * The networks the deployment offers to connect, as tokens. None when `/dev/config` names none,
@@ -353,7 +358,7 @@ async function status(args) {
     offeredNetworks(client)
   ])
   if (!res.ok) {
-    await sayRefusal(res, { site, origin: client.origin, what: 'read Promote', notFound: notOffered(client.origin, site) })
+    await sayRefusal(res, { site, origin: client.origin, what: 'read Promote', notFound: notOffered(client.origin, site), forbidden: VIEW_ONLY })
     return { exitCode: 1 }
   }
   const promotion = (await res.json().catch(() => null))?.promotion ?? null
@@ -722,7 +727,7 @@ async function begin(args, command, verb) {
 async function readIndex(client, site) {
   const res = await client.readPromotion(site)
   if (!res.ok) {
-    await sayRefusal(res, { site, origin: client.origin, what: 'read Promote', notFound: notOffered(client.origin, site) })
+    await sayRefusal(res, { site, origin: client.origin, what: 'read Promote', notFound: notOffered(client.origin, site), forbidden: VIEW_ONLY })
     return null
   }
   return indexPromotion((await res.json().catch(() => null))?.promotion ?? null)

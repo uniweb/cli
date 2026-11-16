@@ -869,7 +869,8 @@ async function appChecks(siteDir, siteYml, { offline, args, git }) {
  * @param {Response|null} res - the promotion read, made beside the site's other reads
  */
 async function promoteChecks(client, uuid, res, { now = Date.now() } = {}) {
-  if (!res || res.status === 404) return { checks: [], proposals: [] }
+  // A 403 is someone who can only view the site: Promote is shown to those who can edit it.
+  if (!res || res.status === 404 || res.status === 403) return { checks: [], proposals: [] }
   if (!res.ok) {
     return { checks: [{ id: 'promote.site', state: 'unknown', summary: `Could not read the site's Promote: HTTP ${res.status}.` }], proposals: [] }
   }

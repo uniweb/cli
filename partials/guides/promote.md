@@ -6,6 +6,7 @@ On-demand guide (`uniweb guide promote`); AGENTS.md is assumed read. For a site 
 
 - **The person** connects each account at its network, in a browser signed in to the app; you hand them the address `uniweb promote connect <network>` prints. They turn on the site's Analytics, which carries Promote, in the app. They reconnect an account that needs it, and an admin hands on one whose person left. They decide what goes out and what is spent.
 - **You** draft posts and campaigns, check the pages they link to, send and start what your person agreed to, and read what it brought. You act with their session, at the access they have; an account's tokens never pass through the CLI.
+- **Access follows the site's.** Reading and drafting take edit on the site; sending, scheduling, starting, pausing and resuming take admin. Someone who can only view the site sees none of its Promote.
 
 ## On one screen
 

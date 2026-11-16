@@ -120,6 +120,9 @@ test('a site that never used Promote, or a backend without it, adds nothing; a f
   assert.equal(without.doc.checks.filter((c) => c.id.startsWith('promote.')).length, 0)
   const failed = await statusWith({ promotionStatus: 500 })
   assert.equal(failed.check('promote.site')?.state, 'unknown')
+  // Someone who can only view the site is refused its Promote, and sees none of it here.
+  const viewer = await statusWith({ promotionStatus: 403 })
+  assert.equal(viewer.doc.checks.filter((c) => c.id.startsWith('promote.')).length, 0)
 })
 
 test('status counts a post in the network\'s review, and says why one was refused', { timeout: 30_000 }, async () => {

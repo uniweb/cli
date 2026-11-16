@@ -52,7 +52,7 @@ const PROMOTION = {
 }
 
 /** Answers the routes promote meets, recording every request with its body and workspace. */
-function promoteBackend({ promotion = PROMOTION, networks = ['google', 'linkedin', 'x'], onCheck, connections } = {}) {
+function promoteBackend({ promotion = PROMOTION, networks = ['google', 'linkedin', 'x'], onCheck, connections, readRefused = null } = {}) {
   const seen = []
   const respond = async (url, init = {}) => {
     const u = new URL(url)
@@ -61,7 +61,9 @@ function promoteBackend({ promotion = PROMOTION, networks = ['google', 'linkedin
     seen.push({ method, path: u.pathname, body, workspace: init.headers?.['x-uniweb-workspace'] ?? null })
     if (u.pathname === '/dev/orgs') return Response.json({ account_handle: 'ana', orgs: [], workspaces: [] })
     if (u.pathname === '/dev/config') return Response.json(networks ? { promote: { networks } } : {})
-    if (u.pathname === PROMO && method === 'GET') return Response.json({ promotion })
+    if (u.pathname === PROMO && method === 'GET') {
+      return readRefused ? Response.json(readRefused.body, { status: readRefused.status }) : Response.json({ promotion })
+    }
     if (u.pathname === `${PROMO}/items` && method === 'POST') {
       return Response.json({ uuid: 'p0', results: body.batch.map((op, i) => ({ uuid: op.uuid ?? `new${i}`, updated_at: '2026-11-16T07:00:00Z' })) })
     }
@@ -272,4 +274,14 @@ test('status counts every state a post is in, and says why one did not go out', 
   assert.equal(run.exitCode, 0, run.output)
   assert.match(run.output, /1 draft · 1 scheduled \(next 2026-11-24T14:00:00Z\) · 1 published · (\x1b\[31m)?1 refused(\x1b\[0m)? · 1 review/)
   assert.match(run.output, /refused “Too bold” — the network refused it — against its rules/)
+})
+
+test('someone who can only view the site is told Promote takes edit, and who gives it', async () => {
+  const backend = promoteBackend({ readRefused: { status: 403, body: { op: 'edit' } } })
+  const run = await runVerb(tmp('uw-promote-'), await verb(), ['status', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 1, run.output)
+  assert.match(run.output, /Promote is for those who can edit the site, and you can only view it/)
+  const shown = await runVerb(tmp('uw-promote-'), await verb(), ['show', 'Holiday', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(shown.exitCode, 1, shown.output)
+  assert.match(shown.output, /you can only view it/)
 })
