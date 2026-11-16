@@ -33,7 +33,7 @@
  */
 
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { basename, dirname, isAbsolute, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import yaml from 'js-yaml'
 import { mintUuidV7 } from '@uniweb/build/uwx'
 import { BackendClient, WorkspaceMismatchError, describeWorkspace } from '../backend/client.js'
@@ -41,10 +41,13 @@ import { resolveWorkspace } from '../backend/workspace.js'
 import {
   YAML_READ,
   campaignDeliveries,
+  connectionOf,
+  conversionNotes,
   campaignOf,
   campaignShape,
   checkDraft,
   deliveryOf,
+  fileWithFields,
   fileWithIdentity,
   findItem,
   formatOf,
@@ -211,6 +214,9 @@ const REASONS = {
 export function reasonWords(code) {
   return REASONS[code] ?? code
 }
+
+/** A network's review of an ad, in words: `in_review` → `in review`. */
+const reviewWords = (code) => String(code).replace(/_/g, ' ')
 
 /**
  * What the backend said about a refused request, in words, and its own beside them.
@@ -466,9 +472,11 @@ function printNetworks(networks, connections) {
   const byUuid = new Map((connections ?? []).map((k) => [k.uuid, k]))
   networks.forEach((n, i) => {
     const head = i === 0 ? `${c.bold}Networks${c.reset}       ` : ' '.repeat(15)
-    const k = byUuid.get(n.connection)
-    const account = n.target?.name || k?.card?.name || k?.card?.handle || n.connection || 'no account chosen'
-    const state = k?.card?.state && k.card.state !== 'connected' ? ` ${c.yellow}(${k.card.state})${c.reset}` : ''
+    const via = connectionOf(n.connection)
+    const k = byUuid.get(via.uuid)
+    const account = n.target?.name || via.name || k?.card?.name || via.handle || k?.card?.handle || 'no account chosen'
+    const known = k?.card?.state ?? via.state
+    const state = known && known !== 'connected' ? ` ${c.yellow}(${known})${c.reset}` : ''
     console.log(`  ${head}${n.use ?? '?'} through ${n.network ?? '?'}, “${account}”${state}`)
   })
 }
@@ -535,9 +543,10 @@ async function check(args) {
   const json = args.includes('--json')
   const step = positionals(args)[1]
   if (!step) {
-    say.err('Name the step: uniweb promote check <step>, e.g. uniweb promote check sitemap')
+    say.err('Name the step or the page: uniweb promote check sitemap, or uniweb promote check /holiday')
     return { exitCode: 2 }
   }
+  if (step.startsWith('/') || step.startsWith('page:/')) return checkLanding(args, step.replace(/^page:/, ''))
   const at = await begin(args, 'Checking a getting-found step', `check ${step}`)
   if (!at.client) return at
   const { client, site } = at
@@ -568,6 +577,81 @@ async function check(args) {
     if (reading.detail) say.dim(reading.detail)
   }
   return { exitCode: 0 }
+}
+
+// ── a landing page: check <route> ──────────────────────────────────────────────────
+
+/** The site's directory, when the site a command acts on is this project's; else null. */
+async function siteFilesFor(site, origin) {
+  const project = await projectSiteDir().catch(() => null)
+  if (!project?.dir) return null
+  if (site && readSiteIdentity(project.dir, origin).uuid !== site) return null
+  return project.dir
+}
+
+function readSiteYml(dir) {
+  for (const name of ['site.yml', 'site.yaml']) {
+    const path = join(dir, name)
+    if (!existsSync(path)) continue
+    try {
+      return yaml.load(readFileSync(path, 'utf8'), YAML_READ) ?? null
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+/**
+ * Notes on the pages a post or an ad lands on, from the site's files — each page's card, by
+ * doctor's rules for one page — and on what the site reports for a network to hear. Each is a
+ * note, never a gate: whoever sends or starts decides, with the notes in front of them.
+ *
+ * @param {string} dir - the site's directory
+ * @param {string[]} routes
+ * @param {{ networks?: string[]|null, goal?: string|null, quiet?: boolean }} [opts]
+ * @returns {Promise<{ issues: object[], notes: object[] }>}
+ */
+async function landingNotes(dir, routes, { networks = null, goal = null, quiet = false } = {}) {
+  const { checkLinkPreviews } = await import('./doctor.js')
+  const issues = []
+  const consoleLog = console.log
+  if (quiet) console.log = () => {}
+  try {
+    for (const route of routes) {
+      const before = issues.length
+      if (!quiet) console.log(`${c.bold}${route}${c.reset}${c.dim}, as a landing page, from the site's files:${c.reset}`)
+      await checkLinkPreviews({ sitePath: dir, siteName: basename(dir), issues, route })
+      if (!quiet && issues.length === before) say.ok('its card has an image and a description')
+    }
+  } finally {
+    console.log = consoleLog
+  }
+  const notes = conversionNotes(readSiteYml(dir), { networks, goal })
+  if (!quiet) for (const n of notes) (n.ok ? say.ok : say.warn)(n.text)
+  return { issues, notes }
+}
+
+/**
+ * `uniweb promote check <route>` — a page as a landing page, from the site's files, on any site:
+ * one Uniweb hosts or a static one. Its card, by doctor's rules for one page, and what the site
+ * reports for a network to hear. It needs no backend.
+ */
+async function checkLanding(args, route) {
+  const json = args.includes('--json')
+  const project = await projectSiteDir().catch(() => ({}))
+  if (project?.many) {
+    say.err(`This workspace has ${project.many.length} sites — run it inside the one the page is in.`)
+    return { exitCode: 2 }
+  }
+  if (!project?.dir) {
+    say.err('Run it in the site\'s project: a landing page is checked in its files.')
+    return { exitCode: 2 }
+  }
+  const found = await landingNotes(project.dir, [route], { goal: 'conversions', quiet: json })
+  const unknown = found.issues.some((i) => i.id === 'page-unknown')
+  if (json) console.log(JSON.stringify({ route, issues: found.issues, notes: found.notes }))
+  return { exitCode: unknown ? 1 : 0 }
 }
 
 // ── connect ────────────────────────────────────────────────────────────────────────
@@ -697,9 +781,18 @@ function labelOf(index, item) {
 function accountName(index, uuid, connections) {
   const n = index.byUuid.get(uuid)
   if (!n) return `account ${uuid}`
-  const k = (connections ?? []).find((c) => c.uuid === n.data?.connection)
-  const name = n.data?.target?.name || k?.card?.name || k?.card?.handle
+  const via = connectionOf(n.data?.connection)
+  const k = (connections ?? []).find((c) => c.uuid === via.uuid)
+  const name = n.data?.target?.name || via.name || k?.card?.name || via.handle || k?.card?.handle
   return `${n.data?.network ?? '?'}${name ? ` “${name}”` : ''}`
+}
+
+/** The file a command names, when it names one: its path, text and format. */
+function draftFile(arg) {
+  const path = resolve(arg)
+  if (!existsSync(path) || !statSync(path).isFile()) return null
+  const text = readFileSync(path, 'utf8')
+  return { path, text, format: formatOf(path, text) }
 }
 
 /** The id in a file a draft was written from, else null. */
@@ -1037,13 +1130,35 @@ async function writeDraft(args, kind) {
   }
   if (fileNote) say.warn(fileNote)
   else if (!input.file && ops.length) say.dim(`From stdin, so no file keeps its ids: give your next draft of it \`id: ${plan.uuid}\` and \`version: ${version(plan.uuid)}\`.`)
+  // The pages it lands on, checked in the site's files where this project holds them.
+  const landing = landingOf(after, item, pages)
+  const dir = landing.routes.length ? await siteFilesFor(site, client.origin) : null
+  if (dir) {
+    console.log()
+    await landingNotes(dir, landing.routes, { networks: landing.networks, goal: landing.goal })
+  }
   if (kind === 'post' && wentOut(deliveryOf(after, item)) === false) {
     const sendAt = item?.data?.send_at
-    say.dim(sendAt ? `Send it at its time, ${sendAt}: uniweb promote send ${id}` : `Send it: uniweb promote send ${id} [--at <time>]`)
+    if (deliveryOf(after, item)?.status === 'scheduled') say.dim(`Scheduled for ${sendAt}: \`uniweb promote unschedule ${id}\` makes it a draft again`)
+    else say.dim(sendAt ? `Send it at its time, ${sendAt}: uniweb promote send ${id}` : `Send it: uniweb promote send ${id} [--at <time>]`)
   } else if (kind === 'campaign') {
     say.dim(`Start it: uniweb promote start ${id} — it says what it will spend, and asks first`)
   }
   return { exitCode: 0 }
+}
+
+/** The routes a post or a campaign lands on, the networks it goes out on, and a campaign's goal. */
+function landingOf(index, item, pages) {
+  if (!item) return { routes: [], networks: [], goal: null }
+  const networkOf = (uuid) => index.byUuid.get(uuid)?.data?.network
+  if (item.section === 'posts') {
+    const route = pages?.byUuid.get(item.data?.page)?.route
+    return { routes: route ? [route] : [], networks: [networkOf(item.data?.via)].filter(Boolean), goal: null }
+  }
+  const ads = index.children('campaigns/ad_groups', item.uuid).flatMap((g) => index.children('campaigns/ad_groups/ads', g.uuid))
+  const routes = [...new Set(ads.map((a) => pages?.byUuid.get(a.data?.page)?.route).filter(Boolean))]
+  const via = Array.isArray(item.data?.via) ? item.data.via : []
+  return { routes, networks: [...new Set(via.map(networkOf).filter(Boolean))], goal: item.data?.goal ?? null }
 }
 
 /** What a post or a campaign is doing, in lines: its state, and each delivery's. */
@@ -1063,7 +1178,7 @@ function stateLines(index, target, connections) {
   const state = deliveries.length ? [...new Set(deliveries.map((d) => d.status))].join(', ') : 'draft'
   lines.push(`Campaign ${ids.get(target.uuid)} ${labelOf(index, target)}: ${state}${target.data?.tag ? ` (tag ${target.data.tag})` : ''}`)
   for (const d of deliveries) {
-    lines.push(`  ${accountName(index, d.via, connections)}: ${d.status}${d.review ? `, review ${d.review}` : ''}${d.currency ? `, in ${d.currency}` : ''}${d.reason ? ` — ${reasonWords(d.reason)}` : ''}${d.detail ? ` (${d.detail})` : ''}`)
+    lines.push(`  ${accountName(index, d.via, connections)}: ${d.status}${d.review ? `, the network's review: ${reviewWords(d.review)}` : ''}${d.currency ? `, in ${d.currency}` : ''}${d.reason ? ` — ${reasonWords(d.reason)}` : ''}${d.detail ? ` (${d.detail})` : ''}`)
   }
   for (const g of index.children('campaigns/ad_groups', target.uuid)) {
     for (const a of index.children('campaigns/ad_groups/ads', g.uuid)) {
@@ -1228,6 +1343,7 @@ async function send(args) {
     return { exitCode: 2 }
   }
   let res
+  let moved = false
   if (when) {
     if (before?.status === 'scheduled' && sameInstant(post.data?.send_at, when)) {
       if (!json) say.ok(`Post ${id} is scheduled for ${post.data.send_at} already.`)
@@ -1243,6 +1359,7 @@ async function send(args) {
         return { exitCode: 1 }
       }
       post.data = { ...post.data, send_at: when }
+      moved = true
     }
     res = await client.postAction(site, post.uuid, 'schedule')
   } else {
@@ -1253,6 +1370,15 @@ async function send(args) {
     return { exitCode: 1 }
   }
   const delivery = (await res.json().catch(() => null))?.delivery ?? null
+  // A file the post was drafted in keeps its new time and version, so its next run is not stale.
+  const file = moved ? draftFile(arg) : null
+  if (file) {
+    const after = await readIndex(client, site).catch(() => null)
+    const item = after?.byUuid.get(post.uuid)
+    const next = item ? fileWithFields(file.text, file.format, { send_at: when, version: versionOf(after, item) }) : null
+    if (next) writeFileSync(file.path, next)
+    else if (!json) say.warn(`Could not write its new time into ${arg}: run \`uniweb promote show ${id} > ${arg}\` before you edit it again.`)
+  }
   if (json) return out(delivery, delivery?.status === 'failed' || delivery?.status === 'refused' ? 1 : 0)
   return { exitCode: sayDelivery(index, post, delivery, id) }
 }
@@ -1347,7 +1473,7 @@ function sayDeliveries(index, deliveries, connections, act) {
     const account = accountName(index, d.via, connections)
     if (d.status === 'active') {
       running++
-      say.ok(`Running in ${account}${d.review ? `, review ${d.review} at the network` : ''}${d.currency ? `, spending in ${d.currency}` : ''}`)
+      say.ok(`Running in ${account}${d.review ? `, the network's review: ${reviewWords(d.review)}` : ''}${d.currency ? `, spending in ${d.currency}` : ''}`)
     } else if (d.status === 'paused') {
       say.ok(`Paused in ${account}${d.reason ? ` — ${reasonWords(d.reason)}` : ''}`)
     } else {
@@ -1400,6 +1526,10 @@ async function spend(args, act) {
   const [connections, pages] = await Promise.all([listedConnections(client), readPages(client, site)])
   const summary = spendSummary(index, campaign, accounts, { connections, pages })
   if (!json) printSummary(summary, act)
+  // What the campaign's pages show and what its networks will hear, before anything is spent.
+  const landing = landingOf(index, campaign, pages)
+  const dir = !json && landing.routes.length ? await siteFilesFor(site, client.origin) : null
+  if (dir) await landingNotes(dir, landing.routes, { networks: landing.networks, goal: landing.goal })
 
   if (!args.includes('--yes')) {
     if (json || isNonInteractive(args)) {

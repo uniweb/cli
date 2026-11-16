@@ -13,6 +13,8 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { runVerb, tmp } from './helpers/run-verb.js'
 
 const ORIGIN = 'http://backend.test'
@@ -32,7 +34,9 @@ const item = (uuid, section, data, parent) => ({
 const PROMOTION = {
   uuid: 'p0',
   items: [
-    item('n1', 'networks', { network: 'linkedin', use: 'posts', connection: 'k1', target: { id: 'L1', name: 'Maple Bakery' } }),
+    // A connection reads back as an entity reference, its card's words in its brief.
+    item('n1', 'networks', { network: 'linkedin', use: 'posts', connection: { model: 'm', entity: 'k1', brief: { name: 'Ana', state: 'connected' } } }),
+    item('n2', 'networks', { network: 'facebook', use: 'ads', connection: { model: 'm', entity: 'k2', brief: { name: 'Maple Ads', state: 'connected' } } }),
     item('s1', 'getting_found', { step: 'sitemap' }),
     item('s1r', 'getting_found/reading', { state: 'done', found: 'sitemap_named', address: 'https://maple.test/sitemap.xml' }, 's1'),
     item('d1', 'posts', { via: 'n1', language: 'en', page: 'pg1' }),
@@ -124,6 +128,8 @@ test('status says what needs the person: a connection to reconnect', async () =>
   assert.match(run.output, /needs reconnecting, by its person, in the app/)
   assert.match(run.output, /1 draft · 1 scheduled \(next 2026-11-24T14:00:00Z\) · 1 published/)
   assert.match(run.output, /Holiday: active · spent 16\.00 CAD/)
+  assert.match(run.output, /posts through linkedin, “Ana”/, 'an account by its connection\'s name')
+  assert.match(run.output, /ads through facebook, “Maple Ads”/)
 })
 
 test('status on a site that has not used Promote says so, and what can be connected', async () => {
@@ -197,4 +203,54 @@ test('an unknown subcommand or flag is refused', async () => {
   assert.equal(unknown.exitCode, 2, unknown.output)
   const flag = await runVerb(tmp('uw-promote-'), await verb(), ['status', '--sight', SITE], { env: ENV })
   assert.equal(flag.exitCode, 2, flag.output)
+})
+
+/** A site's files: its `site.yml`, and a page per entry (`{ name: pageYml }`), the first the home page. */
+function siteFiles(siteYml, pages) {
+  const dir = tmp('uw-promote-landing-')
+  writeFileSync(join(dir, 'site.yml'), siteYml)
+  for (const [name, pageYml] of Object.entries(pages)) {
+    mkdirSync(join(dir, 'pages', name), { recursive: true })
+    writeFileSync(join(dir, 'pages', name, 'page.yml'), pageYml)
+    writeFileSync(join(dir, 'pages', name, '1-intro.md'), `---\ntype: Section\n---\n\n# ${name}\n`)
+  }
+  return dir
+}
+
+test('check <route> checks a page as a landing page, from the site\'s files, and needs no backend', async () => {
+  const dir = siteFiles(
+    [
+      'name: Maple',
+      'index: home',
+      'services:',
+      '  tracking:',
+      '    conversions:',
+      '      - { name: order, page: /order }',
+      '      - { name: call, link: "tel:+15551234" }',
+      "  x: { pixel: 'o1abc', events: { order: 'tw-o1abc-o2def' } }",
+      ''
+    ].join('\n'),
+    { home: 'title: Home\ndescription: Fresh bread daily.\n', holiday: 'title: Holiday trays\n' }
+  )
+  const run = await runVerb(dir, await verb(), ['check', '/holiday'], { env: {} })
+  assert.equal(run.exitCode, 0, run.output)
+  assert.equal(run.requests, 0, 'nothing asked of any backend')
+  const text = run.output.replace(/\x1b\[[0-9;]*m/g, '')
+  assert.match(text, /\/holiday, as a landing page/)
+  assert.match(text, /Links to \/holiday show no image/)
+  assert.match(text, /Give it seo\.image in its page\.yml/)
+  assert.match(text, /1 page states no description/)
+  assert.match(text, /counts the conversions it lists: order, call/)
+  assert.match(text, /x hears order — not call/)
+})
+
+test('check <route> says when the site reports nothing for a network to hear, and refuses a page it lacks', async () => {
+  const dir = siteFiles('name: Maple\n', { home: 'title: Home\ndescription: Fresh bread daily.\n' })
+  const run = await runVerb(dir, await verb(), ['check', '/', '--json'], { env: {} })
+  assert.equal(run.exitCode, 0, run.output)
+  const out = JSON.parse(run.output.trim().split('\n').pop())
+  assert.deepEqual(out.notes.map((n) => n.id), ['tracking-off'])
+  const missing = await runVerb(dir, await verb(), ['check', '/winter'], { env: {} })
+  assert.equal(missing.exitCode, 1, missing.output)
+  assert.match(missing.output, /no page \/winter/)
 })

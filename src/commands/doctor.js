@@ -1424,8 +1424,11 @@ export async function checkVideoTools({ sitePath, siteName, issues, tools }) {
  * cannot parse is reported as that, never as a page with no description. A page made from a record
  * (`[slug]`) takes its image and title from the record, which no file here describes, so it is left
  * out. An image at an address of its own is left alone: doctor reads files, it fetches nothing.
+ *
+ * `route` checks that one page, by the same rules: the page a post or an ad links to
+ * (`uniweb promote check <route>`), whose card a network draws from its head.
  */
-export async function checkLinkPreviews({ sitePath, siteName, issues }) {
+export async function checkLinkPreviews({ sitePath, siteName, issues, route = null }) {
   let content
   let failure = null
   // The collect reports its progress on the console; this report is doctor's.
@@ -1453,7 +1456,17 @@ export async function checkLinkPreviews({ sitePath, siteName, issues }) {
   }
 
   // A folder with no content of its own only redirects (to its first page), so a link never lands on it.
-  const pages = (content.pages || []).filter((p) => !p.isDynamic && p.hasContent !== false)
+  let pages = (content.pages || []).filter((p) => !p.isDynamic && p.hasContent !== false)
+  if (route !== null) {
+    const key = (r) => String(r).replace(/\/+$/, '') || '/'
+    pages = pages.filter((p) => key(p.route) === key(route))
+    if (pages.length === 0) {
+      const id = 'page-unknown'
+      issues.push({ id, type: 'warn', site: siteName, message: `The site's files have no page ${route}` })
+      warn(`[${id}] The site's files have no page ${route}, or it only leads to the page under it`)
+      return
+    }
+  }
   if (pages.length === 0) return
   const site = content.config || {}
   const siteImage = site.seo?.image || null
@@ -1463,11 +1476,14 @@ export async function checkLinkPreviews({ sitePath, siteName, issues }) {
   if (without.length > 0) {
     const id = 'share-image-none'
     const n = without.length
-    const message = n === pages.length ? 'Links to this site show no image' : `Links to ${n} page${n === 1 ? '' : 's'} show no image`
+    const message = route
+      ? `Links to ${route} show no image`
+      : n === pages.length ? 'Links to this site show no image' : `Links to ${n} page${n === 1 ? '' : 's'} show no image`
     issues.push({ id, type: 'info', site: siteName, message })
     info(`[${id}] ${message}`)
     if (without.length < pages.length) listSome(without.map((p) => p.route))
-    log(`    Set ${colors.green}seo.image${colors.reset} in site.yml — every page without one of its own shows it. A ${CARD.width}×${CARD.height} JPEG or PNG fills a card; ${colors.green}uniweb snapshot --share${colors.reset} makes one from the site.`)
+    if (route) log(`    Give it ${colors.green}seo.image${colors.reset} in its page.yml, a card of its own — or set one in site.yml, which every page without one shows. A ${CARD.width}×${CARD.height} JPEG or PNG fills a card.`)
+    else log(`    Set ${colors.green}seo.image${colors.reset} in site.yml — every page without one of its own shows it. A ${CARD.width}×${CARD.height} JPEG or PNG fills a card; ${colors.green}uniweb snapshot --share${colors.reset} makes one from the site.`)
   }
 
   // Each image once, with the pages that show it.
@@ -1480,7 +1496,7 @@ export async function checkLinkPreviews({ sitePath, siteName, issues }) {
   }
   let readImageSize = null
   for (const [image, routes] of shownBy) {
-    const shownOn = routes.length === pages.length ? 'every page' : routes.length === 1 ? routes[0] : `${routes.length} pages`
+    const shownOn = route ?? (routes.length === pages.length ? 'every page' : routes.length === 1 ? routes[0] : `${routes.length} pages`)
     const file = siteFile(sitePath, image)
     if (!file) {
       const id = 'share-image-missing'

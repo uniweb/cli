@@ -102,8 +102,14 @@ uniweb promote resume holiday --yes
 A post or an ad is only as good as the page it brings people to:
 
 - the page carries on from what the post promised, within its first screen;
-- it has its own share card: `description` and `seo.image` in its `page.yml` (content guide, *SEO and social cards*), which `uniweb doctor` checks;
+- it has its own share card: `description` and `seo.image` in its `page.yml` (content guide, *SEO and social cards*);
 - a page that belongs to one campaign alone takes `hideIn: ['*']`, which keeps it out of menus.
+
+```bash
+uniweb promote check /holiday   # its card, and what the site reports for a network to hear
+```
+
+It reads the site's files, so it works on any site, a static one too, with no login. Run in the site's project, `post`, `campaign`, `start` and `resume` print the same notes for the pages they link to. Each is a note, never a gate.
 
 ## What counts, and the network hearing it
 
@@ -123,7 +129,7 @@ A campaign with `goal: conversions` optimizes for what its network hears back. T
 | command | does |
 |---|---|
 | `status` | the site's Promote, and what needs the person |
-| `check <step>` | one getting-found step: `sitemap` |
+| `check <step>` · `check <route>` | one getting-found step (`sitemap`), or a page as a landing page |
 | `connect <network>` | the address where the person connects an account |
 | `post <file>` · `campaign <file>` | a draft, made or updated; `-` reads stdin |
 | `show <id>` | one post or campaign as its file holds it; its state goes to stderr |

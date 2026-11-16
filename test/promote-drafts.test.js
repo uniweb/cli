@@ -104,9 +104,15 @@ function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC
         }
       }
       const results = []
+      // A connection is written as its uuid and read as an entity reference, as the backend reads one back.
+      const asStored = (section, data) => {
+        if (section !== 'networks' || typeof data?.connection !== 'string') return data
+        const card = connections.find((k) => k.uuid === data.connection)?.card ?? {}
+        return { ...data, connection: { model: 'connection-model', entity: data.connection, brief: { name: card.name, handle: card.handle, state: card.state, network: card.network } } }
+      }
       for (const op of body.batch) {
         if (op.kind === 'create') {
-          const item = { uuid: op.uuid ?? `new-${n++}`, section: op.section, ...(op.parent ? { parent: op.parent } : {}), data: op.data, updated_at: stamp() }
+          const item = { uuid: op.uuid ?? `new-${n++}`, section: op.section, ...(op.parent ? { parent: op.parent } : {}), data: asStored(op.section, op.data), updated_at: stamp() }
           store.push(item)
           results.push({ uuid: item.uuid, updated_at: item.updated_at })
         } else if (op.kind === 'update') {
@@ -304,8 +310,10 @@ test('an account is the site\'s for that network — made, through the one conne
   assert.match(none.error, /uniweb promote connect linkedin/)
   const two = viaResolver({ networks: [], connections: [CONNECTIONS[0], { ...CONNECTIONS[0], uuid: '01a16a00-0000-7000-8000-0000000c0009' }], mint }).resolve('x', 'posts', 'The post')
   assert.match(two.error, /choose one: `via: \{ network: x, connection: <id> \}`/)
-  const kept = viaResolver({ networks: [{ uuid: 'n1', data: { network: 'x', use: 'posts', connection: CONN_X } }], connections: CONNECTIONS, mint })
+  const stored = { uuid: 'n1', data: { network: 'x', use: 'posts', connection: { model: 'm', entity: CONN_X, brief: { name: 'Maple Bakery' } } } }
+  const kept = viaResolver({ networks: [stored], connections: CONNECTIONS, mint })
   assert.equal(kept.resolve('x', 'posts', 'The post').uuid, 'n1')
+  assert.equal(kept.resolve({ network: 'x', connection: CONN_X.slice(-4) }, 'posts', 'The post').uuid, 'n1', 'named by its connection, read as an entity reference')
   assert.deepEqual(kept.creates(), [])
 })
 
@@ -520,7 +528,7 @@ test('start says what it will spend and refuses to spend unseen; --yes starts it
   const run = await runVerb(dir, await verb(), ['start', 'holiday.yml', '--yes', '--site', SITE], { env: ENV, respond: backend.respond })
   assert.equal(run.exitCode, 0, run.output)
   assert.equal(backend.at('POST', `${PROMO}/campaigns/${campaign.uuid}/start`).length, 1)
-  assert.match(run.output, /Running in facebook “Maple Ads”, review pending at the network, spending in CAD/)
+  assert.match(run.output, /Running in facebook “Maple Ads”, the network's review: pending, spending in CAD/)
   assert.match(run.output, /fixed there now/)
 
   const paused = await runVerb(dir, await verb(), ['pause', 'Holiday', '--site', SITE], { env: ENV, respond: backend.respond })
@@ -543,7 +551,7 @@ test('a write a started campaign refuses is said in words, and nothing changed',
   assert.match(run.output, /“Holiday” has started in an ad account, and what runs there is fixed.*Add an ad account to its `via`, or draft a new campaign/)
   const shown = await runVerb(dir, await verb(), ['show', 'Holiday', '--site', SITE], { env: ENV, respond: backend.respond })
   assert.match(shown.output, /Campaign \w+ “Holiday”: active(\x1b\[0m)?\n/, 'a started campaign is not called a draft')
-  assert.match(shown.output, /facebook “Maple Ads”: active, review pending, in CAD/)
+  assert.match(shown.output, /facebook “Maple Ads”: active, the network's review: pending, in CAD/)
 })
 
 test('show prints a post as the Markdown it is drafted in, with its page by route, and round-trips', async () => {
@@ -581,4 +589,19 @@ test('delete deletes a draft by its id, and keeps a post that went out', async (
   const kept = await runVerb(dir, await verb(), ['delete', 'b.md', '--site', SITE], { env: ENV, respond: backend.respond })
   assert.equal(kept.exitCode, 2, kept.output)
   assert.match(kept.output, /went out.*It stays/)
+})
+
+test('send --at from a file writes the new time and version into it, so its next run is not stale', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'p.md'), '---\nvia: x\nsend_at: 2099-11-24T09:00:00Z\n---\nSoon.\n')
+  await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  const moved = await runVerb(dir, await verb(), ['send', 'p.md', '--at', '2099-12-01T10:00:00Z', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(moved.exitCode, 0, moved.output)
+  const file = readFileSync(join(dir, 'p.md'), 'utf8')
+  assert.match(file, /send_at: '?2099-12-01T10:00:00Z'?\n/)
+  assert.match(file, /\n---\nSoon\.\n$/, 'its words as they were')
+  const again = await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(again.exitCode, 0, again.output)
+  assert.match(again.output, /Nothing to change/)
 })

@@ -437,6 +437,25 @@ export function pageRoute(uuid, pages) {
 // ── Accounts: a draft's `via` ──────────────────────────────────────────────────────
 
 /**
+ * A `networks` item's connection, as a read gives it: an entity reference, `{ model, entity, brief }`,
+ * the connection's uuid its `entity` and its card's words in its `brief` — or the uuid alone, as a
+ * write gives it.
+ *
+ * @returns {{ uuid: string|null, name: string|null, handle: string|null, state: string|null }}
+ */
+export function connectionOf(value) {
+  if (typeof value === 'string') return { uuid: value, name: null, handle: null, state: null }
+  if (!isPlainObject(value)) return { uuid: null, name: null, handle: null, state: null }
+  const brief = isPlainObject(value.brief) ? value.brief : {}
+  return {
+    uuid: typeof value.entity === 'string' ? value.entity : typeof value.uuid === 'string' ? value.uuid : null,
+    name: brief.name ?? null,
+    handle: brief.handle ?? null,
+    state: brief.state ?? null
+  }
+}
+
+/**
  * Resolves a draft's `via` to the site's `networks` item for that network and use — and, where the
  * site has none, makes one in the same batch, as the app does the first time a site uses a network,
  * through the one account of that network the caller can use.
@@ -494,14 +513,15 @@ export function viaResolver({ networks, connections, mint }) {
       if (same.length === 1) return { uuid: same[0].uuid }
       if (same.length > 1) {
         const ids = shortIds(networks.map((n) => n.uuid))
-        return { error: `${where}: the site goes out on ${raw} through ${same.length} accounts — name one by its id: ${same.map((n) => `${ids.get(n.uuid) ?? n.uuid} (“${n.data?.target?.name ?? n.data?.connection ?? '?'}”)`).join(', ')}.` }
+        const named = (n) => n.data?.target?.name ?? connectionOf(n.data?.connection).name ?? '?'
+        return { error: `${where}: the site goes out on ${raw} through ${same.length} accounts — name one by its id: ${same.map((n) => `${ids.get(n.uuid) ?? n.uuid} (“${named(n)}”)`).join(', ')}.` }
       }
       return make(raw, null, use, where)
     }
     if (isPlainObject(raw) && typeof raw.network === 'string' && raw.network) {
       const connection = raw.connection == null ? null : String(raw.connection)
       if (!connection) return resolve(raw.network, use, where)
-      const same = ofUse.filter((n) => n.data?.network === raw.network && idMatches(n.data?.connection, connection))
+      const same = ofUse.filter((n) => n.data?.network === raw.network && idMatches(connectionOf(n.data?.connection).uuid, connection))
       if (same.length === 1) return { uuid: same[0].uuid }
       return make(raw.network, connection, use, where)
     }
@@ -851,4 +871,91 @@ export function fileWithIdentity(text, { format, kind }, map, version) {
   const done = edited === null ? null : lead(edited)
   if (done !== null) return { text: done }
   return { text: yaml.dump(leading(after, map.uuid, version(map.uuid)), YAML_WRITE), whole: true }
+}
+
+// ── What a network will hear ───────────────────────────────────────────────────────
+
+/**
+ * The site's services row a network's conversions go out through: the host sends X and Meta the
+ * site's conversions from its servers, each name mapped to the network's event.
+ */
+const CONVERSION_ROWS = { x: 'x', facebook: 'meta' }
+
+/**
+ * What a network will hear of the site's conversions, from its `site.yml`: whether the site asks
+ * for tracking, the conversions it lists, and — for a campaign that optimizes for conversions —
+ * whether each network it runs on has them mapped to its events. Notes, never a gate: whoever sends
+ * or starts decides, with them in front of them.
+ *
+ * @param {object|null} siteYml
+ * @param {{ networks?: string[], goal?: string|null }} [opts] - the networks a draft goes out on;
+ *   with no networks, each the site maps (`services.x`, `services.meta`)
+ * @returns {Array<{ ok: boolean, id: string, text: string }>}
+ */
+export function conversionNotes(siteYml, { networks = null, goal = null } = {}) {
+  const services = isPlainObject(siteYml?.services) ? siteYml.services : {}
+  const tracking = services.tracking
+  const on = tracking === true || (typeof tracking === 'string' && tracking !== '') || (isPlainObject(tracking) && tracking.enabled !== false)
+  if (!on) {
+    return [{ ok: false, id: 'tracking-off', text: 'site.yml does not ask for `services.tracking`, so the site reports no visit or conversion for a network to hear (`uniweb guide services`)' }]
+  }
+  const notes = []
+  const listed = isPlainObject(tracking) && Array.isArray(tracking.conversions)
+    ? tracking.conversions.map((c) => c?.name).filter((n) => typeof n === 'string' && n)
+    : []
+  notes.push(
+    listed.length
+      ? { ok: true, id: 'conversions-listed', text: `the site counts the conversion${listed.length === 1 ? '' : 's'} it lists: ${listed.join(', ')}` }
+      : { ok: false, id: 'conversions-none', text: 'the site lists no conversion of its own in `services.tracking.conversions`: it counts phone and email taps, and what its foundation reports' }
+  )
+  if (goal !== 'conversions') return notes
+  const asked = networks ?? Object.keys(CONVERSION_ROWS).filter((n) => services[CONVERSION_ROWS[n]])
+  for (const network of [...new Set(asked)]) {
+    const row = CONVERSION_ROWS[network]
+    if (!row) continue
+    const events = isPlainObject(services[row]?.events) ? Object.keys(services[row].events) : []
+    if (!events.length) {
+      notes.push({ ok: false, id: 'network-hears-none', text: `${network} hears none of the site's conversions: \`services.${row}\` maps none to its events, so a campaign there optimizes for clicks (\`uniweb guide services\`, X and Meta)` })
+    } else {
+      const unheard = listed.filter((n) => !events.includes(n))
+      notes.push({ ok: true, id: 'network-hears', text: `${network} hears ${events.join(', ')}${unheard.length ? ` — not ${unheard.join(', ')}` : ''}` })
+    }
+  }
+  return notes
+}
+
+/**
+ * A draft's file with top-level fields set where they stand, editing nothing else: a post's new
+ * `send_at` and `version` once `send --at` has moved its time, so the file still says what the
+ * backend holds. Null when the file cannot be read again.
+ *
+ * @param {string} text
+ * @param {'markdown'|'yaml'|'json'} format
+ * @param {object} fields
+ * @returns {string|null}
+ */
+export function fileWithFields(text, format, fields) {
+  if (format === 'json') {
+    try {
+      return `${JSON.stringify({ ...JSON.parse(text), ...fields }, null, 2)}\n`
+    } catch {
+      return null
+    }
+  }
+  const edit = (yamlText) => {
+    let before
+    try {
+      before = yaml.load(yamlText, YAML_READ) ?? {}
+    } catch {
+      return null
+    }
+    return isPlainObject(before) ? editYamlText(yamlText, before, { ...before, ...fields }) : null
+  }
+  if (format === 'markdown') {
+    const split = splitFrontmatter(text)
+    if (split.front === null) return null
+    const front = edit(split.front === '' ? '' : `${split.front}\n`)
+    return front === null ? null : `---\n${front.endsWith('\n') ? front : `${front}\n`}---\n${split.body}`
+  }
+  return edit(text)
 }
