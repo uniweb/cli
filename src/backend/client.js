@@ -1049,20 +1049,21 @@ export class BackendClient {
 
   /**
    * POST /dev/site/promotion/{site}/posts/{post}/{act} — a post's doors: `publish` (now),
-   * `schedule` (at its `send_at`) and `unschedule` (a draft again, its `send_at` kept). Each
-   * answers `{ delivery }`; `unschedule`'s is `null` once a draft. Publishing and scheduling
-   * take `admin` on the site and `edit` on the account it goes out through; unscheduling takes
-   * `edit` on the site.
+   * `schedule` (at its `send_at`, or at the `send_at` the body gives, in one act refused whole)
+   * and `unschedule` (a draft again, its `send_at` kept). Each answers `{ delivery }`;
+   * `unschedule`'s is `null` once a draft. Publishing and scheduling take `admin` on the site and
+   * `edit` on the account it goes out through; unscheduling takes `edit` on the site.
    *
    * @param {string} siteUuid
    * @param {string} postUuid
    * @param {'publish'|'schedule'|'unschedule'} act
+   * @param {{ send_at: string } | null} [body] - `schedule`'s new time
    * @returns {Promise<Response>}
    */
-  async postAction(siteUuid, postUuid, act) {
+  async postAction(siteUuid, postUuid, act, body = null) {
     return this.request(
       `/dev/site/promotion/${encodeURIComponent(siteUuid)}/posts/${encodeURIComponent(postUuid)}/${act}`,
-      { method: 'POST' }
+      { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) }
     )
   }
 
@@ -1108,6 +1109,20 @@ export class BackendClient {
    */
   async listConnections() {
     return this.request('/dev/connections')
+  }
+
+  /**
+   * GET /dev/connections/{uuid}/reach?use= — `{ reach: [{ id, name }] }`: what the connection
+   * reaches at its network for one use (`posts`, `ads`, `search`, `listing`), read from the
+   * network as asked. Each is the shape a `networks` item's `target` holds. An empty list is an
+   * account that reaches nothing for that use yet. Takes `read` on the connection.
+   *
+   * @param {string} connectionUuid
+   * @param {string} use
+   * @returns {Promise<Response>}
+   */
+  async connectionReach(connectionUuid, use) {
+    return this.request(`/dev/connections/${encodeURIComponent(connectionUuid)}/reach`, { query: { use } })
   }
 
   /**

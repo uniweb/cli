@@ -104,6 +104,8 @@ test('a realistic invocation of every guarded verb passes', () => {
   assert.equal(checkFlags('promote', ['send', '7f3c', '--now', '--json']), null, 'promote rejected send --now')
   assert.equal(checkFlags('promote', ['start', 'Holiday', '--yes', '--org', '@acme']), null, 'promote rejected start --yes')
   assert.equal(checkFlags('promote', ['post', '-']), null, 'promote rejected a draft from stdin')
+  assert.equal(checkFlags('promote', ['use', 'facebook', 'ads', '--connection', 'ab12', '--target', 'act_2', '--json']), null, 'promote rejected use with its choices')
+  assert.equal(checkFlags('promote', ['results', 'Holiday', '--from', '2026-12-01', '--to', '2026-12-14']), null, 'promote rejected results with its days')
   // The name claims EVERY guarded verb; make it a claim the test can keep. A verb
   // added to VERB_FLAGS without a case here would otherwise pass by absence.
   assert.deepEqual(

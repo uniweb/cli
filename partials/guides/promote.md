@@ -53,6 +53,8 @@ uniweb promote unschedule holiday.md   # a draft again, its time kept
 
 - **`send` given the file writes it first,** as `post` does, so what goes out is what the file says. If the app changed the post since, it is refused and nothing goes out. `send <id>` sends the post as stored.
 - **`via`** names a network, and the post goes out through the site's account there. The first time, the CLI chooses it from your one account on that network. With several, give `via: { network: x, connection: <id> }`; the refusal lists them.
+- **`uniweb promote use <network> posts`** chooses what on that account the site posts as, such as a page; `ads`, `search` and `listing` choose its ad account, property or listing. It lists the choices when there are several, and `--connection <id>` and `--target <id>` choose. A started campaign's account stays as it is.
+- **What a network takes:** `post` says when a part is longer than its network takes, as that network counts it, the link included; most accounts would be refused. A post with more parts than its network takes (Facebook and LinkedIn take one) isn't sent until it has fewer.
 - **`page`** is a page of the site as pushed, so push a new page first. The live site must serve it in the post's language, or the send fails: publish first.
 - **A picture** given as a file is uploaded as one of the site's own, in its format. An `https:` address is kept as written, and so is one `show` printed.
 - **The words go out as written**, as plain text: Markdown formatting shows as typed.
@@ -97,7 +99,7 @@ uniweb promote resume holiday --yes
 - **A change made since then is never written over.** If the app or another run changed the draft, your write is refused and nothing is written. `uniweb promote show <id> > file` gives you the draft as it stands, to put your change into.
 - **Nothing is deleted by leaving it out.** An ad group or an ad the file doesn't hold is kept, and named. `uniweb promote delete <id>` deletes. A post's parts are its words, so the parts the file gives are the post's.
 - **A post that went out isn't edited or deleted.** To post again, drop `id` and `version` and make a new draft.
-- **Changing a scheduled post makes it a draft again,** its time kept, and `send` schedules it again.
+- **Changing a scheduled post makes it a draft again,** its time kept, and `send` schedules it again. `send --at` moves the time and schedules in one step, so if it's refused the post stays as it was.
 - **An `<id>`** is the short one `status` shows, the file a draft was written from, or a campaign's name.
 
 ## The page it lands on
@@ -134,6 +136,7 @@ A campaign with `goal: conversions` optimizes for what its network hears back. T
 | `status` | the site's Promote, and what needs the person |
 | `check <step>` · `check <route>` | one getting-found step (`sitemap`), or a page as a landing page |
 | `connect <network>` | the address where the person connects an account |
+| `use <network> <posts\|ads\|search\|listing>` | what on that account the site goes out through; `--connection`, `--target` choose |
 | `post <file>` · `campaign <file>` | a draft, made or updated; `-` reads stdin |
 | `show <id>` | one post or campaign as its file holds it; its state goes to stderr |
 | `delete <id>` | a post, a campaign, an ad group or an ad |

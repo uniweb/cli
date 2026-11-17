@@ -183,6 +183,7 @@ export const REASONS = {
   connection_not_permitted: 'whoever scheduled it may no longer post through its account',
   network_not_offered: 'this backend does not offer that network',
   network_refused: 'the network refused it',
+  too_many_parts: 'it has more parts than its network takes in a post',
   promote_off: 'the site has no Promote: it comes with the site\'s Analytics, which the person turns on in the app',
   feature_not_subscribed: 'Promote comes with the site\'s Analytics, which this site does not have yet. The person turns it on in the app'
 }
@@ -428,6 +429,86 @@ export function picturesOf(draft) {
   take(draft.parts)
   for (const g of draft.adGroups ?? []) for (const a of g.ads ?? []) take(a.parts)
   return [...new Set(out)]
+}
+
+// ── What a network takes in a post ─────────────────────────────────────────────────
+
+/** A network as a person names it. */
+export const NETWORK_NAMES = { x: 'X', linkedin: 'LinkedIn', facebook: 'Facebook', google: 'Google', bing: 'Bing' }
+
+/** The code points X counts as one; any other counts two (X's own ranges). */
+const X_LIGHT = [[0, 4351], [8192, 8205], [8208, 8223], [8242, 8247]]
+/** What X counts an address as, wherever it stands. */
+const X_URL = 23
+/** A grapheme X counts as one emoji, sequences included: a pictograph, a keycap, a flag. */
+const EMOJI = /\p{Extended_Pictographic}|⃣|\p{Regional_Indicator}/u
+
+/**
+ * A text's length as its network counts it. As X counts (`counting: "x"`): NFC first, each
+ * address 23, each emoji 2, a code point in X's light ranges 1 and any other 2. Otherwise, by its
+ * characters.
+ */
+export function countedLength(text, counting) {
+  const t = String(text ?? '').normalize('NFC')
+  if (counting !== 'x') return Array.from(t).length
+  let n = 0
+  const rest = t.replace(/https?:\/\/\S+/gi, () => {
+    n += X_URL
+    return ''
+  })
+  for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(rest)) {
+    if (EMOJI.test(segment)) {
+      n += 2
+      continue
+    }
+    for (const ch of segment) {
+      const cp = ch.codePointAt(0)
+      n += X_LIGHT.some(([a, b]) => cp >= a && cp <= b) ? 1 : 2
+    }
+  }
+  return n
+}
+
+/**
+ * What a post's network takes, as `/dev/config` tells it (`promote.limits[network].posts`):
+ * `characters` a part, counted as `counting` says; `link`, what the post's link counts in its
+ * first part; `parts`, how many parts it takes (none told: a thread). Null when none is told.
+ */
+export function postLimits(config, network) {
+  const limits = config?.promote?.limits?.[network]?.posts
+  return isPlainObject(limits) ? limits : null
+}
+
+/**
+ * Where a post asks more than its network takes, in words: more parts, which the backend refuses
+ * before anything goes out, and a part longer than the network takes, which the network refuses
+ * for most accounts (some post longer), so it is a note.
+ *
+ * @param {{ text?: string }[]} parts - the post's parts, in order
+ * @param {object|null} limits - `postLimits`
+ * @param {{ network: string, link: boolean }} post - its network, and whether it carries a link
+ * @returns {{ parts: string|null, lengths: string[] }}
+ */
+export function overLimits(parts, limits, { network, link }) {
+  const out = { parts: null, lengths: [] }
+  if (!limits) return out
+  const name = NETWORK_NAMES[network] ?? network
+  if (Number.isInteger(limits.parts) && parts.length > limits.parts) {
+    const takes = limits.parts === 1 ? 'one part' : `${limits.parts} parts`
+    out.parts = `${name} takes ${takes} in a post, and this one has ${parts.length}: make it ${limits.parts === 1 ? 'one' : limits.parts}.`
+  }
+  if (Number.isInteger(limits.characters)) {
+    parts.forEach((p, i) => {
+      const withLink = i === 0 && link && Number.isInteger(limits.link)
+      const n = countedLength(p.text, limits.counting) + (withLink ? limits.link : 0)
+      if (n <= limits.characters) return
+      out.lengths.push(
+        `${parts.length === 1 ? 'It' : `Part ${i + 1}`} is ${n} characters${limits.counting === 'x' ? ' as X counts them' : ''}` +
+          `${withLink ? `, its link's ${limits.link} among them` : ''}, and ${name} takes ${limits.characters}: most accounts there would be refused.`
+      )
+    })
+  }
+  return out
 }
 
 /** Whether a picture is an address already, kept as written, rather than a file to upload. */

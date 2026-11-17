@@ -17,6 +17,8 @@ import { createZip } from '@uniweb/build/uwx'
 import { runVerb, tmp } from './helpers/run-verb.js'
 import {
   checkDraft,
+  countedLength,
+  overLimits,
   fileWithIdentity,
   indexPromotion,
   parseDraft,
@@ -61,7 +63,13 @@ const CONNECTIONS = [
  * A backend that keeps the site's Promote as the contract says: every write a transaction, each
  * item's `updated_at` moving when it is written, backend's own children written by its doors.
  */
-function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC, now = () => Date.now() } = {}) {
+/** What each connection reaches, by use, as `/dev/connections/{uuid}/reach` answers. */
+const REACH = {
+  [CONN_X]: { posts: [{ id: 'x:maple', name: '@maple' }] },
+  [CONN_META]: { posts: [{ id: 'page-1', name: 'Maple Bakery' }], ads: [{ id: 'act_1', name: 'Maple Ads' }, { id: 'act_2', name: 'Maple Catering' }] }
+}
+
+function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC, now = () => Date.now(), reach = REACH } = {}) {
   let clock = 0
   const store = items.map((i) => ({ ...i }))
   // A post's door to refuse, by act: `{ status, body }`, as the backend refuses one it may not do.
@@ -87,7 +95,18 @@ function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC
     const body = typeof init.body === 'string' ? JSON.parse(init.body) : null
     seen.push({ method, path: u.pathname, body })
     if (u.pathname === '/dev/orgs') return Response.json({ account_handle: 'ana', orgs: [], workspaces: [] })
-    if (u.pathname === '/dev/config') return Response.json({ promote: { networks: ['x', 'facebook'] } })
+    // As the playground answers: what each network takes in a post, by network and then use.
+    if (u.pathname === '/dev/config') {
+      return Response.json({ promote: { networks: ['x', 'facebook'], limits: { x: { posts: { characters: 280, counting: 'x', link: 23 } }, facebook: { posts: { parts: 1 } } } } })
+    }
+    const reachOf = u.pathname.match(/^\/dev\/connections\/([^/]+)\/reach$/)
+    if (reachOf && method === 'GET') {
+      const uses = reach[reachOf[1]]
+      if (!uses) return Response.json({ status: 404 }, { status: 404 })
+      const use = u.searchParams.get('use')
+      if (!uses[use]) return Response.json({ status: 400, reason: 'use_not_offered', network: 'x', use }, { status: 400 })
+      return Response.json({ reach: uses[use] })
+    }
     if (u.pathname === '/dev/connections') return Response.json({ connections })
     if (u.pathname === `/dev/site/content/pull/${SITE}`) return new Response(uwx(doc), { status: 200 })
     if (u.pathname === PROMO && method === 'GET') {
@@ -104,6 +123,9 @@ function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC
         if (campaign && store.some((d) => d.section === 'campaigns/delivery' && d.parent === campaign.uuid && d.data?.external_id)) {
           return Response.json({ reason: 'campaign_started', campaign: campaign.uuid }, { status: 409 })
         }
+        // An account a started campaign runs through stays as it is.
+        const runs = item.section === 'networks' && op.kind === 'update' && store.find((d) => d.section === 'campaigns/delivery' && d.data?.via === item.uuid && d.data?.external_id)
+        if (runs) return Response.json({ reason: 'campaign_started', campaign: runs.parent }, { status: 409 })
       }
       const results = []
       // A connection is written as its uuid and read as an entity reference, as the backend reads one back.
@@ -144,7 +166,13 @@ function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC
           ? { status: 'failed', reason: 'network_refused', detail: 'the fake refused it' }
           : { status: 'published', network_url: `https://x.test/p/${uuid}`, link: 'https://maple.test/holiday?utm_source=x', tag: 't1' })
       } else if (act === 'schedule') {
-        if (!post.data?.send_at || Date.parse(post.data.send_at) <= now()) return Response.json({ reason: 'no_send_at' }, { status: 400 })
+        // A new time goes with the schedule, in one act: the post's send_at and its delivery written together.
+        const at = body?.send_at ?? post.data?.send_at
+        if (!at || Date.parse(at) <= now()) return Response.json({ reason: 'no_send_at' }, { status: 400 })
+        const parts = store.filter((p) => p.section === 'posts/parts' && p.parent === uuid).length
+        const network = store.find((n) => n.uuid === post.data?.via)?.data?.network
+        if (network === 'facebook' && parts > 1) return Response.json({ status: 400, reason: 'too_many_parts', network, parts: 1 }, { status: 400 })
+        if (body?.send_at) Object.assign(post, { data: { ...post.data, send_at: body.send_at }, updated_at: stamp() })
         setChild('posts/delivery', uuid, { status: 'scheduled', tag: 't1', scheduled_by: 'a1' })
       } else {
         const d = child('posts/delivery', uuid)
@@ -390,7 +418,7 @@ test('a post with no account for its network says the person connects one, and w
   assert.equal(backend.writes().length, 0)
 })
 
-test('send posts a draft with no time now, schedules one with a time, and --at sets the time first', async () => {
+test('send posts a draft with no time now, schedules one with a time, and --at moves the time in the same act', async () => {
   const backend = statefulBackend()
   const dir = tmp('uw-promote-')
   writeFileSync(join(dir, 'now.md'), '---\nvia: x\n---\nNow.\n')
@@ -408,11 +436,13 @@ test('send posts a draft with no time now, schedules one with a time, and --at s
   assert.equal(backend.at('POST', `${PROMO}/posts/${laterPost.uuid}/schedule`).length, 1)
   assert.match(scheduled.output, /Scheduled \w+ on x for 2099-11-24T09:00:00-05:00/)
 
-  // A new time: the post's own field written (a draft again), then scheduled at it.
+  // A new time goes with the schedule, in one act, and no write of its own.
+  const writesBefore = backend.writes().length
   const moved = await runVerb(dir, await verb(), ['send', laterPost.uuid, '--at', '2099-12-01T10:00:00Z', '--site', SITE, '--json'], { env: ENV, respond: backend.respond })
   assert.equal(moved.exitCode, 0, moved.output)
-  const last = backend.writes().pop().body.batch[0]
-  assert.equal(last.data.send_at, '2099-12-01T10:00:00Z')
+  assert.deepEqual(backend.at('POST', `${PROMO}/posts/${laterPost.uuid}/schedule`).pop().body, { send_at: '2099-12-01T10:00:00Z' })
+  assert.equal(backend.writes().length, writesBefore, 'no items write')
+  assert.equal(laterPost.data.send_at, '2099-12-01T10:00:00Z')
   assert.equal(lastJson(moved).delivery.status, 'scheduled')
 
   // Gone out: nothing is sent again.
@@ -645,24 +675,39 @@ test('send <file> refuses a copy the app changed since, sends nothing, and leave
   assert.equal(readFileSync(join(dir, 'p.md'), 'utf8'), before, 'the file keeps its version, so its stale copy stays refused')
 })
 
-test('a new time written, then scheduling refused: it says the post is a draft now, and the file keeps up', async () => {
+test('a new time refused leaves the post as it was: scheduled at its old time, the file as it was', async () => {
   const backend = statefulBackend()
   const dir = tmp('uw-promote-')
   writeFileSync(join(dir, 'p.md'), '---\nvia: x\nsend_at: 2099-11-24T09:00:00Z\n---\nSoon.\n')
   await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
   await runVerb(dir, await verb(), ['send', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  const file = readFileSync(join(dir, 'p.md'), 'utf8')
   backend.refuse.schedule = { status: 403, body: { op: 'admin' } }
   const run = await runVerb(dir, await verb(), ['send', 'p.md', '--at', '2099-12-01T10:00:00Z', '--site', SITE], { env: ENV, respond: backend.respond })
   assert.equal(run.exitCode, 1, run.output)
   assert.match(run.output, /Only an admin of the site may send posts/)
-  assert.match(run.output, /was scheduled for 2099-11-24T09:00:00Z, and writing to it made it a draft again, its time now 2099-12-01T10:00:00Z: it is not scheduled now/)
+  assert.doesNotMatch(run.output, /draft again/, 'refused whole: nothing changed')
   const post = backend.store.find((i) => i.section === 'posts')
-  assert.equal(backend.store.find((i) => i.section === 'posts/delivery' && i.parent === post.uuid), undefined, 'a draft')
-  // The file says what the backend holds, so its next run is not refused as stale.
+  assert.equal(post.data.send_at, '2099-11-24T09:00:00Z')
+  assert.equal(backend.store.find((i) => i.section === 'posts/delivery' && i.parent === post.uuid)?.data?.status, 'scheduled')
+  assert.equal(readFileSync(join(dir, 'p.md'), 'utf8'), file)
+})
+
+test('the file\'s edits written, then scheduling refused: it says the post is a draft now, and the file keeps up', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'p.md'), '---\nvia: x\nsend_at: 2099-11-24T09:00:00Z\n---\nSoon.\n')
+  await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  await runVerb(dir, await verb(), ['send', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  writeFileSync(join(dir, 'p.md'), readFileSync(join(dir, 'p.md'), 'utf8').replace('Soon.', 'Very soon.'))
+  backend.refuse.schedule = { status: 403, body: { op: 'admin' } }
+  const run = await runVerb(dir, await verb(), ['send', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 1, run.output)
+  assert.match(run.output, /was scheduled for 2099-11-24T09:00:00Z, and writing what p\.md says made it a draft again: it is not scheduled now/)
   delete backend.refuse.schedule
   const again = await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
   assert.equal(again.exitCode, 0, again.output)
-  assert.match(again.output, /Nothing to change/)
+  assert.match(again.output, /Nothing to change/, 'the file keeps the version its write left')
 })
 
 test('an ad names its account by network and connection, as a read gives the connection back', async () => {
@@ -737,4 +782,97 @@ test('a send refused for the account it goes out through says so; one refused fo
   assert.equal(site.exitCode, 1, site.output)
   assert.doesNotMatch(site.output, /account it goes out through/)
   assert.match(site.output, /You may not send posts on this site \(it takes edit\)/)
+})
+
+// ── what a network takes, and what a site goes out through ─────────────────────────
+
+test('a text counted as X counts it: an address 23, an emoji 2, a wide character 2, accents composed first', () => {
+  assert.equal(countedLength('Fresh bread', 'x'), 11)
+  assert.equal(countedLength('Order at https://maple.test/holiday?utm_source=x now', 'x'), 'Order at '.length + 23 + ' now'.length)
+  assert.equal(countedLength('🥖', 'x'), 2)
+  assert.equal(countedLength('👩‍🍳', 'x'), 2, 'a sequence is one emoji')
+  assert.equal(countedLength('🇨🇦', 'x'), 2, 'a flag is one emoji')
+  assert.equal(countedLength('パン', 'x'), 4)
+  assert.equal(countedLength('café', 'x'), 4, 'NFC first: é is one')
+  assert.equal(countedLength('パン', undefined), 2, 'another network counts characters')
+})
+
+test('a post over what its network takes: too many parts said, a long part noted with its link', () => {
+  const x = { characters: 280, counting: 'x', link: 23 }
+  const long = [{ text: 'a'.repeat(260) }]
+  assert.deepEqual(overLimits(long, x, { network: 'x', link: false }).lengths, [])
+  assert.match(overLimits(long, x, { network: 'x', link: true }).lengths[0], /^It is 283 characters as X counts them, its link's 23 among them, and X takes 280/)
+  const two = [{ text: 'One.' }, { text: 'Two.' }]
+  assert.equal(overLimits(two, x, { network: 'x', link: true }).parts, null, 'X takes a thread')
+  assert.equal(overLimits(two, { parts: 1 }, { network: 'facebook', link: true }).parts, 'Facebook takes one part in a post, and this one has 2: make it one.')
+  assert.deepEqual(overLimits(two, null, { network: 'bing', link: true }), { parts: null, lengths: [] }, 'nothing told, nothing said')
+})
+
+test('post notes what its network would refuse; send refuses more parts before anything goes out', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'fb.md'), '---\nvia: facebook\npage: /holiday\n---\nOne.\n\n---\n\nTwo.\n')
+  const drafted = await runVerb(dir, await verb(), ['post', 'fb.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(drafted.exitCode, 0, drafted.output)
+  assert.match(drafted.output, /Facebook takes one part in a post, and this one has 2: make it one\. Until then it can't be sent\./)
+  assert.doesNotMatch(drafted.output, /Send it:/)
+  const sent = await runVerb(dir, await verb(), ['send', 'fb.md', '--at', '2099-12-01T10:00:00Z', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(sent.exitCode, 2, sent.output)
+  assert.match(sent.output, /Nothing went out/)
+  assert.equal(backend.seen.filter((r) => /\/(publish|schedule)$/.test(r.path)).length, 0, 'not asked of the backend')
+
+  writeFileSync(join(dir, 'x.md'), `---\nvia: x\npage: /holiday\n---\n${'Fresh bread. '.repeat(21).trim()}\n`)
+  const long = await runVerb(dir, await verb(), ['post', 'x.md', '--site', SITE, '--json'], { env: ENV, respond: backend.respond })
+  assert.equal(long.exitCode, 0, long.output)
+  assert.match(lastJson(long).limits.lengths[0], /as X counts them, its link's 23 among them, and X takes 280/)
+})
+
+test('use points the site\'s account for a use at what the account reaches, and says when it already does', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  const run = await runVerb(dir, await verb(), ['use', 'x', 'posts', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 0, run.output)
+  assert.match(run.output, /The site's posts on X go out through “Maple Bakery”, as “@maple”/)
+  const [op] = backend.writes()[0].body.batch
+  assert.equal(op.kind, 'create')
+  assert.deepEqual(op.data, { network: 'x', use: 'posts', connection: CONN_X, target: { id: 'x:maple', name: '@maple' } })
+  const again = await runVerb(dir, await verb(), ['use', 'x', 'posts', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.match(again.output, /Already so/)
+  assert.equal(backend.writes().length, 1, 'nothing written again')
+})
+
+test('use lists what an account reaches when there is more than one, and --target chooses', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  const listed = await runVerb(dir, await verb(), ['use', 'facebook', 'ads', '--site', SITE, '--json'], { env: ENV, respond: backend.respond })
+  assert.equal(listed.exitCode, 2, listed.output)
+  const choices = lastJson(listed)
+  assert.equal(choices.choose, '--target')
+  assert.deepEqual(choices.reach.map((t) => t.id), ['act_1', 'act_2'])
+  assert.equal(backend.writes().length, 0)
+  const chosen = await runVerb(dir, await verb(), ['use', 'facebook', 'ads', '--target', 'act_2', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(chosen.exitCode, 0, chosen.output)
+  assert.match(chosen.output, /go out through “Maple Ads”, as “Maple Catering”/)
+  assert.match(chosen.output, /It also reaches “Maple Ads” \(act_1\)/)
+  // Run again with nothing named, it keeps what the site goes out through.
+  const kept = await runVerb(dir, await verb(), ['use', 'facebook', 'ads', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.match(kept.output, /Already so: .* as “Maple Catering”/)
+})
+
+test('use says what it can\'t do: no account there, a use the network doesn\'t offer, a started campaign\'s account', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  const none = await runVerb(dir, await verb(), ['use', 'linkedin', 'posts', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(none.exitCode, 2, none.output)
+  assert.match(none.output, /You have no LinkedIn account to use\. Its person connects one, in a browser: uniweb promote connect linkedin/)
+  const offered = await runVerb(dir, await verb(), ['use', 'x', 'ads', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(offered.exitCode, 2, offered.output)
+  assert.match(offered.output, /X offers no ads to go out through/)
+  // A campaign started through the account: the backend keeps it as it is.
+  writeFileSync(join(dir, 'holiday.yml'), CAMPAIGN_YML)
+  await runVerb(dir, await verb(), ['campaign', 'holiday.yml', '--site', SITE], { env: ENV, respond: backend.respond })
+  await runVerb(dir, await verb(), ['start', 'Holiday', '--yes', '--site', SITE], { env: ENV, respond: backend.respond })
+  const started = await runVerb(dir, await verb(), ['use', 'facebook', 'ads', '--target', 'act_2', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(started.exitCode, 1, started.output)
+  assert.match(started.output, /“Holiday” has started through the site's Facebook ads account, and a started campaign's account stays as it is, paused or not\. Nothing changed\./)
 })

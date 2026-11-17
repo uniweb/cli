@@ -114,9 +114,11 @@ const VERBS = {
   /**
    * `promote <command>` — a site's Promote. `--json` is every command's porcelain; `--site` names
    * a site this project isn't synced to; `--at` and `--now` are `send`'s time; `--yes` is what
-   * `start` and `resume` take in place of their question; the workspace is `--org` / `--personal`.
+   * `start` and `resume` take in place of their question; `--connection` and `--target` are what
+   * `use` chooses; `--from` and `--to` are the days `results` reads; the workspace is `--org` /
+   * `--personal`.
    */
-  promote: ['--json', '--site', '--at', '--now', '--yes', '--org', '--personal'],
+  promote: ['--json', '--site', '--at', '--now', '--yes', '--connection', '--target', '--from', '--to', '--org', '--personal'],
   status: [
     '--json', '--offline', '--dry-run',
     '--force', '--no-verify', '--no-validate', '--yes', '--org', '--personal',

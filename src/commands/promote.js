@@ -5,6 +5,7 @@
  *   uniweb promote status [--json]          the site's Promote on one screen, and what needs a person
  *   uniweb promote check <step> [--json]    check one getting-found step (`sitemap`, say)
  *   uniweb promote connect <network>        the address where a person connects an account
+ *   uniweb promote use <network> <use>      the account, and the page or ad account, it goes out through
  *   uniweb promote post <file>              make a post's draft, or update the one the file names
  *   uniweb promote campaign <file>          the same for a campaign, its ad groups and ads
  *   uniweb promote show <id> [--json]       one post or campaign, as a draft holds it
@@ -59,7 +60,10 @@ import {
   indexPromotion,
   isAddress,
   kindOf,
+  NETWORK_NAMES,
+  overLimits,
   pageRoute,
+  postLimits,
   parseDraft,
   picturesOf,
   planCampaign,
@@ -107,6 +111,9 @@ const USAGE = [
   '                          and what needs a person',
   '  check <step>            Check one getting-found step, e.g. uniweb promote check sitemap',
   '  connect <network>       The address where a person connects an account at a network',
+  '  use <network> <use>     The account and the page, ad account, property or listing the site',
+  '                          goes out through for posts, ads, search or listing; it lists the',
+  '                          choices, and --connection <id> and --target <id> choose',
   '  post <file>             Make a post\'s draft (Markdown, YAML or JSON), or update the one',
   '                          the file names; the file gets its id and version back',
   '  campaign <file>         The same for a campaign (YAML or JSON), its ad groups and ads',
@@ -131,7 +138,7 @@ const USAGE = [
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Flags that take a value, so the value is not read as an argument. */
-const VALUED = new Set(['--org', '--site', '--at'])
+const VALUED = new Set(['--org', '--site', '--at', '--connection', '--target', '--from', '--to'])
 
 /** The arguments that are not flags, skipping the values of the flags that take one. */
 function positionals(args) {
@@ -228,6 +235,9 @@ async function sayRefusal(res, { site, origin, what, index = null, notFound = nu
       `${name ? `“${name}”` : 'The campaign'} has started in an ad account, and what runs there is fixed, so the write is refused — nothing changed. ` +
         'Add an ad account to its `via`, or draft a new campaign.'
     )
+  } else if (res.status === 400 && reason === 'too_many_parts') {
+    const takes = body?.parts === 1 ? 'one part' : `${body?.parts ?? 'fewer'} parts`
+    say.err(`${NETWORK_NAMES[body?.network] ?? body?.network ?? 'Its network'} takes ${takes} in a post, and this one has more, so nothing went out. Make it ${body?.parts === 1 ? 'one' : (body?.parts ?? 'fewer')}.`)
   } else if (res.status === 409) {
     say.err(`Refused, nothing changed: what was named changed since it was read — in the app, or by another run${own ? ` (${own})` : ''}. Read it again: uniweb promote show <id>`)
   } else {
@@ -724,6 +734,122 @@ async function begin(args, command, verb) {
   return { client: conn.client, workspace: conn.workspace, site }
 }
 
+/** What a site goes out through a network for. */
+const USES = ['posts', 'ads', 'search', 'listing']
+
+/**
+ * `uniweb promote use <network> <posts|ads|search|listing>` — the account the site goes out
+ * through on a network for one use, and what at that account: the profile or page it posts as,
+ * the ad account its ads run in, a property, a listing. It lists the choices when there is more
+ * than one; `--connection <id>` and `--target <id>` choose. It makes or updates the site's one
+ * `networks` item for that network and use.
+ */
+async function useAccount(args) {
+  const json = args.includes('--json')
+  const [, network, use] = positionals(args)
+  if (!network || !USES.includes(use)) {
+    say.err(`Name the network and what for: uniweb promote use <network> <${USES.join('|')}>`)
+    return { exitCode: 2 }
+  }
+  const at = await begin(args, 'Choosing an account', `use ${network} ${use}`)
+  if (!at.client) return at
+  const { client, site } = at
+  const index = await readIndex(client, site)
+  if (!index) return { exitCode: 1 }
+  const connections = await listedConnections(client)
+  if (connections === null) {
+    say.err(`Could not list the accounts you can use on ${client.origin}.`)
+    return { exitCode: 1 }
+  }
+  const name = NETWORK_NAMES[network] ?? network
+  const mine = connections.filter((k) => k.card?.network === network)
+  if (!mine.length) {
+    say.err(`You have no ${name} account to use. Its person connects one, in a browser: uniweb promote connect ${network}`)
+    return { exitCode: 2 }
+  }
+  const item = index.top('networks').find((n) => n.data?.network === network && n.data?.use === use) ?? null
+  const current = connectionOf(item?.data?.connection).uuid
+  const kIds = shortIds(mine.map((k) => k.uuid))
+  const named = (k) => `“${k.card?.name || k.card?.handle || k.uuid}”`
+  const choices = (lines, how) => {
+    if (json) console.log(JSON.stringify({ backend: client.origin, site, network, use, choose: how, ...lines }))
+    return { exitCode: 2 }
+  }
+
+  // The account: the one named, else the only one, else the one the site goes out through now.
+  const wantConnection = flagValue(args, '--connection')
+  const conn = wantConnection
+    ? mine.find((k) => idMatches(k.uuid, wantConnection))
+    : mine.length === 1 ? mine[0] : mine.find((k) => k.uuid === current)
+  if (!conn) {
+    if (!json) {
+      say.err(wantConnection ? `None of your ${name} accounts is ${wantConnection}. Choose one:` : `You have ${mine.length} ${name} accounts. Choose one:`)
+      for (const k of mine) say.dim(`${kIds.get(k.uuid)}  ${named(k)}${k.card?.state && k.card.state !== 'connected' ? ` (${k.card.state})` : ''}`)
+      say.dim(`uniweb promote use ${network} ${use} --connection <id>`)
+    }
+    return choices({ connections: mine.map((k) => ({ uuid: k.uuid, short: kIds.get(k.uuid), card: k.card ?? null })) }, '--connection')
+  }
+
+  // What that account reaches for this use, read from the network as asked.
+  const res = await client.connectionReach(conn.uuid, use)
+  if (!res.ok) {
+    const body = await res.clone().json().catch(() => null)
+    if (res.status === 400 && body?.reason === 'use_not_offered') say.err(`${name} offers no ${use} to go out through.`)
+    else if (res.status === 409 && body?.reason === 'connection_cannot_act') say.err(`${named(conn)} can't act now: ${reasonWords(body?.why)}.`)
+    else if (res.status === 502) say.err(`${name} refused to say what ${named(conn)} reaches${body?.detail ? `: ${body.detail}` : ''}.`)
+    else if (res.status === 404) say.err(`${named(conn)} is not shared with you to read what it reaches: ask whoever connected it.`)
+    else await sayRefusal(res, { site, origin: client.origin, what: 'read what that account reaches', index })
+    return { exitCode: res.status === 400 ? 2 : 1 }
+  }
+  const reach = ((await res.json().catch(() => null))?.reach ?? []).filter((t) => t && typeof t.id === 'string')
+  if (!reach.length) {
+    say.err(`${named(conn)} reaches nothing on ${name} for ${use} yet. Make it there first (a page, an ad account), then run this again.`)
+    return { exitCode: 1 }
+  }
+  const wantTarget = flagValue(args, '--target')
+  const target = wantTarget
+    ? reach.find((t) => t.id === wantTarget || t.name === wantTarget)
+    : reach.length === 1 ? reach[0] : reach.find((t) => conn.uuid === current && t.id === item?.data?.target?.id)
+  if (!target) {
+    if (!json) {
+      say.err(`${wantTarget ? `${named(conn)} reaches no ${wantTarget} for ${use}.` : `${named(conn)} reaches ${reach.length} for ${use}.`} Choose one:`)
+      for (const t of reach) say.dim(`${t.id}  “${t.name ?? t.id}”`)
+      say.dim(`uniweb promote use ${network} ${use}${mine.length > 1 ? ` --connection ${kIds.get(conn.uuid)}` : ''} --target <id>`)
+    }
+    return choices({ connection: conn.uuid, reach }, '--target')
+  }
+
+  // The site's one item for this network and use, made or pointed at what was chosen.
+  const same = Boolean(item) && current === conn.uuid && item.data?.target?.id === target.id
+  let uuid = item?.uuid ?? null
+  if (!same) {
+    const data = { ...(item?.data ?? {}), network, use, connection: conn.uuid, target: { id: target.id, name: target.name ?? target.id } }
+    uuid = uuid ?? mintUuidV7()
+    const op = item
+      ? { kind: 'update', uuid, data, if_unmodified_since: item.updated_at }
+      : { kind: 'create', section: 'networks', uuid, data }
+    const w = await client.writePromotionItems(site, [op])
+    if (!w.ok) {
+      const body = await w.clone().json().catch(() => null)
+      if (w.status === 409 && body?.reason === 'campaign_started') {
+        const started = index.byUuid.get(body?.campaign)?.data?.name
+        say.err(`${started ? `“${started}”` : 'A campaign'} has started through the site's ${name} ${use} account, and a started campaign's account stays as it is, paused or not. Nothing changed.`)
+      } else {
+        await sayRefusal(w, { site, origin: client.origin, what: 'choose its accounts', index })
+      }
+      return { exitCode: 1 }
+    }
+  }
+  if (json) {
+    console.log(JSON.stringify({ backend: client.origin, site, network, use, item: uuid, connection: conn.uuid, target, changed: !same }))
+    return { exitCode: 0 }
+  }
+  say.ok(`${same ? 'Already so: the' : 'The'} site's ${use} on ${name} go out through ${named(conn)}, as “${target.name ?? target.id}”.`)
+  const others = reach.filter((t) => t.id !== target.id)
+  if (others.length) say.dim(`It also reaches ${others.map((t) => `“${t.name ?? t.id}” (${t.id})`).join(', ')}: --target <id> chooses one.`)
+  return { exitCode: 0 }
+}
+
 /** The site's Promote, read fresh and indexed — or null, the refusal said. */
 async function readIndex(client, site) {
   const res = await client.readPromotion(site)
@@ -745,6 +871,17 @@ async function readPages(client, site) {
   } catch {
     return null
   }
+}
+
+/**
+ * Where a post as stored asks more than its network takes (`overLimits`), by the limits this
+ * backend tells; none when it tells none.
+ */
+async function limitsOf(client, index, post) {
+  const network = index.byUuid.get(post?.data?.via)?.data?.network
+  const config = network ? await client.discover().catch(() => null) : null
+  const parts = index.children('posts/parts', post.uuid).map((p) => p.data ?? {})
+  return overLimits(parts, postLimits(config, network), { network, link: Boolean(post.data?.page) })
 }
 
 /** The caller's connections — null when they could not be listed. */
@@ -1105,6 +1242,8 @@ async function writeDraft(args, kind) {
   const ids = shortIds(after.items.map((i) => i.uuid))
   const item = after.byUuid.get(plan.uuid)
   const id = ids.get(plan.uuid) ?? plan.uuid
+  // What its network takes: more parts is refused when it goes out, a long part only noted.
+  const over = kind === 'post' && item ? await limitsOf(client, after, item) : { parts: null, lengths: [] }
   if (json) {
     console.log(JSON.stringify({
       backend: client.origin,
@@ -1116,7 +1255,8 @@ async function writeDraft(args, kind) {
       made: !draft.id,
       writes: ops.length,
       file: input.file ? input.shown : null,
-      kept: (plan.kept ?? []).map((k) => ({ ...k, short: ids.get(k.uuid) }))
+      kept: (plan.kept ?? []).map((k) => ({ ...k, short: ids.get(k.uuid) })),
+      ...(kind === 'post' ? { limits: over } : {})
     }))
     return { exitCode: 0 }
   }
@@ -1145,6 +1285,8 @@ async function writeDraft(args, kind) {
       say.info(`Kept, not in your file: ${k.kind} ${k.name ? `“${k.name}” ` : ''}(${ids.get(k.uuid)}). \`uniweb promote delete ${ids.get(k.uuid)}\` deletes it.`)
     }
   }
+  if (over.parts) say.warn(`${over.parts} Until then it can't be sent.`)
+  for (const line of over.lengths) say.warn(line)
   if (fileNote) say.warn(fileNote)
   else if (!input.file && ops.length) say.dim(`From stdin, so no file keeps its ids: give your next draft of it \`id: ${plan.uuid}\` and \`version: ${version(plan.uuid)}\`.`)
   // The pages it lands on, checked in the site's files where this project holds them.
@@ -1154,7 +1296,7 @@ async function writeDraft(args, kind) {
     console.log()
     await landingNotes(dir, landing.routes, { networks: landing.networks, goal: landing.goal })
   }
-  if (kind === 'post' && wentOut(deliveryOf(after, item)) === false) {
+  if (kind === 'post' && wentOut(deliveryOf(after, item)) === false && !over.parts) {
     const sendAt = item?.data?.send_at
     if (deliveryOf(after, item)?.status === 'scheduled') say.dim(`Scheduled for ${sendAt}: \`uniweb promote unschedule ${id}\` makes it a draft again`)
     else say.dim(sendAt ? `Send it at its time, ${sendAt}: uniweb promote send ${id}` : `Send it: uniweb promote send ${id} [--at <time>]`)
@@ -1377,23 +1519,14 @@ async function send(args) {
   const scheduledFor = before?.status === 'scheduled' ? (post.data?.send_at ?? null) : null
 
   if (file) {
-    // `--at` moves the file's own send_at, so the one write carries it and the file keeps saying it.
-    let text = file.text
-    if (atGiven && !sameInstant(held, time)) {
-      text = fileWithFields(file.text, file.format, { send_at: time })
-      if (!text) {
-        say.err(`Could not set the time in ${arg}: give it \`send_at: ${time}\`, then send it.`)
-        return { exitCode: 2 }
-      }
-    }
-    const draft = text === file.text ? parsed.draft : parseDraft(text, { format: file.format, kind: 'post' }).draft
+    // The file's draft is written first, as `post` writes it; a new time goes with the schedule, below.
     const wrote = await writeParsed({
       client,
       site,
       index,
-      input: { file: file.path, shown: arg, text, dir: dirname(file.path) },
+      input: { file: file.path, shown: arg, text: file.text, dir: dirname(file.path) },
       format: file.format,
-      draft,
+      draft: parsed.draft,
       kind: 'post'
     })
     if (!wrote.after) return wrote
@@ -1403,44 +1536,49 @@ async function send(args) {
     post = index.byUuid.get(wrote.plan.uuid)
     id = shortIds(index.items.map((i) => i.uuid)).get(post.uuid)
     before = deliveryOf(index, post)
-    if (writes && text === file.text && !json) say.info(`Wrote what ${arg} says to post ${id} first: it differed from the post as stored.`)
+    if (writes && !json) say.info(`Wrote what ${arg} says to post ${id} first: it differed from the post as stored.`)
   }
 
+  // What its network takes: more parts is refused before anything goes out, a long part noted.
+  const over = await limitsOf(client, index, post)
+  if (over.parts) {
+    say.err(`${over.parts} Nothing went out.`)
+    return { exitCode: 2 }
+  }
+  if (!json) for (const line of over.lengths) say.warn(line)
+
+  // A new time goes with the schedule itself, in one act refused whole, so a refusal leaves the
+  // post as it was: still scheduled at its old time, or a draft.
+  const moving = Boolean(when) && !sameInstant(post.data?.send_at, when)
   let res
-  let moved = false
   if (when) {
-    if (before?.status === 'scheduled' && sameInstant(post.data?.send_at, when)) {
+    if (before?.status === 'scheduled' && !moving) {
       if (!json) say.ok(`Post ${id} is scheduled for ${post.data.send_at} already.`)
       return out(before, 0)
     }
-    if (!sameInstant(post.data?.send_at, when)) {
-      // The time is the post's own field, written first. A write makes a scheduled post a draft again.
-      const wrote = await client.writePromotionItems(site, [
-        { kind: 'update', uuid: post.uuid, data: { ...post.data, send_at: when }, if_unmodified_since: post.updated_at }
-      ])
-      if (!wrote.ok) {
-        await sayRefusal(wrote, { site, origin: client.origin, what: 'set its time', index })
-        return { exitCode: 1 }
-      }
-      post.data = { ...post.data, send_at: when }
-      moved = true
-      writes++
-    }
-    res = await client.postAction(site, post.uuid, 'schedule')
+    res = await client.postAction(site, post.uuid, 'schedule', moving ? { send_at: when } : null)
   } else {
     res = await client.postAction(site, post.uuid, 'publish')
   }
   if (!res.ok) {
     await sayRefusal(res, { site, origin: client.origin, what: 'send posts', index })
-    // What this command wrote stays written, so say what the post is now.
-    if (scheduledFor && writes) {
-      say.warn(`Post ${id} was scheduled for ${scheduledFor}, and writing to it made it a draft again${moved || (when && !sameInstant(scheduledFor, when)) ? `, its time now ${when}` : ''}: it is not scheduled now.`)
-    } else if (moved) {
-      say.warn(`Post ${id}'s time is ${when} now, and it is not scheduled.`)
-    }
+    // The file's changes stay written, and a write makes a scheduled post a draft again.
+    if (scheduledFor && writes) say.warn(`Post ${id} was scheduled for ${scheduledFor}, and writing what ${arg} says made it a draft again: it is not scheduled now.`)
     return { exitCode: 1 }
   }
   const delivery = (await res.json().catch(() => null))?.delivery ?? null
+  if (moving) {
+    post.data = { ...post.data, send_at: when }
+    // The file says the post's new time, at the version the schedule left, so its next run is not stale.
+    if (file) {
+      const after = await readIndex(client, site).catch(() => null)
+      const item = after?.byUuid.get(post.uuid)
+      const text = readFileSync(file.path, 'utf8')
+      const next = item ? fileWithFields(text, file.format, { send_at: when, version: versionOf(after, item) }) : null
+      if (next && next !== text) writeFileSync(file.path, next)
+      else if (!next && !json) say.warn(`Could not write its new time into ${arg}: run \`uniweb promote show ${id} > ${arg}\` before you edit it again.`)
+    }
+  }
   if (json) return out(delivery, delivery?.status === 'failed' || delivery?.status === 'refused' ? 1 : 0)
   return { exitCode: sayDelivery(index, post, delivery, id) }
 }
@@ -1673,6 +1811,7 @@ export async function promote(args = []) {
     if (sub === 'status') return await status(args)
     if (sub === 'check') return await check(args)
     if (sub === 'connect') return await connectNetwork(args)
+    if (sub === 'use') return await useAccount(args)
     if (sub === 'post' || sub === 'campaign') return await writeDraft(args, sub)
     if (sub === 'show') return await show(args)
     if (sub === 'delete') return await deleteItem(args)
