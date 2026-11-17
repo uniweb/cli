@@ -136,6 +136,26 @@ await checkout(offering)         // sends the buyer to pay; a free one-off is he
 - `useEntitlements()` — what the viewer holds, for "My courses". `useHolders({ schema, uuid })` — who holds a record, for a roster: its owner's or an `admin`'s to read, `forbidden` for anyone else, so draw nothing.
 - Why a checkout was refused: `error.extensions.reason` — `payments_not_ready`, `coupon_not_applicable` (with `cause`), `not_for_sale`.
 
+**Prices for visitors who aren't signed in** come as records, so the first page a visit lands on already shows them, to people and to search engines. A section declares the store's catalog, a site query reads it, and the site's `blueprint.yml` opens it to visitors:
+
+```yaml
+# queries.yml
+store: { schema: '@uniweb/catalog' }
+# blueprint.yml
+publicQueries:
+  '@uniweb/catalog': { whole: true }
+```
+
+```jsx
+// meta.js: data: { store: { schema: '@uniweb/catalog', whole: true } }
+const catalogs = content.data.store   // [{ info: { name, currency }, offering: [{ entry: { schema, entity, brief }, price, currency?, charge_kind }] }]
+```
+
+- Join each record to the offering whose `entry.entity` is its uuid. `price` is in the currency's smallest unit, and `currency` is the offering's own or else `info.currency`.
+- More than one catalog means none is the store, and a buyer can't pay: show no price.
+- It needs the site's backend and Live Records (`records: true`). Buying, and anything that is one member's own, is `useStore()` after sign-in.
+- The catalog is the backend's, written by the owner in the app, so a build and a push refuse `records/uniweb/catalog/` files.
+
 ## The inbox
 
 ```jsx
