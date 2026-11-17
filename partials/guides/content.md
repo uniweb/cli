@@ -154,7 +154,7 @@ Sites adjust these or add named styles in `theme.yml` `inline:` — a name is a 
 
 ### HTML is not content
 
-A tag in markdown — `<strong>`, `<span class=…>`, `<div>` — shows as written, and the build names the file. Use `**bold**`, `[text]{accent}`, a link. The exception is `<br>`, a hard break anywhere. A newline inside a paragraph is a space; a deliberate line break is `<br>` or a `\` at the end of the line.
+A tag in markdown — `<strong>`, `<span class=…>`, `<div>` — shows as written, and the build names the file. Use `**bold**`, `[text]{accent}`, `[x]{underline}`, `[2]{sup}`, `[2]{sub}`, a link. The exception is `<br>`, a hard break anywhere. A newline inside a paragraph is a space; a deliberate line break is `<br>` or a `\` at the end of the line.
 
 ### Fenced code
 

@@ -51,7 +51,7 @@ const editor = useRichTextEditor({ value, onChange })                         //
 <RichTextContent editor={editor} />                                           // your toolbar: editor.chain().focus().toggleBold().run()
 ```
 
-Its document model is the stored vocabulary: it edits what TipTap's kit does, with a divider for the rule and no underline, and keeps everything else a stored text holds. Don't configure TipTap yourself for a rich-text field: what it makes beyond the vocabulary is left out when saved, which the mock prints.
+Its document model is the stored vocabulary: it edits what TipTap's kit does, underline included, plus superscript and subscript (`toggleSuperscript()`, `toggleSubscript()`), with a divider for the rule, and keeps everything else a stored text holds. `richTextLength(doc)` counts a text as a field's `max_length` does (the characters a reader sees; a new line or paragraph is one), for a counter. Don't configure TipTap yourself for a rich-text field: what it makes beyond the vocabulary is left out when saved, which the mock prints.
 
 ## Translated fields
 
