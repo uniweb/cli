@@ -69,7 +69,7 @@ const REACH = {
   [CONN_META]: { posts: [{ id: 'page-1', name: 'Maple Bakery' }], ads: [{ id: 'act_1', name: 'Maple Ads' }, { id: 'act_2', name: 'Maple Catering' }] }
 }
 
-function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC, now = () => Date.now(), reach = REACH } = {}) {
+function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC, now = () => Date.now(), reach = REACH, results = null } = {}) {
   let clock = 0
   const store = items.map((i) => ({ ...i }))
   // A post's door to refuse, by act: `{ status, body }`, as the backend refuses one it may not do.
@@ -98,6 +98,13 @@ function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC
     // As the playground answers: what each network takes in a post, by network and then use.
     if (u.pathname === '/dev/config') {
       return Response.json({ promote: { networks: ['x', 'facebook'], limits: { x: { posts: { characters: 280, counting: 'x', link: 23 } }, facebook: { posts: { parts: 1 } } } } })
+    }
+    // What a post or a campaign brought: a box with no analytics view answers 503, as the playground does.
+    const resultsOf = u.pathname.match(new RegExp(`^${PROMO}/(posts|campaigns)/([^/]+)/results$`))
+    if (resultsOf && method === 'GET') {
+      if (!results) return Response.json({ status: 503, title: 'Service Unavailable' }, { status: 503 })
+      const answer = results(resultsOf[1], resultsOf[2], Object.fromEntries(u.searchParams))
+      return Response.json(answer.body, { status: answer.status ?? 200 })
     }
     const reachOf = u.pathname.match(/^\/dev\/connections\/([^/]+)\/reach$/)
     if (reachOf && method === 'GET') {
@@ -875,4 +882,120 @@ test('use says what it can\'t do: no account there, a use the network doesn\'t o
   const started = await runVerb(dir, await verb(), ['use', 'facebook', 'ads', '--target', 'act_2', '--site', SITE], { env: ENV, respond: backend.respond })
   assert.equal(started.exitCode, 1, started.output)
   assert.match(started.output, /“Holiday” has started through the site's Facebook ads account, and a started campaign's account stays as it is, paused or not\. Nothing changed\./)
+})
+
+// ── what each brought ──────────────────────────────────────────────────────────────
+
+const day = (d, arrivals, views, conversions = {}) => ({ day: d, arrivals, views, conversions })
+
+test('results says what a campaign brought: by day, in all, by ad, what it spent, and what came untold', async () => {
+  let asked = null
+  const backend = statefulBackend({
+    results: (kind, uuid, query) => {
+      asked = { kind, uuid, query }
+      const [trays, cakes] = backend.store.filter((i) => i.section === 'campaigns/ad_groups/ads')
+      // As backend's own test prints one (uniweb-rs bcb7a298), for this campaign's two ads.
+      return {
+        body: {
+          results: {
+            range: { from: '2026-12-01', to: '2026-12-03' },
+            measured_from: '2026-12-02',
+            capped: false,
+            cut: false,
+            days: [day('2026-12-02', 3, 5, { signup: 1 }), day('2026-12-03', 1, 1)],
+            ad_groups: [],
+            ads: [
+              { ad: trays.uuid, ad_group: trays.parent, days: [day('2026-12-02', 3, 5, { signup: 1 }), day('2026-12-03', 0, 0)] },
+              { ad: cakes.uuid, ad_group: cakes.parent, days: [day('2026-12-02', 0, 0), day('2026-12-03', 0, 0)] }
+            ],
+            untold: [day('2026-12-03', 1, 1)],
+            spend: [{ via: 'v', day: '2026-12-02', amount: '8.00', currency: 'CAD', read_at: 'x' }, { via: 'v', day: '2026-12-03', amount: '2.50', currency: 'CAD', read_at: 'x' }]
+          }
+        }
+      }
+    }
+  })
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'holiday.yml'), CAMPAIGN_YML)
+  await runVerb(dir, await verb(), ['campaign', 'holiday.yml', '--site', SITE], { env: ENV, respond: backend.respond })
+  const run = await runVerb(dir, await verb(), ['results', 'Holiday', '--from', '2026-12-01', '--to', '2026-12-03', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 0, run.output)
+  assert.deepEqual(asked.query, { from: '2026-12-01', to: '2026-12-03' })
+  assert.equal(asked.kind, 'campaigns')
+  assert.match(run.output, /What campaign “Holiday” \(\w+\) brought.* 2026-12-01 to 2026-12-03, as the site's own analytics counts it/)
+  assert.match(run.output, /2026-12-02 {2}3 arrivals · 5 views · signup 1/)
+  assert.match(run.output, /In all.* 4 arrivals · 6 views · signup 1/)
+  assert.match(run.output, /“Holiday trays” in “Trays”: 3 arrivals · 5 views · signup 1/)
+  assert.match(run.output, /“Holiday cakes” in “Cakes”: 0 arrivals · 0 views/)
+  assert.match(run.output, /Spent.* 10\.50 CAD, on the 2 days the network reported/)
+  assert.match(run.output, /Counted from 2026-12-02, when the site's analytics first held its tags: a day before it is unknown, not zero/)
+  assert.match(run.output, /1 arrival · 1 view came with the campaign's tag but no ad's \(2026-12-03\)/)
+  assert.match(run.output, /not a network's clicks or impressions/)
+})
+
+test('results says what a post brought, and what no post of its network can claim', async () => {
+  const backend = statefulBackend({
+    results: () => ({
+      body: {
+        results: {
+          range: { from: '2026-11-10', to: '2026-11-11' },
+          measured_from: '2026-11-09',
+          capped: true,
+          cut: false,
+          days: [day('2026-11-10', 2, 3, { signup: 1 }), day('2026-11-11', 0, 0)],
+          untold: [day('2026-11-11', 5, 5)]
+        }
+      }
+    })
+  })
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'p.md'), '---\nvia: x\npage: /holiday\n---\nOur trays.\n')
+  await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  const run = await runVerb(dir, await verb(), ['results', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 0, run.output)
+  assert.match(run.output, /What post “Our trays\.” \(\w+\) brought/)
+  assert.match(run.output, /2026-11-10 {2}2 arrivals · 3 views · signup 1/)
+  assert.match(run.output, /some arrivals sit in no campaign: these counts are the least it brought/)
+  assert.match(run.output, /5 arrivals · 5 views came from X's posts with no post's tag \(2026-11-11\): no post can claim them/)
+  assert.doesNotMatch(run.output, /Counted from/, 'measured before the window: every day is counted')
+  assert.doesNotMatch(run.output, /Spent/, 'a post spends nothing')
+})
+
+test('results --json gives the answer as it came; a bad day is refused first; a box with no analytics view says so', async () => {
+  const answer = { range: { from: '2026-11-10', to: '2026-11-10' }, measured_from: null, capped: false, cut: false, days: [], untold: [] }
+  const backend = statefulBackend({ results: () => ({ body: { results: answer } }) })
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'p.md'), '---\nvia: x\n---\nHello.\n')
+  await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  const asJson = await runVerb(dir, await verb(), ['results', 'p.md', '--json', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(asJson.exitCode, 0, asJson.output)
+  assert.deepEqual(lastJson(asJson).results, answer)
+  assert.equal(lastJson(asJson).kind, 'post')
+  const plain = await runVerb(dir, await verb(), ['results', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.match(plain.output, /hold nothing with its tags in the days they keep, so there is nothing to count yet/)
+  const bad = await runVerb(dir, await verb(), ['results', 'p.md', '--from', 'yesterday', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(bad.exitCode, 2, bad.output)
+  assert.match(bad.output, /`--from` takes a UTC day, such as 2026-12-01/)
+
+  const edgeless = statefulBackend()
+  const dir2 = tmp('uw-promote-')
+  writeFileSync(join(dir2, 'p.md'), '---\nvia: x\n---\nHello.\n')
+  await runVerb(dir2, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: edgeless.respond })
+  const none = await runVerb(dir2, await verb(), ['results', 'p.md', '--site', SITE], { env: ENV, respond: edgeless.respond })
+  assert.equal(none.exitCode, 1, none.output)
+  assert.match(none.output, /reaches no analytics view, so it can't count what this brought/)
+})
+
+test('a post refused for its time, or as gone out already, is said in words', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'p.md'), '---\nvia: x\nsend_at: 2099-11-24T09:00:00Z\n---\nSoon.\n')
+  await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  backend.refuse.schedule = { status: 400, body: { status: 400, reason: 'send_at_not_ahead' } }
+  const late = await runVerb(dir, await verb(), ['send', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(late.exitCode, 1, late.output)
+  assert.match(late.output, /Refused, nothing changed: its time is not ahead of now/)
+  backend.refuse.schedule = { status: 400, body: { status: 400, reason: 'post_published', post: 'p' } }
+  const gone = await runVerb(dir, await verb(), ['send', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.match(gone.output, /Refused, nothing changed: it went out already, so it is not sent again/)
 })

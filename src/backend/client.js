@@ -1101,6 +1101,30 @@ export class BackendClient {
   }
 
   /**
+   * GET /dev/site/promotion/{site}/{posts|campaigns}/{uuid}/results?from=&to= — `{ results }`:
+   * what a post or a campaign brought by UTC day, as the site's own analytics counts it, matched
+   * by the tags in its links: `days` of `{ day, arrivals, views, conversions }`, `untold`,
+   * `range`, `measured_from`, `cut`, `capped`; a campaign's also `ad_groups`, `ads` and `spend`.
+   * `from` and `to` are UTC days, inclusive, both optional. Takes `edit` on the site; `402` for a
+   * site without Analytics, `503` where the backend reaches no analytics view.
+   *
+   * @param {string} siteUuid
+   * @param {'posts'|'campaigns'} kind
+   * @param {string} uuid
+   * @param {{ from?: string|null, to?: string|null }} [days]
+   * @returns {Promise<Response>}
+   */
+  async promotionResults(siteUuid, kind, uuid, { from = null, to = null } = {}) {
+    const query = {}
+    if (from) query.from = from
+    if (to) query.to = to
+    return this.request(
+      `/dev/site/promotion/${encodeURIComponent(siteUuid)}/${kind}/${encodeURIComponent(uuid)}/results`,
+      { query }
+    )
+  }
+
+  /**
    * GET /dev/connections — `{ connections: [{ uuid, owner?, unit?, card }] }`: the network
    * connections the caller reaches in the workspace the request names. A card holds the
    * account's `network`, `name`, `handle`, `state`, never a token.

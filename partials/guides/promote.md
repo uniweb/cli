@@ -122,7 +122,12 @@ A campaign with `goal: conversions` optimizes for what its network hears back. T
 
 ## What each brought
 
-`uniweb promote status` shows what each running campaign has spent in each ad account, as the network last reported it, in that account's currency. A day it hasn't reported is unknown, not zero. The site's Analytics, in the app, shows its visits by where they came from. When you read them:
+```bash
+uniweb promote results Holiday                          # a campaign: by day, by ad, and what it spent
+uniweb promote results holiday.md --from 2026-12-01     # a post, from a day on (--to ends it)
+```
+
+`results` gives what a post or a campaign brought, by UTC day, as the site's own analytics counts it: the arrivals, the page views and the conversions by name, matched by the tags in its links. It's the same count on every network, and a visitor two networks both claim counts once. A network's own clicks and impressions aren't in it. A campaign's comes per ad too, with what it spent in each ad account as the network last reported it, in that account's currency. A day the answer can't count is said to be unknown, not zero, and so are the arrivals that came with no ad's or post's tag. `uniweb promote status` shows each running campaign's spend. The site's Analytics, in the app, shows its visits by where they came from. When you read them:
 
 - judge by conversions, not clicks;
 - change one thing at a time;
@@ -144,5 +149,6 @@ A campaign with `goal: conversions` optimizes for what its network hears back. T
 | `unschedule <post>` | a scheduled post a draft again |
 | `start <campaign>` · `resume <campaign>` | spend, after saying what; `--yes` answers |
 | `pause <campaign>` | wherever it runs |
+| `results <post\|campaign> [--from <day>] [--to <day>]` | what it brought by day, as the site's own analytics counts it |
 
 All of them take `--json`; `--site <uuid>` for a site this project isn't synced to; `--org @x` or `--personal` for the workspace. A time carries its offset: `2026-11-24T09:00-05:00`.

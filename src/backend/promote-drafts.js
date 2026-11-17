@@ -184,6 +184,9 @@ export const REASONS = {
   network_not_offered: 'this backend does not offer that network',
   network_refused: 'the network refused it',
   too_many_parts: 'it has more parts than its network takes in a post',
+  send_at_not_ahead: 'its time is not ahead of now: give one ahead with --at, or send it now with --now',
+  send_at_invalid: 'its time is not a date-time with its offset, such as 2026-11-24T09:00-05:00',
+  post_published: 'it went out already, so it is not sent again: a new post is a new draft',
   promote_off: 'the site has no Promote: it comes with the site\'s Analytics, which the person turns on in the app',
   feature_not_subscribed: 'Promote comes with the site\'s Analytics, which this site does not have yet. The person turns it on in the app'
 }
@@ -509,6 +512,66 @@ export function overLimits(parts, limits, { network, link }) {
     })
   }
   return out
+}
+
+// ── What a post or a campaign brought ──────────────────────────────────────────────
+
+/** Day rows summed: arrivals, views, and each conversion by its name. */
+export function resultTotals(days) {
+  const out = { arrivals: 0, views: 0, conversions: {} }
+  for (const d of Array.isArray(days) ? days : []) {
+    if (Number.isFinite(d?.arrivals)) out.arrivals += d.arrivals
+    if (Number.isFinite(d?.views)) out.views += d.views
+    for (const [name, n] of Object.entries(isPlainObject(d?.conversions) ? d.conversions : {})) {
+      if (Number.isFinite(n)) out.conversions[name] = (out.conversions[name] ?? 0) + n
+    }
+  }
+  return out
+}
+
+/** A day row, or a total, in words: `3 arrivals · 5 views · signup 1`. */
+export function resultWords(row) {
+  const count = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+  const conversions = Object.entries(isPlainObject(row?.conversions) ? row.conversions : {})
+    .filter(([, n]) => n)
+    .map(([name, n]) => `${name} ${n}`)
+  return [count(row?.arrivals ?? 0, 'arrival'), count(row?.views ?? 0, 'view'), ...conversions].join(' · ')
+}
+
+/**
+ * What a results answer's days can be read as, in words: from when they are counted, whether
+ * some may be missing, and what came with no ad's or post's tag. The answer's own fields:
+ * `measured_from` (a day, or null when the site's analytics hold none of its tags), `cut` and
+ * `capped` (booleans) and `untold` (day rows, only on days that have them).
+ *
+ * @param {object} results
+ * @param {{ kind: 'post'|'campaign', network?: string|null }} what
+ */
+export function resultNotes(results, { kind, network = null }) {
+  const notes = []
+  const from = results?.range?.from ?? null
+  if (results?.measured_from === null) {
+    notes.push('The site\'s analytics hold nothing with its tags in the days they keep, so there is nothing to count yet.')
+  } else if (typeof results?.measured_from === 'string' && from && results.measured_from > from) {
+    notes.push(`Counted from ${results.measured_from}, when the site's analytics first held its tags: a day before it is unknown, not zero.`)
+  }
+  if (results?.cut === true) {
+    notes.push('Some values may be missing, since the site\'s analytics kept as many as they keep for these days: a day not listed is unknown, not zero. A shorter window (--from, --to) reads them all.')
+  }
+  if (results?.capped === true) {
+    notes.push('A day held more than the site\'s analytics keep in one, so some arrivals sit in no campaign: these counts are the least it brought.')
+  }
+  const untold = Array.isArray(results?.untold) ? results.untold : []
+  const sum = resultTotals(untold)
+  if (sum.arrivals || sum.views) {
+    const on = untold.map((d) => d.day).filter(Boolean).join(', ')
+    notes.push(
+      kind === 'campaign'
+        ? `${resultWords(sum)} came with the campaign's tag but no ad's (${on}), as from a page that sends no referrer: they count toward no ad.`
+        : `${resultWords(sum)} came from ${NETWORK_NAMES[network] ?? network ?? 'its network'}'s posts with no post's tag (${on}): no post can claim them.`
+    )
+  }
+  return notes
 }
 
 /** Whether a picture is an address already, kept as written, rather than a file to upload. */

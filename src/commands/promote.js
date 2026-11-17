@@ -14,6 +14,7 @@
  *   uniweb promote unschedule <post>        a scheduled post a draft again, its time kept
  *   uniweb promote start | resume <campaign> [--yes]  spend: say what, ask, then start
  *   uniweb promote pause <campaign>         pause it wherever it runs
+ *   uniweb promote results <post|campaign>  what it brought, by day, as the site's own analytics counts it
  *
  * The site is the one this project is synced to on that backend, or `--site <uuid>`. The
  * workspace is `--org @x` or `--personal`, else the login's — as for every site request.
@@ -64,6 +65,9 @@ import {
   overLimits,
   pageRoute,
   postLimits,
+  resultNotes,
+  resultTotals,
+  resultWords,
   parseDraft,
   picturesOf,
   planCampaign,
@@ -127,6 +131,9 @@ const USAGE = [
   '                          asks; --yes answers for you',
   '  resume <campaign>       Resume it where it was paused, the same way',
   '  pause <campaign>        Pause it wherever it runs',
+  '  results <post|campaign> What it brought by day, as the site\'s own analytics counts it:',
+  '                          arrivals, views and conversions, a campaign\'s by ad and with its',
+  '                          spend; --from <day> and --to <day> choose the days',
   '',
   '--json gives any command\'s answer as JSON. An <id> is the one a command shows, a file',
   'a draft was written from, or a campaign\'s name.',
@@ -238,6 +245,8 @@ async function sayRefusal(res, { site, origin, what, index = null, notFound = nu
   } else if (res.status === 400 && reason === 'too_many_parts') {
     const takes = body?.parts === 1 ? 'one part' : `${body?.parts ?? 'fewer'} parts`
     say.err(`${NETWORK_NAMES[body?.network] ?? body?.network ?? 'Its network'} takes ${takes} in a post, and this one has more, so nothing went out. Make it ${body?.parts === 1 ? 'one' : (body?.parts ?? 'fewer')}.`)
+  } else if (res.status === 400 && reason && REASONS[reason]) {
+    say.err(`Refused, nothing changed: ${REASONS[reason]}.`)
   } else if (res.status === 409) {
     say.err(`Refused, nothing changed: what was named changed since it was read — in the app, or by another run${own ? ` (${own})` : ''}. Read it again: uniweb promote show <id>`)
   } else {
@@ -847,6 +856,85 @@ async function useAccount(args) {
   say.ok(`${same ? 'Already so: the' : 'The'} site's ${use} on ${name} go out through ${named(conn)}, as “${target.name ?? target.id}”.`)
   const others = reach.filter((t) => t.id !== target.id)
   if (others.length) say.dim(`It also reaches ${others.map((t) => `“${t.name ?? t.id}” (${t.id})`).join(', ')}: --target <id> chooses one.`)
+  return { exitCode: 0 }
+}
+
+/** A UTC day, as `--from` and `--to` take one. */
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * `uniweb promote results <post|campaign> [--from <day>] [--to <day>]` — what a post or a
+ * campaign brought, by UTC day, as the site's own analytics counts it: arrivals, views and
+ * conversions by name, matched by the tags in its links. Never a network's own count, which
+ * credits itself. A campaign's also comes per ad, with what it spent.
+ */
+async function results(args) {
+  const json = args.includes('--json')
+  const arg = positionals(args)[1]
+  const from = flagValue(args, '--from')
+  const to = flagValue(args, '--to')
+  if (!arg) {
+    say.err('Name the post or the campaign: uniweb promote results <id> [--from <day>] [--to <day>]')
+    return { exitCode: 2 }
+  }
+  for (const [flag, value] of [['--from', from], ['--to', to]]) {
+    if (args.includes(flag) && !DAY.test(value ?? '')) {
+      say.err(`\`${flag}\` takes a UTC day, such as 2026-12-01.`)
+      return { exitCode: 2 }
+    }
+  }
+  const at = await begin(args, 'Reading what it brought', `results ${arg}`)
+  if (!at.client) return at
+  const { client, site } = at
+  const index = await readIndex(client, site)
+  if (!index) return { exitCode: 1 }
+  const item = pick(index, arg, ['post', 'campaign'])
+  if (!item) return { exitCode: 2 }
+  const kind = item.section === 'posts' ? 'post' : 'campaign'
+  const res = await client.promotionResults(site, kind === 'post' ? 'posts' : 'campaigns', item.uuid, { from, to })
+  if (!res.ok) {
+    if (res.status === 503) say.err(`${client.origin} reaches no analytics view, so it can't count what this brought. A backend that serves the site counts it; a local one may not.`)
+    else await sayRefusal(res, { site, origin: client.origin, what: 'read what it brought', index, forbidden: VIEW_ONLY })
+    return { exitCode: 1 }
+  }
+  const r = (await res.json().catch(() => null))?.results ?? null
+  const ids = shortIds(index.items.map((i) => i.uuid))
+  if (json) {
+    console.log(JSON.stringify({ backend: client.origin, site, kind, id: item.uuid, short: ids.get(item.uuid), results: r }))
+    return { exitCode: r ? 0 : 1 }
+  }
+  if (!r) {
+    say.err('The backend answered with no results.')
+    return { exitCode: 1 }
+  }
+  const network = kind === 'post' ? (index.byUuid.get(item.data?.via)?.data?.network ?? null) : null
+  console.log(
+    `${c.bold}What ${kind} ${labelOf(index, item)} (${ids.get(item.uuid)}) brought${c.reset}` +
+      ` ${c.dim}— ${r.range?.from ?? '?'} to ${r.range?.to ?? '?'}, as the site's own analytics counts it${c.reset}`
+  )
+  const days = Array.isArray(r.days) ? r.days : []
+  for (const d of days) console.log(`  ${d.day}  ${resultWords(d)}`)
+  if (days.length > 1) console.log(`  ${c.bold}In all${c.reset}      ${resultWords(resultTotals(days))}`)
+  if (kind === 'campaign') {
+    const ads = Array.isArray(r.ads) ? r.ads : []
+    if (ads.length) console.log(`  ${c.bold}By ad${c.reset}`)
+    for (const a of ads) {
+      const ad = index.byUuid.get(a.ad)
+      const group = index.byUuid.get(a.ad_group)?.data?.name
+      console.log(`    ${c.cyan}${ids.get(a.ad) ?? a.ad}${c.reset} ${ad ? labelOf(index, ad) : '(an ad no longer here)'}${group ? ` in “${group}”` : ''}: ${resultWords(resultTotals(a.days))}`)
+    }
+    const rows = Array.isArray(r.spend) ? r.spend : []
+    const spent = sumSpend(rows)
+    const reported = new Set(rows.map((s) => s.day).filter(Boolean)).size
+    console.log(
+      `  ${c.bold}Spent${c.reset}       ` +
+        (Object.keys(spent).length
+          ? `${Object.entries(spent).map(([cur, amount]) => `${amount} ${cur}`).join(' + ')}, on the ${reported} day${reported === 1 ? '' : 's'} the network reported`
+          : 'nothing reported yet')
+    )
+  }
+  for (const note of resultNotes(r, { kind, network })) say.dim(note)
+  say.dim('These are the site\'s own counts of who arrived, not a network\'s clicks or impressions.')
   return { exitCode: 0 }
 }
 
@@ -1819,6 +1907,7 @@ export async function promote(args = []) {
     if (sub === 'unschedule') return await unschedule(args)
     if (sub === 'start' || sub === 'resume') return await spend(args, sub)
     if (sub === 'pause') return await pause(args)
+    if (sub === 'results') return await results(args)
   } catch (err) {
     say.err(err instanceof WorkspaceMismatchError ? err.message : err?.message || String(err))
     return { exitCode: 1 }
