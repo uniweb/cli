@@ -154,6 +154,7 @@ const catalogs = content.data.store   // [{ info: { name, currency }, offering: 
 - Join each record to the offering whose `entry.entity` is its uuid. `price` is in the currency's smallest unit, and `currency` is the offering's own or else `info.currency`.
 - More than one catalog means none is the store, and a buyer can't pay: show no price.
 - It needs the site's backend and Live Records (`records: true`). Buying, and anything that is one member's own, is `useStore()` after sign-in.
+- A price the owner changes reaches visitors within about five minutes: the host keeps each answer that long, by design.
 - The catalog is the backend's, written by the owner in the app, so a build and a push refuse `records/uniweb/catalog/` files.
 
 ## The inbox
