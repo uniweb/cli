@@ -241,6 +241,8 @@ Nested items in one create: give an item `uuid: uuidv7()` and a later item names
 
 **Sent twice, made once:** give a create the new entry's own `uuid`, made once when the person starts adding it (`const [uuid] = useState(uuidv7)`), and a second click or a retry answers with the entry the first one made. Without it, each call makes an entry.
 
+**A member's form for an entry** comes from its type: `const { form, save, errors } = useEntityForm({ schema: '@/course', uuid })` (no `uuid`: a new entry), held by kit's `useFormValues(form)` and drawn with the component that draws every `@std/form`; `save(values)`. Each control carries its field's kind and rules; `save` checks them first, and `errors` holds each problem by control path (`head.title` → `{ rule: 'max_length', max_length: 20 }`) for the foundation to word. A `File` in a `file` control is uploaded on save. List sections are written with `useEntityWriter`.
+
 **A member's uploads:** `const { upload } = useUpload({ entity })`, then `await upload(input.files)` → `[{ url, assetId, assetExt, name, type, size, prepared, note? }]`; store `url` in the entry. Each file is prepared in the browser first, by the rule for uploaded media: a picture becomes a WebP when that makes it 10% smaller or turns it upright, and whatever is kept in its own format loses its location and camera data. Tell the member a `note`: `unconverted` (a TIFF or HEIC the browser couldn't convert) or `unreduced` (a video over the rule's bitrate). Upload through `useUpload`: it is what keeps a photo's location from going up with it.
 
 ## A backend on your machine
