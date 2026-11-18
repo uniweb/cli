@@ -124,7 +124,7 @@ A site with a backend is a solution: public pages, a members' area for each role
 ## Selling
 
 ```jsx
-import { useStore, offeringState, useEntitlements, useHolders } from '@uniweb/api'
+import { useStore, offeringState, useCoupon, couponReason, useEntitlements, useHolders } from '@uniweb/api'
 const { status, store, offerings, checkout, checking } = useStore({ entity: course.uuid })   // 'none': the site sells nothing
 offeringState(offering, store)   // 'owned' · 'take' (a free one-off) · 'not-ready' (payments not connected) · 'buy'
 await checkout(offering)         // sends the buyer to pay; a free one-off is held at once: { url: null, held: true }
@@ -135,6 +135,7 @@ await checkout(offering)         // sends the buyer to pay; a free one-off is he
 - A purchase lets the buyer read the record, and through it what its `sold_with` references point to: `useEntity({ schema: '@/lesson', uuid, via: course.uuid })`.
 - `useEntitlements()` — what the viewer holds, for "My courses". `useHolders({ schema, uuid })` — who holds a record, for a roster: its owner's or an `admin`'s to read, `forbidden` for anyone else, so draw nothing.
 - Why a checkout was refused: `error.extensions.reason` — `payments_not_ready`, `coupon_not_applicable` (with `cause`), `not_for_sale`.
+- A coupon code: `const { check, coupon, applied, checking, clear } = useCoupon()`. `check(code)` previews it with the checkout's rules: `coupon.discount` (`{ type: 'percent'|'amount', value, currency?, duration }`), or `valid: false` with `coupon.reason`, one of `COUPON_CAUSE` from `@uniweb/api/wire`. `couponReason(coupon, offering)` adds `wrong_currency` (an amount off in another currency); a free offering ignores a code. Word each reason in your foundation, with a fallback for a new one. Then `checkout(offering, { coupon: applied })`. It checks again, and a refusal's `cause` is the same set.
 
 **Prices for visitors who aren't signed in** come as records, so the first page a visit lands on already shows them, to people and to search engines. A section declares the store's catalog, a site query reads it, and the site's `blueprint.yml` opens it to visitors:
 
