@@ -7,8 +7,10 @@
  *   uniweb site secret <service> <name> [<site-uuid>]          set a secret a service uses;
  *                                                              it asks for the value
  *   uniweb site secret <service> <name> --clear [<site-uuid>]  clear it
+ *   uniweb site admin [<site-uuid>]              open the site backend's administration, as its owner
+ *   uniweb site visit [<site-uuid>]              open the site, signed in as its owner
  *
- * Without a uuid, `unpublish`, `delete` and `secret` act on the site this project is synced to on
+ * Without a uuid, every verb but `list` acts on the site this project is synced to on
  * that backend. The workspace is the command's (`--org @x` / `--personal`), else the
  * login's — as for every site request.
  *
@@ -67,8 +69,11 @@ const USAGE = [
   '                                    the value, which no argument or file carries',
   '  secret <service> <name> --clear [<site-uuid>]',
   '                                    Clear it',
+  '  admin [<site-uuid>]               Open the administration of the site’s backend in your',
+  '                                    browser, signed in as the site’s owner',
+  '  visit [<site-uuid>]               Open the site in your browser, signed in as its owner',
   '',
-  'Without a uuid, unpublish, delete and secret act on the site this project is synced to.',
+  'Without a uuid, every command but list acts on the site this project is synced to.',
   'The workspace is --org @x or --personal, else the one chosen at login.'
 ].join('\n')
 
@@ -471,6 +476,89 @@ export async function siteSecret(args, { readValue = askSecretValue } = {}) {
   return { exitCode: 0 }
 }
 
+/** `admin` and `visit`: the owner's door each opens, and what is behind it. */
+const DOORS = {
+  admin: { door: 'manage', what: (label) => `the administration of ${label}’s backend`, running: 'Opening a site’s administration' },
+  visit: { door: 'visit', what: (label) => label, running: 'Opening a site, signed in' }
+}
+
+/**
+ * `uniweb site admin [<site-uuid>]` and `uniweb site visit [<site-uuid>]` — open the person's
+ * browser signed in as the site's owner: in the administration of the site's backend (the
+ * payment account, teams, roles, an integration's keys) or on the site itself. The way in from
+ * the terminal with no app, and the same rules as the app's buttons: owner only, and a backend
+ * that is running.
+ *
+ * ⛔ THE ADDRESS IS A CREDENTIAL. The backend answers a single-use sign-in, valid for a short
+ * time, so it is opened and never printed: not on success, not when no browser opens, not in an
+ * error. Where no browser opens, the command says so and stops; the person runs it where one
+ * can. An agent's transcript, a terminal's scrollback and a pasted log are all places a printed
+ * sign-in would land.
+ *
+ * @param {string[]} args
+ * @param {'admin'|'visit'} verb
+ * @param {{ open?: (url: string) => Promise<boolean> }} [io]
+ */
+export async function siteOwnerDoor(args, verb, { open } = {}) {
+  const { door, what, running } = DOORS[verb]
+  if (positionals(args).length > 2) {
+    say.err(`\`uniweb site ${verb}\` takes at most a site uuid.`)
+    return { exitCode: 2 }
+  }
+  const conn = await connect(args, running)
+  if (conn.refused) {
+    say.err(conn.refused)
+    return { exitCode: 2 }
+  }
+  const { client } = conn
+  const target = await targetSite(args, client, verb)
+  if (!target) return { exitCode: 2 }
+  const listed = await findSite(client, target.uuid)
+  const label = listed?.name ? `“${listed.name}” (${target.uuid})` : target.uuid
+
+  const res = await client.ownerSignIn(target.uuid, door)
+  if (!res.ok) {
+    const body = await res.clone().json().catch(() => null)
+    if (res.status === 404) {
+      // ⭐ The backend answers 404 to anyone but the owner, never saying whether the site
+      // exists. A site the workspace lists is one this account is not the owner of — or a
+      // backend that predates the route.
+      say.err(
+        listed
+          ? `${client.origin} won't open ${label} for you: only the site's owner can, from this command.`
+          : `${client.origin} has no site ${target.uuid} that you own.`
+      )
+      if (listed) say.dim('A backend older than this command answers the same way.')
+    } else if (res.status === 409) {
+      say.err(
+        body?.detail
+          ? `${label} can't be opened yet: ${body.detail}`
+          : verb === 'visit'
+            ? `${label} can't be opened yet: its backend is not running, or it has no address. Publish it first: uniweb publish`
+            : `${label} can't be opened yet: its backend is not running. Publish it first: uniweb publish`
+      )
+    } else {
+      await sayRefusal(res, { uuid: target.uuid, verb: `open`, origin: client.origin })
+    }
+    return { exitCode: 1 }
+  }
+  const body = await res.json().catch(() => null)
+  const url = typeof body?.url === 'string' ? body.url : ''
+  if (!/^https?:\/\//i.test(url)) {
+    say.err(`${client.origin} answered without an address to open.`)
+    return { exitCode: 1 }
+  }
+  const opener = open || (await import('../utils/registry-auth.js')).openBrowser
+  if (!(await opener(url))) {
+    say.err(`Couldn't open a browser here, so ${what(label)} was not opened.`)
+    say.dim('Its address signs you in, so it is not printed. Run this where a browser can open:')
+    say.dim(`uniweb site ${verb}${positionals(args)[1] ? ` ${target.uuid}` : ''}`)
+    return { exitCode: 1 }
+  }
+  say.ok(`Opened ${what(label)} in your browser, signed in as its owner.`)
+  return { exitCode: 0 }
+}
+
 export async function site(args = []) {
   const badFlag = checkFlags('site', args)
   if (badFlag) {
@@ -483,6 +571,7 @@ export async function site(args = []) {
     if (sub === 'unpublish') return await unpublish(args)
     if (sub === 'delete') return await remove(args)
     if (sub === 'secret') return await siteSecret(args)
+    if (sub === 'admin' || sub === 'visit') return await siteOwnerDoor(args, sub)
   } catch (err) {
     say.err(err instanceof WorkspaceMismatchError ? err.message : err?.message || String(err))
     return { exitCode: 1 }

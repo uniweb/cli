@@ -920,6 +920,22 @@ export class BackendClient {
   }
 
   /**
+   * POST /dev/site/manage/{uuid} and POST /dev/site/visit/{uuid} — a one-time sign-in of the
+   * site's OWNER: `manage` into the administration of the site's backend, `visit` on the site
+   * itself. Answers `{ url }`, a single-use credential that is valid for a short time: open it,
+   * never show or log it. `404` to anyone but the owner. `409` until the site's backend is
+   * running, and for `visit` while the site has no address.
+   *
+   * @param {string} uuid - the site-content uuid
+   * @param {'manage'|'visit'} door
+   * @returns {Promise<Response>}
+   */
+  async ownerSignIn(uuid, door) {
+    if (door !== 'manage' && door !== 'visit') throw new Error(`ownerSignIn: no door "${door}"`)
+    return this.request(`/dev/site/${door}/${encodeURIComponent(uuid)}`, { method: 'POST' })
+  }
+
+  /**
    * GET /dev/site — one page of the sites in the workspace the client names
    * (`setWorkspace`; none ⇒ personal): `{ sites: [{ uuid, name?, updated_at,
    * deployment?: { status, published_url, visitor_url, … } }] }`. A page shorter than

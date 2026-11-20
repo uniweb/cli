@@ -2186,6 +2186,8 @@ ${colors.bright}Usage:${colors.reset}
   uniweb site delete [<site-uuid>] [--yes]
   uniweb site secret <service> <name> [<site-uuid>]
   uniweb site secret <service> <name> --clear [<site-uuid>] [--yes]
+  uniweb site admin [<site-uuid>]
+  uniweb site visit [<site-uuid>]
 
 ${colors.bright}list${colors.reset} gives each site's name, uuid, and whether it is live.
 ${colors.bright}unpublish${colors.reset} takes a site offline, and its content stays.
@@ -2194,8 +2196,13 @@ ${colors.bright}secret${colors.reset} sets a secret one of the site's services u
 token (\`uniweb site secret x token\`). It asks for the value at a prompt that doesn't
 show it: no argument or file carries one, and with no terminal it refuses. The live
 site has it from its next publish. \`--clear\` removes it.
+${colors.bright}admin${colors.reset} opens the administration of the site's backend (its payment account, teams,
+roles, an integration's keys) in your browser, signed in as the site's owner.
+${colors.bright}visit${colors.reset} opens the site itself, signed in as its owner. Both are the owner's alone,
+and the site's backend must be running. The address they open signs you in, so it is
+never printed: where no browser can open, they say so and stop.
 
-Without a uuid, \`unpublish\`, \`delete\` and \`secret\` act on the site this project is synced to.
+Without a uuid, every command but \`list\` acts on the site this project is synced to.
 \`unpublish\`, \`delete\` and \`secret --clear\` ask first, and \`--yes\` is the only way
 past the question: with no terminal and no \`--yes\` they refuse. Deleting this
 project's own site also forgets it here, so the next push creates a new one.

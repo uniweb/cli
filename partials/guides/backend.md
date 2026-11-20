@@ -121,6 +121,8 @@ integrations:                # by a mapping the foundation declares in src/mappi
 
 A site with a backend is a solution: public pages, a members' area for each role, and an **admin area** for the people who run it — its staff, its instructors. You build the admin area: section types of your foundation, branded, in the solution's own words, with what follows. The **admin app** is the backend's own administration, the same for every site: the payment account, the teams and who is in them, roles, an integration's address and keys, the store's offerings and coupons. Never rebuild those; link to it (`adminHref`, below). The docs' Building a Solution page walks the whole path.
 
+From a terminal, once the site is published and its backend is running, `uniweb site admin` opens the admin app in the browser, signed in as the site's owner, and `uniweb site visit` opens the site signed in the same way. Only the owner can use them. The address they open signs the person in, so they never print it: where no browser can open, they say so and stop, and the person runs the command where one can.
+
 ## Selling
 
 ```jsx
