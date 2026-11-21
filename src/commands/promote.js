@@ -60,6 +60,7 @@ import {
   idMatches,
   indexPromotion,
   isAddress,
+  isTime,
   kindOf,
   NETWORK_NAMES,
   overLimits,
@@ -75,6 +76,7 @@ import {
   postMarkdown,
   postShape,
   resolvePage,
+  sameInstant,
   shapeYaml,
   shortIds,
   sitePages,
@@ -83,7 +85,8 @@ import {
   versionOf,
   viaResolver,
   wentOut,
-  whyNot
+  whyNot,
+  wireTime
 } from '../backend/promote-drafts.js'
 import { checkFlags } from '../utils/flag-guard.js'
 import { confirm, isNonInteractive } from '../utils/interactive.js'
@@ -1052,13 +1055,6 @@ function pick(index, arg, kinds) {
   return null
 }
 
-/** Whether `--at`'s value is a time with its offset, as the backend takes one. */
-function isTime(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/.test(value) && !Number.isNaN(Date.parse(value))
-}
-
-const sameInstant = (a, b) => typeof a === 'string' && typeof b === 'string' && Date.parse(a) === Date.parse(b)
-
 /** An amount as money reads: `10.00` for the `10` YAML reads `10.00` as; a string as written. */
 const money = (v) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(2) : String(v))
 
@@ -1122,6 +1118,16 @@ function translateDraft(draft, { index, pages, connections }) {
       else out.fields.via = r.uuid
     }
     if (draft.fields.page !== undefined) out.fields.page = page(draft.fields.page, 'The post')
+    // A time goes to the backend in its own form (`wireTime`); one that is the instant the post
+    // holds stays as it is held, so writing the same file again changes nothing.
+    const raw = draft.fields.send_at
+    if (raw !== undefined && raw !== null) {
+      if (!isTime(raw)) errors.push(`The post's \`send_at\` is ${JSON.stringify(raw)}: give a time with its offset, such as 2026-11-24T09:00-05:00.`)
+      else {
+        const held = draft.id ? index.byUuid.get(draft.id)?.data?.send_at : undefined
+        out.fields.send_at = sameInstant(held, raw) ? held : wireTime(raw)
+      }
+    }
     return { draft: out, creates: via.creates(), errors }
   }
 
@@ -1553,7 +1559,8 @@ async function send(args) {
   const arg = positionals(args)[1]
   const now = args.includes('--now')
   const atGiven = args.includes('--at')
-  const time = flagValue(args, '--at')
+  const given = flagValue(args, '--at')
+  const time = wireTime(given)
   if (!arg) {
     say.err('Name the post: uniweb promote send <post> [--at <time> | --now]')
     return { exitCode: 2 }
@@ -1562,12 +1569,12 @@ async function send(args) {
     say.err('`--now` and `--at` each say when — give one.')
     return { exitCode: 2 }
   }
-  if (atGiven && !isTime(time)) {
+  if (atGiven && !isTime(given)) {
     say.err('`--at` takes a time with its offset, such as 2026-11-24T09:00-05:00.')
     return { exitCode: 2 }
   }
   if (atGiven && Date.parse(time) <= Date.now()) {
-    say.err(`\`--at ${time}\` has passed: give a time ahead, or send it now with --now.`)
+    say.err(`\`--at ${given}\` has passed: give a time ahead, or send it now with --now.`)
     return { exitCode: 2 }
   }
   const file = draftFile(arg)
@@ -1598,7 +1605,7 @@ async function send(args) {
 
   // The time it goes out at: --at's, else the file's own send_at where it names one, else the post's.
   const held = parsed && parsed.draft.fields.send_at !== undefined ? parsed.draft.fields.send_at : (post?.data?.send_at ?? null)
-  const when = now ? null : atGiven ? time : held
+  const when = now ? null : atGiven ? time : wireTime(held)
   if (when && !atGiven && Date.parse(when) <= Date.now()) {
     say.err(`Post ${id} holds send_at ${when}, which has passed: send it now with --now, or at another time with --at <time>.`)
     return { exitCode: 2 }

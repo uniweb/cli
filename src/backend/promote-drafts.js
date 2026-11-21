@@ -574,6 +574,38 @@ export function resultNotes(results, { kind, network = null }) {
   return notes
 }
 
+// ── Times ──────────────────────────────────────────────────────────────────────────
+
+/** A time as the CLI takes one: a day and a time of day, its seconds written or not, and its offset. */
+const TIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(\.\d+)?)?(Z|([+-])(\d{2}):?(\d{2}))$/
+
+/**
+ * A time as the backend takes one, an RFC 3339 date-time: the seconds written out and the offset
+ * with its colon, the instant and the offset as given (`2026-11-24T09:00-05:00` →
+ * `2026-11-24T09:00:00-05:00`). Anything else comes back as it was.
+ *
+ * ⛔ The backend refuses a time without its seconds, the form the guide and every message of the
+ * CLI write, with `400 invalid_field … is not a valid datetime` on a post's write and
+ * `send_at_invalid` on its schedule (measured against a backend, 2026-11-21). So a time is written
+ * in this form wherever it goes to the backend, and never as the text the file holds.
+ */
+export function wireTime(value) {
+  const m = typeof value === 'string' ? TIME.exec(value) : null
+  if (!m) return value
+  const [, day, hh, mm, ss = '00', fraction = '', zone, sign, oh, om] = m
+  return `${day}T${hh}:${mm}:${ss}${fraction}${zone === 'Z' ? 'Z' : `${sign}${oh}:${om}`}`
+}
+
+/** Whether a value is a time with its offset, as `wireTime` writes one for the backend. */
+export function isTime(value) {
+  return typeof value === 'string' && TIME.test(value) && !Number.isNaN(Date.parse(wireTime(value)))
+}
+
+/** Two times the same instant, however each is written. */
+export function sameInstant(a, b) {
+  return isTime(a) && isTime(b) && Date.parse(wireTime(a)) === Date.parse(wireTime(b))
+}
+
 /** Whether a picture is an address already, kept as written, rather than a file to upload. */
 export function isAddress(picture) {
   return /^https?:\/\//i.test(picture)

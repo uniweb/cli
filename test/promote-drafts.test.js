@@ -21,15 +21,18 @@ import {
   overLimits,
   fileWithIdentity,
   indexPromotion,
+  isTime,
   parseDraft,
   planCampaign,
   planPost,
   resolvePage,
+  sameInstant,
   shortIds,
   sitePages,
   unitVersion,
   versionOf,
-  viaResolver
+  viaResolver,
+  wireTime
 } from '../src/backend/promote-drafts.js'
 
 const ORIGIN = 'http://backend.test'
@@ -63,6 +66,12 @@ const CONNECTIONS = [
  * A backend that keeps the site's Promote as the contract says: every write a transaction, each
  * item's `updated_at` moving when it is written, backend's own children written by its doors.
  */
+/**
+ * A time the backend takes: an RFC 3339 date-time, its seconds written out. It refuses
+ * `2026-11-23T09:00-05:00` (measured against a backend, 2026-11-21), so the fake does too.
+ */
+const BACKEND_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/
+
 /** What each connection reaches, by use, as `/dev/connections/{uuid}/reach` answers. */
 const REACH = {
   [CONN_X]: { posts: [{ id: 'x:maple', name: '@maple' }] },
@@ -120,6 +129,12 @@ function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC
       return Response.json({ promotion: store.length ? { uuid: 'p0', items: store.map((i) => structuredClone(i)) } : null })
     }
     if (u.pathname === `${PROMO}/items` && method === 'POST') {
+      for (const op of body.batch) {
+        const at = op.data?.send_at
+        if (at != null && !BACKEND_TIME.test(at)) {
+          return Response.json({ status: 400, title: 'Bad Request', detail: `invalid_field: item.data.send_at is not a valid datetime (\`${at}\`)` }, { status: 400 })
+        }
+      }
       // One transaction: every stale op refuses all of it.
       for (const op of body.batch) {
         if (op.kind === 'create') continue
@@ -174,6 +189,7 @@ function statefulBackend({ items = [], connections = CONNECTIONS, doc = SITE_DOC
           : { status: 'published', network_url: `https://x.test/p/${uuid}`, link: 'https://maple.test/holiday?utm_source=x', tag: 't1' })
       } else if (act === 'schedule') {
         // A new time goes with the schedule, in one act: the post's send_at and its delivery written together.
+        if (body?.send_at && !BACKEND_TIME.test(body.send_at)) return Response.json({ status: 400, reason: 'send_at_invalid', send_at: body.send_at }, { status: 400 })
         const at = body?.send_at ?? post.data?.send_at
         if (!at || Date.parse(at) <= now()) return Response.json({ reason: 'no_send_at' }, { status: 400 })
         const parts = store.filter((p) => p.section === 'posts/parts' && p.parent === uuid).length
@@ -232,6 +248,20 @@ test('a Markdown post: frontmatter its fields, its body its parts, a picture alo
     { text: 'Our holiday trays are here.', pictures: ['./tray.jpg'] },
     { text: 'Order by Dec 20.', pictures: [] }
   ])
+})
+
+test('a time goes to the backend with its seconds and its offset written out, the instant and offset as given', () => {
+  assert.equal(wireTime('2026-11-24T09:00-05:00'), '2026-11-24T09:00:00-05:00')
+  assert.equal(wireTime('2026-11-24T09:00-0500'), '2026-11-24T09:00:00-05:00')
+  assert.equal(wireTime('2026-11-24T14:00:00Z'), '2026-11-24T14:00:00Z')
+  assert.equal(wireTime('2026-11-24T09:00:30.5+01:00'), '2026-11-24T09:00:30.5+01:00')
+  assert.equal(wireTime('next Monday'), 'next Monday', 'what is not a time comes back as it was')
+  assert.ok(isTime('2026-11-24T09:00-0500'))
+  assert.ok(!isTime('2026-11-24T09:00'), 'a time names its offset')
+  assert.ok(!isTime('2026-11-24 09:00-05:00'))
+  assert.ok(!isTime('2026-11-24T25:00-05:00'))
+  assert.ok(sameInstant('2026-11-24T09:00-05:00', '2026-11-24T14:00:00Z'))
+  assert.ok(!sameInstant('2026-11-24T09:00-05:00', undefined))
 })
 
 test('a draft that names its id without the version it was read at is refused, saying where to start', () => {
@@ -484,6 +514,38 @@ test('send refuses a time that has passed, and a bad --at, before anything is se
   assert.match(past.output, /`--at 2021-06-01T09:00:00Z` has passed/)
   assert.equal(backend.writes().length, 1, 'its time is not written either')
   assert.equal(backend.seen.filter((r) => /\/(publish|schedule)$/.test(r.path)).length, 0)
+})
+
+test('a time written as the guide writes it reaches the backend whole, in a draft and in --at', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'p.md'), '---\nvia: x\nsend_at: 2099-11-24T09:00-05:00\n---\nSoon.\n')
+  const run = await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 0, run.output)
+  const post = backend.store.find((i) => i.section === 'posts')
+  assert.equal(post.data.send_at, '2099-11-24T09:00:00-05:00')
+  assert.match(readFileSync(join(dir, 'p.md'), 'utf8'), /\nsend_at: 2099-11-24T09:00-05:00\n/, 'the file keeps the time as written')
+
+  // The same file again: its time is the instant the post holds, so nothing is written.
+  const writes = backend.writes().length
+  const again = await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(again.exitCode, 0, again.output)
+  assert.equal(backend.writes().length, writes)
+
+  const moved = await runVerb(dir, await verb(), ['send', 'p.md', '--at', '2099-12-01T10:00-05:00', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(moved.exitCode, 0, moved.output)
+  assert.deepEqual(backend.at('POST', `${PROMO}/posts/${post.uuid}/schedule`).pop().body, { send_at: '2099-12-01T10:00:00-05:00' })
+  assert.match(readFileSync(join(dir, 'p.md'), 'utf8'), /\nsend_at: '?2099-12-01T10:00:00-05:00'?\n/)
+})
+
+test('a send_at that is not a time is refused before anything is written', async () => {
+  const backend = statefulBackend()
+  const dir = tmp('uw-promote-')
+  writeFileSync(join(dir, 'p.md'), '---\nvia: x\nsend_at: next Monday at 9\n---\nSoon.\n')
+  const run = await runVerb(dir, await verb(), ['post', 'p.md', '--site', SITE], { env: ENV, respond: backend.respond })
+  assert.equal(run.exitCode, 2, run.output)
+  assert.match(run.output, /`send_at` is "next Monday at 9": give a time with its offset, such as 2026-11-24T09:00-05:00/)
+  assert.equal(backend.writes().length, 0)
 })
 
 test('a write to a scheduled post makes it a draft again, and post says so', async () => {
