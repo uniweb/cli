@@ -1,6 +1,6 @@
-# Backend: when the site is also an app
+# Backend: when the site is also a web app
 
-On-demand guide (`uniweb guide backend`); AGENTS.md is assumed read. Only for a site with its own `backend` service — accounts, per-visitor data, records its members create and edit. A site without one is the normal case; a foundation that assumes one breaks everywhere else.
+On-demand guide (`uniweb guide backend`); AGENTS.md is assumed read. For a site that is also a web app. Its own Application Engine, the `backend` service, gives it accounts, per-visitor data, the records its members create and edit, roles and a store, and components reach it through `@uniweb/api`, the SDK. Ask `isBackendEnabled()` before drawing anything that needs it, so the same foundation also serves a site without an engine. A web app starts from `starter`, as any site does.
 
 ```bash
 npm install @uniweb/api      # in the FOUNDATION, beside @uniweb/kit — and in the site, if it has a $devBackend mock
@@ -117,11 +117,11 @@ integrations:                # by a mapping the foundation declares in src/mappi
 - A team's `all: edit` reaches the entries once the member confirms it is them (below); a team's `add` and `members: edit` need no confirming. Who is in a team, and roles, are never the file's.
 - A static build carries none of it. A pull writes it back here, never into `site.yml`.
 
-## Your admin area, and the admin app
+## Your admin area, and the Solution Owner Console
 
-A site with a backend is a solution: public pages, a members' area for each role, and an **admin area** for the people who run it — its staff, its instructors. You build the admin area: section types of your foundation, branded, in the solution's own words, with what follows. The **admin app** is the backend's own administration, the same for every site: the payment account, the teams and who is in them, roles, an integration's address and keys, the store's offerings and coupons. Never rebuild those; link to it (`adminHref`, below). The docs' Building a Solution page walks the whole path.
+A site with an engine is a solution: public pages, a members' area for each role, and an **admin area** for the people who run it — its staff, its instructors. You build the admin area: section types of your foundation, branded, in the solution's own words, with what follows. The **Solution Owner Console** is the engine's own administration, the same for every solution: the payment account, the teams and who is in them, roles, an integration's address and keys, the store's offerings and coupons. Never rebuild those; link to it (`adminHref`, below). The docs' Building a Solution page walks the whole path.
 
-From a terminal, once the site is published and its backend is running, `uniweb site admin` opens the admin app in the browser, signed in as the site's owner, and `uniweb site visit` opens the site signed in the same way. Only the owner can use them. The address they open signs the person in, so they never print it: where no browser can open, they say so and stop, and the person runs the command where one can.
+From a terminal, once the site is published and its engine is running, `uniweb site admin` opens the Solution Owner Console in the browser, signed in as the site's owner, and `uniweb site visit` opens the site signed in the same way. Only the owner can use them. The address they open signs the person in, so they never print it: where no browser can open, they say so and stop, and the person runs the command where one can.
 
 ## Selling
 
@@ -132,7 +132,7 @@ offeringState(offering, store)   // 'owned' · 'take' (a free one-off) · 'not-r
 await checkout(offering)         // sends the buyer to pay; a free one-off is held at once: { url: null, held: true }
 ```
 
-- The owner sets the offerings, and connects their own Stripe account, in the admin app. `price` is in the currency's smallest unit. Nobody signed in → `absent`: the store is a signed-in member's to read.
+- The owner sets the offerings, and connects their own Stripe account, in the Solution Owner Console. `price` is in the currency's smallest unit. Nobody signed in → `absent`: the store is a signed-in member's to read.
 - After paying, the buyer lands on `successUrl` (this page by default). The purchase is written when the payment's notice arrives, so the page there calls `refresh()` until the offering reads `owned`.
 - A purchase lets the buyer read the record, and through it what its `sold_with` references point to: `useEntity({ schema: '@/lesson', uuid, via: course.uuid })`.
 - `useEntitlements()` — what the viewer holds, for "My courses". `useHolders({ schema, uuid })` — who holds a record, for a roster: its owner's or an `admin`'s to read, `forbidden` for anyone else, so draw nothing.

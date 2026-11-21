@@ -35,7 +35,7 @@ test('leads with the agent, then going live on Uniweb hosting', async () => {
   const text = await readme({ packages: STANDARD })
   const flat = text.replace(/\s+/g, ' ')
   assert.match(text, /^# shop\n/)
-  assert.ok(flat.includes('an open-source framework for building websites with an AI agent'))
+  assert.ok(flat.includes('the platform for building websites and web apps'))
   assert.ok(text.includes('npx uniweb@latest start'))
   for (const command of ['pnpm uniweb login', 'pnpm uniweb status', 'pnpm uniweb push', 'pnpm uniweb pull', 'pnpm uniweb sync', 'pnpm uniweb publish', 'pnpm uniweb deploy']) {
     assert.ok(text.includes(command), command)
@@ -45,7 +45,7 @@ test('leads with the agent, then going live on Uniweb hosting', async () => {
   const live = text.indexOf('## Going live')
   assert.ok(live > 0 && live < text.indexOf("## What's here"))
   assert.ok(flat.includes('We recommend Uniweb hosting, from the site\'s first pages'))
-  assert.ok(flat.includes('Every publish also updates the site in the [Uniweb app]'))
+  assert.ok(flat.includes('Every publish also updates the site in [Uniweb App]'))
   assert.ok(flat.includes('A static host serves only what a build makes'))
 })
 
@@ -77,7 +77,7 @@ test('a blank workspace says how to grow it', async () => {
 
 test('a clone says it is in sync with the app already', async () => {
   const cloned = await readme({ packages: [{ path: 'site', site: true }], workspaceGlobs: ['site'], cloned: true })
-  assert.match(cloned, /cloned from a site in the Uniweb app/)
+  assert.match(cloned, /cloned from a site in Uniweb App/)
   assert.doesNotMatch(cloned, /\| `src\/` \|/)
   // CONTROL — a project made by `create` says nothing of the kind.
   assert.doesNotMatch(await readme({ packages: STANDARD }), /cloned from/)

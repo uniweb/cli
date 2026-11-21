@@ -5,19 +5,20 @@ You're in the Uniweb project at `{{root}}`.
 
 Its pages are made of sections: structured content written in markdown, and drawn by its
 foundation, React components that each section picks by name. The `uniweb` CLI builds and
-runs the project, and brings it into the Uniweb app, where the person you're working with
+runs the project, and brings it into Uniweb App, where the person you're working with
 can keep editing it visually.
 
 `uniweb start` only prints this guide; `npx uniweb dev` runs the site. To start a new
 project instead, run `npx uniweb@latest start` in a folder outside this one.
 {{else}}
-# Build a website with Uniweb
+# Build a website or web app with Uniweb
 
-You're building a website for the person you're working with. In Uniweb, a page is made of
-sections: structured content written in markdown, and drawn by a foundation, React
-components that each section picks by name. One project holds both. The `uniweb` CLI builds
-and runs it, and brings it into the Uniweb app, where the person can keep editing it
-visually.
+You're building a site for the person you're working with: a website, a web app, or both in
+one site. In Uniweb, a page is made of sections: structured content written in markdown, and
+drawn by a foundation, React components that each section picks by name. One project holds
+both. When the site needs people to sign in, its Application Engine is the backend, and
+your components reach it through `@uniweb/api`. The `uniweb` CLI builds and runs it, and
+brings it into Uniweb App, where the person can keep editing it visually.
 {{/if}}
 
 ## Run everything yourself
@@ -112,7 +113,7 @@ says: named section types, their text in markdown, its colors in `theme.yml`.
 delete what they won't use. The code is theirs, so change whatever the site needs.
 {{/if}}
 
-## If their site is already in the Uniweb app
+## If their site is already in Uniweb App
 
 Bring it here instead of creating a project:
 
@@ -143,6 +144,20 @@ procedure.
 Uniweb's mistakes are quiet: an unknown section type or param builds fine and renders
 wrong. AGENTS.md says how to check. Look at every page in a browser, wide and narrow,
 before you call it ready.
+
+## If it is also a web app
+
+When what they want needs people to sign in (members, each person's own data, roles, a
+store), read the backend guide before you design the data or the screens:
+
+```bash
+npx uniweb guide backend
+```
+
+It shows how the site turns on its Application Engine (`services.backend` in `site.yml`,
+with `blueprint.yml` beside it), how components read and write through `@uniweb/api`, and
+how to run the whole app on this computer with the SDK's mock before anything is published.
+`starter` is the start for a web app too; you add the engine to it.
 {{#if project}}
 
 ## Check what changed
@@ -151,7 +166,7 @@ before you call it ready.
 npx uniweb status
 ```
 
-The site may have been edited in the Uniweb app since this copy last synced, by the
+The site may have been edited in Uniweb App since this copy last synced, by the
 person or someone they work with, and Uniweb may have a newer release. `status` says so,
 changes nothing, and ends with the commands to run, in order. A step it marks "ask the
 person first" is theirs to decide.
@@ -170,7 +185,7 @@ Run `dev` in the background. Once the server listens, it prints
 
 ## Sign them in to Uniweb
 
-When they want the site in the Uniweb app, to edit it there or to take it live:
+When they want the site in Uniweb App, to edit it there or to take it live:
 
 ```bash
 npx uniweb login --browser --personal

@@ -1,8 +1,8 @@
 # uniweb
 
-The CLI for [Uniweb](https://uniweb.io), an open-source framework for building websites with an AI agent. Your agent builds the site, Uniweb hosting runs it, and you and the people you work with can edit it in a visual app.
+The CLI for [Uniweb](https://uniweb.io), the platform for building websites and web apps. You build with its open-source React framework, yourself or with an AI agent. The Application Engine gives your app accounts, data, permissions and payments, with no backend to write. Uniweb App lets the people you work with edit the site visually, and Uniweb hosting runs it all.
 
-**Agents build it. Uniweb runs it. You can edit it too.**
+**Build websites and web apps. Leave the backend to Uniweb.**
 
 ## Quick Start
 
@@ -11,10 +11,10 @@ The CLI for [Uniweb](https://uniweb.io), an open-source framework for building w
 Give your agent (Claude Code, Codex, Cursor, or any agent that can run commands) this prompt:
 
 ```text
-Build me a website with Uniweb.
+Build a website or web app with Uniweb.
 Start with `npx uniweb@latest start`
 
-The site is for: [describe your site]
+I want to build: [describe your website or web app]
 ```
 
 `uniweb start` prints a guide written for the agent: creating the project, reading its manual (`AGENTS.md`), running it, and taking the site live. The agent runs every command; you use your browser, to sign in and to pay when the site goes live.
@@ -36,17 +36,23 @@ At a terminal, `create` asks which template to start from (`npm create uniweb` d
 
 ```bash
 pnpm uniweb login      # sign in to your Uniweb account
-pnpm uniweb publish    # take the site live on Uniweb hosting, and into the Uniweb app
+pnpm uniweb publish    # take the site live on Uniweb hosting, and into Uniweb App
 ```
 
-We recommend Uniweb hosting from a site's first pages. It is a paid service, and a site of static pages costs the least there, because each service, live records included, is priced on its own. The page a visitor arrives on is prerendered at the edge. Every publish also updates the site in the Uniweb app, so the people you work with can preview and edit it without waiting for you or your agent. And the site grows there with no changes: more languages, live records, forms, analytics, a members' area, and payments through your own Stripe account. A free static host is a choice too: see [On a free static host](#on-a-free-static-host) for what that path leaves out.
+We recommend Uniweb hosting from a site's first pages. It is a paid service, and a site of static pages costs the least there, because each service, live records included, is priced on its own. The page a visitor arrives on is prerendered at the edge. Every publish also updates the site in Uniweb App, so the people you work with can preview and edit it without waiting for you or your agent. And the site grows there with no changes: more languages, live records, forms, analytics, a members' area, and payments through your own Stripe account. A free static host is a choice too: see [On a free static host](#on-a-free-static-host) for what that path leaves out.
+
+## Websites and Web Apps
+
+One project can be a website, a web app, or both, on one domain. When a site needs people to sign in, it turns on its own **Application Engine** with one line in `site.yml` (`backend: true` under `services:`). Accounts and sign-in, each member's data and who may see it, roles and teams, a store that takes payments through your own Stripe account, and an inbox are then already there. Your components reach the engine through [`@uniweb/api`](https://github.com/uniweb/api), the SDK, with no routes, tokens or fetch code of your own.
+
+Build the whole app on your machine, against the SDK's mock or the Docker Developer Edition. Then `uniweb publish` gives the site a dedicated engine with its own PostgreSQL database. Start from `starter`, as for any site. [Web Apps](https://github.com/uniweb/docs/tree/main/web-apps) in the docs covers the engine, the entity model and the SDK.
 
 ## One Site, Three Ways to Change It
 
-Ask your agent, open the Uniweb app, or edit the files: all three change the same site.
+Ask your agent, open Uniweb App, or edit the files: all three change the same site.
 
 - **Your agent** works in the project, with its manual (`AGENTS.md`) and commands that check its work: `uniweb inspect` prints what a file parses to, and `uniweb doctor` checks the project.
-- **The Uniweb app** is a visual editor. Your section types become its building blocks: people compose pages from them, set the options each one declares in its `meta.js`, and manage records through your schemas, with live previews. They never see JSX, markdown, YAML or git, and you never build an editing UI.
+- **Uniweb App** is a visual editor. Your section types become its building blocks: people compose pages from them, set the options each one declares in its `meta.js`, and manage records through your schemas, with live previews. They never see JSX, markdown, YAML or git, and you never build an editing UI.
 - **The files** are a normal project: section types are React components, content is markdown in the repository, Vite builds it, and git holds the history.
 
 ### The CLI is the bridge
@@ -343,7 +349,7 @@ A Uniweb project produces two artifacts — a **site** (content) and a **foundat
 
 `uniweb deploy` ships to a standard host such as Cloudflare Pages, Netlify, Vercel, GitHub Pages or S3 + CloudFront, and `uniweb export` builds a `dist/` for any other host. A static host serves what a build makes, so it leaves out what Uniweb hosting does for the site:
 
-- Edits made in the Uniweb app reach the site only through the project: a pull, a build and a deploy, by you or your agent.
+- Edits made in Uniweb App reach the site only through the project: a pull, a build and a deploy, by you or your agent.
 - Records are compiled into each build, so a change shows at the next build, not live.
 - Forms, visitor statistics, accounts and payments each need an address of your own or a third-party service.
 - Pages are prerendered at build time, with the data the build had.
@@ -371,7 +377,7 @@ uniweb register
 
 It registers under the scope of the Uniweb workspace you logged in to (`uniweb login --org @your-org`); `--scope` names another scope.
 
-Real sites built on your foundation are managed in the **Uniweb app** — a visual editor designed for non-technical authors. They never see git, markdown, yaml, or React. They see *your* components, with live previews and visual controls for the params you defined. The foundation becomes the editor's native vocabulary for that site: you keep creative control of the design system, they get an editor that feels custom-built for them.
+Real sites built on your foundation are managed in **Uniweb App** — a visual editor designed for non-technical authors. They never see git, markdown, yaml, or React. They see *your* components, with live previews and visual controls for the params you defined. The foundation becomes the editor's native vocabulary for that site: you keep creative control of the design system, they get an editor that feels custom-built for them.
 
 This is the best path when site content has a life independent of the foundation's release cycle — agencies, design studios, multi-client teams, or any project where content authors aren't the same people as the developers.
 
@@ -434,6 +440,7 @@ Full documentation is at **[uniweb.io/docs](https://uniweb.io/docs)**, written i
 | [Getting Started](https://github.com/uniweb/docs/tree/main/getting-started) | What Uniweb is, why Uniweb, quickstart, templates |
 | [Authoring](https://github.com/uniweb/docs/tree/main/authoring) | Writing content, site setup, theming, collections, translations |
 | [Development](https://github.com/uniweb/docs/tree/main/development) | Building foundations, component patterns, data fetching, layouts |
+| [Web Apps](https://github.com/uniweb/docs/tree/main/web-apps) | The Application Engine, the entity model, the SDK, testing locally |
 | [Reference](https://github.com/uniweb/docs/tree/main/reference) | Configuration files, kit API, CLI commands, deployment |
 
 For AI agents, the documentation's index is [uniweb.io/llms.txt](https://uniweb.io/llms.txt).
@@ -528,7 +535,7 @@ packages:
 
 ## FAQ
 
-**Do I need the Uniweb app?**
+**Do I need Uniweb App?**
 
 No. The framework works on its own, and `uniweb deploy` puts a site on any static host. On Uniweb hosting, which we recommend, every publish also puts the site in the app, so it's ready whenever you, or anyone you work with, would rather edit visually, with nothing to connect and no editing interface for you to build.
 
@@ -562,6 +569,7 @@ Yes — documentation is a natural fit. Content stays in markdown (easy to versi
 
 ## Related Packages
 
+- [`@uniweb/api`](https://github.com/uniweb/api) — The SDK for a site's Application Engine
 - [`@uniweb/build`](https://github.com/uniweb/build) — Foundation build tooling
 - [`@uniweb/runtime`](https://github.com/uniweb/runtime) — Foundation loader and orchestrator for sites
 - [`@uniweb/templates`](https://github.com/uniweb/templates) — Official project templates (content only, CLI provides structure)

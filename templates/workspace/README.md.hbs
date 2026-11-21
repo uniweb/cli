@@ -1,11 +1,11 @@
 # {{projectName}}
 
-A website made with [Uniweb](https://uniweb.io), an open-source framework for building websites
-with an AI agent. Your agent builds the site, Uniweb hosting runs it, and you and the people you
-work with can edit it in the Uniweb app.
+A site made with [Uniweb](https://uniweb.io), the platform for building websites and web apps.
+It is built with Uniweb's open-source React framework, by your agent or by you. Uniweb hosting
+runs it, and you and the people you work with can edit it in Uniweb App.
 {{#if cloned}}
 
-This project was cloned from a site in the Uniweb app (`uniweb clone`), so it is already in sync
+This project was cloned from a site in Uniweb App (`uniweb clone`), so it is already in sync
 with it. Its foundation is a registered one, not a folder of this project.
 {{/if}}
 
@@ -13,7 +13,7 @@ with it. Its foundation is a registered one, not a folder of this project.
 
 **With an AI agent.** Open your agent in this directory, ask it to run `npx uniweb@latest start`
 first, then ask for what you want. The guide it prints has your agent check whether the site was
-changed in the Uniweb app before it starts. [AGENTS.md](./AGENTS.md) is the project's manual, for
+changed in Uniweb App before it starts. [AGENTS.md](./AGENTS.md) is the project's manual, for
 your agent and for you.
 
 **By hand:**
@@ -49,7 +49,7 @@ pnpm uniweb publish     # take the site live on Uniweb hosting, a paid service
 - **A site of static pages costs the least there**, because each service, live records included,
   is priced on its own.
 - **The page a visitor arrives on is prerendered at the edge**, close to them.
-- **Every publish also updates the site in the [Uniweb app](https://uniweb.app)**, so you and the
+- **Every publish also updates the site in [Uniweb App](https://uniweb.app)**, so you and the
   people you work with can preview and edit it at any time, without waiting for a developer or
   an agent.
 - **The site grows there with no changes**: more languages, live records, forms, analytics, a
@@ -103,7 +103,7 @@ component works in light and dark sections, and on every site that uses it.
 Every site also gives AI assistants something to read: an `llms.txt` index and a Markdown copy of
 each page, on Uniweb hosting and in every static build.
 
-## The project and the Uniweb app
+## The project and Uniweb App
 
 A publish brings the site into the app, and so does a push, which sends it as a draft without
 taking it live. From then on, the CLI keeps the two in step:
@@ -180,6 +180,6 @@ the Hero section type from the homepage.
 
 - [Documentation](https://uniweb.io/docs): guides and reference. For AI agents, its index is
   https://uniweb.io/llms.txt
-- [Uniweb app](https://uniweb.app): the visual editor
+- [Uniweb App](https://uniweb.app): the visual editor
 - `pnpm uniweb <command> --help`: every command's options
 - `pnpm uniweb doctor`: checks the project's configuration

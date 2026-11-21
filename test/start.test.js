@@ -46,7 +46,7 @@ const flat = (s) => s.replace(/\s+/g, ' ')
 test('outside a project: create from starter, read AGENTS.md, sign in in the browser, bring it into the app', () => {
   const guide = startGuide({ cwd: tmp('uw-start-empty-') })
 
-  assert.match(guide, /^# Build a website with Uniweb/)
+  assert.match(guide, /^# Build a website or web app with Uniweb/)
   assert.ok(guide.includes('npx uniweb@latest create <name> --template starter'))
   assert.ok(guide.includes('`--template none`'))
   // Only those two: a full template is sample content to remove.
@@ -207,7 +207,7 @@ test('inside a workspace that is not a Uniweb project: create the project outsid
   mkdirSync(join(other, 'packages'))
 
   const guide = startGuide({ cwd: join(other, 'packages') })
-  assert.match(guide, /^# Build a website with Uniweb/)
+  assert.match(guide, /^# Build a website or web app with Uniweb/)
   assert.ok(guide.includes(`Create it outside \`${other}\``))
   // CONTROL — a folder in no workspace says nothing of the kind.
   assert.ok(!startGuide({ cwd: tmp('uw-start-empty-') }).includes('Create it outside'))
@@ -219,7 +219,7 @@ test('⛔ asks nothing, writes nothing, makes no request', async () => {
     const r = await runVerb(dir, start, [])
     assert.equal(r.exitCode, 0, r.output)
     assert.equal(r.requests, 0)
-    assert.match(r.output, /^# (Build a website with Uniweb|Working on a Uniweb project)/)
+    assert.match(r.output, /^# (Build a website or web app with Uniweb|Working on a Uniweb project)/)
     assert.deepEqual(readdirSync(dir).sort(), before)
   }
 })
@@ -237,7 +237,7 @@ test('⛔ answered by the CLI that was invoked, not a project copy — and befor
 
   const r = run('start')
   assert.equal(r.status, 0, r.stderr)
-  assert.match(r.stdout, /^# Build a website with Uniweb/)
+  assert.match(r.stdout, /^# Build a website or web app with Uniweb/)
   assert.ok(!r.stdout.includes('DELEGATED'))
   assert.ok(!existsSync(join(home, '.uniweb')), 'the update check ran: it keeps its cache in ~/.uniweb')
 
