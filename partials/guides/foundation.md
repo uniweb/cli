@@ -179,26 +179,30 @@ A section type is a front desk; a **library** is the back office several foundat
 
 ### The Front Desk pattern
 
-A section type is triage: it reads params, picks a worker, and translates author vocabulary into developer props — and that is all it does. The workers are ordinary components that know nothing about CCA, and they need not share an interface: a `Hero` might hand off to a `SliderHero` (image carousel) or a `ContactHero` (quote form) that want different content and different props. The front desk declares the **union** of what they need, and unused content for a given variant is normal — params change behavior, and that includes not rendering some content. This is what lets an author (or an A/B test) flip `variant:` on a section without touching its markdown.
+A section type is triage: it reads params, picks a worker, and translates author vocabulary into developer props — and that is all it does. The workers are ordinary components that know nothing about CCA, and they need not share an interface: a `Hero` might hand off to a `SplitHero` (the first image beside the text) or a `SliderHero` (every image in turn, on a timer) that want different props. The front desk declares the **union** of what they need, and unused content for a given variant is normal — params change behavior, and that includes not rendering some content. This is what lets an author (or an A/B test) flip `variant:` on a section without touching its markdown.
 
 ```js
 // meta.js
 params: {
-  variant: { type: 'select', options: ['slider', 'contact'], default: 'slider' },
+  variant: { type: 'select', label: 'Layout', default: 'split', options: [
+    { value: 'split', label: 'Image beside the text' },
+    { value: 'slider', label: 'Images in turn' },
+  ] },
   slideInterval: { type: 'number', default: 5 },
   density: { type: 'select', options: ['default', 'compact'], default: 'default' },
 }
 ```
 
 ```jsx
-const workers = { slider: SliderHero, contact: ContactHero }
+const workers = { split: SplitHero, slider: SliderHero }
 export default function Hero({ content, block, params }) {
-  const Worker = workers[params.variant] || SliderHero
+  const Worker = workers[params.variant] || SplitHero
   return <Worker title={content.title} links={content.links} images={content.images} block={block}
-                 formData={content.data?.quote} interval={params.slideInterval}
-                 compact={params.density === 'compact'} />
+                 interval={params.slideInterval} compact={params.density === 'compact'} />
 }
 ```
+
+**Design the options before the workers.** An author meets each option on a section about any subject, so name it for what it does to the section (**Image beside the text**, **Media on the right**, **Stacked**), and give each content slot one meaning under every option: the heading stays the heading, the media stays the media. The subject is the author's: the words, and whatever fills the media slot, whether an image, a video or an inset for a picture the design draws in code (`![](@ArchitectureDiagram)`, § Composition). A variant that brings a subject of its own, with its words in the type's data and its diagram in its worker (`entity-model`, `pricing-overview`), is one section's markup that no author can use again: its words belong in the section, its diagram in the media slot, and what it shares with the other variants becomes the option. A different job, such as a quote form with its fields and its submission, is a type of its own (`QuoteRequest`, family `contact`, where the editor's picker offers forms), whose worker can reuse the hero's layout component. To check a type, give one of its sections an unrelated heading and picture, switch each option, and see every field keep its meaning; `uniweb docs` lists each control with the words an author reads.
 
 Reach for it when a page type has consistent structural elements (header bars, nav footers, contextual sidebars) an author shouldn't add as separate sections. Don't solve that at the layout level: if only some page types need it, it's a section concern — the layout owns page-wide chrome, the section owns its internal structure.
 
@@ -235,7 +239,7 @@ Colors, tokens, light and dark, fonts and `styles.css` are in `uniweb guide them
 
 ## A section's own words
 
-The words a section draws itself — a search box's placeholder, an "All" filter, "No results", a menu button's `aria-label` — are content, not params: an author may change them, and a site in several languages translates them with the page. Their home is a tagged data block the type declares with an inline field map. The editor shows its fields, filled in from each `default:`, and `uniweb i18n` and a push translate it like the rest of the page, on a static site and a synced one alike. A param is a choice (a variant, a count) and is never translated.
+The words a section draws itself — a search box's placeholder, an "All" filter, "No results", a menu button's `aria-label` — are content, not params: an author may change them, and a site in several languages translates them with the page. Their home is a tagged data block the type declares with an inline field map. The editor shows its fields, filled in from each `default:`, and `uniweb i18n` and a push translate it like the rest of the page, on a static site and a synced one alike. These are the words of the type's own controls, which every section of it draws; what one section says about its subject is written in that section, never in the type's data. A param is a choice (a variant, a count) and is never translated.
 
 ```js
 // sections/Catalog/labels.js — the type's own words, in the foundation's language

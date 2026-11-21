@@ -23,16 +23,16 @@ Uniweb is an implementation of **Component Content Architecture (CCA)**: content
 **A section type is a front desk, not a worker.** It reads params, picks a worker, and translates author vocabulary (`content`, `params`) into developer vocabulary (ordinary props). The workers live in `components/` and know nothing about CCA. That is the whole shape of a foundation: thin section types at the boundary, ordinary React behind them.
 
 ```jsx
-const workers = { slider: SliderHero, contact: ContactHero }
+const workers = { split: SplitHero, slider: SliderHero }
 export default function Hero({ content, params, block }) {
-  const Worker = workers[params.variant] || SliderHero
+  const Worker = workers[params.variant] || SplitHero
   return <Worker title={content.title} links={content.links} images={content.images} block={block} />
 }
 ```
 
-One `type:` for the author, as many renderings as the design needs. A second section type that differs only in layout, or a conditional tree inside one, means you want a param and a worker.
+One `type:` for the author, as many renderings as the design needs. Name each option for what it does (`split`, `media-right`): an author picks it on a section about any subject, whose words and picture are content.
 
-**Content is an offer, not a contract.** As the developer: a section type takes what it expects from `content` — the first paragraph if it needs one, every paragraph or every item only when showing them all is the point — and neither touches nor reacts to the rest. No check for unexpected content, no warning. `meta.js content:` says what the type *reads*, not what a section may hold, and a param combination that leaves some content unused is normal. As the author: write what the type reads; extra content isn't a goal. The tolerance exists so that switching `type:` or a `variant` is a one-line trial — change it, compare, switch back — with nothing to rewrite first. When you make such a switch, don't strip what the new rendering ignores; whether it stays is the author's decision once the trial is settled.
+**Content is an offer, not a contract.** As the developer: a section type takes what it expects from `content` — the first paragraph if it needs one, every paragraph or every item only when showing them all is the point — and neither touches nor reacts to the rest. `meta.js content:` says what the type *reads*, not what a section may hold, and a param combination that leaves some content unused is normal. As the author: write what the type reads; extra content isn't a goal. The tolerance exists so that switching `type:` or a `variant` is a one-line trial — change it, compare, switch back — with nothing to rewrite first. When you make such a switch, don't strip what the new rendering ignores; whether it stays is the author's decision once the trial is settled.
 
 The principles to reason from when a table in §2 doesn't cover the case:
 
